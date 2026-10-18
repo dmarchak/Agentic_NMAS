@@ -28,8 +28,10 @@
  * duktape by tests/test_coverage_grid.py.
  *
  * Also `deviceSelect`, the Devices page's selection (C593, board A): the same selection, its
- * bar naming the devices ticked and its Actions menu counting them ("Save (3)…").
- * `deviceWords` is PURE, executed in duktape by tests/test_save_v2.py.
+ * bar naming the devices ticked and its Actions menu counting them ("Save (3)…"); its head box
+ * ticks every row shown, and with all of them ticked the form carries ALL MATCHING (the search
+ * and filters, never the names). `deviceWords` is PURE, executed in duktape by
+ * tests/test_save_v2.py and tests/test_devices_select_all.py.
  */
 (function (root) {
   'use strict';
@@ -367,18 +369,26 @@
     d.parameters.order = JSON.stringify(confirmOrder(namesOf(rows(doc)), sent));
   }
 
-  /* PURE. The Devices page's selection words: *names* the ticked devices; the menu's count. */
-  function deviceWords(names) {
+  /* PURE. The Devices page's selection words: *names* the ticked devices; the menu's count.
+     *whole* is 'matching' when every row shown under a search or filter is ticked, 'every'
+     when every row of the unfiltered list is, else '' (the selection is the names). */
+  function deviceWords(names, whole) {
     var n = names.length, shown = names.slice(0, 8).join(', ');
-    return {summary: n + ' selected',
+    var lead = whole === 'matching' ? 'All ' + n + ' matching selected'
+             : whole === 'every' ? 'All ' + n + ' selected' : n + ' selected';
+    return {summary: lead,
             detail: '· ' + shown + (n > 8 ? ' and ' + (n - 8) + ' more' : ''),
             count: '(' + n + ')'};
   }
 
   function register() {
+    /* The head box ticks every row shown (a pending row has none) and is indeterminate when
+       some are. Every row ticked, the selection is ALL MATCHING: the form's `match` and the
+       search and filters are enabled and `carry` drops each `device` from the submit, so the
+       action resolves the devices itself from them, never from 900 names. */
     root.Alpine.data('deviceSelect', function () {
       return {
-        names: [],
+        names: [], whole: '',
         init: function () { this.recount(); },
         boxes: function () {
           return Array.prototype.slice.call(this.$root.querySelectorAll('input[name=device]'));
@@ -387,16 +397,32 @@
           var all = this.boxes(), names = [];
           for (var i = 0; i < all.length; i++) if (all[i].checked) names.push(all[i].value);
           this.names = names;
+          var every = !!all.length && names.length === all.length;
+          this.whole = !every ? '' : this.$root.hasAttribute('data-filtered') ? 'matching' : 'every';
+          var head = this.$refs.all;
+          if (head) {
+            head.checked = every;
+            head.indeterminate = !!names.length && !every;
+          }
+        },
+        pickAll: function () {
+          var on = !!(this.$refs.all && this.$refs.all.checked), all = this.boxes();
+          for (var i = 0; i < all.length; i++) all[i].checked = on;
+          this.recount();
+        },
+        carry: function (e) {
+          if (this.whole && e && e.formData) e.formData.delete('device');
         },
         clear: function () {
           var all = this.boxes();
           for (var i = 0; i < all.length; i++) all[i].checked = false;
           this.recount();
         },
+        get partial() { return !this.whole; },
         get nonePicked() { return !this.names.length; },
-        get summary() { return deviceWords(this.names).summary; },
-        get detail() { return deviceWords(this.names).detail; },
-        get count() { return deviceWords(this.names).count; }
+        get summary() { return deviceWords(this.names, this.whole).summary; },
+        get detail() { return deviceWords(this.names, this.whole).detail; },
+        get count() { return deviceWords(this.names, this.whole).count; }
       };
     });
     root.Alpine.data('coverageSelect', function () {

@@ -26,7 +26,22 @@ Shots: board A at 1440 and 1280, the first board at 1440, its phone board at 390
 (`devices-selected-page-*`), each phone shot also as its first screen.
 Compared 2026-10-16.
 Templates compared: templates/v2/devices.html, templates/v2/_devices.html
-Templates sha256: `8399103bfb48aeca5e9862ae369d94fea07aa2b60db018610eb14ad9674588b8`
+Templates sha256: `dca8145f7ce2f3509dbcb1f2c28924d51418fcb53e141096f1228b936861204a`
+
+Compared again 2026-10-18 (the operator's walk, B; C902's agreed design, R1): the table's head
+draws the select-all box the first board drew there, as C902 agreed it: "Select the <n> shown"
+on its label and hover, ticking every row the search and filters show (a pending row has no
+tick and is not counted), a dash (indeterminate) while only some are ticked, cleared with the
+rows by Clear selection. Beyond the board: with every row shown ticked the selection is ALL
+MATCHING, the bar reading "All <n> matching selected" under a search or filter and "All <n>
+selected" without one, and the form carries the search and filters in place of the names, each
+action resolving the devices itself (`device_list.matching`). The list has no pages (C450's
+revised board owes them), so a separate "Select all <N> matching" offer across pages has no
+case to draw and is not drawn. Compared by the template and the real browser
+tests/test_devices_select_all.py drives (the box ticking r2, r3 and r4 under the search "r",
+indeterminate with one unticked, cleared; Save opened on all matching), not a new shot: one
+control in the head's first cell, where the board drew it, and the bar's words. A deviation
+(below); the Selection bar's verdict stands, its words now including the all-matching lead.
 
 Compared again 2026-10-18 (C1232): the Actions menu gains a last row under Save every device of
 <network>, "Save the devices of <network> with no golden…" with its sub-line ("decided from the
@@ -63,7 +78,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Save the devices with no golden (C1232) | not drawn | the menu's last row, "Save the devices of Lab with no golden…", its sub-line and (i) (`TestTheNoGoldenScope.test_the_devices_page_offers_it`) | **deviation** (log: Devices: the Actions menu offers Save the devices with no golden (C1232)) |
 | Actions the menu lacks | Apply the monitoring profile to 3…; Save's "2 of 3 not saved now" | neither drawn: the profile's apply (`/v2/monitoring/apply`) is reached from the devices ticked on Monitoring › Coverage, and Save's sub-line gives no count from the startup check | **deviation** (log: Devices: the Actions menu lacks Apply the monitoring profile and Save's not-saved count (a defect, register C650 follow-up)) |
 | Plan a deploy (board B) | `BatchDeploy.dc.html`, a page of its own | the batch Apply's page with the `intent` scope, `/v2/devices/deploy` (compared in apply.html's record) | **deviation** (log: Batch deploy (board B, signed off 2026-10-04)) |
-| Select every device shown | a checkbox in the table's head | not drawn: the head's first cell is the screen reader's "Select"; agreed as request R1 on 2026-10-16 (tri-state, "Select the <n> shown") | **later** C902 (the select-all checkbox, an agreed request, after cutover) |
+| Select every device shown | a checkbox in the table's head | the box there, as R1 agreed it (2026-10-16): "Select the <n> shown", ticking the rows the search and filters show (no pending row), indeterminate while some are ticked; every row shown ticked, the selection is all matching ("All <n> matching selected"), carried as the search and filters and resolved by each action; no "Select all <N> matching" offer, the list having no pages (`tests/test_devices_select_all.py`) | **deviation** (log: Devices: a select-all box, all matching across pages (the operator's walk, 2026-10-18)) |
 | Columns | tick, Device (name · role), Status, Address, Platform, Intent, Startup, Last measured | the same eight, in the same order; at the operator's half width (capture 12) the table runs past the card and Last measured's header reads "Last" | **same** |
 | Status | answering, not answering "since 09:41" | the same chips, "since 18 h ago" when the reader knows it; "not probed yet" for a device the reachability reader has not read | **same** |
 | Intent | a chip: at intent, departs, unknown, no intent | the chip, and after it which measurement it was read at ("by Save All, no change, which earned a baseline" in capture 29; "by onboarding, golden changed" here), its reason on hover; since C532 a fifth chip, "intent changed since measured", where what the measurement judged against has moved since (r2 here) | **deviation** (log: Devices: the intent state says which measurement), and since C532 (log: Devices: a fifth intent chip, intent changed since measured) |

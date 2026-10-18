@@ -1366,16 +1366,18 @@ def _scope(req=None) -> str:
     return got
 
 
-def _apply_args(req) -> dict:
+def _apply_args(req, names: list = None) -> dict:
     """What the preview form carries: the list, the devices in the rollout
     order (a move or a leave-out applied), the superseded lines ticked for
     removal (by id) and each one's stated reason. A `move` comes from Coverage's
     combined deploy (`_coverage_deploy_preview.html`); the batch Apply's preview
-    reorders in the page and sends its devices in the order shown (C888)."""
+    reorders in the page and sends its devices in the order shown (C888). *names*, when
+    given, are the devices in place of the request's (Devices' all matching, resolved by
+    `devices_deploy`)."""
     from routes.list_param import named_list
 
     order = []
-    for d in req.args.getlist("device"):
+    for d in (req.args.getlist("device") if names is None else names):
         d = d.strip()
         if d and d not in order:
             order.append(d)
@@ -1440,7 +1442,7 @@ def _coverage_words(list_name: str, rows: list) -> None:
                               for k in (cov or {}).get("not_reporting") or []]
 
 
-def _apply_ctx(req, scope: str = None) -> dict:
+def _apply_ctx(req, scope: str = None, names: list = None) -> dict:
     """The batch preview: every device's profile-scoped plan, as
     `routes.deploy.plan_devices` with scope `profile` computes it, masked on the way out
     AFTER every hash is computed, and the confirm body built from those
@@ -1450,7 +1452,7 @@ def _apply_ctx(req, scope: str = None) -> dict:
     from modules.preview_confirm import deploy_preview
     from routes.deploy import plan_devices
 
-    args = _apply_args(req)
+    args = _apply_args(req, names)
     scope = scope or _scope(req)
     list_name = args["list"] or listref.active().name
     ctx = {"list_name": list_name, "order": args["order"], "rows": [], "preview": None,
@@ -1961,12 +1963,18 @@ def devices_table():
 # ---------------------------------------------------------------------------
 
 def _save_selection(req, ref) -> list:
-    """The devices a Save names: ``all=1`` for every device of the network, else each
-    ``device`` the Devices page's form ticked, in its order."""
+    """The devices a Save names: ``all=1`` for every device of the network; ``match=1`` for
+    every device the Devices list's search and filters match, resolved here
+    (`device_list.matching`); else each ``device`` the Devices page's form ticked, in its
+    order."""
+    from modules import device_list
     from modules.nsot.restore import _devices_of
 
     if req.values.get("all") == "1":
         return [d["hostname"] for d in _devices_of(ref.name) if d.get("hostname")]
+    every = device_list.matching(ref, req.values)
+    if every is not None:
+        return every
     return list(dict.fromkeys(d for d in req.values.getlist("device") if d))
 
 
@@ -1974,9 +1982,18 @@ def _save_selection(req, ref) -> list:
 def devices_deploy():
     """Devices › Plan a deploy for the ticked devices (7.4's board B): each device's whole
     committed intent, one preview in a rollout order, then one confirm whose run is a job,
-    drawn in place (the batch Apply's page, preview, confirm and job, with scope `intent`)."""
+    drawn in place (the batch Apply's page, preview, confirm and job, with scope `intent`).
+    Devices' ALL MATCHING (``match=1``) is resolved here from the list's search and filters
+    (`device_list.matching`); the preview then carries each device it planned by name."""
     from flask import request
-    ctx = _apply_ctx(request, scope="intent")
+
+    from modules import device_list
+    from modules.nsot import listref
+    from routes.list_param import named_list
+
+    every = device_list.matching(listref.resolve(named_list(request) or listref.active().name),
+                                 request.args)
+    ctx = _apply_ctx(request, scope="intent", names=every)
     return _page("v2/apply.html", active_nav="devices", **ctx)
 
 

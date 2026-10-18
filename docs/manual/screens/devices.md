@@ -54,6 +54,17 @@ what the check found. An unreadable check record is said above the list.
 ## Selecting devices {#selection}
 
 Tick devices and the bar above the list names them, with **Actions** and **Clear selection**.
+
+The box in the table's head, **Select the N shown**, ticks every row the list shows under the
+current search and filters (a device pending onboarding has no tick, so it is never one of
+them), and unticks them again; with only some rows ticked it shows a dash. The list draws
+every device that matches, so with every row shown ticked the selection is **all matching**,
+and the bar says so: "All 412 matching selected" under a search or filter, "All 900 selected"
+without one. An action then receives the search and filters, never the names, and works out
+the devices itself from them, the same way the list did; its plan or preview names how many
+and each one, so a device that came to match since the list was drawn is named there before
+anything is done. Untick one row and the selection is the ticked names again.
+
 The Actions menu:
 
 - **Plan a deploy for the ticked devices…** opens Devices › Plan a deploy: each device's whole

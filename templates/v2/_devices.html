@@ -21,13 +21,25 @@
   {%- elif not d.rows %}
   <p class="cov-head">{{ icon('info') }} No device of {{ d.total }} matches{% if d.q %} "{{ d.q }}"{% endif %}{% if d.state %}, state {{ d.state | replace('_', ' ') }}{% endif %}{% if d.platform %}, platform {{ d.platform }}{% endif %}.</p>
   {%- else %}
-  <form method="get" action="{{ url_for('v2.devices_deploy') }}" class="dev-form" x-data="deviceSelect" x-on:change="recount">
+  {%- set picked = d.rows | selectattr('checked') | map(attribute='name') | list %}
+  {%- set tickable = d.rows | rejectattr('pending') | list | length %}
+  {%- set filtered = d.q or d.state or d.platform %}
+  {%- set whole = tickable and picked | length == tickable %}
+  <form method="get" action="{{ url_for('v2.devices_deploy') }}" class="dev-form" x-data="deviceSelect" x-on:change="recount" x-on:formdata="carry"{% if filtered %} data-filtered="1"{% endif %}>
     <input type="hidden" name="list" value="{{ d.list }}">
+    {#- ALL MATCHING (the operator's walk, 2026-10-18, B): with every row shown ticked, the
+        selection is every device this search and these filters match, carried as them and
+        never as the names (the submit drops each `device`); each action resolves the devices
+        itself (`device_list.matching`). The list has no pages, so what is shown is what
+        matches. -#}
+    <input type="hidden" name="match" value="1" x-bind:disabled="partial"{% if not whole %} disabled{% endif %}>
+    <input type="hidden" name="q" value="{{ d.q }}" x-bind:disabled="partial"{% if not whole %} disabled{% endif %}>
+    <input type="hidden" name="state" value="{{ d.state }}" x-bind:disabled="partial"{% if not whole %} disabled{% endif %}>
+    <input type="hidden" name="platform" value="{{ d.platform }}" x-bind:disabled="partial"{% if not whole %} disabled{% endif %}>
     {#- The selection bar (C593, board A): what is ticked, and the Actions on it. Rows start
         unticked; the redraw carries the ticks (C472). -#}
-    {%- set picked = d.rows | selectattr('checked') | map(attribute='name') | list %}
     <div class="dev-bar" id="dev-bar">
-      <span><strong x-text="summary">{{ picked | length }} selected</strong>
+      <span><strong x-text="summary">{% if whole %}All {{ picked | length }}{% if filtered %} matching{% endif %} selected{% else %}{{ picked | length }} selected{% endif %}</strong>
         <span class="muted" x-text="detail">{% if picked %}· {{ picked[:8] | join(', ') }}{% if picked | length > 8 %} and {{ picked | length - 8 }} more{% endif %}{% endif %}</span></span>
       <span class="dev-bar-acts">
       <div class="menu-wrap" x-data="menu" x-on:keydown.escape="close" x-on:click.outside="close">
@@ -50,7 +62,9 @@
     <div class="table-wrap">
       <table class="table dev-table">
         <thead><tr>
-          <th scope="col"><span class="sr-only">Select</span></th>
+          {#- Select the rows shown (C902's agreed design, R1; the operator's walk, 2026-10-18):
+              tri-state, recounted by `deviceSelect`; a pending row has no tick to count. -#}
+          <th scope="col">{% if tickable %}<input type="checkbox" id="dev-all" x-ref="all" x-on:change="pickAll" aria-label="Select the {{ tickable }} shown" title="Select the {{ tickable }} shown"{% if whole %} checked{% endif %}>{% else %}<span class="sr-only">Select</span>{% endif %}</th>
           <th scope="col">Device</th>
           <th scope="col">Status</th>
           <th scope="col">Address</th>

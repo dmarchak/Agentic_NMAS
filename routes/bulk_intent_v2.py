@@ -127,13 +127,17 @@ def page():
     """The page: the ticked devices and an empty change; asked by the card itself, the form
     alone, redrawn with what was typed (and one more setting with ``more``). A read: nothing
     is computed but the form."""
+    from modules import device_list
     from modules.nsot import listref
     from routes.list_param import named_list
     from routes.v2 import _page
 
     ref = listref.resolve(named_list(request) or listref.active().name)
     count = len(_rows()) + (1 if request.args.get("more") else 0)
-    f = _form(ref.name, _devices(), _rows(), (request.args.get("summary") or "").strip(),
+    # Devices' ALL MATCHING (``match=1``): the devices resolved here from the list's search and
+    # filters, never the names sent; the form then carries each by name.
+    every = device_list.matching(ref, request.args)
+    f = _form(ref.name, _devices() if every is None else every, _rows(), (request.args.get("summary") or "").strip(),
               count)
     if request.headers.get("HX-Request"):
         return _strict(render_template("v2/_bulk_intent.html", f=f, c={"state": "form"}))

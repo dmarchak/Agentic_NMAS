@@ -547,3 +547,17 @@ def listing(ref, *, q: str = "", state: str = "", platform: str = "", now: float
             "managed": len(inventory),
             "counts": counts, "platforms": platforms, "q": q, "state": state,
             "platform": platform, "bound": LOG_BOUND}
+
+
+def matching(ref, values):
+    """The devices an action on Devices' selection names when the selection is ALL MATCHING
+    (the operator's walk, 2026-10-18, B): None unless *values* (a request's) carry
+    ``match=1``; then every device of *ref* the list shows under the search and filters they
+    carry that can be ticked (a pending onboarding cannot), resolved HERE from the same
+    `listing` the page drew. A ``device`` sent beside ``match`` is never read, so the page's
+    names neither widen nor narrow it, and a selection of 900 never travels as 900 names."""
+    if (values.get("match") or "") != "1":
+        return None
+    got = listing(ref, q=values.get("q", ""), state=values.get("state", ""),
+                  platform=values.get("platform", ""))
+    return [r["name"] for r in got["rows"] if not r["pending"] and r["name"]]
