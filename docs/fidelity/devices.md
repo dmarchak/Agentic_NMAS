@@ -26,7 +26,15 @@ Shots: board A at 1440 and 1280, the first board at 1440, its phone board at 390
 (`devices-selected-page-*`), each phone shot also as its first screen.
 Compared 2026-10-16.
 Templates compared: templates/v2/devices.html, templates/v2/_devices.html
-Templates sha256: `a16bd2d3969b27e45413baaef7d7654277465b46ca222c74ba637f3c02b24aaf`
+Templates sha256: `8399103bfb48aeca5e9862ae369d94fea07aa2b60db018610eb14ad9674588b8`
+
+Compared again 2026-10-18 (C1232): the Actions menu gains a last row under Save every device of
+<network>, "Save the devices of <network> with no golden…" with its sub-line ("decided from the
+network's repository; the plan names the ones left out") and its (i), opening Save's plan for
+the no-golden scope (today's toolbar's "Capture devices with no golden", which P7-27 removes).
+Compared by the template and the menu tests/test_save_v2.py's `TestTheNoGoldenScope` draws, not
+a new shot: one row in the menu, as its neighbours are drawn. No board draws it, a deviation
+(below); no other region's verdict changed.
 
 Compared again 2026-10-16 (C532) after `_devices.html` drew the intent state from the one
 function the device page draws too (`device_list.intent_state`): a new chip, "intent changed
@@ -52,6 +60,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Selection bar | board A: a dark bar over the table once rows are ticked, "3 selected" with the names, their platform and reachability, Actions for 3 ▾, Clear selection | the first board's bar, inside the card over the rows it acts on, light: always drawn (its controls disabled until a row is ticked), "2 selected · s1, s2" (eight names, then "and N more"), Actions ▾, Clear selection; no platform or reachability summary (capture 12) | **deviation** (log: Devices: the selection bar) |
 | An empty selection | not drawn (the bar appears with a selection) | "0 selected ·", a separator with nothing after it (the shots at 1440 and 1280; C901) | **deviation** (log: Devices: an empty selection reads "0 selected ·" (C901)) |
 | Actions menu | Plan a deploy for 3…, Edit intent for 3…, Save (3)…, Apply the monitoring profile to 3…, each with its sub-line and its (i) | Plan a deploy for the ticked devices…, Save (2)… with its sub-line, Change a setting on (2)… (board D's own title) with its sub-line, and Save every device of Default (9)…, each with its (i) (capture 12, as the walk's step 13 named them) | **deviation** (log: Devices: the Actions menu's rows) |
+| Save the devices with no golden (C1232) | not drawn | the menu's last row, "Save the devices of Lab with no golden…", its sub-line and (i) (`TestTheNoGoldenScope.test_the_devices_page_offers_it`) | **deviation** (log: Devices: the Actions menu offers Save the devices with no golden (C1232)) |
 | Actions the menu lacks | Apply the monitoring profile to 3…; Save's "2 of 3 not saved now" | neither drawn: the profile's apply (`/v2/monitoring/apply`) is reached from the devices ticked on Monitoring › Coverage, and Save's sub-line gives no count from the startup check | **deviation** (log: Devices: the Actions menu lacks Apply the monitoring profile and Save's not-saved count (a defect, register C650 follow-up)) |
 | Plan a deploy (board B) | `BatchDeploy.dc.html`, a page of its own | the batch Apply's page with the `intent` scope, `/v2/devices/deploy` (compared in apply.html's record) | **deviation** (log: Batch deploy (board B, signed off 2026-10-04)) |
 | Select every device shown | a checkbox in the table's head | not drawn: the head's first cell is the screen reader's "Select"; agreed as request R1 on 2026-10-16 (tri-state, "Select the <n> shown") | **later** C902 (the select-all checkbox, an agreed request, after cutover) |

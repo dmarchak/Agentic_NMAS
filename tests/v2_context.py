@@ -821,7 +821,92 @@ def _netbox_source(client, lab, _mp):
         mp.undo()
 
 
+def _silenced_alert(client, _lab, _mp):
+    """Needs attention with a Grafana alert firing under a silence (C1277): the real capture's
+    `Critical syslog received` instance set Alerting for s4 and silenced, as
+    tests/test_grafana_reader.py's `silenced_syslog` edits it, read through the REAL
+    `attention.grafana_source` and drawn by GET /v2/attention. Its patch is undone before the
+    next provider."""
+    import pytest
+
+    from modules import attention
+    from modules.readers import grafana_alerts
+    from tests import test_grafana_reader as GR
+
+    view, am = GR.silenced_syslog()
+    value = grafana_alerts.parse(GR.load("ruler"), view, am, GR.READ_AT, silences=[GR.SILENCE])
+    mp = pytest.MonkeyPatch()
+    try:
+        mp.setattr(attention, "SOURCES",
+                   (lambda: attention.grafana_source(cached=GR.cached(value)),))
+        r = client.get("/v2/attention")
+        assert r.status_code == 200 and "silenced in Grafana" in r.get_data(as_text=True), \
+            r.status_code
+    finally:
+        mp.undo()
+
+
+def _save_no_golden(client, _lab, _mp):
+    """Devices › Save's no-golden scope (C1232) on the lab as it is: r3 holds a committed
+    golden and is left out, named; r9 holds none and is planned."""
+    r = client.get("/v2/devices/save?list=Lab&scope=no_golden", headers={"Accept": "text/html"})
+    html = r.get_data(as_text=True)
+    assert r.status_code == 200 and 'data-keep="save-scope-left"' in html, r.status_code
+
+
+def _profile_versions(client, _lab, _mp):
+    """Monitoring › Profile's Propose with two versions of SNMP's shared fields (C1269): the
+    lab's fleet as `profile_propose._fleet` reads it, plus r1, r2's real configuration with
+    `snmp ifmib ifindex persist` removed (test_profile_apply's `_add_r1` edit), parsed by the
+    real parser. The card offering each version, previewing a chosen one (the confirm carrying
+    it), and naming a version no device holds. Its patch is undone before the next provider."""
+    import pytest
+
+    from modules.nsot import profile_propose as pp
+    from modules.nsot.parsers import get_parser
+    from tests.test_intent_match import R2
+
+    lines = [ln for ln in open(R2, encoding="utf-8").read().splitlines()
+             if not ln.startswith("snmp ifmib ifindex persist")]
+    assert len(lines) < len(open(R2, encoding="utf-8").read().splitlines()), "re-take the edit"
+    other = get_parser("cisco_iosxe").parse(
+        "\n".join("hostname r1" if ln.startswith("hostname ") else ln for ln in lines) + "\n")
+    real = pp._fleet
+
+    def fleet(name):
+        got, skipped = real(name)
+        return got + [("r1", "cisco_iosxe", "", other)], skipped
+
+    from modules import list_settings
+    setting = list_settings.value
+
+    def value(name, key, default=None):
+        # SNMP's section is proposed only where Prometheus is configured (as on the host, and
+        # in test_profile_apply's lab); the address is never reached.
+        if key == "prometheus_url":
+            return "http://prometheus.invalid:9090"
+        return setting(name, key, default)
+
+    mp = pytest.MonkeyPatch()
+    try:
+        mp.setattr(pp, "_fleet", fleet)
+        mp.setattr(list_settings, "value", value)
+        (snmp,) = [s for s in pp.propose("Lab")["sections"] if s["section"] == "snmp"]
+        assert len(snmp.get("variants") or []) == 2, snmp
+        vid = snmp["variants"][0]["id"]
+        for url, words in (("/v2/monitoring/profile/propose", 'data-profile-choice="snmp"'),
+                           (f"/v2/monitoring/profile/propose?choose=snmp:{vid}",
+                            'name="choose"'),
+                           ("/v2/monitoring/profile/propose?choose=snmp:0000beef",
+                            "Not applied:")):
+            r = client.get(url, headers={"Accept": "text/html"})
+            assert r.status_code == 200 and words in r.get_data(as_text=True), (url, words)
+    finally:
+        mp.undo()
+
+
 #: What no followed GET reaches, each on the lab's own state: a POST's card, a script's GET,
 #: a state the lab's walk does not hold. In order: `_deploy` changes r3, so it is last.
 PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _drift,
-                   _in_progress, _pending, _netbox_source, _deploy]
+                   _in_progress, _pending, _netbox_source, _silenced_alert, _save_no_golden, _profile_versions,
+                   _deploy]

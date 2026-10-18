@@ -132,6 +132,8 @@ One row per committed section:
 **Propose from the connectors…** opens the proposal below the table: each section new, changed,
 as committed or not proposed with why, how many devices' committed intent it cross-checked and
 each device it did not read with why, how many devices' effective intent changes, and which
-of them would not receive a change yet because their template does not render it. Committing it
-records the profile as you; nothing is sent to a device. See
+of them would not receive a change yet because their template does not render it. Where the
+devices hold different versions of a section's shared fields, it offers **Use the version held
+by …** for each, and previews the one you choose with what every other device gains. Committing
+it records the profile, and any version you chose, as you; nothing is sent to a device. See
 [Apply a monitoring template](monitoring-templates#propose).

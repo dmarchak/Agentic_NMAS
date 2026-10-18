@@ -162,19 +162,29 @@ device.
 
 1. **Derive.** Read: the connectors in Settings, every device's committed intent, the committed
    profile. Sent: nothing. Recorded: nothing. Each section is new, changed, as committed, or not
-   proposed with why (its connector not configured; two versions across the fleet, whose choice
-   is not on v2 yet). The card says how many devices' committed intent it cross-checked, and
-   names each device it did not read with why (a device with no full committed intent): those
-   are not cross-checked, and not counted in what changes on the devices.
-2. **Measure what reaches the devices.** For each new or changed section, each device it applies
+   proposed with why (its connector not configured; the devices holding two or more versions of
+   its shared fields, when the tool never picks one: see the next step). The card says how many
+   devices' committed intent it cross-checked, and names each device it did not read with why (a
+   device with no full committed intent): those are not cross-checked, and not counted in what
+   changes on the devices.
+2. **Choose a version, where the devices differ.** Beside such a section the
+   card offers one control per version, **Use the version held by r2, r3**, naming the devices
+   that hold it. Pressing one previews the proposal again with that version chosen (Read: as in
+   step 1; Sent: nothing; Recorded: nothing): the section is proposed, and the card says "You
+   chose the version held by r2 (its id)" and what every other device would gain and keep
+   ("r1 gains: snmp ifmib ifindex persist"). The choice is part of the proposal's hash and the
+   confirm carries it; another control changes it. A version no device holds now (a link kept
+   from before the fleet changed) is said, "Not applied", and never chosen for you.
+3. **Measure what reaches the devices.** For each new or changed section, each device it applies
    to is rendered through its own template with and without it: a template that renders none
    of it is named, since the section would reach that device's intent and never its
    configuration (bring in the shipped template on Templates).
-3. **Confirm.** You commit as yourself, bound to the proposal's hash: if intent, a stored value or
-   the committed profile moved since the card showed it, nothing is committed and the card is
-   drawn again, saying what moved.
-4. **Commit.** The profile, one commit, `profile: proposed: …`, as you. Then Coverage shows each
-   section missing where it is, and Apply sends it.
+4. **Confirm.** You commit as yourself, bound to the proposal's hash and any version you chose:
+   if intent, a stored value, the committed profile or the choice moved since the card showed
+   it, nothing is committed and the card is drawn again, saying what moved.
+5. **Commit.** The profile, one commit, `profile: proposed: …`, as you; a chosen version is in
+   its subject ("chosen: snmp as held by r2"). Then Coverage shows each section missing where it
+   is, and Apply sends it.
 
 ## Changing (awaiting the operator's sign-off, 2026-10-02) {#changing}
 

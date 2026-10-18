@@ -32,7 +32,8 @@ CEILING = 0
 #: or link label today's templates draw and v2's do not. Each entry: the words -> where they
 #: live on today's page.
 TODAYS_ONLY_CONTROLS = {
-    "no-golden scope": "today's index toolbar, Capture devices with no golden (a capture "
-                       "scope v2's Devices has no control for)",
+    "no-golden scope": "today's index toolbar, Capture devices with no golden (on v2 the "
+                       "scope is Devices › Actions › Save the devices of <network> with no "
+                       "golden…, C1232: a row names that, never this)",
     "Save All Configs": "today's index toolbar",
 }

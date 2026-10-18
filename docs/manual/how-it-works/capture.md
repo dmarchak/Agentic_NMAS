@@ -14,7 +14,9 @@ device, its card drawn in place of the tab); **Save All Configs** in today's dev
 toolbar (every device in the list);
 **Capture devices with no golden** beside it (every device with no committed golden, decided
 from git, never from files on disk); or an approved drift item in the approval queue, which
-opens this preview for its device. Today's pages post the devices to `/golden/capture/preview`;
+opens this preview for its device. On the redesign, the devices with no golden are a scope of
+[Save](save#no-golden): Devices › **Actions › Save the devices of the network with no golden…**,
+which saves each one to startup as well as recording it. Today's pages post the devices to `/golden/capture/preview`;
 the device page's card posts its device to `/v2/device/<name>/capture/start`, which starts the
 same job, and its confirm reaches the same apply through `/v2/device/<name>/capture/confirm`.
 

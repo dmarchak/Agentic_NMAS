@@ -96,14 +96,43 @@ def sections(ref) -> dict:
     return out
 
 
-def proposal(list_name: str) -> dict:
+def parse_choose(values) -> dict:
+    """A person's choices among a section's versions (C1269), as the card's controls and its
+    confirm carry them: each ``choose`` value ``<section>:<version id>``;
+    ``{section: version id}``. A value of another shape is no choice."""
+    out = {}
+    for v in values or []:
+        section, sep, vid = str(v or "").partition(":")
+        if sep and section.strip() and vid.strip():
+            out[section.strip()] = vid.strip()
+    return out
+
+
+def _versions(sections: list, choose: dict) -> tuple:
+    """``(valid, unknown)``: the choices that name a version the devices hold now, and each
+    one that does not, ``{"section", "id"}``: it is said on the card, never applied."""
+    held = {s["section"]: {v["id"] for v in s.get("variants") or []} for s in sections}
+    valid = {k: v for k, v in choose.items() if v in held.get(k, ())}
+    return valid, [{"section": k, "id": v} for k, v in sorted(choose.items()) if k not in valid]
+
+
+def proposal(list_name: str, choose: dict = None) -> dict:
     """Propose from the connectors, for v2's card: each section's state (new, changed, as
     committed, not proposed, with why), the devices whose effective intent moves, and, for each
-    new or changed section, how many devices' templates render none of it. Writes nothing."""
+    new or changed section, how many devices' templates render none of it. Writes nothing.
+
+    *choose* (C1269) is a person's ``{section: version id}`` where the devices hold different
+    versions of a section's shared fields (`profile_propose.propose`: the tool never picks);
+    a choice naming no version the devices hold now is left out, and said (``unknown``)."""
     from modules.nsot import profile as _p, profile_apply, profile_propose as pp
     from modules.preview_confirm import PROFILE_SECTION_WORDS
 
-    p = pp.public(pp.propose(list_name))
+    choose = dict(choose or {})
+    p = pp.public(pp.propose(list_name, choose=choose))
+    valid, unknown = _versions(p["sections"], choose)
+    if valid != choose:
+        choose = valid
+        p = pp.public(pp.propose(list_name, choose=choose))
     current = (p.get("current") or {}).get("sections") or {}
     proposed = (p.get("doc") or {}).get("sections") or {}
     fleet, _skipped = pp._fleet(list_name)
@@ -118,6 +147,23 @@ def proposal(list_name: str) -> dict:
         row = {"section": name, "words": PROFILE_SECTION_WORDS.get(name, name),
                "state": state, "why": s.get("why") or s.get("basis") or "",
                "variants": len(s.get("variants") or []), "dropped": [], "receives": 0}
+        if s.get("variants"):
+            # One control per version (C1269), each carrying every other section's choice; the
+            # chosen one says who else changes and how, as today's preview note did.
+            others = [f"{k}:{v}" for k, v in sorted(choose.items()) if k != name]
+            row["versions"] = [{"id": v["id"], "devices": v["devices"],
+                                "chosen": v["id"] == s.get("chosen"),
+                                "choose": others + [f"{name}:{v['id']}"]}
+                               for v in s["variants"]]
+            if s.get("chosen"):
+                row["chosen"] = {
+                    "id": s["chosen"],
+                    "devices": next(v["devices"] for v in s["variants"]
+                                    if v["id"] == s["chosen"]),
+                    "lines": [f"{h} gains: {'; '.join(c['gains']) or 'nothing'}"
+                              + (f" · keeps its own: {'; '.join(c['keeps'])}"
+                                 if c.get("keeps") else "")
+                              for h, c in sorted((s.get("changes") or {}).items())]}
         if state in ("new", "changed") and (new or {}).get("data"):
             for host, plat, role, intent in fleet:
                 if not _p.applies(new, plat, role):
@@ -134,16 +180,22 @@ def proposal(list_name: str) -> dict:
             "changes": changes, "effect": len(p.get("effect") or []),
             "devices_read": p.get("devices_read", 0), "skipped": p.get("skipped") or [],
             "dropped": sorted({h for r in changes for h in r["dropped"]}),
-            "variants": [r for r in rows if r["variants"]],
+            "variants": [r for r in rows if r["variants"] and not r.get("chosen")],
+            "choose": [f"{k}:{v}" for k, v in sorted(choose.items())],
+            "unknown": [dict(u, words=PROFILE_SECTION_WORDS.get(u["section"], u["section"]))
+                        for u in unknown],
             "profile_blob": p.get("profile_blob", "")}
 
 
-def commit(list_name: str, confirmed_hash: str, actor: str) -> dict:
-    """The confirm: `profile_propose.apply`, refusing a proposal that moved since the card."""
+def commit(list_name: str, confirmed_hash: str, actor: str, choose: dict = None) -> dict:
+    """The confirm: `profile_propose.apply`, refusing a proposal that moved since the card.
+    *choose* is the person's choice of versions the card carried (C1269): it is in the hash,
+    so a confirm without the choice it previewed is refused as moved, and `apply` records it
+    in the commit's subject ("chosen: <section> as held by <devices>"), as today's route."""
     from modules.nsot import profile as _p, profile_propose as pp
 
     try:
-        out = pp.apply(list_name, confirmed_hash, actor)
+        out = pp.apply(list_name, confirmed_hash, actor, choose=dict(choose or {}))
     except _p.ProfileRefused as exc:
         return {"outcome": "refused", "why": f"nothing committed: {exc}"}
     out = {k: v for k, v in out.items() if k != "proposal"}

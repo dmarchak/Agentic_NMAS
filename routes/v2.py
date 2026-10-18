@@ -1137,12 +1137,12 @@ def _profile_ctx(op: dict = None) -> dict:
     return {"p": MP.sections(listref.active()), "op": op}
 
 
-def _profile_op(list_name: str, refused: str = "") -> dict:
+def _profile_op(list_name: str, refused: str = "", choose: dict = None) -> dict:
     from modules import monitoring_profile_page as MP, preview_confirm
     from modules.nsot import profile as _p
 
     try:
-        q = MP.proposal(list_name)
+        q = MP.proposal(list_name, choose=choose)
     except _p.ProfileRefused as exc:
         return {"state": "refused", "why": (f"{list_name}'s committed profile cannot be read, so "
                                             f"nothing is proposed: {exc}")}
@@ -1153,10 +1153,14 @@ def _profile_op(list_name: str, refused: str = "") -> dict:
 @bp.route("/monitoring/profile", methods=["GET"])
 def monitoring_profile():
     """Monitoring › Profile: the committed profile, section by section, with how many devices
-    hold each; ``propose=1`` opens Propose's card in place (the button's link, and a deep link)."""
+    hold each; ``propose=1`` opens Propose's card in place (the button's link, and a deep link),
+    with any ``choose`` of a section's version (C1269) the link carries."""
+    from modules import monitoring_profile_page as MP
     from modules.nsot import listref
 
-    op = _profile_op(listref.active().name) if request.args.get("propose") == "1" else None
+    op = (_profile_op(listref.active().name,
+                      choose=MP.parse_choose(request.args.getlist("choose")))
+          if request.args.get("propose") == "1" else None)
     return _page("v2/monitoring_profile.html", active_nav="monitoring",
                  monitoring_tab="profile", **_profile_ctx(op))
 
@@ -1177,11 +1181,15 @@ def monitoring_profile_rows():
 @bp.route("/monitoring/profile/propose", methods=["GET"])
 def profile_propose_form():
     """Propose from the connectors: the preview, `profile_propose.propose`, with whether the
-    network's templates render each changed section. Writes nothing."""
+    network's templates render each changed section. Writes nothing. ``choose`` (repeated,
+    ``<section>:<version id>``) is a person's choice between the versions of a section's shared
+    fields the devices hold (C1269), previewed here and carried to the confirm."""
+    from modules import monitoring_profile_page as MP
     from modules.nsot import listref
 
     name = (request.args.get("list") or "").strip() or listref.active().name
-    return _strict(render_template("v2/_profile_op.html", op=_profile_op(name)))
+    return _strict(render_template("v2/_profile_op.html", op=_profile_op(
+        name, choose=MP.parse_choose(request.args.getlist("choose")))))
 
 
 @bp.route("/monitoring/profile/propose", methods=["POST"])
@@ -1196,12 +1204,15 @@ def profile_propose_commit():
         op = {"state": "refused", "why": "No list or no proposal was named: nothing committed."}
         return _strict(render_template("v2/_profile.html", **_profile_ctx(op)), 400)
     actor = identity.request_actor()
-    out = MP.commit(name, confirmed, actor)
+    # The version choices the card previewed (C1269): in the hash, so a confirm carrying other
+    # choices than it previewed is refused as moved.
+    choose = MP.parse_choose(request.form.getlist("choose"))
+    out = MP.commit(name, confirmed, actor, choose=choose)
     if out.get("outcome") == "committed":
         op = {"state": "committed", "r": out, "actor": actor}
         code = 200
     elif out.get("outcome") == "moved":
-        op, code = _profile_op(name, refused=out.get("reason", "")), 409
+        op, code = _profile_op(name, refused=out.get("reason", ""), choose=choose), 409
     else:
         op = {"state": "refused", "why": out.get("reason") or out.get("why") or out.get("outcome")}
         code = 409 if out.get("outcome") != "nothing" else 200
@@ -1971,9 +1982,16 @@ def save():
 
     # An unknown named list is refused before this runs (routes/list_param.py).
     ref = listref.resolve(named_list(request) or listref.active().name)
-    s = save_page.plan_card(ref.name, _save_selection(request, ref),
-                            may=confirm_part(request, "confirm"))
-    return _page("v2/save.html", active_nav="devices", s=s, list_name=ref.name)
+    # A scope in place of a selection (C1232: `no_golden`, every device with no committed
+    # golden); an unknown one is refused, naming the ones there are.
+    scope = (request.values.get("scope") or "").strip()
+    if scope:
+        s = save_page.scope_card(ref.name, scope, may=confirm_part(request, "confirm"))
+    else:
+        s = save_page.plan_card(ref.name, _save_selection(request, ref),
+                                may=confirm_part(request, "confirm"))
+    return _page("v2/save.html", active_nav="devices", s=s, list_name=ref.name), \
+        (400 if s["state"] == "refused" else 200)
 
 
 @bp.route("/devices/save/confirm", methods=["POST"])

@@ -35,7 +35,20 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
 Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html
-Templates sha256: `c2ab03194601a99f05425b336b572be08be42cc158e1c3347ea11081a15346dd`
+Templates sha256: `b82e7f31d34055e2d68a1f442c201a8881c2e28ce779ca46c0fa76f4b079de6f`
+
+Compared again 2026-10-18 (C1277): a Grafana incident's members (`ops.members`, the list under
+a row's operands) now draw, on each member a silence covers, "; silenced in Grafana by <who>
+until <YYYY-MM-DD HH:MM> UTC (“<comment>”)", the words "silenced in Grafana" in bold and the
+comment escaped, or "by silence <id>, whose author and end Grafana did not return" for a
+silence Grafana's list did not return; and on every member its onset and the basis for it
+("; onset 18 d ago (when the condition first held)"), as today's panel drew both. On hover: the
+member's fingerprint, Alertmanager's start, where its device came from and the silencing ids;
+the silence's id and matchers. Compared by the template and the page
+tests/test_grafana_reader.py's `TestASilenceStaysARow` draws through GET /v2/attention, not a new
+shot: the change is words inside a row's members list. The row's heading and cause already said
+"(silenced in Grafana)" and the silence in words before this change; no board draws a member,
+so the member line is a new region, a deviation (below). No other region's verdict changed.
 
 Compared again 2026-10-17 (C1189, W4): Recent changes moved, byte for byte, from `landing.html`
 into its own part, `_recent.html`, so it re-reads itself when a deploy or restore announces
@@ -72,6 +85,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Summary | "5 items · checked 11 sources at 23:40", right-aligned | "1 item · 25 sources checked" under the sub line (capture 01), naming any source that could not be read; each row carries its own read time | **deviation** (log: Landing: the summary names what could not be read, each row its read time) |
 | A row | level, what, cause, then the device link, since and the source's detail; the one action as a button at the right | level, what, cause, the operands, any attached finding ("Also: …"), device with its network ("r1 in Default", C493), since, read time and source, and "Clears when …"; the action under it (capture 01). The operands can be a source's raw words: "check:" with nothing after it and "state: not_checkable" in capture 01, a pasted exception in the walk's RIP rows (C893) | **deviation** (log: Landing: a row carries its operands and how it clears) (log: Landing: a row names each device's network, C493) |
 | A row's action | one button named for the act (Persist s1…, Resolve r2…, Push now, Read again) | Open <device> for each device named, the action's words, and a button where the action has a control on v2 ("Open the Update page and say it is done", Update…, its (i), capture 01); a command with Copy where the remedy is a host command | **deviation** (log: Landing: an action is its words, with a button only where v2 has its control) |
+| A Grafana incident's members (C1277) | not drawn: a row is its level, what, cause and action | under the operands, each member alert: its rule and kind, its device and where the device came from, its onset with the basis, and on a silenced member "**silenced in Grafana** by operator@example.com until 2026-09-30 10:15 UTC (“send log 2 test &lt;b&gt;”)", the comment escaped; an unresolved silence named by its id; the alert's and the silence's identity on hover (tests/test_grafana_reader.py `TestASilenceStaysARow`, through GET /v2/attention) | **deviation** (log: Landing: a Grafana incident's member draws its onset and any silence, who, until when and why (C1277)) |
 | Levels | Critical red, Warning amber, Unknown grey, as the row's left edge and its level word | the same | **same** |
 | A source that could not be read | an Unknown row: "This is not the same as no alerts" with the last good read | an Unknown row naming what failed, "This is not the same as nothing needing attention", and the summary says it | **same** |
 | What was checked | collapsed: "11 sources, 10 within their promise · oldest: drift, 21 min of 30" | collapsed: "What was checked · 25 sources" (capture 01); opened, a table (source, what it found, value from with the read's duration, rows) and the acknowledgements in force | **deviation** (log: Landing: What was checked's summary is the count of sources) |

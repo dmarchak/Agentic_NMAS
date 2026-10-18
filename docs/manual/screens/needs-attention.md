@@ -164,8 +164,13 @@ within six minutes of each other are grouped into one row ("3 alerts began toget
 alert on a device restarting as planned (or drained) is taken out of the group first and said
 under *What was checked*, so another device's live alert that began at the same moment is a row
 of its own. A silenced alert is never grouped with a live one either: it keeps its level in a
-row of its own, saying who silenced it and until when, each silence said once. The device's own
-page says the same in its Alerts check, in amber: "held: r6 is restarting as planned …".
+row of its own, saying who silenced it and until when, each silence said once. The row's list
+of alerts names, for each, its onset and how that was decided, and on a silenced one "**silenced
+in Grafana** by <who> until <when> UTC" with the silence's comment in quotes; a silence Grafana's
+list did not return is named by its id, its author and end never guessed. Hover an alert for its
+fingerprint and where its device came from, and a silence for its id and what it matches. The
+device's own page says the same in its Alerts check, in amber: "held: r6 is restarting as
+planned …".
 
 ### A chronic alert, within its band {#acknowledging-a-chronic-alert}
 

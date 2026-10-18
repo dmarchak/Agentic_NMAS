@@ -260,6 +260,90 @@ def _repeats(html):
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", m.group(1))).strip() if m else None
 
 
+def _said(html):
+    from html import unescape
+
+    return unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html))).replace(" .", ".").strip()
+
+
+class TestTheNoGoldenScope:
+    """C1232: today's toolbar's "Capture devices with no golden" (`/golden/capture/preview`,
+    `scope: no_golden`) on v2, as a scope of Devices › Save: every device of the network with
+    no committed golden, decided from git (the one enumerator, `repo.list_goldens`), never from
+    files on disk. The plan names the devices it chose and each one it left out with why; with
+    none to choose it says what it looked at and offers no confirm."""
+
+    def test_only_the_devices_with_no_committed_golden_are_planned(self, lab):
+        from modules.nsot import save_op
+
+        html = _page(lab, scope="no_golden")
+        assert 'class="save-ft"' in html, _said(html)[-300:]
+        form = _form(html)
+        assert form["device"] == ["r3", "r4", "s9"], form
+        assert form["hash"] == save_op.plan("Lab", ["r3", "r4", "s9"])["hash"]
+        said = _said(html)
+        assert ("Only the devices of Lab with no committed golden: 3 of the 4 looked at in "
+                "Lab's repository.") in said, said
+        assert 'data-keep="save-scope-left"' in html, said
+        left = html[html.index('data-keep="save-scope-left"'):]
+        left = _said(left[left.index("<summary>"):left.index("</details>")])
+        assert left.startswith("1 already has a committed golden: left out"), left
+        assert "r2 its golden committed" in left, left
+
+    def test_decided_from_git_never_from_the_file_on_disk(self, lab):
+        """r2's golden file removed from the working tree is still committed: still left out."""
+        from modules.nsot import manifest
+
+        _ident, entry = manifest.find_by_name(lab["repo"], "r2")
+        os.remove(os.path.join(lab["repo"], entry["golden"]))
+        html = _page(lab, scope="no_golden")
+        assert 'class="save-ft"' in html, _said(html)[-300:]
+        assert _form(html)["device"] == ["r3", "r4", "s9"]
+
+    def test_nothing_to_save_says_what_was_looked_at(self, lab):
+        lab["rows"][:] = lab["rows"][:1]                     # r2, with its golden, is all
+        html = _page(lab, scope="no_golden")
+        said = _said(html)
+        assert ("Every device of Lab has a committed golden (1 device looked at in Lab's "
+                "repository): nothing to save, and no device was asked.") in said, said
+        assert "op-confirm" not in html and 'class="save-ft"' not in html
+        assert re.search(r'<a class="btn" href="/v2/devices(\?[^"]*)?">Back</a>', html), html
+
+    def test_an_unknown_scope_is_refused_naming_the_one_there_is(self, lab):
+        r = lab["client"].get("/v2/devices/save?list=Lab&scope=everything")
+        said = _said(r.get_data(as_text=True))
+        assert r.status_code == 400, r.status_code
+        assert ("the scope 'everything' is not one Save knows; the one it knows is "
+                "'no_golden' (the devices with no committed golden). Nothing was planned.") \
+            in said, said
+
+    def test_the_confirm_never_reaches_a_device_left_out(self, lab):
+        """The scoped plan's own form confirmed: r2, left out for its golden, is never sent to
+        and its golden never moves."""
+        lab["rows"][:] = lab["rows"][:2]                     # r2 (golden) and r3 (none)
+        html = _page(lab, scope="no_golden")
+        assert 'class="save-ft"' in html, _said(html)[-300:]
+        form = _form(html)
+        assert form["device"] == ["r3"]
+        before = _head(lab["repo"])
+        status, html = _run(lab, form=form)
+        assert status == 200 and lab["sent"] == [], lab["sent"]
+        assert _head(lab["repo"]) == before
+
+    def test_the_devices_page_offers_it(self, lab, monkeypatch):
+        from modules.nsot import listref
+
+        monkeypatch.setattr(listref, "active", lambda: listref.resolve("Lab"))
+        html = lab["client"].get("/v2/devices").get_data(as_text=True)
+        bar = html[html.index('id="dev-bar"'):html.index('class="table-wrap"')]
+        assert 'href="/v2/devices/save?list=Lab&amp;scope=no_golden"' in bar, bar
+        at = bar.index('href="/v2/devices/save?list=Lab&amp;scope=no_golden"')
+        row = bar[bar.rindex('<div class="menu-row">', 0, at):]
+        row = row[:row.index("</div>")]
+        assert 'data-op="save"' in row and "Save the devices of Lab with no golden…" in row, row
+        assert 'aria-label="How does Save work?"' in row, row
+
+
 class TestTheRepeatedBaseline:
     """C860, C539 (2) on v2: a Save of the whole network just after a baseline says so first,
     with when, by whom and the tag. The plan reads no device, so it claims only what it

@@ -209,6 +209,10 @@ NOT_AN_OPERATION = {
     ("_seed.html", "btn"): "Cancel and Close: put back the tab the card replaced, recording nothing",
     ("_template_op.html", "btn"): "Cancel and Close: put back the templates table without the card, recording nothing",
     ("_profile_op.html", "btn"): "Cancel and Close: put back the profile table without the card, recording nothing",
+    ("_profile_op.html", "the version held by"): (
+        "Use (or Using) the version held by <devices> (C1269): previews the proposal again with "
+        "that version of the section chosen, a read; the commit beside it, which carries the "
+        "link, records the choice"),
     ("_seed.html", "Open the Intent tab"): "opens the device's Intent tab to read what was committed, a read",
     ("_retire.html", "btn"): "Cancel and Close: put back the tab the card replaced, recording nothing",
     ("_retire.html", "Back to Devices"): "opens the Devices list, a read",

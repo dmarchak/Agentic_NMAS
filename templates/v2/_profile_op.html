@@ -11,15 +11,30 @@
   {%- if op.refused %}
   <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>{{ op.refused }}</p></div>
   {%- endif %}
+  {%- for u in q.unknown %}
+  <div class="notice notice-warn">{{ icon('warn', 16) }}<p>Not applied: no device holds version {{ u.id }} of {{ u.words }} now; choose one of the versions below.</p></div>
+  {%- endfor %}
   <div class="op-part"><h3>What changes</h3><div>
     <p>{% if q.changes %}{{ q.changes | length }} section{{ '' if q.changes | length == 1 else 's' }} change{{ 's' if q.changes | length == 1 else '' }}; {% endif %}{{ q.rows | selectattr('state', 'equalto', 'as committed') | list | length }} as committed. Reads only until you commit.</p>
     <div class="table-wrap"><table class="table prof-table">
       <thead><tr><th scope="col">Section</th><th scope="col">Proposed</th><th scope="col">Why</th></tr></thead>
       <tbody>
       {%- for r in q.rows %}
-      <tr><th scope="row">{{ r.words[:1] | upper }}{{ r.words[1:] }}</th>
+      <tr data-section="{{ r.section }}"><th scope="row">{{ r.words[:1] | upper }}{{ r.words[1:] }}</th>
         <td>{%- if r.state == 'new' %}{{ badge('new', 'info') }}{% elif r.state == 'changed' %}{{ badge('changed', 'warn') }}{% elif r.state == 'as committed' %}{{ badge('as committed', 'muted') }}{% else %}{{ badge('not proposed', 'muted') }}{% endif %}</td>
-        <td class="muted small">{{ r.why }}{% if r.variants %} ({{ r.variants }} versions across the fleet: choosing between them is not on v2 yet){% endif %}</td></tr>
+        <td class="muted small">{{ r.why }}
+          {#- C1269: the devices hold different versions of this section's shared fields; the
+              tool never picks. One control per version, each previewing the choice in place;
+              the chosen one says who else changes and how, and the confirm carries it. -#}
+          {%- if r.chosen %}
+          <p class="prof-chosen">You chose the version held by {{ r.chosen.devices | join(', ') }} ({{ r.chosen.id }}){% if r.chosen.lines %}: {{ r.chosen.lines | join('; ') }}{% else %}; no other device changes{% endif %}.</p>
+          {%- endif %}
+          {%- if r.versions %}
+          <span class="prof-versions" data-profile-choice="{{ r.section }}">{% if not r.chosen %}{{ r.versions | length }} versions across the fleet: {% endif %}
+            {%- for v in r.versions %}
+            <a class="btn btn-small{{ ' btn-outline' if not v.chosen }}" aria-pressed="{{ 'true' if v.chosen else 'false' }}" href="{{ url_for('v2.monitoring_profile', propose=1, choose=v.choose) }}" hx-get="{{ url_for('v2.profile_propose_form', list=q.list, choose=v.choose) }}" hx-target="#prof-op" hx-swap="innerHTML"><span class="op-idle">{{ 'Using' if v.chosen else 'Use' }} the version held by {{ v.devices | join(', ') }}</span><span class="op-busy">Previewing…</span></a>
+            {%- endfor %}</span>
+          {%- endif %}</td></tr>
       {%- endfor %}
       </tbody>
     </table></div></div></div>
@@ -38,7 +53,7 @@
   <div class="op-part"><h3>Checks</h3><div>
     <ul class="op-gates">
       <li>{{ badge('pass', 'ok') }}<span>each section's connector is configured, or the section is kept as committed</span></li>
-      <li>{{ badge('fail' if q.variants else 'pass', 'danger' if q.variants else 'ok') }}<span>no device holds another version of a shared value{% if q.variants %}: {{ q.variants | map(attribute='words') | join(', ') }}{% endif %}</span></li>
+      <li>{{ badge('fail' if q.variants else 'pass', 'danger' if q.variants else 'ok') }}<span>no device holds another version of a shared value, or a version is chosen{% if q.variants %}: {{ q.variants | map(attribute='words') | join(', ') }}, none chosen (not proposed){% endif %}</span></li>
       <li>{{ badge('note' if q.dropped else 'pass', 'warn' if q.dropped else 'ok') }}<span>{% if q.dropped %}a changed section the network's templates do not render (see above){% else %}every changed section is rendered by the devices' templates{% endif %}</span></li>
       <li>{{ badge('at commit', 'muted') }}<span>the profile has not moved since this preview</span></li>
     </ul></div></div>
@@ -47,6 +62,7 @@
     <p class="op-note">{{ op.may.statement }} Bound to this proposal and the committed profile. One commit, "profile: …", as you.</p>
     <form class="op-act" method="post" action="{{ url_for('v2.profile_propose_commit') }}" hx-post="{{ url_for('v2.profile_propose_commit') }}" hx-target="#profile-region" hx-swap="outerHTML">
       <input type="hidden" name="list" value="{{ q.list }}"><input type="hidden" name="hash" value="{{ q.hash }}">
+      {%- for c in q.choose %}<input type="hidden" name="choose" value="{{ c }}">{% endfor %}
       <button type="submit" class="btn btn-primary op-confirm" data-op="monitoring-templates" hx-disabled-elt="this"{{ gate('approve') }}><span class="op-idle">Commit the profile ({{ q.changes | length }} section{{ '' if q.changes | length == 1 else 's' }} {{ 'changed' if q.changes | selectattr('state', 'equalto', 'changed') | list else 'added' }})</span><span class="op-busy">Committing…</span></button>{{ how('monitoring-templates', 'propose', compact=True, op='proposing the profile') }}
     </form>
     {%- elif q.changed %}

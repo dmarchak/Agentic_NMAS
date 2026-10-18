@@ -29,7 +29,17 @@
       </dl>
       {%- if ops.members %}
       <ul class="att-members">
-        {%- for m in ops.members %}<li>{{ m.rule }} ({{ m.kind }}){% if m.device %} on <strong>{{ m.device }}</strong>{% endif %}{% if m.device_note %}: {{ m.device_note }}{% endif %}</li>{% endfor %}
+        {#- C1277: a silence set in Grafana is drawn on the member it covers (who, until when,
+            its comment), so a silenced alert never reads as one firing unattended; an id the
+            silence list did not return is named as that, never guessed (the reader keeps one
+            entry per silencing id, resolved or not: grafana_alerts._silences_on). Its onset and
+            basis are drawn as today's panel drew them; the alert's own identity (fingerprint,
+            Alertmanager's start, where its device came from, the silencing ids) and each
+            silence's id and matchers are its provenance, on hover. -#}
+        {%- for m in ops.members %}<li title="alert {{ m.fingerprint or 'with no fingerprint' }}; Alertmanager's start {{ m.starts_at or 'not recorded' }}; device from {{ m.device_from or 'nothing' }}{% if m.silenced_by %}; silenced by {{ m.silenced_by|join(', ') }}{% endif %}">{{ m.rule }} ({{ m.kind }}){% if m.device %} on <strong>{{ m.device }}</strong>{% endif %}{% if m.device_note %}: {{ m.device_note }}{% endif %}
+          {%- if m.onset %}; onset {{ stamp(m.onset) }}{% if m.onset_basis %} ({{ m.onset_basis }}){% endif %}{% endif %}
+          {%- if m.silences %}{% for s in m.silences %}; <span title="silence {{ s.id }}{% if s.matchers %} matching {{ s.matchers|join(', ') }}{% endif %}"><strong>silenced in Grafana</strong> by {% if s.unresolved %}silence {{ s.id }}, whose author and end Grafana did not return{% else %}{{ s.created_by or 'an unnamed account' }} until {{ (s.ends_at[:16]|replace('T', ' ') ~ ' UTC') if s.ends_at else 'an unrecorded time' }}{% if s.comment %} (&ldquo;{{ s.comment }}&rdquo;){% endif %}{% endif %}</span>{% endfor %}{% endif -%}
+        </li>{% endfor %}
       </ul>
       {%- endif %}
       {%- endif %}

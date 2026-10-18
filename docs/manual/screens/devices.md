@@ -77,6 +77,10 @@ The Actions menu:
 - **Save every device of the network…** opens the same Save for every device in the inventory;
   it is Save All: it asks for a baseline, earned when every device was saved and recorded at
   its committed intent, and the result says which, or why not.
+- **Save the devices of the network with no golden…** opens the same Save for every device of
+  the inventory with no committed golden, decided from the network's repository; the plan
+  names each device it left out, and says so when none is left to save. See
+  [the devices with no golden](save#no-golden).
 
 The rows ticked are kept when the list redraws.
 

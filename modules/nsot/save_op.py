@@ -87,6 +87,37 @@ def _startup(list_name: str) -> dict:
             if d.get("list") == list_name}
 
 
+#: The scopes a Save may be asked for instead of a selection (C1232): ``{scope: words}``.
+SCOPES = {"no_golden": "the devices with no committed golden"}
+
+
+def no_golden_scope(list_name: str) -> dict:
+    """The no-golden scope (C1232; today's "Capture devices with no golden", Auto-Create
+    before it): every device of *list_name*'s inventory with no COMMITTED golden, decided from
+    git by the one enumerator (`repo.list_goldens`: HEAD's tree and the manifest, a fixed
+    number of reads whatever the fleet's size), never from files on disk. ``{"chosen":
+    [hosts], "left_out": [{"host", "why", "at"}], "looked_at": n}``, in the inventory's order;
+    *at* is the golden's commit time as git gives it (ISO, the committer's offset).
+
+    Not the same set as today's preview took in one case: a golden whose last commit carries
+    no ``Source:`` trailer (committed by hand, not through the save path) counts here as a
+    golden, where today's per-device read counted it as none."""
+    from modules.nsot.repo import list_goldens
+    from modules.nsot.restore import _devices_of
+
+    hosts = [d["hostname"] for d in _devices_of(list_name) if d.get("hostname")]
+    committed = {g["hostname"]: g for g in list_goldens(list_name) if not g.get("legacy")}
+    chosen, left_out = [], []
+    for host in dict.fromkeys(hosts):
+        g = committed.get(host)
+        if g is None:
+            chosen.append(host)
+        else:
+            left_out.append({"host": host, "why": "its golden committed",
+                             "at": g.get("saved_at") or ""})
+    return {"chosen": chosen, "left_out": left_out, "looked_at": len(chosen) + len(left_out)}
+
+
 def plan(list_name: str, hostnames: list) -> dict:
     """What Save would do for *hostnames*, from stored records only (no device is asked):
     ``{"devices": [{"host", "group", "why", "startup", "hash"}], "counts", "save", "hash",

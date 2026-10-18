@@ -484,12 +484,8 @@ EMPTY_IN_FIXTURE = {
     "v2/_ask.html c.recent.rows": "Ask the device's recent reads: no read has run on the walk's store",
     "v2/_ask.html c.sets": "Ask the device's saved sets: no saved set exists on the walk's store",
     "v2/_attention.html (r.attached or ())": _ATTENTION,
-    "v2/_attention.html (r.devices or ())": _ATTENTION,
-    "v2/_attention.html (r.devices or ())[…]": _ATTENTION,
     "v2/_attention.html a.acknowledged": _ATTENTION,
     "v2/_attention.html a.in_force": _ATTENTION,
-    "v2/_attention.html ops.members": _ATTENTION + " (and no row's operands name members)",
-    "v2/_attention.html r.devices": _ATTENTION,
     "v2/_breakglass_check.html c.devices": _OP + " (a break-glass file checked)",
     "v2/_breakglass_drill.html d.errors": _OP + " (a drill's receipt refused)",
     "v2/_breakglass_export.html prog.lines": _OP + " (the break-glass export's preview)",
@@ -719,12 +715,7 @@ EMPTY_IN_FIXTURE = {
     "v2/_run_stepper.html r.groups": _RUN_GROUPS,
     "v2/_run_stepper.html r.tally": _RUN_GROUPS,
     "v2/_run_stepper.html s.tally": _RUN_GROUPS,
-    "v2/_save.html g.devices": _SAVE,
-    "v2/_save.html g.devices #2": _SAVE,
     "v2/_save.html g.devices #3": _SAVE,
-    "v2/_save.html s.groups": _SAVE,
-    "v2/_save.html s.groups #2": _SAVE,
-    "v2/_save.html s.groups #3": _SAVE,
     "v2/_save.html s.groups #4": _SAVE,
     "v2/_save.html s.groups #5": _SAVE,
     "v2/_save.html s.startup": _SAVE,
@@ -848,8 +839,10 @@ EMPTY_IN_FIXTURE = {
     "v2/not_found.html elsewhere": "the not-found page's other networks holding the name: the walk's installation has one network",
     "v2/show_commands.html runs.rows": "Show commands' recent runs: no run has been made on the walk's store",
 }
-#: 386 measured 2026-10-18 (C1274), when the list was made: it only shrinks.
-EMPTY_IN_FIXTURE_CEILING = 386
+#: 386 measured 2026-10-18 (C1274), when the list was made: it only shrinks. 382 with C1277's
+#: provider (a silenced Grafana alert), which draws a row's devices and its members; 377 with
+#: C1232's (Save's no-golden scope), which draws the plan's groups and their devices.
+EMPTY_IN_FIXTURE_CEILING = 377
 #: The population and how many of it drew, measured 2026-10-18 (557 and 171): floors, a little
 #: under the measurement, so a scan that stopped seeing loops, or a walk that stopped drawing,
 #: fails.

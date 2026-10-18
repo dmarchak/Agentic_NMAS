@@ -141,9 +141,29 @@ def _repeats(list_name: str, fleet: bool, hosts: list) -> str:
 RETRYABLE = ("not_persisted", "unread", "held", "not_answering")
 
 
-def plan_card(list_name: str, hostnames: list, *, may: dict) -> dict:
+def scope_card(list_name: str, scope: str, *, may: dict) -> dict:
+    """The plan for a scope instead of a selection (C1232): the scope's devices planned as
+    any selection is, with the scope's own words and each device it left out with why
+    (``scope``); with none chosen, ``{"state": "nothing", ...}`` naming what it looked at;
+    an unknown scope is ``{"state": "refused", ...}`` naming the scopes there are."""
+    from modules.nsot import save_op
+
+    if scope not in save_op.SCOPES:
+        known = "; ".join(f"'{k}' ({w})" for k, w in save_op.SCOPES.items())
+        return {"state": "refused", "list": list_name, "total": 0, "error": (
+            f"the scope '{scope}' is not one Save knows; the one it knows is {known}. "
+            "Nothing was planned.")}
+    got = save_op.no_golden_scope(list_name)
+    sc = dict(got, key=scope, words=save_op.SCOPES[scope])
+    if not got["chosen"]:
+        return {"state": "nothing", "list": list_name, "total": 0, "scope": sc}
+    return plan_card(list_name, got["chosen"], may=may, scope=sc)
+
+
+def plan_card(list_name: str, hostnames: list, *, may: dict, scope: dict = None) -> dict:
     """The plan as the page draws it: ``{"state": "plan", "counts", "groups", "startup",
-    "hash", "save", ...}``. Reads stored records only (`save_op.plan`)."""
+    "hash", "save", ...}``. Reads stored records only (`save_op.plan`). *scope*, from
+    `scope_card`, is carried for the page to say which devices it chose and left out."""
     from modules.nsot import save_op
 
     p = save_op.plan(list_name, hostnames)
@@ -157,7 +177,7 @@ def plan_card(list_name: str, hostnames: list, *, may: dict) -> dict:
             "groups": [{"key": key, "words": words, "kind": kind, "devices": by_group[key]}
                        for key, words, kind in PLAN_GROUPS if by_group[key]],
             "startup": [s for s in startup if s[2]],
-            "startup_unreadable": p["startup_unreadable"]}
+            "startup_unreadable": p["startup_unreadable"], "scope": scope}
 
 
 def _filtered(rows: list, q: str, outcome: str) -> list:

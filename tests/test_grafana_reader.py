@@ -398,3 +398,45 @@ class TestASilenceStaysARow:
         html = _panel(A.needs_attention())
         assert "<strong>silenced in Grafana</strong> by operator@example.com until 2026-09-30" in html
         assert "send log 2 test &lt;b&gt;" in html and "test <b>" not in html
+
+    def test_v2s_panel_draws_it_on_the_member_and_escapes_the_comment(self, inventory,
+                                                                       monkeypatch):
+        """C1277: v2's Needs attention (GET /v2/attention, the route the landing page
+        re-fetches) draws the silence on the member it covers as today's panel did: who,
+        until when and the comment, escaped, so a silenced alert never reads as one firing
+        unattended."""
+        view, am = silenced_syslog()
+        value = G.parse(load("ruler"), view, am, READ_AT, silences=[SILENCE])
+        monkeypatch.setattr(A, "SOURCES", (lambda: A.grafana_source(cached=cached(value)),))
+        import app as APP
+        html = APP.app.test_client().get("/v2/attention").get_data(as_text=True)
+        members = html[html.index('<ul class="att-members">'):]
+        members = members[:members.index("</ul>")]
+        assert ("<strong>silenced in Grafana</strong> by operator@example.com until "
+                "2026-09-30 10:15 UTC") in members, members
+        assert "(&ldquo;send log 2 test &lt;b&gt;&rdquo;)" in members, members
+        assert "test <b>" not in html
+        # Its onset and the basis for it, as today's panel drew them beside the silence.
+        (member,) = A.grafana_source(cached=cached(value))["rows"][0]["operands"]["members"]
+        assert f'; onset <time class="stamp" datetime="{member["onset"]}"' in members, members
+        from html import unescape
+        assert unescape(members).count(f'({member["onset_basis"]})') == 1, members
+
+    def test_v2s_panel_names_an_unresolved_silence_by_its_id(self, inventory, monkeypatch):
+        view, am = silenced_syslog(ids=["gone"])
+        value = G.parse(load("ruler"), view, am, READ_AT, silences=[])
+        monkeypatch.setattr(A, "SOURCES", (lambda: A.grafana_source(cached=cached(value)),))
+        import app as APP
+        html = APP.app.test_client().get("/v2/attention").get_data(as_text=True)
+        assert ("<strong>silenced in Grafana</strong> by silence gone, whose author and end "
+                "Grafana did not return") in html, html
+
+    def test_v2s_panel_says_nothing_of_a_silence_on_an_unsilenced_alert(self, inventory,
+                                                                       monkeypatch):
+        """The control: the member draws a silence only when one covers it."""
+        view, am = silenced_syslog(ids=[])
+        value = G.parse(load("ruler"), view, am, READ_AT, silences=[SILENCE])
+        monkeypatch.setattr(A, "SOURCES", (lambda: A.grafana_source(cached=cached(value)),))
+        import app as APP
+        html = APP.app.test_client().get("/v2/attention").get_data(as_text=True)
+        assert '<ul class="att-members">' in html and "silenced in Grafana" not in html
