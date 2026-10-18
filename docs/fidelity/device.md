@@ -63,6 +63,13 @@ result (board 11) is drawn as before; for one that did not, the badge names its 
 attempted"), which no board draws: the deviation is a line in STANDING_APPROVAL_LOG.md. Every
 other region unchanged: one expression in each of `_deploy.html` and `_restore.html`, read
 from the diff.
+Compared again 2026-10-18 (C1273, a B): Capture's result for a device that departs from its
+committed intent is amber, its chip "Recorded; departs from intent" ("Recorded; intent not
+compared" where intent was not compared), where board 2 (`DevCaptureResult`) drew green
+"Recorded" over r3 departing by one line: green over a partial, which CLAUDE.md forbids and
+which `preview_confirm.capture_result` already calls "partial". A capture at its intent is
+drawn as the board drew it. The deviation is a line in STANDING_APPROVAL_LOG.md. No template
+changed: the level and chip come from `device_actions.capture_result_card`.
 Templates compared: templates/v2/device.html, templates/v2/_actions_menu.html, templates/v2/_status.html, templates/v2/_drained_badge.html, templates/v2/_capture.html, templates/v2/_deploy.html, templates/v2/_attribution.html, templates/v2/_rotate.html, templates/v2/_persist.html, templates/v2/_persist_effect.html, templates/v2/_startup_effect.html, templates/v2/_seed.html, templates/v2/_restore.html, templates/v2/_revert.html, templates/v2/_retry.html, templates/v2/_retire.html
 Templates sha256: `7dbf73e139c967c7dc143312b7a7a4953669ec56d4ac7d5b35cd8f9b1a53b251`
 
@@ -134,6 +141,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Checks, on every card | each check in plain words ("The device was read reliably: one configuration, its own hostname, no echoed command", "No other operation holds r3") | each card's own gates by name, with its detail ("device read"; "no other operation holds this device: nothing holds it now; the apply takes the device…"), more of them, the at-confirm ones marked "at confirm" (captures 09, 28, 31) | **deviation** (log: Device: each card's checks are its operation's gates by name) |
 | A card that cannot be confirmed yet | its primary button drawn disabled, with the note ("Waits on one reason…", "Not available while the deploy holds r3…") | the note ("Nothing to confirm: s2 matches its golden, so nothing would be recorded.", capture 09; "Not available: …, Nothing is queued.") and a "Preview it again" button where one helps; no disabled primary (capture, deploy, rotate held, restore, retry, retire) | **deviation** (log: Device: a card that cannot be confirmed draws no disabled button) |
 | Capture: result | Captured, Recorded; What happened with the commit linked, as the verified person, the time with the read on hover; Still true; What next: Edit intent…, Remove the line (Mode B)…; Open in History | the same, What next with two more: Deploy intent… and Restore from…, each with its (i) | **deviation** (log: Device: Capture's result offers four ways on) |
+| Capture: result's colour | green, "Recorded", over r3 departing from intent by one line | amber, "Recorded; departs from intent" ("Recorded; intent not compared" where it was not compared); green "Recorded" only at intent (C1273) | **deviation** (log: Device: Capture's result is amber for a device departing from intent) |
 | Prose naming code | code in its own type ("load-interval 30", "Source: seed") | raw backticks around it in the capture card's intent sentence, the capture result, persist, the seed result, the revert footer and result, the retire result ("(`load-interval 30`)") | **deviation** (log: Device: card prose shows raw backticks around code (a defect, register C650 follow-up)) |
 | Capture: r2 moved | Not recorded, the read at confirm and the read confirmed, Preview it again | the same, Preview it again a button with its (i) | **same** |
 | Capture at phone width | board 4: the card stacked, head controls under the title | the same | **same** |

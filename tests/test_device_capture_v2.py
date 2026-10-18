@@ -199,7 +199,9 @@ class TestTheConfirm:
         msg = subprocess.run(["git", "-C", lab["repo"], "log", "-1", "--format=%B"],
                              capture_output=True, text=True).stdout
         assert "Source: capture" in msg and "Actor: test-person@example.invalid" in msg
-        assert "op-card op-ok" in out and "Captured" in out and "badge-ok" in out
+        # r2 departs from its intent: recorded, never green over that (C1273).
+        assert "op-card op-warn" in out and "Captured" in out and "badge-warn" in out
+        assert "Recorded; departs from intent" in out and "op-ok" not in out
         assert f">{after[:10]}</a>" in out and "test-person@example.invalid (verified)" in out
         assert re.search(r'title="[^"]*read again at confirm: capture [0-9a-f]+, unchanged since '
                          r'the preview; [^"]+"', out)
@@ -352,6 +354,35 @@ def served(lab, live_browser):
 
 
 CARD = "document.getElementById('device-op')"
+class TestTheResultsColour:
+    """Never green over a partial (C1273): a capture recorded at its committed intent is
+    green; one recorded while the device departs from intent, or with intent not compared,
+    is amber and its chip leads with that, as `preview_confirm.capture_result` calls both
+    "partial"."""
+
+    @staticmethod
+    def _card(intent):
+        from types import SimpleNamespace
+        from modules import device_actions
+        got = {"outcomes": [{"device": "r2", "outcome": "captured", "intent": intent}],
+               "save": {"ok": True, "commit": "0123456789abcdef"}}
+        return device_actions.capture_result_card(SimpleNamespace(name="Lab"), "r2", got,
+                                                  "c0ffee", "test-person", "person")
+
+    def test_a_capture_at_its_intent_is_green(self):
+        c = self._card({"state": "match", "lines": []})
+        assert (c["chip"], c["level"]) == ("Recorded", "ok")
+
+    def test_a_capture_departing_from_intent_is_amber_and_says_so(self):
+        c = self._card({"state": "differs", "lines": ["+ ip ospf 1 area 0"]})
+        assert (c["chip"], c["level"]) == ("Recorded; departs from intent", "warn")
+
+    @pytest.mark.parametrize("intent", [{}, {"state": "unknown"}])
+    def test_a_capture_with_intent_not_compared_is_amber_and_says_so(self, intent):
+        c = self._card(intent)
+        assert (c["chip"], c["level"]) == ("Recorded; intent not compared", "warn")
+
+
 #: htmx binds a swapped-in control during its settle (about 20 ms): a click before that
 #: issues nothing (measured 2026-10-02: 3 of 12 cold runs clicked an unbound button). A
 #: test clicks only once nothing is swapping, settling or requesting.
@@ -376,7 +407,7 @@ class TestInARealBrowser:
         b.wait_for(f"return {CARD} && {CARD}.querySelector('.op-confirm') && {SETTLED}", 20)
         assert "+ load-interval 30" in b.js(f"return {CARD}.textContent")
         b.click("#device-op .op-confirm")
-        b.wait_for(f"return {CARD} && {CARD}.className.indexOf('op-ok') >= 0 && {SETTLED}", 20)
+        b.wait_for(f"return {CARD} && {CARD}.className.indexOf('op-warn') >= 0 && {SETTLED}", 20)
         text = b.js(f"return {CARD}.textContent")
         assert "Captured" in text and "Still true" in text, text[:400]
         assert b.js("return window.__notReloaded") == 1
