@@ -239,6 +239,36 @@ class TestADeletedSiteReadsUnreadable:
         assert meta["stale"] is True and "400" in meta["error"], meta
         assert get_stale_devices("SiteList") == {}, "R1 was marked gone from NetBox"
 
+    def test_an_unreadable_list_is_a_needs_attention_row_naming_its_site_and_kept_devices(
+            self, lab):
+        """C1259: "unreadable" must not be silent: through the real refresh, a deleted site
+        makes one Needs attention row naming the network, the site its filter names, NetBox's
+        answer and the device kept; a refresh that reads again clears it (the control: a list
+        that read cleanly makes none). The source reads the refresh's recorded outcome, which
+        every worker process shares, so the row is checked again after the process's memory
+        is dropped."""
+        from modules import attention
+        from modules.inventory import refresh_list
+
+        nb, site = lab
+        assert refresh_list("SiteList")["ok"]
+        clean = attention.netbox_inventory_source()
+        assert clean["rows"] == [], clean["rows"]
+
+        nb.delete(f"http://netbox.example.invalid/api/dcim/sites/{site['id']}/")
+        assert refresh_list("SiteList")["ok"] is False
+        inventory.invalidate()                       # another process: nothing in memory
+        got = attention.netbox_inventory_source()
+        (r,) = got["rows"]
+        assert r["kind"] == "unreadable" and "SiteList" in r["what"], r
+        assert "site=lab" in r["cause"] and "400" in r["cause"], r["cause"]
+        assert "R1" in r["cause"] and "1 kept" in r["what"], r
+        assert r["action"]["label"].startswith("Read NetBox's answer"), r["action"]
+
+        nb.seed("dcim/sites", {"name": "Lab", "slug": "lab"})
+        assert refresh_list("SiteList")["ok"]
+        assert attention.netbox_inventory_source()["rows"] == []
+
 
 class TestCredentialResolution:
     """Amendment 2: one designated list, never a scan, and always traceable."""

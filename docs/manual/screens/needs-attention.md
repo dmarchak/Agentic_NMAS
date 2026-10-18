@@ -76,6 +76,13 @@ re-applied (each predates a credential rotation, or is withdrawn), one row says 
 whichever of the two the last decision was. The row clears when a later decision earns a
 baseline.
 
+**NetBox-sourced networks:** when a network takes its devices from NetBox and its last refresh
+could not read them (NetBox did not answer, or answered its filter with an error, as it does
+when the site the filter names was deleted), the network keeps the last good list, marks
+nothing gone, and one row says so: the network, its filter, NetBox's answer, and the devices
+kept with the time of the last good read. Fix the filter on Settings › the network ›
+Network, or restore what it names in NetBox; the row clears when a refresh reads NetBox again.
+
 **Credentials** (hourly, metadata only, never a value): a credential with an expiry is a
 warning 30 days before it expires, a danger row 7 days before, and a danger row as soon as it
 has expired. One expiring more than a year out has no row. Where each expiry comes from:

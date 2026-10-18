@@ -117,6 +117,10 @@ ROW_KINDS = {
     ("records", "mismatch"): ("a record store moved to the records database no longer matches "
                               "its files", "read the first differing line, then move it back "
                               "to its files or find the writer"),
+    ("netbox_inventory", "unreadable"): ("a NetBox-sourced network's devices could not be read "
+                                         "from NetBox, so the last good read is kept",
+                                         "read NetBox's answer, then fix the network's filter "
+                                         "or what it names in NetBox"),
     ("records", "unreachable"): ("a record store is on the records database and it does not "
                                  "answer, so what it records cannot be written",
                                  "make the database answer (its Test names why), or move the "
@@ -225,6 +229,8 @@ CLEARS = {
                                         "(every 5 s)"),
     ("netbox-secrets", "held"): (("resolves",), "NetBox no longer holds the credential (masked "
                                  "or removed), at the next hourly read"),
+    ("netbox_inventory", "unreadable"): (("resolves",), "the network's next refresh reads "
+                                         "NetBox (a refresh of the list, or its next load)"),
     ("records", "mismatch"): (("resolves",), "the files and the table match again, or the store "
                               "is moved back to its files, at the next check (every 5 minutes)"),
     ("records", "unreachable"): (("resolves",), "the records database answers the next check "
@@ -2262,6 +2268,61 @@ def netbox_secrets_source(cached=None) -> dict:
                 f"{len(v.get('devices') or [])} holding a credential")
 
 
+def netbox_inventory_source(names=None) -> dict:
+    """A NetBox-sourced list whose last refresh failed (C1259): its devices are the last good
+    read, kept and flagged stale, and before this row that was said only on its network's
+    source card. Read from the refresh's recorded outcome (`inventory.last_attempt`, on disk,
+    the same in every process), never NetBox per request."""
+    from modules import inventory
+    from modules.inventory.source_config import is_netbox_sourced
+
+    started = time.time()
+    label = "NetBox-sourced networks"
+    if names is None:
+        try:
+            from modules.device import _load_device_lists_config
+            names = sorted(n for n, s in ((_load_device_lists_config() or {}).get("lists")
+                                          or {}).items()
+                           if isinstance(s, str) and not s.endswith(".csv"))
+        except Exception as exc:                  # noqa: BLE001 - the source's own row
+            return source_result("netbox_inventory", label, read_at=started,
+                                 took_ms=int((time.time() - started) * 1000),
+                                 error=f"the networks could not be listed: {exc}")
+    sourced = [n for n in names if is_netbox_sourced(n)]
+    rows = []
+    for name in sourced:
+        got = inventory.last_attempt(name)
+        if not got or got.get("ok") is True:
+            continue
+        good = inventory.last_good(name)
+        kept = good.get("devices") or []
+        filters = got.get("filters") or {}
+        filter_words = ", ".join(f"{k}={v}" for k, v in sorted(filters.items()) if v) or \
+            "no filter"
+        why = got.get("unreadable") and f"its last refresh's record is unreadable: " \
+                                         f"{got['unreadable']}" or got.get("error") or \
+            "no answer recorded"
+        shown = ", ".join(kept[:10]) + (f" and {len(kept) - 10} more" if len(kept) > 10 else "")
+        rows.append(row(
+            source="netbox_inventory", kind="unreadable", key=name, level="warning",
+            what=(f"{name}'s devices could not be read from NetBox: "
+                  f"{len(kept)} kept from the last good read"),
+            cause=(f"NetBox answered {name}'s filter ({filter_words}) with: {why}. Kept: "
+                   f"{shown or 'none'}"),
+            since=got.get("at"), read_at=good.get("fetched_at") or None,
+            operands={"network": name, "filter": filter_words, "kept": len(kept)},
+            action={"label": f"Read NetBox's answer, then fix {name}'s filter on Settings › "
+                             f"{name} › Network, or restore what it names in NetBox"}))
+    took = int((time.time() - started) * 1000)
+    if not sourced:
+        return source_result("netbox_inventory", label, read_at=started, took_ms=took,
+                             checked="no network takes its devices from NetBox: nothing to "
+                                     "read")
+    return source_result("netbox_inventory", label, read_at=started, took_ms=took, rows=rows,
+                         checked=f"{len(sourced)} NetBox-sourced network(s), each by its last "
+                                 "refresh")
+
+
 def records_source(cached=None) -> dict:
     """Mercury's record stores moved to the records database (Phase 4): a store that no longer
     matches its files, naming the network, both counts and the first differing line; and a
@@ -3131,7 +3192,7 @@ SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding
            host_steps_source, adjacency_source, restart_source,
            interrupted_source, dashboard_roles_source, template_behind_source,
            records_source, scheduled_rotation_source, host_key_source,
-           host_key_window_source)
+           host_key_window_source, netbox_inventory_source)
 
 
 #: What can move each source's rows: the data keys (modules/invalidation.VOCABULARY) whose
@@ -3172,6 +3233,8 @@ SOURCE_KEYS = {
     "template_behind_source": ("templates", "intent"),
     # The reader's stored check, and a move or move back (which changes the settings).
     "records_source": ("records", "settings"),
+    # A list refreshed by hand (its route invalidates the inventory) or its source changed.
+    "netbox_inventory_source": ("inventory", "settings"),
     # A scheduled run's end (or a device in it) announces both (C724).
     "scheduled_rotation_source": ("rotation", "credentials"),
     # A key kept, refused or replaced by any session or a re-key announces it (C906).

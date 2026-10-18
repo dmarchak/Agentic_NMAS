@@ -58,6 +58,66 @@ def _cache_path(list_name: str) -> str:
     return os.path.join(get_list_data_dir(list_name), _CACHE_FILE)
 
 
+#: The last refresh's outcome, on disk beside the cache (C1259): the failure that flags a list
+#: stale lived only in the process that refreshed it, and several worker processes serve the
+#: pages, so Needs attention reads it here, the same in every process.
+_ATTEMPT_FILE = "netbox_inventory_attempt.json"
+
+
+def _record_attempt(list_name: str, ok: bool, error: str = "", filters: dict = None) -> None:
+    """Write the refresh's outcome (``ok``, NetBox's answer when not, its time, the list's
+    filter), replaced atomically. A failure to write is logged; the refresh's own answer
+    stands."""
+    from modules.config import list_data_path
+
+    folder = list_data_path(list_name)
+    if not os.path.isdir(folder):
+        return
+    path = os.path.join(folder, _ATTEMPT_FILE)
+    try:
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump({"ok": bool(ok), "error": error, "at": time.time(),
+                       "filters": filters or {}}, fh, indent=2)
+        os.replace(tmp, path)
+    except OSError as exc:
+        log.warning("inventory: could not record the refresh of '%s': %s", list_name, exc)
+
+
+def last_attempt(list_name: str) -> dict:
+    """The list's last refresh outcome (`_record_attempt`'s), ``{}`` when none was recorded,
+    or ``{"unreadable": why}``. Creates nothing (C51)."""
+    from modules.config import list_data_path
+
+    path = os.path.join(list_data_path(list_name), _ATTEMPT_FILE)
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, encoding="utf-8") as fh:
+            got = json.load(fh)
+        return got if isinstance(got, dict) else {"unreadable": "not a JSON object"}
+    except (OSError, ValueError) as exc:
+        return {"unreadable": f"{type(exc).__name__}: {exc}"}
+
+
+def last_good(list_name: str) -> dict:
+    """The persisted last good inventory's time and device names, ``{}`` when none.
+    Creates nothing (C51)."""
+    from modules.config import list_data_path
+
+    path = os.path.join(list_data_path(list_name), _CACHE_FILE)
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, encoding="utf-8") as fh:
+            payload = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    return {"fetched_at": payload.get("fetched_at", 0),
+            "devices": [d.get("hostname") or d.get("ip") or "?"
+                        for d in payload.get("devices") or []]}
+
+
 def _persist(list_name: str, entry: dict) -> None:
     """Write identity fields of the last good inventory. Never credentials."""
     payload = {
@@ -145,6 +205,7 @@ def refresh_list(list_name: str, block: bool = True) -> dict:
                 entry["error"] = result["error"]
                 entry["stale_reason"] = f"NetBox unreachable: {result['error']}"
         log.warning("inventory: refresh failed for '%s': %s", list_name, result["error"])
+        _record_attempt(list_name, False, result["error"], cfg.get("filters"))
         return {"ok": False, "error": result["error"]}
 
     devices, skipped, warnings = adapt_devices(
@@ -162,6 +223,7 @@ def refresh_list(list_name: str, block: bool = True) -> dict:
     with _lock:
         _memory[list_name] = entry
     _persist(list_name, entry)
+    _record_attempt(list_name, True, "", cfg.get("filters"))
 
     _record_stale_devices(list_name, devices, previous_ips)
     _record_renames(list_name, devices)
