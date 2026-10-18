@@ -125,6 +125,9 @@ ROW_KINDS = {
                                  "answer, so what it records cannot be written",
                                  "make the database answer (its Test names why), or move the "
                                  "store back to its files"),
+    ("freshness", "stale"): ("a source has not been read within its promise, so what it "
+                             "shows may no longer be true",
+                             "read why its reader has not run (Job health), then let it run"),
     ("pushed", "release"): ("the host runs a release that is wrong to keep running",
                             "update, or find where the running commit came from"),
     ("pushed", "ci_failed"): ("CI failed (or was cancelled) for the newest pushed commit, so the "
@@ -235,6 +238,7 @@ CLEARS = {
                               "is moved back to its files, at the next check (every 5 minutes)"),
     ("records", "unreachable"): (("resolves",), "the records database answers the next check "
                                  "(every 5 minutes), or the store is moved back to its files"),
+    ("freshness", "stale"): (("resolves",), "the source is read again within its promise"),
     ("pushed", "release"): (("resolves",), "the host runs the commit the remote holds"),
     ("pushed", "ci_failed"): (("resolves",), "a newer commit is pushed (its update is offered "
                               "once CI passes it), or the host runs this one"),
@@ -3645,6 +3649,48 @@ def _alerts_reader():
     return grafana_alerts.READER
 
 
+def _span_words(seconds: float) -> str:
+    seconds = max(int(seconds), 0)
+    if seconds < 120:
+        return f"{seconds} s"
+    if seconds < 7200:
+        return f"{seconds // 60} min"
+    if seconds < 172800:
+        return f"{seconds // 3600} h"
+    return f"{seconds // 86400} d"
+
+
+def _past_promise_rows(results: list, now: float) -> list:
+    """C1271: each source whose value is older than its own promise (`stale_after_seconds`)
+    is a row of its own, so a page whose readers stopped never reads as nothing needing
+    attention (CLAUDE.md: a stale or unreadable source is itself a row)."""
+    out = []
+    # A source that judges its own staleness, with a row kind of its own (drift's "the last
+    # drift check is old", on its own clock), is never judged twice.
+    own = {s for (s, k) in ROW_KINDS if k == "stale" and s != "freshness"}
+    for res in results:
+        if res.get("source") in own:
+            continue
+        value_at, promise = _ts(res.get("value_at")), res.get("stale_after_seconds")
+        if res.get("state") != "read" or not value_at or not promise:
+            continue
+        # How old the value was when this read took it (the source's own read time; a live
+        # read's is now), never another clock's.
+        age = (_ts(res.get("read_at")) or now) - value_at
+        if age <= promise:
+            continue
+        out.append(row(
+            source="freshness", kind="stale", key=res["source"], level="warning",
+            what=f"{res['label']} has not been read within its promise",
+            cause=(f"its value is {_span_words(age)} old and is promised every "
+                   f"{_span_words(promise)}, so what it shows may no longer be true"
+                   + (f" ({res['reader']} reader)" if res.get("reader") else "")),
+            read_at=value_at,
+            action={"label": "Open Job health on Settings › Installation and read why its "
+                             "reader has not run"}))
+    return out
+
+
 def needs_attention(sources=None) -> dict:
     """The page: every row from every source, worst first, and every source
     with its read time, so an empty page says what it looked at."""
@@ -3665,7 +3711,8 @@ def needs_attention(sources=None) -> dict:
             if not r.get("read_at"):
                 r["read_at"] = res.get("value_at") or res.get("read_at")
     rows = _with_networks(_attach(_fold_known_unmonitored(_fold_one_cause(
-        [r for res in results for r in res["rows"]]))))
+        [r for res in results for r in res["rows"]]
+        + _past_promise_rows(results, time.time())))))
     rows, acknowledged, ack_result = _without_acknowledged(rows)
     if ack_result:
         results.append(ack_result)

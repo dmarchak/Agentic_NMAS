@@ -91,6 +91,30 @@ class TestTheSourceContract:
         assert page["headline"] == "1 thing(s) need attention"
         assert page["rows"][0]["level"] == "unknown" and page["unreadable"] == ["broken"]
 
+    def test_a_source_past_its_promise_is_a_row_never_a_quiet_healthy_page(self):
+        """C1271 (measured 2026-10-18): a source whose value was two hours past its 10-minute
+        promise made no row on v2, and the sidebar read 0. CLAUDE.md: a stale source is
+        itself a row, naming it, its value's age and its promise."""
+        import time
+        now = time.time()
+
+        def stale():
+            return A.source_result("job_health", "Job health", read_at=now, took_ms=1,
+                                   checked="all fine", value_at=now - 7200,
+                                   stale_after_seconds=600)
+
+        def fresh():
+            return A.source_result("drift", "Drift", read_at=now, took_ms=1,
+                                   checked="all fine", value_at=now - 60,
+                                   stale_after_seconds=600)
+        page = A.needs_attention([stale, fresh])
+        assert len(page["rows"]) == 1, "a source past its promise made no row"
+        (r,) = page["rows"]
+        assert r["level"] == "warning" and "Job health" in r["what"], r
+        assert "2 h" in r["cause"] and "10 min" in r["cause"], r["cause"]
+        assert page["badge"]["n"] == 1
+        assert A.needs_attention([fresh])["rows"] == []                    # the control
+
 
 # ---------------------------------------------------------------------------
 # Source: job health

@@ -76,6 +76,12 @@ re-applied (each predates a credential rotation, or is withdrawn), one row says 
 whichever of the two the last decision was. The row clears when a later decision earns a
 baseline.
 
+**A source that has not been read within its promise** is a row of its own: each reader says
+how often it reads, and when a source's value is older than that, the row names the source, how
+old its value is and how often it is promised, because what it shows may no longer be true.
+Open Job health to read why its reader has not run; the row clears when the source is read
+again in time. (Drift judges its own: "the last drift check is old".)
+
 **NetBox-sourced networks:** when a network takes its devices from NetBox and its last refresh
 could not read them (NetBox did not answer, or answered its filter with an error, as it does
 when the site the filter names was deleted), the network keeps the last good list, marks

@@ -47,10 +47,15 @@ def _client():
 
 
 def _restarts_cached(monkeypatch, value):
+    """The restart reader's stored value, read just now: a value dated in the past with its
+    180 s promise is a stale source, which is its own row (C1271), and these tests are about
+    acknowledging a restart, not about staleness."""
     from modules import reader_job
     real = reader_job.read_cached
+    fresh = _cached(value)
+    fresh["doc"]["last_good"]["value_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     monkeypatch.setattr(reader_job, "read_cached",
-                        lambda name: _cached(value) if name == "restarts" else real(name))
+                        lambda name: fresh if name == "restarts" else real(name))
 
 
 def _only(monkeypatch, *names):
