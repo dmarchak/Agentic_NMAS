@@ -391,4 +391,147 @@ EQUIVALENT = [
             'lambda m: PLACEHOLDER.format(label=table.get(m.group(1), "SECRET")), text)'),
            "the pattern is the alternation of the table's own keys, escaped, so what it "
            "matched is always a key and the default label is never used"),
+    # ── Lab 7 (b), the second sample (2026-10-18): the deploy gates and the credential reads.
+    # Its real survivors are killed by the tests whose docstrings or comments name "Lab 7 (b),
+    # the second sample" (docs/TESTING.md, each file's row).
+    *_each("modules.nsot.authorisation.reason_problem",
+           'reason, line = entry.get("reason") or "", entry.get("line") or ""',
+           ('reason, line = entry.get("reason") or "", entry.get("line") or "XXXX"',),
+           "the line's stand-in changes only the words of a refusal for an entry with no line, "
+           "and the two callers that pass an empty line (attention, restarts) read only whether "
+           "there is a problem; the copy test cannot fire on it, since a reason flattening to "
+           "'xxxx' is one word and refused as too short either way"),
+    *_each("modules.nsot.authorisation.reason_problem",
+           "if _flat(reason) in (_flat(line), _flat(key(line))):",
+           ("if _flat(reason) in (_flat(None), _flat(key(line))):",
+            "if _flat(reason) in (_flat(line), _flat(None)):",
+            "if _flat(reason) in (_flat(line), _flat(key(None))):"),
+           "the two operands are one value for every caller: an authorisation's line is already "
+           "its key (normalise), and the key of a key is itself (redact_positional, measured on "
+           "a community, a type-9 account, an enable secret and a bare line); every other caller "
+           "passes its own words, which hold no secret position, so key(line) is the line "
+           "stripped, and _flat strips. Dropping either operand (None, or key(None), flattens to "
+           "'', which the empty-reason test before it has already answered) leaves the other"),
+    *_each("modules.nsot.deploy.assert_credentials_unchanged",
+           'held = getattr(artifact, "capture_credentials", None) or {}',
+           ('held = getattr(artifact, "capture_credentials", ) or {}',),
+           "a default never read: the guard's two callers hand it a RenderArtifact "
+           "(prepare_device), whose dataclass field defaults to {}, or a RestoreTarget, whose "
+           "property always answers; neither lacks the attribute"),
+    *_each("modules.nsot.deploy.assert_credentials_unchanged",
+           "f\"refusing to {operation} {getattr(artifact, 'device', '?')}: it would \"",
+           ("f\"refusing to {operation} {getattr(artifact, 'device', None)}: it would \"",
+            "f\"refusing to {operation} {getattr(artifact, 'device', )}: it would \"",
+            "f\"refusing to {operation} {getattr(artifact, 'device', 'XX?XX')}: it would \""),
+           "a default never read: both callers' artifacts (RenderArtifact, RestoreTarget) "
+           "carry `device` as a required field"),
+    *_each("modules.nsot.authorisation.fingerprint",
+           'body = {"commands": list(commands),',
+           ('body = {"XXcommandsXX": list(commands),',),
+           "a key's spelling is a constant of the hashed text: the preview and the apply's "
+           "recompute both call this one function, so every hash moves alike"),
+    # The credential reads.
+    *_each("modules.credentials.resolve",
+           'def resolve(mgmt_ip: str, role: str = "", site: str = "",',
+           ('def resolve(mgmt_ip: str, role: str = "XXXX", site: str = "",',
+            'def resolve(mgmt_ip: str, role: str = "", site: str = "XXXX",'),
+           "a caller that names no role or site (adoption, onboarding) gets the step skipped by "
+           "'' and, by the stand-in, a lookup of `role:XXXX` or `site:XXXX`, which finds a "
+           "profile only if a person named one after the stand-in itself; no store does"),
+    *_each("modules.credentials.resolve",
+           'credential_list: str = "") -> dict:',
+           ('credential_list: str = "XXXX") -> dict:',),
+           "a caller that names no designated list gets the step skipped by '' and, by the "
+           "stand-in, a read of the folder of a network named XXXX, which holds a devices.csv "
+           "only if a network was named after the stand-in itself"),
+    *_each("modules.credentials.resolve",
+           '"password": decrypt_value(override.get("password", "")),',
+           ('"password": decrypt_value(override.get("password", None)),',
+            '"password": decrypt_value(override.get("password", )),',
+            '"password": decrypt_value(override.get("password", "XXXX")),'),
+           "a default never read: the overrides' one writer, set_device_override, writes "
+           "`password` and `secret` on every override, '' when none was given"),
+    *_each("modules.credentials.resolve",
+           '"secret":   decrypt_value(override.get("secret", "")),',
+           ('"secret":   decrypt_value(override.get("secret", None)),',
+            '"secret":   decrypt_value(override.get("secret", )),',
+            '"secret":   decrypt_value(override.get("secret", "XXXX")),'),
+           "a default never read: the overrides' one writer, set_device_override, writes "
+           "`password` and `secret` on every override, '' when none was given"),
+    *_each("modules.credentials._from_profile",
+           'return (p.get("username", ""),',
+           ('return (p.get("username", None),', 'return (p.get("username", ),',
+            'return (p.get("username", "XXXX"),'),
+           "a default never read: the line before returns None for a profile with no username"),
+    *_each("modules.credentials._from_profile",
+           'decrypt_value(p.get("password", "")),',
+           ('decrypt_value(p.get("password", None)),', 'decrypt_value(p.get("password", )),',
+            'decrypt_value(p.get("password", "XXXX")),'),
+           "a default never read: the profiles' one writer, save_profile, writes `password` "
+           "and `secret` on every profile"),
+    *_each("modules.credentials._from_profile",
+           'decrypt_value(p.get("secret", "")))',
+           ('decrypt_value(p.get("secret", None)))', 'decrypt_value(p.get("secret", )))',
+            'decrypt_value(p.get("secret", "XXXX")))'),
+           "a default never read: the profiles' one writer, save_profile, writes `password` "
+           "and `secret` on every profile"),
+    *_each("modules.credentials._from_credential_list",
+           'with open(path, newline="", encoding="utf-8") as fh:',
+           ('with open(path, newline=None, encoding="utf-8") as fh:',
+            'with open(path, newline="", encoding=None) as fh:',
+            'with open(path, encoding="utf-8") as fh:',
+            'with open(path, newline="", ) as fh:',
+            'with open(path, newline="", encoding="UTF-8") as fh:'),
+           "devices.csv is ASCII with no line break inside a field (Fernet tokens are "
+           "URL-safe base64; names, addresses and usernames are printable ASCII, the CLI's "
+           "rule), so every codec and newline mode named reads the same rows"),
+    *_each("modules.credentials._from_credential_list",
+           'if (row.get("ip") or "").strip() == mgmt_ip:',
+           ('if (row.get("ip") or "XXXX").strip() == mgmt_ip:',),
+           "the line runs only for a non-empty mgmt_ip (the guard above), which neither '' "
+           "nor 'XXXX' (no address) equals: a row with no address matches nothing either way"),
+    *_each("modules.credentials._from_credential_list",
+           'return (row.get("username", ""),',
+           ('return (row.get("username", None),', 'return (row.get("username", ),',
+            'return (row.get("username", "XXXX"),'),
+           "a default never read: csv.DictReader gives every row every column of the header, "
+           "and devices.csv's header (device.py) carries username, password and secret"),
+    *_each("modules.credentials._from_credential_list",
+           'decrypt_value(row.get("password", "")),',
+           ('decrypt_value(row.get("password", None)),',
+            'decrypt_value(row.get("password", )),',
+            'decrypt_value(row.get("password", "XXXX")),'),
+           "a default never read: csv.DictReader gives every row every column of the header, "
+           "and devices.csv's header (device.py) carries username, password and secret"),
+    *_each("modules.credentials._from_credential_list",
+           'decrypt_value(row.get("secret", "")))',
+           ('decrypt_value(row.get("secret", None)))', 'decrypt_value(row.get("secret", )))',
+            'decrypt_value(row.get("secret", "XXXX")))'),
+           "a default never read: csv.DictReader gives every row every column of the header, "
+           "and devices.csv's header (device.py) carries username, password and secret"),
+    *_each("modules.credentials.get_template_secret",
+           'return decrypt_value(entry.get("value", "")) if entry else ""',
+           ('return decrypt_value(entry.get("value", None)) if entry else ""',
+            'return decrypt_value(entry.get("value", )) if entry else ""',
+            'return decrypt_value(entry.get("value", "XXXX")) if entry else ""'),
+           "a default never read: the template secrets' one writer, set_template_secret, "
+           "writes `value` on every entry"),
+    *_each("modules.credentials._load",
+           'with open(_FILE, encoding="utf-8") as fh:',
+           ('with open(_FILE, encoding=None) as fh:', 'with open(_FILE, ) as fh:',
+            'with open(_FILE, encoding="UTF-8") as fh:'),
+           "the store is written by _save as json.dumps with its default ensure_ascii, so "
+           "every byte is ASCII and every codec named reads it alike"),
+    *_each("modules.nsot.deploy.render_for_deploy",
+           'template_name: str = "base.j2") -> str:',
+           ('template_name: str = "XXbase.j2XX") -> str:',
+            'template_name: str = "BASE.J2") -> str:'),
+           "a default never read: every caller (prepare_device, routes.deploy's two, "
+           "profile_apply's two, template_bring's two) passes template_name"),
+    *_each("modules.nsot.deploy.render_for_deploy",
+           'return (host_vars.get("secrets") or {}).get(name, "")',
+           ('return (host_vars.get("secrets") or {}).get(name, None)',
+            'return (host_vars.get("secrets") or {}).get(name, )'),
+           "the renderer reads the lookup with `if value:` (roundtrip.render, `_secret`), and "
+           "None is as false as '': a name held nowhere falls to its own backstop either way"),
 ]

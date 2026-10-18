@@ -44,6 +44,40 @@ def _check(target, name="no secret re-added"):
     return next((st, dt) for n, st, dt in target.checks if n == name)
 
 
+class TestTheShapeOfAReason:
+    """Lab 7 (b), the second sample: the minimum is a few words AND a few characters, both
+    inclusive. Three words in eight characters is a reason; one character or one word fewer is
+    not. The values are typed here, never read from MIN_WORDS or MIN_CHARS (3 and 8)."""
+
+    @pytest.mark.parametrize("reason, ok", [
+        ("ab cd ef", True),          # three words, eight characters: exactly the minimum
+        ("ab cd e", False),          # three words, seven characters
+        ("abcdefgh ijk", False),     # two words, twelve characters
+    ])
+    def test_three_words_and_eight_characters_is_the_minimum(self, reason, ok):
+        problem = authorisation.reason_problem({"line": "shutdown", "reason": reason})
+        assert (problem == "") is ok, problem
+        if not ok:
+            assert "too short to be a reason" in problem
+
+
+class TestTheRefusalNamesBothSides:
+    """Lab 7 (b), the second sample: what a deploy's authorisation check refuses names both
+    operands (CLAUDE.md, "A refusal or guard names the comparison it made and both operands"): every
+    flagged line still waiting, and every authorisation that matches nothing, each counted and
+    each by its own text, in order."""
+
+    def test_each_unauthorised_line_and_each_unused_authorisation_by_name(self):
+        found = authorisation.problems(
+            ["shutdown", "no router ospf 1", "description x"],
+            [{"line": "reload", "reason": "a planned restart tonight"},
+             {"line": "no ip routing", "reason": "a planned change tonight"}])
+        assert found == [
+            "2 line(s) need an authorisation with a reason: 'no router ospf 1', 'shutdown'",
+            "2 authorisation(s) match no line that needs one in this program: 'no ip routing', "
+            "'reload'. An authorisation that matches nothing is a typo or a leftover."]
+
+
 def test_the_fixture_can_exhibit_the_case():
     assert COMMUNITY_LINE in R2 and COMMUNITY_LINE not in ROTATED
     assert "snmp-server community ROTATEDVALUE9 RO" in ROTATED

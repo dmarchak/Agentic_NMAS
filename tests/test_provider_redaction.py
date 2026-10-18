@@ -209,6 +209,17 @@ class TestRedactionDegradesHonestly:
         assert isinstance(values, dict)
         assert any("will NOT be redacted" in r.message for r in caplog.records)
 
+    def test_the_values_a_caller_resolved_are_the_ones_masked(self, monkeypatch):
+        """Lab 7 (b), the second sample (open since the first): a read across many devices
+        resolves the installation's values ONCE and hands them to every `redact_text` call
+        (modules/nsot/reads.py, modules/nsot/privileged.py). The set handed in is what masks:
+        never a fresh read of the store in its place, which here holds nothing."""
+        monkeypatch.setattr(redact, "known_secret_values", dict)
+        text = "login failed for Resolv3dOnceValue on r1"
+        out = redact.redact_text(text, {"Resolv3dOnceValue": "device password"})
+        assert "Resolv3dOnceValue" not in out and "device password" in out, out
+        assert redact.redact_text(text) == text, "the store, asked, holds nothing"
+
     def test_no_known_secrets_returns_the_payload_unchanged(self, monkeypatch):
         monkeypatch.setattr(redact, "known_secret_values", dict)
         payload = {"text": "nothing secret here"}

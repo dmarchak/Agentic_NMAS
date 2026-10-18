@@ -61,6 +61,34 @@ def test_an_unreadable_store_refuses_every_write_and_keeps_the_file(store):
     assert path.read_bytes() == before
 
 
+def test_an_unreadable_store_says_what_was_wrong_on_both_paths(store, caplog):
+    """Lab 7 (b), the second sample: the log is where an unreadable store's cause is kept (the
+    write path's refusal names only its kind), so both the write path's preservation and the
+    read path's "reading as empty" name the error the file gave."""
+    credentials, path = store
+    path.write_text('{"profiles": {"default": {"username": "a"')   # a fragment
+    with caplog.at_level(logging.ERROR):
+        with pytest.raises(credentials.CredentialStoreUnreadable):
+            credentials.set_device_override("192.0.2.98", "admin", "Pw9secret8", "")
+        credentials.has_device_override("192.0.2.98")
+    said = [r.getMessage() for r in caplog.records]
+    assert any("unreadable store (JSONDecodeError" in m and "preserved as" in m
+               for m in said), said
+    assert any(m.startswith("credentials: unreadable store (JSONDecodeError")
+               and "reading as empty" in m for m in said), said
+
+
+def test_a_store_holding_no_template_secret_answers_empty_for_any(store):
+    """Lab 7 (b), the second sample: a store no template secret was ever written to (a
+    fresh one, or one with only profiles and overrides) has no `template_secrets` section;
+    asking it for any secret answers "", never an error."""
+    credentials, path = store
+    assert credentials.get_template_secret("lab:r1:snmp_community") == ""
+    credentials.set_device_override("192.0.2.97", "admin", "Pw9secret7", "")
+    assert "template_secrets" not in json.loads(path.read_text())
+    assert credentials.get_template_secret("lab:r1:snmp_community") == ""
+
+
 def test_every_write_is_logged_with_its_keys_never_a_value(store, caplog):
     credentials, _path = store
     with caplog.at_level(logging.INFO, logger="modules.credentials"):

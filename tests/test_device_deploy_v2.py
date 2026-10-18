@@ -361,6 +361,10 @@ class TestTheConfirm:
         ({"list": ""}, "names no list"),
         ({"list": "Nowhere"}, "names no list"),
         ({"command_hash": ""}, "no program to be bound to"),
+        # Lab 7 (b), the second sample (a hand mutant: mutmut makes none of a decorated route):
+        # the capture hash is half of what the preview showed, and a confirm without it is
+        # refused here, never handed to the job.
+        ({"capture_hash": ""}, "no program to be bound to"),
     ])
     def test_a_confirm_without_its_list_or_hash_is_refused(self, deploy, monkeypatch, change,
                                                            words):

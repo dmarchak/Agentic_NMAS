@@ -186,6 +186,36 @@ class TestMaskNeverReachesDeploy:
             assert value not in blob
 
 
+class TestTheDeployRenderReadsTheStoreFirst:
+    """Lab 7 (b), the second sample: the deploy's render (`deploy.render_for_deploy`) resolves
+    each secret from the credential store first, and falls back to the value the extractor
+    captured into host_vars only where the store holds none (a hashed secret, which can never
+    be re-derived). Skipping the store survived every test, since each fixture held one value
+    in both places. A name held in neither place resolves to nothing (falsy), so the
+    renderer's own backstop marks it missing; never a stand-in value."""
+
+    def test_the_stored_value_wins_and_the_captured_one_stands_in_for_none(self, monkeypatch):
+        from modules.nsot import deploy, roundtrip
+        asked = {}
+
+        def render(host_vars, platform, secret_lookup=None, **kw):
+            asked["template_name"] = kw.get("template_name")
+            if secret_lookup is not None:
+                asked.update({name: secret_lookup(name)
+                              for name in ("in_store", "captured_only", "nowhere")})
+            return ""
+        monkeypatch.setattr(roundtrip, "render", render)
+        monkeypatch.setattr("modules.credentials.get_template_secret",
+                            lambda name: "St0redValue1" if name == "in_store" else "")
+        deploy.render_for_deploy(
+            {"secrets": {"in_store": "Captur3dOld", "captured_only": "$9$Captur3dHash"}},
+            "cisco_iosxe", template_name="ios_branch.j2")
+        nowhere = asked.pop("nowhere", "never asked")
+        assert asked == {"template_name": "ios_branch.j2", "in_store": "St0redValue1",
+                         "captured_only": "$9$Captur3dHash"}
+        assert not nowhere, nowhere
+
+
 class TestValidationUsesTheTruthfulRender:
     """Masking must not distort the report it is measured against."""
 

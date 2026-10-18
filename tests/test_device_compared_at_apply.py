@@ -73,6 +73,22 @@ class TestTheReason:
         assert secret not in reason
         assert "Nothing was sent. Capture the device" in reason
 
+    @pytest.mark.parametrize("lost", [3, 4])
+    def test_each_side_is_its_count_and_at_most_three_of_its_lines(self, lost):
+        """Lab 7 (b), the second sample: each operand is named by how many lines differ and a
+        few of them, three at most, with "…" only when there are more; a side with none is "0"
+        alone. Built from the comparison's own sides, so the words are pinned, not the order."""
+        device = DEVICE
+        for _ in range(lost):
+            device, _line = _without_first_description(device)
+        got = roundtrip.stored_is_device(GOLDEN, device)
+        assert len(got["only_left"]) == lost and got["only_right"] == []
+        shown = "; ".join(x.removeprefix(" :: ") for x in got["only_left"][:3])
+        more = " …" if lost > 3 else ""
+        reason = device_moved_reason(GOLDEN, device)
+        assert (f"lines only in the capture {lost} ({shown}{more}), only on the device 0. "
+                "Nothing was sent.") in reason, reason
+
 
 class _Session:
     def __init__(self, running):

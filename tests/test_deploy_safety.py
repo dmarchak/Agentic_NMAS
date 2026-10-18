@@ -66,6 +66,18 @@ class TestMergeOnly:
             assert_merge_only(["no snmp-server location old-site"], INTENDED)
         assert "not in the intended config" in str(exc.value)
 
+    def test_the_refusal_counts_every_invented_command_and_names_the_first_five(self):
+        """Lab 7 (b), the second sample: a refusal names what it refused (CLAUDE.md, "A refusal
+        or guard names the comparison it made and both operands"): the count of every invented command,
+        and the first five by their own text; a sixth is counted, never listed."""
+        invented = [f"snmp-server location site-{n}" for n in range(1, 7)]
+        with pytest.raises(NegationSynthesised) as exc:
+            assert_merge_only(invented, INTENDED)
+        text = str(exc.value)
+        assert text.startswith("refusing to push 6 command(s) that are not in the intended")
+        assert all(repr(c) in text for c in invented[:5]), text
+        assert repr(invented[5]) not in text, text
+
     def test_interface_names_are_normalised_before_diffing(self):
         intended = "interface GigabitEthernet0/1\n description x\n"
         running = "interface Gi0/1\n description x\n"

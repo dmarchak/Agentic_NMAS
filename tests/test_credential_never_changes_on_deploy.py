@@ -62,6 +62,16 @@ class TestOnlyAChangedCredentialRefuses:
         with pytest.raises(CredentialWouldChange):
             _assert(CAPTURE.replace("secret 9 ", "secret 0 "))
 
+    def test_a_deploys_refusal_names_the_deploy_and_the_device(self):
+        """Lab 7 (b), the second sample: `prepare_device` calls the guard with no operation,
+        so a deploy's refusal says it is a deploy, to which device, and how many credentials
+        it would rewrite."""
+        with pytest.raises(CredentialWouldChange) as exc:
+            _assert(CAPTURE.replace(HASH, HASH[:-1] + "X"))
+        assert str(exc.value).startswith(
+            "refusing to deploy to r6: it would rewrite 1 credential(s) the device already "
+            "holds -- username:admin")
+
     def test_the_enable_secret_is_covered_too(self):
         with pytest.raises(CredentialWouldChange) as exc:
             _assert(CAPTURE.replace("$9$ZZtopZZtopZZtop", "$9$somethingElse"))

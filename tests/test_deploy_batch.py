@@ -404,6 +404,87 @@ class TestApplyRefusesAChangedProgram:
         assert now != confirmed
 
 
+class TestTheApplyRecomputesFromWhatItWasGiven:
+    """Lab 7 (b), the second sample: `apply_batch` (THE apply every v2 confirm's job runs)
+    recomputes each device's program from the list it was GIVEN, that device's own capture and
+    its own inventory row, and a device it cannot build is refused alone: every device after it
+    is still decided. The suite's labs answer every list with one folder, so passing no list,
+    no capture or no row survived them all, as did `break` for `continue` after a device that
+    could not be built (that device was always the last). Here the cores the apply hands its
+    inputs to are recorded; the hash comparison, the plan and the batch are the real ones."""
+
+    LIST = "Other"
+    CAPTURE = "hostname R1\ninterface GigabitEthernet1\n"
+    PROGRAM = ["interface GigabitEthernet1", " description uplink", "exit"]
+
+    @pytest.fixture
+    def seen(self, monkeypatch):
+        import routes.deploy as rd
+        from modules.nsot import device_ops
+        seen = {"artifact_for": [], "scoped": [], "program": [], "sent": []}
+        row = {"hostname": "R1", "ip": "192.0.2.41", "role": "router"}
+
+        def artifact_for(list_name, hostname):
+            seen["artifact_for"].append((list_name, hostname))
+            if hostname == "R0":
+                return None, "no golden config for this device"
+            art = FakeArtifact(hostname)
+            art.platform = "cisco_iosxe"
+            return (art, self.CAPTURE, dict(row)), ""
+
+        def scoped(scope, list_name, hostname, artifact, intended, captured, device):
+            seen["scoped"].append((list_name, hostname, captured, device))
+            return {"config": intended}
+
+        def program(intended, captured, selected, device, platform):
+            seen["program"].append((captured, device, platform))
+            return {"refused": [], "recreate": {"refused": []}, "commands": list(self.PROGRAM),
+                    "keys": [], "ids": []}
+
+        def deploy_one(entry, list_name, rows, authorise, **kw):
+            seen["sent"].append(entry["artifact"].device)
+            return {"device": entry["artifact"].device, "outcome": DEPLOYED,
+                    "verify": {"ok": True}}
+
+        monkeypatch.setattr(rd, "_artifact_for", artifact_for)
+        monkeypatch.setattr(rd, "_scoped", scoped)
+        monkeypatch.setattr(rd, "_program", program)
+        monkeypatch.setattr(rd, "_effects_and_declared", lambda *a, **k: (None, [], []))
+        monkeypatch.setattr(rd, "_deploy_one", deploy_one)
+        monkeypatch.setattr(rd, "_pending_receipts", lambda *a, **k: (lambda r: r, []))
+        monkeypatch.setattr(rd, "_commit_batch_golden", lambda *a, **k: {})
+        monkeypatch.setattr(rd, "_write_receipts", lambda *a, **k: {})
+        monkeypatch.setattr(deploy, "prepare_device", lambda artifact: {"config": "intent"})
+        monkeypatch.setattr(device_ops, "acquire_many",
+                            lambda list_name, hosts, op, actor: (set(hosts), []))
+        monkeypatch.setattr(device_ops, "release_many", lambda list_name, hosts: None)
+        seen["row"] = row
+        return seen
+
+    def _apply(self, devices):
+        from modules.nsot.deploy import command_fingerprint
+        from routes.deploy import apply_batch
+        confirmed = command_fingerprint(self.PROGRAM, [], [], [])
+        return apply_batch(self.LIST, {d: _hash(self.CAPTURE) for d in devices},
+                           {d: confirmed for d in devices}, scope="profile",
+                           actor="a person", actor_kind="person")
+
+    def test_each_device_is_recomputed_from_its_list_capture_and_row(self, seen):
+        report = self._apply(["R1"])
+        assert seen["artifact_for"] == [(self.LIST, "R1")]
+        assert seen["scoped"] == [(self.LIST, "R1", self.CAPTURE, seen["row"])]
+        assert seen["program"] == [(self.CAPTURE, seen["row"], "cisco_iosxe")]
+        assert seen["sent"] == ["R1"], report
+
+    def test_a_device_that_cannot_be_built_is_refused_alone(self, seen):
+        report = self._apply(["R0", "R1"])
+        assert seen["artifact_for"] == [(self.LIST, "R0"), (self.LIST, "R1")]
+        assert seen["sent"] == ["R1"], report
+        refused = [r for r in report["results"] if r["device"] == "R0"]
+        assert refused and refused[0]["outcome"] == "refused"
+        assert "could not be built at apply: no golden config" in refused[0]["reason"]
+
+
 class TestRolledBackIntentBlocksAReplan:
     """Rollback restores the device. It says nothing about the intent.
 

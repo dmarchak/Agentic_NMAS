@@ -279,6 +279,78 @@ class TestCredentialResolution:
         assert called == [""]
 
 
+class TestTheResolverAnswersWhole:
+    """Lab 7 (b), the second sample: `credentials.resolve`, the order a NetBox device's login
+    comes from (device override, the designated list, role, site, default profile), each
+    source answering the WHOLE credential (username, password and enable secret, decrypted)
+    and naming itself. The tests above check one field of two sources; the role and site
+    profiles, every password and secret, and the miss itself were held by none. The designated
+    list's own CSV read is stood in for here: measured with this sample, it returns the CSV's
+    stored ciphertext as the password and secret (secrets_store.decrypt_value passes a value
+    without its own prefix through unchanged), a defect reported with the sample, not fixed in
+    it, so only `resolve`'s handling of what the read returns is held."""
+
+    IP = "192.0.2.9"
+
+    @pytest.fixture
+    def store(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(credentials, "_FILE", str(tmp_path / "creds.json"))
+        credentials.save_profile("role:router", "roleuser", "rolepw", "roleen")
+        credentials.save_profile("site:lab", "siteuser", "sitepw", "siteen")
+        credentials.save_profile("default", "defuser", "defpw", "defen")
+        return credentials
+
+    @staticmethod
+    def _whole(user, source):
+        return {"ok": True, "username": f"{user}user", "password": f"{user}pw",
+                "secret": f"{user}en", "source": source}
+
+    def test_an_override_answers_first(self, store):
+        store.set_device_override(self.IP, "ovruser", "ovrpw", "ovren")
+        assert store.resolve(self.IP, role="router", site="lab") == self._whole(
+            "ovr", "device-override")
+
+    def test_the_designated_list_answers_next(self, store, monkeypatch):
+        monkeypatch.setattr(store, "_from_credential_list",
+                            lambda name, ip: ("listuser", "listpw", "listen")
+                            if (name, ip) == ("Lab Devices", self.IP) else None)
+        assert store.resolve(self.IP, role="router", site="lab",
+                             credential_list="Lab Devices") == self._whole(
+            "list", "local-list:Lab Devices")
+
+    def test_a_list_row_with_no_username_is_no_credential(self, store, monkeypatch):
+        monkeypatch.setattr(store, "_from_credential_list",
+                            lambda name, ip: ("", "listpw", "listen"))
+        assert store.resolve(self.IP, credential_list="Lab Devices") == self._whole(
+            "def", "profile:default")
+
+    def test_then_the_role_then_the_site_then_the_default(self, store):
+        assert store.resolve(self.IP, role="router", site="lab") == self._whole(
+            "role", "profile:role:router")
+        assert store.resolve(self.IP, role="switch", site="lab") == self._whole(
+            "site", "profile:site:lab")
+        assert store.resolve(self.IP, role="switch", site="branch") == self._whole(
+            "def", "profile:default")
+
+    def test_nothing_matching_is_a_miss_that_says_where_to_set_one(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(credentials, "_FILE", str(tmp_path / "empty.json"))
+        assert credentials.resolve(self.IP, role="router", site="lab") == {
+            "ok": False, "username": "", "password": "", "secret": "", "source": "",
+            "error": ("no credentials — set a device override, a default profile, or a "
+                      "credential list for this NetBox list")}
+
+    def test_a_device_with_no_address_takes_nothing_from_the_list(self, tmp_path, monkeypatch):
+        """An empty management address is no key: even a list row with no address of its
+        own is never its credential."""
+        lists = tmp_path / "lists" / "lab_devices"
+        lists.mkdir(parents=True)
+        (lists / "devices.csv").write_text(
+            "hostname,device_type,ip,username,password,secret,role\n"
+            "R9,cisco_ios,,rowuser,rowpw,rowen,router\n", encoding="utf-8")
+        monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path / "lists"))
+        assert credentials._from_credential_list("Lab Devices", "") is None
+
+
 class TestDispatchDoesNoNetworkIO:
     """Amendment 1: load_saved_devices sits on ~79 call sites."""
 

@@ -363,6 +363,10 @@ class TestTheConfirm:
         assert r.status_code == 400
         r = _confirm(ready, {"list": "Lab", "order": ["r6"], "confirmations": {"r6": "x"}})
         assert r.status_code == 400 and "Nothing confirmed" in r.get_data(as_text=True)
+        # Lab 7 (b), the second sample (a hand mutant: mutmut makes none of a decorated route):
+        # a confirm naming its list and no device starts no batch.
+        r = _confirm(ready, {"list": "Lab"})
+        assert r.status_code == 400 and "Nothing confirmed" in r.get_data(as_text=True)
         # C850: each structured field arrives as JSON in its form field; one of another kind is
         # refused naming it, drawn in place as a refusal (a fragment), never a 500.
         r = _confirm(ready, {"list": "Lab", "order": {"r6": 1}, "confirmations": {"r6": "x"},
