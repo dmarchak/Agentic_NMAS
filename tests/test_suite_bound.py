@@ -36,6 +36,16 @@ def _runner(tmp_path, body, bound="5"):
         cwd=ROOT, env=env, capture_output=True, text=True, timeout=60)
 
 
+#: The bound for a probe that FINISHES, where the bound is not what the test holds (C1260, the
+#: operator's B, 2026-10-18). Measured: alone 0.53 s; under a gate's four suites with coverage,
+#: 177 runs, the slowest 3.65 s (load 17; 2026-10-18 18:02 UTC); and C1260's five failures went
+#: past 5 s under loads that measurement did not reach (the gate beside a mutation run or an
+#: agent's tests). 5 s was a premise ("a finishing run is done in 5 s on any load") the
+#: measurements refute; 30 s is about 8x the measured slowest, set past the usual 2.5x because
+#: the loaded top is not measured. The hang probes keep 5 s: their hanging test began within
+#: 1.51 s in every run measured (170, under a gate's load).
+FINISHING_BOUND = "30"
+
 HANG = ("import time\n\n"
         "def test_finished_first():\n    pass\n\n"
         "def test_hangs_here():\n    time.sleep(600)\n")
@@ -71,7 +81,7 @@ def test_a_hang_with_no_stack_says_which_way_it_has_none(tmp_path):
 
 def test_a_run_that_finishes_is_never_reported_as_a_timeout(tmp_path):
     """The control: the report fires on the bound, not on every run."""
-    out = _runner(tmp_path, "def test_ok():\n    pass\n")
+    out = _runner(tmp_path, "def test_ok():\n    pass\n", bound=FINISHING_BOUND)
     assert out.returncode == 0, out.stderr[-800:]
     assert "TIMED OUT" not in out.stderr + out.stdout
 
@@ -101,7 +111,7 @@ def test_a_hang_after_the_last_test_says_when_the_tests_finished(tmp_path, monke
 
 
 def test_a_finished_run_says_its_timing(tmp_path):
-    out = _runner(tmp_path, "def test_ok():\n    pass\n")
+    out = _runner(tmp_path, "def test_ok():\n    pass\n", bound=FINISHING_BOUND)
     assert out.returncode == 0
     assert "nmas-test timing: 1 test(s); the last finished" in out.stderr
 
@@ -113,7 +123,8 @@ def test_a_probe_does_not_import_the_whole_program(tmp_path):
     out = _runner(tmp_path, "import sys\n\n"
                             "def test_ok():\n"
                             "    assert 'app' not in sys.modules, 'the probe imported the app'\n"
-                            "    assert 'modules.ai_assistant' not in sys.modules\n")
+                            "    assert 'modules.ai_assistant' not in sys.modules\n",
+                  bound=FINISHING_BOUND)
     assert out.returncode == 0, (out.returncode, _innermost(out.stdout + out.stderr))
 
 
