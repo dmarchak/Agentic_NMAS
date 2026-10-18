@@ -17,7 +17,7 @@ Compared again 2026-10-15: each `<details>` keyed (`data-keep`, C472) so a redra
 Compared again 2026-10-15 (board E3): the go links, the query box, the range chips and picker, the actions and the three states moved into `_history_ask_parts.html`, which the metrics builder shares (the rendered page the same but for whitespace, every state rendered before and after and compared); the head's Metrics switch now opens the metrics builder, and Code mode's Builder is a link. The shots at 1440, 1280 and 390 retaken; nothing drawn moved. Two fixes found on the way, neither a region's verdict: the bounds line says no log store is configured where none is (it raised an error page before, reading Loki's unread limits), and the heartbeat stage writes the marker as an RE2 literal, `NMAS-HEARTBEAT` (Python's escape wrote `NMAS\\-HEARTBEAT`, the same lines matched).
 Compared again 2026-10-15 (C818, C819; the operator's decisions of that day): Reveal… built as the board draws it, and Edit as code from Counts ending in Code mode's chart. The page shot at 1440, 1280 and 390 as before, and two more states beside the board's Lines view: `history-ask-logs-reveal-ask-page-<width>` (the box open with a reason) and `history-ask-logs-revealed-page-<width>` (the line revealed), at 1440 and 390, fed by the lines capture with one planted secret-bearing line (tests/test_log_reveal.py). Each masked value is now marked as the board marks it; the bounds line says revealing is recorded, as the board's does.
 Templates compared: templates/v2/history_ask_logs.html, templates/v2/_history_body.html, templates/v2/_history_ask_logs.html, templates/v2/_history_ask_head.html, templates/v2/_history_ask_parts.html
-Templates sha256: `bae7fb3468ed1abd511564d3cd771d79652bc80df9b74cf9e60a809434ddac2d`
+Templates sha256: `4eeb3357744f3d6b3311086208d30f8123d8b8da924a0536eb6a471348a4cc1a`
 
 Compared again 2026-10-15 (P7-03): `_history_body.html` gained a `data-concept` marker and one
 sentence inside a Baselines row's detail (the block drawing each baseline's Re-apply… link); this
@@ -28,6 +28,13 @@ Compared again 2026-10-16 (C522): `_history_body.html`'s Baselines card gained a
 count of baselines and "How does this work?" in words, C503's rule), inside the Baselines tab's
 branch, which Ask your own never draws; the shots retaken (tests/test_board_shots.py). No region
 here changed; the hash written again.
+
+Compared again 2026-10-18 (the operator's walk of 2026-10-18, B): `_history_body.html` gained
+the Kind choices one click away (All, Goldens, Intent, Deploys and restores, Measured,
+unchanged, Restarts) under the Timeline tab's filters, inside the Timeline tab's branch, which
+Ask your own never draws. The page rendered on test_device_v2's lab from the templates as they
+were and as they are: every byte the same. No region here changed; the hash written again.
+Templates sha256 before: `bae7fb3468ed1abd511564d3cd771d79652bc80df9b74cf9e60a809434ddac2d`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).

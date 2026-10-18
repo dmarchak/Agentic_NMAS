@@ -17,7 +17,7 @@ desktop board at 1440 and 1280 beside the page; the phone board at 390 beside th
 Compared 2026-10-15. History's own page (heading, remote line) is board D's; the board's Code
 mode panel is today's Ask your own box, Code on the Mode switch.
 Templates compared: templates/v2/history_ask_metrics.html, templates/v2/_history_body.html, templates/v2/_history_ask_metrics.html, templates/v2/_history_ask_parts.html, templates/v2/_history_ask_head.html
-Templates sha256: `e4ba3491dcf923a164f7678a65c33f2e6622075648ce2233da95593dd876d8c8`
+Templates sha256: `6357e667ba5601243738d5fe301506067d339162be1aa01bcf88be7d98c1619d`
 
 Compared again 2026-10-15 (P7-03): `_history_body.html` gained a `data-concept` marker and one
 sentence inside a Baselines row's detail (the block drawing each baseline's Re-apply… link); this
@@ -28,6 +28,13 @@ Compared again 2026-10-16 (C522): `_history_body.html`'s Baselines card gained a
 count of baselines and "How does this work?" in words, C503's rule), inside the Baselines tab's
 branch, which Ask your own never draws; the shots retaken (tests/test_board_shots.py). No region
 here changed; the hash written again.
+
+Compared again 2026-10-18 (the operator's walk of 2026-10-18, B): `_history_body.html` gained
+the Kind choices one click away (All, Goldens, Intent, Deploys and restores, Measured,
+unchanged, Restarts) under the Timeline tab's filters, inside the Timeline tab's branch, which
+Ask your own never draws. The page rendered on test_device_v2's lab from the templates as they
+were and as they are: every byte the same. No region here changed; the hash written again.
+Templates sha256 before: `e4ba3491dcf923a164f7678a65c33f2e6622075648ce2233da95593dd876d8c8`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).

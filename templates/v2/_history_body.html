@@ -49,6 +49,14 @@
   {%- if f.identity %}<input type="hidden" name="identity" value="{{ f.identity }}">{% endif %}
   <button type="submit" class="btn">Show</button>
 </form>
+{# The kinds one click away, Goldens first (the operator's walk, 2026-10-18, B): each a link
+    keeping the other filters, the reader filtering before its newest-N cut. -#}
+<div class="seg hist-quick" role="group" aria-label="Kind">
+  <a class="seg-btn{% if not f.kinds %} on{% endif %}" aria-pressed="{{ 'true' if not f.kinds else 'false' }}" href="{{ url_for('v2.history_page', device=f.device or None, person=f.person or None, since=f.since) }}">All</a>
+  {%- for key, words in quick_kinds %}
+  <a class="seg-btn{% if f.kinds == [key] %} on{% endif %}" aria-pressed="{{ 'true' if f.kinds == [key] else 'false' }}" href="{{ url_for('v2.history_page', device=f.device or None, person=f.person or None, since=f.since, kind=key) }}">{{ words }}</a>
+  {%- endfor %}
+</div>
 {#- 7.5's identity line (board HistoryIdentity, canvas v112): the commits in the window the
     filters draw, counted by their Actor-Verified trailer. -#}
 {%- set idn = h.identity or {} -%}

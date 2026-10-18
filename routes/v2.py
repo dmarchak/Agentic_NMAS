@@ -246,7 +246,9 @@ def _history_filters(request) -> dict:
 
     a = request.args
     since = a.get("since", "7")
-    kinds = [k for k in a.getlist("kind") if k in HS.KIND_FILTERS]
+    # A kind the reader does not know is ignored and said by name (the operator's walk,
+    # 2026-10-18, B), never dropped unsaid.
+    kinds, kind_error = HS.kind_filter(a.getlist("kind"))
     # The Commits tab became a kind (board D): its old links open the timeline on commits.
     if a.get("tab") == "commits" and not kinds:
         kinds = ["commits"]
@@ -257,10 +259,12 @@ def _history_filters(request) -> dict:
          # 7.5's identity line: "unverified" keeps only the commits not signed in through the
          # access proxy; any other value is no filter.
          "identity": "unverified" if a.get("identity") == "unverified" else ""}
+    errors = []
     for name in ("device", "person"):
         if f[name] and not _SAFE_NAME.match(f[name]):
-            f["error"] = f"the {name} filter {f[name]!r} is not a name"
+            errors.append(f"the {name} filter {f[name]!r} is not a name")
             f[name] = ""
+    f["error"] = "; ".join(errors + ([kind_error] if kind_error else []))
     return f
 
 
@@ -368,8 +372,8 @@ def _history_timeline(ref, f, members) -> dict:
                     since_days=f["since"],
                     limit=int(f["limit"]) if str(f["limit"]).isdigit() else HS.DEFAULT_LIMIT,
                     members=members, unverified=f.get("identity") == "unverified")
-    if f["error"]:
-        h["errors"] = [f["error"]] + h["errors"]
+    # A filter not applied (`f["error"]`) is drawn by the timeline card as itself, "Not
+    # applied: ...", never among the stores that could not be read: the rows are all there.
     return h
 
 
@@ -387,7 +391,7 @@ def _history_ctx(request) -> dict:
     f = _history_filters(request)
     ctx = {"tab": tab, "tabs": HISTORY_TABS, "f": f, "ref": ref,
            "remote": _history_remote(ref), "since_choices": HS.SINCE_CHOICES,
-           "kind_groups": HS.KIND_GROUPS}
+           "kind_groups": HS.KIND_GROUPS, "quick_kinds": HS.QUICK_KINDS}
     if tab == "timeline":
         members = _history_members(ref)
         ctx["devices"] = members or []

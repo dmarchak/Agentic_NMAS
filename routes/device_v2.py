@@ -154,7 +154,14 @@ def _intent_ctx(ref, dev):
 
 
 def _history_ctx(ref, dev):
-    return {"device": dev, "h": device_page.history(ref, dev)}
+    """The tab's timeline, filtered by the address's ``kind`` (the operator's walk, 2026-10-18,
+    B: a golden older than the newest 30 rows is reached in one click, the reader filtering
+    before its cut); a kind it does not know is ignored and said by name."""
+    from modules import history_sources
+
+    kinds, kind_error = history_sources.kind_filter(request.args.getlist("kind"))
+    return {"device": dev, "h": device_page.history(ref, dev, kinds=kinds), "kinds": kinds,
+            "kind_error": kind_error, "quick_kinds": history_sources.QUICK_KINDS}
 
 
 def _monitored_by(ref, dev) -> dict:

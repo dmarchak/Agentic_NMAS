@@ -734,6 +734,9 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .hist-kinds-menu legend { font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--ink-2);
   letter-spacing: .04em; padding: 0 0 2px; }
 .hist-kinds-menu p { margin: 0; }
+/* The kinds one click away (the operator's walk, 2026-10-18, B): wraps at phone width, never
+   a horizontal scroll. */
+.seg.hist-quick { flex-wrap: wrap; max-width: 100%; margin: 0 0 12px; }
 .hist-head, .hist-sum { display: grid; gap: 12px; align-items: baseline; grid-template-columns: var(--cols); }
 .hist-head { font-size: 12px; font-weight: 600; color: var(--ink-2); padding: 8px 0;
   border-bottom: 1px solid var(--line); }

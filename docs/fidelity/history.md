@@ -32,7 +32,7 @@ the fixture's counts unfiltered); the Baselines tab (`history-baselines`, 1280 a
 real records (`history-real`, 1280).
 Compared 2026-10-16.
 Templates compared: templates/v2/history.html, templates/v2/_history_body.html, templates/v2/_history_remote.html, templates/v2/_history_timeline.html, templates/v2/_timeline.html
-Templates sha256: `6a448609b62db7fda7b875e667b98cb6db107e60b70f8bfdcac9a7e5b505d35d`
+Templates sha256: `cdffbb36d100c038f4ab2da4ed517c128a34e590facd3d74e5b8629b5e0afd3c`
 
 Compared again 2026-10-16 (C522) after `_history_body.html`'s Baselines card gained a heading
 row: the count of baselines ("2 baselines") and "How does this work?" in words (to the restore's
@@ -112,6 +112,26 @@ passed, and uncommitted with two paths described): every byte the same but the l
 gains the list (its chip unchanged, "not committed"). The remote line's region reads
 **deviation** as before (its log line names the set-up and these additions).
 
+Compared again 2026-10-18 (the operator's walk of 2026-10-18, B: r2's last golden, 6 days old,
+sat behind daily Save All rows, and was reached only by scrolling this page) after three
+changes. `_history_body.html` gained, under the filters, the Kind choices one click away: a
+segmented row, All, Goldens, Intent, Deploys and restores, Measured, unchanged, Restarts, each a
+link keeping the device, person and time filters, the chosen one pressed
+(`history_sources.QUICK_KINDS`; the reader keeps the kind before its newest-N cut). The Kind
+menu gained Goldens and Intent under The repository (data, `history_sources.KIND_GROUPS`).
+`_history_timeline.html` draws a filter it did not apply as its own notice above the rows, "Not
+applied: the kind filter 'bogus' is not a kind History records" (a device or person that is not
+a name the same way), where a device that was not a name had been drawn among the stores that
+could not be read, ending "the timeline below lacks it". None of it is on a board: board D draws
+the Kind menu only. The page rendered on test_device_v2's lab from the templates as they were and
+as they are: Baselines, Query and the timeline fragment every byte the same; every kind, commits
+for one device, and a device filter that is not a name differ only by the Kind row and that
+notice. No shot was retaken: Firefox could not start in the runner where this was compared
+(tests/test_v2_layout_in_a_browser.py skipped), so the row's wrap at phone width is the
+stylesheet's (`.seg.hist-quick` wraps within its width), not measured. One region added, The
+Kind choices; The Kind menu's Built amended; no other region's verdict changed.
+Templates sha256 before: `6a448609b62db7fda7b875e667b98cb6db107e60b70f8bfdcac9a7e5b505d35d`.
+
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
 
@@ -122,7 +142,8 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | The remote line | "in sync", "Everything is committed and pushed to the remote (checked 1 min ago)"; Push now and Verify the remote at the right | the state's chip and the remote's own sentence (`remote_publication.describe`: "in sync … and pushed to <repo> (checked 1 min ago)" in capture 08), its (i), Remote set-up… and Verify the remote with its (i); Set up the remote… when none is set (the shots); Push now when something is unpushed (the template) | **deviation** (log: Board: History › Remote set-up) |
 | Tabs | Timeline, Baselines, Authorisations (D); Timeline, Baselines, Authorisations, Query, Remote (the identity board) | Timeline, Query, Baselines; the remote is the card above | **deviation** (log: History's Authorisations tab left its page with C708 (2026-10-12)) |
 | Filters | Device ("Any device, and the fleet"), Person ("Anyone"), Kind, Since; Show on the identity board | the same four and Show (capture 34); every filter in the address, so a view is a link | **same** |
-| The Kind menu | "Every kind except 2": the kinds in two columns under The repository, What ran on a device, What happened to a device, Decisions and records, Retries authorised and Freshness authorised off; Every kind · Commits only | one column under the same four headings, every kind by default (none ticked is every kind); the kinds recorded since (Privileged commands, Reloads, Credential profiles, Expected islands, Topology layouts, Saved views, Reveals, Show commands) in their groups, Freshness authorised not a kind; Every kind · Commits only | **deviation** (log: History: the Kind menu) |
+| The Kind menu | "Every kind except 2": the kinds in two columns under The repository, What ran on a device, What happened to a device, Decisions and records, Retries authorised and Freshness authorised off; Every kind · Commits only | one column under the same four headings, every kind by default (none ticked is every kind); the kinds recorded since (Privileged commands, Reloads, Credential profiles, Expected islands, Topology layouts, Saved views, Reveals, Show commands) in their groups, Freshness authorised not a kind; Goldens and Intent each its own kind under The repository, beside Commits (2026-10-18); Every kind · Commits only | **deviation** (log: History: the Kind menu) |
+| The Kind choices | none: the Kind menu is the only way to a kind | under the filters, one segmented row of links: All, Goldens, Intent, Deploys and restores, Measured, unchanged, Restarts; each keeps the device, person and time filters and the page's network, the chosen one pressed; the kind is kept before the newest-N cut, so a golden older than the newest page is found; a kind not known is not applied and said by name above the rows (the operator's walk, 2026-10-18, B; tests/test_history_kind_filter.py) | **deviation** (log: History: Kind choices one click away, Goldens first, the operator's walk of 2026-10-18) |
 | The count | "Showing the newest 12 of 41 · Show more" beside the filters | at the head of the timeline card, "Showing the newest 50 of 316 · Show more" when cut (capture 34), else "N records"; the card's foot says each store read its newest 50 (capture 35) | **same** |
 | The identity line (7.5) | "41 of 52 commits in this window carry a verified identity (signed in through the access proxy)", chips 8 host login, 3 not verified, 0 before verification was recorded, Show only these 11 | the same words and chips ("39 of 62 commits … 16 host login, 7 not verified, Show only these 23" in capture 34), a kind with no commit not drawn (no "0 …" chip); Show only these wraps under the line at 1280 | **deviation** (log: History: the identity line draws no empty chip) |
 | The identity line's other states | all verified in ok colour; a filter set says what is shown; no commit says so, never "0 of 0"; Show only these with Show every identity | the same four (the template; `history-unverified` shows the last, its counts the fixture's, unfiltered) | **same** |

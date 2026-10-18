@@ -1078,14 +1078,15 @@ def fleet_panel_data(list_name: str, uid: str, panel_id: int, range_text: str,
 HISTORY_LIMIT = 30
 
 
-def history(ref, dev: dict, limit: int = None) -> dict:
+def history(ref, dev: dict, limit: int = None, kinds=None) -> dict:
     """The History tab: THE timeline (`history_sources.timeline`, C369) filtered to this
     device, all time, newest first: the History page's reader, the same rows. Each event is
     ``{"at", "kind", "what", "devices", "who", "detail", "sha", "outcome", "marks",
-    "record"}``; a store that cannot be read is said, never a shorter timeline."""
+    "record"}``; a store that cannot be read is said, never a shorter timeline. *kinds*:
+    `history_sources.KIND_FILTERS` keys, kept by the reader before its newest-*limit* cut."""
     from modules import history_sources
 
-    return history_sources.timeline(ref, device=dev.get("hostname", ""),
+    return history_sources.timeline(ref, device=dev.get("hostname", ""), kinds=kinds,
                                     limit=limit or HISTORY_LIMIT)
 
 

@@ -62,7 +62,7 @@ def _timeline(ref, f, members):
                                 ("before verification was recorded", 1)]}}
 
 
-def _history(ref, dev, limit=None):
+def _history(ref, dev, limit=None, kinds=None):
     return {"events": [
         {"at": "2026-10-01T16:58:00Z", "kind": "restart", "what": "Restarted as planned",
          "devices": ["r2"], "devices_words": "r2",

@@ -60,7 +60,8 @@ Filters:
 - **Device:** that device's records only; the fleet's own records drop out.
 - **Person.**
 - **Kind,** in four groups:
-  - **The repository:** commits (golden, intent, profile) and measured-unchanged saves.
+  - **The repository:** goldens, intent, commits (golden, intent and profile together) and
+    measured-unchanged saves.
   - **What ran on a device:** deploys and restores, rotations, persists, onboarding and adopt,
     runs cut off midway, and authorised retries.
   - **What happened to a device:** restarts and planned windows.
@@ -70,7 +71,14 @@ Filters:
     Grafana refused is drawn in red).
 - **Since.**
 
-**Every kind** and **Commits only** are one click away. Each filter is part of the page's
+**Every kind** and **Commits only** are one click away in the Kind menu. Under the filters, the
+kinds most often looked for are one click away too: **All**, **Goldens**, **Intent**, **Deploys
+and restores**, **Measured, unchanged** and **Restarts**, each keeping your device, person and
+time filters. A kind is chosen before the list is cut to its newest records, so a device's last
+golden is found under **Goldens** however many saves came after it. A kind the tool does not
+know (a mistyped link) is not applied, and the list says so above its rows ("Not applied: the
+kind filter 'goldn' is not a kind History records") and draws every kind; a device or person
+that is not a name is said the same way. Each filter is part of the page's
 address, so a view is a link you can share. A long list shows the newest and says how many there
 are, with **Show more**. A record store that could not be read is said above the list. A
 network with no repository yet says so once above the list ("No repository yet: the network's

@@ -1404,7 +1404,9 @@ SOURCES = {
 
 #: The kind filter (board D): each a group of event kinds, in the board's four headings.
 KIND_GROUPS = (
-    ("The repository", (("commits", "Commits (golden, intent, profile)", ("golden", "intent", "commit")),
+    ("The repository", (("golden", "Goldens", ("golden",)),
+                        ("intent", "Intent", ("intent",)),
+                        ("commits", "Commits (golden, intent, profile)", ("golden", "intent", "commit")),
                         ("measured", "Measured, unchanged", ("measured",)))),
     ("What ran on a device", (("receipts", "Deploys and restores", ("receipt",)),
                               ("rotations", "Rotations", ("rotation",)),
@@ -1432,6 +1434,29 @@ KIND_GROUPS = (
                                ("show_commands", "Show commands", ("show_commands",)))),
 )
 KIND_FILTERS = {key: kinds for _h, group in KIND_GROUPS for key, _w, kinds in group}
+#: The kinds one click away, above the timeline on the History page and on a device's History
+#: tab, Goldens first (the operator's walk, 2026-10-18, B: r2's last golden sat behind daily
+#: Save All rows, past the tab's newest 30, and was found only by scrolling the fleet's page).
+#: Each a KIND_FILTERS key, so the reader keeps only its rows BEFORE its newest-N cut.
+QUICK_KINDS = (("golden", "Goldens"), ("intent", "Intent"), ("receipts", "Deploys and restores"),
+               ("measured", "Measured, unchanged"), ("restarts", "Restarts"))
+
+
+def kind_filter(values) -> tuple:
+    """``(kinds, error)``: the KIND_FILTERS keys among an address's ``kind`` values, in order,
+    each once; a value that is no key is IGNORED (the rest still filter, and none left is every
+    kind) and named in *error*, said on the page, never dropped unsaid."""
+    kinds, unknown = [], []
+    for v in values or ():
+        (kinds if v in KIND_FILTERS else unknown).append(v)
+    kinds = list(dict.fromkeys(kinds))
+    unknown = list(dict.fromkeys(unknown))
+    if not unknown:
+        return kinds, ""
+    names = ", ".join(repr(u[:64]) for u in unknown)
+    return kinds, (f"the kind filter {names} is not a kind History records"
+                   if len(unknown) == 1 else
+                   f"the kind filters {names} are not kinds History records")
 SINCE_CHOICES = (("7", "7 days"), ("30", "30 days"), ("365", "a year"), ("", "all time"))
 DEFAULT_LIMIT = 50
 MAX_LIMIT = 800
@@ -1497,6 +1522,9 @@ def timeline(ref, device: str = "", person: str = "", kinds=None, since_days: st
         counts[e["kind"]] = counts.get(e["kind"], 0) + 1
     if person:
         events = [e for e in events if e["who_short"] == person]
+    # The kind filter keeps its rows BEFORE the newest-*limit* cut below: each source read its
+    # own newest *limit*, so a golden older than the page's other rows is still found under
+    # "Goldens" (the operator's walk, 2026-10-18, B; tests/test_history_kind_filter.py).
     wanted = {k for key in (kinds or ()) for k in KIND_FILTERS.get(key, ())}
     if wanted:
         events = [e for e in events if e["kind"] in wanted]

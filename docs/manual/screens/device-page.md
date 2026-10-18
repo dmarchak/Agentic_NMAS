@@ -70,7 +70,19 @@ intent is only onboarding's bootstrap has no Edit: seed it first. See
 
 The History page's timeline filtered to this device, over all time. It is the same reader
 drawing the same rows, so the two can never disagree; the link at the top opens the History page
-filtered to the device. It holds every record the tool keeps about the device:
+filtered to the device. It shows the newest 30 records; **Show more on the History page** opens
+the rest.
+
+Above the records, one click chooses a kind: **All**, **Goldens**, **Intent**, **Deploys and
+restores**, **Measured, unchanged** or **Restarts**. The kind is chosen before the newest 30 are
+cut, so the device's goldens are all reachable under **Goldens** even when a daily Save All has
+written a newer "measured" row every day since. The choice is part of the page's address
+(`?tab=history&kind=golden`), so it survives a reload and can be shared, and the link to the
+History page carries it. A kind with no record for the device says so ("No record of the kind
+chosen (Restarts) for r3"), with **Every kind** beside it; a kind the tool does not know is not
+applied and is said by name above the records.
+
+It holds every record the tool keeps about the device:
 
 | Kind | What it is |
 |---|---|
