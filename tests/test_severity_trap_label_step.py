@@ -174,6 +174,65 @@ class TestUpdatesAfterStepChecks:
         assert host_steps.check({"check": "trap-label"})["state"] in ("unknown", "not_done")
 
 
+class TestLokiIsAskedOncePerAnswerNotPerRead:
+    """C1246 (measured on the host 2026-10-18): every Needs attention read ran both checks, each a
+    30-day "first line" query that Loki split into about a thousand sub-queries (~1.8 s each), at
+    about 0.34 reads a second: 28 million sub-queries in 28.5 h, Loki at 2.2 cores, and its log
+    growing 58 MB a minute toward a full disk. A landed label stays landed, so a found answer is
+    kept; none and unknown are asked again after their bounds. Through the real path: the
+    integration's client is the stand-in, the clock is the module's own."""
+
+    @staticmethod
+    def _wire(monkeypatch, stamps_ns, ok=True):
+        asked = []
+
+        class Loki:
+            def is_configured(self):
+                return True
+
+            def _get(self, path, **params):
+                asked.append(params["query"])
+                if not ok:
+                    return {"ok": False, "error": "HTTP 502"}
+                return {"ok": True, "response": _Answer({"data": {"result": (
+                    [{"stream": {"job": "x"}, "values": [[str(ns), "x"] for ns in stamps_ns]}]
+                    if stamps_ns else [])}})}
+
+        clock = [1000.0]
+        monkeypatch.setattr("modules.integrations.loki.LokiIntegration", Loki)
+        monkeypatch.setattr(host_steps, "_clock", lambda: clock[0], raising=False)
+        monkeypatch.setattr(host_steps, "_LOKI_MEMO", {}, raising=False)
+        return asked, clock
+
+    def test_a_found_label_is_asked_once_whatever_the_reads(self, monkeypatch):
+        asked, clock = self._wire(monkeypatch, [2_000_000_000 * 10**9])
+        for _ in range(5):
+            assert host_steps.check_severity_label()["state"] == "done"
+            assert host_steps.check_trap_label()["state"] == "done"
+            clock[0] += 3600
+        assert sorted(asked) == sorted([host_steps.SEVERITY_LABEL_QUERY,
+                                        host_steps.TRAP_LABEL_QUERY]), asked
+
+    def test_none_is_asked_again_only_after_its_bound(self, monkeypatch):
+        asked, clock = self._wire(monkeypatch, [])
+        for _ in range(4):
+            assert host_steps.check_severity_label()["state"] == "not_done"
+        assert len(asked) == 1, asked
+        clock[0] += host_steps.LOKI_NONE_SECONDS + 1
+        assert host_steps.check_severity_label()["state"] == "not_done"
+        assert len(asked) == 2, asked
+
+    def test_unknown_is_asked_again_after_its_shorter_bound(self, monkeypatch):
+        asked, clock = self._wire(monkeypatch, [], ok=False)
+        assert host_steps.check_trap_label()["state"] == "unknown"
+        assert host_steps.check_trap_label()["state"] == "unknown"
+        assert len(asked) == 1, asked
+        clock[0] += host_steps.LOKI_UNKNOWN_SECONDS + 1
+        host_steps.check_trap_label()
+        assert len(asked) == 2, asked
+        assert host_steps.LOKI_UNKNOWN_SECONDS < host_steps.LOKI_NONE_SECONDS
+
+
 def test_the_script_parses_and_puts_the_config_back_on_failure():
     assert subprocess.run(["bash", "-n", SCRIPT], capture_output=True).returncode == 0
     text = _text()

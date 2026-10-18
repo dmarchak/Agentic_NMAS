@@ -516,6 +516,17 @@ def _no_background_arrival_watch(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _host_step_loki_answers_start_empty():
+    """`host_steps._loki_first` keeps Loki's answers for the process (C1246); each test starts
+    with none kept, so one test's Loki is never another's answer."""
+    from modules import host_steps
+
+    host_steps._LOKI_MEMO.clear()
+    yield
+    host_steps._LOKI_MEMO.clear()
+
+
+@pytest.fixture(autouse=True)
 def _deploy_receipts_go_to_a_temp_file(request, monkeypatch, tmp_path):
     """Every deploy and restore apply appends a receipt per device (C60), into
     the list's directory. In the suite that is the shared test store, so each

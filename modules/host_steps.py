@@ -27,6 +27,7 @@ import logging
 import os
 import re
 import subprocess
+import threading
 import time
 
 from modules import config
@@ -213,11 +214,45 @@ def check_kea_discovery_range(root: str = ROOT, kea=None, addrs=None) -> dict:
     return {"state": "not_done", "detail": r["problem"] or "Kea runs no discovery range"}
 
 
+#: How long Loki's answer to a label check is kept before it is asked again (C1246). Each ask
+#: is a 30-day "first line" query Loki splits into about a thousand sub-queries (~1.8 s,
+#: measured on the host 2026-10-18), and Needs attention runs the checks on every read (about
+#: 0.34 a second there), which made Loki 2.2 cores busy and grew its log 58 MB a minute. A
+#: found label stays found (a line that arrived stays arrived), so it is kept for the
+#: process's life; "none" is re-asked after 5 minutes, the delay before a step just run reads
+#: done; "unknown" after a minute, so a Loki that comes back is seen soon.
+LOKI_NONE_SECONDS = 300
+LOKI_UNKNOWN_SECONDS = 60
+_LOKI_MEMO: dict = {}
+_LOKI_MEMO_LOCK = threading.Lock()
+
+
+def _clock() -> float:
+    return time.monotonic()
+
+
 def _loki_first(query: str, ask=None, now: float = None) -> dict:
     """Loki's first line matching *query* within its 30-day query limit: ``{"state": "found",
     "at": epoch}``, ``{"state": "none"}``, or ``{"state": "unknown", "why"}`` when Loki is not
-    configured, did not answer, or answered something unreadable (never read as none).
-    *ask(query, start, end)* returns `LokiIntegration._get`'s answer, for tests."""
+    configured, did not answer, or answered something unreadable (never read as none). Asked of
+    the configured Loki, the answer is kept (`LOKI_NONE_SECONDS`, C1246): a found one for good.
+    *ask(query, start, end)* returns `LokiIntegration._get`'s answer, for tests, and is never
+    kept."""
+    if ask is not None:
+        return _loki_ask(query, ask, now)
+    with _LOKI_MEMO_LOCK:
+        kept = _LOKI_MEMO.get(query)
+        if kept and (kept[1] is None or _clock() < kept[1]):
+            return kept[0]
+    got = _loki_ask(query, None, now)
+    hold = {"found": None, "none": LOKI_NONE_SECONDS}.get(got["state"], LOKI_UNKNOWN_SECONDS)
+    with _LOKI_MEMO_LOCK:
+        _LOKI_MEMO[query] = (got, None if hold is None else _clock() + hold)
+    return got
+
+
+def _loki_ask(query: str, ask=None, now: float = None) -> dict:
+    """One ask of Loki (`_loki_first`'s, unkept)."""
     now = time.time() if now is None else now
     start, end = int((now - 30 * 86400) * 1e9), int(now * 1e9)
     if ask is None:
