@@ -146,10 +146,14 @@ class TestTheSurveyThatJustifiedTheRefusal:
         otherwise, which is what a scan that could not run also produces."""
         sites = self._production_sites()
         assert len(sites) >= 60, (
-            f"found {len(sites)} production call sites against a measured 75 "
-            "— the scan is matching almost nothing")
-        assert any(s[0] == "app.py" for s in sites), \
-            "app.py holds most of them; not finding it means the walk is wrong"
+            f"found {len(sites)} production call sites against a measured 64 "
+            "(2026-10-18, P7-27; 75 before it) — the scan is matching almost nothing")
+        # Two anchors at two depths, each holding call sites measured 2026-10-18 (app.py held
+        # most of them until P7-27 emptied it, C1278): not finding one means the walk is wrong.
+        files = {s[0] for s in sites}
+        for anchor in (os.path.join("routes", "v2.py"),
+                       os.path.join("modules", "nsot", "credential_rotation.py")):
+            assert anchor in files, f"{anchor} holds call sites; the walk did not reach it"
 
     def test_no_call_site_passes_a_bare_name(self):
         """The refusal is unreachable from inside the repo, which is what

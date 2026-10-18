@@ -22,8 +22,8 @@ or unknown, when the golden cannot be read. NTP, LLDP and CDP are profile sectio
 Coverage column. A device is ticked for Apply only when the profile supplies one of its
 gaps; any other device says why beside its box.
 
-The profile itself is made by **Propose** (on today's page, opened from Coverage's notice or
-from Needs attention when there is none): the tool derives each section from the connector
+The profile itself is made by **Propose from the connectors…** (Monitoring › Profile, opened
+from Coverage's notice or from Needs attention when there is none): the tool derives each section from the connector
 settings, cross-checks the fleet's committed intent and names any device configured
 differently, and commits the profile as you, `Source: profile`, once you confirm its hash.
 Nothing is sent to a device by proposing.

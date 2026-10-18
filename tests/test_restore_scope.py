@@ -13,6 +13,7 @@ a baseline earned by a whole-fleet capture at intent (`build_capture_lab`).
 """
 
 from tests.test_capture import run_capture_preview
+from tests import capture_core
 import json
 import os
 
@@ -29,7 +30,7 @@ def lab(tmp_path, monkeypatch):
     c = lab["client"]
     d = run_capture_preview(c, {"devices": []}).get_json()
     h = d["preview"]["what"]["targets"][0]["select_data"]["hash"]
-    out = c.post("/golden/capture/apply",
+    out = capture_core.post_apply(
                  json={"confirmations": {"r2": h}, "fleet": True}).get_json()
     lab["baseline"] = out["result"]["record"]["baseline"]
     assert lab["baseline"].startswith("baseline/"), "the fixture must hold a baseline"

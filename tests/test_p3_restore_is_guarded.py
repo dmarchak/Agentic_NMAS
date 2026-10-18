@@ -14,8 +14,8 @@ the browser, and drawn nowhere, while the confirm hash covered it.
 
 Stage 7.1 moved the preview onto THE preview-then-confirm component: the
 plan builds the six parts (`modules/preview_confirm.restore_preview`) and
-`previewConfirmHtml` draws them, executed here against the plan's real
-payload over REAL `RestoreTarget`s (a stub target could not exhibit the
+the v2 device page's Restore from… card draws them (today's `previewConfirmHtml` until it left
+at 7.8, P7-27), drawn here from the plan's real payload over REAL `RestoreTarget`s (a stub target could not exhibit the
 restore's own gates, and C75 lived there). Today's route and dialog left at 7.8
 (2026-10-17); THE restore plan (`routes.golden.restore_plan`) is what the v2
 device page's Restore from… and History's Re-apply… draw.
@@ -23,11 +23,9 @@ device page's Restore from… and History's Re-apply… draw.
 
 import html as _html
 import json
-import re
 
 import pytest
 
-from tests.payload_render import render_preview
 
 # The device carries a line the ref does not mention INSIDE a section (the
 # description under Gi3), so the residue part can show whether it names the
@@ -114,15 +112,13 @@ def _real_payload(monkeypatch):
 
 
 
-def _html_of(payload) -> str:
-    return _html.unescape(render_preview(payload["preview"]))
+def _html_of(payload, host: str = "r1") -> str:
+    """*host*'s card on v2: the device page's Restore from… card drawn from THE plan
+    (`tests/payload_render.render_restore_card_v2`). Today's renderer drew every device's
+    preview on one dialog until it left with today's index at 7.8 (P7-27)."""
+    from tests.payload_render import render_restore_card_v2
 
-
-def _part(html: str, part: str, target: str = None) -> str:
-    """One part's HTML: in *target*'s card when named."""
-    if target:
-        html = html[html.index(f'data-pc-target="{target}"'):]
-    return re.search(rf'data-pc-part="{part}"(.*?)</section>', html, re.S).group(1)
+    return _html.unescape(render_restore_card_v2(payload, host))
 
 
 def _gates(payload, name):
@@ -135,45 +131,49 @@ class TestThePreviewDrawsTheProgram:
         payload = _real_payload(monkeypatch)
         r1 = next(d for d in payload["devices"] if d["device"] == "r1")
         assert len(r1["commands"]) >= 3, r1["commands"]       # the fixture can fail
-        program = _part(_html_of(payload), "program", "r1")
+        html = _html_of(payload)
         for line in r1["commands"]:
-            assert line in program, (line, program)
-        assert f"Exactly these {len(r1['commands'])} line(s) will be sent" in program
+            assert line in html, (line, html)
+        assert f"{len(r1['commands'])} line(s) to send" in html
 
     def test_what_it_replaces_is_drawn(self, monkeypatch):
-        payload = _real_payload(monkeypatch)
-        program = _part(_html_of(payload), "program", "r1")
-        assert "What these lines replace on the device" in program
-        assert "description old text  ->  description restored text" in program
+        html = _html_of(_real_payload(monkeypatch))
+        assert "What these lines replace on the device" in html
+        assert "description old text  ->  description restored text" in html
 
     def test_residue_is_drawn_under_its_section(self, monkeypatch):
         """C73 in the restore path: the leftover line names its interface."""
         payload = _real_payload(monkeypatch)
         r1 = next(d for d in payload["devices"] if d["device"] == "r1")
         assert " description retired uplink" in r1["residue"], r1["residue"]
-        part = _part(_html_of(payload), "what_not")
-        assert "interface GigabitEthernet3\n description retired uplink" in part, part
-        assert "logging host 192.0.2.50" in part
-        assert 'data-concept="merge-only"' in part
+        html = _html_of(payload)
+        assert "interface GigabitEthernet3\n description retired uplink" in html, html
+        assert "logging host 192.0.2.50" in html
 
     def test_residue_points_at_the_one_home_for_removal(self, monkeypatch):
         """Mode B's fourth case, decided 2026-09-29: the restore stays additive
         and removal lives in the Deploy plan, so the residue says where to go,
         not only that the lines stay."""
-        part = _part(_html_of(_real_payload(monkeypatch)), "what_not")
-        assert "Removal has ONE home, the Deploy plan (Mode B)" in part, part
-        assert "r1&#39;s Deploy plan" in part or "r1's Deploy plan" in part, part
+        html = _html_of(_real_payload(monkeypatch))
+        assert "Removal has ONE home, the Deploy plan (Mode B)" in html, html
+        assert "r1's Deploy plan" in html, html
 
     def test_a_blocked_device_says_nothing_is_sent_and_why(self, monkeypatch):
         payload = _real_payload(monkeypatch)
-        html = _html_of(payload)
-        assert "r2</strong>: Not sent: no golden config for this device at HEAD" in html
-        assert "r9</strong>: Not touched: stale" in html
-        assert "Nothing is sent to this device: it is blocked" in _part(html, "program", "r2")
+        html = _html_of(payload, "r2")
+        assert "Not sent: no golden config for this device at HEAD" in html
+        assert "Nothing is sent to this device: it is blocked" in html
+        # r9, skipped by the plan, has its own card: not restorable, saying why.
+        assert "stale" in _html_of(payload, "r9")
 
     def test_the_scope_is_a_stated_non_action(self, monkeypatch):
-        html = _html_of(_real_payload(monkeypatch))
-        assert "Never templates, bindings or approvals" in _part(html, "what_not")
+        """The plan says it (its what-not item for the whole restore). Today's dialog drew
+        it; v2's per-device card draws only the device's own items (the register row named
+        in the P7-27 commit), so this reads the plan."""
+        payload = _real_payload(monkeypatch)
+        scope = [i["text"] for i in payload["preview"]["what_not"]["items"]
+                 if i["kind"] == "scope"]
+        assert any("Never templates, bindings or approvals" in t for t in scope), scope
 
 
 class TestTheRestoresOwnGates:
@@ -259,5 +259,3 @@ class TestARestoreMayNotChangeACredential:
 # (2026-10-17, P7-21), and its wiring tests with it. The v2 restore card confirms the program it
 # drew, bound to its hash, and a program that moved is refused with nothing sent
 # (tests/test_device_restore_v2.py).
-
-

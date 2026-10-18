@@ -36,3 +36,4 @@ step that changes anything.
 | W2, Templates, NetBox, networks, the remote, Topology, r6's reload | [W2.md](W2.md) |
 | W3, W2's fixes on the host, a throwaway network, NetBox, the remote, r6's quiet reload | [W3.md](W3.md) |
 | W4, onboarding and recovery on a throwaway, adopt's first real run, DHCP's confirms, the lab sync | [W4.md](W4.md) |
+| P7-27, the last of today's pages removed (read-only, after its deploy) | [P7-27.md](P7-27.md) |

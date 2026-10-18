@@ -354,13 +354,12 @@ class TestTheOperatorCanSEEIt:
 
     @staticmethod
     def _draw(preview):
-        import json
+        """v2's NetBox card draws the preview with the shared parts
+        (`templates/v2/_netbox_job.html`, `preview_parts`); today's renderer did until it left
+        with today's index at 7.8 (P7-27)."""
+        from tests.payload_render import render_preview_v2
 
-        dukpy = pytest.importorskip("dukpy")
-        return dukpy.evaljs("var window = {};\n"
-                            + read_shipped(os.path.join(ROOT, "static", "js",
-                                                        "nmas_preview_confirm.js"))
-                            + f"\nwindow.previewConfirmHtml({json.dumps(preview)}, {{}})")
+        return render_preview_v2(preview)
 
     def _render(self, cascade, deleted=True):
         from modules.preview_confirm import netbox_removal_preview
@@ -388,10 +387,10 @@ class TestTheOperatorCanSEEIt:
         html = self._render({"taken": [], "foreign": [], "proven": False,
                              "unproven": ["dcim/sites: not measured"]})
 
-        assert 'data-pc-not="unproven"' in html
         assert "not the same as nothing" in html
         assert "dcim/sites: not measured" in html
-        assert 'data-pc-gate="not_reached"' in html
+        # The gate not reached, in v2's words (today's renderer marked it `data-pc-gate`).
+        assert '<span class="badge badge-warn">not established</span>' in html
 
     def test_a_clean_proven_preview_adds_no_alarm(self):
         """**The floor.** A renderer that always warned would satisfy both
@@ -399,7 +398,7 @@ class TestTheOperatorCanSEEIt:
         html = self._render({"taken": [], "foreign": [], "unproven": [], "proven": True})
 
         assert "ALSO DELETED" not in html and "further" not in html.split("Gates")[0]
-        assert 'data-pc-not="unproven"' not in html
+        assert "not the same as nothing" not in html and "not established" not in html
         assert "asked: nothing beyond the list above goes with them" in html
 
     def test_NMAS_owned_collateral_is_stated_without_alarm(self):

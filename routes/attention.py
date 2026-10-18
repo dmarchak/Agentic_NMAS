@@ -1,7 +1,9 @@
-"""Needs attention (Stage 7.2): the landing list, every source in one shape.
+"""Needs attention (Stage 7.2): a person acknowledges one of its rows.
 
-A READ that reports. A source that cannot be read is a row in the answer,
-never a failed request, so the page can say which source it could not read.
+The list itself is v2's (`/v2/` and `/v2/attention`, `routes/v2.py`, over
+`modules.attention.needs_attention`). Today's JSON read of it (GET /attention), which only
+today's index panel called, left with that panel at 7.8 (2026-10-17, P7-27; restore point tag
+`pre-remove/v1-pages`).
 """
 
 import logging
@@ -11,21 +13,6 @@ from flask import Blueprint, jsonify, request
 log = logging.getLogger(__name__)
 
 bp = Blueprint("attention", __name__, url_prefix="/attention")
-
-
-@bp.route("", methods=["GET"])
-def needs_attention():
-    from modules.attention import needs_attention as build
-    from modules.outbound import mask_payload
-
-    # Rows quote their sources' own words (a job's error line, an approval's
-    # description): masked on the way out, like every read that draws text
-    # a store holds.
-    page = build()
-    # The badge is the v2 sidebar's count (/v2/attention-count draws it); today's panel
-    # counts its own rows, stale sources included, and retires at cutover.
-    page.pop("badge", None)
-    return jsonify(mask_payload(page))
 
 
 @bp.route("/acknowledge", methods=["POST"])

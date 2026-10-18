@@ -12,13 +12,14 @@ import base64
 import hashlib
 import json
 import os
+import re
 
 import pytest
 
 import modules.breakglass as bg
 from modules import breakglass_export as BE
 from tests.conftest import TEST_PERSON
-from tests.payload_render import lift, render_preview, render_result, shipped
+
 
 LIST = "Lab"
 PASS = "correct horse battery staple"
@@ -97,7 +98,8 @@ class TestThePreview:
         assert "never written to this host's disk" in said and "cannot see where" in said
         assert p["confirm"]["button"] == "Build, verify and download (2 device(s))"
         assert _audit(lab) == [] and _log(lab) == [], "a preview writes nothing"
-        assert "What the record will hold" in render_preview(p)
+        # Credentials draws it (tests/test_credentials_v2.py); today's renderer did until P7-27.
+        assert p["titles"]["program"] == "What the record will hold"
 
 
 class TestThePassphraseIsCheckedBeforeAnythingIsBuilt:
@@ -138,7 +140,9 @@ class TestTheExport:
         (row,) = _log(lab)
         assert row["via"] == "browser" and row["sha256"] == body["sha256"]
         assert row["path"].startswith(f"downloaded by {TEST_PERSON} at ")
-        assert "opened with your passphrase" in render_result(res)
+        # Credentials draws the result (tests/test_credentials_v2.py); today's renderer until P7-27.
+        assert any("opened with your passphrase" in s for t in res["targets"]
+                   for s in (t.get("checks") or {}).get("statements") or [])
 
     def test_the_file_never_touches_the_hosts_disk(self, lab, monkeypatch):
         monkeypatch.setattr(bg, "write_record", lambda *a, **k: pytest.fail("written to disk"))
@@ -223,29 +227,39 @@ class TestTheThreeEntryPointsAndOneClient:
         return dukpy.evaljs(js)
 
     def test_the_rotate_result_offers_it_in_its_next_step(self):
-        js = (lift(shipped("nmas_preview_confirm.js"), "esc") + "\n"
-              + "var NEXT_OPENS = {breakglass_export: 'Export the break-glass record…'};\n"
-              + "var NEXT_CLASS = {breakglass_export: 'btn-outline-danger'};\n"
-              + lift(shipped("nmas_preview_confirm.js"), "nextHtml"))
-        html = self._run(js + "\nnextHtml({text: 'Export again', open: 'breakglass_export', "
-                              "args: {list: 'Lab'}})")
-        assert 'data-nmas-open="breakglass_export"' in html and 'data-nmas-list="Lab"' in html
-        unknown = self._run(js + "\nnextHtml({text: 't', open: 'reload_everything'})")
-        assert "data-nmas-open" not in unknown, "only a declared operation is offered"
+        """The device page's Rotate result (`templates/v2/_rotate.html`, its source the
+        evidence; today's renderer's next step until it left with today's index at 7.8, P7-27):
+        Credentials' export, ready, for the card's network."""
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        tpl = open(os.path.join(root, "templates", "v2", "_rotate.html"), encoding="utf-8").read()
+        link = re.search(r'<a [^>]*data-next-acts="breakglass_export"[^>]*>', tpl)
+        assert link and "url_for('v2.credentials', list=c.list, open='export')" in link.group(0)
 
     def test_needs_attention_offers_it_on_the_row(self):
-        js = (lift(shipped("nmas_attention.js"), "esc") + "\n"
-              + lift(shipped("nmas_attention.js"), "actionHtml"))
-        html = self._run(js + "\nactionHtml({label: 'Export again', open: 'breakglass_export', "
-                              "list: 'Lab', command: 'nmas-breakglass export'})")
-        assert 'data-nmas-open="breakglass_export"' in html and "or on the host" in html
+        """v2's list (today's panel until P7-27): the row's export opens Credentials, ready,
+        for the row's network."""
+        import app as A
+        from flask import render_template
+
+        row = {"id": "x", "level": "warning", "what": "w", "cause": "c", "source": "s",
+               "action": {"label": "Export again", "open": "breakglass_export", "list": "Lab",
+                          "command": "nmas-breakglass export"}}
+        with A.app.test_request_context("/v2/attention"):
+            html = render_template("v2/_attention.html", attention_trigger="",
+                                   a={"rows": [row], "sources": [], "badge": {"n": 1}})
+        assert 'href="/v2/credentials?list=Lab&amp;open=export"' in html
+        assert "Export it on Credentials…" in html and "nmas-breakglass export" in html
 
     def test_todays_openers_go_to_credentials(self):
-        """Board 7 (2026-10-03): the export lives on Credentials. Today's openers
-        (data-nmas-open) and its ?open= link are sent there. (Today's Settings line linked
-        there too, until today's Settings modal left at 7.8, 2026-10-15.)"""
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        assert "js/nmas_breakglass.js" in open(os.path.join(root, "templates", "base.html")).read()
-        client = shipped("nmas_breakglass.js")
-        assert "closest('[data-nmas-open=\"breakglass_export\"]')" in client
-        assert client.count("'/v2/credentials?open=export&list='") == 2
+        """Board 7 (2026-10-03): the export lives on Credentials. Today's ?open= link is sent
+        there: `/` answers it with a 302 to Credentials, the export ready, for its network
+        (today's openers on today's pages, `nmas_breakglass.js`, left with them at 7.8,
+        2026-10-17, P7-27)."""
+        import app as A
+        from modules.nsot import listref
+
+        name = listref.active().name          # a network the store holds (a typo is refused)
+        r = A.app.test_client().get(f"/?open=breakglass_export&list={name}")
+        assert r.status_code == 302
+        assert r.headers["Location"].endswith(f"/v2/credentials?open=export&list={name}"), (
+            r.headers["Location"])

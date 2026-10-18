@@ -374,14 +374,15 @@ def source_result(source: str, label: str, *, read_at: float, took_ms: int,
 
     *stale_after_seconds* is how long the value stays current, by the
     source's own promise (a reader's interval times its staleness factor, a
-    drift run's interval times two). The PAGE judges age against it on its
-    own clock (the live-data contract, 7.2 step 13), so a stored value whose
-    producer has stopped is drawn stale without another request. None means
-    the value was read for this request, and its freshness is the panel's.
+    drift run's interval times two). Today's panel judged age against it on
+    its own clock (the live-data contract, 7.2 step 13) until it left with
+    today's index at 7.8 (2026-10-17, P7-27); v2's list draws each source's
+    value age, and `needs_attention` does not carry the promise to the page.
+    None means the value was read for this request.
 
-    *reader* names the reader job behind a stored value, so the page can tell
-    that job health's row for a stopped reader already covers a stale source
-    and not draw the same fact twice.
+    *reader* names the reader job behind a stored value (today's panel used it
+    to tell that job health's row for a stopped reader already covered a stale
+    source).
 
     *checked* says what was FOUND, for a person; *detail* is the debugger's
     part (endpoints, read costs), drawn one level down, on hover (the

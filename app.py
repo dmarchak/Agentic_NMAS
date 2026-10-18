@@ -145,9 +145,9 @@ def _static_cache_bust(endpoint, values):
     query, a changed file is a different URL and the old one is simply
     never requested. Nothing to purge, and nothing to remember.
 
-    Two files in `base.html` reference `/static/...` literally rather than
-    through `url_for`, so they never get a version and fall to the
-    `no-cache` branch above -- correct, and visible rather than assumed.
+    Today's `base.html` referenced two files (Bootstrap's) as `/static/...`
+    literally rather than through `url_for`, so they never got a version and
+    fell to the `no-cache` branch above; both left with it at 7.8 (P7-27).
     """
     if endpoint != "static" or "filename" not in values:
         return
@@ -393,7 +393,7 @@ def _error_response(error, status: int, message):
     if _client_wants_html():
         # Every navigation that failed is answered ON v2, in place, with its status (C569's
         # rule, for every path since P7-19, 2026-10-15): a redirect to today's index made a
-        # failure look like a page load, and that index goes at cutover.
+        # failure look like a page load, and that index went at cutover (7.8, P7-27).
         from routes.v2_failure import answer
         return answer(message, status)
     return jsonify({"ok": False, "error": message, "detail": detail,
@@ -450,19 +450,25 @@ def handle_exception(error):
 # ---------------------------------------------------------------------------
 
 
+#: The openers today's index answered (`?open=<name>&list=<list>`, C372's links from v2 pages
+#: and bookmarks), each to its v2 home for the same network. Any other `open` (the intent
+#: editor, revert, retry and the deploy plan, each gone from today's index at 7.8) lands on
+#: Needs attention.
+_OLD_OPENERS = {"breakglass_export": ("v2.credentials", {"open": "export"}),
+                "profile_propose": ("v2.monitoring_profile", {})}
+
+
 @app.route("/")
 def index():
-    # Home page: show all devices and their online status
-    current_list_name, current_list_file = get_current_device_list()
-    devices = load_saved_devices(current_list_file)
-    for d in devices:
-        d["online"] = device_status_cache.get(d["ip"], False)
-
-    return render_template(
-        "index.html",
-        devices=devices,
-        current_list=current_list_name,
-    )
+    """Today's index left at 7.8 (2026-10-17, P7-27; restore point tag `pre-remove/v1-pages`):
+    `/` answers 302 to Needs attention on v2, keeping the address's network (`?list=`, the
+    parameter every v2 page reads, `listref.active`), and an old opener goes to its v2 home."""
+    args = {}
+    network = (request.args.get("list") or "").strip()
+    if network:
+        args["list"] = network
+    endpoint, extra = _OLD_OPENERS.get(request.args.get("open") or "", ("v2.landing", {}))
+    return redirect(url_for(endpoint, **extra, **args), code=302)
 
 
 # Today's device page (GET /device/<ip>) and its command box (POST /run_command/<ip>) left at
@@ -477,8 +483,8 @@ def index():
 # scope bar's Choose a network, and a network's Delete this network…, `modules/network_admin`),
 # each previewed, confirmed and recorded; the network a person sees is their own choice, the top
 # bar's Network ▾ (`routes/network_v2`). The installation's active list is FROZEN: nothing sets it
-# (`set_current_device_list` went with its route); it stays the default that jobs, today's index
-# and a v2 page opened with no network named and no choice made read.
+# (`set_current_device_list` went with its route); it stays the default that jobs, the host
+# scripts and a v2 page opened with no network named and no choice made read.
 
 # Today's Settings modal's routes (GET and POST /settings, and its NetBox Test,
 # POST /netbox/test_connection) left with the modal at 7.8 (2026-10-15). NetBox's connection is
@@ -522,16 +528,18 @@ def index():
 # /golden_configs/auto_create was REMOVED (2026-09-27, register C102): one
 # click committed a first golden for every device without one, with no
 # preview, attributed to the agent (`Source: ai`, `Actor: ai-agent`), and it
-# decided "has a golden" from the working tree. It is now a SCOPE of the one
+# decided "has a golden" from the working tree. It became a SCOPE of the one
 # capture operation (`/golden/capture/preview` with `scope: no_golden`),
-# previewed, confirmed, and recorded as the person who confirmed it.
+# previewed, confirmed, and recorded as the person who confirmed it; that route
+# left with today's index at 7.8 (2026-10-17, P7-27): a device's Capture… and
+# Devices › Save record a first golden on v2.
 
 
 # /golden_configs/save_all was REMOVED in 7.1 step 4 (register C89): one click
 # promoted every device's running config to its golden, a baseline tag and the
 # remote, and nothing asked whether the state was the one intended. Save All is
-# now the whole-fleet form of the capture operation (routes/golden.py:
-# /golden/capture/preview and /golden/capture/apply), previewed and confirmed.
+# now Devices › Save on v2 (`modules/save_page.py`, `modules/nsot/save_op.py`),
+# previewed and confirmed; today's /golden/capture/* routes left at 7.8 (P7-27).
 
 
 # Today's Git tab and its three routes (/git/status, /git/log, /git/commit/<sha>) left at 7.8

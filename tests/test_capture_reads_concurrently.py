@@ -17,6 +17,7 @@ import pytest
 
 import routes.golden as G
 from tests.test_capture import build_capture_lab, run_capture_preview
+from tests import capture_core
 
 
 
@@ -110,14 +111,14 @@ class TestTheTimingIsSaid:
         op = {o["name"]: o["value"] for o in p["targets"][0]["operands"]}
         assert op["read in"].endswith(" s")
         h = p["what"]["targets"][0]["select_data"]["hash"]
-        out = lab["client"].post("/golden/capture/apply",
+        out = capture_core.post_apply(
                                  json={"confirmations": {"r2": h}}).get_json()
         assert "slowest r2" in out["result"]["happened"]["summary"]
 
 
 class TestThePreviewIsAJob:
-    """C188 step 2, through the real routes: a read held open by a gate
-    proves the POST answered BEFORE any read ended (a fast fake could not)."""
+    """C188 step 2, through the cores v2 runs (tests/capture_core.py): a read held open by a gate
+    proves the start answered BEFORE any read ended (a fast fake could not)."""
 
     @pytest.fixture
     def held(self, tmp_path, monkeypatch):
@@ -144,11 +145,9 @@ class TestThePreviewIsAJob:
         from modules.nsot import capture_job
 
         lab, gate, heard = held
-        r = lab["client"].post("/golden/capture/preview", json={"devices": ["r2"]})
-        assert r.status_code == 202, r.get_data(as_text=True)[:300]
-        d = r.get_json()
+        d = capture_core.start({"devices": ["r2"]})
         assert d["ok"] and d["devices"] == ["r2"] and d["job"]
-        running = lab["client"].get(f"/golden/capture/preview/{d['job']}").get_json()
+        running = capture_core.result(d['job'])
         assert running["state"] == "running" and running["preview"] is None
         assert "reading 1 device(s) at once" in running["step_words"], running
         assert "NetBox" not in running["step_words"], "a capture counts no NetBox requests"
@@ -160,7 +159,7 @@ class TestThePreviewIsAJob:
         assert rows and rows[0]["device"] == "Lab: 1 device(s)", panel["running"]
         gate.set()
         assert capture_job.wait(d["job"], 30)
-        done = lab["client"].get(f"/golden/capture/preview/{d['job']}").get_json()
+        done = capture_core.result(d['job'])
         assert done["state"] == "done" and done["preview"]["what"]["targets"][0]["name"] == "r2"
         assert [m["keys"] for e, m in heard] == [["capture_preview"]]
         assert heard[0][1]["by"] == "capture-preview" and heard[0][1]["ok"] is True
@@ -174,10 +173,10 @@ class TestThePreviewIsAJob:
         lab, gate, _heard = held
         monkeypatch.setattr(I, "_emitter", None)          # no socket: announce raises
         gate.set()
-        d = lab["client"].post("/golden/capture/preview", json={"devices": ["r2"]}).get_json()
+        d = capture_core.start({"devices": ["r2"]})
         assert capture_job.wait(d["job"], 30)
         assert capture_job.get(d["job"])["announced"] is False
-        done = lab["client"].get(f"/golden/capture/preview/{d['job']}").get_json()
+        done = capture_core.result(d['job'])
         assert done["state"] == "done" and done["preview"]
 
     def test_a_job_that_raises_is_failed_with_its_reason(self, held, monkeypatch):
@@ -190,53 +189,23 @@ class TestThePreviewIsAJob:
 
         monkeypatch.setattr("modules.preview_confirm.capture_preview", boom)
         gate.set()
-        d = lab["client"].post("/golden/capture/preview", json={"devices": ["r2"]}).get_json()
+        d = capture_core.start({"devices": ["r2"]})
         assert capture_job.wait(d["job"], 30)
-        got = lab["client"].get(f"/golden/capture/preview/{d['job']}").get_json()
+        got = capture_core.result(d['job'])
         assert got["state"] == "failed" and got["ok"] is False
         assert "RuntimeError: the preview could not be built" in got["error"]
         assert heard and heard[-1][1]["ok"] is False, "a failed job is announced too"
 
-    def test_an_unknown_job_says_why_and_is_never_an_empty_preview(self, held):
-        lab, _gate, _heard = held
-        r = lab["client"].get("/golden/capture/preview/0123456789abcdef")
-        d = r.get_json()
-        assert r.status_code == 404 and d["state"] == "unknown" and not d["ok"]
-        assert "server restarted" in d["error"] and "start the preview again" in d["error"]
-
-    def test_nothing_to_capture_still_answers_at_once_with_no_job(self, tmp_path,
-                                                                 monkeypatch):
-        lab = build_capture_lab(monkeypatch, tmp_path)
-        r = lab["client"].post("/golden/capture/preview", json={"scope": "no_golden"})
-        d = r.get_json()
-        assert r.status_code == 200 and "job" not in d and d["preview"] is None
-        assert "nothing to capture" in d["nothing"]
+    # Today's GET /golden/capture/preview/<job> answered an unknown job with a 404 and why, and
+    # today's no-golden scope answered "nothing to capture" with no job; both left with today's
+    # index at 7.8 (P7-27). v2's card says an unknown job in its own words
+    # (tests/test_device_capture_v2.py, `test_an_unknown_job_says_so`).
 
 
-class TestTheModalSaysWhatItWaitsFor:
-    """The SHIPPED client's pure parts, executed."""
-
-    def _js(self, expr):
-        import dukpy
-
-        from tests.payload_render import shipped
-        return dukpy.evaljs("var window = {};\n" + shipped("nmas_capture.js") + "\n" + expr)
-
-    def test_waiting_names_the_devices_and_what_it_is_doing(self):
-        w = self._js("window.captureWaitingWords(['s1', 's3'], {step_words: 'read 1 of 2 device(s); "
-                     "waiting on s3', elapsed_s: 12.5}, 'connected')")
-        assert w["live"] is True
-        assert w["lines"][0] == "Reading 2 device(s) at once, on the server: s1, s3."
-        assert w["lines"][1] == "Now: read 1 of 2 device(s); waiting on s3 (12.5 s so far)."
-        assert not any("Check now" in x for x in w["lines"])
-
-    def test_a_page_without_the_live_channel_says_to_ask(self):
-        w = self._js("window.captureWaitingWords(['r2'], null, 'disconnected')")
-        assert w["live"] is False
-        assert any("will not appear by itself: press Check now" in x for x in w["lines"])
-
-    def test_an_announcement_with_no_job_open_does_nothing(self):
-        assert self._js("window.capturePreviewHeard()") is True
+# Today's capture modal's waiting words (`static/js/nmas_capture.js`'s captureWaitingWords and
+# capturePreviewHeard, TestTheModalSaysWhatItWaitsFor here) left with today's index at 7.8
+# (2026-10-17, P7-27). v2's capture card waits on THE stepper, redrawn when the job announces
+# (tests/test_device_capture_v2.py, `test_the_reading_card_draws_the_one_stepper`).
 
 
 class TestWhereTheReadTimeWent:
@@ -363,7 +332,7 @@ class TestAnUnreadDeviceSaysWhy:
         target = d["preview"]["what"]["targets"][0]
         lab["state"]["fail"] = True
         with caplog.at_level(logging.INFO, logger="routes.golden"):
-            r = lab["client"].post("/golden/capture/apply", json={
+            r = capture_core.post_apply({
                 "confirmations": {"r2": target["select_data"]["hash"]}, "fleet": True})
         result = r.get_json()["result"]
         summary = result["happened"]["summary"]

@@ -36,8 +36,8 @@ service itself; **Test** is a person asking now.
 
 The **Server** card's bind address and port are read when Mercury starts: its Save says the
 change waits for the next restart, and Mercury listens where it did until then. The TFTP root
-is not on this card: it is read only by today's device file pages, which are removed at
-cutover, so it leaves with them (Mercury's own transfers serve their files from memory).
+is not on this card: it was read only by today's device file pages, and it left with them
+when they were removed (Mercury's own transfers serve their files from memory).
 
 ## Test {#test}
 

@@ -15,7 +15,7 @@ import subprocess
 
 import pytest
 
-from tests.payload_render import render_preview
+from tests import capture_core
 from tests.test_capture import _apply, _last_message, build_capture_lab, run_capture_preview
 
 ONE_VTY = "line vty 0 4\n logging synchronous\n login local\n length 0\n transport input all\n"
@@ -83,8 +83,9 @@ class TestOneDeviceOneOutcome:
         assert "say why" in t["s9"]["acknowledge"]["prompt"]
         assert "acknowledge" not in t["r2"]
         assert not any(g["name"].startswith("structure") for g in t["r2"]["gates"])
-        html = render_preview(_preview(two)["preview"])
-        assert 'data-ack-device="s9"' in html and 'data-ack-device="r2"' not in html
+        # Today's renderer drew the reason box for s9 alone; it left with today's index at 7.8
+        # (P7-27). The device page's Capture card takes the reason beside its confirm
+        # (tests/test_device_capture_v2.py, `test_the_card_takes_the_reason_beside_its_confirm`).
 
     def test_without_a_reason_only_s9_is_refused_and_r2_is_recorded(self, two):
         _shrink_s9(two)
@@ -109,7 +110,7 @@ class TestOneDeviceOneOutcome:
     def test_a_stated_reason_records_it_on_the_commit(self, two):
         _shrink_s9(two)
         d = _preview(two, fleet=False)
-        r = two["client"].post("/golden/capture/apply", json={
+        r = capture_core.post_apply({
             "confirmations": {"s9": _hashes(d)["s9"]}, "fleet": False,
             "acknowledge": {"s9": "the aux line was removed on purpose today"}})
         assert r.status_code == 200, r.get_data(as_text=True)[:300]
@@ -119,11 +120,18 @@ class TestOneDeviceOneOutcome:
                 "purpose today") in _last_message(two["repo"])
 
     def test_a_reason_without_the_shape_of_one_is_refused(self, two):
+        """The one check today's capture and v2's Capture card share
+        (`routes.golden.acknowledged_reasons`); today's route answered it 400 until it left
+        at 7.8 (P7-27), and v2's card refuses it in place (tests/test_device_capture_v2.py,
+        `test_a_reason_not_shaped_as_one_is_refused_naming_why`)."""
+        from routes.golden import acknowledged_reasons
+
         _shrink_s9(two)
-        d = _preview(two, fleet=False)
-        r = two["client"].post("/golden/capture/apply", json={
-            "confirmations": {"s9": _hashes(d)["s9"]}, "fleet": False, "acknowledge": {"s9": "ok"}})
-        assert r.status_code == 400 and "too short to be a reason" in r.get_json()["error"]
+        before = _last_message(two["repo"])
+        acknowledged, problem = acknowledged_reasons({"s9": "ok"})
+        assert acknowledged == {} and "too short to be a reason" in problem
+        assert problem.startswith("s9: ")
+        assert _last_message(two["repo"]) == before
 
 
 class TestIntentExplainsIt:

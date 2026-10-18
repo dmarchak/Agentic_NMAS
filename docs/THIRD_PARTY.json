@@ -28,13 +28,6 @@
    "licence_sha256": "08b7502da6e7aa1d0bbdc97d220fbf669b9366c61bd0f072238283c89bc4773a",
    "notice": "the published @alpinejs/csp and alpinejs 3.17.4 tarballs hold no licence file (measured 2026-10-05), so its text comes from Alpine's own repository at the release's tag, the operator's decision the same day; not in MANIFEST.json, whose entries are registry-verified, and held to its sha256 here instead"
   },
-  "static/js/vendor/bootstrap/*": {
-   "component": "Bootstrap (its licence, for the CSS and JS under static/css and static/js)",
-   "version": "5.3.3",
-   "licence": "MIT",
-   "source": "https://registry.npmjs.org/bootstrap/-/bootstrap-5.3.3.tgz",
-   "licence_file": "static/js/vendor/bootstrap/LICENSE"
-  },
   "static/js/vendor/fontsource-ibm-plex-mono/*": {
    "component": "@fontsource/ibm-plex-mono (IBM Plex Mono)",
    "version": "5.3.0",
@@ -70,24 +63,6 @@
    "source": "https://registry.npmjs.org/uplot/-/uplot-1.6.32.tgz",
    "licence_file": "static/js/vendor/uplot/LICENSE"
   },
-  "static/css/bootstrap*": {
-   "component": "Bootstrap (CSS)",
-   "version": "5.3.3",
-   "licence": "MIT",
-   "source": "https://getbootstrap.com/",
-   "licence_file": "static/js/vendor/bootstrap/LICENSE",
-   "notice": "each file's header names the authors and the MIT licence",
-   "audit": "v1 only: leaves at cutover"
-  },
-  "static/js/bootstrap*": {
-   "component": "Bootstrap (JS)",
-   "version": "5.3.3",
-   "licence": "MIT",
-   "source": "https://getbootstrap.com/",
-   "licence_file": "static/js/vendor/bootstrap/LICENSE",
-   "notice": "each file's header names the authors and the MIT licence",
-   "audit": "v1 only: leaves at cutover"
-  },
   "deploy/snmp_exporter/routing-modules.yml": {
    "component": "snmp_exporter modules generated from OSPF-MIB, OSPFV3-MIB, CISCO-SMI, CISCO-BGP4-MIB",
    "version": "prom/snmp-generator 0.29.0",
@@ -118,7 +93,6 @@
   "docs/*": "this repository's; the probe configs are the lab's (see audit)",
   "deploy/*": "this repository's, except what vendored claims",
   "static/js/nmas_*.js": "this repository's",
-  "static/js/gen/*": "generated from this repository's templates",
   "static/css/nmas-v2.css": "this repository's",
   "static/img/topology/*": "the project's OWN device symbols: router and switch drawn 2026-10-04 in the conventional network-diagram style (the operator: no third-party artwork), server, cloud and the dashed circle (class unknown) drawn 2026-10-10, firewall, access point and controller drawn 2026-10-10 for the board's legend; the project's licence",
   "static/img/brand/*": "the project's OWN Mercury mark and icons (NSOT_STAGE7_PLAN 19), drawn by modules/brand.py from the operator's master geometry; the PNG rendered from its SVG by scripts/nmas-brand-icons; the project's licence",

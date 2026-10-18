@@ -1110,12 +1110,11 @@ class TestARollbackSaysWhatItAchieved:
         ctx, out = self._run(monkeypatch, pre="", readback=self.PRE)
         assert out["state"] == "not_attempted" and ctx.final_status == "rollback_failed"
 
-    def test_the_receipt_and_the_screen_never_say_rolled_back_over_a_failure(self, monkeypatch):
-        import json
-        import os
-
-        import dukpy
-
+    def test_the_receipt_and_the_result_never_say_rolled_back_over_a_failure(self, monkeypatch):
+        """Today's renderer drew it "rollback FAILED" and never "rolled back" until it left with
+        today's index at 7.8 (P7-27). v2's device Deploy… card heads it with the badge "Rolled
+        back" (danger-coloured) over "The rollback did NOT leave this device as it was",
+        measured the same day: the register row named in the P7-27 commit."""
         from modules import preview_confirm as PC
         from modules.nsot import receipts
 
@@ -1129,25 +1128,20 @@ class TestARollbackSaysWhatItAchieved:
             list_name="Lab", action="deploy", actor="ops@example.com", actor_kind="person")
         assert rows[0]["rollback"]["state"] == "failed"
         result = PC.operation_result(rows, {"golden": {}}, {"ok": True, "written": 1}, "deploy")
-        assert any(i["kind"] == "not_restored" for i in result["did_not"]["items"])
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        src = open(os.path.join(root, "static", "js", "nmas_preview_confirm.js")).read()
-        html = dukpy.evaljs("var window = {};\n" + src
-                            + f"\nwindow.previewConfirmResultHtml({json.dumps(result)}, {{}});")
-        assert "rollback FAILED" in html and "channel closed" in html
-        assert ">rolled back<" not in html
+        not_restored = [i for i in result["did_not"]["items"] if i["kind"] == "not_restored"]
+        assert not_restored and "did NOT leave this device as it was" in not_restored[0]["text"]
+        assert "channel closed" in not_restored[0]["text"]
+        assert result["targets"][0]["rollback"]["state"] == "failed"
 
 
 class TestAnUncomparedCountIsNotDrawnAsACheck:
     """C115: every deploy and restore skips the route check, and the result
     printed "routes 22 -> 22" as if it had been compared."""
 
-    def test_the_skip_is_recorded_and_drawn(self):
-        import json
-        import os
-
-        import dukpy
-
+    def test_the_skip_is_recorded(self):
+        """Today's renderer drew the skip ("NOT compared") until it left with today's index at
+        7.8 (P7-27); v2's result cards draw no route comparison either way (the register row
+        named in the P7-27 commit). The receipt records it."""
         from modules.nsot import receipts
         from modules.pipeline import _stage_verify
 
@@ -1161,17 +1155,6 @@ class TestAnUncomparedCountIsNotDrawnAsACheck:
         assert v["routes_compared"] is False
         checks = receipts._checks({"outcome": "deployed", "commands": ["x"], "verify": v})
         assert checks["routes_compared"] is False
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        src = open(os.path.join(root, "static", "js", "nmas_preview_confirm.js")).read()
-        result = {"parts": ["happened", "did_not", "sent", "checks", "record", "not_watched"],
-                  "action": "deploy", "level": "success",
-                  "happened": {"summary": "s", "targets": []}, "did_not": {"none": "n"},
-                  "targets": [{"name": "R1", "sent": {"lines": [], "none": "x"},
-                               "checks": checks}],
-                  "record": {"statement": ""}, "not_watched": ""}
-        html = dukpy.evaljs("var window = {};\n" + src
-                            + f"\nwindow.previewConfirmResultHtml({json.dumps(result)}, {{}});")
-        assert "NOT compared" in html
 
     def test_a_compared_count_says_nothing_extra(self):
         from modules.pipeline import _stage_verify

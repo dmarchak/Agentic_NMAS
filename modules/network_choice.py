@@ -5,7 +5,7 @@ One small store, `data/network_choices.json`: ``{actor: {"current": name, "recen
 newest first]}}``, written only by a person's own choice (`choose`), under its lock, replaced
 atomically, owner-only. `listref.active()` reads it on a v2 request (`for_request`): the address's
 ``?list=`` first, then the person's own choice, then the installation's current list, so one
-person's choice never moves another's page, and a background job or today's pages read the
+person's choice never moves another's page, and a background job or a host script reads the
 installation's list as before.
 
 An unreadable store is said and refuses a write (a record lost is lost), and a read takes the

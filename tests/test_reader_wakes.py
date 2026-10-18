@@ -77,7 +77,8 @@ def _keys_of(operation):
 #: The operator's pairs (2026-10-06) and the survey's: the operation by its own declaration
 #: (an endpoint, or a job's announcer), and the reader whose answer it changes.
 PAIRS = [
-    ("golden.capture_apply", "baseline-usability"),        # Save All earns a baseline
+    ("save", "baseline-usability"),                        # Save earns a baseline (today's
+    #                                                        golden.capture_apply until P7-27)
     ("device_v2.capture_confirm", "baseline-usability"),
     ("rotation", "job-health"),                            # a rotation job's announcement
     ("rotation", "credential-health"),
@@ -117,11 +118,11 @@ class TestTheMechanism:
         return got
 
     def test_a_wake_asks_each_reader_running_here_and_no_other(self, asked):
-        woke = W.wake(("goldens",), "golden.capture_apply")
+        woke = W.wake(("goldens",), "device_v2.capture_confirm")
         assert "remote-publication" not in woke, "not running in this process: not asked"
         assert set(woke) == {"baseline-usability"}   # freshness retired; the lab's reader left (C663)
         assert {(n, k) for n, _b, k in asked} == {(n, "after_operation") for n in woke}
-        assert {b for _n, b, _k in asked} == {"golden.capture_apply"}
+        assert {b for _n, b, _k in asked} == {"device_v2.capture_confirm"}
 
     def test_a_run_in_progress_is_followed_by_one_more(self, monkeypatch):
         reader = _registered()["job-health"]
@@ -145,7 +146,7 @@ class TestTheMechanism:
         from flask import Flask
         app = Flask("t")
 
-        @app.route("/x", methods=["POST"], endpoint="golden.capture_apply")
+        @app.route("/x", methods=["POST"], endpoint="device_v2.capture_confirm")
         def x():
             from flask import request
             return ("refused", 400) if request.args.get("no") else ("ok", 200)
@@ -155,7 +156,7 @@ class TestTheMechanism:
         monkeypatch.setattr(W, "wake", lambda keys, by: woke.append((tuple(keys), by)))
         client = app.test_client()
         assert client.post("/x").status_code == 200
-        assert woke == [(I.DECLARED["golden.capture_apply"], "golden.capture_apply")]
+        assert woke == [(I.DECLARED["device_v2.capture_confirm"], "device_v2.capture_confirm")]
         client.post("/x?no=1")
         assert len(woke) == 1, "a refusal changed nothing, so it wakes nothing"
 

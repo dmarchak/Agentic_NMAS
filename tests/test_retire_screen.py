@@ -236,10 +236,12 @@ class TestTheApply:
         assert _export_where({"path": "/srv/bg/throwaway.bg"}) == "to /srv/bg/throwaway.bg"
 
     def test_the_record_reads_back_by_name_after_the_golden_is_gone(self, screen):
+        """The golden history by name (`repo.golden_history`, what History reads; today's GET
+        /golden/history/<host> answered it until it left with today's index at 7.8, P7-27)."""
         _export(screen)
         self._apply(screen, _preview(screen))
-        d = screen["client"].get("/golden/history/r5?list_name=Lab").get_json()
-        assert d["ok"] and d["history"][0]["subject"].startswith("retire: r5 -- "), d
+        history = screen["R"].golden_history(screen["repo"], "r5")
+        assert history and history[0]["subject"].startswith("retire: r5 -- "), history
 
     def test_a_rotation_after_the_preview_refuses_at_apply(self, screen):
         """The gate is checked again at apply: the log names the credential

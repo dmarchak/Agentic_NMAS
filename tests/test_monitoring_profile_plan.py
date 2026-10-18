@@ -137,14 +137,13 @@ class TestTheCommit:
 
 
 def test_the_shipped_preview_draws_the_inherited_lines_apart(lab):
-    """The REAL /deploy/plan preview through the SHIPPED renderer: the
-    profile's line is drawn under its own heading, never under this edit."""
-    import json
-    import os
-
-    import dukpy
+    """THE plan (/deploy/plan until 7.8) drawn by v2's Deploy… card (today's renderer until it
+    left at 7.8, P7-27): the profile's line is drawn under its own heading, never under this
+    edit."""
+    import html as _html
 
     from modules.nsot import hostvars, profile
+    from tests.payload_render import render_deploy_card_v2
     from modules.nsot.repo import save_host_vars
 
     intent = _intent(lab["repo"])
@@ -153,13 +152,11 @@ def test_the_shipped_preview_draws_the_inherited_lines_apart(lab):
     assert save_host_vars("Lab", ["r2"], actor="t", source="extraction")["ok"]
     assert profile.commit_profile("Lab", _profile_from(intent, ntp={"ntp_servers": ["192.0.2.123"]}),
                                   "op@example.com", "NTP")["ok"]
-    preview = deploy_core.post_plan(json={"devices": ["r2"]}).get_json()["preview"]
-    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "js",
-                            "nmas_preview_confirm.js"), encoding="utf-8").read()
-    out = dukpy.evaljs("var window = {};\n" + src + f"\nwindow.previewConfirmHtml({json.dumps(preview)}, {{}})")
-    assert "data-from-profile" in out and "Inherited from the network&#39;s monitoring profile" in out \
-        or "Inherited from the network's monitoring profile" in out
-    head, tail = out.split("data-from-profile", 1)
+    plan = deploy_core.post_plan(json={"devices": ["r2"]}).get_json()
+    out = _html.unescape(render_deploy_card_v2(plan, "r2"))
+    assert 'data-attribution-group="profile"' in out
+    assert "Inherited from the network's monitoring profile" in out
+    _head, tail = out.split('data-attribution-group="profile"', 1)
     assert "ntp server 192.0.2.123" in tail.split("From this edit", 1)[0]
 
 

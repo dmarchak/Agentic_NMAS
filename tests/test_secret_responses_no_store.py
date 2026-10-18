@@ -13,7 +13,7 @@ THE POPULATION, by property, never by list:
   route is in it by being declared;
 - every routed view that reveals CONDITIONALLY (a GET that gates itself, route_gates' own
   words): found by parsing every blueprint for a view that calls the reveal cores
-  (`_serve_config`, `config_text`, `bootstrap_reveal`) or asks `identity.require` for
+  (`bootstrap_reveal`; today's `_serve_config` and `config_text` until P7-27) or asks `identity.require` for
   ``reveal``.
 
 Each one's view is wrapped by `no_store` (a scan: a new member without it fails), and each
@@ -31,9 +31,15 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 #: The calls that make a view a reveal: the cores every conditional reveal goes through.
-REVEAL_CORES = {"_serve_config", "config_text", "bootstrap_reveal"}
+#: `_serve_config` and `config_text` (today's golden routes' helper) left with them at 7.8
+#: (2026-10-17, P7-27).
+REVEAL_CORES = {"bootstrap_reveal"}
 #: The population's floor (2026-10-15: 10 reveal-gated endpoints, 3 conditional GETs).
-FLOOR_GATED, FLOOR_CONDITIONAL = 10, 2   # 3 -> 2: today's onboard.bootstrap left at 7.8 (P7-25)
+#: Conditional 3 -> 2: today's onboard.bootstrap left at 7.8 (P7-25); 2 -> 0: today's
+#: golden.version and golden.diff left with today's index (P7-27). Every reveal now is gated
+#: by declaration; the scan stays for the next view that reveals conditionally, and its
+#: predicate is shown to find one (TestThePopulation).
+FLOOR_GATED, FLOOR_CONDITIONAL = 10, 0
 
 
 @pytest.fixture(scope="module")
@@ -98,9 +104,15 @@ class TestThePopulation:
         assert len(_gated()) >= FLOOR_GATED, _gated()
         conditional = [ep for ep in _conditional(flask_app) if ep not in _gated()]
         assert len(conditional) >= FLOOR_CONDITIONAL, conditional
-        # The planted case the parse must find: the golden GETs (today's bootstrap GET, the
-        # third, left with today's onboarding at 7.8, 2026-10-17, P7-25).
-        assert {"golden.version", "golden.diff"} <= set(conditional)
+        # The planted cases the parse must find (the golden GETs were the last real ones, until
+        # they left with today's index at 7.8, 2026-10-17, P7-27): a call to a reveal core, and
+        # a view asking `identity.require` for a reveal; and the control, a require for
+        # anything else.
+        calls = [n for n in ast.walk(ast.parse(
+            "bootstrap_reveal(repo, host)\nidentity.require(request, 'reveal')\n"
+            "identity.require(request, action='reveal')\nidentity.require(request, 'confirm')"))
+            if isinstance(n, ast.Call)]
+        assert [_asks_for_reveal(c) for c in calls] == [True, True, True, False]
 
     def test_every_member_says_no_store(self, flask_app):
         """The scan: a newly reveal-gated route, or a view newly calling a reveal core,

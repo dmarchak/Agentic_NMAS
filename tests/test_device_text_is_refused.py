@@ -180,8 +180,9 @@ def test_every_route_sending_request_text_is_checked():
     # The floor is on the routes read, not on the offenders: measured 2026-10-17, 348 routed
     # functions (the offenders fell from 16 on 2026-10-08 to 0 when today's device page left).
     # 299 measured 2026-10-17 once today's deploy wizard and onboarding routes left (P7-25);
-    # a floor on the route table this scan reads.
-    assert routed >= 290, routed
+    # 289 the same day once today's index and its ten routes left (P7-27); a floor on the route
+    # table this scan reads.
+    assert routed >= 270, routed
     unchecked = sorted(set(found) - set(CHECKED) - set(NOT_REQUEST_TEXT))
     assert not unchecked, (
         "a route reads the request and sends to a device with no declared check: "

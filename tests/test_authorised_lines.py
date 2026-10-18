@@ -197,19 +197,21 @@ class TestTheAggregate:
         store.write_text("{not json\n")
         assert receipts.prior_authorisations("Lab", "s4")["state"] == "unreadable"
 
-    def test_the_plan_carries_it_and_the_shipped_renderer_draws_it(self, store, monkeypatch):
+    def test_the_plan_carries_it(self, store, monkeypatch):
+        """THE plan carries each line's prior authorisations. Today's renderer drew them on
+        the deploy preview ("authorised on this device 1 time(s) before", the last stated
+        reason) until it left with today's index at 7.8 (P7-27); v2's Deploy… card and the
+        batch Apply's preview do not (measured the same day: the register row named in the
+        P7-27 commit). A line authorised again and again is a Needs attention row
+        (tests/test_acknowledge.py, TestARepeatedAuthorisation)."""
         from modules.nsot import receipts
         from tests import payload_providers as P
-        from tests.payload_render import render_preview
 
         store.write_text(json.dumps(self._row(
             "2026-09-02", [{"line": "shutdown", "reason": "port no longer used"}])) + "\n")
         plan = P.deploy_plan(monkeypatch)
         d = plan["devices"][0]
         assert d["prior_authorised"]["lines"]["shutdown"]["count"] == 1
-        html = render_preview(plan["preview"])
-        assert "authorised on this device 1 time(s) before" in html
-        assert 'stated reason: "port no longer used"' in html.replace("&quot;", '"')
         assert receipts  # the record the plan read
 
 
@@ -223,21 +225,21 @@ class TestTheReceiptKeepsTheReason:
         assert rec[1]["line"] == MASKED
 
     def test_the_result_draws_it_as_testimony(self):
-        import dukpy
-        from tests.js_source import read_shipped
+        """v2's device page's Deploy… result card (today's renderer drew the same result until
+        it left with today's index at 7.8, P7-27): each authorised line with its stated reason,
+        under "With your reasons"."""
+        from tests.payload_render import render_device_deploy_result_v2
 
-        src = read_shipped("static/js/nmas_preview_confirm.js")
-        m = re.search(r"function sentHtml\(t, r\) \{", src)
-        assert m, "sentHtml"
-        html = dukpy.evaljs(src + "\n" + """
-            previewConfirmResultHtml({action: 'deploy', level: 'success',
-              parts: ['happened','did_not','sent','checks','record','not_watched'],
-              happened: {summary: 's', targets: [{name: 's4', outcome: 'deployed', words: 'deployed'}]},
-              did_not: {items: [], none: 'nothing'},
-              targets: [{name: 's4', sent: {lines: ['shutdown'], program_hash: 'abc',
-                 matches: true, match_words: 'm', none: '', actor: 'p@example.invalid',
-                 authorised: [{line: 'shutdown', reason: 'port unused'}, 'reload']},
-                 checks: {ran: false, why: 'w'}, rollback: {}}],
-              record: {statement: 'r'}, not_watched: 'n'})""")
-        assert 'authorised by p@example.invalid: <code>shutdown</code>, stated reason: ' in html
-        assert "no reason recorded (authorised before reasons were required)" in html
+        html = render_device_deploy_result_v2({
+            "action": "deploy", "level": "success",
+            "happened": {"summary": "s", "targets": [
+                {"name": "s4", "outcome": "deployed", "words": "deployed"}]},
+            "did_not": {"items": [], "none": "nothing"},
+            "targets": [{"name": "s4", "sent": {
+                "lines": ["shutdown"], "program_hash": "abc", "matches": True,
+                "match_words": "m", "none": "", "actor": "p@example.invalid",
+                "authorised": [{"line": "shutdown", "reason": "port unused"}]},
+                "checks": {"ran": False, "why": "w"}, "rollback": {}}],
+            "record": {"statement": "r"}, "not_watched": "n"}, "s4")
+        part = html[html.index("With your reasons"):]
+        assert "<code>shutdown</code>: port unused" in part

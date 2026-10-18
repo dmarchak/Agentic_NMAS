@@ -61,9 +61,11 @@ def register_blueprints(app) -> list:
     csp.install(app)
 
     from routes.settings_integrations import bp as integrations_bp
-    from routes.inventory import bp as inventory_bp
-    from routes.golden import bp as golden_bp
-    from routes.templatize import bp as templatize_bp
+    # Today's inventory-source banner's two routes (/inventory/source/<list>, /inventory/refresh/
+    # <list>), the golden timeline's and capture's (/golden/*) and the monitoring profile's
+    # (/templatize/profile*) left at 7.8 (2026-10-17, P7-27; restore point tag
+    # `pre-remove/v1-pages`) with today's index, their one caller. `routes/golden.py` and
+    # `routes/templatize.py` remain as helper modules with no blueprint, called by v2.
     from routes.identity import bp as identity_bp
     from routes.remote import bp as remote_bp
     from routes.jobs import bp as jobs_bp
@@ -94,8 +96,7 @@ def register_blueprints(app) -> list:
     from routes.logs_v2 import bp as logs_v2_bp
     from routes.dhcp_v2 import bp as dhcp_v2_bp
 
-    for bp in (integrations_bp, inventory_bp, golden_bp,
-               templatize_bp, identity_bp,
+    for bp in (integrations_bp, identity_bp,
                remote_bp,
                jobs_bp, health_bp,
                operations_bp, attention_bp, breakglass_bp, device_v2_bp, v2_bp, update_bp,

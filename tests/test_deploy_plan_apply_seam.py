@@ -427,12 +427,12 @@ class TestTheSpecificReasonReachesTheSCREEN:
     @staticmethod
     def _render(report):
         # 7.1 step 2: the result is the shared component's, built from the
-        # receipt rows the apply wrote, and escaped by it. (Its read of today's deploy
-        # wizard's script, which it no longer used, left with the wizard at 7.8. v2's device
-        # page draws the same reason: tests/test_device_deploy_v2.py,
-        # `test_a_program_that_moved_is_refused_with_nothing_sent`.)
-        from tests.payload_render import render_result
-        return render_result(report["result"])
+        # receipt rows the apply wrote, drawn by v2's batch card (escaped by the template;
+        # today's renderer until it left at 7.8, P7-27). v2's device page draws the same
+        # reason: tests/test_device_deploy_v2.py,
+        # `test_a_program_that_moved_is_refused_with_nothing_sent`.
+        from tests.payload_render import render_operation_result_v2
+        return render_operation_result_v2(report["result"]).replace("&#39;", "'")
 
     def test_the_reason_is_drawn(self, report):
         html = self._render(report)

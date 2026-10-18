@@ -309,11 +309,11 @@ class TestVerifyChecksWhatIntentDeclares:
         assert v["declared_protocols"] is None
 
     def test_the_receipt_and_the_screen_say_it(self, monkeypatch):
-        import json
-
-        import dukpy
-
+        """Drawn by v2's batch card (today's renderer until it left at 7.8, P7-27, which also
+        drew "declared by intent, not running before"; v2's card does not draw `from_intent`:
+        the register row named in the P7-27 commit)."""
         from modules.nsot import receipts
+        from tests.payload_render import render_operation_result_v2
 
         pre = self._snap(monkeypatch, "")
         ctx = self._ctx(monkeypatch, pre, pre, self._declared())
@@ -321,17 +321,17 @@ class TestVerifyChecksWhatIntentDeclares:
         checks = receipts._checks({"outcome": "deployed", "commands": ["x"],
                                    "verify": ctx.verify_result["x"]})
         assert checks["from_intent"] == ["ospfv3"] and checks["neighbours"]["ospfv3"][0] == 0
-        src = open(os.path.join(ROOT, "static", "js", "nmas_preview_confirm.js")).read()
         result = {"parts": ["happened", "did_not", "sent", "checks", "record", "not_watched"],
                   "action": "restore", "level": "partial",
-                  "happened": {"summary": "s", "targets": []}, "did_not": {"none": "n"},
+                  "happened": {"summary": "s", "targets": []}, "did_not": {"items": [], "none": "n"},
                   "targets": [{"name": "r1", "sent": {"lines": [], "none": "x"},
                                "checks": checks}],
                   "record": {"statement": ""}, "not_watched": ""}
-        html = dukpy.evaljs("var window = {};\n" + src
-                            + f"\nwindow.previewConfirmResultHtml({json.dumps(result)}, {{}});")
-        assert "declared by intent, not running before: ospfv3" in html
-        assert "data-pr-intent-unmet" in html and "verify failed" in html
+        html = render_operation_result_v2(result).replace("&#39;", "'")
+        part = html[html.index("<summary>r1:"):]
+        assert checks["intent_unmet"], checks
+        assert "Verify did NOT pass" in part
+        assert all(u in part for u in checks["intent_unmet"]), (checks["intent_unmet"], part)
 
 
 class TestTheOperationCarriesItsIntentIntoVerify:

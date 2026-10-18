@@ -1,9 +1,10 @@
 """Stage 7 section 10, acceptance criterion 4 on v2: if a v2 route carries it, its page draws it.
 
-`test_payload_is_rendered.py` measures today's (v1) JSON routes against today's JavaScript
-renderers; it stays until today's pages go, and shrinks to nothing at P7-27 (the index and the
-Bootstrap pages removed). v2 draws on the server: a route hands its template a context, so the
-context is the payload and the template is the renderer (P7-04, 2026-10-15).
+`test_payload_is_rendered.py` measured today's (v1) JSON routes against today's JavaScript
+renderers until today's pages went (P7-27, 2026-10-17: the index and the Bootstrap pages
+removed, and that check with them, its population empty). v2 draws on the server: a route hands
+its template a context, so the context is the payload and the template is the renderer (P7-04,
+2026-10-15).
 `tests/v2_context.py` says how both are found and what the comparison cannot see.
 
 * **Population, by property:** every v2 page reached by following links from Needs attention and

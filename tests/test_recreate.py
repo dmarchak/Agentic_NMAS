@@ -264,11 +264,13 @@ class TestThePlanRoute:
         assert " frequency 60" not in d["commands"], "never the edit the device refuses"
 
     def test_the_shipped_renderer_draws_what_it_replaces(self, client, measured):
-        import dukpy
-        from tests.payload_render import shipped
+        """v2's device Deploy… card, drawn from THE plan (today's renderer until it left at
+        7.8, P7-27)."""
+        import html as _html
+
+        from tests.payload_render import render_deploy_card_v2
         out, _d = _route_plan(client)
-        html = dukpy.evaljs("var window = {};\n" + shipped("nmas_preview_confirm.js")
-                            + f"\nwindow.previewConfirmHtml({json.dumps(out['preview'])}, {{}})")
+        html = _html.unescape(render_deploy_card_v2(out, "s3"))
         assert "ip sla 1 is running, and IOS refuses to modify a running operation" in html
         assert "frequency 10" in html and "no ip sla 1" in html
 

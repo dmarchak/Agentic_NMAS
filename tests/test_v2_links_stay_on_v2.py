@@ -173,10 +173,11 @@ class TestNeedsAttentionWordsNameNoTodaysControl:
             problems += [f"{p}:{n}: names {lab!r}, a control only today's pages have"
                          for p, n, lab in scan_words(text, labels, rel)]
         assert strings >= 3000, strings      # a floor; measured 2026-10-17: 5650
-        # The declared two plus at least one label read from today's templates (3 measured
-        # 2026-10-17 after P7-24 and P7-25 took today's wizards' labels; it only shrinks
-        # toward P7-27, so a floor of one read label keeps the reading itself proved).
-        assert len(labels) >= len(T.TODAYS_ONLY_CONTROLS) + 1, sorted(labels)
+        # The declared two. Labels were also read from today's templates (3 measured 2026-10-17
+        # after P7-24 and P7-25 took today's wizards' labels) until the last of them left with
+        # today's index at 7.8 (P7-27); the reading stays for any template outside v2, and
+        # tests/test_no_new_v1_capability.py holds that there is none.
+        assert len(labels) >= len(T.TODAYS_ONLY_CONTROLS), sorted(labels)
         assert not problems, "\n".join(problems)
 
     def test_the_scan_names_a_planted_case(self):

@@ -6,8 +6,10 @@ False`` when it could not write. Each reveal reads that answer and, when the rec
 written, answers 503 naming why, with nothing unmasked in the answer:
 
 - the golden version on v2 (`device_v2.golden_reveal`);
-- the bootstrap config, today's GET and v2's POST (`onboard.bootstrap_reveal`, the one core);
-- the golden version and diff behind ``?reveal=1`` (`outbound.config_text`), masked text only.
+- the bootstrap config, v2's POST (`onboard.bootstrap_reveal`, the one core).
+
+(The golden version and diff behind today's ``?reveal=1`` (`outbound.config_text`) were held
+here until they left with today's index at 7.8, 2026-10-17, P7-27.)
 
 The planted failure is the real one: the record's file cannot be opened for append (a folder
 stands where the file goes), so `record` itself fails, as an unwritable store does. The other
@@ -82,26 +84,9 @@ class TestTheGoldenVersionOnV2:
         assert '"list": "Lab"' in writable.read_text(), "the reveal names its network (C837)"
 
 
-class TestTheGoldenBehindRevealOne:
-    @pytest.mark.parametrize("path", ["/golden/version/r2?reveal=1&list_name=Lab&ref={sha}",
-                                      "/golden/diff/r2?reveal=1&list_name=Lab&a={sha}~1"
-                                      "&b={sha}"])
-    def test_unrecorded_it_answers_masked_and_503(self, lab, unwritable, path):  # noqa: F811
-        sha = _head(lab["repo"])
-        r = lab["client"].get(path.format(sha=sha))
-        body = r.get_json()
-        assert _secret_line(lab) not in r.get_data(as_text=True), \
-            "a configuration was revealed unrecorded"
-        assert r.status_code == 503, (r.status_code, body)
-        assert body["masked"] is True and body["ok"] is False
-        assert "could not be recorded, so it is not shown unmasked" in body["error"]
-
-    def test_recorded_it_reveals(self, lab, writable):  # noqa: F811
-        sha = _head(lab["repo"])
-        r = lab["client"].get(f"/golden/version/r2?reveal=1&list_name=Lab&ref={sha}")
-        assert r.status_code == 200 and r.get_json()["masked"] is False
-        assert _secret_line(lab) in r.get_json()["config"]
-        assert r.headers.get("Cache-Control") == NO_STORE
+# TestTheGoldenBehindRevealOne: today's golden version and diff behind ``?reveal=1``
+# (`outbound.config_text`) left with today's index at 7.8 (2026-10-17, P7-27), and the helper
+# with them. The golden version's reveal is v2's (TestTheGoldenVersionOnV2 above).
 
 
 @pytest.fixture

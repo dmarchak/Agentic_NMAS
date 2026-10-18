@@ -54,4 +54,4 @@ What every network shares, standalone ones included: these are the installation'
 
 ## What is not here yet {#not-yet}
 
-- **Creating a network** is on today's page; a new network starts as inheriting from Default, and its page here offers the switch at once.
+- Nothing: **creating a network** is **New network…**, at the foot of the scope bar's network menu; a new network starts as inheriting from Default, and its page here offers the switch at once (see [Create a network](settings-switch#create)).

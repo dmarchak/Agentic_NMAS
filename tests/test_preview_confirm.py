@@ -4,15 +4,17 @@ NSOT_STAGE7_PLAN.md section 2, pattern 1. Every preview had its own renderer,
 and each dropped something: D4 (the deploy wizard drew the diff in place of
 the program), C27 (the restore preview never drew the lines to add). So the
 server builds six parts with one helper (`modules/preview_confirm.py`) and
-one shipped renderer draws them (`static/js/nmas_preview_confirm.js`).
+one renderer draws them: today's `static/js/nmas_preview_confirm.js` until it left with
+today's index at 7.8 (2026-10-17, P7-27); on v2 the shared parts
+(`templates/v2/_preview_parts.html`) and the cards drawn from the same parts (the device page's
+Deploy…, the batch's card).
 
 **The six parts are a FLOOR, not a template** (the operator, 2026-09-27): a
 part with nothing to say states it, because an empty section and a missing
-one read the same to a person. The builder refuses a silent part, and the
-renderer draws the sentence.
+one read the same to a person. The builder refuses a silent part.
 
-Renders are the SHIPPED file executed in duktape, and the screen-level ones
-use a REAL `/deploy/plan` payload (`payload_providers.deploy_plan`).
+Renders are v2's templates through the app's own Jinja (`tests/payload_render.py`), and the
+screen-level ones use a REAL plan (`payload_providers.deploy_plan`).
 """
 
 import os
@@ -22,12 +24,10 @@ import pytest
 
 from modules import preview_confirm as pc
 from tests import payload_providers as P
-from tests.payload_render import render_preview, render_result, shipped
-
-pytest.importorskip("dukpy")
+from tests.payload_render import (render_deploy_card_v2, render_operation_result_v2,
+                                  render_preview_v2)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GEN = os.path.join(ROOT, "static", "js", "gen")
 
 CONFIRM = {"may": True, "actor": "a@example.invalid", "kind": "person",
            "statement": "You are confirming as a@example.invalid."}
@@ -47,10 +47,6 @@ def _preview(**over):
           "what_not": [], "nothing_left_out": "Nothing is left out.", "confirm": CONFIRM}
     kw.update(over)
     return pc.build(**kw)
-
-
-def _parts_in_order(html):
-    return re.findall(r'data-pc-part="([a-z_]+)"', html)
 
 
 class TestTheBuilderRefusesASilentPart:
@@ -85,60 +81,55 @@ class TestTheBuilderRefusesASilentPart:
 
 
 class TestTheRendererDrawsEveryPart:
-    def test_six_parts_in_order(self):
-        html = render_preview(_preview())
-        assert _parts_in_order(html) == ["what", "what_not", "program", "operands",
-                                         "gates", "confirm"]
+    """v2's shared parts (`templates/v2/_preview_parts.html`, the drawing of a component-built
+    preview on NetBox and onboarding). Today's renderer drew six marked parts in order, said
+    "nothing is left out" in an empty what-not part and refused a preview whose parts
+    disagreed; it left with today's index at 7.8 (2026-10-17, P7-27). v2's parts draw no
+    what-not section when it is empty (the register row named in the P7-27 commit)."""
 
-    def test_the_parts_repeat_per_target_between_what_not_and_confirm(self):
-        html = render_preview(_preview(targets=[_target(), _target(name="r2")]))
-        assert _parts_in_order(html) == ["what", "what_not"] + [
-            "program", "operands", "gates"] * 2 + ["confirm"]
+    def test_every_part_is_drawn(self):
+        p = _preview(what_not=[{"target": "r1", "kind": "residue", "text": "Left: x."}])
+        html = render_preview_v2(p)
+        assert "Do a thing to r1." in html                        # what
+        assert "interface Loopback9" in html                      # program
+        assert "<dt>capture hash</dt><dd>abc</dd>" in html         # operands
+        assert "template approved" in html                        # gates
+        assert "Left: x." in html                                 # what_not
 
-    def test_nothing_left_out_is_drawn_not_omitted(self):
-        html = render_preview(_preview())
-        assert 'data-pc-part="what_not"' in html
-        assert "Nothing is left out." in html
+    def test_the_parts_repeat_per_target(self):
+        html = render_preview_v2(_preview(targets=[_target(), _target(name="r2")]))
+        assert html.count("Checked now, and at your confirm") == 2
+        assert html.count("<dt>capture hash</dt>") == 2
 
     def test_an_empty_program_draws_its_sentence(self):
-        html = render_preview(_preview(
+        html = render_preview_v2(_preview(
             targets=[_target(program={"lines": [], "none": "Nothing will be sent: X."})]))
         assert "Nothing will be sent: X." in html
 
     def test_every_gate_state_is_drawn_in_words(self):
         gates = [pc.gate(s, s) for s in pc.GATE_STATES]
-        html = render_preview(_preview(targets=[_target(gates=gates)]))
-        drawn = re.findall(r'data-pc-gate="([a-z_]+)"><span class="badge [^"]*">([^<]+)<', html)
-        assert dict(drawn) == {"pass": "pass", "fail": "FAIL",
-                               "not_applicable": "not applicable",
-                               "at_apply": "checked at apply", "not_reached": "not reached"}
+        html = render_preview_v2(_preview(targets=[_target(gates=gates)]))
+        drawn = re.findall(r'<span class="badge [^"]*">([^<]+)</span> <span>([a-z_]+)</span>',
+                           html)
+        assert {state: words for words, state in drawn} == {
+            "pass": "passed", "fail": "FAILS", "not_applicable": "not applicable",
+            "at_apply": "at confirm", "not_reached": "not established"}
 
-    def test_a_preview_with_other_parts_is_refused_on_screen(self):
-        """A server and a cached page disagreeing about the parts: drawn as a
-        refusal, never rendered with a part missing."""
-        p = _preview()
-        p["parts"] = [x for x in p["parts"] if x != "what_not"]
-        html = render_preview(p)
-        assert "data-pc-mismatch" in html and "data-pc-part" not in html
 
 
 class TestTheDeployScreen:
-    """The real `/deploy/plan`, drawn."""
-
-    def test_all_six_parts_from_the_real_payload(self, monkeypatch):
-        plan = P.deploy_plan(monkeypatch)
-        html = render_preview(plan["preview"])
-        assert _parts_in_order(html) == ["what", "what_not", "program", "operands",
-                                         "gates", "confirm"]
+    """The real plan (`/deploy/plan` until 7.8), drawn by v2's Deploy… card."""
 
     def test_what_not_states_nothing_when_there_is_no_residue(self, monkeypatch):
         """The fixture's intent is a superset of its capture: no residue, and
         its one device is not blocked. The part is still drawn, and says so."""
         plan = P.deploy_plan(monkeypatch)
         assert plan["preview"]["what_not"]["items"] == []
-        html = render_preview(plan["preview"])
-        none = re.search(r'data-pc-part="what_not".*?data-pc-none>([^<]+)<', html, re.S)
-        assert none and none.group(1).startswith("Nothing"), html
+        host = plan["devices"][0]["device"]
+        html = render_deploy_card_v2(plan, host)
+        assert f"Nothing: {host} holds no line its committed intent lacks." in html
+        assert "No line is removed that you did not tick." in html
+
 
     def test_the_apply_time_checks_are_never_drawn_as_passed(self, monkeypatch):
         plan = P.deploy_plan(monkeypatch)
@@ -210,94 +201,43 @@ class TestConfirmSaysWho:
         assert c["statement"].startswith("You are confirming as ") and "@" in c["statement"]
 
     def test_no_identity_is_a_stated_refusal_and_the_button_says_it(self, monkeypatch):
-        import dukpy
-
+        """With nobody verified the part refuses in words, and v2's Deploy… card fails its
+        verified-person check and offers no confirm (today's renderer drew the refusal on its
+        button until P7-27)."""
         from modules import identity
 
+        plan = P.deploy_plan(monkeypatch)
         monkeypatch.setattr(identity, "identify", lambda _r: identity.Identity())
         part = pc.confirm_part(None)
         assert part["may"] is False and part["statement"].startswith("You may not confirm")
-        preview = _preview(confirm=part)
-        assert "data-pc-refusal" in render_preview(preview)
-        import json
+        html = render_deploy_card_v2(plan, plan["devices"][0]["device"])
+        assert "<strong>You are a verified person</strong>: You may not confirm" in html
+        assert "op-confirm" not in html
 
-        state = dukpy.evaljs("var window = {};\n" + shipped("nmas_preview_confirm.js")
-                             + f"\nwindow.previewConfirmButton({json.dumps(preview)}, 1, 'Go')")
-        assert state == {"disabled": True, "text": part["statement"]}
-
-    def test_the_button_control(self):
-        """Control for the one above: a person with a selection may press."""
-        import json
-
-        import dukpy
-
-        state = dukpy.evaljs("var window = {};\n" + shipped("nmas_preview_confirm.js")
-                             + f"\nwindow.previewConfirmButton({json.dumps(_preview())}, 1, 'Go')")
-        assert state == {"disabled": False, "text": "Go"}
+    def test_the_button_control(self, monkeypatch):
+        """Control for the one above: a person passes the check, by name."""
+        plan = P.deploy_plan(monkeypatch)
+        html = render_deploy_card_v2(plan, plan["devices"][0]["device"])
+        assert "<strong>You are a verified person</strong>" not in html
+        assert "You are a verified person: " in html
 
 
-#: Screens moved onto the component, and the ones still to move, in the
-#: approved order. RETROFIT_PENDING only shrinks.
-RETROFITTED = {"capture": "nmas_capture.js", "profile propose": "nmas_profile.js"}
-# "seed" (nmas_seed.js), "retire" (nmas_retire.js) and "revert and retry"
-# (nmas_intent_ops.js) left with today's device-action routes at 7.8 (2026-10-17, P7-24): the
-# v2 device page's cards draw them server-side.
-# "deploy" (partials__deploy_wizard.1.js) and "onboarding" (partials__onboard_wizard.1.js), the
-# first two retrofitted, left with today's deploy wizard and onboarding at 7.8 (2026-10-17,
-# P7-25): v2's device page Deploy…, batch Apply and Add device draw THE plans server-side. The
-# today's screens still shipped that call the component take their place here (measured).
-# "restore" (partials__golden_repo.3.js, today's re-apply dialog) left at 7.8 (2026-10-17,
-# P7-21): the v2 device page's restore card (board 9, `templates/v2/_restore.html`) and
-# History's Re-apply… page draw THE restore plan server-side.
-# "netbox import/remove" (partials__netbox_safety_modal.1.js) left with today's NetBox tab at
-# 7.8 (2026-10-17): v2's NetBox page draws its previews with `preview_parts`.
-RETROFIT_PENDING = {
-    # Bulk intent left 2026-10-10: deferred to Fleet (7.4) by the operator, its screen was
-    # built there, on v2 (Devices › Change a setting, routes/bulk_intent_v2.py), never on
-    # today's component; its JSON routes keep no screen.
-}
+
+# RETROFITTED, RETROFIT_PENDING and the checks over them (each of today's screens calling the
+# component and drawing no preview part itself) left with today's last screens at 7.8
+# (2026-10-17, P7-27): no script of today's is left to retrofit. v2 draws a component-built
+# preview with its shared parts (`templates/v2/_preview_parts.html`) or a card of its own, and
+# its confirms are one pattern (tests/test_v2_one_confirm.py).
 
 
 class TestNoSecondImplementation:
-    """A retrofitted screen draws its preview with the component and nothing
-    else: a second renderer is how the six parts drift apart again."""
-
-    #: Phrases only a preview renderer produces.
-    OWN = ("line(s) will be sent", "data-dangerous-line", "data-pc-part",
-           "authorise this exact line with your reason")
-
-    def test_a_retrofitted_screen_calls_the_component_and_draws_nothing_itself(self):
-        assert RETROFITTED, "floor"
-        for screen, file in RETROFITTED.items():
-            src = shipped(file)
-            assert "previewConfirmHtml(" in src, screen
-            own = [p for p in self.OWN if p in src]
-            assert own == [], f"{screen} draws preview parts itself: {own}"
-
-    def test_the_component_holds_every_phrase(self):
-        """The floor for the check above: the phrases are real."""
-        src = shipped("nmas_preview_confirm.js")
-        assert all(p in src for p in self.OWN)
-
-    def test_pending_screens_have_not_moved_yet(self):
-        """No ghosts: a screen that now calls the component leaves the list."""
-        moved = [s for s, f in RETROFIT_PENDING.items()
-                 if f and "previewConfirmHtml(" in shipped(f)]
-        assert moved == [], f"retrofitted: move to RETROFITTED: {moved}"
-
-    def test_the_pending_list_only_shrinks(self):
-        assert len(RETROFIT_PENDING) <= 1
-        for screen, f in RETROFIT_PENDING.items():
-            assert f is None or os.path.exists(os.path.join(GEN, f)), screen
-
     def test_the_old_renderers_are_gone_everywhere(self):
         """The deploy wizard's own renderers and onboarding's review, which the component
         replaced (7.1), were held gone in their two scripts until both scripts left at 7.8
         (2026-10-17, P7-25); held now across every script still shipped."""
         from tests.source_index import tracked
 
-        scripts = (tracked("static/js", suffix=".js", recursive=False)
-                   + tracked(GEN, suffix=".js", recursive=False))
+        scripts = tracked("static/js", suffix=".js", recursive=False)
         assert len(scripts) > 10
         for path in scripts:
             src = open(path, encoding="utf-8").read()
@@ -306,18 +246,14 @@ class TestNoSecondImplementation:
                 assert gone not in src, (path, gone)
 
 
+
 class TestAProgramSentNowhereDoesNotSaySent:
     """C127: the program part said "Exactly these N line(s) will be sent" for
     every preview, and two of them send nothing: a capture READS a device
     (the lines are what will be recorded) and onboarding writes a startup
-    config to no device. A caption replaces the sentence; with none, the
-    deploy's sentence stands (the control)."""
-
-    def _draw(self, preview):
-        import json
-        import dukpy
-        return dukpy.evaljs("var window = {};\n" + shipped("nmas_preview_confirm.js")
-                            + f"\nwindow.previewConfirmHtml({json.dumps(preview)}, {{}})")
+    config to no device. The program's title says where the lines go; with none, the
+    deploy's sentence stands (the control). Drawn by v2's shared parts (today's renderer, which
+    drew a caption, until P7-27)."""
 
     def test_onboarding_says_where_the_lines_go(self):
         from modules.preview_confirm import onboard_preview
@@ -326,21 +262,23 @@ class TestAProgramSentNowhereDoesNotSaySent:
         p = onboard_preview(plan, "hostname r9\n!\nend\n",
                             {"may": True, "actor": "a@example.com", "kind": "person",
                              "statement": "You are confirming as a@example.com."})
-        out = self._draw(p)
+        out = render_preview_v2(p)
         assert "will be sent" not in out
-        assert "data-pc-caption" in out and "sent to no device" in out
+        assert "What will be created (on no device)" in out
 
     def test_capture_says_it_reads(self, monkeypatch, tmp_path):
-        """From the real /golden/capture/preview payload (r2 with the host's
-        exact break, so the program part has lines)."""
+        """From the real capture preview (r2 with the host's exact break, so the program part
+        has lines); the device page's Capture card draws it (tests/test_device_capture_v2.py,
+        `test_it_draws_every_part_the_mockup_drew`)."""
         d = P.capture_preview(monkeypatch, tmp_path)
         assert any(t["program"]["lines"] for t in d["preview"]["targets"]), "floor"
-        out = self._draw(d["preview"])
-        assert "will be sent" not in out and "data-pc-caption" in out
+        assert d["preview"]["titles"]["program"] == "What will change in its golden"
+        assert all(t["program"].get("caption") for t in d["preview"]["targets"])
 
     def test_without_a_caption_the_deploy_sentence_stands(self):
-        out = self._draw(_preview())
-        assert "will be sent" in out and "data-pc-caption" not in out
+        out = render_preview_v2(_preview())
+        assert "What will be sent" in out
+
 
 
 class TestResidueIsDrawnInItsSection:
@@ -373,10 +311,15 @@ class TestResidueIsDrawnInItsSection:
         assert residue_in_context([" no such line"], "hostname x\n") == [" no such line"]
 
     def test_the_real_plan_draws_the_interface_with_its_line(self, monkeypatch):
+        """THE plan's residue on v2's Deploy… card (today's renderer until P7-27): each line
+        with its section, under merge-only."""
+        import html as _html
+
         plan = P.deploy_plan_with_residue(monkeypatch)
-        html = render_preview(plan["preview"])
-        part = re.search(r'data-pc-part="what_not"(.*?)</section>', html, re.S).group(1)
-        assert "interface GigabitEthernet0/3" in part and "retired uplink" in part
+        host = plan["devices"][0]["device"]
+        html = _html.unescape(render_deploy_card_v2(plan, host))
+        part = html[html.index('id="removal"'):html.index("What will not happen")]
+        assert "interface GigabitEthernet0/3 > " in part and "retired uplink" in part
         assert 'data-concept="merge-only"' in part
 
 
@@ -428,28 +371,33 @@ class TestTheResultHalf:
         assert [i["target"] for i in r["did_not"]["items"]] == ["s3"]
 
     def test_the_renderer_draws_six_parts_and_the_level(self):
-        html = render_result(self._result([self._row()]))
-        parts = re.findall(r'data-pr-part="([a-z_]+)"', html)
-        assert parts == ["happened", "did_not", "sent", "checks", "record", "not_watched"]
-        assert 'data-pr-level="success"' in html and "alert-success" in html
+        """v2's batch card (`templates/v2/_apply_job.html`; today's renderer until P7-27):
+        the level as its badge, what happened, what was sent with the match, what verify
+        checked, the record and what is not watched."""
+        html = render_operation_result_v2(self._result([self._row()]))
+        assert '<span class="badge badge-ok">Done</span>' in html
+        assert "1 of 1 device(s) deployed" in html
+        assert "interface Gi0/2\n shutdown\nexit" in html
+        assert "matches the program you confirmed" in html
+        assert "Verify passed, checking ospf." in html
+        assert "Receipt: 1 device row(s) recorded" in html
 
     def test_a_partial_result_is_never_drawn_green(self):
-        html = render_result(self._result([self._row(matches_confirmed=False)]))
-        assert "alert-success" not in html and "alert-warning" in html
+        html = render_operation_result_v2(self._result([self._row(matches_confirmed=False)]))
+        assert "badge-ok" not in html.split("</h2>", 1)[0]
+        assert '<span class="badge badge-warn">Partly done</span>' in html
         assert "DOES NOT MATCH the program you confirmed" in html
 
     def test_device_text_is_escaped(self):
         """C88's class: markup in a device name or a reason is drawn as text."""
         evil = '<img src=x onerror="alert(1)">'
         rows = [self._row(device=evil, outcome="failed", sent=False, reason=evil)]
-        html = render_result(self._result(rows))
+        html = render_operation_result_v2(self._result(rows))
         assert evil not in html and "&lt;img src=x onerror=" in html
 
-    def test_a_result_with_other_parts_is_refused_on_screen(self):
-        r = self._result([self._row()])
-        r["parts"] = r["parts"][:-1]
-        html = render_result(r)
-        assert "data-pr-mismatch" in html and "data-pr-part" not in html
+    # Today's renderer refused a result whose parts disagreed with its own (`data-pr-mismatch`)
+    # and turned the level into a toast's; both left with it at 7.8 (P7-27). v2's cards draw a
+    # result by its keys and raise no toast (tests/test_v2_pages.py).
 
     def test_the_builder_refuses_a_silent_part(self):
         with pytest.raises(pc.ResultIncomplete, match="part 4"):
@@ -459,31 +407,9 @@ class TestTheResultHalf:
                             did_not=[], nothing_left_out="none", record={"statement": "s"},
                             not_watched="w")
 
-    def test_the_level_is_the_toast_level(self):
-        import json
-
-        import dukpy
-
-        src = shipped("nmas_preview_confirm.js")
-        for level, toast in (("success", "success"), ("partial", "warning"), ("failed", "danger")):
-            got = dukpy.evaljs("var window = {};\n" + src + "\nwindow.previewConfirmResultLevel("
-                               + json.dumps({"level": level}) + ")")
-            assert got == toast, (level, got)
 
 
-class TestATintedBlockSetsItsOwnTextColour:
-    """The NetBox sync card drew its import outcome as eight EMPTY code blocks
-    (the operator, 2026-09-28): the card hard-codes a dark background and
-    light text, the component's blocks use the theme's `bg-body-tertiary`
-    (near-white in the light theme), and the light text inherited onto
-    near-white was unreadable. The text was there. A block that sets its
-    background sets its text colour with it, so it reads on any card."""
-
-    def test_every_tinted_block_pairs_its_background_and_text(self):
-        import re
-
-        src = shipped("nmas_preview_confirm.js")
-        classes = re.findall(r'class="([^"]*bg-body-tertiary[^"]*)"', src)
-        assert len(classes) >= 7, classes
-        unpaired = [c for c in classes if "text-body" not in c.split()]
-        assert unpaired == [], unpaired
+# TestATintedBlockSetsItsOwnTextColour (today's renderer's `bg-body-tertiary` blocks each paired
+# with `text-body`, the NetBox sync card's unreadable code blocks, 2026-09-28) left with today's
+# renderer and Bootstrap at 7.8 (2026-10-17, P7-27). v2 colours by tokens with dark values
+# (tests/test_v2_theme.py).

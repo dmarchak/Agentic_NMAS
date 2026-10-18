@@ -9,6 +9,7 @@ its holder dies), and a second operation is refused with the holder named.
 """
 
 from tests.test_capture import run_capture_preview
+from tests import capture_core
 import ast
 import os
 import re
@@ -198,7 +199,7 @@ class TestEveryChangingPathHoldsIt:
         before = sp.run(["git", "-C", lab["repo"], "rev-parse", "HEAD"],
                         capture_output=True, text=True).stdout
         with Holder("Lab", "r2"):
-            d = lab["client"].post("/golden/capture/apply",
+            d = capture_core.post_apply(
                                    json={"confirmations": {"r2": h}}).get_json()
         target = d["result"]["happened"]["targets"][0]
         assert target["outcome"] == "busy", target

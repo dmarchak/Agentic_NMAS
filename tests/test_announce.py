@@ -139,10 +139,13 @@ class TestTheShippedClient:
         assert "Live updates stopped at" in down
 
     def test_base_html_has_the_element_and_loads_the_client_before_the_registry(self):
+        """v2's base: the top bar's live indicator (`#nmas-live`, kept by nmas_v2.js), and the
+        socket client loaded before the registry. Today's base and its `#nmasLiveNote` left
+        with today's index at 7.8 (2026-10-17, P7-27)."""
         import os
-        base = open(os.path.join(os.path.dirname(CLIENT), "..", "..", "templates", "base.html"),
-                    encoding="utf-8").read()
-        assert 'id="nmasLiveNote"' in base
+        base = open(os.path.join(os.path.dirname(CLIENT), "..", "..", "templates", "v2",
+                                 "base.html"), encoding="utf-8").read()
+        assert 'id="nmas-live"' in base
         # Anchored on the tag's own form: the comment above the tag names the
         # registry file too (a pattern that can appear in English).
         assert (base.index("filename='js/vendor/socket.io-client/socket.io.min.js'")

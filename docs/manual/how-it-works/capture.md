@@ -1,27 +1,26 @@
 # Capture and Save All
 
 A capture moves the golden toward the device: it reads what each device runs now and records
-it as that device's golden. Save All is the same operation across every device in the
-network, and it is the one that can earn a baseline. It changes nothing on a device: it reads,
-and it writes one commit in the list's repository.
+it as that device's golden. Save All is the same record across every device in the network,
+and it is the one that can earn a baseline; on the new pages it is **Devices > Save** for every
+device of the network ([Save](save)), which also saves each device's startup first. A capture
+changes nothing on a device: it reads, and it writes one commit in the list's repository.
 
 ![A capture in two bands. In the tool, a person starts the preview; each device is read over its own SSH session, at once, and each read is judged, then compared with the device's golden and its committed intent. After the person confirms, every device is read again and one commit records the goldens, with a baseline tag only when the whole fleet matches its intent. Nothing is sent to any device.](diagrams/capture.svg)
 
 ## The preview
 
-You start a capture from one of four places: the device page's **Actions > Capture** (that
-device, its card drawn in place of the tab); **Save All Configs** in today's device list
-toolbar (every device in the list);
-**Capture devices with no golden** beside it (every device with no committed golden, decided
-from git, never from files on disk); or an approved drift item in the approval queue, which
-opens this preview for its device. On the redesign, the devices with no golden are a scope of
-[Save](save#no-golden): Devices › **Actions › Save the devices of the network with no golden…**,
-which saves each one to startup as well as recording it. Today's pages post the devices to `/golden/capture/preview`;
-the device page's card posts its device to `/v2/device/<name>/capture/start`, which starts the
-same job, and its confirm reaches the same apply through `/v2/device/<name>/capture/confirm`.
+You start a capture from the device page's **Actions > Capture** (that device, its card drawn
+in place of the tab), or from an approved drift item in the approval queue, which opens this
+preview for its device. The card posts its device to `/v2/device/<name>/capture/start`, which
+starts the job, and its confirm reaches the apply through `/v2/device/<name>/capture/confirm`.
+Every device of a network at once is **Devices > Save** (see [Save](save)), which reads and
+records each device the same way; the devices with no committed golden are one of its scopes,
+**Actions > Save the devices of the network with no golden…** (see [Save](save#no-golden)),
+which saves each one to startup as well as recording it. Today's device list, with its Save All
+Configs and Capture devices with no golden, left at cutover (2026-10-17).
 
-1. **Start the job.** Read: this list's inventory, and for the no-golden scope each device's
-   committed golden. Sent: nothing. Recorded: a job in the server's memory (a restart loses
+1. **Start the job.** Read: this list's inventory. Sent: nothing. Recorded: a job in the server's memory (a restart loses
    it, and asking for it then says so). The request answers at once with the job's id, so no
    request waits on a device: a fleet read one device after another took longer than the
    100 s the edge allows a request.
@@ -58,10 +57,9 @@ same job, and its confirm reaches the same apply through `/v2/device/<name>/capt
 
 ## The confirm and the apply
 
-You tick the devices to record and press the confirm button. The browser posts each device's
-capture hash, as the preview showed it, to `/golden/capture/apply`. On the device page's card,
-**Record <device>'s golden** posts that one device's hash and its list, and stays busy on
-itself until the result replaces the card; the steps below are the same. A structure that
+On the device page's card, **Record <device>'s golden** posts that one device's capture hash,
+as the preview showed it, and its list, and stays busy on itself until the result replaces the
+card. A structure that
 shrank without committed intent explaining it needs your reason: the card names that check
 and asks for the reason beside its confirm, which carries it. A reason that is not the shape
 of one (a few words, not a copy of the change) is refused before anything is read; with none,

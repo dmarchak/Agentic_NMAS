@@ -5,7 +5,8 @@ onboarding, NetBox import and remove, and bulk intent each had their own
 preview, and each dropped something: D4 (the deploy wizard drew the diff
 standing in for the program), C27 (the restore preview never drew the lines
 to add), the pending banner dropping its list. So there is ONE shape, built
-here, and ONE renderer that draws it (`static/js/nmas_preview_confirm.js`).
+here, and ONE renderer that draws it (v2's `templates/v2/_preview_parts.html`; today's
+`static/js/nmas_preview_confirm.js` left with today's index at 7.8, 2026-10-17, P7-27).
 Per-screen adapters would be six drifting implementations.
 
 The six parts, in order:
@@ -2589,15 +2590,9 @@ def seed_preview(entries: list, *, request) -> dict:
 
 PROFILE_PROPOSE_TITLES = {"program": "What will be committed as the network's monitoring profile",
                           "what": "What will be proposed"}
-PROFILE_PROPOSE_RESULT_TITLES = {"sent": "What was committed as the profile",
-                                 "checks": "What the proposal was built from",
-                                 "happened": "What was proposed"}
-PROFILE_PROPOSE_WORDS = {
-    "committed": "committed: the network's monitoring profile is recorded",
-    "nothing": "nothing to commit: the proposal equals the committed profile",
-    "moved": "refused: the proposal changed since the preview, nothing was committed",
-    "failed": "failed: the commit did not happen",
-}
+# Its result card (`profile_propose_result`) left at 7.8 (2026-10-17, P7-27) with today's
+# /templatize/profile/propose/apply, its one caller: Monitoring › Profile's commit draws its own
+# result (`templates/v2/_profile.html`).
 
 
 def _section_words(name: str) -> str:
@@ -2738,53 +2733,6 @@ def profile_propose_preview(p: dict, diff: list, *, request) -> dict:
                               "text": "The profile is intent the network shares: a device "
                                       "inherits a section it lacks, and its own value wins "
                                       "where it has one."}]})
-
-
-def profile_propose_result(out: dict) -> dict:
-    """*out*: `profile_propose.apply()`'s answer."""
-    p = out.get("proposal") or {}
-    outcome = out.get("outcome", "failed")
-    done = outcome == "committed"
-    proposed = [s for s in p.get("sections") or [] if s.get("proposed")]
-    inherit = sorted({h for s in proposed for h in s.get("inherit") or []})
-    target = {
-        "name": p.get("list", ""), "outcome": outcome,
-        "words": PROFILE_PROPOSE_WORDS.get(outcome, outcome), "reason": out.get("reason", ""),
-        "sent": {"lines": [f"{_section_words(s['section'])}: held by "
-                           f"{', '.join(s.get('holders') or [])}" for s in proposed] if done else [],
-                 "caption": "Committed as the profile. Nothing was sent to any device",
-                 "none": "Nothing was committed."},
-        "checks": ({"ran": True, "ok": True,
-                    "statements": [f"devices read: {p.get('devices_read', 0)}",
-                                   "secrets stored under the network's key: "
-                                   + (", ".join(out.get("secrets_stored") or []) or "none")],
-                    "issues": []}
-                   if done else {"ran": False, "why": out.get("reason") or "nothing was committed"}),
-    }
-    did_not = [] if done else [{"target": p.get("list", ""), "kind": outcome,
-                                "text": target["words"] + (f": {out['reason']}"
-                                                           if out.get("reason") else ""),
-                                "lines": []}]
-    commit = out.get("commit") or ""
-    level = "success" if done else ("nothing" if outcome == "nothing" else "failed")
-    return build_result(
-        action="profile_propose", level=level,
-        summary=(f"{p.get('list', '')}'s monitoring profile committed: {len(proposed)} section(s)."
-                 if done else target["words"].capitalize() + "."),
-        targets=[target], did_not=did_not,
-        nothing_left_out="Nothing: the profile was committed as previewed.",
-        record={"commit": commit, "tags": [], "baseline": "",
-                "statement": (f"Profile commit {commit[:12]} (`Source: profile`) records the "
-                              "network's monitoring profile." if commit else
-                              "No profile commit: nothing was proposed.")},
-        not_watched=("A profile is intent. Nothing was sent, so no device changed; a device "
-                     "receives it when a person applies it."),
-        titles=PROFILE_PROPOSE_RESULT_TITLES,
-        next_step=({"text": (f"Apply it to {', '.join(inherit)}: a deploy scoped to the "
-                             "profile's lines, previewed and confirmed per device."),
-                    "open": "profile_apply", "args": {"list": p.get("list", ""),
-                                                      "devices": inherit}}
-                   if done and inherit else None))
 
 
 def seed_result(outcomes: list, save: dict) -> dict:

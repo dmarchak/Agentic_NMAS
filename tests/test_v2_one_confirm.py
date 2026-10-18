@@ -2,9 +2,9 @@
 
 NSOT_STAGE7_PLAN.md section 10, criterion 6: "every task listed in section 2.1 goes through the
 one preview-then-confirm component, and a test asserts no second confirm implementation
-exists". tests/test_preview_confirm.py's `TestNoSecondImplementation` holds it for today's
-pages (their client-side renderer, `nmas_preview_confirm.js`). Today's pages go at cutover; this
-holds it for v2, whose previews are drawn on the server and confirmed in place.
+exists". tests/test_preview_confirm.py's `TestNoSecondImplementation` held it for today's
+pages (their client-side renderer, `nmas_preview_confirm.js`) until they went at cutover (7.8,
+P7-27); this holds it for v2, whose previews are drawn on the server and confirmed in place.
 
 **The population, by property:** every route that sends a confirm (`route_gates` kind
 `confirm`), and every route that confirms a preview (`operation_stages.STAGES` naming a preview
@@ -53,8 +53,10 @@ XDATA = re.compile(r'\bx-data="(\w+)"')
 #: Approve (`templates.approve`) and intent editor save (`templatize.edit_committed`) left at 7.8.
 #: 49 -> 39 the same day: today's persist, retire and rotate applies and templatize's
 #: seed, revert and retry applies (P7-24), and today's deploy apply and onboarding
-#: Create, Verify and Abandon (P7-25) left at 7.8.
-POPULATION_FLOOR = 39
+#: Create, Verify and Abandon (P7-25) left at 7.8. 39 -> 37 the same day, the population
+#: measured 37: today's capture apply and monitoring profile apply left with today's index
+#: (P7-27), each with its v2 home in the pattern.
+POPULATION_FLOOR = 37
 PATTERN_FLOOR = 34
 V2_SCRIPTS_FLOOR = 12
 
@@ -82,14 +84,15 @@ BOUND_ON_THE_SERVER = {
 #: Today's routes no v2 template names: route -> (the v2 route that does its job, in the
 #: pattern) or (None, why it has none). Exact. They go at cutover (docs/CUTOVER.md).
 LEGACY_HOMES = {
-    "golden.capture_apply": "device_v2.capture_confirm",
-    # persist.apply, retire.apply and rotate.apply (P7-24), deploy.apply and
-    # onboard.abandon, .create and .verify (P7-25) left at 7.8 (2026-10-17).
-    # templates.approve (templates_v2.approve) and templatize.edit_committed (intent_v2.commit)
-    # left at 7.8 (2026-10-17, P7-23); persist.apply, retire.apply, rotate.apply and
-    # templatize's seed_apply, revert_apply and retry_apply the same day (P7-24): their homes
-    # were device_v2's persist, retire, rotate, seed, revert and retry confirms.
-    "templatize.profile_propose_apply": "v2.profile_propose_commit",
+    # Empty since 2026-10-17 (P7-27): golden.capture_apply (its home device_v2.capture_confirm)
+    # and templatize.profile_propose_apply (its home v2.profile_propose_commit), the last two,
+    # left with today's index at 7.8. Before them: persist.apply, retire.apply and rotate.apply
+    # (P7-24), deploy.apply and onboard.abandon, .create and .verify (P7-25) left at 7.8
+    # (2026-10-17). templates.approve (templates_v2.approve) and templatize.edit_committed
+    # (intent_v2.commit) left at 7.8 (2026-10-17, P7-23); persist.apply, retire.apply,
+    # rotate.apply and templatize's seed_apply, revert_apply and retry_apply the same day
+    # (P7-24): their homes were device_v2's persist, retire, rotate, seed, revert and retry
+    # confirms.
 }
 
 

@@ -190,30 +190,38 @@ class TestTheApplyWritesIt:
 
 
 class TestTheResultScreenSaysWhatWasChecked:
-    """The shipped renderer, executed against the real /deploy/apply payload
-    (a deployed row and a refusal, from `payload_providers.deploy_apply`)."""
+    """v2's drawing of the result, the batch's card once its job has ended
+    (`templates/v2/_apply_job.html`), executed against the real apply's result (a deployed
+    row and a refusal, from `payload_providers.deploy_apply`). Today's renderer drew it until it
+    left with today's index at 7.8 (P7-27)."""
 
     def _render(self, monkeypatch):
         """7.1 step 2: the result is the component's, built from the receipt
         rows the apply wrote."""
         from tests import payload_providers as P
-        from tests.payload_render import render_result
+        from tests.payload_render import render_operation_result_v2
 
         report = P.deploy_apply(monkeypatch)
-        return report, render_result(report["result"], {"repreview": "openDeployPlan"})
+        return report, render_operation_result_v2(report["result"])
 
     def test_each_row_names_its_checks_and_the_receipt_is_reported(self, monkeypatch):
         report, html = self._render(monkeypatch)
         assert {r["device"]: r["outcome"] for r in report["results"]} == \
             {"s3": "refused", "s4": "deployed"}, "the fixture must exhibit both"
-        s4 = html[html.index('data-pr-target="s4"'):]
-        s3 = html[html.index('data-pr-target="s3"'):html.index('data-pr-target="s4"')]
-        assert 'data-pr-checked="' in s4 and "ospf" in s4.split("data-pr-checked=")[1][:80]
-        assert "Nothing was checked: refused before anything was sent" in s3
-        assert 'data-pr-receipt="ok"' in html and "2 row(s) written" in html
-        s4_hash = next(r for r in report["results"] if r["device"] == "s4")["program_hash"]
-        assert "line(s) sent, program" in s4 and s4_hash[:12] in s4
+        s4 = html[html.index("<summary>s4:"):]
+        s3 = html[html.index("<summary>s3:"):html.index("<summary>s4:")]
+        assert "Verify passed, checking ospf." in s4
+        assert "Nothing was verified: refused before anything was sent" in s3
+        assert "Receipt: 2 device row(s) recorded" in html
         assert "matches the program you confirmed" in s4
+        # Today's renderer also drew each program's hash ("line(s) sent, program <hash>");
+        # v2's card does not (the register row named in the P7-27 commit).
+
+
+#: A row's check lists carried and not drawn by v2's batch card, measured 2026-10-17 (P7-27);
+#: only shrinks. The register row named in that commit; today's renderer drew it, and the row's
+#: `from_intent` ("not running before"), which v2's card does not draw either.
+UNDRAWN_ON_V2 = ("pending_convergence",)
 
 
 class TestEveryCheckListIsDrawnWithContent:
@@ -221,7 +229,8 @@ class TestEveryCheckListIsDrawnWithContent:
     as reached, because the fixture's refused row carries none of them and
     its deployed row holds each EMPTY. Two (`issues`, `pending_convergence`)
     had never been drawn with content by any test. One row holding all five,
-    through the receipt and the SHIPPED renderer."""
+    through the receipt and v2's drawing of the result (the batch's card; today's renderer
+    until P7-27)."""
 
     LISTS = {"issues": "ospf neighbours dropped from 6 to 5 on r3",
              "intent_unmet": "ospfv3 is declared by intent and was not up after",
@@ -230,7 +239,7 @@ class TestEveryCheckListIsDrawnWithContent:
 
     def test_each_list_reaches_the_screen(self):
         from modules.preview_confirm import operation_result
-        from tests.payload_render import render_result
+        from tests.payload_render import render_operation_result_v2
 
         verify = {"ok": False, "checked_protocols": ["bgp", "ospf", "ospfv3"],
                   "from_intent": ["ospfv3"], "declared_protocols": ["bgp", "ospf", "ospfv3"],
@@ -244,11 +253,13 @@ class TestEveryCheckListIsDrawnWithContent:
         checks = rows[0]["checks"]
         assert all(checks[k] == [v] for k, v in self.LISTS.items()), checks
         assert checks["from_intent"] == ["ospfv3"]
-        html = render_result(operation_result(rows, {"results": []}, {"ok": True, "path": "x"},
-                                              "deploy"))
+        html = render_operation_result_v2(operation_result(rows, {"results": []},
+                                                           {"ok": True, "path": "x"}, "deploy"))
         for k, v in self.LISTS.items():
-            assert v in html, f"{k} was carried and not drawn"
-        assert "data-pr-from-intent" in html and "not running before: ospfv3" in html
+            if k not in UNDRAWN_ON_V2:
+                assert v in html, f"{k} was carried and not drawn"
+        for k in UNDRAWN_ON_V2:
+            assert self.LISTS[k] not in html, f"{k} is drawn now: leave UNDRAWN_ON_V2"
 
 
 class TestTheRestorePathWritesThemToo:

@@ -194,12 +194,25 @@ class TestCommitAndPreview:
         subject = git(lab["repo"], "log", "-1", "--format=%s")[1]
         assert "from the connectors (" in subject and "snmp" in subject
 
-    def test_the_preview_draws_the_basis_and_the_cross_check(self, lab, tmp_path):  # noqa: F811
+    def test_the_preview_carries_the_basis_and_the_cross_check(self, lab, tmp_path):  # noqa: F811
+        """The proposal's preview (`preview_confirm.profile_propose_preview`, masked as today's
+        /templatize/profile/propose/preview returned it until that route left with today's
+        index at 7.8, P7-27). Monitoring › Profile's Propose card on v2 draws a section's why
+        and the count of versions, not these words (the register row named in the P7-27
+        commit)."""
+        import json
+
+        from flask import Flask
+        from modules.nsot import profile_propose as pp
+        from modules.outbound import mask_payload
+        from modules.preview_confirm import profile_propose_preview
+
         _plant_r2_community()
         _connectors(lab, tmp_path, community="exporter-community-0451")
-        r = lab["client"].post("/templatize/profile/propose/preview", json={"list_name": "Lab"})
-        text = r.get_data(as_text=True)
-        assert r.status_code == 200, text[:300]
+        p = pp.public(pp.propose("Lab"))
+        with Flask(__name__).test_request_context("/"):
+            text = json.dumps(mask_payload(
+                profile_propose_preview(p, pp.document_diff(p), request=None)))
         assert "derived from snmp_exporter" in text
         assert "configured differently from what the connector needs" in text
         assert PLANTED not in text and "exporter-community-0451" not in text

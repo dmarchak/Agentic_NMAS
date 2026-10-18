@@ -20,7 +20,6 @@ Measured here:
   nothing is a row of its own; the interrupted row names each pending receipt.
 """
 
-import json
 import types
 
 import pytest
@@ -224,21 +223,17 @@ class TestEveryReaderDrawsPending:
         recent = html[html.index("Recent changes"):]
         assert "commit pending" in recent and "badge-warn" in recent
 
-    def test_the_in_flight_panel_carries_and_draws_it(self):
-        import dukpy
-
+    def test_the_in_flight_read_carries_it(self):
+        """The one in-flight read carries a recent row's commit state. Today's in-flight panel
+        drew it (`data-commit-state`) until it left with today's index at 7.8 (P7-27); v2's In
+        progress chip draws a finished operation's outcome, not its commit state (the register
+        row named in the P7-27 commit)."""
         from tests import payload_providers as P
-        from tests.payload_render import shipped
 
         receipts.write("Default", [_pending(device="s4")])
         d = P._client().get("/operations/in_flight?list_name=Default").get_json()
         (r,) = d["recent"]
         assert r["commit_state"] == "pending"
-        html = dukpy.evaljs("var window = {}; var document = {addEventListener: function () {},"
-                            " getElementById: function () { return null; }};\n"
-                            + shipped("nmas_in_flight.js")
-                            + f"\nwindow.inFlightPanelHtml({json.dumps(d)}, {{}})")
-        assert 'data-commit-state="pending"' in html
 
 
 @pytest.fixture

@@ -10,8 +10,9 @@ whatever the layout becomes). Register C226 to C228.
 * C227: the device page loaded Bootstrap's CSS and bundle a second time, so
   every data-API handler was registered twice.
 * C228: the empty device list said "Add one below." after Add Device was
-  removed: its text must name a control the page has. Checked on v2's Devices page too
-  since P7-19 (2026-10-15); today's half, and C227's, leave with today's pages (P7-27).
+  removed: its text must name a control the page has. Checked on v2's Devices page since
+  P7-19 (2026-10-15); today's half, and C227's, left with today's pages at 7.8 (2026-10-17,
+  P7-27).
 """
 
 import os
@@ -23,12 +24,6 @@ from tests.test_device_v2 import lab  # noqa: F401 (the fixture: a list with two
 from tests.test_settings_v2 import networks  # noqa: F401 (the fixture: a temporary store)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-
-def _index():
-    import app as nmas
-
-    return nmas.app.test_client().get("/").get_data(as_text=True)
 
 
 #: The settings cards' Saves: an Installation card's and a network group's (the records database
@@ -87,39 +82,19 @@ class TestEverySettingsControlIsRead:
         assert unread == ["plantedDeadSwitch"]
 
 
-class TestBootstrapLoadsOnce:
-    def test_base_supplies_bootstrap_once(self):
-        # Today's device page, which once added a second bundle, left at 7.8 (P7-22).
-        base = open(os.path.join(ROOT, "templates", "base.html"), encoding="utf-8").read()
-        assert base.count("bootstrap.bundle.min.js") == 1 and \
-            base.count("bootstrap.min.css") == 1, "base.html supplies both, once"
-
-
-class TestTodaysListOpensTheDevicesV2Page:
-    def test_manage_opens_the_v2_device_page_in_its_list(self, monkeypatch):
-        """Today's device page (/device/<ip>) left at 7.8 (P7-22, 2026-10-17): an answering
-        device's Manage on today's list opens its v2 page in the list the index shows, never a
-        removed route (the index draws Manage only for a device that answers, so this test
-        makes r3 answer)."""
-        import app as A
-        ip = "192.0.2.13"
-        monkeypatch.setattr(A, "get_current_device_list", lambda: ("Lab", "/nonexistent.csv"))
-        monkeypatch.setattr(A, "load_saved_devices", lambda *a, **k: [
-            {"ip": ip, "hostname": "r3", "device_type": "cisco_xe", "username": "u",
-             "password": "", "secret": ""}])
-        monkeypatch.setitem(A.device_status_cache, ip, True)
-        r = A.app.test_client().get("/", headers={"Accept": "text/html"})
-        assert r.status_code == 200
-        link = re.search(r'<a id="btn-%s" href="([^"]*)"' % re.escape(ip), r.get_data(as_text=True))
-        assert link, "no Manage link drawn for the answering device"
-        assert link.group(1) == "/v2/device/r3?list=Lab", link.group(1)
+# TestBootstrapLoadsOnce (C227: today's base supplied Bootstrap once) and
+# TestTodaysListOpensTheDevicesV2Page (today's list's Manage opened the device's v2 page) left
+# with today's index, its base and the vendored Bootstrap at 7.8 (2026-10-17, P7-27): no page
+# loads Bootstrap (tests/test_csp.py holds every vendored file to a page that loads it), and `/`
+# answers 302 to v2 (tests/test_no_new_v1_capability.py).
 
 
 class TestTheEmptyListNamesAControlThatExists:
     def test_v2_s_empty_list_says_so_and_the_page_offers_add_device(self, lab, monkeypatch):
         """C228 on v2 (P7-19, 2026-10-15): the Devices page of a network with no device says
         so, names no control, and the page's head carries the way to add one, Add device…
-        (onboarding). Today's empty list, below, leaves with today's index (P7-27)."""
+        (onboarding). Today's empty list, held beside it until today's index left (7.8, P7-27),
+        named v2's Add device… too."""
         monkeypatch.setattr("modules.device.load_saved_devices", lambda path=None: [])
         r = lab["client"].get("/v2/devices")
         html = r.get_data(as_text=True)
@@ -129,13 +104,3 @@ class TestTheEmptyListNamesAControlThatExists:
         assert "below" not in notice.group(1) and "above" not in notice.group(1)
         assert re.search(r'<a class="btn" data-op="onboard" href="/v2/onboard/new[^"]*"[^>]*>'
                          r'Add device…</a>', html)
-
-    def test_today_s_empty_list_names_v2_s_add_device_and_no_control_of_its_own(self):
-        """Today's Onboard a device left with its wizard at 7.8 (2026-10-17, P7-25): today's
-        empty list names v2's Add device… (asserted on v2 above) and no control on its own
-        page, so it never names one that is not there."""
-        table = open(os.path.join(ROOT, "templates", "partials", "device_table.html"),
-                     encoding="utf-8").read()
-        assert "Add one below" not in table and '"Onboard a device"' not in table
-        assert "Devices › Add device… on the new interface adds one" in table
-        assert "Onboard a device" not in _index() and "openOnboardWizard" not in _index()

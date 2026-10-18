@@ -81,7 +81,9 @@ from fixtures.fleet_scale import (STATE_MIX, build_fleet, expected_counts,
 #: 14,393 extracted since 2026-10-17 (P7-25): today's deploy wizard, onboarding wizard and
 #: pending banner left (7.8): partials__deploy_wizard.1.js, partials__onboard_wizard.1.js and
 #: .2.js and partials__onboard_pending.1.js (about 42 kB).
-EXTRACTED_SCRIPT_BYTES = 14_393
+#:
+#: EXTRACTED_SCRIPT_BYTES (14,393) left with today's pages and static/js/gen at 7.8 (2026-10-17,
+#: P7-27); TOLERANCE stays for v2's pins below.
 TOLERANCE = 0.25
 
 #: v2's pages, measured 2026-10-15 (P7-19) at 9 and 900 devices: {page: (fixed bytes, bytes
@@ -373,28 +375,7 @@ class TestWhatMovesWithTheFleetIsPinned:
             "A page that stopped passing over every device: record the new number.")
 
 
-class TestTheExtractedScript:
-    """Today's pages only (static/js/gen/, Stage 7 §0b); leaves with them (P7-27)."""
-
-    def test_the_extracted_script_is_no_longer_in_the_document(self):
-        """**The §0b acceptance**, pinned as a number for the same reason the page cost is:
-        a later change that quietly inlines a block again must update this line rather than
-        pass."""
-        import os as _os
-
-        from tests.source_index import tracked
-
-        total = sum(_os.path.getsize(f)
-                    for f in tracked("static/js/gen", suffix=".js", recursive=False,
-                                     root="."))
-        # The floor is the extraction's, not a size target: 10 kB, below the 14,393 left after
-        # today's deploy wizard, onboarding wizard and pending banner (7.8, P7-25, 2026-10-17;
-        # 50 kB below the 56,770 left after
-        # today's template editor and intent editor, P7-23; 75 kB below the
-        # 83,689 left after today's Git tab, Remote card and Baselines, P7-21; 125 kB below the
-        # 132,580 left after today's NetBox tab, and 150 kB below the 199,435 left after the AI
-        # family's tabs, D15) and far above what one template's inline block was.
-        assert total > 10_000, (
-            f"only {total} bytes are extracted — the inline script has "
-            "returned to the templates")
-        assert abs(total - EXTRACTED_SCRIPT_BYTES) < EXTRACTED_SCRIPT_BYTES * TOLERANCE
+# TestTheExtractedScript (Stage 7 §0b's acceptance: today's pages' inline script extracted to
+# static/js/gen, pinned at EXTRACTED_SCRIPT_BYTES) left with today's pages and that folder at 7.8
+# (2026-10-17, P7-27). v2's pages carry no inline script at all (the strict policy,
+# tests/test_csp.py).

@@ -40,7 +40,7 @@ def _captured_golden(hostname: str, list_name: str = ""):
     """The device's current golden config at repo HEAD, or None.
 
     Reads through the NSoT path -- ``repo.golden_at()``, the same function
-    restore (`restore.py`) and `/golden/version` use -- NOT the legacy
+    restore (`restore.py`) and the device page's golden reveal use -- NOT the legacy
     ``golden_configs/`` store.
 
     It used to locate the entry with `ai_assistant._list_golden_configs()`,
