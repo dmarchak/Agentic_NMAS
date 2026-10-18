@@ -10,6 +10,8 @@ Through the real `/deploy/apply` over the plan-apply seam's artifact, and the re
 `run_targets` over a real restore target.
 """
 
+import pytest
+
 from tests.test_deploy_plan_apply_seam import _plan, client  # noqa: F401 (the fixture)
 from tests.test_device_ops import _spy_pipeline
 from tests import deploy_core
@@ -41,6 +43,41 @@ def test_a_device_without_the_hash_is_refused_alone_and_the_next_still_deploys(
     r5 = next(r for r in body["results"] if r["device"] == "r5")
     assert r5["outcome"] == "refused"
     assert "needs the command hash the preview showed" in r5["reason"]
+    assert body.get("deployed", []) == ["r6"], body.get("by_outcome")
+
+
+@pytest.mark.parametrize("raised, words", [
+    ("refused", "a selected removal is refused"),       # NotAuthorised: its own refusal
+    ("broken", "could not recompute commands"),         # anything else: refused, said so
+])
+def test_a_device_whose_program_cannot_be_recomputed_is_refused_alone(
+        client, monkeypatch, raised, words):  # noqa: F811
+    """C1265's sample (apply_batch mutants 166 to 176): when the apply cannot recompute one
+    device's program, that device is refused by name and the one confirmed after it still
+    deploys; a `break` for the `continue`, or the refusal row dropped or mis-keyed, lost both
+    from the result. The device that fails comes FIRST, in the order the apply walks."""
+    import modules.nsot.deploy as nd
+    real = nd.prepare_device
+
+    def prepare(artifact):
+        if artifact.device == "r5":
+            if raised == "refused":
+                raise nd.NotAuthorised("a selected removal is refused: planted")
+            raise ValueError("planted")
+        return real(artifact)
+
+    response = deploy_core.post_plan(json={"devices": ["r5", "r6"]})
+    assert response.status_code == 200
+    planned = {d["device"]: d for d in response.get_json()["devices"]}
+    monkeypatch.setattr(nd, "prepare_device", prepare)
+    body = deploy_core.post_apply(json={
+        "confirmations": {"r5": planned["r5"]["capture_hash"],
+                          "r6": planned["r6"]["capture_hash"]},
+        "command_hashes": {"r5": planned["r5"]["command_hash"],
+                           "r6": planned["r6"]["command_hash"]}}).get_json()
+    r5 = [r for r in body["results"] if r.get("device") == "r5"]
+    assert len(r5) == 1 and r5[0]["outcome"] == "refused", body["results"]
+    assert words in r5[0]["reason"], r5[0]
     assert body.get("deployed", []) == ["r6"], body.get("by_outcome")
 
 
