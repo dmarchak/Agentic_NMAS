@@ -160,10 +160,12 @@ class TestTheSharedFakeAnswersANegativeIdAsNetBoxDoes:
         assert fake.patches == [] and fake.deletes == [], "a refused request changed nothing"
 
     def test_a_real_id_is_answered_as_before(self):
-        """The control: a positive id, as an int or a string, in a filter or a path."""
+        """The control: a positive id, as an int or a string, in a filter or a path. The site
+        is seeded, so the id names a real object (C1240: a filter naming none is a 400)."""
         from tests.fake_netbox import FakeNetBox
 
         fake = FakeNetBox()
+        fake.seed("dcim/sites", {"id": 7, "name": "lab", "slug": "lab"})
         dev = fake.seed("dcim/devices", {"name": "r1", "site": {"id": 7}})
         for value in (7, "7"):
             got = fake.get(self.URL, params={"site_id": value})
@@ -217,3 +219,104 @@ class TestTheSharedFakeAnswersANegativeIdAsNetBoxDoes:
         assert fake.refused, "a placeholder reached the shared fake and it answered 200"
         assert any(isinstance(v, int) and v < 0 for _u, p in fake.refused for v in p.values())
         assert not out.get("ok") or out.get("failed"), "the preview read a 400 as success"
+
+
+class TestTheSharedFakeAnswersAnUnknownIdAsNetBoxDoes:
+    """C1240: NetBox answers 400 to an object filter naming an id no object holds (measured on
+    the lab's NetBox 2026-10-17, status only: ``dcim/devices/?site_id=<an unused id>`` 400, a
+    real ``site_id`` 200), and the shared fake answered an empty 200, so every test on it read
+    "none found" where NetBox errors. Each expectation below is written from NetBox's filter
+    names, by hand: nothing here is read from the fake's table or from the product."""
+
+    URL = "http://nb.invalid/api/{}/"
+
+    @staticmethod
+    def _fake():
+        from tests.fake_netbox import FakeNetBox
+
+        fake = FakeNetBox()
+        site = fake.seed("dcim/sites", {"name": "lab", "slug": "lab"})
+        role = fake.seed("dcim/device-roles", {"name": "Router", "slug": "router"})
+        dev = fake.seed("dcim/devices", {"name": "r1", "site": {"id": site["id"]},
+                                         "role": {"id": role["id"]}})
+        iface = fake.seed("dcim/interfaces", {"name": "Gi1", "device": {"id": dev["id"]}})
+        vrf = fake.seed("ipam/vrfs", {"name": "blue"})
+        fake.seed("ipam/ip-addresses", {"address": "192.0.2.1/24", "vrf": {"id": vrf["id"]},
+                                        "assigned_object_type": "dcim.interface",
+                                        "assigned_object_id": iface["id"],
+                                        "assigned_object": {"id": iface["id"],
+                                                            "device": {"id": dev["id"]}}})
+        unused = 1 + max(o["id"] for objs in fake.store.values() for o in objs)
+        return fake, {"site": site, "role": role, "device": dev, "interface": iface,
+                      "vrf": vrf}, unused
+
+    @pytest.mark.parametrize("shape", ["int", "str", "list"])
+    def test_an_unknown_site_id_is_a_400(self, shape):
+        """The measured case, in each shape a request can carry the id."""
+        fake, real, unused = self._fake()
+        value = {"int": unused, "str": str(unused), "list": [real["site"]["id"], unused]}[shape]
+        got = fake.get(self.URL.format("dcim/devices"), params={"site_id": value})
+        assert got.status_code == 400, (value, got.json())
+        assert "site_id" in got.json()
+
+    @pytest.mark.parametrize("endpoint,key,kind", [
+        ("dcim/interfaces", "device_id", "device"),
+        ("ipam/ip-addresses", "interface_id", "interface"),
+        ("ipam/ip-addresses", "vrf_id", "vrf"),
+        ("dcim/devices", "role_id", "role"),
+    ])
+    def test_an_id_of_another_kind_is_a_400(self, endpoint, key, kind):
+        """The kind is the filter's, not any object's: an id that some OTHER kind's object
+        holds names nothing here. The site's id is held by a site and by no {kind}."""
+        fake, real, _unused = self._fake()
+        other = real["site"]["id"]
+        assert other != real[kind]["id"], "floor: the planted id must not be this kind's"
+        got = fake.get(self.URL.format(endpoint), params={key: other})
+        assert got.status_code == 400, (endpoint, key, got.json())
+        assert key in got.json()
+
+    def test_a_real_id_of_each_kind_is_a_200(self):
+        """The control: every planted filter answers 200 with the object when the id is real,
+        as an int and a string, and is not refused as a list (the fake does not match a list's
+        members, which no product path sends: only the refusal is this row's)."""
+        fake, real, _unused = self._fake()
+        cases = [("dcim/devices", "site_id", "site", "r1"),
+                 ("dcim/devices", "role_id", "role", "r1"),
+                 ("dcim/interfaces", "device_id", "device", "Gi1"),
+                 ("ipam/ip-addresses", "interface_id", "interface", "192.0.2.1/24"),
+                 ("ipam/ip-addresses", "vrf_id", "vrf", "192.0.2.1/24")]
+        for endpoint, key, kind, want in cases:
+            ident = real[kind]["id"]
+            for value in (ident, str(ident)):
+                got = fake.get(self.URL.format(endpoint), params={key: value})
+                assert got.status_code == 200, (endpoint, key, value, got.json())
+                held = [o.get("name") or o.get("address") for o in got.json()["results"]]
+                assert held == [want], (endpoint, key, value, held)
+            got = fake.get(self.URL.format(endpoint), params={key: [ident]})
+            assert got.status_code == 200, (endpoint, key, [ident], got.json())
+
+    @pytest.mark.parametrize("endpoint,key", [
+        ("dcim/devices", "id"),
+        ("dcim/cables", "termination_a_id"),
+        ("ipam/ip-addresses", "assigned_object_id"),
+    ])
+    def test_a_filter_naming_no_one_kind_is_answered_as_before(self, endpoint, key):
+        """`id` and the generic object filters name no single kind, so the fake keeps its empty
+        200 for an unknown id there (`dcim/devices/?id=<unused>` measured on the lab's NetBox
+        2026-10-18: 200, count 0; the generic ends not measured)."""
+        fake, _real, unused = self._fake()
+        got = fake.get(self.URL.format(endpoint), params={key: unused})
+        assert got.status_code == 200 and got.json()["results"] == [], (key, got.json())
+
+    @pytest.mark.parametrize("endpoint,status", [
+        ("ipam/ip-addresses", 200),   # a method filter: an unknown device matches nothing
+        ("dcim/interfaces", 400),     # a choice of devices: an unknown one is refused
+    ])
+    def test_device_id_is_answered_per_endpoint_as_measured(self, endpoint, status):
+        """`device_id` with an unused id, measured on the lab's NetBox 2026-10-18, status only:
+        on IP addresses 200 with nothing, on interfaces 400. The fake answers each the same."""
+        fake, _real, unused = self._fake()
+        got = fake.get(self.URL.format(endpoint), params={"device_id": unused})
+        assert got.status_code == status, (endpoint, got.json())
+        if status == 200:
+            assert got.json()["results"] == []

@@ -224,6 +224,9 @@ class TestThePreviewShowsWhatTheDatabaseWillTake:
         from modules import netbox_cascade as nc
 
         nb = self._wire(monkeypatch)
+        # The interface itself, held as NetBox would hold it: the query filters by it, and
+        # NetBox answers 400 to an interface it does not hold (C1240).
+        nb.seed("dcim/interfaces", {"id": 60, "name": "Gi1", "device": {"id": 10}})
         nb.seed("ipam/ip-addresses",
                 {"id": 22, "address": "10.0.0.15/24",
                  "assigned_object_type": "dcim.interface",
@@ -242,6 +245,7 @@ class TestThePreviewShowsWhatTheDatabaseWillTake:
         from modules import netbox_cascade as nc
 
         nb = self._wire(monkeypatch)
+        nb.seed("dcim/devices", {"id": 10, "name": "r3"})   # the device asked about (C1240)
         nb.seed("dcim/interfaces", {"id": 60, "name": "Gi1",
                                     "device": {"id": 10}})
         nb.seed("ipam/ip-addresses",
@@ -288,6 +292,7 @@ class TestThePreviewShowsWhatTheDatabaseWillTake:
         from modules import netbox_cascade as nc
 
         nb = self._wire(monkeypatch)
+        nb.seed("dcim/interfaces", {"id": 60, "name": "Gi1"})   # the doomed one (C1240)
         nb.seed("ipam/ip-addresses",
                 {"id": 22, "address": "10.0.0.15/24",
                  "assigned_object_type": "dcim.interface",

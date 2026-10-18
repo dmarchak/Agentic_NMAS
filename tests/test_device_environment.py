@@ -102,6 +102,9 @@ class TestTheImportNeverClearsTheFlag:
 
     def _ensure(self, nb, name, mgmt_only):
         from modules import netbox_client as nc
+        # The device the interface is on, held as NetBox would hold it: the lookup filters by
+        # it, and NetBox answers 400 to a device it does not hold (C1240).
+        nb.seed("dcim/devices", {"id": 1, "name": "r6"})
         return nc._ensure_interface(nb, BASE, device_id=1, name=name, description="",
                                     mac=None, mtu=None, enabled=True, speed_mbps=None,
                                     mgmt_only=mgmt_only)

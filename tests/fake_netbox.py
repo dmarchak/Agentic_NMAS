@@ -64,7 +64,49 @@ _SCOPE_STORE = {"dcim.site": "dcim/sites", "dcim.region": "dcim/regions",
 #: the expectation the product's dry run is compared with.
 CABLE_ENDS = {"termination_a_id": "a_terminations", "termination_b_id": "b_terminations"}
 
+#: An object filter -> the store holding the one kind of object it names (C1240). Written from
+#: NetBox's filter names, apart from the product's code on purpose: this is NetBox's answer, the
+#: expectation a test compares the product with. NetBox declares such a filter as a choice of
+#: existing objects, so an id no object of that kind holds answers 400, as a negative one does:
+#: measured on the lab's NetBox 2026-10-17 for ``dcim/devices/?site_id=<an unused id>`` (400; a
+#: real ``site_id`` 200), and 2026-10-18 for ``dcim/interfaces/?device_id=`` (400). The other
+#: names below are applied BY NAME and were not measured; where NetBox implements one as a
+#: method over plain numbers it answers an empty 200 instead, as ``ipam/ip-addresses/?device_id=``
+#: does (measured 2026-10-18: 200, count 0), listed in ``METHOD_FILTERS`` and answered so.
+KIND_FILTERS = {
+    "region_id": "dcim/regions", "site_group_id": "dcim/site-groups",
+    "site_id": "dcim/sites", "location_id": "dcim/locations",
+    "manufacturer_id": "dcim/manufacturers", "device_type_id": "dcim/device-types",
+    "platform_id": "dcim/platforms", "device_id": "dcim/devices",
+    "interface_id": "dcim/interfaces", "vrf_id": "ipam/vrfs", "vlan_id": "ipam/vlans",
+    "tunnel_id": "vpn/tunnels", "tag_id": "extras/tags", "tenant_id": "tenancy/tenants",
+}
+
+#: ``role_id`` names a different kind on each endpoint: a device's role is a Device Role, a
+#: prefix's or a VLAN's an IPAM Role (an IP address's role is a choice, not an object).
+ROLE_KINDS = {"dcim/devices": "dcim/device-roles", "ipam/prefixes": "ipam/roles",
+              "ipam/vlans": "ipam/roles"}
+
+#: (endpoint, filter) pairs NetBox implements as a method over plain numbers: an unknown id
+#: matches nothing (an empty 200), measured on the lab's NetBox 2026-10-18.
+METHOD_FILTERS = {("ipam/ip-addresses", "device_id")}
+
+#: ``_id`` filters that name no single kind, answered as before (an unknown id matches nothing,
+#: 200): ``id`` itself, and the generic ends whose kind is another field (a cable's termination,
+#: a tunnel termination's, an address's assigned object, a prefix's scope). Any other ``_id``
+#: name outside the two tables above is not modelled either and is answered as before.
+UNMODELLED_ID_FILTERS = ("id", "termination_id", "termination_a_id", "termination_b_id",
+                         "assigned_object_id", "scope_id", "object_id")
+
 _NEGATIVE = re.compile(r"^-\d+$")
+
+
+def _members(value) -> list:
+    """The ids a filter value carries: itself, or each member of a list. Nothing for a value a
+    request drops (None) or sends empty, or a bool (never an id)."""
+    values = list(value) if isinstance(value, (list, tuple, set)) else [value]
+    return [v for v in values
+            if v is not None and not isinstance(v, bool) and str(v).strip() != ""]
 
 
 def _is_negative_id(value) -> bool:
@@ -85,7 +127,8 @@ def _negative_id_answer(where: str, value) -> "FakeResponse":
     filter is a choice of existing objects, and no object has a negative id. The fake answers
     a negative id in a PATH the same way (C1223): NetBox's answer there was not measured (its
     router's lookup would likely answer 404, which a caller reads as "gone"); a 400 makes a
-    placeholder sent by path fail loudly in a test instead of reading as a deleted object."""
+    placeholder sent by path fail loudly in a test instead of reading as a deleted object.
+    The same answer serves a positive id no object of the filter's kind holds (C1240)."""
     return FakeResponse({where: [f"Select a valid choice. {value} is not one of the available "
                                  "choices."]}, 400)
 
@@ -163,6 +206,19 @@ class FakeNetBox:
                 return _negative_id_answer(key, value)
         return None
 
+    def _unknown(self, endpoint, params):
+        """NetBox's 400 when an object filter names an id no object of its kind holds (C1240),
+        in each shape: an int, a numeric string, a list member."""
+        for key, value in (params or {}).items():
+            kind = ROLE_KINDS.get(endpoint) if key == "role_id" else KIND_FILTERS.get(key)
+            if kind is None or (endpoint, key) in METHOD_FILTERS:
+                continue
+            held = {str(o.get("id")) for o in self.store.get(kind, [])}
+            for member in _members(value):
+                if str(member).strip() not in held:
+                    return _negative_id_answer(key, member)
+        return None
+
     @staticmethod
     def _matches(obj, params):
         for key, value in (params or {}).items():
@@ -224,6 +280,8 @@ class FakeNetBox:
     def get(self, url, params=None, timeout=None):
         endpoint, obj_id = self._parse(url)
         refused = self._negative(obj_id, params)
+        if refused is None and obj_id is None:
+            refused = self._unknown(endpoint, params)
         if refused is not None:
             return refused
         items = self.store.get(endpoint, [])

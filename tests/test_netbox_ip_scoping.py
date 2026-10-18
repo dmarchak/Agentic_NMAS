@@ -100,6 +100,11 @@ class TestTheLookupIsKeyedOnTheInterface:
         monkeypatch.setattr(guard, "assert_writes_allowed", lambda *a: None)
         monkeypatch.setattr(guard, "record_created", lambda *a, **k: None)
         monkeypatch.setattr(guard, "get_current_list", lambda: "probe")
+        # The interfaces these tests assign addresses to, held as NetBox would hold them: the
+        # lookup filters by its interface, and NetBox answers 400 to an interface it does not
+        # hold (C1240).
+        for iface_id in (10, 30, 60):
+            nb.seed("dcim/interfaces", {"id": iface_id, "name": f"GigabitEthernet{iface_id}"})
         return nb
 
     def _seed_on(self, nb, ip_id, address, iface_id):
