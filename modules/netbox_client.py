@@ -4092,31 +4092,6 @@ def _compact_interface(i: dict) -> dict:
     }
 
 
-def netbox_query_devices(search: str = "", site: str = "",
-                         role: str = "", tag: str = "") -> dict:
-    """
-    Search NetBox for devices.  Returns a list of compact device dicts.
-    ``search`` matches against device name / primary IP.
-    """
-    ok, err, session, base = _nb_ready()
-    if not ok:
-        return {"ok": False, "error": err}
-    params: dict[str, Any] = {"limit": 100}
-    if search:
-        params["q"] = search
-    if site:
-        params["site"] = site
-    if role:
-        params["role"] = role
-    if tag:
-        params["tag"] = tag
-    try:
-        results = _nb_get(session, base, "dcim/devices/", **params)
-        return {"ok": True, "devices": [_compact_device(d) for d in results]}
-    except Exception as exc:
-        return {"ok": False, "error": str(exc)}
-
-
 def _resolve_device(session, base: str, name_or_ip: str) -> Optional[dict]:
     """Resolve *name_or_ip* to exactly one NetBox device, or None.
 
@@ -4202,35 +4177,6 @@ def netbox_get_interfaces(name_or_ip: str) -> dict:
             ci["ip_addresses"] = ip_by_iface.get(i["id"], [])
             out.append(ci)
         return {"ok": True, "device": dev["name"], "interfaces": out}
-    except Exception as exc:
-        return {"ok": False, "error": str(exc)}
-
-
-def netbox_get_prefixes(vrf: str = "", prefix: str = "") -> dict:
-    """
-    List IPAM prefixes (static routes are synced here).
-    Optionally filter by VRF name or prefix string.
-    """
-    ok, err, session, base = _nb_ready()
-    if not ok:
-        return {"ok": False, "error": err}
-    params: dict[str, Any] = {"limit": 200}
-    if vrf:
-        params["vrf"] = vrf
-    if prefix:
-        params["prefix"] = prefix
-    try:
-        hits = _nb_get(session, base, "ipam/prefixes/", **params)
-        results = []
-        for p in hits:
-            results.append({
-                "prefix":      p.get("prefix"),
-                "status":      (p.get("status") or {}).get("value"),
-                "vrf":         (p.get("vrf") or {}).get("name"),
-                "description": p.get("description") or "",
-                "tags":        [t.get("name") for t in (p.get("tags") or [])],
-            })
-        return {"ok": True, "prefixes": results}
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
 
