@@ -201,7 +201,7 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   invalidates, each job announces its keys, panels re-fetch and show their value's age; no polling.
   [tests/test_invalidation_map.py; tests/test_live_contract.py; tests/test_announce.py] [why](docs/LESSONS.md#every-screen-shows-the-new-state)
 - **Every carried field is drawn; the server reads nothing the form cannot send; every route is
-  reachable and every page request resolves.** [tests/test_payload_is_rendered.py;
+  reachable and every page request resolves.** [tests/test_v2_context_is_drawn.py;
   tests/test_server_reads_nothing_the_form_cannot_send.py; tests/test_route_reachability.py;
   tests/test_page_requests_resolve.py] [why](docs/LESSONS.md#every-carried-field-is-drawn)
 - **Enterprise scale: no per-device work per request;** a per-device question is a job.
@@ -295,8 +295,7 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
 - **Proxmox task logs are in the hypervisor's local time (UTC−6 in this lab), not UTC;** convert
   before comparing. [not mechanised]
 - **Test data reaches every column and state a check photographs, clicks or asserts.** Fixtures are
-  real captures with minimal edits, never typed from memory. [partly: tests/test_payload_is_rendered.py
-  (`EMPTY_IN_FIXTURE`); tests/test_v2_layout_in_a_browser.py] [why](docs/LESSONS.md#fixtures-that-reach-the-case)
+  real captures with minimal edits, never typed from memory. [partly: tests/test_v2_layout_in_a_browser.py] [why](docs/LESSONS.md#fixtures-that-reach-the-case)
 - **Every new check is shown able to fail:** remove the property, see the aimed tests fail (not
   crash), read WHICH failed, restore from a copy (never git); a passing control is a missing test.
   [no bytecode: `PYTHONDONTWRITEBYTECODE` in scripts/nmas-test; the rest not mechanised] [why](docs/LESSONS.md#every-check-shown-able-to-fail)
@@ -304,8 +303,11 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   in the commit; a ceiling, allowlist, known-gap or excused list only goes down.** A commit that
   removes a test, adds a skip, xfail or `pragma: no cover`, weakens an assertion, or raises a
   ceiling names it in a `Test-Weakened: <test or list> — C<n>: <reason>` trailer, and C<n> is an
-  open or closed row of the register. [the Lab 7 history audit, 2026-10-17 (553 items; C1166 to
-  C1178); the trailer: not mechanised]
+  open or closed row of the register. [scripts/nmas-test-weakening-check in hooks/commit-msg and CI (job a, every pushed commit), a
+  test renamed and edited counted as deleted (the operator, 2026-10-18); the ratchets:
+  tests/ratchet_lists.py, complete by a scan; tests/test_test_weakening_check.py; an assertion
+  made weaker or a parametrize case removed: not mechanised; why: the Lab 7 history audit,
+  2026-10-17 (553 items; C1166 to C1178)]
 - **New code that parses, formats, validates, compares or stores an address is tested with an
   IPv6 case beside its IPv4 one** (IPv6 parity, the operator's decision of 2026-10-17: a feature
   that works only over IPv4 management is unfinished). [not mechanised; the audit and its
