@@ -17,7 +17,8 @@ a statement of intent. Onboarding by DHCP or ZTP writes a reservation; see
 A Kea server has one owning network: the network where its connection is set in
 [Settings](settings), never a network that inherits it. A network that inherits Kea shows
 Default's Kea, and Default owns it. Every change to a Kea, a reservation, a subnet or an
-exclusion, is recorded in its owner's repository and published with the owner's remote, so its
+exclusion, and onboarding's ZTP reservations (`dhcp/ztp-reservations.yml`), is recorded in its
+owner's repository and published with the owner's remote, so its
 history stays in one place whichever network you look from, and deleting a network that only
 inherited Kea takes none of it away.
 

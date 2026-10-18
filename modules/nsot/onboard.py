@@ -617,13 +617,14 @@ def _reservation(mac: str, kea=None) -> dict:
                 "error": f"{type(exc).__name__}: {exc}"}
 
 
-def _ztp_check(mac: str, address: str, kea, check=None) -> dict:
+def _ztp_check(mac: str, address: str, kea, check=None, list_name: str = "") -> dict:
     """`ztp.plan_check()`, **never raising**: an exception is a reason, and a
-    check that did not run has not passed."""
+    check that did not run has not passed. Asked of *list_name*'s Kea owner, the Kea
+    the reserve step writes (C1235)."""
     try:
         if check is None:
             from modules.nsot.ztp import plan_check as check
-        return check(mac, address, kea=kea)
+        return check(mac, address, kea=kea, list_name=list_name)
     except Exception as exc:                   # noqa: BLE001
         log.warning("onboard: the ZTP check failed for %s: %s", mac, exc)
         return {"ok": False, "reasons": [f"the ZTP check could not run: "
@@ -747,7 +748,7 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
         reservation = _reservation(mgmt_mac, kea)
     ztp = {"ok": False, "reasons": [], "server": "", "subnet_id": None, "dns": {}}
     if address_source == "ztp":
-        ztp = _ztp_check(mgmt_mac, requested, kea, ztp_check)
+        ztp = _ztp_check(mgmt_mac, requested, kea, ztp_check, list_name)
         reservation = {"state": "to_write" if ztp["ok"] else "refused",
                        "address": requested, "source": "this onboarding",
                        "error": ""}
@@ -1309,7 +1310,7 @@ def run_onboarding(plan, *, bind_credentials, commit, render, reserve=None,
             result["cleanup_offered"] = True
             return result
         try:
-            reserve(plan)
+            reserved = reserve(plan)
         except Exception as exc:               # noqa: BLE001
             result["failed_at"] = "reserve"
             result["reason"] = (f"the device is committed and pending, and its Kea "
@@ -1320,6 +1321,12 @@ def run_onboarding(plan, *, bind_credentials, commit, render, reserve=None,
             log.error("onboard: reservation failed for %s: %s", plan.hostname, exc)
             return result
         result["completed"].append("reserve")
+        # ITS RECORD (C1243): the commit in the Kea owner's repository. One that failed leaves
+        # the reservation in Kea and the run partial, said by the result (`reserve_record`),
+        # never silent; nothing is undone.
+        kept = (reserved or {}).get("record") if isinstance(reserved, dict) else None
+        if kept is not None:
+            result["reserve_record"] = kept
 
     # Pure computation over what is now committed. It cannot fail in a way
     # that leaves a partial state, because the state is already recorded --
@@ -1720,19 +1727,27 @@ def render_step(plan) -> str:
     return plan.bootstrap_config
 
 
-def reserve_step(plan, *, kea=None, check=None, write=None) -> dict:
+def reserve_step(plan, *, actor: str = "", kea=None, check=None, write=None) -> dict:
     """Write the ZTP reservation (P.6 D1). D4 and the conflicts are checked
     AGAIN here, at write time: the plan may be minutes old, and a property
-    held by absence can change between the review and the confirm."""
+    held by absence can change between the review and the confirm.
+
+    Both ask, and the write goes to, the Kea that owns the plan's network (C1235), and the
+    writer commits its record in that owner's repository as *actor* (C1243): the result's
+    `record`, which :func:`run_onboarding` carries as the run's `reserve_record`."""
     from modules.nsot import ztp
 
     check = check or ztp.plan_check
-    live = check(plan.mgmt_mac, plan.reservation_address, kea=kea)
+    live = check(plan.mgmt_mac, plan.reservation_address, kea=kea, list_name=plan.list_name)
     if not live.get("ok"):
         raise RuntimeError("; ".join(live.get("reasons") or ["the ZTP check failed"]))
     entry = ztp.reservation_entry(plan.mgmt_mac, plan.reservation_address,
                                   plan.hostname, live["server"])
-    out = (write or ztp.write_reservations)([entry], kea=kea)
+    out = (write or ztp.write_reservations)(
+        [entry], kea=kea, list_name=plan.list_name, actor=actor or "unknown",
+        message=(f"ztp: {plan.hostname} reserved {entry['hw-address']} -> "
+                 f"{plan.reservation_address}\n\nCreate's reserve step, onboarding "
+                 f"{plan.hostname} in {plan.list_name}."))
     outcome = (out.get("outcomes") or {}).get(entry["hw-address"], {})
     if not out.get("ok") or outcome.get("outcome") not in ("written", "unchanged"):
         raise RuntimeError(outcome.get("detail") or out.get("error")
@@ -1749,7 +1764,7 @@ def real_steps(repo: str, actor: str) -> dict:
     return {
         "bind_credentials": lambda plan: bind_credentials_step(plan, repo=repo),
         "commit":           lambda plan: commit_step(plan, actor=actor),
-        "reserve":          lambda plan: reserve_step(plan),
+        "reserve":          lambda plan: reserve_step(plan, actor=actor),
         "render":           render_step,
     }
 
@@ -2006,8 +2021,12 @@ def _abandon_onboarding(repo: str, hostname: str, list_name: str, *,
             result["remaining"].append({"step": name, "detail": detail,
                                         "how_to_finish": how})
 
-    # 0. THE RESERVATION (ztp only), first: see ZTP_ABANDON_STEPS.
+    # 0. THE RESERVATION (ztp only), first: see ZTP_ABANDON_STEPS. Removed from the Kea that
+    #    owns this network, and the removal recorded in that owner's repository (C1243, C1235).
     ztp_device = (entry or {}).get("address_source") == "ztp"
+    # Whether the reservation is GONE from Kea, which is what releasing the name needs; a
+    # removal whose record failed is gone and its step is not done.
+    reservation_gone = not ztp_device
     if ztp_device:
         mac = (entry or {}).get("mgmt_mac", "")
         how = ("remove it from the kea_ztp_fragment file, reload Kea, then run "
@@ -2023,11 +2042,27 @@ def _abandon_onboarding(repo: str, hostname: str, list_name: str, *,
                     from modules.nsot.ztp import write_reservations
 
                     def remove_reservation(m):
-                        return write_reservations(removes=[m])
+                        return write_reservations(
+                            removes=[m], list_name=list_name, actor=actor or "unknown",
+                            message=(f"ztp: {hostname}'s reservation removed ({m})\n\n"
+                                     f"Abandon of {hostname}'s onboarding in {list_name}."))
                 out = remove_reservation(mac) or {}
                 o = (out.get("outcomes") or {}).get(mac.strip().lower(), {})
+                kept = out.get("record")
                 if out.get("ok") and o.get("outcome") in ("removed", "absent"):
-                    _step("reservation", True, f"{o['outcome']}: {o.get('detail', '')}")
+                    reservation_gone = True
+                    done = f"{o['outcome']}: {o.get('detail', '')}"
+                    owner = (kept or {}).get("owner") or "the Kea owner"
+                    if kept is not None and not kept.get("ok"):
+                        _step("reservation", False,
+                              f"{done}; its record was NOT committed in {owner}'s repository: "
+                              f"{kept.get('error') or 'no reason'}",
+                              "nothing to remove: the next ZTP reservation change on that "
+                              "Kea commits the whole fragment as its record")
+                    else:
+                        _step("reservation", True, done + (
+                            f"; recorded in {owner}'s repository ({kept['commit'][:8]})"
+                            if (kept or {}).get("commit") else ""))
                 else:
                     _step("reservation", False,
                           o.get("detail") or out.get("error") or "not removed", how)
@@ -2203,8 +2238,7 @@ def _abandon_onboarding(repo: str, hostname: str, list_name: str, *,
         result["ok"] = not outstanding and all(s["ok"] for s in result["steps"])
         return result
 
-    if ztp_device and not all(st["ok"] for st in result["steps"]
-                              if st["step"] == "reservation"):
+    if not reservation_gone:
         _step("identity", False,
               "not released: the device's Kea reservation remains, and releasing "
               "the name would leave an address reserved for a device nobody "

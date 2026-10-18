@@ -1720,6 +1720,11 @@ def onboard_create_result(run: dict, plan) -> dict:
     failed_at = run.get("failed_at") or ""
     commit = run.get("commit") or ""
     source = getattr(plan, "address_source", "static") or "static"
+    # ZTP's reservation record, in the Kea owner's repository (C1243): None where no record was
+    # taken (no reservation step, or it failed before writing).
+    kept = run.get("reserve_record")
+    kea_owner = (kept or {}).get("owner") or "the Kea owner"
+    unkept = kept is not None and not kept.get("ok")
     lines = []
     for step in completed:
         words = _ONBOARD_STEP_WORDS.get(step, step)
@@ -1728,6 +1733,8 @@ def onboard_create_result(run: dict, plan) -> dict:
         if step == "reserve":
             words += (f" ({getattr(plan, 'mgmt_mac', '') or '?'} -> "
                       f"{getattr(plan, 'mgmt_ip', '') or '?'})")
+            if (kept or {}).get("commit"):
+                words += f", recorded in {kea_owner}'s repository ({kept['commit'][:12]})"
         lines.append(f"{step}: {words}")
     if run.get("ok"):
         level = "partial"
@@ -1748,6 +1755,13 @@ def onboard_create_result(run: dict, plan) -> dict:
     if not run.get("ok") or failed_at:
         did_not.append({"target": host, "kind": failed_at or "failed",
                         "text": run.get("reason") or "no reason was reported", "lines": []})
+    unkept_words = (f"Kea's reservation is written, and its record was NOT committed in "
+                    f"{kea_owner}'s repository: {(kept or {}).get('error') or 'no reason'}. "
+                    "Nothing was undone; the next ZTP reservation change on that Kea commits "
+                    "the whole fragment as its record.")
+    if unkept:
+        did_not.append({"target": host, "kind": "kea_record", "text": unkept_words,
+                        "lines": []})
     did_not.append({"target": host, "kind": "phase_two",
                     "text": "Not reached, not in the inventory, not in NetBox: phase 2 "
                             "(Verify) reaches the device, rotates its credential, records "
@@ -1765,10 +1779,16 @@ def onboard_create_result(run: dict, plan) -> dict:
     }
     statement = (f"Commit {commit[:12]} records {host} as pending." if commit
                  else "No commit was made.") + " Onboarding takes no baseline."
+    if (kept or {}).get("commit"):
+        statement += (f" Its Kea reservation is recorded in {kea_owner}'s repository, commit "
+                      f"{kept['commit'][:12]}.")
+    elif unkept:
+        statement += " " + unkept_words
     return build_result(
         action="onboard", level=level, summary=summary, targets=[target],
         did_not=did_not, nothing_left_out="",
-        record={"commit": commit, "tags": [], "baseline": "", "statement": statement},
+        record={"commit": commit, "tags": [], "baseline": "", "statement": statement,
+                **({"written": False} if unkept else {})},
         not_watched=("Nothing watches a pending device but its pending row: it has not "
                      "been reached, so no heartbeat or drift check covers it yet."),
         titles={"sent": "What was created (on no device)",
@@ -1908,8 +1928,12 @@ def onboard_abandon_result(row: dict, record_status: dict = None) -> dict:
         summary = f"{host} was not abandoned: {row.get('error') or 'no reason was reported'}"
     else:
         level = "partial" if done else "failed"
-        summary = (f"{host} was NOT fully abandoned: {len(remaining)} step(s) remain, and the "
-                   "name is not free. " + (row.get("error") or ""))
+        # The name is released when nothing references it, whatever else remains (a removed
+        # reservation whose record did not commit, C1243): said as it is.
+        name = (f"the name '{row['released']}' is free" if row.get("released")
+                else "the name is not free")
+        summary = (f"{host} was NOT fully abandoned: {len(remaining)} step(s) remain, and "
+                   f"{name}. " + (row.get("error") or ""))
     did_not = []
     if remaining:
         did_not.append({"target": host, "kind": "remaining",

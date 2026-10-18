@@ -11,7 +11,10 @@ in W4 walk's repository and left with it when W4 walk was deleted. The design:
   that network in a `From-Network:` trailer when it is another;
 - a DHCP preview or confirm from a network that does not own its Kea is refused, naming both;
 - two networks may not each set the same Kea as their own: Settings refuses the second, naming
-  the network that has it (the Control Agent's URL, normalised: host, port and path).
+  the network that has it (the Control Agent's URL, normalised: host, port and path);
+- ZTP's reservation (onboarding's reserve step, and Abandon's removal) is written on the OWNER's
+  Kea and recorded in the owner's repository the same way (C1243, C1235): it was written on the
+  installation's Kea, through a client built for no network, and committed nowhere.
 
 Driven on real repositories and real settings stores in a temporary data folder, with the lab's
 captured Kea answers (tests/test_dhcp_reservations' fake Kea loading Mercury's files).
@@ -344,3 +347,247 @@ class TestOneOwnerPerKea:
         (folder / "settings.json").write_text("{not json", encoding="utf-8")
         out = L.write("Branch", {"kea_url": OTHER_KEA})
         assert not out["ok"] and "Lab's settings could not be read" in out["error"]
+
+
+# ------------------------------------- ZTP's reservation, on the owner's Kea and in its record
+
+ZTP_MAC = "aa:bb:cc:00:02:50"
+ZTP_ADDR = "10.255.0.50"          # in the captured ZTP subnet, 255 (10.255.0.0/24)
+ZTP_HOST = "bp-ztp-a"
+ACTOR = "person@example.invalid"
+
+
+def _settings(path, **values):
+    doc = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    doc.update(values)
+    path.write_text(json.dumps(doc), encoding="utf-8")
+
+
+@pytest.fixture
+def ztp_world(nets, kea_dir, monkeypatch):  # noqa: F811
+    """Default sets Kea and its ZTP fragment (subnet 255's file, which Kea's IPv4 configuration
+    includes); Kea is the captured fake loading Mercury's files, each client built recorded with
+    what it was built for; D4's DNS condition measured silent, and this host's address on the
+    ZTP subnet given (the real `plan_check` otherwise)."""
+    from modules.nsot import ztp
+
+    fragment = kea_dir["files"][("dhcp4", 255)]
+    _settings(nets["settings"], kea_ztp_fragment=fragment,
+              kea_dhcp4_config=kea_dir["main"]["IPv4"])
+    kea = FakeKea(kea_dir["files"])
+    built = []
+    monkeypatch.setattr("modules.integrations.kea.KeaIntegration",
+                        lambda **kw: built.append(kw) or kea)
+    monkeypatch.setattr(ztp, "_run_kea_test", lambda path, program="kea-dhcp4": (True, "ok"))
+    real = ztp.plan_check
+    monkeypatch.setattr(ztp, "plan_check", lambda mac, address, **kw: real(
+        mac, address, dns=lambda source: {"state": "silent", "measured_at": 1.0},
+        addrs={"ztp0": ["10.255.0.1"]}, **kw))
+    monkeypatch.setattr("modules.secrets_store.KEY_FILE", str(kea_dir["dir"] / "key.key"))
+    return dict(nets, kea=kea, built=built, fragment=fragment, kea_dir=kea_dir)
+
+
+def _ztp_plan(network):
+    from modules.nsot.onboard import OnboardPlan
+    return OnboardPlan(hostname=ZTP_HOST, platform="cisco_iosxe", list_name=network,
+                       address_source="ztp", mgmt_mac=ZTP_MAC, reservation_address=ZTP_ADDR)
+
+
+def _repo_of(world, slug):
+    return str(world["lists"] / slug / "config_repo")
+
+
+def _reserve(world, network):
+    """Create's reserve step as production assembles it (`real_steps`), or why it raised."""
+    from modules.config import list_slug
+    from modules.nsot import onboard
+
+    step = onboard.real_steps(_repo_of(world, list_slug(network)), actor=ACTOR)["reserve"]
+    try:
+        return step(_ztp_plan(network))
+    except RuntimeError as exc:
+        return {"raised": str(exc)}
+
+
+def _fragment_macs(path):
+    with open(path, encoding="utf-8") as fh:
+        return [r.get("hw-address") for r in json.load(fh)]
+
+
+def _recorded(world, slug):
+    """ZTP's record as committed at HEAD of *slug*'s repository, parsed; None for none."""
+    import yaml
+    out = subprocess.run(["git", "-C", _repo_of(world, slug), "show",
+                          "HEAD:dhcp/ztp-reservations.yml"],
+                         capture_output=True, text=True, check=False)
+    return yaml.safe_load(out.stdout) if out.returncode == 0 else None
+
+
+def _refusing_commits(world, slug):
+    """*slug*'s repository refuses every commit, by its own pre-commit hook: a real git
+    failure, so the record's commit fails where it would."""
+    from modules.nsot import repo as R
+
+    repo = _repo_of(world, slug)
+    R.init_repo(repo)
+    hook = os.path.join(repo, ".git", "hooks", "pre-commit")
+    with open(hook, "w", encoding="utf-8") as fh:
+        fh.write("#!/bin/sh\necho refused by the test hook >&2\nexit 1\n")
+    os.chmod(hook, 0o755)
+
+
+class TestZtpReservationRecordedInTheOwner:
+    def test_a_reservation_from_an_inheriting_network_is_recorded_in_the_owner_s_repository(
+            self, ztp_world):
+        out = _reserve(ztp_world, "Branch")
+        assert ZTP_MAC in _fragment_macs(ztp_world["fragment"]), out
+        commits = _log(ztp_world, "default")
+        assert len(commits) == 1, (out, commits)
+        lines = commits[0].splitlines()
+        assert lines[0] == f"ztp: {ZTP_HOST} reserved {ZTP_MAC} -> {ZTP_ADDR}", lines
+        assert "From-Network: Branch" in lines and f"Actor: {ACTOR}" in lines, lines
+        assert _recorded(ztp_world, "default")["reservations"] == [
+            {"mac": ZTP_MAC, "address": ZTP_ADDR, "hostname": ZTP_HOST,
+             "server": "10.255.0.1", "file": f"{ZTP_HOST}.cfg"}]
+        assert _log(ztp_world, "branch") == [], "a record of Default's Kea in Branch's repository"
+        assert _published(ztp_world) == ["Default"]
+        rec = out.get("record") or {}
+        assert rec.get("ok") and rec.get("owner") == "Default" and rec.get("commit"), out
+
+    def test_the_owner_s_own_reservation_carries_no_from_network(self, ztp_world):
+        """Control: Default onboarding on its own Kea records in its own repository, with no
+        From-Network."""
+        out = _reserve(ztp_world, "Default")
+        assert (out.get("record") or {}).get("ok"), out
+        assert _from(ztp_world, "default") == [[]]
+
+    def test_the_check_and_the_write_ask_the_owner_s_kea(self, ztp_world):
+        """C1235: Kea's client is built for the owning network, at the write-time check and at
+        the write, never for no network."""
+        _reserve(ztp_world, "Branch")
+        assert ztp_world["built"], "no Kea client was built"
+        assert [kw.get("list_name") for kw in ztp_world["built"]] == \
+            ["Default"] * len(ztp_world["built"]), ztp_world["built"]
+
+    def test_a_network_with_its_own_kea_reserves_on_its_own_and_records_there(
+            self, ztp_world, tmp_path):
+        """C1235: Lab sets its own Kea and fragment; Default's fragment is absent, so a writer
+        reading Default's settings writes nothing."""
+        absent = str(tmp_path / "default-kea" / "reservations-255.json")
+        _settings(ztp_world["settings"], kea_ztp_fragment=absent)
+        folder = ztp_world["lists"] / "lab"
+        folder.mkdir(exist_ok=True)
+        (folder / "settings.json").write_text(json.dumps({"values": {
+            "kea_url": OTHER_KEA, "kea_ztp_fragment": ztp_world["fragment"],
+            "kea_dhcp4_config": ztp_world["kea_dir"]["main"]["IPv4"]}}), encoding="utf-8")
+        out = _reserve(ztp_world, "Lab")
+        assert ZTP_MAC in _fragment_macs(ztp_world["fragment"]), out
+        assert [kw.get("list_name") for kw in ztp_world["built"]] == \
+            ["Lab"] * len(ztp_world["built"]), ztp_world["built"]
+        assert len(_log(ztp_world, "lab")) == 1 and _from(ztp_world, "lab") == [[]], out
+        assert _log(ztp_world, "default") == []
+
+    def test_a_record_that_fails_to_commit_is_create_s_partial_never_silent(self, ztp_world):
+        """The reservation is in Kea and its record is not committed: Create's result says so
+        in place (never green), and nothing is undone."""
+        from modules.nsot import onboard
+        from modules.preview_confirm import onboard_create_result
+
+        _refusing_commits(ztp_world, "default")
+        plan = _ztp_plan("Branch")
+        steps = onboard.real_steps(_repo_of(ztp_world, "branch"), actor=ACTOR)
+        run = onboard.run_onboarding(
+            types.SimpleNamespace(**{**plan.__dict__, "onboardable": True}),
+            bind_credentials=lambda p: None, commit=lambda p: "c0ffee", render=lambda p: "",
+            reserve=steps["reserve"])
+        assert ZTP_MAC in _fragment_macs(ztp_world["fragment"]), run
+        kept = run.get("reserve_record") or {}
+        assert kept and not kept.get("ok"), run
+        assert "refused by the test hook" in kept.get("error", ""), kept
+        drawn = onboard_create_result(run, plan)
+        assert drawn["record"].get("written") is False, drawn["record"]
+        assert drawn["level"] != "success"
+        said = " ".join(i["text"] for i in drawn["did_not"]["items"])
+        assert "NOT committed in Default's repository" in said, said
+        assert "NOT committed in Default's repository" in drawn["record"]["statement"]
+
+    def test_the_config_check_holds_the_record_to_its_shape(self, ztp_world):
+        """ZTP's record is one of the DHCP records the commit's config check reads: one whose
+        reservations are not a list is refused, naming the file; the writer's own passes."""
+        from modules.nsot import config_check, ztp
+
+        assert (_reserve(ztp_world, "Default").get("record") or {}).get("commit")
+        repo = _repo_of(ztp_world, "default")
+        path = os.path.join(repo, ztp.RECORD)
+        assert config_check.precommit(repo, [ztp.RECORD], list_name="Default") == ""
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write("reservations: not a list\n")
+        refused = config_check.precommit(repo, [ztp.RECORD], list_name="Default")
+        assert "not a DHCP record" in refused and ztp.RECORD in refused, refused
+
+
+def _pending_ztp_device(world, slug):
+    """A pending ZTP device in *slug*'s repository, as Create's commit step leaves it."""
+    from modules.nsot import manifest as _m
+    from modules.nsot.repo import GoldenItem, adopt_identity, init_repo
+
+    repo = _repo_of(world, slug)
+    os.makedirs(os.path.join(repo, "host_vars"), exist_ok=True)
+    init_repo(repo)
+    identity = adopt_identity(repo, GoldenItem(ZTP_HOST, "", ""))
+    _m.upsert_device(repo, identity, ZTP_HOST, platform="cisco_iosxe", pending=True,
+                     address_source="ztp", mgmt_mac=ZTP_MAC, reserved_address=ZTP_ADDR)
+    return repo
+
+
+def _reserved_by_hand(world):
+    """The reservation in the fragment and in Kea, with no record of it anywhere."""
+    from modules.nsot import ztp
+
+    with open(world["fragment"], "w", encoding="utf-8") as fh:
+        json.dump([ztp.reservation_entry(ZTP_MAC, ZTP_ADDR, ZTP_HOST, "10.255.0.1")], fh)
+    world["kea"].command("config-reload")
+
+
+def _abandon(world, repo, network):
+    from modules.nsot import onboard
+    return onboard.abandon_onboarding(
+        repo, ZTP_HOST, network, actor=ACTOR,
+        remove_netbox=lambda *a, **k: {"ok": True, "deleted": [], "skipped": []})
+
+
+class TestZtpAbandonRecordedInTheOwner:
+    def test_abandon_s_removal_is_recorded_in_the_owner_s_repository(self, ztp_world):
+        repo = _pending_ztp_device(ztp_world, "branch")
+        _reserved_by_hand(ztp_world)
+        out = _abandon(ztp_world, repo, "Branch")
+        assert ZTP_MAC not in _fragment_macs(ztp_world["fragment"]), out
+        assert out["ok"] and out["released"] == ZTP_HOST, out
+        commits = _log(ztp_world, "default")
+        assert len(commits) == 1, (out["steps"], commits)
+        lines = commits[0].splitlines()
+        assert lines[0] == f"ztp: {ZTP_HOST}'s reservation removed ({ZTP_MAC})", lines
+        assert "From-Network: Branch" in lines and f"Actor: {ACTOR}" in lines, lines
+        assert _recorded(ztp_world, "default")["reservations"] == []
+        assert _log(ztp_world, "branch") == []
+        step = [s for s in out["steps"] if s["step"] == "reservation"][0]
+        assert "recorded in Default's repository" in step["detail"], step
+
+    def test_a_removal_whose_record_fails_releases_the_name_and_says_so(self, ztp_world):
+        """The reservation is gone, so the name is released; the run is not drawn as done, and
+        it says the record was not committed and that the name is free."""
+        from modules.nsot import onboard
+        from modules.preview_confirm import onboard_abandon_result
+
+        repo = _pending_ztp_device(ztp_world, "branch")
+        _reserved_by_hand(ztp_world)
+        _refusing_commits(ztp_world, "default")
+        out = _abandon(ztp_world, repo, "Branch")
+        assert ZTP_MAC not in _fragment_macs(ztp_world["fragment"]), out
+        step = [s for s in out["steps"] if s["step"] == "reservation"][0]
+        assert not step["ok"] and "NOT committed in Default's repository" in step["detail"], step
+        assert out["released"] == ZTP_HOST and not out["ok"], out
+        row = onboard.record_run(repo, "abandon", "Branch", ZTP_HOST, ACTOR, out)["row"]
+        drawn = onboard_abandon_result(row)
+        assert drawn["level"] == "partial", drawn["level"]
+        assert "not free" not in drawn["happened"]["summary"], drawn["happened"]["summary"]

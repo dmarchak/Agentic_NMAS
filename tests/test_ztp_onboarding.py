@@ -31,7 +31,7 @@ def _syslog_host(monkeypatch):
         "192.0.2.10" if k == "syslog_host" else real(k, *a, **kw)))
 
 
-def _ok_check(mac, address, kea=None):
+def _ok_check(mac, address, kea=None, list_name=""):
     return {"ok": True, "reasons": [], "server": SERVER, "subnet_id": 255,
             "dns": {"state": "silent", "measured_at": 1000.0}}
 
@@ -72,7 +72,7 @@ class TestThePlan:
         reasons = ["D4: routers reaches a reservation in subnet 255",
                    f"{ADDR} is leased to aa:bb:cc:00:09:98 right now"]
         plan = _plan(tmp_path, monkeypatch,
-                     check=lambda m, a, kea=None: {"ok": False, "reasons": reasons,
+                     check=lambda m, a, kea=None, list_name="": {"ok": False, "reasons": reasons,
                                                    "server": "", "subnet_id": None, "dns": {}})
         assert not plan.onboardable
         for r in reasons:
@@ -86,7 +86,7 @@ class TestThePlan:
         assert any(said in r for r in plan.blocking_reasons), plan.blocking_reasons
 
     def test_a_check_that_raised_has_not_passed(self, tmp_path, monkeypatch):
-        def boom(m, a, kea=None):
+        def boom(m, a, kea=None, list_name=""):
             raise OSError("Kea unreachable")
         plan = _plan(tmp_path, monkeypatch, check=boom)
         assert not plan.onboardable
@@ -161,15 +161,18 @@ class TestTheReserveStep:
     def _plan(self):
         class P:
             mgmt_mac, reservation_address, hostname = MAC, ADDR, "bp-ztp-a"
+            list_name = "probe"
         return P()
 
     def test_it_writes_the_entry_with_the_server_found_at_write_time(self):
         seen = {}
 
-        def write(adds, kea=None):
-            seen["adds"] = adds
+        def write(adds, kea=None, list_name="", actor="", message=""):
+            seen.update(adds=adds, list_name=list_name, actor=actor)
             return {"ok": True, "outcomes": {MAC: {"outcome": "written", "detail": ""}}}
-        onboard.reserve_step(self._plan(), check=_ok_check, write=write)
+        onboard.reserve_step(self._plan(), check=_ok_check, write=write, actor="op@example.com")
+        # For the plan's network, as the person (C1243: the writer records in its Kea owner's).
+        assert (seen["list_name"], seen["actor"]) == ("probe", "op@example.com")
         entry = seen["adds"][0]
         assert entry["hw-address"] == MAC and entry["ip-address"] == ADDR
         assert {o["name"]: o["data"] for o in entry["option-data"]} == {
@@ -177,14 +180,14 @@ class TestTheReserveStep:
 
     def test_d4_is_checked_again_at_write_time(self):
         written = []
-        bad = lambda m, a, kea=None: {"ok": False, "reasons": ["D4: routers at subnet 255"],
-                                      "server": SERVER}
+        bad = lambda m, a, kea=None, list_name="": {
+            "ok": False, "reasons": ["D4: routers at subnet 255"], "server": SERVER}
         with pytest.raises(RuntimeError, match="D4: routers"):
             onboard.reserve_step(self._plan(), check=bad, write=lambda *a, **k: written.append(1))
         assert written == [], "a write after a failed check"
 
     def test_a_refused_write_raises_with_the_writers_reason(self):
-        write = lambda adds, kea=None: {"ok": False, "outcomes": {
+        write = lambda adds, kea=None, **_record: {"ok": False, "outcomes": {
             MAC: {"outcome": "refused", "detail": f"{ADDR} is leased to someone"}}}
         with pytest.raises(RuntimeError, match="is leased to someone"):
             onboard.reserve_step(self._plan(), check=_ok_check, write=write)

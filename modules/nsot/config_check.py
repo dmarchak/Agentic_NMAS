@@ -71,8 +71,10 @@ GOVERNED = ("golden/", "host_vars/", "templates/", "profiles/", "dhcp/")
 
 CHECKS = ("yaml", "golden", "templates", "render", "intent-match", "lint", "secrets")
 
-#: The DHCP records and the shape each writer gives them (modules/dhcp_*.py, `RECORD`).
-DHCP_RECORDS = ("dhcp/exclusions.yml", "dhcp/reservations.yml", "dhcp/subnets.yml")
+#: The DHCP records and the shape each writer gives them (modules/dhcp_*.py, `RECORD`; ZTP's,
+#: `modules/nsot/ztp.RECORD`, has the reservations record's shape).
+DHCP_RECORDS = ("dhcp/exclusions.yml", "dhcp/reservations.yml", "dhcp/subnets.yml",
+                "dhcp/ztp-reservations.yml")
 
 #: A file larger than this is not scanned for secrets (and said so): a config repository's
 #: text files are kilobytes.

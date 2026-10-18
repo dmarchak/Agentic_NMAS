@@ -689,12 +689,13 @@ def record_repo(list_name: str) -> str:
     return os.path.join(get_list_data_dir(record_home(list_name)[0]), "config_repo")
 
 
-def record_commit(list_name: str, p: dict, *, actor: str, reason: str) -> dict:
-    """Write `dhcp/reservations.yml` (every reservation in Mercury's subnet files, both families)
-    and commit it as *actor*, the reason in its body, in the Kea owner's repository
-    (:func:`record_home`)."""
-    import yaml
-
+def commit_in_owner(list_name: str, rel: str, text_for, message: str, *, actor: str) -> dict:
+    """THE commit of a record of a change to *list_name*'s Kea, from the DHCP page or from
+    ZTP's writer (C1181, C1243): *rel* written with ``text_for(owner)`` in the Kea owner's
+    repository (:func:`record_home`) and committed there as *actor* with `Source: dhcp`, a
+    `From-Network:` trailer when *list_name* is another network, and published with the owner's
+    remote. ``{"ok", "commit", "owner", "error"}``; nothing is committed when the record did not
+    change (``commit`` empty, ``ok`` true)."""
     from modules.config import get_list_data_dir
     from modules.filestore import write_atomic
     from modules.list_settings import ListSettingsUnreadable
@@ -703,17 +704,31 @@ def record_commit(list_name: str, p: dict, *, actor: str, reason: str) -> dict:
     try:
         owner, extra = record_home(list_name)
     except ListSettingsUnreadable as exc:
-        return {"ok": False, "error": f"whose Kea this is could not be read: {exc}"}
+        return {"ok": False, "commit": "", "owner": "",
+                "error": f"whose Kea this is could not be read: {exc}"}
     repo = os.path.join(get_list_data_dir(owner), "config_repo")
-    doc = {"reservations": held_by_mercury(owner)}
     with R.repo_lock(repo):
-        path = os.path.join(repo, RECORD)
+        path = os.path.join(repo, rel)
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        write_atomic(path, "# Kea reservations Mercury holds in its subnet files (C529); "
-                           "written on each change.\n" + yaml.safe_dump(doc, sort_keys=False))
-        subject = p.get("subject") or "dhcp: reservation changed"
-        return R._commit_paths(owner, [RECORD], f"{subject}\n\n{reason.strip()}",  # noqa: SLF001
-                               [f"Actor: {actor}", *extra], "dhcp")
+        write_atomic(path, text_for(owner))
+        got = R._commit_paths(owner, [rel], message, [f"Actor: {actor}", *extra],  # noqa: SLF001
+                              "dhcp")
+    return dict(got, owner=owner)
+
+
+def record_commit(list_name: str, p: dict, *, actor: str, reason: str) -> dict:
+    """Write `dhcp/reservations.yml` (every reservation in Mercury's subnet files, both families)
+    and commit it as *actor*, the reason in its body, in the Kea owner's repository
+    (:func:`commit_in_owner`)."""
+    import yaml
+
+    subject = p.get("subject") or "dhcp: reservation changed"
+    return commit_in_owner(
+        list_name, RECORD,
+        lambda owner: ("# Kea reservations Mercury holds in its subnet files (C529); written on "
+                       "each change.\n" + yaml.safe_dump({"reservations": held_by_mercury(owner)},
+                                                          sort_keys=False)),
+        f"{subject}\n\n{reason.strip()}", actor=actor)
 
 
 def held_by_mercury(list_name: str) -> list:

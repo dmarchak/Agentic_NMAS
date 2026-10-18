@@ -308,10 +308,28 @@ def posture(address: str, *, kea=None, dns=dns_posture, addrs=None) -> dict:
     return out
 
 
-def _kea():
+def _kea(owner: str = ""):
+    """Kea's client: the one *owner* (a network that owns a Kea, :func:`kea_home`) sets, for a
+    check or write made for a network (C1235: the writer built it for no network, so a device
+    onboarded into a network with a Kea of its own was reserved on Default's). With no network,
+    the client built for no list (job health's D4 rows, a pending row's progress)."""
     from modules.integrations.kea import KeaIntegration
 
-    return KeaIntegration()
+    return KeaIntegration(list_name=owner) if owner else KeaIntegration()
+
+
+def kea_home(list_name: str) -> dict:
+    """Where *list_name*'s ZTP reservations go: ``{"owner", "fragment", "main_config"}``, its
+    Kea OWNER's (`list_settings.kea_owner`: the network where Kea is set, never one inheriting
+    it; C1181), the owner's ZTP fragment and Kea's IPv4 configuration (C1235). Raises
+    `list_settings.ListSettingsUnreadable` when whose Kea it is cannot be read."""
+    from modules.list_settings import kea_owner, value
+
+    owner, _why = kea_owner(list_name)
+    return {"owner": owner,
+            "fragment": value(owner, "kea_ztp_fragment", "") or "",
+            "main_config": (value(owner, "kea_dhcp4_config", "/etc/kea/kea-dhcp4.conf")
+                            or "/etc/kea/kea-dhcp4.conf")}
 
 
 def ztp_subnets(dhcp4: dict, addrs=None) -> list:
@@ -510,30 +528,100 @@ def fragment_lock(fragment: str):
     return PathLock(os.path.join(folder, f"kea-fragment-{key}"))
 
 
-def write_reservations(adds=(), removes=(), *, kea=None, fragment: str = None,
+def write_reservations(adds=(), removes=(), *, list_name: str = "", actor: str = "",
+                       message: str = "", kea=None, fragment: str = None,
                        main_config: str = None, run_test=None) -> dict:
     """Write and remove ZTP reservations. ``{"ok", "outcomes", "error",
-    "reloaded"}``; `outcomes` is ``{mac: {"outcome", "detail"}}`` with outcome
+    "reloaded", "record"}``; `outcomes` is ``{mac: {"outcome", "detail"}}`` with outcome
     ``written | unchanged | removed | absent | refused``.
 
     *adds* are dicts from :func:`reservation_entry`. *removes* are MACs.
     A device refused alone does not stop the others. A failure after the
     live fragment is touched restores the previous fragment and reloads.
     The whole write holds :func:`fragment_lock` (R22).
-    """
-    from modules.list_settings import default_layer   # one fragment serves every list (P.7)
 
-    out = {"ok": False, "outcomes": {}, "error": "", "reloaded": False}
-    fragment = fragment if fragment is not None else default_layer("kea_ztp_fragment", "")
-    main_config = main_config or default_layer("kea_dhcp4_config",
-                                              "/etc/kea/kea-dhcp4.conf")
+    *list_name* is the network the write is made for (onboarding's): the write goes to its
+    Kea OWNER's Kea and fragment (:func:`kea_home`, C1235), and, still holding the fragment's
+    lock, `record` is the commit of :data:`RECORD` in the owner's repository as *actor* with
+    *message* (:func:`record_commit`, C1243), or why it failed. A write for no network names
+    its fragment, Kea's configuration and Kea itself, and records nothing (`record` None).
+    """
+    from modules.list_settings import ListSettingsUnreadable
+
+    out = {"ok": False, "outcomes": {}, "error": "", "reloaded": False, "record": None}
+    owner = ""
+    if list_name:
+        try:
+            home = kea_home(list_name)
+        except ListSettingsUnreadable as exc:
+            out["error"] = (f"whose Kea {list_name} uses could not be read ({exc}), so where its "
+                            "reservation goes cannot be said. Nothing was written")
+            return out
+        owner = home["owner"]
+        fragment = home["fragment"] if fragment is None else fragment
+        main_config = main_config or home["main_config"]
+    elif fragment is None or not main_config or kea is None:
+        out["error"] = ("a ZTP reservation is written for a network (whose Kea, fragment and "
+                        "record it is), or names its fragment, Kea's configuration and Kea; "
+                        "this write did neither. Nothing was written")
+        return out
     if not fragment:
         out["error"] = ("kea_ztp_fragment is not configured: a reservation written "
                         "anywhere else lives in Kea's memory until its next restart (C49)")
         return out
     with fragment_lock(fragment):
-        return _write_reservations_locked(out, adds, removes, kea or _kea(), fragment,
-                                          main_config, run_test)
+        _write_reservations_locked(out, adds, removes, kea or _kea(owner), fragment,
+                                   main_config, run_test)
+        # THE RECORD, under the same lock, so each write's commit holds that write's fragment.
+        # Taken whenever Kea was reloaded with a new fragment (even one whose read-back then
+        # failed: it is in Kea) or the write succeeded unchanged (which commits nothing unless
+        # an earlier record failed: the record is the whole fragment, so this one catches up).
+        if list_name and (out["reloaded"] or out["ok"]):
+            out["record"] = record_commit(list_name, fragment, message=message, actor=actor)
+            if not out["record"].get("ok"):
+                log.error("ztp: the reservation record for %s was NOT committed: %s",
+                          list_name, out["record"].get("error"))
+        return out
+
+
+#: ZTP's record (C1243): every reservation in the ZTP fragment, as the writer left it, committed
+#: in the Kea owner's repository with the DHCP page's records (`dhcp_reservations.RECORD`
+#: excludes ZTP's subnet: its reservations are onboarding's, recorded here).
+RECORD = "dhcp/ztp-reservations.yml"
+
+
+def record_rows(entries) -> list:
+    """The record's rows: each reservation's MAC, address, hostname and the two config-source
+    options (:func:`reservation_entry`'s shape), in the fragment's order."""
+    rows = []
+    for e in entries:
+        if not isinstance(e, dict):
+            continue
+        opts = {o.get("name"): o.get("data") for o in e.get("option-data") or []
+                if isinstance(o, dict)}
+        rows.append({"mac": _mac(e.get("hw-address", "")), "address": e.get("ip-address", ""),
+                     "hostname": e.get("hostname", ""), "server": opts.get(SERVER_OPTION, ""),
+                     "file": opts.get(FILE_OPTION, "")})
+    return rows
+
+
+def record_commit(list_name: str, fragment: str, *, message: str, actor: str) -> dict:
+    """Commit :data:`RECORD`, read from *fragment* now, through the one commit of a Kea record
+    (`dhcp_reservations.commit_in_owner`: the Kea owner's repository, `From-Network:` when
+    *list_name* is another network). ``{"ok", "commit", "owner", "error"}``."""
+    import yaml
+
+    from modules import dhcp_reservations as D
+
+    try:
+        rows = record_rows(_read_fragment(fragment))
+    except Refused as exc:
+        return {"ok": False, "commit": "", "owner": "",
+                "error": f"the fragment could not be read for the record: {exc}"}
+    text = ("# Kea reservations ZTP's onboarding holds in its fragment (C1243); written on "
+            "each change.\n" + yaml.safe_dump({"reservations": rows}, sort_keys=False))
+    return D.commit_in_owner(list_name, RECORD, lambda _owner: text,
+                             message or "ztp: reservations changed", actor=actor or "unknown")
 
 
 def _includer(main_config: str, main_text: str, fragment: str) -> str:
@@ -690,14 +778,25 @@ def _leases(kea) -> dict:
 
 
 def plan_check(mac: str, address: str, *, kea=None, dns=dns_posture, addrs=None,
-               get=None) -> dict:
+               get=None, list_name: str = "") -> dict:
     """Everything a `ztp` plan must know before anything is created:
     ``{"ok", "reasons", "server", "subnet_id", "dns"}``.
 
     The writer's own preconditions (configured, no conflict) plus D4's two
     conditions and D3's derived server. Found at PLAN time, so the review
     screen, which promises that nothing has been created yet, is where a
-    refusal lands. A check that could not run is a reason, never a pass."""
+    refusal lands. A check that could not run is a reason, never a pass.
+
+    *list_name*, the onboarding's network: asked of the Kea and fragment the writer will
+    write, its Kea owner's (:func:`kea_home`, C1235)."""
+    owner = ""
+    if get is None and list_name:
+        from modules.list_settings import value
+
+        owner = kea_home(list_name)["owner"]
+
+        def get(key, default=""):
+            return value(owner, key, default)
     if get is None:
         from modules.list_settings import default_layer as get   # one fragment, every list
     out = {"ok": False, "reasons": [], "server": "", "subnet_id": None, "dns": {}}
@@ -708,7 +807,7 @@ def plan_check(mac: str, address: str, *, kea=None, dns=dns_posture, addrs=None,
         return out
     if not mac or not address:
         return out
-    kea = kea or _kea()
+    kea = kea or _kea(owner)
     p = posture(address, kea=kea, dns=dns, addrs=addrs)
     out.update(server=p["server"], subnet_id=p["subnet_id"], dns=p["dns"])
     out["reasons"] += p["reasons"]
