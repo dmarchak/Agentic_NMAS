@@ -491,22 +491,10 @@ EQUIVALENT = [
            "the line runs only for a non-empty mgmt_ip (the guard above), which neither '' "
            "nor 'XXXX' (no address) equals: a row with no address matches nothing either way"),
     *_each("modules.credentials._from_credential_list",
-           'return (row.get("username", ""),',
-           ('return (row.get("username", None),', 'return (row.get("username", ),',
-            'return (row.get("username", "XXXX"),'),
-           "a default never read: csv.DictReader gives every row every column of the header, "
-           "and devices.csv's header (device.py) carries username, password and secret"),
-    *_each("modules.credentials._from_credential_list",
-           'decrypt_value(row.get("password", "")),',
-           ('decrypt_value(row.get("password", None)),',
-            'decrypt_value(row.get("password", )),',
-            'decrypt_value(row.get("password", "XXXX")),'),
-           "a default never read: csv.DictReader gives every row every column of the header, "
-           "and devices.csv's header (device.py) carries username, password and secret"),
-    *_each("modules.credentials._from_credential_list",
-           'decrypt_value(row.get("secret", "")))',
-           ('decrypt_value(row.get("secret", None)))', 'decrypt_value(row.get("secret", )))',
-            'decrypt_value(row.get("secret", "XXXX")))'),
+           'return (row.get("username", ""), password, secret)',
+           ('return (row.get("username", None), password, secret)',
+            'return (row.get("username", ), password, secret)',
+            'return (row.get("username", "XXXX"), password, secret)'),
            "a default never read: csv.DictReader gives every row every column of the header, "
            "and devices.csv's header (device.py) carries username, password and secret"),
     *_each("modules.credentials.get_template_secret",

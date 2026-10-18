@@ -260,6 +260,26 @@ class TestCredentialResolution:
         assert out["ok"] and out["username"] == "csvuser"
         assert out["source"] == "local-list:Lab Devices"
 
+    def test_the_designated_lists_password_and_secret_are_opened(self, tmp_path, monkeypatch):
+        """C1263 (Lab 7's second mutation sample, 2026-10-18): the list's file holds each
+        credential as the device writer encrypts it, and `resolve` handed that ciphertext out as
+        the password, ok and with the right username and source (a wrong thing that looked
+        right). The list is written here by the real writer, `device.save_device`."""
+        from modules import device as D
+
+        monkeypatch.setattr(credentials, "_FILE", str(tmp_path / "c.json"))
+        lists_dir = tmp_path / "lists" / "lab_devices"
+        lists_dir.mkdir(parents=True)
+        monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path / "lists"))
+        D.save_device({"hostname": "R1", "device_type": "cisco_ios", "ip": "203.0.113.1",
+                       "username": "csvuser", "password": "csvpw", "secret": "csven"},
+                      filename=str(lists_dir / "devices.csv"))
+
+        out = credentials.resolve("203.0.113.1", credential_list="Lab Devices")
+        assert out["ok"] and out["source"] == "local-list:Lab Devices"
+        assert (out["username"], out["password"], out["secret"]) == ("csvuser", "csvpw",
+                                                                     "csven")
+
     def test_source_is_recorded_for_traceability(self, creds):
         devices, _s, _w = netbox_source.adapt_devices([_raw()])
         assert devices[0]["_cred_source"] == "profile:default"

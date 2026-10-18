@@ -275,12 +275,23 @@ def _from_credential_list(credential_list: str, mgmt_ip: str):
         path = os.path.join(LISTS_DIR, list_slug(credential_list), "devices.csv")
         if not os.path.exists(path):
             return None
+        from modules.device import open_stored
+
         with open(path, newline="", encoding="utf-8") as fh:
             for row in _csv.DictReader(fh):
                 if (row.get("ip") or "").strip() == mgmt_ip:
-                    return (row.get("username", ""),
-                            decrypt_value(row.get("password", "")),
-                            decrypt_value(row.get("secret", "")))
+                    # The list's file holds each credential as the device writer seals it
+                    # (`device.save_device`), so it is opened by that file's own reader; the
+                    # settings store's `decrypt_value` passes such a value through unopened
+                    # (C1263: the password went out as ciphertext). One that cannot be opened
+                    # is refused, as a list that could not be read is.
+                    password, why = open_stored(row, "password")
+                    secret, why_secret = open_stored(row, "secret")
+                    if why or why_secret:
+                        log.warning("credentials: credential list '%s': %s", credential_list,
+                                    why or why_secret)
+                        return None
+                    return (row.get("username", ""), password, secret)
     except Exception as exc:                  # noqa: BLE001
         log.warning("credentials: could not read credential list '%s': %s",
                     credential_list, exc)
