@@ -164,7 +164,11 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
 - **Nothing outside templates/v2: today's interface left at cutover (P7-27); no template,
   script, control or route outside v2 but the declared non-GUI endpoints.**
   [tests/test_no_new_v1_capability.py]
-- **Never send the operator to today's (v1) pages for an operation: no v1/v2 mixing in instructions.** If v2 cannot do what the operator needs, say so plainly and treat it as a Stage 7 cutover gap to build first. A v2 link to a v1 route says "today's" and names its gap. [tests/test_v2_links_stay_on_v2.py; tests/todays_page_links.py; instructions: not mechanised]
+- **Instructions name only v2's screens and controls; today's (v1) pages are gone (P7-27).** If
+  v2 cannot do what the operator needs, say so plainly and register it as a gap to build first,
+  never a way around through a removed page or a terminal. No v2 link or Needs attention row
+  names a removed page or control. [tests/test_v2_links_stay_on_v2.py; tests/todays_page_links.py;
+  instructions: not mechanised]
 - **An element carrying `hx-select` disinherits it; a v2 action that cannot draw its answer says
   "Couldn't load: <why>" in place.** [tests/test_v2_swaps_never_silent.py]
 - **Built for large fleets: a screen listing devices or results leads with a summary (counts by

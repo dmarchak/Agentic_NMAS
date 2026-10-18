@@ -65,8 +65,8 @@ The branch `p7-27` (e2f27b84, 078c1bd0) is in main through the merge 4e631168.
    the session).
 2. **Choose C1315's rule** (an edit on GitHub): the remote refuses every writer but Mercury (a
    GitHub branch protection, yours), or v2 adopts the remote's commits by a confirmed operation.
-3. **Paste the replacement** for CLAUDE.md's "Never send the operator to today's (v1) pages"
-   bullet (the text is in the session).
+3. ~~Paste the replacement for CLAUDE.md's v1-pages bullet~~ **done** (the operator's paste,
+   2026-10-18: "Instructions name only v2's screens and controls").
 
 Done since: your P7-27 walk (steps 1 to 12 PASS, the six divergences kept), and About's
 screenshot.
