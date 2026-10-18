@@ -6,12 +6,14 @@ with MDT (UTC−6) beside where it helps.
 
 ## Where it stands
 
-*Updated 2026-10-18 23:2x UTC, after the operator's decisions of the evening.*
+*Updated 2026-10-18 23:5x UTC, after the operator's decisions of the evening.*
 
-**The host runs 3a2d19be** (CI #946), deployed 2026-10-18 at 23:08:20 UTC. Its GET walk passed 23
+**The host runs 7f715f4d** (CI #949), deployed 2026-10-18 at 23:44:32 UTC. Its GET walk passed 23
 of 23 paths: `/` answers 302 to `/v2/`, keeping `?list=`; today's old addresses answer 404, drawn
-in v2's look for a browser; every v2 page answers 200. 0e02403b (C1316) deploys when its CI run
-passes, and this change after it; each is walked the same way.
+in v2's look for a browser; every v2 page answers 200. Before it, 3a2d19be (23:08:20) and
+0e02403b (23:27:33) were each deployed and walked, 23 of 23. This installation's no-change window
+(08:30 to 09:10 UTC, the hypervisor's nightly backup) is written in its settings. Credentials ›
+Profiles names it. The deployed heartbeat check reads "JITTER s3" with both measurements.
 
 **Done:**
 - P7-27 is merged (4e631168), deployed and walked by you; steps 1 to 12 PASS.
@@ -27,8 +29,8 @@ passes, and this change after it; each is walked the same way.
   answered below. Adopting the remote's commits is deferred to after Phase 7, with the edge
   kit's offline sync. C1315 is re-ranked B to C, with that reason on the row.
 - **C1317, fixed.** No-change windows are now the installation's setting, none by default. The
-  product names no window. This installation's 08:30 to 09:10 UTC is written to the host's
-  settings once the change is deployed.
+  product names no window. This installation's 08:30 to 09:10 UTC is written in the host's
+  settings, after the deploy of 7f715f4d.
 - **C472, C822, C828:** one line each, in the B table below, for your acceptance.
 - **C1316, fixed.** s3's tail follows the lab host's load, not its CPU or its rate. The check
   now says JITTER. What raised that load is C1318 (UNKNOWN, LAB).
@@ -72,6 +74,10 @@ organisation).
 
 | Commit (UTC) | What | CI | On the host |
 |---|---|---|---|
+| 7f715f4d (23:4x) | C1317: no-change windows the installation's setting, none by default; the operator's decisions on C1192, C1315, C472, C822, C828 recorded | #949 success | yes, walked 23/23; the window written |
+| 0e02403b (23:1x) | C1316: the heartbeat check says JITTER where the tail widened, STALE RATE only where the rate moved; C1318 registered | #948 success | yes, walked 23/23 |
+| be204be2 (23:0x) | CLAUDE.md: instructions name only v2's screens (the operator's paste) | #947 success | (docs only; in 0e02403b's deploy) |
+| 3a2d19be (22:58) | C1307: docs/BULK_ACTIONS.md and its board; C1317 registered | #946 success | yes, walked 23/23 |
 | fd1ec370 (22:42) | C1304, C902: Devices' select-all box; all matching resolved by each action on the server | #945 success | yes |
 | 9205ba01 (22:34) | C1303: History's Kind filter, goldens one click away, on the device tab and the History page | #944 success | yes |
 | e5cc8840 (22:28) | C1305, C1306: Coverage cells never blank, a decline its own mark; the failure page in v2's look; C1314 to C1316 from the operator's questions | #943 success | yes |
@@ -203,7 +209,7 @@ was opened since.
 | C1303 | B | **Closed: 9205ba01.** History's Kind filter, goldens one click away (your walk). |
 | C1304 | B | **Closed with C902: fd1ec370.** Devices' select-all; all matching is resolved by each action on the server (your walk). |
 | C1315 | B, now C | **Re-ranked B to C and deferred by the operator (2026-10-18):** the rule stands (Mercury the only writer); held on GitHub by a ruleset where the plan allows (above); adopting the remote's commits after Phase 7, designed with the edge kit's offline sync (docs/EDGE_ARCHITECTURE.md). |
-| C1317 | B | **Closed: fixed in Phase 7 by the operator's decision.** No-change windows the installation's setting, none by default; the product names no window; this installation's value written on the host after its deploy. |
+| C1317 | B | **Closed: 7f715f4d, fixed in Phase 7 by the operator's decision.** No-change windows the installation's setting, none by default; the product names no window; this installation's value written on the host after its deploy (23:4x UTC). |
 | C1316 | UNKNOWN | **Closed: 0e02403b.** Measured: s3's tail follows the lab host's load; the check says JITTER where the spread widened and STALE RATE only where the rate alone breaks the window. |
 | C1318 | UNKNOWN | **Open, LAB:** what raised the lab host's load on 10-18 (each VM's CPU by hour is the measurement); s3's rule reads JITTER until then. Not Phase 7's: a lab VM's contention, the product's check reporting it rightly. |
 | C1319 | B | **Deferred to Stage 7's tail by the operator (2026-10-18):** C1192's "Recently cleared" screen and its board, about 2.5 to 3.5 h after the record. |
