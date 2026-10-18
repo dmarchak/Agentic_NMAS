@@ -81,6 +81,26 @@ def test_a_device_whose_program_cannot_be_recomputed_is_refused_alone(
     assert body.get("deployed", []) == ["r6"], body.get("by_outcome")
 
 
+def test_the_device_is_deployed_in_the_network_the_apply_named(client, monkeypatch):  # noqa: F811
+    """C1265's sample (apply_batch mutant 331): the pipeline is handed the network the apply
+    confirmed, never left to fall back to the active one (its context's comment: a list
+    switch mid-run would land this device's golden in another network's repository)."""
+    import routes.deploy as rd
+    seen = []
+    real = rd._deploy_one
+
+    def spy(entry, list_name, *a, **k):
+        seen.append(list_name)
+        return real(entry, list_name, *a, **k)
+
+    monkeypatch.setattr(rd, "_deploy_one", spy)
+    device = _plan(client)
+    body = deploy_core.post_apply(json={"confirmations": {"r6": device["capture_hash"]},
+                                        "command_hashes": {"r6": device["command_hash"]}}).get_json()
+    assert "r6" in body.get("deployed", []), body.get("by_outcome")
+    assert seen == [body["list"]] and body["list"], (seen, body.get("list"))
+
+
 def test_the_same_apply_with_the_hash_deploys(client, monkeypatch):  # noqa: F811
     device = _plan(client)
     body = deploy_core.post_apply(json={"confirmations": {"r6": device["capture_hash"]},
