@@ -11,6 +11,23 @@ the list by hash. Most of what the tests protect is some version of *the tool
 never does something nobody approved, and never claims something it did not
 establish.*
 
+## Lab 7's practices, standing (the operator, 2026-10-18)
+
+Lab 7 closed on 2026-10-18 and the operator made its practices standing, under one rule (in
+CLAUDE.md, Measurement and testing): **a failing test reports a real problem.** Fix the code, or
+show with evidence that the test's premise is wrong and correct the premise; never weaken, skip
+or delete a test to get through a gate; a failure that cannot be fixed is stopped and told.
+What each practice is, and what holds it today:
+
+| Practice | Held by | Still a reviewer's | To mechanise |
+|---|---|---|---|
+| 1. Every bug fix starts with a test that fails first | the rule; each fix's commit names the test and its control | that the test failed on the code as it was | C1289: a commit closing a row as Fixed that changes product code must change a test |
+| 2. A new or changed function in the safety areas (deploy gates, credentials, masking, confirm-by-hash, rotation) gets an on-demand mutation sample before its row closes, every VERDICT survivor killed | `scripts/nmas-mutation` on demand (one mutant at a time, after a canary); `tests/mutation_equivalent.py` for equivalents | which survivor is a VERDICT; the killing test's purpose | C1290: the safety areas declared by function, each sample recorded against the function body it measured, and the gate naming a changed safety function with no sample |
+| 3. A new fake of an external service is measured against the real service once, per endpoint it fakes, and answers the same; the measurement recorded beside it | the shared fake NetBox, measured per endpoint (C1240, C1248) | that the measurement covers the endpoints used | C1291: a registry of fakes with their measurements, and a scan that refuses a fake it does not hold |
+| 4. A defect found by walking the product (green but wrong) gets a survey of the suite for the same shape | the C1148 and C1150 survey (`UNTESTED_BEHAVIOUR.md`'s method: each scan with a floor and a planted case) | the survey's population and its quality | C1292: a row marked as found by walking cannot close without its survey named |
+| 5. A flaky test is fixed, never silently retried | C1260 (B, fixed this week); each occurrence retried once, openly, and recorded | that a retry was the flaky test and not a real failure | C1293: the gate records a failed run, and a run of the same staged tree after it needs the register row it is retried under, written into the commit |
+| 6. The samples continue as budget allows | C1265: 250 of `apply_batch`'s 398 mutants unrun | the budget | none: a sample says what it did not run |
+
 ## Unit tests and the coverage tool (Lab 7, 2026-10-14)
 
 ### Running them
