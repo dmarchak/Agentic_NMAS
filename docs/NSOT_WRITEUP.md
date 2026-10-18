@@ -3547,6 +3547,33 @@ retry not yet run"; the burn-down's W4 row reconciles it.
   W4 breaks the change a different way.
 - **7.3 closes** when W4's sections E and I to L pass.
 
+#### 7.3 — Closed, 2026-10-18
+
+*Written 2026-10-18 UTC from W4's sitting record, CUTOVER rows 52, 58 and 59 and the register's
+C148.* W4 was walked on 2026-10-17 from 18:34 to 21:22 UTC, in the operator's browser, through
+the v2 interface only; the host ran ac53abf2, then ee452313, e148d321 and 5015b602, each
+deployed on the operator's word inside the sitting.
+- **Section E, adopt's first real run (CUTOVER row 59):** a throwaway (s6) abandoned, then
+  adopted under its first-boot login. Its NetBox preview first failed: the dry run sent its own
+  placeholder ids to NetBox, which answers 400 (C1179); fixed with a test that failed first and
+  deployed inside the sitting, after which every check passed and adopt completed.
+- **Sections I to L, C148's acceptance:** a fresh throwaway (s5) fetched over ZTP and
+  onboarded by Verify (~20:36Z); its intent seeded (100% round-trip), its template approved,
+  BGP written and deployed (10 lines, verified, BGP Established); broken twice with
+  `neighbor … shutdown`, each rolled back and restored (21:06:36Z); then retried and reverted.
+  Every operation from the interface. C148, one of the three cutover-blocking rows, closed.
+- **What the walk found** was fixed forward the same day, each with a test that failed first:
+  the Create button never drawn (C1148), the result card's lines (C1149), every Verify refused
+  (C1150), the pending causes in words (C1151), the NetBox dry run (C1179), the manifest left
+  dirty by adopt and Verify (C1180); and after the sitting the Bs it raised (5c55845a,
+  81258207, 00871987, 4f93b941, 1d772db7: onboarding, page and intent words, one owning
+  network per Kea, ZTP's record in the Kea owner's repository).
+- **Its v1 routes are removed** (P7-24 f60cd16e, P7-25 9bfc0eb4, 2026-10-17): today's persist,
+  rotate, retire, seed, revert and retry JSON routes, the deploy and onboarding wizards and the
+  pending banner, each tagged first.
+
+7.3 is closed. Stage 7 has not finished, so no forecast is checked or made here.
+
 ### 7.4 — Devices › Save (C593; the first of 7.4's fleet actions)
 
 1. **What it was.** Today's Devices page offered Save All, a whole-network capture that can earn a baseline. v2 had none (C593, raised by the operator walking C553). Board C ("one Save does both", approved 2026-10-04) made it one operation: each chosen device saves its running config to startup, the startup is read back, and the running config is recorded as its golden, one commit for the batch. Board A gave the Devices page a selection bar whose Actions carry it.
@@ -3665,6 +3692,19 @@ things. Each is built on v2:
   burn-down).
 - The 900-device screens and the inventory-source switch are 7.10, after cutover (D3).
 - **7.4 closes** when W4 has run onboarding and adopt.
+
+#### 7.4 — Closed, 2026-10-18
+
+*Written 2026-10-18 UTC from the same record as 7.3's close.* The two rows the table above left
+"no" were run in W4 on 2026-10-17:
+- **Onboard** (CUTOVER row 58): static, s6 created through v2's Add device with its first-boot
+  config revealed (section C), then abandoned from its pending page and adopted (E); ZTP by
+  MAC, s5 fetched over ZTP and onboarded by Verify on its pending page (sections G and I).
+- **Adopt** (CUTOVER row 59): section E, its first real run.
+- The pending device's screen and Save's go to C650's records (7.D); the 900-device screens and
+  the inventory-source switch stay 7.10's, after cutover (D3).
+
+7.4 is closed. Stage 7 has not finished, so no forecast is checked or made here.
 
 ### 7.5 — History: the record, read and acted on in one place
 
@@ -4546,6 +4586,13 @@ burn-down.*
     device's Monitoring, Neighbours and NetBox tabs.
 - **P.12's mockups** are after cutover (D3).
 - **7.D closes** when W4's four screens are recorded and the eleven are placed in the tail.
+
+#### 7.D — Where it stands, 2026-10-18 (not closed)
+
+*Written 2026-10-18 UTC.* W4 has run (2026-10-17), so its four screens (Save, the pending
+device, a retired device and About) are recordable; their records wait on the sitting's
+screenshots being matched to each board, and About's on one screenshot the operator takes
+(C650). The eleven tail screens are unchanged. **7.D closes** when the four are recorded.
 
 #### Stage 7's forecast (section 11, 2026-10-02), checked as far as the record allows
 
