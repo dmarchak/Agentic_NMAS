@@ -308,6 +308,10 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   tests/ratchet_lists.py, complete by a scan; tests/test_test_weakening_check.py; an assertion
   made weaker or a parametrize case removed: not mechanised; why: the Lab 7 history audit,
   2026-10-17 (553 items; C1166 to C1178)]
+- **A failing test reports a real problem: fix the code, or show with evidence that the
+  test's premise is wrong and correct the premise; never weaken, skip or delete a test to get
+  through a gate. Every test holds one stated purpose.** [the operator, 2026-10-18, Lab 7
+  closed; mechanised in part: scripts/nmas-test-weakening-check]
 - **New code that parses, formats, validates, compares or stores an address is tested with an
   IPv6 case beside its IPv4 one** (IPv6 parity, the operator's decision of 2026-10-17: a feature
   that works only over IPv4 management is unfinished). [not mechanised; the audit and its
