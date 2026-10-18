@@ -25,6 +25,25 @@ def test_a_deploy_without_the_hash_is_refused_and_nothing_sent(client, monkeypat
     assert ran == [] and "r6" not in body.get("deployed", [])
 
 
+def test_a_device_without_the_hash_is_refused_alone_and_the_next_still_deploys(
+        client, monkeypatch):  # noqa: F811
+    """The refusal is one device's (C1265's sample, apply_batch mutant 264: its `continue` made
+    a `break` survived): a device confirmed after it is still judged and deployed, never
+    dropped from the result with no outcome. The device without the hash comes FIRST, in the
+    order the apply walks the confirmations."""
+    response = deploy_core.post_plan(json={"devices": ["r5", "r6"]})
+    assert response.status_code == 200
+    planned = {d["device"]: d for d in response.get_json()["devices"]}
+    body = deploy_core.post_apply(json={
+        "confirmations": {"r5": planned["r5"]["capture_hash"],
+                          "r6": planned["r6"]["capture_hash"]},
+        "command_hashes": {"r6": planned["r6"]["command_hash"]}}).get_json()
+    r5 = next(r for r in body["results"] if r["device"] == "r5")
+    assert r5["outcome"] == "refused"
+    assert "needs the command hash the preview showed" in r5["reason"]
+    assert body.get("deployed", []) == ["r6"], body.get("by_outcome")
+
+
 def test_the_same_apply_with_the_hash_deploys(client, monkeypatch):  # noqa: F811
     device = _plan(client)
     body = deploy_core.post_apply(json={"confirmations": {"r6": device["capture_hash"]},
