@@ -181,7 +181,7 @@ jobs:
           include-hidden-files: true
           retention-days: 7
 
-      # The two range checks read the pushed range, not the tests: once, in job a.
+      # The three range checks read the pushed range, not the tests: once, in job a.
       - name: No removed definition is still called (R2)
         if: matrix.shard == 'a'
         env:
@@ -213,6 +213,25 @@ jobs:
           fi
           echo "checking $RANGE"
           python scripts/nmas-host-step-check --range "$RANGE"
+
+      # A commit that weakens a test (deletes one, adds a skip, xfail or `pragma: no cover`,
+      # raises a ceiling, lowers a floor or adds to a known-gap list) names each in a
+      # 'Test-Weakened: <test or list> — C<n>: <reason>' trailer, C<n> a register row
+      # (CLAUDE.md, Measurement and testing). The commit-msg hook refuses it locally; this
+      # refuses a bypass.
+      - name: Every weakened test names its register row
+        if: matrix.shard == 'a'
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            RANGE="HEAD~1..HEAD"
+          else
+            RANGE="$BEFORE..$AFTER"
+          fi
+          echo "checking $RANGE"
+          python scripts/nmas-test-weakening-check --range "$RANGE"
 
   # Lab 7 (2026-10-14): the four shards' per-test measurements combined, and the coverage tool
   # run over them (scripts/nmas-coverage; docs/TESTING.md, "The coverage tool"): the function

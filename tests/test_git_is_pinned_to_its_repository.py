@@ -75,6 +75,8 @@ DECLARED = {
     ("scripts/nmas-ci-dispatch", "_repo_slug"): "the APPLICATION's checkout (its origin)",
     ("scripts/nmas-ci-log", "_repo_slug"): "the APPLICATION's checkout (its origin)",
     ("scripts/nmas-host-step-check", "git"): "the APPLICATION's checkout (a commit range)",
+    ("scripts/nmas-test-weakening-check", "git"): (
+        "the APPLICATION's checkout (a commit range, or the commit being made)"),
     # Not a command at all.
     ("modules/nsot/remote.py", "check_private"): (
         "a label: `(\"git\", <the smart-HTTP URL>)` names an endpoint asked over HTTPS"),

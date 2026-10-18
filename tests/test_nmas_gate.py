@@ -275,7 +275,8 @@ def test_each_job_is_a_gate_command():
         assert gate.SUITE.format(py="P", shard=s, cov="D").endswith(
             f"$(P scripts/nmas-shards {s})")
     once = [s for s in job["steps"] if s.get("if") == "matrix.shard == 'a'"]
-    assert {s["name"][:20] for s in once} == {"No removed definitio", "Every host-installed"}
+    assert {s["name"][:20] for s in once} == {"No removed definitio", "Every host-installed",
+                                              "Every weakened test "}
 
 
 def test_the_four_jobs_run_at_once_and_each_is_judged(repo, tmp_path, monkeypatch):

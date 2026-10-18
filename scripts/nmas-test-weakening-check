@@ -1,0 +1,951 @@
+#!/usr/bin/env python3
+"""Refuse a commit that weakens a test and gives no registered reason (CLAUDE.md, "Measurement
+and testing": a test may be deleted, skipped or loosened only with a registered row and a
+stated reason in the commit; a ceiling, allowlist, known-gap or excused list only goes down).
+
+    scripts/nmas-test-weakening-check --message .git/COMMIT_EDITMSG   # the staged commit
+    scripts/nmas-test-weakening-check --range A..B                    # commits already made
+
+Each commit is compared with its own parent (the staged commit with HEAD), every file read at
+both by PARSING it, never by matching text in a diff (CLAUDE.md: "Match code by parsing or
+anchoring"). What it finds:
+
+- **a test deleted**: a `test_*` function, or a method of a `Test*` class (named by its class),
+  in the parent's version of a changed `tests/**/test_*.py` file (or a deleted one) that is in
+  none of the commit's changed test files. Not a deletion: a MOVE (the same qualified name in
+  another changed test file, new there) or a pure RENAME (a new name whose body's `ast.dump` is
+  the deleted one's).
+- **a skip added**: `pytest.mark.skip`, `pytest.mark.skipif`, `pytest.mark.xfail` (as a
+  decorator, a `pytestmark` value or a `pytest.param` mark), `pytest.skip()`, `pytest.xfail()`,
+  `pytest.importorskip()`, and unittest's `skip`, `skipIf`, `skipUnless`, `expectedFailure`
+  and `skipTest`, counted by the AST per enclosing test (or helper, or the module) in
+  `tests/**.py` and every `conftest.py`. A rise in a scope the parent had counts (a test or
+  helper made to skip); a scope new in this commit does not (a new test's own guard, such as
+  "no real browser here", weakens nothing that existed). A move is credited.
+- **`pragma: no cover` added**: COMMENT tokens (tokenize) matching coverage's own pragma
+  pattern, counted per enclosing scope, in any `.py` file; new code counts too (the pragma
+  hides it from the coverage ratchet). A move is credited.
+- **a ratchet loosened**: each list or number DECLARED in `tests/ratchet_lists.py` (`RATCHETS`,
+  read at both revisions, the parent's and the commit's together): a `shrinks` list that gains
+  a member (even where another left) or a member whose count rose, a `ceiling` raised, a
+  `floor` lowered, a `ceilings`/`floors` table with a value moved the wrong way, the coverage
+  baseline's uncovered count risen (`uncovered`), and an entry taken out of the registry while
+  its list is still there (`registry`).
+- **a bound loosened in an assert**: in `tests/**.py`, an `assert` comparing an expression
+  with a number (`assert len(found) >= 16`, `assert n <= LIMIT` with LIMIT a numeric literal
+  bound in the same function or module): the same expression's floor lowered or ceiling raised.
+
+A commit doing any of these names each in a trailer
+
+    Test-Weakened: <test or list> — C<n>: <reason>
+
+(an em dash or a hyphen; several trailers allowed), whose <test or list> names the test, the
+list or its file, and whose C<n> is a row of docs/OPEN_FINDINGS.md AT THAT COMMIT, open or
+closed. A trailer naming a row that does not exist, or without its row, is refused too.
+
+NOT SEEN (the rule holds them; only a reader enforces them): an assertion made weaker (an `==`
+become `in`, a check deleted from a body, an expression in a bound rewritten), a parametrize
+case removed, a new test born skipped, a helper's new skip reached by existing tests, and a
+ratchet nobody registered (tests/test_test_weakening_check.py's completeness scan bounds that).
+
+It is the commit-msg hook (scripts/hooks/commit-msg) and a CI step over the pushed range.
+Exit 0 passes; 1 refuses, naming each commit, file, name and both values; 2 means git could not
+be asked, which is never a pass.
+"""
+
+import argparse
+import ast
+import io
+import itertools
+import json
+import os
+import re
+import subprocess
+import sys
+import tokenize
+from collections import Counter, defaultdict
+from typing import NamedTuple
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REGISTRY = "tests/ratchet_lists.py"
+REGISTER = "docs/OPEN_FINDINGS.md"
+
+#: coverage.py's default exclusion pattern, so a pragma coverage honours is one this counts.
+PRAGMA = re.compile(r"#\s*(pragma|PRAGMA)[:\s]?\s*(no|NO)\s*(cover|COVER)")
+SKIP_MARKS = {"skip", "skipif", "xfail"}
+SKIP_CALLS = {"skip", "xfail", "importorskip"}
+UNITTEST_SKIPS = {"skip", "skipIf", "skipUnless", "expectedFailure"}
+KINDS = ("shrinks", "ceiling", "floor", "ceilings", "floors", "uncovered", "registry")
+
+TRAILER_KEY = re.compile(r"^Test-Weakened:[ \t]*", re.I)
+#: The next trailer (`Key:` or `Key-Word:`), which ends a wrapped trailer's value. A
+#: continuation line beginning "C1235:" is not one (a key holds no digit).
+ANY_KEY = re.compile(r"^[A-Za-z]+(?:-[A-Za-z]+)*:\s")
+TRAILER_VALUE = re.compile(
+    r"^(?P<subject>\S.*?)\s+(?:—|–|-{1,2})\s+C(?P<n>\d+)\s*:\s*(?P<reason>\S.*)$", re.S)
+SCISSORS = re.compile(r"^# -+ >8 -+$", re.M)
+
+
+class CannotAsk(Exception):
+    pass
+
+
+class Weakening(NamedTuple):
+    path: str
+    name: str
+    what: str
+    before: str
+    after: str
+    names: tuple
+
+
+#: One git call's bound. Measured 2026-10-18 over the last 60 commits: 1,385 calls, the slowest
+#: 0.011 s (a `git show` of the register), on the laptop with a warm cache; CI's fresh clone
+#: was not measured, so the bound is generous rather than 2.5x, and a call that hits it names
+#: itself (CannotAsk, exit 2), never a pass.
+GIT_TIMEOUT = 10
+
+
+def git(*args, ok_missing=False):
+    try:
+        p = subprocess.run(["git", *args], capture_output=True, text=True, timeout=GIT_TIMEOUT)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise CannotAsk(f"git {' '.join(args)}: {exc}") from exc
+    if p.returncode != 0:
+        if ok_missing:
+            return None
+        raise CannotAsk(f"git {' '.join(args)} exited {p.returncode}: {p.stderr.strip()[:200]}")
+    return p.stdout
+
+
+class Side:
+    """One revision's files: a commit (`rev`), the index (`rev == ""`) or nothing (`None`, a
+    root commit's parent)."""
+
+    def __init__(self, rev):
+        self.rev = rev
+        self._cache = {}
+
+    def read(self, path):
+        if self.rev is None or path is None:
+            return None
+        if path not in self._cache:
+            self._cache[path] = git("show", f"{self.rev}:{path}", ok_missing=True)
+        return self._cache[path]
+
+
+def _parse(text):
+    if text is None:
+        return None
+    try:
+        return ast.parse(text)
+    except (SyntaxError, ValueError):
+        return None
+
+
+def _changes(lines_z: str) -> list:
+    """(old path or None, new path or None) for each change in `--name-status -z` output."""
+    parts = lines_z.split("\0")
+    out, i = [], 0
+    while i < len(parts) and parts[i]:
+        status = parts[i]
+        if status[0] in "RC":
+            old, new = parts[i + 1], parts[i + 2]
+            out.append((old if status[0] == "R" else None, new))
+            i += 3
+        else:
+            path = parts[i + 1]
+            out.append((None if status[0] == "A" else path, None if status[0] == "D" else path))
+            i += 2
+    return out
+
+
+def _base(path):
+    return path.rsplit("/", 1)[-1]
+
+
+def _is_test_file(path):
+    return bool(path) and path.startswith("tests/") and _base(path).startswith("test_") \
+        and path.endswith(".py")
+
+
+def _in_tests(path):
+    return bool(path) and path.endswith(".py") and (path.startswith("tests/")
+                                                     or _base(path) == "conftest.py")
+
+
+def _names(path, *more):
+    return tuple(n for n in (*more, path, _base(path)) if n)
+
+
+# --- tests deleted -------------------------------------------------------------------------
+
+def test_functions(tree) -> dict:
+    """{qualified name: the body's ast.dump} for what pytest collects (pytest.ini: functions
+    `test_*`, classes `Test*`, nested classes included)."""
+    out = {}
+
+    def walk(body, prefix):
+        for node in body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and \
+                    node.name.startswith("test"):
+                out[prefix + node.name] = ast.dump(ast.Module(body=node.body, type_ignores=[]))
+            elif isinstance(node, ast.ClassDef) and node.name.startswith("Test"):
+                walk(node.body, f"{prefix}{node.name}.")
+
+    if tree is not None:
+        walk(tree.body, "")
+    return out
+
+
+def deleted_tests(changes, parent, commit) -> list:
+    before = {}   # old path -> {qual: dump}
+    after = {}    # new path -> {qual: dump}
+    for old, new in changes:
+        if _is_test_file(old):
+            before[old] = test_functions(_parse(parent.read(old)))
+        if _is_test_file(new):
+            after[new] = test_functions(_parse(commit.read(new)))
+    new_of = {old: new for old, new in changes if old}
+    old_of = {new: old for old, new in changes if new}
+    # What appeared in each new file: a name its own parent version did not have.
+    appeared = []
+    for new, funcs in after.items():
+        had = before.get(old_of.get(new), {})
+        appeared += [(new, q, b) for q, b in funcs.items() if q not in had]
+    used = set()
+    out = []
+    for old, funcs in sorted(before.items()):
+        here = after.get(new_of.get(old), {})
+        for qual, dump in funcs.items():
+            if qual in here:
+                continue
+            moved = next((a for a in appeared if a[1] == qual and a not in used), None)
+            renamed = moved or next((a for a in appeared if a[2] == dump and a not in used),
+                                    None)
+            if renamed:
+                used.add(renamed)
+                continue
+            # A rename that also edited the body is a deletion here: the test that was asserted
+            # is gone, and what replaced it is a reader's to judge (the operator's spec).
+            where = "the file deleted" if new_of.get(old) is None else \
+                "in none of the commit's changed test files"
+            out.append(Weakening(old, qual, "test deleted", "defined", where,
+                                 _names(old, qual, qual.replace(".", "::"), *qual.split("."))))
+    return out
+
+
+# --- counted sites: skips and pragmas -------------------------------------------------------
+
+def _scoped(tree):
+    """[(first line, last line, qualified name)] for every def and class, outermost first."""
+    out = []
+
+    def walk(node, prefix):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                q = prefix + child.name
+                first = min([child.lineno] + [d.lineno for d in child.decorator_list])
+                out.append((first, child.end_lineno, q))
+                walk(child, q + ".")
+            else:
+                walk(child, prefix)
+
+    if tree is not None:
+        walk(tree, "")
+    return out
+
+
+def _scope_at(scopes, line):
+    best = "<module>"
+    for first, last, q in scopes:
+        if first <= line <= last:
+            best = q            # later entries are nested deeper
+    return best
+
+
+def _is_mark(node):
+    return (isinstance(node, ast.Attribute) and node.attr == "mark"
+            and isinstance(node.value, ast.Name) and node.value.id == "pytest") or \
+        (isinstance(node, ast.Name) and node.id == "mark")
+
+
+def skip_sites(tree) -> Counter:
+    """Counter{(scope, kind)} of every skip, skipif and xfail the AST holds."""
+    if tree is None:
+        return Counter()
+    scopes = _scoped(tree)
+    found = Counter()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Attribute):
+            continue
+        kind = None
+        if node.attr in SKIP_MARKS and _is_mark(node.value):
+            kind = f"pytest.mark.{node.attr}"
+        elif isinstance(node.value, ast.Name) and node.value.id == "pytest" \
+                and node.attr in SKIP_CALLS:
+            kind = f"pytest.{node.attr}()"
+        elif isinstance(node.value, ast.Name) and node.value.id == "unittest" \
+                and node.attr in UNITTEST_SKIPS:
+            kind = f"unittest.{node.attr}"
+        elif node.attr == "skipTest":
+            kind = "skipTest()"
+        if kind:
+            found[(_scope_at(scopes, node.lineno), kind)] += 1
+    return found
+
+
+def pragma_sites(text) -> Counter:
+    """Counter{(scope, "pragma: no cover")} of the COMMENT tokens coverage would honour."""
+    if text is None:
+        return Counter()
+    scopes = _scoped(_parse(text))
+    found = Counter()
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(text).readline):
+            if tok.type == tokenize.COMMENT and PRAGMA.search(tok.string):
+                found[(_scope_at(scopes, tok.start[0]), "pragma: no cover")] += 1
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        pass
+    return found
+
+
+def _all_scopes(tree):
+    return {q for _f, _l, q in _scoped(tree)}
+
+
+def counted_rises(changes, parent, commit, wanted, count, existing_only, what) -> list:
+    """The sites *count* finds more of in the commit than in its parent, per file and scope,
+    a move between changed files credited. With *existing_only*, a scope the parent's changed
+    files did not have (a new test) does not count."""
+    before, after, had = {}, {}, set()
+    for old, new in changes:
+        key = new or old
+        if old and wanted(old):
+            text = parent.read(old)
+            before[key] = count(text)
+            had |= _all_scopes(_parse(text)) | {(key, "<module>")}
+        if new and wanted(new):
+            after[key] = count(commit.read(new))
+    falls = Counter()
+    for key in set(before) | set(after):
+        b, a = before.get(key, Counter()), after.get(key, Counter())
+        for site in b:
+            if b[site] > a[site]:
+                falls[site] += b[site] - a[site]
+    out = []
+    for key in sorted(after):
+        b, a = before.get(key, Counter()), after[key]
+        for (scope, kind), n in sorted(a.items()):
+            rise = n - b[(scope, kind)]
+            if rise <= 0:
+                continue
+            if existing_only and scope not in had and (key, scope) not in had:
+                continue
+            credit = min(rise, falls[(scope, kind)])
+            falls[(scope, kind)] -= credit
+            if rise - credit <= 0:
+                continue
+            was = b[(scope, kind)]
+            out.append(Weakening(key, scope, f"{what} added", f"{kind} x{was}",
+                                 f"{kind} x{was + rise - credit}",
+                                 _names(key, scope if scope != "<module>" else "",
+                                        *scope.split("."))))
+    return out
+
+
+# --- bounds in asserts ----------------------------------------------------------------------
+
+_FLOOR = (ast.Gt, ast.GtE)
+_CEIL = (ast.Lt, ast.LtE)
+
+
+def _number(node):
+    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)) \
+            and not isinstance(node.value, bool):
+        return node.value
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+        n = _number(node.operand)
+        return -n if n is not None else None
+    return None
+
+
+def _numeric_bindings(body) -> dict:
+    out = {}
+    for node in body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 \
+                and isinstance(node.targets[0], ast.Name):
+            n = _number(node.value)
+            if n is not None:
+                out[node.targets[0].id] = n
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) \
+                and node.value is not None:
+            n = _number(node.value)
+            if n is not None:
+                out[node.target.id] = n
+    return out
+
+
+def assert_bounds(tree) -> dict:
+    """{(scope, the bounded expression, "floor"|"ceiling"): [values]} from every assert that
+    compares an expression with a number, or with a name bound to one in the same function or
+    module (then keyed by the name, so the many asserts of one constant are one bound)."""
+    if tree is None:
+        return {}
+    module_nums = _numeric_bindings(tree.body)
+    out = defaultdict(set)
+
+    def visit(node, scope, local):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                q = (scope + "." if scope != "<module>" else "") + child.name
+                visit(child, q, _numeric_bindings(child.body) if not
+                      isinstance(child, ast.ClassDef) else {})
+            elif isinstance(child, ast.Assert):
+                take(child.test, scope, local)
+                visit(child, scope, local)
+            else:
+                visit(child, scope, local)
+
+    def resolve(node, scope, local):
+        n = _number(node)
+        if n is not None:
+            return n, None
+        if isinstance(node, ast.Name):
+            if node.id in local:
+                return local[node.id], (scope, node.id)
+            if node.id in module_nums:
+                return module_nums[node.id], ("<module>", node.id)
+        return None, None
+
+    def take(test, scope, local):
+        if not isinstance(test, ast.Compare):
+            return
+        operands = [test.left, *test.comparators]
+        for (left, right), op in zip(zip(operands, operands[1:]), test.ops):
+            for bound, expr, flip in ((right, left, False), (left, right, True)):
+                value, named = resolve(bound, scope, local)
+                if value is None or _number(expr) is not None:
+                    continue
+                if isinstance(op, _FLOOR):
+                    side = "ceiling" if flip else "floor"
+                elif isinstance(op, _CEIL):
+                    side = "floor" if flip else "ceiling"
+                else:
+                    continue
+                strict = isinstance(op, (ast.Gt, ast.Lt))
+                if strict and isinstance(value, int):
+                    value = value + 1 if side == "floor" else value - 1
+                if named:
+                    out[(named[0], named[1], side)].add(value)
+                else:
+                    out[(scope, ast.unparse(expr), side)].add(value)
+                break
+
+    visit(tree, "<module>", module_nums)
+    return {k: sorted(v) for k, v in out.items()}
+
+
+def loosened_bounds(changes, parent, commit, flagged) -> list:
+    out = []
+    for old, new in changes:
+        if not (old and new and _in_tests(old) and _in_tests(new)):
+            continue
+        b = assert_bounds(_parse(parent.read(old)))
+        a = assert_bounds(_parse(commit.read(new)))
+        for key in sorted(set(b) & set(a)):
+            scope, expr, side = key
+            if (new, expr) in flagged:
+                continue            # a registered ceiling or floor, already judged
+            was, now = b[key], a[key]
+            if len(was) == len(now):
+                pairs = list(zip(was, now))
+            else:
+                pairs = [(min(was), min(now))] if side == "floor" else [(max(was), max(now))]
+            if any((n < w) if side == "floor" else (n > w) for w, n in pairs):
+                where = expr if scope == "<module>" else f"{scope}: {expr}"
+                out.append(Weakening(new, where, f"{side} loosened",
+                                     ", ".join(map(str, was)), ", ".join(map(str, now)),
+                                     _names(new, expr if expr.isidentifier() else "",
+                                            *(scope.split(".") if scope != "<module>" else ()))))
+    return out
+
+
+# --- declared ratchets ----------------------------------------------------------------------
+
+ABSENT = object()
+UNREADABLE = object()
+
+
+def _assigned(tree, name):
+    """The value node of *name*'s last module-level assignment, or ABSENT."""
+    found = ABSENT
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name
+                                                for t in node.targets):
+            found = node.value
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) \
+                and node.target.id == name and node.value is not None:
+            found = node.value
+    return found
+
+
+def read_ratchet(text, path, name):
+    """The ratchet's value as written: a node (Python), a JSON value, ABSENT (no such name, or
+    no such file) or UNREADABLE (a file that does not parse)."""
+    if text is None:
+        return ABSENT
+    if path.endswith(".json"):
+        try:
+            return json.loads(text).get(name, ABSENT)
+        except (ValueError, AttributeError):
+            return UNREADABLE
+    tree = _parse(text)
+    if tree is None:
+        return UNREADABLE
+    return _assigned(tree, name)
+
+
+def _weight(node):
+    if _number(node) is not None:
+        return _number(node)
+    if isinstance(node, ast.Tuple) and node.elts and _number(node.elts[0]) is not None:
+        return _number(node.elts[0])
+    return None
+
+
+def _is_collection(node):
+    return isinstance(node, (ast.List, ast.Set, ast.Dict)) or (
+        isinstance(node, ast.Tuple) and node.elts
+        and all(isinstance(e, (ast.Tuple, ast.List, ast.Set, ast.Dict)) for e in node.elts))
+
+
+def _identity(element):
+    """An element's identity: a record (a tuple or a call) without its last item, the reason;
+    anything else as written."""
+    if isinstance(element, ast.Starred):
+        element = element.value
+    if isinstance(element, ast.Tuple) and len(element.elts) > 1:
+        return ", ".join(ast.unparse(e) for e in element.elts[:-1])
+    if isinstance(element, ast.Call) and len(element.args) > 1:
+        return f"{ast.unparse(element.func)}({', '.join(ast.unparse(a) for a in element.args[:-1])})"
+    return ast.unparse(element)
+
+
+class _NotPure(Exception):
+    pass
+
+
+def _pure(node, env):
+    """The value of a comprehension's key built only from its loop names, literals, f-strings,
+    tuples and `+`: computed by walking it, nothing called or looked up."""
+    if isinstance(node, ast.Constant):
+        return node.value
+    if isinstance(node, ast.Name) and node.id in env:
+        return env[node.id]
+    if isinstance(node, ast.Tuple):
+        return tuple(_pure(e, env) for e in node.elts)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        return _pure(node.left, env) + _pure(node.right, env)
+    if isinstance(node, ast.JoinedStr):
+        return "".join(str(_pure(v, env)) for v in node.values)
+    if isinstance(node, ast.FormattedValue):
+        value = _pure(node.value, env)
+        value = {115: str, 114: repr, 97: ascii}.get(node.conversion, lambda x: x)(value)
+        spec = _pure(node.format_spec, env) if node.format_spec else ""
+        return format(value, spec)
+    raise _NotPure(type(node).__name__)
+
+
+def _comprehended(comp):
+    """{each key the comprehension makes: None}, its loops run over their literal iterables
+    (a key built from them computed, so `{f"{r} {k}": ... for k in ("a", "b")}` has the members
+    "r a" and "r b", the same as written out); UNREADABLE when a loop is not over a literal."""
+    key = comp.key if isinstance(comp, ast.DictComp) else comp.elt
+    loops = []
+    for gen in comp.generators:
+        if gen.ifs or gen.is_async:
+            return UNREADABLE
+        try:
+            values = ast.literal_eval(gen.iter)
+        except (ValueError, SyntaxError, TypeError):
+            return UNREADABLE
+        loops.append((gen.target, list(values)))
+    out = {}
+    for combo in itertools.product(*(values for _t, values in loops)):
+        env = {}
+        for (target, _v), value in zip(loops, combo):
+            if isinstance(target, ast.Name):
+                env[target.id] = value
+            elif isinstance(target, ast.Tuple) and all(isinstance(e, ast.Name)
+                                                       for e in target.elts):
+                env.update(zip((e.id for e in target.elts), value))
+            else:
+                return UNREADABLE
+        try:
+            made = repr(_pure(key, env))
+        except (_NotPure, TypeError, ValueError):
+            made = f"{ast.unparse(key)} for {', '.join(map(repr, combo))}"
+        out[made] = None
+    return out
+
+
+def members(value):
+    """{identity: weight or None} of a `shrinks` list, or UNREADABLE. A dict's members are its
+    keys, and the members of each value that is itself a collection, under the key; a record's
+    leading number is its weight (a per-member count that may not rise)."""
+    if isinstance(value, (list, tuple)):       # JSON
+        return {json.dumps(v, sort_keys=True): None for v in value}
+    if isinstance(value, dict):
+        return {json.dumps(k): None for k in value}
+    if not isinstance(value, ast.AST):
+        return UNREADABLE
+    if isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and \
+            value.func.id in ("set", "frozenset", "tuple", "list", "dict", "sorted") and \
+            not value.keywords and len(value.args) <= 1:
+        return members(value.args[0]) if value.args else {}
+    if isinstance(value, ast.BinOp) and isinstance(value.op, (ast.BitOr, ast.Add)):
+        left, right = members(value.left), members(value.right)
+        if left is UNREADABLE or right is UNREADABLE:
+            return UNREADABLE
+        return {**left, **right}
+    if isinstance(value, (ast.DictComp, ast.SetComp, ast.ListComp)):
+        return _comprehended(value)
+    if isinstance(value, ast.Dict):
+        out = {}
+        for k, v in zip(value.keys, value.values):
+            if k is None:               # `**spread`: its own members, when it has readable ones
+                inner = members(v)
+                if inner is UNREADABLE:
+                    out["**" + ast.unparse(v)] = None
+                else:
+                    out.update(inner)
+                continue
+            key = ast.unparse(k)
+            out[key] = _weight(v)
+            if k is not None and _is_collection(v):
+                inner = members(v)
+                if inner is UNREADABLE:
+                    return UNREADABLE
+                out.update({f"{key} {m}": w for m, w in inner.items()})
+        return out
+    if isinstance(value, (ast.List, ast.Tuple, ast.Set)):
+        out = {}
+        for e in value.elts:
+            out[_identity(e)] = _weight(e) if isinstance(e, ast.Tuple) else None
+        return out
+    return UNREADABLE
+
+
+def _numeric(value):
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value
+    if isinstance(value, ast.AST):
+        n = _number(value)
+        return n if n is not None else UNREADABLE
+    return UNREADABLE
+
+
+def _table(value):
+    """{key: number} of a `ceilings`/`floors` table, or UNREADABLE."""
+    if isinstance(value, dict):
+        items = value.items()
+    elif isinstance(value, ast.Dict) and None not in value.keys:
+        items = [(ast.unparse(k), v) for k, v in zip(value.keys, value.values)]
+    else:
+        return UNREADABLE
+    out = {}
+    for k, v in items:
+        n = _numeric(v)
+        if n is UNREADABLE:
+            return UNREADABLE
+        out[k] = n
+    return out
+
+
+def _uncovered(value):
+    if not isinstance(value, dict):
+        return UNREADABLE
+    try:
+        return {m: v["functions"] - v["covered_unit"] for m, v in value.items()}
+    except (KeyError, TypeError):
+        return UNREADABLE
+
+
+def _show(items, limit=8):
+    items = sorted(items)
+    more = f" and {len(items) - limit} more" if len(items) > limit else ""
+    return "; ".join(items[:limit]) + more
+
+
+def judge_ratchet(path, name, kind, was, now, entries_now=None) -> list:
+    """The weakenings of one declared ratchet between two values as written."""
+    names = _names(path, name)
+
+    def w(what, before, after):
+        return [Weakening(path, name, what, before, after, names)]
+
+    if was is ABSENT or now is ABSENT:
+        return []           # born here, or removed with its file: nothing to compare
+    if now is UNREADABLE:
+        return [] if was is UNREADABLE else w("unreadable", "parsed", "the file does not parse")
+    if was is UNREADABLE:
+        return []
+    if kind in ("ceiling", "floor"):
+        a, b = _numeric(was), _numeric(now)
+        if b is UNREADABLE and a is not UNREADABLE:
+            return w(f"{kind} no longer a number", str(a), ast.unparse(now)
+                     if isinstance(now, ast.AST) else repr(now))
+        if a is UNREADABLE or b is UNREADABLE:
+            return []
+        if (kind == "ceiling" and b > a) or (kind == "floor" and b < a):
+            return w(f"{kind} {'raised' if kind == 'ceiling' else 'lowered'}", str(a), str(b))
+        return []
+    if kind in ("ceilings", "floors"):
+        a, b = _table(was), _table(now)
+        if b is UNREADABLE and a is not UNREADABLE:
+            return w(f"{kind} no longer a table of numbers", "readable", "unreadable")
+        if a is UNREADABLE or b is UNREADABLE:
+            return []
+        moved = [f"{k}: {a[k]} -> {b[k]}" for k in a.keys() & b.keys()
+                 if (b[k] > a[k] if kind == "ceilings" else b[k] < a[k])]
+        return w(f"{kind[:-1]} {'raised' if kind == 'ceilings' else 'lowered'}",
+                 "", _show(moved)) if moved else []
+    if kind == "uncovered":
+        a, b = _uncovered(was), _uncovered(now)
+        if a is UNREADABLE or b is UNREADABLE:
+            return w("unreadable", "", "the baseline's modules no longer read") \
+                if b is UNREADABLE and a is not UNREADABLE else []
+        rose = [f"{m}: {a[m]} -> {b[m]} uncovered" for m in a.keys() & b.keys() if b[m] > a[m]]
+        return w("uncovered functions rose", "", _show(rose)) if rose else []
+    if kind == "shrinks":
+        a, b = members(was), members(now)
+        if b is UNREADABLE and a is not UNREADABLE:
+            return w("no longer a list the check can read", "readable",
+                     type(now).__name__)
+        if a is UNREADABLE or b is UNREADABLE:
+            return []
+        added = sorted(set(b) - set(a))
+        rose = [f"{m}: {a[m]} -> {b[m]}" for m in set(a) & set(b)
+                if a[m] is not None and b[m] is not None and b[m] > a[m]]
+        out = []
+        if added:
+            out += w("list added to", f"{len(a)} members", f"+{len(added)}: {_show(added)}")
+        if rose:
+            out += w("a member's count rose", "", _show(rose))
+        return out
+    if kind == "registry":
+        a, b = _entries(was), _entries(now)
+        if a is UNREADABLE or b is UNREADABLE:
+            return w("registry unreadable", "", "") if b is UNREADABLE and \
+                a is not UNREADABLE else []
+        dropped = [e for e in a - b if entries_now and entries_now(e)]
+        return w("ratchet unregistered while its list remains", "",
+                 _show(f"{e[0]} {e[1]}" for e in dropped)) if dropped else []
+    return []
+
+
+def _entries(value):
+    try:
+        lit = ast.literal_eval(value) if isinstance(value, ast.AST) else UNREADABLE
+    except (ValueError, SyntaxError, TypeError):
+        return UNREADABLE
+    if lit is UNREADABLE:
+        return UNREADABLE
+    return {tuple(e[:3]) for e in lit}
+
+
+def registry_entries(*texts) -> set:
+    """{(file, name, kind)}: the union of the RATCHETS the given registry texts declare; the
+    checkout's own when none does (a commit before the registry existed)."""
+    out = set()
+    for text in texts:
+        if text is None:
+            continue
+        tree = _parse(text)
+        if tree is None:
+            continue
+        found = _entries(_assigned(tree, "RATCHETS")) if _assigned(tree, "RATCHETS") \
+            is not ABSENT else UNREADABLE
+        if found is not UNREADABLE:
+            out |= found
+    if not out:
+        try:
+            with open(os.path.join(ROOT, REGISTRY), encoding="utf-8") as fh:
+                return registry_entries(fh.read())
+        except OSError:
+            return set()
+    return out
+
+
+def loosened_ratchets(changes, parent, commit) -> tuple:
+    entries = registry_entries(parent.read(REGISTRY), commit.read(REGISTRY))
+    old_of = {new: old for old, new in changes if new}
+    touched = {p for pair in changes for p in pair if p}
+    out, flagged = [], set()
+    for path, name, kind in sorted(entries):
+        if kind not in KINDS or path not in touched:
+            continue
+        old = old_of.get(path, path)        # renamed from, or None when the file is new
+        was = read_ratchet(parent.read(old), path, name)
+        now = read_ratchet(commit.read(path), path, name)
+
+        def still_there(entry):
+            return read_ratchet(commit.read(entry[0]), entry[0], entry[1]) not in (ABSENT,)
+
+        found = judge_ratchet(path, name, kind, was, now, still_there)
+        out += found
+        if kind in ("ceiling", "floor"):
+            flagged.add((path, name))
+    return out, flagged
+
+
+# --- trailers and the register --------------------------------------------------------------
+
+def message_body(message: str) -> str:
+    cut = SCISSORS.search(message)
+    if cut:
+        message = message[:cut.start()]
+    return "\n".join(l for l in message.splitlines() if not l.startswith("#"))
+
+
+def trailers(message: str) -> list:
+    """The Test-Weakened trailers' values, a wrapped value joined: it runs to a blank line or
+    the next `Key:` line."""
+    out, cur = [], None
+    for line in message_body(message).splitlines():
+        if TRAILER_KEY.match(line):
+            if cur is not None:
+                out.append(cur)
+            cur = TRAILER_KEY.sub("", line).strip()
+        elif cur is not None:
+            if not line.strip() or ANY_KEY.match(line):
+                out.append(cur)
+                cur = None
+            else:
+                cur += " " + line.strip()
+    if cur is not None:
+        out.append(cur)
+    return out
+
+
+def register_rows(text) -> set:
+    """The row ids of docs/OPEN_FINDINGS.md's open sections and its Closed table, read by the
+    register's own reader (tests/test_register_hygiene.py)."""
+    if text is None:
+        return set()
+    if ROOT not in sys.path:
+        sys.path.insert(0, ROOT)
+    from tests.test_register_hygiene import LIVE, rows_by_section
+    return {rid for sec, rid, _cells in rows_by_section(text)
+            if sec.startswith(LIVE) or sec.startswith("## Closed")}
+
+
+def _named(name, subject):
+    return re.search(r"(?<![\w])" + re.escape(name) + r"(?![\w])", subject) is not None
+
+
+def _says(wk):
+    change = f"{wk.before} -> {wk.after}" if wk.before else wk.after
+    return f"{wk.path}: {wk.what}: {wk.name} ({change})"
+
+
+def judge(weakenings, message, register_text, named=None) -> list:
+    """The refusals for one commit: each weakening no valid trailer names, and each trailer
+    that is malformed or names no row. Each weakening a trailer names goes on *named*."""
+    rows = register_rows(register_text)
+    refusals, subjects = [], []
+    for value in trailers(message):
+        m = TRAILER_VALUE.match(value)
+        if not m:
+            refusals.append(f"a Test-Weakened trailer without its ' — C<n>: <reason>' "
+                            f"(\"{value[:90]}\")")
+            continue
+        rid = f"C{m.group('n')}"
+        if rid not in rows:
+            refusals.append(f"Test-Weakened names {rid}, which is not a row of {REGISTER} at "
+                            f"this commit ({len(rows)} open and closed rows read)")
+            continue
+        subjects.append(m.group("subject"))
+    for wk in weakenings:
+        if any(_named(n, s) for s in subjects for n in wk.names):
+            if named is not None:
+                named.append(_says(wk))
+            continue
+        refusals.append(f"{_says(wk)}, and no Test-Weakened trailer names it")
+    return refusals
+
+
+def weakenings_of(changes, parent, commit) -> list:
+    ratchets, flagged = loosened_ratchets(changes, parent, commit)
+    return (deleted_tests(changes, parent, commit)
+            + counted_rises(changes, parent, commit, _in_tests,
+                            lambda text: skip_sites(_parse(text)), True, "skip")
+            + counted_rises(changes, parent, commit, lambda p: bool(p) and p.endswith(".py"),
+                            pragma_sites, False, "pragma: no cover")
+            + ratchets
+            + loosened_bounds(changes, parent, commit, flagged))
+
+
+def check_staged(message_file: str, named=None) -> list:
+    has_head = git("rev-parse", "--verify", "-q", "HEAD", ok_missing=True) is not None
+    # With no HEAD yet (a first commit), git compares the index with the empty tree.
+    changes = _changes(git("diff", "--cached", "-M", "--name-status", "-z"))
+    parent, commit = Side("HEAD" if has_head else None), Side("")
+    with open(message_file, encoding="utf-8") as fh:
+        message = fh.read()
+    said = []
+    why = judge(weakenings_of(changes, parent, commit), message, commit.read(REGISTER), said)
+    if named is not None:
+        named += [("the commit being made", s) for s in said]
+    return [("the commit being made", w) for w in why]
+
+
+def check_range(rng: str, named=None) -> list:
+    out = []
+    for sha in git("rev-list", "--no-merges", "--reverse", rng).split():
+        parents = git("log", "-1", "--format=%P", sha).split()
+        changes = _changes(git("diff-tree", "-r", "-M", "--root", "--no-commit-id",
+                               "--name-status", "-z", sha))
+        parent, commit = Side(parents[0] if parents else None), Side(sha)
+        message = git("log", "-1", "--format=%B", sha)
+        said = []
+        for why in judge(weakenings_of(changes, parent, commit), message,
+                         commit.read(REGISTER), said):
+            out.append((sha[:12], why))
+        if named is not None:
+            named += [(sha[:12], s) for s in said]
+    return out
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    g = ap.add_mutually_exclusive_group(required=True)
+    g.add_argument("--message", help="the commit message file (the commit-msg hook)")
+    g.add_argument("--range", help="A..B: commits already made (CI)")
+    ap.add_argument("--verbose", action="store_true",
+                    help="also list each weakening a trailer names")
+    a = ap.parse_args(argv)
+    named = []
+    try:
+        refused = check_staged(a.message, named) if a.message else check_range(a.range, named)
+    except (CannotAsk, OSError) as exc:
+        print(f"nmas-test-weakening-check: COULD NOT ASK: {exc}", file=sys.stderr)
+        return 2
+    if a.verbose:
+        for where, said in named:
+            print(f"nmas-test-weakening-check: named: {where} {said}")
+    for where, why in refused:
+        print(f"nmas-test-weakening-check: REFUSED: {where} {why}", file=sys.stderr)
+    if refused:
+        print("nmas-test-weakening-check: each weakening is named in a trailer, "
+              "'Test-Weakened: <test or list> — C<n>: <reason>', C<n> a row of "
+              f"{REGISTER} (CLAUDE.md, Measurement and testing)", file=sys.stderr)
+    else:
+        print("nmas-test-weakening-check: every test weakened in the range is named with its "
+              "register row" if a.range else "nmas-test-weakening-check: ok")
+    return 1 if refused else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

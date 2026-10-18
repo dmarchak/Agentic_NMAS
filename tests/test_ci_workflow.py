@@ -12,6 +12,7 @@ own settings, so nothing can run THERE on a GitHub-hosted runner at all.
 """
 
 import os
+import re
 
 import pytest
 import yaml
@@ -169,7 +170,8 @@ def test_the_suite_runs_confined_and_never_unconfined(path):
     network namespace it creates. Parsed values, not the raw text."""
     doc, _ = _load(path)
     runs = [str(s.get("run", "")) for s in _steps(doc)]
-    suite = [r for r in runs if "pytest" in r or "nmas-test" in r]
+    # The runner by its whole name: scripts/nmas-test-weakening-check is another program.
+    suite = [r for r in runs if "pytest" in r or re.search(r"(?<![\w-])nmas-test(?![\w-])", r)]
     assert suite, "no step runs the suite"
     for run in suite:
         assert run.lstrip().startswith("scripts/nmas-test"), run

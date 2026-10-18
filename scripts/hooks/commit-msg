@@ -1,9 +1,19 @@
 #!/bin/sh
-# Refuse a commit that changes a file a person installs on the host (the
-# updater, nmas-deploy, the systemd units, the topology renderer) and carries
-# neither a 'Host-Step:' nor a 'Host-Step-None:' trailer (2026-09-30).
+# The commit message's checks, each over the commit being made; CI checks the same rules over
+# every pushed range, so a bypass is refused there.
+#
+# - A commit that changes a file a person installs on the host (the updater, nmas-deploy, the
+#   systemd units, the topology renderer) carries a 'Host-Step:' or 'Host-Step-None:' trailer
+#   (2026-09-30).
+# - A commit that weakens a test (deletes one, adds a skip, xfail or 'pragma: no cover', raises
+#   a ceiling or adds to a known-gap list) names each in a 'Test-Weakened: <test or list> —
+#   C<n>: <reason>' trailer, C<n> a register row (CLAUDE.md, Measurement and testing).
+#
+# Both run whatever the first answers, so one commit hears every refusal at once.
 #
 # Install:  ln -sf ../../scripts/hooks/commit-msg .git/hooks/commit-msg
-# CI checks the same rule over every pushed range, so a bypass is refused there.
 ROOT="$(git rev-parse --show-toplevel)"
-exec python3 "$ROOT/scripts/nmas-host-step-check" --message "$1"
+status=0
+python3 "$ROOT/scripts/nmas-host-step-check" --message "$1" || status=1
+python3 "$ROOT/scripts/nmas-test-weakening-check" --message "$1" || status=1
+exit $status
