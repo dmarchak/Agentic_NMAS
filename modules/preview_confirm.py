@@ -869,6 +869,8 @@ def build_result(*, action: str, level: str, summary: str, targets: list,
                          **({"rollback": t["rollback"]} if "rollback" in t else {}),
                          # The save to startup, where the operation saves (C511).
                          **({"saved": t["saved"]} if "saved" in t else {}),
+                         # What verify read, in words (C1270), where the operation verifies.
+                         **({"verify_words": t["verify_words"]} if "verify_words" in t else {}),
                          "stage": t.get("stage", ""),
                          "reason": t.get("reason", ""), "outcome": t.get("outcome", "")}
                         for t in targets],
@@ -919,6 +921,29 @@ def saved_startup_words(saved) -> dict:
     return {"state": saved.get("state", ""), "words": words + (f": {detail}" if detail else "")}
 
 
+def verify_words(checks: dict) -> list:
+    """What verify read, in words, from a receipt's checks (C1270): its scope (quick or full,
+    and why), how many new lines it looked for and read back, each line not read back, and each
+    it did not look for and why. Today's renderer drew these; v2's deploy cards draw them from
+    here. ``[]`` when verify did not run or recorded neither."""
+    checks = checks or {}
+    out = []
+    vs = checks.get("verify_scope") or {}
+    if vs.get("scope"):
+        out.append(f"Verify was {vs['scope']}" + (f": {vs['why']}" if vs.get("why") else ""))
+    rb = checks.get("read_back")
+    if isinstance(rb, dict):
+        missing = list(rb.get("missing") or [])
+        looked = rb.get("checked")
+        if looked is not None:
+            out.append(f"{looked} new line(s) looked for, {max(looked - len(missing), 0)} "
+                       "read back")
+        out += [f"Not read back: {line}" for line in missing]
+        out += [f"Not looked for: {s.get('line', '')} ({s.get('why', 'no reason recorded')})"
+                for s in rb.get("skipped") or [] if isinstance(s, dict)]
+    return out
+
+
 def operation_result(rows: list, report: dict, receipt_status: dict, action: str) -> dict:
     """A deploy's or restore's result, built FROM THE RECEIPT ROWS the apply
     has just written, so the screen and the record are one computation.
@@ -960,6 +985,7 @@ def operation_result(rows: list, report: dict, receipt_status: dict, action: str
                      "authorised": list(r.get("authorised") or []),
                      "actor": r.get("actor", "")},
             "checks": r.get("checks") or {"ran": False, "why": "no check was recorded"},
+            "verify_words": verify_words(r.get("checks")),
             "rollback": r.get("rollback") or {},
             "saved": saved_startup_words(r.get("saved_startup")),
         })

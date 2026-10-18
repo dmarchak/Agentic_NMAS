@@ -74,6 +74,7 @@
     {%- if c.ran %}
     <p>Verify {{ 'passed' if c.ok else 'did NOT pass' }}{% if c.checked_protocols %}, checking {{ c.checked_protocols | join(', ') }}{% endif %}.</p>
     {%- for i in (c.issues or []) + (c.intent_unmet or []) + (c.unreadable or []) %}<p class="apply-refused">{{ i }}</p>{% endfor %}
+    {%- for w in t.verify_words or [] %}<p{% if w.startswith('Not read back') %} class="apply-refused"{% endif %}>{{ w }}</p>{% endfor %}
     {%- else %}
     <p class="muted">Nothing was verified: {{ c.why }}.</p>
     {%- endif %}

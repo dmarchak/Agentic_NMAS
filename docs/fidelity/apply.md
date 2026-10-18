@@ -23,8 +23,15 @@ docs/STANDING_APPROVAL_LOG.md.
 Shots: the operator's captures above; the boards `BatchDeploy` and `Stepper` at 1440, rendered
 in the same headless Firefox (no shot test to run them).
 Compared 2026-10-17.
+Compared again 2026-10-18 (C1270): in the result's per-device evidence, under the verify line,
+one paragraph per line of what verify read (`t.verify_words`): its scope and why, how many new
+lines it looked for and read back, each line not read back (in the refused style) and each it
+did not look for with why; drawn only when the receipt recorded them, so a result without them
+is drawn as before. No board draws these lines (today's renderer did, which P7-27 removes); the
+deviation is a line in STANDING_APPROVAL_LOG.md. Every other region unchanged: one line added
+to `_apply_job.html`, read from the diff.
 Templates compared: templates/v2/apply.html, templates/v2/_apply_preview.html, templates/v2/_apply_job.html
-Templates sha256: `23c6b5a92e72ccf0a02e489937dcda52be61c27c3427a6c363c927c7017ab156`
+Templates sha256: `eb82472dd3c4c4fb1c0cfc952987ea89f00ec0cc6c633b16fb87f3d98d072d70`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).

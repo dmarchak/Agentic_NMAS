@@ -311,3 +311,39 @@ class TestTheShippedScreensDrawIt:
         assert "exec-timeout 30 0" in "\n".join(t["program"]["lines"]), (t["program"]["none"],
                                                                     t.get("gates"))
         assert t["program"]["verify"]["title"].startswith("Verify after the push: QUICK")
+
+
+class TestV2sCardsDrawWhatVerifyRead:
+    """C1270: v2's batch Apply card draws verify's scope, how many new lines it read back and
+    each line it did not, from the receipt as the batch writes it (today's renderer drew them;
+    the device card's are held by tests/test_device_deploy_v2.py)."""
+
+    def _html(self, verify):
+        import app as APP
+        from flask import render_template
+        from modules import deploy_job
+        from modules.preview_confirm import operation_result
+        from tests.test_deploy_result_says_saved import _row
+
+        result = operation_result([_row(outcome="failed", stage="verify", verify=verify)],
+                                  {}, {"ok": True, "written": 1}, "deploy")
+        j = {"job": "job1", "state": "done", "payload": {"result": result}}
+        with APP.app.test_request_context("/v2/"):
+            html = render_template("v2/_apply_job.html", j=j, job="job1", arrivals=None,
+                                   run=deploy_job.run_card(j, "Lab"))
+        return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html))
+
+    def test_the_batch_card_draws_the_scope_the_count_and_each_line_not_read_back(self):
+        text = self._html({"ok": False, "checked_protocols": [],
+                           "verify_scope": {"scope": "quick", "why": "terminal lines only"},
+                           "read_back": {"checked": 3, "missing": ["length 0"],
+                                         "skipped": [{"line": "password 7 x",
+                                                      "why": "the device prints it hashed"}]}})
+        assert "Verify was quick: terminal lines only" in text, text
+        assert "3 new line(s) looked for, 2 read back" in text, text
+        assert "Not read back: length 0" in text, text
+        assert "Not looked for: password 7 x (the device prints it hashed)" in text, text
+
+    def test_a_verify_that_recorded_neither_draws_none_of_it(self):
+        text = self._html({"ok": True, "checked_protocols": ["ospf"]})
+        assert "Verify was" not in text and "read back" not in text, text

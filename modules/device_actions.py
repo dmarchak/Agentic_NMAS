@@ -1070,6 +1070,7 @@ def deploy_job_card(ref, host: str, job_id: str, got) -> dict:
                 none=sent.get("none", ""), authorised=list(sent.get("authorised") or []),
                 checks=list(checks.get("statements") or ([checks["why"]]
                                                          if checks.get("why") else []))
+                + list(target.get("verify_words") or [])     # C1270
                 + declared_lines,
                 rolled_back=rolled_back, rollback_badge=rollback_badge,
                 rollback_state=rollback.get("state", ""),

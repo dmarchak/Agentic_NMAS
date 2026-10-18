@@ -379,6 +379,34 @@ class TestTheConfirm:
         head = re.search(r'<h2 id="op-title">(.*?)</h2>', out, re.S).group(1)
         assert re.sub(r"<[^>]+>", " ", head).split("Deploy to r2", 1)[1].strip() == badge, head
 
+    def test_the_result_draws_verify_s_scope_and_each_line_not_read_back(self, deploy,
+                                                                         monkeypatch):
+        """C1270: verify's scope (quick or full, and why), how many new lines it read back, and
+        each line it did not, drawn on the card, as today's renderer drew them."""
+        import routes.deploy as rd
+        from modules.nsot import capture_job
+
+        def spy(entry, list_name, rows, authorise, **kw):
+            return {"device": entry["artifact"].device, "outcome": "failed",
+                    "commands": ["lldp run", "lldp timer 20"], "stage": "verify",
+                    "verify": {"ok": False, "checked_protocols": [],
+                               "verify_scope": {"scope": "quick",
+                                                "why": "management and services lines only"},
+                               "read_back": {"checked": 2, "missing": ["lldp timer 20"],
+                                             "skipped": []}},
+                    "reason": "1 sent line(s) did not read back: lldp timer 20"}
+        monkeypatch.setattr(rd, "_deploy_one", spy)
+        monkeypatch.setattr(rd, "_commit_batch_golden", lambda *a, **k: {})
+        _r, card = _get(deploy, "/v2/device/r2/deploy?" + _reasons()[1:])
+        r = self._confirm(deploy, _vals(card))
+        job = re.search(r"/deploy/job/([0-9a-f]+)", r.get_data(as_text=True)).group(1)
+        assert capture_job.wait(job, 20)
+        _r, out = _get(deploy, f"/v2/device/r2/deploy/job/{job}")
+        text = re.sub(r"\s+", " ", html_mod.unescape(re.sub(r"<[^>]+>", " ", out)))
+        assert "Verify was quick: management and services lines only" in text, text[-1500:]
+        assert "2 new line(s) looked for, 1 read back" in text, text[-1500:]
+        assert "Not read back: lldp timer 20" in text, text[-1500:]
+
     @pytest.mark.parametrize("change, words", [
         ({"list": ""}, "names no list"),
         ({"list": "Nowhere"}, "names no list"),
