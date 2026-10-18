@@ -33,6 +33,11 @@ derived:
 ``--check`` re-measures every device and compares with the generated rules file (made on the host, never committed):
 ``stale_rate`` (the band moved off the window), ``provisional_ready`` (it can
 be measured now), ``inseparable``, and the population in both directions.
+**Which moved is said, never guessed** (C1316): each measured rule records the band it
+was made from, so a band off its window is the RATE (the installed band, scaled to
+today's median, is off the window by itself: regenerate) or JITTER (the rate alone still
+fits; the gaps spread wider round the median: find what loads the device before
+regenerating, which would only fit the window to the jitter).
 Run on a timer (deploy/systemd/nmas-heartbeat-check.*) and declared in
 ``modules/job_health.py``, so the check stopping is itself visible.
 
@@ -224,14 +229,15 @@ def measure(gaps: list, interval: int) -> dict:
                            "above": sum(1 for g in gaps if g > hi),
                            "min": round(min(gaps), 1), "max": round(max(gaps), 1),
                            "percent": round(TAIL * 100, 2)}}
-    rate = interval / statistics.median(gaps)
+    median = statistics.median(gaps)
+    rate = interval / median
     if 2 * hi < 3 * lo:
         return {"basis": "measured", "window": math.ceil((2 * hi + 3 * lo) / 2),
                 "lo": round(lo, 1), "hi": round(hi, 1), "n": len(gaps),
-                "rate": round(rate, 3), **extra}
+                "rate": round(rate, 3), "median": round(median, 1), **extra}
     return {"basis": "inseparable", "window": math.ceil(2 * hi * 1.05),
             "lo": round(lo, 1), "hi": round(hi, 1), "n": len(gaps),
-            "rate": round(rate, 3), **extra}
+            "rate": round(rate, 3), "median": round(median, 1), **extra}
 
 
 def windows(gaps_by_host: dict, interval: int) -> dict:
@@ -371,16 +377,50 @@ def render(doc: dict) -> str:
     return head + yaml.safe_dump(doc, sort_keys=False, width=100)
 
 
+#: The band a measured rule was made from, as :func:`rule_for` writes it into the
+#: description: "own <n> heartbeat gaps (<lo>-<hi> s; clock rate <rate>".
+_BAND = re.compile(r"own \d+ heartbeat gaps \((\d+(?:\.\d+)?)-(\d+(?:\.\d+)?) s; "
+                   r"clock rate (\d+(?:\.\d+)?)\b")
+
+
 def installed(doc: dict) -> dict:
-    """``{device: (window, basis, datasource_uid)}`` from a rules document."""
+    """``{device: (window, basis, datasource_uid, band)}`` from a rules document; *band* is
+    ``{"lo", "hi", "rate"}`` a measured rule was made from, or None when it names none."""
     out = {}
     for g in doc.get("groups", []):
         for r in g.get("rules", []):
             labels = r.get("labels", {})
+            m = _BAND.search((r.get("annotations") or {}).get("description", ""))
+            band = ({"lo": float(m[1]), "hi": float(m[2]), "rate": float(m[3])}
+                    if m and float(m[3]) > 0 else None)
             out[labels["device"]] = (int(r["data"][0]["relativeTimeRange"]["from"]),
                                      labels.get("window_basis", "?"),
-                                     r["data"][0].get("datasourceUid", ""))
+                                     r["data"][0].get("datasourceUid", ""), band)
     return out
+
+
+def which_moved(window: int, band: dict, now: dict) -> tuple:
+    """("rate" | "jitter", words) for a measured band off its *window* (C1316). The band the
+    rule was made from, scaled by how far the median moved (``band rate / rate now``): if
+    that alone still fits the window, the rate is not why; the gaps spread wider round the
+    median, which is jitter (the device or its host loaded), and regenerating would only fit
+    the window to it."""
+    k = band["rate"] / now["rate"]
+    lo_k, hi_k = band["lo"] * k, band["hi"] * k
+    median = now["median"]
+    rate_words = (f"clock rate {band['rate']} when made, {now['rate']} now (the median "
+                  f"{(k - 1) * 100:+.1f}%)")
+    spread = (f"gaps spread {_spread(band['lo'], band['hi'], median / k)} round the median "
+              f"when made, {_spread(now['lo'], now['hi'], median)} now")
+    if 2 * hi_k < window < 3 * lo_k:
+        return "jitter", (f"{rate_words}, which alone still fits ({2 * hi_k:.0f}, "
+                          f"{3 * lo_k:.0f}); the {spread}")
+    return "rate", (f"{rate_words}, which alone needs ({2 * hi_k:.0f}, {3 * lo_k:.0f}); "
+                    f"the {spread}")
+
+
+def _spread(lo: float, hi: float, median: float) -> str:
+    return f"{(lo / median - 1) * 100:+.1f}% to {(hi / median - 1) * 100:+.1f}%"
 
 
 def devices_in(doc: dict) -> set:
@@ -400,7 +440,8 @@ def check(installed_now: dict, fresh: dict, expected: set) -> tuple:
                          "told to heartbeat")
             code = EXIT_STALE
             continue
-        window, basis, _uid = installed_now[host]
+        window, basis = installed_now[host][:2]
+        band = installed_now[host][3] if len(installed_now[host]) > 3 else None
         now = fresh.get(host, {"basis": "provisional", "n": 0})
         if basis == "provisional":
             if now["basis"] != "provisional":
@@ -426,9 +467,20 @@ def check(installed_now: dict, fresh: dict, expected: set) -> tuple:
             lines.append(f"current    {host}: window {window} s inside "
                          f"({2 * hi:.0f}, {3 * lo:.0f})")
         else:
-            lines.append(f"STALE RATE {host}: window {window} s, but gaps are "
-                         f"now {lo}-{hi} s, needing ({2 * hi:.0f}, {3 * lo:.0f}) "
-                         "-- the clock rate moved; regenerate")
+            off = (f"window {window} s, but gaps are now {lo}-{hi} s, needing "
+                   f"({2 * hi:.0f}, {3 * lo:.0f})")
+            if not band:
+                lines.append(f"STALE BAND {host}: {off}; the rule names no band it was made "
+                             "from, so whether the rate or the spread moved is not known "
+                             "-- regenerate")
+            elif which_moved(window, band, now)[0] == "jitter":
+                lines.append(f"JITTER {host}: {off}; {which_moved(window, band, now)[1]}: "
+                             "the rate is not why, the gaps spread wider -- find what loads "
+                             "the device or its host before regenerating, which would only "
+                             "fit the window to the jitter")
+            else:
+                lines.append(f"STALE RATE {host}: {off}; {which_moved(window, band, now)[1]} "
+                             "-- the clock rate moved; regenerate")
             code = EXIT_STALE
     return code, lines
 

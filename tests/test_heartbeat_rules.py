@@ -120,11 +120,24 @@ class TestAMovedRateIsANamedState:
         assert code == H.EXIT_OK and lines[0].startswith("current")
 
     def test_a_moved_rate_is_STALE_RATE_with_the_numbers(self):
-        """s3's rate varies; a window from yesterday's rate stops fitting."""
+        """s3's rate varies; a window from yesterday's rate stops fitting. The rule was made
+        from 500-520 s (median 510 s, rate 0.588); the median is 620 s now, and that band
+        scaled to it needs (1263, 1822): the rate alone puts 1250 s off it."""
+        fresh = H.windows({"s3": _gaps(600.0, 640.0)}, INTERVAL)
+        code, lines = H.check({"s3": (1250, "measured", "uid",
+                                      {"lo": 500.0, "hi": 520.0, "rate": 0.588})},
+                              fresh, {"s3"})
+        assert code == H.EXIT_STALE
+        assert lines[0].startswith("STALE RATE s3") and "600.0-640.0" in lines[0]
+        assert "clock rate 0.588 when made, 0.484 now" in lines[0], lines
+        assert "which alone needs (1263, 1822)" in lines[0], lines
+
+    def test_a_rule_naming_no_band_says_which_moved_is_not_known(self):
         fresh = H.windows({"s3": _gaps(600.0, 640.0)}, INTERVAL)
         code, lines = H.check(self._installed(s3=(1250, "measured")), fresh, {"s3"})
         assert code == H.EXIT_STALE
-        assert lines[0].startswith("STALE RATE s3") and "600.0-640.0" in lines[0]
+        assert lines[0].startswith("STALE BAND s3: window 1250 s") and "600.0-640.0" in lines[0]
+        assert "not known" in lines[0] and "rate moved" not in lines[0], lines
 
     def test_provisional_ready_and_still_provisional(self):
         fresh = H.windows({"a": _gaps(*MEASURED["s1"]), "b": [300.0]}, INTERVAL)
@@ -159,6 +172,60 @@ class TestAMovedRateIsANamedState:
         got = H.installed(doc)
         assert {h: got[h][:2] for h in got} == {
             h: (infos[h]["window"], infos[h]["basis"]) for h in infos}
+        # And the band each measured rule was made from (C1316), so the check can say
+        # whether the rate or the spread moved.
+        assert {h: got[h][3] for h in got if infos[h]["basis"] == "measured"} == {
+            h: {"lo": i["lo"], "hi": i["hi"], "rate": i["rate"]}
+            for h, i in infos.items() if i["basis"] == "measured"}
+
+
+class TestAWidenedTailIsJitterNotARate:
+    """C1316 (the operator, 2026-10-18): s3's check read "STALE RATE s3: window 1337 s, but
+    gaps are now 514.8-674.4 s ... the clock rate moved; regenerate". Its median held at 550
+    to 559 s every day of the week; its tail widened with the lab host's load. On s3's REAL
+    week and its REAL installed rule (`tests/fixtures/heartbeat/s3_jitter.json`, captured
+    read-only from the host): made from 493.0-597.1 s at rate 0.583 (median 514.6 s)."""
+
+    @pytest.fixture(scope="class")
+    def s3(self):
+        import json
+        with open("tests/fixtures/heartbeat/s3_jitter.json", encoding="utf-8") as fh:
+            return json.load(fh)
+
+    def _rules(self, s3):
+        return {"groups": [{"rules": [{
+            "labels": {"device": "s3", "window_basis": "measured"},
+            "data": [{"relativeTimeRange": {"from": s3["installed_window"]},
+                      "datasourceUid": "uid"}],
+            "annotations": {"description": s3["installed_description"]}}]}]}
+
+    def _check(self, s3):
+        fresh = H.windows({"s3": H.gaps_from(s3["arrivals"], s3["config_events"],
+                                             [tuple(w) for w in s3["restarts"]])},
+                          s3["heartbeat_seconds"])
+        return H.check(H.installed(self._rules(s3)), fresh, {"s3"})
+
+    def test_the_installed_rule_names_the_band_it_was_made_from(self, s3):
+        assert H.installed(self._rules(s3))["s3"] == (
+            1337, "measured", "uid", {"lo": 493.0, "hi": 597.1, "rate": 0.583})
+
+    def test_the_hosts_failure_reads_as_jitter_with_both_measurements(self, s3):
+        code, lines = self._check(s3)
+        assert code == H.EXIT_STALE, lines
+        line = lines[0]
+        assert line.startswith("JITTER s3: window 1337 s, but gaps are now 514.8-674.4 s, "
+                               "needing (1349, 1544)"), line
+        # The rate moved since the rule was made (the median +7.6%), and alone still fits.
+        assert "clock rate 0.583 when made, 0.542 now (the median +7.6%)" in line, line
+        assert "which alone still fits (1285, 1591)" in line, line
+        # What did move: the spread round the median.
+        assert "-4.2% to +16.0% round the median when made, -7.0% to +21.8% now" in line, line
+        assert "rate moved" not in line and "regenerating, which would only fit" in line
+
+    def test_the_headline_names_it_jitter(self, s3):
+        code, lines = self._check(s3)
+        bad = [l for l in lines if l.split()[0].isupper()]
+        assert [l.split(":")[0] for l in bad] == ["JITTER s3"]
 
 
 class TestTheRuleKeysOnTheDevicesOwnName:
@@ -388,9 +455,12 @@ class TestARestartIsNotAMeasurement:
         assert before < next(a for a in s3["arrivals"] if a > after)
 
     def test_without_the_exclusion_the_hosts_stale_rate_is_reproduced(self, s3):
+        # The fixture names no band the rule was made from, so the check says it cannot
+        # tell the rate from the spread (C1316), where the host's check of 2026-10-01 said
+        # "STALE RATE": the window and the reboot's gap are the same.
         code, lines = self._check(s3, ())
         assert code == H.EXIT_STALE
-        assert lines[0].startswith("STALE RATE s3: window 1337 s") and "757.1" in lines[0], lines
+        assert lines[0].startswith("STALE BAND s3: window 1337 s") and "757.1" in lines[0], lines
 
     def test_with_it_the_installed_window_is_current(self, s3):
         code, lines = self._check(s3, self._windows(s3))
