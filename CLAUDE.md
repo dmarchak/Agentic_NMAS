@@ -300,6 +300,16 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
 - **Every new check is shown able to fail:** remove the property, see the aimed tests fail (not
   crash), read WHICH failed, restore from a copy (never git); a passing control is a missing test.
   [no bytecode: `PYTHONDONTWRITEBYTECODE` in scripts/nmas-test; the rest not mechanised] [why](docs/LESSONS.md#every-check-shown-able-to-fail)
+- **A test may be deleted, skipped or loosened only with a registered row and a stated reason
+  in the commit; a ceiling, allowlist, known-gap or excused list only goes down.** A commit that
+  removes a test, adds a skip, xfail or `pragma: no cover`, weakens an assertion, or raises a
+  ceiling names it in a `Test-Weakened: <test or list> — C<n>: <reason>` trailer, and C<n> is an
+  open or closed row of the register. [the Lab 7 history audit, 2026-10-17 (553 items; C1166 to
+  C1178); the trailer: not mechanised]
+- **New code that parses, formats, validates, compares or stores an address is tested with an
+  IPv6 case beside its IPv4 one** (IPv6 parity, the operator's decision of 2026-10-17: a feature
+  that works only over IPv4 management is unfinished). [not mechanised; the audit and its
+  burn-down: docs/IPV6_PARITY.md]
 - **A scan has a floor on its population and a planted case it finds; a control's expectation
   comes by a path independent of the code it breaks.** [partly: many tests' floors; not required of new scans] [why](docs/LESSONS.md#floors-and-independent-controls)
 - **An absence is a finding only if the store that would hold it was checked and shown able to
@@ -331,10 +341,11 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   new automation module no unit test reaches, or a new test that asserts nothing fails CI; the
   baseline moves only by `scripts/nmas-coverage baseline`. [tests/test_nmas_coverage.py; the
   coverage job in .github/workflows/ci.yml]
-- **Mutation testing runs nightly on the changed automation functions, one mutant at a time,
-  after a canary that must die; only an open VERDICT survivor turns it red; an equivalent mutant
-  is listed by hand with its reason, never chased with a test.** [tests/test_nmas_mutation.py;
-  tests/test_mutation_canary.py; .github/workflows/mutation-nightly.yml]
+- **Mutation testing is parked (the operator, C835: the nightly schedule is off); it runs on
+  demand, one mutant at a time, after a canary that must die; only an open VERDICT survivor
+  turns a run red; an equivalent mutant is listed by hand with its reason, never chased with a
+  test.** [tests/test_nmas_mutation.py; tests/test_mutation_canary.py;
+  .github/workflows/mutation-nightly.yml (dispatch only)]
 
 ## Module map (compact; full map in docs/ARCHITECTURE.md)
 
