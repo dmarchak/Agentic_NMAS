@@ -41,5 +41,5 @@
       {%- else %}Not identified <span class="muted">· {{ who.why }}</span>{% endif -%}
     </dd></div>
   </dl>
-  <p class="card-foot">Quiet when fine: the top bar carries no commit. A commit CI did not pass, a host behind what is pushed, or a mixed version is a row on <a href="{{ url_for('v2.landing') }}">Needs attention</a> instead.</p>
+  <p class="card-foot">Quiet when fine: the top bar carries no commit. A release on offer is said here and by the top bar's Update available, never as a row. It becomes a row on <a href="{{ url_for('v2.landing') }}">Needs attention</a> when something is wrong: CI did not pass it, it could not be fetched, the host has run behind it for more than {{ inst.behind_row_hours }} hours, an update asked for did not happen, or the running commit is not on the remote; a mixed version is a row too.</p>
 </section>

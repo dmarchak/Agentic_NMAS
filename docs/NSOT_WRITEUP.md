@@ -4478,7 +4478,7 @@ page drew (docs/PHASE7_BURNDOWN.md section 1c).*
    confirmed and CI passed, by a root-owned program the app cannot alter. The operator's
    reading of C549's confirm is still owed.
 
-### 7.D — The GUI redesign (open)
+### 7.D — The GUI redesign (closed 2026-10-18)
 
 7.D is open. Commit times are the committer's local time (UTC-6); the operator's decisions are dated in UTC, which is why a decision can read 2026-09-30 beside a commit of 09-29.
 
@@ -4654,6 +4654,38 @@ against `DevRetire`'s last card, 13 regions (7 same, 6 deviation). The compariso
 defects, each a C row (C1295 to C1301), none fixed under the fidelity hold. `UNCHECKED` fell from
 15 to 12. **About** is the fourth: its record is taken from the screenshot the operator takes in
 the P7-27 walk (step 12), and 7.D's closing entry is written the turn that record lands.
+
+#### 7.D — Closed, 2026-10-18: the GUI redesign, compared with its boards
+
+*Written 2026-10-18 UTC, the turn 7.D closed: About's record, from the operator's screenshot in
+the P7-27 walk, was the last of the four W4 screens (C650 closed).*
+
+1. **What it was.** The v2 interface, designed on boards and built screen by screen (7.D's steps
+   above), then held to its boards: each signed-off screen compared region by region with what
+   was built (C650, 2026-10-10 on).
+2. **How it was implemented.** tests/test_board_fidelity.py requires a record per signed-off
+   screen (each region's verdict: same, deviation with its approval-log line, or later) or the
+   screen on `UNCHECKED`, a list that only shrinks; a changed template is refused until it is
+   compared again. The records were written from the operator's walk captures (W1 to W4) and
+   from shots of the boards and the page side by side (tests/test_board_shots.py).
+3. **Issues encountered** [OPEN_FINDINGS; STANDING_APPROVAL_LOG]: the comparisons found
+   deliberate differences, each logged with its reason, and defects, each a register row (56
+   log lines carry "(a defect, register C650 follow-up)"); today's comparisons alone found
+   C1295 to C1301 and, from the walk, the About footer that claimed what the code does not do
+   (C1313, fixed).
+4. **How they were resolved.** A deviation stays only with its reason in the log; the
+   operator kept the six later ones of the P7-27 walk (R1 to R6) and asked for their boards to
+   be redrawn to the built screens (C1312). Defects in fidelity-held templates are rows, fixed
+   as their own changes.
+5. **Numbers.** 39 screens signed off (`SIGNED_OFF`; 3 still unsigned, named); 28 records and
+   3 shared components, from the first record (d720434a, 2026-10-10) to About (2026-10-18); 229
+   approval-log lines name a fidelity record; `UNCHECKED` fell from 32 (2026-10-16) to 11, the
+   screens no walk touched, which the burn-down sends to Stage 7's tail (C1302). **Not
+   recoverable:** the hours, interleaved with the walks and the removals. No forecast was made
+   for 7.D alone, so none is checked.
+6. **Where it left the product.** A v2 screen that departs from its board says so, with the
+   reason, in a place a test reads; a screen changed after its comparison cannot pass the suite
+   until it is compared again.
 
 #### Stage 7's forecast (section 11, 2026-10-02), checked as far as the record allows
 

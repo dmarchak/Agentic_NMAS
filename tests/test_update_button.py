@@ -887,6 +887,20 @@ class TestThePage:
         # Today's Needs attention panel (`nmas_attention.js`) linked the same row to /v2/update
         # until it left with today's index at 7.8 (P7-27).
 
+    def test_about_says_when_a_host_behind_becomes_a_row(self):
+        """The operator's walk (2026-10-18): the footer said "a host behind what is pushed …
+        is a row on Needs attention", and none appeared with the host 3 commits behind. The
+        row is right to be absent (a release on offer is information, the operator,
+        2026-10-02: `attention.pushed_level`); the words were wrong. They now say when it IS
+        a row, its hours read from the code's own bound."""
+        import app as A
+        from modules import attention
+        html = A.app.test_client().get("/v2/help/about").get_data(as_text=True)
+        foot = re.search(r'<p class="card-foot">(.*?)</p>', html, re.S).group(1)
+        assert "a host behind what is pushed, or" not in foot, foot
+        assert f"more than {attention.BEHIND_TOO_LONG_S // 3600} hours" in foot, foot
+        assert "Update available" in foot and "Needs attention" in foot, foot
+
     def test_apply_writes_the_request_as_the_verified_person(self, tmp_path, monkeypatch):
         import app as A
         from modules import update_op

@@ -37,14 +37,14 @@ def _runner(tmp_path, body, bound="5"):
 
 
 #: The bound for a probe that FINISHES, where the bound is not what the test holds (C1260, the
-#: operator's B, 2026-10-18). Measured: alone 0.53 s; under a gate's four suites with coverage,
-#: 177 runs, the slowest 3.65 s (load 17; 2026-10-18 18:02 UTC); and C1260's five failures went
-#: past 5 s under loads that measurement did not reach (the gate beside a mutation run or an
-#: agent's tests). 5 s was a premise ("a finishing run is done in 5 s on any load") the
-#: measurements refute; 30 s is about 8x the measured slowest, set past the usual 2.5x because
-#: the loaded top is not measured. The hang probes keep 5 s: their hanging test began within
-#: 1.51 s in every run measured (170, under a gate's load).
-FINISHING_BOUND = "30"
+#: operator's B, 2026-10-18). Measured under C1260's own conditions, reproduced at the
+#: operator's word (2026-10-18 21:33 to 21:58 UTC): a gate's four suites beside a mutation run,
+#: these three probes under coverage as the gate runs them, load average to 28.5: at load 12
+#: and over, 162 runs, the slowest 4.55 s, none failed (6 to 12: 99 runs, 4.05 s; under 6:
+#: 1,272 runs, 0.75 s). The bound is about 2.5x the slowest: 12 s. (5 s held a premise the
+#: measurement refutes; 30 s, from 1b08287f, was a guess.) The hang probes keep 5 s: their
+#: hanging test began within 1.51 s in every run measured (170, under a gate's load).
+FINISHING_BOUND = "12"
 
 HANG = ("import time\n\n"
         "def test_finished_first():\n    pass\n\n"

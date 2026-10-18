@@ -6,7 +6,7 @@ with MDT (UTC−6) beside where it helps.
 
 ## Where it stands
 
-The host runs **ab1909d2** (CI #935), deployed 2026-10-18 18:33:56 UTC, its GET walk passed
+The host runs **c60a7a54** (CI #938), deployed 2026-10-18 20:16:59 UTC (ab1909d2 at 18:33:56 before it; every commit since is tests or docs, and no deploy until the operator's walk is done), its GET walk passed
 23 of 23 paths as expected (`/` 302 to `/v2/` keeping `?list=`, today's old addresses 404, every v2 page 200). P7-27, the last of today's (v1) pages, is merged (4e631168) and deployed: the
 removals (7.8) are done. Three things are left, and two of them are yours: the P7-27 walk, the
 CLAUDE.md script, then About's record and 7.D's close, which follow your walk.
@@ -41,88 +41,113 @@ The branch `p7-27` (e2f27b84, 078c1bd0) is in main through the merge 4e631168.
 
 ## What only you can do, in order
 
-1. **Walk P7-27** (docs/walks/P7-27.md, about 30 to 40 minutes): 12 read-only steps, each with
-   its PASS line; at step 12, the About screenshot it describes, saved as
-   `<home>/Documents/nmas-reports/P7-27-2026-10-18/about.png`; then section D's six board
-   divergences, each "keep" or "change". Paste your results into the session.
-2. **Run the CLAUDE.md script** (2 minutes), on your laptop:
+1. **Walk P7-27** (docs/walks/P7-27.md, about 30 to 40 minutes; started 2026-10-18 at about
+   21:20 UTC): 12 read-only steps, each with its PASS line; at step 12, the About screenshot it
+   describes, saved as `<home>/Documents/nmas-reports/P7-27-2026-10-18/about.png`; then
+   section D's six board divergences, each "keep" or "change". Paste your results.
+2. **Decide C1192**: build it now, or defer it explicitly (the agent's three-line account is in
+   the session).
+3. **Paste the replacement** for CLAUDE.md's "Never send the operator to today's (v1) pages"
+   bullet (the text is in the session).
 
-   ```
-   python3 ~/Documents/nmas-reports/claude-md-p7-27-merge.py
-   ```
+Done since this was first written: the CLAUDE.md script ran and its lines are committed with
+"Lab 7's lessons, kept" (350fd6cd); the inferences are decided (below); C1294 is built and shown
+(305bdcbf).
 
-   PASS: its last line starts `DONE: 5 edits applied; the file as it was is kept at`, after a
-   unified diff of five changes (P7-27's four post-merge lines, and the `[why]` link of the
-   failing-test bullet to "Lab 7's lessons, kept"). If it prints `REFUSED:`, nothing changed;
-   paste what it printed. Then say so: the agent commits CLAUDE.md with docs/LESSONS.md's new
-   section (tests/test_claude_md.py needs both together).
-3. **Confirm or correct the inferences** below (about 10 minutes).
-4. **Say yes or no to C1294's fix** (it changes the CI workflow, which you asked to hear of
-   first): one concurrency group per commit on main, so no main commit loses its verdict.
+After 1 and 2 the agent: records About (C650), closes 7.D in the writeup, closes C1267, deploys
+and walks. **Phase 7 then closes**: the burn-down's last items (P7-09's 7.D, C650, P7-27) are
+done, and C1192 is built or deferred by your word.
 
-After 1 to 3 the agent: records About (C650), closes 7.D in the writeup, closes C1267, commits
-CLAUDE.md with the lessons, deploys and walks. **Phase 7 then closes**: the burn-down's last
-items (P7-09's 7.D, C650, P7-27) are done.
+## Every A and B: how each was resolved
 
-## Every open A and B row, and why it is still open
+The baseline is 318cf42f (2026-10-17 22:22 MDT, 04:22 UTC on 2026-10-18), the last commit before
+the overnight run. The register then held **6 A and 19 B**. Every row below is one of those, or
+was opened since.
 
-Phase 7's own:
+**Who placed the deferred rows:**
+- **The charter triage**, approved by the operator on 2026-10-07, placed most of them.
+- **The burn-down's "Out of Phase 7"** (docs/PHASE7_BURNDOWN.md section 4, written in 418ab3ce
+  on 2026-10-15) holds the rest. The operator decided its D1 to D6 categories that day, as
+  recommended. Its row-by-row placements are the agent's, and are said as such.
 
-| Row | Bucket | Why open | What closes it |
-|---|---|---|---|
-| C1267 | B | P7-27 is merged and deployed; your walk has not run | your walk |
-| C650 | A | About's record waits on your screenshot; 27 screens are recorded (and 3 shared components), and 11 more go to Stage 7's tail by the burn-down's decision, compared from board shots with no walk | the screenshot, then the agent |
+### The 6 A rows
 
-Outside Phase 7, each placed by the charter triage of 2026-10-07 or by its own row:
+| Row | Resolution |
+|---|---|
+| C650 | **Open: Phase 7's own.** 27 screens are recorded (be578a3c added Save, pending and retired). About's record comes from your walk screenshot; then 7.D closes. |
+| C139 | **Deferred, by the operator (the 2026-10-07 triage):** CORE, NetBox Phase 1, deferred (L). Burn-down section 4: "NetBox Phase 1, after cutover". |
+| C552 | **Deferred, by the operator (the triage):** CORE, NetBox Phase 1, which removes the interface-counter Drained. Burn-down section 4: the same. |
+| C551 | **Deferred, by the operator (the triage):** FUTURE; NetBox's Drained status is the fact. Burn-down section 4: "After Phase 7". |
+| C781 | **Deferred, by the operator:** mutation testing is parked (C835; CLAUDE.md: "Mutation testing is parked"; the burn-down's section 4: no nights run until the operator says Phase 7 has settled). |
+| C842 | **Deferred, by the operator:** mutation parked, as C781. |
 
-| Row | Bucket | Where it was placed |
+### The 19 B rows
+
+| Row | Resolution |
+|---|---|
+| C1160 | **Closed: 11b0a1ef** (the Inventory source card names what NetBox left out). |
+| C1168 | **Closed: 898d1bad** (the rotation halt takes the operator's two-strikes rule). |
+| C1259 | **Closed: 2b78a931** (an unreadable NetBox-sourced list is a Needs attention row; deployed in 898d1bad). |
+| C1192 | **Open, for the operator's decision:** build now, or defer explicitly. See the three lines below. |
+| C7 | **Deferred, by the operator (the triage):** FUTURE (7.7). Burn-down section 4: after cutover. |
+| C60 | **Deferred, by the operator (the triage):** FUTURE (Stage 8's follow-up window). Burn-down section 4: "Phase 8 / Stage 8". |
+| C230 | **Deferred, by the operator (the triage):** FUTURE; the operator's one-time step. Burn-down section 4: "Stage 9, security" (D4). |
+| C472 | **Deferred:** the triage placed it CORE, Stage 7. The burn-down placed it "multi-user, after cutover", Stage 7's tail: the agent's placement under the operator's D3. |
+| C531 | **Deferred, by the operator (the triage):** FUTURE. Burn-down section 4: "After Phase 7". |
+| C554 | **Deferred, by the operator (the triage):** FUTURE, with the parked removal work. Burn-down section 4: "After Phase 7". |
+| C556 | **Deferred, by the operator (the triage):** CORE, NetBox Phase 1, after cutover. |
+| C559 | **Deferred, by the operator (the triage):** CORE, NetBox Phase 1, after cutover. |
+| C561 | **Deferred, by the operator (the triage):** FUTURE. Burn-down section 4: "After Phase 7". |
+| C563 | **Deferred, by the operator (the triage):** CORE, Phase 2 (revert by reload). |
+| C618 | **Deferred, by the operator (the triage):** CORE, Phase 2. |
+| C792 | **Deferred, by the operator:** mutation parked (C835). |
+| C834 | **Deferred, by the operator:** mutation parked (C835). |
+| C822 | **Deferred:** burn-down section 4, "Harness and measurement only". The agent's placement under the operator's D5. |
+| C828 | **Deferred:** burn-down section 4, "Stage 9, functional or minor". The agent's placement under the operator's D4. |
+
+### Opened since 318cf42f
+
+| Row | Bucket | Resolution |
 |---|---|---|
-| C552 | A | CORE, NetBox Phase 1 (the charter triage, 2026-10-07): the interface-counter Drained removed, NetBox's Drained shown with its source and age |
-| C139 | A | CORE, NetBox Phase 1, deferred (L): a retired device escapes every fix; coupled with C143 |
-| C781 | A | the mutation nightly, parked by the operator (C835): survivors of the AI family's moved helpers, triaged by function when the nightly runs |
-| C842 | A | the coverage and mutation nightlies, parked (C835): `history_ask.alternation`'s mutants turn a night red |
-| C551 | A | FUTURE (the triage): Drained measured by a counting ACL is deferred; NetBox's Drained status is the fact |
-| C556 | B | CORE, NetBox Phase 1: NetBox as the source of truth for devices on every network Mercury onboards |
-| C559 | B | CORE, NetBox Phase 1: the import writes every device's type as "Unknown" |
-| C472 | B | CORE, Stage 7's tail (the triage): live regions losing a person's state on another person's write |
-| C563 | B | CORE, Phase 2: the TFTP responder answers from the routed address |
-| C618 | B | CORE, Phase 2: the revert's TFTP and ZTP cannot both hold udp/69 |
-| C531 | B | FUTURE: revert as one action by measured removal (Phase 2 reverts by reload) |
-| C561 | B | FUTURE: restore by configure replace |
-| C554 | B | FUTURE: Mode B and IPv6 ACL entries, with the parked removal work |
-| C60 | B | FUTURE: the deploy follow-up window (Stage 8) |
-| C7 | B | FUTURE: defaults frozen by the 2026-09-23 settings erasure (7.7) |
-| C230 | B | FUTURE: Grafana's token is an Editor's; the operator's one-time step |
-| C792 | B | the mutation nightly, parked (C835) |
-| C834 | B | the mutation nightly, parked (C835) |
-| C822 | B | the test harness (a clock patch hides a hang), after Phase 7 by the burn-down's D5 (harness work out of Phase 7) |
-| C828 | B | History › Query's Code mode, a v2 improvement after Phase 7 (D5) |
-| C1192 | B | Needs attention keeps no "recently cleared" history: your B from the walks (2026-10-17), not in the burn-down; placed after Phase 7, **inferred, unconfirmed**: say if it belongs in Phase 7 |
+| C1268 | A | **Closed: a09c6e4d**, opened and fixed in one commit; deployed 06:49 UTC. |
+| C1263 | B | **Closed: df2d2397**, deployed. |
+| C1276 | B | **Closed: 781b8bf1**, opened and fixed in one commit. |
+| C1270 | B | **Closed: 4ef1dcb4**. |
+| C1274 | B | **Closed: 11b0a1ef**. |
+| C1271 | B | **Closed: 30d096d3** (found UNKNOWN, measured B). |
+| C1273 | B | **Closed: d25b5d19** (found UNKNOWN, measured B). |
+| C1269 | B | **Closed: 3e8bc747**. |
+| C1277 | B | **Closed: 3e8bc747**. |
+| C1287 | B | **Fixed: db204840. Closed: 9ae340f0** (once a Markdown-only commit's own run, #927, was seen). |
+| C1260 | B | **Re-ranked C to B by the operator.** Fixed: 1b08287f. Its bound is being measured under reproduced load, at your word; 30 s holds until then. |
+| C1267 | B | **Open: Phase 7's own.** P7-27 is merged (4e631168) and deployed; your walk is running now. |
 
-## Inferences waiting for your confirmation
+### In all
 
-Each is a line in docs/STANDING_APPROVAL_LOG.md marked "inferred, unconfirmed" or "the agent's
-recommended option". Say "confirmed" or what to change, by number.
+- **Of the 6 A:** 1 is open for Phase 7 (C650, About). 5 are deferred by your decisions: the
+  triage, and mutation parked.
+- **Of the 19 B:** 3 are closed. 1 waits on your call (C1192). 12 are deferred by the triage or
+  the parked mutation. 3 are deferred by the agent's placement under your D-categories (C472,
+  C822, C828).
+- **Since then:** 12 opened, 1 A and 11 B. 11 are closed; 1 is open (C1267, your walk).
 
-1. **C1265, P2** (overnight): the hand mutant P2 was a redundant clause, not a default, so
-   "make it impossible" was read as removing that clause from `profile_apply_confirm`.
-2. **C1287** (the agent's option): every push runs the whole CI, rather than a second, lighter
-   workflow for Markdown-only commits.
-3. **Lab 7's video dry-run** (/tmp/lab7demo-check) was not run: nothing defines it, the folder
-   does not exist, and Lab 7 is closed. Say what it was if it is still wanted.
-4. **Lab 7's five mechanisations** (C1289 to C1293) wait until Phase 7 closes; their docs and
-   rows are in.
-5. **P7-27 merged without its four CLAUDE.md lines**: the merge's gate did not need them, so the
-   condition "if its gate needs them first, don't merge" did not hold. They are your script.
-6. **C1294 registered, not fixed**: its fix changes the CI workflow, which you asked to hear of
-   before any change beyond C1287.
-7. **About's record** (C650) comes from the screenshot in the P7-27 walk's step 12, so 7.D's
-   close follows your walk.
-8. **C1192** (Needs attention keeps no "recently cleared" history; your B from the walks) is
-   placed after Phase 7: it is not in the burn-down.
-9. **C1260's bound** for the probes that finish is 30 s, about 8x the measured slowest,
-   past the usual 2.5x, because the loaded top that failed (over 5 s) is not measured; the
-   commit carries a `Test-Weakened:` line so the change is seen.
+## The inferences, as the operator decided them (2026-10-18, by 21:20 UTC)
+
+1. **P2:** confirmed.
+2. **C1287:** confirmed.
+3. **The video dry-run:** confirmed. The operator rehearses the demos.
+4. **The mechanisations after Phase 7:** confirmed.
+5. **P7-27 merged before its CLAUDE.md lines:** confirmed. The lines are in (350fd6cd).
+6. **C1294:** confirmed, and built: 305bdcbf. Shown by two quick pushes running at once, #940
+   and #941, both green, neither cancelled.
+7. **About's record from the walk:** confirmed.
+8. **C1192:** the operator decides build now or an explicit deferral, on the agent's three-line
+   account. It stays in Phase 7 until then.
+9. **C1260's 30 s:** a guess, said the operator. The finishing probes are measured under the
+   reproduced load (a gate beside a mutation run, load average to 28.5), and the bound is set
+   at 2.5 times the slowest measured.
+
+Each is a line in docs/STANDING_APPROVAL_LOG.md (c9b263d8).
 
 ## Not done, and why
 

@@ -212,10 +212,14 @@ def installation() -> dict:
     last["words"] = (f"{update_op.OUTCOME_WORDS.get(lv.get('outcome'), lv.get('outcome'))}: "
                      f"{str(lv.get('from') or '')[:10]} to {str(lv.get('to') or '')[:10]}"
                      + (f" by {lv['requested_by']}" if lv.get("requested_by") else "")) if lv else ""
+    from modules.attention import BEHIND_TOO_LONG_S
     return {"running": facts.get("running") or "", "subject": _subject(facts.get("running")),
             "started_at": facts.get("started_at"), "pid": os.getpid(),
             "version": facts.get("version") or {}, "ci": facts.get("ci") or {}, "pushed": pushed,
-            "last_update": last, "check": check_state()}
+            "last_update": last, "check": check_state(),
+            # When a host behind becomes a Needs attention row (the footer says it; the
+            # operator's walk, 2026-10-18: the words said it always was).
+            "behind_row_hours": BEHIND_TOO_LONG_S // 3600}
 
 
 @bp.route("/help/about", methods=["GET"])
