@@ -20,6 +20,11 @@ context is the payload and the template is the renderer (P7-04, 2026-10-15).
   preview's keys are compared with what the adapter and the template read (`UPSTREAM`).
 * **Unreached:** a v2 template named in the product's code that no measured request renders is
   not examined at all; each is named in `UNREACHED`, a list that only shrinks.
+* **The state the test data reaches (C1274):** every `{% for %}` in a template the walk reaches
+  drew at least once (its body ran, measured by a mark compiled into it), or is declared in
+  `EMPTY_IN_FIXTURE` with its reason, a list that only shrinks: a collection empty in every
+  render hides every field its items carry from every check here and from every page shot.
+  Today's renderers held the same rule as test_payload_is_rendered.py's `EMPTY_IN_FIXTURE`.
 * **Anchors:** the deploy card's program, dangerous lines, residue and notes are carried AND
   read (D4, C27), and the plan's attribution with them (C867, 2026-10-16); the fixture carries
   the attribution, so whether the card draws it is measured, not assumed.
@@ -392,6 +397,465 @@ UNREACHED = {
 #: -2 2026-10-17: the pending page and _onboard_pending.html, reached by C1193's provider.
 UNREACHED_CEILING = 21
 
+# ── C1274: the loops no fixture reaches ─────────────────────────────────────────────────────
+#: Reasons shared by many loops. Each names the state the walk and the providers do not hold;
+#: every entry is a finding (a state no check on v2 photographs), and the list only shrinks.
+_OP = ("an operation's preview, run or result, drawn after a POST (or the job it starts) that "
+       "no provider in tests/v2_context.py makes")
+_RESULT = ("a finished operation's result (its checks, what it did not do, what was authorised, "
+           "what failed): no provider confirms the operation")
+_FAILING = ("the gates that refuse the operation, listed only when one fails: every gate the "
+            "lab's card reads passes")
+_ERRORS = ("an error list: every read the walk makes answers, so no render holds an error to "
+           "list")
+_KEA = ("DHCP: the lab stores no DHCP reader value (no Kea answers), so the region draws its "
+        "not-read state and none of Kea's subnets, leases, reservations or exclusions")
+_KEA_OP = ("a DHCP change's form, preview or result: the lab stores no DHCP reader value and no "
+           "provider posts a change")
+_TOPOLOGY = ("Topology: the lab stores no topology reader value, so the map, its tables, its "
+             "weak points and its path and take-out tools draw nothing")
+_LOKI = ("syslog lines: the lab stores no logs reader value and no Loki answers the walk, so "
+         "no line, device, severity or trend is drawn")
+_LOGS_ASK = ("History › Ask your own (logs): no Loki answers the walk, so the builder has no "
+             "labels or values to offer and no answer, rows or series to draw")
+_METRICS_ASK = ("History › Ask your own (metrics): no Prometheus answers the walk, so the "
+                "builder has no metrics, labels, operations or saved questions to offer and "
+                "no answer to draw")
+_LIBRARY = ("the lab's network has no template library (r3 renders through the built-in "
+            "seeds), so no template row, binding, coverage measurement or check is drawn")
+_ONE_NETWORK = ("the walk's installation has one network, Lab, inheriting everything: no "
+                "standalone, differing, unreadable or inheriting network to list")
+_NOTHING_RUNS = ("a running, held or finished operation: the walk's In progress and in-flight "
+                 "reads find none")
+_DEPLOY_DECLARED = ("the deploy card's declared effects (C506 phase 3): the provider's program "
+                    "declares nothing, as today's fixtures did; reached in "
+                    "tests/test_declared_effects.py")
+_SAVE = ("Devices › Save's plan and run: the lab's devices hold no unsaved change, so no group, "
+         "device or startup difference is listed")
+_RUN_GROUPS = ("the one stepper's counts and groups, drawn only for a run of more than one row: "
+               "every run the walk draws has one")
+_PREVIEW_PARTS = ("the shared preview component's parts (targets, programs, notes, gates, what "
+                  "it does not do): the walk renders it with no preview built")
+_ATTENTION = ("Needs attention on the walk's fresh store: no row is merged into another, names "
+              "devices, or is acknowledged, and no acknowledgement is in force")
+_UPDATE = ("Update's pending commits, host steps and history: the walk's store holds no update "
+           "outcome and no commit waiting, so none is listed")
+_REMOTE = ("History's remote: the lab's repository has no remote connected and no uncommitted "
+           "file, so set-up's probe, publication counts and the dirty list are empty")
+_RECORDS = ("Record stores: the records database is off on the walk's store, so no move is "
+            "previewed or run and no store's files are counted")
+_HEARTBEAT = ("the heartbeat re-measure's plan: no device's heartbeat window is installed on the "
+              "walk's store, so no row is measured")
+_IP_SLA = ("IP SLA probes, opened from Coverage with devices chosen: the walk opens the page "
+           "with none chosen, so no policy row, suggestion or skip is drawn")
+_SHOW_COMMANDS = ("Show commands' pick card: the lab's devices carry no role or site, no saved "
+                  "set exists, and no command is heavy")
+_SETTINGS_CARD = ("a settings card's Configure… form and Test result, and Default's who-inherits "
+                  "names: the walk opens no Configure… and tests nothing, and no other network "
+                  "inherits")
+_INTENT_CHECK = ("the intent editor's check: the provider's edit changes one value that every "
+                 "parser models, from intent with no profile exclusion, so no unmodelled line, "
+                 "not-from line or diff block is drawn")
+
+#: {loop: reason}: every `{% for %}` in a reached v2 template whose body never drew in the walk
+#: or a provider (C1274), named by its template and its iterable as written (tests/v2_context.py,
+#: `template_loops`). Measured 2026-10-18: 557 loops, 171 drew, these 386 did not.
+EMPTY_IN_FIXTURE = {
+    "v2/_adopt.html (r.steps or ())": _OP + " (Adopt a device…'s run)",
+    "v2/_adopt.html p.blocking": _OP + " (Adopt a device…'s preview)",
+    "v2/_adopt.html p.gates": _OP + " (Adopt a device…'s preview)",
+    "v2/_adopt.html p.not_doing": _OP + " (Adopt a device…'s preview)",
+    "v2/_adopt.html p.program": _OP + " (Adopt a device…'s preview)",
+    "v2/_adopt.html platforms": _OP + " (Adopt a device…'s form, never opened)",
+    "v2/_adopt.html q.items()": _OP + " (Adopt a device…'s form, never opened)",
+    "v2/_adopt.html r.remaining": _OP + " (Adopt a device…'s result)",
+    "v2/_apply_preview.html held": _OP + " (the batch Apply's preview, devices ticked)",
+    "v2/_apply_preview.html idle": _OP + " (the batch Apply's preview, devices ticked)",
+    "v2/_apply_preview.html order": _OP + " (the batch Apply's preview, devices ticked)",
+    "v2/_apply_preview.html r.blocking": _OP + " (the batch Apply's preview, devices ticked)",
+    "v2/_apply_preview.html r.gates": _OP + " (the batch Apply's preview, devices ticked)",
+    "v2/_apply_preview.html r.notes": _OP + " (the batch Apply's preview, devices ticked)",
+    "v2/_apply_preview.html r.operands": _OP + " (the batch Apply's preview, devices ticked)",
+    "v2/_apply_preview.html r.superseded": _OP + " (the batch Apply's preview, devices ticked)",
+    "v2/_apply_preview.html sending": _OP + " (the batch Apply's preview, devices ticked)",
+    "v2/_apply_preview.html sending #2": _OP + " (the batch Apply's preview, devices ticked)",
+    "v2/_ask.html c.answers": _OP + " (Ask the device's answers: no read is run)",
+    "v2/_ask.html c.compare.lines": _OP + " (Ask the device's comparison of two answers)",
+    "v2/_ask.html c.recent.rows": "Ask the device's recent reads: no read has run on the walk's store",
+    "v2/_ask.html c.sets": "Ask the device's saved sets: no saved set exists on the walk's store",
+    "v2/_attention.html (r.attached or ())": _ATTENTION,
+    "v2/_attention.html (r.devices or ())": _ATTENTION,
+    "v2/_attention.html (r.devices or ())[…]": _ATTENTION,
+    "v2/_attention.html a.acknowledged": _ATTENTION,
+    "v2/_attention.html a.in_force": _ATTENTION,
+    "v2/_attention.html ops.members": _ATTENTION + " (and no row's operands name members)",
+    "v2/_attention.html r.devices": _ATTENTION,
+    "v2/_breakglass_check.html c.devices": _OP + " (a break-glass file checked)",
+    "v2/_breakglass_drill.html d.errors": _OP + " (a drill's receipt refused)",
+    "v2/_breakglass_export.html prog.lines": _OP + " (the break-glass export's preview)",
+    "v2/_breakglass_record.html r.errors": "the break-glass record's errors: the walk's store holds no export to judge",
+    "v2/_capture.html c.diff": _OP + " (Capture's preview: its read is started and not finished)",
+    "v2/_capture.html c.failing": _FAILING,
+    "v2/_capture.html c.gates": _OP + " (Capture's preview: its read is started and not finished)",
+    "v2/_coverage.html c.declined": "Coverage's declined cells: no device declines a section on the walk's lab",
+    "v2/_coverage.html c.profile.sections": "Coverage's profile line: the lab's network has no committed monitoring profile",
+    "v2/_credential_profiles.html op.r.skipped": _OP + " (Rotate due devices now's result)",
+    "v2/_credential_profiles.html p.chosen": _OP + " (Rotate due devices now's preview)",
+    "v2/_credential_profiles.html p.waiting": _OP + " (Rotate due devices now's preview)",
+    "v2/_credential_profiles.html v.rows": "Credentials › Profiles: the walk's store holds no credential profile",
+    "v2/_decline.html e.checks": _OP + " (Decline…'s preview)",
+    "v2/_decline.html e.diff": _OP + " (Decline…'s preview)",
+    "v2/_deploy.html c.authorised": _RESULT,
+    "v2/_deploy.html c.checks": _RESULT,
+    "v2/_deploy.html c.did_not": _RESULT,
+    "v2/_deploy.html c.failing": _FAILING,
+    "v2/_deploy.html dx.declared": _DEPLOY_DECLARED,
+    "v2/_deploy.html dx.ends": _DEPLOY_DECLARED,
+    "v2/_deploy.html dx.moves": _DEPLOY_DECLARED,
+    "v2/_deploy.html dx.to": _DEPLOY_DECLARED,
+    "v2/_dhcp_exclusion.html (8 literal items)": _KEA_OP,
+    "v2/_dhcp_exclusion.html p.change": _KEA_OP,
+    "v2/_dhcp_exclusion.html p.checks": _KEA_OP,
+    "v2/_dhcp_exclusion.html p.leases": _KEA_OP,
+    "v2/_dhcp_exclusion.html p.survives": _KEA_OP,
+    "v2/_dhcp_exclusion.html xop.subnets": _KEA_OP,
+    "v2/_dhcp_reserve.html (3 literal items)": _KEA_OP,
+    "v2/_dhcp_reserve.html (8 literal items)": _KEA_OP,
+    "v2/_dhcp_reserve.html op.subnets": _KEA_OP,
+    "v2/_dhcp_reserve.html p.change": _KEA_OP,
+    "v2/_dhcp_reserve.html p.checks": _KEA_OP,
+    "v2/_dhcp_reserve.html p.not_done": _KEA_OP,
+    "v2/_dhcp_reserve.html p.not_done #2": _KEA_OP,
+    "v2/_dhcp_subnet.html (10 literal items)": _KEA_OP,
+    "v2/_dhcp_subnet.html (2 literal items)": _KEA_OP,
+    "v2/_dhcp_subnet.html p.change": _KEA_OP,
+    "v2/_dhcp_subnet.html p.checks": _KEA_OP,
+    "v2/_dhcp_subnet.html p.leases": _KEA_OP,
+    "v2/_dhcp_subnet.html p.leases #2": _KEA_OP,
+    "v2/_dhcp_subnet.html p.survives": _KEA_OP,
+    "v2/_dhcp_subnet.html sub.gateway.ra": _KEA_OP,
+    "v2/_dhcp_view.html g.conflicts": _KEA,
+    "v2/_dhcp_view.html g.exclusions": _KEA,
+    "v2/_dhcp_view.html g.families": _KEA,
+    "v2/_dhcp_view.html g.families #2": _KEA,
+    "v2/_dhcp_view.html g.groups": _KEA,
+    "v2/_dhcp_view.html g.reservations": _KEA,
+    "v2/_dhcp_view.html g.shaped": _KEA,
+    "v2/_dhcp_view.html g.shows.items()": _KEA,
+    "v2/_dhcp_view.html g.subnets": _KEA,
+    "v2/_dhcp_view.html g.tabs.items()": _KEA,
+    "v2/_dhcp_view.html grp.flags": _KEA,
+    "v2/_dhcp_view.html grp.rows": _KEA,
+    "v2/_dhcp_view.html gw.ra": _KEA,
+    "v2/_dhcp_view.html lc": _KEA,
+    "v2/_dhcp_view.html m.elsewhere": _KEA,
+    "v2/_dhcp_view.html x.dns.servers": _KEA,
+    "v2/_dhcp_view.html x.pd_pools": _KEA,
+    "v2/_dhcp_view.html x.pools": _KEA,
+    "v2/_diag_inflight.html fl.recent": _NOTHING_RUNS,
+    "v2/_diag_inflight.html fl.running": _NOTHING_RUNS,
+    "v2/_diag_inflight.html fl.unread": _ERRORS + " (a network whose holds could not be read)",
+    "v2/_diag_redaction.html red.canary_leaking_detail": "redaction's leaking handlers: every log handler masks the canary in the test process",
+    "v2/_drift_detail.html g.lines": "the drift detail's syslog lines since the golden: no Loki answers the walk, so no line is drawn",
+    "v2/_history_ask_logs.html a.refusals": _LOGS_ASK,
+    "v2/_history_ask_logs.html a.refusals #2": _LOGS_ASK,
+    "v2/_history_ask_logs.html a.rows": _LOGS_ASK,
+    "v2/_history_ask_logs.html a.series": _LOGS_ASK,
+    "v2/_history_ask_logs.html d['values']['job']": _LOGS_ASK,
+    "v2/_history_ask_logs.html extra.items()": _LOGS_ASK,
+    "v2/_history_ask_logs.html fixes": _LOGS_ASK,
+    "v2/_history_ask_logs.html others": _LOGS_ASK,
+    "v2/_history_ask_logs.html q.errors": _LOGS_ASK,
+    "v2/_history_ask_logs.html q.roles": _LOGS_ASK,
+    "v2/_history_ask_logs.html r.text | masked_parts": _LOGS_ASK,
+    "v2/_history_ask_logs.html rest[…]": _LOGS_ASK,
+    "v2/_history_ask_logs.html rest[…] #2": _LOGS_ASK,
+    "v2/_history_ask_logs.html s.dev": _LOGS_ASK,
+    "v2/_history_ask_metrics.html (held.get() or ())": _METRICS_ASK,
+    "v2/_history_ask_metrics.html (held.get() or ()) #2": _METRICS_ASK,
+    "v2/_history_ask_metrics.html a.refusals": _METRICS_ASK,
+    "v2/_history_ask_metrics.html a.refusals #2": _METRICS_ASK,
+    "v2/_history_ask_metrics.html a.series": _METRICS_ASK,
+    "v2/_history_ask_metrics.html d.labels": _METRICS_ASK,
+    "v2/_history_ask_metrics.html extra.items()": _METRICS_ASK,
+    "v2/_history_ask_metrics.html fixes": _METRICS_ASK,
+    "v2/_history_ask_metrics.html fvals[…]": _METRICS_ASK,
+    "v2/_history_ask_metrics.html others": _METRICS_ASK,
+    "v2/_history_ask_metrics.html q.aggs": _METRICS_ASK,
+    "v2/_history_ask_metrics.html q.compare.items()": _METRICS_ASK,
+    "v2/_history_ask_metrics.html q.errors": _METRICS_ASK,
+    "v2/_history_ask_metrics.html q.filter_ops.items()": _METRICS_ASK,
+    "v2/_history_ask_metrics.html q.notes": _METRICS_ASK,
+    "v2/_history_ask_metrics.html q.op_rows": _METRICS_ASK,
+    "v2/_history_ask_metrics.html q.pick.rows": _METRICS_ASK,
+    "v2/_history_ask_metrics.html q.range_ops.items()": _METRICS_ASK,
+    "v2/_history_ask_metrics.html q.saved.rows": _METRICS_ASK,
+    "v2/_history_ask_metrics.html q.tops": _METRICS_ASK,
+    "v2/_history_ask_metrics.html q.windows.items()": _METRICS_ASK,
+    "v2/_history_ask_metrics.html r.args": _METRICS_ASK,
+    "v2/_history_ask_metrics.html r.kinds": _METRICS_ASK,
+    "v2/_history_ask_metrics.html rest": _METRICS_ASK,
+    "v2/_history_ask_metrics.html rest[…]": _METRICS_ASK,
+    "v2/_history_ask_metrics.html s.dev": _METRICS_ASK,
+    "v2/_history_ask_metrics.html s.f": _METRICS_ASK,
+    "v2/_history_ask_metrics.html s['if']": _METRICS_ASK,
+    "v2/_history_ask_metrics.html s[…]": _METRICS_ASK,
+    "v2/_history_body.html b.baselines": "History's baselines: the lab's repository holds no baseline tag",
+    "v2/_history_body.html g": "History's kind filter's summary for exactly one kind chosen: the walk filters by no single kind",
+    "v2/_history_body.html idn.others": "History's identity line with the filter on: the walk never turns the not-verified filter on",
+    "v2/_history_body.html kind_groups": "History's kind filter's summary for exactly one kind chosen: the walk filters by no single kind",
+    "v2/_history_metric.html lq.lines": _LOKI,
+    "v2/_history_metric.html m.interfaces": "a metrics question's interface choices: no Prometheus answers the walk with the device's interfaces",
+    "v2/_history_metric.html rec.rows": "a metrics question's restart record: no restart is recorded on the walk's store",
+    "v2/_history_remote.html remote.dirty_items": _REMOTE,
+    "v2/_history_remote.html v.failed": _REMOTE + " (and no Verify is run)",
+    "v2/_history_views.html views.views": "History › Saved by your team: no view is saved on the walk's store",
+    "v2/_in_progress.html ip.finished": _NOTHING_RUNS,
+    "v2/_in_progress.html ip.unread": _ERRORS + " (a network whose holds could not be read)",
+    "v2/_install_access.html acc.labels": "Access and identity's service tokens: none is configured on the walk's store",
+    "v2/_install_access.html acc.service_ops": "Access and identity's service tokens: none is configured on the walk's store",
+    "v2/_install_platforms.html r.problems": "the platform map's problems: the default map's rows are each whole",
+    "v2/_install_platforms_preview.html e.changes": _OP + " (a platform map change previewed)",
+    "v2/_install_platforms_preview.html e.local": _OP + " (a platform map change previewed)",
+    "v2/_install_platforms_preview.html e.unread": _OP + " (a platform map change previewed)",
+    "v2/_install_platforms_preview.html pv.testable": _OP + " (a platform map change previewed)",
+    "v2/_intent.html iv.profile.excluded.items()": "the Intent tab's profile exclusions: r3 declines no section of the profile",
+    "v2/_intent_check.html d.not_from": _INTENT_CHECK,
+    "v2/_intent_check.html list": _INTENT_CHECK,
+    "v2/_intent_check.html p.unmodelled": _INTENT_CHECK,
+    "v2/_intent_edit.html list": "the intent editor's diff rows (what a deploy sends, how the device departs): the walk opens the editor and types nothing, so no row is drawn",
+    "v2/_logs.html g.errors": _LOKI,
+    "v2/_logs.html g.lines": _LOKI,
+    "v2/_logs_tail.html g.devices": _LOKI,
+    "v2/_logs_tail.html g.lines": _LOKI,
+    "v2/_logs_tail.html g.severities.items()": _LOKI,
+    "v2/_logs_view.html (6 literal items)": _LOKI,
+    "v2/_logs_view.html g.ranges.items()": _LOKI,
+    "v2/_logs_view.html g.rows": _LOKI,
+    "v2/_logs_view.html g.severities.items()": _LOKI,
+    "v2/_logs_view.html g.severities.items() #2": _LOKI,
+    "v2/_logs_view.html o.errors": _LOKI,
+    "v2/_logs_view.html o.lines": _LOKI,
+    "v2/_logs_view.html o.mnemonics": _LOKI,
+    "v2/_logs_view.html t.series": _LOKI,
+    "v2/_logs_view.html t.series #2": _LOKI,
+    "v2/_logs_view.html t.xticks": _LOKI,
+    "v2/_monitoring.html m.folded.panels": "a dashboard's folded rows: the captured dashboards the lab's Grafana answers with fold none",
+    "v2/_neighbours.html n.errors": _ERRORS,
+    "v2/_neighbours.html p.rows": "the Neighbours tab's adjacency rows per protocol: no Prometheus or RIP reader answers the walk with one",
+    "v2/_netbox.html nb.errors": _ERRORS,
+    "v2/_network_source.html pv.would.skipped": _OP + " (the source change's preview, NetBox read with new filters)",
+    "v2/_network_source.html s.credential_choices": "the source card's credentials networks: the walk's one network has no other network with its own list",
+    "v2/_network_source.html to.filters.items()": _OP + " (the source change's preview)",
+    "v2/_network_source.html to.filters.items() #2": _OP + " (the source change's preview)",
+    "v2/_onboard_add.html ((done.result or {}).targets or ())": _OP + " (Add device…'s result)",
+    "v2/_onboard_add.html f.items()": _OP + " (Add device…'s review)",
+    "v2/_onboard_add.html platforms": _OP + " (Add device…'s form, never opened)",
+    "v2/_onboard_add.html t.sent.lines": _OP + " (Add device…'s result)",
+    "v2/_onboard_discovered.html g.groups": "Onboard › Discovered: the lab stores no discovery reader value, so no device asking is drawn",
+    "v2/_onboard_discovered.html g.vendors": "Onboard › Discovered: the lab stores no discovery reader value, so no device asking is drawn",
+    "v2/_onboard_discovered.html grp.rows": "Onboard › Discovered: the lab stores no discovery reader value, so no device asking is drawn",
+    "v2/_onboard_discovered.html grp.rows #2": "Onboard › Discovered: the lab stores no discovery reader value, so no device asking is drawn",
+    "v2/_onboard_discovered.html grp.rows #3": "Onboard › Discovered: the lab stores no discovery reader value, so no device asking is drawn",
+    "v2/_onboard_discovered.html r.pools": "Onboard › Discovered: the lab stores no discovery reader value, so no device asking is drawn",
+    "v2/_onboard_pending.html causes": "a pending device's likely causes, drawn when Verify is refused: no provider posts Verify for the pending s9",
+    "v2/_onboard_pending.html dry.steps": _OP + " (Abandon…'s dry run)",
+    "v2/_preview_parts.html ((pv.explain or {}).get() or ())": _PREVIEW_PARTS,
+    "v2/_preview_parts.html (t.program.notes or ())": _PREVIEW_PARTS,
+    "v2/_preview_parts.html d.lines": _PREVIEW_PARTS,
+    "v2/_preview_parts.html n.lines": _PREVIEW_PARTS,
+    "v2/_preview_parts.html pv.targets": _PREVIEW_PARTS,
+    "v2/_preview_parts.html pv.what_not['items']": _PREVIEW_PARTS,
+    "v2/_preview_parts.html r.did_not['items']": _PREVIEW_PARTS,
+    "v2/_preview_parts.html t.gates": _PREVIEW_PARTS,
+    "v2/_preview_parts.html t.operands": _PREVIEW_PARTS,
+    "v2/_preview_parts.html t.program.lines": _PREVIEW_PARTS,
+    "v2/_preview_parts.html t.program.lines #2": _PREVIEW_PARTS,
+    "v2/_preview_parts.html w.lines": _PREVIEW_PARTS,
+    "v2/_profile_op.html q.changes": _OP + " (Propose from the connectors' preview)",
+    "v2/_profile_table.html p.rows": "Monitoring › Profile's sections: the lab's network has no committed monitoring profile",
+    "v2/_recent.html recent.rows": "Needs attention's recent changes: no deploy or restore receipt is on the walk's store",
+    "v2/_records_db_card.html r.steps": _RECORDS + " (and no Test is run)",
+    "v2/_records_stores.html done.steps": _RECORDS,
+    "v2/_records_stores.html done.switched_back.exported.items()": _RECORDS,
+    "v2/_records_stores.html pv.networks": _RECORDS,
+    "v2/_records_stores.html pv.steps": _RECORDS,
+    "v2/_records_stores.html s.files.items()": _RECORDS,
+    "v2/_records_stores.html unparsable": _RECORDS + " (and no store's lines fail to parse)",
+    "v2/_rekey.html c.failing": _FAILING,
+    "v2/_reload.html p.failing": _OP + " (Reload's preview: its read is started and not finished)",
+    "v2/_reload.html p.gates": _OP + " (Reload's preview: its read is started and not finished)",
+    "v2/_reload.html p.radius.cut": _OP + " (Reload's preview: its read is started and not finished)",
+    "v2/_reload.html r.steps": _OP + " (Reload's run)",
+    "v2/_remote_setup.html probed.checks": _REMOTE,
+    "v2/_remote_setup.html pub.gated['values']": _REMOTE,
+    "v2/_remote_setup.html pub.gated['values'].items()": _REMOTE,
+    "v2/_remote_setup.html pub.reported.items()": _REMOTE,
+    "v2/_remote_setup.html pub.tags_by_prefix.items()": _REMOTE,
+    "v2/_remote_setup.html s.acknowledged['values']": _REMOTE,
+    "v2/_restore.html c.authorised": _RESULT,
+    "v2/_restore.html c.blocking": _OP + " (Restore's preview, a moment chosen)",
+    "v2/_restore.html c.checks": _RESULT,
+    "v2/_restore.html c.did_not": _RESULT,
+    "v2/_restore.html c.failing": _FAILING,
+    "v2/_restore.html c.gates": _OP + " (Restore's preview, a moment chosen)",
+    "v2/_restore.html c.notes": _OP + " (Restore's preview, a moment chosen)",
+    "v2/_restore.html c.operands": _OP + " (Restore's preview, a moment chosen)",
+    "v2/_restore.html c.reasons": _OP + " (Restore's preview, a moment chosen)",
+    "v2/_restore.html c.sent": _OP + " (Restore's preview, a moment chosen)",
+    "v2/_restore.html c.what_not": _OP + " (Restore's preview, a moment chosen)",
+    "v2/_retire.html c.advisories": _OP + " (Retire's preview with an advisory)",
+    "v2/_retire.html c.dropped": _RESULT,
+    "v2/_retire.html c.failing": _FAILING,
+    "v2/_retire.html c.survives #2": _RESULT,
+    "v2/_rotate.html c.did_not": _RESULT,
+    "v2/_rotate.html c.failing": _FAILING,
+    "v2/_rotate.html c.gates": _OP + " (Rotate's preview: its preflight read is not run)",
+    "v2/_rotate.html c.operands": _OP + " (Rotate's preview: its preflight read is not run)",
+    "v2/_rotate.html c.sent": _OP + " (Rotate's preview: its preflight read is not run)",
+    "v2/_rotate.html c.then": _OP + " (Rotate's preview: its preflight read is not run)",
+    "v2/_rotate.html c.what_not": _OP + " (Rotate's preview: its preflight read is not run)",
+    "v2/_run_stepper.html g.rows": _RUN_GROUPS,
+    "v2/_run_stepper.html r.groups": _RUN_GROUPS,
+    "v2/_run_stepper.html r.tally": _RUN_GROUPS,
+    "v2/_run_stepper.html s.tally": _RUN_GROUPS,
+    "v2/_save.html g.devices": _SAVE,
+    "v2/_save.html g.devices #2": _SAVE,
+    "v2/_save.html g.devices #3": _SAVE,
+    "v2/_save.html s.groups": _SAVE,
+    "v2/_save.html s.groups #2": _SAVE,
+    "v2/_save.html s.groups #3": _SAVE,
+    "v2/_save.html s.groups #4": _SAVE,
+    "v2/_save.html s.groups #5": _SAVE,
+    "v2/_save.html s.startup": _SAVE,
+    "v2/_sc_pick.html p.heavy": _SHOW_COMMANDS,
+    "v2/_sc_pick.html p.roles": _SHOW_COMMANDS,
+    "v2/_sc_pick.html p.sets": _SHOW_COMMANDS,
+    "v2/_sc_pick.html p.sets_unreadable": _SHOW_COMMANDS + " (and every set file reads)",
+    "v2/_sc_pick.html p.sites": _SHOW_COMMANDS,
+    "v2/_seed.html c.checks": _RESULT,
+    "v2/_seed.html c.extra": _OP + " (Seed intent's preview naming the device's own lines)",
+    "v2/_seed.html c.missing": _OP + " (Seed intent's preview naming the device's own lines)",
+    "v2/_seed.html c.not_compared": _OP + " (Seed intent's preview naming the device's own lines)",
+    "v2/_seed.html c.unmodeled": _OP + " (Seed intent's preview naming the device's own lines)",
+    "v2/_settings_card.html (5 literal items)": _SETTINGS_CARD,
+    "v2/_settings_card.html c.inputs": _SETTINGS_CARD,
+    "v2/_settings_card.html tested.steps": _SETTINGS_CARD,
+    "v2/_settings_card.html w[…]": _SETTINGS_CARD,
+    "v2/_settings_mode.html felt": _OP + " (the mode switch's preview)",
+    "v2/_settings_mode.html p.gates #2": _OP + " (the mode switch's preview, a gate failing)",
+    "v2/_settings_mode.html result.moved": _OP + " (the mode switch's result)",
+    "v2/_settings_mode.html result.what": _OP + " (the mode switch's result)",
+    "v2/_settings_scope.html s.differs": _ONE_NETWORK,
+    "v2/_settings_scope.html s.standalone": _ONE_NETWORK,
+    "v2/_settings_scope.html s.unreadable": _ONE_NETWORK,
+    "v2/_startup_effect.html e.missing": "a certificate file `dir nvram:` does not list: the persist provider's r1 capture lists every one",
+    "v2/_strip.html bad": "the top bar's integrations that are down or refuse, drawn once the integrations reader has probed: the walk's store holds no probe",
+    "v2/_template_bindings.html b.form": _LIBRARY,
+    "v2/_template_bindings.html b.overrides": _LIBRARY,
+    "v2/_template_bindings.html o.choices": _LIBRARY,
+    "v2/_template_bindings.html p.choices": _LIBRARY,
+    "v2/_template_bindings.html p.choices #2": _LIBRARY,
+    "v2/_template_bindings.html pv.moves": _LIBRARY,
+    "v2/_template_bindings.html pv.unapproved": _LIBRARY,
+    "v2/_template_coverage.html d.extra": _LIBRARY,
+    "v2/_template_coverage.html d.missing": _LIBRARY,
+    "v2/_template_coverage.html g.devices": _LIBRARY,
+    "v2/_template_coverage.html last.groups": _LIBRARY,
+    "v2/_template_coverage.html last.groups #2": _LIBRARY,
+    "v2/_template_coverage.html last.next[…]": _LIBRARY,
+    "v2/_template_coverage.html last.next[…] #2": _LIBRARY,
+    "v2/_template_edit.html c.governs": _LIBRARY,
+    "v2/_template_edit.html c.revokes": _LIBRARY,
+    "v2/_template_op.html b.devices": _LIBRARY,
+    "v2/_template_op.html b.diff": _LIBRARY,
+    "v2/_template_op.html b.importers": _LIBRARY,
+    "v2/_template_op.html b.not_measured": _LIBRARY,
+    "v2/_template_op.html c.failed": _LIBRARY,
+    "v2/_template_op.html c.not_validated": _LIBRARY,
+    "v2/_template_op.html c.results": _LIBRARY,
+    "v2/_template_op.html d.gain_lines": _LIBRARY,
+    "v2/_template_op.html d.lose_lines": _LIBRARY,
+    "v2/_template_op.html op.added": _LIBRARY,
+    "v2/_template_op.html r.evidence.failed": _LIBRARY,
+    "v2/_template_op.html r.evidence.not_validated": _LIBRARY,
+    "v2/_template_op.html r.evidence.validated": _LIBRARY,
+    "v2/_template_op.html r.moves": _LIBRARY,
+    "v2/_template_op.html r.revoked": _LIBRARY,
+    "v2/_template_op.html r.revoked #2": _LIBRARY,
+    "v2/_template_op.html r.revoked #3": _LIBRARY,
+    "v2/_template_result.html r.device_owned": _LIBRARY,
+    "v2/_template_result.html r.extra_lines": _LIBRARY,
+    "v2/_template_result.html r.missing_lines": _LIBRARY,
+    "v2/_template_result.html r.reordered_lines": _LIBRARY,
+    "v2/_template_result.html r.stale_acknowledgements": _LIBRARY,
+    "v2/_template_result.html r.unacknowledged": _LIBRARY,
+    "v2/_templates_table.html lib.counts.items()": _LIBRARY,
+    "v2/_templates_table.html lib.rows": _LIBRARY,
+    "v2/_templates_table.html r.bound": _LIBRARY,
+    "v2/_templates_table.html r.bound #2": _LIBRARY,
+    "v2/_timeline.html (e.marks or ())": "a History event's marks (a baseline, a golden state): no event on the walk's store carries one",
+    "v2/_timeline.html h.errors": _ERRORS + " (a History source that could not be read)",
+    "v2/_topology_map.html (3 literal items)": _TOPOLOGY,
+    "v2/_topology_map.html (3 literal items) #2": _TOPOLOGY,
+    "v2/_topology_map.html (3 literal items) #3": _TOPOLOGY,
+    "v2/_topology_map.html (4 literal items)": _TOPOLOGY,
+    "v2/_topology_map.html (9 literal items)": _TOPOLOGY,
+    "v2/_topology_map.html at.groups.apart": _TOPOLOGY,
+    "v2/_topology_map.html at.groups.weak": _TOPOLOGY,
+    "v2/_topology_map.html at.groups[…]": _TOPOLOGY,
+    "v2/_topology_map.html b.hops": _TOPOLOGY,
+    "v2/_topology_map.html d.links": _TOPOLOGY,
+    "v2/_topology_map.html g.links": _TOPOLOGY,
+    "v2/_topology_map.html g.links #2": _TOPOLOGY,
+    "v2/_topology_map.html g.links #3": _TOPOLOGY,
+    "v2/_topology_map.html g.nodes": _TOPOLOGY,
+    "v2/_topology_map.html grp.devices": _TOPOLOGY,
+    "v2/_topology_map.html l.chip_list": _TOPOLOGY,
+    "v2/_topology_map.html l.readers": _TOPOLOGY,
+    "v2/_topology_map.html l.rows": _TOPOLOGY,
+    "v2/_topology_map.html n.tags": _TOPOLOGY,
+    "v2/_topology_map.html n.tags #2": _TOPOLOGY,
+    "v2/_topology_map.html r.lines": _TOPOLOGY,
+    "v2/_topology_map.html r.lines #2": _TOPOLOGY,
+    "v2/_topology_map.html sl.rows": _TOPOLOGY,
+    "v2/_topology_map.html t.errors": _TOPOLOGY,
+    "v2/_topology_map.html t.fleet": _TOPOLOGY,
+    "v2/_topology_map.html t.list_groups": _TOPOLOGY,
+    "v2/_topology_map.html t.matches": _TOPOLOGY,
+    "v2/_topology_map.html t.not_read": _TOPOLOGY,
+    "v2/_topology_map.html t.path_from": _TOPOLOGY,
+    "v2/_topology_map.html t.path_to": _TOPOLOGY,
+    "v2/_topology_map.html t.s.items()": _TOPOLOGY,
+    "v2/_topology_map.html t.svg.links": _TOPOLOGY,
+    "v2/_topology_map.html t.svg.nodes": _TOPOLOGY,
+    "v2/_topology_map.html t.toggle_words": _TOPOLOGY,
+    "v2/_topology_map.html tr.branches": _TOPOLOGY,
+    "v2/_update.html (d.shas or (1 literal items))": _UPDATE,
+    "v2/_update.html (o.notes or ())": _UPDATE,
+    "v2/_update.html f.after_steps": _UPDATE,
+    "v2/_update.html f.beyond": _UPDATE,
+    "v2/_update.html f.commits": _UPDATE,
+    "v2/_update.html f.host_steps": _UPDATE,
+    "v2/_update.html hist.rows[…]": _UPDATE,
+    "v2/_update.html owed.said_done": _UPDATE,
+    "v2/heartbeat.html plan.not_expected": _HEARTBEAT,
+    "v2/heartbeat.html plan.rows": _HEARTBEAT,
+    "v2/ip_sla.html g.rows": _IP_SLA,
+    "v2/ip_sla.html plan.by_on": _IP_SLA,
+    "v2/ip_sla.html plan.skipped": _IP_SLA,
+    "v2/ip_sla.html policies": _IP_SLA,
+    "v2/not_found.html elsewhere": "the not-found page's other networks holding the name: the walk's installation has one network",
+    "v2/show_commands.html runs.rows": "Show commands' recent runs: no run has been made on the walk's store",
+}
+#: 386 measured 2026-10-18 (C1274), when the list was made: it only shrinks.
+EMPTY_IN_FIXTURE_CEILING = 386
+#: The population and how many of it drew, measured 2026-10-18 (557 and 171): floors, a little
+#: under the measurement, so a scan that stopped seeing loops, or a walk that stopped drawing,
+#: fails.
+LOOPS_FLOOR = 540
+DREW_FLOOR = 160
+
 
 def _flat(table):
     return {f"{route} {key}": reason for route, groups in table.items()
@@ -506,6 +970,126 @@ class TestEveryCarriedKeyIsDrawn:
         for key, reason in (list(_flat(UNDRAWN).items()) + list(_flat(UPSTREAM).items())
                             + list(UNREACHED.items())):
             assert len(reason) >= 30, key
+
+
+def _loops(measured):
+    """``(population, never)``: every `{% for %}` in the v2 templates the measured renders reach
+    (V.loops), and the keys of those whose body never ran in the walk or a provider."""
+    import app as A
+
+    env = A.app.jinja_env
+    reached = set()
+    for r in measured["routes"].values():
+        for name in r.templates:
+            reached |= V.template_reads(env, name).templates
+    population = V.loops(env, reached)
+    return population, V.never_drew(population, measured["drew"])
+
+
+class TestTheFixturesReachTheState:
+    """C1274: a check is only as good as the state its fixture can reach (the operator's rule,
+    2026-09-27; CLAUDE.md's "Test data reaches every column and state a check photographs").
+    Today's renderers held it as `EMPTY_IN_FIXTURE` in test_payload_is_rendered.py, which P7-27
+    deletes; on v2 the collections are the templates' loops, and a loop whose body never drew
+    hid every field its items carry from every check above."""
+
+    def test_every_loop_drew_or_is_declared(self, measured):
+        _pop, never = _loops(measured)
+        new = sorted(never - set(EMPTY_IN_FIXTURE))
+        assert new == [], (f"a v2 loop whose body never drew in the walk or a provider: {new}. "
+                           "Reach the state (a provider in tests/v2_context.py), or declare it "
+                           "in EMPTY_IN_FIXTURE with the reason.")
+
+    def test_no_ghosts(self, measured):
+        population, never = _loops(measured)
+        ghosts = sorted(set(EMPTY_IN_FIXTURE) - never)
+        assert ghosts == [], f"drew now, or no such loop: remove from EMPTY_IN_FIXTURE: {ghosts}"
+        assert set(EMPTY_IN_FIXTURE) <= set(population.values())
+
+    def test_the_list_only_shrinks(self):
+        assert len(EMPTY_IN_FIXTURE) == EMPTY_IN_FIXTURE_CEILING
+        for key, reason in EMPTY_IN_FIXTURE.items():
+            assert len(reason) >= 30, key
+
+    def test_the_population_floor(self, measured):
+        """A scan that saw no loop, or saw none draw, would pass both directions."""
+        population, never = _loops(measured)
+        assert len(population) >= LOOPS_FLOOR, len(population)
+        assert len(population) - len(never) >= DREW_FLOOR, len(population) - len(never)
+        assert len(set(population.values())) == len(population), "two loops share a key"
+
+    def test_a_planted_template_iterating_what_no_provider_fills_is_found(self, measured,
+                                                                          monkeypatch):
+        """The control on the real environment and the real measurement: a v2 template no
+        measured request renders, holding a loop, joins the population, and its loop is found
+        never to have drawn."""
+        from jinja2 import ChoiceLoader, DictLoader
+
+        import app as A
+
+        env = A.app.jinja_env
+        monkeypatch.setattr(env, "loader", ChoiceLoader([
+            DictLoader({"v2/_planted_loop.html": "{% for d in planted_rows %}{{ d.name }}"
+                                                 "{% endfor %}"}), env.loader]))
+        population, never = _loops(measured)
+        reached = {t.split("#")[0] for t in population}
+        planted = V.loops(env, reached | {"v2/_planted_loop.html"})
+        found = V.never_drew(planted, measured["drew"])
+        assert found - never == {"v2/_planted_loop.html planted_rows"}, sorted(found - never)
+
+
+class TestTheLoopMarks:
+    """The marks themselves, on template strings: a loop that drew is recorded, one that did
+    not is not, and a mark draws nothing."""
+
+    @staticmethod
+    def _env(**templates):
+        from jinja2 import DictLoader, Environment
+
+        return Environment(loader=DictLoader(templates))
+
+    def _render(self, ctx, **templates):
+        env = self._env(**templates)
+        with V.recording_loops(env) as drew:
+            html = env.get_template("v2/t.html").render(**ctx)
+        return html, V.never_drew(V.loops(env, templates), drew)
+
+    def test_an_empty_collection_is_found_and_a_filled_one_is_not(self):
+        html, never = self._render(
+            {"full": [{"n": "a"}], "empty": []},
+            **{"v2/t.html": "{% for r in full %}{{ r.n }}{% endfor %}"
+                            "{% for r in empty %}{{ r.n }}{% endfor %}"})
+        assert html == "a" and never == {"v2/t.html empty"}
+
+    def test_two_loops_on_one_line_are_two_loops(self):
+        """A position names a loop, never a line: this codebase's templates hold several loops
+        on one line, and a line would merge them."""
+        _html, never = self._render(
+            {"rows": [1]},
+            **{"v2/t.html": "{% for r in rows %}{{ r }}{% endfor %}"
+                            "{% for r in rows if r > 5 %}{{ r }}{% endfor %}"})
+        assert never == {"v2/t.html rows #2"}
+
+    def test_a_branch_never_taken_is_found(self):
+        _html, never = self._render(
+            {"rows": [1], "show": False},
+            **{"v2/t.html": "{% if show %}{% for r in rows %}{{ r }}{% endfor %}{% endif %}"})
+        assert never == {"v2/t.html rows"}
+
+    def test_a_loop_in_an_included_macro_counts(self):
+        _html, never = self._render(
+            {"rows": [1]},
+            **{"v2/t.html": "{% from 'v2/m.html' import each %}{{ each(rows) }}",
+               "v2/m.html": "{% macro each(xs) %}{% for x in xs %}{{ x }}{% endfor %}"
+                            "{% endmacro %}"})
+        assert never == set()
+
+    def test_the_marks_leave_no_template_marked(self):
+        env = self._env(**{"v2/t.html": "{% for r in rows %}{{ r }}{% endfor %}"})
+        with V.recording_loops(env):
+            env.get_template("v2/t.html").render(rows=[1])
+        assert not hasattr(env, V.LOOP_HOOK)
+        assert env.get_template("v2/t.html").render(rows=[2]) == "2"
 
 
 class TestAnchors:

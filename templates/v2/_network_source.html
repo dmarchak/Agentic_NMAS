@@ -2,8 +2,10 @@
 {#- A network's inventory source (CUTOVER: the network's Settings page; drawn under the Phase 7
     mode, docs/STANDING_APPROVAL_LOG.md): where its devices come from and how fresh they are; a
     change previewed (NetBox read once with the new filters: how many devices, how many skipped
-    and why) and confirmed against that preview; Refresh now for a NetBox network. From
-    modules/network_source. -#}
+    and why) and confirmed against that preview; Refresh now for a NetBox network. At rest, a
+    NetBox network's counts lead, then each device NetBox holds that the inventory skipped, each
+    loaded with a warning, and each NetBox no longer returns (since when), in collapsed groups
+    (C1160, today's banner's lists). From modules/network_source. -#}
 {%- set s = src -%}
 <section class="card set-card set-card-wide" id="network-source" aria-labelledby="h-network-source">
   <div class="card-head"><h2 id="h-network-source">Inventory source</h2>{{ badge('NetBox' if s.source == 'netbox' else 'its own list', 'neutral') }}</div>
@@ -39,7 +41,38 @@
   {%- else %}
   {%- if s.source == 'netbox' %}
   <p>Its devices come from NetBox, filtered by {% for k, v in s.filters.items() if v %}{{ k }} <span class="mono">{{ v }}</span>{% if not loop.last %}, {% endif %}{% else %}nothing{% endfor %}; read every {{ s.refresh_interval }} s; credentials {% if s.credential_list %}from {{ s.credential_list }}{% else %}from profiles only{% endif %}.</p>
-  {%- if s.status %}<p class="small">{% if s.status.error %}{{ badge('stale', 'warn') }} {{ s.status.error }}. {% endif %}{{ s.status.count }} device{{ '' if s.status.count == 1 else 's' }}, {{ s.status.skipped }} skipped{% if s.status.fetched_at %}, read {{ stamp(s.status.fetched_at) }}{% else %}, not read yet{% endif %}.</p>{% endif %}
+  {%- if s.status %}<p class="small">{% if s.status.stale or s.status.error %}{{ badge('stale', 'warn') }} {% endif %}{% if s.status.error %}{{ s.status.error }}. {% endif %}{{ s.status.count }} device{{ '' if s.status.count == 1 else 's' }}, {{ s.status.skipped }} skipped{% if s.status.warnings %}, {{ s.status.warnings }} with a warning{% endif %}{% if s.status.gone %}, {{ s.status.gone }} no longer in NetBox{% endif %}{% if s.status.fetched_at %}, read {{ stamp(s.status.fetched_at) }}{% else %}, not read yet{% endif %}.</p>
+  {#- C1160: what NetBox holds that is not in the inventory, and what it no longer holds, each
+      group collapsed with its count, the devices one level down with the inventory's reason. -#}
+  {%- for g in s.status.skipped_groups %}
+  <details class="set-details" data-keep="src-skipped-{{ g.field }}"><summary>{{ g.count }} skipped, not in the inventory: {{ g.words }}{% if g.fix %}; {{ g.fix }}{% endif %}</summary>
+    <div class="table-wrap"><table class="table set-table"><thead><tr><th>Device in NetBox</th><th>Why it was skipped</th></tr></thead><tbody>
+    {%- for d in g.devices %}
+    <tr><td>{{ d.name }}</td><td>{{ d.reason }}</td></tr>
+    {%- endfor %}
+    </tbody></table></div>
+  </details>
+  {%- endfor %}
+  {%- for g in s.status.warning_groups %}
+  <details class="set-details" data-keep="src-warned-{{ g.field }}"><summary>{{ g.count }} loaded with a warning: {{ g.words }}{% if g.fix %}; {{ g.fix }}{% endif %}</summary>
+    <div class="table-wrap"><table class="table set-table"><thead><tr><th>Device</th><th>The warning</th></tr></thead><tbody>
+    {%- for d in g.devices %}
+    <tr><td>{{ d.name }}</td><td>{{ d.reason }}</td></tr>
+    {%- endfor %}
+    </tbody></table></div>
+  </details>
+  {%- endfor %}
+  {%- if s.status.gone_devices %}
+  <details class="set-details" data-keep="src-gone"><summary>{{ s.status.gone }} no longer in NetBox: NetBox stopped returning {{ 'it' if s.status.gone == 1 else 'them' }} for these filters</summary>
+    <p class="small">They have left this network's inventory, so no list or operation offers them, and drift checks, rotation and restore refuse them by name; their goldens, backups and history stay on this host. Each comes back when NetBox returns it for these filters again.</p>
+    <div class="table-wrap"><table class="table set-table"><thead><tr><th>Device</th><th>Address</th><th>Not returned since</th></tr></thead><tbody>
+    {%- for d in s.status.gone_devices %}
+    <tr><td>{{ d.name }}</td><td class="mono">{{ d.ip }}</td><td>{{ stamp(d.since, note=d.reason) }}</td></tr>
+    {%- endfor %}
+    </tbody></table></div>
+  </details>
+  {%- endif %}
+  {%- endif %}
   {%- else %}
   <p>Its devices are its own list on this host: {{ s.local_count }} device{{ '' if s.local_count == 1 else 's' }}.</p>
   {%- endif %}

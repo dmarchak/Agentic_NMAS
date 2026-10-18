@@ -89,6 +89,22 @@ list its NetBox devices take credentials from, and how often NetBox is read agai
 day). **Preview the change**, then **Save the source**; **Refresh now** reads NetBox for a
 NetBox network at once, as the schedule does anyway.
 
+At rest, a NetBox network's card leads with its counts: the devices loaded, how many NetBox
+holds that were skipped, how many loaded with a warning, how many NetBox no longer returns, and
+when NetBox was last read. Under them, each in its own group, closed until opened, with its
+count:
+
+- **Skipped, not in the inventory**, one group per cause (no primary IPv4 address, a platform
+  Mercury does not map, no login that resolves), each saying where it is put right, then each
+  device with the inventory's own reason. Nothing acts on a skipped device; the rest of the
+  network loads as usual.
+- **Loaded with a warning**, one group per cause (a role NetBox does not classify, a platform
+  taken from the default driver), each device with its warning.
+- **No longer in NetBox**: the devices a refresh no longer found for these filters, each with
+  its address and since when. They have left the network's inventory, so no list or operation
+  offers them, and drift checks, rotation and restore refuse them by name; their goldens,
+  backups and history stay on this host. Each comes back when NetBox returns it again.
+
 1. `check`: the change is checked and previewed. Read: the source as configured and, for NetBox,
    NetBox itself once with the new filters, through the inventory's own fetch: how many devices
    it holds for them, and which would be skipped and why (no address, no platform Mercury

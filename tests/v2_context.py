@@ -35,8 +35,21 @@ name (`name`, `host`, `ok`) counts as read; a key the fixture's render does not 
 examined; a Python filter or global the template calls (`gate`, `one_run`, `age_words`) may
 read keys itself, and those keys read as undrawn unless the template also names them; and a
 template no measured request renders is not examined at all (the test names those).
+
+**The loops, which state the test data reaches (C1274):** a key carried in an EMPTY list hides
+every field its items would carry, from the comparison above and from every check that
+photographs the page: the loop's body never drew. So while the walk runs, every `{% for %}` in
+a v2 template is compiled with one mark more, first in its body (`recording_loops`): the body
+ran at least once, on this template's line. The population is every `{% for %}` in every
+template the measured renders reach (`loops`), each named by its template and its iterable as
+written (`{% for d in s.skipped %}` is `s.skipped`), a second loop over the same iterable in
+the same template numbered `#2`. A loop whose body never drew is one the fixtures do not reach:
+its collection was empty (or absent) in every render, or the branch holding it never ran. What
+it cannot see: a collection drawn by a filter (`join`, `map`, `length`) rather than a loop, and
+which item reached a nested field (a loop over rows drew if ANY row was drawn).
 """
 
+import contextlib
 import dataclasses
 import os
 import re
@@ -260,6 +273,112 @@ def carried(context: dict, reads: Reads) -> tuple:
     return out, undrawn
 
 
+# --- the loops: every `{% for %}` a v2 template holds, and which of them drew an item ---------
+
+#: The environment attribute the marked loops call: ``environment.<this>("<template>#<n>")``.
+LOOP_HOOK = "nmas_loop_drew"
+
+
+def _expr(node) -> str:
+    """An iterable as written, from its AST: `s.skipped`, `rows | selectattr()`, `x.items()`."""
+    if isinstance(node, nodes.Name):
+        return node.name
+    if isinstance(node, nodes.Getattr):
+        return f"{_expr(node.node)}.{node.attr}"
+    if isinstance(node, nodes.Getitem):
+        key = node.arg.value if isinstance(node.arg, nodes.Const) else "…"
+        return f"{_expr(node.node)}[{key!r}]" if isinstance(key, str) and key != "…" \
+            else f"{_expr(node.node)}[{key}]"
+    if isinstance(node, nodes.Filter):
+        return f"{_expr(node.node)} | {node.name}" if node.node is not None else node.name
+    if isinstance(node, nodes.Call):
+        return f"{_expr(node.node)}()"
+    if isinstance(node, (nodes.Or, nodes.And)):
+        op = "or" if isinstance(node, nodes.Or) else "and"
+        return f"({_expr(node.left)} {op} {_expr(node.right)})"
+    if isinstance(node, nodes.CondExpr):
+        return f"({_expr(node.expr1)} if … else {_expr(node.expr2) if node.expr2 else ''})"
+    if isinstance(node, (nodes.Tuple, nodes.List)):
+        return f"({len(node.items)} literal items)" if node.items else "()"
+    if isinstance(node, nodes.Dict):
+        return "{…}" if node.items else "{}"
+    if isinstance(node, nodes.Const):
+        return repr(node.value)
+    if isinstance(node, nodes.Concat):
+        return " ~ ".join(_expr(n) for n in node.nodes)
+    if isinstance(node, nodes.BinExpr):
+        return f"({_expr(node.left)} {node.operator} {_expr(node.right)})"
+    return type(node).__name__
+
+
+def _fors(ast) -> list:
+    """Every `{% for %}` in a parsed template, in the parse's own walk order (the same source
+    parsed by the same environment gives the same order, so a loop's position names it exactly,
+    where a line would merge the several loops one line of a template often holds)."""
+    return list(ast.find_all(nodes.For))
+
+
+def template_loops(env, name: str) -> dict:
+    """``{"<template>#<position>": key}`` for every `{% for %}` in *name*'s own source, the key
+    its template and its iterable as written (`v2/x.html rows`), a repeat of the same iterable
+    in the same template numbered in order (`#2`)."""
+    source, _filename, _up = env.loader.get_source(env, name)
+    out, seen = {}, {}
+    for i, node in enumerate(_fors(env.parse(source))):
+        expr = _expr(node.iter)
+        seen[expr] = seen.get(expr, 0) + 1
+        out[f"{name}#{i}"] = f"{name} {expr}" + (f" #{seen[expr]}" if seen[expr] > 1 else "")
+    return out
+
+
+def loops(env, templates) -> dict:
+    """``{"<template>#<position>": key}`` for every `{% for %}` in *templates* under `v2/`."""
+    out: dict = {}
+    for t in sorted(templates):
+        if t.startswith("v2/"):
+            out.update(template_loops(env, t))
+    return out
+
+
+@contextlib.contextmanager
+def recording_loops(env):
+    """While inside, every v2 template *env* compiles marks each `{% for %}`'s body: its first
+    statement calls ``environment.nmas_loop_drew("<template>#<position>")``, so the set this
+    yields holds every loop whose body ran. The marks draw nothing. Templates compiled before
+    are dropped from the cache on the way in, and the marked ones on the way out, so no other
+    test renders a marked template."""
+    drew: set = set()
+    real = env._generate
+
+    def generate(source, name, filename, defer_init=False):
+        if name and name.startswith("v2/"):
+            for i, node in enumerate(_fors(source)):
+                mark = nodes.ExprStmt(nodes.Call(nodes.EnvironmentAttribute(LOOP_HOOK),
+                                                 [nodes.Const(f"{name}#{i}")],
+                                                 [], None, None))
+                mark.set_lineno(node.lineno)
+                mark.set_environment(env)
+                node.body.insert(0, mark)
+        return real(source, name, filename, defer_init)
+
+    setattr(env, LOOP_HOOK, drew.add)
+    env._generate = generate
+    if env.cache is not None:
+        env.cache.clear()
+    try:
+        yield drew
+    finally:
+        del env._generate
+        delattr(env, LOOP_HOOK)
+        if env.cache is not None:
+            env.cache.clear()
+
+
+def never_drew(population: dict, drew: set) -> set:
+    """The keys of every loop in *population* whose body never ran (one key, one loop)."""
+    return {key for at, key in population.items() if at not in drew}
+
+
 # --- the measurement: real requests, every render recorded ---------------------------------
 
 #: A fragment a page or another fragment asks for by `hx-get`, and a page a GET form opens.
@@ -430,19 +549,21 @@ def measure() -> dict:
                 client = RecordingClient(lab["client"], recorder)
                 template_rendered.connect(recorder, A.app)
                 try:
-                    pages = IP._walk(client)
-                    fragments = walk_fragments(client, pages)
-                    upstream: dict = {}
-                    for provide in PROVIDERS:
-                        for route, got in (provide(client, lab, mp) or {}).items():
-                            upstream.setdefault(route, []).extend(got)
+                    with recording_loops(A.app.jinja_env) as drew:
+                        pages = IP._walk(client)
+                        fragments = walk_fragments(client, pages)
+                        upstream: dict = {}
+                        for provide in PROVIDERS:
+                            for route, got in (provide(client, lab, mp) or {}).items():
+                                upstream.setdefault(route, []).extend(got)
+                        drew = set(drew)
                 finally:
                     template_rendered.disconnect(recorder, A.app)
     finally:
         mp.undo()
         _store_back(aside)
     _CACHE["m"] = {"routes": recorder.routes, "pages": len(pages), "fragments": fragments,
-                   "providers": len(PROVIDERS), "upstream": upstream}
+                   "providers": len(PROVIDERS), "upstream": upstream, "drew": drew}
     return _CACHE["m"]
 
 
@@ -640,7 +761,67 @@ def _pending(client, lab, _mp):
         assert r.status_code == 200, (url, r.status_code)
 
 
+def _netbox_source(client, lab, _mp):
+    """The Inventory source card of a network sourced from NetBox (C1160): the lab's network
+    read through the inventory's REAL fetch, adapt and refresh from the shared fake
+    (tests/fake_netbox.py), as tests/test_network_source_v2.py's `nb_branch` reads it: a device
+    with no primary address and one on a platform Mercury does not map (skipped), one whose
+    role NetBox does not classify (a warning), and one deleted from NetBox between two reads
+    (gone). Its patches are undone and the network put back on its own list before the next
+    provider."""
+    import pytest
+
+    from modules import credentials, inventory
+    from modules.inventory.source_config import save
+    from tests.fake_netbox import FakeNetBox
+
+    nb = FakeNetBox()
+    site = nb.seed("dcim/sites", {"name": "Lab", "slug": "lab"})
+    nb.seed("extras/custom-fields", {"name": "mercury_kind"})
+    nb.seed("dcim/device-roles", {"name": "Router", "slug": "router",
+                                  "custom_fields": {"mercury_kind": "router"}})
+    nb.seed("dcim/device-roles", {"name": "Edge", "slug": "edge", "custom_fields": {}})
+
+    def device(name, ip, platform="cisco-ios-xe", role="router"):
+        return nb.seed("dcim/devices", {
+            "name": name, "primary_ip4": {"address": f"{ip}/24"} if ip else None,
+            "platform": {"slug": platform}, "role": {"slug": role},
+            "site": {"id": site["id"], "slug": "lab", "name": "Lab"},
+            "status": {"value": "active"}})
+
+    device("nb-r1", "192.0.2.31")
+    gone = device("nb-r2", "192.0.2.32")
+    device("nb-noaddr", None)
+    device("nb-arista", "192.0.2.34", platform="arista-eos")
+    device("nb-edge", "192.0.2.35", role="edge")
+    mp = pytest.MonkeyPatch()
+    folder = os.path.dirname(lab["repo"])
+    try:
+        mp.setattr(credentials, "_FILE", os.path.join(folder, "v2-context-creds.json"))
+        credentials.save_profile("default", "admin", "pw", "en")
+        mp.setattr("modules.netbox_client._nb_ready",
+                   lambda: (True, "", nb, "http://netbox.example.invalid"))
+        mp.setattr("modules.inventory.refresh_async", lambda name: None)
+        # The lab points `get_list_data_dir` at its folder (where a save writes); a read finds
+        # the file through `list_data_path`, which the lab leaves on the store.
+        mp.setattr("modules.config.list_data_path", lambda name: folder)
+        save("Lab", {"source": "netbox", "filters": {"site": "lab"}})
+        inventory.invalidate()
+        got = inventory.refresh_list("Lab")
+        assert got["ok"], got
+        nb.delete(f"http://netbox.example.invalid/api/dcim/devices/{gone['id']}/")
+        got = inventory.refresh_list("Lab")
+        assert got["ok"], got
+        for url in ("/v2/settings/network/Lab/source", "/v2/settings/network/Lab?tab=network"):
+            r = client.get(url, headers={"Accept": "text/html"})
+            assert r.status_code == 200, (url, r.status_code)
+    finally:
+        save("Lab", {"source": "local"})
+        inventory.invalidate()
+        mp.undo()
+
+
 #: What no followed GET reaches, each on the lab's own state: a POST's card, a script's GET,
 #: a state the lab's walk does not hold. In order: `_deploy` changes r3, so it is last.
 PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _drift,
-                   _in_progress, _pending, _deploy]
+                   _in_progress, _pending, _netbox_source, _deploy]

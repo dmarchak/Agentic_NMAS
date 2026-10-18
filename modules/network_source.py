@@ -54,8 +54,56 @@ def _local_lists(exclude: str = "") -> list:
             if n != exclude and listref.exists(n) and get_source(n) == "local"]
 
 
+#: What a skipped or warned device's NetBox field means, and where it is put right (C1160): the
+#: field is the inventory adapter's (`netbox_source.adapt_devices`, and `credentials` from a
+#: rehydrate). A field not named here is drawn as itself, with no fix said.
+FIELD_WORDS = {
+    "primary_ip4": ("no primary IPv4 address", "set one on the device in NetBox"),
+    "platform": ("a platform Mercury does not map",
+                 "map it under Settings › Installation › Platforms and roles"),
+    "credentials": ("no login resolves", "add a credential profile that covers it, on "
+                                         "Credentials › Profiles, or name a credentials "
+                                         "network here"),
+    "role": ("a role NetBox does not classify",
+             "set the role's Mercury kind in NetBox (each line says how)"),
+}
+
+
+def _at(epoch) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch)) if epoch else ""
+
+
+def _groups(entries: list) -> list:
+    """The inventory's skipped or warned devices, grouped by the NetBox field that put them
+    there (most first): each group's words, where it is put right, and its devices by name,
+    each with the inventory's own reason."""
+    by: dict = {}
+    for e in entries or []:
+        by.setdefault(e.get("field") or "device", []).append(
+            {"name": e.get("name") or e.get("hostname") or "", "reason": e.get("reason") or ""})
+    out = []
+    for field, devices in by.items():
+        words, fix = FIELD_WORDS.get(field, (field, ""))
+        out.append({"field": field, "words": words, "fix": fix, "count": len(devices),
+                    "devices": sorted(devices, key=lambda d: d["name"])})
+    return sorted(out, key=lambda g: (-g["count"], g["field"]))
+
+
+def _gone(name: str) -> list:
+    """The devices NetBox no longer returns for this network (the inventory's stale record):
+    each one's name, address, since when (the refresh that first did not find it) and why."""
+    from modules.inventory import get_stale_devices
+
+    rows = [{"name": e.get("hostname") or ip, "ip": ip, "since": _at(e.get("last_seen") or 0),
+             "reason": e.get("reason") or ""}
+            for ip, e in (get_stale_devices(name) or {}).items()]
+    return sorted(rows, key=lambda r: (r["since"], r["name"]), reverse=True)
+
+
 def view(name: str) -> dict:
-    """The card: the source as configured, its freshness, and the choices a change offers."""
+    """The card: the source as configured, its freshness, the devices NetBox holds that are not
+    in the inventory (skipped, by the field and the reason), those loaded with a warning, and
+    those NetBox no longer returns (C1160), and the choices a change offers."""
     from modules.inventory import get_status
     from modules.inventory.source_config import load
 
@@ -68,15 +116,21 @@ def view(name: str) -> dict:
     if cfg["source"] == "netbox":
         try:
             st = get_status(name)
-            at = st.get("fetched_at") or 0
+            skipped, warned = _groups(st.get("skipped")), _groups(st.get("warnings"))
+            gone = _gone(name)
             out["status"] = {"count": st.get("device_count", 0),
-                             "skipped": len(st.get("skipped") or []),
-                             "fetched_at": (time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at))
-                                            if at else ""),
+                             "skipped": sum(g["count"] for g in skipped),
+                             "warnings": sum(g["count"] for g in warned),
+                             "gone": len(gone),
+                             "skipped_groups": skipped, "warning_groups": warned,
+                             "gone_devices": gone,
+                             "fetched_at": _at(st.get("fetched_at") or 0),
                              "stale": bool(st.get("stale")),
                              "error": st.get("error") or st.get("stale_reason") or ""}
         except Exception as exc:                      # noqa: BLE001 (said, never raised)
-            out["status"] = {"count": 0, "skipped": 0, "fetched_at": None, "stale": True,
+            out["status"] = {"count": 0, "skipped": 0, "warnings": 0, "gone": 0,
+                             "skipped_groups": [], "warning_groups": [], "gone_devices": [],
+                             "fetched_at": None, "stale": True,
                              "error": f"its inventory could not be read: {exc}"}
     return out
 

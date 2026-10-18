@@ -33,8 +33,20 @@ test to run them).
 Compared 2026-10-17. Not reached by either walk, so not compared here: a group's switch
 preview (`_settings_switch.html`, boards B, C and J2; neither walk pressed Its own or Not
 applicable) and the mode's switch (J1's Make <network> standalone…, drawn but not pressed).
+Compared again 2026-10-18 for C1160, by reading `_network_source.html`'s change against the
+regions below and the card as tests/test_network_source_v2.py draws it (`TestWhatNetBoxLeftOut`,
+a NetBox network on the shared fake), not from new shots: on a NetBox network at rest, the
+status line now also counts the devices loaded with a warning and those no longer in NetBox
+("2 devices, 2 skipped, 1 with a warning, 1 no longer in NetBox, read just now."), and under it,
+each collapsed with its count, one group per field that skipped devices (its words and where it
+is put right, then each device with the inventory's own reason), one per field that warned, and
+one for the devices NetBox stopped returning (what refuses them and what stays on this host,
+then each device, its address and since when). The stale badge now also reads the status's own stale flag. Today's
+banner drew these lists; the 2026-10-10 source line drew none of them, so they are a new
+region, a deviation (below). A network on its own list, the change's preview and its result do
+not move, so every other verdict stands.
 Templates compared: templates/v2/settings.html, templates/v2/_settings_scope.html, templates/v2/_settings_mode.html, templates/v2/_settings_card.html, templates/v2/_settings_refused.html, templates/v2/_network_source.html, templates/v2/_network_create.html, templates/v2/_network_delete.html, templates/v2/_network_picker.html, templates/v2/_network_picker_items.html
-Templates sha256: `f165e00fb83e5aed7d8631c6693266154856b4546e6286c7d6b7bbae43b562ab`
+Templates sha256: `92d793d3b06888f3d7a7f9b6c54a6773091dc53cd6c172de32d34fce9c761656`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).
@@ -58,6 +70,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | New network… (I, and the 2026-10-10 create line) | "New network": Name, Inherits from Default or Standalone, Create network | from the scope bar's chooser: Name, Preview, then "Create W2 walk: its records live in lists/w2_walk…", Create and Change the name; the network inherits, and its own page offers the switch (W2 steps 33 and 34) | **deviation** (log: Board I's create form and a delete card) |
 | The network picker (N) | "Network Branch inherits ▾"; "Find a network (20)"; Recent · yours and All networks · 20, each with its mode as a chip; "this page"; typing narrows | "Network W2 walk ▾"; "Find a network"; each row its name and its mode in words ("recent · the base"); "Your choice is yours alone: it changes no one else's pages." (W2 capture 39); no group headings, no count, the mode not a chip | **deviation** (log: Settings: the network picker's rows carry their mode in words, under no headings) |
 | Inventory source (the 2026-10-10 source line) | where its devices come from and how fresh; the change previewed by reading NetBox once; Refresh now | badged "its own list" or "NetBox"; "Its devices are its own list on this host: 0 devices." or "Its devices come from NetBox, filtered by status planned; read every 300 s…" with "0 devices, 0 skipped, read just now."; the fields; Preview the change with How; the preview "From its own list to NetBox… NetBox holds 0 devices for these filters." with Save the source and Cancel; Refresh now with its (i) and "Read from NetBox now: 0 devices, 0 skipped, 0 warnings." (W2 captures 26 and 27; W3 capture 12) | **same** |
+| What NetBox left out (C1160) | not drawn: the source line names where its devices come from and how fresh | on a NetBox network at rest, the counts lead (skipped, with a warning, no longer in NetBox); then collapsed groups, each with its count: skipped by field ("1 skipped, not in the inventory: no primary IPv4 address; set one on the device in NetBox"), each device with the inventory's reason; loaded with a warning by field; and "1 no longer in NetBox", what refuses them and what stays on this host, each device with its address and "not returned since" (tests/test_network_source_v2.py's `TestWhatNetBoxLeftOut`; sixty skipped devices draw no name outside a closed group) | **deviation** (log: Settings: the Inventory source card names each skipped, warned and gone device (C1160)) |
 | The NetBox fields on its own list | not drawn | with "its own list on this host" chosen, the NetBox filter fields stay editable, still holding "planned" (W2 capture 27, W3 capture 14; C1055) | **deviation** (log: Settings: the NetBox filters stay editable on its own list (C1055)) |
 | Delete this network… (the 2026-10-10 delete line) | a preview of what it holds and where its data goes, then the name typed | "Delete W3 walk": "Removes W3 walk from every page; its data is moved aside on this host, never erased. A preview comes first.", Delete this network… with How; the preview (holds, where the data survives, the name typed); the result "W3 walk is deleted: … its data survives at lists_removed/w3_walk-<UTC>…" with Default's settings (W3 capture 41) | **same** |
 | The deleted network's page (SettingsNetworkDeleted, the 2026-10-17 line) | the page head, the scope bar marked "deleted: it has left every page", one notice (when, by whom, its data's folder, kept) and nothing to act on; phone width stacked | "Settings · W2 walk", "W2 walk is no longer a network: it has no settings to show or change.", the scope bar with "deleted: it has left every page", one notice naming the time, who, and `lists_removed/<folder>`, kept; nothing to act on; stacked at phone width (W3 captures 01, 02, 43, 47) | **same** |
