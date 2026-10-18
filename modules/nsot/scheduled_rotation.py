@@ -400,16 +400,34 @@ def last_decisive(rows=None):
     return next((r for r in reversed(rows) if r.get("state") in DECISIVE), None)
 
 
+def second_strike(rows=None) -> bool:
+    """Is the last decisive run the timer's second halt with no clean run between (C1168)? The
+    timer starts no run while halted, so a timer stop whose previous decisive run is also a stop
+    followed an automatic clear of that one."""
+    rows = runs()["rows"] if rows is None else rows
+    decisive = [r for r in rows if r.get("state") in DECISIVE]
+    if len(decisive) < 2:
+        return False
+    last, before = decisive[-1], decisive[-2]
+    return (last.get("state") == "stopped" and last.get("trigger") == "scheduled"
+            and before.get("state") == "stopped")
+
+
 def halted(rows=None):
     """The stopped run that halts the timer, or None. A run that stopped on a failure halts it
     until a later run finishes clean, or until the device it failed on has a ROTATION COMMIT
-    after the stop: settled through Mercury's rotation, recorded with its trailers (the
-    operator, 2026-10-13, superseding the same day's "only a person's run": the goal became an
-    unattended run, and a person's run would take the queue itself). A recovery into the store
-    alone commits nothing, so it settles nothing."""
+    after the stop, settled through Mercury's rotation and recorded with its trailers; a
+    recovery into the store alone commits nothing, so it settles nothing. The commit-clears
+    rule was cad26b37's (2026-10-13), written there as the operator's decision when it was the
+    agent's inference; the operator decided it 2026-10-18 UTC, with a second strike (C1168): if
+    the TIMER halts again with no clean run between, the commit no longer clears it, and only a
+    clean run does (12345397's rule) until one happens. The paths that can commit a device's
+    rotation are each a confirm needing a verified person."""
     last = last_decisive(rows)
     if not last or last.get("state") != "stopped":
         return None
+    if second_strike(rows):
+        return last
     f = last.get("failed") or {}
     stopped_at = _epoch(last.get("finished") or "") or 0
     if f.get("device") and f.get("list"):

@@ -2415,7 +2415,11 @@ def scheduled_rotation_source(found=None) -> dict:
                    f"{str(f.get('state') or '?').replace('_', ' ')} at {f.get('stage', '?')}"
                    + (f" ({f['detail']})" if f.get("detail") else "")
                    + f"; {len(last.get('not_reached') or [])} device(s) were not reached. "
-                   "The timer starts no scheduled run while this stands"),
+                   "The timer starts no scheduled run while this stands"
+                   + ("; this is the timer's second halt with no clean run between, so "
+                      "settling the device no longer clears it: only a clean run does (C1168)"
+                      if SR.second_strike(got["rows"]) else
+                      "; settling the device clears it")),
             operands={"device": f.get("device", ""), "stage": f.get("stage", ""),
                       "run": last.get("run", "")},
             action={"label": f"Open {f.get('device', '?')}'s page and read its rotation "

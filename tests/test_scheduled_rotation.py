@@ -629,6 +629,64 @@ def test_a_halt_clears_once_the_failed_device_s_rotation_is_committed(monkeypatc
     assert SR.halted([stop, {"run": "2", "state": "done"}]) is None    # a clean run after
 
 
+class TestTheSecondStrike:
+    """C1168, the operator's decision (2026-10-18 UTC): a stop clears automatically once its
+    failed device's rotation is committed (the first strike); but if the TIMER halts again with
+    no clean run between, automatic clearing is off, and only a clean run clears it until one
+    happens. The timer starts no run while halted, so a timer stop whose previous decisive run
+    is also a stop is one that followed an automatic clear."""
+
+    @staticmethod
+    def _stop(run, device, finished, trigger="scheduled"):
+        return {"run": run, "trigger": trigger, "state": "stopped", "finished": finished,
+                "failed": {"device": device, "list": "Lab", "stage": "persist"}}
+
+    def test_a_second_timer_stop_stands_though_its_device_is_settled(self, monkeypatch):
+        first = self._stop("1", "s1", "2026-10-12T23:56:40Z")
+        second = self._stop("2", "r2", "2026-10-13T23:56:40Z")
+        commits = {"s1": (SR._epoch("2026-10-13T01:00:06Z"), ""),
+                   "r2": (SR._epoch("2026-10-14T01:00:00Z"), "")}
+        monkeypatch.setattr(SR, "committed_rotations", lambda name: commits)
+        assert SR.halted([first]) is None                                  # strike one clears
+        assert SR.halted([first, second]) is second, "the second strike cleared itself"
+        assert SR.halted([first, {"run": "x", "state": "refused"}, second]) is second
+
+    def test_a_clean_run_between_resets_the_count(self, monkeypatch):
+        first = self._stop("1", "s1", "2026-10-12T23:56:40Z")
+        second = self._stop("3", "r2", "2026-10-14T23:56:40Z")
+        commits = {"r2": (SR._epoch("2026-10-15T01:00:00Z"), "")}
+        monkeypatch.setattr(SR, "committed_rotations", lambda name: commits)
+        clean = {"run": "2", "trigger": "scheduled", "state": "done",
+                 "finished": "2026-10-13T23:56:40Z"}
+        assert SR.halted([first, clean, second]) is None               # a first strike again
+        nothing = {"run": "2", "trigger": "scheduled", "state": "nothing_due",
+                   "finished": "2026-10-13T23:56:40Z"}
+        assert SR.halted([first, nothing, second]) is None
+
+    def test_a_person_s_run_that_stops_is_not_the_timer_halting_again(self, monkeypatch):
+        """The rule names the timer: a person's Rotate due devices now that stops after a stop
+        is a stop of its own, cleared by its device's commit as the first was."""
+        first = self._stop("1", "s1", "2026-10-12T23:56:40Z")
+        theirs = self._stop("2", "r2", "2026-10-13T10:00:00Z", trigger="request")
+        commits = {"r2": (SR._epoch("2026-10-13T11:00:00Z"), "")}
+        monkeypatch.setattr(SR, "committed_rotations", lambda name: commits)
+        assert SR.halted([first, theirs]) is None
+
+    def test_the_second_strike_s_row_says_only_a_clean_run_clears_it(self, monkeypatch):
+        from modules import attention
+        first = self._stop("1", "s1", "2026-10-12T23:56:40Z")
+        second = self._stop("2", "r2", "2026-10-13T23:56:40Z")
+        commits = {"s1": (SR._epoch("2026-10-13T01:00:06Z"), ""),
+                   "r2": (SR._epoch("2026-10-14T01:00:00Z"), "")}
+        monkeypatch.setattr(SR, "committed_rotations", lambda name: commits)
+        got = attention.scheduled_rotation_source(found={"state": "ok",
+                                                         "rows": [first, second]})
+        assert len(got["rows"]) == 1, "the second strike raised no row"
+        (r,) = got["rows"]
+        assert r["id"].endswith("run:2"), r["id"]           # each halt its own row
+        assert "second" in r["cause"] and "only a clean run" in r["cause"], r["cause"]
+
+
 def test_a_scheduled_run_after_midnight_does_not_take_a_second_device(data, monkeypatch):
     """The host, 2026-10-12: the timer took s1 at 23:56 UTC; under "once a UTC day" its tick
     after 00:00 would have taken r2 too. One scheduled run per policy in any 24 hours."""
