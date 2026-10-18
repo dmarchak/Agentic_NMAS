@@ -47,6 +47,35 @@ def test_two_processes_writing_at_once_lose_nothing(store):
     assert len(data["device_overrides"]) == 2 * n, len(data["device_overrides"])
 
 
+def test_a_fresh_install_with_no_store_saves_its_first_profile_and_override(store):
+    """No file yet (a new installation): the first profile and the first device credential
+    are saved and read back (C1265's sample: 2 of `_load`'s mutants survived, its empty answer
+    losing a key, and every writer indexes both keys directly)."""
+    credentials, path = store
+    assert not path.exists()
+    assert credentials.list_profiles() == []
+    assert credentials.has_device_override("192.0.2.31") is False
+    assert credentials.save_profile("first", "admin", "Pw1first1")["ok"] is True
+    assert credentials.set_device_override("192.0.2.31", "admin", "Pw2first2", "")["ok"]
+    assert [p["name"] for p in credentials.list_profiles()] == ["first"]
+    assert credentials.has_device_override("192.0.2.31") is True
+
+
+@pytest.mark.parametrize("held", [{"profiles": {}}, {"device_overrides": {}}, {}])
+def test_a_store_missing_a_section_still_takes_both_writes(store, held):
+    """A readable store lacking one section (written by an older version, or by hand) is read
+    with the missing section empty, never refused or broken (C1265's sample: 10 of `_load`'s
+    mutants on its two `setdefault`s survived)."""
+    credentials, path = store
+    path.write_text(json.dumps(held))
+    assert credentials.list_profiles() == []
+    assert credentials.has_device_override("192.0.2.32") is False
+    credentials.save_profile("p", "admin", "Pw3part3")
+    credentials.set_device_override("192.0.2.32", "admin", "Pw4part4", "")
+    data = json.loads(path.read_text())
+    assert set(data["profiles"]) == {"p"} and set(data["device_overrides"]) == {"192.0.2.32"}
+
+
 def test_an_unreadable_store_refuses_every_write_and_keeps_the_file(store):
     credentials, path = store
     path.write_text('{"profiles": {"default": {"username": "a"')   # a fragment
