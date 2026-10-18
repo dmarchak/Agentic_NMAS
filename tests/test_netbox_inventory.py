@@ -173,6 +173,73 @@ class TestTheKindIsNetBoxs:
         assert got["ok"] and got["kinds"]["kinds"] == {"core-router": "router"}
 
 
+class TestADeletedSiteReadsUnreadable:
+    """C1248: a NetBox list filters by its STORED site slug, and NetBox answers 400 to a slug
+    naming no site (measured on the lab's NetBox 2026-10-18). A list whose site was deleted in
+    NetBox therefore reads as unreadable, the last good devices kept and flagged stale, never
+    as "no devices" (which would mark every device gone). Through the real source on the shared
+    fake, which answers as NetBox does."""
+
+    @pytest.fixture
+    def lab(self, tmp_path, monkeypatch):
+        import modules.config as config_mod
+        from tests.fake_netbox import FakeNetBox
+
+        monkeypatch.setattr(config_mod, "LISTS_DIR", str(tmp_path))
+        monkeypatch.setattr("modules.device.LISTS_DIR", str(tmp_path), raising=False)
+        monkeypatch.setattr(credentials, "_FILE", str(tmp_path / "creds.json"))
+        credentials.save_profile("default", "admin", "pw", "en")
+        (tmp_path / "sitelist").mkdir()
+        (tmp_path / "sitelist" / "source.json").write_text(
+            json.dumps({"source": SOURCE_NETBOX, "filters": {"site": "lab"}}), encoding="utf-8")
+        monkeypatch.setattr("modules.device._load_device_lists_config",
+                            lambda: {"current_list": "SiteList",
+                                     "lists": {"SiteList": "sitelist"}})
+
+        nb = FakeNetBox()
+        site = nb.seed("dcim/sites", {"name": "Lab", "slug": "lab"})
+        nb.seed("extras/custom-fields", {"name": "mercury_kind"})
+        nb.seed("dcim/device-roles", {"name": "Router", "slug": "router",
+                                      "custom_fields": {"mercury_kind": "router"}})
+        raw = _raw("R1", "203.0.113.1", nb_id=None)
+        raw.pop("id")
+        raw["site"] = {"id": site["id"], "slug": "lab", "name": "Lab"}
+        nb.seed("dcim/devices", raw)
+        monkeypatch.setattr("modules.netbox_client._nb_ready",
+                            lambda: (True, "", nb, "http://netbox.example.invalid"))
+        inventory.invalidate()
+        yield nb, site
+        inventory.invalidate()
+
+    def test_the_list_reads_its_site_while_the_site_exists(self, lab):
+        """The control: the stored slug names a site, and the list loads its device."""
+        from modules.inventory import load_netbox_devices, refresh_list
+
+        assert refresh_list("SiteList")["ok"]
+        devices, _s, meta = load_netbox_devices("SiteList")
+        assert [d["hostname"] for d in devices] == ["R1"] and meta["stale"] is False
+
+    def test_fetch_by_a_deleted_site_is_not_ok(self, lab):
+        nb, site = lab
+        nb.delete(f"http://netbox.example.invalid/api/dcim/sites/{site['id']}/")
+        got = netbox_source.fetch_netbox_devices({"site": "lab"})
+        assert got["ok"] is False and got["devices"] == [], got
+        assert "400" in got["error"], got["error"]
+
+    def test_a_deleted_site_keeps_the_last_good_list_and_says_unreadable(self, lab):
+        from modules.inventory import get_stale_devices, load_netbox_devices, refresh_list
+
+        nb, site = lab
+        assert refresh_list("SiteList")["ok"]
+        nb.delete(f"http://netbox.example.invalid/api/dcim/sites/{site['id']}/")
+        got = refresh_list("SiteList")
+        assert got["ok"] is False, "a deleted site read as an empty list"
+        devices, _s, meta = load_netbox_devices("SiteList")
+        assert [d["hostname"] for d in devices] == ["R1"], "the last good list was emptied"
+        assert meta["stale"] is True and "400" in meta["error"], meta
+        assert get_stale_devices("SiteList") == {}, "R1 was marked gone from NetBox"
+
+
 class TestCredentialResolution:
     """Amendment 2: one designated list, never a scan, and always traceable."""
 

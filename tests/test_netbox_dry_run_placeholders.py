@@ -320,3 +320,178 @@ class TestTheSharedFakeAnswersAnUnknownIdAsNetBoxDoes:
         assert got.status_code == status, (endpoint, got.json())
         if status == 200:
             assert got.json()["results"] == []
+
+
+#: C1248: the (endpoint, filter) pairs the lab's NetBox answered 400 for a value naming no object
+#: (or no choice), measured 2026-10-18 ~00:5x UTC, status only. Typed here from that measurement,
+#: never read from the fake: each is the expectation the fake is compared with.
+MEASURED_400 = [
+    ("dcim/devices", "site"), ("dcim/devices", "role"), ("dcim/devices", "tag"),
+    ("dcim/devices", "platform"), ("dcim/devices", "manufacturer"),
+    ("dcim/devices", "region"), ("dcim/devices", "site_group"),
+    ("dcim/devices", "location"), ("dcim/devices", "tenant"),
+    ("dcim/devices", "device_type"), ("dcim/devices", "status"),
+    ("dcim/interfaces", "device"), ("dcim/interfaces", "tag"),
+    ("ipam/ip-addresses", "vrf"), ("ipam/ip-addresses", "tag"), ("ipam/ip-addresses", "role"),
+    ("ipam/prefixes", "site"), ("ipam/prefixes", "vrf"), ("ipam/prefixes", "tag"),
+    ("ipam/prefixes", "role"),
+    ("ipam/vlans", "site"), ("ipam/vlans", "tag"), ("ipam/vlans", "role"),
+    ("dcim/sites", "region"), ("dcim/sites", "tag"),
+    ("dcim/device-types", "manufacturer"), ("dcim/platforms", "manufacturer"),
+    ("vpn/tunnels", "tag"),
+]
+
+#: The same measurement's 200 pairs: a plain field, or a method filter, answers an unknown value
+#: with an empty 200 (count 0). The unknown value sent, where a pair needs one of its own shape.
+MEASURED_200 = [
+    ("dcim/devices", "name"), ("dcim/devices", "serial"), ("dcim/interfaces", "name"),
+    ("ipam/ip-addresses", "device"), ("ipam/ip-addresses", "address"),
+    ("dcim/sites", "slug"), ("dcim/sites", "name"),
+    ("dcim/device-roles", "slug"), ("dcim/device-roles", "name"),
+    ("dcim/device-types", "slug"), ("dcim/manufacturers", "slug"), ("dcim/platforms", "slug"),
+    ("dcim/regions", "slug"), ("extras/tags", "slug"), ("extras/tags", "name"),
+    ("ipam/roles", "slug"), ("ipam/vrfs", "name"), ("ipam/vrfs", "rd"),
+    ("vpn/tunnels", "name"), ("extras/custom-fields", "name"),
+    ("extras/config-templates", "name"),
+]
+UNKNOWN_VALUE = {("ipam/ip-addresses", "address"): "192.0.2.254/24",
+                 ("ipam/vrfs", "rd"): "65000:999"}
+
+#: The value that names a real object (or choice) for each 400 pair, in the field NetBox's filter
+#: matches: a slug for most; a device's NAME on interfaces; a VRF's route distinguisher for `vrf`
+#: (NetBox's filter is labelled "VRF (RD)": ``field_name='vrf__rd'``, ``to_field_name='rd'``, read
+#: from NetBox's ipam filtersets, not measured); a choice's value for `status` and an IP address's
+#: `role`. On devices `role` is a Device Role's slug, on prefixes and VLANs an IPAM Role's.
+REAL = {"site": "lab", "tag": "managed", "platform": "ios-xe", "manufacturer": "cisco",
+        "region": "west", "site_group": "campus", "location": "rack-1", "tenant": "ops",
+        "device_type": "c8000v", "status": "active", "device": "r1", "vrf": "65000:1"}
+REAL_ROLE = {"dcim/devices": "router", "ipam/ip-addresses": "loopback",
+             "ipam/prefixes": "core", "ipam/vlans": "core"}
+
+#: What each endpoint's seeded object is called in an answer.
+HELD = {"dcim/devices": "r1", "dcim/interfaces": "Gi1", "ipam/ip-addresses": "192.0.2.1/24",
+        "ipam/prefixes": "192.0.2.0/24", "ipam/vlans": "v10", "dcim/sites": "Lab",
+        "dcim/device-types": "C8000v", "dcim/platforms": "IOS-XE", "vpn/tunnels": "t1"}
+
+
+def _real(endpoint, key):
+    return REAL_ROLE[endpoint] if key == "role" else REAL[key]
+
+
+class TestTheSharedFakeAnswersAnUnknownSlugAsNetBoxDoes:
+    """C1248: NetBox answers 400 to an object filter whose value names no object of the filter's
+    kind (by the field its filter matches), and to a choice filter naming no choice; the shared
+    fake answered an empty 200, so a test of a list whose stored site was deleted read "no
+    devices" where the product, against NetBox, reads unreadable. Every expectation is typed
+    above from the measurement (2026-10-18), apart from the fake's table and the product."""
+
+    URL = "http://nb.invalid/api/{}/"
+
+    @staticmethod
+    def _fake():
+        """One object of each kind, and one object on each endpoint referring to all of them."""
+        from tests.fake_netbox import FakeNetBox
+
+        fake = FakeNetBox()
+        seed = fake.seed
+
+        def ref(obj):
+            return {"id": obj["id"], "name": obj.get("name", ""), "slug": obj.get("slug", "")}
+
+        region = seed("dcim/regions", {"name": "West", "slug": "west"})
+        group = seed("dcim/site-groups", {"name": "Campus", "slug": "campus"})
+        tag = seed("extras/tags", {"name": "managed", "slug": "managed"})
+        tags = [{"id": tag["id"], "name": "managed", "slug": "managed"}]
+        site = seed("dcim/sites", {"name": "Lab", "slug": "lab", "region": ref(region),
+                                   "group": ref(group), "tags": tags})
+        location = seed("dcim/locations", {"name": "Rack 1", "slug": "rack-1",
+                                           "site": ref(site)})
+        tenant = seed("tenancy/tenants", {"name": "Ops", "slug": "ops"})
+        maker = seed("dcim/manufacturers", {"name": "Cisco", "slug": "cisco"})
+        dtype = seed("dcim/device-types", {"model": "C8000v", "name": "C8000v",
+                                           "slug": "c8000v", "manufacturer": ref(maker)})
+        platform = seed("dcim/platforms", {"name": "IOS-XE", "slug": "ios-xe",
+                                           "manufacturer": ref(maker)})
+        drole = seed("dcim/device-roles", {"name": "Router", "slug": "router"})
+        irole = seed("ipam/roles", {"name": "Core", "slug": "core"})
+        vrf = seed("ipam/vrfs", {"name": "blue", "rd": "65000:1"})
+        dev = seed("dcim/devices", {
+            "name": "r1", "site": ref(site), "role": ref(drole), "platform": ref(platform),
+            "device_type": ref(dtype), "location": ref(location), "tenant": ref(tenant),
+            "status": {"value": "active", "label": "Active"}, "tags": tags})
+        iface = seed("dcim/interfaces", {"name": "Gi1", "device": ref(dev), "tags": tags})
+        seed("ipam/ip-addresses", {"address": "192.0.2.1/24", "vrf": {"id": vrf["id"]},
+                                   "role": {"value": "loopback", "label": "Loopback"},
+                                   "assigned_object_type": "dcim.interface",
+                                   "assigned_object_id": iface["id"],
+                                   "assigned_object": {"id": iface["id"],
+                                                       "device": {"id": dev["id"]}},
+                                   "tags": tags})
+        seed("ipam/prefixes", {"prefix": "192.0.2.0/24", "scope_type": "dcim.site",
+                               "scope_id": site["id"], "vrf": {"id": vrf["id"]},
+                               "role": ref(irole), "tags": tags})
+        seed("ipam/vlans", {"vid": 10, "name": "v10", "site": ref(site), "role": ref(irole),
+                            "tags": tags})
+        seed("vpn/tunnels", {"name": "t1", "tags": tags})
+        return fake
+
+    @staticmethod
+    def _names(got):
+        return [o.get("name") or o.get("address") or o.get("prefix")
+                for o in got.json()["results"]]
+
+    @pytest.mark.parametrize("shape", ["str", "list"])
+    @pytest.mark.parametrize("endpoint,key", MEASURED_400)
+    def test_a_value_naming_nothing_is_a_400(self, endpoint, key, shape):
+        """The planted case per measured pair, as a string and as a list member beside a real
+        value (NetBox refuses the request when any member names nothing)."""
+        fake = self._fake()
+        value = {"str": "no-such-c1248", "list": [_real(endpoint, key), "no-such-c1248"]}[shape]
+        got = fake.get(self.URL.format(endpoint), params={key: value})
+        assert got.status_code == 400, (endpoint, key, value, got.json())
+        assert key in got.json(), got.json()
+
+    @pytest.mark.parametrize("endpoint,key,other", [
+        ("dcim/devices", "role", "core"),           # an IPAM Role's slug, no Device Role's
+        ("ipam/prefixes", "role", "router"),        # a Device Role's slug, no IPAM Role's
+        ("ipam/vlans", "role", "router"),
+        ("ipam/ip-addresses", "role", "core"),      # a Role's slug, not an address role choice
+        ("ipam/ip-addresses", "vrf", "blue"),       # the VRF's NAME: the filter matches its RD
+        ("ipam/prefixes", "vrf", "blue"),
+        ("dcim/interfaces", "device", "lab"),       # a site's slug, no device's name
+        ("dcim/devices", "site", "rack-1"),         # a location's slug, no site's
+        ("dcim/devices", "status", "Active"),       # the label, not the choice's value
+    ])
+    def test_a_value_another_kind_holds_is_a_400(self, endpoint, key, other):
+        """The kind and the field are the filter's: a value held by some OTHER kind's object,
+        or by another field, names nothing here."""
+        fake = self._fake()
+        got = fake.get(self.URL.format(endpoint), params={key: other})
+        assert got.status_code == 400, (endpoint, key, other, got.json())
+
+    @pytest.mark.parametrize("endpoint,key", MEASURED_200)
+    def test_a_plain_field_naming_nothing_is_an_empty_200(self, endpoint, key):
+        fake = self._fake()
+        value = UNKNOWN_VALUE.get((endpoint, key), "no-such-c1248")
+        got = fake.get(self.URL.format(endpoint), params={key: value})
+        assert got.status_code == 200, (endpoint, key, got.json())
+        assert got.json()["results"] == [] and got.json()["count"] == 0
+
+    @pytest.mark.parametrize("endpoint,key", MEASURED_400)
+    def test_a_real_value_of_each_kind_answers_its_object(self, endpoint, key):
+        """The control: the real value of each kind answers 200 with the object referring to
+        it, as a string and as a one-member list."""
+        fake = self._fake()
+        for value in (_real(endpoint, key), [_real(endpoint, key)]):
+            got = fake.get(self.URL.format(endpoint), params={key: value})
+            assert got.status_code == 200, (endpoint, key, value, got.json())
+            assert self._names(got) == [HELD[endpoint]], (endpoint, key, value, got.json())
+
+    def test_a_deleted_site_turns_its_slug_into_a_400(self):
+        """The row's case: a slug that named a site answers 400 once the site is gone."""
+        fake = self._fake()
+        url = self.URL.format("dcim/devices")
+        assert fake.get(url, params={"site": "lab"}).status_code == 200
+        site = fake.objects("dcim/sites")[0]
+        assert fake.delete(f"{self.URL.format('dcim/sites')}{site['id']}/").status_code == 204
+        assert fake.get(url, params={"site": "lab"}).status_code == 400

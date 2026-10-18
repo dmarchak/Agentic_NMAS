@@ -98,6 +98,63 @@ METHOD_FILTERS = {("ipam/ip-addresses", "device_id")}
 UNMODELLED_ID_FILTERS = ("id", "termination_id", "termination_a_id", "termination_b_id",
                          "assigned_object_id", "scope_id", "object_id")
 
+_SITE, _TAG = ("dcim/sites", "slug"), ("extras/tags", "slug")
+_VRF = ("ipam/vrfs", "rd")
+_IPAM_ROLE, _MAKER = ("ipam/roles", "slug"), ("dcim/manufacturers", "slug")
+
+#: An object filter by a value other than the id, per endpoint -> (the store of the kind it
+#: names, the field its value is matched against) (C1248). Written from the measurement, apart
+#: from the product's code on purpose: this is NetBox's answer. Measured on the lab's NetBox
+#: 2026-10-18 ~00:5x UTC, status only, with a value naming no object: each pair below answered
+#: 400 (``dcim/devices/?site=`` the first; a real ``site`` slug 200 count 10, a real ``tag`` 200
+#: count 3, the controls). The FIELD was not measured; it is the one NetBox's filter declares
+#: (``to_field_name``): the slug for most; a device's ``name`` (``device`` on interfaces); a VRF's
+#: route distinguisher, ``rd``, for ``vrf`` (labelled "VRF (RD)" in NetBox's ipam filtersets).
+#: On devices ``role`` is a Device Role, on prefixes and VLANs an IPAM Role. The same
+#: measurement answered an empty 200 (count 0) for a plain field or a method filter, which this
+#: table leaves out so they answer as before: devices ``name``, ``serial``; interfaces ``name``;
+#: ip-addresses ``device`` (a method), ``address``; ``slug``/``name``/``rd`` on the kinds'
+#: own endpoints; tunnels, custom fields and config templates by ``name``.
+OBJECT_FILTERS = {
+    "dcim/devices": {
+        "site": _SITE, "role": ("dcim/device-roles", "slug"), "tag": _TAG,
+        "platform": ("dcim/platforms", "slug"), "manufacturer": _MAKER,
+        "region": ("dcim/regions", "slug"), "site_group": ("dcim/site-groups", "slug"),
+        "location": ("dcim/locations", "slug"), "tenant": ("tenancy/tenants", "slug"),
+        "device_type": ("dcim/device-types", "slug"),
+    },
+    "dcim/interfaces": {"device": ("dcim/devices", "name"), "tag": _TAG},
+    "ipam/ip-addresses": {"vrf": _VRF, "tag": _TAG},
+    "ipam/prefixes": {"site": _SITE, "vrf": _VRF, "tag": _TAG, "role": _IPAM_ROLE},
+    "ipam/vlans": {"site": _SITE, "tag": _TAG, "role": _IPAM_ROLE},
+    "dcim/sites": {"region": ("dcim/regions", "slug"), "tag": _TAG},
+    "dcim/device-types": {"manufacturer": _MAKER},
+    "dcim/platforms": {"manufacturer": _MAKER},
+    "vpn/tunnels": {"tag": _TAG},
+}
+
+#: A choice filter, per (endpoint, filter) -> its choices' values (C1248): a value that is no
+#: choice answers 400, measured the same night for ``dcim/devices/?status=`` and
+#: ``ipam/ip-addresses/?role=``. The values are NetBox 4.x's ``DeviceStatusChoices`` and
+#: ``IPAddressRoleChoices``. ``status`` on the other endpoints was not measured.
+CHOICE_FILTERS = {
+    ("dcim/devices", "status"): ("offline", "active", "planned", "staged", "failed",
+                                 "inventory", "decommissioning"),
+    ("ipam/ip-addresses", "role"): ("loopback", "secondary", "anycast", "vip", "vrrp", "hsrp",
+                                    "glbp", "carp"),
+}
+
+#: Where an object holds the reference a filter matches, when not under the filter's own name:
+#: a path of fields, each hop but the last through the store named (NetBox joins the same way:
+#: a device's region is its site's). A prefix's site is its scope when scoped to a site (NetBox
+#: 4.2+); a region's or a location's descendants are not followed.
+REF_PATHS = {
+    ("dcim/devices", "region"): (("site", "dcim/sites"), ("region", None)),
+    ("dcim/devices", "site_group"): (("site", "dcim/sites"), ("group", None)),
+    ("dcim/devices", "manufacturer"): (("device_type", "dcim/device-types"),
+                                       ("manufacturer", None)),
+}
+
 _NEGATIVE = re.compile(r"^-\d+$")
 
 
@@ -219,10 +276,71 @@ class FakeNetBox:
                     return _negative_id_answer(key, member)
         return None
 
-    @staticmethod
-    def _matches(obj, params):
+    def _unknown_value(self, endpoint, params):
+        """NetBox's 400 when an object filter's value names no object of its kind by the field
+        its filter matches, or a choice filter's value is no choice (C1248), as a string or a
+        list member."""
+        for key, value in (params or {}).items():
+            choices = CHOICE_FILTERS.get((endpoint, key))
+            spec = OBJECT_FILTERS.get(endpoint, {}).get(key)
+            if choices is None and spec is None:
+                continue
+            held = set(choices) if choices is not None else {
+                str(o.get(spec[1])) for o in self.store.get(spec[0], []) if o.get(spec[1])}
+            for member in _members(value):
+                if str(member).strip() not in held:
+                    return _negative_id_answer(key, member)
+        return None
+
+    def _refs(self, endpoint, key, obj):
+        """The references *obj* holds for filter *key*: one, or each tag."""
+        if endpoint in SCOPED_ENDPOINTS and key == "site":
+            return [obj.get("scope")] if obj.get("scope_type") == "dcim.site" else []
+        if key == "tag":
+            return list(obj.get("tags") or [])
+        path = REF_PATHS.get((endpoint, key), ((key, None),))
+        ref = obj
+        for i, (field, store) in enumerate(path):
+            ref = ref.get(field) if isinstance(ref, dict) else None
+            if ref is None:
+                return []
+            if i < len(path) - 1:          # a hop: the full object, by the brief's id
+                ident = ref.get("id") if isinstance(ref, dict) else ref
+                ref = next((o for o in self.store.get(store, []) if o.get("id") == ident), None)
+        return [ref]
+
+    def _refers(self, endpoint, key, obj, value) -> bool:
+        """Whether *obj* refers to what *value* names (C1248): an object filter's value names
+        the held objects whose field equals it, matched by the reference's id (or, a brief with
+        no id, its own field); a choice by its ``value``. A list is any of its members, as
+        NetBox's multiple-choice filters are, except ``tag``, which NetBox requires all of."""
+        wanted = [str(m).strip() for m in _members(value)]
+        if (endpoint, key) in CHOICE_FILTERS:
+            held = obj.get(key)
+            held = held.get("value") if isinstance(held, dict) else held
+            return str(held) in wanted
+        store, field = OBJECT_FILTERS[endpoint][key]
+
+        def names(one):
+            ids = {o.get("id") for o in self.store.get(store, []) if str(o.get(field)) == one}
+            for ref in self._refs(endpoint, key, obj):
+                if isinstance(ref, dict):
+                    if (ref["id"] in ids) if "id" in ref else str(ref.get(field)) == one:
+                        return True
+                elif ref in ids or str(ref) == one:
+                    return True
+            return False
+
+        return (all if key == "tag" else any)(names(one) for one in wanted)
+
+    def _matches(self, obj, params, endpoint=""):
         for key, value in (params or {}).items():
             if key in ("limit", "offset", "brief", "depth"):
+                continue
+            if (key in OBJECT_FILTERS.get(endpoint, {})
+                    or (endpoint, key) in CHOICE_FILTERS):      # by what the value names
+                if not self._refers(endpoint, key, obj, value):
+                    return False
                 continue
             if key == "q":                       # fuzzy search: substring on name
                 if str(value).lower() not in str(obj.get("name", "")).lower():
@@ -281,7 +399,7 @@ class FakeNetBox:
         endpoint, obj_id = self._parse(url)
         refused = self._negative(obj_id, params)
         if refused is None and obj_id is None:
-            refused = self._unknown(endpoint, params)
+            refused = self._unknown(endpoint, params) or self._unknown_value(endpoint, params)
         if refused is not None:
             return refused
         items = self.store.get(endpoint, [])
@@ -290,7 +408,7 @@ class FakeNetBox:
                 if obj["id"] == obj_id:
                     return FakeResponse(obj)
             return FakeResponse({"detail": "Not found."}, 404)
-        hits = [o for o in items if self._matches(o, params)]
+        hits = [o for o in items if self._matches(o, params, endpoint)]
         return FakeResponse({"results": hits, "next": None, "count": len(hits)})
 
     def post(self, url, json=None, timeout=None):
