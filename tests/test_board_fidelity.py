@@ -42,7 +42,12 @@ RECORDS = {"topology.html": "topology.md", "history_syslog.html": "logs.md",
            # and the batch Apply W1 ran (steps 16 to 18) and its records left out, each compared
            # with its boards from those sittings' captures.
            "netbox.html": "netbox.md", "templates.html": "templates.md",
-           "settings.html": "settings.md", "apply.html": "apply.md", "tab:logs": "tab-logs.md"}
+           "settings.html": "settings.md", "apply.html": "apply.md", "tab:logs": "tab-logs.md",
+           # C650: three of the four screens W4 (2026-10-17) touched, compared with their boards
+           # from local board shots and read beside W4's captures (2026-10-18); About waits on
+           # the operator's screenshot (docs/walks/P7-27.md, step 12).
+           "save.html": "save.md", "pending.html": "pending.md",
+           "retired.html": "retired.md"}
 
 #: Components many screens share, each compared with its own boards (the operator, 2026-10-12:
 #: the one stepper, "add it to the board-fidelity records"): component -> its record.
@@ -56,9 +61,10 @@ COMPONENTS = {"_run_stepper.html": "stepper.md",
 #: Signed-off screens built before the fidelity step and not yet compared with their boards
 #: (C650). Each is compared, and its differences fixed or logged, before it leaves this list.
 UNCHECKED = {
-    # The operator's walk W4 (docs/walks/W4.md) touches these: Save All (steps 37 and 38),
-    # the pending page (s6 and s5), the retired record (step 34), and About in its pre-flight.
-    "save.html", "pending.html", "retired.html", "about.html",
+    # About, which the operator's walk W4 touched in its pre-flight: its record waits on the
+    # operator's screenshot (docs/walks/P7-27.md, step 12). Save, the pending page and the
+    # retired record were recorded 2026-10-18.
+    "about.html",
     # No walk touches these, so they move to Stage 7's tail: each compared with its boards
     # from board shots, not a sitting. reapply.html was walked in W1 (steps 40 and 41) with no
     # capture taken, so it has nothing to be recorded from.
@@ -68,8 +74,8 @@ UNCHECKED = {
 }
 #: Only shrinks: 32 until 2026-10-16, when the twelve screens of the operator's walk W1 were
 #: recorded; 20 until 2026-10-17, when the five screens of W2, W3 and W1's batch Apply were
-#: (C650).
-UNCHECKED_CEILING = 15
+#: (C650); 15 until 2026-10-18, when Save, the pending page and the retired record were.
+UNCHECKED_CEILING = 12
 
 #: A device-page tab's record compares the template that draws the tab (templates/v2/device.html
 #: includes one per tab); a page's record compares the page's own template.

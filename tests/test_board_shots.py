@@ -2175,3 +2175,202 @@ def test_show_commands_run(tmp_path, monkeypatch):
                    widths=((390, 2.0),))
     finally:
         next(gen, None)
+
+
+# --- C650: save, pending, retired (the screens the operator's walk W4 touched, 2026-10-17) ---
+
+def _w4_press(b, css, until, timeout=60):
+    """Press *css* as a person does (scrolled into view, clicked) and wait for *until*."""
+    b.js("var e = document.querySelector(arguments[0]); e.scrollIntoView({block: 'center'}); "
+         "e.click(); return 1", css)
+    b.wait_for(f"return !!({until})", timeout)
+
+
+def test_save_page(lab, monkeypatch):            # noqa: F811 (Save's lab, imported above)
+    """Devices › Save (7.4's board C, `SaveAll.dc.html`, at 1440 and 1280) on Save's lab
+    (tests/test_save_v2.py: r2's real capture as its golden, r3 answering and not in the
+    manifest, r4 not answering, s9 with no driver; the hourly startup check read r2 not saved
+    and r3 saved). The plan for all four; the result of r2 and r3 confirmed in the page as a
+    person does (r2's running moved by `_broken`, so its golden is recorded; r3 refused by the
+    manifest: a partial); then the whole network (r2 alone) saved, its baseline decided. The
+    run between is the one stepper's, shot by `test_stepper` (docs/fidelity/stepper.md)."""
+    from tests import browser
+    from tests.test_intent_match import _broken
+    from tests.test_save_v2 import _startup_check
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    from modules.nsot import listref
+
+    monkeypatch.setattr(listref, "active", lambda: listref.resolve("Lab"))
+    _startup_check(lab, [{"list": "Lab", "device": "r2", "state": "not_persisted",
+                          "detail": "the startup config does not carry username nmas"},
+                         {"list": "Lab", "device": "r3", "state": "persisted"}])
+    widths = ((1440, 1.0), (1280, 1.0), (390, 2.0))
+    _group_a_boards("save", "SaveAll.dc.html", ((1440, 1.0), (1280, 1.0)))
+    card = "document.getElementById('save-op')"
+    runs = {"n": 0}
+
+    def save_two(b):
+        # Each width's run records a golden: r2's running alternates, so it always moved.
+        runs["n"] += 1
+        lab["running"]["r2"] = _broken(lab["captured"]) if runs["n"] % 2 else lab["captured"]
+        _w4_press(b, "#save-op .op-confirm",
+                  f"{card} && {card}.textContent.indexOf('1 saved and recorded, 1 not') >= 0")
+
+    def save_all(b):
+        _w4_press(b, "#save-op .op-confirm",
+                  f"{card} && /baseline earned|No baseline/.test({card}.textContent)")
+
+    import app as A
+    with browser.Served(A.app) as served:
+        _group_a_page("save-plan", served,
+                      "/v2/devices/save?list=Lab&device=r2&device=r3&device=r4&device=s9", widths)
+        _group_a_page("save-result", served, "/v2/devices/save?list=Lab&device=r2&device=r3",
+                      widths, act=save_two)
+        lab["rows"][:] = lab["rows"][:1]                     # r2 is the whole network
+        lab["running"]["r2"] = lab["captured"]               # at its committed intent
+        _group_a_page("save-fleet", served, "/v2/devices/save?list=Lab&all=1",
+                      ((1440, 1.0), (390, 2.0)), act=save_all)
+
+
+def test_pending_page(tmp_path, monkeypatch):
+    """A pending device's page (`pending.html`) beside the canvas's pending device page
+    (`OnboardPanel.dc.html`, 1440 and 1280) and board M (`ZtpPlan.dc.html`, 1440), fed the rows
+    the page's own tests build (tests/test_onboard_v2.py's `TestAPendingDevice.PENDING`,
+    tests/test_onboarding_progress.py's ZTP row and probe answer): bp1 by ZTP, fetched and
+    answering; bp1 static, overdue, its last Verify failed; Verify's preview (that test file's
+    preview model) and its result stopped at the rotation (its stepper test's steps), each
+    pressed in the page; Abandon's dry run, the real `abandon_onboarding` on
+    tests/test_onboard_abandon.py's repository; the (i)'s help panel."""
+    from tests import browser
+    from tests import test_onboarding_progress as OPT
+    from tests.test_onboard_abandon import _onboard
+    from tests.test_onboard_abandon import repo as abandon_repo
+    from tests.test_onboard_v2 import TestAPendingDevice as P
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    from modules import preview_confirm as PC
+    from modules.nsot import onboard as O
+    from modules.nsot.onboard import PHASE_TWO_STEPS
+    from routes import onboard as RO
+
+    # Abandon's dry run, from the real core on a real repository (its own monkeypatches undone
+    # before the page is served).
+    (tmp_path / "abandon").mkdir()
+    with pytest.MonkeyPatch.context() as mp:
+        repo = _device_fx(abandon_repo, tmp_path / "abandon", mp)
+        _onboard(repo)
+        mp.setattr("modules.netbox_client.remove_device_from_netbox",
+                   lambda *a, **k: {"ok": True, "deleted": [], "skipped": [], "message": "dry"})
+        dry = RO.abandon_run("bp1", {"list_name": "probe", "dry_run": "1"}, "")
+    assert dry[0].get("steps"), dry
+    monkeypatch.setattr(RO, "abandon_run", lambda name, data, actor, confirmed="": dry)
+    pv = PC.build(action="verify", summary="Verify bp1: it answered.",
+                  targets=[{"name": "bp1", "state": "ready", "selectable": True,
+                            "select_data": {"fingerprint": "f" * 64},
+                            "program": {"lines": ["no snmp-server community"]},
+                            "operands": [{"name": "address", "value": "192.0.2.9"}],
+                            "gates": [PC.gate("reached", "pass", "it answered")]}],
+                  what_not=[], nothing_left_out="Nothing left out.",
+                  confirm={"may": True, "statement": "You are confirming as x."})
+    monkeypatch.setattr(RO, "verify_preview_of",
+                        lambda name, data, req: ({"ok": True, "preview": pv}, 200))
+    ran = [{"step": "verify", "ok": True, "detail": "answered"},
+           {"step": "capture", "ok": True, "detail": ""},
+           {"step": "rotate", "ok": False, "detail": "the new secret did not log in"}]
+    ran += [{"step": s, "ok": False, "detail": "did not run"} for s in PHASE_TWO_STEPS[3:]]
+    monkeypatch.setattr(RO, "verify_run", lambda name, data, ident: ({
+        "ok": False, "steps": ran, "stopped_at": "rotate", "reason": "rotation refused",
+        "result": {"level": "failed", "happened": {"summary": "bp1 is still pending"},
+                   "did_not": {"items": []}}}, 200))
+
+    def rows(row, stage=None, stored=None, runs=None):
+        monkeypatch.setattr("modules.nsot.manifest.pending_devices", lambda repo: [dict(row)])
+        if stage:
+            monkeypatch.setattr("modules.nsot.ztp.progress", lambda entry: {
+                "stage": stage, "summary": f"{stage.replace('_', ' ')} now"})
+        OPT._stored(monkeypatch, stored)
+        monkeypatch.setattr(O, "read_runs", lambda repo: runs or {
+            "state": "ok", "error": "", "rows": []})
+
+    actions = "document.getElementById('pending-actions')"
+    verify_btn = '#pending-actions form[hx-post*="verify/preview"] button'
+    confirm = '#pending-actions form[hx-post*="/verify"]:not([hx-post*="preview"]) button'
+
+    settled = "!document.querySelector('.htmx-swapping, .htmx-settling, .htmx-request')"
+
+    def verify(b):
+        # Settled first: a confirm pressed before htmx has processed the card submits the
+        # form as a page of its own.
+        _w4_press(b, verify_btn, f"document.querySelector('{confirm}') && {settled}", 30)
+
+    def verified(b):
+        verify(b)
+        _w4_press(b, confirm, f"{actions} && /still pending/.test({actions}.textContent) && "
+                              f"{actions}.querySelector('[data-run-stepper]')", 30)
+
+    def abandon(b):
+        _w4_press(b, '#pending-actions form[hx-post*="abandon/preview"] button',
+                  "document.querySelector('#pending-actions form[hx-post*=\"/abandon\"]"
+                  ":not([hx-post*=\"preview\"])')", 30)
+
+    def helped(b):
+        _w4_press(b, ".page-title .info-link",
+                  "(document.getElementById('help-panel-body') || {textContent: ''})"
+                  ".textContent.trim().length > 80", 30)
+
+    _group_a_boards("pending-panel", "OnboardPanel.dc.html", ((1440, 1.0), (1280, 1.0)))
+    _group_a_boards("pending-plan", "ZtpPlan.dc.html", ((1440, 1.0),))
+    import app as A
+    with browser.Served(A.app) as served:
+        rows(OPT.ZTP_ROW, "fetched_not_reached", OPT.ANSWERING)
+        _group_a_page("pending-ztp", served, "/v2/device/bp1",
+                      ((1440, 1.0), (1280, 1.0), (390, 2.0)))
+        _group_a_page("pending-help", served, "/v2/device/bp1", ((1440, 1.0),), act=helped)
+        rows(dict(P.PENDING, state="overdue", age_seconds=2 * 86400), runs={
+            "state": "ok", "error": "", "rows": [
+                {"at": "2026-10-10T09:05:00Z", "kind": "verify", "device": "bp1",
+                 "actor": "operator@example.invalid", "ok": False, "mgmt_ip": "192.0.2.60",
+                 "steps": [{"step": "verify", "ok": False, "detail": "no answer"}],
+                 "verify": {"state": "did_not_answer", "error": "no answer", "causes": []}}]})
+        _group_a_page("pending-static", served, "/v2/device/bp1", ((1440, 1.0), (390, 2.0)))
+        rows(P.PENDING)
+        _group_a_page("pending-verify", served, "/v2/device/bp1", ((1440, 1.0), (390, 2.0)),
+                      act=verify)
+        _group_a_page("pending-verified", served, "/v2/device/bp1", ((1440, 1.0),),
+                      act=verified)
+        _group_a_page("pending-abandon", served, "/v2/device/bp1", ((1440, 1.0),), act=abandon)
+
+
+def test_retired_page(tmp_path, monkeypatch):
+    """A retired device's address (`retired.html`) beside the last card of board 12
+    (`DevRetire.dc.html`, 1440 and 1280), on the retire tests' world (tests/test_retire.py's
+    `world`, tests/test_device_retire_v2.py's `page`: r4 and r5 in 'Lab', a real repository,
+    CSV, manifest and credential store): r5 retired through the real confirm as that file's
+    test does, its address then opened; and its Onboard it again… pressed."""
+    from tests import browser
+    from tests import test_device_retire_v2 as RV
+    from tests import test_retire as RT
+    from tests import test_retire_screen as RS
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    world = _device_fx(RT.world, tmp_path, monkeypatch)
+    page = _device_fx(RV.page, _device_fx(RS.screen, world, tmp_path, monkeypatch), monkeypatch)
+    RS._export(page)
+    RV._targets(monkeypatch, tmp_path, [("r4", "192.0.2.14")])
+    _r, card = RV._card(page)
+    r = page["client"].post("/v2/device/r5/retire/confirm", data=RV._vals(card))
+    assert r.status_code == 200 and "r5 is retired" in r.get_data(as_text=True)
+
+    def again(b):
+        _w4_press(b, 'a[data-op="onboard"]',
+                  "document.querySelector('#onboard-add input[name=hostname]')", 30)
+
+    _group_a_boards("retired", "DevRetire.dc.html", ((1440, 1.0), (1280, 1.0)))
+    import app as A
+    with browser.Served(A.app) as served:
+        _group_a_page("retired", served, "/v2/device/r5", ((1440, 1.0), (1280, 1.0), (390, 2.0)))
+        _group_a_page("retired-again", served, "/v2/device/r5", ((1440, 1.0),), act=again)

@@ -161,7 +161,7 @@ network), C1182 (`bgp log-neighbor-changes`), C1183 (misplaced intent keys), C11
 
 | List | Now | At cutover |
 |---|---|---|
-| tests/test_board_fidelity.py `UNCHECKED` | **15** (W2 and W3's five recorded 2026-10-17; 20 before, W1's twelve recorded 2026-10-16): 4 for W4, 11 to the tail | the walked screens out; the rest to the tail |
+| tests/test_board_fidelity.py `UNCHECKED` | **12** (W4's Save, pending and retired recorded 2026-10-18 from local board shots, About waiting on the operator's screenshot in the P7-27 walk; 15 after W2 and W3's five, 2026-10-17; 20 before, W1's twelve recorded 2026-10-16): 4 for W4, 11 to the tail | the walked screens out; the rest to the tail |
 | modules/operation_stages.py `MISSING` / `HISTORY_MISSING` | **6 / 1** (P7-23, 2026-10-17: the editors' four gaps gone; 10 / 1 after P7-22, run_command's gone; only `v2.heartbeat_apply` lacks a history; 17 / 2 before) | run_command's go with v1; the rest stay until built (not a cutover condition) |
 | tests/test_results_are_drawn.py `PENDING` | **0, met** (P7-23, 2026-10-17; 3 after P7-21; 7 after P7-22; 8 before) | 0 (all v1 handlers) |
 | tests/test_concepts_are_taught.py `PENDING` | **0** (P7-03) | 0 |
