@@ -2402,8 +2402,14 @@ def scheduled_rotation_source(found=None) -> dict:
         return source_result("scheduled_rotation", label, read_at=started, took_ms=took,
                              checked="no scheduled rotation run is recorded")
     rows = []
+    # The row is about the stop that halts the timer, which a later run that clears nothing (a
+    # nothing-due run, C1168) leaves standing: never the last decisive run's own failure.
+    stop = SR.halted(got["rows"])
+    ran = last
+    if stop:
+        last = stop
     f = last.get("failed") or {}
-    if SR.halted(got["rows"]) and f:
+    if stop and f:
         rows.append(row(
             source="scheduled_rotation", kind="stopped", key=f"run:{last.get('run')}",
             level="danger", devices=[f.get("device", "?")], since=_ts(last.get("finished")),
@@ -2428,10 +2434,10 @@ def scheduled_rotation_source(found=None) -> dict:
                              "now on Credentials › Profiles",
                     "href": f"/v2/device/{f.get('device', '')}"}))
     return source_result("scheduled_rotation", label, read_at=started, took_ms=took, rows=rows,
-                         checked=(f"the last run ({last.get('finished')}): "
-                                  f"{str(last.get('state')).replace('_', ' ')}, "
-                                  f"{len(last.get('rotated') or [])} rotated, "
-                                  f"{len(last.get('skipped') or [])} skipped"))
+                         checked=(f"the last run ({ran.get('finished')}): "
+                                  f"{str(ran.get('state')).replace('_', ' ')}, "
+                                  f"{len(ran.get('rotated') or [])} rotated, "
+                                  f"{len(ran.get('skipped') or [])} skipped"))
 
 
 # ---------------------------------------------------------------------------

@@ -626,7 +626,7 @@ def test_a_halt_clears_once_the_failed_device_s_rotation_is_committed(monkeypatc
     commits["s1"] = (SR._epoch("2026-10-13T01:00:06Z"), "")
     assert SR.halted([stop]) is None                                   # settled after it
     commits.clear()
-    assert SR.halted([stop, {"run": "2", "state": "done"}]) is None    # a clean run after
+    assert SR.halted([stop, {"run": "2", "state": "done", "rotated": ["r2"]}]) is None  # clean
 
 
 class TestTheSecondStrike:
@@ -656,12 +656,44 @@ class TestTheSecondStrike:
         second = self._stop("3", "r2", "2026-10-14T23:56:40Z")
         commits = {"r2": (SR._epoch("2026-10-15T01:00:00Z"), "")}
         monkeypatch.setattr(SR, "committed_rotations", lambda name: commits)
-        clean = {"run": "2", "trigger": "scheduled", "state": "done",
+        clean = {"run": "2", "trigger": "scheduled", "state": "done", "rotated": ["r1"],
                  "finished": "2026-10-13T23:56:40Z"}
         assert SR.halted([first, clean, second]) is None               # a first strike again
+        # The operator, 2026-10-18 UTC: a clean run rotates at least one device; a run that
+        # found nothing due is not one, so it does not reset the count either.
         nothing = {"run": "2", "trigger": "scheduled", "state": "nothing_due",
                    "finished": "2026-10-13T23:56:40Z"}
-        assert SR.halted([first, nothing, second]) is None
+        assert SR.halted([first, nothing, second]) is second
+
+    def test_a_run_that_found_nothing_due_does_not_clear_a_halt(self, monkeypatch):
+        """C1168 (b), the operator's decision 2026-10-18 UTC: a clean run must rotate at least
+        one device and finish without failure; a nothing-due run, or a done run that rotated
+        none, leaves the halt standing (it still counts for the 24-hour rule)."""
+        stop = self._stop("1", "s1", "2026-10-12T23:56:40Z")
+        monkeypatch.setattr(SR, "committed_rotations", lambda name: {})
+        nothing = {"run": "2", "trigger": "request", "state": "nothing_due",
+                   "finished": "2026-10-13T10:00:00Z"}
+        empty = {"run": "3", "trigger": "request", "state": "done", "rotated": [],
+                 "finished": "2026-10-13T11:00:00Z"}
+        rotated = {"run": "4", "trigger": "request", "state": "done", "rotated": ["r2"],
+                   "finished": "2026-10-13T12:00:00Z"}
+        assert SR.halted([stop, nothing]) is stop, "a nothing-due run cleared the halt"
+        assert SR.halted([stop, empty]) is stop, "a run that rotated none cleared the halt"
+        assert SR.halted([stop, nothing, rotated]) is None              # the control
+        assert SR.last_decisive([stop, nothing]) is nothing             # the 24-hour rule's
+
+    def test_a_halt_standing_after_a_nothing_due_run_keeps_its_row(self, monkeypatch):
+        """The halt that still stands after a nothing-due run is still a Needs attention row,
+        about the stop: never a halt with no row."""
+        from modules import attention
+        stop = self._stop("1", "s1", "2026-10-12T23:56:40Z")
+        monkeypatch.setattr(SR, "committed_rotations", lambda name: {})
+        nothing = {"run": "2", "trigger": "request", "state": "nothing_due",
+                   "finished": "2026-10-13T10:00:00Z"}
+        got = attention.scheduled_rotation_source(found={"state": "ok",
+                                                         "rows": [stop, nothing]})
+        assert len(got["rows"]) == 1, "the halt stands with no row"
+        assert got["rows"][0]["id"].endswith("run:1") and "s1" in got["rows"][0]["what"]
 
     def test_a_person_s_run_that_stops_is_not_the_timer_halting_again(self, monkeypatch):
         """The rule names the timer: a person's Rotate due devices now that stops after a stop

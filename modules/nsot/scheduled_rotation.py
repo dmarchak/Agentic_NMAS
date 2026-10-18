@@ -400,15 +400,28 @@ def last_decisive(rows=None):
     return next((r for r in reversed(rows) if r.get("state") in DECISIVE), None)
 
 
+def _clears(row) -> bool:
+    """A clean run, for the halt (the operator, 2026-10-18 UTC, C1168): it finished without a
+    failure AND rotated at least one device. A run that found nothing due, or rotated none,
+    proves nothing about the cause of a stop, so it neither clears a halt nor resets the
+    strikes (it still counts for the 24-hour rule, `last_decisive`)."""
+    return row.get("state") == "done" and bool(row.get("rotated"))
+
+
+def _halt_runs(rows) -> list:
+    """The runs the halt is judged by: each stop, and each clean run (`_clears`)."""
+    return [r for r in rows if r.get("state") == "stopped" or _clears(r)]
+
+
 def second_strike(rows=None) -> bool:
-    """Is the last decisive run the timer's second halt with no clean run between (C1168)? The
-    timer starts no run while halted, so a timer stop whose previous decisive run is also a stop
+    """Is the last stop the timer's second halt with no clean run between (C1168)? The timer
+    starts no run while halted, so a timer stop whose previous stop-or-clean run is also a stop
     followed an automatic clear of that one."""
     rows = runs()["rows"] if rows is None else rows
-    decisive = [r for r in rows if r.get("state") in DECISIVE]
-    if len(decisive) < 2:
+    judged = _halt_runs(rows)
+    if len(judged) < 2:
         return False
-    last, before = decisive[-1], decisive[-2]
+    last, before = judged[-1], judged[-2]
     return (last.get("state") == "stopped" and last.get("trigger") == "scheduled"
             and before.get("state") == "stopped")
 
@@ -421,9 +434,13 @@ def halted(rows=None):
     rule was cad26b37's (2026-10-13), written there as the operator's decision when it was the
     agent's inference; the operator decided it 2026-10-18 UTC, with a second strike (C1168): if
     the TIMER halts again with no clean run between, the commit no longer clears it, and only a
-    clean run does (12345397's rule) until one happens. The paths that can commit a device's
-    rotation are each a confirm needing a verified person."""
-    last = last_decisive(rows)
+    clean run does (12345397's rule) until one happens. A clean run rotates at least one device
+    and finishes without failure (`_clears`, the operator, 2026-10-18 UTC); a nothing-due run
+    does not clear it. The paths that can commit a device's rotation are each a confirm needing
+    a verified person."""
+    rows = runs()["rows"] if rows is None else rows
+    judged = _halt_runs(rows)
+    last = judged[-1] if judged else None
     if not last or last.get("state") != "stopped":
         return None
     if second_strike(rows):
