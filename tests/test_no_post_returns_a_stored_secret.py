@@ -109,9 +109,12 @@ def _bodies(v):
         "settings_v2.records_store_preview": (404, ("form", {}),
                                               "the direction filled in ('zz') is neither move "
                                               "nor back: refused naming both, counting nothing"),
-        "golden.capture_preview": (202, ("json", {"devices": ["r1"]}),
-                                   "starts a job reading r1 NOW; FOLLOWED to its result "
-                                   "(JOB_RESULTS): the golden diff and the intent departure"),
+        # Today's capture preview (golden.capture_preview, the whole-fleet job), the inventory
+        # refresh (inventory.refresh) and the monitoring profile's proposal
+        # (templatize.profile_propose_preview) left with today's index at 7.8 (2026-10-17,
+        # P7-27): the device page's Capture below, Settings › a network's Refresh now
+        # (settings_v2.network_source_refresh) and Monitoring › Profile's Propose (a GET, swept
+        # by the GET sweep) do their jobs.
         # The device page's Rotate (7.3): the plan's live read of r1 is refused here (no
         # network), so the card draws the failing preflight; it reads no store a GET does not.
         "device_v2.rotate_preview": (200, ("form", {"list": LIST}),
@@ -123,7 +126,6 @@ def _bodies(v):
                                     "(JOB_RESULTS): the golden diff and the intent departure"),
         # Today's restore preview (golden.restore_preview) left at 7.8 (2026-10-17): the v2
         # device page's restore preview is a GET, read in `swept` below with this body's moment.
-        "inventory.refresh": (200, ("json", {}), "a local list: refused as not NetBox-sourced"),
         # Today's onboarding plan and Verify preview (onboard.plan, onboard.verify_preview)
         # left at 7.8 (2026-10-17, P7-25); v2's (onboard_v2.preview, onboard_v2.verify_preview)
         # are declared with v2's routes.
@@ -141,10 +143,6 @@ def _bodies(v):
         "update.check": (409, ("json", {}),
                          "the reader jobs do not run in the test process: refused by name, "
                          "nothing asked (no network, no store)"),
-        "templatize.profile_propose_preview": (200, ("json", {"list_name": LIST}),
-                                               "the monitoring profile the planted fleet's "
-                                               "committed intent agrees on, and each device's "
-                                               "stored secret compared IN MEMORY, never shown"),
         # Today's Validate (templates.validate) and intent editor preview
         # (templatize.preview_committed_edit) left at 7.8 (2026-10-17, P7-23): Templates ›
         # Edit…'s check above and the Intent tab's check below.
@@ -165,7 +163,9 @@ def _bodies(v):
 #: The drift run (today's `drift_check_sync` until 7.8, 2026-10-15) was never among them: it
 #: answers with counts and queues the diff as an approval item, which the GET sweep covers;
 #: its result is held to no planted value by `TestTheDriftRun` below.
-REACHES = {"device_v2.capture_start", "golden.capture_preview"}
+REACHES = {"device_v2.capture_start"}
+# `golden.capture_preview` LEFT this set 2026-10-17 with today's index (7.8, P7-27): the device
+# page's Capture (`device_v2.capture_start`, above) starts the same job and draws its result.
 # `deploy.plan` LEFT this set 2026-10-17 with today's deploy wizard (7.8, P7-25): THE plan is
 # drawn by the v2 device page's Deploy… card, a GET, read by the fixture below and held by
 # `test_the_v2_deploy_preview_drew_the_masked_slot_and_no_value`.
@@ -314,7 +314,7 @@ def _store_state():
 #: each to its result, because the result is where stored config lands now:
 #: stopping at the 202 would sweep a body that holds no config at all, and
 #: the GET sweep cannot reach a job (it fills arguments with planted names).
-JOB_RESULTS = {"golden.capture_preview": "/golden/capture/preview/{job}",
+JOB_RESULTS = {  # today's golden.capture_preview's JSON job left at 7.8 (P7-27)
                # The v2 card names its job in the URL it re-reads (an HTML answer).
                "device_v2.capture_start": "/v2/device/r1/capture/job/{job}"}
 
@@ -509,14 +509,17 @@ class TestThePopulation:
         declared = set(_bodies(swept["values"]))
         assert population - declared == set(), "undeclared: give each a body that reaches it"
         assert declared - population == set(), "declared but no longer in the population"
-        # 29 measured 2026-10-17 once P7-24's and P7-25's POSTs left together; a floor.
-        assert len(population) >= 27, len(population)
+        # 29 measured 2026-10-17 once P7-24's and P7-25's POSTs left together; 26 measured the
+        # same day once today's capture preview, inventory refresh and profile proposal left
+        # with today's index (P7-27); a floor.
+        assert len(population) >= 24, len(population)
 
     def test_the_known_computing_posts_are_in_it(self):
         """The anchor: the capture preview and Add device's review are in the population the
         gate table gives (C77's deploy plan and restore preview, the first two, left at 7.8
-        and are read as v2's GETs in `swept`)."""
-        assert {"golden.capture_preview", "onboard_v2.preview"} <= set(_population())
+        and are read as v2's GETs in `swept`; today's capture preview left at P7-27, and the
+        device page's is the anchor now)."""
+        assert {"device_v2.capture_start", "onboard_v2.preview"} <= set(_population())
 
     def test_every_integration_is_driven_or_named(self, swept):
         from modules.integrations import REGISTRY
@@ -541,7 +544,7 @@ class TestEveryRouteReachedItsState:
         missing = sorted(k for k in REACHES
                          if not any(m in swept["person"][k][1] for m in MASKS))
         assert missing == [], missing
-        assert len(REACHES) >= 2   # 8 -> 7: the import preview left it (7.1); 7 -> 6: compare_backups left with today's Backups (7.8, C632); 6 -> 5: templates.preview's POST left (7.8, 2026-10-15); 5 -> 4: golden.restore_preview left (7.8, 2026-10-17), the v2 restore preview held below; 4 -> 3: templatize.preview_committed_edit left with today's intent editor (7.8, 2026-10-17, P7-23); 3 -> 2: deploy.plan left with today's deploy wizard (7.8, 2026-10-17, P7-25), the v2 deploy preview held below
+        assert len(REACHES) >= 1   # 2 -> 1: golden.capture_preview left with today's index (7.8, 2026-10-17, P7-27), the device page's Capture its v2 home; 8 -> 7: the import preview left it (7.1); 7 -> 6: compare_backups left with today's Backups (7.8, C632); 6 -> 5: templates.preview's POST left (7.8, 2026-10-15); 5 -> 4: golden.restore_preview left (7.8, 2026-10-17), the v2 restore preview held below; 4 -> 3: templatize.preview_committed_edit left with today's intent editor (7.8, 2026-10-17, P7-23); 3 -> 2: deploy.plan left with today's deploy wizard (7.8, 2026-10-17, P7-25), the v2 deploy preview held below
 
     def test_the_v2_deploy_preview_drew_the_masked_slot_and_no_value(self, swept):
         """THE deploy plan as the v2 device page draws it (`device_v2.deploy`), held as

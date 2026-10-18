@@ -162,8 +162,11 @@ _COMMIT = ("goldens", "remote")        # a golden commit also moves the remote's
 
 #: endpoint -> keys, or Nothing(reason).
 DECLARED = {
-    # Inventory and lists.
-    "inventory.refresh": ("inventory",),
+    # Inventory and lists. Today's inventory refresh (inventory.refresh), the capture's
+    # (golden.capture_preview, golden.capture_apply) and the monitoring profile's
+    # (templatize.profile_propose_preview and _apply) left at 7.8 (2026-10-17, P7-27) with
+    # today's index: Settings › a network's Refresh now, the device page's Capture… and
+    # Devices › Save, and Monitoring › Profile (their v2 entries).
     # Credentials.
     "v2.history_view_save": ("saved_views",),
     "v2.history_view_pin": ("saved_views",),
@@ -185,8 +188,7 @@ DECLARED = {
     "credential_profiles_v2.policy_save": ("credentials",),
     # Goldens, the repository and the remote.
     # Capture (7.1 step 4): Save All is now the whole-fleet form of it.
-    "golden.capture_apply": _COMMIT + ("baselines", "drift", "approvals"),   # closes handed-off drift items
-    "device_v2.capture_confirm": _COMMIT + ("baselines", "drift", "approvals"),   # the same apply
+    "device_v2.capture_confirm": _COMMIT + ("baselines", "drift", "approvals"),   # routes.golden.apply_captures
     # Today's re-apply (golden.restore_apply) and the Remote card's acknowledge, auto-push and
     # write probe (remote.acknowledge, remote.auto_push, remote.verify_write) left at 7.8
     # (2026-10-17, P7-21): v2's restore and re-apply confirms and History › Remote set-up's
@@ -201,7 +203,6 @@ DECLARED = {
     "remote_v2.acknowledge": ("remote",),
     "remote_v2.auto_push": ("remote",),
     # Intent, templates and deploys.
-    "templatize.profile_propose_apply": ("intent", "remote"),
     "v2.ip_sla_policy_set": ("intent", "remote"),
     "v2.ip_sla_commit": ("intent", "remote"),
     "v2.decline_confirm": ("intent", "remote"),
@@ -294,12 +295,8 @@ DECLARED = {
     "credential_profiles_v2.rotate_due_confirm": Nothing("starts the run as a job and answers at once; the run ANNOUNCES rotation and credentials after each device and when it finishes (ANNOUNCERS)"),
     "device_v2.rotate_preview": Nothing("reads the device's account line live and computes the plan; it writes nothing"),
     # Reads sent as POST: a body carries the question, and nothing is stored.
-    "golden.capture_preview": Nothing("starts a job that reads each device's running config "
-                                      "and computes a preview; it records nothing, and the "
-                                      "job ANNOUNCES capture_preview when it finishes "
-                                      "(ANNOUNCERS, C188)"),
     "device_v2.capture_start": Nothing("starts the same capture preview job for one device "
-                                       "(golden.capture_preview); it records nothing, and the "
+                                       "(routes.golden.start_capture_preview); it records nothing, and the "
                                        "job ANNOUNCES capture_preview when it finishes"),
     "device_v2.golden_reveal": Nothing("draws one golden version in place INSIDE History's "
                                        "timeline, the region `reveals` redraws: announcing it "
@@ -345,8 +342,6 @@ DECLARED = {
                             "when it finishes"),
     "jobs.job_finished": Nothing("starts the job-health reader, which announces job_health "
                                  "itself when it finishes"),
-    "templatize.profile_propose_preview": Nothing("computes the network's monitoring profile "
-                                                  "from committed intent; writes nothing"),
     "bulk_intent_v2.preview": Nothing("previews the change for the ticked devices; the apply "
                                       "commits"),
     "settings_v2.group_test": Nothing("tests an integration's connection and reports in the card"),

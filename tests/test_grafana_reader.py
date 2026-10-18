@@ -286,7 +286,10 @@ class TestThePanelDrawsMembers:
         page = A.needs_attention()
         from tests.test_needs_attention import _panel
         html = _panel(page)
-        assert html.count("<li>NMAS heartbeat missing:") == 9
+        # v2's member line carries its provenance on hover (a `title`, C1277), so the element is
+        # matched by its tag with any attributes; still exactly one per member.
+        import re
+        assert len(re.findall(r"<li(?: [^>]*)?>NMAS heartbeat missing:", html)) == 9
         assert "from the rule&#39;s device label" in html or "from the rule's device label" in html
         assert "minus the rule" in html and "[object Object]" not in html
 

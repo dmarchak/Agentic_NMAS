@@ -356,31 +356,38 @@ class TestSelectionById:
 
 
 class TestTheShippedScreen:
-    def _html(self, client, remove, hooks):
-        from tests.payload_render import render_preview
+    """The device page's Deploy… card on v2, drawn from THE plan
+    (`tests/payload_render.render_deploy_card_v2`; today's renderer and its `remove` hook until
+    P7-27, its last screen today's deploy wizard until P7-25). Mode B's one home: the card
+    offers every residue line, so there is no screen without the boxes (today's "no hook"
+    case left with the renderer)."""
+
+    def _html(self, client, remove):
+        from tests.payload_render import render_deploy_card_v2
         out, _d = _plan(client, remove, [SHUT, REASON] if remove else [SHUT])
-        return render_preview(out["preview"], hooks)
+        return render_deploy_card_v2(out, "s4")
 
     def test_each_removable_line_has_a_box_and_a_refusal_says_why_beside_it(self, client):
-        html = self._html(client, [], {"remove": "_r", "authorise": "_a"})
-        assert html.count("data-remove-id=") >= 3
-        assert "cannot be removed: a physical interface" in html
+        html = self._html(client, [])
+        assert html.count('<input type="checkbox"') >= 3
+        assert "Cannot be removed here: a physical interface" in html
         assert "disabled" in html[html.index("physical interface") - 400:html.index("physical interface")]
 
     def test_a_ticked_line_says_it_will_be_removed_and_gets_a_reason_box(self, client):
         _, d0 = _plan(client, [], [SHUT])
         rid = _removable(d0, "description retired uplink")["id"]
-        html = self._html(client, [rid], {"remove": "_r", "authorise": "_a"})
-        assert "will be removed: it is in the program" in html
-        assert "removes a line the device has and intent does not" in html
-
-    def test_without_the_hook_there_is_no_box(self, client):
-        html = self._html(client, [], {})
-        assert "data-remove-id=" not in html and "not removed" in html
+        html = self._html(client, [rid])
+        at = html.index(f'value="{rid}"')
+        assert "<strong>will be removed</strong>" in html[at:at + 400]
+        assert f'name="why::{rid}"' in html[at:at + 800]
 
 
 class TestTheHistoryShowsARollBack:
-    def test_a_rolled_back_removal_says_when_and_why_beside_its_box(self, tmp_path, monkeypatch):
+    def test_a_rolled_back_removal_is_recorded_with_when_and_why(self, tmp_path, monkeypatch):
+        """The prior authorisations carry a removal's rollback, when and why. Today's renderer
+        drew it beside the line's box ("Rolled back at …: …") until it left with today's index
+        at 7.8 (P7-27); v2's Deploy… card draws no prior authorisation (the register row named
+        in the P7-27 commit)."""
         from modules.nsot import receipts
         rows = [{"device": "s4", "at": "2026-09-29T06:00:00Z", "actor": "op@example.com",
                  "outcome": "failed", "sent": True, "reason": "verify failed: OSPF down",
@@ -390,20 +397,6 @@ class TestTheHistoryShowsARollBack:
         e = prior["lines"][KEY]
         assert e["rolled_back_at"] == "2026-09-29T06:00:00Z"
         assert e["rolled_back_why"] == "verify failed: OSPF down"
-        from tests.payload_render import render_preview
-        preview = {"parts": ["what", "what_not", "program", "operands", "gates", "confirm"],
-                   "action": "deploy", "explain": {},
-                   "what": {"summary": "x", "targets": [{"name": "s4", "state": "deployable",
-                                                         "selectable": True, "why_not": "",
-                                                         "select_data": {}}]},
-                   "what_not": {"items": [], "none": "nothing"},
-                   "targets": [{"name": "s4", "operands": [], "gates": [],
-                                "program": {"lines": [GI03, " no description retired uplink", "exit"],
-                                            "removal": [KEY], "authorised": [], "dangerous": [],
-                                            "secret": [], "prior": prior, "none": ""}}],
-                   "confirm": {"may": True, "statement": "You are confirming as op."}}
-        html = render_preview(preview, {"authorise": "_a"})
-        assert "Rolled back at 2026-09-29T06:00:00Z: verify failed: OSPF down" in html
 
 
 class TestTheReceiptCarriesTheIds:
@@ -421,28 +414,28 @@ class TestTheReceiptCarriesTheIds:
 class TestOneTickOneSentence:
     """The operator, on r2's acceptance run: the removal asked for one decision
     twice (the line's tick, then a second box in the program). The tick where
-    it is selected IS the decision; the program asks only why."""
+    it is selected IS the decision; the program asks only why. Held on v2's Deploy… card
+    (today's renderer until P7-27)."""
 
     def _html(self, client):
-        from tests.payload_render import render_preview
+        from tests.payload_render import render_deploy_card_v2
         _, d0 = _plan(client, [], [SHUT])
         rid = _removal_id(d0)
         out, _d = _plan(client, [rid], [SHUT])
-        return render_preview(out["preview"], {"remove": "_r", "authorise": "_a"})
+        return render_deploy_card_v2(out, "s4"), rid
 
     def test_a_removal_line_has_a_reason_and_no_second_box(self, client):
-        html = self._html(client)
-        at = html.index("removes a line the device has and intent does not")
-        row = html[html.rfind("<div", 0, at - 200):html.index("</div>", at) + 400]
-        assert "data-auth-removal" in html and "why this line is being removed" in html
-        assert 'data-auth-device="s4" data-line="no description retired uplink"' in html
-        assert not [m for m in _boxes(html) if 'data-line="no description retired uplink"' in m], \
+        html, rid = self._html(client)
+        assert f'name="why::{rid}"' in html, "the ticked line asks why, beside its tick"
+        assert " no description retired uplink" in html, "the removal is in the program"
+        assert not [m for m in _boxes(html) if "no description retired uplink" in m], \
             "no checkbox for a removal: its tick was made where it was selected"
-        assert "say why, and the reason authorises it" in row
+        assert len([m for m in _boxes(html) if f'value="{rid}"' in m]) == 1
 
     def test_a_dangerous_line_keeps_its_box(self, client):
-        html = self._html(client)
-        assert [m for m in _boxes(html) if 'data-line="shutdown"' in m]
+        html, _rid = self._html(client)
+        assert "<code>shutdown</code> is a dangerous line. Why" in html
+        assert 'name="dz::0"' in html
 
     # Today's deploy wizard's `_reauthoriseDevice` (a removal's reason reaching the re-plan),
     # executed here, left with the wizard at 7.8 (2026-10-17, P7-25), as did the class that
@@ -463,9 +456,11 @@ def _boxes(html):
 
 
 class TestTheReceiptKeepsTheReadBack:
-    def test_the_receipt_says_the_removal_was_read_back_gone_and_it_is_drawn(self):
+    def test_the_receipt_says_the_removal_was_read_back_gone(self):
+        """The receipt and the result carry it. Today's renderer drew "removals read back
+        gone: 1" until it left with today's index at 7.8 (P7-27); v2's result cards do not draw
+        the read-back (the register row named in the P7-27 commit)."""
         from modules.nsot import receipts
-        from tests.payload_render import render_result
         rows = receipts.rows_for({"results": [{
             "device": "r2", "outcome": "deployed", "commands": ["interface Gi2", " no x", "exit"],
             "authorised": [], "verify": {"ok": True, "issues": [], "removals_checked": 1,
@@ -474,4 +469,4 @@ class TestTheReceiptKeepsTheReadBack:
         assert rows[0]["checks"]["removals_checked"] == 1
         from modules.preview_confirm import operation_result
         result = operation_result(rows, {"results": []}, {"ok": True, "path": "x"}, "deploy")
-        assert "removals read back gone: 1" in render_result(result)
+        assert result["targets"][0]["checks"]["removals_checked"] == 1

@@ -15,6 +15,7 @@ at the moment of the commit:
 """
 
 from tests.test_capture import run_capture_preview
+from tests import capture_core
 from tests import source_index
 import ast
 import pathlib
@@ -283,7 +284,7 @@ class TestAnApprovalCommitsItsApprover:
                               capture_output=True, text=True).stdout == head, \
             "the preview committed something"
         h = pv["preview"]["what"]["targets"][0]["select_data"]["hash"]
-        out = client.post("/golden/capture/apply", json={
+        out = capture_core.post_apply({
             "confirmations": {"r2": h}, "approvals": {"r2": [entry_id]}}).get_json()
         assert out["approvals"] == {"closed": [entry_id], "left_pending": []}, out
         msg = _last_message(repo)

@@ -29,8 +29,9 @@ CEILING = 0
 #: C1153: the names of controls only today's pages have, as words a v2 instruction could use.
 #: Needs attention's words never name one (`tests/test_v2_links_stay_on_v2.py`,
 #: `TestNeedsAttentionWordsNameNoTodaysControl`); the scan also derives every multi-word button
-#: or link label today's templates draw and v2's do not. Each entry: the words -> where they
-#: live on today's page.
+#: or link label today's templates draw and v2's do not (none since today's last pages left at
+#: 7.8, 2026-10-17, P7-27). Each entry: the words -> where they lived on today's page; each
+#: names a control that no longer exists anywhere, so a row naming it is still wrong.
 TODAYS_ONLY_CONTROLS = {
     "no-golden scope": "today's index toolbar, Capture devices with no golden (on v2 the "
                        "scope is Devices › Actions › Save the devices of <network> with no "

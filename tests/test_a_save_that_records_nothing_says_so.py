@@ -11,15 +11,21 @@ intent (`load-interval 30`, C70's residue), and WROTE NOTHING. Then:
   and did not mention the baseline;
 - the denial existed in a toast and nowhere else, and the panel went on
   recommending the action that had just been refused.
+
+Save All's preview and result were drawn by today's renderer and Save All was opened from today's
+index; both left at 7.8 (2026-10-17, P7-27). What is held here is what the capture core computes
+and records for the whole fleet (tests/capture_core.py), which no v2 route starts any more:
+Devices › Save is the network's save on v2, and tests/test_save_v2.py holds its baseline denial
+said with why (`test_a_network_off_its_intent_is_saved_and_its_baseline_denied_saying_why`) and
+its repeated-baseline warning (TestTheRepeatedBaseline).
 """
 
 from tests.test_capture import run_capture_preview
-import json
+from tests import capture_core
 import subprocess
 
 import pytest
 
-from tests.payload_render import render_preview, render_result
 from tests.test_capture import build_capture_lab
 from tests.test_intent_match import _broken
 
@@ -37,7 +43,7 @@ def cap(tmp_path, monkeypatch):
     lab["running"]["r2"] = _broken(lab["captured"])
     d = run_capture_preview(lab["client"], {"devices": ["r2"]}).get_json()
     h = d["preview"]["what"]["targets"][0]["select_data"]["hash"]
-    out = lab["client"].post("/golden/capture/apply", json={"confirmations": {"r2": h}})
+    out = capture_core.post_apply({"confirmations": {"r2": h}})
     assert out.get_json()["ok"]
     return lab
 
@@ -60,27 +66,13 @@ class TestThePreviewSaysWhatConfirmingAchieves:
         assert "Every device is still read at apply" in effect
         assert p["confirm"]["working"] == "Reading the device for the denial record…"
         assert p["confirm"]["mode"] == "denial_only"
-        html = render_preview(p)
-        confirm = html[html.index('data-pc-part="confirm"'):]
-        assert "data-pc-effect" in confirm and "Nothing will be recorded as a golden" in confirm
 
-    def test_the_deciding_operand_is_drawn_apart_in_words(self, cap):
+    def test_the_deciding_operand_is_carried_apart_in_words(self, cap):
         p = _fleet_preview(cap)["preview"]
         (op,) = [o for o in p["targets"][0]["operands"] if o["name"] == "committed intent"]
         assert op["blocks"] == "the baseline"
         assert op["value"].startswith("departs from its committed intent: 1 line(s) on the "
                                       "device that intent does not have (`load-interval 30`)")
-        html = render_preview(p)
-        assert "data-pc-blocking" in html and "blocks the baseline" in html
-
-    def test_the_shipped_button_takes_the_servers_label(self, cap):
-        import dukpy
-        from tests.payload_render import lift, shipped
-        p = _fleet_preview(cap)["preview"]
-        js = lift(shipped("nmas_preview_confirm.js"), "previewConfirmButton")
-        out = dukpy.evaljs(js + "\npreviewConfirmButton(" + json.dumps(p)
-                           + ", 1, 'Record 1 device(s)')")
-        assert out == {"disabled": False, "text": "Read the device and record the denial only"}
 
     def test_a_one_device_capture_that_changes_nothing_cannot_be_confirmed(self, cap):
         d = run_capture_preview(cap["client"], {"devices": ["r2"]}).get_json()
@@ -93,7 +85,7 @@ class TestTheResultAndTheRecord:
         p = _fleet_preview(cap)["preview"]
         h = p["what"]["targets"][0]["select_data"]["hash"]
         before = _git(cap["repo"], "rev-parse", "HEAD")
-        out = cap["client"].post("/golden/capture/apply",
+        out = capture_core.post_apply(
                                  json={"confirmations": {"r2": h}, "fleet": True}).get_json()
         assert out["ok"], out
         return out["result"], before
@@ -107,7 +99,6 @@ class TestTheResultAndTheRecord:
         assert "0 recorded as a new golden, 1 unchanged, so no golden changed" in summary
         assert r["level"] == "failed", "nothing it was run for happened"
         assert "records the baseline decision (denied)" in r["record"]["statement"]
-        assert "No baseline was taken" in render_result(r)
 
     def test_the_denial_is_a_commit_that_changes_nothing(self, cap):
         r, before = self._apply_fleet(cap)
@@ -154,9 +145,9 @@ class TestTheWorkIsNamedAsWellAsTheOutcome:
         monkeypatch.setattr(device_ops, "acquire_many", spy)
         p = _fleet_preview(cap)["preview"]
         h = p["what"]["targets"][0]["select_data"]["hash"]
-        cap["client"].post("/golden/capture/apply", json={
+        capture_core.post_apply({
             "confirmations": {"r2": h}, "fleet": True, "mode": p["confirm"]["mode"]})
-        cap["client"].post("/golden/capture/apply", json={
+        capture_core.post_apply({
             "confirmations": {"r2": h}, "fleet": True, "mode": "<script>"})
         assert seen == ["denial_only", "record"], "an unknown mode is the ordinary capture"
 
@@ -175,15 +166,6 @@ class TestTheWorkIsNamedAsWellAsTheOutcome:
         finally:
             device_ops.release("Lab", "r2")
             device_ops.release("Lab", "r3")
-
-    def test_the_shipped_client_sends_the_mode_and_says_it_is_reading(self):
-        import os
-        src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                                "static", "js", "nmas_capture.js"), encoding="utf-8").read()
-        body = src[src.index("fetch('/golden/capture/apply'"):]
-        body = body[:body.index("})")]
-        assert "mode: conf.mode || 'record'" in body
-        assert "btn.textContent = conf.working ||" in src
 
 
 class TestNeedsAttentionNamesTheBlocker:
@@ -232,11 +214,3 @@ class TestTheBlockerNamesBothWaysOut:
         adopt = by["the device is right, and intent will deploy it from now on"]
         assert adopt["do"].startswith("Adopt it into intent: Edit intent")
         assert "never automatic" in adopt["note"]
-
-    def test_the_drawn_blocker_holds_no_button(self, cap):
-        p, _op = self._blocker(cap)
-        html = render_preview(p)
-        block = html[html.index("data-pc-blocking"):]
-        block = block[:block.index("</ul>")]
-        assert "load-interval 30" in block and "asserts:" in block
-        assert "<button" not in block and "onclick" not in block

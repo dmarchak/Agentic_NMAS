@@ -207,33 +207,9 @@ class TestAge:
         assert redraws == 2 and fetched == 0
 
 
-class TestNeedsAttentionJudgesEachSource:
-    def _page(self, value_at, stale_after):
-        src = {"source": "job_health", "label": "Job health", "state": "read",
-               "read_at": "2026-09-28T20:51:46Z", "value_at": value_at,
-               "stale_after_seconds": stale_after, "took_ms": 61,
-               "checked": "26 job-health row(s), 26 ok", "count": 0}
-        return {"ok": True, "headline": "Nothing needs attention", "rows": [],
-                "sources": [src], "unreadable": []}
-
-    def _draw(self, page, now_iso):
-        src = open(os.path.join(ROOT, "static", "js", "nmas_attention.js"), encoding="utf-8").read()
-        js = ("var window = {}; var document = undefined;\n" + src.replace(
-            "})(typeof window !== 'undefined' ? window : this);", "})(window);")
-            + "\nwindow.attentionPanelHtml(dukpy['page'], Date.parse(dukpy['now']));")
-        return dukpy.evaljs(js, page=page, now=now_iso)
-
-    def test_within_its_promise_the_healthy_page_stays_one_line(self):
-        html = self._draw(self._page("2026-09-28T20:51:38Z", 900), "2026-09-28T20:55:00Z")
-        assert html.startswith("<details") and "stale" not in html
-
-    def test_past_its_promise_the_source_is_a_row(self):
-        """The operator's case: the job-health reader died, nothing announces,
-        and the page's own clock notices. A stale source is something needing
-        attention, so it is a ROW (answer first), not a word in the evidence."""
-        html = self._draw(self._page("2026-09-28T20:51:38Z", 900), "2026-09-28T21:10:00Z")
-        assert 'data-attention="rows"' in html
-        rows = html[:html.index('data-attention="evidence"')]
-        assert "Job health&#39;s value is older than its source promises" in rows \
-            or "Job health's value is older than its source promises" in rows
-        assert "current for 900 s" in rows
+# TestNeedsAttentionJudgesEachSource: today's Needs attention panel (`static/js/nmas_attention.js`)
+# judged each stored source's age against its promise on the page's own clock, kept the healthy
+# page one line within it, and drew a row past it; it left with today's index at 7.8
+# (2026-10-17, P7-27). v2's list is drawn on the server and its sources carry no promise to the
+# page (`attention.needs_attention`'s `sources`); a stopped reader is a job-health row
+# (`reader_job.health_rows`) when the list is drawn: the register row named in the P7-27 commit.

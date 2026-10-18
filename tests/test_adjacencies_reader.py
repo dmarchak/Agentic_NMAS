@@ -215,20 +215,24 @@ class TestDrawn:
         assert "OSPF between r3 and r4 is not up" in html
         assert '<a class="btn btn-small btn-outline" href="/v2/device/r3?tab=neighbours&amp;list=Default">Open…</a>' in html
 
-    def test_todays_renderer_draws_the_link_and_only_to_v2(self):
-        import json as _json
-        from tests.js_source import read_shipped
-        import dukpy
-        src = read_shipped("static/js/nmas_attention.js")
-        m = re.search(r"function actionHtml\(a\) \{.*?\n  \}\n", src, re.S)
-        esc = re.search(r"function esc\(.*?\n  \}\n", src, re.S)
-        assert m and esc
-        js = esc.group(0) + m.group(0)
-        good = dukpy.evaljs(js + "actionHtml(%s)" % _json.dumps(
-            {"label": "Open", "href": "/v2/device/r3?tab=neighbours"}))
-        bad = dukpy.evaljs(js + "actionHtml(%s)" % _json.dumps(
-            {"label": "Open", "href": "javascript:alert(1)"}))
-        assert 'href="/v2/device/r3?tab=neighbours"' in good and "href=" not in bad
+    def test_the_list_draws_the_link_and_only_to_v2(self):
+        """Needs attention's list on v2 (`templates/v2/_attention.html`; today's panel drew it
+        until it left with today's index at 7.8, P7-27): a row's own link is drawn only to a
+        v2 address."""
+        import app as nmas
+        from flask import render_template
+
+        def drawn(href):
+            row = {"id": "x", "level": "warning", "what": "w", "cause": "c", "source": "s",
+                   "action": {"label": "Open", "href": href}}
+            with nmas.app.test_request_context("/v2/attention"):
+                return render_template("v2/_attention.html", attention_trigger="", a={
+                    "rows": [row], "sources": [], "badge": {"n": 1}})
+
+        good = drawn("/v2/device/r3?tab=neighbours")
+        bad = drawn("javascript:alert(1)")
+        assert 'href="/v2/device/r3?tab=neighbours"' in good
+        assert "javascript:" not in bad
 
     def test_the_reader_is_declared_and_the_key_heard(self):
         import os
@@ -244,5 +248,5 @@ class TestDrawn:
         assert "adjacencies" in attention.ATTENTION_KEYS
         for path in ("templates/v2/_attention.html", "templates/v2/_count.html"):
             assert "{{ attention_trigger }}" in open(os.path.join(root, path)).read(), path
-        src = open(os.path.join(root, "static/js/nmas_attention.js")).read()
-        assert re.search(r"NMAS\.subscribe\('adjacencies', 'attention'", src)
+        # Today's panel subscribed to it itself (`nmas_attention.js`) until it left with
+        # today's index at 7.8 (P7-27).

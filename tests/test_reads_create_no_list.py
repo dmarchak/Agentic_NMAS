@@ -171,7 +171,9 @@ class TestTheRefusal:
         assert UNKNOWN in body["error"] and "not the same as an empty list" in body["error"]
 
     def test_the_path_converter_form_is_refused_too(self, client):
-        r = client.get(f"/inventory/source/{UNKNOWN}")
+        # A v2 settings path names its network by the converter (today's /inventory/source/<list>
+        # until it left with today's index at 7.8, P7-27).
+        r = client.get(f"/v2/settings/network/{UNKNOWN}")
         assert r.status_code == 404 and r.get_json()["unknown_list"] == UNKNOWN
 
     def test_the_list_parameter_form_is_refused_too(self, client):

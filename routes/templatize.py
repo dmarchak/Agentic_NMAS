@@ -1,23 +1,20 @@
-"""Templatize blueprint: the monitoring profile's JSON routes, the rollback record's notes and
-bulk intent's core (its coverage report went at 7.8; Templates › Coverage is its home; today's
-committed-intent editor went at 7.8 on 2026-10-17, P7-23: each device's Intent tab; today's
-seed, revert and retry routes went the same day, P7-24: each device page's Actions).
+"""Templatize: the rollback record's notes and bulk intent's core, with no routes of their own
+(its coverage report went at 7.8; Templates › Coverage is its home; today's committed-intent
+editor went at 7.8 on 2026-10-17, P7-23: each device's Intent tab; today's seed, revert and
+retry routes went the same day, P7-24: each device page's Actions).
 
 Bulk intent's core (`bulk_plan_of`, `bulk_apply_of`) lives here for v2's Change a setting, and
-`rolled_back_notes` for Needs attention. The profile routes stay while today's index offers its
-Propose… (its Needs attention panel, `static/js/nmas_profile.js`).
+`rolled_back_notes` for Needs attention. The monitoring profile's JSON routes (GET
+/templatize/profile, POST /templatize/profile/propose/preview and /apply) left at 7.8 on
+2026-10-17 (P7-27; restore point tag `pre-remove/v1-pages`) with today's index, whose Needs
+attention panel's Propose… was their one caller: Monitoring › Profile (`/v2/monitoring/profile`)
+proposes, previews and commits through the same `modules/nsot/profile_propose.py`.
 """
 
 import logging
 import os
 
-from flask import Blueprint, jsonify, request
-
-from modules.identity import request_actor
-
 log = logging.getLogger(__name__)
-
-bp = Blueprint("templatize", __name__, url_prefix="/templatize")
 
 
 def _repo_for(list_name: str) -> str:
@@ -25,103 +22,9 @@ def _repo_for(list_name: str) -> str:
     return os.path.join(get_list_data_dir(list_name), "config_repo")
 
 
-def _active_list(payload=None) -> str:
-    from modules.config import get_current_list_name
-    name = (payload or {}).get("list_name") or request.args.get("list_name") or ""
-    return name.strip() or get_current_list_name()
-
-
 # Seed intent (C148): today's two routes (POST /seed/preview and /seed/apply) left at 7.8 on
 # 2026-10-17 (P7-24; restore point tag `pre-remove/v1-actions`). Its home is each device page's
 # Actions › Seed intent… (`routes/device_v2.py`), over the same `modules/nsot/seed.py`.
-
-
-# ---------------------------------------------------------------------------
-# The network's monitoring profile (P.9 step b; modules/nsot/profile_propose.py)
-# ---------------------------------------------------------------------------
-#
-# PROPOSE: a profile derived from what the fleet's committed intent agrees on,
-# previewed, confirmed by hash, committed as the verified person. Nothing is
-# sent to a device; APPLY is the deploy plan scoped to the profile
-# (`routes.deploy.plan_devices` with `scope: profile`, the batch Apply's page).
-
-@bp.route("/profile/propose/preview", methods=["POST"])
-def profile_propose_preview():
-    """The proposal for a list, computed now. Reads git and the credential
-    store in memory only: no session, no write, no secret value returned."""
-    from modules.nsot import profile as _p
-    from modules.nsot import profile_propose as pp
-    from modules.outbound import mask_payload
-    from modules.preview_confirm import profile_propose_preview as _parts
-
-    data = request.get_json(silent=True) or {}
-    list_name = _active_list(data)        # a read may derive its list
-    # A person's choice among versions of a section's shared fields.
-    choose = {k: v for k, v in (data.get("choose") or {}).items() if isinstance(v, str)}
-    try:
-        p = pp.public(pp.propose(list_name, choose=choose))
-    except _p.ProfileRefused as exc:
-        return jsonify({"ok": False, "error": (f"{list_name}'s committed monitoring profile "
-                                               f"cannot be read, so nothing is proposed: {exc}")}), 409
-    choices = [{"section": s["section"], "chosen": s.get("chosen", ""),
-                "versions": [{"id": v["id"], "devices": v["devices"]} for v in s["variants"]]}
-               for s in p["sections"] if s.get("variants")]
-    return jsonify(mask_payload({"ok": True, "list": list_name, "choose": choose,
-                                 "choices": choices,
-                                 "preview": _parts(p, pp.document_diff(p), request=request)}))
-
-
-@bp.route("/profile/propose/apply", methods=["POST"])
-def profile_propose_apply():
-    """Recompute, refuse a proposal that moved, commit as the verified person.
-    The list is CARRIED from the preview, never derived: this ends in a
-    commit."""
-    from modules.nsot import profile as _p
-    from modules.nsot import profile_propose as pp
-    from modules.outbound import mask_payload
-    from modules.preview_confirm import profile_propose_result
-
-    data = request.get_json(silent=True) or {}
-    list_name = (data.get("list_name") or "").strip()
-    if not list_name:
-        return jsonify({"ok": False, "error": (
-            "No list named: a profile commits into one list's repository, so the list comes "
-            "from the preview that was confirmed. Nothing was committed.")}), 400
-    confirmed = (data.get("hash") or "").strip()
-    if not confirmed:
-        return jsonify({"ok": False, "error": "Nothing confirmed: nothing committed"}), 400
-    choose = {k: v for k, v in (data.get("choose") or {}).items() if isinstance(v, str)}
-    try:
-        out = pp.apply(list_name, confirmed, request_actor(), choose=choose)
-    except _p.ProfileRefused as exc:
-        return jsonify({"ok": False, "error": f"nothing committed: {exc}"}), 409
-    return jsonify(mask_payload({"ok": True, "list": list_name,
-                                 "result": profile_propose_result(out)}))
-
-
-@bp.route("/profile", methods=["GET"])
-def profile_read():
-    """The list's COMMITTED monitoring profile and its last commit: the record
-    a proposal's result is read back from. Masked on the way out; the
-    document holds secret references, never values."""
-    from modules.nsot import profile as _p
-    from modules.nsot import repo as R
-    from modules.outbound import mask_payload
-
-    list_name = _active_list()
-    repo = _repo_for(list_name)
-    try:
-        doc = _p.read_committed(repo)
-    except _p.ProfileRefused as exc:
-        return jsonify({"ok": False, "list": list_name,
-                        "error": f"the committed profile cannot be read: {exc}"}), 409
-    rc, out, _err = R.git_raw(repo, "log", "-1", "--format=%H%x1f%an%x1f%cI%x1f%s", "--",
-                              _p.PROFILE_REL)
-    parts = out.strip().split("\x1f") if rc == 0 and out.strip() else []
-    return jsonify(mask_payload({
-        "ok": True, "list": list_name, "profile": doc,
-        "commit": (dict(zip(("sha", "author", "at", "subject"), parts)) if len(parts) == 4
-                   else None)}))
 
 
 # Committed intent: today's intent editor's three routes (GET and POST /committed/<host>, POST

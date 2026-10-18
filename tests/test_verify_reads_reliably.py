@@ -240,11 +240,11 @@ class TestVerifyNeitherPassesNorFailsOnWhatItCouldNotRead:
         assert v["ok"] is False and any(u.startswith("interfaces: ") for u in v["unreadable"])
 
     def test_the_receipt_and_the_shipped_result_say_it(self, monkeypatch):
-        import json
-
-        import dukpy
-
+        """Drawn by v2's batch card (today's renderer until it left at 7.8, P7-27, which also
+        said "nothing was rolled back" beside it; v2's card does not: the register row named in
+        the P7-27 commit)."""
         from modules.nsot import receipts
+        from tests.payload_render import render_operation_result_v2
 
         st = stitched("r3", "show ip ospf neighbor")
         pre, post = self._snaps(Device(answers={"show ip ospf neighbor": st}))
@@ -254,17 +254,15 @@ class TestVerifyNeitherPassesNorFailsOnWhatItCouldNotRead:
         checks = receipts._checks({"outcome": "deployed", "commands": ["x"],
                                    "verify": ctx.verify_result["x"]})
         assert checks["unreadable"] == ctx.verify_result["x"]["unreadable"]
-        src = open(os.path.join(ROOT, "static", "js", "nmas_preview_confirm.js")).read()
         result = {"parts": ["happened", "did_not", "sent", "checks", "record", "not_watched"],
                   "action": "deploy", "level": "partial",
-                  "happened": {"summary": "s", "targets": []}, "did_not": {"none": "n"},
+                  "happened": {"summary": "s", "targets": []}, "did_not": {"items": [], "none": "n"},
                   "targets": [{"name": "r3", "sent": {"lines": [], "none": "x"},
                                "checks": checks}],
                   "record": {"statement": ""}, "not_watched": ""}
-        html = dukpy.evaljs("var window = {};\n" + src
-                            + f"\nwindow.previewConfirmResultHtml({json.dumps(result)}, {{}});")
-        assert "data-pr-unreadable" in html and "could not be read reliably" in html
-        assert "nothing was rolled back" in html
+        html = render_operation_result_v2(result)
+        part = html[html.index("<summary>r3:"):]
+        assert "Verify did NOT pass" in part and "could not be read reliably" in part
 
 
 class TestTheDeployRefusesBeforeThePush:

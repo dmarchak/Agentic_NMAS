@@ -1,6 +1,7 @@
 """What is running on the devices now, and what finished recently: one read for every screen
-that draws it (today's in-flight panel through `/operations/in_flight`, and Settings ›
-Installation › Diagnostics, board F4, for every network at once).
+that draws it (every v2 page's In progress chip through `/operations/in_flight`, and Settings ›
+Installation › Diagnostics, board F4, for every network at once; today's in-flight panel left
+with today's index at 7.8, 2026-10-17, P7-27).
 
 Register C99: a restore ran for fifty seconds with nothing on screen, the operator concluded it
 had staged something, started a deploy of the same device, and the silence produced a second

@@ -136,44 +136,16 @@ def capture_preview(mp, tmp):
 
     lab = build_capture_lab(mp, tmp)
     lab["running"]["r2"] = _broken(lab["captured"])
-    # The job's RESULT (C188 step 2): what `GET /golden/capture/preview/<job>`
-    # answers once the reads finish, which is the payload the modal draws.
+    # The job's RESULT (C188 step 2): what the job holds once the reads finish, which is the
+    # payload the device page's Capture card draws (tests/capture_core.py).
     return _ok(run_capture_preview(lab["client"], {"devices": ["r2"]}))
 
 
-def capture_preview_start(mp, tmp):
-    """C188 step 2: the POST that starts the preview's job, as the page gets
-    it (202, the job's id and the devices it reads), before any read ends."""
-    from modules.nsot import capture_job
-    from tests.test_capture import build_capture_lab
-
-    lab = build_capture_lab(mp, tmp)
-    r = lab["client"].post("/golden/capture/preview", json={"devices": ["r2"]})
-    assert r.status_code == 202, r.get_data(as_text=True)[:300]
-    d = r.get_json()
-    assert capture_job.wait(d["job"], 60)   # finish before the lab is torn down
-    return d
-
-
-def capture_apply(mp, tmp):
-    """The same, confirmed and recorded: a departing capture's result."""
-    from tests.test_capture import build_capture_lab, run_capture_preview
-    from tests.test_intent_match import _broken
-
-    lab = build_capture_lab(mp, tmp)
-    lab["running"]["r2"] = _broken(lab["captured"])
-    d = _ok(run_capture_preview(lab["client"], {"devices": ["r2"]}))
-    h = d["preview"]["what"]["targets"][0]["select_data"]["hash"]
-    # Two handed-off drift items (C105): r2's is closed by the capture, and
-    # one for a device this capture does not record stays pending, so both
-    # lists carry something real.
-    from modules import approval_queue
-    ids = [approval_queue.add_approval("update_golden_config", f"drift on {h_}",
-                                       ip_, h_, "", {}, "fixture")
-           for h_, ip_ in (("r2", "203.0.113.12"), ("s9", "203.0.113.19"))]
-    ids = [i["id"] if isinstance(i, dict) else i for i in ids]
-    return _ok(lab["client"].post("/golden/capture/apply", json={
-        "confirmations": {"r2": h}, "approvals": {"r2": [ids[0]], "s9": [ids[1]]}}))
+# The capture preview's start (POST /golden/capture/preview) and the capture apply's
+# (POST /golden/capture/apply) providers left at 7.8 (2026-10-17, P7-27) with their routes and
+# the payload check's entries (tests/test_payload_is_rendered.py, today's renderers' check, left
+# with them): the v2 device page's Capture card draws the preview and the result server-side
+# (tests/test_device_capture_v2.py, tests/test_v2_context_is_drawn.py).
 
 
 def _netbox_behind(mp):
@@ -190,7 +162,7 @@ def _netbox_behind(mp):
 
 
 def needs_attention(mp, tmp):
-    """7.2: the landing list through the REAL route, from job health over
+    """7.2: the landing list as v2 reads it (the real build), from job health over
     the systemd and journal shapes measured on the host: a failing job, a
     rotation row naming its device, and a source that could not be read."""
     from modules import attention as A
@@ -265,7 +237,13 @@ def needs_attention(mp, tmp):
                why="known issue no fix yet", by="ops@example.com", verified="access",
                kind="alert", what="Discards on s3 Gi1/1", band=3.235, value=3.19,
                devices=["s3"])
-    return _ok(_client().get("/attention"))
+    # What Needs attention draws its rows from, read in a v2 request (`routes.v2._attention`);
+    # today's JSON read of it (GET /attention) left with today's panel at 7.8 (P7-27).
+    import app as nmas
+    from routes.v2 import _attention
+
+    with nmas.app.test_request_context("/v2/attention"):
+        return _attention()
 
 
 def _drift_run(mp, tmp):

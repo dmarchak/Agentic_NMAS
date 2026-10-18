@@ -213,7 +213,7 @@ def active() -> ListRef:
     network its address names (a settings path's ``<list_name>``, else
     ``?list=``; refused before any view when there is none), else the verified
     person's own choice (`network_choice`), else the installation's current
-    list. Anywhere else (a background job, today's pages) it is the
+    list. Anywhere else (a background job, a host script) it is the
     installation's current list, as before. Every request a v2 page makes after
     its first render names the page's network in its address
     (`routes/page_network`, W2's A1), so the person's choice decides only a

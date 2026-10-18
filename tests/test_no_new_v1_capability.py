@@ -1,14 +1,23 @@
-"""No new capability on a v1 page (the operator, 2026-10-03: "nothing new on the v1 export;
+"""Nothing outside templates/v2 (P7-27, 2026-10-17: the last of today's interface removed; before
+it, "no new capability on a v1 page", the operator, 2026-10-03: "nothing new on the v1 export;
 once the v2 card exists, every link opens it and the v1 export joins CUTOVER's remove list").
 
-Today's interface (every template outside `templates/v2`, and every script no v2 page loads)
-is frozen: what a person can press there, and what its scripts define, may only shrink. A
-fix to today's pages keeps its counts; a new control or function there fails here, and the
-capability is built on v2 instead. The ceilings were measured 2026-10-03 and only fall:
-lower one when a cutover removes what it counted.
+Today's interface was every template outside `templates/v2` and every script no v2 page loads.
+It only shrank, its counts held by ceilings measured 2026-10-03 (43 controls, 31 handlers, 333
+functions, 20 fields before 7.8's removals), and P7-27 took the last of it: today's index, its
+base, its six partials, its nine scripts and the vendored Bootstrap. What is held now:
 
-The population is defined by where a thing is drawn or loaded, never by a list of files:
-a new v1 template or script is counted the moment it exists.
+- **no template outside `templates/v2`**, and the counts a v1 template or script would add
+  (controls, handlers, functions, fields) at 0, so a new one fails the day it exists;
+- **no script outside v2's**: every project script under `static/js` (the vendored libraries
+  aside) is one a v2 template loads;
+- **no route outside the redesign but the declared non-GUI ones** (`NON_GUI`, each with its
+  caller): `/v2/...` and `/update/...` are the interface; anything else is an endpoint a
+  host, a browser or a v2 page's own request calls, never a page of its own;
+- **`/` answers 302 into v2**, keeping the address's network.
+
+The population is defined by where a thing is drawn, loaded or routed, never by a list of files:
+a new template or script outside v2 is counted the moment it exists, and a planted one is found.
 """
 
 import os
@@ -21,14 +30,20 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEMPLATES = os.path.join(ROOT, "templates")
 JS = os.path.join(ROOT, "static", "js")
 
-#: Measured 2026-10-03.
-CONTROLS_CEILING = 6    # 2026-10-17: today's deploy wizard and onboarding left (7.8, P7-25: the device row's Deploy plan, Onboard a device, the deploy dialog's Cancel and Deploy confirmed devices, the onboarding dialog's Back and Create). Before: 2026-10-17: today's template editor and intent editor left (7.8, P7-23: the device row's Template preview and Edit intent, the editors' Close, Save & commit, Check & show diff and Commit). Before: 2026-10-17: today's list bar and its New List dialog left (7.8, P7-26: + New List, Delete List, and the dialog's Cancel and Create List). Before: 2026-10-17: today's Git tab left (7.8, P7-21: its Refresh and its commit dialog's Close; the device page's Restore from… left with the page). Before: 2026-10-17: today's device page left (7.8, P7-22: its Restore from…, Capture as golden, Seed intent, Revert intent…, Retry rolled-back change…, Rotate credential…, Persist…, Retire…, Back to Devices, Run Command and Copy). Before: 2026-10-17: today's NetBox tab left (7.8: its Open NetBox, Refresh, Import Current List and Import All Lists, and its dialog's Cancel, Just stop tracking and Confirm). Before: 2026-10-15: today's Settings modal, Logs tab and status bar left (7.8: the list bar's Settings, the NetBox tab's Open Settings, the modal's Test Connection, Cancel and Save Settings, the Logs tab's Refresh). Before: 2026-10-15: today's Drift tab left (7.8: its panel's Check Now). Before: 2026-10-15: today's bulk commands and Restore Golden Config at HEAD left (7.8: the bulk panel's Execute, Clear Selection and Restore Golden Config, the results modal's Close, the device page's Restore Golden Config). Before: 2026-10-14: today's Backups left (7.8, C632: the device page's Backups tab, Backup Config, Compare Backups and its modal's Compare). Before: 2026-10-14: the AI family left (D15: the AI panel, the Agent, Approvals and Ansible tabs, the AI settings). Before: 2026-10-13: the TFTP setting left (7.8, D16). Before: 2026-10-13: Bulk file actions left (7.8, D16). Before: 2026-10-13: Device files left (7.8, D16). Before: 2026-10-13: Quick actions left (7.8, D16). Before: 2026-10-12: today's Topology tab left (7.8). Before: the topology service panel left (7.8). Before: the Monitoring tab left with the legacy collectors (7.8). Before: the Configure tab left (7.8). Before: the stack panel's Refresh left (7.8). Before: Reload Devices left with /bulk_reload (7.8). Before: Refresh Hostnames left (7.8). Before: today's History tab left with /list/change_log (7.8). Before: 2026-10-08: the freshness panel left (Phase 3). Before: 2026-10-04: the 81 CCIE-KB config types left with ccie_kb/ (NSOT_PLAN 8.12)
-HANDLERS_CEILING = 3    # 2026-10-17: today's deploy wizard and onboarding left (7.8, P7-25: five, measured: the device row's Deploy plan, Onboard a device and the two dialogs' handlers). Before: 2026-10-17: today's template editor and intent editor left (7.8, P7-23: the device row's two onclicks, Save & commit's, Check & show diff's and Commit's). Before: 2026-10-17: today's list bar and its New List dialog left (7.8, P7-26: the onclicks of + New List, Delete List and Create List). Before: 2026-10-17: today's Git tab left (7.8, P7-21: its Refresh onclick and its commit row's onclick). Before: 2026-10-17: today's device page left (7.8, P7-22: its eight action buttons' onclicks). Before: 2026-10-17: today's NetBox tab left (7.8: Refresh's, Import Current List's and Import All Lists' onclicks, and its dialog's Just stop tracking and Confirm). Before: 2026-10-15: today's Settings modal and Logs tab left (7.8: the two openSettingsModal onclicks, Test Connection's, Save Settings', the Logs Refresh's onclick and its filter's oninput). Before: 2026-10-15: today's Drift tab left (7.8: the interval's and the switch's onchange, Check Now's onclick). Before: 2026-10-15: today's bulk commands and Restore Golden Config at HEAD left (7.8). Before: 2026-10-14: today's Backups left (7.8, C632). Before: 2026-10-14: the AI family left (D15). Before: 2026-10-13: the TFTP setting left (7.8, D16). Before: 2026-10-13: Bulk file actions left (7.8, D16). Before: 2026-10-13: Device files left (7.8, D16). Before: 2026-10-12: today's Topology tab left (7.8). Before: the topology service panel left (7.8). Before: the Monitoring tab left with the legacy collectors (7.8). Before: the Configure tab left (7.8). Before: the stack panel's Refresh left (7.8). Before: Reload Devices left with /bulk_reload (7.8). Before: Refresh Hostnames left (7.8). Before: today's History tab left (7.8). Before: 2026-10-08: the freshness panel left (Phase 3)
-FUNCTIONS_CEILING = 195   # 2026-10-17: thirty-nine left with today's device-action scripts (P7-24) and twenty-five with today's deploy wizard, onboarding wizard and pending banner (P7-25), at 7.8
-#: Fields a person can fill on today's pages: form elements in its templates, and the
-#: settings fields its scripts draw from a spec (`{key: '<setting>', ...}`), less the
-#: recorded exceptions below. Measured 2026-10-03 (261 elements and 68 spec fields).
-FIELDS_CEILING = 1   # 2026-10-17: today's onboarding wizard's eleven fields left (7.8, P7-25). Before: 2026-10-17: today's template editor's and intent editor's text areas and the intent editor's summary left (7.8, P7-23). Before: 2026-10-17: today's list bar's Device List select and the New List dialog's name left (7.8, P7-26). Before: 2026-10-17: today's device page's command box and its filesystem field left (7.8, P7-22). Before: 2026-10-17: today's NetBox dialog's Permit NetBox writes left (7.8). Before: 2026-10-15: today's Settings modal left (7.8: its NetBox fields, the integrations cards' spec fields, the general block, the write switch, and the Logs tab's four). Before: 2026-10-15: today's Drift tab's interval and Enabled switch left (7.8). Before: 2026-10-15: the bulk panel's fields left (7.8: the command mode, the command, Select all and each row's checkbox). Before: 2026-10-14: today's Backups' fields left (7.8, C632: the config type and the two compare choosers). Before: 2026-10-14: the AI settings and the agent timer and task fields left (D15). Before: 2026-10-13: the TFTP root field left (7.8, D16). Before: 2026-10-13: the TFTP setting left (7.8, D16). Before: 2026-10-13: Bulk file actions left (7.8, D16). Before: 2026-10-13: Device files left (7.8, D16). Before: 2026-10-12: the topology service's Settings card left (7.8). Before: today's Topology tab left (7.8). Before: the topology service panel's interval left (7.8). Before: the Monitoring tab's forms left (7.8). Before: the Configure tab's forms left (7.8). Before: 2026-10-08: the Oxidized settings card left (Phase 3). Before: 2026-10-04: the KB's dynamic form left with it
+#: 0 since 2026-10-17 (7.8, P7-27): today's index, base and last partials left. Before: 6
+#: (P7-25), 12 (P7-23), 19 (P7-26), 23 (P7-21), 25 (P7-22), 36 (P7-20), 43 measured 2026-10-03.
+CONTROLS_CEILING = 0
+#: 0 since 2026-10-17 (P7-27). Before: 3 (P7-25), 8, 13, 16, 18, 26, 31 measured 2026-10-03.
+HANDLERS_CEILING = 0
+#: 0 since 2026-10-17 (P7-27): today's last nine scripts left (nmas_attention, nmas_breakglass,
+#: nmas_capture, nmas_in_flight, nmas_preview_confirm, nmas_profile and the three under
+#: js/gen). Before: 195 (P7-24 and P7-25), 259, 281, 312, 314, 333 measured 2026-10-03.
+FUNCTIONS_CEILING = 0
+#: Fields a person could fill on today's pages: form elements in its templates, and the settings
+#: fields its scripts drew from a spec (`{key: '<setting>', ...}`), less the recorded exceptions
+#: below. 0 since 2026-10-17 (P7-27: the device list's search box left with today's index).
+#: Before: 1 (P7-25), 12, 15, 17, 19, 20 measured 2026-10-03 (261 elements and 68 spec fields).
+FIELDS_CEILING = 0
 
 #: RECORDED EXCEPTIONS to the rule, each a v1 settings field by its key, with its reason and
 #: where it goes at cutover. A field is excepted only by the operator's decision.
@@ -36,6 +51,27 @@ FIELDS_CEILING = 1   # 2026-10-17: today's onboarding wizard's eleven fields lef
 #: operator's of 2026-10-03) moved at cutover as decided, leaving with today's Settings modal at
 #: 7.8; they are fields of Settings › Default's Grafana card and Installation's Proxmox card.
 EXCEPTIONS = {}
+
+#: Every route outside the redesign (`/v2/...`, `/update/...`), by its rule, with who calls it.
+#: None draws a page of its own; each is CUTOVER's STAYS or BUILT row of the same path.
+NON_GUI = {
+    "/": "today's old address: 302 to Needs attention on v2, keeping ?list= (P7-27)",
+    "/attention/acknowledge": "Needs attention's Acknowledge (templates/v2/_attention.html)",
+    "/breakglass/export": "Credentials › The break-glass record's export",
+    "/favicon.ico": "browsers ask for the icon",
+    "/health": "the Update page and the root updater",
+    "/health/operations": "scripts/nmas-deploy",
+    "/identity/status": "the identity diagnostic, read with curl",
+    "/jobs/finished": "nmas-job-finished@, from each job's systemd unit",
+    "/operations/in_flight": "every v2 page's In progress chip (templates/v2/base.html)",
+    "/remote/push": "History's header, Push now",
+    "/remote/verify": "History's header, Verify the remote",
+    "/restarts/planned": "scripts/nmas-planned-restart and the Reload's own window",
+    "/settings/integrations/status": "docs/DEPLOY_LINUX.md's Verify, read with curl",
+    "/static/<path:filename>": "the static files every v2 page loads",
+}
+REDESIGN = ("/v2/", "/update/")
+
 _SPEC_FIELD = re.compile(r"\{\s*key:\s*'([a-z0-9_]+)'")
 _FORM_FIELD = re.compile(r"<(?:input|select|textarea)\b")
 
@@ -58,10 +94,16 @@ def v2_scripts() -> set:
 
 
 def v1_scripts() -> list:
+    """Every project script under static/js no v2 template loads (the vendored libraries under
+    static/js/vendor are MANIFEST.json's, held by tests/test_csp.py: each loaded by a page)."""
     v2 = v2_scripts()
-    out = [os.path.join(JS, f) for f in os.listdir(JS) if f.endswith(".js") and f not in v2]
-    gen = os.path.join(JS, "gen")
-    out += [os.path.join(gen, f) for f in os.listdir(gen) if f.endswith(".js")]
+    out = []
+    for path in tracked(JS, root=ROOT):
+        rel = os.path.relpath(path, JS)
+        if not rel.endswith(".js") or rel.split(os.sep)[0] == "vendor":
+            continue
+        if os.sep in rel or rel not in v2:
+            out.append(path)
     return sorted(out)
 
 
@@ -85,35 +127,36 @@ def counts() -> dict:
             "functions": sum(len(_FN.findall(_read(p))) for p in v1_scripts())}
 
 
+def outside_the_redesign(rules) -> list:
+    """The rules no `/v2/` or `/update/` prefix covers, each once."""
+    return sorted({r for r in rules if not r.startswith(REDESIGN) and r != "/v2"})
+
+
 class TestTodaysInterfaceOnlyShrinks:
+    """Today's interface shrank to nothing at P7-27 (2026-10-17), and stays there."""
+
     def test_the_populations_are_found(self):
-        # v1 templates 19 and scripts 37 since 2026-10-12: the stack and topology service panels and
-        # today's Topology tab's script left (7.8). Scripts 36 since 2026-10-14: index.2.js (the AI
-        # device cache) left with the AI family (D15). Templates 17 and scripts 33 since
-        # 2026-10-15: today's Settings modal's two partials and their scripts, and the status
-        # bar's script, left (7.8). Templates 15 and scripts 31 since 2026-10-17: today's NetBox
-        # tab's two partials (the import and removal dialog, the removals panel) and their two
-        # scripts left (7.8). Templates 13 and scripts 30 since 2026-10-17 (later the same day):
-        # today's device page and its Changes partial, and the partial's script, left (7.8, P7-22).
-        # Scripts 26 the same day (P7-21): today's Git tab's index.4.js, the Remote card's and the
-        # Baselines panel's two (partials__golden_repo.2.js and .3.js) and nmas_restore_scope.js.
-        # Templates 11 and scripts 24 the same day (P7-23): today's template editor and intent
-        # editor partials and their two scripts left (7.8). Templates 8 and scripts 15
-        # the same day: today's device-action scripts (P7-24) and today's deploy
-        # wizard, onboarding wizard and pending banner partials and their four scripts
-        # (P7-25) left (7.8).
-        assert len(v1_templates()) >= 8 and len(v1_scripts()) >= 15
+        """The scans see v2's own: every template under templates/v2 and the scripts they load
+        (a scan that found nothing anywhere would pass the tests below by finding nothing)."""
+        assert len(tracked(os.path.join(TEMPLATES, "v2"), suffix=".html",
+                           root=os.path.dirname(TEMPLATES))) >= 100
         assert {"nmas_v2.js", "nmas_update.js"} <= v2_scripts()
+
+    def test_no_template_or_script_outside_v2(self):
+        rel = [os.path.relpath(p, ROOT) for p in v1_templates() + v1_scripts()]
+        assert rel == [], (f"outside v2: {rel}. Today's interface left at 7.8 (P7-27): a page, "
+                           "partial or script is built on v2 (templates/v2, a script a v2 "
+                           "template loads)")
 
     def test_no_new_control_handler_or_function(self):
         c = counts()
         assert c["controls"] <= CONTROLS_CEILING, (
-            f"{c['controls']} controls on today's pages, the ceiling {CONTROLS_CEILING}: build "
-            "the new capability on v2 (a v1 page gains nothing new)")
+            f"{c['controls']} controls outside v2, the ceiling {CONTROLS_CEILING}: build "
+            "the capability on v2")
         assert c["handlers"] <= HANDLERS_CEILING, (c["handlers"], HANDLERS_CEILING)
         assert c["functions"] <= FUNCTIONS_CEILING, (c["functions"], FUNCTIONS_CEILING)
         assert c["fields"] <= FIELDS_CEILING, (
-            f"{c['fields']} fields on today's pages, the ceiling {FIELDS_CEILING}: a new field "
+            f"{c['fields']} fields outside v2, the ceiling {FIELDS_CEILING}: a new field "
             "goes on v2, or is a recorded exception the operator decided (EXCEPTIONS)")
 
     def test_each_exception_is_there_with_its_reason_and_where_it_goes(self):
@@ -131,6 +174,42 @@ class TestTodaysInterfaceOnlyShrinks:
             CONTROLS_CEILING, HANDLERS_CEILING, FUNCTIONS_CEILING, FIELDS_CEILING), (
             f"lower the ceilings to what is there now: {c}")
 
+    def test_no_route_outside_the_redesign_but_the_declared_endpoints(self):
+        import app as A
+
+        rules = [r.rule for r in A.app.url_map.iter_rules()]
+        assert len(rules) >= 260, len(rules)          # the floor: 290 measured 2026-10-17
+        outside = outside_the_redesign(rules)
+        assert outside == sorted(NON_GUI), (
+            f"undeclared: {sorted(set(outside) - set(NON_GUI))}; declared and gone: "
+            f"{sorted(set(NON_GUI) - set(outside))}. A route outside /v2/ is an endpoint "
+            "something other than a person's page calls, named here with its caller")
+        assert all(why.strip() for why in NON_GUI.values())
+
+    def test_the_old_address_lands_on_v2_keeping_its_network(self):
+        import app as A
+
+        client = A.app.test_client()
+        r = client.get("/", headers={"Accept": "text/html"})
+        assert r.status_code == 302 and r.headers["Location"].endswith("/v2/"), (
+            r.status_code, r.headers.get("Location"))
+        from modules.nsot import listref
+
+        name = listref.active().name
+        r = client.get(f"/?list={name}", headers={"Accept": "text/html"})
+        assert r.status_code == 302 and r.headers["Location"].endswith(f"/v2/?list={name}"), (
+            r.headers.get("Location"))
+        r = client.get(f"/?open=breakglass_export&list={name}")
+        assert r.status_code == 302
+        assert r.headers["Location"].endswith(f"/v2/credentials?open=export&list={name}"), (
+            r.headers.get("Location"))
+        r = client.get(f"/?open=profile_propose&list={name}")
+        assert r.headers["Location"].endswith(f"/v2/monitoring/profile?list={name}")
+        # An opener today's index no longer had (the intent editor, revert, retry, the deploy
+        # plan) lands on Needs attention for the same network, never a dead page.
+        r = client.get(f"/?open=intent_editor&device=r1&list={name}")
+        assert r.headers["Location"].endswith(f"/v2/?list={name}")
+
     def test_a_planted_control_is_found(self, tmp_path, monkeypatch):
         planted = tmp_path / "templates"
         (planted / "v2").mkdir(parents=True)
@@ -139,3 +218,27 @@ class TestTodaysInterfaceOnlyShrinks:
         monkeypatch.setattr(__import__(__name__), "TEMPLATES", str(planted))
         assert len(v1_templates()) == 1
         assert sum(len(M.controls(_read(p))) for p in v1_templates()) == 1
+
+    def test_a_planted_script_is_found(self, tmp_path, monkeypatch):
+        """A script no v2 template loads, and one in a folder of its own (as js/gen was), are
+        each found; a v2 template's script and a vendored library are not."""
+        root = tmp_path
+        (root / "templates" / "v2").mkdir(parents=True)
+        (root / "templates" / "v2" / "page.html").write_text(
+            '<script src="/static/js/nmas_mine.js"></script>')
+        (root / "static" / "js" / "gen").mkdir(parents=True)
+        (root / "static" / "js" / "vendor" / "lib").mkdir(parents=True)
+        for rel in ("nmas_mine.js", "nmas_old.js", "gen/index.1.js", "vendor/lib/lib.js"):
+            (root / "static" / "js" / rel).write_text("function f() {}\n")
+        track_all(root)
+        mod = __import__(__name__)
+        monkeypatch.setattr(mod, "ROOT", str(root))
+        monkeypatch.setattr(mod, "TEMPLATES", str(root / "templates"))
+        monkeypatch.setattr(mod, "JS", str(root / "static" / "js"))
+        assert [os.path.relpath(p, root / "static" / "js") for p in v1_scripts()] == [
+            os.path.join("gen", "index.1.js"), "nmas_old.js"]
+        assert counts()["functions"] == 2
+
+    def test_a_planted_route_outside_the_redesign_is_found(self):
+        rules = list(NON_GUI) + ["/v2/", "/v2/devices", "/update/apply", "/attention"]
+        assert outside_the_redesign(rules) == sorted(list(NON_GUI) + ["/attention"])

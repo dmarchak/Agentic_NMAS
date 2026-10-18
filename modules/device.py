@@ -468,7 +468,7 @@ def get_current_device_list() -> tuple[str, str]:
 
     FROZEN since 7.8 (2026-10-17, P7-26): its setter left with today's list bar and
     /select_device_list, so `current_list` changes only when the network it names is deleted
-    (`delete_device_list`). It is the default for what runs outside a v2 request (today's index,
+    (`delete_device_list`). It is the default for what runs outside a v2 request (a job,
     the host scripts) and for a v2 page with no network named and no choice of its person's."""
     config  = _load_device_lists_config()
     current = config.get("current_list", "Default")

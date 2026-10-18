@@ -31,7 +31,6 @@ from modules.nsot import remote as R
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CLIENT = os.path.join(ROOT, "static", "js", "nmas_invalidation.js")
-GEN = os.path.join(ROOT, "static", "js", "gen")
 
 #: Keys a route declares and no panel subscribes to YET, each with the step
 #: whose panel will. It only shrinks: a key that gains a subscriber must
@@ -46,13 +45,11 @@ def shipped_subscriptions() -> list:
     """[(key, name, loader, file)] from the shipped scripts, anchored at the
     start of a line so prose quoting the call is not a subscription."""
     out = []
-    # The components (static/js/nmas_*.js) subscribe too: Needs attention's
-    # panel is one, and a scan of the generated scripts alone could not see
-    # it (the payload check's population had the same hole, C82's era).
+    # The components (static/js/nmas_*.js): today's generated scripts (static/js/gen), scanned
+    # beside them until they left with today's index at 7.8 (2026-10-17, P7-27), are gone.
     comp = os.path.dirname(CLIENT)
-    files = ([os.path.join(GEN, f) for f in sorted(os.listdir(GEN))]
-             + sorted(os.path.join(comp, f) for f in os.listdir(comp)
-                      if f.startswith("nmas_") and f.endswith(".js")))
+    files = sorted(os.path.join(comp, f) for f in os.listdir(comp)
+                   if f.startswith("nmas_") and f.endswith(".js"))
     for path in files:
         text = open(path, encoding="utf-8").read()
         for m in _SUB.finditer(text):
@@ -61,13 +58,11 @@ def shipped_subscriptions() -> list:
 
 
 def _defined(name: str) -> bool:
-    """Defined in a generated script or a component (the same population
-    `shipped_subscriptions` scans)."""
+    """Defined in a component (the same population `shipped_subscriptions` scans)."""
     pat = re.compile(r"(?:^|\s)(?:async\s+)?function\s+%s\s*\(" % re.escape(name), re.M)
     comp = os.path.dirname(CLIENT)
-    paths = ([os.path.join(GEN, f) for f in os.listdir(GEN)]
-             + [os.path.join(comp, f) for f in os.listdir(comp)
-                if f.startswith("nmas_") and f.endswith(".js")])
+    paths = [os.path.join(comp, f) for f in os.listdir(comp)
+             if f.startswith("nmas_") and f.endswith(".js")]
     return any(pat.search(open(p, encoding="utf-8").read()) for p in paths)
 
 
@@ -126,7 +121,7 @@ class TestEveryMutatingRouteDeclares:
         # Onboarding's Verify and the deploy are v2's since today's routes left at 7.8
         # (2026-10-17, P7-25): Verify declares, and a deploy is a job that announces.
         assert "inventory" in I.keys_for("onboard_v2.verify")
-        assert "remote" in I.keys_for("golden.capture_apply")
+        assert "remote" in I.keys_for("device_v2.capture_confirm")   # golden.capture_apply until P7-27
         assert "remote" in deploy_job.DONE_KEYS
         # A restore is a job (today's golden.restore_apply left at 7.8, 2026-10-17): the job
         # announces what it changed as it finishes.

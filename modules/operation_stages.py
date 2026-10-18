@@ -147,11 +147,10 @@ STAGES = {
         "n/a: a step nothing can check is said done by a person", "n/a: a record only",
         "modules.host_steps.record_done"),
     # ---- The record: goldens and intent (no device changes)
-    "golden.capture_apply": Stages(
-        "golden.capture_preview", "confirmations",
-        "n/a: records what the device holds; the apply re-reads it and refuses a moved capture",
-        FORWARD, "modules.nsot.repo.save_golden"),
-    # The v2 device page's Capture (7.3): the same job and apply, one device.
+    # The v2 device page's Capture (7.3), one device. Today's capture (golden.capture_apply,
+    # its preview golden.capture_preview) and profile proposal (templatize.profile_propose_apply,
+    # its preview templatize.profile_propose_preview; v2.profile_propose_commit below is its
+    # home) left at 7.8 (2026-10-17, P7-27) with today's index.
     "device_v2.capture_confirm": Stages(
         "device_v2.capture_start", "hash",
         "n/a: records what the device holds; the apply re-reads it and refuses a moved capture",
@@ -183,9 +182,6 @@ STAGES = {
         "device_v2.retry", "hash", NO_DEVICE,
         "n/a: a retry is a recorded decision; a new rollback re-records the block",
         "modules.nsot.intent_ops.retry_apply"),
-    "templatize.profile_propose_apply": Stages(
-        "templatize.profile_propose_preview", "hash", NO_DEVICE, FORWARD,
-        "modules.nsot.profile_propose.apply"),
     "v2.ip_sla_commit": Stages(
         "v2.ip_sla", "fingerprint", NO_DEVICE, FORWARD, "modules.nsot.ip_sla_policy.apply"),
     # C718: Decline… and Undo decline…, one device's intent only.
@@ -300,7 +296,6 @@ HISTORY = {
                                   "(dhcp/exclusions.yml)"),
     "update.step_done": NOT_A_DEVICE,
     # ---- approve: a decision a later device change acts on
-    "golden.capture_apply": ("golden", "measured"),
     "device_v2.capture_confirm": ("golden", "measured"),
     "onboard_v2.create": ("intent",),
     "intent_v2.commit": ("intent",),
@@ -314,7 +309,6 @@ HISTORY = {
     # B8: the network's own record of each removal (the removal record), and of each import,
     # Remove and Stop tracking confirmed on v2's NetBox page (its job record), on History.
     "netbox_v2.confirm": ("netbox",),
-    "templatize.profile_propose_apply": PROFILE,
     "v2.ip_sla_policy_set": PROFILE,
     "templates_v2.approve": TEMPLATE,
     "templates_v2.revoke": TEMPLATE,
@@ -383,14 +377,15 @@ WRITTEN_ELSEWHERE = {
     "decisions": "a Save All's baseline decision, its commit's Baseline: trailer",
     "updates": "the app's updater (deploy/update), not a device",
     "approvals": "the drift check queues an item (modules/drift_check.py) and a capture of the "
-                 "device closes it (golden.capture_apply); the approve and reject routes left "
-                 "with the AI family (D15)",
+                 "device closes it (device_v2.capture_confirm, routes.golden.apply_captures); "
+                 "the approve and reject routes left with the AI family (D15)",
     "show_commands": "a Show commands run's record (modules/nsot/reads.py), written by the two "
                      "reveal routes that read devices, Ask the device and Show commands",
     "reveals": "the reveal record (modules/reveal_audit.py), written by the reveal routes: a "
-               "golden version (device_v2.golden_reveal, golden.version), a golden diff "
-               "(golden.diff), a bootstrap config (onboard_v2.bootstrap, onboard.bootstrap, "
-               "the ZTP responder) and a log line (v2.history_ask_logs_reveal)",
+               "golden version (device_v2.golden_reveal), a bootstrap config "
+               "(onboard_v2.bootstrap, onboard.bootstrap, the ZTP responder) and a log line "
+               "(v2.history_ask_logs_reveal); today's golden version and diff (golden.version, "
+               "golden.diff) left at 7.8 with today's index (P7-27)",
 }
 
 #: The history gaps, counted: only down (12 -> 9, 2026-10-12: the three credential profile JSON

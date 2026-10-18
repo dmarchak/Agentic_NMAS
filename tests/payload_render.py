@@ -1,6 +1,14 @@
 """What a payload carries, and what the shipped renderer reads from it.
 
-**Not a test module.** Stage 7.0 (3), `test_payload_is_rendered.py`: "if a
+**Not a test module.** Its readers serve v2's checks (`python_reads`: an adapter's reads, for
+tests/test_v2_context_is_drawn.py; `lift`: a v2 script's function, for
+tests/test_results_are_drawn.py), and `render_preview_v2` / `render_result_v2` draw a
+component-built preview or result with v2's shared parts. Its first user,
+`test_payload_is_rendered.py` (today's JSON routes against today's JavaScript renderers), left
+with today's pages at 7.8 (2026-10-17, P7-27). What follows is that check's method, kept because
+the readers are its.
+
+Stage 7.0 (3), `test_payload_is_rendered.py`: "if a
 payload carries it, the screen shows it", made mechanical. Four instances
 were recorded before this existed, and each was a key computed, carried to
 the browser and drawn nowhere: D4 (`commands`, `dangerous`, `attribution`
@@ -31,7 +39,7 @@ import os
 import re
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GEN = os.path.join(ROOT, "static", "js", "gen")
+STATIC_JS = os.path.join(ROOT, "static", "js")
 
 
 def strip_comments(src: str) -> str:
@@ -97,17 +105,10 @@ def lift(src: str, name: str) -> str:
     return src[start:i + 1]
 
 
-#: The shared components live beside gen/, not in it: named by their path
-#: under static/js/.
-
 def shipped(file: str) -> str:
-    """A shipped script by name: a component in `static/js/`, else a script
-    moved out of a page into `static/js/gen/`. Resolved by where the file IS,
-    so a new component needs no entry in a list (persist, rotate and the
-    intent operations were in none)."""
-    top = os.path.join(os.path.dirname(GEN), file)
-    return open(top if os.path.exists(top) else os.path.join(GEN, file),
-                encoding="utf-8").read()
+    """A shipped script by name, in `static/js/` (v2's own; the scripts moved out of today's
+    pages into `static/js/gen/` left with them at 7.8, P7-27)."""
+    return open(os.path.join(STATIC_JS, file), encoding="utf-8").read()
 
 
 _DOT = re.compile(r"(?:\?\.|\.)\s*([A-Za-z_$][\w$]*)")
@@ -195,26 +196,101 @@ def python_reads(path: str, name: str) -> set:
             | set(re.findall(r"""\[\s*["']([\w-]+)["']\s*\]""", body)))
 
 
-def render_preview(preview: dict, hooks: dict = None) -> str:
-    """The SHIPPED preview-confirm renderer, executed in duktape against a
-    preview from a real route. The whole file runs, as the browser runs it,
-    rather than lifted functions: it is one IIFE."""
-    import json
+def _v2_part(macro: str, *args) -> str:
+    """One macro of v2's preview component (`templates/v2/_preview_parts.html`), rendered by
+    the app's own Jinja environment (autoescape and globals as a page has them)."""
+    import app as nmas
 
-    import dukpy
-
-    src = shipped("nmas_preview_confirm.js")
-    return dukpy.evaljs("var window = {};\n" + src + "\nwindow.previewConfirmHtml("
-                        + json.dumps(preview) + ", " + json.dumps(hooks or {}) + ")")
+    with nmas.app.test_request_context("/v2/"):
+        parts = nmas.app.jinja_env.get_template("v2/_preview_parts.html").module
+        return str(getattr(parts, macro)(*args))
 
 
-def render_result(result: dict, hooks: dict = None) -> str:
-    """The SHIPPED result half of the component, executed in duktape against
-    a result from a real route (7.1 step 2)."""
-    import json
+def render_preview_v2(preview: dict) -> str:
+    """v2's drawing of a preview the component built (`preview_confirm.build`): the shared
+    parts every v2 card that confirms such a preview draws (NetBox, onboarding). Today's
+    JavaScript renderer (`static/js/nmas_preview_confirm.js`, `render_preview` here) left with
+    today's index at 7.8 (2026-10-17, P7-27); a card that draws its preview with its own template
+    (capture, deploy, restore) is read through its own route."""
+    return _v2_part("preview_parts", preview)
 
-    import dukpy
 
-    src = shipped("nmas_preview_confirm.js")
-    return dukpy.evaljs("var window = {};\n" + src + "\nwindow.previewConfirmResultHtml("
-                        + json.dumps(result) + ", " + json.dumps(hooks or {}) + ")")
+def render_operation_result_v2(result: dict, list_name: str = "Lab") -> str:
+    """v2's drawing of a deploy or restore batch's result (`preview_confirm.operation_result`):
+    the batch's card once its job has ended (`templates/v2/_apply_job.html`, as
+    `routes.v2._apply_answer` renders it, its stepper from `deploy_job.run_card`). The batch
+    Apply, Coverage's Deploy missing and History's Re-apply draw their result here. Today's
+    renderer of the same result left with today's index at 7.8 (P7-27)."""
+    import app as nmas
+    from flask import render_template
+    from modules import deploy_job
+
+    st = {"state": "done", "job": "t0", "list": list_name, "elapsed_s": 0, "error": "",
+          "payload": {"result": result}}
+    with nmas.app.test_request_context("/v2/monitoring/apply/job/t0"):
+        return render_template("v2/_apply_job.html", j=st, job="t0",
+                               run=deploy_job.run_card(st, list_name), arrivals=None)
+
+
+def render_device_deploy_result_v2(result: dict, host: str, list_name: str = "Lab") -> str:
+    """v2's drawing of one device's deploy result: the device page's Deploy… card once its job
+    has ended (`device_actions.deploy_job_card`, `templates/v2/_deploy.html`), as
+    `device_v2.deploy_job_card` renders it."""
+    from types import SimpleNamespace
+
+    import app as nmas
+    from flask import render_template
+    from modules import device_actions
+
+    card = device_actions.deploy_job_card(SimpleNamespace(name=list_name), host, "t0",
+                                          {"state": "done", "payload": {"result": result}})
+    with nmas.app.test_request_context(f"/v2/device/{host}/deploy/job/t0"):
+        return render_template("v2/_deploy.html", c=dict(card, back=""))
+
+
+def render_deploy_card_v2(plan: dict, host: str, list_name: str = "Lab") -> str:
+    """v2's drawing of THE deploy plan for one device: the device page's Deploy… card
+    (`device_actions.deploy_card`, `templates/v2/_deploy.html`) from the plan's masked entry
+    and preview (`tests/deploy_core.plan`), for a verified person, as `device_v2.deploy`
+    builds it."""
+    from types import SimpleNamespace
+
+    import app as nmas
+    from flask import render_template, request
+    from modules import device_actions, identity
+    from modules.preview_confirm import confirm_part
+
+    entry = next(d for d in plan["devices"] if d.get("device") == host)
+    with nmas.app.test_request_context(f"/v2/device/{host}/deploy"):
+        card = device_actions.deploy_card(
+            SimpleNamespace(name=list_name), host, entry, plan["preview"],
+            viewer=dict(confirm_part(request, "confirm"),
+                        actor=identity.identify(request).actor or ""))
+        return render_template("v2/_deploy.html", c=dict(card, back="", ip=""))
+
+
+def render_restore_card_v2(plan: dict, host: str, moment: str = "HEAD",
+                           list_name: str = "Lab") -> str:
+    """v2's drawing of THE restore plan for one device: the device page's Restore from… card
+    (`device_actions.restore_card`, `templates/v2/_restore.html`), as `device_v2._restore_card`
+    builds it from the masked plan, for a verified person."""
+    from types import SimpleNamespace
+
+    import app as nmas
+    from flask import render_template, request
+    from modules import device_actions, identity
+    from modules.preview_confirm import confirm_part
+
+    with nmas.app.test_request_context(f"/v2/device/{host}/restore/preview"):
+        card = device_actions.restore_card(
+            SimpleNamespace(name=list_name), host, moment, plan,
+            viewer=dict(confirm_part(request, "confirm"),
+                        actor=identity.identify(request).actor or ""))
+        return render_template("v2/_restore.html", c=dict(card, back="", ip=""))
+
+
+def render_result_v2(result: dict) -> str:
+    """v2's drawing of a result the component built (`preview_confirm.build_result`): the shared
+    result parts (`result_parts`). Today's (`render_result` here) left with today's index at 7.8
+    (P7-27)."""
+    return _v2_part("result_parts", result)

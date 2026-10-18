@@ -124,7 +124,6 @@ GATES = {
     # Intent tab (intent_v2). Today's device-action JSON routes (retire, persist and rotate's
     # preview and apply, templatize's seed, revert and retry) left at 7.8 (2026-10-17, P7-24):
     # each device page's Actions (the device_v2 entries).
-    "templatize.profile_propose_apply": _g(A, "commits the network's monitoring profile, intent every device inherits (P.9 step b)"),
     "v2.ip_sla_policy_set": _g(A, "commits the monitoring profile's IP SLA policy, which decides the probes suggested (P.9 d4)"),
     "v2.ip_sla_commit": _g(A, "commits suggested IP SLA probes into the devices' intent (P.9 d4)"),
     "v2.decline_confirm": _g(A, "commits a declined profile section (or its undo) to one device's intent, with a reason, as the verified person (C718)"),
@@ -164,9 +163,11 @@ GATES = {
     "device_v2.retire_confirm": _g(A, "retires a device from the v2 device page (7.3, board 12; retire.apply, in the list its card carries): removes its intent and golden in a commit, declares its startup unmapped, clears its override and deletes its CSV row against the export log"),
     # Capture (7.1 step 4, C82, C89): Save All is its whole-fleet form, and
     # the old one-click route is gone, because nothing in it asked whether the
-    # state being enshrined was the one intended.
-    "golden.capture_apply": _g(A, "commits confirmed captures as the approved goldens"),
-    "device_v2.capture_confirm": _g(A, "commits a device's confirmed capture as its golden, from the v2 device page (7.3; the same apply as golden.capture_apply)"),
+    # state being enshrined was the one intended. Today's capture routes (golden.capture_preview
+    # and golden.capture_apply), the monitoring profile's (templatize.profile_propose_preview
+    # and _apply) and the inventory refresh (inventory.refresh) left at 7.8 (2026-10-17, P7-27)
+    # with today's index, their one caller.
+    "device_v2.capture_confirm": _g(A, "commits a device's confirmed capture as its golden, from the v2 device page (7.3; routes.golden.apply_captures)"),
     "onboard_v2.create": _g(A, "commits a new device's identity and intent, from v2's Add device",
                             "onboard_device"),
     "netbox_v2.confirm": _g(A, "writes to or deletes from NetBox as previewed, or (Stop tracking, C954) has Mercury forget what it created, from v2's NetBox page"),
@@ -241,9 +242,7 @@ GATES = {
 
     # ---- not gated: reads, previews, tests, layout, the schedule's work --
     "device_v2.rotate_preview": _g(N, "reads the device's account line live for the rotation's plan, from the v2 device page (rotate_op.plan); changes nothing"),
-    "device_v2.capture_start": _g(N, "starts the capture preview's read of one device, from the v2 device page (the same job as golden.capture_preview); records nothing"),
-    "golden.capture_preview": _g(N, "reads each device's running config and computes a "
-                                    "capture preview; records nothing"),
+    "device_v2.capture_start": _g(N, "starts the capture preview's read of one device, from the v2 device page (routes.golden.start_capture_preview); records nothing"),
     "templates_v2.coverage_check": _g(N, "measures how much of each device's golden its "
                                          "template reproduces, as a job; reads git, keeps the "
                                          "answer, reaches no device"),
@@ -273,11 +272,9 @@ GATES = {
     "restarts.planned": _g(K, "records a planned-restart window, so the restarts it covers are not reported as unexpected, and sets a Grafana silence on its devices' alerts as the caller, with the reason (B3); a window covering a restart already seen needs a correction with its reason", operation="planned_restart"),
     "update.check": _g(N, "runs the app-pushed reader now: fetches origin and asks CI; moves nothing that runs"),
     "jobs.job_finished": _g(N, "a host job ended: runs the job-health reader now; reads systemd and the stores, moves nothing, and accepts only a declared job's unit"),
-    "templatize.profile_propose_preview": _g(N, "reads committed intent and compares stored values in memory; writes nothing"),
     "netbox_v2.preview": _g(N, "starts a dry run of an import or removal, or a read of what Stop tracking would forget, on a thread; writes nothing"),
     "remote.verify": _g(N, "read-only checks against the remote"),
     "remote_v2.publication": _g(N, "reads what a first push would publish: counts, kinds and fingerprints, never a value; writes nothing"),
-    "inventory.refresh": _g(N, "the refresh interval does this anyway; it only happens earlier"),
 }
 
 #: SocketIO events, which never reach ``before_request``. Empty since the break-glass

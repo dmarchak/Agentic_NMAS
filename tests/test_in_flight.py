@@ -5,9 +5,10 @@ silence as "staged", started a deploy of the same device, and one silent
 screen produced a second change on a live device. The standing rule: every
 process tells the person what happened or what to do next.
 
-One panel, fixed above every modal, on every page, reading C98's lock (every
-holder, the CLIs included) and the receipts (so a reload does not lose a
-result); and a gate in every preview that names a holder BEFORE the confirm.
+One read of C98's lock (every holder, the CLIs included) and the receipts (so a reload does
+not lose a result), drawn on every v2 page as the In progress chip (today's panel, fixed above
+every modal, until it left with today's index at 7.8, P7-27); and a gate in every preview that
+names a holder BEFORE the confirm.
 """
 
 from tests.test_capture import run_capture_preview
@@ -15,7 +16,6 @@ import json
 import os
 import time
 
-import dukpy
 import pytest
 
 from modules.nsot import device_ops as D
@@ -98,76 +98,13 @@ class TestTheRoute:
         assert r.status_code == 500 and r.get_json()["ok"] is False
 
 
-def _panel(payload, seen=None):
-    src = open(os.path.join(ROOT, "static", "js", "nmas_in_flight.js")).read()
-    return dukpy.evaljs("var window = {};\n" + src
-                        + f"\nwindow.inFlightPanelHtml({json.dumps(payload)}, "
-                          f"{json.dumps(seen or {})});")
-
-
-class TestTheShippedPanel:
-    RUN = {"device": "r2", "words": "restored", "actor": "ops@example.com",
-           "held_for_s": 49, "step_words": "verifying: routing protocols are given up "
-           "to 90 s to settle, and it waits for them", "step_ago_s": 12, "stalled": False}
-
-    def test_running_names_who_what_since_and_the_wait(self):
-        html = _panel({"ok": True, "running": [self.RUN], "recent": []})
-        assert "Running now" in html and "<strong>r2</strong> is being restored" in html
-        assert "for 49 s" in html and "90 s to settle" in html
-
-    def test_a_failed_read_never_reads_as_nothing_running(self):
-        html = _panel({"ok": False, "error": "timeout"})
-        assert "Could not ask" in html and "not the same as none running" in html
-
-    def test_nothing_is_empty(self):
-        assert _panel({"ok": True, "running": [], "recent": []}) == ""
-
-    def test_a_finished_one_names_its_receipt_and_can_be_hidden(self):
-        row = {"device": "r2", "action": "restore", "outcome": "deployed",
-               "at": "2026-09-27T18:53:37Z", "actor": "ops@example.com"}
-        html = _panel({"ok": True, "running": [], "recent": [row], "window_s": 1800})
-        # The History tab since today's device page and its Changes tab left (7.8, P7-22).
-        assert "History tab" in html and "18:53:37 UTC" in html and "deployed" in html
-        assert _panel({"ok": True, "running": [], "recent": [row]},
-                      {"r2|2026-09-27T18:53:37Z": True}) == ""
-
-    def test_every_value_is_escaped(self):
-        html = _panel({"ok": True, "running": [dict(self.RUN, device="<b>x</b>")],
-                       "recent": []})
-        assert "<b>x</b>" not in html and "&lt;b&gt;" in html
-
-
-class TestTheWiring:
-    """Every long apply marks itself busy and unmarks in a `finally`, and the
-    panel sits above Bootstrap's modals (z-index 1055)."""
-
-    APPLIES = {
-        "static/js/nmas_capture.js": "/golden/capture/apply",
-        # Today's re-apply dialog (partials__golden_repo.3.js, /golden/restore/apply) left at
-        # 7.8 (2026-10-17): v2's restore is a job its card follows on the one stepper. Today's
-        # deploy wizard (/deploy/apply) and onboarding banner's Verify (/onboard/verify/) left
-        # at 7.8 (2026-10-17, P7-25): v2's deploy is a job its card follows, and v2's Verify is
-        # busy on itself until its answer (tests/test_v2_busy_on_itself.py).
-    }
-
-    def test_each_apply_is_wrapped(self):
-        import re
-        for rel, route in self.APPLIES.items():
-            src = open(os.path.join(ROOT, rel)).read()
-            # The fetch itself: the route's first mention can be a comment.
-            # The APPLY's fetch, never a preview's on the same prefix (Verify's
-            # preview, P.9 step c, reads one device and runs nothing long).
-            at = next(m.start() for m in re.finditer(re.escape("fetch('" + route), src)
-                      if "/preview" not in src[m.start():m.start() + 120])
-            before = src.rfind("inFlightBusy(true)", 0, at)
-            assert before != -1 and at - before < 400, f"{rel}: not marked busy"
-            after = re.search(r"finally\s*\{\s*inFlightBusy\(false\)", src[at:])
-            assert after, f"{rel}: not unmarked in a finally"
-
-    def test_the_panel_is_above_every_modal_on_both_pages(self):
-        base = open(os.path.join(ROOT, "templates", "base.html")).read()
-        assert 'id="inFlightPanel"' in base and "z-index:1090" in base
-        assert "js/nmas_in_flight.js" in base
+# TestTheShippedPanel and TestTheWiring: today's in-flight panel (`static/js/nmas_in_flight.js`,
+# above Bootstrap's modals on today's base page) and the applies of today's scripts that marked
+# it busy left with today's index at 7.8 (2026-10-17, P7-27). Every v2 page carries the In
+# progress chip (TestTheChip below: nothing drawn when nothing runs or waits, a running
+# operation's row and step, a finished one's outcome until opened, a failed read unknown and
+# never nothing), and a v2 control is busy on itself until its answer
+# (tests/test_v2_busy_on_itself.py).
 
 
 class TestThePreviewNamesTheHolder:
@@ -210,11 +147,9 @@ class TestAnUnselectableTargetSaysWhy:
         target = d["preview"]["what"]["targets"][0]
         assert target["selectable"] is False
         assert "someone@example.com" in target["why_not"], target["why_not"]
-        src = open(os.path.join(ROOT, "static", "js", "nmas_preview_confirm.js")).read()
-        html = dukpy.evaljs("var window = {};\n" + src + "\nwindow.previewConfirmHtml("
-                            + json.dumps(d["preview"]) + ", {selectable: true});")
-        assert "data-pc-why-not" in html and "someone@example.com" in html
-        assert "disabled" in html
+        # Today's renderer drew it beside a disabled box until it left at 7.8 (P7-27); v2's
+        # Capture card names the holder in its failing check and offers no confirm
+        # (tests/test_device_capture_v2.py, `test_a_held_device_fails_its_check_by_name`).
 
     def test_a_selectable_one_draws_no_reason(self, monkeypatch, tmp_path):
         from tests.test_capture import build_capture_lab

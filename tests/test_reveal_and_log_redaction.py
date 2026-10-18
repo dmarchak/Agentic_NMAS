@@ -16,11 +16,7 @@ TEAM = "example-team.cloudflareaccess.com"
 AUD = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 TUNNEL = "192.0.2.21"
 
-CONFIG = ("hostname r1\n"
-          "snmp-server community public RO\n"
-          "username admin privilege 15 password cisco123\n"
-          "interface Loopback0\n"
-          " description mgmt\n")
+from tests.test_device_capture_v2 import lab  # noqa: E402,F401 (the fixture)
 
 
 @pytest.fixture(scope="module")
@@ -70,103 +66,83 @@ def _service(private):
 
 
 @pytest.fixture
-def client(access, monkeypatch, tmp_path):
-    import flask
+def client(access, lab):  # noqa: F811
+    """v2 on test_capture's lab (r2's REAL configuration, which holds secrets, committed as its
+    golden). Today's golden version and diff routes (GET /golden/version/<host> and
+    /golden/diff/<host>, `reveal=1` for the unmasked text) held these until they left with
+    today's index at 7.8 (2026-10-17, P7-27): v2 draws a golden masked in History and reveals
+    one version in place (POST /v2/device/<name>/golden/reveal), a person, recorded first."""
+    return lab
 
-    import routes.golden as golden
 
-    monkeypatch.setattr(golden, "_repo_for", lambda name: str(tmp_path / "repo"))
-    monkeypatch.setattr(golden, "_active_list", lambda data=None: "Lab")
-    monkeypatch.setattr("modules.nsot.repo.golden_at",
-                        lambda repo, host, ref: CONFIG)
+def _head(repo):
+    import subprocess
+    return subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"], capture_output=True,
+                          text=True).stdout.strip()
 
-    app = flask.Flask(__name__)
-    app.register_blueprint(golden.bp)
-    return app.test_client()
+
+def _secret_line(lab):  # noqa: F811
+    masked = redact.redact_text(lab["captured"])
+    assert masked != lab["captured"], "the fixture holds no secret, so this proves nothing"
+    return next(l for l, m in zip(lab["captured"].splitlines(), masked.splitlines())
+                if l != m).strip()
+
+
+def _reveal(lab, headers=None):  # noqa: F811
+    return lab["client"].post("/v2/device/r2/golden/reveal", data={"ref": _head(lab["repo"])},
+                              headers=headers or {}, environ_base={"REMOTE_ADDR": TUNNEL})
 
 
 class TestConfigIsMaskedByDefault:
     def test_the_plain_request_is_masked(self, client):
-        body = client.get("/golden/version/r1",
-                          environ_base={"REMOTE_ADDR": TUNNEL}).get_json()
-
-        assert body["masked"] is True
-        assert "public" not in body["config"]
-        assert "cisco123" not in body["config"]
-        assert "<redacted:" in body["config"]
+        """The commit that recorded r2's golden, as History draws it: masked, its shape
+        kept."""
+        import html as H
+        import subprocess
+        golden = subprocess.run(["git", "-C", client["repo"], "rev-list", "-1", "HEAD", "--",
+                                 "golden"], capture_output=True, text=True).stdout.strip()
+        r = client["client"].get(f"/v2/history/commit/{golden}?list=Lab",
+                                 environ_base={"REMOTE_ADDR": TUNNEL})
+        page = H.unescape(r.get_data(as_text=True))
+        assert r.status_code == 200, page[:300]
+        assert _secret_line(client) not in page
+        assert "<redacted:" in page
         # Still useful: the shape of the config survives.
-        assert "hostname r1" in body["config"]
-        assert "description mgmt" in body["config"]
-
-    def test_the_diff_is_masked_too(self, client, monkeypatch):
-        """A diff carries the same secrets on its - and + lines."""
-        import routes.golden as golden
-
-        monkeypatch.setattr("modules.nsot.repo.golden_at",
-                            lambda repo, host, ref: CONFIG if ref == "a" else
-                            CONFIG.replace("cisco123", "newpassword99"))
-        body = client.get("/golden/diff/r1?a=a&b=b",
-                          environ_base={"REMOTE_ADDR": TUNNEL}).get_json()
-
-        assert body["masked"] is True
-        assert "cisco123" not in body["diff"]
-        assert "newpassword99" not in body["diff"]
-
-    def test_a_short_community_is_covered(self, client):
-        """6 characters — below the value floor, caught positionally."""
-        body = client.get("/golden/version/r1",
-                          environ_base={"REMOTE_ADDR": TUNNEL}).get_json()
-        assert "community public" not in body["config"]
+        assert "hostname r2" in page
 
 
 @pytest.mark.real_identity
-
-
 class TestRevealRequiresAPersonAndIsAudited:
     def test_an_unidentified_reveal_is_refused_and_still_masked(self, client):
-        response = client.get("/golden/version/r1?reveal=1",
-                              environ_base={"REMOTE_ADDR": TUNNEL})
-        body = response.get_json()
-
-        assert response.status_code == 403
-        assert body["masked"] is True
-        assert "public" not in body["config"], (
+        r = _reveal(client)
+        assert r.status_code in (401, 403)
+        assert _secret_line(client) not in r.get_data(as_text=True), (
             "a refused reveal must not return the secret anyway")
 
     def test_a_service_reveal_is_refused(self, client, keys):
-        response = client.get(
-            "/golden/version/r1?reveal=1",
-            headers={identity.JWT_HEADER: _service(keys)},
-            environ_base={"REMOTE_ADDR": TUNNEL})
-        body = response.get_json()
-
-        assert response.status_code == 403
-        assert body["outcome"] == "person_required"
-        assert body["masked"] is True
-        assert "cisco123" not in body["config"]
+        r = _reveal(client, {identity.JWT_HEADER: _service(keys)})
+        assert r.status_code == 403
+        assert _secret_line(client) not in r.get_data(as_text=True)
 
     def test_a_person_may_reveal(self, client, keys):
-        body = client.get("/golden/version/r1?reveal=1",
-                          headers={identity.JWT_HEADER: _person(keys)},
-                          environ_base={"REMOTE_ADDR": TUNNEL}).get_json()
-
-        assert body["masked"] is False
-        assert "snmp-server community public RO" in body["config"]
-        assert body["revealed_by"] == "operator@example.com"
+        import html as H
+        r = _reveal(client, {identity.JWT_HEADER: _person(keys)})
+        page = H.unescape(r.get_data(as_text=True))
+        assert r.status_code == 200, page[:300]
+        assert _secret_line(client) in page
+        assert "revealed to operator@example.com" in page
 
     def test_the_reveal_is_recorded(self, client, keys):
         from modules import reveal_audit
 
-        client.get("/golden/version/r1?reveal=1&ref=HEAD",
-                   headers={identity.JWT_HEADER: _person(keys)},
-                   environ_base={"REMOTE_ADDR": TUNNEL})
+        _reveal(client, {identity.JWT_HEADER: _person(keys)})
         rows = reveal_audit.entries()
 
         assert len(rows) == 1
         assert rows[0]["actor"] == "operator@example.com"
         assert rows[0]["kind"] == "person"
         assert rows[0]["what"] == "golden_config"
-        assert rows[0]["target"] == "r1"
+        assert rows[0]["target"] == "r2"
         assert rows[0]["peer"] == TUNNEL
 
     def test_the_audit_records_what_was_looked_at_not_what_was_seen(
@@ -174,30 +150,26 @@ class TestRevealRequiresAPersonAndIsAudited:
         """A trail that copies the secret has become a second place it lives."""
         from modules import reveal_audit
 
-        client.get("/golden/version/r1?reveal=1",
-                   headers={identity.JWT_HEADER: _person(keys)},
-                   environ_base={"REMOTE_ADDR": TUNNEL})
+        _reveal(client, {identity.JWT_HEADER: _person(keys)})
         raw = json.dumps(reveal_audit.entries())
 
-        assert "public" not in raw
-        assert "cisco123" not in raw
-        assert "hostname r1" not in raw
+        assert _secret_line(client) not in raw
+        assert "hostname r2" not in raw
 
     def test_a_refused_reveal_records_nothing(self, client, keys):
         from modules import reveal_audit
 
-        client.get("/golden/version/r1?reveal=1",
-                   headers={identity.JWT_HEADER: _service(keys)},
-                   environ_base={"REMOTE_ADDR": TUNNEL})
+        _reveal(client, {identity.JWT_HEADER: _service(keys)})
         assert reveal_audit.entries() == []
 
-    def test_a_masked_read_records_nothing(self, client):
+    def test_a_masked_read_records_nothing(self, client, keys):
         """The trail records reveals, not requests — or it drowns."""
         from modules import reveal_audit
 
         for _ in range(5):
-            client.get("/golden/version/r1",
-                       environ_base={"REMOTE_ADDR": TUNNEL})
+            client["client"].get("/v2/device/r2/history",
+                                 headers={identity.JWT_HEADER: _person(keys)},
+                                 environ_base={"REMOTE_ADDR": TUNNEL})
         assert reveal_audit.entries() == []
 
 

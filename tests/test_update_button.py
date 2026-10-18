@@ -884,8 +884,8 @@ class TestThePage:
         assert 'id="about-update" href="/v2/update"' in html
         tpl = open(os.path.join(ROOT, "templates", "v2", "_attention.html")).read()
         assert "r.action.open == 'app_update'" in tpl and "url_for('v2.update')" in tpl
-        js = open(os.path.join(ROOT, "static", "js", "nmas_attention.js")).read()
-        assert "a.open === 'app_update'" in js and 'data-nmas-update href="/v2/update"' in js
+        # Today's Needs attention panel (`nmas_attention.js`) linked the same row to /v2/update
+        # until it left with today's index at 7.8 (P7-27).
 
     def test_apply_writes_the_request_as_the_verified_person(self, tmp_path, monkeypatch):
         import app as A

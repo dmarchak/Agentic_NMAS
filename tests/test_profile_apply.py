@@ -114,15 +114,20 @@ class TestThePropose:
         assert not snmp["proposed"] and "2 different versions" in snmp["why"]
         assert sorted(d for v in snmp["variants"] for d in v["devices"]) == ["r2", "r6"]
 
-    def test_the_preview_route_draws_it_and_returns_no_secret_value(self, lab):
-        r = lab["client"].post("/templatize/profile/propose/preview", json={"list_name": "Lab"})
-        assert r.status_code == 200, r.get_data(as_text=True)[:300]
-        body = r.get_json()
-        (w,) = body["preview"]["what"]["targets"]
-        assert w["selectable"] and w["select_data"]["list"] == "Lab"
-        (t,) = body["preview"]["targets"]
-        assert any("snmp" in l for l in t["program"]["lines"])
-        text = r.get_data(as_text=True)
+    def _v2(self, lab, monkeypatch):
+        """Monitoring › Profile's Propose on v2, for the lab's network (today's JSON routes,
+        /templatize/profile/propose/preview and /apply and GET /templatize/profile, left with
+        today's index at 7.8, P7-27)."""
+        from modules.nsot import listref
+        monkeypatch.setattr(listref, "active", lambda: listref.resolve("Lab"))
+        return lab["client"]
+
+    def test_the_preview_route_draws_it_and_returns_no_secret_value(self, lab, monkeypatch):
+        import html as html_mod
+        r = self._v2(lab, monkeypatch).get("/v2/monitoring/profile/propose")
+        text = html_mod.unescape(r.get_data(as_text=True))
+        assert r.status_code == 200, text[:300]
+        assert "SNMP" in text and 'name="hash" value="' in text and 'value="Lab"' in text
         assert _secret_values(lab) and not [v for v in _secret_values(lab) if v in text]
 
     def test_apply_commits_as_the_person_and_a_moved_proposal_is_refused(self, lab):
@@ -139,23 +144,28 @@ class TestThePropose:
         assert lab["stored"], "the agreed secret was stored under the network's key"
         assert pp.apply("Lab", pp.propose("Lab")["hash"], "op@example.invalid")["outcome"] == "nothing"
 
-    def test_the_apply_route_draws_the_result_and_opens_the_apply_next(self, lab):
-        c = lab["client"]
-        h = c.post("/templatize/profile/propose/preview",
-                   json={"list_name": "Lab"}).get_json()["preview"]["what"]["targets"][0]["select_data"]["hash"]
-        r = c.post("/templatize/profile/propose/apply", json={"list_name": "Lab", "hash": h})
-        res = r.get_json()["result"]
-        assert res["level"] == "success"
-        assert res["next"]["open"] == "profile_apply"
-        assert res["next"]["args"] == {"list": "Lab", "devices": ["r6"]}
-        # The lab's list is the current one (C51 refuses a named list the registry lacks).
-        got = c.get("/templatize/profile").get_json()
-        assert got["profile"]["sections"]["snmp"] and got["commit"]["subject"].startswith("profile:")
+    def test_the_apply_route_draws_the_result_and_opens_the_apply_next(self, lab, monkeypatch):
+        """v2's confirm commits, says so, and leads on to where Apply is (Coverage). Today's
+        result offered "Apply monitoring profile…" for r6 itself (C1161); v2's names Coverage,
+        which shows what each device lacks."""
+        import re
 
-    def test_the_apply_needs_its_list_and_a_hash(self, lab):
-        c = lab["client"]
-        assert c.post("/templatize/profile/propose/apply", json={"hash": "x"}).status_code == 400
-        assert c.post("/templatize/profile/propose/apply", json={"list_name": "Lab"}).status_code == 400
+        from modules.nsot import profile
+        from modules.nsot.repo import git
+        c = self._v2(lab, monkeypatch)
+        card = c.get("/v2/monitoring/profile/propose").get_data(as_text=True)
+        h = re.search(r'name="hash" value="([^"]*)"', card).group(1)
+        r = c.post("/v2/monitoring/profile/propose", data={"list": "Lab", "hash": h})
+        html = r.get_data(as_text=True)
+        assert r.status_code == 200, html[:400]
+        assert "The profile is committed" in html and "Open Coverage</a>" in html
+        assert profile.read_committed(lab["repo"])["sections"]["snmp"]
+        assert git(lab["repo"], "log", "-1", "--format=%s")[1].startswith("profile:")
+
+    def test_the_apply_needs_its_list_and_a_hash(self, lab, monkeypatch):
+        c = self._v2(lab, monkeypatch)
+        assert c.post("/v2/monitoring/profile/propose", data={"hash": "x"}).status_code == 400
+        assert c.post("/v2/monitoring/profile/propose", data={"list": "Lab"}).status_code == 400
 
 
 def _commit_proposal():
@@ -262,38 +272,12 @@ class TestTheScopedDeploy:
         assert reached == ["profile"]
 
 
-class TestTheShippedClients:
-    def _js(self, rel):
-        return open(os.path.join(ROOT, rel), encoding="utf-8").read()
-
-    def test_the_selection_carries_the_list_the_preview_drew(self):
-        import dukpy
-        got = dukpy.evaljs([self._js("static/js/nmas_profile.js"),
-                            "profileSelection([{checked: true, disabled: false, "
-                            "dataset: {hash: 'h1', list: 'Lab'}}])"])
-        assert got == {"hash": "h1", "list": "Lab"}
-        assert dukpy.evaljs([self._js("static/js/nmas_profile.js"), "profileSelection([])"]) is None
-
-    def test_the_next_step_button_opens_the_apply_for_its_devices(self, lab):
-        """The SHIPPED result renderer on the REAL apply route's result."""
-        import dukpy
-        c = lab["client"]
-        h = c.post("/templatize/profile/propose/preview",
-                   json={"list_name": "Lab"}).get_json()["preview"]["what"]["targets"][0]["select_data"]["hash"]
-        res = c.post("/templatize/profile/propose/apply",
-                     json={"list_name": "Lab", "hash": h}).get_json()["result"]
-        html = dukpy.evaljs("var window = {};\n" + self._js("static/js/nmas_preview_confirm.js")
-                            + f"\nwindow.previewConfirmResultHtml({json.dumps(res)}, {{}})")
-        # C1161: its opener left with today's deploy wizard (P7-25), so the next step is a link
-        # to v2's Monitoring › Apply for the same network and devices, never a dead button.
-        assert 'href="/v2/monitoring/apply?list=Lab&device=r6"' in html, html[-600:]
-        assert "Apply monitoring profile…" in html and 'data-nmas-open="profile_apply"' not in html
-
-
-    def test_the_client_is_loaded_and_a_refusal_is_never_toast_only(self):
-        base = open(os.path.join(ROOT, "templates", "base.html"), encoding="utf-8").read()
-        assert "js/nmas_profile.js" in base
-        assert "showToast" not in self._js("static/js/nmas_profile.js")
+# Today's proposal clients (`static/js/nmas_profile.js`: its selection and its loading on
+# today's base page; and today's result renderer's next step to Monitoring › Apply, C1161),
+# TestTheShippedClients here, left with today's index at 7.8 (2026-10-17, P7-27). v2's Propose
+# card carries its list and hash in its own form and its confirm is busy on itself
+# (tests/test_monitoring_profile_v2.py, `test_the_confirm_commits_as_the_person`), and its
+# committed card leads on to Coverage (TestThePropose above).
 
 
 # ------------------------------------------------ LLDP, CDP and platform defaults
@@ -573,33 +557,35 @@ class TestChoosingAVersion:
         assert snmp["inherit"] == ["r6"]
         assert p["hash"] != pp.propose("Lab")["hash"]          # the choice is in the hash
 
-    def test_the_choice_is_confirmed_and_recorded_through_the_routes(self, lab, monkeypatch):
+    def test_the_choice_is_confirmed_and_recorded(self, lab, monkeypatch):
+        """Through the proposal's core (`profile_propose.propose` and `apply`, with the
+        proposal's preview, `preview_confirm.profile_propose_preview`): the choice is in the
+        hash, confirmed without it is refused, and the commit records it. Today's two routes
+        carried the choice until they left with today's index at 7.8 (P7-27); Monitoring ›
+        Profile's Propose on v2 does not offer a choice ("choosing between them is not on v2
+        yet": the register row named in the P7-27 commit), so this holds the core."""
+        from flask import Flask
+        from modules.nsot import profile_propose as pp
+        from modules.preview_confirm import profile_propose_preview
+
         _add_r1(lab, monkeypatch, ifindex=False)
-        c = lab["client"]
-        first = c.post("/templatize/profile/propose/preview", json={"list_name": "Lab"}).get_json()
-        (snmp,) = [x for x in first["choices"] if x["section"] == "snmp"]
-        vid = next(v["id"] for v in snmp["versions"] if v["devices"] == ["r2"])
-        pv = c.post("/templatize/profile/propose/preview",
-                    json={"list_name": "Lab", "choose": {"snmp": vid}}).get_json()
-        notes = [n for t in pv["preview"]["targets"] for n in t["program"].get("notes") or []]
+        first = pp.public(pp.propose("Lab"))
+        (snmp,) = [s for s in first["sections"] if s["section"] == "snmp"]
+        vid = next(v["id"] for v in snmp["variants"] if v["devices"] == ["r2"])
+        p = pp.public(pp.propose("Lab", choose={"snmp": vid}))
+        with Flask(__name__).test_request_context("/"):
+            pv = profile_propose_preview(p, pp.document_diff(p), request=None)
+        notes = [n for t in pv["targets"] for n in t["program"].get("notes") or []]
         assert any(n["title"].startswith("SNMP: you chose version " + vid) and
                    "r1 gains: snmp ifmib ifindex persist" in n["lines"] for n in notes), notes
-        h = pv["preview"]["what"]["targets"][0]["select_data"]["hash"]
+        h = p["hash"]
         # The hash is bound to the choice: confirmed without it, refused.
-        moved = c.post("/templatize/profile/propose/apply",
-                       json={"list_name": "Lab", "hash": h}).get_json()
-        assert moved["result"]["targets"][0]["outcome"] == "moved"
-        done = c.post("/templatize/profile/propose/apply",
-                      json={"list_name": "Lab", "hash": h, "choose": {"snmp": vid}}).get_json()
-        assert done["result"]["level"] == "success"
+        assert pp.apply("Lab", h, "op@example.invalid")["outcome"] == "moved"
+        done = pp.apply("Lab", h, "op@example.invalid", choose={"snmp": vid})
+        assert done["outcome"] == "committed", done
         subject = subprocess.run(["git", "-C", lab["repo"], "log", "-1", "--format=%s"],
                                  capture_output=True, text=True).stdout
         assert "chosen: snmp as held by r2" in subject
 
-    def test_the_shipped_client_draws_one_button_per_version(self):
-        import dukpy
-        src = open(os.path.join(ROOT, "static/js/nmas_profile.js"), encoding="utf-8").read()
-        html = dukpy.evaljs([src, "profileChoicesHtml([{section: 'snmp', chosen: '', versions: "
-                                  "[{id: 'a1', devices: ['r2', 'r3']}, {id: 'b2', devices: ['r1<x>']}]}])"])
-        assert html.count("data-profile-version=") == 2
-        assert "Use the version held by r2, r3" in html and "r1&lt;x&gt;" in html
+    # Today's version buttons (`static/js/nmas_profile.js`'s profileChoicesHtml) left with
+    # today's index at 7.8 (2026-10-17, P7-27); v2 offers no choice yet (above).

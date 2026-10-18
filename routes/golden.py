@@ -1,107 +1,28 @@
-"""Golden config repository blueprint: timeline, diffs, baselines."""
+"""Golden configs: THE capture (its preview job and its apply) and THE restore plan, with no
+routes of their own. Each device page's Capture… and Devices › Save (`routes/device_v2.py`,
+`modules/save_page.py`) start and apply a capture through `start_capture_preview` and
+`apply_captures`; a device's Restore from… and History › Baselines › Re-apply… plan through
+`restore_plan`.
+
+Today's routes here left at 7.8 (2026-10-17, P7-27; restore point tag `pre-remove/v1-pages`)
+with today's index, their one caller: the golden timeline's JSON (GET /golden/history/<host>,
+/golden/version/<host>, /golden/diff/<host>; the device's History tab and
+`/v2/history/commit/<sha>` draw each version, a reveal recorded first) and the capture's
+(POST /golden/capture/preview and /apply, GET /golden/capture/preview/<job>; today's Save All
+Configs and Capture devices with no golden).
+"""
 
 import logging
 import os
 
-from flask import Blueprint, jsonify, request
-
-from modules.identity import request_actor
-from modules.outbound import no_store
+from flask import request
 
 log = logging.getLogger(__name__)
-
-bp = Blueprint("golden", __name__, url_prefix="/golden")
 
 
 def _repo_for(list_name: str) -> str:
     from modules.config import get_list_data_dir
     return os.path.join(get_list_data_dir(list_name), "config_repo")
-
-
-def _active_list(payload=None) -> str:
-    from modules.config import get_current_list_name
-    name = (payload or {}).get("list_name") or request.args.get("list_name") or ""
-    return name.strip() or get_current_list_name()
-
-
-def _serve_config(text: str, *, what: str, target: str, detail: str = ""):
-    """``(payload, status)`` for config text, masked unless revealed. The
-    pattern lives in `modules/outbound.py` since register C56, so the backup
-    download and these routes are one pattern rather than two."""
-    from modules import outbound
-
-    return outbound.config_text(request, text, what=what, target=target, detail=detail,
-                                list_name=_active_list())
-
-
-@bp.route("/history/<path:hostname>", methods=["GET"])
-def history(hostname):
-    """Promotion timeline for one device, following renames."""
-    from modules.nsot.repo import get_ci_note, golden_history
-
-    list_name = _active_list()
-    repo = _repo_for(list_name)
-    try:
-        entries = golden_history(repo, hostname)
-        for entry in entries:
-            entry["ci"] = get_ci_note(repo, entry["sha"])
-        return jsonify({"ok": True, "hostname": hostname, "list": list_name,
-                        "history": entries})
-    except Exception as exc:                  # noqa: BLE001
-        log.exception("golden: history failed for %s", hostname)
-        return jsonify({"ok": False, "error": str(exc)}), 500
-
-
-@bp.route("/version/<path:hostname>", methods=["GET"])
-@no_store
-def version(hostname):
-    """One device's golden config at a given ref."""
-    from modules.nsot.repo import golden_at
-
-    ref = request.args.get("ref", "HEAD")
-    content = golden_at(_repo_for(_active_list()), hostname, ref)
-    if content is None:
-        return jsonify({"ok": False,
-                        "error": f"No golden config for {hostname} at {ref}"}), 404
-
-    payload, status = _serve_config(content, what="golden_config",
-                                    target=hostname, detail=ref)
-    payload["config"] = payload.pop("text")
-    return jsonify({**payload, "hostname": hostname, "ref": ref}), status
-
-
-@bp.route("/diff/<path:hostname>", methods=["GET"])
-@no_store
-def diff(hostname):
-    """Unified diff of one device's golden config between two refs."""
-    import difflib
-
-    from modules.nsot.repo import golden_at
-
-    repo = _repo_for(_active_list())
-    ref_a = request.args.get("a", "")
-    ref_b = request.args.get("b", "HEAD")
-    if not ref_a:
-        return jsonify({"ok": False, "error": "Parameter 'a' is required"}), 400
-
-    left, right = golden_at(repo, hostname, ref_a), golden_at(repo, hostname, ref_b)
-    if left is None or right is None:
-        return jsonify({"ok": False,
-                        "error": "One of the versions has no golden config"}), 404
-
-    lines = list(difflib.unified_diff(
-        left.splitlines(), right.splitlines(),
-        fromfile=f"{hostname}@{ref_a}", tofile=f"{hostname}@{ref_b}", lineterm=""))
-
-    # A diff of two configs carries the same secrets as either of them, on the
-    # `-` and `+` lines. Easy to leave masked-by-default behind when adding a
-    # view, which is why both go through one helper.
-    payload, status = _serve_config("\n".join(lines), what="golden_diff",
-                                    target=hostname,
-                                    detail=f"{ref_a}..{ref_b}")
-    payload["diff"] = payload.pop("text")
-    return jsonify({**payload, "hostname": hostname, "a": ref_a, "b": ref_b,
-                    "changed": bool(lines)}), status
 
 
 # Today's Baselines panel and its routes (GET /golden/baselines, GET /golden/restore_points/<host>,
@@ -369,59 +290,6 @@ def _close_handed_off(approvals: dict, outcomes: list, list_name: str = "") -> d
     return {"closed": closed, "left_pending": left}
 
 
-@bp.route("/capture/preview", methods=["POST"])
-def capture_preview():
-    """Record running configs as goldens: the PREVIEW (7.1 step 4, C82, C89).
-
-    Reads each device NOW and shows what its golden would become and how that
-    compares with its committed intent. No `devices` is the whole fleet (what
-    Save All now opens). Masked on the way out; writes nothing."""
-    from modules.nsot.restore import _devices_of
-
-    data = request.get_json(silent=True) or {}
-    list_name = _active_list(data)
-    inventory = _devices_of(list_name)
-    wanted = [d for d in (data.get("devices") or []) if d]
-    names = {d.get("hostname") for d in inventory}
-    unknown = sorted(set(wanted) - names)
-    if unknown:
-        return jsonify({"ok": False, "error": f"not in {list_name}: {', '.join(unknown)}"}), 404
-    repo = _repo_for(list_name)
-    scope = data.get("scope") or ""
-    if scope and scope != "no_golden":
-        return jsonify({"ok": False, "error": f"unknown capture scope {scope!r}"}), 400
-    excluded = []
-    if scope == "no_golden":
-        # What Auto-Create was, as a scope of the ONE capture operation
-        # (minimalism, NSOT_STAGE7_PLAN section 6a): every device with no
-        # COMMITTED golden, or a refused one (a refusal's own remedy is to
-        # capture the device). Decided from git, never from files on disk.
-        from modules.nsot import manifest as _m
-        from modules.nsot.repo import committed_golden_for
-        devices = []
-        for d in inventory:
-            record = committed_golden_for(repo, _m.find_by_name(repo, d.get("hostname", ""))[1])
-            if record["text"] is None:
-                devices.append(d)
-            else:
-                excluded.append(d.get("hostname", ""))
-        if not devices:
-            return jsonify({"ok": True, "list": list_name, "fleet": False, "preview": None,
-                            "nothing": (f"Every device in {list_name} has a committed golden "
-                                        f"({len(excluded)} device(s)): nothing to capture, "
-                                        f"and nothing was read.")})
-        fleet = False
-    else:
-        fleet = not wanted
-        devices = [d for d in inventory if fleet or d.get("hostname") in set(wanted)]
-    names = [d.get("hostname", "") for d in devices]
-    job = start_capture_preview(list_name, inventory, devices, fleet=fleet, excluded=excluded)
-    # `nothing` is always carried (empty here): one payload shape with the
-    # nothing-to-capture answer above, so the client reads a key that is there.
-    return jsonify({"ok": True, "list": list_name, "job": job, "devices": names,
-                    "nothing": ""}), 202
-
-
 def last_baseline_if_current(repo: str) -> dict:
     """The newest EARNED baseline when no golden has been committed since it (its tag's golden
     tree is HEAD's), as ``{tag, at, actor}``, else None (C539 (2)): a Save All that finds every
@@ -450,8 +318,9 @@ def last_baseline_if_current(repo: str) -> dict:
 
 def start_capture_preview(list_name: str, inventory: list, devices: list, *, fleet: bool,
                           excluded: list = None) -> str:
-    """Start the capture preview's reads as a job and return its id: THE start, for
-    `/golden/capture/preview` and the v2 device page's Capture (7.3) alike.
+    """Start the capture preview's reads as a job and return its id: THE start, for the v2
+    device page's Capture (7.3) and Devices › Save alike (today's /golden/capture/preview, its
+    third caller, left at 7.8 with today's index, P7-27).
 
     C188 step 2: the reads run as a JOB, and the request answers at once. It no longer
     waits on a device, so no edge limit can end it (107 s for nine devices read in series,
@@ -489,57 +358,6 @@ def start_capture_preview(list_name: str, inventory: list, devices: list, *, fle
     return capture_job.start(list_name, f"{list_name}: {len(devices)} device(s)", actor, work)
 
 
-@bp.route("/capture/preview/<job>", methods=["GET"])
-def capture_preview_result(job):
-    """The capture preview a POST started (C188 step 2), by its id: running
-    (with what it is doing), done (the preview), or failed (why). A READ; it
-    writes nothing. An id this server has no record of is 404 and says why,
-    never an empty preview: a restart loses a job, and a person starts it
-    again."""
-    from modules import op_progress
-    from modules.nsot import capture_job
-
-    got = capture_job.get(job)
-    if got is None:
-        return jsonify({"ok": False, "job": job, "state": "unknown",
-                        "error": ("This server has no capture preview " + job[:12]
-                                  + ": it finished more than "
-                                  + str(capture_job.KEEP_S // 60) + " minutes ago, or the "
-                                  "server restarted. Nothing was recorded; start the "
-                                  "preview again.")}), 404
-    op = op_progress.get(job) or {}
-    out = {"ok": got["state"] != "failed", "job": job, "state": got["state"],
-           "list": got["list"], "elapsed_s": got["elapsed_s"],
-           "step_words": op.get("step_words", ""), "error": got["error"], "fleet": None, "preview": None, "nothing": ""}
-    if got["state"] == "done":
-        out.update(got["payload"] or {})
-    return jsonify(out)
-
-
-@bp.route("/capture/apply", methods=["POST"])
-def capture_apply():
-    """Record the confirmed captures: each device is READ AGAIN, and one whose
-    running config moved since the preview is refused. One commit, as the
-    verified person, through `save_golden()`, which writes the computed
-    `Intent-Match:` trailer and takes a baseline only for a whole-fleet
-    capture with every device at its committed intent (C89 (c))."""
-    from modules.outbound import mask_payload
-
-    data = request.get_json(silent=True) or {}
-    confirmations = {k: v for k, v in (data.get("confirmations") or {}).items() if k}
-    acknowledged, problem = acknowledged_reasons(data.get("acknowledge") or {})
-    if problem:
-        return jsonify({"ok": False, "error": problem}), 400
-    if not confirmations:
-        return jsonify({"ok": False, "error": "Nothing confirmed: nothing recorded"}), 400
-    list_name = _active_list(data)
-    fleet = bool(data.get("fleet"))
-    got = apply_captures(list_name, confirmations, fleet=fleet, acknowledged=acknowledged,
-                         approvals=data.get("approvals") or {}, mode=data.get("mode") or "")
-    return jsonify(mask_payload({"ok": True, "list": list_name, "fleet": fleet,
-                                 "result": got["result"], "approvals": got["approvals"]}))
-
-
 def acknowledged_reasons(given: dict) -> tuple:
     """``(acknowledged, problem)``: a person's reason per device for a shrink intent does not
     explain (C310), each in the shape of a reason, recorded on the commit as theirs. The one
@@ -558,11 +376,16 @@ def acknowledged_reasons(given: dict) -> tuple:
 
 def apply_captures(list_name: str, confirmations: dict, *, fleet: bool, acknowledged: dict,
                    approvals: dict, mode: str = "") -> dict:
-    """Record the confirmed captures: THE apply, for `/golden/capture/apply` and the v2
-    device page's Capture (7.3) alike. ``{"result", "approvals", "outcomes", "save",
-    "timing"}``: the result as `capture_result` draws it, the queue items closed, each
-    device's outcome, `save_golden()`'s answer and the re-read's timing. Unmasked: the
-    caller masks what it sends."""
+    """Record the confirmed captures: THE apply, for the v2 device page's Capture (7.3)
+    (today's `/golden/capture/apply`, its other caller, left at 7.8 with today's index,
+    P7-27). Each device is READ AGAIN, and one whose running config moved since the preview is
+    refused. One commit, as the verified person, through `save_golden()`, which writes the
+    computed `Intent-Match:` trailer and takes a baseline only for a whole-fleet capture with
+    every device at its committed intent (C89 (c)).
+
+    ``{"result", "approvals", "outcomes", "save", "timing"}``: the result as `capture_result`
+    draws it, the queue items closed, each device's outcome, `save_golden()`'s answer and the
+    re-read's timing. Unmasked: the caller masks what it sends."""
     from modules.identity import request_actor
     from modules.nsot.repo import GoldenItem, save_golden
     from modules.nsot.restore import _devices_of

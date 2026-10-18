@@ -46,6 +46,17 @@ def _client():
     return app.test_client()
 
 
+def _attention():
+    """What Needs attention draws its rows from (`routes.v2._attention`: `needs_attention()`,
+    masked on the way out), read in a v2 request as the page reads it. Today's JSON read of the
+    same build (GET /attention) left with today's panel at 7.8 (P7-27)."""
+    from app import app
+    from routes.v2 import _attention as page
+
+    with app.test_request_context("/v2/attention"):
+        return page()
+
+
 def _restarts_cached(monkeypatch, value):
     """The restart reader's stored value, read just now: a value dated in the past with its
     180 s promise is a stale source, which is its own row (C1271), and these tests are about
@@ -115,13 +126,12 @@ class TestEveryKindSaysHowItClears:
         # and the sidebar's count re-read on.
         assert re.search(r"either way \(by <time datetime=\"[0-9TZ:-]+\">[0-9: -]+ UTC</time>\)\.",
                          html)
-        # Today's panel, the SHIPPED renderer executed against the real payload.
-        import dukpy
-        payload = _client().get("/attention").get_json()
-        src = open(os.path.join(ROOT, "static", "js", "nmas_attention.js"), encoding="utf-8").read()
-        drawn = dukpy.evaljs("var window = {};\n" + src
-                             + f"\nwindow.attentionPanelHtml({json.dumps(payload)});")
-        assert "Clears when a person acknowledges it with a reason" in drawn
+        # And the landing page, Needs attention as a person opens it (the list above is its
+        # redraw). Today's panel (`static/js/nmas_attention.js`), the second page this read
+        # until P7-27, left with today's index.
+        landing = _client().get("/v2/").get_data(as_text=True)
+        assert "Clears when a person acknowledges it with a reason, or 7 days after the " \
+               "restart; History keeps it either way" in landing
 
 
 class TestAcknowledgingARestart:
@@ -129,7 +139,7 @@ class TestAcknowledgingARestart:
         from modules.acknowledgements import read
         _restarts_cached(monkeypatch, _read(now=time.time()))
         _only(monkeypatch, "restart_source")
-        before = _client().get("/attention").get_json()
+        before = _attention()
         r = before["rows"][0]
         assert r["acknowledge"] is True and r["event"]
         html = _client().get("/v2/attention").get_data(as_text=True)
@@ -144,7 +154,7 @@ class TestAcknowledgingARestart:
         assert rec["why"] == "expected: the backup stalled the host, see C289"
         assert rec["row"] == r["id"] and rec["event"] == r["event"] and rec["at"]
 
-        after = _client().get("/attention").get_json()
+        after = _attention()
         assert after["rows"] == []
         assert after["acknowledged"][0]["by"] == "test-person@example.invalid"
         page = _client().get("/v2/attention").get_data(as_text=True)
@@ -155,7 +165,7 @@ class TestAcknowledgingARestart:
         from modules.acknowledgements import read
         _restarts_cached(monkeypatch, _read(now=time.time()))
         _only(monkeypatch, "restart_source")
-        r = _client().get("/attention").get_json()["rows"][0]
+        r = _attention()["rows"][0]
         got = _ack(r["id"], r["event"], why)
         assert got.status_code == 409 and "needs a reason" in got.get_json()["error"]
         assert read()["state"] == "absent"
@@ -163,7 +173,7 @@ class TestAcknowledgingARestart:
     def test_a_row_not_on_the_page_another_event_and_a_condition_are_refused(
             self, store, monkeypatch):
         _restarts_cached(monkeypatch, _read(now=time.time()))
-        r = _client().get("/attention").get_json()
+        r = _attention()
         row = next(x for x in r["rows"] if x["source"] == "restarts")
         why = "looked at it and it was expected"
         gone = _ack("restarts:Lab|s9|2026-10-01T00:00:00Z", "2026-10-01T00:00:00Z", why)
@@ -180,13 +190,13 @@ class TestAcknowledgingARestart:
         v = _read(now=time.time())
         _restarts_cached(monkeypatch, v)
         _only(monkeypatch, "restart_source")
-        r = _client().get("/attention").get_json()["rows"][0]
+        r = _attention()["rows"][0]
         assert _ack(r["id"], r["event"], "expected during the backup window").status_code == 200
         nxt = dict(v["recent_unplanned"][0], at="2026-10-02T09:00:00Z",
                    seen_at="2026-10-02T09:01:00Z", recorded_at="2026-10-02T09:01:30Z")
         v2 = dict(v, recent_unplanned=[nxt] + v["recent_unplanned"])
         _restarts_cached(monkeypatch, v2)
-        rows = _client().get("/attention").get_json()["rows"]
+        rows = _attention()["rows"]
         assert [x["event"] for x in rows] == ["2026-10-02T09:00:00Z"]
 
     def test_history_keeps_it_unexpected_and_says_who_acknowledged(self, store, monkeypatch):
@@ -194,7 +204,7 @@ class TestAcknowledgingARestart:
         from modules.nsot import listref
         _restarts_cached(monkeypatch, _read(now=time.time()))
         _only(monkeypatch, "restart_source")
-        r = _client().get("/attention").get_json()["rows"][0]
+        r = _attention()["rows"][0]
         _ack(r["id"], r["event"], "expected during the backup window")
         monkeypatch.setattr("modules.nsot.repo.golden_history", lambda *a, **k: [])
         monkeypatch.setattr("modules.nsot.hostvars.intent_commits", lambda *a, **k: [])
@@ -212,10 +222,10 @@ class TestAcknowledgingARestart:
     def test_an_unreadable_record_hides_nothing_and_says_so(self, store, monkeypatch):
         _restarts_cached(monkeypatch, _read(now=time.time()))
         _only(monkeypatch, "restart_source")
-        r = _client().get("/attention").get_json()["rows"][0]
+        r = _attention()["rows"][0]
         (store / "acknowledgements.jsonl").write_text(json.dumps(
             {"row": r["id"], "event": r["event"], "by": "x", "why": "y"}) + "\n{torn")
-        got = _client().get("/attention").get_json()
+        got = _attention()
         assert [x["id"] for x in got["rows"]] == [r["id"]]
         assert "Acknowledgements" in got["unreadable"]
         refused = _ack(r["id"], r["event"], "expected during the backup window")
@@ -232,13 +242,13 @@ class TestARepeatedAuthorisation:
     def test_acknowledged_it_leaves_and_one_more_authorisation_raises_it(self, store, monkeypatch):
         _only(monkeypatch, "authorisation_source")
         self._counts(monkeypatch, 3, "2026-10-02T08:00:00Z")
-        r = _client().get("/attention").get_json()["rows"][0]
+        r = _attention()["rows"][0]
         assert r["kind"] == "repeated" and r["acknowledge"]
         assert "Clears when" not in r["what"] and r["clears"]["ways"] == ["acknowledge"]
         assert _ack(r["id"], r["event"], "the lab link flaps, tracked in C289").status_code == 200
-        assert _client().get("/attention").get_json()["rows"] == []
+        assert _attention()["rows"] == []
         self._counts(monkeypatch, 4, "2026-10-02T11:00:00Z")
-        again = _client().get("/attention").get_json()["rows"]
+        again = _attention()["rows"]
         assert len(again) == 1 and again[0]["event"].startswith("4 authorisations")
 
 

@@ -1,9 +1,9 @@
 # Credentials
 
 The credentials the tool holds for each network, and the record that holds them all. On the
-redesigned pages it opens on the break-glass record, the page's first part. The credential list
-and each credential's expiry join it, as tabs beside the record, when the redesign builds them
-(plan 7.6). Until then they open on today's view.
+redesigned pages it opens on the break-glass record, the page's first part, with **Profiles**
+(the network's credential profiles) as the tab beside it. Each credential's expiry is not on
+these pages yet (plan 7.6).
 
 ## The break-glass record {#breakglass-record}
 

@@ -17,7 +17,6 @@ import subprocess
 
 import pytest
 
-from tests.payload_render import render_preview, render_result
 from tests.test_intent_match import R2, _broken
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -77,19 +76,13 @@ def build_capture_lab(monkeypatch, tmp_path):
 
 
 def run_capture_preview(client, body):
-    """The preview as the page gets it (C188 step 2): POST starts a job and
-    answers at once; this waits for the job and returns its GET, the response
-    the page draws. A POST that starts no job (a refusal, or nothing to
-    capture) is returned as it is."""
-    from modules.nsot import capture_job
+    """The preview as the card gets it (C188 step 2): the job started and waited for, then read
+    back, through the cores v2 runs (tests/capture_core.py; today's two routes, which did this
+    over HTTP, left with today's index at 7.8, P7-27). *client* is unused, kept so the callers
+    read as they did."""
+    from tests import capture_core
 
-    r = client.post("/golden/capture/preview", json=body)
-    job = (r.get_json(silent=True) or {}).get("job")
-    if not job:
-        return r
-    assert r.status_code == 202, r.get_data(as_text=True)[:300]
-    assert capture_job.wait(job, 60), f"capture preview {job} still running after 60 s"
-    return client.get(f"/golden/capture/preview/{job}")
+    return capture_core.post_preview(body)
 
 
 def _preview(cap, devices=("r2",)):
@@ -104,8 +97,9 @@ def _hash(d, name="r2"):
 
 
 def _apply(cap, confirmations, fleet=False):
-    r = cap["client"].post("/golden/capture/apply",
-                           json={"confirmations": confirmations, "fleet": fleet})
+    from tests import capture_core
+
+    r = capture_core.post_apply({"confirmations": confirmations, "fleet": fleet})
     assert r.status_code == 200, r.get_data(as_text=True)[:300]
     return r.get_json()
 
@@ -122,10 +116,13 @@ class TestThePreviewAsksWhatTheRestOfTheToolAsks:
         assert "devices" not in d, "the raw reads are not sent; the preview draws them"
         target = d["preview"]["what"]["targets"][0]
         assert target["state"] == "capturable" and target["select_data"]["hash"]
-        html = render_preview(d["preview"])
-        assert "What will change in its golden" in html
-        assert "+ load-interval 30" in html
-        part = html[html.index('data-pc-part="what_not"'):]
+        # The words the preview carries; the device page's Capture card draws them
+        # (tests/test_device_capture_v2.py, `test_it_draws_every_part_the_mockup_drew`). Today's
+        # renderer, which this read until P7-27, left with today's index.
+        p = d["preview"]
+        assert p["titles"]["program"] == "What will change in its golden"
+        assert "+ load-interval 30" in "\n".join(p["targets"][0]["program"]["lines"])
+        part = "\n".join(w["text"] for w in p["what_not"]["items"])
         # In words, the lines named (the operator, 2026-09-28: "(+1 -1)" read
         # as a number and was the fact that decided the operation).
         assert "Departs from its committed intent: 1 line(s) on the device that intent " \
@@ -155,9 +152,10 @@ class TestTheApplyRecordsWhatWasConfirmed:
         assert f"Actor: {TEST_PERSON}" in msg and "Actor-Verified: access" in msg
         result = d["result"]
         assert result["level"] == "partial"
-        html = render_result(result)
-        assert "alert-success" not in html and "Checked against committed intent" in html
-        assert "data-pr-receipt" not in html, "a capture has no receipt, and says nothing false"
+        assert any(t.get("checks") for t in result["targets"]), "checked against committed intent"
+        # Today's renderer drew this level amber and no receipt; it left with today's index at
+        # 7.8 (P7-27). The device page's Capture card draws the result
+        # (tests/test_device_capture_v2.py, TestTheConfirm).
 
     def test_a_device_that_moved_since_the_preview_is_refused(self, cap):
         h = _hash(_preview(cap))
@@ -183,11 +181,10 @@ class TestTheApplyRecordsWhatWasConfirmed:
 
 
 class TestTheScreensReachIt:
-    def test_save_all_opens_the_fleet_capture(self):
-        from tests.payload_render import lift, shipped
-
-        body = lift(shipped("index.1.js"), "saveAllConfigs")
-        assert "previewCapture(null)" in body and "fetch(" not in body
+    # Today's Save All Configs (`index.1.js`'s saveAllConfigs, which opened the whole-fleet
+    # capture) left with today's index at 7.8 (2026-10-17, P7-27): Devices › Save records every
+    # device of a network (tests/test_save_v2.py, its bar's Save for the ticked and for every
+    # device).
 
     def test_the_device_page_has_a_capture_button(self):
         """v2's device page's Actions menu (today's device page's Capture as golden button
@@ -197,17 +194,24 @@ class TestTheScreensReachIt:
         assert "('Capture', 'capture', 'capture')" in menu
 
     def test_the_old_one_click_route_is_gone(self):
+        """The one-click Save All is gone, and the capture is v2's device page's: its start
+        and its confirm (today's /golden/capture/* left with today's index at 7.8, P7-27)."""
         import app as A
 
         rules = {r.rule for r in A.app.url_map.iter_rules()}
         assert "/golden_configs/save_all" not in rules
-        assert {"/golden/capture/preview", "/golden/capture/apply"} <= rules
+        assert {"/v2/device/<name>/capture/start", "/v2/device/<name>/capture/confirm"} <= rules
 
 
 class TestAutoCreateIsAScopeOfCapture:
     """What Auto-Create was (one click, a first golden for every device
     without one, no preview, recorded as `ai-agent`, decided from files on
-    disk) is a SCOPE of this one operation (minimalism, NSOT_STAGE7_PLAN 6a)."""
+    disk) became a SCOPE of this one operation (minimalism, NSOT_STAGE7_PLAN 6a), and that
+    scope (`scope: no_golden` on today's /golden/capture/preview, its button "Capture devices
+    with no golden" on today's index) left with today's index at 7.8 (2026-10-17, P7-27). On v2 a
+    device with no golden is captured from its page, or saved from Devices with the others
+    ticked (Devices › Save). What stays the capture's own: a first golden is recorded as the
+    person who confirmed it, never the agent."""
 
     @pytest.fixture
     def two(self, cap, monkeypatch):
@@ -224,33 +228,8 @@ class TestAutoCreateIsAScopeOfCapture:
         cap["running"]["s9"] = cap["captured"].replace("hostname r2", "hostname s9")
         return cap
 
-    def _scoped(self, cap):
-        r = run_capture_preview(cap["client"], {"scope": "no_golden"})
-        assert r.status_code == 200, r.get_data(as_text=True)[:300]
-        return r.get_json()
-
-    def test_only_the_device_without_a_golden_is_read_and_the_rest_are_named(self, two):
-        read = []
-        import routes.golden as golden
-        real = golden._read_running
-        golden._read_running = lambda d, phases=None: (read.append(d["hostname"]), real(d))[1]
-        try:
-            d = self._scoped(two)
-        finally:
-            golden._read_running = real
-        assert read == ["s9"], read
-        assert [t["name"] for t in d["preview"]["what"]["targets"]] == ["s9"]
-        scope = [w for w in d["preview"]["what_not"]["items"] if w["kind"] == "scope"]
-        assert any("r2" in w["text"] and "already have a committed golden" in w["text"]
-                   for w in scope), scope
-
-    def test_nothing_to_capture_says_what_was_looked_at(self, cap):
-        d = self._scoped(cap)
-        assert d["preview"] is None
-        assert "Every device in Lab has a committed golden" in d["nothing"]
-
     def test_the_apply_records_the_person_never_the_agent(self, two):
-        d = self._scoped(two)
+        d = _preview(two, devices=("s9",))
         out = _apply(two, {"s9": _hash(d, "s9")})
         assert out["ok"], out
         from tests.conftest import TEST_PERSON
@@ -258,28 +237,6 @@ class TestAutoCreateIsAScopeOfCapture:
         assert "Source: capture" in msg and f"Actor: {TEST_PERSON}" in msg
         assert "ai-agent" not in msg
 
-    def test_an_unknown_scope_is_refused(self, cap):
-        r = cap["client"].post("/golden/capture/preview", json={"scope": "everything"})
-        assert r.status_code == 400 and "unknown capture scope" in r.get_json()["error"]
-
-    def test_the_one_click_route_is_gone_and_the_button_opens_the_scope(self, cap):
-        from tests.js_source import read_shipped
-
+    def test_the_one_click_route_is_gone(self):
         rules = {r.rule for r in __import__("app").app.url_map.iter_rules()}
         assert "/golden_configs/auto_create" not in rules
-        toolbar = read_shipped("templates/partials/device_toolbar.html")
-        assert "previewCapture([], {scope: 'no_golden'})" in toolbar
-        assert "cfgAutoGolden" not in read_shipped("templates/index.html")
-
-    def test_an_uncommitted_file_on_disk_is_not_a_golden(self, two):
-        """The scope is decided from git: s9 with a file on disk that nothing
-        committed (a failed save's residue) still has no golden."""
-        import os
-        from modules.nsot import manifest as M
-
-        with open(os.path.join(two["repo"], "golden", "s9.cfg"), "w") as fh:
-            fh.write("hostname s9\n")
-        M.upsert_device(two["repo"], "uid:s9", "s9", "203.0.113.19",
-                        platform="cisco_iosxe", golden="golden/s9.cfg")
-        d = self._scoped(two)
-        assert [t["name"] for t in d["preview"]["what"]["targets"]] == ["s9"]

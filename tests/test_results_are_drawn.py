@@ -64,17 +64,16 @@ RESULT_COMPONENT = {
     # device_v2.restore_confirm and History's Re-apply… draw a restore's result (PAGE_RECORD).
     # The import runs on a thread; its result is the stored summary, drawn on
     # the sync card whenever the NetBox tab is read (C85).
-    # Capture (7.1 step 4): Save All is its whole-fleet form, and the one-click
-    # route it replaced is gone. The record read back is the golden history.
-    "golden.capture_apply": ("static/js/nmas_capture.js", "previewCapture", "golden.history"),
+    # Capture (7.1 step 4; golden.capture_apply, drawn by `nmas_capture.js` and read back by
+    # golden.history) and the monitoring profile's proposal (templatize.profile_propose_apply,
+    # `nmas_profile.js`, read back by templatize.profile_read), the last two, left with today's
+    # index at 7.8 (2026-10-17, P7-27): the device page's Capture and Monitoring › Profile's
+    # Propose draw their results in place (PAGE_RECORD). Empty since: no script of today's draws
+    # a result.
     # Today's retire, persist, rotate and seed (retire.apply, persist.apply, rotate.apply,
     # templatize.seed_apply) and revert and retry (templatize.revert_apply, retry_apply) left at
     # 7.8 (2026-10-17, P7-24) with their scripts: each device page's card draws its result and
     # History reads its record (PAGE_RECORD's device_v2 entries).
-    # The monitoring profile's proposal (P.9 step b): its record is the profile
-    # commit, read back by the committed-profile reader the modal offers.
-    "templatize.profile_propose_apply": ("static/js/nmas_profile.js", "previewProfilePropose",
-                                         "templatize.profile_read"),
     # Revert and retry (today's templatize.revert_apply and .retry_apply, P7-24) and today's
     # onboarding Create, Verify and Abandon (onboard.create, .verify, .abandon, P7-25) left
     # with their scripts at 7.8 (2026-10-17): the v2 device page's and onboard_v2's draw their
@@ -297,7 +296,9 @@ GREEN_TOASTS = {
     # deleted) left with it (P7-26), and today's template editor's two (a save's and an
     # approval's) with it (P7-23), both at 7.8 on 2026-10-17: Settings' New network… and Delete
     # this network…, and Templates' Edit… and Approve…, draw their results in place.
-    ("static/js/gen/partials__inventory_source.1.js", "Refreshed from NetBox"): "green only with nothing skipped (C121)",
+    # Today's inventory source banner's "Refreshed from NetBox" (green only with nothing
+    # skipped, C121), the last, left with today's index at 7.8 (2026-10-17, P7-27): no script
+    # shipped draws a toast (v2 draws none: tests/test_v2_pages.py), so this holds the next one.
     # Today's bootstrap download (".cfg downloaded", a file download) left with today's
     # onboarding wizard at 7.8 (2026-10-17, P7-25): v2's Get the bootstrap config… reveals it
     # in place, recorded.
@@ -460,7 +461,9 @@ class TestEveryGreenToastIsDeclared:
 
     def test_every_green_toast_is_declared_and_no_declaration_is_a_ghost(self):
         calls = self._calls()
-        assert len(calls) >= 1, len(calls)           # the scan can see them (1 since today's onboarding wizard's bootstrap download left, 7.8, P7-25, 2026-10-17; 2 since today's list bar's create and delete (P7-26) and today's template editor's save and approval toasts (P7-23) left, 7.8, 2026-10-17; 6 since today's device page's "Output copied to clipboard" left, 7.8, P7-22, 2026-10-17; 7 since today's NetBox dialog's "Import started for" left, 7.8, 2026-10-17; 8 since today's Settings modal left, 7.8, 2026-10-15; 10 since today's drift panel's Check Now left, 7.8, 2026-10-15; 13 since the AI family left, D15; 18 before the file actions left at 7.8)
+        # The scan's population is empty since today's inventory banner's toast, the last, left
+        # with today's index (7.8, P7-27, 2026-10-17); its floor went with it, and the planted
+        # case below shows the scan still finds one. Before: 1 since today's onboarding wizard's bootstrap download left, 7.8, P7-25, 2026-10-17; 2 since today's list bar's create and delete (P7-26) and today's template editor's save and approval toasts (P7-23) left, 7.8, 2026-10-17; 6 since today's device page's "Output copied to clipboard" left, 7.8, P7-22, 2026-10-17; 7 since today's NetBox dialog's "Import started for" left, 7.8, 2026-10-17; 8 since today's Settings modal left, 7.8, 2026-10-15; 10 since today's drift panel's Check Now left, 7.8, 2026-10-15; 13 since the AI family left, D15; 18 before the file actions left at 7.8)
         undeclared = [(rel, call[:90]) for rel, call in calls
                       if not any(rel == f and lit in call for (f, lit) in GREEN_TOASTS)]
         assert undeclared == [], undeclared
@@ -482,16 +485,10 @@ class TestTheComponentDrawsTheseResults:
     """Evidence, from source, for each RESULT_COMPONENT entry: the function
     draws the component's result, and the record has a reader."""
 
-    def test_each_entry_draws_the_component_and_can_be_read_again(self):
-        import app as A
-        from tests.payload_render import lift
-
-        endpoints = {r.endpoint for r in A.app.url_map.iter_rules()}
-        assert len(RESULT_COMPONENT) >= 2
-        for ep, (rel, fn, reader) in RESULT_COMPONENT.items():
-            body = lift(_read(rel), fn)
-            assert "previewConfirmResultHtml(" in body, (ep, fn)
-            assert reader in endpoints, (ep, reader)
+    # Each RESULT_COMPONENT entry's script drew today's `previewConfirmResultHtml` and its record
+    # had a reader (`test_each_entry_draws_the_component_and_can_be_read_again`, its floor two)
+    # until the last two left with today's index at 7.8 (2026-10-17, P7-27); each is
+    # PAGE_RECORD's now, held below.
 
     def test_each_page_entry_draws_its_record_and_can_be_read_again(self):
         import app as A

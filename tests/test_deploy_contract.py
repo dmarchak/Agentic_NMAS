@@ -460,15 +460,17 @@ class TestEveryReferencedHelperExists:
     on some other test happening to import the right thing.
     """
 
-    ROUTE_MODULES = ["routes.golden", "routes.templatize",
-                     "routes.inventory",
-                     "routes.netbox_v2", "routes.settings_integrations"]
+    ROUTE_MODULES = ["routes.netbox_v2", "routes.settings_integrations"]
     #: Route files that serve nothing since their routes left, kept for the helpers the deploy
     #: path calls: `routes.templates` (today's template editor's routes left at 7.8,
-    #: 2026-10-17, P7-23; its `artifact_for` and golden and platform reads stay) and
+    #: 2026-10-17, P7-23; its `artifact_for` and golden and platform reads stay),
     #: `routes.deploy` (today's deploy wizard's two routes left at 7.8, 2026-10-17, P7-25; THE
-    #: plan and apply stay, `plan_devices`, `apply_batch` and `run_targets`).
-    HELPER_MODULES = ["routes.templates", "routes.deploy"]
+    #: plan and apply stay, `plan_devices`, `apply_batch` and `run_targets`), and
+    #: `routes.golden` and `routes.templatize` (today's capture, golden timeline and monitoring
+    #: profile routes left with today's index at 7.8, 2026-10-17, P7-27; THE capture and
+    #: restore plan, the rollback notes and bulk intent's core stay). `routes.inventory` (the
+    #: inventory source banner's two routes) left whole at P7-27.
+    HELPER_MODULES = ["routes.templates", "routes.deploy", "routes.golden", "routes.templatize"]
 
     @pytest.mark.parametrize("module_name", ROUTE_MODULES)
     def test_module_imports(self, module_name):

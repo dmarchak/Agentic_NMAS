@@ -3,7 +3,8 @@ source, `history_sources.reveals` (C818's `log_reveals`, extended), filed under 
 filter ``reveals``.
 
 On test_capture's lab (r2's REAL configuration committed as its golden), each reveal is made
-by its own writer: the golden version on v2, the golden version and diff behind ``?reveal=1``,
+by its own writer: the golden version on v2, the golden version and diff behind ``?reveal=1``
+(today's, gone at 7.8, P7-27: their records written in the shape they wrote them),
 the bootstrap config on v2 (its render stood in; the record is the route's), the ZTP
 responder's served config (`ztp_responder.record`), and a log line's record in the shape
 `log_reveal.reveal` writes (its own route is driven in tests/test_log_reveal.py). Then:
@@ -53,8 +54,13 @@ def every_kind(lab, audit, monkeypatch):  # noqa: F811
     from modules.nsot import ztp_responder
     c, sha = lab["client"], _head(lab["repo"])
     assert c.post("/v2/device/r2/golden/reveal", data={"ref": sha}).status_code == 200
-    assert c.get(f"/golden/version/r2?reveal=1&list_name=Lab&ref={sha}").status_code == 200
-    assert c.get(f"/golden/diff/r2?reveal=1&list_name=Lab&a={sha}&b={sha}").status_code == 200
+    # Today's golden version and diff behind ``?reveal=1`` (`outbound.config_text`) left with
+    # today's index at 7.8 (2026-10-17, P7-27); the records they wrote stay in the reveal
+    # record, so History still draws them: each written here in the shape they wrote it.
+    for what, detail in (("golden_config", sha), ("golden_diff", f"{sha}..{sha}")):
+        assert reveal_audit.record(actor=WHO, kind="person", what=what, target="r2",
+                                   detail=detail, peer="192.0.2.5",
+                                   extra={"audit_name": WHO, "list": "Lab"})["recorded"]
     monkeypatch.setattr("modules.nsot.onboard.bootstrap_artifact", lambda repo_dir, host: {
         "ok": True, "hostname": host, "config": f"hostname {host}\nsecret 0 {PLANTED}\nend\n"})
     assert c.post("/v2/onboard/r2/bootstrap", data={"list_name": "Lab"}).status_code == 200

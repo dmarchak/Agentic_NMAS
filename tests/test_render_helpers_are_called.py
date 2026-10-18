@@ -57,7 +57,14 @@ _ALLOWED = {
 
 
 def _template_files() -> list:
-    return tracked(TEMPLATES, suffix=".html")
+    """The shipped front-end sources: every template, and the project's own scripts
+    (`static/js/nmas_*.js`). Today's templates carried their helpers inline (and in
+    `static/js/gen`); v2's templates carry no script (strict policy), so v2's helpers live in
+    its scripts, scanned since today's pages left at 7.8 (2026-10-17, P7-27)."""
+    scripts = [p for p in tracked(os.path.join(ROOT, "static", "js"), suffix=".js",
+                                  recursive=False, root=ROOT)
+               if os.path.basename(p).startswith("nmas_")]
+    return tracked(TEMPLATES, suffix=".html") + scripts
 
 
 def _all_text() -> str:
@@ -98,8 +105,10 @@ class TestEveryRenderHelperIsCalled:
         # 8 -> 5 2026-10-17 (P7-23), 5 measured: the helpers today's template editor and
         # intent editor declared left with them at 7.8. 5 -> 1 the same day (P7-25), 1 measured
         # (renderInventoryBanner): today's onboarding wizard's and pending banner's helpers
-        # (pendingBannerHtml among them) left with them at 7.8.
-        assert len(helpers) >= 1, \
+        # (pendingBannerHtml among them) left with them at 7.8. 1 -> 9 the same day (P7-27):
+        # renderInventoryBanner left with today's index, and v2's scripts joined the scan, 9
+        # measured (liveNoteHtml, staleMarkerHtml, ageHtml among them).
+        assert len(helpers) >= 7, \
             f"the helper pattern matched only {sorted(helpers)}"
         # The five that motivated this sweep must be among them, or the
         # pattern has drifted away from the thing it was built for.
@@ -108,10 +117,12 @@ class TestEveryRenderHelperIsCalled:
         # left with today's drift panel at 7.8, 2026-10-15; _gBaselineCoverage, the fourth, with
         # today's Baselines panel at 7.8, 2026-10-17; templateRowHtml, the fifth, with today's
         # template editor at 7.8, 2026-10-17, P7-23; pendingBannerHtml, the first's banner, with
-        # today's onboarding at 7.8, 2026-10-17, P7-25: their NAMES are still pinned to the
-        # pattern.)
-        for known in ("renderInventoryBanner",):
+        # today's onboarding at 7.8, 2026-10-17, P7-25; renderInventoryBanner, the last of them on
+        # today's pages, with today's index at 7.8, 2026-10-17, P7-27: their NAMES are still
+        # pinned to the pattern, and v2's own markup helpers are found.)
+        for known in ("liveNoteHtml", "staleMarkerHtml"):
             assert known in helpers, f"{known} is no longer recognised"
+        assert _HELPER.match("renderInventoryBanner")
         assert _HELPER.match("pendingBannerHtml")
         assert _HELPER.match("_gBaselineCoverage") and _HELPER.match("nbCascadeHtml")
         assert _HELPER.match("templateRowHtml")

@@ -8,15 +8,6 @@
   "tarball": "https://registry.npmjs.org/@alpinejs/csp/-/csp-3.17.4.tgz",
   "version": "3.17.4"
  },
- "bootstrap/LICENSE": {
-  "bytes": 1093,
-  "from": "LICENSE",
-  "integrity": "sha512-8HLCdWgyoMguSO9o+aH+iuZ+aht+mzW0u3HIMzVu7Srrpv7EBBxTnrFlSCskwdY1+EOFQSm7uMJhNQHkdPcmjg==",
-  "package": "bootstrap",
-  "sha256": "8c14611ae41ac6fd543c13349f22188eb12c69b3e59105c5eca3925a8e4eca3e",
-  "tarball": "https://registry.npmjs.org/bootstrap/-/bootstrap-5.3.3.tgz",
-  "version": "5.3.3"
- },
  "fontsource-ibm-plex-mono/LICENSE": {
   "bytes": 5299,
   "from": "LICENSE",

@@ -14,7 +14,6 @@ import json
 import os
 import re
 
-import dukpy
 import pytest
 
 from modules import attention as A
@@ -257,15 +256,21 @@ class TestJobHealthAsASource:
         assert unknown["state"] == "unknown"
         assert A._job_action(unknown)["known"] is False
 
-
 # ---------------------------------------------------------------------------
-# The page, the route and the shipped panel
+# The page, the route and the list (v2's Needs attention; today's panel, nmas_attention.js,
+# drew the same payload until it left with today's index at 7.8, 2026-10-17, P7-27)
 # ---------------------------------------------------------------------------
 
 def _panel(payload):
-    src = open(os.path.join(ROOT, "static", "js", "nmas_attention.js")).read()
-    return dukpy.evaljs("var window = {};\n" + src
-                        + f"\nwindow.attentionPanelHtml({json.dumps(payload)});")
+    """The list as v2 draws it (`templates/v2/_attention.html`, the payload masked as
+    `routes.v2._attention` masks it), through the app's own Jinja."""
+    import app as nmas
+    from flask import render_template
+    from modules.outbound import mask_payload
+
+    with nmas.app.test_request_context("/v2/attention"):
+        return render_template("v2/_attention.html", a=mask_payload(payload),
+                               attention_trigger="")
 
 
 class TestThePageAndThePanel:
@@ -278,9 +283,10 @@ class TestThePageAndThePanel:
         html = _panel(page)
         # The evidence is one level down, one row per source (the operator's
         # presentation rule, 2026-09-28): the source and what it found.
-        assert "Nothing needs attention" in html
-        assert 'data-attention-source-row="job_health"' in html and "<td>Job health</td>" in html
-        assert src["checked"] in html and 'data-attention="none"' in html
+        assert "<strong>Nothing needs attention</strong>" in html
+        assert "Every source answered and none reports anything a person must do." in html
+        evidence = html[html.index('<details class="evidence"'):]
+        assert "<td>Job health</td>" in evidence and src["checked"] in evidence
 
     def test_rows_are_worst_first_and_drawn_with_every_part(self, monkeypatch):
         journal = "\n".join([_ok(NOW - 73 * 1800), _fail(NOW - 60)])
@@ -295,16 +301,26 @@ class TestThePageAndThePanel:
         assert levels == ["danger"] * len(J.JOBS) + ["unknown"], levels
         html = _panel(page)
         assert f"{U} is failing" in html and "command not found" in html
-        # An age, with the absolute time on hover (answer first, detail below).
-        assert f"journalctl -u {U}.service" in html and 'since <span title="20' in html
-        assert re.search(r"since <span title=\"20[^\"]+\">\d+ (s|min|h|d) ago", html)
-        assert "cannot tell" in html and "since not recorded" in html
+        # An age, with the absolute time in its `datetime` (answer first, detail below).
+        assert f"journalctl -u {U}.service" in html
+        assert re.search(r'since <time class="stamp" datetime="20', html), html
+        assert '<div class="att-level">Unknown</div>' in html and "since not recorded" in html
+        # Worst first, as drawn.
+        assert html.index('<div class="att-level">Critical</div>') < \
+            html.index('<div class="att-level">Unknown</div>')
 
-    def test_a_failed_read_is_never_drawn_as_nothing(self):
-        html = _panel({"ok": False, "error": "timeout"})
-        assert "Could not ask what needs attention" in html
-        assert "not the same as nothing needing attention" in html
-        assert "Nothing needs attention" not in html
+    def test_a_failed_read_is_never_drawn_as_nothing(self, monkeypatch):
+        """On v2 the list is drawn on the server: a read that raises is the request's failure,
+        answered in place as "Couldn't load" (the v2 swap rule), never an empty list."""
+        import app as nmas
+
+        def boom(*_a, **_k):
+            raise RuntimeError("timeout")
+        monkeypatch.setattr(A, "needs_attention", boom)
+        r = nmas.app.test_client().get("/v2/attention", headers={"HX-Request": "true"})
+        body = r.get_data(as_text=True)
+        assert r.status_code >= 500 and "timeout" in body
+        assert "Nothing needs attention" not in body
 
     def test_every_value_is_escaped(self, monkeypatch):
         bad = [{"unit": "<img src=x>", "what": "x", "state": "unknown",
@@ -312,7 +328,7 @@ class TestThePageAndThePanel:
         monkeypatch.setattr(A, "SOURCES", (lambda: A.job_health_source(
             _health(_ok(NOW - 60), version=bad)),))
         html = _panel(A.needs_attention())
-        assert "<script>" not in html and "<img" not in html
+        assert "<script>alert" not in html and "<img src=x" not in html
         assert "&lt;script&gt;" in html
 
     def test_the_route_answers_the_page(self, monkeypatch):
@@ -320,17 +336,18 @@ class TestThePageAndThePanel:
         journal = "\n".join([_ok(NOW - 3600), _fail(NOW - 60)])
         monkeypatch.setattr(A, "SOURCES", (lambda: A.job_health_source(
             _health(journal)),))
-        r = nmas.app.test_client().get("/attention")
+        r = nmas.app.test_client().get("/v2/attention")
         assert r.status_code == 200
-        body = r.get_json()
-        assert body["ok"] is True and body["rows"]
-        assert f"{U} is failing" in _panel(body)
+        assert f"{U} is failing" in r.get_data(as_text=True)
 
-    def test_the_landing_view_includes_the_panel_and_loads_its_script(self):
-        index = open(os.path.join(ROOT, "templates", "index.html")).read()
-        part = open(os.path.join(ROOT, "templates", "partials", "needs_attention.html")).read()
-        assert "{% include 'partials/needs_attention.html' %}" in index
-        assert 'id="needsAttentionPanel"' in part and "js/nmas_attention.js" in part
+    def test_the_landing_view_includes_the_panel_and_loads_its_script(self, monkeypatch):
+        """Needs attention is v2's landing (`/v2/`, and `/` answers 302 to it since P7-27): the
+        list is drawn in it and re-fetched from its own route."""
+        import app as nmas
+        monkeypatch.setattr(A, "SOURCES", (lambda: A.job_health_source(_health(_ok(NOW - 60))),))
+        html = nmas.app.test_client().get("/v2/").get_data(as_text=True)
+        assert 'id="attention"' in html and 'hx-get="/v2/attention' in html
+        assert "Nothing needs attention" in html
 
 
 # ---------------------------------------------------------------------------
@@ -503,7 +520,12 @@ class TestApprovalsAsASource:
                                   lambda: A.approvals_source(lambda: ([_item("r2")], None))])
         ids = sorted(r["id"] for r in page["rows"])
         assert ids == ["approvals:q-r2-update_golden_config", "drift:lab:drifted:r3"]
-        assert "which is not on this page" in _panel(page)
+        alone = next(r for r in page["rows"] if r["id"].startswith("approvals:"))
+        assert alone["attach_to"], alone
+        # Today's panel said "It is about …, which is not on this page" beside it until it left
+        # with today's index at 7.8 (P7-27); v2's list does not draw `attach_to` (the register
+        # row named in the P7-27 commit), and draws the row's own words.
+        assert "An approval is waiting: Config drift detected on r2" in _panel(page)
 
     def test_any_other_approval_is_its_own_row(self, queue):
         res = A.approvals_source(lambda: ([_item("r2", kind="revert_to_golden")], None))
@@ -517,7 +539,7 @@ class TestApprovalsAsASource:
                        description="snmp-server community Pl4ntedC0mmunity RO")
         monkeypatch.setattr(A, "SOURCES", (lambda: A.approvals_source(
             lambda: ([secret], None)),))
-        body = nmas.app.test_client().get("/attention").get_data(as_text=True)
+        body = nmas.app.test_client().get("/v2/attention").get_data(as_text=True)
         assert "Pl4ntedC0mmunity" not in body and "redacted" in body
 
 
@@ -908,7 +930,10 @@ class TestJobHealthFromTheReader:
 class TestTheHealthyPageIsOneLine:
     """The operator's (a), with (c)'s forcing (2026-09-28): nothing needs
     attention is ONE line that still makes the positive claim, and any
-    source that did not answer forces the full list open."""
+    source that did not answer is a row. On v2's list (today's panel, which also judged a
+    stored value's age on the page's own clock and made the row for a source that made none,
+    until it left with today's index at 7.8, P7-27; v2 judges on the server: the register row
+    named in the P7-27 commit)."""
 
     def _page(self, monkeypatch, *extra):
         live = lambda: A.job_health_source(_health(_ok(NOW - 60)))  # noqa: E731
@@ -920,49 +945,31 @@ class TestTheHealthyPageIsOneLine:
                                       value_at=NOW - 900, checked="checked 9 of 9")
         page = self._page(monkeypatch, old)
         html = _panel(page)
-        assert html.startswith('<details') and "<details open" not in html
-        summary = html[html.index("<summary>"):html.index("</summary>")]
-        assert "Nothing needs attention" in summary
-        assert "2 of 2 sources answered" in summary
-        assert "oldest value: Drift, <span title=\"" + A._iso(NOW - 900) + "\">" in summary
-        # The full list is still in the page, one click away.
-        assert "checked 9 of 9" in html[html.index("</summary>"):]
+        summary = html[html.index('<p class="att-summary">'):html.index("</p>")]
+        assert "Nothing needs attention" in summary and "2 sources checked" in summary
+        # The full list is still in the page, one click away, each value with its age.
+        evidence = html[html.index('<details class="evidence"'):]
+        assert "<details open" not in html and "checked 9 of 9" in evidence
+        assert f'datetime="{A._iso(NOW - 900)}"' in evidence
 
     def test_the_healthy_line_carries_the_answer_and_the_debug_is_one_level_down(self, monkeypatch):
-        """The operator's rule: the one-liner is the answer; read costs and
-        endpoints are for us, on hover in the evidence table, never in the line."""
+        """The operator's rule: the one-liner is the answer; read costs are for us, in the
+        evidence table, never in the line."""
         page = self._page(monkeypatch)
-        page["sources"][0]["detail"] = "read from api/ruler, api/prometheus"
         html = _panel(page)
-        summary = html[html.index("<summary>"):html.index("</summary>")]
+        summary = html[html.index('<p class="att-summary">'):html.index("</p>")]
         assert " ms" not in summary and "api/" not in summary
-        table = html[html.index('data-attention="sources"'):]
-        assert 'title="value ' in table and "read from api/ruler" in table and " ms" in table
+        table = html[html.index('<details class="evidence"'):]
+        assert " ms</span>" in table
 
-    def test_a_stale_reader_job_health_already_rows_is_not_drawn_twice(self, monkeypatch):
-        """The server's `job_health:reader:<name>` row covers a stale reader
-        source; the page adds its own row only when nothing covers it."""
-        page = self._page(monkeypatch)
-        src = dict(page["sources"][0], reader="grafana-alerts", source="grafana",
-                   label="Grafana alerts", value_at=A._iso(NOW - 3600), stale_after_seconds=180)
-        page["sources"].append(src)
-        alone = _panel(page)
-        assert "Grafana alerts&#39;s value is older" in alone or \
-            "Grafana alerts's value is older" in alone
-        page["rows"] = [A.row(source="job_health", kind="job", key="reader:grafana-alerts",
-                              what="x",
-                              cause="stopped", action={"label": "restart"}, level="warning")]
-        covered = _panel(page)
-        assert "value is older than its source promises" not in covered
-
-    def test_a_source_that_did_not_answer_is_a_row_even_if_it_made_none(self, monkeypatch):
-        """Even with no row (a source that forgot to make one), a source that
-        did not answer is itself something needing attention: a ROW, never a
-        line in the evidence (the operator, 2026-09-28)."""
-        page = self._page(monkeypatch)
-        page["sources"].append({"label": "Drift", "state": "unreadable",
-                                "read_at": A._iso(NOW), "rows": []})
-        html = _panel(page)
-        assert 'data-attention="rows"' in html
-        rows = html[:html.index('data-attention="evidence"')]
+    def test_a_source_that_did_not_answer_is_a_row(self, monkeypatch):
+        """A source that did not answer is itself something needing attention: a ROW, never
+        a line in the evidence (the operator, 2026-09-28). On v2 the source makes it
+        (`attention.source_result` with an error)."""
+        def unreadable():
+            return A.source_result("drift", "Drift", read_at=NOW, took_ms=0,
+                                   error="the store could not be opened")
+        html = _panel(self._page(monkeypatch, unreadable))
+        rows = html[:html.index('<details class="evidence"')]
         assert "Drift could not be read" in rows and "not the same as nothing" in rows
+        assert "1 could not be read: Drift" in rows

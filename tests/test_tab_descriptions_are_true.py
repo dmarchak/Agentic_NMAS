@@ -121,9 +121,11 @@ class TestTheSaveScreensDescribeWhatSaveDoes:
         assert 'href="/v2/help/save"' in page
 
     def test_the_route_docstring_matches_the_screens(self):
+        """THE apply's (today's /golden/capture/apply carried it until it left with today's
+        index at 7.8, P7-27; the device page's Capture calls the same apply)."""
         import routes.golden as golden
 
-        doc = inspect.getdoc(golden.capture_apply) or ""
+        doc = inspect.getdoc(golden.apply_captures) or ""
         assert "One commit" in doc and "READ AGAIN" in doc
         assert "stage the changes" not in doc
 

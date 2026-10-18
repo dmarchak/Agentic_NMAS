@@ -211,26 +211,9 @@ class TestTheReviewShowsWhatWillBeCreated:
         assert "&lt;script&gt;" in html
 
 
-class TestToday_sIndexHasNoOnboardingTab:
-    """Stage 7 reorganises around device-centric and fleet-level views.
-    Onboarding is fleet-level; a thirteenth tab is what that redesign exists
-    to undo. (Today's toolbar button left with the wizard at 7.8, 2026-10-17, P7-25.)"""
-
-    def test_no_new_tab_pane_was_added(self):
-        import app as nmas
-
-        page = nmas.app.test_client().get("/").get_data(as_text=True)
-        panes = re.findall(r'data-bs-target="#(\w+Pane)"', page)
-        assert "onboardPane" not in panes
-        # 12 until P.4 removed the Jenkins tab; 11 until 7.8 removed the History tab with
-        # /list/change_log (2026-10-12).
-        # 7 since 2026-10-12: Configure, Monitoring and Topology left (7.8); 5 since 2026-10-14:
-        # the Ansible and Agent tabs left with the AI family (D15), Approvals became Drift; 4
-        # since 2026-10-15: the Drift tab left (7.8); 3 the same day: the Logs tab left (7.8);
-        # 2 since 2026-10-17: the NetBox tab left (7.8); 1 the same day: the Git tab left (7.8,
-        # P7-21), Devices alone.
-        assert len(set(panes)) == 1, sorted(set(panes))
-        assert "openOnboardWizard" not in page and "onboardPendingBanner" not in page
+# TestToday_sIndexHasNoOnboardingTab: today's index (its tab panes, Devices alone at the end, and
+# no onboarding tab) left at 7.8 (2026-10-17, P7-27). Onboarding is Devices › Add device… on v2,
+# and the sidebar holds its signed-off items in order (tests/test_v2_pages.py, TestTheSidebar).
 
 
 class TestTheCores:

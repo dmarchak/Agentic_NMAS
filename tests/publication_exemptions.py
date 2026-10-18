@@ -281,9 +281,6 @@ EXEMPT = {
     ('tests/test_no_pattern_kill.py', '1f97a9a3e4a6'): ('INVENTED', ('address',)),
     ('tests/test_no_pattern_kill.py', '3b7b469000d7'): ('INVENTED', ('address',)),
     ('tests/test_no_pattern_kill.py', '7218c882618d'): ('INVENTED', ('address',)),
-    # tests/test_no_unreachable_ui.py
-    ('tests/test_no_unreachable_ui.py', 'e9082b6ec214'): ('INVENTED', ('address',)),
-    ('tests/test_no_unreachable_ui.py', '796240fafc7c'): ('INVENTED', ('address',)),
     # tests/test_normalize_equivalence.py
     ('tests/test_normalize_equivalence.py', '4554dea76cef'): ('INVENTED', ('address',)),
     ('tests/test_normalize_equivalence.py', '4f7bba8eeb4e'): ('INVENTED', ('address',)),

@@ -252,44 +252,14 @@ class TestTheRecordAndTheScreens:
 
 
 class TestTheShippedScreensDrawIt:
-    def _html(self, verify):
-        from modules.nsot import receipts
-        from modules.preview_confirm import operation_result
-        from tests.payload_render import render_result
-        rows = receipts.rows_for({"results": [{
-            "device": "r3", "outcome": "deployed", "commands": VTY, "authorised": [],
-            "verify": {"issues": [], "checked_protocols": ["bgp"], "pre": {}, "post": {},
-                       **verify}}]},
-            list_name="Lab", action="deploy", actor="op", actor_kind="person")
-        return render_result(operation_result(rows, {"results": []}, {"ok": True, "path": "x"},
-                                              "deploy"))
-
-    def test_the_result_says_quick_and_how_many_lines_read_back(self):
-        html = self._html({"ok": True, "verify_scope": V.classify(VTY),
-                           "read_back": V.read_back(VTY + ["no logging console"], MERGED)})
-        assert 'data-pr-verify-scope="quick"' in html and "quick verify: every line is" in html
-        assert ("new lines read back: 4 of 4 (1 not checked: a `no` line reads back as an "
-                "absence)") in html
-
-    def test_a_line_not_read_back_is_drawn_and_says_nothing_was_rolled_back(self):
-        html = self._html({"ok": False, "verify_scope": V.classify(VTY),
-                           "read_back": V.read_back(VTY, R3)})
-        assert "not read back after the change: line vty 0 4 &gt; length 0" in html
-        assert "nothing was rolled back for it" in html
-
-    def test_the_preview_draws_the_note(self):
-        from tests.payload_render import render_preview
-        from modules.preview_confirm import build, confirm_part, verify_note, gate
-        from types import SimpleNamespace
-        p = build(action="deploy", summary="s", targets=[{
-            "name": "r3", "state": "deployable", "selectable": True, "select_data": {},
-            "program": {"lines": VTY, "verify": verify_note(VTY), "none": ""},
-            "operands": [{"name": "o", "value": "v"}], "gates": [gate("g", "pass", "")]}],
-            what_not=[], nothing_left_out="Nothing.",
-            confirm=confirm_part(SimpleNamespace(headers={}, environ={}, remote_addr="")))
-        html = render_preview(p)
-        assert "Verify after the push: QUICK, because every line is management" in html
-        assert "Sections: line vty 0 4" in html
+    # Today's renderer drew the result's verify scope and read-back count, each line not read
+    # back with "nothing was rolled back for it", and the preview's verify note
+    # (`static/js/nmas_preview_confirm.js`); it left with today's index at 7.8 (2026-10-17,
+    # P7-27; its last caller of a deploy, today's deploy wizard, left at P7-25). v2's deploy
+    # result cards (the device page's Deploy… and the batch's card) and the device's Deploy…
+    # preview draw none of the three, measured the same day: the register row named in the
+    # P7-27 commit. The record carries them (TestTheRecordAndTheScreens above) and so does THE
+    # plan (below).
 
     def test_the_real_deploy_plan_carries_it(self, tmp_path, monkeypatch):
         """Through THE plan (/deploy/plan until 7.8) on r2's real config (the capture lab):

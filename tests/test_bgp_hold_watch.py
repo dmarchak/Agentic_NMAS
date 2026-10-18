@@ -202,10 +202,12 @@ class TestThePushTimeIsRecorded:
         assert ctx.pushed_at == {"x": 4242.0}
 
 
-def test_the_receipt_keeps_the_watch_and_the_result_draws_it():
+def test_the_receipt_keeps_the_watch():
+    """Today's renderer drew it on the result ("bgp read 180 s after the push (hold 180 s, IOS
+    default …"), until it left with today's index at 7.8 (P7-27); v2's result cards do not draw
+    the watch (measured the same day: the register row named in the P7-27 commit). The receipt
+    keeps it, and History reads the receipt."""
     from modules.nsot import receipts
-    from modules.preview_confirm import operation_result
-    from tests.payload_render import render_result
 
     watch = {"state": "converged", "hold_s": 180, "basis": "IOS default 180 s (no timers "
              "configured)", "since": "the push", "watched_s": 180, "before": 2, "after": 2}
@@ -215,6 +217,3 @@ def test_the_receipt_keeps_the_watch_and_the_result_draws_it():
                    "post": {}, "bgp_watch": watch}}]},
         list_name="Lab", action="deploy", actor="op", actor_kind="person")
     assert rows[0]["checks"]["bgp_watch"] == watch
-    html = render_result(operation_result(rows, {"results": []}, {"ok": True, "path": "x"},
-                                          "deploy"))
-    assert "bgp read 180 s after the push (hold 180 s, IOS default" in html

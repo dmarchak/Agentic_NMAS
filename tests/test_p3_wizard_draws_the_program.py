@@ -144,13 +144,12 @@ class TestAuthorisationEndToEnd:
 
 
 def _card(plan):
-    """The wizard's screen: the plan's `preview`, drawn by the one shipped
-    renderer with the wizard's hooks (Stage 7.1)."""
-    pytest.importorskip("dukpy")
-    from tests.payload_render import render_preview
+    """The screen: the plan's device on v2, the device page's Deploy… card drawn from THE plan
+    (`tests/payload_render.render_deploy_card_v2`). Today's deploy wizard drew it until it left
+    at 7.8 (P7-25), and today's renderer with it until P7-27."""
+    from tests.payload_render import render_deploy_card_v2
 
-    return render_preview(plan["preview"], {"selectable": True, "onSelect": "_updateDeploySummary",
-                                            "authorise": "_reauthoriseDevice"})
+    return render_deploy_card_v2(plan, "s4")
 
 
 def _unesc(html: str) -> str:
@@ -165,32 +164,28 @@ class TestTheWizardDrawsIt:
         assert len(d["commands"]) >= 3
         for line in d["commands"]:
             assert line in html, (line, html)
-        assert f"Exactly these {len(d['commands'])} line(s) will be sent" in html
+        assert f"exactly these {len(d['commands'])} line(s) are sent, in order" in html
 
     def test_the_dangerous_line_has_its_own_authorise_box(self, client):
         plan, _d = _plan(client)
-        html = _card(plan)
-        boxes = re.findall(r'type="checkbox"[^>]*data-auth-device="s4" data-line="([^"]*)"', html)
-        assert [_unesc(b) for b in boxes] == ["shutdown"], boxes
-        assert "authorise this exact line with your reason" in html
-        # C140: a reason field beside the box, and no reason yet.
-        assert re.search(r'data-auth-reason data-auth-device="s4" data-line="shutdown"', html)
+        html = _unesc(_card(plan))
+        boxes = re.findall(r'<code>([^<]*)</code> is a dangerous line', html)
+        assert boxes == ["shutdown"], boxes
+        # C140: a reason field beside the line, and no reason yet.
+        assert re.search(r'<input type="text" name="dz::0" value=""', html), html
 
     def test_an_unauthorised_device_cannot_be_ticked(self, client):
         plan, _d = _plan(client)
         html = _card(plan)
-        device_box = re.search(r'<input [^>]*data-pc-select id="pc_sel_s4"[^>]*>', html).group(0)
-        assert "disabled" in device_box
-        assert "dangerous line(s) not authorised" in html
+        assert "op-confirm" not in html, "no confirm while the dangerous line waits"
+        assert "waits on your stated reason" in html
 
     def test_once_authorised_it_can_be_ticked_and_says_so(self, client):
         """Control for the one above."""
         plan, d = _plan(client, {"s4": [SHUT]})
-        html = _card(plan)
-        device_box = re.search(r'<input [^>]*data-pc-select id="pc_sel_s4"[^>]*>', html).group(0)
-        assert "disabled" not in device_box
-        assert 'dangerous: AUTHORISED, stated reason: "planned maintenance, port unused"' in html
-        assert f'data-command-hash="{d["command_hash"]}"' in html
+        html = _unesc(_card(plan))
+        assert "op-confirm" in html
+        assert f'"command_hash": "{d["command_hash"]}"' in html
 
     def test_the_attribution_split_is_drawn(self, client):
         plan, _d = _plan(client)
@@ -243,15 +238,19 @@ class TestTheRestorePathCanAuthorise:
     # reasons (tests/test_device_restore_v2.py).
 
     def test_the_restore_preview_marks_authorised_and_refused_lines(self, monkeypatch):
-        """Drawn by the component from the real restore preview, both ways."""
-        from tests.payload_render import render_preview
+        """Drawn by v2's Restore from… card from the real restore plan, both ways (today's
+        renderer drew it until P7-27): the dangerous line asks for its reason, and only the
+        authorised plan offers the confirm."""
+        from tests.payload_render import render_restore_card_v2
 
         self._stub(monkeypatch)
         refused = self._plan()
         authed = self._plan({"s4": [SHUT]})
-        a_html, r_html = render_preview(authed["preview"]), render_preview(refused["preview"])
-        assert "dangerous: AUTHORISED, stated reason" in a_html
-        assert "dangerous: authorise this exact line with your reason" in r_html
+        a_html = render_restore_card_v2(authed, "s4")
+        r_html = render_restore_card_v2(refused, "s4")
+        assert "<code>shutdown</code> a dangerous line. Why (your stated reason" in r_html
+        assert "op-confirm" not in r_html and "waits on your stated reason" in r_html
+        assert "op-confirm" in a_html
         assert refused["preview"]["what"]["targets"][0]["state"] == "not_authorised"
         assert refused["preview"]["what"]["targets"][0]["selectable"] is False
         assert authed["preview"]["what"]["targets"][0]["selectable"] is True
