@@ -25,8 +25,12 @@ Shots: board A at 1440 and 1280, the first board at 1440, its phone board at 390
 1440, 1280 and 390 (`devices-page-*`), and ticked with Actions open at 1440, 1280 and 390
 (`devices-selected-page-*`), each phone shot also as its first screen.
 Compared 2026-10-16.
-Templates compared: templates/v2/devices.html, templates/v2/_devices.html
-Templates sha256: `dca8145f7ce2f3509dbcb1f2c28924d51418fcb53e141096f1228b936861204a`
+Templates compared: templates/v2/devices.html, templates/v2/_devices.html, templates/v2/_onboard_add.html
+Templates sha256: `e81b3cb0a0ba7c5d4dc92a96802dce5526c40cd2b6089be27cc37617e2bce1ff`
+
+Compared again 2026-10-19 (C1346, 0e): Add device's card (`_onboard_add.html`, opened in place
+above the list) joins the record, compared with board E for the first time since it was built
+(the section "Board E: Add device" below); the page's own regions above are unchanged.
 
 Compared again 2026-10-18 (the operator's walk, B; C902's agreed design, R1): the table's head
 draws the select-all box the first board drew there, as C902 agreed it: "Select the <n> shown"
@@ -89,3 +93,35 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | First board's selection actions | Plan a deploy… beside Actions; Add device ▾ as the primary | board A's one Actions menu replaces both, as built | **same** |
 | Phone: rows | each device one line, its name and one state (Answering, Departs, Not answering) | each device a block with every column labelled (status, address, platform, Intent:, Startup:, Last measured:), as capture 13 | **deviation** (log: Devices: a phone row shows every column) |
 | Phone: selection bar | pinned to the screen's foot: "3 selected", Clear, Plan a deploy… and a ⋯ for the rest | at the top of the card, scrolling with it; its Actions menu opens leftward from the button's right edge: whole in capture 13, where the bar kept one line, and past the screen's left edge in the 390 shot, where the bar wraps and the button sits at the left | **deviation** (log: Devices: on a phone the selection bar is not pinned and the Actions menu can run off the screen (a defect, register C650 follow-up)) |
+
+## Board E: Add device (the card above the list; C1346)
+
+Board: `OnboardList.dc.html` (board E, 1440, "E. APPROVED 2026-10-04, with ZTP's three ways in"),
+its "The devices" section and the plan's line under it; the discovery list above it is board L's
+(docs/fidelity/onboard.md). The card was built under the Phase 7 mode while the canvas could not
+be read (the approval log's "Board E as built", 2026-10-10) and is compared with the board here
+for the first time, after 0e (C1346) added Route option (3) and the Gateway's second clause. Shots
+(`tests/test_board_shots.py::test_onboard_add_relayed`, on Save's lab): the board at 1440 and
+1280 (`onboard-add-board-*`); the card opened from Devices by a click and ZTP chosen
+(`onboard-add-ztp-page-*`, 1440, 1280 and 390), the relayed device's fields filled with "The
+relay's own address" chosen (`onboard-add-relay-page-*`, 1440 and 390), its review planned
+behind the relay as tests/test_ztp_relayed.py plans it (`onboard-add-review-page-*`, 1440 and
+390, Create offered), and Static chosen, the control (`onboard-add-static-page-1440`: Route option
+(3) hidden). Compared 2026-10-19. The 1280 shots draw what the 1440 ones do; there is no phone
+board.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| Entry point | Devices › Onboard devices, a page of its own, with Add a row and Paste rows (CSV)… | Add device… on Devices opens the card in place above the list; Discovered's Pick… and a retired device's Onboard it again… open the same card | **deviation** (log: Board E as built) |
+| Header | "The devices", Add a row, Paste rows (CSV)… | "Add device to <network>", Close | **deviation** (log: Board E as built) |
+| Rows | a table, one row per device, each with Remove; several planned at once | one device per card; Add another after its result | **deviation** (log: Board E as built) |
+| Fields | Name, Platform, Role, Address source, Serial, MAC, Address / prefix, Management interface | Network (the page's, said), Name, Platform, Role, Address from, Management address, Mask, MAC address, Management interface, Gateway, Route option (3), Platform management port, Domain; each label beside its field and its message under it | **deviation** (log: Board E as built) |
+| Role | the role map's template and credential profile named under the role, and The role map | "asked, never guessed from the platform: it becomes the monitoring role label, the topology icon and the NetBox role"; the template and credential source in the review | **deviation** (log: Board E as built) |
+| Address source | seven ways: ZTP by MAC, by serial, by serial and MAC, discovered; DHCP, any address; DHCP reservation; Static | three: Static (in the config), DHCP (a Kea reservation someone made), ZTP (the tool reserves it and serves the config); discovered is Discovered's Pick… | **deviation** (log: Board E as built) and **later** board M (the serial ways) |
+| Interface | a drop-down of the platform's interfaces | typed, its spelling checked | **deviation** (log: Board E's interface dropdown) |
+| Field messages | each on its own reserved line, so a message never moves the field | each under its field; a refusal is the review's, every reason together | **same** |
+| Gateway | not drawn | Gateway, optional: "blank when this host is on the device's subnet; behind a relay, the relay's own address" (the second clause C1346's) | **deviation** (log: Add device: Route option (3) and the Gateway's relay clause, compared with board E (C1346)) |
+| Route option (3) | not drawn: board E's ZTP rows carry no route option (D4 as decided) | a select under Gateway, "None (D4)" by default or "The relay's own address", with "ZTP behind a relay only: offered when AutoInstall needs a route to fetch its config off its subnet; never a DNS server"; drawn only while Address from is ZTP (the Static shot) | **deviation** (log: Add device: Route option (3) and the Gateway's relay clause, compared with board E (C1346)) |
+| Plan and Create | the plan's line under the rows ("Plan 0b3e7c21: 1 device can be created; …") and Preview r8's first-boot config, then Create | Review the plan ("A review creates nothing."), then the review in place: the summary (behind a relay its Management IP line, "ZTP behind the relay … offering option 3 (routers) …, the relay's own address …", or "with no option 3"), the configuration folded, the checks, What it does not do, Create <device> and Change the fields | **deviation** (log: Board E as built) |
+| Refusals | under the field: a serial five devices report, an address another device holds | the review's reasons together above the plan; behind a relay, a gateway that is not the relay's own address, or "The relay's own address" chosen on a subnet this host is on, is one of them | **deviation** (log: Board E as built) |
+| Phone | not drawn (no phone board) | at 390 each label above its field in one column, Route option (3) and its message whole (`onboard-add-relay-page-390`) | **deviation** (log: Board E as built) |

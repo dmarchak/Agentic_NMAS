@@ -21,16 +21,25 @@ fresh file of Mercury's, created empty.
 
 ### For ZTP onboarding {#add-for-ztp}
 
-Tick **For ZTP onboarding** to add a subnet a device is onboarded on by ZTP behind a relay
-([ZTP behind a relay](onboard#ztp-behind-a-relay)). The subnet then carries Mercury's mark
-(`"user-context": {"mercury-ztp": "relayed"}`, in the preview's change and in
-`dhcp/subnets.yml`), and its reservations file is onboarding's alone: Add device writes it, and a
-reservation there on this page is refused. Its relay address is the one interface intent has on
-the prefix, and that interface must relay to a DHCP server (`ip helper-address`): a prefix no
-device Mercury manages is on is refused, as is one with two such interfaces. It carries no
-gateway and no DNS option, and a value in either field is refused (option 3, the relay's own
-address, is a reservation's own choice, made at Add device). ZTP is IPv4 only: an IPv6 subnet
-for ZTP is refused by name. Without the tick the Add is as above.
+The card's Subnet part has a checkbox, **For ZTP onboarding** ("a device behind a relay, IPv4
+only: its reservations are written by Add device, and it carries no gateway or DNS option"),
+unticked by default. Tick it to add a subnet a device is onboarded on by ZTP behind a relay
+([ZTP behind a relay](onboard#ztp-behind-a-relay)); a pool is still needed. The subnet then
+carries Mercury's mark (`"user-context": {"mercury-ztp": "relayed"}`, in the preview's change and
+in `dhcp/subnets.yml`), the tick is part of the preview's hash, and its reservations file is
+onboarding's alone: Add device writes it, and a reservation there on this page is refused. Its
+relay address is the one interface the network's committed intent has on the prefix, and that
+interface must relay to a DHCP server over IPv4 (`ip helper-address`). Refused, each by name: a
+prefix no device Mercury manages has an interface on ("no device Mercury manages has an interface
+on … in committed intent"); a prefix with more than one interface in intent, a VRRP pair among
+them ("expected exactly one relay interface on …", naming each); and an interface that relays to
+no DHCP server. The preview's checks lead with "for ZTP behind <device> <interface> (<address>,
+its relay); its reservations are onboarding's, and it carries no gateway or DNS option (D4)".
+The subnet carries no gateway and no DNS option: Gateway (3) and DNS servers (6) stay on the
+card, and a value in either is refused at the preview ("a relayed ZTP subnet carries no gateway
+or DNS option (D4)"); option 3, the relay's own address, is a reservation's own choice, made at
+Add device. ZTP is IPv4 only: an IPv6 subnet for ZTP is refused by name. Without the tick the
+Add is as above.
 
 ## Removing a subnet {#remove}
 
@@ -40,9 +49,11 @@ subnet; its reservations go with it. When any client or reservation is affected,
 needs the acknowledgement ticked, and is refused without it. **What survives:** the subnet's
 definition and its reservations stay in the repository's history (`dhcp/subnets.yml`,
 `dhcp/reservations.yml`), so adding it back is one Add; Mercury's reservations file for it stays
-on disk, included by nothing. ZTP's subnet is onboarding's and never removed here; a subnet
-added for ZTP behind a relay is removed here only when it holds no reservation (abandon or
-retire its devices first, each removing its own), and is refused naming how many it holds.
+on disk, included by nothing. ZTP's subnet is onboarding's and never removed here. A subnet
+added for ZTP behind a relay is drawn as ZTP's once Kea runs it (marked ZTP, Held by ZTP's
+posture), so its row has no **Edit…** and no **Remove…**: this page cannot yet change or remove
+it. The removal behind Remove… would refuse it while onboarding holds any reservation in it,
+naming how many (abandon or retire those devices first, each removing its own).
 
 ## Where a subnet lives
 

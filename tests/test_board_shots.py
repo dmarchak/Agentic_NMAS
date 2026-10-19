@@ -2374,3 +2374,171 @@ def test_retired_page(tmp_path, monkeypatch):
     with browser.Served(A.app) as served:
         _group_a_page("retired", served, "/v2/device/r5", ((1440, 1.0), (1280, 1.0), (390, 2.0)))
         _group_a_page("retired-again", served, "/v2/device/r5", ((1440, 1.0),), act=again)
+
+
+#: C1346's relayed ZTP device, as tests/test_ztp_relayed.py plans it: the relay's check as the
+#: plan reads it (TestTheChoiceInThePlan.RELAYED_CHECK), and the fields a person types.
+_RELAYED_FIELDS = {"hostname": "edge1", "address_source": "ztp", "mgmt_ip": "198.51.100.2",
+                   "mgmt_mask": "255.255.255.252", "mgmt_mac": "aa:bb:cc:00:04:02",
+                   "manager_interface": "GigabitEthernet2", "manager_gateway": "198.51.100.1",
+                   "role": "router", "domain": "example.net"}
+
+
+def _fill(b, fields):
+    """Set Add device's fields as a person does (each one's value, then its change event, so
+    the card's CSS shows the rows the address source asks for); the platform is the first one
+    the form offers."""
+    b.js("var f = document.querySelector('#onboard-add form'); var v = arguments[0]; "
+         "var p = f.querySelector('select[name=platform] "
+         "option:not([value=\"\"]):not([disabled])'); "
+         "if (p) { v = Object.assign({platform: p.value}, v); } "
+         "Object.keys(v).forEach(function (k) { var e = f.querySelector('[name=' + k + ']'); "
+         "e.value = v[k]; e.dispatchEvent(new Event('change', {bubbles: true})); }); return 1",
+         fields)
+
+
+def test_onboard_add_relayed(lab, monkeypatch):            # noqa: F811 (Save's lab)
+    """Devices › Add device… (board E, `OnboardList.dc.html`'s "The devices", 1440 and 1280)
+    after C1346: the card opened from Devices on Save's lab as a person opens it, then ZTP chosen
+    so Route option (3) is drawn (None (D4), the default), then "The relay's own address" chosen
+    with the relayed device's fields filled, then its review, planned behind the relay as
+    tests/test_ztp_relayed.py plans it (the relay's check its RELAYED_CHECK, the relay's own
+    address the gateway). The control: Static hides the row."""
+    import re
+
+    from tests import browser
+    from tests.test_ztp_relayed import TestTheChoiceInThePlan as Choice
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    import modules.settings_schema as ss
+    from modules.nsot import listref
+    from modules.nsot import onboard as O
+
+    monkeypatch.setattr(listref, "active", lambda: listref.resolve("Lab"))
+    real = ss.get_setting
+    # The schema's own IOS-XE mapping (Save's lab maps none), and the syslog block the schema's
+    # defaults build with a syslog host (the relayed plan's test sets one).
+    mapped = {"cisco-ios-xe": {"netmiko_device_type": "cisco_xe", "template_dir": "cisco-ios-xe"}}
+    monkeypatch.setattr(ss, "get_setting", lambda k, *a, **kw: (
+        mapped if k == "platform_map" else real(k, *a, **kw)))
+    monkeypatch.setattr(O, "syslog_baseline", lambda list_name: (
+        {"trap": "notifications", "origin_id": "hostname", "source_interface": "Loopback0",
+         "hosts": ["192.0.2.10"], "heartbeat": 300}, ""))
+    monkeypatch.setattr(O, "_name_in_manifest", lambda *a: (False, True))
+    monkeypatch.setattr(O, "_name_in_netbox", lambda *a: (False, True))
+    monkeypatch.setattr(O, "_ztp_check", lambda *a, **k: dict(Choice.RELAYED_CHECK))
+    _group_a_boards("onboard-add", "OnboardList.dc.html", ((1440, 1.0), (1280, 1.0)))
+    opened = "document.querySelector('#onboard-add input[name=hostname]')"
+    shown = ("(function () { var e = document.querySelector('#f-ob-router'); "
+             "return !!(e && e.offsetParent); })()")
+
+    def add(b):
+        _w4_press(b, 'a[data-op="onboard"]', opened, 30)
+
+    def ztp(b):
+        add(b)
+        _fill(b, {"address_source": "ztp"})
+        b.wait_for(f"return {shown}", 5)
+
+    def relay(b):
+        add(b)
+        _fill(b, dict(_RELAYED_FIELDS, ztp_router="relay"))
+        b.wait_for(f"return {shown}", 5)
+
+    def review(b):
+        relay(b)
+        _w4_press(b, '#onboard-add button[data-op="onboard"]',
+                  "!document.querySelector('#f-ob-hostname')", 30)
+        # The review offers Create to the browser's person (no blocking reason), and the page is
+        # shot from its top (a full-page shot draws the sticky bars where it was scrolled).
+        assert b.js("var e = document.querySelector('#onboard-add button[data-op=onboard] "
+                    ".op-idle'); return e ? e.textContent : ''") == "Create edge1"
+        b.js("window.scrollTo(0, 0); return 1")
+
+    def static(b):
+        add(b)
+        _fill(b, {"address_source": "static"})
+        b.wait_for(f"return !{shown}", 5)
+
+    import app as A
+    # What the review draws, read by the test client from the same seams first: the relayed
+    # plan's address claim with option 3 as chosen (Create is drawn for the browser's person).
+    html = A.app.test_client().post("/v2/onboard/preview", data=dict(
+        _RELAYED_FIELDS, list_name="Lab", platform="cisco-ios-xe",
+        ztp_router="relay")).get_data(as_text=True)
+    said = re.findall(r'<div class="notice[^"]*"[^>]*>(.*?)</div>', html, re.S)
+    assert "ZTP behind the relay relay-a GigabitEthernet3 (198.51.100.1)" in html, said
+    assert "offering option 3 (routers) 198.51.100.1, the relay&#39;s own address" in html
+    widths = ((1440, 1.0), (1280, 1.0), (390, 2.0))
+    with browser.Served(A.app) as served:
+        _group_a_page("onboard-add-ztp", served, "/v2/devices", widths, act=ztp)
+        _group_a_page("onboard-add-relay", served, "/v2/devices", ((1440, 1.0), (390, 2.0)),
+                      act=relay)
+        _group_a_page("onboard-add-review", served, "/v2/devices", ((1440, 1.0), (390, 2.0)),
+                      act=review)
+        _group_a_page("onboard-add-static", served, "/v2/devices", ((1440, 1.0),), act=static)
+
+
+def test_dhcp_subnet_add_for_ztp(tmp_path, monkeypatch):
+    """DHCP › Subnets › Add a subnet… (board C's section 4, `DhcpSubnets.dc.html`, 1440) after
+    C1346: the empty form with For ZTP onboarding unticked, then ticked with a relayed prefix
+    and its pool, previewed against tests/test_ztp_relayed.py's Kea (subnet 255 this host's,
+    40 declared relayed) and its relay in intent (TestTheSubnetIsDeclaredAtAdd: relay-b
+    GigabitEthernet2 on 198.51.100.4/30, helper 192.0.2.10), and the refusal a gateway draws
+    on a ZTP subnet. The page under the card is test_dhcp's (the lab's Kea answers)."""
+    import re
+    from urllib.parse import urlencode
+
+    from tests import browser
+    from tests import test_dhcp_v2 as T
+    from tests import test_ztp_relayed as TR
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    (tmp_path / "lab").mkdir()
+    (tmp_path / "kea").mkdir()
+    monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(tmp_path / "lab"))
+    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
+    monkeypatch.setattr("modules.dhcp_page._devices", lambda name: set())
+    monkeypatch.setattr("modules.reader_job.read_cached_for",
+                        lambda name, list_name: __import__("modules.reader_job").reader_job
+                        .read_cached(name))
+    # The page's network owns the Kea it shows (C1181), so the card may preview a change.
+    monkeypatch.setattr("modules.list_settings.kea_owner",
+                        lambda name: (name, "it sets its own Kea"))
+    files = _device_fx(TR.kea_files, tmp_path / "kea")
+    monkeypatch.setattr("modules.dhcp_reservations.main_config",
+                        lambda list_name, family: files["main"])
+    monkeypatch.setattr("modules.integrations.kea.KeaIntegration",
+                        lambda **kw: TR.FakeKea({255: files["direct"], 40: files["relayed"]}))
+    value = T._value()
+    intent = dict(T._s1_intent(), error="")
+    intent["IPv4"] = dict(intent["IPv4"],
+                          **TR.TestTheSubnetIsDeclaredAtAdd._intent()["IPv4"])
+    value["intent"] = intent
+    value["families"]["dhcp4"]["held"] = {"10": "mercury", "20": "mercury", "255": "ztp"}
+    value["families"]["dhcp6"]["held"] = {"10": "mercury", "20": "mercury", "30": "mercury"}
+    T._store(value)
+    base = {"list": "Lab", "op": "add"}
+    ztp = dict(base, family="IPv4", prefix="198.51.100.4/30",
+               pool="198.51.100.6 - 198.51.100.6", ztp="1")
+    import app as A
+    client = A.app.test_client()
+    form = client.get("/v2/dhcp/subnet?" + urlencode(base)).get_data(as_text=True)
+    assert '<input type="checkbox" name="ztp" value="1"> For ZTP onboarding' in form
+    html = client.get("/v2/dhcp/subnet?" + urlencode(ztp)).get_data(as_text=True)
+    said = re.findall(r'<div class="dh-refuse"[^>]*><p>(.*?)</p>', html, re.S)
+    assert 'name="ztp" value="1" checked' in html and "Add 198.51.100.4/30" in html, said
+    assert "user-context: {&#34;mercury-ztp&#34;: &#34;relayed&#34;}" in html
+    assert "for ZTP behind relay-b GigabitEthernet2 (198.51.100.5, its relay)" in html
+    refused = client.get("/v2/dhcp/subnet?" + urlencode(dict(ztp, gateway="198.51.100.5")))
+    assert "carries no gateway or DNS option (D4)" in refused.get_data(as_text=True)
+    _group_a_boards("dhcp-subnet-add", "DhcpSubnets.dc.html", ((1440, 1.0),))
+    with browser.Served(A.app) as served:
+        _group_a_page("dhcp-subnet-add", served, "/v2/dhcp/subnet?" + urlencode(base),
+                      ((1440, 1.0), (1280, 1.0), (390, 2.0)))
+        _group_a_page("dhcp-subnet-add-ztp", served, "/v2/dhcp/subnet?" + urlencode(ztp),
+                      ((1440, 1.0), (1280, 1.0), (390, 2.0)))
+        _group_a_page("dhcp-subnet-add-ztp-refused", served, "/v2/dhcp/subnet?" + urlencode(
+            dict(ztp, gateway="198.51.100.5")), ((1440, 1.0),))

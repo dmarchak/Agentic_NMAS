@@ -18,8 +18,9 @@ Compared again 2026-10-12 (the one stepper, C716), by its markup: board B's resu
 Compared again 2026-10-13 (Stage 7 acceptance criterion 13): `_dhcp_reserve.html`'s one gated button gained `{{ gate('confirm') }}` in its tag and nothing else (the changed line equals its original with that call removed, read from the diff). For a person `gate()` renders nothing, so the page's HTML is byte for byte what it was and no region's verdict moved; compared by the template diff and that render, not by new shots.
 Compared again 2026-10-13 (E19, the lease lifetimes): the Subnets table's lease-time cell draws renew and rebind through `tee_words`. With fixed timers it renders the same text as before ("365 d · – · 182.5 d · 319.4 d", shot `dhcp-sub-c` at 1440 retaken: same). Once Kea computes them it reads "renew at 50% · rebind at 80% of each lease". A note under the table names each class that sets a lifetime, whom it serves and its lifetimes; it is drawn only when Kea runs one, so the board's fixtures (no class) draw none. Neither new state is on board C: **deviation** (log: E19 decision 4), each held by tests/test_dhcp_v2.py's rendered checks.
 Compared again 2026-10-17 (C1181, the operator's design after W4: one owning network per Kea, the one where it is set): on the owner's page every region is unchanged; the guards add `g.writable` to each Add, Edit, Remove and Exclude condition and draw nothing new where it holds (the Default page's markup in the suite's fixture, read before and after: the same controls). On a network that inherits Kea the head is followed by one muted notice (`_dhcp_owner.html`): "<network> uses <owner>'s Kea; changes are made on <owner>'s DHCP page and recorded in <owner>'s repository. This page shows the same Kea and changes nothing." with the reason the ownership was measured, and every Add, Edit, Remove and Exclude is absent, the tables and counts as before. No board draws an inheriting network's page; the deviation is one line in STANDING_APPROVAL_LOG.md. `_dhcp_owner.html` joins the record's templates so a later change is held.
-Templates compared: templates/v2/dhcp.html, templates/v2/_dhcp_view.html, templates/v2/_dhcp_reserve.html, templates/v2/_dhcp_owner.html
-Templates sha256: `1551f76e65f02694e06c17ba066af6425b99e0b09e2a9a04018251789e02be14`
+Compared again 2026-10-19 (C1346, 0e): board C's subnet card (`_dhcp_subnet.html`: Edit…, Add a subnet…, Remove…) joins the record's templates, so a later change to it is held; its Add, with 0e's For ZTP onboarding, is compared with board C's section 4 below. Edit… and Remove… keep the verdicts of their comparisons above (2026-10-11 and 2026-10-12); the page's other regions are unchanged.
+Templates compared: templates/v2/dhcp.html, templates/v2/_dhcp_view.html, templates/v2/_dhcp_reserve.html, templates/v2/_dhcp_owner.html, templates/v2/_dhcp_subnet.html
+Templates sha256: `f0e56d60639a6e387e375561f7101a96058d25f1b29ba2bae7a5247f152e59b7`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).
@@ -70,3 +71,33 @@ subnet's file of Mercury's (`tests/test_board_shots.py::test_dhcp_reserve`). Com
 | Footer | Recorded on confirm…; the reason; Cancel; the primary, disabled until a reason is given | the same; the reason field required, so an empty one is refused by the browser, the button not drawn disabled | **deviation** (log: A required reason, as Reload's) |
 | Result | done, What happened (read back), Recorded (commit, Actor, Source) | the same, in place; What happened leads with the one stepper's five steps (2026-10-12), and a failed confirm draws them under its notice, which says "Nothing was changed" only while true (C723) | **deviation** (log: the one stepper: results of one-request operations drawn as steps) |
 | Refusal | Not reserved, the comparison and both operands, when Kea was read | the same, inside the card under the fields, so the person corrects and previews again | **same** |
+
+## Board C, section 4: Add a subnet… and For ZTP onboarding (C1346)
+
+Board: `DhcpSubnets.dc.html` (board C, 1440, canvas v117), section 4 ("Add a subnet: the same
+form, empty; the gateway offered from the VLAN intent and NetBox name for the prefix"). Shots
+(`tests/test_board_shots.py::test_dhcp_subnet_add_for_ztp`): the board at 1440
+(`dhcp-subnet-add-board-1440`); the empty form, For ZTP onboarding unticked
+(`dhcp-subnet-add-page-*`, 1440, 1280 and 390); ticked, with 198.51.100.4/30 and its pool,
+previewed against tests/test_ztp_relayed.py's Kea (subnet 255 this host's, 40 declared relayed)
+and its relay in intent (relay-b GigabitEthernet2, 198.51.100.5, helper 192.0.2.10)
+(`dhcp-subnet-add-ztp-page-*`, 1440, 1280 and 390); and a gateway typed on it, refused
+(`dhcp-subnet-add-ztp-refused-page-1440`). The page under the card is board A's shot fixture (the
+lab's Kea answers), the page's network made Kea's owner. Compared 2026-10-19. The 1280 shots draw
+what the 1440 ones do; there is no phone board.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| The card's place | in place of the Subnets table's head, the table below; opened by Add a subnet… beside the heading | the same | **same** |
+| Header | "Add a subnet", How does this work? | the same, with Cancel until a preview can be confirmed; "Add <prefix>" once previewed | **same** |
+| The Subnet part | none: Prefix is the first of Settings, and the Kea id a field ("the next free id, assigned") | a Subnet part: Family (IPv4, IPv6) with "the Kea id is assigned: the VLAN's when free", Prefix with "its gateway and relays are offered from intent"; the id said in the change ("subnet 256 (…), a new reservations file of Mercury's") | **deviation** (log: Add a subnet as built against board C's section 4) |
+| For ZTP onboarding | not drawn | a checkbox in the Subnet part, "For ZTP onboarding", with "a device behind a relay, IPv4 only: its reservations are written by Add device, and it carries no gateway or DNS option"; unticked by default, its value carried to the confirm (it is in the preview's hash) | **deviation** (log: Add a subnet: For ZTP onboarding, compared with board C's section 4 (C1346)) |
+| The prefix's NetBox hint | "NetBox: VLAN 30 "lab-servers"; no Kea subnet holds it" | not drawn: NetBox is not read for a prefix | **later** NetBox's VLAN and VIP for the prefix (board C; "NetBox's VIP is not yet compared", above) |
+| Settings | Pool, Pool description, Gateway (3) offered as a drop-down from intent, Kea id | the edit card's fields, empty: Pool, Pool description, Gateway (3) typed (intent's VRRP address filled in by the preview when the field is empty), DNS servers (6), Domain (15), Valid lifetime | **deviation** (log: Add a subnet as built against board C's section 4) |
+| A ZTP subnet's Gateway and DNS | not drawn | Gateway (3) and DNS servers (6) stay drawn with the box ticked; a value in either is refused at the preview, under Not changed: "a relayed ZTP subnet carries no gateway or DNS option (D4): a configless device given a route and a resolver phones Cisco; option 3 is a reservation's own choice, as the relay's own address, made at Add device" | **deviation** (log: Add a subnet: For ZTP onboarding, compared with board C's section 4 (C1346)) |
+| The change | not drawn for an add | the new subnet's lines: id, subnet, relay, pools, and for ZTP `user-context: {"mercury-ztp": "relayed"}`, the relay the one interface intent has on the prefix | **deviation** (log: Add a subnet as built against board C's section 4) |
+| Leases now | not drawn for an add | "no lease is held in a subnet Kea does not have yet" | **deviation** (log: Add a subnet as built against board C's section 4) |
+| Checks | pass: no Kea subnet overlaps, a Kea interface reaches it (the relay from intent); pass: kea-dhcp4 -t on the candidate | for ZTP first "for ZTP behind relay-b GigabitEthernet2 (198.51.100.5, its relay); its reservations are onboarding's, and it carries no gateway or DNS option (D4)"; then the relay from intent, no overlap with the Kea id, the gateway against intent's VRRP address, and Kea's own check "at confirm" | **deviation** (log: Kea's own check runs at confirm) |
+| A ZTP subnet's gateway check | not drawn | where intent gives the prefix a VRRP address, the gateway check still reads "differs: the gateway (none) is not intent's VRRP address (198.51.100.5)" on a subnet that must carry no gateway, under the D4 check that passed (`dhcp-subnet-add-ztp-page-1440`) | **deviation** (log: Add a subnet for ZTP: the gateway check says "differs" on a subnet that must carry no gateway (a defect, to be registered)) |
+| Footer | "Recorded as a commit."; Cancel; Add 10.10.30.0/24 | the reason (required), what the apply does and that it is bound to the preview, Cancel and Add <prefix> with its (i) | **deviation** (log: A required reason, as Reload's) |
+| Phone | not drawn (no phone board) | at 390 the fields two to a row, the checkbox and its message whole under Family and Prefix, the change wrapped in its box | **deviation** (log: Add a subnet as built against board C's section 4) |

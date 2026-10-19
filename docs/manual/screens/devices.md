@@ -104,11 +104,18 @@ network picker chooses which). Fill in its name, platform and role, how it gets 
 (static, a DHCP reservation, or ZTP, where the tool reserves the address and serves the
 configuration), the address, mask and MAC that source needs, the interface the address goes
 on, a gateway when this host is not on the device's subnet (behind a relay, the relay's own
-address), for ZTP the **Route option (3)** (None (D4) by default; the relay's own address only
-behind a relay: [ZTP behind a relay](onboard#ztp-behind-a-relay)), the **Platform management port**
+address), the **Route option (3)**, the **Platform management port**
 (optional: a separate port the platform manages itself on, apart from that address), and the
 DNS domain. A platform not yet onboardable would be listed and disabled, with its reason; no
 platform is held back today.
+
+**Route option (3)** sits under Gateway and is drawn only while Address from is ZTP. It offers
+**None (D4)**, the default, which sends the device no route option, and **The relay's own
+address**, for a device behind a DHCP relay whose AutoInstall needs a route to fetch its
+configuration from off its subnet; it is never a DNS server. Chosen for a device on a subnet this
+host is on, the review refuses it. The review says which was chosen ("offering option 3
+(routers) …" or "with no option 3"), and the reservation and its record keep it. See [ZTP behind
+a relay](onboard#ztp-behind-a-relay).
 
 **Discovered** opens the devices asking for an address on the ZTP segment that the tool does
 not know, each with **Pick…**, which opens this card with the MAC it asked with: see
