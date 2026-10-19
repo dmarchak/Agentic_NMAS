@@ -6,9 +6,12 @@ name: nmas-relay-probe
 # A throwaway lab of its own: no lab node is touched, s3 is never on its path, and it is
 # destroyed afterwards.
 #
-#   zr4  a stock C8000v (the adopted launch), the RELAY: Gi2 on br-mgmt at 10.255.0.96/24
-#        (free in Kea, read 2026-10-19), Gi3 10.255.96.1/30 with `ip helper-address
-#        10.255.0.10` (Kea, on the NMAS host). Its startup config is configs/zr4.cfg.
+#   zr4  a CONFIGLESS C8000v (P.6's patch and passthrough), the RELAY to be: ZTP'd by Mercury on
+#        the management segment (its Gi2 MAC pinned: aa:bb:cc:00:02:94 -> 10.255.0.94, free in
+#        Kea, read 2026-10-19), onboarded in a throwaway network, then given Gi3 10.255.96.1/30
+#        with `ip helper-address 10.255.0.10` by a deploy of its intent (Lab 8's R4 step).
+#        The configless launch removes the saved configuration at every CONTAINER start: after
+#        zr4 is onboarded it is never restarted (0g runs on it BEFORE its onboarding).
 #   zr6  a CONFIGLESS C8000v (P.6's patch and management passthrough, as bp-ztp-a), Gi2 to zr4
 #        Gi3, its MAC pinned so Kea's reservation names it: aa:bb:cc:00:02:96 -> 10.255.96.2.
 #
@@ -30,14 +33,16 @@ topology:
     zr4:
       kind: cisco_c8000v
       mgmt-ipv4: 172.30.96.11
-      startup-config: configs/zr4.cfg
+      # Deliberately no startup file: Mercury ZTPs it (AutoInstall runs only with none).
+      env:
+        CLAB_MGMT_PASSTHROUGH: "true"
       binds:
-        - patches/c8000v-launch.py:/launch.py                # the adopted launch (smp=2)
+        - patches/c8000v-launch-configless.py:/launch.py     # P.6's six changes
 
     zr6:
       kind: cisco_c8000v
       mgmt-ipv4: 172.30.96.12
-      # Deliberately NO startup-config (AutoInstall runs only with none).
+      # Deliberately no startup file (AutoInstall runs only with none).
       env:
         CLAB_MGMT_PASSTHROUGH: "true"                        # qemu's own DHCP/TFTP gone (M1)
       binds:
@@ -47,8 +52,14 @@ topology:
       kind: bridge
 
   links:
-    # zr4 Gi2 (eth1) on the management segment, beside the NMAS host's enp6s19.
-    - endpoints: ["zr4:eth1", "br-mgmt:zr4-mgmt"]
+    # zr4 Gi2 (eth1) on the management segment, beside the NMAS host's enp6s19, its MAC pinned.
+    - type: veth
+      endpoints:
+        - node: zr4
+          interface: eth1
+          mac: aa:bb:cc:00:02:94
+        - node: br-mgmt
+          interface: zr4-mgmt
     # zr6 Gi2 (eth1) to zr4 Gi3 (eth2): the relayed segment, zr6's MAC pinned.
     - type: veth
       endpoints:
