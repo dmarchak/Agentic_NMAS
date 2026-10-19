@@ -9,6 +9,27 @@ the designs (5 to 7), the measurement plan (8) and the register shape (9).
 Written 2026-10-17 against `00871987`. Nothing here was run on a host, a
 device, NetBox, Kea or Grafana.
 
+## The standing rule (the operator, 2026-10-18; the Core 1.0 triage)
+
+- **The 109 break sites found below stay a post-1.0 epic** (C1245), done before Stage 10's
+  release gate. They are not part of Core 1.0.
+- **From now on, every Core capability that handles addresses is built and tested to work on
+  an IPv6 management address as well as IPv4.** "Handles addresses" covers parsing,
+  formatting, validating, comparing, storing, connecting to or serving one.
+- **The tests:** each such capability's tests carry an IPv6 case beside the IPv4 one, through
+  the same path, using documentation addresses: 2001:db8::/32 beside 192.0.2.x.
+- **A path that cannot be tested for IPv6 without a live network** (a device's answer, a TFTP
+  transfer) is tested on a captured or planted IPv6 answer, and walked on the host when the
+  lab has an IPv6 management address (section 8).
+- **A capability that cannot serve IPv6** (ZTP, which is DHCPv4 today, section 5) says so on
+  its screen and in its manual page, by name. It never fails silently on an IPv6 address.
+- **No break site may be added.** A new site listed in section 4's form is a defect in the
+  capability that added it, not a new entry for the epic.
+- **The cost is in each item's size** (docs/COMPLETION_INVENTORY.md section 6). None moved to a
+  larger size.
+- **Enforced:** CLAUDE.md's IPv6 line, as the operator pastes it; each capability's own tests;
+  and the review of every Core commit. Not mechanised as a scan yet.
+
 ## 1. Counts
 
 **371 address-handling sites: 109 break, 9 unknown, 253 work** on an

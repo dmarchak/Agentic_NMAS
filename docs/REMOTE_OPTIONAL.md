@@ -33,13 +33,14 @@ the close"). Nothing here is fixed yet.
 - Nothing is pushed: `archive.push_hook` answers ok, "no remote configured … nothing pushed"
   (`modules/nsot/archive.py:100-102`).
 
-**"No repo assigned":** no notice with these words exists in the code. The nearest are:
+**What a network with no remote is shown:**
 - the reader's "no remote: the history is on this host only" (grey);
 - History's "No repository yet: the network's first commit makes it", which is about a missing
   local repository, not a remote;
 - the set-up card's "This network has no remote…".
 
-Each is listed below.
+Each is listed below. ("No repo assigned" was the operator's paraphrase, not screen text, and is
+dropped: the operator, 2026-10-18.)
 
 ## Must change
 

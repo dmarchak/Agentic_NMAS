@@ -268,84 +268,122 @@ measured state. Runs are named from the records that hold them.
 4. **Stated not proven, and not needed by the lab** (P6_ZTP.md l.334-340): a relayed path,
    physical hardware, PnP option 43, Python ZTP, the bulk job. C1245: ZTP is IPv4-only.
 
-## 6. The proposed Core 1.0 (the operator's to set)
+## 6. Core 1.0, signed off (the operator's triage, 2026-10-18)
 
-**The capability list:**
+**The operator's triage of this inventory, 2026-10-18.** Everything below was accepted as
+proposed except these changes:
+
+1. **K24, undo without a reload, moves to post-1.0.** C531 and C561 are re-ranked B to C, by the
+   operator's decision of 2026-10-07: a revert is startup config plus a reload for now, and
+   no-reload reverts come later. K23 stays in Core, with C618 before it.
+2. **K29, any remote provider, moves to Stage 10.** C1321 is re-ranked B to C: the local
+   repository is the source of truth, so a GitHub-only remote limits the public release, not
+   Core. K28, durability, stays in Core.
+3. **The mutation rows are re-ranked:** C781 and C842 from A to C, and C792 and C834 from B to C.
+   **But un-parking the runner (C835) joins K32:** Core 1.0 is not signed off without a mutation
+   pass over the modules Core 1.0 adds or changes. Lab 7's rules apply: one mutant at a time,
+   behind the canary, and every survivor either killed by a test or recorded.
+4. **IPv6 (K20).** The 109 existing break sites stay a post-1.0 epic, before Stage 10's release
+   gate. From now on, every Core capability that handles addresses is built and tested to work
+   on an IPv6 management address as well as IPv4. That is a standing rule
+   (docs/IPV6_PARITY.md, "The standing rule"). Each item's size absorbs the cost. None moves
+   to a larger size: the address-handling items are K11, K19, K21, K23, K5 and K10, and K21,
+   K23, K5 and K10 are already L. K23 grows most inside L, since its one-shot TFTP and boot
+   path must serve an IPv6 address.
+5. **K22, Batfish, stays in Phase 8 as an optional add-on:** Standard tier and up, never
+   required. A Minimum install validates with Mercury's own checks alone.
+6. **K7, the feature packs' starter list:** OSPF, BGP, VRRP, NTP, AAA and local users, and VLANs
+   and trunks (monitoring exists). Each pack is a per-feature template rendered from intent,
+   previewed and confirmed by hash, network-agnostic and keyed by platform. If the course gives
+   a list, it replaces this one.
+7. **"No repo assigned" is dropped.** It was a paraphrase, not screen text.
+8. **K21, Drained, is in Core whole:** the NetBox status read and the bulk exclusion first, then
+   the measured traffic. Both rows, C551 and C552, stay A.
+9. **K3 waits for Lab 10's handout.** The operator will supply it.
+
+**The capability list.** **Must-have (21):**
 1. K1 ZTP for Labs 8 and 9
 2. K2 troubleshooting for Lab 10, with C589
-3. K3's read-only tools, if Lab 10's handout asks
+3. K3's read-only tools, when Lab 10's handout says
 4. K11 monitoring automatic per network
-5. K28 remote durability, and K29 any provider
+5. K28 remote durability
 6. K31 records consolidated
 7. K27 Recently cleared
 8. K25 bulk actions
 9. K10 SNMPv3
-10. K21 Drained
+10. K21 Drained, whole
 11. K5 NetBox browser
 12. K6 dashboard picker
 13. K8 config to intent
-14. K7 feature packs
-15. K23 revert by reload
-16. K24 undo without a reload
-17. K12 Thanos in the builder
-18. K14 evidence export
-19. K19 the SSH port
-20. K32 completeness proven
-21. K33 the manual true
-22. K36 P.8's step 9
-23. K40 P.20's scans
-24. K41 P.21's field
-25. K44 the follow-up window
-26. K45 the device as witness
-27. K35 Respond's observe mode, its tail
+14. K7 feature packs (the starter list above)
+15. K23 revert by reload, C618 first
+16. K12 Thanos in the builder
+17. K19 the SSH port
+18. K32 completeness proven, with a mutation pass over Core 1.0's modules
+19. K33 the manual true
+20. K36 P.8's step 9
+21. K41 P.21's field
 
-**Plus no open A or B:** sections 3's 24 rows, each folded into a capability above or closed on
-its own. The mutation rows (C781, C842, C792, C834) are proposed for re-ranking, since mutation
-testing is parked (C835).
+Plus K35, Respond's observe mode, in the tail.
 
-**The order** (lab need first, then dependency):
-1. **ZTP and troubleshooting:** K1, K2, then K3 if its handout asks.
-2. **K11.** Lab 9's heartbeat needs a monitoring profile by default, and K10 and K25 build on
-   it.
-3. **K31, records consolidated.** K27, K35 and the follow-up window write records.
-4. **K28 and K29.** The charter's offline rule; small first.
-5. **K25, bulk actions.** K21's Drained exclusion and C1317's windows are its inputs; K10's
-   rollout uses it.
-6. **K21, K10 and K19:** the device fleet's identity and monitoring.
-7. **K23 and K24:** revert, with C618 before both.
-8. **K5, K6, K12 and K14:** the integrated-services reads.
-9. **K8 and K7:** intent authoring.
-10. **K27, K44 and K45.**
-11. **K32, K33, K36, K40 and K41:** completeness proven, last before sign-off.
-12. **K35, Respond's observe mode:** started last, so its 30-day and 100-event clock runs into
-    Phase 8.
+**Should-have, below the cut line (4):**
+- K14 evidence export
+- K40 P.20's scans
+- K44 the follow-up window (B C60)
+- K45 the device as witness (B E6)
 
-**The time box, computed from the sizes:**
-- **The work:** the 27 capabilities, plus the A and B rows not folded into one (C7, C230, C472,
-  C554, C556, C559, C822, C828, and the mutation four unless re-ranked), plus the six UNKNOWN
-  measurements.
-- **The count**, from the tables above, with the mutation rows included:
-  - the capabilities: S 2 (K6, K41), M 14, L 13 (K21 counted once as M and once as L);
-  - the A and B rows not folded into a capability: S 4 (C230, C559, C842, C834), M 8 (C7,
-    C472, C554, C556, C822, C828, C781, C792);
-  - the six UNKNOWN measurements: S 6;
-  - **in all: S 12, M 22, L 13.** Re-ranking the four mutation rows removes 2 S and 2 M.
-- **The hours** (S 1 to 2 h, M 2 to 8 h, L 8 to 24 h; the L ceiling is an assumption, since L
-  is open-ended):
+If the re-forecast after the first four capabilities shows the box will not hold, they move to
+post-1.0, with their B rows re-ranked for that reason. That is the operator's call.
 
-  | Estimate | Hours |
-  |---|---|
-  | low | 12×1 + 22×2 + 13×8 = **160 h** |
-  | mid (S 1.5, M 5, L 16) | 18 + 110 + 208 = **336 h** |
-  | high | 12×2 + 22×8 + 13×24 = **512 h** |
+**Plus no open A or B:** the A and B rows left after the re-ranking (A 3: C139, C551, C552; B
+14). Each is folded into a capability above, or closed on its own: C7, C230, C472, C554, C556,
+C559, C822 and C828.
 
-- **Proposed time box: the mid figure, about 340 hours of agent work.** It is checked against
-  the measured pace after the first four capabilities, and re-forecast only from those
-  finished items (CLAUDE.md, writeup forecasts).
-- **Not converted into calendar days.** Phase 7's sizes overstated its wall time by a wide
-  margin (NSOT_WRITEUP.md, Phase 7's entry), so no calendar figure can honestly be derived from
-  them.
-- The list and the box are the operator's to set.
+**The order** (the operator's, 2026-10-18; lab need first, then dependency):
+1. **K1, ZTP.** C1252 first: the responder serves every network's reservations, not only
+   Default's. Then Lab 9's last step: a ZTP device's heartbeat arriving in Loki, run for real on
+   the host. K11 comes with it where Lab 9 needs it: a network with no profile still gets
+   monitoring.
+2. **K2, troubleshooting, with C589.**
+3. **K11's remainder, then K31, K28 and K25,** and onward:
+   - K21, K10 and K19;
+   - K23 (C618 first);
+   - K5, K6 and K12;
+   - K8 and K7;
+   - K27;
+   - K32, K33, K36 and K41;
+   - the should-haves if the box holds;
+   - K35 last, so its clock runs into Phase 8.
+   K3 is built when Lab 10's handout arrives.
+
+**Stop and report:**
+- after K1, with Lab 9's heartbeat shown in Loki and its evidence;
+- after the first four capabilities, with the time box re-forecast from their measured pace
+  only, and whether the cut line holds;
+- whenever a lab handout is needed.
+
+**The time box, recomputed with the triage** (S 1 to 2 h, M 2 to 8 h, L 8 to 24 h; mid S 1.5,
+M 5, L 16; the L ceiling is an assumption):
+
+| Part | S | M | L | Low | Mid | High |
+|---|---|---|---|---|---|---|
+| **Must-have** | 10 | 17 | 11 | 10 + 34 + 88 = **132 h** | 15 + 85 + 176 = **276 h** | 20 + 136 + 264 = **420 h** |
+| **Should-have** | 0 | 3 | 1 | 6 + 8 = **14 h** | 15 + 16 = **31 h** | 24 + 24 = **48 h** |
+| Both | 10 | 20 | 12 | 146 h | 307 h | 468 h |
+
+**What the counts hold:**
+- **Must-have:**
+  - the capabilities: S 2 (K6, K41); M 11 (K1, K2, K3, K11, K28, K27, K21's NetBox part, K12,
+    K19, K33, K36); L 10 (K31, K25, K10, K21's measurement, K5, K8, K7, K23, K32, K35);
+  - the mutation pass added to K32: L 1;
+  - the A and B rows not folded into a capability: S 2 (C230, C559), M 6 (C7, C472, C554, C556,
+    C822, C828);
+  - the six UNKNOWN measurements confirmed as gaps: S 6.
+- **Should-have:** M 3 (K14, K40, K44), L 1 (K45).
+- **The box** is the mid figure: **about 280 hours of agent work for the must-have, and 31 more
+  for the should-have.** It is re-forecast after the first four capabilities, from their
+  measured pace only (CLAUDE.md, writeup forecasts).
+- **No calendar figure** is derived from the sizes (Phase 7's entry).
 
 ## 7. Not placed, and missing from the cross-check list
 
@@ -353,7 +391,7 @@ testing is parked (C835).
   "Perigo" appears only as the course's instructor (NSOT_PLAN.md line 27,
   `golden_state.py`). They are folded into K7 (feature packs). Their list must come from the
   course material when the operator supplies it.
-- **"No repo assigned":** no notice with those words exists in the code (docs/REMOTE_OPTIONAL.md).
+- **"No repo assigned":** dropped by the operator, 2026-10-18 (a paraphrase, not screen text).
 - **Requests in the register not on the cross-check list** (the survey's part C), each placed
   in a theme above:
   - C1003 sites; C1008 offline; C697 releasing a DHCP lease; C704 sortable Devices columns;

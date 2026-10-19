@@ -955,6 +955,36 @@ older paragraph below orders the work otherwise, this governs.
    natural-language controller, and a closed loop) are Phase 8's prototype. They are built in
    their own repository, with no Mercury code. PHASE8_PLAN section 13 says what they bring back.
 
+**Core 1.0, SIGNED OFF by the operator, 2026-10-18 (the inventory's triage):**
+docs/COMPLETION_INVENTORY.md section 6 is the list, frozen. A new request goes to post-1.0 unless
+it is an A or a B.
+- **Must-have (21 capabilities):** K1, K2, K3 (waiting for Lab 10's handout), K11, K28, K31,
+  K27, K25, K10, K21 (whole), K5, K6, K8, K7, K23, K12, K19, K32 (with a mutation pass over
+  Core 1.0's modules, un-parking C835's runner), K33, K36 and K41. Plus K35, Respond's observe
+  mode, in the tail.
+- **Should-have, below the cut line:** K14, K40, K44 and K45. They move to post-1.0 if the
+  re-forecast after the first four capabilities shows the box will not hold; the operator's
+  call.
+- **Moved out:**
+  - K24, undo without a reload, to post-1.0 (C531 and C561 re-ranked C);
+  - K29, any remote provider, to Stage 10 (C1321 re-ranked C);
+  - K22, Batfish, stays in Phase 8 as an optional add-on, Standard tier and up.
+- **IPv6:** every Core capability that handles addresses works on an IPv6 management address
+  too (docs/IPV6_PARITY.md, "The standing rule"). The 109 existing break sites are a post-1.0
+  epic before Stage 10's gate.
+- **The time box,** at the mid estimate:
+  - must-have about 276 h (132 h to 420 h);
+  - should-have 31 h (14 h to 48 h);
+  - re-forecast after the first four capabilities, from their measured pace only.
+- **The build order:**
+  1. K1: C1252, then Lab 9's heartbeat in Loki, run on the host, with K11 where Lab 9 needs it;
+  2. K2, with C589;
+  3. K11's remainder, K31, K28, K25 and onward (the inventory's section 6).
+- **Stops:**
+  - after K1, with Lab 9's evidence;
+  - after the first four capabilities, with the re-forecast;
+  - whenever a lab handout is needed.
+
 **Hardware:** Core 1.0 must fit the charter's Minimum tier (4 vCPU, 8 GiB, about 100 GB;
 docs/MERCURY_CHARTER.md, "Hardware tiers").
 

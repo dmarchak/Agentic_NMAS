@@ -1463,6 +1463,18 @@ Section 3's card gains a row, **Output shape**:
   the slice before them has its measurements.
 - Sections 10 to 12's designs for later features stand as written. They are not extended.
 
+### 13.8a Batfish is an optional add-on (the operator, 2026-10-18; the Core 1.0 triage)
+
+- **Batfish (8.5's pre-change verification for routing-affecting changes) stays in Phase 8,
+  as an OPTIONAL add-on:** Standard tier and up, never required.
+- **A Minimum install validates with Mercury's own checks alone:**
+  - `nmas-config-check`;
+  - template approval;
+  - the intent editor's checks;
+  - deploy's preview, verify and rollback.
+- Where Batfish is installed, it is an additional check beside these, never a replacement for
+  them.
+
 ### 13.9 What the CSCI 5280 prototype brings back (part 6)
 
 **The operator's CSCI 5280 Labs 7 and 8** (a natural-language controller, and a closed loop) are
