@@ -109,8 +109,12 @@ def _carries():
         ("an account", re.compile(r"^username\s", re.M)),
     )
 #: A masked placeholder where a secret should be: a file holding one boots a device nobody can
-#: sign in to (Mercury masks on the way OUT; a golden is kept verbatim).
-PLACEHOLDER = re.compile(r"<redacted|<masked|\*{6,}", re.I)
+#: sign in to (Mercury masks on the way OUT; a golden is kept verbatim). Mercury's one mask is
+#: `redact.PLACEHOLDER`; a banner's row of asterisks is not one (the first run, 2026-10-19,
+#: counted every vIOS banner's borders).
+def _placeholder():
+    from modules.redact import PLACEHOLDER
+    return re.compile(re.escape(PLACEHOLDER.split("{", 1)[0]))
 
 
 def _git1(repo: str, *args) -> str:
@@ -190,7 +194,8 @@ def check(list_name: str, hosts=None, built=None) -> dict:
             fams[name] = {"equal": a == b, "lines": na}
         row["credentials_current"] = all(f["equal"] for f in fams.values())
         row["families"] = fams
-        row["placeholders"] = sum(1 for l in text.splitlines() if PLACEHOLDER.search(l))
+        masked = _placeholder()
+        row["placeholders"] = sum(1 for l in text.splitlines() if masked.search(l))
         committed_at = _git1(ref.repo_dir, "log", "-1", "--format=%ct", "HEAD", "--", rel)
         rotated = rotations.get(host)
         row["golden_after_rotation"] = (None if not rotated or not committed_at.isdigit()

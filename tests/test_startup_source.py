@@ -261,6 +261,16 @@ class TestThePreflightCheck:
         r = SS.check("Lab", hosts=["r2"], built=built)["devices"]["r2"]
         assert r["placeholders"] == 1 and r["credentials_current"] is False
 
+    def test_a_banners_row_of_asterisks_is_not_a_placeholder(self, lab, monkeypatch):
+        """The first run on the host (2026-10-19) failed every switch on its banners' borders:
+        s1's real capture holds four such rows, and none is Mercury's mask."""
+        self._ready(lab, monkeypatch)
+        s1 = open("tests/fixtures/configs/fleet/s1.cfg", encoding="utf-8").read()
+        assert sum(1 for l in s1.splitlines() if l.startswith("******")) == 4
+        built = SS.build("Lab", hosts=["r2"])
+        built["devices"]["r2"]["text"] = s1
+        assert SS.check("Lab", hosts=["r2"], built=built)["devices"]["r2"]["placeholders"] == 0
+
     def test_a_file_without_the_heartbeat_applet_lacks_it(self, lab, monkeypatch):
         self._ready(lab, monkeypatch)
         built = SS.build("Lab", hosts=["r2"])
