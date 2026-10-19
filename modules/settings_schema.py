@@ -455,6 +455,8 @@ DEFAULTS: dict = {
     "records_store_onboarding_runs": "file",
     "records_store_inventory_edits": "file",
     "records_store_approval_queue": "file",
+    "records_store_rollback_blocks": "file",
+    "records_store_retry_log": "file",
 
     # ── Platform map (NetBox platform slug → how NMAS treats the device) ────
     # This map is what makes multi-vendor support a configuration change rather
@@ -855,6 +857,8 @@ SCHEMA: dict = {
         "records_store_onboarding_runs": {"type": "string", "enum": ["file", "postgres"]},
         "records_store_inventory_edits": {"type": "string", "enum": ["file", "postgres"]},
         "records_store_approval_queue": {"type": "string", "enum": ["file", "postgres"]},
+        "records_store_rollback_blocks": {"type": "string", "enum": ["file", "postgres"]},
+        "records_store_retry_log": {"type": "string", "enum": ["file", "postgres"]},
 
         "platform_map": {
             "type": "object",

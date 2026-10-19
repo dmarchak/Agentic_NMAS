@@ -103,12 +103,15 @@ receipts; every store takes the same steps with its own file, table and setting
 After the move, the **records-check** reader runs the same check every 5 minutes; a mismatch,
 or a database that stops answering, is a row in Needs attention.
 
-**The approval queue is a document, not a log.** Each network's queue is one list its items
+**The approval queue, the rollback blocks and the authorised retries are documents, not
+logs.** Each network's queue is one list its items
 are changed in place, so on the database it is one row per network: the queue now, and the queue
 as it was copied. The steps are the same; the preview counts each network's items, "written
 since the move" counts the saves made since, and the check compares each file with its copy
 (the file is read-only, so they stay equal). Moving back writes each network's queue as the
-database holds it to its file.
+database holds it to its file. On a database that does not answer, a rollback block that
+cannot be read blocks every plan on its network, and a retry whose record cannot be written is
+not authorised: the block stands.
 
 ## Move a store back to its files {#back}
 

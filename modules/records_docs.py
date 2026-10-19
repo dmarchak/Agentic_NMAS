@@ -73,8 +73,33 @@ def _approval_queue() -> DocStore:
                     shape=list, noun="approval items")
 
 
+def _repo_doc(name: str, words: str, rel: str, shape: type, noun: str):
+    """A document kept in each network's repository folder (`config_repo/<rel>`), K31."""
+    def build() -> DocStore:
+        from modules import records_migrate as RM
+
+        file_name = os.path.join("config_repo", rel)
+        return DocStore(name=name, words=words, table=f"{name}_docs",
+                        files=lambda: RM.network_files(file_name),
+                        path_for=lambda network: RM.network_path(file_name, network),
+                        shape=shape, noun=noun)
+    return build
+
+
+def repo_network(repo: str) -> str:
+    """A repository's network on the records database: its list folder's name, verbatim."""
+    return os.path.basename(os.path.dirname(os.path.abspath(repo)))
+
+
 #: Each document store, by name, built when asked (its owner imports late).
-DOC_STORES = {"approval_queue": _approval_queue}
+DOC_STORES = {
+    "approval_queue": _approval_queue,
+    "rollback_blocks": _repo_doc("rollback_blocks", "Rollback blocks",
+                                 os.path.join(".nsot", "rolled_back.json"), dict,
+                                 "blocked devices"),
+    "retry_log": _repo_doc("retry_log", "Retries authorised",
+                           os.path.join(".nsot", "retry_log.json"), list, "retries"),
+}
 
 
 def is_doc_store(name: str) -> bool:

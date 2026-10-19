@@ -90,22 +90,16 @@ def _note_public(note: dict) -> dict:
 def retry_history(repo: str, hostname: str) -> dict:
     """``{count, last, unreadable}``: the retries recorded for *hostname*.
     An unreadable log is said, never counted as none."""
-    import os
+    from modules.nsot.hostvars import RETRY_LOG_REL, retry_log_read
 
-    from modules.nsot.hostvars import RETRY_LOG_REL
-
-    path = os.path.join(repo, RETRY_LOG_REL)
-    if not os.path.exists(path):
+    # Through the owner's one read (C1324), so the records database answers once moved (K31).
+    got = retry_log_read(repo)
+    if got["state"] == "absent":
         return {"count": 0, "last": None, "unreadable": ""}
-    try:
-        with open(path, encoding="utf-8") as fh:
-            entries = json.load(fh)
-        if not isinstance(entries, list):
-            raise ValueError("not a list")
-    except (OSError, ValueError) as exc:
+    if got["state"] == "unreadable":
         return {"count": None, "last": None,
-                "unreadable": f"{RETRY_LOG_REL} could not be read ({type(exc).__name__})"}
-    mine = [e for e in entries if isinstance(e, dict) and e.get("device") == hostname]
+                "unreadable": f"{RETRY_LOG_REL} could not be read ({got['error']})"}
+    mine = [e for e in got["rows"] if isinstance(e, dict) and e.get("device") == hostname]
     last = mine[-1] if mine else None
     return {"count": len(mine), "unreadable": "",
             "last": ({"at": last.get("at", ""), "actor": last.get("actor", ""),

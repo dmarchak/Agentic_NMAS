@@ -811,6 +811,8 @@ def write_committed_text(repo: str, hostname: str, text: str, *,
 # ---------------------------------------------------------------------------
 
 ROLLED_BACK_REL = os.path.join(".nsot", "rolled_back.json")
+#: The rollback blocks' store on the records database (K31: a document per network).
+ROLLED_BACK_STORE = "rollback_blocks"
 
 
 def _rolled_back_path(repo: str) -> str:
@@ -849,7 +851,23 @@ def _load_rolled_back(repo: str, for_write: bool = False) -> dict:
     keeps the damaged file); for a read it returns ``{"__unreadable__": why}``,
     which :func:`rolled_back_note` turns into a block on every device."""
     import json
+
+    from modules import records_docs
     path = _rolled_back_path(repo)
+    if records_docs.on_database(ROLLED_BACK_STORE):
+        # On the records database once moved (K31): a database that does not answer is
+        # unreadable, with both of its answers (a write refused, every plan blocked).
+        from modules.filestore import StoreUnreadable
+        try:
+            return records_docs.load(ROLLED_BACK_STORE, records_docs.repo_network(repo), {})
+        except StoreUnreadable as exc:
+            if for_write:
+                raise RolledBackRecordUnreadable(
+                    f"{exc}: saving would have lifted every rollback block on this list") \
+                    from exc
+            log.error("hostvars: the rollback blocks are unreadable (%s): every plan is "
+                      "blocked until the records database answers", exc)
+            return {"__unreadable__": "the records database did not answer"}
     if not os.path.exists(path):
         return {}
     try:
@@ -874,7 +892,12 @@ def _load_rolled_back(repo: str, for_write: bool = False) -> dict:
 
 def _save_rolled_back(repo: str, data: dict) -> None:
     import json
+
+    from modules import records_docs
     from modules.filestore import write_atomic
+    if records_docs.on_database(ROLLED_BACK_STORE):
+        records_docs.save(ROLLED_BACK_STORE, records_docs.repo_network(repo), data)
+        return
     write_atomic(_rolled_back_path(repo),
                  json.dumps(data, indent=2, sort_keys=True) + "\n", newline="\n")
 
@@ -1158,6 +1181,8 @@ def revert_intent_change(repo: str, hostname: str, sha: str = "") -> dict:
 
 
 RETRY_LOG_REL = os.path.join(".nsot", "retry_log.json")
+#: The retry log's store on the records database (K31: a document per network).
+RETRY_LOG_STORE = "retry_log"
 
 
 def authorise_retry(repo: str, hostname: str, actor: str = "user",
@@ -1189,10 +1214,14 @@ def authorise_retry(repo: str, hostname: str, actor: str = "user",
     # was read with an unreadable file taken as EMPTY and written back by
     # truncating in place, so one torn read erased every earlier retry and
     # recorded the new one alone. Locked, atomic, and unreadable REFUSES.
+    from modules import records_docs
+
     path = os.path.join(repo, RETRY_LOG_REL)
+    on_db = records_docs.on_database(RETRY_LOG_STORE)
     with PathLock(path):
         try:
-            log_entries = read_json_for_write(path, empty=[])
+            log_entries = (records_docs.load(RETRY_LOG_STORE, records_docs.repo_network(repo), [])
+                           if on_db else read_json_for_write(path, empty=[]))
         except StoreUnreadable as exc:
             return {"ok": False, "error": (
                 f"{exc} Nothing was authorised: the block stands, because a retry "
@@ -1202,9 +1231,17 @@ def authorise_retry(repo: str, hostname: str, actor: str = "user",
                 f"{RETRY_LOG_REL} does not hold a list, so nothing was authorised: "
                 "the block stands.")}
         log_entries.append(record)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        write_atomic(path, json.dumps(log_entries, indent=2, sort_keys=True) + "\n",
-                     newline="\n")
+        if on_db:
+            try:
+                records_docs.save(RETRY_LOG_STORE, records_docs.repo_network(repo), log_entries)
+            except Exception as exc:                  # noqa: BLE001 (refused, the block stands)
+                return {"ok": False, "error": (
+                    f"the retry log could not be written to the records database ({exc}). "
+                    "Nothing was authorised: the block stands.")}
+        else:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            write_atomic(path, json.dumps(log_entries, indent=2, sort_keys=True) + "\n",
+                         newline="\n")
 
     clear_rolled_back(repo, hostname)
     log.warning("hostvars: retry of a rolled-back change authorised for %s by "
@@ -1212,16 +1249,37 @@ def authorise_retry(repo: str, hostname: str, actor: str = "user",
     return {"ok": True, "device": hostname, "record": record}
 
 
-def retry_log(repo: str) -> list:
-    """Every authorised retry, newest last."""
+def retry_log_read(repo: str) -> dict:
+    """Every authorised retry, newest last, with its state: ``{"state": "absent"|"unreadable"|
+    "ok", "rows", "error"}``. The one read of the log (C1324: `intent_ops` opened the file itself
+    to tell unreadable from none); from its file or, once moved, the records database (K31)."""
     import json
 
+    from modules import records_docs
+    from modules.filestore import StoreUnreadable
+    if records_docs.on_database(RETRY_LOG_STORE):
+        try:
+            rows = records_docs.load(RETRY_LOG_STORE, records_docs.repo_network(repo), None)
+        except StoreUnreadable as exc:
+            return {"state": "unreadable", "rows": [], "error": str(exc)}
+        return ({"state": "absent", "rows": [], "error": ""} if rows is None else
+                {"state": "ok", "rows": rows, "error": ""})
+    path = os.path.join(repo, RETRY_LOG_REL)
+    if not os.path.exists(path):
+        return {"state": "absent", "rows": [], "error": ""}
     try:
-        with open(os.path.join(repo, RETRY_LOG_REL), encoding="utf-8") as fh:
+        with open(path, encoding="utf-8") as fh:
             entries = json.load(fh)
-    except (OSError, ValueError):
-        return []
-    return entries if isinstance(entries, list) else []
+        if not isinstance(entries, list):
+            raise ValueError("not a list")
+    except (OSError, ValueError) as exc:
+        return {"state": "unreadable", "rows": [], "error": f"{type(exc).__name__}: {exc}"}
+    return {"state": "ok", "rows": entries, "error": ""}
+
+
+def retry_log(repo: str) -> list:
+    """Every authorised retry, newest last; [] for absent AND for unreadable (C337 names it)."""
+    return retry_log_read(repo)["rows"]
 
 
 def clear_rolled_back(repo: str, hostname: str) -> bool:
