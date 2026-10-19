@@ -172,6 +172,24 @@ class TestAcknowledgingARestart:
         assert got.status_code == 409 and "needs a reason" in got.get_json()["error"]
         assert read()["state"] == "absent"
 
+    def test_a_record_that_cannot_be_written_is_refused_and_the_row_stays(self, store,
+                                                                           monkeypatch):
+        """K31: on the records database, an acknowledgement the database did not take is
+        refused with what it answered, never answered as recorded."""
+        from modules import acknowledgements
+
+        def refused(*_a, **_k):
+            raise RuntimeError("mercury@127.0.0.1:5433/mercury did not accept the connection")
+        monkeypatch.setattr(acknowledgements, "record", refused)
+        _restarts_cached(monkeypatch, _read(now=time.time()))
+        _only(monkeypatch, "restart_source")
+        r = _attention()["rows"][0]
+        got = _ack(r["id"], r["event"], "a planned reload in the maintenance window")
+        assert got.status_code == 409, got.get_json()
+        assert "could not be recorded" in got.get_json()["error"]
+        assert "did not accept the connection" in got.get_json()["error"]
+        assert [x["id"] for x in _attention()["rows"]] == [r["id"]], "the row stays"
+
     def test_a_row_not_on_the_page_another_event_and_a_condition_are_refused(
             self, store, monkeypatch):
         _restarts_cached(monkeypatch, _read(now=time.time()))

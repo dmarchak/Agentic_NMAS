@@ -117,8 +117,19 @@ def _receipts() -> LineStore:
                      kind_id=kind_id, second_kind="completions", noun="receipts")
 
 
-#: Each line store, by name, built when asked (its owner module imports late).
-LINE_STORES = {"receipts": _receipts}
+def _acknowledgements() -> LineStore:
+    """Needs attention's acknowledgements: one file for the installation (K31)."""
+    from modules import acknowledgements as A
+
+    return LineStore(name="acknowledgements", words="Acknowledgements",
+                     table="acknowledgement_lines", files=A.files,
+                     path_for=lambda _network: A._path(), per_network=False,
+                     noun="acknowledgements")
+
+
+#: Each line store, by name, built when asked (its owner module imports late), in
+#: `records_db.STORES` order.
+LINE_STORES = {"receipts": _receipts, "acknowledgements": _acknowledgements}
 
 
 def store_of(name: str = STORE) -> LineStore:

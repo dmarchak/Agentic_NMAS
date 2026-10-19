@@ -396,7 +396,8 @@ deploys included. No start time is recorded for any one item, so no per-item fig
 | K2 | M | 63cc648d | 2026-10-19 03:12 | C589: one Needs attention row per adjacency a device logged down, acknowledged within its band | none in Core 1.0 (C1322, C1323 registered) |
 | K11 | M | d244d7b1 | 2026-10-19 03:31 | the remainder: one set of targets, one record and one job-health row per Prometheus owner; two owners naming one directory refused (C229 closed) | none |
 | K31, part 1 | (L) | c9aeef2c | 2026-10-19 04:00 | E18's record rows: C365 (an intent edit named as one), C361 (a rotation row names its network), C364 (a scoped batch held and recorded as its scope), C368 (a withdrawal drawn with who and why), C237 (one labelled host login), C360 (the heartbeat re-measure in History; History's gaps at 0); the record stores surveyed (C1324 to C1329 registered) | the stores into the records database, one line-store machinery for the 17 append-only stores (the survey's), then the document stores; C159 |
-| K31, part 2a | (L) | this commit | | the migrator, the card, the routes and the records-check reader per store (`records_migrate.LineStore`, receipts the first); behaviour for receipts unchanged | each line store joined to it, its owner's read and write on its backend (C1324 first) |
+| K31, part 2a | (L) | 38c09beb | 2026-10-19 04:10 | the migrator, the card, the routes and the records-check reader per store (`records_migrate.LineStore`, receipts the first); behaviour for receipts unchanged | each line store joined to it, its owner's read and write on its backend (C1324 first) |
+| K31, part 2b (1) | (L) | this commit | | acknowledgements, the second line store (one file for the installation): its read and write on its backend, its own switch, moved and moved back by the card; a write the database does not take is refused, the row staying | the other 15 line stores, one at a time |
 
 ## 7. Not placed, and missing from the cross-check list
 

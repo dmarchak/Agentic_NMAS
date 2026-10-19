@@ -3736,9 +3736,16 @@ def acknowledge(row_id: str, event: str, why: str, *, by: str, verified: str) ->
                                           "of the last week) was not read, and an "
                                           "acknowledgement here holds only within one"}
         extra = {"band": ops["band"], "value": (ops.get("band_reading") or {}).get("value")}
-    entry = ACK.record(row_id, found["event"], why=why, by=by, verified=verified,
-                       kind=f"{found['source']}/{found['kind']}", what=found["what"],
-                       devices=found.get("devices") or [], **extra)
+    try:
+        entry = ACK.record(row_id, found["event"], why=why, by=by, verified=verified,
+                           kind=f"{found['source']}/{found['kind']}", what=found["what"],
+                           devices=found.get("devices") or [], **extra)
+    except Exception as exc:                          # noqa: BLE001 (refused, with its why)
+        first = (str(exc).strip().splitlines() or [type(exc).__name__])[0]
+        log.error("acknowledge %s: the record could not be written: %s", row_id, first)
+        return {"ok": False, "error": f"Not acknowledged: the acknowledgement could not be "
+                                      f"recorded ({type(exc).__name__}: {first}); the row "
+                                      "stays"}
     out = {"ok": True, "acknowledged": entry, "hides_now": True, "words": ""}
     if extra:
         # An acknowledgement within a band that cannot hide its row NOW says so (C533, the

@@ -17,7 +17,9 @@ clears when its condition resolves, or by its own control (a host step said done
 push acknowledged in History's Remote set-up), as `attention.CLEARS` says on the row.
 
 Store: `acknowledgements.jsonl` in the data folder, append-only, 0600 (a person's name and
-reason are in it).
+reason are in it); or, once a person moves it on Settings › Installation › Connections, the
+records database (K31: a line store, `records_migrate`, one for the installation). `read` and
+`record` are its only seam, so both backends answer the same.
 """
 
 import json
@@ -28,15 +30,42 @@ import time
 log = logging.getLogger(__name__)
 
 
+#: The store's name on the records database (`records_db.STORES`).
+STORE = "acknowledgements"
+
+
 def _path() -> str:
     from modules.config import DATA_DIR
     return os.path.join(DATA_DIR, "acknowledgements.jsonl")
 
 
+def files() -> dict:
+    """``{"": path}`` when the file exists, else ``{}``: the store's files, as the records
+    migration counts them (one for the installation)."""
+    path = _path()
+    return {"": path} if os.path.exists(path) else {}
+
+
+def _on_database() -> bool:
+    from modules import records_db
+
+    return records_db.backend(STORE) == records_db.POSTGRES
+
+
 def read() -> dict:
     """``{"state": "ok"|"absent"|"unreadable", "rows": [...]}``. Unreadable is its own
     answer: a page that read it as "nothing acknowledged" would raise every acknowledged
-    row again, and one that read it as "all acknowledged" would hide them."""
+    row again, and one that read it as "all acknowledged" would hide them. On the records
+    database, one that does not answer is unreadable too."""
+    if _on_database():
+        from modules import records_migrate
+
+        try:
+            return {"state": "ok", "rows": records_migrate.table_lines("", store=STORE)}
+        except Exception as exc:                      # noqa: BLE001 (said, never "none")
+            first = (str(exc).strip().splitlines() or [type(exc).__name__])[0]
+            return {"state": "unreadable", "rows": [],
+                    "error": f"the records database: {type(exc).__name__}: {first}"}
     path = _path()
     if not os.path.exists(path):
         return {"state": "absent", "rows": []}
@@ -139,9 +168,17 @@ def record(row_id: str, event: str, *, why: str, by: str, verified: str,
         entry["band"], entry["value"] = float(band), (None if value is None else float(value))
     if devices:
         entry["devices"] = [str(d) for d in devices]
-    path = _path()
-    with PathLock(path):
-        with open_secure(path, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(entry, sort_keys=True) + "\n")
+    line = json.dumps(entry, sort_keys=True)
+    if _on_database():
+        from modules import records_migrate
+
+        # Raises naming why when the database cannot take it: an acknowledgement that was not
+        # kept is never answered as recorded.
+        records_migrate.append_lines("", [line], store=STORE)
+    else:
+        path = _path()
+        with PathLock(path):
+            with open_secure(path, "a", encoding="utf-8") as fh:
+                fh.write(line + "\n")
     log.info("acknowledged %s (event %s) by %s", row_id, event, by)
     return entry

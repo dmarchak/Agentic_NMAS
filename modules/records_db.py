@@ -41,8 +41,8 @@ APPLICATION_NAME = "mercury"
 #: document: receipts first), each with its words and its switch, `records_store_<name>`
 #: ("file", today's, or "postgres"). A store moves only through records_migrate, which copies,
 #: switches and checks; the Settings card draws each ("Stores on it").
-STORES = ("receipts",)
-STORE_WORDS = {"receipts": "Deploy receipts"}
+STORES = ("receipts", "acknowledgements")
+STORE_WORDS = {"receipts": "Deploy receipts", "acknowledgements": "Acknowledgements"}
 FILE, POSTGRES = "file", "postgres"
 
 

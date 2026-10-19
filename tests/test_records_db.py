@@ -107,7 +107,8 @@ class TestOffUntilSet:
 
         group = [k for k, (scope, g) in settings_scope.SCOPES.items() if g == "records_db"]
         assert sorted(group) == ["records_db_host", "records_db_name", "records_db_password",
-                                 "records_db_port", "records_db_user", "records_store_receipts"]
+                                 "records_db_port", "records_db_user",
+                                 "records_store_acknowledgements", "records_store_receipts"]
         assert {settings_scope.SCOPES[k][0] for k in group} == {settings_scope.HOST}
         assert "records_db_password" in secrets_store.SECRET_KEYS
 

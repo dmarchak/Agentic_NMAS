@@ -438,6 +438,7 @@ DEFAULTS: dict = {
     # Where each store keeps its records (P4-2, store by store): "file" until a person moves
     # it on the Records database card, which copies, switches and checks (records_migrate).
     "records_store_receipts": "file",
+    "records_store_acknowledgements": "file",
 
     # ── Platform map (NetBox platform slug → how NMAS treats the device) ────
     # This map is what makes multi-vendor support a configuration change rather
@@ -820,6 +821,7 @@ SCHEMA: dict = {
         "records_db_name": _STR,
         "records_db_user": _STR,
         "records_store_receipts": {"type": "string", "enum": ["file", "postgres"]},
+        "records_store_acknowledgements": {"type": "string", "enum": ["file", "postgres"]},
 
         "platform_map": {
             "type": "object",
