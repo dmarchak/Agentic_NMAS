@@ -348,6 +348,30 @@ def read_committed(repo: str):
     return doc
 
 
+def read_for(list_name: str, repo: str) -> dict:
+    """``{"doc", "from"}``: the profile a network's devices take (K11; the operator,
+    2026-10-18: "a network with no profile still gets monitoring").
+    - **Its own committed profile**, ``from`` naming it.
+    - **Else, for a network that inherits from Default** (P.8's mode,
+      `list_settings.mode`), Default's committed profile, ``from`` naming Default. This is the
+      same rule a setting follows: inherited until the network has its own.
+    - **Else none.** A standalone network with no profile has none, and Default with none has
+      none.
+    - **A broken profile, its own or Default's, RAISES** as `read_committed` does: it is never
+      read as no profile.
+    - The write paths (Propose, the IP SLA policy) read and commit the network's OWN profile.
+      Proposing for an inheriting network gives it its own."""
+    own = read_committed(repo)
+    if own:
+        return {"doc": own, "from": list_name}
+    from modules import list_settings as L
+    if not list_name or L.is_default(list_name) or L.mode(list_name) != L.INHERIT:
+        return {"doc": None, "from": ""}
+    from modules.nsot import listref
+    base = read_committed(listref.resolve(L.DEFAULT_LIST).repo_dir)
+    return {"doc": base or None, "from": L.DEFAULT_LIST if base else ""}
+
+
 def read_at(repo: str, ref: str):
     """The profile as it was at *ref* (a restore renders the ref's intent with
     the ref's profile, never today's); ``None`` when there was none then."""
@@ -388,7 +412,9 @@ def effective_for(repo: str, list_name: str, hostname: str, intent: dict, platfo
     if intent is None:
         return None
     if doc is None:
-        doc = read_committed(repo) if ref == "HEAD" else read_at(repo, ref)
+        # At HEAD, the profile the network takes, inherited where it has none (K11). At an
+        # older ref, the network's own profile at that ref: the inheritance is a fact of now.
+        doc = read_for(list_name, repo)["doc"] if ref == "HEAD" else read_at(repo, ref)
     if not doc:
         return intent
     return effective(intent, doc, platform, role_of(list_name, hostname) if role is None else role)

@@ -79,15 +79,54 @@ def error_packet(code: int, text: str) -> bytes:
 
 # ── the decision ───────────────────────────────────────────────────────────
 
-def _fragment_entries() -> list:
+def _fragment_paths() -> dict:
+    """``{fragment path: [networks]}``: every network's ZTP fragment, each path once, with the
+    networks whose Kea owner writes there (`ztp.kea_home`, C1235). C1252: this read only
+    Default's, so a device onboarded into a network with a Kea of its own was refused its file.
+    A network whose Kea owner cannot be read is skipped and logged; another network's fragment
+    still serves."""
+    from modules.device import get_device_lists
+    from modules.list_settings import DEFAULT_LIST, default_layer
     from modules.nsot import ztp
-    from modules.list_settings import default_layer   # one fragment serves every list (P.7)
 
-    path = default_layer("kea_ztp_fragment", "")
-    if not path:
-        raise LookupError("kea_ztp_fragment is not configured, so no address was "
-                          "reserved by the tool and none can be served")
-    return ztp._read_fragment(path)
+    out = {}
+    for item in get_device_lists():
+        try:
+            path = ztp.kea_home(item["name"])["fragment"]
+        except Exception as exc:                  # noqa: BLE001
+            log.error("ztp responder: %s's Kea owner could not be read (%s); its "
+                      "reservations are not served", item["name"], exc)
+            continue
+        if path:
+            out.setdefault(path, []).append(item["name"])
+    if not out:
+        path = default_layer("kea_ztp_fragment", "")
+        if path:
+            out[path] = [DEFAULT_LIST]
+    return out
+
+
+def _fragment_entries() -> list:
+    """Every reservation the tool wrote, across every network's fragment (C1252), each
+    carrying the fragment it came from (``_fragment``) and the networks that fragment serves
+    (``_networks``). A fragment that cannot be read is an entry of its own (``_unread``), so a
+    refusal can say which reservations were not looked at."""
+    from modules.nsot import ztp
+
+    paths = _fragment_paths()
+    if not paths:
+        raise LookupError("kea_ztp_fragment is not configured on any network, so no address "
+                          "was reserved by the tool and none can be served")
+    out = []
+    for path, networks in paths.items():
+        try:
+            got = ztp._read_fragment(path)
+        except Exception as exc:                  # noqa: BLE001
+            out.append({"_unread": f"{path} ({', '.join(networks)}): {exc}"})
+            continue
+        out.extend(dict(e, _fragment=path, _networks=list(networks))
+                   for e in got if isinstance(e, dict))
+    return out
 
 
 def _pending_ztp_devices() -> list:
@@ -119,15 +158,25 @@ def decide(peer: str, filename: str, *, fragment=_fragment_entries,
     """``{"serve", "config", "device", "list", "reason"}``. Every input is
     read at call time; nothing is remembered between requests."""
     out = {"serve": False, "config": b"", "device": "", "list": "", "reason": ""}
+    if ":" in str(peer):
+        # docs/IPV6_PARITY.md, the standing rule: a capability that cannot serve IPv6 says so
+        # by name. ZTP reserves through Kea's DHCPv4 (section 5 designs the IPv6 path).
+        out["reason"] = (f"{peer} is an IPv6 address: ZTP reserves and serves IPv4 (DHCPv4) "
+                         "addresses only")
+        return out
     try:
         entries = fragment()
     except Exception as exc:                      # noqa: BLE001
         out["reason"] = f"the tool's reservations could not be read: {exc}"
         return out
+    unread = [e["_unread"] for e in entries if isinstance(e, dict) and e.get("_unread")]
     mine = [e for e in entries if isinstance(e, dict) and e.get("ip-address") == peer]
     if len(mine) != 1:
         out["reason"] = (f"{peer} holds no reservation the tool wrote"
                          if not mine else f"{peer} is reserved {len(mine)} times")
+        if not mine and unread:
+            out["reason"] += ("; these fragments could not be read, so it may be reserved "
+                              "there: " + "; ".join(unread))
         return out
     reservation = mine[0]
     named = next((o.get("data") for o in reservation.get("option-data") or []
@@ -152,6 +201,14 @@ def decide(peer: str, filename: str, *, fragment=_fragment_entries,
         return out
     list_name, repo, entry = devices[0]
     out["device"], out["list"] = entry.get("name", ""), list_name
+    served = reservation.get("_networks")
+    if served is not None and list_name not in served:
+        # C1252: a reservation is served to the network whose Kea owns its fragment, never
+        # to a pending device of another network that happens to match it.
+        out["reason"] = (f"{peer}'s reservation is in {reservation.get('_fragment')}, the "
+                         f"fragment of {', '.join(served) or 'no network'}; the pending device "
+                         f"{out['device']} is in {list_name}")
+        return out
     rendered = artifact(repo, out["device"])
     if not rendered.get("ok"):
         out["reason"] = f"the config could not be rendered: {rendered.get('reason')}"

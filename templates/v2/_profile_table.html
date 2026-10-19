@@ -14,6 +14,9 @@
   {%- elif not p.committed %}
   <div class="notice notice-warn">{{ icon('warn', 16) }}<p>{{ p.list }} has no profile yet: propose one from the connectors.</p></div>
   {%- else %}
+  {%- if p.inherited_from %}
+  <div class="notice notice-info">{{ icon('info', 16) }}<p>{{ p.list }} has no profile of its own, so its devices take {{ p.inherited_from }}'s, below, as it inherits {{ p.inherited_from }}'s settings. Propose one to give it its own.</p></div>
+  {%- endif %}
   <p class="muted prof-commit">What every device inherits, its own value winning where it has one. Commit <span class="mono">{{ p.commit }}</span>{% if p.committed_at %}, {{ stamp(p.committed_at) }}{% endif %}.</p>
   <div class="table-wrap"><table class="table prof-table">
     <thead><tr><th scope="col">Section</th><th scope="col">Derived from</th><th scope="col">Applies to</th><th scope="col">On the devices</th></tr></thead>

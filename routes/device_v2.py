@@ -217,7 +217,7 @@ def _pending_facts(ref, p) -> dict:
         try:
             from modules.nsot import ztp as _ztp
 
-            out["ztp"] = _ztp.progress(p)
+            out["ztp"] = _ztp.progress(p, list_name=ref.name)
         except Exception as exc:                      # noqa: BLE001 (said on the page)
             out["ztp"] = {"stage": "unknown", "summary": f"its progress could not be read: {exc}"}
     runs = _run_history(ref.repo_dir, {p.get("name", "")})

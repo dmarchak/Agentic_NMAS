@@ -1127,7 +1127,7 @@ def intent_view(ref, dev: dict) -> dict:
     try:
         doc = hostvars.read_committed(ref.repo_dir, host) or {}
         out["bootstrap"] = bool(hostvars.is_bootstrap_only(doc))
-        prof = _p.read_committed(ref.repo_dir)
+        prof = _p.read_for(ref.name, ref.repo_dir)["doc"]              # inherited (K11)
         out["profile"]["committed"] = bool(prof)
         if prof:
             out["profile"]["applies"] = sorted(_p.sections_for(

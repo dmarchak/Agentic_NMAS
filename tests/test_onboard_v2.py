@@ -273,7 +273,7 @@ class TestAPendingDevice:
         row = dict(self.PENDING, address_source="ztp", mgmt_ip="",
                    mgmt_mac="aa:bb:cc:00:02:60", reserved_address="192.0.2.60")
         monkeypatch.setattr("modules.nsot.manifest.pending_devices", lambda repo: [dict(row)])
-        monkeypatch.setattr("modules.nsot.ztp.progress", lambda entry: {
+        monkeypatch.setattr("modules.nsot.ztp.progress", lambda entry, **_k: {
             "stage": "reserved_not_leased", "summary": "reserved; no lease yet"})
         monkeypatch.setattr(O, "read_runs", lambda repo: {"state": "ok", "error": "", "rows": [
             {"at": "2026-10-10T09:05:00Z", "kind": "verify", "device": "bp1",

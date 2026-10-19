@@ -2289,7 +2289,7 @@ def test_pending_page(tmp_path, monkeypatch):
     def rows(row, stage=None, stored=None, runs=None):
         monkeypatch.setattr("modules.nsot.manifest.pending_devices", lambda repo: [dict(row)])
         if stage:
-            monkeypatch.setattr("modules.nsot.ztp.progress", lambda entry: {
+            monkeypatch.setattr("modules.nsot.ztp.progress", lambda entry, **_k: {
                 "stage": stage, "summary": f"{stage.replace('_', ' ')} now"})
         OPT._stored(monkeypatch, stored)
         monkeypatch.setattr(O, "read_runs", lambda repo: runs or {

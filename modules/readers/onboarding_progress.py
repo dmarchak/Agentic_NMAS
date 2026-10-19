@@ -99,7 +99,7 @@ def judge(list_name: str, row: dict, now: float, *, progress=None, probe=None) -
     if ztp:
         if progress is None:
             from modules.nsot.ztp import progress
-        p = progress(row) or {}
+        p = progress(row, list_name=list_name) or {}
         out.update(stage=p.get("stage", "unknown"), summary=p.get("summary", ""))
         age = _since(out["onboarded_at"], now)
         out["stop"] = bool(out["stage"] in NOT_FETCHED and age is not None

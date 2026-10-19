@@ -42,7 +42,7 @@ def _probe(answers=True):
 
 
 def _stage(stage):
-    return lambda row: {"stage": stage, "summary": f"{stage} summary"}
+    return lambda row, list_name="": {"stage": stage, "summary": f"{stage} summary"}
 
 
 class TestTheReader:
@@ -79,7 +79,7 @@ class TestTheReader:
         assert d["stop"] is stop
 
     def test_it_reads_every_pending_device_and_says_one_it_could_not(self):
-        def progress(row):
+        def progress(row, **_k):
             raise RuntimeError("Kea down")
         probe, _asked = _probe()
         got = OP.read(pop=[("Lab", dict(ZTP)), ("Lab", dict(STATIC))], clock=lambda: NOW,
@@ -132,7 +132,7 @@ def _stored(monkeypatch, d):
 def _page(client, monkeypatch, row, stage=None, stored=None):  # noqa: F811
     monkeypatch.setattr("modules.nsot.manifest.pending_devices", lambda repo: [dict(row)])
     if stage:
-        monkeypatch.setattr("modules.nsot.ztp.progress", lambda entry: {
+        monkeypatch.setattr("modules.nsot.ztp.progress", lambda entry, **_k: {
             "stage": stage, "summary": f"{stage.replace('_', ' ')} now"})
     _stored(monkeypatch, stored)
     return client.get(f"/v2/device/{row['name']}").get_data(as_text=True)
@@ -199,7 +199,7 @@ class TestThePage:
     def test_its_fragment_draws_alone_and_says_when_it_is_no_longer_pending(  # noqa: F811
             self, client, monkeypatch):
         monkeypatch.setattr("modules.nsot.manifest.pending_devices", lambda repo: [dict(ZTP_ROW)])
-        monkeypatch.setattr("modules.nsot.ztp.progress", lambda entry: {
+        monkeypatch.setattr("modules.nsot.ztp.progress", lambda entry, **_k: {
             "stage": "fetched_not_reached", "summary": "fetched"})
         _stored(monkeypatch, ANSWERING)
         frag = client.get("/v2/device/bp1/pending/progress").get_data(as_text=True)
@@ -227,7 +227,7 @@ class TestTheInProgressChip:
         shape): the chip reads only this, never a manifest (tests/test_scale.py)."""
         from modules import reader_job
         value = OP.read(pop=pop, clock=lambda: NOW,
-                        progress=lambda row: {"stage": "fetched_not_reached", "summary": ""},
+                        progress=lambda row, **_k: {"stage": "fetched_not_reached", "summary": ""},
                         probe=lambda addr: (True, ANSWERING["claim"]))
         monkeypatch.setattr(reader_job, "read_cached", lambda name: {
             "state": "ok", "why": "",

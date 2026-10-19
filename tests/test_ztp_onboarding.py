@@ -353,7 +353,7 @@ class TestThePendingPageDrawsZtpProgress:
 
     def test_only_a_ztp_device_carries_progress(self, monkeypatch, tmp_path):
         asked = []
-        monkeypatch.setattr("modules.nsot.ztp.progress", lambda row: asked.append(
+        monkeypatch.setattr("modules.nsot.ztp.progress", lambda row, **_k: asked.append(
             row["name"]) or {"stage": "reserved_not_leased", "summary": "reserved"})
         html = _pending_page(monkeypatch, tmp_path, dict(
             ENTRY, age_seconds=10, state="in_flight", onboarded_at="2026-10-01T09:00:00Z"))
@@ -365,7 +365,7 @@ class TestThePendingPageDrawsZtpProgress:
 
     def test_a_progress_that_raised_is_drawn_as_unknown_with_its_reason(self, monkeypatch,
                                                                        tmp_path):
-        def boom(row):
+        def boom(row, **_k):
             raise OSError("Kea down")
         monkeypatch.setattr("modules.nsot.ztp.progress", boom)
         html = _pending_page(monkeypatch, tmp_path, dict(

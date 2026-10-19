@@ -122,6 +122,13 @@ reading, or could not ask a source, the page says so once. The affected cells st
 ## Profile {#profile}
 
 The network's profile: what every device inherits, its own value winning where it has one.
+
+**A network with no profile of its own still gets monitoring.** If it inherits Default's
+settings (see [Inherit or stand alone](settings-switch)), its devices take Default's profile,
+and the page says so above the rows. That covers rendering, Coverage, Apply, and onboarding's
+profile step at Verify. Propose gives it a profile of its own, which then wins. A standalone
+network with no profile has none, and its devices are shown as not monitored.
+
 One row per committed section:
 
 - **Derived from**: the connector or setting the section comes from (the SNMP exporter's

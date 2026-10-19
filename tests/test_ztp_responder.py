@@ -82,6 +82,92 @@ class TestWhatItServes:
             raise LookupError("kea_ztp_fragment is not configured")
         assert not _decide(fragment=boom)["serve"]
 
+    def test_an_ipv6_asker_is_refused_by_name(self):
+        """docs/IPV6_PARITY.md's standing rule: ZTP is DHCPv4, and says so to an IPv6 peer
+        rather than "holds no reservation" (its IPv4 twin is the first test above)."""
+        d = _decide(peer="2001:db8::50")
+        assert not d["serve"] and "IPv6 address" in d["reason"] and "IPv4" in d["reason"]
+
+
+class TestEveryNetworksReservations:
+    """C1252: the responder served only Default's fragment, so a device onboarded into a
+    network with a Kea of its own was refused its file. It now reads every network's Kea
+    owner's fragment, and serves a reservation only to that network's pending device."""
+
+    def _two(self, monkeypatch, tmp_path, unreadable=False):
+        import json
+        from modules.nsot import ztp
+        lab, branch = tmp_path / "lab.json", tmp_path / "branch.json"
+        lab.write_text(json.dumps([_reservation()]), encoding="utf-8")
+        if not unreadable:
+            branch.write_text(json.dumps([_reservation(ip="192.0.2.60", mac="aa:bb:cc:00:02:60",
+                                                       file="br-a.cfg")]), encoding="utf-8")
+        homes = {"Lab": str(lab), "Branch": str(branch), "Other": str(lab)}
+        monkeypatch.setattr("modules.device.get_device_lists",
+                            lambda: [{"name": n} for n in homes])
+        monkeypatch.setattr(ztp, "kea_home", lambda n: {"owner": n, "fragment": homes[n]})
+        monkeypatch.setattr(ztp, "_read_fragment",
+                            lambda p: json.loads(open(p, encoding="utf-8").read()))
+        return str(lab), str(branch)
+
+    def test_each_fragment_once_with_the_networks_it_serves(self, monkeypatch, tmp_path):
+        lab, branch = self._two(monkeypatch, tmp_path)
+        assert r._fragment_paths() == {lab: ["Lab", "Other"], branch: ["Branch"]}
+
+    def test_a_second_networks_reservation_is_served_to_its_device(self, monkeypatch, tmp_path):
+        self._two(monkeypatch, tmp_path)
+        d = r.decide("192.0.2.60", "br-a.cfg",
+                     pending=lambda: [("Branch", "/repo", {
+                         "name": "br-a", "reserved_address": "192.0.2.60",
+                         "mgmt_mac": "aa:bb:cc:00:02:60", "address_source": "ztp"})],
+                     artifact=lambda repo, host: {"ok": True, "config": CONFIG})
+        assert d["serve"] and d["list"] == "Branch" and d["device"] == "br-a"
+
+    def test_another_networks_device_is_refused_naming_both(self, monkeypatch, tmp_path):
+        _lab, branch = self._two(monkeypatch, tmp_path)
+        d = r.decide("192.0.2.60", "br-a.cfg",
+                     pending=lambda: [("Lab", "/repo", {
+                         "name": "br-a", "reserved_address": "192.0.2.60",
+                         "mgmt_mac": "aa:bb:cc:00:02:60", "address_source": "ztp"})],
+                     artifact=lambda repo, host: {"ok": True, "config": CONFIG})
+        assert not d["serve"]
+        assert branch in d["reason"] and "Branch" in d["reason"] and "is in Lab" in d["reason"]
+
+    def test_an_unreadable_fragment_is_named_in_the_refusal(self, monkeypatch, tmp_path):
+        _lab, branch = self._two(monkeypatch, tmp_path, unreadable=True)
+        d = r.decide("192.0.2.60", "br-a.cfg", pending=lambda: [],
+                     artifact=lambda repo, host: {"ok": True, "config": CONFIG})
+        assert not d["serve"] and "could not be read" in d["reason"] and branch in d["reason"]
+
+    def test_default_s_still_serves(self, monkeypatch, tmp_path):
+        """Floor: the one network the lab runs today is served as before."""
+        self._two(monkeypatch, tmp_path)
+        d = r.decide(PEER, "bp-ztp-a.cfg", pending=_pending,
+                     artifact=lambda repo, host: {"ok": True, "config": CONFIG})
+        assert d["serve"] and d["list"] == "Lab"
+
+
+class TestProgressAsksTheNetworksKea:
+    """C1252's other half: a pending device's progress asked a Kea built for no network."""
+
+    def test_the_device_s_kea_owner_is_asked(self, monkeypatch):
+        from modules.nsot import ztp
+        asked = []
+
+        class Kea:
+            def reservation_for(self, mac):
+                return {"state": "reserved", "address": PEER}
+
+            def lease_for(self, mac):
+                return {"state": "none"}
+
+        monkeypatch.setattr(ztp, "kea_home", lambda n: {"owner": f"owner-of-{n}",
+                                                        "fragment": "", "main_config": ""})
+        monkeypatch.setattr(ztp, "_kea", lambda owner="": asked.append(owner) or Kea())
+        got = ztp.progress({"name": "br-a", "mgmt_mac": MAC, "reserved_address": PEER},
+                           fetches=[], list_name="Branch")
+        assert asked == ["owner-of-Branch"] and got["reservation"]["state"] == "written"
+
 
 class _Audit:
     def __init__(self, recorded=True):

@@ -207,11 +207,11 @@ def for_capture(list_name: str, hostname: str, platform: str, role: str, capture
         from modules.config import get_list_data_dir
         repo = os.path.join(get_list_data_dir(list_name), "config_repo")
     if doc is None:
-        doc = _profile.read_committed(repo)
+        doc = _profile.read_for(list_name, repo)["doc"]          # inherited where none (K11)
     if not doc:
-        out["why"] = (f"{list_name} has no committed monitoring profile, so there is nothing "
-                      "to apply: propose the network's profile, then apply it from the "
-                      "device's page")
+        out["why"] = (f"{list_name} has no committed monitoring profile, and inherits none "
+                      "from Default, so there is nothing to apply: propose the network's "
+                      "profile, then apply it from the device's page")
         return out
     own = get_parser(platform).parse(capture or "")
     sections = _profile.sections_for(doc, platform, role, own)

@@ -62,7 +62,7 @@ def profile_view(ref, dev) -> dict:
 
     host = (dev.get("hostname") or "").strip()
     try:
-        doc = _p.read_committed(ref.repo_dir)
+        doc = _p.read_for(ref.name, ref.repo_dir)["doc"]               # inherited (K11)
         intent = hostvars.read_committed(ref.repo_dir, host)
     except Exception as exc:                            # noqa: BLE001
         return {"profile": False, "applies": set(), "excluded": {},
@@ -470,7 +470,7 @@ def fleet(ref, devices=None, golden=None, get=None, profile=None, report=None) -
         from modules.device import load_saved_devices
         devices = [(ref, d) for d in load_saved_devices(ref.csv_path)]
     try:
-        doc = _p.read_committed(ref.repo_dir)
+        doc = _p.read_for(ref.name, ref.repo_dir)["doc"]               # inherited (K11)
         prof = {"committed": bool(doc), "error": "",
                 "sections": sorted((doc or {}).get("sections") or {})}
     except Exception as exc:                            # noqa: BLE001

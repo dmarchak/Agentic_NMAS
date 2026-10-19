@@ -71,11 +71,14 @@ def sections(ref) -> dict:
     from modules.preview_confirm import PROFILE_SECTION_WORDS
 
     out = {"list": ref.name, "ok": True, "error": "", "committed": False, "rows": [],
-           "not_rendered": 0}
+           "not_rendered": 0, "inherited_from": ""}
     try:
-        doc = _p.read_committed(ref.repo_dir)
+        got = _p.read_for(ref.name, ref.repo_dir)        # inherited where none (K11)
     except Exception as exc:                            # noqa: BLE001
         return dict(out, ok=False, error=f"{type(exc).__name__}: {exc}")
+    doc = got["doc"]
+    if doc and got["from"] != ref.name:
+        out["inherited_from"] = got["from"]
     c = monitoring_coverage.fleet(ref)
     prof = c.get("profile") or {}
     out.update(committed=bool(doc), commit=prof.get("commit", ""),

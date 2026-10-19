@@ -30,7 +30,7 @@ class TestTheFiveSteps:
         row = dict(P.PENDING, address_source="ztp", mgmt_ip="",
                    mgmt_mac="aa:bb:cc:00:02:60", reserved_address="192.0.2.60")
         monkeypatch.setattr("modules.nsot.manifest.pending_devices", lambda repo: [dict(row)])
-        monkeypatch.setattr("modules.nsot.ztp.progress", lambda entry: {
+        monkeypatch.setattr("modules.nsot.ztp.progress", lambda entry, **_k: {
             "stage": "leased_not_fetched", "summary": "leased 192.0.2.60; it has not asked yet"})
         html = client.get("/v2/device/bp1").get_data(as_text=True)
         text = _text(html)

@@ -2838,7 +2838,7 @@ def template_behind_source(ref=None) -> dict:
         ref = ref or listref.active()
         repo = ref.repo_dir
         stale = [p for p, s in approve_op._shipped_states(repo).items() if s["state"] == "stale"]
-        doc = _p.read_committed(repo) if stale else None
+        doc = _p.read_for(ref.name, repo)["doc"] if stale else None   # inherited (K11)
     except Exception as exc:                            # noqa: BLE001
         return source_result("templates", label, read_at=started, took_ms=0,
                              error=f"{type(exc).__name__}: {exc}")

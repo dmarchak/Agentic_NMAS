@@ -846,7 +846,7 @@ def _peer_host(value: str) -> str:
     return str(ip.ipv4_mapped) if ip.version == 6 and ip.ipv4_mapped else str(ip)
 
 
-def progress(entry: dict, *, kea=None, fetches=None) -> dict:
+def progress(entry: dict, *, kea=None, fetches=None, list_name: str = "") -> dict:
     """Where a pending ZTP device has got to, each fact from its own source:
 
     - the reservation, read from Kea's RUNNING config (what the device will
@@ -856,10 +856,14 @@ def progress(entry: dict, *, kea=None, fetches=None) -> dict:
 
     "Reached" needs no fact here: a pending device has not been reached, and
     phase 2's verify is what ends pending.
+
+    *list_name* is the device's network: its Kea is its Kea OWNER's (`kea_home`, C1252: this
+    asked a client built for no network, so a device in a network with a Kea of its own read
+    as ``reservation_missing``).
     """
     mac, want = entry.get("mgmt_mac", ""), entry.get("reserved_address", "")
     name = entry.get("name", "")
-    kea = kea or _kea()
+    kea = kea or _kea(kea_home(list_name)["owner"] if list_name else "")
     out = {"reservation": {}, "lease": {}, "fetch": {}, "stage": "unknown", "summary": ""}
 
     r = kea.reservation_for(mac)

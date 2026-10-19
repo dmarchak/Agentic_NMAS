@@ -263,8 +263,8 @@ def _split_profile(repo: str, hostname: str, artifact, captured: str, to_add: li
 
     result["from_profile"] = []
     try:
-        doc = _profile.read_committed(repo)
         list_name = hostvars.list_name_for_repo(repo)
+        doc = _profile.read_for(list_name, repo)["doc"]             # inherited where none (K11)
         own = hostvars.read_committed(repo, hostname)
         if not doc or own is None:
             return result
@@ -341,7 +341,7 @@ def _unrendered(list_name: str, hostname: str, artifact, device: dict) -> list:
 
     repo = _repo_for(list_name)
     try:
-        doc = _profile.read_committed(repo)
+        doc = _profile.read_for(list_name, repo)["doc"]             # inherited where none (K11)
     except _profile.ProfileRefused:
         return []
     own = hostvars.read_committed(repo, hostname) if doc else None
@@ -375,11 +375,11 @@ def _profile_scope(list_name: str, hostname: str, artifact, intended: str, captu
     from modules.nsot.deploy import render_for_deploy
 
     repo = _repo_for(list_name)
-    doc = _profile.read_committed(repo)
+    doc = _profile.read_for(list_name, repo)["doc"]                 # inherited where none (K11)
     if not doc:
         raise profile_apply.ScopeRefused(
-            f"{list_name} has no committed monitoring profile, so there is nothing to apply: "
-            "propose the network's profile first")
+            f"{list_name} has no committed monitoring profile, and inherits none from Default, "
+            "so there is nothing to apply: propose the network's profile first")
     own = hostvars.read_committed(repo, hostname)
     if own is None:
         raise profile_apply.ScopeRefused(f"{hostname} has no committed intent")
