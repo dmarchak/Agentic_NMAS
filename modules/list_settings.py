@@ -48,6 +48,8 @@ NOT_CONFIGURED = "not configured for this network"
 HOST = "host-wide"
 STORE = "settings.json"
 RECORD = "settings_record.jsonl"
+#: The record's store on the records database (K31: one file per network).
+RECORD_STORE = "network_settings_record"
 DEFAULT_LIST = "Default"
 
 #: A network's mode, and a group's choice (boards I and J). ``not_applicable`` is the store's
@@ -722,18 +724,21 @@ def _check(plan: dict, fingerprint: str, seen: dict) -> None:
 def _record(list_name: str, entry: dict) -> dict:
     """Append *entry* to the list's record, owner-only. The switch IS made when this runs:
     a record that cannot be written says so, first, rather than undoing it."""
-    from modules.config import list_data_path, open_secure
+    from modules.config import list_data_path
     from modules.inventory_edit import actor_label
 
     entry = dict(entry, at=_now(), list=list_name,
                  actor_label=actor_label(entry.get("actor", ""),
                                          entry.get("actor_verified", "")))
+    from modules import records_migrate
+
     p = os.path.join(list_data_path(list_name), RECORD)
     try:
-        with open_secure(p, "a") as fh:
-            fh.write(json.dumps(entry, sort_keys=True) + "\n")
+        # Its file, or the records database once moved (K31: kept per network).
+        records_migrate.store_append(RECORD_STORE, p, entry,
+                                     network=os.path.basename(os.path.dirname(p)))
         entry["recorded"] = True
-    except OSError as exc:
+    except Exception as exc:                          # noqa: BLE001 (said: recorded False)
         log.error("list settings: %s's %s switch made and NOT recorded: %s", list_name,
                   entry.get("kind"), exc)
         entry.update(recorded=False, record_error=f"{type(exc).__name__}: {exc}")
@@ -871,14 +876,13 @@ def apply_mode(list_name: str, to_mode: str, fingerprint: str, actor: str,
 def changes(list_name: str) -> dict:
     """The recorded switches, newest first. ``state``: ``absent`` (none yet), ``ok``, or
     ``unreadable`` (never read as none)."""
+    from modules import records_migrate
     from modules.config import list_data_path
 
     p = os.path.join(list_data_path(list_name), RECORD)
-    if not os.path.exists(p):
-        return {"state": "absent", "rows": []}
-    try:
-        with open(p, encoding="utf-8") as fh:
-            rows = [json.loads(line) for line in fh if line.strip()]
-    except (OSError, ValueError) as exc:
-        return {"state": "unreadable", "rows": [], "error": f"{type(exc).__name__}: {exc}"}
-    return {"state": "ok", "rows": list(reversed(rows))}
+    got = records_migrate.store_rows(RECORD_STORE, p,
+                                     network=os.path.basename(os.path.dirname(p)))
+    if got["state"] != "ok":
+        return {"state": got["state"], "rows": [],
+                **({"error": got["error"]} if got["error"] else {})}
+    return {"state": "ok", "rows": list(reversed(got["rows"]))}

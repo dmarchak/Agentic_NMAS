@@ -451,6 +451,9 @@ DEFAULTS: dict = {
     "records_store_host_steps_done": "file",
     "records_store_heartbeat_rules": "file",
     "records_store_netbox_removals": "file",
+    "records_store_network_settings_record": "file",
+    "records_store_onboarding_runs": "file",
+    "records_store_inventory_edits": "file",
 
     # ── Platform map (NetBox platform slug → how NMAS treats the device) ────
     # This map is what makes multi-vendor support a configuration change rather
@@ -846,6 +849,10 @@ SCHEMA: dict = {
         "records_store_host_steps_done": {"type": "string", "enum": ["file", "postgres"]},
         "records_store_heartbeat_rules": {"type": "string", "enum": ["file", "postgres"]},
         "records_store_netbox_removals": {"type": "string", "enum": ["file", "postgres"]},
+        "records_store_network_settings_record": {"type": "string",
+                                                  "enum": ["file", "postgres"]},
+        "records_store_onboarding_runs": {"type": "string", "enum": ["file", "postgres"]},
+        "records_store_inventory_edits": {"type": "string", "enum": ["file", "postgres"]},
 
         "platform_map": {
             "type": "object",

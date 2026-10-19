@@ -39,6 +39,8 @@ log = logging.getLogger(__name__)
 #: nothing is not a correction.
 ROLES = ("router", "switch", "firewall")
 AUDIT_FILE = "inventory_edits.jsonl"
+#: The edits record's store on the records database (K31: one file per network).
+AUDIT_STORE = "inventory_edits"
 
 
 class RoleEditRefused(ValueError):
@@ -178,7 +180,6 @@ def apply(list_name: str, hostname: str, role: str, reason: str, fingerprint: st
     """Write the role the person confirmed, and record it. Refuses a plan
     that moved since the preview (another edit, or a different row), naming
     both fingerprints."""
-    from modules.config import open_secure
     from modules.device import devices_csv_lock, load_saved_devices, write_devices_csv
     from modules.nsot import listref
 
@@ -203,12 +204,15 @@ def apply(list_name: str, hostname: str, role: str, reason: str, fingerprint: st
            "before": p["before"], "after": p["after"], "reason": p["reason"],
            "actor": actor, "actor_verified": actor_verified,
            "actor_label": actor_label(actor, actor_verified), "fingerprint": p["fingerprint"]}
+    from modules import records_migrate
+
     path = os.path.join(ref.data_dir, AUDIT_FILE)
     try:
-        with open_secure(path, "a") as fh:
-            fh.write(json.dumps(rec, sort_keys=True) + "\n")
+        # Its file, or the records database once moved (K31: kept per network).
+        records_migrate.store_append(AUDIT_STORE, path, rec,
+                                     network=os.path.basename(os.path.dirname(path)))
         rec["recorded"] = True
-    except OSError as exc:
+    except Exception as exc:                          # noqa: BLE001 (said: recorded False)
         # The role IS written: say so first, and that its record is not.
         log.error("inventory edit: %s's role written and NOT recorded: %s", hostname, exc)
         rec.update(recorded=False, record_error=f"{type(exc).__name__}: {exc}")
@@ -223,15 +227,15 @@ def history(list_name: str, hostname: str = "") -> dict:
     from modules.nsot import listref
 
     ref = listref.resolve(list_name)
+    from modules import records_migrate
+
     path = os.path.join(ref.data_dir, AUDIT_FILE)
-    if not os.path.exists(path):
-        return {"state": "absent", "rows": []}
-    try:
-        with open(path, encoding="utf-8") as fh:
-            rows = [json.loads(line) for line in fh if line.strip()]
-    except (OSError, ValueError) as exc:
-        return {"state": "unreadable", "rows": [], "error": f"{type(exc).__name__}: {exc}"}
+    got = records_migrate.store_rows(AUDIT_STORE, path,
+                                     network=os.path.basename(os.path.dirname(path)))
+    if got["state"] != "ok":
+        return {"state": got["state"], "rows": [],
+                **({"error": got["error"]} if got["error"] else {})}
     rows = [dict(r, actor_label=r.get("actor_label") or actor_label(r.get("actor", ""),
                                                                      r.get("actor_verified", "")))
-            for r in rows if not hostname or r.get("device") == hostname]
+            for r in got["rows"] if not hostname or r.get("device") == hostname]
     return {"state": "ok", "rows": list(reversed(rows))}

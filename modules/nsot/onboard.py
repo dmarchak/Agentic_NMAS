@@ -1806,6 +1806,8 @@ ZTP_ABANDON_STEPS = ("reservation",) + ABANDON_STEPS
 #: record: a reason is text from a device or a service, and nobody restores
 #: anything from this file, so there is nothing a mask would break.
 RUNS_FILE = "onboarding_runs.jsonl"
+#: The runs record's store on the records database (K31: one file per network).
+RUNS_STORE = "onboarding_runs"
 
 
 def runs_path(repo: str) -> str:
@@ -1821,7 +1823,7 @@ def record_run(repo: str, kind: str, list_name: str, hostname: str, actor: str,
     """Append one Verify or Abandon: ``{"ok", "row", "error"}``. Never raises:
     the run happened whether or not its record could be written, and the
     result says which."""
-    import json
+    import os
     import time
 
     from modules.redact import redact_text
@@ -1852,9 +1854,11 @@ def record_run(repo: str, kind: str, list_name: str, hostname: str, actor: str,
                                    "note": _t(rec.get("note")),
                                    "command": _t(rec.get("command"))}} if v else {}}
     try:
-        from modules.config import open_secure
-        with open_secure(runs_path(repo), "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(row, sort_keys=True) + "\n")
+        from modules import records_migrate
+        # Its file, or the records database once moved (K31: kept per network).
+        path = runs_path(repo)
+        records_migrate.store_append(RUNS_STORE, path, row,
+                                     network=os.path.basename(os.path.dirname(path)))
         return {"ok": True, "row": row, "error": ""}
     except Exception as exc:                  # noqa: BLE001
         log.error("onboard: run record NOT written for %s: %s", hostname, exc)
@@ -1870,18 +1874,14 @@ def run_heading(row: dict) -> dict:
 def read_runs(repo: str) -> dict:
     """``{"state": "ok"|"absent"|"unreadable", "rows": [...newest first],
     "error"}``. Absent and unreadable are different facts."""
-    import json
     import os
 
+    from modules import records_migrate
+
     path = runs_path(repo)
-    if not os.path.exists(path):
-        return {"state": "absent", "rows": [], "error": ""}
-    try:
-        with open(path, encoding="utf-8") as fh:
-            rows = [json.loads(line) for line in fh if line.strip()]
-    except Exception as exc:                  # noqa: BLE001
-        return {"state": "unreadable", "rows": [], "error": str(exc)}
-    return {"state": "ok", "rows": list(reversed(rows)), "error": ""}
+    got = records_migrate.store_rows(RUNS_STORE, path,
+                                     network=os.path.basename(os.path.dirname(path)))
+    return dict(got, rows=list(reversed(got["rows"])))
 
 
 def abandon_fingerprint(dry: dict) -> str:

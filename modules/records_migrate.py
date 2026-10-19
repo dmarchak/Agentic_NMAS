@@ -304,20 +304,20 @@ def ensure_schema(conn, store: str = STORE) -> None:
 
 # ── The store's writes and reads (each store's owner module calls these) ────────────────────
 
-def append_lines(list_name: str, texts: list, store: str = STORE) -> None:
+def append_lines(list_name: str, texts: list, store: str = STORE, network: str = None) -> None:
     """Insert *texts* (each a line as the file would hold it) in ONE transaction: all or none.
     Raises naming why when the database cannot take them."""
     from modules import records_db
 
     st = store_of(store)
-    network = network_of(list_name, store)
+    network = network if network is not None else network_of(list_name, store)
     with records_db.connect() as conn:
         for text in texts:
             _insert(conn, st, network, text)
 
 
 def table_lines(list_name: str, copied_only: bool = False, conn=None,
-                store: str = STORE) -> list:
+                store: str = STORE, network: str = None) -> list:
     """A network's lines from the table, as parsed JSON, in `_ORDER`. Raises when it cannot be
     read."""
     from modules import records_db
@@ -325,25 +325,28 @@ def table_lines(list_name: str, copied_only: bool = False, conn=None,
     st = store_of(store)
     sql = (f"select body from {st.qualified} where network = %s"
            + (" and source_line is not null " if copied_only else " ") + _ORDER)
-    network = network_of(list_name, store) if st.per_network else ""
+    network = (network if network is not None else
+               network_of(list_name, store) if st.per_network else "")
     if conn is not None:
         return [r[0] for r in conn.execute(sql, (network,)).fetchall()]
     with records_db.connect() as c:
         return [r[0] for r in c.execute(sql, (network,)).fetchall()]
 
 
-def store_rows(store: str, path: str, skip_unparsable: bool = False) -> dict:
+def store_rows(store: str, path: str, skip_unparsable: bool = False, network: str = "") -> dict:
     """A line store's rows, oldest first, from its file or, once moved, the records database:
     ``{"state": "absent"|"unreadable"|"ok", "rows", "error"}``. Absent and unreadable are
     different answers, and a database that does not answer is unreadable, never no rows.
     *skip_unparsable*: a store whose reader has always skipped a line that does not parse
-    keeps doing so (C1327 names the disagreement; it is not settled here). The one read of
-    the line stores that came after part 2b's first five."""
+    keeps doing so (C1327 names the disagreement; it is not settled here). *network*: the
+    list's folder name for a store kept per network, ``""`` for one the installation keeps.
+    The one read of the line stores that came after part 2b's first five."""
     from modules import records_db
 
     if records_db.backend(store) == records_db.POSTGRES:
         try:
-            return {"state": "ok", "rows": table_lines("", store=store), "error": ""}
+            return {"state": "ok", "rows": table_lines("", store=store, network=network),
+                    "error": ""}
         except Exception as exc:                      # noqa: BLE001 (said, never "none")
             first = (str(exc).strip().splitlines() or [type(exc).__name__])[0]
             return {"state": "unreadable", "rows": [],
@@ -366,7 +369,7 @@ def store_rows(store: str, path: str, skip_unparsable: bool = False) -> dict:
     return {"state": "ok", "rows": rows, "error": ""}
 
 
-def store_append(store: str, path: str, row: dict) -> None:
+def store_append(store: str, path: str, row: dict, network: str = "") -> None:
     """Append *row* to a line store: its file, owner-only and under its cross-process lock
     (C1328), or, once moved, the records database. Raises naming why when it could not be kept:
     the caller decides whether its record failing stops it."""
@@ -374,7 +377,7 @@ def store_append(store: str, path: str, row: dict) -> None:
 
     line = json.dumps(row, sort_keys=True)
     if records_db.backend(store) == records_db.POSTGRES:
-        append_lines("", [line], store=store)
+        append_lines("", [line], store=store, network=network)
         return
     from modules.config import open_secure
     from modules.filestore import PathLock
@@ -389,6 +392,50 @@ def file_of(path: str) -> dict:
     """``{"": path}`` when *path* exists, else ``{}``: a store kept once for the installation,
     as the migration counts its files."""
     return {"": path} if os.path.exists(path) else {}
+
+
+def network_files(name: str) -> dict:
+    """``{network: path}`` for every list folder holding file *name*: a store kept per network,
+    as the migration counts its files (every file that exists, registered list or not: a
+    property, never the list of lists)."""
+    from modules.config import LISTS_DIR
+
+    out = {}
+    if os.path.isdir(LISTS_DIR):
+        for folder in sorted(os.listdir(LISTS_DIR)):
+            path = os.path.join(LISTS_DIR, folder, name)
+            if os.path.isfile(path):
+                out[folder] = path
+    return out
+
+
+def network_path(name: str, network: str) -> str:
+    """A per-network store's file for *network* (its list folder), for the move back."""
+    from modules.config import LISTS_DIR
+
+    return os.path.join(LISTS_DIR, network, name)
+
+
+def _network_store(name: str, words: str, noun: str, file_name: str):
+    """A store kept one file per network, in each list's folder (K31)."""
+    def build() -> LineStore:
+        return LineStore(name=name, words=words, table=f"{name}_lines",
+                         files=lambda: network_files(file_name),
+                         path_for=lambda network: network_path(file_name, network),
+                         per_network=True, noun=noun)
+    return build
+
+
+# The stores kept one file per network, registered here, below the helpers they need.
+LINE_STORES.update({
+    "network_settings_record": _network_store("network_settings_record",
+                                              "Network settings changes", "changes",
+                                              "settings_record.jsonl"),
+    "onboarding_runs": _network_store("onboarding_runs", "Onboarding runs", "runs",
+                                      "onboarding_runs.jsonl"),
+    "inventory_edits": _network_store("inventory_edits", "Inventory edits", "edits",
+                                      "inventory_edits.jsonl"),
+})
 
 
 # ── The files ────────────────────────────────────────────────────────────────────────────────

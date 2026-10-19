@@ -122,8 +122,10 @@ receipt.
   the card lists the stores that can move (deploy receipts, Needs attention's
   acknowledgements, the restart records (the restarts seen, the planned-restart windows and the
   windows ended early), the rotation and save record, the four break-glass logs, the reveal
-  record, the host steps said done, the heartbeat window re-measures and NetBox's removals, so
-  far). On the database, an acknowledgement the database does not take is
+  record, the host steps said done, the heartbeat window re-measures, NetBox's removals, and,
+  kept per network, each network's settings changes, onboarding runs and inventory edits, so
+  far). A store kept per network moves every network's file at once, each network's rows kept
+  apart in its table. On the database, an acknowledgement the database does not take is
   refused with what it answered, and the row stays.
 - Save never opens the database; Replace never changes the password on the server.
 - Moving never deletes a file: the files are deleted by a host step in the release after, once
