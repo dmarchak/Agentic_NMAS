@@ -498,6 +498,10 @@ NSoT config repository), `<account>` (the GitHub account).
   measurement taken then measures the backup. [not mechanised]
 - **Staged runs and probes never run on s3:** it is CPU-starved and carries the management path
   for the fleet (C93). Use s1 for IOS and r2 for IOS-XE. [not mechanised]
+- **A lab node is never restarted by containerlab (`restart`, `restart -n`) or docker
+  (`restart`, `start`)** (the operator, 2026-10-19; C1372): it restarts only by a reload from
+  its own CLI (Mercury's Reload) or by a full redeploy with the one redeploy command, each in a
+  planned-restart window declared first (lab/REDEPLOY.md). [not mechanised]
 - **The `homelab` Cloudflare tunnel is LOCALLY managed:** its ingress rules live in `/etc/cloudflared/config.yml` on the cloudflared LXC (`<tunnel-host>`), not in the Zero Trust dashboard. A public hostname is added or removed there, together with its CNAME and any Access application in the dashboard, and then cloudflared is restarted. Removed 2026-10-07: `oxidized.<domain>` and `topology.<domain>` (C143, C231). [not mechanised]
 - **Every lab C8000v forwards at most about 10 Mbit/s:** each reports a throughput level of 10000 kbps, the unregistered C8000v default (measured on all five routers, 2026-10-09). A traffic-volume test through a router measures that limit, not the device: keep loads well under it and read any throughput figure against it (docs/NSOT_DRAINED_DESIGN.md section 10). [not mechanised]
 
