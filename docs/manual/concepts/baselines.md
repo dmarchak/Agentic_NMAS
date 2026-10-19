@@ -50,7 +50,7 @@ and says why it earned nothing.
   the network is not at that moment while residue remains. See
   [Restore and re-apply a baseline](restore).
 - **The golden-state command** on the host asks, with an operational snapshot (see
-  [below](#golden-state)).
+  [below](#golden-state)). No v2 screen offers it.
 
 ## Nothing changed still decides {#nothing-changed}
 
@@ -74,24 +74,28 @@ baseline tag's message states which claim it makes:
   established, RIP sources heard). Only then does the tool add a second tag,
   `golden-state/<time>`, on the same commit.
 
-The working claim is taken by `scripts/nmas-golden-state` on the host. It reads and judges
-by default and commits nothing; `--commit` takes the baseline with its claim. The tag's
-message names each device's state, each routing peer outside management (whose state the
-tool sees from one side only), and what the snapshot does not read.
+v2 has no control that takes the working claim: no screen reaches the code that adds the
+`golden-state/<time>` tag. It is taken only by the golden-state command on the host, which
+reads and judges by default and commits nothing, and takes the baseline with its claim only
+when told to commit. This is a gap, registered (C1357). The tag's message names each
+device's state, each routing peer outside management (whose state the tool sees from one
+side only), and what the snapshot does not read.
 
 A baseline taken before baselines recorded their decision is drawn as **not recorded**,
 never as earned: nothing says every device was at its intent.
 
 ## A withdrawn baseline {#withdrawn}
 
-A person can withdraw a baseline that records a state nobody should go back to (a
-deliberately broken device, for instance). The withdrawal is recorded against the
-baseline's commit, with who decided, when and why. From then on:
+A baseline that records a state nobody should go back to (a deliberately broken device, for
+instance) can be withdrawn. A withdrawal is kept in the tool's own table of withdrawn
+baselines, keyed by the baseline's commit, with who decided, when and why. v2 has no control
+to withdraw one: an entry is added to that table in the code (a gap, registered, C1358).
+From then on:
 
 - every restore route refuses it, whichever screen asked, and sends nothing;
 - a device's list of restore points does not offer it;
-- the Baselines tab draws it with its reason, and once its tag is deleted, draws the
-  deletion where it was. The commit and its goldens stay in history.
+- the Baselines tab draws it with its reason; once its tag is deleted it is no longer
+  drawn. The commit and its goldens stay in history.
 
 ## A baseline decays with every rotation {#decay}
 
@@ -110,8 +114,13 @@ So the tool judges, for every baseline, whether it can still be re-applied:
 
 The judgement is a background reader (every 5 minutes, recomputed only when the
 repository's head or its tags move), and History's Baselines tab draws it. When no baseline
-can be re-applied, [Needs attention](needs-attention) shows one row, "no stored baseline can
-be re-applied", with its action: take a current baseline.
+can be re-applied, [Needs attention](needs-attention) shows one row per network, "No stored
+baseline can be re-applied", with its action: take a current baseline (Save All captures
+every device and earns one if each is at its committed intent). When the last Save All was
+denied, the row reads "No stored baseline can be re-applied, and a new one cannot be earned
+yet", names the denial and its commit, and its action is to resolve each departure the
+denial names first (change the device if intent is right, or edit intent if the device is
+right), then Save All.
 
 ## What a baseline is not
 

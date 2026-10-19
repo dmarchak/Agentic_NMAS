@@ -14,7 +14,7 @@ device. Each is this operation, one device at a time, from the device page's **A
 |---|---|---|---|
 | `clear counters` | one interface | `Clear "show interface" counters on this interface [confirm]` | `Last clearing of "show interface" counters` reading under a minute |
 | `clear arp-cache` | one interface | nothing | the interface's ARP entries back (read up to 3 seconds) |
-| `clear logging` | the device | `Clear logging buffer [confirm]` | the buffer emptied (its "messages logged" count is not reset) |
+| `clear logging` | the device | `Clear logging buffer [confirm]` | the buffer holds no line, or fewer than before (lines logged since count; its "messages logged" count is not reset) |
 | `undebug all` | the device | nothing | `show debugging` reading as nothing on |
 | `clear ip bgp <peer> soft` | a peer | not measured yet | not offered until it is |
 

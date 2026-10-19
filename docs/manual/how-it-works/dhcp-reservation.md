@@ -19,8 +19,11 @@ configuration compared before and after so nothing a client sees changes. A subn
 configuration does not take its reservations from Mercury's file is refused, naming the file and
 that step.
 
-The ZTP subnet's reservations are onboarding's (**Devices › Add device**), and are changed there.
-A reservation written by hand in Kea's own files is shown, and is not changed here.
+The ZTP subnet's reservations are onboarding's (**Devices › Add device…**), and are changed
+there. Each network's ZTP reservations are written in its Kea owner's ZTP file, and the ZTP
+responder serves every network's, each from its own Kea owner's file, so a device onboarded
+into a network with a Kea of its own is served too. A reservation written by hand in Kea's own
+files is shown, and is not changed here.
 
 ## The preview
 
@@ -67,7 +70,8 @@ than interleaving:
    its global level: exactly the change shown, and nothing else moved, nothing newly stranded.
    Anything else puts the previous file back, reloads, and says what Kea held.
 6. `record`: `dhcp/reservations.yml` in the repository of the network that owns this Kea
-   ([Whose Kea](dhcp#whose-kea); every reservation in Mercury's files) is committed as you,
+   ([Whose Kea](dhcp#whose-kea); every reservation in Mercury's files but the ZTP subnet's,
+   which are onboarding's) is committed as you,
    with your reason in its body. It shows on History.
 
 ## When it goes wrong

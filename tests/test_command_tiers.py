@@ -256,11 +256,13 @@ class TestTheOtherTiersAreRefusedByName:
     def test_a_save_names_persist(self, cmd):
         assert "Persist" in _refused(cmd)
 
-    def test_reload_says_it_is_not_on_v2_yet(self):
-        """Never send the operator to today's (v1) pages: the refusal says plainly that v2
-        cannot do it yet."""
+    def test_reload_names_the_device_page_s_reload(self):
+        """Never send the operator to today's (v1) pages. The refusal said "not on v2 yet"
+        until K33 (2026-10-19) found Reload on v2 since P.14 (the device page's Actions ›
+        Reload…, modules/nsot/reload_op.py): it now names that control."""
         why = _refused("reload")
-        assert "not on v2 yet" in why and "today's" not in why, why
+        assert '"Reload…" on the device page\'s Actions menu' in why, why
+        assert "not on v2 yet" not in why and "today's" not in why, why
 
     @pytest.mark.parametrize("cmd, near", [("sow ip int br", "show"), ("pign 192.0.2.1", "ping"),
                                            ("tracerout 192.0.2.1", "traceroute"),

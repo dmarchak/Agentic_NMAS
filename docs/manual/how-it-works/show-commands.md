@@ -15,7 +15,7 @@ else is refused before any device is asked, naming its tier and where to go inst
    `exclude`, `begin`, `section`, `count`). A line break, a URL, `| redirect` or anything
    outside Tier 1 refuses the whole run, naming the command, its tier and where to go instead.
    `show tech-support` is refused across more than one device (ask it of one, on its page).
-   Read: nothing. Sent: nothing. Recorded: the refusal, as a run that asked no device.
+   A run takes at most 10 commands; more refuses it. Read: nothing. Sent: nothing. Recorded: the refusal, as a run that asked no device.
 2. `hold`: each device is held while it is read, as an operation holds it. A device another
    operation holds is skipped, naming who holds it and since when; it is never queued. While
    a read holds a device, a deploy to it is refused, naming the read and its person.
@@ -69,8 +69,9 @@ record. The refusal here says so.
 **Tier 3, destructive: refused.** Each refusal names the operation that does it properly, or
 says that none does:
 
-- `reload` restarts the device. Reload is an operation, built with Revert by reload, and not on
-  v2 yet.
+- `reload` restarts the device. Use the device page's **Actions › Reload…** ([Reload a
+  device](reload)): it shows what else goes down, judges five gates, declares the
+  planned-restart window before it acts and checks the device came back.
 - `write erase`, `erase`, `delete`, `format` change or destroy the device's files or its saved
   configuration.
 - `copy` moves files into or off the device. A configuration reaches a device by deploy, and a

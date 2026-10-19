@@ -18,17 +18,19 @@ of three kinds:
 - **add**: nothing on the device sets this. It is sent.
 - **replace**: the device sets the same thing to another value (a different description, a
   different timer). The new line is sent, and the device replaces the old value itself.
-- **residue**: a line on the device that intent does not mention at all. It is not sent,
-  not negated, and is listed in the preview under its section, saying it will NOT be
-  removed.
+- **residue**: a line on the device that intent does not mention at all. It is not sent and
+  not negated. The deploy card lists it under **Left on the device**: "On <device> and not in
+  its committed intent. Merge-only leaves each as it is, unless you tick it for removal
+  (Mode B) with your reason."
 
 The program is exact: each added line is preceded by the headers of its section, in order,
 and each group ends with one `exit` per level it opened. It never contains `end`. What you
 confirm is this list, byte for byte; it is computed again at apply and refused if it moved.
 
 A residue line that shares a setting with a line intent already has on the device (one
-setting with two spellings) is named as such in the preview, because it is neither replaced
-nor plain residue.
+setting with two spellings) is neither replaced nor plain residue: it is not offered for
+removal, and the deploy card's **What will not happen** says that such a line exists and will
+not be removed. The v2 card does not name the line itself (a gap, registered, C1359).
 
 ## Why the tool never removes by default {#why}
 
@@ -88,8 +90,9 @@ each result is one of:
 
 - **removes exactly that line**: the only result that allows a removal;
 - **removes MORE than that line**, **changes other configuration**, **does not remove the
-  line**, **leaves the device off its default**, **is rejected by the device**: each refuses,
-  quoting the measurement (which device, when, what happened).
+  line**, **leaves the device off its default**, **is rejected by the device**, **is not a
+  command this platform takes**, **could not be measured**: each refuses, quoting the
+  measurement (which device, when, what happened).
 
 A line no shape covers, a shape not yet measured on this platform, a device whose platform
 is not known, and a measurement record that cannot be read all refuse, naming why. The
@@ -113,8 +116,8 @@ box:
   removed.
 - **An account** (`username`, `enable secret`): removing one is rotation's or retirement's
   job, never a residue clean-up.
-- **A named object still in use**: a prefix-list, route-map, access list, VRF or key chain
-  that another line names. The reason quotes the line that uses it; remove or change that
+- **A named object still in use**: a prefix-list, route-map, access list, VRF, key chain,
+  class-map, policy-map or object-group that another line names. The reason quotes the line that uses it; remove or change that
   first.
 - **`logging buffered`**: measured to turn buffered logging off and leave `no logging
   buffered` behind, a state neither the device nor intent names.

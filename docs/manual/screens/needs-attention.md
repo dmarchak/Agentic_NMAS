@@ -7,12 +7,15 @@ The landing page answers one question: does anything need you?
 - **When nothing is wrong**, one line says so, and what was checked is one level down, each
   source with the age of its value.
 - **When something is wrong**, one row per thing, worst first: what it is, which devices,
-  since when, the cause, and the ONE action that deals with it. A source that did not answer,
-  or whose value is older than it promised, is itself a row.
-- **Every device is named with its network** ("tw-a in Branch"), because some sources watch
+  since when, the cause, and the action that deals with it. Most rows have one; a drifted
+  device's row has two, which mean opposite things (below), and so has a rollback's
+  (**Revert intent…** or **Retry with a reason…**). A source that did not answer, or whose value is older than
+  it promised, is itself a row.
+- **Every device is named with its network** ("edge1 in Branch"), because some sources watch
   every network: job health, Grafana's alerts and reachability. A name two networks both hold
-  is said as either ("r1 (Branch or Default)"). Its Open button, and an action that is an
-  address, open the device in its own network, never in the one you are looking at.
+  is said as either ("edge2 (Branch or Default)"). Its **Open <device>** button, and an action
+  that is an address, open the device in its own network when that is known; for a name two
+  networks hold, it opens in the network you are looking at.
 - **The sources kept per network** (drift, approvals, pending onboardings, rollback blocks,
   deploys, baselines and repeated authorisations) are the network the page names: its address,
   else your own choice of network. A network with no drift run says "No drift check has run
@@ -46,6 +49,22 @@ stopping is one), integrations, reachability, routing adjacencies (as Prometheus
 as the devices log them),
 baselines, the remote's publication, unplanned device restarts (a crash file saved makes the row critical) and the app's own version. A
 reader that finishes announces it, and the page redraws in place.
+
+The other rows, each with its own cause and action: deploys that failed or were verified and
+not saved to startup; operations interrupted while they held a device (the process ended
+mid-run); a device's SSH host key that changed (**Re-key…** on its page), and the new keys a
+planned window kept; the records database's stores that do not match or do not answer; the
+scheduled rotation's timer, stopped on a failure; templates behind the shipped version in a
+way that drops lines; the log redaction found unhealthy; the CI verdict on the running commit,
+and a pushed release whose CI failed; host steps owed; a NetBox-sourced network's unreadable
+inventory; a rollback's record; pending onboardings (overdue, or still holding a staged
+credential); Grafana's rule groups that stopped evaluating, and rules that read no data; the
+fleet's heartbeat stopping at once (one row, not one per device); the routing adjacencies
+Prometheus reads (a link down, adjacencies it cannot measure, or its read failing); and drift
+(a drifted, skipped or unreachable device, a check that is off, failed, never ran or is
+old). Each network's own Prometheus has its own row comparing what it scrapes with its
+networks' inventories ("…, for <network>'s Prometheus"; see [Settings](settings#network)),
+and each network's own Grafana its own alerts and token expiry.
 
 **Adjacencies logged down.** Prometheus reads each device's routing tables once a minute, so
 an adjacency that drops and comes back between two reads never shows there. The device's own
@@ -82,7 +101,7 @@ the same state as a baseline just taken says so in its preview, with when and by
 baselines' usability): a commit that did not earn a baseline is a row, with its commit and
 time. Its remedy depends on why. A deploy or restore that did not cover the network (devices
 "not targeted", and nothing else) is a partial operation's decision, not a denial: the row
-says so ("the last commit (a deploy to s2) did not cover the network, so it earned no
+says so ("the last commit (a deploy to edge2) did not cover the network, so it earned no
 baseline: Save All takes one"), and Save All alone takes one. A Save All denied because a
 device departs from its intent names each departure, and Save All will be refused again until
 each is resolved, by changing the device or the intent. When no stored baseline can be
@@ -114,8 +133,10 @@ has expired. One expiring more than a year out has no row. Where each expiry com
   read its own. "never" is a valid declaration.
 
 An expiry that could not be read is an **Unknown** row, never a warning: a warning claims a danger
-the reader has seen. A device's login credential or an SNMP community older than 180 days is a warning
-naming Rotate. Each row says where the credential is renewed and where its new value goes. An
+the reader has seen. Each expiry row says where the credential is renewed and where its new
+value goes. A device's login credential older than 180 days is a warning naming Rotate; an
+SNMP community older than that is a warning whose action is to change it in intent and deploy
+it, then set it in the credential store. An
 integration that **refuses** the tool's credential (a 401 or 403 to its probe, every minute) is
 a danger row of its own, never "down".
 
@@ -125,7 +146,7 @@ that Grafana's list is asked of Grafana directly before anything says it is miss
 list may predate an import. If Grafana answers that it holds no such dashboard, the row is a
 warning. It names:
 - the setting and the UID;
-- the layer that sets it ("set in Default's settings, which Lab-3 inherit");
+- the layer that sets it ("set in Default's settings, which Branch inherit");
 - every network it affects;
 - the page that draws nothing until it is fixed;
 - where to choose another.
@@ -140,10 +161,17 @@ Every row says, under its cause, how it leaves the page: "Clears when …". Ther
 - **The condition resolves.** Most rows: the source reads the thing fixed (a later drift check
   finds the device matching, a job's next run reads ok, a device answers again). Doing the
   row's action is how you make that happen; the row leaves at the source's next read.
-- **A person acknowledges it.** For an event that cannot un-happen, such as an unplanned
-  restart or the same line authorised again and again. See below.
+- **A person acknowledges it.** For an event that cannot un-happen: an unplanned restart, the
+  same line authorised again and again, an operation interrupted while it held a device, the
+  new host keys a planned window kept; and, within a measured band, a chronic alert and an
+  adjacency a device keeps logging down. See below.
 - **Time.** An unplanned restart stays for 7 days if nobody acknowledges it; a pending
-  approval expires after 48 hours (expiring executes nothing).
+  approval expires after 48 hours (expiring executes nothing); an adjacency logged down
+  clears a day after its last unexplained drop.
+
+The acknowledgements in force are listed beside the table ("Acknowledged, so not listed"),
+each with who, when and why, and those hiding no row now apart ("Acknowledgements in force,
+hiding nothing now").
 
 ## Acknowledging an event {#acknowledging}
 
@@ -166,7 +194,7 @@ name, how your identity was established and the time, and the row leaves the pag
 ### A device restarting as planned {#restarting-as-planned}
 
 A device inside a planned-restart window (its Reload, or a window declared beforehand) is not
-something wrong, so it raises no row: *What was checked* says "r6 is restarting as planned
+something wrong, so it raises no row: *What was checked* says "edge1 is restarting as planned
 (until …, by …)" under Reachability, and its Grafana alerts are said there too, held until the
 window's end plus a settle margin (19 minutes: its telemetry alerts outlast its return). The
 window also sets a Grafana silence on those alerts, as the person who declared it, so Grafana
@@ -183,7 +211,7 @@ of alerts names, for each, its onset and how that was decided, and on a silenced
 in Grafana** by <who> until <when> UTC" with the silence's comment in quotes; a silence Grafana's
 list did not return is named by its id, its author and end never guessed. Hover an alert for its
 fingerprint and where its device came from, and a silence for its id and what it matches. The
-device's own page says the same in its Alerts check, in amber: "held: r6 is restarting as
+device's own page says the same in its Alerts check, in amber: "held: edge1 is restarting as
 planned …".
 
 ### A chronic alert, within its band {#acknowledging-a-chronic-alert}

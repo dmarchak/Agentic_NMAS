@@ -8,7 +8,10 @@ committed intent. RIP and RIPng have no neighbour table Prometheus holds, so a s
 the devices whose intent configures them, every five minutes, two read-only show commands each
 (`show ip protocols` for the gateways RIP hears, `show ipv6 rip next-hops` for RIPng's). The page
 never reads a device while you look; the header says how old the read is, and the page redraws
-by itself when a reader reads something new.
+by itself when a reader reads something new. Until the topology reader has read, when its store
+cannot be read, when Prometheus is not configured, or when the network was not in its last read,
+the page says which and draws no map; when its last read failed, it draws the last good read and
+says when it was.
 
 ## The map {#map}
 
@@ -20,7 +23,7 @@ them, where the cabling's springs settle them, from a fixed seed. A refresh move
 
 Every link is labelled:
 
-- **the port at each end** (r1 Gi2 ↔ s3 Gi1/0), LLDP's own names;
+- **the port at each end** (edge1 Gi2 ↔ core1 Gi1/0), LLDP's own names;
 - **a chip for each routing protocol between its two ends**, in two words: the protocol and the
   state (`OSPF FULL`, `OSPFv3 FULL`, `BGP Estab`, `OSPF 2WAY`). BGP's IPv4 and IPv6 sessions to one
   peer in the same state are one chip. The area and the peer's AS are in the link's card.
@@ -33,7 +36,7 @@ Every link is labelled:
 
 A link that carries a switched segment (VLAN 100's trunks) also carries neighbourships between
 OTHER devices on that segment. Those get no chip while they are as intended; one that is not gets
-its own, naming both devices (`OSPF r1–r3 2WAY`). The card lists every one passing over the link.
+its own, naming both devices (`OSPF edge1–edge2 2WAY`). The card lists every one passing over the link.
 A neighbourship no link carries (between loopbacks) is drawn thin, straight between the two
 devices.
 
@@ -72,8 +75,12 @@ them); **Ports** shows or hides the port names (on at the desktop, off at phone 
 Auto shows ports and chips at 100% and closer and hides them zoomed out, On always, Off never;
 **Snap to grid** and **Reset layout** (see below); **−, 100%, +** zoom about the middle, 100%
 fitting the whole map;
-**Weak points** tags single points of failure and islands on the map. **Find** rings a device
-whose name, role, address or port matches; it never hides anything.
+**Weak points** tags single points of failure and islands on the map (on unless you turn it off).
+**Find** rings a device whose name, role or port contains what you typed, or one of whose
+addresses is exactly it; it never hides anything.
+
+Above 150 devices the map is not drawn whole: Needs attention names every link to review,
+**Devices** lists every device by kind, and Find, a path or a device's page shows one part.
 
 ## Arranging the map {#arrange}
 
@@ -106,7 +113,8 @@ The map fills the window; a large network does not fit on one screen, so you mov
   placed moves.
 - **Reset layout** withdraws every person's moves: the map is laid out by the cabling again, for
   everyone, and the reset is recorded on History. It is greyed out while nobody has moved a
-  device.
+  device. When the saved layout cannot be read, the map is laid out by the cabling, a move is
+  refused, and Reset layout sets the unreadable layout aside under a dated name (kept).
 
 Moving a device changes nothing on any device or in any record but the layout: it is where the
 device is drawn, nothing more.
@@ -119,6 +127,12 @@ state was already so at the reader's first read); then the **weak points**. The 
 are always the whole; a group button or the filter shows a part, and says so. Click an entry to
 select its link on the map.
 
+A routing adjacency that drops and comes back between two of the reader's reads is not on the
+map, which draws what was scraped. The sidebar's Needs attention lists it all the same when a
+device logged it going down outside any planned restart or deploy: one row per adjacency,
+clearing a day after its last drop, or acknowledged while its daily count stays within its
+measured band.
+
 ## A path {#path}
 
 **Path…** traces the path packets take from a device to an address, read from each routed hop's
@@ -127,7 +141,9 @@ part in routing; **To** offers each outside peer's peering addresses (an ISP's r
 address each of your edge routers peers with) and each routing device's loopback. **Trace the
 path** reads the first device, follows the next hop its answer names to the device holding
 that address, and reads that one, until the packet is delivered or the trace stops; the button
-says which devices it is reading until the answer arrives. How it works:
+says which devices it is reading until the answer arrives. It needs a verified person, and To
+must be an IPv4 address: the trace reads IPv4 forwarding only. A refused trace says
+**Path: not traced** with why, and nothing is asked of any device. How it works:
 [A path trace](path-trace).
 
 The card names each branch (equal-cost next hops split traffic per flow, so a trace can have
@@ -139,13 +155,15 @@ knowledge of the path ends, the right outcome for an address beyond the network)
 (more than 8 branches or 16 hops). On the map a delivered branch is drawn on, one leaving the
 network in grey to where it leaves, one that stops short in red to where it stops; the switches
 between two routed hops are dashed, since a trace reads layer 3 only. Every read is on History › Reads.
-**Clear the path** takes it off the map; **Trace again** reads it afresh.
+**Clear the path** takes it off the map; **Trace again** reads it afresh. The latest 50 traces
+of a network are kept; a link to an older one says it is no longer kept.
 
 ## Take out a device (what-if) {#what-if}
 
-**Take out a device…** works out, on the stored map, what losing one device would cut off: the
-devices that would lose the rest, or that Mercury itself would lose every device when the device
-is its only way in. Those devices are marked "cut off" on the map. Nothing is sent to a device;
+**Take out a device (what-if)…** works out, on the stored map, what losing one device would cut
+off: choose it under Take out and press **Show what it cuts off**. The answer names the devices
+that would lose the rest, or that Mercury itself would lose every device when the device is its
+only way in. Those devices are marked "cut off" on the map. Nothing is sent to a device;
 **Put it back** clears it.
 
 ## Outside peers {#outside}

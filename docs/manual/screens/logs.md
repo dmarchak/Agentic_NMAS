@@ -19,20 +19,22 @@ configuration text; the heartbeat lines are left out.
 ## Reading the tail {#tail}
 
 - **The counts** come first, for the whole window whatever you filter: lines, error or worse,
-  warnings, and how many devices sent them.
+  warnings, notice and below, and how many devices sent them.
 - **The filters**: device, severity (every severity, warning or worse, error or worse),
   mnemonic and text. **Show** applies them; **Clear filters** appears once one is set. The
   address carries them, so a link shows the same view.
 - **The lines**: the newest 200 that match, newest first, each device a link to its page. When
   more match, the page says how many and asks you to filter.
-- **Pause** holds the window as it was at that second and counts the matching lines that arrived
-  since; **Resume** returns to the live window.
+- **Pause** stops new lines being drawn after that second and counts the lines that arrived
+  since; lines older than 15 minutes still leave the window while paused. **Resume** returns to
+  the live window.
 - **Older than 15 minutes** opens History › Query's Syslog by device with the same filters.
   **Open these lines on Logs** there comes back here filtered to that device, and says so.
 
-When the log store cannot be read, the page says so: the reader has not read it yet, no log store
-is configured for the network (its Loki card in Settings), or the last read failed, which shows
-the error and its time over the last window that was read.
+When the log store cannot be read, the page says so: the reader has not read it yet, the
+reader's own store cannot be read (nothing is drawn rather than lines that may be wrong), no log
+store is configured or applies to the network (its Loki card in Settings), or the last read
+failed, which shows the error and its time over the last window that was read.
 
 ## Syslog by device {#syslog-by-device}
 
@@ -42,9 +44,9 @@ one click away (`/v2/history/query/syslog?list=<network>`).
 
 ### The question {#question}
 
-- **The range**: the last 24 h, 7 d, 30 d or 120 d. A range in days is today so far and the
-  days before it, in UTC.
-- **Severity**: error or worse (0 to 3), warning or worse, or every severity. It sets the
+- **The range**: the last 24 h, 7 d (unless you choose another), 30 d or 120 d. A range in days
+  is today so far and the days before it, in UTC.
+- **Severity**: error or worse (0 to 3, unless you choose another), warning or worse, or every severity. It sets the
   headline and the table, and an opened device's lines.
 - **Copy the link**: the address carries the whole question, so a link shows the same view.
 
@@ -54,8 +56,11 @@ Mercury's logs reader counts each day's lines once, from the network's Loki, by 
 mnemonic, and re-reads today and the last 24 hours every 5 minutes; the view sums what it kept.
 Asking Loki for months of counts on every visit would take tens of seconds, and Loki answers at
 most 30 days at a time. A line is the device's when it names the device in its own syslog origin
-(as the device page's Logs tab matches it); a line that names no device is counted apart. The
-heartbeat lines are left out.
+(as the device page's Logs tab matches it); a line from a name that is not one of this
+network's devices is counted apart, below the table, and a line whose fields name no device or
+no mnemonic is counted by the reader but not drawn on this view. The heartbeat lines are left out. When the reader has not counted yet, or
+its store cannot be read, or no log store applies, the view says so and draws no counts; when
+its last read failed, it draws the last good counts and says when they were read.
 
 ### What the range can hold {#coverage}
 
@@ -67,15 +72,16 @@ be lower than what Loki keeps (Settings › Integrations, Loki, Logs retention).
 
 ### The devices {#devices}
 
-Each device that sent a line at the severity asked: its lines in the range, its newest line, and
-its most frequent mnemonic. The devices that sent nothing at that severity are named below the
+Each device that sent a line at the severity asked: its lines in the range, its newest line
+(its time, or only its day when the reader counted it before it began watching), and its most
+frequent mnemonic. The devices that sent nothing at that severity are named below the
 table, and lines from names that are not this network's devices are counted apart.
 
 ### A device's lines {#lines}
 
 Open a device to filter its lines by severity, mnemonic, time (From and To, UTC:
 `2026-10-04` or `2026-10-04 09:30`, or `now`) and text, see its trend by mnemonic (lines per
-day, from the first day counted), and read its lines newest first, 50 at a time (**the next
+day, from the first day counted, for its three most frequent mnemonics; none over 24 h), and read its lines newest first, 50 at a time (**the next
 50**). Each line is drawn at the time Mercury's collector received it, never the device's own
 clock, and masked like every other configuration text. Its lines are asked from Loki when you
 open it, at most 30 days at a time; a longer range shows the newest 30 days and says so.

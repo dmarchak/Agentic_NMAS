@@ -25,8 +25,8 @@ supersedes, never ticked for you.
   with the ticked IDs, `/v2/device/<device>/deploy?rm=<id>`), and the line appears at the end
   of the program with a reason field:
   one decision, one control, so the tick chooses it and the reason says why. Typing the reason
-  plans the device again so the hash covers it. A reason must be at least three words and not
-  a copy of the line.
+  plans the device again so the hash covers it. A reason must be at least three words and eight
+  characters, and not a copy of the line.
 - **Disabled, with the reason beside it**, where removing it is refused:
   - IOS will not remove it, or removes it differently: the `hostname`, `version`, the boot
     markers, a `line` stanza, `end`, a banner, a `crypto pki` trustpoint or certificate, a
@@ -56,17 +56,21 @@ effect with a release. An unmeasured shape is refused, naming the probe run that
 it; a shape measured to do more is refused with what was measured; an unreadable record
 allows nothing.
 
-The operator measures a shape on the host with `scripts/nmas-removal-probe`, on one device of
+The interface has no control that measures a shape. The operator measures one on the host with `scripts/nmas-removal-probe`, on one device of
 each platform, holding the device for the whole run:
 
 1. **Read the starting state.** Read: `show running-config` over SSH. Sent: nothing.
    Recorded: nothing.
 2. **Add a scratch instance.** Sent: a scratch line of the shape in configuration mode (names
    starting `NMASPROBE`, documentation addresses, `Loopback199`), then read it back. Recorded:
-   nothing. The probe stops if the scratch did not land.
+   nothing. A scratch that does not land is not measured, and the probe goes on to the next
+   example: `unsupported` when the device rejects the line as not its own (a fact about the
+   platform), `failed` for any other cause.
 3. **Send Mode B's program.** Sent: exactly the program a removal would send. Read: the
    configuration again. Recorded: the result, by comparison with step 2: `exact` (only the line
-   gone), `broader`, `different`, `incomplete`, `overrides_default` or `refused`.
+   gone), `broader`, `different`, `incomplete`, `overrides_default` or `refused`. A shape
+   whose examples disagree reads as the worst of them; `unsupported` is kept in the record,
+   while `failed` and `unmeasured` are facts about the run, printed with it and never recorded.
 4. **Put the device back.** Sent: the scratch taken away and anything step 3 removed put back.
    Read: the configuration again, which must be equivalent to step 1, or the probe stops and
    says so first. Recorded: nothing on the device; it changes the running configuration only
@@ -77,7 +81,7 @@ shape that needs the device's live BGP process runs only when asked for by name.
 
 ## The run
 
-You confirm the deploy as usual (**Deploy confirmed devices**). Before the pipeline, the apply
+You confirm the deploy as usual (**Deploy <N> line(s) to <device>**). Before the pipeline, the apply
 checks that every removal still matches a line on the device's committed golden and carries a
 reason of the right shape. The removal then rides at the END of the deploy's program, after the
 additions and any re-created IP SLA operations, through the same pipeline (see

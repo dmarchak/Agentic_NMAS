@@ -24,13 +24,17 @@ Settings › Installation › Connections, and nothing here runs until they are.
 ## Networks {#networks}
 
 Every network, with its devices as the import reads them (its own list's, or, for a network
-whose inventory is NetBox, NetBox's, marked "from NetBox"), its last import's result (complete, PARTIAL or FAILED, never
-green over a partial) and how many removals are recorded for it (each opens as it was drawn at
-its apply).
+whose inventory is NetBox, NetBox's, marked "from NetBox"), its last import's result (complete,
+PARTIAL, FAILED or nothing to do, never green over a partial; "never imported" when there is
+none) and how many removals are recorded for it. The count opens the newest 20, each summarised
+as it was drawn at its apply, with when and by whom; "record unreadable" says the removal record
+could not be read.
 
 - **Import into NetBox…** starts a dry run of the real import against the real NetBox, writing
   nothing. From your press until its card draws, the button says **Starting the dry run…** and
-  cannot be pressed again. It takes about a minute on a lab, so it runs as a job: its card, below
+  cannot be pressed again. It is not offered while NetBox is not configured, or for a network
+  with no devices to import (the button says which). It can take about a minute, so it runs as
+  a job: its card, below
   the table, says what it is doing, and fills in with the preview when it is ready (every object to create or
   change, what is not done, and the checks at your confirm).
 - **Remove from NetBox…** does the same for a removal: every object it would delete, and what
@@ -40,7 +44,7 @@ its apply).
   ([how](netbox-import#remove-preview)).
 - **Import every network…** previews one import of them all.
 
-Confirm with **Import** or **Remove**: the plan is recomputed and compared, the one-shot
+Confirm with **Import** or **Remove** (busy as **Starting the import…** or **Removing…**): the plan is recomputed and compared, the one-shot
 confirmation is used, and only then are writes turned on if you asked for that. An import then
 runs on, and its card fills in with each network's result when it ends. Each import, Remove
 and Stop tracking is also a **NetBox** row on the network's [History](history) timeline. See
@@ -54,7 +58,10 @@ object {{product}} would forget, by type (collapsed under its count when the lis
 says where the data survives. NetBox keeps every object, with its `nmas-managed` tag, and the
 removal record keeps who forgot which entries and when (the network's Removals). It also says
 what cannot be taken back: Remove can never act on these objects again, and a later import only
-updates them. Delete them in NetBox itself if they should go.
+updates them. Delete them in NetBox itself if they should go. The network's last import result
+is cleared from this page; what {{product}} modified and adopted in NetBox is not changed. When
+{{product}}'s record holds nothing it created for the network, the preview says there is
+nothing to forget and offers no confirm.
 
 Confirm with **Stop tracking**. Nothing is written to NetBox, so no writes switch is drawn. The
 record is read again and compared with the preview's; if it changed (an import recorded

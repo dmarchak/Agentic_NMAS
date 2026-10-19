@@ -13,14 +13,25 @@ profile sends a device the profile's lines it lacks, and nothing else.
 
 ## Where you see it
 
-Monitoring > Coverage shows every device against five integrations: SNMP, syslog, the
-heartbeat, telemetry and IP SLA, each read from the device's committed golden (never from the
-device). A cell reads configured; missing, saying whether the profile supplies it; excluded
-by the device's intent, with the reason; not applicable, with why (the profile scopes the
-section to other platforms or roles); not used, when the network has no connector for it;
-or unknown, when the golden cannot be read. NTP, LLDP and CDP are profile sections with no
-Coverage column. A device is ticked for Apply only when the profile supplies one of its
-gaps; any other device says why beside its box.
+Monitoring > Coverage shows every device against eight columns: SNMP, Syslog, Heartbeat, NTP,
+LLDP, Telemetry, IP SLA and Mgmt sources, each read from the device's committed golden (never
+from the device). A cell reads configured; configured and not reporting, saying where it is
+looked into; missing, saying whether the profile supplies it; missing because the device's
+template does not render the section the profile supplies (never offered for a deploy); for
+IP SLA, missing with the number of probes committed to its intent and not yet sent, or
+measured from the device that probes it; declined, with who, when and why
+([Decline a monitoring section](decline-section)); excluded by the device's intent, with the
+reason; not applicable, with why (the profile scopes the section to other platforms or
+roles); not used, when the network has no connector for it; or unknown, when the golden
+cannot be read. CDP is a profile section with no Coverage column. A box for
+**Deploy missing templates…** is drawn only where it has something to send; any other device
+has no box, and says why on hover.
+
+A network with no monitoring profile of its own that inherits its settings from Default takes
+Default's committed profile, and its devices are covered, planned and deployed against it;
+Monitoring › Profile says so. Proposing a profile for that network gives it its own. A network
+that does not inherit, with no profile of its own, has none, and Coverage says nothing can be
+deployed until one is proposed.
 
 The profile itself is made by **Propose from the connectors…** (Monitoring › Profile, opened
 from Coverage's notice or from Needs attention when there is none): the tool derives each section from the connector
@@ -32,18 +43,21 @@ Nothing is sent to a device by proposing.
 
 Apply is a deploy scoped to the profile's lines (see [Deploy a change](deploy)):
 
-1. **Choose the devices.** On Coverage, tick devices and press **Preview applying the
-   profile…**. Read: nothing yet. Sent: nothing. Recorded: nothing. The ticked devices travel
-   in the page's address to the preview.
+1. **Choose the device.** On a device's Monitoring tab press **Apply monitoring profile…**,
+   or on Needs attention a profile row's **Preview the apply…**. Read: nothing yet. Sent:
+   nothing. Recorded: nothing. The device travels in the page's address to the preview.
+   Coverage has no profile-only apply: its **Deploy missing templates…** sends the profile's
+   missing lines together with the IP SLA probes committed to intent ([below](#combined)).
 2. **The preview.** Read: each device's committed golden (the capture the plan computes
    against), its committed intent and the committed profile. Sent: nothing; no device is
    contacted. Recorded: nothing. Each device's plan is the deploy plan with scope `profile`:
    the lines it would send (masked), the profile's lines already in place, the device's own
    intent changes held back (never sent by this action), and each OLD monitoring line the
    profile supersedes, with a box to remove it (Mode B) and a field for its reason. A device
-   with nothing to send leaves the order. A preview can be re-planned with a device moved
-   **Earlier** or **Later**, or **Left out**: the button reads "Moving…" and every control on
-   the preview waits until the new plan is drawn. Once the batch is confirmed it runs in the
+   with nothing to send leaves the order. With more than one device, **Earlier**, **Later**
+   or a drag by a device's grip reorders the page and plans nothing (no program or hash
+   depends on the order); **Leave out** plans again, reading "Leaving out…", and every control
+   on the preview waits until the new plan is drawn. Once the batch is confirmed it runs in the
    order you confirmed, so these controls are disabled, saying so, and a note above the order
    says the batch is running; open the page again to plan another.
 3. **Confirm.** Read: nothing. Sent: nothing yet. Recorded: nothing yet. The confirm carries
@@ -104,7 +118,7 @@ is removed. It is the deploy above with scope `templates`:
    nothing. A card per device in the order they will go: the templates its program holds, the
    program itself (the first device's open, the others one click down), its checks, with the
    operands they compared on hover, and each template that is configured but not reporting,
-   named with **Diagnose it**. A template not reporting is never part of the deploy: its
+   named with **Diagnose it on <device>**. A template not reporting is never part of the deploy: its
    lines are already on the device, and the cause is looked for on the device's page.
    **Earlier**, **Later** and **Leave out** plan the deploy again, busy on the button while it
    plans; once the deploy is confirmed they are disabled, since it runs in the order confirmed.
@@ -137,8 +151,10 @@ is removed. It is the deploy above with scope `templates`:
 
 Waiting for each device's data inside its verify would add 5 to 6 minutes to every device
 (the heartbeat fires every 5 minutes, and the reading is taken once a minute), and could
-never see SNMP: a device's scrape target is created when the batch's golden commit
-regenerates the targets, after the last device. So the batch deploys and verifies what it
+never see SNMP: a device's scrape target is written only after the last device, when the
+batch's golden commit wakes the targets keeper, which rewrites from the committed goldens the
+target files of the Prometheus that serves the device's network (Default's, or the network's
+own), in the targets directory that network's settings name. So the batch deploys and verifies what it
 sent, and arrival is watched afterwards, as a report, not a gate.
 
 ## The heartbeat
@@ -168,11 +184,11 @@ device.
    device with no full committed intent): those are not cross-checked, and not counted in what
    changes on the devices.
 2. **Choose a version, where the devices differ.** Beside such a section the
-   card offers one control per version, **Use the version held by r2, r3**, naming the devices
-   that hold it. Pressing one previews the proposal again with that version chosen (Read: as in
-   step 1; Sent: nothing; Recorded: nothing): the section is proposed, and the card says "You
-   chose the version held by r2 (its id)" and what every other device would gain and keep
-   ("r1 gains: snmp ifmib ifindex persist"). The choice is part of the proposal's hash and the
+   card offers one control per version, **Use the version held by edge1, edge2**, naming the
+   devices that hold it. Pressing one previews the proposal again with that version chosen
+   (Read: as in step 1; Sent: nothing; Recorded: nothing): the section is proposed, and the card
+   says "You chose the version held by edge1 (its id)" and what every other device would gain
+   and keep ("core1 gains: snmp ifmib ifindex persist"). The choice is part of the proposal's hash and the
    confirm carries it; another control changes it. A version no device holds now (a link kept
    from before the fleet changed) is said, "Not applied", and never chosen for you.
 3. **Measure what reaches the devices.** For each new or changed section, each device it applies
@@ -183,8 +199,8 @@ device.
    if intent, a stored value, the committed profile or the choice moved since the card showed
    it, nothing is committed and the card is drawn again, saying what moved.
 5. **Commit.** The profile, one commit, `profile: proposed: …`, as you; a chosen version is in
-   its subject ("chosen: snmp as held by r2"). Then Coverage shows each section missing where it
-   is, and Apply sends it.
+   its subject ("chosen: snmp as held by edge1"). Then Coverage shows each section missing
+   where it is, and its **Deploy missing templates…** sends it.
 
 ## Changing (awaiting the operator's sign-off, 2026-10-02) {#changing}
 
@@ -209,7 +225,8 @@ closest:
    as you, `Source: profile`, refused if the profile moved since the page showed it. The
    probes it suggests are a SECOND commit, into the chosen devices' intent
    (`Source: ip-sla`), and are sent by Coverage's [Deploy missing templates](#combined) or by
-   a scoped Apply (scope `ip_sla`), never by the profile's Apply.
+   the scoped apply (scope `ip_sla`, "Send the IP SLA probes") the IP SLA page opens once
+   they are committed, never by the profile's Apply.
 
    The targeting is one of four. **Upstream** probes what each device depends on: its static
    default gateway, else its routing peers, else the next hop of its widest static route, so

@@ -1282,7 +1282,7 @@ def breakglass_rows(exports=None, current=None, intact=None, drills=None,
                                              "where the export went",
                                     "command": ("on the host: nmas-breakglass digests --list "
                                                 f"{list_name} > digests.json; beside the record: "
-                                                "nmas-breakglass verify rcn.bg --against "
+                                                "nmas-breakglass verify <file> --against "
                                                 "digests.json")},
                          "detail": (f"{len(now_digests)} of {len(now_digests)} device(s) current "
                                     f"in the record {made}. The host logs the export, never "

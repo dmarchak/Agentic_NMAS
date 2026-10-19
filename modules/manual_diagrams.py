@@ -469,7 +469,8 @@ def credentials_lifecycle():
         "Every place a device's credential lives, and what keeps each current. The device runs "
         "it and boots from its startup configuration; the tool holds it, encrypted, in the "
         "inventory or its override store; a person keeps the break-glass record on their own "
-        "machine. On the lab, the lab startup file holds it too. Rotate "
+        "machine. A boot file built elsewhere holds it too, rebuilt on the golden-committed "
+        "event. Rotate "
         "changes the device and the tool's copy together, proven by a fresh login. Persist "
         "saves it to startup and reads it back. A new break-glass export follows every "
         "rotation."), [
@@ -962,14 +963,14 @@ def edit_template():
 def reload():
     return svg(470, (
         "Reloading a device. The preview reads it (running and startup configurations, its "
-        "image and boot variable) and judges six gates: it boots what it runs, its golden and "
-        "intent, startup carries Mercury's credential, the image exists, nothing holds it, and "
-        "what else Mercury loses reach to. You confirm with a reason. The run reads it again "
+        "image and boot variable), shows what else Mercury loses reach to, and judges five "
+        "gates: it boots what it runs, its golden and intent, startup carries Mercury's "
+        "credential, the image exists, nothing holds it. You confirm with a reason. The run reads it again "
         "and sends nothing if it moved, declares the planned-restart window before anything "
         "is sent, reloads, waits for SSH within the bound, verifies it runs what it ran, and "
         "records the run. A reload cannot be undone."), [
         lanes(20, 464),
-        doc("box", 14, 40, 186, 40, "The preview reads it", "six gates, by name"), num(14, 40, 1),
+        doc("box", 14, 40, 186, 40, "The preview reads it", "five gates, by name"), num(14, 40, 1),
         person(14, 96, 186, 30, "You confirm, with a reason"), num(14, 96, 2),
         _down(107, 128, 148),
         band(150, 300, "The run · a job, the device held"),

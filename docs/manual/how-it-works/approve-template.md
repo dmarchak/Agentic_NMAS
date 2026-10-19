@@ -19,7 +19,9 @@ real device; it is recorded as you, with each bound device's result as evidence.
    [intent editor](edit-intent)), or acknowledges and the capture no longer has. A bound
    device with no capture yet is named as not validated; it is checked at its own deploy.
    Lines the device writes for itself never count. The template is approvable when at least
-   one device reproduces exactly.
+   one device reproduces exactly. A template no device is bound to cannot be approved: its
+   **Approve…** is disabled, and says nothing can validate it. One whose bound devices have
+   no capture yet is refused, because there is nothing to validate it against.
 2. `approve`: you confirm, as yourself. Read: the template's fingerprint and the check again.
    Sent: nothing. Recorded: the approval (the fingerprint, you, when, and each device's result
    as evidence) in the network's approvals record. If the template or a file it imports
@@ -35,8 +37,8 @@ real device; it is recorded as you, with each bound device's result as evidence.
 4. `revoke`: **Revoke…** on an approved template's row asks why. Read: the record. Sent:
    nothing. Recorded: the revocation, with your reason, who and when, and what it withdrew,
    committed. Every deploy through the template is refused until it is approved again; the
-   reason is shown on its row. A revocation is never deleted: it is the record of why the
-   template stopped deploying.
+   reason is shown on its row. A revocation stays in the approvals record until the template
+   is approved again, which replaces it, and in the repository's history after that.
 
 ## What approval does not do
 

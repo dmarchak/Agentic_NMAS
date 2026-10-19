@@ -150,8 +150,9 @@ _TAIL = (f"{_tier1_words()}. A change is a plan a person confirms.")
 _TIER2 = ("Tier 2: it changes the device's state, recoverably. It is the \"Run a privileged "
           "command…\" operation on the device page's Actions menu (a preview of what it affects, "
           "a confirm with a reason, a record). Nothing was sent.")
-_RELOAD = ("Tier 3: it restarts the device. A restart is an operation, Reload (P.14), built "
-           "with Revert by reload (Phase 2), and not on v2 yet. Nothing was sent.")
+_RELOAD = ("Tier 3: it restarts the device. A restart is an operation, Reload (P.14): \"Reload…\" "
+           "on the device page's Actions menu (its gates previewed, the planned-restart window declared before "
+           "it acts, a check that the device came back, a record). Nothing was sent.")
 _CONFIGURE = ("Configure mode runs only in the deploy pipeline: change the device's intent and "
               "deploy it (a preview, a confirm by hash, verify, rollback). Nothing was sent.")
 _SAVE = ("It saves the running configuration: the deploy pipeline saves after it verifies, and "

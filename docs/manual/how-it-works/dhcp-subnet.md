@@ -13,7 +13,7 @@ and records it.
 Give the family, the prefix and its pool; the rest is offered. From committed intent: the
 interfaces on the prefix are Kea's relay addresses for it (Kea matches a relayed request to the
 subnet by them), the VRRP group's virtual address is its gateway (IPv4), and the interface's name
-gives the Kea id (VLAN 30 is id 30 when free, else the next free id). The checks say whether an
+gives the Kea id (VLAN 30 is id 30 when free, else one more than the highest id in use). The checks say whether an
 interface in intent relays the prefix to a DHCP server, and refuse a prefix that overlaps one
 Kea already serves. A prefix no interface in intent is on is said plainly: no relay brings a
 client's request, so Kea would answer nobody on it. The new subnet takes its reservations from a
@@ -36,7 +36,8 @@ Every subnet is in Mercury's own file beside Kea's configuration, `nmas/subnets4
 stay in their own file, which the subnet includes. One host step, once, moved Kea's hand-written
 subnets there (see [DHCP](dhcp)). Until it has run, Edit… is not offered and a change is
 refused, naming the step. ZTP's subnet is onboarding's, and is changed only where onboarding
-sets it.
+sets it. A network whose Kea is its own keeps its ZTP reservations in that Kea's ZTP file, and
+the ZTP responder serves every network's, each from its Kea owner's file.
 
 ## The preview
 

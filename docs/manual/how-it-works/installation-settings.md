@@ -2,9 +2,10 @@
 
 The installation's own settings apply to every network, standalone ones included: the central
 NetBox, Proxmox, the author line of Mercury's commits and this host's address. They are on
-**Settings › Installation**: the **NetBox connection**, **Proxmox** and **Commit author** cards
-on the Connections tab (beside the records database, which has its own page), and the
-**Server** card on the Server tab. Nothing here contacts a device.
+**Settings › Installation**: the **NetBox connection**, **Proxmox**, **Commit author** and
+**Server** cards on the Connections tab (beside the records database, which has its own page).
+Its other tabs are Access and identity, Platforms and roles, and Diagnostics. Nothing here
+contacts a device.
 
 ![An Installation card. Save checks each field, writes the ones that changed to the installation's settings for every network, and appends who, when and which fields to the installation's settings record. Test asks the service now with what is saved. Replace stores a new token as a secret, records it and tests it. Turn off writes NetBox's master switch off and records it; turning it on is the confirm of an authorised NetBox write. No device is contacted.](diagrams/installation-settings.svg)
 
@@ -20,8 +21,9 @@ service itself; **Test** is a person asking now.
 1. `check`: each field is checked against its kind. Read: nothing else. Sent: nothing.
    Recorded: nothing. An address must start `http://` or `https://`; a node, storage or
    other name is letters, digits and `. _ -`; backup VMs are numbers separated by commas; a
-   date is `YYYY-MM-DD` or empty; the port is a number from 1 to 65535. A refusal names the
-   field and what it accepts, and nothing is saved.
+   date is `YYYY-MM-DD` or empty; the port is a number from 1 to 65535; the bind address is
+   letters, digits and `. : _ -`; an email is `name@domain`; the commit author's name is one
+   line, not empty. A refusal names the field and what it accepts, and nothing is saved.
 2. `write`: only the fields you changed are written, to the installation's settings, for
    every network. Read: the settings as they stand, compared with what the card showed when
    you opened it. Sent: nothing. Recorded: the values. A field you left as it was is not
@@ -87,8 +89,8 @@ back on.
 
 ## Change the platform map {#platforms}
 
-A device that comes from NetBox becomes something Mercury can open a session to through the
-**platform map** (its NetBox platform → the netmiko driver, the config dialect Mercury renders
+On the **Platforms and roles** tab: a device that comes from NetBox becomes something Mercury
+can open a session to through the **platform map** (its NetBox platform → the netmiko driver, the config dialect Mercury renders
 from, how it delivers and whether it supports NETCONF, with a default driver for a platform
 the map lacks). What it is (router, switch or firewall) is **NetBox's**: its Device Role's
 `mercury_kind` field, read with the inventory; a role without one is "not classified in
@@ -121,8 +123,8 @@ The **Access and identity** tab is read-only by design: a session must never low
 is using, and a wrong team domain or audience locks everyone out, or lets everyone in, without
 saying so. It shows each of the twelve gates (for each action, whether it needs a verified
 identity and whether it needs a person), the Cloudflare Access values (to a verified person
-only), the service tokens and who you are. The operator changes a value in the installation's
-settings file on the host.
+only), the service tokens and who you are. v2 changes none of these values, by design: a
+value is changed in the installation's settings file on the host.
 
 Each value is **defaulted** (nobody decided), **recorded** (agreed, equal to the default) or
 **chosen** (differs from it). **Record this decision** turns defaulted into recorded:

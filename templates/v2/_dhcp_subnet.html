@@ -50,7 +50,7 @@
       {%- endif %}
       <label class="dh-f">DNS servers ({{ 23 if v6 else 6 }})<input type="text" name="dns" value="{{ s.dns }}" class="mono" autocomplete="off" spellcheck="false"><span class="dh-msg">addresses, separated by commas</span></label>
       <label class="dh-f">{{ 'Domain search (24)' if v6 else 'Domain (15)' }}<input type="text" name="domain" value="{{ s.domain }}" autocomplete="off" spellcheck="false"><span class="dh-msg">empty keeps it</span></label>
-      <label class="dh-f">Valid lifetime<input type="text" name="valid" value="{{ s.valid }}" autocomplete="off" spellcheck="false" placeholder="{{ g.duration(sub.times.valid) if sub.times else '' }}"><span class="dh-msg">empty keeps it; renew (T1) half of it, rebind (T2) 7/8</span></label>
+      <label class="dh-f">Valid lifetime<input type="text" name="valid" value="{{ s.valid }}" autocomplete="off" spellcheck="false" placeholder="{{ g.duration(sub.times.valid) if sub.times else '' }}"><span class="dh-msg">empty keeps it; renew (T1) at 50% and rebind (T2) at 80% of {{ 'the preferred lifetime' if v6 else 'it' }}</span></label>
       {%- if v6 %}
       <label class="dh-f">Preferred lifetime<input type="text" name="preferred" value="{{ s.preferred }}" autocomplete="off" spellcheck="false"><span class="dh-msg">empty keeps it</span></label>
       {%- endif %}

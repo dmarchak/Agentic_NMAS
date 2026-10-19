@@ -93,6 +93,11 @@ Four records, each answering one question, kept apart so that none can be read a
   History's timeline draws each as a **NetBox** row of its network, in the words its result
   is drawn in here.
 
+Each of the four can be moved to the records database (Settings › Installation › Connections,
+Record stores; see [The records database](records-database#move)): created, modified and
+adopted as documents, removals as a log of lines. Once moved, it is kept there, and the file
+named above is kept read-only for a release.
+
 ## Remove: preview {#remove-preview}
 
 1. **Read what the tool created for this list.** Read: the created record. Sent: nothing.
@@ -168,7 +173,7 @@ unverified caller is refused before anything is read.
    forgotten: preview again.
 4. **Forget exactly the confirmed entries.** Recorded: the created record drops those entries
    and no others, so an entry added since the preview stays. The network's last import result
-   is cleared. This is the same code as today's Just stop tracking, given the confirmed set.
+   is cleared.
 5. **The result is recorded** in the removal record as a stop-tracking removal, with who, when
    and each entry forgotten, and drawn from it: on the card, and later under the network's
    Removals.

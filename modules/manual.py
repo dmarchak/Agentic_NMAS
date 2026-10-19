@@ -151,7 +151,7 @@ OPERATIONS = {
     "removal": ("modules.pipeline", "STAGE_NAMES"),
     "rotate": ("modules.nsot.rotate_op", "STEPS"),
     "scheduled-rotation": ("modules.nsot.scheduled_rotation", "STEPS"),
-    "persist": None,
+    "persist": ("modules.nsot.persist_op", "STEPS"),
     "seed": None,
     "onboard": ("modules.nsot.onboard", "STEPS"),
     "onboard-phase-two": ("modules.nsot.onboard", "PHASE_TWO_STEPS"),
@@ -215,7 +215,6 @@ OPERATION_PAGE = {"onboard-phase-two": "onboard", "onboard-ztp": "onboard",
 #: Why an operation has no declared step list yet, said rather than left blank.
 UNDECLARED = {
     "capture": "the capture job reads, previews and records in code paths with no step tuple",
-    "persist": "persist_op builds its step list in plan(), with the device's name in each",
     "seed": "seed's preview, confirm and apply are three routes with no step tuple",
 }
 
@@ -255,7 +254,9 @@ def third_party_markdown(path: str = None) -> str:
     path = path or os.path.join(ROOT, "docs", "THIRD_PARTY.json")
     with open(path, encoding="utf-8") as fh:
         doc = json.load(fh)
-    out = ["## In the interface {#vendored}", ""]
+    # Every `vendored` entry: the interface's libraries and fonts, and a generated file the
+    # tool ships for its monitoring (the SNMP exporter's modules), so not "the interface" alone.
+    out = ["## Kept in the repository {#vendored}", ""]
     for entry in sorted(doc.get("vendored", {}).values(), key=lambda e: e["component"].lower()):
         out.append(f"- **{entry['component']}** {entry['version']}: {entry['licence']}")
     out += ["", "## Python packages {#python}", ""]
@@ -352,8 +353,8 @@ def diagram(name: str) -> str:
 
 def render(text: str) -> dict:
     """``{"html", "title", "anchors", "links", "sections", "lead", "diagrams"}``.
-    *sections* maps each anchor (an ``##`` heading) to its own HTML, for the side
-    panel. *lead* is the page's first diagram when it comes before any section
+    *sections* maps each anchor (an ``##`` or ``###`` heading) to its own HTML, for
+    the side panel: an ``###`` runs to the next heading of its level or higher. *lead* is the page's first diagram when it comes before any section
     (the brief 10b: drawn first in the panel, and beside the text on the page);
     *diagrams* names every diagram the page draws."""
     lines = text.splitlines()
@@ -361,6 +362,7 @@ def render(text: str) -> dict:
     lead = ""
     title = ""
     current = None          # (anchor, [html]) of the open ## section
+    sub = None              # (anchor, [html]) of the open ### sub-section
     sections = {}
     para, lst = [], []      # paragraph lines; list items [(indent, ordered, html)]
     i = 0
@@ -369,6 +371,8 @@ def render(text: str) -> dict:
         blocks.append(h)
         if current is not None:
             current[1].append(h)
+        if sub is not None:
+            sub[1].append(h)
 
     def flush_para():
         if para:
@@ -421,9 +425,15 @@ def render(text: str) -> dict:
             if anchor in anchors:
                 raise ManualError(f"two headings share the anchor {anchor!r}")
             anchors.append(anchor)
+            # A `###` sub-section runs to the next heading of its level or higher, inside its
+            # `##` section; the panel resolves either (K33: five info links named a `###`).
             if level == 2:
                 current = (anchor, [])
                 sections[anchor] = current
+                sub = None
+            else:
+                sub = (anchor, [])
+                sections[anchor] = sub
             emit(f'<h{level} id="{anchor}">{_inline(words, links)}</h{level}>')
             i += 1
             continue
@@ -479,7 +489,7 @@ def load(slug: str) -> dict:
 
 
 def section(slug: str, anchor: str = "") -> dict:
-    """What the side panel draws: the page's ``##`` section named by *anchor*,
+    """What the side panel draws: the page's ``##`` or ``###`` section named by *anchor*,
     or the whole page when no anchor is given. An unknown anchor raises."""
     out = load(slug)
     if not anchor:

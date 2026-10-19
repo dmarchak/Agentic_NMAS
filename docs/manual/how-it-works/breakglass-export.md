@@ -10,17 +10,21 @@ credential. On the host it writes two rows that say an export was made, and neve
 
 ## Where to open it {#open}
 
-One operation, reached from four places:
+One operation, reached from these places:
 
 - **Credentials**: the break-glass record's **Export the record…**.
-- **Needs attention**: the break-glass row, when no export is logged for a list or a device's
-  credential has changed since the last one.
+- **Needs attention**: the break-glass row's **Export it on Credentials…**, when no export is
+  logged for a list, a device's credential has changed since the last one, or the last
+  download did not arrive intact. An overdue drill is its own row, **Record the drill on
+  Credentials…**, which opens [the drill](#drill).
 - **The result of a rotation**, as its next step: the record still holds the old password.
 - **The result of an adoption**, as its next step: the record does not hold the new device.
-- **Settings**: its break-glass line links to Credentials.
+- **The result of a retirement**: **Export <list>'s break-glass record on Credentials…**.
+- **A failed check of a kept file**: **Export the record again…**.
 
 Each opens Credentials › The break-glass record, with the export ready and showing what the
-record would hold, for the list it names.
+record would hold, for the list it names. A Reload's result also links to Credentials (**Its
+break-glass record**), for the credential to sign in at a device's console.
 
 Exporting needs a signed-in person. A service is refused, because the file holds every
 device's credential.
@@ -96,8 +100,9 @@ on Credentials and on the export's result, opens the copy here and says whether 
 recovers every device. You choose the file and type its passphrase. Then:
 
 1. **The file is opened in memory** (`open`). Read: the file you chose, and its passphrase.
-   Sent: nothing. Recorded: nothing yet. A file that is not a break-glass record, a wrong
-   passphrase, or a file sealed for another list is refused, naming why, and nothing is
+   Sent: nothing. Recorded: nothing yet. No file, or one over 2 MiB, is refused before it is
+   opened. A file that is not a break-glass record, or a wrong passphrase, is refused. A file
+   sealed for another list is refused naming that list. Each refusal says why, and nothing is
    compared.
 2. **Each credential is compared** (`compare`). Read: the list's credentials in use, decrypted
    in memory. Sent: nothing. Recorded: nothing yet. The comparison is by salted digest, as job
@@ -165,10 +170,15 @@ tool holds now, list by list, using the same salted digests, and no value moves:
   opens this export.
 - A list with no export logged is a row saying nothing establishes whether the record is
   current, with the same action.
+- A newest download the browser found not intact is a row asking you to delete the file you
+  saved and export again, with the same action.
 - When every device is current, the row says so and asks you to verify the copy you keep,
-  because the host knows the export was sent and never whether it survived.
+  because the host knows the export was sent and never whether it survived. The row shows
+  the host commands below; in v2 the same verification is **Check a break-glass file…** on
+  Credentials ([above](#check)), and the row does not offer it yet.
 
-To verify a copy where you keep it, without moving a credential:
+Where the copy cannot be opened in a browser on the tool's page, the same comparison runs
+beside the record, without moving a credential:
 
 ```
 on the host:        nmas-breakglass digests --list <list> > digests.json

@@ -603,7 +603,8 @@ ACTION_WORDS = {
     "confirm": ("Confirm", "confirm a previewed device change"),
     "publish_remote": ("Publish", "push the record to its remote"),
     "configure": ("Configure", "change Mercury's own settings, gates and records"),
-    "break_glass": ("Break-glass", "export or check the break-glass record"),
+    "break_glass": ("Break-glass", "the removed terminal's: no action uses it now (exporting "
+                                   "the break-glass record is Reveal, checking it Configure)"),
 }
 #: The Cloudflare Access card's keys and the service tokens card's.
 ACCESS_CARD_KEYS = ("cf_access_team_domain", "cf_access_aud", "cf_access_trusted_peers",

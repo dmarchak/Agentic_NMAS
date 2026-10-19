@@ -42,9 +42,9 @@ def index():
 @bp.route("/installation", methods=["GET"])
 def installation():
     """Board F: Settings › Installation, the installation's own settings for every network. Its
-    Connections tab holds the Records database card (F2) and the NetBox connection, Proxmox and
-    Commit author cards, and its Server tab the Server card (F3); tabs not yet drawn here say so
-    and link to today's Settings page."""
+    Connections tab holds the Records database card (F2), the Record stores card and the NetBox
+    connection, Proxmox, Commit author and Server (F3) cards; its other tabs are Access and
+    identity, Platforms and roles, and Diagnostics (`installation_settings`' tabs)."""
     from modules import installation_settings as I
     from modules import settings_page
     from modules.nsot import listref

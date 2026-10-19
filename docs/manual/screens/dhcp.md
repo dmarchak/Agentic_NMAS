@@ -20,7 +20,9 @@ Default's Kea, and Default owns it. Every change to a Kea, a reservation, a subn
 exclusion, and onboarding's ZTP reservations (`dhcp/ztp-reservations.yml`), is recorded in its
 owner's repository and published with the owner's remote, so its
 history stays in one place whichever network you look from, and deleting a network that only
-inherited Kea takes none of it away.
+inherited Kea takes none of it away. A network whose Kea is its own keeps its ZTP
+reservations in that Kea's ZTP file, and the ZTP responder serves every network's ZTP
+reservations, each from its Kea owner's file.
 
 Changes are made on the owner's DHCP page. On a network that inherits Kea, the page says so
 under its heading ("Branch uses Default's Kea"), links to the owner's DHCP page, and draws Kea's
@@ -38,8 +40,18 @@ One that has never been read is said so, never drawn as empty.
 
 ## Subnets {#subnets}
 
-One row per subnet, as Kea runs it: its prefix, Kea's id for it, its pools, and its lease times
-(valid, preferred, renew and rebind; "–" where Kea has none, as IPv4 has no preferred lifetime).
+The counts lead: how many subnets (IPv4, ZTP's among them, and IPv6), leases and
+reservations. **Add a subnet…** opens a card in place for a new one ([how it
+works](dhcp-subnet)).
+
+One row per subnet, as Kea runs it: its prefix, Kea's id for it and how many addresses are
+reserved in it; its **Pools as set**; its **Gateway** (Kea's option 3, beside the first-hop
+address intent gives it; for IPv6, the routers intent has advertising on it); its **DNS**
+servers ("(global)" when taken from Kea's global level); its **Lease time** (valid, preferred,
+renew and rebind; "–" where Kea has none, as IPv4 has no preferred lifetime); **Leases now**;
+and **Held by**: who writes the subnet, Mercury, ZTP's posture (changed only where onboarding
+sets it), or Kea's own file (not yet moved, below). A subnet Mercury holds has **Edit…** and
+**Remove…** on its row.
 "The same as Kea's global" says a subnet's times equal the server's; Kea reports a subnet's
 times filled in from the global ones, so the page never claims more than that. Where Kea
 computes renew and rebind from each lease's own lifetime (`calculate-tee-times`), the cell says
@@ -57,8 +69,9 @@ lifetime at its next renewal, so a change reaches a long-held lease only when it
 host step put these in place (`scripts/host-steps/e19-dhcp-lifetimes.sh`), proving nothing else
 moved, as the subnet move below did.
 
-**In use** is the active leases against the size of the pools. ZTP's subnet is marked: it has no pool and answers
-only the reservations onboarding writes.
+**Leases now** is the active leases against the size of the pools. ZTP's subnet is marked ZTP:
+its pools are the discovery range, so its count is the devices asking, and beyond them it
+answers only the reservations onboarding writes.
 
 Under each pool's range is what the pool is for: the description kept with it in Kea (in the
 pool's `user-context`), or, for ZTP's discovery pools, the vendor class it serves. A pool on a
@@ -69,12 +82,13 @@ description on every piece.
 
 Kea's subnets start out written by hand in Kea's own files. Before Mercury first changes one, a
 single host step (`scripts/host-steps/c529-step5-subnet-files.sh`, run once on the host) moves
-every subnet, each with its reservation file, into Mercury's own files (`subnets4.json` and
-`subnets6.json` beside Kea's configuration), unchanged, and Kea's files then include them. It
-takes a dated copy of Kea's configuration and lease files first, and proves nothing a client
-sees changed: Kea's running configuration, every reservation and every lease are read before
-and after and must be equal, with Kea's own configuration hash unchanged; otherwise it puts
-Kea's files back and says what moved. The Update page's host steps say whether it has run.
+every subnet, each with its reservation file, into Mercury's own files (`nmas/subnets4.json`
+and `nmas/subnets6.json` beside Kea's configuration), unchanged, and Kea's files then include
+them. It takes a dated copy of Kea's configuration and lease files first, and proves nothing a
+client sees changed: Kea's running configuration, every reservation and every lease are read
+before and after and must be equal, with Kea's own configuration hash unchanged; otherwise it
+puts Kea's files back and says what moved. Each subnet's **Held by** says whether it has run:
+a subnet still in Kea's own file reads so.
 
 ## Leases {#leases}
 
@@ -100,7 +114,7 @@ holds it** is the client's side, which Kea cannot see: for a host Mercury does n
 
 Each reservation, with what it does now: **in use by it** (a client with its identity holds the
 address), **held by another client**, **unmatched** (no client has asked with its identity, and
-one under its hostname asked with another, as a lab host's MAC does at each redeploy), or **no
+one under its hostname asked with another, as a host rebuilt with a new MAC does), or **no
 request yet**, or **not used** (Kea's `reservations-in-subnet` or `reservations-global` is off
 where it would apply, the setting named). A reservation kept at Kea's global level is listed as
 its own group and counts in each subnet that turns the global ones on. Reservations Kea keeps in
@@ -111,14 +125,27 @@ counts only the configuration's.
 **Edit…** changes the client it waits for, its address or its hostname, and **Remove…** takes it
 away, saying what survives. Each opens a card in place: the change, its checks by name, what it
 does not do, and a confirm with your reason, bound to the preview; the result is read back from
-Kea and recorded in the network's repository ([how it works](dhcp-reservation)).
-**Edit…** is the action for an **unmatched** reservation. ZTP's reservations are written by
-onboarding and changed there; one written by hand in Kea's own files is shown and not changed
-here.
+Kea and recorded in the network's repository (`dhcp/reservations.yml`; [how it
+works](dhcp-reservation)). **Edit…** is the action for an **unmatched** reservation. ZTP's
+reservations are written by onboarding and changed there. A reservation kept at Kea's global
+level, written by hand in Kea's own file, is shown and not changed here; one in a subnet
+still in Kea's own file is changed once the subnet move above has run.
 
 ## Exclusions {#exclusions}
 
-Kea has no excluded-address setting, so exclusions will be Mercury's own record, each range with
-its reason and where it came from, and Mercury will shape the pools around them when it writes
-Kea. They arrive with the subnet operations, with the conflicts Mercury finds: an address NetBox
-or intent assigns inside a pool. Nothing is excluded today.
+Kea has no excluded-address setting, so exclusions are Mercury's own record
+(`dhcp/exclusions.yml`), each range with its reason and where it came from, and Mercury shapes
+the pools around them when it writes Kea: you set one range per pool, and Kea is given the
+pieces. The tab has two parts:
+
+- **Conflicts**: a static address committed intent assigns to an interface that lies inside a
+  pool without being excluded, with the pool, the device and interface that assign it, and
+  whether it is leased now; **Exclude <address>…** excludes it. Found from the DHCP reader's
+  read of committed intent each run. NetBox's assigned addresses are not compared yet.
+- **Exclusions**: each range, its subnet, its reason, its source (who and when) and whether it
+  is in a pool ("yes: the pool is split around it", or "outside the pool today; kept out if it
+  grows"), with **Remove…**; **Add an exclusion…** above it. "Nothing is excluded." when there
+  is none.
+
+A reservation for an excluded address is allowed: a fixed address kept out of the pool. Each
+change is previewed and confirmed as a verified person ([how it works](dhcp-exclusion)).

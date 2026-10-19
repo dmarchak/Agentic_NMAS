@@ -13,7 +13,7 @@ the time. This test proves it now, for any device, when you ask.
 ## The steps
 
 1. `refuse`: the line is checked against Tier 1 of the command policy, as any command is, and
-   the test is refused when Loki is not configured (Settings, Integrations): nothing could
+   the test is refused when Loki is not configured (Settings › Integrations): nothing could
    watch for the line. Read: nothing. Sent: nothing.
 2. `send`: first each device's `logging trap` level is read from its committed golden (IOS's
    default, informational, when the golden sets none): a device filters its own log by that

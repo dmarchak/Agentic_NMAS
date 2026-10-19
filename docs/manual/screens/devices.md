@@ -1,6 +1,8 @@
 # Devices
 
-Every device in the network, searchable and filterable.
+Every device in the network, searchable and filterable: a box searches by name or address,
+and two menus filter by intent state (each state with its count) and by platform. Under a
+search or a filter, the list says "Showing N of M".
 
 ## The list {#the-list}
 
@@ -19,8 +21,8 @@ measured from customer traffic by address. What follows is how it worked while i
 A **Drained** badge beside a device's name (and in its page's header) is MEASURED, never set
 by hand: every interface that is up, not a loopback, not in a VRF, and not the device's
 management path (the interface its golden gives the management address) carried less than
-0.5 unicast packets a second, in and out, over the last 3 minutes, read from the interface
-counters Prometheus already scrapes. Its words name each interface, its rates now and since
+10 unicast packets a second, in and out, for 3 minutes (a floor set above the manager's own
+polling), read from the interface counters Prometheus already scrapes. Its words name each interface, its rates now and since
 when it has been quiet. It goes when traffic rises again. A device with no golden, or whose
 management address is on no interface in its golden (a loopback), is not judged, so it is
 never drawn drained. Needs attention lists a Grafana alert on drained devices only under What
@@ -101,8 +103,10 @@ The rows ticked are kept when the list redraws.
 network picker chooses which). Fill in its name, platform and role, how it gets its address
 (static, a DHCP reservation, or ZTP, where the tool reserves the address and serves the
 configuration), the address, mask and MAC that source needs, the interface the address goes
-on, a gateway when this host is not on the device's subnet, and the DNS domain. A platform not
-yet onboardable is listed and disabled, with its reason.
+on, a gateway when this host is not on the device's subnet, the **Platform management port**
+(optional: a separate port the platform manages itself on, apart from that address), and the
+DNS domain. A platform not yet onboardable would be listed and disabled, with its reason; no
+platform is held back today.
 
 **Discovered** opens the devices asking for an address on the ZTP segment that the tool does
 not know, each with **Pick…**, which opens this card with the MAC it asked with: see
@@ -111,22 +115,26 @@ not know, each with **Pick…**, which opens this card with the MAC it asked wit
 **Review the plan** creates nothing. It shows every reason the device cannot be onboarded at
 once, and otherwise the startup configuration it will boot (with a placeholder for the
 one-time password, which is generated at Create and never sent to the browser), what Create
-will make, and what it does not do. **Create** builds the plan again holding the device's
-name, and refuses, naming each value that moved, if it is not the plan you reviewed; it needs
-a verified person. The result says the device is PENDING (created, never reached), and
-**Open its page** goes to its pending page, where Verify, the bootstrap configuration and
-Abandon are. See [Onboard a device](onboard).
+will make, and what it does not do; **Change the fields** goes back to the form. **Create
+<device>** builds the plan again holding the device's name, and refuses, naming each value
+that moved, if it is not the plan you reviewed; it needs a verified person. The result says
+the device is PENDING (created, never reached), and **Open <device>'s page** goes to its
+pending page, where Verify, the bootstrap configuration and Abandon are; **Add another**
+opens an empty form. See [Onboard a device](onboard).
 
 ## Adopt a device {#adopt}
 
 **Adopt a device…** opens a card for a device the tool did NOT build: one already running,
 with a working login somebody gives. Fill in its name, management address, platform and role,
-and that login. **Read it and preview** reads the device over the login and sends nothing: it
+and that login. Adopting adds the tool's own account, and the tool signs in with that from
+then on; the login you gave is left as it is unless you turn on **store it as a hash (same
+password)**. **Read it and preview** reads the device over the login and sends nothing: it
 shows every check by name (each reason it cannot be adopted, all at once), the lines it will
 send (masked), what a save makes permanent, and what it does not do. The password is never
 drawn back, so **Adopt** asks for it again, with why; it needs a verified person, reads the
 device again and stops, sending nothing, if it moved since the preview. The card follows the
-run's steps and then draws each one's outcome. An adopted device's result names what finishes
+run's steps and then draws each one's outcome. A run that stops can be run again from the
+start: it resumes where it stopped, proving the account it added rather than adding it twice. An adopted device's result names what finishes
 it, in order: **Seed <device>'s intent…** (the fidelity and one commit as its intent), then
 **Export the break-glass record…**. See [Adopt a device](adopt).
 

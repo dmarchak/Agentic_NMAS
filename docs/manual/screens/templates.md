@@ -3,8 +3,9 @@
 The network's configuration templates, one per platform, each with its approval, the devices
 bound to it, and the one action it needs: **Approve…** or **Revoke…**, with **Edit…** on every
 row, and **Bindings…** above it for which template renders which device. The page names its
-network (`/v2/templates?list=<network>`). A network with no committed template says so and
-offers **Seed the library…**.
+network (`/v2/templates?list=<network>`). Its two tabs are **Configuration templates** (this
+table) and **Coverage** (below). A network with no committed template says so and offers
+**Seed the library…**.
 
 ## What an approval covers {#what-it-is-for}
 
@@ -24,6 +25,7 @@ shipped version. Then one row per template:
 - **Template**: its path, and how many files it imports. A shared macro file (`_common.j2`) has
   a row of its own too, since it is the file a shipped fix most often changes; it has no
   approval of its own, and the templates that import it carry the approval that covers it.
+- **Platform**: the platform the template renders for.
 - **Devices bound**: the devices it renders, each a link to its page; more than three collapse.
 - **Against the shipped version**: current; behind (an older shipped version, unedited), with
   **Bring in the shipped version…** on its row (see

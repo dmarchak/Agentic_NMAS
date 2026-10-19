@@ -89,8 +89,12 @@ tool holds and reads two things: the startup configuration, and the running conf
 - **persisted**: the startup configuration carries every account line;
 - **not persisted**: a reload would boot a credential the tool does not hold. This is the
   row with the most urgent action: persist the device;
-- **unknown**: the device could not be read this hour, said as its own row, never as a
-  failure of the whole check.
+- **unknown**: the device could not be read this hour, never a failure of the whole check.
+  Every unread device is in one entry naming them all. For its first two hours it is
+  expected (a device booting or slow), said under *What was checked* rather than as a row;
+  once a device has been unread that long, it is a warning row, "The startup check has not
+  read <devices> since <time>". Neither is the same as a startup configuration that does not
+  carry the credential, which is its own row.
 
 [Needs attention](needs-attention) draws each not-persisted device with Persist as its
 action.
@@ -99,11 +103,14 @@ action.
 
 The break-glass record is sealed off the host, so the tool cannot open it. What it can do is
 compare: every export logs a salted digest of each device's credential (never the value),
-and job health compares the newest export's digests with the credentials held now. A device
-rotated since the export reads **stale**, "the record holds an older credential: rotated
-since", and the row's action opens the export. Export again after every rotation, and verify
-the copy on the machine that keeps it: the host logs that an export was made, never where the
-file went. See [Break-glass export](breakglass-export).
+and job health compares the newest export's digests with the credentials held now. When a
+device was rotated since the export, the network's record gets one row, naming every such
+device: "The break-glass record is out of date: N device(s) rotated since the last export
+(…)", its detail "the record <made> holds an older credential for <devices>", and its action
+**Export it on Credentials…**. Export again after every rotation, and verify the copy on the
+machine that keeps it: the host logs that an export was made, never where the file went. The
+record has two more rows of its own: its last download did not arrive intact, and it has not
+been opened offline for 90 days (the drill). See [Break-glass export](breakglass-export).
 
 ## What a deploy or restore does to a credential {#deploy}
 

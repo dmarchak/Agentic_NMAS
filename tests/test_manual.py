@@ -30,7 +30,7 @@ INFO_CALL = re.compile(r"info\(\s*'([a-z0-9-]+)'(?:\s*,\s*'([a-z0-9-]*)')?")
 NO_INFO = {"not_found.html": "an error page: what it says is the whole of what there is to know"}
 #: Operations whose code declares no step list yet (brief 10a's stepper work
 #: adds one to each). Only shrinks.
-UNDECLARED_CEILING = 3  # 4 until retire declared its steps (C1332 to C1342); 5 until rotate (C370)
+UNDECLARED_CEILING = 2  # 3 until persist's STEPS were declared (K33); 4 until retire declared its steps (C1332 to C1342); 5 until rotate (C370)
 
 
 def _client():
@@ -49,15 +49,19 @@ def _info_calls(text):
 
 
 def unresolved(calls):
-    """The info calls naming a page or section the manual lacks."""
+    """The info calls naming a page or section the manual lacks. A section is checked by
+    what the side panel resolves (``manual.section``), not by the page's anchors: five links
+    named a `###` anchor the page drew and the panel answered 404 (K33, 2026-10-19)."""
     bad = []
     for slug, sec in calls:
         try:
-            doc = manual.load(slug)
+            manual.load(slug)
         except manual.ManualError:
             bad.append((slug, sec, "no such page"))
             continue
-        if sec and sec not in doc["anchors"]:
+        try:
+            manual.section(slug, sec)
+        except manual.ManualError:
             bad.append((slug, sec, "no such section"))
     return bad
 
@@ -196,6 +200,32 @@ class TestEveryInfoLinkResolves:
         assert unresolved([("deploy", "no-such-section"), ("no-such-page", "")]) == [
             ("deploy", "no-such-section", "no such section"),
             ("no-such-page", "", "no such page")]
+
+    def test_a_sub_section_link_is_what_the_panel_resolves(self, monkeypatch):
+        """K33: a link to a `###` heading resolves in the panel, drawing that sub-section to
+        the next heading of its level or higher; a missing anchor is still found. Planted on a
+        page of its own, so it holds whatever the real pages' headings become."""
+        text = ("# T\n\n## Top\n\nlead\n\n### Sub one\n\nfirst\n\n### Sub two\n\nsecond\n\n"
+                "## Next\n\nafter\n")
+        monkeypatch.setattr(manual, "source", lambda slug: text)
+        assert unresolved([("deploy", "sub-one"), ("deploy", "top"),
+                           ("deploy", "no-such-sub")]) == [
+            ("deploy", "no-such-sub", "no such section")]
+        one = manual.section("deploy", "sub-one")["html"]
+        assert "first" in one and "Sub one" in one
+        assert "second" not in one and "after" not in one and "lead" not in one
+        top = manual.section("deploy", "top")["html"]
+        assert "lead" in top and "first" in top and "second" in top and "after" not in top
+
+    def test_the_panel_answers_each_sub_section_link(self):
+        """The five links that answered 404 before K33, each through the panel's route."""
+        c = _client()
+        for slug, sec in (("monitoring-templates", "arrival"),
+                          ("onboard", "static-a-person-applies-it"),
+                          ("publish-remote", "connect"), ("publish-remote", "write-probe"),
+                          ("publish-remote", "auto-push")):
+            r = c.get(f"/v2/help/{slug}/panel?section={sec}")
+            assert r.status_code == 200, (slug, sec)
 
     def test_every_v2_page_carries_one(self):
         texts = _templates()

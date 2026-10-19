@@ -11,8 +11,10 @@ changes nothing on a device: it reads, and it writes one commit in the list's re
 ## The preview
 
 You start a capture from the device page's **Actions > Capture** (that device, its card drawn
-in place of the tab), or from an approved drift item in the approval queue, which opens this
-preview for its device. The card posts its device to `/v2/device/<name>/capture/start`, which
+in place of the tab). The same card is opened by a drift row's **Capture <device>…** on Needs
+attention, by **Capture** under Keep it in the Overview tab's drift detail, and by
+**Capture <device>…** beside a device the template editor's check could not validate for want
+of a golden. The card posts its device to `/v2/device/<name>/capture/start`, which
 starts the job, and its confirm reaches the apply through `/v2/device/<name>/capture/confirm`.
 Every device of a network at once is Devices › Save (see [Save](save)), which reads and
 records each device the same way; the devices with no committed golden are one of its scopes,
@@ -30,8 +32,9 @@ which saves each one to startup as well as recording it.
    long as its slowest device. Sent: nothing beyond the read. Recorded: progress for the
    in-flight panel ("read 3 of 9 device(s); waiting on …"), and each device's connect and read
    times in the app log. When the job ends it announces over the page's live channel and the
-   page fetches the preview by its id; if the channel is down, the page says so and offers
-   **Check now**.
+   page fetches the preview by its id. The card has no Check now control: if the channel is
+   down, the page's live note says live updates stopped, and the card fetches the preview
+   once the channel reconnects.
 3. **Judge each read.** Read: the read and the device's committed golden. Sent: nothing.
    Recorded: nothing. A configuration that came back stitched together (two `end` lines or
    none, not ending with `end`, a device prompt, an echoed command, two `hostname` lines,
@@ -46,13 +49,12 @@ which saves each one to startup as well as recording it.
      line.
    - The structure: a capture with fewer of some section (interfaces, terminal lines) than its
      golden needs your reason, unless committed intent renders the smaller structure.
-5. **Preview the baseline decision.** Read: what steps 2 to 4 found, and the inventory.
-   Sent: nothing. Recorded: nothing. Save All earns a baseline only when every device in the
-   network was read and every one matches its committed intent; a capture of part of the fleet
-   never earns one. If a device departs, the preview names the line that decides it. When no
-   golden would change, the button says what confirming still does: **Read all N devices and
-   take the baseline**, or **Read all N devices and record the denial only**. A one-device
-   capture that changes nothing cannot be confirmed.
+5. **No baseline from one device.** Read: nothing more. Sent: nothing. Recorded: nothing.
+   The card says so: "No baseline is taken: one device is not the fleet". A baseline is
+   earned only by Devices › Save when it saves every device of the network together, and
+   only when every device was read and every one matches its committed intent (see
+   [Save](save)). A one-device capture that changes nothing cannot be confirmed: the card
+   says there is nothing to confirm.
 
 ## The confirm and the apply
 
@@ -89,9 +91,9 @@ below.
 5. **Publish.** Sent: the commit to the list's remote by `git push` where a remote is set,
    and each changed golden, masked, to the S3 archive where one is configured. Recorded: the push's outcome. The
    post-commit hooks run in the background and never hold the commit.
-6. **Close what the capture answers.** Recorded: an approval item that handed off to this
-   capture is closed, only for a device that was recorded or found unchanged; older pending
-   drift items for those devices are withdrawn, naming the commit. Then the device locks are
+6. **Close what the capture answers.** Recorded: for every device recorded or found
+   unchanged, each pending drift item is withdrawn, naming the commit, and the last drift
+   check's rows for it are answered. Then the device locks are
    released, and the result is drawn from the outcome of each device. The commit is the
    record: the History page and the device page's History tab read it back.
 

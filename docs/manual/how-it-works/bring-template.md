@@ -44,5 +44,5 @@ templates that import it carry the approval that covers it.
 ## Then
 
 Approve each template again. The devices are then planned against the new file: Monitoring ›
-Coverage shows what each device lacks, and Apply sends it. The template never sends anything
+Coverage shows what each device lacks, and its **Deploy missing templates…** sends it. The template never sends anything
 itself.

@@ -21,8 +21,9 @@ finish it, in order: **Seed <device>'s intent…** (its intent parsed from the g
 recorded, how much the template reproduces, each unmodelled line, and one commit as its
 intent; see [Seed intent](seed)), then **Export the break-glass record…**, because a record
 exported before lacks the account the tool now signs in with. Adopting needs a verified person. A run that stops is run
-again from the same card and resumes; its recovery has a host command as well,
-`nmas-adopt-recover <device> --list <list>` (see [When a run stops](#stops)).
+again from the same card and resumes. Settling a password a stopped run kept staged is not
+offered in v2 yet: it is a host command, `nmas-adopt-recover <device> --list <list>` (see
+[When a run stops](#stops)).
 
 ## The supplied credential is never written
 
@@ -39,7 +40,11 @@ the supplied login. Every reason to refuse is drawn at once, each by name.
 
 1. **What can be refused without the device.** Read: the list's inventory, its manifest,
    the staged credentials, the NetBox write switch. Sent: nothing. Recorded: nothing. The
-   role must be given (never guessed from the platform); the list must exist; the name and
+   role must be given (never guessed from the platform); the list must exist; the name must
+   be a device name the tool records (a letter, then up to 31 letters, digits, `.`, `_` or
+   `-`); the platform must have a driver; the tool's account must be a valid name that is
+   not the supplied one (adding it would otherwise replace the supplied account's
+   credential); the name and
    address must not already be managed or recorded in the manifest (an adoption in progress
    at that name and address resumes); no tool password may be staged from an earlier run
    that was never settled; and NetBox writes must be on, because adoption records the device
@@ -80,8 +85,8 @@ the supplied login. Every reason to refuse is drawn at once, each by name.
    capture. Sent: nothing. Recorded: nothing. A NetBox that cannot be read refuses.
 
 When nothing refuses, the preview carries a fingerprint of the list, device, address,
-platform, role, tool account, the conversion choice, the profile's program and both
-configurations. The apply is bound to it.
+platform, role, tool account, whether the run resumes an earlier one, the conversion
+choice, the profile's program and both configurations. The apply is bound to it.
 
 ## The apply, in order
 
@@ -106,8 +111,8 @@ moved since the preview:
    - the held session closes, the credential is recorded, and the staged copy is cleared;
    - on a resumed run, the recorded account is only proven on a fresh login, and nothing is
      sent.
-3. **The supplied account** (`owner_account`). Read: a fresh login as the owner. Sent: only
-   if you chose the conversion: the account re-sent as a secret with its SAME password
+3. **The supplied account** (`owner_account`). Read: only if you chose the conversion, a
+   fresh login as the owner. Sent: only if you chose the conversion: the account re-sent as a secret with its SAME password
    (deleted and set in one round trip where it held a `password`). Recorded: nothing new.
    Not chosen, it reads "not changed". If the fresh login fails, its original line is put
    back on the held session (or, failing that, over a fresh session as the tool's account)
@@ -130,7 +135,8 @@ moved since the preview:
 7. **NetBox** (`netbox`). Read: NetBox's objects for the device again (REST API). Sent:
    nothing. Recorded: in NetBox, the import from the golden (what it creates is tagged
    `nmas-managed` and recorded as created; what it updates is recorded as modified); in
-   `data/netbox_adopted.json`, every object that EXISTED before, as adopted, with who, when,
+   `data/netbox_adopted.json` (or, once the NetBox objects adopted store is moved to the
+   records database, there), every object that EXISTED before, as adopted, with who, when,
    why and on what basis, so Remove can never delete it; and the NetBox id in the manifest.
    What existed is read before the import, so it is never mistaken for something created.
 8. **Into the inventory** (`promote`). Read: the manifest. Sent: nothing. Recorded: the
@@ -147,9 +153,11 @@ moved since the preview:
 Adoption adds nothing to Oxidized: its step went with Oxidized's retirement (2026-10-08). The
 first golden's commit is the device's backup.
 
-Whatever happened, the run is recorded in the list's `onboarding_runs.jsonl` as an `adopt`
-run. A finished adoption names its next step: export the break-glass record, which holds no
-entry for the device until you do; then seed its intent from the golden on its Device page.
+Whatever happened, the run is recorded in the list's `onboarding_runs.jsonl` (or, once the
+Onboarding runs store is moved to the records database, there) as an `adopt` run. A finished
+adoption's card names the two steps that finish it, in order: seed its intent from the
+golden, on its Device page; then export the break-glass record, which holds no entry for the
+device until you do.
 
 ## When a run stops {#stops}
 
@@ -157,7 +165,8 @@ A stopped run names every step that did not run and why. Running adopt again res
 account the tool added and recorded is proven, never added twice, and the save and the
 import are safe to repeat. Two outcomes keep the staged password because it is the only
 copy: the account was added and its record failed, or a failed verify's removal could not
-be proven. Settle either on the host with `nmas-adopt-recover <device> --list <list>`,
+be proven. v2 has no control to settle either yet; it is settled on the host with
+`nmas-adopt-recover <device> --list <list>`,
 which asks the device with the staged password on a fresh login: accepted, it is recorded
 and only then cleared; refused, the file is kept and the result says what to check.
 

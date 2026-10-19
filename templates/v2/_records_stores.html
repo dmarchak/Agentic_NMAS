@@ -18,7 +18,7 @@
   {%- set back = done.direction == 'back' %}
   <div class="notice notice-{{ 'muted' if done.ok else 'danger' }} set-result" role="status">{{ icon('tick' if done.ok else 'warn', 16) }}<div>
     {%- if done.ok %}<strong>{{ 'Moved back' if back else 'Moved' }}:</strong> {{ done.words | lower }} now read and write {{ 'their files' if back else 'the records database' }}, recorded in the installation's settings record.
-    {%- elif done.switched_back %}<strong>Not moved:</strong> the check after the switch failed, so the receipts were switched straight back to their files{% if done.switched_back.exported %} ({% for n, c in done.switched_back.exported.items() %}{{ n }}: {{ c }} line(s) written in between appended to its file{% if not loop.last %}, {% endif %}{% endfor %}){% endif %}. Nothing is lost.
+    {%- elif done.switched_back %}<strong>Not moved:</strong> the check after the switch failed, so {{ done.words | lower }} were switched straight back to their files{% if done.switched_back.exported %} ({% for n, c in done.switched_back.exported.items() %}{{ n }}: {{ c }} line(s) written in between appended to its file{% if not loop.last %}, {% endif %}{% endfor %}){% endif %}. Nothing is lost.
     {%- else %}<strong>Moved back, and the files read differently:</strong> see the check below.{% endif %}
     {%- if not done.recorded %} Its record could not be written.{% endif %}</div></div>
   <ol class="set-steps">

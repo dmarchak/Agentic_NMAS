@@ -14,7 +14,8 @@ On **Devices**, tick the devices, open **Actions** and choose **Change a setting
 The page names the devices and asks for a one-line summary (it becomes the commit's subject)
 and each setting: its path, the value it holds now, and the value it becomes, written as in
 the intent file (`514`, `true`, `[a, b]`, `{level: informational}`), or `(absent)` for a
-setting not there, or to remove one. **Add a setting** adds a row. **Preview the change** runs
+setting not there, or to remove one. **Add a setting** adds a row, up to 12 settings in one
+change. **Preview the change** runs
 [the preview](#the-preview) below and draws it in place: the counts first, the refused devices
 with each reason (and, where the before-state differs, the value expected and the value held),
 then the accepted devices grouped by what changes in their configuration, each group collapsed,
@@ -23,8 +24,7 @@ with what a deploy would send, what is no longer rendered, and each device's int
 preview; the result names the commit and offers **Plan a deploy for these <count>…**, for exactly
 the devices it changed.
 
-The same code runs on the host as `scripts/nmas-bulk-intent`, and behind its two JSON routes,
-which also accept a confirm only from a verified person.
+The same code runs on the host as `scripts/nmas-bulk-intent`.
 
 ```
 nmas-bulk-intent --list <list> --devices <a>,<b>,<c> --change <change.json>
@@ -65,8 +65,9 @@ name is never touched.
    A device whose result would be refused is named with why.
 6. **Render before and after**. Read: the device's captured configuration and its template,
    with the monitoring profile merged in. Sent: nothing. Recorded: nothing. Both intents are
-   rendered and compared line by line, each line under its section. A result that does not
-   render is refused. A device whose result renders but is not deployable is accepted, and
+   rendered and compared line by line, each line under its section. A device with no golden
+   recorded yet to render against, or whose platform the tool does not know, is refused,
+   naming why; so is a result that does not render. A device whose result renders but is not deployable is accepted, and
    the reasons are shown as a note.
 7. **Group by effect**. Read: nothing. Sent: nothing. Recorded: nothing. Devices whose
    configuration changes by exactly the same lines form one group. The headline reads
@@ -82,7 +83,8 @@ preview shows exactly what.
 1. **Require a summary**. Read: the change file. Sent: nothing. Recorded: nothing. With no
    summary there is no commit subject, so nothing is done.
 2. **Compute the preview again and compare**. Read: everything the preview read. Sent:
-   nothing. Recorded: nothing. A hash that differs from the one you give is refused naming
+   nothing. Recorded: nothing. This step and the two after it run holding the network's
+   repository lock, so no other commit can land between the check and the write. A hash that differs from the one you give is refused naming
    both, with nothing written: a hash from another preview, a typing slip and intent that
    moved since all read this way.
 3. **Refuse when nothing is accepted, or the intent folder is not clean**. Read: git's

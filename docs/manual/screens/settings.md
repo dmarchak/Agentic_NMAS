@@ -5,7 +5,7 @@ The tool's configuration, in three scopes of one page: **Installation** (what ev
 ## A network's page {#network}
 
 - **Its mode**, on the banner: it inherits from Default, or it is standalone and takes nothing from Default, with who made it so and when. The banner's button opens the switch's preview (see [Inherit or stand alone](settings-switch)).
-- **One card per group**, on two tabs (Integrations: Grafana, its dashboards, Prometheus, Loki, Kea, the topology service, the monitoring profile, the S3 archive and the lab; Network: the deploy tuning, the TFTP server and NetBox's excluded VRFs). Each card says where its values come from: *set here*, *inherited from Default*, *not configured for this network*, *not applicable here*, or *unset everywhere*; and every field shows its value with where it came from. A secret shows as "set", never its value.
+- **One card per group**, on two tabs (Integrations: Grafana, Grafana dashboards, Prometheus, Loki, Kea, Monitoring profile and S3 archive; Network: Verify settle windows, Deploy workers, Deploy failure limit, Golden tags kept, Configuration read timeout, NetBox excluded VRFs, the three Show commands settings (answer cap in KiB, devices read at once, answers kept in days), and the Inventory source card). Each card says where its values come from: *set here*, *inherited from Default*, *not configured for this network*, *not applicable here*, or *unset everywhere*; and every field shows its value with where it came from. A secret shows as "set", never its value.
 - **The S3 archive** is Mercury's connection to MinIO: Default's values are every network's
   unless a network sets its own. It holds each network's goldens, masked (a community, a
   password hash or a key reads `<redacted:…>`, so a copy there restores no secret; the
@@ -15,6 +15,15 @@ The tool's configuration, in three scopes of one page: **Installation** (what ev
   never delete. The top bar's integrations and Needs attention ask only whether its bucket answers, and
   write nothing; its full test writes a probe object, reads it back byte for byte and states its
   size, naming the first step that fails with what the server answered.
+- **Prometheus** (Integrations tab): where its API answers, and its **Targets dir** (the
+  targets directory): where Mercury writes the scrape-target files for the devices this Prometheus serves. Each
+  Prometheus has its own: a network that inherits Default's Prometheus is in Default's files,
+  and a network with its own Prometheus names its own directory and gets its own files, its
+  own record of each regeneration, and its own job-health row comparing what that Prometheus
+  scrapes with what its networks' inventories hold ("…, for <network>'s Prometheus"). A
+  directory two Prometheus owners both name is refused for both, each naming the other, so
+  one network is never scraped as another's. With no directory named, Mercury writes nothing
+  for that Prometheus, and its row says to name one.
 - **Inventory source** (Network tab): where the network's devices come from, its own list on this host or NetBox through filters, and how fresh they are. For a NetBox network it counts the devices loaded, skipped, loaded with a warning and no longer in NetBox, and names each one in groups closed until opened: the skipped by cause with where to put it right, the warned by cause, and those NetBox no longer returns with since when (see [Where a network's devices come from](settings-switch#source)).
 - **Each group's own choice**: inherit from Default, its own, or not applicable. Choosing another opens that switch's preview in place of the card; nothing is saved by the choice itself. A group not configured has **Configure…**, which takes its values in the card; a group that is its own takes its fields in place, with **Save** and **Test** (see [Save a card](settings-switch#save) and [Test a connection](settings-switch#test)).
 
@@ -43,13 +52,30 @@ Default's cards show its values and, on each, who takes them: "inherited by 12 �
 What every network shares, standalone ones included: these are the installation's own, never a network's or Default's, so a change here changes all of them. Its tabs are Connections, Access and identity, Platforms and roles, and Diagnostics (the Server card is on Connections; AI and workflow left with the AI family, 2026-10-14).
 
 - **Records database** (Connections): the database Mercury's records move to, store by store (receipts first). With no host it is **off**: every store stays on its files, as today. Its card says whether it is **answering** (the last Test passed, with the server's version, when and by whom), **not answering** (the check that failed, named), or **not tested yet**, and when a Save or Replace came after the last Test. **Save** writes the host, port, database and role; it never opens the database, so it works with the database down or the password wrong, and the change is recorded in the installation's settings record. **Test** asks the database six things and names the first that fails: it signs in, the server is PostgreSQL 18, the role owns its database, the role is not a superuser, Mercury reaches it on a loopback address, and a temporary row written and read back is rolled back. The password shows only as set; **Replace…** opens the rotation order: change it on the server first, with the host step `scripts/host-steps/postgres-rotate.sh`, then enter the same password here, and its Test runs at once (see [The records database](records-database)).
+- **Record stores** (Connections): the 24 stores that can move to the records database, its
+  badge counting how many are on it ("N of 24 on the database"). They are Deploy receipts,
+  Acknowledgements, Restarts seen, Planned-restart windows, Planned-restart windows ended
+  early, Rotations and saves, the four break-glass logs (exports, download verdicts, checks,
+  drills), Reveals, Host steps said done, Heartbeat window re-measures, NetBox removals,
+  Network settings changes, Onboarding runs, Inventory edits, Approval queue, Rollback blocks,
+  Retries authorised, NetBox objects created, modified and adopted, and Interrupted
+  operations. Each row says **Where** it is (the records database, or its files, with each
+  network's count) and its **Last check**: **matches** or **DOES NOT MATCH** (the database
+  against what the files held), **does not answer**, or "not checked yet: the check runs
+  every 5 minutes"; a store on its files has nothing to compare. **Move to the database…**
+  and **Move back to files…** open a preview in place, each network's count beside what is
+  in the table; the confirm reads **Move N lines** (or **Switch to the database (no lines to
+  copy)**, or **Move back**), is bound to those counts, and is refused if a line was written
+  before you confirm. A move copies, switches, checks and leaves the files read-only for a
+  release; if its check fails, the store is switched straight back to its files and nothing
+  is lost (see [The records database](records-database)).
 - **NetBox connection** (Connections): the central NetBox every network reads, its address, auth scheme (Bearer for NetBox 4.x tokens, Token for older) and whether its certificate is verified. Its badge is NetBox's health as last read (reachable, not answering, refused, not configured), and **Test** asks it now. The API token shows only as set; **Replace…** takes a new one and tests it. **Writes allowed** is the master switch for every network's NetBox writes: on, it offers **Turn off**; off, it says who turned it off and when. Turning it on is never this card's: it is the confirm of an authorised NetBox write. Each network's NetBox scope (its region) is under that network.
 - **Proxmox** (Connections): the hypervisor's address, node, whether its certificate is verified, the backup VMs and the backup storage, and the token's declared expiry (the token cannot read its own). The token shows as its id and set; **Replace…** takes the id and the secret together and tests them.
 - **Commit author** (Connections): the name and email on the author line of Mercury's commits; the person who acted is in each commit's `Actor:` trailer.
 - **Access and identity**: read-only by design. **The gates**: for each action (reveal, approve, confirm, configure, publish, break-glass), whether it needs a verified identity and whether it needs a person, with each one's origin (defaulted, recorded or chosen). **Cloudflare Access**: the team domain, audience, trusted peers (shown to a verified person only) and the key cache, 5 minutes to a day. **Service tokens**: what a service may run, and the labels that name them in the audit. **You**: who this request is, and which gated actions it may take. The one control is **Record this decision**, which writes the value already in force and records who and when; the operator changes a value in the settings file on the host.
 - **Platforms and roles**: the platform map (a NetBox platform → its driver, config dialect, delivery and NETCONF, with a default driver), a table with Remove, Add and **Preview changes**; and where roles live: a device's kind is its NetBox Device Role's `mercury_kind` field, set in NetBox ("not classified in NetBox" without one, never a guess). The preview names every device whose driver the change moves; **Test** reads one of them through its new driver; **Save** is bound to the preview and refreshes each NetBox network.
 - **Diagnostics**: is Mercury itself healthy, and what is it doing. **Redaction**: whether every log handler masks secrets, measured now (not healthy, it is also a Needs attention row). **Drift checks**: one schedule for every network, and each network's on or off, last and next run, with **Check now**. **In flight**: every network's running operations and what finished in the last half hour. **The app's log**: its last lines, filtered, read when asked (see [The installation's settings](installation-settings)).
-- **Server** (Server): the address and port Mercury listens on. They are read when Mercury starts, so a Save says the change waits for the next restart.
+- **Server** (Connections): the address and port Mercury listens on. They are read when Mercury starts, so a Save says the change waits for the next restart.
 - Every **Save**, **Replace** and **Turn off** is recorded in the installation's settings record with who, when and the names of what changed, never the values (see [The installation's settings](installation-settings)).
 
 ## What is not here yet {#not-yet}

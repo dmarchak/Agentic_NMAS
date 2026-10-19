@@ -870,8 +870,8 @@ def _plan(list_name, hostname, *, mgmt_ip, platform, supplied_username, supplied
             "NetBox writes are off for every network (Writes allowed, on Settings › "
             "Installation › Connections, NetBox connection), and adopting records the device "
             "there before it joins the inventory; they are turned on by confirming an "
-            "authorised NetBox write with writes permitted (today's NetBox import: v2 does not "
-            "offer one yet, C619), or nothing is sent"))
+            "authorised NetBox write with writes permitted (the NetBox page's Import into "
+            "NetBox…, its 'turn NetBox writes on with this confirm' box), or nothing is sent"))
     if out["gates"] and any(g["state"] == "fail" for g in out["gates"]):
         return done()
 

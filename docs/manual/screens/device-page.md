@@ -4,33 +4,43 @@ Everything about one device, addressed by its name and its network:
 `/v2/device/<name>?list=<network>`, or the network the app is showing when the address names
 none. Every link, tab and action on the page keeps that network, so the page never switches to
 another network's device of the same name; a confirm sent from a page of another network does
-nothing and says so. When the name is not in the network shown but is in one other network,
-the page says which, with the link. Its header names the model, platform, address and the
-account the tool signs in as; Actions lists the operations on the device.
+nothing and says so. When the address names no network and the name is not in the network
+shown, the page says which other network holds it, with the link, or lists each network that
+does; an address that names a network where the name is not says only that. Its header names
+the model, platform, address and the account the tool signs in as; Actions lists the
+operations on the device.
 
 ## Actions {#actions}
 
 Everything is under **Actions**, one menu, Plan a deploy first: Plan a deploy, Capture, Seed
 intent, Restore from, Remove lines (Mode B),
-Revert intent, Retry rolled-back change, Rotate credential, Persist and Retire. **Capture runs here**: its card takes the place of the
+Revert intent, Retry rolled-back change, Rotate credential, Persist, Run a privileged command,
+Reload and Retire. **Capture runs here**: its card takes the place of the
 tab you were on, reads the device, and shows what its golden would become, against the golden
 now and against committed intent, with the checks and the confirm bound to that read; once you
 record it, the same card shows the commit, who and when (the read's timings on hover), what is
-still true against intent, and what to do next. **Persist and Rotate run here too**: Persist's card says what the save sends and then reads, what it will not do, its operands and checks, and after the save whether the startup config carries the credential; Rotate's reads the account's line, shows the plan with the new password never shown, and after the confirm waits for the rotation and draws its result with the one next step. **Plan a deploy runs here as well**: its card shows the exact program from committed intent, each dangerous line waiting on your stated reason, the lines left on the device (tick one to remove it, Mode B, with its own reason), what will not happen, the operands and checks, and the confirm bound to that program. While it runs, the card shows the pipeline's stages (done with their times, the one running with what it waits on); after, the result from its receipt, and if verify failed and rolled back, its two ways out (Revert intent, Retry with a reason). **Restore from runs here**: its card lists the moments the device can be restored from (its golden now, its older goldens and the baselines holding it, each with the message recorded with it and its credential state), then the chosen moment's program, each line waiting on your stated reason (a dangerous line, an account the moment adds back), what stays on the device, the operands and checks, and the confirm bound to that program; it runs as a job, as the deploy does. **Revert intent and Retry rolled-back change run here**, offered only while a rollback's block stands on the device (otherwise each row says why): Revert's card starts on the commit the rollback undid, shows the intent document after the revert, what it will not do (nothing is sent to the device) and the confirm bound to that commit; Retry's shows the blocked program and offers its confirm once you state why the change was right after all, recorded as you say it. **Remove lines (Mode B)** opens the deploy's card at its lines left on the device, highlighted, because removals are made as part of a deploy: tick the lines to remove there, and anything intent adds is sent with them. A device holding nothing removable opens nothing: the row says so in place. A row stays open and busy on itself until its card arrives, and a click made while the page is still loading is kept and carried out once it has. A card refused because another operation holds the device says who, and reads again when the tool announces that operation finished; a Rotate card freed by a rotation that ran meanwhile shows that rotation's result, never a second offer to rotate. Cancel or Close puts the tab back. **A Rotate, Plan a deploy, Restore or Reload you left running opens again here**: the page opened while one runs on the device, or after one finished that you have not seen, shows its card in place of the tab, saying it was reopened and when, whether you came from the top bar's In progress chip, a bookmark or the Devices list ([What is running now](getting-started#in-progress)). **Seed intent runs here**: its card shows the intent document that would be committed (the first lines of the change, the whole document one click below), whether the template reproduces the device (a line it does not model is named, and blocks a deploy until modelled or acknowledged), the device's own lines (its self-signed trustpoint, certificate bodies and licence UDI, never blocking and never intent), and the confirm bound to the seed; after it, what stays true and the Intent tab or a deploy plan as next steps. **Retire runs here**: its card asks why, lists what retire changes in order, what is generated and so dropped (with when), what survives (with how each is removed) and its checks, and refuses until a break-glass export holds the device's current credential, pointing at Credentials; after it, the result says what was dropped and what is still to remove, and the device's address shows its retired record from then on. **Run a privileged command… runs here** (Tier 2): its card offers clear counters and clear arp-cache on one of the device's own interfaces (the management one never offered), clear logging and undebug all, reads the before-state, and confirms with your reason; the result shows before and after and the verdict ([Run a privileged command](privileged)). **Reload… runs here**: its card reads the device and draws six checks by name (it boots what it runs, its golden and intent, startup carries Mercury's credential, the boot image, nothing holds it) with what else Mercury loses reach to while it restarts shown first; you confirm with a reason; the run declares its planned-restart window before anything is sent, then reloads, waits and checks it came back running what it ran, on the one stepper ([Reload a device](reload)). Every action under Actions runs here. How each works:
+still true against intent, and what to do next. **Persist and Rotate run here too**: Persist's card says what the save sends and then reads, what it will not do, its operands and checks, and after the save whether the startup config carries the credential; Rotate's reads the account's line, shows the plan with the new password never shown, and after the confirm waits for the rotation and draws its result with the one next step. **Plan a deploy runs here as well**: its card shows the exact program from committed intent, each dangerous line waiting on your stated reason, the lines left on the device (tick one to remove it, Mode B, with its own reason), what will not happen, the operands and checks, and the confirm bound to that program. While it runs, the card shows the pipeline's stages (done with their times, the one running with what it waits on); after, the result from its receipt, and if verify failed and rolled back, its two ways out (Revert intent, Retry with a reason). **Restore from runs here**: its card lists the moments the device can be restored from (its golden now, its older goldens and the baselines holding it, each with the message recorded with it and its credential state), then the chosen moment's program, each line waiting on your stated reason (a dangerous line, an account the moment adds back), what stays on the device, the operands and checks, and the confirm bound to that program; it runs as a job, as the deploy does. **Revert intent and Retry rolled-back change run here**, offered only while a rollback's block stands on the device (otherwise each row says why): Revert's card starts on the commit the rollback undid, shows the intent document after the revert, what it will not do (nothing is sent to the device) and the confirm bound to that commit; Retry's shows the blocked program and offers its confirm once you state why the change was right after all, recorded as you say it. **Remove lines (Mode B)** opens the deploy's card at its lines left on the device, highlighted, because removals are made as part of a deploy: tick the lines to remove there, and anything intent adds is sent with them. A device holding nothing removable opens nothing: the row says so in place. A row stays open and busy on itself until its card arrives, and a click made while the page is still loading is kept and carried out once it has. A card refused because another operation holds the device says who, and reads again when the tool announces that operation finished; a Rotate card freed by a rotation that ran meanwhile shows that rotation's result, never a second offer to rotate. Cancel or Close puts the tab back. **A Rotate, Plan a deploy, Restore or Reload you left running opens again here**: the page opened while one runs on the device, or after one finished that you have not seen, shows its card in place of the tab, saying it was reopened and when, whether you came from the top bar's In progress chip, a bookmark or the Devices list ([What is running now](getting-started#in-progress)). **Seed intent runs here**: its card shows the intent document that would be committed (the first lines of the change, the whole document one click below), whether the template reproduces the device (a line it does not model is named, and blocks a deploy until modelled or acknowledged), the device's own lines (its self-signed trustpoint, certificate bodies and licence UDI, never blocking and never intent), and the confirm bound to the seed; after it, what stays true and the Intent tab or a deploy plan as next steps. **Retire runs here**: its card asks why, lists what retire changes in order, what is generated and so dropped (with when), what survives (with how each is removed) and its checks, and refuses until a break-glass export holds the device's current credential, pointing at Credentials; after it, the result says what was dropped and what is still to remove, and the device's address shows its retired record from then on. **Run a privileged command… runs here** (Tier 2): its card offers clear counters and clear arp-cache on one of the device's own interfaces (the management one never offered), clear logging and undebug all, reads the before-state, and confirms with your reason; the result shows before and after and the verdict ([Run a privileged command](privileged)). **Reload… runs here**: its card reads the device and draws five checks by name (it boots what it runs, its golden and intent, startup carries Mercury's credential, the boot image, nothing holds it) with what else Mercury loses reach to while it restarts shown first; you confirm with a reason; the run declares its planned-restart window before anything is sent, then reloads, waits and checks it came back running what it ran, on the one stepper ([Reload a device](reload)). Every action under Actions runs here. How each works:
 [Deploy a change](deploy), [Capture and Save All](capture), [Remove lines (Mode B)](removal),
 [Persist](persist), [Rotate a credential](rotate), [Seed intent](seed),
 [Restore and re-apply a baseline](restore), [Revert or retry after a rollback](revert-retry),
-[Retire a device](retire).
+[Run a privileged command](privileged), [Reload a device](reload), [Retire a device](retire).
+
+A device whose SSH host key changed is re-keyed on its page: Needs attention's row opens the
+Re-key card in place of the tab ([Re-key a device](rekey)); it is not on the Actions menu. The **Drained** badge beside its name in the header is switched
+off for now (see [Devices](devices#drained)).
 
 ## Overview {#overview}
 
 What the tool knows about the device, each fact with where it came from: its last golden, its
 intent state (the state the Devices list shows for it, from its last measurement, or "intent
 changed since measured" when its intent, the profile or the template library has moved since),
-whether its golden matches its intent now (the Intent check), the monitoring profile it inherits, and
-its checks (reachability, alerts, and its credential: how long since Mercury last rotated it,
-or "never rotated by Mercury", and when its profile's rotation policy next makes it due; see
-[on a schedule](rotate#scheduled)).
+whether it is answering, the monitoring profile it inherits, and its checks: **Drift**,
+**Intent** (whether its golden matches its intent now), **Reboot-safe** (whether the hourly
+startup check found its startup config carrying its credential), **Credential** (how long since
+Mercury last rotated it, or "never rotated by Mercury", and when its profile's rotation policy
+next makes it due; see [on a schedule](rotate#scheduled)) and **Alerts**. For a network that
+takes Default's monitoring profile, the profile line does not yet name Default's (a gap,
+registered, C1362).
 
 **Drift** is the network's last drift run's word on the device: clean at the last run, skipped,
 or how many lines it differs from its golden by. A drift record that cannot be read says
@@ -79,7 +89,7 @@ cut, so the device's goldens are all reachable under **Goldens** even when a dai
 written a newer "measured" row every day since. The choice is part of the page's address
 (`?tab=history&kind=golden`), so it survives a reload and can be shared, and the link to the
 History page carries it. A kind with no record for the device says so ("No record of the kind
-chosen (Restarts) for r3"), with **Every kind** beside it; a kind the tool does not know is not
+chosen (Restarts) for edge1"), with **Every kind** beside it; a kind the tool does not know is not
 applied and is said by name above the records.
 
 It holds every record the tool keeps about the device:
@@ -95,9 +105,14 @@ It holds every record the tool keeps about the device:
 | rotation | a credential rotation, its persistence or a recovery, with the step it stopped at if it failed |
 | persist | the device's own save, and whether its startup config read back carrying the running credential; a save never claims a rotation |
 | retry | a retry authorised after a rollback, with the reason |
+| privileged | a privileged command (Tier 2) run on it, with before and after |
+| reload | a reload, with who, why, its window and each step's outcome |
 | onboarding | an onboarding or adopt run, with its result |
 | acknowledged | a Needs attention row acknowledged, with who and why |
-| freshness | a freshness gate authorised for this device, with the reason (a past record: the gate was retired with Oxidized, 2026-10-08) |
+| hostkey | an SSH host key kept, replaced or forgotten for it, or a planned window's new keys |
+| reveal | a secret or configuration of it revealed, with who |
+| show commands | a Show commands run that read it |
+| heartbeat | its heartbeat alert rule re-measured |
 | approval | a queued action approved or rejected |
 | break-glass | a break-glass record exported that holds this device (the row names how many devices it holds) |
 | cut off | an operation whose process ended mid-run, found when the hold was cleared |
@@ -124,8 +139,10 @@ A restart is found where the device's uptime counter fell (SNMP, read each minut
 subtracting its uptime from the clock: a slow device clock runs its uptime slow too, so that
 subtraction places a restart hours from where it was. Each shows the device's own reason for
 its last reload and the crash file it saved, if any, and whether it was planned: the tool's own
-reload is, and so is a window the tool was told about beforehand
-(`scripts/nmas-planned-restart` on the host). Anything else is unplanned, and is also on Needs
+reload is, and so is a window the tool was told about beforehand. v2's only control that
+declares such a window is the device's own **Reload…**; a restart made any other way can be
+declared beforehand only outside the interface (a gap, registered, C1361). Anything else is
+unplanned, and is also on Needs
 attention for seven days. A device that is down is not read, so its readings around a restart
 have a gap as long as the restart; the restart is found by comparing its newest reading with
 the one read before the gap, however long it was gone. While a planned window lasts, the
@@ -133,14 +150,20 @@ header reads "Restarting as planned (until …, by …)" in place of "Not answer
 
 ## Monitoring {#monitoring-tab}
 
-What the device is monitored by, and its dashboard: the panels of the device dashboard that
-select this device, drawn here. A panel that does not apply (telemetry on a switch that
+What the device is monitored by, and its dashboard. The **Monitored by** card names each
+integration the network uses and what the device's committed golden holds for it (Coverage's
+own cells, in words): configured, missing, excluded with why, not applicable. When the
+network's monitoring profile supplies something it lacks, **Apply monitoring profile…** opens
+the preview of exactly what would be sent ([Apply a monitoring template](monitoring-templates));
+otherwise the card says why it cannot be applied, or that the device is configured for
+everything the network uses. Below it, the panels of the device dashboard that select this
+device, drawn here, with the same range controls as Monitoring's Dashboards. A panel that does not apply (telemetry on a switch that
 streams none) is folded, with why. A panel folded by a rule about the device's model is
 folded only once Grafana, asked as the page is drawn, finds no series for its queries for this
 device in the last hour; if one is found, the panel is drawn. Each hidden panel's line says
 one reason, its provenance (the rule's measurement, a condition with this device's values) on
 hover. An empty panel says what it asked and that nothing matched ("No series matched
-ifHCInOctets{device="s1"} in the last 1 h."), with the dashboard's own explanation on hover;
+ifHCInOctets{device="edge1"} in the last 1 h."), with the dashboard's own explanation on hover;
 one a known platform limit explains (vIOS reports no memory pool or platform CPU) leads with
 that reason instead, the query on hover. A range longer than the live store keeps (90 days by
 default) is read from the history store when one is set (Thanos, for example), and each panel's
@@ -158,7 +181,9 @@ most once an hour. When no job holds one, the tab says so in place of the lines.
 ## NetBox {#netbox-tab}
 
 The device's NetBox record, read-only, and who owns it: {{product}} created it, {{product}} adopted it, or a
-person's. {{product}}'s recorded writes to it are listed.
+person's. {{product}}'s recorded writes to it are listed, and **Open in NetBox** opens the
+record there. A device NetBox does not hold says so, and points at the NetBox page's Import
+into NetBox….
 
 ## Neighbours {#neighbours}
 

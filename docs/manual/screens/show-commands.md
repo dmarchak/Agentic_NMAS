@@ -7,9 +7,9 @@ page. How a read runs: [Show commands: ask devices read-only commands](show-comm
 
 ## A new read {#new-read}
 
-**Devices**: filter by name (a part of it, or a pattern such as `r*`, several separated by
+**Devices**: filter by name (a part of it, or a pattern such as `edge*`, several separated by
 commas), role, platform and site. The card names how many devices match and lists them (the
-first 30, then how many more); **Run** asks exactly those. Each device is held while it is read,
+first 30, then how many more); **Run on N devices** asks exactly those. Each device is held while it is read,
 several at once up to the network's limit, and one another operation holds is skipped and named.
 
 **Commands**: one or more, each checked as you type: `read-only`, a heavy read's cost, or which
@@ -18,14 +18,17 @@ per run. Every command must be in Tier 1 before any device is asked, and `show t
 on its page.
 
 **Or a saved set**: the network's saved sets, each with its commands; **Use** fills the card
-with them. **Save these commands as a set…** commits the card's commands to the network's
-repository under a name, as you; a name already taken is refused.
+with them. **Save these commands as a set…** takes a name and an optional description, and
+**Save the set** commits the card's commands to the network's repository under that name, as
+you; a name already taken is refused.
 
-**Run** starts the run and opens its page. It is recorded in History, as yours.
+**Run on N devices** starts the run and opens its page. It is recorded in History, as yours.
 
-**Test the logging path on N devices** sends each chosen device one line for its log and
-watches Loki for it, 30 seconds per device; it needs no command. It is off, saying why on hover,
-when Loki is not configured. How it works:
+**Test the logging path on N devices** sends each chosen device one line for its log, at the
+level every chosen device's logging trap forwards (read from its golden, informational at
+most), and watches Loki for it, 30 seconds per device; it needs no command and changes no
+configuration. It needs a verified person, and it is off, saying why on hover, when Loki is
+not configured. How it works:
 [Test the logging path](logging-path).
 
 ## The result {#the-result}

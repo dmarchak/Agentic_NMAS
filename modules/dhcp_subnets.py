@@ -540,7 +540,7 @@ def _plan_add(list_name, s, p, kea, file_text, intent, D) -> None:
                             f"relayed to {', '.join(to)} by {where} (intent)" if to else
                             f"{where} relay to no DHCP server in intent"))
     p["checks"].append(("pass", f"no Kea subnet overlaps {prefix}; Kea id {sid}"
-                        + (f" (its VLAN, {vlan})" if vlan == sid else " (the next free)")))
+                        + (f" (its VLAN, {vlan})" if vlan == sid else " (one more than the highest in use)")))
     if family == "IPv4":
         _gateway_check(p, after, prefix, intent)
     p["checks"].append(("pending", f"kea-{'dhcp4' if family == 'IPv4' else 'dhcp6'} -t on the "

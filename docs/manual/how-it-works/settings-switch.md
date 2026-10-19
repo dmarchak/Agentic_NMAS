@@ -35,8 +35,8 @@ a name, a preview, then **Create**.
 
 1. `check`: the name is checked as the folder it derives (`lists/<name in lower case>`). Read:
    the networks registered and the folders on this host. Sent: nothing. Recorded: nothing. A
-   name another network has, a name whose folder another network uses ("Lab 3" and "Lab-3"
-   share `lab_3`), or a folder that already exists with no network registered for it is
+   name another network has, a name whose folder another network uses ("Branch 3" and "Branch-3"
+   share `branch_3`), or a folder that already exists with no network registered for it is
    refused, naming it: every page finds a network's records by that folder, so a second name
    for it would read another network's data.
 2. `create`: the network is registered with an empty inventory on this host. It inherits every

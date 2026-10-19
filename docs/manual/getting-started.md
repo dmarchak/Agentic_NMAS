@@ -26,8 +26,9 @@ Three operations connect them, and each moves exactly one record:
 ## Which network you are looking at {#network}
 
 The top bar names the network every page shows: **Network** and its name. Opening it lists every
-network, your recent ones first, each with its mode (Default the base; standalone; inheriting;
-differing from Default), and a box to find one by name. Choosing one opens the same kind of page
+network, your recent ones first, each with its mode in the picker's words ("the base" for
+Default, "standalone", "inherits", "differs from Default", or "its settings cannot be read"),
+and a box to find one by name. Choosing one opens the same kind of page
 for that network, its address carrying `?list=`, so a copied link shows the same network to
 whoever opens it; from a device's page it opens that network's Devices, and from a network's
 settings it opens the chosen network's settings.
@@ -52,12 +53,16 @@ for you, the top bar shows nothing. Otherwise it shows the **In progress** chip:
 
 - **"2 running"** (blue, with a dot): operations running now, in every network, by anyone.
   Opening the chip lists each one: the device, the operation, the step it is on (in its
-  stepper's own words, "step 6 of 6"), who started it, and since when. **Open its card** opens
+  stepper's own words, "step 6 of 6"), who started it, and since when; one that has made no
+  progress for too long carries a red "no progress: may be stuck". **Open its card** opens
   the device's page, which shows that operation's card where it runs; an operation that holds
   no device (a NetBox preview, a Save of many devices) is listed without one. A device being
   onboarded is listed too, as **Onboarding: waiting for it**, from its Create until Verify or
   Abandon ends it, with where it has got to ("leased not fetched", "answering: ready to
-  Verify"); **Open** goes to its pending page.
+  Verify"); **Open <device>** goes to its pending page.
+- **"In progress unread"** (or a count marked **unread**): the tool could not ask which
+  operations are running, or could not read what runs in a network. It says so, and that this
+  is not the same as none running: an operation may be in progress there.
 - **A cross, a warning sign or a tick, with a count**: an operation a device's page started
   that finished while you were elsewhere, with its outcome in its card's own words. Red wins:
   one failed operation makes the chip red, a partial one amber, and it is green only when every
@@ -136,5 +141,5 @@ a baseline older than a rotation would otherwise put back a password the rotatio
 
 Every commit carries an `Actor:` and how that actor was established
 (`Actor-Verified: access` for a person signed in through the tunnel, `host-shell` for a
-command run on the host). Anything that changes a device or exposes a secret has a person
+command run on the host, `none` when neither could be established). Anything that changes a device or exposes a secret has a person
 behind it.

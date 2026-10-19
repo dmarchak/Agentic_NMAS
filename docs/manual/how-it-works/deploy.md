@@ -14,9 +14,14 @@ You change intent and commit it (the Intent tab's **Edit**, see
 v2 page, whose card plans that one device (the same plan, drawn in place of the tab, the
 stages shown as they run); the v2 Devices list's selection bar, **Plan a deploy for the ticked devices…**, which
 opens Devices › Plan a deploy with them (every device's whole committed intent, one preview in
-a rollout order you set, one confirm, the batch run as a job); or Monitoring > Coverage's **Apply**, which
-plans only the monitoring profile's lines (see
-[Monitoring templates](monitoring-templates)). The page asks the server for the plan
+a rollout order you set, one confirm, the batch run as a job); or Monitoring > Coverage's
+**Deploy missing templates…**, which plans every missing profile line and the IP SLA probes
+committed to intent for the devices you tick (see
+[Monitoring templates](monitoring-templates)). The monitoring profile's lines alone are
+planned by **Apply monitoring profile…** on a device's Monitoring tab, or Needs attention's
+**Preview the apply…**. A deploy of one device's intent also opens from Needs attention's
+**Deploy intent to <device>…**, from onboarding's **Deploy its intent…**, and from a bulk
+intent change's **Plan a deploy for these <count>…**. The page asks the server for the plan
 (`/v2/device/<device>/deploy` for one device, `/v2/monitoring/apply/preview` for several), and
 the server answers from git and the credential store. Planning opens no device session:
 
@@ -62,9 +67,10 @@ To authorise a dangerous line you tick its box and type a reason (at least three
 copy of the line); the device is planned again so its hash covers the reason. The confirm is
 bound to a hash of the program and its authorisations. The apply recomputes it, and if the
 stored golden, the intent or the template moved before you confirm, it refuses that device
-with nothing sent, saying which side moved. **The device itself is not compared**: the program
-is computed against the stored golden, so a change made on the device since its last capture
-is not detected before the push. Capture the device first (see
+with nothing sent, saying which side moved. **The device itself is compared only at apply**,
+at `pre_snapshot`: the program is computed against the stored golden, and a change made on
+the device since its last capture is found there, before anything is sent, and the device is
+skipped as drifted. Capture it first, then preview again (see
 [Capture and Save All](capture)).
 
 ## Confirm and apply {#confirm-and-apply}
@@ -162,7 +168,8 @@ the run ends. Its stages, in the order the code declares them:
    and fails only if it persists; a count still rising is reported as not yet converged. The
    route table must keep 90% of its routes, re-read for up to 90 s; BGP is read once more no earlier than its configured hold time after the push
    (180 s when none is set), except for a program that touches only management sections
-   (terminal lines, logging, SNMP, NTP, banners, users), which no session depends on. Every
+   (terminal lines, logging, SNMP, NTP, banners, users, and the management sources,
+   `ip tftp|ssh source-interface`), which no session depends on. Every
    new line is read back from the configuration read after the push, whatever the program
    touches. Removals must read back gone, and re-created IP SLA operations as intent defines
    them. A failure triggers a rollback. A protocol intent declares that the
@@ -212,7 +219,8 @@ was attempted, including one whose push failed half-way:
    incomplete (with what remains), sent but unverified, failed, or not attempted (no
    pre-change snapshot).
 5. **Block the change.** Recorded: the device's current intent commit and the failed additions,
-   in `.nsot/rolled_back.json` in the list's repository. The next plan refuses while those
+   in `.nsot/rolled_back.json` in the list's repository (or, once the Rollback blocks store is
+   moved to the records database, there). The next plan refuses while those
    lines would be sent again, until you revert the intent or lift the block with a reason.
 
 ## What is recorded
@@ -229,9 +237,14 @@ After the last device, in this order:
 2. **Publish.** Sent: the commit to the list's remote, by `git push` where a remote is set, and
    each changed golden, masked, to the S3 archive where one is configured. Recorded: the push's outcome, which the Remote
    card and Needs attention read. The post-commit hooks run in the background and never hold
-   the commit; they also regenerate the Prometheus scrape targets from the changed goldens.
+   the commit. A commit that changed a golden also wakes the Prometheus targets keeper, which
+   rewrites, from the committed goldens, each Prometheus's own target files: Default's for
+   the networks that inherit it, and a network's own for a network with its own Prometheus,
+   each in the targets directory that network's settings name, changing only files whose
+   content moved.
 3. **Write the receipts.** Recorded: one masked row per device, sent, failed or refused, in
-   `deploy_receipts.jsonl` in the list's data folder: the program, its hash against the
+   `deploy_receipts.jsonl` in the list's data folder (or, once the Deploy receipts store is
+   moved to the records database, there): the program, its hash against the
    confirmed one, you, each authorisation's reason, the checks verify ran, the rollback and the
    commit. Each device's row is written the moment that device finishes, marked **commit
    pending**, and here a second line names it and fills in the batch's commit (or that it
@@ -248,7 +261,8 @@ A batch deploys one device after another (`deploy_max_workers`, default 1), in t
 confirm lists them: on Devices › Plan a deploy and
 the monitoring profile's Apply, the order you set by dragging a device's grip or with Earlier
 and Later, which changes the page and plans nothing (no device's program or hash depends on
-its place); on Coverage's Deploy missing, the order Earlier and Later plan again. The order is
+its place); on Coverage's Deploy missing templates, the order Earlier and Later plan again.
+Leave out plans again on every one of them, because it changes what is confirmed. The order is
 not in any hash: the confirm sends it as the list shows it, the server refuses one that is not
 exactly the confirmed devices, each once, and the job and the receipts record the devices in
 it. A device refused at apply is skipped and the rest
@@ -265,8 +279,9 @@ happens.
 
 ## What a deploy does not do {#what-a-deploy-does-not-do}
 
-- It does not read the device to compute the program: the stored golden is the baseline, and a
-  hand change since the last capture is neither detected nor undone.
+- It does not read the device to compute the program: the stored golden is the baseline. A
+  hand change since the last capture is detected at `pre_snapshot`, and the device is skipped
+  with nothing sent; it is never undone.
 - It removes nothing you did not tick, and never changes an existing account's credential.
 - It does not re-render at apply: what you confirmed is what is sent.
 - It does not roll back for a protocol that was not running before, or for a read it could not

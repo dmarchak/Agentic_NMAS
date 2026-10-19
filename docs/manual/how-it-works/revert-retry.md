@@ -118,5 +118,8 @@ verified like any other, and if it fails it rolls back and blocks again.
 - A revert does not lift a block by its name. It lifts one only when the measurement after
   its commit says the failed lines are gone.
 - A retry does not change intent, and does not approve the change for any later failure.
-- The block and the retry log are kept on the host, beside the repository and ignored by it:
-  they are not commits and are not pushed to the remote. The revert itself is a commit.
+- The block and the retry log are kept on the host, in files beside the repository and ignored
+  by it, or, once moved, in the records database ([The records database](records-database#move));
+  either way they are not commits and are not pushed to the remote. On the database, if it does
+  not answer, every plan on the network is blocked and no retry is authorised. The revert
+  itself is a commit.

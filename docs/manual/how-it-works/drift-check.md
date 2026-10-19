@@ -100,9 +100,10 @@ Switching it back on schedules the next run one interval from then.
 
 ## What the queue does with a drift item {#queue}
 
-- **Capturing the device closes its item**: its Needs attention row opens the device's
-  History tab, where a capture reads the device again now and records nothing until you
-  confirm (see [Capture and Save All](capture)). The queued diff is what the check saw at the
+- **Capturing the device closes its item**: its Needs attention row offers
+  **Capture <device>…**, which opens the Capture card on the device's page, where a capture reads the
+  device again now and records nothing until you confirm (see [Capture and Save All](capture)),
+  and **Deploy intent to <device>…**, which puts intent back instead. The queued diff is what the check saw at the
   time, context only, never sent or recorded. (Today's Approvals tab, with its Approve and
   Approve all, left with the AI family on 2026-10-14.)
 - **An item is withdrawn** when a later run finds the device clean, or when a golden is

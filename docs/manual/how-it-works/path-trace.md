@@ -9,8 +9,9 @@ and that answer decides which device is asked next. It changes nothing on any de
 ## The steps
 
 1. `refuse`: From must be a device of the network that takes part in routing, and To one IPv4
-   address. Anything else is refused, naming what was compared and both sides; no device is
-   asked and nothing is recorded.
+   address. Anything else is refused, naming what was compared and both sides (an IPv6 To says
+   the trace reads IPv4 forwarding only); no device is asked and nothing is recorded. **Trace
+   the path** needs a verified person, because each answer is shown to the person who asked.
 2. `read`: each device is asked `show ip cef <destination>`, its one field the address, through
    the reads engine: held while read (a device another operation holds is not read, and says
    who holds it), masked, recorded on History › Reads as yours. The devices at one step of the

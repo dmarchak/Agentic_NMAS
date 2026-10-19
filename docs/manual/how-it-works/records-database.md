@@ -19,7 +19,9 @@ configures, so it works with the database down or the password wrong.
    the field, and nothing is saved.
 2. `write`: only the fields that changed are written, to the installation's settings, for every
    network. Read: the settings as they stand. Sent: nothing. Recorded: the values. Saving what
-   is already stored writes nothing and says "Nothing changed".
+   is already stored writes nothing and says "Nothing changed". A field left as the card drew
+   it is not written, so another person's change to it stands; a field changed here that
+   another person changed since the card was drawn refuses the Save, naming both values.
 3. `record`: the save is appended to the installation's settings record, a file. Read: nothing.
    Sent: nothing. Recorded: who, how that was established, when, and the names of the fields
    written, never their values. If the record could not be written the card says so; the save
@@ -72,19 +74,24 @@ The password shows only as set or not set. Rotating it is two halves, **the serv
 
 ## Move a store to the database {#move}
 
-Below the card, **Record stores** lists each store, where it is now and its last check. Each
-store moves on its own, by its own row's button; deploy receipts were the first. **Move to the
-database…** opens a preview of that store's lines, network by network (a store the installation
-keeps once is one row, "the installation"): lines, records (for receipts, the receipts and the
-completions that fill in a pending one), and how many lines the table already holds. Nothing
-is written until **Move**, which is bound to that preview and that store. The steps below name
+Below the card, **Record stores** lists every store: **Where** it is now (its files, with each
+network's count, or the records database) and its **Last check** (on its files: nothing to
+compare; on the database: matches, DOES NOT MATCH with the first difference, does not answer,
+or not checked yet: the check runs every 5 minutes). Each store moves on its own, by its own
+row's button; deploy receipts were the first. **Move to the database…** opens a preview of that
+store's lines, network by network (a store the installation keeps once is one row, "the
+installation"): lines, records (for receipts, the receipts and the completions that fill in a
+pending one), and how many lines the table already holds. Nothing is written until the confirm,
+**Move <N> lines** (or **Switch to the database (no lines to copy)** when no network has a
+file yet), which is bound to that preview and that store. The steps below name
 receipts; every store takes the same steps with its own file, table and setting
 (`records_store_<store>`).
 
 1. `plan`: the preview's counts are read again and compared. Read: every network's
    `deploy_receipts.jsonl` and the table's counts. Sent: nothing. Recorded: nothing. If anything
-   moved since the preview (a deploy finished), or the database does not answer, or a file line
-   is not JSON, it is refused, naming what it compared, and nothing changes.
+   moved since the preview (a deploy finished), or the store is not on its files, or the
+   database does not answer, or a file line is not JSON, or another move or move back of any
+   store is running, it is refused, naming what it compared, and nothing changes.
 2. `copy`: every file line is copied into the table `audit.receipt_lines`, one transaction per
    network, with its place in the file and its sha256. Read: the files. Sent: the lines, to the
    records database. A line already there with the same hash is skipped, so a second move
@@ -98,7 +105,8 @@ receipts; every store takes the same steps with its own file, table and setting
    are switched straight back to their files (any line written to the table in between is
    appended to the file first), and the card names the first difference.
 6. `read-only`: each file is made read-only and kept for a release, so anything still writing
-   to it fails loudly instead of writing where nobody reads.
+   to it fails loudly instead of writing where nobody reads. The result names each step with
+   pass or FAILS.
 
 After the move, the **records-check** reader runs the same check every 5 minutes; a mismatch,
 or a database that stops answering, is a row in Needs attention.
@@ -139,13 +147,15 @@ receipt.
 ## What it does not do
 
 - It contacts no device.
-- A store moves only when a person moves it here, with its count check, one store at a time;
-  the card lists the stores that can move (deploy receipts, Needs attention's
+- A store moves only when a person moves it here, with its count check, one store at a time.
+  The card lists all 24 stores. Eighteen are logs of lines: deploy receipts, Needs attention's
   acknowledgements, the restart records (the restarts seen, the planned-restart windows and the
   windows ended early), the rotation and save record, the four break-glass logs, the reveal
-  record, the host steps said done, the heartbeat window re-measures, NetBox's removals, and,
-  kept per network, each network's settings changes, onboarding runs and inventory edits, so
-  far). A store kept per network moves every network's file at once, each network's rows kept
+  record, the host steps said done, the heartbeat window re-measures, NetBox's removals, the
+  operations interrupted while they held a device, and, kept per network, each network's
+  settings changes, onboarding runs and inventory edits. Six are documents, counted in items:
+  the approval queue, the rollback blocks, the retries authorised, and the NetBox objects
+  Mercury created, modified and adopted. A store kept per network moves every network's file at once, each network's rows kept
   apart in its table. On the database, an acknowledgement the database does not take is
   refused with what it answered, and the row stays.
 - Save never opens the database; Replace never changes the password on the server.

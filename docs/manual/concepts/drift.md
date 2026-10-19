@@ -34,11 +34,17 @@ changing anything:
 - blank lines and lines that are only `!`;
 - the banner a read starts with (`Building configuration`, `Current configuration`);
 - the change and save comments (`! Last configuration change`, `! NVRAM config last updated`,
-  `! No configuration`);
+  `! No configuration`), and the header lines the tool writes at the top of a golden
+  (`! Golden config`, `! Saved:`, `! Source:`);
+- every other comment line (`!` followed by words, outside a banner), said in one line when
+  the comments differ: a device writes some itself (a licensing state, for instance);
 - `version`, `ntp clock-period` and `upgrade fpd` lines;
 - the device's own self-signed certificate (below).
 
 Everything else is drift, including a line that only moved: the comparison is ordered.
+
+The check runs every 4 hours by default (Settings › Installation › Diagnostics sets the
+interval), the first run 5 minutes after the app starts.
 
 ## A regenerated self-signed certificate is not drift {#certificate}
 
@@ -65,7 +71,12 @@ change to it is real drift. The golden itself still records the certificate verb
 ## Two ways to resolve drift {#resolve}
 
 Each way moves one record toward the other, and each asserts something different. Both are on
-the device page.
+the device page. The Overview's Drift row opens in place: the lines the check kept (masked,
+cut at 200 lines), what the device's log says about the change, and three choices: **Keep
+it** (**Capture**, the first way), **Put intent back** (**Plan a deploy…**, which sends what
+intent holds and the device lacks) and **Remove lines (Mode B)…** (the lines the device holds
+and intent lacks, only those you tick, each with a reason). Restore, the second way, is on the
+Actions menu.
 
 1. **Capture the running config as the golden** ([Capture and Save All](capture)). Asserts:
    *the device is right, and the record was behind it.* The device is read now, the change is
@@ -77,8 +88,9 @@ the device page.
    and a line the device gained is reported as residue and left in place. Removing it is its
    own operation ([Remove a line (Mode B)](removal)).
 
-Approving a queued drift item opens the capture preview for that device: it is the first way,
-still previewed and still confirmed, never a shortcut.
+A queued drift item is a [Needs attention](needs-attention) row. Nothing approves it: it
+closes when a capture records the device's golden (the first way, still previewed and still
+confirmed), or expires after 48 hours, and its expiry does nothing.
 
 ## Resolving a departure from intent {#resolve-intent}
 

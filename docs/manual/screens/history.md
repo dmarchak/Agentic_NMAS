@@ -1,8 +1,8 @@
 # History
 
-What happened to the network and its devices, and when: one timeline of everything the tool
-records, the network's baselines, and the Oxidized divergences people once authorised, with
-the remote's state at the top.
+What happened to the network and its devices, and when, in three tabs: **Timeline**, one
+timeline of everything the tool records; **Query**, questions asked of the network's history;
+and **Baselines**, the network's baselines. The remote's state is at the top.
 
 ## The remote {#remote}
 
@@ -17,14 +17,19 @@ networks were created with theirs) says "No repository yet: the network's first 
 it": its first save, seed or other commit through the tool makes the repository. Any other
 failure to read the folder says "The working tree could not be read", with git's own error.
 **Verify the remote** runs the read-only
-checks against it (the key's scope, a read, that it is private and the right repository).
+checks against it (the key's scope first, and only if the key is scoped to one repository a
+read, that it is private and the right repository).
 **Push now** appears while something is not pushed; it needs a person, and the sentence
-redraws once the remote is read again.
+redraws once the remote is read again. **Set up the remote…** (or **Remote set-up…** once one
+is configured) opens the network's remote card in place ([Publish to a remote](publish-remote)).
 
 Under it, from the network's own record, so they stay whatever redraws the card:
 - the last failed push: when, who and why. A successful push clears it.
 - the last Verify: when, who, and whether every check passed or which failed, each failed
   check with **To fix:** and what to do.
+
+When that record cannot be read, the card says so ("The list's remote record cannot be read"),
+naming why.
 
 ## Timeline {#timeline}
 
@@ -62,14 +67,16 @@ Filters:
 - **Kind,** in four groups:
   - **The repository:** goldens, intent, commits (golden, intent and profile together) and
     measured-unchanged saves.
-  - **What ran on a device:** deploys and restores, rotations, persists, onboarding and adopt,
-    runs cut off midway, and authorised retries.
+  - **What ran on a device:** deploys and restores, rotations, persists, privileged commands
+    (Tier 2), reloads, onboarding and adopt, runs cut off midway, and authorised retries.
   - **What happened to a device:** restarts and planned windows.
-  - **Decisions and records:** approvals, acknowledgements, break-glass exports, reveals,
-    baseline decisions, app updates, NetBox imports and removals, and Grafana writes (each
+  - **Decisions and records:** approvals, acknowledgements, break-glass exports, credential
+    profiles, expected islands, Topology layouts, saved views, reveals, SSH host keys,
+    baseline decisions, app updates, NetBox imports and removals, Grafana writes (each
     silence Mercury set, moved or expired in Grafana, for whom, with Grafana's answer; one
-    Grafana refused is drawn in red; and each re-measure of the heartbeat windows written from
-    Monitoring, who wrote it and each of the network's devices' windows).
+    Grafana refused is drawn in red; and each re-measure of the heartbeat windows, written from
+    the heartbeat check's row on Needs attention, who wrote it and each of the network's
+    devices' windows), and Show commands runs.
 - **Since.**
 
 A row's **who** is a verified person's email, or, for a host command, the host login labelled
@@ -153,6 +160,9 @@ carries a memory pool, and the page says so under the chart. **Routing neighbour
 draws each device's established neighbours over time, per protocol (OSPF and OSPFv3
 neighbours in state full, BGP peers established): a dip is a neighbour going down, its return
 the neighbour coming back, and a neighbour down and back between two reads (60 s) is not seen.
+Needs attention lists such a drop all the same when the device logged it going down outside any
+planned restart or deploy: one row per adjacency, clearing a day after its last drop, or
+acknowledged while its daily count stays within its measured band.
 **Restarts** draws each fall of a device's uptime counter in the step it fell in, and under the
 chart **Mercury's restart record** for the range: each restart, planned or not (judged against
 the planned windows recorded), its window and the device's own reason, and the day the record
@@ -182,7 +192,7 @@ described below: the metrics builder (Metrics, Builder) and the logs builder (Lo
 A builder opened from here starts afresh: it does not read the query in the box back.
 
 **Saved views.** **Save this view…**, beside Copy the link on any answer (Syslog by device
-included), asks a title and saves the question as you asked it (the question, its device and
+included), asks a title (at most 80 characters) and saves the question as you asked it (the question, its device and
 interface, its range, your own query) for everyone on this network, with your name and the
 time. The Query tab lists them under **Saved by your team**, pinned first, then the newest:
 each opens its question as saved. **Pin** brings a view to the front for everyone and
@@ -237,11 +247,14 @@ and changing any choice afterwards removes the answer, since it no longer matche
 The answer is one of: the counts (the chart, then each series' lines in the range, its most in
 one window and its last window with a line); the lines (time received, device, severity, kind,
 the line masked like every log line Mercury shows, each masked value marked; 200 a page,
-**Older ›** for the next; a line with a masked value offers **Reveal…**, below);
+**Older ›** for the next and **‹ Newest** back to the first; a line with a masked value offers
+**Reveal…**, below);
 **Refused**, naming the bound and the range or count that passed it, with the choice that fits;
-**Couldn't load**, naming what Loki answered or how long it was waited for, with **Ask again**;
+**Couldn't load**, naming what Loki answered or how long it was waited for, when the live tail
+last read Loki well, with **Ask again** (nothing is drawn from an earlier answer);
 or **No lines in range**, saying how many lines the same jobs and devices sent in the range and
-whether the range is inside what Loki keeps, so an empty answer is not mistaken for a gap. A
+whether the range is inside what Loki keeps, so an empty answer is not mistaken for a gap, with
+**Drop the text filter** when a text filter is set. A
 line's time is when the collector received it, never the device's clock. These are reads:
 nothing is written, and nothing reaches a device. **Edit as code** from Counts over time opens
 Code mode with the count query, drawn there on the same chart.
@@ -320,5 +333,6 @@ one level down. A device whose program needs a stated reason (a dangerous line, 
 added back) is not part of the batch: its link opens its own Restore at that baseline, where
 each line is given its reason. One confirm restores the rest, one device at a time, each
 verified and rolled back alone, its configuration and its intent from the baseline; the batch
-is drawn below as it runs. See [Restore and re-apply a baseline](restore).
+is drawn below as it runs. Like every restore it is merge-only: a line the device gained since
+the baseline is not removed. See [Restore and re-apply a baseline](restore).
 

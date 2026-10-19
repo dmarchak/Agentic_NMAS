@@ -3,7 +3,7 @@
 Kea has no excluded-address setting, so Mercury models exclusions. On **DHCP › Exclusions**,
 **Add an exclusion…** keeps a range (or one address) of a subnet out of its pool, named with its
 reason; each exclusion's **Remove…** gives the addresses back. A conflict, a static address
-inside a pool, has **Exclude…**, which opens the same card with its reason filled from where the
+inside a pool, has **Exclude <address>…**, which opens the same card with its reason filled from where the
 address is assigned. Each change is an operation: previewed against Kea, confirmed by a verified
 person with a reason, written through the subnet's write, read back and recorded.
 
@@ -12,9 +12,9 @@ person with a reason, written through the subnet's write, read back and recorded
 ## The range and the pieces
 
 You set a subnet's pool as **one range** (on DHCP › Subnets). Kea is given the pieces of that
-range the exclusions leave: excluding `10.10.10.120 - 10.10.10.129` from the pool
-`10.10.10.100 - 10.10.10.199` gives Kea `10.10.10.100 - 10.10.10.119` and
-`10.10.10.130 - 10.10.10.199`. The range as set and the exclusions are Mercury's record in the
+range the exclusions leave: excluding `192.0.2.120 - 192.0.2.129` from the pool
+`192.0.2.100 - 192.0.2.199` gives Kea `192.0.2.100 - 192.0.2.119` and
+`192.0.2.130 - 192.0.2.199`. The range as set and the exclusions are Mercury's record in the
 repository of the network that owns this Kea ([Whose Kea](dhcp#whose-kea);
 `dhcp/exclusions.yml`, beside `dhcp/subnets.yml`), read as committed, so a
 person edits the range and the reason and never the arithmetic. An exclusion outside the pool

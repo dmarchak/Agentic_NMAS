@@ -1,6 +1,6 @@
 # Monitoring
 
-The fleet's monitoring, in two tabs.
+The fleet's monitoring, in three tabs: **Dashboards**, **Coverage** and **Profile**.
 
 ## Dashboards {#dashboards}
 
@@ -19,7 +19,7 @@ network's Monitoring.
 
 Everything on the Dashboards tab is that network's:
 - its fleet dashboard (Fleet dashboard UID, in its settings);
-- the Grafana it reads, named under the toolbar ("from Default's Grafana, which Lab-3
+- the Grafana it reads, named under the toolbar ("from Default's Grafana, which Branch
   inherits" when the network has not set its own);
 - that Grafana's dashboards and data;
 - its live store's retention and its history store.
@@ -31,13 +31,15 @@ can be configured or chosen to inherit Default's (see [Inherit or stand alone](s
 A device's Monitoring tab works the same way for the device's own network, and has no network
 menu, because a device belongs to one network.
 
-Coverage shows the active list, which its title names. Choosing a network there arrives
-with Coverage's batch Apply, which writes to the list it shows.
+Coverage and Profile have no network menu of their own: each shows the network chosen in the
+top bar's Network picker, which its title names, and what they deploy or commit is that
+network's.
 
 ## The time range {#time-range}
 
 One click for the last hour, 6 hours, 24 hours or 7 days, or type a range ("last 90
-minutes", "3d"). The live store keeps 90 days (`metrics_live_retention_days`): a longer range
+minutes", "3d"). The live store keeps 90 days unless the network's settings say otherwise
+(`metrics_live_retention_days`): a longer range
 is read from the history store when one is set (`grafana_history_datasource_uid`, Thanos for
 example), each panel's foot line saying so, and is otherwise refused at the control, naming
 the limit, and never trimmed, because a trimmed answer would read as the whole range. Each
@@ -57,7 +59,7 @@ Each cell is an icon. Hover over it to see why:
 - **A quiet ring:** not configured.
 - **An amber mark:** configured but not reporting (see below).
 - **A red warning mark:** not rendered. The profile supplies the section, but the device's
-  template renders none of it (an older shipped template), so Apply cannot send it. It links
+  template renders none of it (an older shipped template), so nothing can send it. It links
   to Templates, where the shipped version is brought in.
 - **n/a:** not applicable: the profile scopes the section away from the device's platform or
   role (telemetry on an IOS switch), or the network has no connector for it. Hover the cell for
@@ -76,7 +78,8 @@ covered or missing, and the IP SLA page suggests nothing for it.
 
 IP SLA's ring links to the IP SLA page for that device, where probes are suggested. The last
 column, Mgmt sources, is the profile's management section: `ip tftp source-interface` and
-`ip ssh source-interface` on the management interface, configured when the golden holds both.
+`ip ssh source-interface` on the management interface, configured when the golden holds both;
+it is configuration only, never judged as reporting or not.
 
 The columns are SNMP, Syslog, Heartbeat, NTP, LLDP, Telemetry and IP SLA. NTP's server lines and
 LLDP's `lldp run` are read from the golden. A golden with no `lldp run` means LLDP is off only
@@ -84,8 +87,8 @@ where that platform's default has been measured as off. Where the default has no
 the cell reads unknown, never "not configured". Whether NTP synchronises and whether LLDP finds
 neighbours is not read here yet. Their hover says so, and they are never marked not reporting.
 
-To deploy, tick devices in the left column. A device is offered only when something it is
-missing can be sent: a line the monitoring profile supplies, or an IP SLA probe committed to
+To deploy, tick devices in the left column; the devices that can be ticked arrive ticked. A
+device is offered only when something it is missing can be sent: a line the monitoring profile supplies, or an IP SLA probe committed to
 its intent and not yet on the device. A device with nothing to deploy has no box: hover over
 the empty space where its box would be to see why. When no device has anything to deploy, a
 note beside the grid says so, and names any device whose IP SLA probe is not chosen yet: a
@@ -100,8 +103,11 @@ A configured cell can still be **not reporting**: the configuration is there and
 not arriving. The cell says for how long ("no scrape for 12 min", "no stream for 9 min",
 "none for 16 min") and links to the device tab where the cause is found: Monitoring for SNMP,
 IP SLA and telemetry, Logs for syslog and the heartbeat. A deploy does not fix it, so a
-not-reporting cell is never offered for Apply. A reader asks Prometheus and Loki every minute,
-with one query per source for the whole fleet:
+not-reporting cell is never offered for a deploy. A reader asks the network's Prometheus and
+Loki every minute (its own, or Default's when it inherits them), with one query per source
+for the whole fleet. That Prometheus scrapes the devices Mercury writes into its own targets
+files, so a network with a Prometheus of its own is scraped by its own (see
+[Settings](settings#network), the Prometheus card):
 
 - **SNMP and IP SLA:** the device's targets in Prometheus, and the last time each one was
   scraped. A target with no successful scrape for two of its intervals, and never less than
@@ -125,9 +131,11 @@ The network's profile: what every device inherits, its own value winning where i
 
 **A network with no profile of its own still gets monitoring.** If it inherits Default's
 settings (see [Inherit or stand alone](settings-switch)), its devices take Default's profile,
-and the page says so above the rows. That covers rendering, Coverage, Apply, and onboarding's
-profile step at Verify. Propose gives it a profile of its own, which then wins. A standalone
-network with no profile has none, and its devices are shown as not monitored.
+and the page says so above the rows. That covers rendering, Coverage, a device's **Apply
+monitoring profile…**, and onboarding's profile step at Verify. Propose gives it a profile of
+its own, which then wins. A standalone network with no profile has none: Coverage says
+"<network> has no monitoring profile yet, so nothing can be deployed: propose one from the
+network's connectors first", and links to Propose here.
 
 One row per committed section:
 
@@ -136,8 +144,8 @@ One row per committed section:
   from, for the management sources), or IP SLA's policy.
 - **Applies to**: every device, or the platforms or roles the section is scoped to.
 - **On the devices**: how many of the devices it applies to hold it, read from Coverage's
-  cells, so the two pages agree. A device that lacks it is offered on Coverage, where Apply
-  sends it. **Not rendered** means the device's template renders none of the section, so
+  cells, so the two pages agree. A device that lacks it is offered on Coverage, where
+  **Deploy missing templates…** sends it. **Not rendered** means the device's template renders none of the section, so
   nothing can send it until the shipped template is brought in on Templates (see
   [Bring in a shipped template](bring-template)).
 
