@@ -89,10 +89,14 @@
     return 'Not acknowledged: ' + ((body && body.error) || ('HTTP ' + status));
   }
 
-  /* PURE: what an answer does to the Acknowledge form (C533): a refusal says why and frees the
-     button; a recorded acknowledgement that hides its row stays busy until the redraw removes
-     the row; one recorded and NOT hiding it (a value above the band) says so, with both
-     numbers, and frees the button. Never busy with nothing said once an answer is in. */
+  /* PURE: what an answer does to the Acknowledge form (C533): a refusal says why, frees the
+     button and keeps the form open; one recorded and NOT hiding its row (a value above the
+     band) says so, with both numbers, and frees the button. One recorded that hides its row
+     says so AT ONCE, closes the form and frees the button (`done`: no Acknowledge… and no
+     Cancel are offered again); the row leaves at the list's next redraw. It once stayed busy
+     waiting for that redraw, which the hold (C459) kept back because the sent reason was still
+     shown: on the host, 2026-10-19, four rows sat on "Acknowledging…" for minutes after their
+     acknowledgements were recorded. Never busy once an answer is in. */
   function ackAnswer(status, body) {
     if (status !== 200 || !body || !body.ok) {
       return {busy: false, isOpen: true, said: ackRefusal(status, body), note: ''};
@@ -100,7 +104,25 @@
     if (body.hides_now === false) {
       return {busy: false, isOpen: false, said: '', note: body.words || 'Recorded; the row stays.'};
     }
-    return {busy: true, isOpen: true, said: '', note: ''};
+    return {busy: false, isOpen: false, said: '', note: 'Acknowledged.', done: true};
+  }
+
+  /* The bound on an acknowledgement's answer: the POST answered in under 50 ms on the host
+     (its app log, 2026-10-19, 20:36:40 to 20:37:01, four acknowledgements) and in 0.7 to
+     1.6 ms in the app itself (ten recorded through the test client, 2026-10-19); the slowest
+     step a person waited on that evening was the reader's announcement, about 2 s after the
+     answer. 2.5 x that 2 s, rounded up: 6 s, past which the request is abandoned and the form
+     says so. */
+  var ACK_BOUND_MS = 6000;
+
+  /* PURE: the Acknowledge form when no answer came within *ms*: the button freed and the
+     form closed (its reason no longer holds the list's redraw), saying honestly that whether
+     it was recorded is not known and that the list's next redraw shows it. */
+  function ackNoAnswer(ms) {
+    return {busy: false, isOpen: false, note: '',
+            said: 'No answer within ' + Math.round(ms / 1000) + ' s, so whether it was ' +
+                  'recorded is not known: the list\'s next redraw shows it (the row leaves ' +
+                  'if it was, and stays with Acknowledge… if not).'};
   }
 
   /* PURE: an age in words, from two times in milliseconds. */
@@ -151,6 +173,10 @@
   function isEditing(el) {
     if (!el || el.disabled) return false;
     if (el.getAttribute && el.getAttribute('data-editing') === 'true') return true;
+    // A component that says it is NOT being edited (`data-editing="false"`: its form answered
+    // or closed) holds nothing, whatever its fields still show: a form that has been answered
+    // never keeps back the redraw that would show its result (the operator, 2026-10-19).
+    if (el.closest && el.closest('[data-editing="false"]')) return false;
     var tag = (el.tagName || '').toLowerCase();
     if (tag === 'textarea' || (tag === 'input' && TEXTY.test(el.type || ''))) {
       if (el === root.document.activeElement) return true;
@@ -632,34 +658,58 @@
       };
     });
     // Acknowledge an EVENT row on Needs attention (the operator, 2026-10-02): a reason,
-    // recorded with who and when. Busy on itself; on success the response invalidates
-    // `acknowledgements`, the list redraws and the row leaves it. Words only for a refusal.
+    // recorded with who and when. Busy on itself until the answer, bounded (ACK_BOUND_MS);
+    // the answer is drawn in place at once ("Acknowledged.", a refusal's reason, or no answer
+    // in time), and the response invalidates `acknowledgements`, so the list redraws and the
+    // row leaves it. Cancel is offered only on an open, unsent form: once sent it would
+    // suggest an undo that does not happen (the operator, 2026-10-19).
     A.data('acknowledge', function () {
       return {
-        isOpen: false, busy: false, said: '', note: '',
-        get closed() { return !this.isOpen; },
+        isOpen: false, busy: false, done: false, said: '', note: '',
+        get closed() { return !this.isOpen && !this.done; },
         get label() { return ackLabel(this.busy); },
+        get cancellable() { return this.isOpen && !this.busy; },
+        // The hold's marker (C459): an open form, typing or in flight, holds the list's
+        // redraw (in flight for at most ACK_BOUND_MS, so a redraw cannot take the answer's
+        // place); an answered or closed one never does.
+        get editing() { return this.isOpen ? 'true' : 'false'; },
         open: function () {
           var box = this.$root.querySelector('input[name="why"]');
           this.isOpen = true; this.said = ''; this.note = '';
           if (box && box.focus) root.setTimeout(function () { box.focus(); }, 0);
         },
-        cancel: function () { this.isOpen = false; this.said = ''; },
+        cancel: function () { if (this.busy) return; this.isOpen = false; this.said = ''; },
         send: function () {
           var self = this, el = this.$root, box = el.querySelector('input[name="why"]');
+          var ctl = root.AbortController ? new root.AbortController() : null;
+          var timer = root.setTimeout(function () {
+            if (ctl) ctl.abort();
+            drawn(ackNoAnswer(ACK_BOUND_MS));
+          }, ACK_BOUND_MS);
+          var answered = false;
+          function drawn(next) {
+            if (answered) return;
+            answered = true;
+            root.clearTimeout(timer);
+            self.busy = next.busy; self.isOpen = next.isOpen; self.done = !!next.done;
+            self.said = next.said; self.note = next.note;
+          }
           self.busy = true;
           self.said = '';
+          self.note = '';
           root.fetch(el.getAttribute('data-url'), {
             method: 'POST', headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
             body: JSON.stringify({row: el.getAttribute('data-row'), event: el.getAttribute('data-event'),
-                                  why: box ? box.value : ''})
+                                  why: box ? box.value : ''}),
+            signal: ctl ? ctl.signal : undefined
           }).then(function (r) {
             return r.json().then(function (b) { return [r.status, b]; }, function () { return [r.status, null]; });
           }).then(function (got) {
-            var next = ackAnswer(got[0], got[1]);
-            self.busy = next.busy; self.isOpen = next.isOpen;
-            self.said = next.said; self.note = next.note;
-          }, function (e) { self.busy = false; self.said = 'Not acknowledged: ' + e.message; });
+            drawn(ackAnswer(got[0], got[1]));
+          }, function (e) {
+            drawn((e && e.name === 'AbortError') ? ackNoAnswer(ACK_BOUND_MS)
+              : {busy: false, isOpen: true, said: 'Not acknowledged: ' + e.message, note: ''});
+          });
         }
       };
     });
@@ -920,7 +970,7 @@
 
   root.NMAS_V2 = {ageWords: ageWords, liveWords: liveWords, jumpTarget: jumpTarget, KEYS: KEYS,
                   reloadIfRestored: reloadIfRestored, ackLabel: ackLabel, ackRefusal: ackRefusal,
-                  ackAnswer: ackAnswer,
+                  ackAnswer: ackAnswer, ackNoAnswer: ackNoAnswer, ACK_BOUND_MS: ACK_BOUND_MS,
                   badgeDoubt: badgeDoubt, missedKeys: missedKeys, isFragment: isFragment,
                   failWords: failWords, couldntWords: couldntWords, injectedScripts: injectedScripts,
                   rewrittenWords: rewrittenWords, openKeys: openKeys, submitterOf: submitterOf};

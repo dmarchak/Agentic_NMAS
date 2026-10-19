@@ -35,7 +35,18 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
 Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html
-Templates sha256: `b82e7f31d34055e2d68a1f442c201a8881c2e28ce779ca46c0fa76f4b079de6f`
+Templates sha256: `924ca92a334c0557a58bceea2c23c1fff6368a253a6fc27d02ab0885815d349a`
+
+Compared again 2026-10-19 (C1388): the Acknowledge form's answer is drawn in place at once. A
+recorded acknowledgement closes the form, saying "Acknowledged.", and offers neither
+Acknowledge… nor Cancel again; the row leaves at the list's next redraw. No answer within 6 s
+closes the form, saying in amber that whether it was recorded is not known and that the next
+redraw shows it. Cancel is drawn only on an open, unsent form. The form's hold marker reads
+`data-editing="false"` once answered or closed. Compared by the template and the page
+tests/test_live_redraw_keeps_form.py draws in a real browser, not a new shot: the change is
+the words under the reason box and one button's visibility. The KnownNoise board draws the
+button and the reason box, not what a sent form shows, so the answered states are a new
+region, a deviation (below). No other region's verdict changed.
 
 Compared again 2026-10-18 (C1277): a Grafana incident's members (`ops.members`, the list under
 a row's operands) now draw, on each member a silence covers, "; silenced in Grafana by <who>
@@ -95,6 +106,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | The rolled-back row | not on the boards | in the operator's W1 capture, r5's block read "neither has a screen yet"; compared again 2026-10-16 after C544's fix: it offers Revert intent… and Retry with a reason…, two v2 links to the device page's cards | **deviation** (log: Landing: the rolled-back row offers Revert and Retry, a row no board draws) |
 | Known noise (KnownNoise sections 1 to 4) | the syslog row names its message; Classify as known noise… opens the card in place; classified lines listed under What was checked with the rate; the rate's Warning row | not built: C534 is LAB and parked in the register | **later** C534 (parked, LAB: the classification of a known message, built after C506) |
 | Acknowledge… | on an event row (KnownNoise) | drawn on each row whose source allows it, the reason box in place, busy on itself (compared by the template and tests/test_acknowledge.py; none of this shot's rows offers it) | **same** |
+| Acknowledge…, answered (C1388) | not drawn: the board shows the button and the reason box | once sent, Cancel is gone; recorded: the form closes saying "Acknowledged." and the row leaves at the next redraw; refused: the form stays open saying why; no answer within 6 s: the form closes saying, in amber, that whether it was recorded is not known and the next redraw shows it (tests/test_live_redraw_keeps_form.py, in a real browser) | **deviation** (log: Landing: a sent acknowledgement is answered in place within 6 s, with no Cancel once sent) |
 | Live redraw | not drawn | the rows redraw without a reload: the walk's rotation rows appeared within about 20 s and left as Save All and the export ended (steps 34, 37 and 39; C539) | **same** |
 | Phone (LandingPhone) | the heading with "5 items", "11 sources checked at 23:40", each row a card with its action full width, "2 more below" | the same card stack and summary; each card carries the row's whole anatomy (above) and its action at its own width; no "more below" (the page scrolls) | **deviation** (log: Landing: a row carries its operands and how it clears) |
 | Phone top bar (LandingPhone) | menu, the network as a chip, a search icon, the integrations count, the person | menu, the 32 px mark and the network's name, the search box, the strip's dots, the theme menu, the person | **deviation** (log: Landing: the top bar carries no Assistant) |

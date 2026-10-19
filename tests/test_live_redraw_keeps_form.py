@@ -83,6 +83,119 @@ def test_a_page_with_no_form_open_redraws_at_once(served, needs_one_ack):  # noq
                f"return !!a && !a.dataset.old && {SETTLED}", 15)
 
 
+# ── C1388: a sent acknowledgement is answered in place, within a bound ──────
+#
+# The operator, 2026-10-19: on four rows, a reason sent sat on "Acknowledging…" for minutes
+# beside "Newer data is waiting", with Cancel offered; a reload showed all four acknowledged.
+# The server had answered 200 within milliseconds; the form waited for the redraw that removes
+# the row, and the hold kept that redraw back because the sent reason was still shown.
+
+SEND = ".att-ack-form button[data-op=needs-attention]"
+ACK_STATE = ("var a = document.querySelector('.att-ack');"
+             "if (!a) return {row: false};"
+             "var bs = Array.prototype.slice.call(a.querySelectorAll('button'));"
+             "var shown = function (x) { return !!x && x.offsetParent !== null; };"
+             "var cancel = bs.filter(function (x) { return x.textContent.trim() === 'Cancel'; })[0];"
+             "var opener = bs.filter(function (x) { return x.textContent.trim() === 'Acknowledge…'; })[0];"
+             "var send = a.querySelector('.att-ack-form button[data-op=needs-attention]');"
+             "var note = a.querySelector('.att-ack-note'), said = a.querySelector('.refusal');"
+             "return {row: true, cancel: shown(cancel), opener: shown(opener),"
+             " send: shown(send) ? send.textContent.trim() : '', busy: !!send && send.disabled,"
+             " note: shown(note) ? note.textContent.trim() : '',"
+             " said: shown(said) ? said.textContent.trim() : '',"
+             " held: document.getElementById('attention').getAttribute('data-held') === '1'};")
+
+
+@pytest.fixture
+def acknowledged(monkeypatch, needs_one_ack):
+    """POST /attention/acknowledge answered as the host answered it (200, recorded, hiding the
+    row), after `acknowledged.delay` seconds; from the answer on, the row is no longer drawn.
+    The real route would refuse ROW (no source holds it); its record is tests/test_acknowledge's."""
+    import time
+
+    import app as A
+    from flask import jsonify
+    from routes import v2
+    state = {"delay": 1.0, "posts": 0, "recorded": False}
+    drawn = v2._attention
+
+    def without_once_recorded():
+        a = dict(drawn())
+        if state["recorded"]:
+            a["rows"] = []
+        return a
+
+    def answer():
+        state["posts"] += 1
+        time.sleep(state["delay"])
+        state["recorded"] = True
+        return jsonify({"ok": True, "acknowledged": {}, "hides_now": True, "words": ""})
+
+    monkeypatch.setattr(v2, "_attention", without_once_recorded)
+    monkeypatch.setitem(A.app.view_functions, "attention.acknowledge", answer)
+    return state
+
+
+def test_a_sent_acknowledgement_is_drawn_at_once_though_a_redraw_waits(served, acknowledged):  # noqa: F811
+    """Send a reason; a live redraw arrives while the answer is outstanding (1 s). Cancel is
+    gone the moment it is sent; within the bound the form says "Acknowledged." or the row has
+    gone, never left on "Acknowledging…"; and the held redraw then removes the row."""
+    srv, b = served
+    b.go(srv.url("/v2/"))
+    b.wait_for(READY, 15)
+    bound_s = b.js("return NMAS_V2.ACK_BOUND_MS") / 1000
+    _open_and_type(b, "expected: the BGP session reset during the redeploy")
+    assert b.js(ACK_STATE)["cancel"], "the open, unsent form offers Cancel"
+    b.click(SEND)
+    b.js("document.body.dispatchEvent(new CustomEvent('nmas:acknowledgements')); return 1")
+    sent = b.js(ACK_STATE)
+    assert sent["send"] == "Acknowledging…" and sent["busy"], sent
+    assert not sent["cancel"], f"Cancel offered while the acknowledgement is being sent: {sent}"
+    # The answer, in place: freed and said, or the row already gone.
+    b.wait_for(f"var s = (function () {{ {ACK_STATE} }})();"
+               "return !s.row || (s.note === 'Acknowledged.' && s.send !== 'Acknowledging…')",
+               bound_s + 2)
+    after = b.js(ACK_STATE)
+    if after["row"]:
+        assert not after["cancel"] and not after["opener"], (
+            f"Cancel or Acknowledge… offered after the acknowledgement was recorded: {after}")
+    # And the redraw it once held happens: the row leaves.
+    b.wait_for(f"return !document.querySelector('.att-ack') && {SETTLED}", 10)
+    assert acknowledged["posts"] == 1
+
+
+def test_an_unanswered_acknowledgement_says_so_within_its_bound(served, acknowledged):  # noqa: F811
+    """No answer within the bound: the button is freed and the form says that whether it was
+    recorded is not known, offering no Cancel."""
+    srv, b = served
+    b.go(srv.url("/v2/"))
+    b.wait_for(READY, 15)
+    bound_s = b.js("return NMAS_V2.ACK_BOUND_MS") / 1000
+    acknowledged["delay"] = bound_s + 4
+    _open_and_type(b, "expected: the BGP session reset during the redeploy")
+    b.click(SEND)
+    b.wait_for(f"var s = (function () {{ {ACK_STATE} }})();"
+               "return s.row && s.said.indexOf('whether it was recorded is not known') >= 0",
+               bound_s + 3)
+    late = b.js(ACK_STATE)
+    assert late["send"] != "Acknowledging…" and not late["cancel"], late
+
+
+def test_a_form_marked_not_editing_holds_no_redraw(served):  # noqa: F811
+    """`data-editing="false"` (a form answered or closed) holds nothing, whatever its field
+    still shows: a shown field with unsent text inside it lets the live redraw happen."""
+    srv, b = served
+    b.go(srv.url("/v2/"))
+    b.wait_for(READY, 15)
+    b.js("var a = document.getElementById('attention'); a.dataset.old = '1';"
+         "var d = document.createElement('div'); d.setAttribute('data-editing', 'false');"
+         "var i = document.createElement('input'); i.type = 'text'; i.name = 'why';"
+         "d.appendChild(i); a.appendChild(d); i.value = 'sent already';"
+         "document.body.dispatchEvent(new CustomEvent('nmas:acknowledgements')); return 1")
+    b.wait_for("var a = document.getElementById('attention');"
+               f"return !!a && !a.dataset.old && !a.getAttribute('data-held') && {SETTLED}", 15)
+
+
 # ── C472: what a person opened stays open ───────────────────────────────────
 #
 # R27's survey (2026-10-05): C459's guard keeps typed text, never an open `<details>`, so a

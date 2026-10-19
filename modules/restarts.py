@@ -137,8 +137,9 @@ def _append(name: str, row: dict) -> None:
 def planned() -> dict:
     """The planned windows as recorded: ``{"state", "rows"}`` (absent, unreadable or ok), for a
     reader that must tell an unreadable record from none (C1324: the restarts reader read the
-    file itself)."""
-    return _read("planned_restarts.jsonl")
+    file itself). A window ended early carries its end (`_with_ends`)."""
+    got = _read("planned_restarts.jsonl")
+    return dict(got, rows=_with_ends(got["rows"])) if got.get("rows") else got
 
 
 def _iso(ts: float) -> str:
@@ -424,14 +425,21 @@ def _move_silences(p: dict, ends: float, why: str) -> list:
     return out
 
 
-def end_window(p: dict, at: float, why: str, by: str = "") -> dict:
-    """End window *p* early, at *at* (a reload that is back): recorded in
+def end_window(p: dict, at: float, why: str, by: str = "", via: str = "",
+               correction: str = "") -> dict:
+    """End window *p* early, at *at* (a reload that is back; a person ending an abandoned
+    attempt's window, `end_planned`; every device it expected new SSH host keys from having
+    answered with one, `host_keys.complete_windows`): recorded in
     `planned_restart_ends.jsonl`, and its silences moved to end `SETTLE_SECONDS` later, since
     the alerts outlast the return. ``{"ok", "ended_at", "silences", "words", "error"}``."""
 
     moved = _move_silences(p, at + SETTLE_SECONDS, why)
     row = {"window": window_id(p), "ended_at": _iso(at), "why": why, "by": by,
            "silences": moved, "recorded_at": _iso(time.time())}
+    if via:
+        row["via"] = via
+    if correction:
+        row["correction"] = correction
     try:
         _append("planned_restart_ends.jsonl", row)
     except Exception as exc:                     # noqa: BLE001 - said on the result
@@ -458,6 +466,83 @@ def ends() -> dict:
         if r.get("window") and at:
             out[r["window"]] = min(at, out.get(r["window"], at))
     return out
+
+
+def end_rows() -> dict:
+    """``{window id: row}``: the EARLIEST end recorded for each window ended early, with who
+    ended it, why and how. An unreadable record ends none (as `ends`)."""
+    out = {}
+    for r in _read("planned_restart_ends.jsonl")["rows"]:
+        at = _epoch(r.get("ended_at", ""))
+        if r.get("window") and at and (
+                r["window"] not in out or at < _epoch(out[r["window"]]["ended_at"])):
+            out[r["window"]] = r
+    return out
+
+
+def find_window(list_name: str, ref: str, planned: list = None) -> dict:
+    """The one window of *list_name* that *ref* names: its ``recorded_at`` as the record
+    prints it (``2026-10-19T19:16:50Z``, the time `scripts/nmas-planned-restart` says it was
+    recorded) or its id (`window_id`). ``{"ok", "window", "error"}``; none or two is refused,
+    naming what was looked for and what there is."""
+    planned = planned_rows() if planned is None else planned
+    ref = (ref or "").strip()
+    mine = [p for p in planned if (p.get("list") or "") == (list_name or "")]
+    found = [p for p in mine if ref and ref in (p.get("recorded_at"), window_id(p))]
+    if len(found) == 1:
+        return {"ok": True, "window": found[0], "error": ""}
+    named = "; ".join(f"recorded {p.get('recorded_at')} ({p.get('from')} to "
+                      f"{p.get('until')}, {', '.join(p.get('devices') or [])})"
+                      for p in mine[-5:]) or "none"
+    if found:
+        return {"ok": False, "window": None, "error": (
+            f"{len(found)} windows of {list_name!r} match {ref!r}; name one by its id: "
+            + ", ".join(window_id(p) for p in found))}
+    return {"ok": False, "window": None, "error": (
+        f"no planned window of {list_name!r} was recorded at {ref!r} or has that id; its "
+        f"latest: {named}")}
+
+
+def end_planned(list_name: str, ref: str, *, by: str, why: str, via: str,
+                at: float = None, correction: str = "") -> dict:
+    """End the planned window *ref* of *list_name* (`find_window`) at *at* (default now), as
+    *by*, for *why* (the operator, 2026-10-19, C1389: "abandoning an operation ends its
+    planned-restart window at once"). An ended window covers nothing after its end: no
+    restart (beyond the slack a restart's estimated time needs, `_window_covers`), no new
+    SSH host key, and a window expecting new keys is summed up then
+    (`host_keys.close_windows`). ``{"ok", "error", "window", "ended"}``.
+
+    Refused, naming both operands: no person or no reason; a window that has already ended
+    by *at* (its declared end, or an earlier recorded end); and an end more than a minute in
+    the past without a *correction* saying why it is recorded late (as `record_planned`
+    refuses a late window: a past end changes what was judged)."""
+    now = time.time()
+    at = now if at is None else at
+    if not by or not (why or "").strip():
+        return {"ok": False, "error": "ending a planned window names who ends it and why"}
+    got = find_window(list_name, ref)
+    if not got["ok"]:
+        return {"ok": False, "error": got["error"]}
+    p = got["window"]
+    end = window_end(p, ends())
+    if at >= end:
+        return {"ok": False, "window": p, "error": (
+            f"the window recorded {p.get('recorded_at')} already ends at {_iso(end)}"
+            + (" (ended early)" if p.get("ended_at") else " (its declared end)")
+            + f", not after {_iso(at)}: nothing to end")}
+    if at < now - 60:
+        from modules.nsot.authorisation import MIN_CHARS, MIN_WORDS, reason_problem
+        if reason_problem({"line": "", "reason": (correction or "").strip()}):
+            return {"ok": False, "window": p, "error": (
+                f"an end at {_iso(at)}, before now ({_iso(now)}), changes what was already "
+                f"judged: it needs a correction saying why it is recorded late (at least "
+                f"{MIN_WORDS} words and {MIN_CHARS} characters)")}
+    elif correction:
+        correction = ""                     # an end now is not late: nothing to correct
+    ended = end_window(p, at, why.strip(), by=by, via=via, correction=correction.strip())
+    if not ended["ok"]:
+        return {"ok": False, "window": p, "error": ended["error"]}
+    return {"ok": True, "error": "", "window": p, "ended": ended}
 
 
 def window_end(p: dict, ended: dict) -> float:
@@ -518,9 +603,16 @@ def _read_jsonl(path: str) -> dict:
 
 
 def _window_covers(p: dict, device: str, at: float, list_name: str) -> bool:
+    """Whether window *p* covers a restart of *device* at *at*: from its start until its end
+    (declared, or EARLIER when it was ended: `ended_at`, C1389) plus the slack. The slack
+    stays after an early end because a restart's time is an estimate from the device's own
+    ticks, which can put it minutes after the real restart (`drops`)."""
     if not _names(p, device, list_name):
         return False
-    return _epoch(p["from"]) - 60 <= at <= _epoch(p["until"]) + PLANNED_SLACK_SECONDS
+    end = _epoch(p["until"])
+    if p.get("ended_at"):
+        end = min(end, _epoch(p["ended_at"]))
+    return _epoch(p["from"]) - 60 <= at <= end + PLANNED_SLACK_SECONDS
 
 
 def planned_for(device: str, at: float, planned: list, list_name: str = "", seen=None):
@@ -579,11 +671,35 @@ def judged(rows: list, planned: list) -> list:
 
 def planned_rows() -> list:
     """The planned windows, or [] when none are recorded; an unreadable record raises, because
-    reading it as "nothing planned" would raise a row for every planned restart."""
+    reading it as "nothing planned" would raise a row for every planned restart. A window
+    ended early carries its end (`_with_ends`)."""
     got = _read("planned_restarts.jsonl")
     if got["state"] == "unreadable":
         raise RuntimeError(f"the planned-restart record could not be read: {got.get('error')}")
-    return got["rows"]
+    return _with_ends(got["rows"])
+
+
+def _with_ends(rows: list) -> list:
+    """*rows* with each window ended before its declared end carrying ``ended_at``,
+    ``ended_by``, ``ended_why`` and ``ended_via`` (the earliest end recorded for it,
+    `planned_restart_ends.jsonl`), so every reader of the windows (a restart's verdict, a
+    new host key, a window's summary) holds it to the end that happened (C1389: a window
+    whose attempt was abandoned stayed open, and took keys, for most of an hour). An
+    unreadable end record ends none: a window is then held to its declared end, never cut
+    short by a guess."""
+    found = end_rows()
+    if not found:
+        return rows
+    out = []
+    for p in rows:
+        e = found.get(window_id(p))
+        if e and _epoch(e.get("ended_at", "")) < _epoch(p.get("until", "")):
+            p = dict(p, ended_at=e["ended_at"], ended_by=e.get("by", ""),
+                     ended_why=e.get("why", ""), ended_via=e.get("via", ""))
+            if e.get("correction"):
+                p["ended_correction"] = e["correction"]
+        out.append(p)
+    return out
 
 
 def known(device: str, at: float, rows: list, list_name: str = "") -> bool:

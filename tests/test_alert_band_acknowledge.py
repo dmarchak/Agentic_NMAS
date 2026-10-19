@@ -183,15 +183,35 @@ class TestTheStuckAcknowledgeC533:
 
 def test_the_button_is_never_left_busy_with_nothing_said():
     """The Acknowledge form's answer (`ackAnswer`, run in the shipped script): a refusal frees
-    it and says why; recorded-and-hidden stays busy for the redraw that removes the row;
-    recorded-and-NOT-hidden frees it and says why the row stays."""
+    it and says why; recorded-and-hidden frees it AT ONCE, closed, saying "Acknowledged." and
+    offering neither Acknowledge… nor Cancel again (`done`); recorded-and-NOT-hidden frees it
+    and says why the row stays; and no answer within the bound frees it, saying that whether
+    it was recorded is not known.
+
+    The premise corrected (C1388, the operator, 2026-10-19): this test once held
+    recorded-and-hidden BUSY "for the redraw that removes the row". On the host four rows sat
+    on "Acknowledging…" for minutes after the server had answered 200 within milliseconds (its
+    app log, 20:36:40 to 20:37:01): the redraw was held (C459) because the sent reason was
+    still shown, so it never came. Waiting on a redraw is waiting on something the form cannot
+    see; the answer is drawn in place, and the wait for it is bounded."""
     from tests.test_device_v2 import _eval
 
     def answer(status, body):
         return json.loads(_eval("nmas_v2.js", "NMAS_V2", f"ackAnswer({status}, {json.dumps(body)})"))
 
     hidden = answer(200, {"ok": True, "hides_now": True})
-    assert hidden["busy"] is True
+    assert hidden == {"busy": False, "isOpen": False, "said": "", "note": "Acknowledged.",
+                      "done": True}, hidden
+    # The wait is bounded: a number of seconds, about 2.5x the measured 2 s (the script says
+    # its measurement), and past it the button is freed, the form closed (so its reason holds
+    # no redraw) and the words say the outcome is not known and where it will be shown.
+    bound = json.loads(_eval("nmas_v2.js", "NMAS_V2", "ACK_BOUND_MS"))
+    assert isinstance(bound, int) and 2000 < bound <= 10000, bound
+    late = json.loads(_eval("nmas_v2.js", "NMAS_V2", f"ackNoAnswer({bound})"))
+    assert late["busy"] is False and late["isOpen"] is False and not late.get("done"), late
+    assert late["said"].startswith(f"No answer within {bound // 1000} s"), late
+    assert "whether it was recorded is not known" in late["said"], late
+    assert "next redraw" in late["said"], late
     stays = answer(200, {"ok": True, "hides_now": False, "words": "Recorded. above it"})
     assert stays == {"busy": False, "isOpen": False, "said": "", "note": "Recorded. above it"}
     refused = answer(409, {"ok": False, "error": "a reason"})

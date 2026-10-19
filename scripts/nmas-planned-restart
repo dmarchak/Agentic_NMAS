@@ -6,6 +6,15 @@
     nmas-planned-restart <list> '*' --from 2026-10-01T15:20Z --minutes 110 --why "..."
         --correction "the redeploy was planned; the tool could not record it then"
     nmas-planned-restart <list> '*' --minutes 45 --why "lab redeploy" --new-host-keys
+    nmas-planned-restart <list> --end 2026-10-19T19:16:50Z --why "the attempt was abandoned"
+    nmas-planned-restart <list> --end <recorded_at> --at 2026-10-19T19:25:29Z --why "..."
+        --correction "the attempt was abandoned then; its window was not ended at the time"
+
+`--end` ends a window early (the operator, 2026-10-19, C1389: abandoning an operation ends
+its planned-restart window at once), named by the time it was recorded, which this command
+prints when it records one, or by its id. An ended window covers no later restart and takes
+no later SSH host key; a window expecting new keys is summed up then. An end more than a
+minute in the past (`--at`) needs `--correction` with its reason.
 
 The restarts reader (modules/readers/restarts.py) calls a restart UNPLANNED unless the tool
 performed it or was told beforehand; this is the telling, for a redeploy or a hand reload.
@@ -42,8 +51,14 @@ adopt(__name__)
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("list")
-    ap.add_argument("devices", nargs="+", help="hostnames, or '*' for every device of the list")
-    ap.add_argument("--minutes", type=int, required=True, help="how long the window lasts")
+    ap.add_argument("devices", nargs="*", help="hostnames, or '*' for every device of the list")
+    ap.add_argument("--minutes", type=int, default=0, help="how long the window lasts")
+    ap.add_argument("--end", default="",
+                    help="end this window early instead: the time it was recorded (as printed "
+                         "when it was), or its id (C1389)")
+    ap.add_argument("--at", default="",
+                    help="with --end: when it ended, UTC; default now (a past end needs "
+                         "--correction)")
     ap.add_argument("--why", default="", help="why, as a sentence")
     ap.add_argument("--by", default="", help="the person (default: this host's login)")
     ap.add_argument("--from", dest="start", default="",
@@ -56,6 +71,12 @@ def main(argv=None) -> int:
                          "keeps one new key per device met inside the window instead of "
                          "refusing it (C906)")
     args = ap.parse_args(argv)
+    if args.end:
+        return _end(args)
+    if not args.devices:
+        print("refused: name the devices, or '*' for every device of the list",
+              file=sys.stderr)
+        return 1
     if args.minutes <= 0 or args.minutes > 24 * 60:
         print("refused: --minutes is between 1 and 1440", file=sys.stderr)
         return 1
@@ -80,6 +101,9 @@ def main(argv=None) -> int:
     r = out["record"]
     print(f"recorded: {', '.join(r['devices'])} in {r['list']} may restart from {r['from']} "
           f"until {r['until']} (and up to 15 min after), by {r['by']}: {r['why']}")
+    print(f"window recorded {r['recorded_at']} (id {restarts.window_id(r)}); if the attempt is "
+          f"abandoned, end it at once: nmas-planned-restart {r['list']} --end "
+          f"{r['recorded_at']} --why \"<why>\"")
     if r.get("correction"):
         print(f"as a correction, covering {len(out['covered'])} restart(s) already seen: "
               f"{r['correction']}")
@@ -88,6 +112,33 @@ def main(argv=None) -> int:
         print("expecting new SSH host keys: Mercury keeps one new key per device it meets "
               "inside the window, each in History; once the window closes, Needs attention "
               "says how many until a person acknowledges them")
+    return 0
+
+
+def _end(args) -> int:
+    """`--end`: end the window early, as this host's login or --by (`restarts.end_planned`)."""
+    from modules import restarts
+    from modules.identity import host_actor
+    if args.devices or args.minutes or args.start or args.new_host_keys:
+        print("refused: --end ends a window; it takes no devices, --minutes, --from or "
+              "--new-host-keys", file=sys.stderr)
+        return 1
+    at = None
+    if args.at:
+        at = restarts._epoch(args.at if args.at.endswith(("Z", "+00:00")) else args.at + "Z")
+        if not at:
+            print(f"refused: --at {args.at!r} is not a UTC time like 2026-10-19T19:25:29Z",
+                  file=sys.stderr)
+            return 1
+    out = restarts.end_planned(args.list, args.end, by=args.by or host_actor(), why=args.why,
+                               via="nmas-planned-restart", at=at, correction=args.correction)
+    if not out["ok"]:
+        print(f"refused: {out['error']}", file=sys.stderr)
+        return 1
+    w = out["window"]
+    print(f"ended: the window recorded {w.get('recorded_at')} for "
+          f"{', '.join(w.get('devices') or [])} in {w.get('list')} ({w.get('from')} to "
+          f"{w.get('until')}): {out['ended']['words']}")
     return 0
 
 

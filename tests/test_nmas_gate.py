@@ -18,13 +18,18 @@ prints a chosen result:
 import os
 import subprocess
 import sys
+import tempfile
 
 import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GATE = os.path.join(ROOT, "scripts", "nmas-gate")
 ENV = dict(os.environ, GIT_AUTHOR_NAME="T", GIT_AUTHOR_EMAIL="t@example.com",
-           GIT_COMMITTER_NAME="T", GIT_COMMITTER_EMAIL="t@example.com")
+           GIT_COMMITTER_NAME="T", GIT_COMMITTER_EMAIL="t@example.com",
+           # Each gate run here is a stand-in inside the real gate's suite: its full-suite lock
+           # is its own (the real one is held by the gate running this test, 2026-10-19).
+           NMAS_FULL_LOCK=os.path.join(tempfile.gettempdir(),
+                                       f"nmas-gate-test-full-{os.getpid()}.lock"))
 
 
 def _git(repo, *args):
@@ -198,7 +203,7 @@ class TestTheCoverageRatchet:
         assert "--check" in report.split()
         assert ("scripts/nmas-coverage report --data {cov}/.coverage --tiers {cov}/tiers --check"
                 in gate.RATCHET)
-        shard = gate.SUITE.format(py="P", shard="a", cov="D")
+        shard = gate.SUITE.format(py="P", shard="a", cov="D", n=4, bound=740)
         assert "COVERAGE_FILE=D/.coverage.a" in shard and "NMAS_TEST_TIERS=D/tiers" in shard
 
 
@@ -248,7 +253,12 @@ def test_the_default_suite_is_cis_command():
     suite = gate.SUITE.split()
     for a in args:
         if a == "auto":
-            assert suite[suite.index("-n") + 1] == str(gate.CI_WORKERS)
+            # CI's runner's count, as a CEILING: each shard's workers come from the memory
+            # available when the gate runs (the operator, 2026-10-19; tests/test_nmas_workers.py),
+            # never more than CI's CI_WORKERS, whatever the memory.
+            assert suite[suite.index("-n") + 1] == "{n}"
+            assert gate.suite_workers(10 ** 15)[0] == gate.CI_WORKERS
+            assert gate.suite_workers(0)[0] == 1
         elif a.startswith("--cov-report"):
             assert any(s.startswith("--cov-report") for s in suite)
         elif a not in CI_ONLY_ARGS:
@@ -272,7 +282,7 @@ def test_each_job_is_a_gate_command():
     assert "$(python scripts/nmas-shards ${{ matrix.shard }})" in tests["run"]
     assert "scripts/nmas-shards {shard})" in gate.SUITE
     for s in gate.SHARDS:
-        assert gate.SUITE.format(py="P", shard=s, cov="D").endswith(
+        assert gate.SUITE.format(py="P", shard=s, cov="D", n=4, bound=740).endswith(
             f"$(P scripts/nmas-shards {s})")
     once = [s for s in job["steps"] if s.get("if") == "matrix.shard == 'a'"]
     assert {s["name"][:20] for s in once} == {"No removed definitio", "Every host-installed",

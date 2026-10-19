@@ -31,7 +31,60 @@ path. Cost: two C8000v, about 9 GiB and 3.7 CPUs on the lab host (C1318's capaci
 | P-R4 | the responder REFUSES it, naming the peer and the file: the reservation is not tool-written (0e builds that) | the responder serves only a Mercury fragment's reservation |
 | P-G1 | (0g, dropped: not run) | |
 
-## Part 1: set up (each step's revert is in part 4)
+## 0d through Mercury's own path (the operator, 2026-10-19; supersedes parts 1 and 2's hand Kea)
+
+Every Mercury step is Mercury's own operation, run by the agent through the same functions the
+v2 screens call, each previewed, confirmed by its hash and recorded. Nothing is written to Kea by
+hand. Parts 1 and 2 below are kept as the first design; their predictions P-R1 to P-R4 still
+apply.
+
+**The network.** A throwaway network, `relay-probe` (Settings › Networks › New network…, its own
+folder and repository): its devices' intent, goldens and receipts live there. It inherits
+Default's Kea (C1181), so its DHCP subnet and reservations are recorded in Default's repository,
+and they are removed through Mercury at the end.
+
+**Gates, read before, during and after:** outside 08:30 to 09:10 UTC; s3's gap rate for the day
+at or under 6.5% (6.2% at 20:52 UTC on 10-19), the probe stopped if it passes it; no sitting in
+progress; s3 never on the probe's path (the host route below keeps the replies off it).
+
+1. **Network:** `relay-probe` created (its name previewed, then created).
+2. **zr4, the relay, by ZTP on the management segment:** on the lab host, the host bridge
+   `br-zr96` made (`ip link add br-zr96 type bridge stp_state 0 forward_delay 0`, up; not
+   persisted, deleted in step 9). Add device in `relay-probe`: zr4, IOS-XE, role router,
+   address from ZTP, Gi2's MAC `aa:bb:cc:00:02:94`, 10.255.0.94/24, management interface
+   GigabitEthernet2, no gateway (D4). Create (phase 1) writes its reservation; then
+   `containerlab deploy -t nmas-relay-probe.clab.yml` (zr4 alone, configless, its Gi3 on
+   `br-zr96`); zr4 boots, AutoInstall fetches its bootstrap, and onboarding's Verify promotes it.
+   **Why two labs (2026-10-19):** zr6 must boot only once the relay, the subnet and its
+   reservation exist (AutoInstall gives up after about 2.5 min, M4), and no node is restarted to
+   make it ask again; so zr6 is its own lab, `nmas-relay-probe-zr6.clab.yml`, joining
+   `br-zr96` later: Lab 8's own shape (R4 waits on `br-r4r6`, R6 joins from its own topology).
+3. **The host route, temporary (a host step, reverted in step 9):** on the NMAS host,
+   `ip route add 10.255.96.0/30 via 10.255.0.94 dev enp6s19`. Without it the replies to
+   10.255.96.2 follow the host's route for the lab's address space to s3, which does not know
+   the subnet.
+4. **zr4's relay intent:** Gi3 `10.255.96.1 255.255.255.252`, `ip helper-address 10.255.0.10`,
+   `no shutdown`; previewed, confirmed by hash, applied, verified (as r2 Gi4 was, 2026-10-19).
+5. **The relayed subnet:** DHCP › Add a subnet, 10.255.96.0/30, relay 10.255.96.1, For ZTP
+   onboarding ticked (0e), previewed and confirmed; the D4 check line read.
+6. **zr6 behind the relay, run 1 (no option 3):** Add device in `relay-probe`: zr6, IOS-XE,
+   address from ZTP, `aa:bb:cc:00:02:96`, 10.255.96.2/30, Route option (3) None. Create writes
+   its reservation (options 66 and 67, no 3, no 6). The captures started (`tcpdump -ni enp6s19
+   'udp port 67 or 68 or 69'` on the NMAS host, kept to a file, counts reported), then
+   `containerlab deploy -t nmas-relay-probe-zr6.clab.yml`: zr6 boots and asks through zr4.
+   Watch zr6's console through the read-only reader. Record P-R1 and P-R2.
+7. **Run 2 (option 3 = the relay's own address), only if run 1 fetched nothing:** zr6's
+   onboarding abandoned, Add device again with Route option (3) "The relay's own address"; zr6's
+   lab destroyed and deployed again (the one redeploy command for a lab: no node is restarted
+   by containerlab or docker); zr4 is untouched. Record P-R3, P-R4.
+8. **Verify** promotes zr6 when its bootstrap landed: its management reached over the relay.
+9. **The end:** zr6 and zr4 retired through Mercury (Retire, previewed, confirmed); the
+   relayed subnet removed through DHCP › Subnets › Remove (C1377); `relay-probe` deleted; both
+   probe labs destroyed (`containerlab destroy -t … --cleanup`, zr6's then zr4's); `br-zr96`
+   deleted; the host route deleted; each shown gone (`ip route`, Kea's `config-get` holding subnets 10, 20 and
+   255 only, br-mgmt holding `enp6s19`, `s3-mgmt`, `r6-mgmt`), and s3's gap rate read again.
+
+## Part 1: set up (the first design, superseded above; each step's revert is in part 4)
 
 1. **Lab host.**
    - Make `~/labs/relay-probe/` with `patches/` (`c8000v-launch.py` from `~/labs/lab/patches/`,

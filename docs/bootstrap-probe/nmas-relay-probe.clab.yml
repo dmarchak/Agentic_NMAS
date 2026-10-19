@@ -1,22 +1,24 @@
 name: nmas-relay-probe
 
 # ---------------------------------------------------------------------------
-# Labs 8 and 9, step 0d (docs/LAB8_LAB9_PLAN.md): a C8000v ZTP'd THROUGH A DHCP RELAY.
-# Runbook: docs/RELAY_PROBE.md.
+# Labs 8 and 9, step 0d (docs/LAB8_LAB9_PLAN.md): the RELAY, zr4. Runbook: docs/RELAY_PROBE.md.
 # A throwaway lab of its own: no lab node is touched, s3 is never on its path, and it is
-# destroyed afterwards.
+# destroyed afterwards. Its relayed device, zr6, is a second lab (nmas-relay-probe-zr6.clab.yml)
+# deployed only once the relay, the subnet and zr6's reservation exist, joining through the host
+# bridge br-zr96: Lab 8's own shape (R4 waits on br-r4r6, R6 joins later from its own topology).
+# One topology with both nodes booted zr6 into a relay not yet configured, and AutoInstall gives
+# up after about 2.5 min (M4); no node is restarted to make it ask again (lab/REDEPLOY.md).
 #
-#   zr4  a CONFIGLESS C8000v (P.6's patch and passthrough), the RELAY to be: ZTP'd by Mercury on
+#   zr4  a CONFIGLESS C8000v (P.6's patch and passthrough), the relay to be: ZTP'd by Mercury on
 #        the management segment (its Gi2 MAC pinned: aa:bb:cc:00:02:94 -> 10.255.0.94, free in
-#        Kea, read 2026-10-19), onboarded in a throwaway network, then given Gi3 10.255.96.1/30
+#        Kea, read 2026-10-19), onboarded in the throwaway network, then given Gi3 10.255.96.1/30
 #        with `ip helper-address 10.255.0.10` by a deploy of its intent (Lab 8's R4 step).
-#        The configless launch removes the saved configuration at every CONTAINER start: after
+#        The configless launch removes the saved configuration at every container start: after
 #        zr4 is onboarded it is never restarted (and no lab node is restarted by containerlab or
 #        docker: lab/REDEPLOY.md).
-#   zr6  a CONFIGLESS C8000v (P.6's patch and management passthrough, as bp-ztp-a), Gi2 to zr4
-#        Gi3, its MAC pinned so Kea's reservation names it: aa:bb:cc:00:02:96 -> 10.255.96.2.
 #
-# br-mgmt is a PREREQUISITE (verify first: ip -br link show master br-mgmt).
+# PREREQUISITES (verify first): br-mgmt (ip -br link show master br-mgmt) and br-zr96, made for
+# the probe and deleted after it (ip link add br-zr96 type bridge stp_state 0 forward_delay 0).
 # ---------------------------------------------------------------------------
 
 mgmt:
@@ -40,16 +42,9 @@ topology:
       binds:
         - patches/c8000v-launch-configless.py:/launch.py     # P.6's six changes
 
-    zr6:
-      kind: cisco_c8000v
-      mgmt-ipv4: 172.30.96.12
-      # Deliberately no startup file (AutoInstall runs only with none).
-      env:
-        CLAB_MGMT_PASSTHROUGH: "true"                        # qemu's own DHCP/TFTP gone (M1)
-      binds:
-        - patches/c8000v-launch-configless.py:/launch.py     # P.6's six changes
-
     br-mgmt:
+      kind: bridge
+    br-zr96:
       kind: bridge
 
   links:
@@ -61,11 +56,5 @@ topology:
           mac: aa:bb:cc:00:02:94
         - node: br-mgmt
           interface: zr4-mgmt
-    # zr6 Gi2 (eth1) to zr4 Gi3 (eth2): the relayed segment, zr6's MAC pinned.
-    - type: veth
-      endpoints:
-        - node: zr6
-          interface: eth1
-          mac: aa:bb:cc:00:02:96
-        - node: zr4
-          interface: eth2
+    # zr4 Gi3 (eth2) on br-zr96: the relayed segment zr6 joins from its own lab.
+    - endpoints: ["zr4:eth2", "br-zr96:zr4-zr6"]

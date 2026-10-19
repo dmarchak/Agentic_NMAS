@@ -10,7 +10,8 @@ timeline, Needs attention's real page and the real acknowledge route.
 
 - a window that expects new keys takes two: two History rows, each naming the device, the
   new key, the key it replaced and the window's reason; nothing on Needs attention while the
-  window is open; once it has closed (its end plus the slack) ONE row, "2 new host keys
+  window is open; once it has closed (its end plus the slack, or, C1389, once every device it
+  covers has answered with its new key) ONE row, "2 new host keys
   accepted during 'lab redeploy'", until a person acknowledges it, then gone;
 - a new key outside any declared window (one closed, one not yet open) is refused, and the
   key held stays;
@@ -95,6 +96,13 @@ class TestAWindowThatTakesTwoKeys:
         now = time.time()
         _window(now)
         assert HK.check(R2, keys[2], owner="test:redeploy")["state"] == "window"
+
+        # Open (inside the slack, s9 not yet met): nothing summed up, nothing on Needs
+        # attention. (C1389: once every device it covers has answered with its new key, the
+        # window ends then, so this is read before s9's key.)
+        assert _reader(now + CLOSES - 5)["written"] == []
+        assert _summaries(lab) == [] and _page()["rows"] == []
+
         assert HK.check(S9, keys[3], owner="test:redeploy")["state"] == "window"
 
         # Two History rows: the device, the new key, the key it replaced, the reason.
@@ -108,10 +116,6 @@ class TestAWindowThatTakesTwoKeys:
                                    f"'{WHY}'"), e["detail"]
             assert dict(e["record"])["Replaced"] == _fp(old)
             assert dict(e["record"])["Window"] == f"op@example.invalid: {WHY}"
-
-        # Open (inside the slack): nothing summed up, nothing on Needs attention.
-        assert _reader(now + CLOSES - 5)["written"] == []
-        assert _summaries(lab) == [] and _page()["rows"] == []
 
         # Closed: ONE row naming the count and the reason, the devices and both keys each.
         got = _reader(now + CLOSES + 5)

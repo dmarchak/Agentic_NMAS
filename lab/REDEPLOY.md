@@ -74,8 +74,11 @@ than 75 minutes away, or after 09:10 UTC.
 
    ```
    recorded: r1, r2, r3, r4, s1, s2, s3, s4 in Default may restart from <from> until <until> (and up to 15 min after), by <operator>: lab redeploy: rcn-lab1 rebuilt from its startup files
+   window recorded <recorded_at> (id <id>); if the attempt is abandoned, end it at once: nmas-planned-restart Default --end <recorded_at> --why "<why>"
    expecting new SSH host keys: Mercury keeps one new key per device it meets inside the window, each in History; once the window closes, Needs attention says how many until a person acknowledges them
    ```
+
+   Keep `<recorded_at>`: it names this window if the attempt is abandoned (below).
 
    Anything else is `refused: <why>` on stderr with exit 1: stop, and do not redeploy. A window
    that covers a restart Mercury has already seen is refused, so this step comes FIRST; and a
@@ -111,11 +114,46 @@ than 75 minutes away, or after 09:10 UTC.
      different SSH host key" row. Such a row means a device was met with a new key outside the
      window: review it with Re-key… on its page.
 
-5. **After the window closes** (`<until>` plus 15 minutes; the reader runs each minute): Needs
-   attention shows ONE row, **"8 new host keys accepted during 'lab redeploy: rcn-lab1 rebuilt
-   from its startup files'"**, naming each device's new key and the one it replaced. Review them
-   in History, then **Acknowledge** with what you found. The row goes; the keys and the summary
-   stay in History.
+5. **Once every device has answered with its new key** (step 3's Check now; the reader runs
+   each minute), the window ENDS then, not at `<until>` plus 15 minutes (C1389): it covers
+   nothing more, so it takes no stray key and covers no later restart, apart from the 15-minute
+   slack a restart's estimated time gets after the end. History shows the early end on the
+   window's row. Within a minute Needs attention shows ONE row, **"8 new host keys accepted
+   during 'lab redeploy: rcn-lab1 rebuilt from its startup files'"**, naming the window by its
+   times and each device's new key with the one it replaced. Review them in History, then
+   **Acknowledge** with what you found. The row goes; the keys and the summary stay in History.
+   If a device never answers with a new key, the window runs to `<until>` plus 15 minutes and
+   the row appears then.
+
+## When an attempt is abandoned: end its window at once (the operator, 2026-10-19, C1389)
+
+If the redeploy stops before it runs (a node that cannot be removed, a host that needs a reboot
+first), **end its window at once, on `<nmas-host>` as `<user>`**:
+
+```bash
+<home>/python/Agentic_NMAS/scripts/nmas-planned-restart Default --end <recorded_at> \
+    --why "<what stopped the attempt>" --by <operator>
+```
+
+It prints `ended: the window recorded <recorded_at> … window ended <now> (…)` and exits 0. An
+ended window takes no new key and covers no later restart. Then declare a FRESH window (step 1)
+for the attempt that will run, immediately before it runs.
+
+Why: on 2026-10-19 the first attempt's window (W1, recorded 19:16:50Z) was left open when the
+attempt failed at r5, and the redeploy that ran after the lab host's reboot declared a second
+one (W2, 19:25:29Z) for the same eight devices and r6. Mercury credited the eight new keys to
+the FIRST covering window, W1, the abandoned one. Mercury now credits a key to the LATER of two
+overlapping windows (a later declaration for a device supersedes an earlier one from its
+recording on), and a window whose devices have all been taken over by a later one ends when
+that one opens. Ending the abandoned window at once still matters: it then covers no restart
+either. A key already credited to the wrong window is corrected with
+`scripts/nmas-host-key-recredit` (it prints its plan; `--apply --every --by <operator>` makes
+the correction, kept in History), never by editing the record.
+
+An end recorded after the fact (`--at <when it was abandoned>`) changes what was already
+judged, so it needs `--correction "<why it is recorded late>"`.
+
+## After the redeploy
 
 6. Then the post-items of `docs/STAGE2_SESSION_CHECKLIST.md` section 4, through Mercury (its
    revision of 2026-10-16, C948). They are the same steps, not a second set: its 3.2 is steps 1

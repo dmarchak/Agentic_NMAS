@@ -270,15 +270,92 @@ def refusal_words(ip: str, got: dict, rec: dict) -> str:
 # ---------------------------------------------------------------------------
 
 def window_id(p: dict) -> str:
-    """One planned window's identity: its list, when it was recorded, and when it opens."""
+    """One planned window's identity: its list, when it was recorded, and when it opens. An
+    internal key (a record's `window.id`, a summary's `window`, an acknowledgement's event),
+    never drawn for a person: `window_words` says a window."""
     return f"{p.get('list', '')}|{p.get('recorded_at', '')}|{p.get('from', '')}"
 
 
+def clock_words(text: str) -> str:
+    """"2026-10-19 19:16:50" from "2026-10-19T19:16:50Z"; "?" when absent."""
+    return str(text or "?").replace("T", " ").rstrip("Z")
+
+
+def window_words(w: dict) -> str:
+    """A window as a person reads it, by its own times (C1389: the raw id
+    "<network>|<recorded>|<from>" read as a start and an end that were equal):
+    "from 2026-10-19 19:25:29 until 20:25:29 UTC, recorded 2026-10-19 19:25:29 UTC", with
+    its early end when it had one."""
+    start, until = clock_words(w.get("from")), clock_words(w.get("until"))
+    if start[:10] == until[:10]:
+        until = until[11:]
+    out = f"from {start} until {until} UTC"
+    if w.get("ended_at"):
+        out += f", ended early at {clock_words(w['ended_at'])} UTC"
+    if w.get("recorded_at"):
+        out += f", recorded {clock_words(w['recorded_at'])} UTC"
+    return out
+
+
+def key_end(p: dict) -> float:
+    """When window *p* stops taking new keys: at its early end when it was ended (a person
+    ended it, its reload is back, or every device it expected a new key from has answered
+    with one: `restarts._with_ends`), with NO slack after it, since Mercury's own clock times
+    each key it meets; else its declared end plus the slack in which a restart is still the
+    plan's (`restarts.PLANNED_SLACK_SECONDS`)."""
+    from modules import restarts
+    if p.get("ended_at"):
+        return min(restarts._epoch(p["ended_at"]),
+                   restarts._epoch(p.get("until", "")) + restarts.PLANNED_SLACK_SECONDS)
+    return restarts._epoch(p.get("until", "")) + restarts.PLANNED_SLACK_SECONDS
+
+
+def takes_keys(p: dict, host: str, lst: str, at: float) -> bool:
+    """Whether window *p* takes a new key from *host* of *lst* at *at*: it expects new host
+    keys, names the device, was recorded by then, and is open (its start, less a minute, to
+    `key_end`)."""
+    from modules import restarts
+    return (bool(p.get("new_host_keys")) and restarts._names(p, host, lst)
+            and _epoch(p.get("recorded_at", "")) <= at
+            and restarts._epoch(p.get("from", "")) - 60 <= at <= key_end(p))
+
+
+def operative_window(planned: list, names: list, at: float):
+    """The ONE window that may take a new key for a device named *names* (``[(list,
+    device)]``) at *at*, as ``(window, list, device)``, or None: of the windows that take
+    keys from it then (`takes_keys`), the MOST RECENTLY RECORDED (a tie in the same second:
+    the later line of the record). The operator, 2026-10-19 (C1389): a later declaration for
+    a device supersedes an earlier one from its recording on, because the earlier one was
+    abandoned and the later one is the operative statement; a lapsed window is never the one
+    a later key is credited to."""
+    best = None
+    for i, p in enumerate(planned):
+        for lst, host in names:
+            if takes_keys(p, host, lst, at):
+                rank = (_epoch(p.get("recorded_at", "")), i)
+                if best is None or rank > best[0]:
+                    best = (rank, p, lst, host)
+                break
+    return best[1:] if best else None
+
+
+def _credit(p: dict, host: str, lst: str) -> dict:
+    """The window as a key's record keeps it."""
+    out = {"id": window_id(p), "by": p.get("by", ""), "why": p.get("why", ""),
+           "from": p.get("from", ""), "until": p.get("until", ""),
+           "recorded_at": p.get("recorded_at", ""), "device": host, "list": lst}
+    if p.get("ended_at"):
+        out["ended_at"] = p["ended_at"]
+    return out
+
+
 def _window_for(ip: str, rec: dict, got: dict, now: float):
-    """The planned-restart window that accepts this new key, or None: declared to expect new
-    host keys, covering a device at *ip* now, not already used by this device's record, and
-    recorded BEFORE Mercury first refused this same key (a window declared after a refusal
-    is not a review of it: that is the re-key's)."""
+    """The planned-restart window that accepts this new key, or None. Only the operative
+    window (`operative_window`: the most recently recorded of those open for a device at
+    *ip* now that expect new host keys) may, and only when it was not already used by this
+    device's record and was recorded BEFORE Mercury first refused this same key (a window
+    declared after a refusal is not a review of it: that is the re-key's). A superseded
+    window never takes the key instead (C1389)."""
     try:
         from modules import restarts
         planned = restarts.planned_rows()
@@ -290,21 +367,22 @@ def _window_for(ip: str, rec: dict, got: dict, now: float):
     prior = rec.get("refused") or {}
     if prior.get("fingerprint") == got["fingerprint"]:
         refused_at = _epoch(prior.get("first_at") or prior.get("at") or "")
-    for lst, host in names_for(ip):
-        for p in planned:
-            if not p.get("new_host_keys"):
-                continue
-            if not restarts._window_covers(p, host, now, lst):
-                continue
-            wid = window_id(p)
-            if rec.get("window", {}).get("id") == wid:
-                continue                  # this window already took one new key for it
-            if refused_at and _epoch(p.get("recorded_at", "")) >= refused_at:
-                continue
-            return {"id": wid, "by": p.get("by", ""), "why": p.get("why", ""),
-                    "from": p.get("from", ""), "until": p.get("until", ""),
-                    "device": host, "list": lst}
-    return None
+    return _eligible(operative_window(planned, names_for(ip), now),
+                     (rec.get("window") or {}).get("id"), refused_at)
+
+
+def _eligible(found, used: str, refused_at: float):
+    """*found* (`operative_window`'s answer) as the credit a key is kept under, or None when
+    that window already took a key for this device (*used*) or was recorded at or after this
+    key's first refusal (*refused_at*)."""
+    if not found:
+        return None
+    p, lst, host = found
+    if used == window_id(p):
+        return None                       # this window already took one new key for it
+    if refused_at and _epoch(p.get("recorded_at", "")) >= refused_at:
+        return None
+    return _credit(p, host, lst)
 
 
 def _retired(rec: dict, at: float, by: str, why: str) -> dict:
@@ -312,7 +390,8 @@ def _retired(rec: dict, at: float, by: str, why: str) -> dict:
     old = {k: rec.get(k) for k in ("type", "fingerprint", "kept_at", "kept_by", "how")}
     # A key kept under a window keeps its window and the key it replaced when it is replaced
     # in turn, so History and the window's summary still name both (the operator, 2026-10-16).
-    old.update({k: rec[k] for k in ("window", "replaced") if rec.get(k)})
+    # A key whose window was corrected keeps each earlier crediting (`recredit`, C1389).
+    old.update({k: rec[k] for k in ("window", "replaced", "recredited") if rec.get(k)})
     old.update(replaced_at=_iso(at), replaced_by=by, replaced_why=why)
     return old
 
@@ -360,6 +439,11 @@ def check(ip: str, key, *, owner: str = "", port: int = SSH_PORT) -> dict:
                            history=list(rec.get("history") or []) + [_retired(
                                rec, now, by, f"replaced under the planned window declared by "
                                              f"{window['by']}: {window['why']}")])
+                prior = rec.get("refused") or {}
+                if prior.get("fingerprint") == got["fingerprint"]:
+                    # Kept with the key, so a later correction (`recredit`) can apply the
+                    # same rule at `kept_at` that this crediting applied (C1389).
+                    new["refused_first_at"] = prior.get("first_at") or prior.get("at") or ""
                 doc["keys"][ip] = new
                 _write(doc)
                 log.warning("ssh host key: %s answered with a new key %s (was %s), kept under "
@@ -645,11 +729,9 @@ def summaries_path() -> str:
 
 
 def closes_at(p: dict) -> float:
-    """When window *p* can take no more keys: its end plus the slack in which a restart (and
-    so a new key) is still the plan's (`restarts.PLANNED_SLACK_SECONDS`, the slack
-    `_window_for` gives it through `restarts._window_covers`)."""
-    from modules import restarts
-    return restarts._epoch(p.get("until", "")) + restarts.PLANNED_SLACK_SECONDS
+    """When window *p* can take no more keys (`key_end`): its early end when it was ended,
+    else its end plus the slack in which a restart (and so a new key) is still the plan's."""
+    return key_end(p)
 
 
 def accepted_under(wid: str, doc: dict = None) -> list:
@@ -683,6 +765,281 @@ def summary_words(s: dict) -> str:
     """"2 new host keys accepted during 'lab redeploy'" (the operator's words)."""
     n = int(s.get("count") or 0)
     return f"{n} new host key{'' if n == 1 else 's'} accepted during '{s.get('why', '')}'"
+
+
+def latest_summaries(rows: list) -> list:
+    """One summary per window, the LATEST written for it (a correction, `recredit`, appends
+    a later one counting the keys by the window each is credited to now), in the order the
+    windows were first summed up. What Needs attention draws; History draws every one."""
+    last = {}
+    for r in rows:
+        last[r.get("window")] = r
+    out, seen = [], set()
+    for r in rows:
+        if r.get("window") not in seen:
+            seen.add(r.get("window"))
+            out.append(last[r.get("window")])
+    return out
+
+
+def summary_event(s: dict) -> str:
+    """The event a summary's acknowledgement covers: the window, and for a corrected summary
+    the correction too, so acknowledging what was said before never covers what was
+    corrected after it (modules/acknowledgements.py: one event, never a later one)."""
+    c = s.get("corrected") or {}
+    return f"{s['window']}|corrected {c.get('at', '')}" if c else s["window"]
+
+
+# ---------------------------------------------------------------------------
+# A window every device of which has answered with its new key ends then (C1389)
+# ---------------------------------------------------------------------------
+#
+# The operator, 2026-10-19: "a window covering nothing more must not stay open for a stray key
+# or restart." The redeploy's window stayed open about 40 minutes after the last device had
+# answered with its new key. So the reader that sums windows up first ENDS each open window
+# expecting new keys once every device it covers is MET: a key is credited to the window for
+# it (`accepted_under`), or a later window that takes keys for it has opened (that one
+# supersedes this one for the device: `operative_window`). It ends at the latest of those
+# moments, through `restarts.end_window`, the end a reload that is back records. The WHOLE
+# window ends, its restart coverage too: each device answering with its new key is back from
+# the restart the window was declared for, so a restart after it is not the plan's (a
+# restart's estimated time still gets the slack after the end, `restarts._window_covers`).
+# A device Mercury held no key for (its first key is a first contact, never a window's) or
+# that never answers is never met, and the window then runs to its declared end.
+
+#: Who ends a window every device of which was met: the reader, never a person.
+COMPLETED_BY = "Mercury (the host-key windows reader)"
+
+
+def _covered(p: dict) -> list:
+    """The devices window *p* covers, by name: its own, or its network's for ``"*"``."""
+    from modules import restarts
+    return restarts._targets(p)[0]
+
+
+def complete_windows(now: float = None, planned: list = None) -> dict:
+    """End each open window that expects new host keys once every device it covers has been
+    met (above). ``{"ended": [{"window", "at", "words"}], "skipped": [why]}``. A window whose
+    devices cannot be read is skipped, said, and runs to its declared end. Raises
+    `HostKeyStoreUnreadable` or RuntimeError (the planned record), as `close_windows`."""
+    from modules import restarts
+
+    planned = restarts.planned_rows() if planned is None else planned
+    now = time.time() if now is None else now
+    open_ = [(pi, p) for pi, p in enumerate(planned)
+             if p.get("new_host_keys") and not p.get("ended_at")
+             and restarts._epoch(p.get("from", "")) - 60 <= now <= key_end(p)]
+    out = {"ended": [], "skipped": []}
+    if not open_:
+        return out
+    doc = read()
+    for pi, p in open_:
+        try:
+            names = _covered(p)
+        except Exception as exc:          # noqa: BLE001 - said, and the window runs on
+            out["skipped"].append(f"the window recorded {p.get('recorded_at')}: its devices "
+                                  f"could not be read ({type(exc).__name__}: {exc})")
+            continue
+        if not names:
+            continue
+        lst, wid = p.get("list", ""), window_id(p)
+        met, over = {}, {}
+        for k in accepted_under(wid, doc):
+            at = _epoch(k.get("kept_at", ""))
+            met[k["device"]] = max(met.get(k["device"], 0.0), at)
+        mine = (_epoch(p.get("recorded_at", "")), pi)
+        for i, q in enumerate(planned):
+            if (_epoch(q.get("recorded_at", "")), i) <= mine:
+                continue
+            opens = max(_epoch(q.get("recorded_at", "")),
+                        restarts._epoch(q.get("from", "")) - 60)
+            for n in names:
+                if n not in met and opens <= now and takes_keys(q, n, lst, opens):
+                    over[n] = min(over.get(n, opens), opens)
+        if any(n not in met and n not in over for n in names):
+            continue
+        at = max([met[n] if n in met else over[n] for n in names])
+        taken = sum(1 for n in names if n in met)
+        why = (f"every device it covers has answered with its new SSH host key ({taken} of "
+               f"{len(names)}"
+               + (f"; {len(names) - taken} taken over by a later window" if taken < len(names)
+                  else "")
+               + f"), the last at {_iso(at)}: it covers nothing more")
+        got = restarts.end_window(p, at, why, by=COMPLETED_BY, via="host-key-windows")
+        if got.get("ok"):
+            out["ended"].append({"window": wid, "at": _iso(at), "words": got["words"]})
+            log.warning("ssh host keys: the window recorded %s ended at %s: %s",
+                        p.get("recorded_at"), _iso(at), why)
+        else:
+            out["skipped"].append(f"the window recorded {p.get('recorded_at')}: {got['error']}")
+    return out
+
+
+# ---------------------------------------------------------------------------
+# A key credited to the wrong window, corrected as a recorded correction (C1389)
+# ---------------------------------------------------------------------------
+#
+# Before the operative-window rule, `_window_for` credited a new key to the FIRST window in
+# the record that covered the device, so with two overlapping windows (an abandoned attempt's
+# and the redeploy's) eight keys named the abandoned one. `recredit` moves a key's crediting
+# to the window the rule gives at the key's own `kept_at`, under the same lock and atomic
+# replace as every write here; the earlier crediting stays on the record (`recredited`: the
+# window, when, by whom, why and the finding) and History draws it. Each closed window whose
+# summary no longer counts what is credited to it gets a later summary, marked corrected.
+
+#: The register row of the correction (docs/OPEN_FINDINGS.md).
+RECREDIT_FINDING = "C1389"
+RECREDIT_WHY = ("credited to the earlier of two overlapping windows; the later declaration "
+                "supersedes it")
+
+
+def recredit_plan(ip: str, rec: dict, planned: list) -> dict:
+    """What the rule gives for the key *rec* holds at *ip*, read only: ``{"state": "move" |
+    "same" | "none" | "not_window" | "no_key", "words", "from", "to"}``. The rule is
+    `operative_window` at the key's `kept_at`, over the windows recorded by then, for the
+    device and network the key was credited for, with the conditions `_window_for` applied:
+    not the window the key before it was kept under, and recorded before this key's first
+    refusal when one is kept with it."""
+    if not rec or not rec.get("fingerprint"):
+        return {"state": "no_key", "words": f"Mercury holds no SSH host key for {ip}"}
+    old = rec.get("window") or {}
+    if rec.get("how") != WINDOW or not old:
+        return {"state": "not_window", "from": old, "words": (
+            f"the key Mercury holds for {ip} ({rec.get('fingerprint')}) was kept "
+            f"{rec.get('how') or 'in an unrecorded way'}, not under a planned window: there is "
+            "no crediting to correct")}
+    at = _epoch(rec.get("kept_at", ""))
+    history = rec.get("history") or []
+    used = ((history[-1].get("window") or {}).get("id") if history else None)
+    found = operative_window(planned, [(old.get("list", ""), old.get("device", ""))], at)
+    new = _eligible(found, used, _epoch(rec.get("refused_first_at") or ""))
+    said = f"{old.get('device') or ip} ({ip}) {rec.get('fingerprint')}, kept {rec.get('kept_at')}"
+    if not new:
+        return {"state": "none", "from": old, "words": (
+            f"{said}: the rule gives no window at that time, so it cannot be credited "
+            f"elsewhere; it stays with the window {window_words(old)} ('{old.get('why')}')")}
+    if new["id"] == old.get("id"):
+        return {"state": "same", "from": old, "to": new, "words": (
+            f"{said}: the rule gives the window it is credited to already, "
+            f"{window_words(old)} ('{old.get('why')}'), so there is nothing to correct")}
+    return {"state": "move", "from": old, "to": new, "words": (
+        f"{said}: credited to the window {window_words(old)} ('{old.get('why')}'); the rule "
+        f"gives the window {window_words(new)} ('{new.get('why')}')")}
+
+
+def recredit_planned(ips=None) -> list:
+    """``[(ip, plan)]`` for *ips*, or for every key held under a window when none are named:
+    what `recredit` would do, read only. Raises `HostKeyStoreUnreadable` or RuntimeError (the
+    planned record)."""
+    from modules import restarts
+    planned = restarts.planned_rows()
+    keys = read()["keys"]
+    ips = sorted(ip for ip, r in keys.items() if r.get("how") == WINDOW) if ips is None else ips
+    return [(ip, recredit_plan(ip, keys.get(ip), planned)) for ip in ips]
+
+
+def recredit(ips, *, by: str, why: str = RECREDIT_WHY, finding: str = RECREDIT_FINDING,
+             expected: dict = None) -> dict:
+    """Credit the key held at each of *ips* to the window the rule gives at its `kept_at`
+    (`recredit_plan`), as *by*, for *why*, keeping the earlier crediting on the record
+    (`recredited`) with when, who, why and *finding*; then ONE corrected summary per window
+    whose count moved (`_resum`). All or nothing, in one hold of the record's lock and one
+    atomic replace. ``{"ok", "state", "error", "records": {ip: record}, "words",
+    "summaries", "summaries_error"}``.
+
+    Refused, nothing written, naming both windows or why for each address refused: the rule
+    gives the window the key is credited to already, or none; the key is not one kept under
+    a window; the key held is not the one *expected* names for it (``{ip: fingerprint}``, the
+    plan's); the record or the planned windows cannot be read (an unreadable record is never
+    written over)."""
+    from modules import restarts
+
+    ips = [ips] if isinstance(ips, str) else list(ips or [])
+    refused = {"ok": False, "records": {}, "summaries": [], "summaries_error": ""}
+    if not ips:
+        return dict(refused, state="refused", error="name the address of each key to correct")
+    if not by or not (why or "").strip():
+        return dict(refused, state="refused", error="a correction names who made it and why")
+    try:
+        planned = restarts.planned_rows()
+    except RuntimeError as exc:
+        return dict(refused, state="unreadable", error=str(exc))
+    now = time.time()
+    try:
+        with _lock():
+            doc = read()
+            plans, problems = {}, []
+            for ip in ips:
+                rec = doc["keys"].get(ip)
+                want = (expected or {}).get(ip)
+                if want and (rec or {}).get("fingerprint") != want:
+                    problems.append(f"Mercury now holds {held_words(rec) if rec else 'no key'} "
+                                    f"for {ip}, not the {want} the plan showed")
+                    continue
+                plans[ip] = recredit_plan(ip, rec, planned)
+                if plans[ip]["state"] != "move":
+                    problems.append(plans[ip]["words"])
+            if problems:
+                states = {p["state"] for p in plans.values() if p["state"] != "move"}
+                return dict(refused, state=states.pop() if len(states) == 1 else "refused",
+                            error="nothing was corrected: " + "; ".join(problems))
+            entry = {"at": _iso(now), "by": by, "why": why.strip(), "finding": finding}
+            records, wids = {}, []
+            for ip, plan in plans.items():
+                rec = doc["keys"][ip]
+                records[ip] = dict(rec, window=plan["to"], recredited=list(
+                    rec.get("recredited") or []) + [dict(entry, window=plan["from"])])
+                doc["keys"][ip] = records[ip]
+                wids += [w for w in (plan["from"].get("id"), plan["to"]["id"]) if w not in wids]
+            _write(doc)
+            try:
+                fixed, unsummed = _resum(wids, doc, now, entry), ""
+            except RuntimeError as exc:   # the keys' correction stands; said on the result
+                fixed, unsummed = [], str(exc)
+    except HostKeyStoreUnreadable as exc:
+        return dict(refused, state="unreadable", error=str(exc))
+    for ip, plan in plans.items():
+        log.warning("ssh host key: %s re-credited by %s: %s (%s)", ip, by, plan["words"],
+                    finding)
+    _announce()
+    return {"ok": True, "state": "moved", "error": "", "records": records,
+            "words": [plans[ip]["words"] for ip in ips], "summaries": fixed,
+            "summaries_error": unsummed}
+
+
+def _resum(wids: list, doc: dict, now: float, entry: dict) -> list:
+    """Append a corrected summary for each of *wids* already summed up whose latest summary
+    no longer counts the keys credited to it now, under the summaries' lock (the caller holds
+    the record's). The earlier summary stays as it was written; the later one says what it
+    corrects. A window not yet summed up is counted by its credited keys when it closes."""
+    from modules.config import open_secure
+    from modules.filestore import PathLock
+
+    out = []
+    with PathLock(summaries_path):
+        got = summaries()
+        if got["state"] == "unreadable":
+            raise RuntimeError(f"the host-key windows' summaries ({summaries_path()}) could "
+                               f"not be read ({got.get('error')}): the key was re-credited and "
+                               "no summary was corrected")
+        latest = {r.get("window"): r for r in got["rows"]}
+        for wid in wids:
+            prev = latest.get(wid)
+            if not prev:
+                continue
+            keys = accepted_under(wid, doc)
+            if sorted((k["ip"], k["fingerprint"]) for k in keys) == sorted(
+                    (k.get("ip"), k.get("fingerprint")) for k in prev.get("keys") or []):
+                continue
+            row = dict(prev, count=len(keys), keys=keys, written_at=_iso(now),
+                       corrected={"at": entry["at"], "by": entry["by"], "why": entry["why"],
+                                  "finding": entry["finding"],
+                                  "was_count": int(prev.get("count") or 0),
+                                  "was_written_at": prev.get("written_at", "")})
+            with open_secure(summaries_path(), "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(row, sort_keys=True) + "\n")
+            out.append(row)
+    return out
 
 
 def close_windows(now: float = None, planned: list = None) -> dict:
@@ -721,7 +1078,11 @@ def close_windows(now: float = None, planned: list = None) -> dict:
                            "why": p.get("why", ""), "from": p.get("from", ""),
                            "until": p.get("until", ""), "devices": list(p.get("devices") or []),
                            "closed_at": _iso(closes_at(p)), "written_at": _iso(now),
-                           "count": len(keys), "keys": keys}
+                           "count": len(keys), "keys": keys,
+                           "recorded_at": p.get("recorded_at", "")}
+                    if p.get("ended_at"):
+                        row.update(ended_at=p["ended_at"], ended_why=p.get("ended_why", ""),
+                                   ended_by=p.get("ended_by", ""))
                     with open_secure(summaries_path(), "a", encoding="utf-8") as fh:
                         fh.write(json.dumps(row, sort_keys=True) + "\n")
                     done.add(wid)

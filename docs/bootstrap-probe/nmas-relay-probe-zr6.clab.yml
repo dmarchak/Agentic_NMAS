@@ -1,0 +1,48 @@
+name: nmas-relay-probe-zr6
+
+# ---------------------------------------------------------------------------
+# Labs 8 and 9, step 0d: the RELAYED device, zr6, ZTP'd through zr4's DHCP relay. Runbook:
+# docs/RELAY_PROBE.md. Deployed only once zr4 is onboarded with its relay intent deployed, the
+# relayed subnet added for ZTP and zr6's reservation written, so its first DISCOVER meets a relay
+# and a reservation (AutoInstall gives up after about 2.5 min, M4). A second run (option 3) is
+# this lab destroyed and deployed again: never a restart (lab/REDEPLOY.md).
+#
+#   zr6  a CONFIGLESS C8000v (P.6's patch and management passthrough, as bp-ztp-a), Gi2 on
+#        br-zr96 beside zr4 Gi3, its MAC pinned so Kea's reservation names it:
+#        aa:bb:cc:00:02:96 -> 10.255.96.2.
+#
+# PREREQUISITE: br-zr96 (made for the probe, deleted after it), with zr4's Gi3 already on it.
+# ---------------------------------------------------------------------------
+
+mgmt:
+  # 172.30.97.0/24: verify unused on the lab host before deploying (docker network ls).
+  network: clab-relay-probe-zr6
+  ipv4-subnet: 172.30.97.0/24
+
+topology:
+  kinds:
+    cisco_c8000v:
+      image: vrnetlab/cisco_c8000v:17.06.01a      # identical to the lab's routers
+
+  nodes:
+    zr6:
+      kind: cisco_c8000v
+      mgmt-ipv4: 172.30.97.12
+      # Deliberately no startup file (AutoInstall runs only with none).
+      env:
+        CLAB_MGMT_PASSTHROUGH: "true"                        # qemu's own DHCP/TFTP gone (M1)
+      binds:
+        - patches/c8000v-launch-configless.py:/launch.py     # P.6's six changes
+
+    br-zr96:
+      kind: bridge
+
+  links:
+    # zr6 Gi2 (eth1) on br-zr96, beside zr4 Gi3: the relayed segment, zr6's MAC pinned.
+    - type: veth
+      endpoints:
+        - node: zr6
+          interface: eth1
+          mac: aa:bb:cc:00:02:96
+        - node: br-zr96
+          interface: zr6-zr4

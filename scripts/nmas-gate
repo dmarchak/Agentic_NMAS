@@ -67,9 +67,47 @@ SHARDS = ("browser1", "browser2", "a", "b")
 #: CI's tests step does (NMAS_COVERAGE_TIERS=1, C773), so step 4b can run CI's ratchet.
 SUITE = ("{py} -c 0 && PYTHON={py} COVERAGE_CORE=sysmon NMAS_COVERAGE_TIERS=1 "
          "COVERAGE_FILE={cov}/.coverage.{shard} NMAS_TEST_TIERS={cov}/tiers "
-         "NMAS_TEST_TIMEOUT=740 NMAS_REQUIRE_PG=1 "
-         f"scripts/nmas-test -q -p no:cacheprovider -n {CI_WORKERS} --cov=modules --cov=routes "
+         "NMAS_TEST_TIMEOUT={bound} NMAS_REQUIRE_PG=1 "
+         "scripts/nmas-test -q -p no:cacheprovider -n {n} --cov=modules --cov=routes "
          "--cov=app --cov-report= -rEfs $({py} scripts/nmas-shards {shard})")
+#: The four shards run at once, two of them starting a headless browser: each shard's `-n` is
+#: the memory rule's (scripts/nmas-workers, the operator 2026-10-19), never more than CI's
+#: CI_WORKERS, measured before step 4 and said.
+BROWSER_SHARDS = 2
+#: Each shard's bound at CI_WORKERS workers: 2.5x the slowest shard measured at -n 4 (about
+#: 5 min, docs/TESTING.md). A shard's time goes as 1/n, so its bound does too
+#: (`suite_bound`): 740 s at -n 4, 2960 s at -n 1.
+BOUND_AT_CI_WORKERS = 740
+
+
+def suite_bound(n: int) -> int:
+    """Each shard's NMAS_TEST_TIMEOUT at *n* workers: BOUND_AT_CI_WORKERS scaled by CI_WORKERS/n."""
+    return int(BOUND_AT_CI_WORKERS * CI_WORKERS / max(1, n))
+
+
+def _workers_module():
+    import importlib.machinery
+    import importlib.util
+    loader = importlib.machinery.SourceFileLoader("nmas_workers",
+                                                  os.path.join(HERE, "nmas-workers"))
+    spec = importlib.util.spec_from_loader("nmas_workers", loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+def hold_full_suite(who: str):
+    """The full-suite lock (scripts/nmas-workers `hold_full`): the open file, or the refusal."""
+    return _workers_module().hold_full(who)
+
+
+def suite_workers(available: int = None) -> tuple:
+    """``(n, words)``: each shard's workers from the memory available now (or *available*
+    bytes), the four shards and their two browsers counted, and the choice in words."""
+    w = _workers_module()
+    available = w.mem_available() if available is None else available
+    n = min(CI_WORKERS, w.workers(available, runs=len(SHARDS), browsers=BROWSER_SHARDS))
+    return n, w.explain(available, runs=len(SHARDS), browsers=BROWSER_SHARDS)
 #: Step 4b, CI's coverage job (C808, the operator's decision of 2026-10-15: the gate passed and
 #: CI's ratchet failed afterwards, a red found only after the push): the four shards' data
 #: combined, then the report with --check against tests/coverage_baseline.json. Measured
@@ -333,8 +371,17 @@ def main(argv=None):
     if os.environ.get("NMAS_GATE_SUITE"):           # the gate's own tests: one stand-in run
         runs = {"suite": (os.environ["NMAS_GATE_SUITE"], suite_out)}
     else:
-        runs = {s: (SUITE.format(py=shlex.quote(a.python), shard=s, cov=shlex.quote(cov)),
+        n, words = suite_workers()
+        say(f"4. workers, from the memory available now: {words}; each shard bound at "
+            f"{suite_bound(n)} s")
+        runs = {s: (SUITE.format(py=shlex.quote(a.python), shard=s, cov=shlex.quote(cov), n=n,
+                                 bound=suite_bound(n)),
                     os.path.join(gitdir, f"nmas-gate-suite-{s}.out")) for s in SHARDS}
+    # AT MOST ONE FULL-SUITE RUN AT A TIME (the operator, 2026-10-19): held for the suite and
+    # the ratchet; another gate, or a bare scripts/nmas-test, refuses naming this one.
+    held = hold_full_suite(f"nmas-gate (pid {os.getpid()})")
+    if isinstance(held, str):
+        refuse("the full-suite lock", held)
     codes = run_all_to_files(runs, repo, env)
     whys, lines = [], []
     for name, (_cmd, out) in runs.items():

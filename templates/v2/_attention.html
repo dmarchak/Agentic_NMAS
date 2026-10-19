@@ -89,15 +89,18 @@
       {%- if r.acknowledge %}
       {#- An event that cannot un-happen: a person acknowledges THIS event with a reason
           (attention.acknowledge); a later event is a new row. -#}
-      {#- While the form is open and not yet sent, the row is being edited: a live redraw holds
-          (C459). Sent (busy), it lets the redraw remove the acknowledged row. -#}
-      <div class="att-ack" x-data="acknowledge" data-url="{{ url_for('attention.acknowledge') }}" data-row="{{ r.id }}" data-event="{{ r.event }}" x-bind:data-editing="(isOpen && !busy) ? 'true' : null">
+      {#- While the form is open (typing, or sent and awaiting its bounded answer), the row is
+          being edited: a live redraw holds (C459). Answered or closed, it says
+          `data-editing="false"` and holds nothing, so the redraw that removes an acknowledged
+          row happens (the operator, 2026-10-19: four rows sat on "Acknowledging…" for minutes,
+          the redraw held by the sent reason). Cancel only on an open, unsent form. -#}
+      <div class="att-ack" x-data="acknowledge" data-url="{{ url_for('attention.acknowledge') }}" data-row="{{ r.id }}" data-event="{{ r.event }}" x-bind:data-editing="editing">
         <button type="button" class="btn btn-small btn-outline" x-show="closed" x-on:click="open">Acknowledge…</button>
         <span class="att-ack-form" x-show="isOpen" x-cloak>
           <label class="sr-only" for="ack-{{ loop.index }}">Why this needs nothing more</label>
           <input id="ack-{{ loop.index }}" name="why" type="text" autocomplete="off" placeholder="Why this needs nothing more (recorded with your name)">
           <button type="button" class="btn btn-small" data-op="needs-attention" x-on:click="send" x-bind:disabled="busy" x-text="label">Acknowledge</button>{{ how('needs-attention', 'acknowledging', compact=True, op='acknowledging') }}
-          <button type="button" class="btn btn-small btn-outline" x-on:click="cancel">Cancel</button>
+          <button type="button" class="btn btn-small btn-outline" x-show="cancellable" x-on:click="cancel">Cancel</button>
         </span>
         <span class="refusal" x-show="said" x-text="said" x-cloak></span>
         <span class="att-ack-note" x-show="note" x-text="note" role="status" x-cloak></span>

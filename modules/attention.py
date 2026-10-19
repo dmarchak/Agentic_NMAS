@@ -3404,29 +3404,39 @@ def host_key_window_source(found=None) -> dict:
                              error=(f"the windows' summaries ({hk.SUMMARIES}) could not be "
                                     f"read: {got.get('error')}"))
     rows = []
-    for s in got["rows"]:
+    # One row per window, from its LATEST summary: a correction (C1389) appends one counting
+    # the keys by the window each is credited to now, so a window whose keys were moved to a
+    # later one claims none, and the later one's row is a new event to acknowledge.
+    windows = hk.latest_summaries(got["rows"])
+    for s in windows:
         keys = s.get("keys") or []
         if not int(s.get("count") or 0):
             continue
         named = "; ".join(f"{k.get('device') or k.get('ip')} {k.get('fingerprint')} (was "
                           f"{k.get('replaced') or 'none recorded'})" for k in keys[:10])
         more = f"; and {len(keys) - 10} more" if len(keys) > 10 else ""
+        c = s.get("corrected") or {}
+        fixed = (f" Corrected {c.get('at', '?')} by {c.get('by') or 'an unrecorded person'} "
+                 f"({c.get('finding', '')}): it said {c.get('was_count', '?')}, because "
+                 f"{c.get('why', '')}." if c else "")
         rows.append(row(
             source="host_key_windows", kind="window", key=s["window"], level="warning",
             what=hk.summary_words(s),
             cause=(f"The planned window declared by {s.get('by') or 'an unrecorded person'} "
-                   f"({s.get('from', '?')} to {s.get('until', '?')}, closed "
-                   f"{s.get('closed_at', '?')}) expected new SSH host keys, so Mercury kept "
-                   f"each new key it met without a person reviewing it: {named}{more}."),
+                   f"({hk.window_words(s)}; closed {hk.clock_words(s.get('closed_at'))} UTC) "
+                   f"expected new SSH host keys, so Mercury kept each new key it met without a "
+                   f"person reviewing it: {named}{more}.{fixed}"),
             action={"label": ("Review each device's new key and the one it replaced in "
                               "History, then acknowledge with what you found"),
                     "href": "/v2/history?kind=hostkeys&since=30"},
             devices=sorted({k.get("device") for k in keys if k.get("device")}),
-            since=_ts(s.get("closed_at")), event=s["window"],
-            operands={"window": s["window"], "list": s.get("list", ""),
+            since=_ts(s.get("closed_at")), event=hk.summary_event(s),
+            # The window by its own times (C1389: the raw id read as a start and an equal
+            # end); the id stays the row's key and its event, never drawn.
+            operands={"window": hk.window_words(s), "list": s.get("list", ""),
                       "count": int(s.get("count") or 0)}))
     return source_result("host_key_windows", label, read_at=started, took_ms=took, rows=rows,
-                         checked=(f"{len(got['rows'])} closed window(s) that expected new "
+                         checked=(f"{len(windows)} closed window(s) that expected new "
                                   f"keys, {len(rows)} of them kept one or more"))
 
 

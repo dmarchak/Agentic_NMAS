@@ -1,0 +1,92 @@
+#!/usr/bin/env python3
+"""Correct the planned window an SSH host key is credited to, as a recorded correction (C1389).
+
+    nmas-host-key-recredit                         # the plan: reads only
+    nmas-host-key-recredit <address>...            # the plan for these keys
+    nmas-host-key-recredit --apply --every --by <operator>
+    nmas-host-key-recredit --apply <address>... --by <operator>
+
+Before the operative-window rule (`host_keys.operative_window`, the operator, 2026-10-19), a
+new key met while two planned windows that expected new keys covered its device was credited
+to the FIRST in the record, though the later declaration superseded it. This applies the rule
+at each key's own `kept_at` and, with --apply, credits the key to the window it gives, keeping
+the earlier crediting on the record with who, when, why and the finding (`host_keys.recredit`);
+History shows each correction, and a closed window whose summary no longer counts its keys
+gets a corrected summary. Without --apply it prints the plan and changes nothing.
+
+--every applies to each key the plan would move; named addresses are refused, nothing changed,
+when the rule gives the same window or none for any of them, naming both. The record is
+written under its lock and replaced atomically; an unreadable record is refused, never written
+over. No device is contacted.
+
+Exit 0: planned, or corrected; 1: refused (named), or nothing to correct.
+"""
+
+import sys
+
+ROOT = __import__("os").path.dirname(__import__("os").path.dirname(
+    __import__("os").path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+import argparse  # noqa: E402
+
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("addresses", nargs="*", help="the address of each key (the record's key)")
+    ap.add_argument("--apply", action="store_true", help="make the correction")
+    ap.add_argument("--every", action="store_true",
+                    help="with --apply: every key the plan would move")
+    ap.add_argument("--by", default="", help="the person (default: this host's login)")
+    ap.add_argument("--why", default="", help="why (default: the finding's reason)")
+    args = ap.parse_args(argv)
+    from modules import host_keys as hk
+    if args.every and args.addresses:
+        print("refused: --every or addresses, not both", file=sys.stderr)
+        return 1
+    try:
+        plans = hk.recredit_planned(args.addresses or None)
+    except (hk.HostKeyStoreUnreadable, RuntimeError) as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 1
+    moves = [(ip, p) for ip, p in plans if p["state"] == "move"]
+    if not args.apply:
+        for ip, p in plans:
+            if args.addresses or p["state"] == "move":
+                print(f"{p['state']}: {p['words']}")
+        print(f"{len(moves)} of {len(plans)} key(s) would be re-credited"
+              + (f": apply with --apply {'--every' if not args.addresses else ''}".rstrip()
+                 if moves else ""))
+        return 0
+    if args.every and not moves:
+        print(f"refused: no key of the {len(plans)} kept under a window is credited elsewhere "
+              "than the rule gives: nothing to correct", file=sys.stderr)
+        return 1
+    if not args.every and not args.addresses:
+        print("refused: --apply names the addresses, or --every", file=sys.stderr)
+        return 1
+    from modules.identity import host_actor
+    ips = [ip for ip, _p in moves] if args.every else args.addresses
+    expected = {ip: hk.read()["keys"].get(ip, {}).get("fingerprint", "") for ip in ips}
+    out = hk.recredit(ips, by=args.by or host_actor(), why=args.why or hk.RECREDIT_WHY,
+                      expected=expected)
+    if not out["ok"]:
+        print(f"refused: {out['error']}", file=sys.stderr)
+        return 1
+    for words in out["words"]:
+        print(f"re-credited: {words}")
+    for s in out["summaries"]:
+        print(f"summary corrected: {hk.summary_words(s)} (it said "
+              f"{s['corrected']['was_count']}), the window {hk.window_words(s)}")
+    if out["summaries_error"]:
+        print(f"NOT corrected: {out['summaries_error']}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

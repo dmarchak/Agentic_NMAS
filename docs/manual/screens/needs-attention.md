@@ -195,8 +195,19 @@ say in a few words why it needs nothing more (what you found, or why it was expe
 press **Acknowledge**. The reason is required (at least three words); it is recorded with your
 name, how your identity was established and the time, and the row leaves the page.
 
+- **The answer is drawn on the row at once.** Once it is recorded, the form closes and says
+  "Acknowledged.", and the row leaves as the list next redraws. A refusal keeps the form open
+  and says why. **Cancel** is offered only before you send: once sent, the acknowledgement
+  cannot be taken back by the form.
+- **If no answer comes within 6 seconds**, the form says so and frees the button: whether it
+  was recorded is not known until the list next redraws. The row leaves if it was recorded,
+  and stays with **Acknowledge…** if not.
+
 - **An acknowledgement covers that one event.** A new restart of the same device is a new row;
-  the same line authorised once more after you acknowledged it raises the row again.
+  the same line authorised once more after you acknowledged it raises the row again. A planned
+  window's new host keys, corrected after you acknowledged them (a key moved to the window
+  that should have taken it: [Re-key](rekey#planned-window)), are a new row
+  too.
 - **The record keeps the event.** The device's History still shows the restart as unexpected,
   marked "acknowledged" with who and why.
 - **A planned window cannot be declared afterwards to clear one.** A restart is planned only

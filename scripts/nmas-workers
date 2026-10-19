@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+"""How many test workers a run may start, from the memory available NOW (the operator,
+2026-10-19: the laptop's RAM ran out with the gate's four shards at `-n 4` and two agents'
+runs beside them; swap 8 of 8 GiB used, 5.2 GiB available):
+
+    workers = min(4, floor((MemAvailable - 2 GiB - browsers x 1.2 GiB) / 1.2 GiB / runs))
+
+at least 1. 2 GiB is left to the desktop and everything else; 1.2 GiB is one xdist worker of
+this suite with coverage (measured 2026-10-19 21:0x UTC: the gate's workers held 0.53 to
+0.93 GiB RSS each, and a headless Firefox 0.4 GiB, so 1.2 GiB is their high end with margin);
+a run that starts a headless browser counts it as one more worker's memory; `runs` is how many
+runs share the measurement at once (the gate's four shards). Measured before each run.
+
+    nmas-workers [--runs R] [--browsers B] [--cap N] [--explain]
+
+prints the count (no more than N with --cap). MemAvailable is read from /proc/meminfo, or from
+the file NMAS_MEMINFO names (tests).
+
+AT MOST ONE FULL-SUITE RUN AT A TIME across every agent and terminal: `FULL_LOCK` is held
+(flock) by the gate for its suite and by `scripts/nmas-test` for a run naming no test file; a
+second refuses, naming the holder.
+"""
+
+import argparse
+import os
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import (off the host
+# there is no app service and nothing is re-run; loaded as a module by the gate, never).
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+GIB = 1024 ** 3
+#: Left to the desktop and everything else (the operator's formula).
+RESERVE = 2 * GIB
+#: One worker's memory, a headless browser counted as one more (the operator's formula; the
+#: measurement it covers is in the docstring).
+PER_WORKER = 1.2 * GIB
+#: Never more than this per run, whatever the memory: CI's runner's four vCPUs (nmas-gate).
+MAX_WORKERS = 4
+FULL_LOCK = os.environ.get("NMAS_FULL_LOCK",
+                           os.path.expanduser("~/.cache/nmas/full-suite.lock"))
+
+
+def mem_available(path: str = None) -> int:
+    """MemAvailable in bytes, from /proc/meminfo (or *path*, or NMAS_MEMINFO). Raises
+    RuntimeError naming the file when it holds no MemAvailable line."""
+    path = path or os.environ.get("NMAS_MEMINFO") or "/proc/meminfo"
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            if line.startswith("MemAvailable:"):
+                return int(line.split()[1]) * 1024
+    raise RuntimeError(f"{path} holds no MemAvailable line")
+
+
+def workers(available: int, runs: int = 1, browsers: int = 0) -> int:
+    """The operator's formula: each of *runs* runs' workers, from *available* bytes, *browsers*
+    headless browsers counted; between 1 and MAX_WORKERS."""
+    # In whole numbers, tenths of a GiB: 1.2 GiB is not a whole number of bytes, and a float
+    # floor put (4.4 - 2) / 1.2, exactly 2, at 1.
+    budget = int(available) * 10 - 20 * GIB - browsers * 12 * GIB
+    per_run = budget // (12 * GIB) // max(1, runs)
+    return max(1, min(MAX_WORKERS, per_run))
+
+
+def explain(available: int, runs: int = 1, browsers: int = 0) -> str:
+    """The choice in words: the measurement, the formula and the count."""
+    n = workers(available, runs, browsers)
+    return (f"{n} worker(s) per run: MemAvailable {available / GIB:.1f} GiB, "
+            f"min({MAX_WORKERS}, floor(({available / GIB:.1f} - 2 - {browsers} x 1.2) / 1.2 / "
+            f"{runs})), at least 1")
+
+
+def hold_full(who: str, path: str = None):
+    """Take the full-suite lock for *who*: the open lock file (keep it open for the run; the
+    lock ends when it closes or the process exits), or the refusal in words naming the holder.
+    The same flock `scripts/nmas-test` takes for a run naming no test file."""
+    import fcntl
+
+    path = path or FULL_LOCK
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fh = open(path, "a+", encoding="utf-8")                  # noqa: SIM115 - held by the caller
+    try:
+        fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        fh.seek(0)
+        holder = fh.read().strip() or "a holder that did not name itself"
+        fh.close()
+        return (f"another full-suite run holds {path} ({holder}): at most one runs at a time "
+                "(the operator, 2026-10-19); wait for it to end")
+    fh.seek(0)
+    fh.truncate()
+    fh.write(who + "\n")
+    fh.flush()
+    return fh
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--runs", type=int, default=1)
+    ap.add_argument("--browsers", type=int, default=0)
+    ap.add_argument("--cap", type=int, default=0, help="never more than this")
+    ap.add_argument("--explain", action="store_true", help="say the measurement and formula")
+    a = ap.parse_args(argv)
+    available = mem_available()
+    n = workers(available, a.runs, a.browsers)
+    if a.cap:
+        n = min(n, max(1, a.cap))
+    print(explain(available, a.runs, a.browsers) if a.explain else n)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

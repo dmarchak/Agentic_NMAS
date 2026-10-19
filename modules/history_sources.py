@@ -616,6 +616,13 @@ def restart_windows(ctx):
                              record=[("From", iso(w.get("from"))), ("Until", iso(w.get("until"))),
                                      ("Devices", ", ".join(w.get("devices") or [])),
                                      ("Via", w.get("via")), ("Correction", w.get("correction")),
+                                     # Ended early (C1389): when, by whom, why.
+                                     ("Ended early", (f"{iso(w['ended_at'])} by "
+                                                      f"{w.get('ended_by') or 'an unrecorded caller'}: "
+                                                      f"{w.get('ended_why', '')}"
+                                                      + (f" (a correction: {w['ended_correction']})"
+                                                         if w.get("ended_correction") else ""))
+                                      if w.get("ended_at") else None),
                                      ("Grafana", _restarts.silence_words(w["silence"])
                                       if w.get("silence") else "")]))
         if len(events) >= ctx["limit"]:
@@ -1349,15 +1356,37 @@ def _host_key_window_summaries(ctx, hk) -> tuple:
         if not _recent(ctx, s.get("closed_at")) or not (
                 "*" in devices or any(mine(ctx, d) for d in devices)):
             continue
+        c = s.get("corrected") or {}
+        if c:
+            # A correction (C1389) is its own row, when it was made: the summary written
+            # before it stays as it was said.
+            out.append(_event(
+                c.get("at", ""), "hostkey", hk.summary_words(s) + " (corrected)", devices,
+                who=c.get("by", ""),
+                detail=(f"the planned window {hk.window_words(s)} said "
+                        f"{c.get('was_count', '?')} when it closed; it counts the keys credited "
+                        f"to it now: {c.get('why', '')} ({c.get('finding', '')})"),
+                outcome="window", marks=["corrected"],
+                record=[("Window", f"{s.get('by', '')}: {s.get('why', '')}"),
+                        ("Window times", hk.window_words(s)),
+                        ("Keys", "; ".join(f"{k.get('device')}: {k.get('fingerprint')} (was "
+                                           f"{k.get('replaced') or 'none recorded'})"
+                                           for k in keys) or "none"),
+                        ("Said before", f"{c.get('was_count', '?')}, written "
+                                        f"{c.get('was_written_at', '?')}"),
+                        ("Corrected by", c.get("by")), ("Why", c.get("why")),
+                        ("Finding", c.get("finding"))]))
+            continue
         out.append(_event(
             s.get("closed_at", ""), "hostkey", hk.summary_words(s), devices,
-            who=s.get("by", ""), detail=f"the planned window {s.get('from', '')} to "
-                                        f"{s.get('until', '')} closed",
+            who=s.get("by", ""), detail=f"the planned window {hk.window_words(s)} closed",
             outcome="window",
             record=[("Window", f"{s.get('by', '')}: {s.get('why', '')}"),
                     ("Keys", "; ".join(f"{k.get('device')}: {k.get('fingerprint')} (was "
                                        f"{k.get('replaced') or 'none recorded'})"
                                        for k in keys) or "none"),
+                    ("Ended early", f"{s.get('ended_at')}: {s.get('ended_why', '')}"
+                     if s.get("ended_at") else None),
                     ("Written", s.get("written_at"))]))
     return out, []
 
@@ -1403,6 +1432,31 @@ def host_keys(ctx):
                             ("Network", k.get("network")), ("Why", k.get("replaced_why")),
                             ("Forgotten at", k.get("replaced_at")),
                             ("Forgotten by", k.get("replaced_by"))]))
+            # Each correction of the window this key was credited to (C1389), when it was made:
+            # the window it named before, the one it names after, who, why and the finding.
+            fixes = list(k.get("recredited") or [])
+            for j, fix in enumerate(fixes):
+                if not k.get("fingerprint") or not _recent(ctx, fix.get("at")):
+                    continue
+                was = fix.get("window") or {}
+                now_w = (fixes[j + 1].get("window") if j + 1 < len(fixes)
+                         else k.get("window")) or {}
+                events.append(_event(
+                    fix.get("at", ""), "hostkey", "SSH host key's window corrected", [host],
+                    who=fix.get("by", ""),
+                    detail=(f"{k.get('fingerprint', '')} ({k.get('type', '')}): credited to "
+                            f"the window {_hk.window_words(was)} ('{was.get('why', '')}'), now "
+                            f"to {_hk.window_words(now_w)} ('{now_w.get('why', '')}'): "
+                            f"{fix.get('why', '')} ({fix.get('finding', '')})"),
+                    outcome="window", marks=["corrected"],
+                    record=[("Address", ip), ("Fingerprint", k.get("fingerprint")),
+                            ("Kept at", k.get("kept_at")),
+                            ("Credited before", f"{was.get('by', '')}: {was.get('why', '')} "
+                                                f"({_hk.window_words(was)})"),
+                            ("Credited now", f"{now_w.get('by', '')}: {now_w.get('why', '')} "
+                                             f"({_hk.window_words(now_w)})"),
+                            ("Corrected by", fix.get("by")), ("Why", fix.get("why")),
+                            ("Finding", fix.get("finding"))]))
             if not k.get("fingerprint") or not _recent(ctx, k.get("kept_at")):
                 continue
             current = k is rec

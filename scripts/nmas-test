@@ -140,6 +140,49 @@ else
   py_line="nmas-test: python: $PY (${have:-unknown}, $how)"
 fi
 
+# WORKERS FROM THE MEMORY AVAILABLE NOW, AND ONE FULL-SUITE RUN AT A TIME (the operator,
+# 2026-10-19: the laptop's RAM ran out with the gate's four shards at -n 4 and two agents' runs
+# beside them). A -n asked for is lowered to what scripts/nmas-workers allows now (a run that
+# is unconfined may start a headless browser, so it counts one), and said; a run naming no test
+# file is the full suite, and takes the full-suite lock the gate takes, or refuses naming who
+# holds it.
+browsers=0
+[ "$allow" -eq 1 ] && browsers=1
+cap_workers() {
+  local req="$1" ask got
+  ask="$req"; [ "$req" = "auto" ] && ask=4
+  got="$("$PY" "$here/scripts/nmas-workers" --browsers "$browsers" --cap "$ask" 2>/dev/null)" || got="$ask"
+  if [ "$req" = "auto" ] || [ "$got" -lt "$ask" ]; then
+    echo "nmas-test: -n $req lowered to $got: $("$PY" "$here/scripts/nmas-workers" --browsers "$browsers" --explain 2>/dev/null)" >&2
+  fi
+  echo "$got"
+}
+full=1
+capped=()
+i=0
+while [ "$i" -lt "${#args[@]}" ]; do
+  a="${args[$i]}"
+  case "$a" in
+    -n|--numprocesses) capped+=(-n "$(cap_workers "${args[$((i+1))]}")"); i=$((i+2)); continue ;;
+    --numprocesses=*) capped+=(-n "$(cap_workers "${a#*=}")") ;;
+    -n[0-9]*|-nauto) capped+=(-n "$(cap_workers "${a#-n}")") ;;
+    tests/*|*.py|*.py::*) full=0; capped+=("$a") ;;
+    *) capped+=("$a") ;;
+  esac
+  i=$((i+1))
+done
+args=("${capped[@]}")
+if [ "$full" -eq 1 ]; then
+  lock="${NMAS_FULL_LOCK:-$HOME/.cache/nmas/full-suite.lock}"
+  mkdir -p "$(dirname "$lock")"
+  exec 9<>"$lock"
+  if ! flock -n 9; then
+    echo "nmas-test: REFUSED: another full-suite run holds $lock ($(head -1 "$lock" 2>/dev/null || echo unnamed)): at most one runs at a time (the operator, 2026-10-19); wait for it, or name the test files to run" >&2
+    exit 75
+  fi
+  echo "nmas-test (pid $$)" > "$lock"
+fi
+
 why="$(unshare -rn true 2>&1)"
 if [ $? -eq 0 ]; then
   echo "nmas-test: network: CONFINED (a loopback-only network namespace, as uid $(id -u))"

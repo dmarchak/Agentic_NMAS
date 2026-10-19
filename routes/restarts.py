@@ -30,13 +30,16 @@ def planned():
     """Body: ``{"list", "devices": [...] or ["*"], "minutes", "why", "from"?,
     "correction"?, "new_host_keys"?}``. ``from`` is a UTC time; absent, the window starts
     now. ``new_host_keys`` (true) says the devices come back with new SSH host keys (a lab
-    redeploy), so Mercury keeps one new key per device met inside the window (C906)."""
+    redeploy), so Mercury keeps one new key per device met inside the window (C906). A body
+    with ``end`` ends a window early instead (`_end`, C1389)."""
     from modules import identity
     from modules import restarts as R
     from modules.device import get_device_lists
 
     data = request.get_json(silent=True) or {}
     list_name = str(data.get("list") or "")
+    if "end" in data:
+        return _end(data, list_name)
     devices = data.get("devices")
     if not isinstance(devices, list) or not all(isinstance(d, str) and d for d in devices) \
             or not devices:
@@ -70,3 +73,33 @@ def planned():
     # not be set is the caller's to know before the restart, never a log line only.
     return jsonify({"ok": True, "record": got["record"], "covered": len(got["covered"]),
                     "silence": got.get("silence"), "said": got.get("silence_words", "")})
+
+
+def _end(data: dict, list_name: str):
+    """Body: ``{"list", "end": "<the window's recorded_at, or its id>", "why", "at"?,
+    "correction"?}``: end that window now (or at ``at``, a UTC time, which more than a
+    minute in the past needs a correction with its reason). The operator, 2026-10-19
+    (C1389): abandoning an operation ends its planned-restart window at once, so it covers
+    no later restart and takes no later SSH host key. Recorded as the VERIFIED caller."""
+    from modules import identity
+    from modules import restarts as R
+
+    ref = data.get("end")
+    if not isinstance(ref, str) or not ref.strip():
+        return jsonify({"ok": False, "error": "end names the window: the time it was "
+                                              "recorded (e.g. 2026-10-19T19:16:50Z) or its id"}), 400
+    at = None
+    if data.get("at"):
+        at = R._epoch(str(data["at"]))
+        if not at:
+            return jsonify({"ok": False, "error": f"at {data['at']!r} is not a UTC time like "
+                                                  "2026-10-19T19:25:29Z"}), 400
+    actor = identity.request_actor()
+    got = R.end_planned(list_name, ref, by=actor, why=str(data.get("why") or ""), via="api",
+                        at=at, correction=str(data.get("correction") or ""))
+    if not got["ok"]:
+        return jsonify({"ok": False, "error": got["error"]}), 409
+    log.info("planned window %s of %s ended through the API by %s: %s", ref, list_name, actor,
+             got["ended"]["words"])
+    return jsonify({"ok": True, "ended_at": got["ended"]["ended_at"],
+                    "said": got["ended"]["words"]})
