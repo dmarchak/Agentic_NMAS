@@ -147,14 +147,9 @@ the C8000v. Its watchdog also restarts a quiet VM. So 4 to 7 apply, and they nee
 their own.
 
 **If the vIOS-L2 cannot run AutoInstall:** EOS only if the dialect contract's size fits
-10-27 to 10-31 (the operator). Section 9 finds that it does not. The fallback is the operator's
-choice between:
-- the switch onboarded by DHCP through R8's relay: Mercury's DHCP onboarding of classic IOS is
-  measured, and the video says why the switch is not ZTP;
-- a vIOS-L2 whose bootstrap is typed on its console by the lab tooling (the way vrnetlab does
-  it today), and then onboarded by Mercury.
-
-Both are ready by 10-31.
+10-27 to 10-31 (the operator). Section 9 finds that it does not. **The operator's fallback
+(2026-10-19):** the switch is onboarded by DHCP through R8's relay (Mercury's DHCP onboarding of
+classic IOS is measured), and the video says why the switch is not zero-touch.
 
 ## 6. Lifecycle: what retirement leaves today (C1332 to C1345)
 
@@ -410,11 +405,26 @@ Lab 8.
 - The hosts' containers (H5, H6, H7) and their DHCP client setup, as `configs/host-net.sh` does
   for h1 to h4. That file lives in the lab repository on the lab host.
 
-## 11. Decisions for the operator, in order
+## 11. The operator's decisions (signed off 2026-10-19)
 
-1. Sign off this plan, or change it.
-2. If 0d shows relayed AutoInstall needs option 3: allow `routers` on a relayed ZTP subnet, as
-   the relay's own address only (D4 restated).
-3. R4's restart: `containerlab restart -n r4` if 0g shows it works alone, otherwise a full
-   redeploy in a 60-minute window.
-4. The addressing in section 4.
+1. **The plan is approved as written.**
+2. **D4 restated for relayed subnets, only if 0d shows AutoInstall needs it.** Option 3 is
+   allowed as the relay's own interface address and nothing else. Option 6 is never sent. D4's
+   second condition is checked on every relayed segment by the job-health row. Recorded in
+   docs/P6_ZTP.md under D4.
+3. **R4:** `containerlab restart -n r4` if 0g proves R4 comes up alone with its new link. If a
+   full redeploy is needed, it is done the evening before the build day in a 60-minute window,
+   with the nine host keys re-keyed through the GUI. **Not r5's interface:** R4–R5 is the lab's
+   BGP link to the web server in the handout's topology, and it stays.
+4. **The addressing in section 4 is approved as proposed.**
+5. **Lab 9's switch fallback, if the vIOS-L2 fails:** DHCP onboarding through R8's relay, and the
+   video says why the switch is not zero-touch.
+6. **Timing:** 0d and 0g start on 10-19, not 10-20. 0e (relayed ZTP's plan and writer) and 0f
+   (NetBox brought up to the deployed intent, cables from LLDP) start in code on 10-19 too,
+   since they are needed whatever 0d shows.
+7. **Before the throwaway:** r5's spinning container (C1354) is restarted, not removed (R5 stays
+   in the lab's topology), with its health check read before and after. 0d runs only if s3's gap
+   rate is no worse than its 10-19 baseline, reported before and after.
+8. **Capacity:** VMs 201 to 203 are the operator's lab VMs for another course. Those sessions run
+   only when the containerlab lab is quiet. The 1-vCPU C8000v lever is measured on r2 (never s3)
+   when a window allows, keeping the 10 Mbit/s level in view.

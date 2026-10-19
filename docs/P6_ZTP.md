@@ -240,6 +240,16 @@ config-source options it needs (option 67, and 150 or 66 as M3 decides) and
 server on its own `/24` (D3 derives that address from the interface Kea
 serves the subnet on), so it needs neither.
 
+**D4 restated for relayed subnets (the operator, 2026-10-19, Labs 8 and 9; it applies ONLY if
+the relayed-ZTP proof, docs/LAB8_LAB9_PLAN.md step 0d, shows AutoInstall needs it).** A device
+behind a relay reaches the config server off its own subnet, so on a RELAYED ZTP subnet option 3
+(`routers`) is allowed as the relay's own interface address (the subnet's giaddr) and nothing
+else. Option 6 (`domain-name-servers`) is still never sent. D4's second condition (nothing on the
+ZTP segment answers DNS) is checked on every relayed segment by the job-health row, as on the
+directly attached one. The reason: the phone-home call needs a resolver, not only a route, and
+broadcast DNS does not cross the relay, so a route to the config server alone does not open the
+call to Cisco; the resolver is what is withheld.
+
 **A CHECK, not a happy accident** (the operator's requirement). Subnet 255
 carries no option data today (measured 2026-09-26), but that holds only
 because nobody has touched it, while subnets 10 and 20 hand out both. So the

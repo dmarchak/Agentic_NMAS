@@ -182,7 +182,8 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
 - **The manual covers every screen and operation:** a page per sidebar item and device tab, a How
   it works page per operation naming each step its code declares, a diagram on each in the flow
   of the text, "How does this work?" beside every action, all clicked in a real browser. A v2
-  screen is not done without them. [tests/test_manual.py; tests/test_v2_layout_in_a_browser.py]
+  screen is not done without them. [tests/test_manual.py; tests/test_manual_references.py;
+  tests/test_v2_layout_in_a_browser.py]
 - **A v2 control is busy on itself until the answer arrives (never a timer) and the result
   updates in place; no narration beside it, provenance on hover; no toast.**
   [no toast: tests/test_v2_pages.py; busy: tests/test_v2_busy_on_itself.py (every pressed control that posts, and the scripts' posting components), tests/test_update_button.py (Update, About)]
@@ -332,7 +333,9 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   Retirement removes or archives every per-device artefact (intent, goldens, receipts, host
   keys, reservations, monitoring targets, credential overrides, policy device lists, Needs
   attention rows) and frees the name for a new device that inherits nothing** (the operator,
-  2026-10-19). [not mechanised]
+  2026-10-19). [no device name in the product but those its inventory declares:
+  tests/test_device_names.py; retirement leaves nothing a same-name device inherits:
+  tests/test_retire_leaves_nothing.py]
 - **A scan has a floor on its population and a planted case it finds; a control's expectation
   comes by a path independent of the code it breaks.** [partly: many tests' floors; not required of new scans] [why](docs/LESSONS.md#floors-and-independent-controls)
 - **An absence is a finding only if the store that would hold it was checked and shown able to
