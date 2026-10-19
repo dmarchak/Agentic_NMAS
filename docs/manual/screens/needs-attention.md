@@ -42,9 +42,23 @@ nothing needing attention.
 
 Background readers keep each source's value: job health (the host's scheduled checks), drift,
 approvals, pending onboardings, rollback blocks, Grafana's alerts (a device's heartbeat
-stopping is one), integrations, reachability, routing adjacencies,
+stopping is one), integrations, reachability, routing adjacencies (as Prometheus reads them, and
+as the devices log them),
 baselines, the remote's publication, unplanned device restarts (a crash file saved makes the row critical) and the app's own version. A
 reader that finishes announces it, and the page redraws in place.
+
+**Adjacencies logged down.** Prometheus reads each device's routing tables once a minute, so
+an adjacency that drops and comes back between two reads never shows there. The device's own
+log does show it. Mercury reads the routing adjacency changes every managed device logged
+(`%OSPF-5-ADJCHG`, `%OSPFv3-5-ADJCHG`, `%BGP-5-ADJCHANGE`) and raises one row per adjacency.
+The row names the logging device, the protocol, the neighbour, how many times it went down in
+the last day, the last time and the reason the device gave.
+- A drop inside a planned restart's window, or around a deploy to that device, is counted under
+  What was checked and never raised.
+- An adjacency that flaps for a known reason can be acknowledged within its band: the highest
+  daily count of the last week. It stays quiet while the day's count stays at or under that,
+  and returns, saying so, when it goes above.
+- With no drop for a day, the row clears.
 
 Oxidized is retired (2026-10-08), and its freshness check with it: nothing here compares
 Oxidized's copy. A change made on a device outside Mercury is raised by the drift check, which reads each

@@ -33,6 +33,9 @@ WOKEN_BY = {
     # committed host_vars at HEAD: an intent commit moves the adjacencies intent implies; a
     # settings change can move the Prometheus it reads.
     "adjacencies": ("intent", "settings"),
+    # Loki's syslog and the inventory it attributes lines by: a list's devices change with the
+    # inventory; Loki by settings.
+    "adjacency-log": ("inventory", "settings"),
     # the baseline tags, and the goldens and intent at each, against the credentials held now:
     # a baseline taken, a golden or intent commit, a credential changed or rotated.
     "baseline-usability": ("baselines", "goldens", "intent", "credentials", "rotation"),

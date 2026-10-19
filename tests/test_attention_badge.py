@@ -127,7 +127,8 @@ class TestARowThatClearsByTime:
         clears_at (read from the source, AST), so a new time-cleared kind needs it."""
         import ast
         timed = {k for k, (ways, _) in attention.CLEARS.items() if "time" in ways}
-        assert timed == {("approvals", "pending"), ("restarts", "unplanned")}
+        assert timed == {("approvals", "pending"), ("restarts", "unplanned"),
+                         ("adjacency_log", "flap")}     # a day after its last drop (C589)
         tree = ast.parse(open(attention.__file__, encoding="utf-8").read())
         found = set()
         for node in ast.walk(tree):

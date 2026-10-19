@@ -94,7 +94,9 @@ class TestEveryKindSaysHowItClears:
                                      ("operations", "interrupted"),
                                      ("grafana", "series"),     # within its band (C433)
                                      # A window's new SSH host keys (C906, 2026-10-16).
-                                     ("host_key_windows", "window")}
+                                     ("host_key_windows", "window"),
+                                     # An adjacency's logged drops, within its band (C589).
+                                     ("adjacency_log", "flap")}
         for kind in ACKNOWLEDGED_HERE:
             assert "acknowledge" in CLEARS[kind][0], kind
         # Every other kind naming acknowledge does it through its OWN control, named.

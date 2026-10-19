@@ -140,6 +140,11 @@ ROW_KINDS = {
     ("adjacencies", "link"): ("an adjacency intent implies is not up",
                               "check the link and both ends"),
     ("adjacencies", "unmeasured"): ("adjacencies cannot be judged", "check the Prometheus targets"),
+    # C589: a drop between two scrapes, seen only in the device's own log.
+    ("adjacency_log", "flap"): ("a managed device logged a routing adjacency going down, "
+                                "outside any planned restart or deploy",
+                                "read the device's logs and neighbours; acknowledge it within "
+                                "its measured band if the cause is known"),
     ("restarts", "unplanned"): ("a device restarted and nothing planned it",
                                 "read the device's reason and crash file, and check the host then"),
     ("operations", "interrupted"): ("an operation on a device did not finish: the process ended "
@@ -251,6 +256,11 @@ CLEARS = {
                              "says it is done on the Update page"),
     ("adjacencies", "link"): (("resolves",), "the next read finds the adjacency up"),
     ("adjacencies", "unmeasured"): (("resolves",), "Prometheus scrapes the protocol again"),
+    ("adjacency_log", "flap"): (("resolves", "acknowledge", "time"),
+                                "a day with no unexplained drop logged (by time, a day after the "
+                                "last), or acknowledged within its band: the highest daily count "
+                                "of the last 7 days, holding while the day's count stays at or "
+                                "under it"),
     ("adjacencies", "error"): (("resolves",), "the intent file can be read"),
     ("operations", "interrupted"): (("acknowledge",), "a person acknowledges it with a reason, "
                                     "after reading the devices; the record stays in the list's "
@@ -280,7 +290,9 @@ ACKNOWLEDGED_HERE = frozenset({("restarts", "unplanned"), ("authorisations", "re
                                # Within its measured band, never for good (C433).
                                ("grafana", "series"),
                                # A window's new host keys, once it has closed (C906).
-                               ("host_key_windows", "window")})
+                               ("host_key_windows", "window"),
+                               # Within its measured band of daily drops (C589, C433's shape).
+                               ("adjacency_log", "flap")})
 
 #: Words that say there is nothing to do: an action is a thing a person does.
 NOT_AN_ACTION = ("nothing to do", "it is information", "is what is known",
@@ -3102,6 +3114,114 @@ def adjacency_source(cached=None) -> dict:
                     if settling else "")))
 
 
+#: A drop within this long BEFORE a deploy's receipt (written as the deploy ends), or a minute
+#: after it, is the deploy's own: verify's longest settle wait is BGP's hold time, 180 s
+#: (tests/test_bgp_hold_watch.py), times 2.5, plus the deploy itself. An estimate from that
+#: bound, not a measured deploy length; it errs toward counting a drop as the deploy's.
+DEPLOY_WINDOW_S = 600
+
+
+def _explained(drop: dict, a: dict, planned: list, receipts) -> str:
+    """Why a logged drop needs no row, or ``""``: a planned restart's window covering the
+    logging device, or a deploy to it around that time. Its peer is named by an address or a
+    router id, not a device, so a restart of the peer is not looked up: that drop is raised,
+    and its row says the peer may have restarted only by the reason the device gave."""
+    from modules import restarts
+
+    at = drop["epoch"]
+    if restarts.planned_for(a["device"], at, planned, a.get("list", "")):
+        return "planned restart"
+    for r in receipts(a.get("list", ""), a["device"]):
+        t = _ts(r.get("at"))
+        if t and t - DEPLOY_WINDOW_S <= at <= t + 60:
+            return "deploy"
+    return ""
+
+
+def adjacency_log_source(cached=None, planned=None, receipts=None) -> dict:
+    """C589 (Core 1.0's K2): routing adjacencies a managed device LOGGED going down in the last
+    day, which a drop between two scrapes leaves only in the log (the `adjacency-log` reader).
+    ONE row per adjacency, its unexplained drops counted. A drop a planned restart's window or a
+    deploy explains is counted on `checked`, never on a row. A person may acknowledge an
+    adjacency within its measured BAND (C433's pattern): the highest daily count of the reader's
+    week. It stays quiet while its day's count stays at or under that, and returns above it."""
+    from modules import reader_job
+    from modules import restarts
+
+    started = time.time()
+    label = "Adjacencies logged down"
+    got = reader_job.read_cached("adjacency-log") if cached is None else cached
+    doc = got.get("doc") or {}
+    good = doc.get("last_good") or {}
+    took = int((time.time() - started) * 1000)
+    if got["state"] != "ok" or not good:
+        why = (got.get("why") if got["state"] != "ok" else
+               "the reader has never stored a value; its last attempt: "
+               + ((doc.get("last_attempt") or {}).get("error") or "none recorded"))
+        return source_result("adjacency_log", label, read_at=started, took_ms=took,
+                             error=f"not read yet: {why}")
+    v = good.get("value") or {}
+    value_at, promise = _ts(good.get("value_at")), doc.get("stale_after_seconds")
+    try:
+        planned = restarts.planned_rows() if planned is None else planned
+    except RuntimeError as exc:
+        return source_result("adjacency_log", label, read_at=started, took_ms=took,
+                             error=f"{exc}: a drop a planned restart explains cannot be told "
+                                   "from one it does not")
+    if receipts is None:
+        from modules.nsot import receipts as R
+
+        def receipts(list_name, device):
+            got_r = R.read(list_name or "Default", device, limit=50)
+            if got_r["state"] == "unreadable":
+                raise RuntimeError(f"{list_name}'s deploy receipts could not be read: "
+                                   f"{got_r.get('error')}")
+            return got_r["rows"]
+    rows, explained, adjacencies = [], 0, v.get("adjacencies") or {}
+    try:
+        for k, a in sorted(adjacencies.items()):
+            drops = a.get("drops") or []
+            kept = [d for d in drops if not _explained(d, a, planned, receipts)]
+            explained += len(drops) - len(kept)
+            if not kept:
+                continue
+            last = kept[0]
+            n = len(kept)
+            reasons = sorted({d.get("reason") or "no reason given" for d in kept})
+            where = f" on {a['interface']}" if a.get("interface") else ""
+            what = (f"{a['device']}'s {a['protocol']} adjacency to {a['neighbor']} went down "
+                    f"{n} time{'' if n == 1 else 's'} in the last day")
+            cause = (f"{a['device']} logged it down{where} {n} time{'' if n == 1 else 's'}, the "
+                     f"last at {last['at'][11:16]} UTC ({'; '.join(reasons)}), outside any "
+                     "planned restart or deploy. Prometheus scrapes once a minute and cannot "
+                     "see a drop that recovers between two scrapes, so only the device's log "
+                     f"shows it. Its highest daily count in the last {v.get('window_days', 7)} "
+                     f"days: {a.get('band', n)}")
+            rows.append(row(
+                source="adjacency_log", kind="flap", key=k, level="warning", what=what,
+                devices=[a["device"]], since=last["epoch"], cause=cause, event=k,
+                clears_at=last["epoch"] + 86400, read_at=value_at,
+                operands={"list": a.get("list"), "band": a.get("band"),
+                          "band_reading": {"value": n, "at": good.get("value_at")}},
+                action={"label": (f"Read {a['device']}'s Logs around {last['at'][11:16]} UTC "
+                                  "and its Neighbours; if the cause is known, acknowledge it "
+                                  "within its measured band"),
+                        "href": (f"/v2/device/{a['device']}?tab=logs"
+                                 f"&list={a.get('list') or ''}")}))
+    except RuntimeError as exc:
+        return source_result("adjacency_log", label, read_at=started, took_ms=took,
+                             value_at=value_at, stale_after_seconds=promise,
+                             reader="adjacency-log", error=str(exc))
+    return source_result(
+        "adjacency_log", label, read_at=started, took_ms=took, rows=rows, value_at=value_at,
+        stale_after_seconds=promise, reader="adjacency-log",
+        checked=(f"{v.get('lines', 0)} adjacency line(s) in Loki over the last "
+                 f"{v.get('window_days', 7)} days, from {v.get('devices', 0)} managed "
+                 f"device(s); {len(adjacencies)} adjacency(ies) logged down"
+                 + (f"; {explained} drop(s) inside a planned restart or a deploy, not raised"
+                    if explained else "")))
+
+
 # ---------------------------------------------------------------------------
 # Source: SSH host keys refused (C906)
 # ---------------------------------------------------------------------------
@@ -3207,7 +3327,7 @@ SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding
            host_steps_source, adjacency_source, restart_source,
            interrupted_source, dashboard_roles_source, template_behind_source,
            records_source, scheduled_rotation_source, host_key_source,
-           host_key_window_source, netbox_inventory_source)
+           host_key_window_source, netbox_inventory_source, adjacency_log_source)
 
 
 #: What can move each source's rows: the data keys (modules/invalidation.VOCABULARY) whose
@@ -3238,6 +3358,8 @@ SOURCE_KEYS = {
     "pushed_source": ("app_version",),
     "host_steps_source": ("app_version",),
     "adjacency_source": ("adjacencies",),
+    # The adjacency-log reader announces the same key (C589).
+    "adjacency_log_source": ("adjacencies",),
     "restart_source": ("restarts",),
     # A hold left by a process that ended is found at the next read; the page's catch-up on
     # reconnect (the process that ended was this app) is what re-reads it.
@@ -3536,7 +3658,8 @@ def _without_acknowledged(rows: list):
 #: exists NOW (computed again, never taken from the browser).
 _ACK_SOURCES = {"restarts": "restart_source", "authorisations": "authorisation_source",
                 "operations": "interrupted_source", "grafana": "grafana_source",
-                "host_key_windows": "host_key_window_source"}
+                "host_key_windows": "host_key_window_source",
+                "adjacency_log": "adjacency_log_source"}
 
 
 def acknowledge(row_id: str, event: str, why: str, *, by: str, verified: str) -> dict:
@@ -3595,6 +3718,15 @@ def acknowledge(row_id: str, event: str, why: str, *, by: str, verified: str) ->
                                           "within one"}
         now, _why = current(ops.get("value_expr", ""), ops.get("labels") or {})
         extra = {"band": b, "value": now}
+    elif (found["source"], found["kind"]) == ("adjacency_log", "flap"):
+        # WITHIN A BAND (C589, C433's shape): the adjacency's highest daily count of drops in the
+        # reader's week, and its count in the last day; it holds while that stays at or under.
+        ops = found.get("operands") or {}
+        if ops.get("band") is None:
+            return {"ok": False, "error": "Not acknowledged: its band (the highest daily count "
+                                          "of the last week) was not read, and an "
+                                          "acknowledgement here holds only within one"}
+        extra = {"band": ops["band"], "value": (ops.get("band_reading") or {}).get("value")}
     entry = ACK.record(row_id, found["event"], why=why, by=by, verified=verified,
                        kind=f"{found['source']}/{found['kind']}", what=found["what"],
                        devices=found.get("devices") or [], **extra)
