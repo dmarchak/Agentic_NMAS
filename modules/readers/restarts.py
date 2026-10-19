@@ -134,7 +134,7 @@ def read(previous=None, clock=time.time, source=None, devices=None, reason=None)
     stored = R.events()
     if stored["state"] == "unreadable":
         raise RuntimeError(f"the restart record could not be read: {stored.get('error')}")
-    planned = R._read_jsonl(R._data("planned_restarts.jsonl"))
+    planned = R.planned()
     if planned["state"] == "unreadable":
         raise RuntimeError(f"the planned-restart record could not be read: {planned.get('error')}")
     rows, new, unmanaged = list(stored["rows"]), [], []

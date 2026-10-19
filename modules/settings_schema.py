@@ -439,6 +439,9 @@ DEFAULTS: dict = {
     # it on the Records database card, which copies, switches and checks (records_migrate).
     "records_store_receipts": "file",
     "records_store_acknowledgements": "file",
+    "records_store_restarts": "file",
+    "records_store_restart_windows": "file",
+    "records_store_restart_window_ends": "file",
 
     # ── Platform map (NetBox platform slug → how NMAS treats the device) ────
     # This map is what makes multi-vendor support a configuration change rather
@@ -822,6 +825,9 @@ SCHEMA: dict = {
         "records_db_user": _STR,
         "records_store_receipts": {"type": "string", "enum": ["file", "postgres"]},
         "records_store_acknowledgements": {"type": "string", "enum": ["file", "postgres"]},
+        "records_store_restarts": {"type": "string", "enum": ["file", "postgres"]},
+        "records_store_restart_windows": {"type": "string", "enum": ["file", "postgres"]},
+        "records_store_restart_window_ends": {"type": "string", "enum": ["file", "postgres"]},
 
         "platform_map": {
             "type": "object",

@@ -75,7 +75,8 @@ SCOPES: dict = {
     # Mercury's records database: one for the installation (P4-2), never a network's.
     **_group(HOST, "records_db", "records_db_host", "records_db_port", "records_db_name",
              "records_db_user", "records_db_password", "records_store_receipts",
-             "records_store_acknowledgements"),
+             "records_store_acknowledgements", "records_store_restarts",
+             "records_store_restart_windows", "records_store_restart_window_ends"),
     # Lab 2's NETCONF demo script: global, and lab tooling (P.8 decision 4; NSOT_STAGE10_PLAN
     # 6.0b moves it to lab/).
     **_group(HOST, "lab_demo", "yang_push_script"),

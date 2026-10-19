@@ -127,9 +127,27 @@ def _acknowledgements() -> LineStore:
                      noun="acknowledgements")
 
 
+def _restart_store(name: str, words: str, noun: str):
+    """One of `restarts.py`'s three records, each one file for the installation (K31)."""
+    def build() -> LineStore:
+        from modules import restarts as R
+
+        file_name = next(f for f, s in R.LINE_STORES.items() if s == name)
+        return LineStore(name=name, words=words, table=f"{name.rstrip('s')}_lines",
+                         files=lambda: R.files(file_name),
+                         path_for=lambda _network: R._data(file_name), per_network=False,
+                         noun=noun)
+    return build
+
+
 #: Each line store, by name, built when asked (its owner module imports late), in
 #: `records_db.STORES` order.
-LINE_STORES = {"receipts": _receipts, "acknowledgements": _acknowledgements}
+LINE_STORES = {"receipts": _receipts, "acknowledgements": _acknowledgements,
+               "restarts": _restart_store("restarts", "Restarts seen", "restarts"),
+               "restart_windows": _restart_store("restart_windows", "Planned-restart windows",
+                                                 "windows"),
+               "restart_window_ends": _restart_store(
+                   "restart_window_ends", "Planned-restart windows ended early", "ends")}
 
 
 def store_of(name: str = STORE) -> LineStore:

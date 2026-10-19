@@ -80,6 +80,67 @@ def _data(name: str) -> str:
     return os.path.join(DATA_DIR, name)
 
 
+#: Each of this module's records, by its file, and its line store on the records database (K31:
+#: one file each for the installation; moved by a person on Settings › Installation ›
+#: Connections). `_read` and `_append` are the only reads and writes of these files.
+LINE_STORES = {"restarts.jsonl": "restarts", "planned_restarts.jsonl": "restart_windows",
+               "planned_restart_ends.jsonl": "restart_window_ends"}
+
+
+def files(name: str) -> dict:
+    """``{"": path}`` when record *name* exists, else ``{}``: its files, as the records
+    migration counts them."""
+    path = _data(name)
+    return {"": path} if os.path.exists(path) else {}
+
+
+def _on_database(name: str) -> bool:
+    from modules import records_db
+
+    return records_db.backend(LINE_STORES[name]) == records_db.POSTGRES
+
+
+def _read(name: str) -> dict:
+    """Record *name*'s rows: ``{"state": "ok"|"absent"|"unreadable", "rows"}``, from its file or,
+    once moved, the records database (one that does not answer is unreadable, never empty)."""
+    if _on_database(name):
+        from modules import records_migrate
+
+        try:
+            return {"state": "ok",
+                    "rows": records_migrate.table_lines("", store=LINE_STORES[name])}
+        except Exception as exc:                      # noqa: BLE001 (said, never "none")
+            first = (str(exc).strip().splitlines() or [type(exc).__name__])[0]
+            return {"state": "unreadable", "rows": [],
+                    "error": f"the records database: {type(exc).__name__}: {first}"}
+    return _read_jsonl(_data(name))
+
+
+def _append(name: str, row: dict) -> None:
+    """Append *row* to record *name*: its file under its lock, or, once moved, the records
+    database. Raises naming why when it could not be kept."""
+    from modules.config import open_secure
+    from modules.filestore import PathLock
+
+    line = json.dumps(row, sort_keys=True)
+    if _on_database(name):
+        from modules import records_migrate
+
+        records_migrate.append_lines("", [line], store=LINE_STORES[name])
+        return
+    path = _data(name)
+    with PathLock(path):
+        with open_secure(path, "a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+
+
+def planned() -> dict:
+    """The planned windows as recorded: ``{"state", "rows"}`` (absent, unreadable or ok), for a
+    reader that must tell an unreadable record from none (C1324: the restarts reader read the
+    file itself)."""
+    return _read("planned_restarts.jsonl")
+
+
 def _iso(ts: float) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
 
@@ -173,8 +234,6 @@ def record_planned(devices, start: float, end: float, by: str, why: str, via: st
     unplanned restart"), naming each restart, unless it is marked as a *correction* with
     its own reason: a window that was really planned and only recorded late. A correction
     is kept as one, and History says so."""
-    from modules.config import open_secure
-    from modules.filestore import PathLock
 
     devices = [d for d in (devices or []) if d]
     if not devices or not by or not (why or "").strip() or end < start:
@@ -211,11 +270,8 @@ def record_planned(devices, start: float, end: float, by: str, why: str, via: st
     # has already ended (a correction for the past) silences nothing.
     silence = silence_window(row)
     row["silence"] = silence
-    path = _data("planned_restarts.jsonl")
     try:
-        with PathLock(path):
-            with open_secure(path, "a", encoding="utf-8") as fh:
-                fh.write(json.dumps(row, sort_keys=True) + "\n")
+        _append("planned_restarts.jsonl", row)
     except Exception:
         # The window was not recorded, so its silence must not outlive it unrecorded.
         _move_silences(row, time.time(), "the window could not be recorded")
@@ -372,17 +428,12 @@ def end_window(p: dict, at: float, why: str, by: str = "") -> dict:
     """End window *p* early, at *at* (a reload that is back): recorded in
     `planned_restart_ends.jsonl`, and its silences moved to end `SETTLE_SECONDS` later, since
     the alerts outlast the return. ``{"ok", "ended_at", "silences", "words", "error"}``."""
-    from modules.config import open_secure
-    from modules.filestore import PathLock
 
     moved = _move_silences(p, at + SETTLE_SECONDS, why)
     row = {"window": window_id(p), "ended_at": _iso(at), "why": why, "by": by,
            "silences": moved, "recorded_at": _iso(time.time())}
-    path = _data("planned_restart_ends.jsonl")
     try:
-        with PathLock(path):
-            with open_secure(path, "a", encoding="utf-8") as fh:
-                fh.write(json.dumps(row, sort_keys=True) + "\n")
+        _append("planned_restart_ends.jsonl", row)
     except Exception as exc:                     # noqa: BLE001 - said on the result
         log.error("restarts: the window's end was NOT recorded: %s", exc)
         return {"ok": False, "ended_at": row["ended_at"], "silences": moved,
@@ -400,7 +451,7 @@ def end_window(p: dict, at: float, why: str, by: str = "") -> dict:
 def ends() -> dict:
     """``{window id: ended_at epoch}``: every window ended early. An unreadable record ends
     none, so a window is held to its declared end, never cut short by a guess."""
-    got = _read_jsonl(_data("planned_restart_ends.jsonl"))
+    got = _read("planned_restart_ends.jsonl")
     out = {}
     for r in got["rows"]:
         at = _epoch(r.get("ended_at", ""))
@@ -501,7 +552,7 @@ def events(device: str = "", list_name: str = "") -> dict:
     """``{"state", "rows"}``: every restart recorded, newest first, filtered by device and
     list. *state* says absent (none recorded yet) or unreadable, never an empty list for
     either."""
-    got = _read_jsonl(_data("restarts.jsonl"))
+    got = _read("restarts.jsonl")
     rows = [r for r in got["rows"]
             if (not device or r.get("device") == device)
             and (not list_name or r.get("list") == list_name)]
@@ -529,7 +580,7 @@ def judged(rows: list, planned: list) -> list:
 def planned_rows() -> list:
     """The planned windows, or [] when none are recorded; an unreadable record raises, because
     reading it as "nothing planned" would raise a row for every planned restart."""
-    got = _read_jsonl(_data("planned_restarts.jsonl"))
+    got = _read("planned_restarts.jsonl")
     if got["state"] == "unreadable":
         raise RuntimeError(f"the planned-restart record could not be read: {got.get('error')}")
     return got["rows"]
@@ -541,12 +592,7 @@ def known(device: str, at: float, rows: list, list_name: str = "") -> bool:
 
 
 def append(row: dict) -> None:
-    from modules.config import open_secure
-    from modules.filestore import PathLock
-    path = _data("restarts.jsonl")
-    with PathLock(path):
-        with open_secure(path, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(row, sort_keys=True) + "\n")
+    _append("restarts.jsonl", row)
 
 
 def words(r: dict) -> str:

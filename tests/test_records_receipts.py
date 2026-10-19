@@ -314,7 +314,8 @@ class TestTheCard:
         html = app_db["client"].get("/v2/settings/installation").get_data(as_text=True)
         s = _stores(html)
         assert "Deploy receipts" in s and "its files" in s and "Move to the database…" in s
-        assert "0 of 2 on the database" in s and "Acknowledgements" in s
+        assert f"0 of {len(records_db.STORES)} on the database" in s
+        assert all(records_db.STORE_WORDS[st] in s for st in records_db.STORES), s
         assert 'hx-trigger="nmas:records from:body' in s
 
     def test_the_preview_counts_every_network_and_writes_nothing(self, app_db):
@@ -334,7 +335,8 @@ class TestTheCard:
         assert s.count(">pass<") == len(RM.MOVE_STEPS) and "FAILS" not in s
         assert receipts.on_database()
         page = _stores(app_db["client"].get("/v2/settings/installation").get_data(as_text=True))
-        assert "Move back to files…" in page and "1 of 2 on the database" in page
+        assert "Move back to files…" in page
+        assert f"1 of {len(records_db.STORES)} on the database" in page
         assert page.count("hx-vals='{\"store\": \"receipts\"}'") == 1, "Move back sends its store"
 
     def test_a_moved_preview_is_refused_and_nothing_changes(self, app_db):
