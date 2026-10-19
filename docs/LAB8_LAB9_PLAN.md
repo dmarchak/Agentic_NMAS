@@ -50,7 +50,7 @@ operator's lab tooling; **C** is code to build first.
 | 0c | Feature packs for OSPF (areas, ABR), RIPv2 and redistribution, rendered from intent for IOS and IOS-XE, with round trips on captured configs | C | **built** (K7's commit, 10-19); IOS-XE 17's display of `subnets` unmeasured | L | done 10-19 |
 | 0d | The relayed-ZTP proof on a throwaway pair (a relay node, a configless C8000v behind it, with and without option 3) | L/measure | no | M | 10-20 (not run on the night of 10-19: s3's gaps were already widening, and the pair adds about 3.7 CPUs of the emulation work they follow; it also needs hand changes to the live Kea, the firewall and a route on the NMAS host) |
 | 0e | Relayed ZTP in Mercury: the plan and writer for a relayed subnet (server address, a fragment per relayed subnet, option 3 as the relay's own address if 0d needs it, the DNS check on the relayed path), and the firewall's udp/69 rule widened by a host step (C1346) | C | no | M to L | 10-20 to 10-21 |
-| 0f | NetBox on add: after a device's intent is deployed, its record brought up to the golden through Import's preview and confirm; cables from both ends' LLDP (C1344) | C | no | M | 10-21 |
+| 0f | NetBox on add: after a device's intent is deployed, its record brought up to the golden through Import's preview and confirm; cables from both ends' LLDP (C1344) | C | **built** (0f's commit, 10-19; not deployed): the device tab's one-device Import into NetBox…, a Needs attention row while NetBox holds less than the golden, cables from the Topology reader's stored LLDP | M | done 10-19 |
 | 0g | `containerlab restart -n` measured on a throwaway (does a link added to the file come up, the time, the other end, the host key) | L/measure | no | S | with 0d |
 | 1 | r6 retired through the GUI (Device page › Retire), then its separate lab (`clab-r6`) destroyed | M, then L | retire built; completeness is 0a | S | 10-22 |
 | 2 | R6 and R7 planned in NetBox as Planned devices, addresses from NetBox's prefixes (section 4) | M (NetBox) | NetBox's own screens; no Mercury screen plans a device | S | 10-22 |
@@ -204,7 +204,10 @@ Everything else stays, keyed by name. A same-name device inherits:
   - Prometheus targets;
   - NetBox's record from the bootstrap golden: device, platform, the management interface and
     address. There are no cables.
-- **Never written:** NetBox after the device's intent is deployed (C1344).
+- **Never written by itself:** NetBox after the device's intent is deployed. Since 0f (C1344),
+  a device whose NetBox record holds less than its committed golden is a Needs attention row,
+  and its NetBox tab's Import into NetBox… brings it up to the golden, cables from both ends'
+  LLDP included, through the import's preview and confirm.
 
 **On leave today:** NetBox's record stays Active (C1342).
 

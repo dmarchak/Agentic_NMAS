@@ -44,6 +44,13 @@ could not be read.
   ([how](netbox-import#remove-preview)).
 - **Import every network…** previews one import of them all.
 
+One device is imported from its own page: the device page's NetBox tab has **Import into
+NetBox…** for that device alone, the same preview and confirm, used to bring its record up to
+its committed golden after its intent is deployed. Needs attention names each device whose
+golden holds more than NetBox. An import also makes the cables LLDP shows between managed
+devices, from both ends' reports as the Topology reader last stored them. It reports every
+other neighbour, never inventing one ([cables](netbox-import#cables)).
+
 Confirm with **Import** or **Remove** (busy as **Starting the import…** or **Removing…**): the plan is recomputed and compared, the one-shot
 confirmation is used, and only then are writes turned on if you asked for that. An import then
 runs on, and its card fills in with each network's result when it ends. Each import, Remove

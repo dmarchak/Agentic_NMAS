@@ -360,6 +360,18 @@ class FakeNetBox:
                 if str(device.get("id")) != str(value):
                     return False
                 continue
+            if key == "device_id" and endpoint == "ipam/ip-addresses" \
+                    and obj.get("assigned_object_type") == "dcim.interface":
+                # The same join for an address the client POSTed (C1344): its interface, by
+                # `assigned_object_id`, and that interface's device. A list is any of its
+                # members, as NetBox's repeated filter is.
+                iface = next((i for i in self.store.get("dcim/interfaces", [])
+                              if i.get("id") == obj.get("assigned_object_id")), None)
+                held = (iface or {}).get("device")
+                held = held.get("id") if isinstance(held, dict) else held
+                if str(held) not in {str(m) for m in _members(value)}:
+                    return False
+                continue
             if key == "interface_id" and "assigned_object_type" in obj:
                 # NetBox supports ?interface_id= on ipam/ip-addresses by
                 # joining through the generic assignment. Added when the
@@ -386,7 +398,11 @@ class FakeNetBox:
                     actual = obj[cand]
                     if isinstance(actual, dict):
                         actual = actual.get("id", actual.get("name"))
-                    if str(actual) != str(value):
+                    # A list is any of its members (C1344): NetBox reads a repeated filter
+                    # (`?id=1&id=2`, `?device_id=1&device_id=2`) as one of them.
+                    wanted = ({str(m) for m in _members(value)}
+                              if isinstance(value, (list, tuple, set)) else {str(value)})
+                    if str(actual) not in wanted:
                         return False
                     break
             else:
@@ -409,7 +425,15 @@ class FakeNetBox:
                     return FakeResponse(obj)
             return FakeResponse({"detail": "Not found."}, 404)
         hits = [o for o in items if self._matches(o, params, endpoint)]
+        if endpoint == "dcim/interfaces":
+            # NetBox renders an interface's `cable` (read-only: the cable terminating on it, or
+            # null), computed from the cables held, never stored on the interface (C1344).
+            hits = [dict(o, cable=self._cable_brief(o)) for o in hits]
         return FakeResponse({"results": hits, "next": None, "count": len(hits)})
+
+    def _cable_brief(self, iface):
+        held = self._cable_on({"object_type": "dcim.interface", "object_id": iface.get("id")})
+        return None if held is None else {"id": held["id"], "label": held.get("label", "")}
 
     def post(self, url, json=None, timeout=None):
         endpoint, _ = self._parse(url)

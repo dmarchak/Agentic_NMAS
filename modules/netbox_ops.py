@@ -57,6 +57,19 @@ def list_devices(list_name: str):
                                                       "devices.csv"))
 
 
+def scoped(name: str, devices: list, device: str) -> list:
+    """*devices*, or only the one named *device* when the import is scoped to it (C1344: a
+    device's NetBox record brought up to its committed golden, from its NetBox tab or its Needs
+    attention row). Raises `Refused` naming the network when it holds no such device."""
+    if not device:
+        return devices
+    one = [d for d in devices if (d.get("hostname") or "") == device]
+    if not one:
+        raise Refused({"ok": False, "error": f"{name} holds no device {device!r}: nothing to "
+                       "import"}, 404)
+    return one
+
+
 def all_lists_with_devices() -> list:
     """Every device list paired with its devices, for the all-lists import."""
     from modules.config import LISTS_DIR
@@ -159,9 +172,11 @@ def _forget_moved(list_name: str):
     return words
 
 
-def dry_run(operation: str, list_name: str, actor: str, progress_id: str = "") -> dict:
-    """The preview's facts: ``{"ok", "list", "device_count"?, "plan", ...authorization}``, the
-    raw dry run kept here (the caller masks what it draws). Raises `Refused`."""
+def dry_run(operation: str, list_name: str, actor: str, progress_id: str = "",
+            device: str = "") -> dict:
+    """The preview's facts: ``{"ok", "list", "device"?, "device_count"?, "plan", "cables"?,
+    ...authorization}``, the raw dry run kept here (the caller masks what it draws). *device*
+    scopes an import to one device of the list (C1344). Raises `Refused`."""
     from modules import op_progress
     from modules.netbox_client import (remove_list_from_netbox, sync_all_lists_to_netbox,
                                        sync_list_to_netbox)
@@ -194,7 +209,7 @@ def dry_run(operation: str, list_name: str, actor: str, progress_id: str = "") -
             raise Refused({"ok": False, "error": "No device lists have any devices"}, 400)
         try:
             result = sync_all_lists_to_netbox(payload, dry_run=True, progress_id=progress_id,
-                                              actor=actor)
+                                              actor=actor, cables_from_lldp=True)
         except Exception as exc:                      # noqa: BLE001
             log.exception("netbox_ops: import-all preview failed")
             op_progress.finish(progress_id, "failed")
@@ -202,29 +217,35 @@ def dry_run(operation: str, list_name: str, actor: str, progress_id: str = "") -
         op_progress.finish(progress_id)
         plan = result.get("plan", {})
         return {"ok": True, "list": ALL_LISTS, "device_count": sum(len(d) for _, d in payload),
-                "plan": plan, **authorization_for("import_all", ALL_LISTS, plan)}
+                "plan": plan, "cables_by_list": result.get("cables") or {},
+                **authorization_for("import_all", ALL_LISTS, plan)}
     name, devices = list_devices(list_name)
     if name is None:
         raise Refused({"ok": False, "error": "Device list not found"}, 404)
     if not devices:
         raise Refused({"ok": False, "error": f"List '{name}' has no devices"}, 400)
+    devices = scoped(name, devices, device)
     try:
         result = sync_list_to_netbox(name, devices, dry_run=True, progress_id=progress_id,
-                                     actor=actor)
+                                     actor=actor, cables_from_lldp=True)
     except Exception as exc:                          # noqa: BLE001
         log.exception("netbox_ops: import preview failed for '%s'", name)
         op_progress.finish(progress_id, "failed")
         raise Refused({"ok": False, "error": str(exc)}, 500) from None
     op_progress.finish(progress_id)
     plan = result.get("plan", {})
-    return {"ok": True, "list": name, "device_count": len(devices), "plan": plan,
+    return {"ok": True, "list": name, "device": device, "device_count": len(devices),
+            "plan": plan, "cables": result.get("cables"),
             **authorization_for("import", name, plan)}
 
 
 def start_import(operation: str, list_name: str, data: dict, actor: str,
-                 progress_id: str = "", where: str = "v2's NetBox page", on_end=None) -> dict:
+                 progress_id: str = "", where: str = "v2's NetBox page", on_end=None,
+                 device: str = "") -> dict:
     """Confirm and start an import (one list, or every list) on a thread: ``{"ok", "status":
-    "started", "list", "device_count"}``. Raises `Refused`. *on_end(outcome)* runs when it ends."""
+    "started", "list", "device_count"}``. Raises `Refused`. *on_end(outcome)* runs when it ends.
+    *device* scopes a one-list import to one device, as its preview was (C1344): the plan is
+    recomputed over that one device, so it is the plan the person confirmed."""
     from modules import netbox_guard as nbg
     from modules import op_progress
     from modules.netbox_client import (set_sync_running, sync_all_lists_to_netbox,
@@ -240,7 +261,7 @@ def start_import(operation: str, list_name: str, data: dict, actor: str,
             authorize(data, "import_all", ALL_LISTS, actor=actor,
                       recompute=lambda: sync_all_lists_to_netbox(
                           payload, dry_run=True, progress_id=progress_id,
-                          actor=actor).get("plan", {}))
+                          actor=actor, cables_from_lldp=True).get("plan", {}))
         except Refused:
             op_progress.finish(progress_id, "refused")
             raise
@@ -255,7 +276,8 @@ def start_import(operation: str, list_name: str, data: dict, actor: str,
                                    writing=True)
                 sync_all_lists_to_netbox(payload, progress_id=progress_id, actor=actor,
                                          authority=f"{where}'s one-time confirmation of this "
-                                                   f"import-all, by {actor}")
+                                                   f"import-all, by {actor}",
+                                         cables_from_lldp=True)
             except Exception as exc:                  # noqa: BLE001
                 outcome = "failed"
                 log.error("netbox_ops: import-all thread failed: %s", exc, exc_info=True)
@@ -274,11 +296,13 @@ def start_import(operation: str, list_name: str, data: dict, actor: str,
         raise Refused({"ok": False, "error": "Device list not found"}, 404)
     if not devices:
         raise Refused({"ok": False, "error": f"List '{name}' has no devices"}, 400)
+    devices = scoped(name, devices, device)
     try:
         authorize(data, "import", name, actor=actor,
                   recompute=lambda: sync_list_to_netbox(name, devices, dry_run=True,
                                                         progress_id=progress_id,
-                                                        actor=actor).get("plan", {}))
+                                                        actor=actor,
+                                                        cables_from_lldp=True).get("plan", {}))
     except Refused:
         op_progress.finish(progress_id, "refused")
         raise
@@ -296,7 +320,7 @@ def start_import(operation: str, list_name: str, data: dict, actor: str,
             op_progress.update(progress_id, phase="importing", devices_done=0, writing=True)
             sync_list_to_netbox(name, devices, progress_id=progress_id, actor=actor,
                                 authority=f"{where}'s one-time confirmation of this import, "
-                                          f"by {actor}")
+                                          f"by {actor}", cables_from_lldp=True)
         except Exception as exc:                      # noqa: BLE001
             outcome = "failed"
             log.error("netbox_ops: import thread failed: %s", exc, exc_info=True)

@@ -1,0 +1,61 @@
+name: nmas-relay-probe
+
+# ---------------------------------------------------------------------------
+# Labs 8 and 9, step 0d (docs/LAB8_LAB9_PLAN.md) and 0g: a C8000v ZTP'd THROUGH A DHCP RELAY,
+# and `containerlab restart -n` measured on a healthy node. Runbook: docs/RELAY_PROBE.md.
+# A throwaway lab of its own: no lab node is touched, s3 is never on its path, and it is
+# destroyed afterwards.
+#
+#   zr4  a stock C8000v (the adopted launch), the RELAY: Gi2 on br-mgmt at 10.255.0.96/24
+#        (free in Kea, read 2026-10-19), Gi3 10.255.96.1/30 with `ip helper-address
+#        10.255.0.10` (Kea, on the NMAS host). Its startup config is configs/zr4.cfg.
+#   zr6  a CONFIGLESS C8000v (P.6's patch and management passthrough, as bp-ztp-a), Gi2 to zr4
+#        Gi3, its MAC pinned so Kea's reservation names it: aa:bb:cc:00:02:96 -> 10.255.96.2.
+#
+# br-mgmt is a PREREQUISITE (verify first: ip -br link show master br-mgmt).
+# ---------------------------------------------------------------------------
+
+mgmt:
+  # 172.30.96.0/24: verify unused on the lab host before deploying (docker network ls; P.6
+  # used 172.30.80.0/24, clab 172.20.20.0/24, clab-r6 172.30.50.0/24).
+  network: clab-relay-probe
+  ipv4-subnet: 172.30.96.0/24
+
+topology:
+  kinds:
+    cisco_c8000v:
+      image: vrnetlab/cisco_c8000v:17.06.01a      # identical to the lab's routers
+
+  nodes:
+    zr4:
+      kind: cisco_c8000v
+      mgmt-ipv4: 172.30.96.11
+      startup-config: configs/zr4.cfg
+      binds:
+        - patches/c8000v-launch.py:/launch.py                # the adopted launch (smp=2)
+
+    zr6:
+      kind: cisco_c8000v
+      mgmt-ipv4: 172.30.96.12
+      # Deliberately NO startup-config (AutoInstall runs only with none).
+      env:
+        CLAB_MGMT_PASSTHROUGH: "true"                        # qemu's own DHCP/TFTP gone (M1)
+      binds:
+        - patches/c8000v-launch-configless.py:/launch.py     # P.6's six changes
+
+    br-mgmt:
+      kind: bridge
+
+  links:
+    # zr4 Gi2 (eth1) on the management segment, beside the NMAS host's enp6s19.
+    - endpoints: ["zr4:eth1", "br-mgmt:zr4-mgmt"]
+    # zr6 Gi2 (eth1) to zr4 Gi3 (eth2): the relayed segment, zr6's MAC pinned.
+    - type: veth
+      endpoints:
+        - node: zr6
+          interface: eth1
+          mac: aa:bb:cc:00:02:96
+        - node: zr4
+          interface: eth2
+    # 0g (after 0d): a second link, zr4 Gi4 (eth3) to zr6 Gi3 (eth2), is added here and zr4 is
+    # restarted alone with `containerlab restart -n zr4` (docs/RELAY_PROBE.md, part 3).

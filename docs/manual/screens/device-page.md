@@ -180,10 +180,24 @@ most once an hour. When no job holds one, the tab says so in place of the lines.
 
 ## NetBox {#netbox-tab}
 
-The device's NetBox record, read-only, and who owns it: {{product}} created it, {{product}} adopted it, or a
+The device's NetBox record, and who owns it: {{product}} created it, {{product}} adopted it, or a
 person's. {{product}}'s recorded writes to it are listed, and **Open in NetBox** opens the
-record there. A device NetBox does not hold says so, and points at the NetBox page's Import
-into NetBox….
+record there. A device NetBox does not hold says so.
+
+Below the record, whether NetBox holds what the device's committed golden describes, as the
+reader last compared them (with when): "NetBox holds less than edge1's committed
+configuration: 1 interface, 2 addresses, 1 cable to add", with **What NetBox lacks** listing
+each one. Otherwise it says NetBox holds them, or why it is not known (NetBox not configured,
+the network not in NetBox). The same comparison is a [Needs attention](needs-attention) row.
+
+**Import into NetBox…** previews the import of this device alone. It is the NetBox page's own
+import, scoped to the device, against the real NetBox and writing nothing. Its card draws
+below the record. From your press until it draws, the button says **Starting the dry run…**.
+The card lists every object it would create or change, including each cable from LLDP between
+this device and another managed device, and each LLDP neighbour it does not make a cable to,
+with why. Confirm with **Import**: the plan is recomputed for this device and compared with
+the one you saw, and only then written ([how](netbox-import#one-device)). Removing stays on
+the NetBox page.
 
 ## Neighbours {#neighbours}
 

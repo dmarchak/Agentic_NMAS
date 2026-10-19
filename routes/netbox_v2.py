@@ -10,6 +10,8 @@ on). The work is `modules/netbox_ops.py`'s, the one code path today's NetBox tab
 until it left at 7.8 (2026-10-17).
 A Remove card also offers Stop tracking instead… (C954): its own preview job and the same
 confirm, deleting nothing in NetBox and having Mercury forget what it created for the network.
+An import may be scoped to one device (C1344): the device page's NetBox tab posts its device to
+the same preview, and its card draws there.
 """
 
 import logging
@@ -97,6 +99,8 @@ def preview():
 
     operation = (request.form.get("operation") or "").strip()
     list_name = (request.form.get("list") or "").strip()
+    # A one-device import (C1344): the device page's NetBox tab sends its device.
+    device = (request.form.get("device") or "").strip() if operation == "import" else ""
     if operation not in ("import", "import_all", "remove", "forget"):
         return _card({"state": "refused", "error": f"no operation {operation!r}: import, "
                       "import_all, remove or forget"}, 404)
@@ -106,7 +110,7 @@ def preview():
             return _card({"state": "refused", "error": f"there is no network {list_name!r}"},
                          404)
     job_id = netbox_jobs.start_preview(operation, list_name, identity.request_actor(),
-                                       confirm_part(request, "approve"))
+                                       confirm_part(request, "approve"), device=device)
     return _card(netbox_jobs.read(job_id))
 
 

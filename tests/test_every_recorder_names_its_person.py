@@ -142,7 +142,7 @@ def seen(monkeypatch):
 
     got = {}
 
-    def start_preview(operation, list_name, actor, confirm):
+    def start_preview(operation, list_name, actor, confirm, device=""):
         got["netbox"] = actor
         return "job-b2"
 

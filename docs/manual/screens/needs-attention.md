@@ -122,6 +122,20 @@ nothing gone, and one row says so: the network, its filter, NetBox's answer, and
 kept with the time of the last good read. Fix the filter on Settings › the network ›
 Network, or restore what it names in NetBox; the row clears when a refresh reads NetBox again.
 
+**NetBox behind a device's committed configuration.** Onboarding records a device in NetBox
+once, from its first golden; a deploy changes the golden and never writes NetBox. So for each
+managed device of a network that is in NetBox, a reader compares the committed golden with
+what NetBox holds (every 5 minutes, and at once after an import, an onboarding's Verify, an
+adoption, or a deploy or Save that commits a golden). A device holding more than NetBox is one
+row: "NetBox holds less than edge1's committed configuration: 1 interface, 2 addresses, 1
+cable to add". It counts the interfaces and the IPv4 and IPv6 addresses the import would add,
+and the cables it would make from LLDP (a link both ends report between two managed devices).
+Its cause names each one. Its action, **Import into NetBox…**, opens the device's NetBox tab,
+whose **Import into NetBox…** previews the import of that device alone. While NetBox writes
+are off the row says so, and where they come on. The row clears when the import lands and the
+reader finds NetBox holding the golden. A network nobody imports into NetBox (no site and no
+device record there) is not compared.
+
 **Credentials** (hourly, metadata only, never a value): a credential with an expiry is a
 warning 30 days before it expires, a danger row 7 days before, and a danger row as soon as it
 has expired. One expiring more than a year out has no row. Where each expiry comes from:

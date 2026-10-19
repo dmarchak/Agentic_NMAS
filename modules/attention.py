@@ -114,6 +114,11 @@ ROW_KINDS = {
     ("reachability", "not-answering"): ("devices are not answering", "check the path, then each"),
     ("netbox-secrets", "held"): ("NetBox holds a credential in a device's context",
                                  "mask it, remove it by hand, or repair the record first"),
+    # C1344: onboarding writes NetBox once, from the bootstrap golden; a deploy never does.
+    ("netbox-lag", "behind"): ("a device's NetBox record holds less than its committed golden: "
+                               "interfaces, addresses or LLDP cables the import would add",
+                               "preview the import of that device from its NetBox tab, and "
+                               "confirm it"),
     ("records", "mismatch"): ("a record store moved to the records database no longer matches "
                               "its files", "read the first differing line, then move it back "
                               "to its files or find the writer"),
@@ -235,6 +240,10 @@ CLEARS = {
                                  "redaction has failed: read again at each read of this page"),
     ("reachability", "not-answering"): (("resolves",), "every device answers its probe again "
                                         "(every 5 s)"),
+    ("netbox-lag", "behind"): (("resolves",), "the reader reads NetBox holding the device's "
+                               "committed interfaces, addresses and cables: at once when an "
+                               "import, an onboarding's Verify or a golden commit wakes it, "
+                               "else within 5 minutes"),
     ("netbox-secrets", "held"): (("resolves",), "NetBox no longer holds the credential (masked "
                                  "or removed), at the next hourly read"),
     ("netbox_inventory", "unreadable"): (("resolves",), "the network's next refresh reads "
@@ -2287,6 +2296,95 @@ def netbox_secrets_source(cached=None) -> dict:
                 f"{len(v.get('devices') or [])} holding a credential")
 
 
+def _n(count: int, one: str, many: str) -> str:
+    return f"{count} {one if count == 1 else many}"
+
+
+#: Where NetBox writes are turned on, said on a row while they are off (C1344).
+NETBOX_WRITES_WHERE = ("NetBox writes are off for every network: the import's confirm turns "
+                       "them on with your permission (its box), or Settings › Installation › "
+                       "Connections, the NetBox connection card")
+
+
+def netbox_lag_source(cached=None, writes=None) -> dict:
+    """A device whose NetBox record holds less than its committed golden (C1344): the
+    interfaces, addresses and LLDP cables the import would add, counted by the reader
+    (`readers/netbox_lag`) from the committed goldens and NetBox, never per request. One row
+    per device, its action the import scoped to it (its NetBox tab's Import into NetBox…);
+    it resolves when the import lands, which wakes the reader. With writes off the row says the
+    import is off and where it comes on."""
+    from modules import reader_job
+    from modules.netbox_guard import writes_allowed
+
+    started = time.time()
+    label = "NetBox against the committed goldens"
+    got = reader_job.read_cached("netbox-lag") if cached is None else cached
+    doc = got.get("doc") or {}
+    good = doc.get("last_good") or {}
+    took = int((time.time() - started) * 1000)
+    if got["state"] != "ok" or not good:
+        why = (got.get("why") if got["state"] != "ok" else
+               "the reader has never stored a value; its last attempt: "
+               + ((doc.get("last_attempt") or {}).get("error") or "none recorded"))
+        return source_result("netbox-lag", label, read_at=started, took_ms=took,
+                             error=f"not read yet: {why}")
+    v = good.get("value") or {}
+    value_at, promise = _ts(good.get("value_at")), doc.get("stale_after_seconds")
+    if not v.get("configured"):
+        return source_result("netbox-lag", label, read_at=started, took_ms=took,
+                             value_at=value_at, stale_after_seconds=promise, reader="netbox-lag",
+                             checked=f"no NetBox configured ({v.get('why') or 'no reason'}): "
+                                     "nothing to compare")
+    off = not (writes_allowed() if writes is None else writes)
+    rows, checked, judged = [], 0, 0
+    for name, net in sorted((v.get("networks") or {}).items()):
+        if net.get("error"):
+            rows.append(row(source="netbox-lag", kind="unreadable", key=f"{name}:unreadable",
+                            level="unknown", what=f"{name}'s goldens could not be compared with "
+                                                  "NetBox",
+                            cause=(f"{net['error']}. Whether NetBox holds {name}'s committed "
+                                   "configuration is unknown until it can be read"),
+                            operands={"network": name},
+                            action={"label": "Find why the repository cannot be read: the "
+                                             "cause above names what failed", "known": False}))
+            continue
+        if not net.get("in_netbox"):
+            continue
+        judged += 1
+        checked += int(net.get("checked") or 0)
+        for host, lag in sorted((net.get("devices") or {}).items()):
+            ni, na, nc = (len(lag.get(k) or []) for k in ("interfaces", "addresses", "cables"))
+            counts = (f"{_n(ni, 'interface', 'interfaces')}, {_n(na, 'address', 'addresses')}, "
+                      f"{_n(nc, 'cable', 'cables')} to add")
+            shown = [f"{k}: " + ", ".join((lag.get(k) or [])[:5])
+                     + (f" and {len(lag[k]) - 5} more" if len(lag.get(k) or []) > 5 else "")
+                     for k in ("interfaces", "addresses", "cables") if lag.get(k)]
+            cause = ((f"NetBox holds no record of {host}" if lag.get("absent") else
+                      f"NetBox's record of {host} (device {lag.get('netbox_id')}) lacks what "
+                      "its committed golden holds")
+                     + ": " + "; ".join(shown)
+                     + (f". Cables are not counted: {net['lldp_error']}"
+                        if net.get("lldp_error") else "")
+                     + (f". {NETBOX_WRITES_WHERE}" if off else ""))
+            rows.append(row(
+                source="netbox-lag", kind="behind", key=f"{name}:{host}", level="warning",
+                what=f"NetBox holds less than {host}'s committed configuration: {counts}",
+                devices=[host], cause=cause, read_at=value_at,
+                operands={"network": name, "interfaces": ni, "addresses": na, "cables": nc,
+                          "writes": "off" if off else "on"},
+                action={"label": (f"Import into NetBox…: {host}'s NetBox tab previews the "
+                                  f"import of {host} alone, then confirm it"
+                                  + (" with writes turned on" if off else "")),
+                        "href": f"/v2/device/{host}?" + urlencode({"tab": "netbox",
+                                                                   "list": name})}))
+    return source_result(
+        "netbox-lag", label, read_at=started, took_ms=took, rows=rows, value_at=value_at,
+        stale_after_seconds=promise, reader="netbox-lag",
+        checked=(f"{checked} device(s) in {judged} network(s) in NetBox compared with their "
+                 f"committed goldens, {len([r for r in rows if r['kind'] == 'behind'])} "
+                 "holding more than NetBox"))
+
+
 def netbox_inventory_source(names=None) -> dict:
     """A NetBox-sourced list whose last refresh failed (C1259): its devices are the last good
     read, kept and flagged stale, and before this row that was said only on its network's
@@ -3340,7 +3438,8 @@ SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding
            host_steps_source, adjacency_source, restart_source,
            interrupted_source, dashboard_roles_source, template_behind_source,
            records_source, scheduled_rotation_source, host_key_source,
-           host_key_window_source, netbox_inventory_source, adjacency_log_source)
+           host_key_window_source, netbox_inventory_source, adjacency_log_source,
+           netbox_lag_source)
 
 
 #: What can move each source's rows: the data keys (modules/invalidation.VOCABULARY) whose
@@ -3366,6 +3465,8 @@ SOURCE_KEYS = {
     "redaction_source": ("settings",),
     "reachability_source": ("reachability",),
     "netbox_secrets_source": ("netbox",),
+    # Its reader announces netbox (C1344); a NetBox write switch changed is a settings write.
+    "netbox_lag_source": ("netbox", "settings"),
     "credential_health_source": ("credential_health",),
     "remote_source": ("remote", "goldens"),
     "pushed_source": ("app_version",),

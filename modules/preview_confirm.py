@@ -1399,6 +1399,9 @@ def netbox_import_preview(d: dict, confirm: dict, *, all_lists: bool = False) ->
     fields it sets (never their values, which carry configs)."""
     plan = d.get("plan") or {}
     name = "every device list" if all_lists else (d.get("list") or "the list")
+    if d.get("device") and not all_lists:
+        # Scoped to one device (C1344: its NetBox tab, or its Needs attention row).
+        name = f"{d['device']} in {name}"
     creates, updates = plan.get("creates") or [], plan.get("updates") or []
 
     def _update_line(o):
@@ -1431,7 +1434,8 @@ def netbox_import_preview(d: dict, confirm: dict, *, all_lists: bool = False) ->
                  "operation."},
         {"target": name, "kind": "no_device", "lines": [],
          "text": "No device is reached: the import reads each device's committed golden "
-                 "config, not the device."},
+                 "config, not the device, and its cables from LLDP as the Topology reader "
+                 "last stored it."},
         {"target": name, "kind": "provenance", "lines": [],
          "text": "An object it UPDATES is not tagged nmas-managed and is never made removable: "
                  "the tag marks only what Mercury creates. Each update's before and after goes to "
@@ -1439,6 +1443,8 @@ def netbox_import_preview(d: dict, confirm: dict, *, all_lists: bool = False) ->
                  "protocol tags (bgp, ospf, rip, cdp), merged with what it holds."},
     ]
     what_not += _nb_skipped(d.get("skipped"))
+    what_not += _nb_cables(d.get("cables_by_list") if all_lists else
+                           ({d.get("list") or "": d["cables"]} if d.get("cables") else {}))
     target = {
         "name": name, "state": "ready" if n else "unchanged", "selectable": True,
         "program": {"lines": lines, "dangerous": [], "authorised": [],
@@ -2014,6 +2020,33 @@ def _nb_skipped(groups) -> list:
         out.append({"target": "this import", "kind": "not_modelled", "lines": [],
                     "text": f"Not imported, on purpose: {g.get('what', '?')} on {devices} "
                             f"({g.get('count', 0)}), because {g.get('why', 'no reason recorded')}."})
+    return out
+
+
+def _nb_cables(by_list) -> list:
+    """The import's cables from LLDP (C1344), as what-did-not-happen items: why none was
+    planned (the Topology reader's LLDP not read, or stale), and each link NOT made a cable
+    with why (a neighbour that is not a managed device is reported, never invented; a link
+    only one end reports; an end NetBox does not hold yet). A cable it makes is a create in
+    the program above, labelled by its two ends."""
+    out = []
+    for list_name, c in sorted((by_list or {}).items()):
+        if not c:
+            continue
+        where = f" for {list_name}" if list_name else ""
+        if c.get("error"):
+            out.append({"target": "this import", "kind": "cables_unread", "lines": [],
+                        "text": f"No cable is planned{where}: {c['error']}, so which links both "
+                                "ends report is not known now. Each device's interfaces and "
+                                "addresses are imported as usual."})
+            continue
+        lines = [f"{x['a']} {x['port_a']} to {x['b']} {x['port_b']}: {x['why']}"
+                 for x in c.get("not_made") or []]
+        if lines:
+            at = c.get("value_at") or "an unrecorded time"
+            out.append({"target": "this import", "kind": "cables_not_made", "lines": lines,
+                        "text": f"{len(lines)} LLDP link(s){where} are not made cables, each "
+                                f"with why (LLDP as the Topology reader read it at {at})."})
     return out
 
 

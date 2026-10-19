@@ -160,26 +160,33 @@ def history(list_name: str) -> dict:
                                     f"({bad[0]})" if bad else "")}
 
 
-def start_preview(operation: str, list_name: str, actor: str, confirm: dict) -> str:
-    """Start a preview job; its id. *confirm* is who would confirm, read in the request."""
+def start_preview(operation: str, list_name: str, actor: str, confirm: dict,
+                  device: str = "") -> str:
+    """Start a preview job; its id. *confirm* is who would confirm, read in the request.
+    *device* scopes an import to one device of the list (C1344); the job keeps it, so its
+    confirm recomputes the same plan."""
     from modules import netbox_ops, op_progress
     from modules.outbound import mask_payload
     from modules.preview_confirm import (netbox_forget_preview, netbox_import_preview,
                                          netbox_removal_preview)
 
     job_id = new_id()
-    label = "every network" if operation == "import_all" else list_name
+    device = device if operation == "import" else ""
+    label = "every network" if operation == "import_all" else (
+        f"{device} in {list_name}" if device else list_name)
     op_progress.start(job_id, "previewed for " + {"remove": "removal",
                                                   "forget": "stopping tracking"}.get(
                                                       operation, "import"),
                       f"NetBox ({label})", actor=actor)
     op_progress.on_phase(job_id, _announce)           # THE stepper redraws as the phase moves
+    scope = {"device": device} if device else {}
     _write(job_id, {"state": "previewing", "operation": operation, "list": list_name,
-                    "actor": actor})
+                    "actor": actor, **scope})
 
     def _run():
         try:
-            d = netbox_ops.dry_run(operation, list_name, actor, progress_id=job_id)
+            d = netbox_ops.dry_run(operation, list_name, actor, progress_id=job_id,
+                                   device=device)
             if operation == "remove":
                 # v2's Remove card offers Stop tracking beside it (C954).
                 pv = netbox_removal_preview(d, confirm, forget_offered=FORGET_CONTROL)
@@ -189,16 +196,16 @@ def start_preview(operation: str, list_name: str, actor: str, confirm: dict) -> 
                 pv = mask_payload(netbox_import_preview(d, confirm,
                                                         all_lists=operation == "import_all"))
             _write(job_id, {"state": "previewed", "operation": operation, "list": list_name,
-                            "actor": actor, "preview": pv, "token": d.get("token", ""),
+                            **scope, "actor": actor, "preview": pv, "token": d.get("token", ""),
                             "writes_allowed": bool(d.get("writes_allowed")),
                             "device_count": d.get("device_count")})
         except netbox_ops.Refused as exc:
             _write(job_id, {"state": "refused", "operation": operation, "list": list_name,
-                            "actor": actor, "error": exc.payload.get("error", "")})
+                            **scope, "actor": actor, "error": exc.payload.get("error", "")})
         except Exception as exc:                      # noqa: BLE001 (said on the card)
             log.exception("netbox_jobs: preview %s failed", job_id)
             _write(job_id, {"state": "refused", "operation": operation, "list": list_name,
-                            "actor": actor, "error": f"the preview failed: {exc}"})
+                            **scope, "actor": actor, "error": f"the preview failed: {exc}"})
         finally:
             op_progress.finish(job_id)
             _announce()
@@ -244,6 +251,8 @@ def start_import(job_id: str, data: dict, actor: str) -> dict:
         results = {n: (lists.get(n) or {}).get("result") for n in names if lists.get(n)}
         _write(job_id, dict(job, state="imported" if outcome == "done" else "failed",
                             outcome=outcome, results=results, token=""))
+        # Its `netbox` announcement wakes the NetBox-behind-the-golden reader (reader_wakes,
+        # C1344), so a device's "NetBox holds less" row clears when its import lands.
         _announce()
 
     payload = dict(data, token=job.get("token", ""))
@@ -253,7 +262,8 @@ def start_import(job_id: str, data: dict, actor: str) -> dict:
     try:
         netbox_ops.start_import(operation, list_name if operation == "import" else
                                 netbox_ops.ALL_LISTS, payload, actor, progress_id=job_id,
-                                where="v2's NetBox page", on_end=on_end)
+                                where="v2's NetBox page", on_end=on_end,
+                                device=job.get("device") or "")
     except netbox_ops.Refused:
         _write(job_id, previewed)                    # the preview back, as it was
         raise

@@ -925,8 +925,34 @@ def _no_change_window(client, _lab, _mp):
         mp.undo()
 
 
+def _netbox_lag(client, _lab, _mp):
+    """The device page's NetBox tab with NetBox holding less than r3's committed golden
+    (C1344): the reader's stored answer as tests/test_netbox_after_intent.py reads it from the
+    fleet's r3 and r4 and the captured LLDP (one interface, an IPv4 and an IPv6 address, one
+    cable), and NetBox configured with no record of r3. Its patches are undone before the next
+    provider."""
+    import pytest
+
+    lag = {"state": "behind", "value_at": "2026-10-19T00:00:00Z", "why": "", "lldp_error": "",
+           "lag": {"absent": True, "netbox_id": None, "interfaces": ["GigabitEthernet4"],
+                   "addresses": ["192.0.2.14/31", "2001:db8:2:e::1/64"],
+                   "cables": ["r3 Gi4 to r4 Gi4"]}}
+    mp = pytest.MonkeyPatch()
+    try:
+        mp.setattr("modules.readers.netbox_lag.stored_for", lambda list_name, host: lag)
+        mp.setattr("modules.device_netbox.for_device", lambda ref, dev: {
+            "configured": True, "errors": [], "record": None, "absent": True, "counts": {},
+            "provenance": None, "mods": None, "platform_note": "", "ui_url": ""})
+        r = client.get("/v2/device/r3/netbox?list=Lab", headers={"Accept": "text/html"})
+        assert r.status_code == 200 and "NetBox holds less" in r.get_data(as_text=True), \
+            r.status_code
+    finally:
+        mp.undo()
+
+
 #: What no followed GET reaches, each on the lab's own state: a POST's card, a script's GET,
 #: a state the lab's walk does not hold. In order: `_deploy` changes r3, so it is last.
 PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _drift,
-                   _in_progress, _pending, _netbox_source, _silenced_alert, _save_no_golden, _profile_versions,
+                   _in_progress, _pending, _netbox_source, _netbox_lag, _silenced_alert,
+                   _save_no_golden, _profile_versions,
                    _no_change_window, _deploy]

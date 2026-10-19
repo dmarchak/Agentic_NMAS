@@ -1,8 +1,11 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, info -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, info, how -%}
 {#- The device page's NetBox (NSOT_GUI_BRIEF 3.3), from
     modules/device_netbox.for_device(): what NetBox holds about the device and
-    who owns that record by {{ brand.short }}'s own provenance. Read-only; writes are the
-    NetBox page's (Source of truth › NetBox), behind its preview and token. -#}
+    who owns that record by {{ brand.short }}'s own provenance, and (C1344) what NetBox lacks of
+    the device's committed golden, from the NetBox-behind-the-golden reader's stored value
+    (readers/netbox_lag.stored_for). It writes nothing itself: Import into NetBox… starts the
+    NetBox page's own preview, scoped to this device, and its card draws in the slot below the
+    record (the NetBox page's card, its preview and one-time confirm). -#}
 <section class="card netbox-rec" id="netbox" hx-get="{{ url_for('device_v2.netbox', name=device.hostname) }}"
          hx-trigger="nmas:netbox from:body" hx-swap="outerHTML">
 <p class="tab-help">{{ info('device-page', 'netbox-tab', 'About this tab') }}</p>
@@ -41,5 +44,30 @@
   {%- endif %}
   <p><a class="ext" href="{{ nb.ui_url }}" rel="noopener" target="_blank">Open in NetBox {{ icon('ext', 13) }}</a></p>
   {%- endif %}
-  <p class="muted nb-limits">Read from NetBox and {{ brand.short }}'s own records. Importing and removing are NetBox's own (the sidebar's NetBox: Import into NetBox…, Remove from NetBox…), behind its preview and one-time confirmation.</p>
+  {%- if nb.configured and lag %}
+  {%- set l = lag.lag or {} %}
+  {%- if lag.state == 'behind' %}
+  {%- set ni, na, nc = (l.interfaces or [])|length, (l.addresses or [])|length, (l.cables or [])|length %}
+  <div class="notice notice-warn nb-lag" role="status">{{ icon('warn') }}<div><p><strong>NetBox holds less than {{ device.hostname }}'s committed configuration:</strong> {{ ni }} interface{{ '' if ni == 1 else 's' }}, {{ na }} address{{ '' if na == 1 else 'es' }}, {{ nc }} cable{{ '' if nc == 1 else 's' }} to add{% if l.absent %}: NetBox holds no record of it yet{% else %} to NetBox device {{ l.netbox_id }}{% endif %}.{% if lag.lldp_error %} Cables are not counted: {{ lag.lldp_error }}.{% endif %} <span class="muted small">Compared {{ stamp(lag.value_at, note='when the reader compared the committed golden with NetBox') }}</span></p>
+    <details class="evidence" data-keep="netbox-lacks"><summary>What NetBox lacks</summary>
+      <dl class="facts">
+        {%- for k, words in [('interfaces', 'Interfaces'), ('addresses', 'Addresses'), ('cables', "Cables, from both ends' LLDP")] if l[k] %}<div><dt>{{ words }}</dt><dd class="mono">{{ l[k]|join(', ') }}</dd></div>{% endfor %}
+      </dl>
+    </details></div></div>
+  {%- elif lag.state == 'level' %}
+  <p class="muted nb-lag">NetBox holds the interfaces, addresses and LLDP cables {{ device.hostname }}'s committed golden describes (compared {{ stamp(lag.value_at, note='when the reader compared the committed golden with NetBox') }}).</p>
+  {%- else %}
+  <p class="muted nb-lag">Whether NetBox holds {{ device.hostname }}'s committed golden is not known: {{ lag.why }}.</p>
+  {%- endif %}
+  {%- endif %}
+  {%- if nb.configured %}
+  <form class="inline" method="post" action="{{ url_for('netbox_v2.preview') }}" hx-post="{{ url_for('netbox_v2.preview') }}" hx-target="#netbox-job" hx-swap="outerHTML">
+    <input type="hidden" name="operation" value="import"><input type="hidden" name="list" value="{{ list_name }}"><input type="hidden" name="device" value="{{ device.hostname }}">
+    <span class="op-act"><button type="submit" class="btn btn-small" data-op="netbox-import" hx-disabled-elt="this"><span class="op-idle">Import into NetBox…</span><span class="op-busy">Starting the dry run…</span></button>{{ how('netbox-import', 'preview', compact=True, op='importing a device') }}</span>
+  </form>
+  {%- endif %}
+  <p class="muted nb-limits">Read from NetBox and {{ brand.short }}'s own records. Import into NetBox… previews the import of {{ device.hostname }} alone against the real NetBox and is confirmed once; removing is the NetBox page's own (the sidebar's NetBox: Remove from NetBox…), behind its preview and one-time confirmation.</p>
 </section>
+{%- if not refetch %}
+<div id="netbox-job"></div>
+{%- endif %}

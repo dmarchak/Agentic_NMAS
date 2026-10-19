@@ -55,6 +55,11 @@ WOKEN_BY = {
     # each lab startup file against the committed goldens.
     # NetBox's config contexts and the record of what Mercury modified there.
     "netbox-secrets": ("netbox", "settings"),
+    # C1344: each device's committed golden against what NetBox holds of it, and the Topology
+    # reader's stored LLDP: an import, an adoption or an onboarding's Verify writes NetBox
+    # (`netbox`), a deploy or a save commits a golden (`goldens`), a device joins or leaves
+    # (`inventory`), NetBox and the excluded VRFs by settings.
+    "netbox-lag": ("netbox", "goldens", "inventory", "settings"),
     # the planned-restart windows a person declares; Prometheus by settings.
     "restarts": ("restarts", "settings"),
     # C906: the planned windows that expect new host keys; TIME closes a window, but a window

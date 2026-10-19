@@ -117,7 +117,10 @@ def _overview_ctx(ref, dev):
 
 def _netbox_ctx(ref, dev):
     from modules import device_netbox
-    return {"device": dev, "list_name": ref.name, "nb": device_netbox.for_device(ref, dev)}
+    from modules.readers import netbox_lag
+    # C1344: what NetBox lacks of its committed golden, from the reader's stored value.
+    return {"device": dev, "list_name": ref.name, "nb": device_netbox.for_device(ref, dev),
+            "lag": netbox_lag.stored_for(ref.name, dev.get("hostname", ""))}
 
 
 def _logs_ctx(ref, dev):
@@ -656,7 +659,12 @@ def netbox(name):
     if refusal is not None:
         return refusal
     ref, dev = found
-    return _strict(render_template("v2/_netbox.html", **_netbox_ctx(ref, dev)))
+    # The record's own re-fetch (htmx names its target, the card `netbox`) redraws the card
+    # alone: the import card's slot beside it keeps the card a preview drew there (C1344). The
+    # tab's link (target `tab-body`) draws both.
+    return _strict(render_template("v2/_netbox.html",
+                                   refetch=request.headers.get("HX-Target") == "netbox",
+                                   **_netbox_ctx(ref, dev)))
 
 
 # ---------------------------------------------------------------------------

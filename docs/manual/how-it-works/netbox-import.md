@@ -26,7 +26,9 @@ A dry run is always allowed, because it writes nothing.
 ## The import: preview {#preview}
 
 1. **Read the list's inventory.** Read: every device in the chosen list (or in every list,
-   for import-all). Sent: nothing. Recorded: nothing. A list with no devices is refused.
+   for import-all), or the one device a device page's NetBox tab names
+   ([one device](#one-device)). Sent: nothing. Recorded: nothing. A list with no devices is
+   refused, and so is a device the list does not hold, naming both.
 2. **Read each device's committed golden.** Read: the golden as committed in git, never the
    device. Sent: nothing. Recorded: nothing. A device with no golden, or one the tool refuses,
    is reported with its reason and not imported.
@@ -36,12 +38,62 @@ A dry run is always allowed, because it writes nothing.
    a placeholder id, and a shared object is planned once, not once per device. Each update
    reads the object as NetBox holds it first, so the plan says which fields it changes, or
    that it changes nothing. This is why the preview count is the executed count.
+   Then the cables, from LLDP ([cables](#cables)): each one planned as a create, labelled by
+   its two ends.
 4. **Bind a one-time confirmation to the plan.** Read: nothing. Sent: nothing. Recorded: a
    confirmation held in the tool's memory, bound to a hash of every planned create and update
    and to this operation and list, valid for 5 minutes and usable once.
 5. **Draw the preview.** Each create and update by name, the fields each update changes (never
    their values), the updates that change nothing, what was deliberately not modelled (for
-   example addresses in an excluded VRF, `netbox_excluded_vrfs`), and the gates.
+   example addresses in an excluded VRF, `netbox_excluded_vrfs`), each LLDP link not made a
+   cable with why, and the gates.
+
+## Cables from LLDP {#cables}
+
+A cable is a link that LLDP shows from both of its ends, between two managed devices of the
+network. The import never asks a device for its neighbours. It reads LLDP as the
+[Topology](topology) reader last stored it: both ends' `lldpRemEntry`, as Prometheus scraped
+them, joined into one link per pair of ports.
+
+1. **Read the stored links.** Read: the Topology reader's last read, while it is within its
+   promise. Sent: nothing. Recorded: nothing. If it was never read, or is older than its
+   promise, no cable is planned. The preview says why. The devices' interfaces and addresses
+   are imported as usual.
+2. **Choose the links that are cables.** Each link touching a device imported now, whose two
+   ends are both managed devices of the network and both report it, is a cable. Every other
+   link is reported in the preview, never made. A neighbour that is not a managed device is
+   "not a managed device of this network: reported, no cable". A link only one end reports is
+   "only edge1 reports it".
+3. **Find both ends in NetBox.** An end imported now is its interface as just planned. An end
+   imported earlier is found by its device's name at the network's site, and its interface by
+   name (LLDP's short form, Gi2, matches GigabitEthernet2). An end NetBox does not hold is
+   reported: "import edge2 first", or "edge2's NetBox record has no interface Gi3".
+4. **Make the cable** through the same create as every other object. If a cable is already on
+   either end, it is found and nothing is made. A new cable is labelled by its two ends
+   ("edge1 Gi2 to edge2 Gi3"), tagged `nmas-managed` and recorded as created, so Remove can
+   take it away again.
+
+Onboarding's and adoption's own NetBox records make no cable. Their confirm is not the
+import's preview, so cables come only from an import.
+
+## One device {#one-device}
+
+**Import into NetBox…** on a device page's NetBox tab previews the import of that device alone.
+It is how the device's record is brought up to its committed golden after its intent is
+deployed: onboarding records it once, from its first golden, and a deploy never writes NetBox.
+It is the same import, with the same preview, confirmation and records. The differences:
+
+- **Its plan is one device's:** that device's interfaces, addresses, prefixes and VLANs, and the
+  cables between it and the network's other managed devices that NetBox already holds. The
+  network's region, site and VRF are read, and created only if missing.
+- **The confirmation is bound to that one-device plan.** At the confirm, the plan is computed
+  again for the same device. A confirm of the whole network with this preview's token computes
+  a different plan, and is refused.
+- **Its result becomes the network's last import** on the NetBox page ("1 of 1 device(s)
+  imported into NetBox …"): the result of that one device, not of the whole network.
+- **The device's Needs attention row** ("NetBox holds less than …") clears when the import
+  lands. The import wakes the reader that compares the goldens with NetBox, and it finds NetBox
+  holding them.
 
 ## The import: confirm and apply {#apply}
 
@@ -183,7 +235,10 @@ unverified caller is refused before anything is read.
 - The import deletes nothing. Remove is its own operation.
 - Stop tracking deletes nothing and sends nothing to NetBox; it changes only the tool's
   created record, and cannot be taken back from the tool.
-- Neither reaches a device: everything is built from committed goldens.
+- Neither reaches a device: everything is built from committed goldens, and cables from LLDP
+  as the Topology reader last stored it.
+- The import never invents a neighbour: a link to a device that is not managed, or that only
+  one end reports, is reported and never made a cable.
 - Nothing the tool only updated or adopted is ever deleted: Remove needs an object the tool
   created and tagged.
 - Remove never deletes the `nmas-managed` tag itself, or every object carrying it would become

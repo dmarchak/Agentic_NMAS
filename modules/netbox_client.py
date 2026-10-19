@@ -308,7 +308,8 @@ def _nb_first(session: requests.Session, base: str, path: str, **params) -> Opti
 
 def _object_label(payload: dict) -> str:
     """Best human-readable name from a NetBox payload, for previews and logs."""
-    for key in ("name", "address", "prefix", "display"):
+    # `label` last: a cable has no name, and the import labels one by its two ends (C1344).
+    for key in ("name", "address", "prefix", "display", "label"):
         if payload.get(key):
             return str(payload[key])
     return ""
@@ -994,7 +995,7 @@ def _ensure_tunnel_termination(session, base: str,
 
 def _ensure_cable(session, base: str,
                   a_type: str, a_id: int,
-                  b_type: str, b_id: int) -> Optional[dict]:
+                  b_type: str, b_id: int, label: str = "") -> Optional[dict]:
     """Get-or-create a DCIM cable between two termination objects.
 
     Checks both endpoints as either side of an existing cable before
@@ -1013,12 +1014,17 @@ def _ensure_cable(session, base: str,
                                  **{f"termination_{side}_id": id_})
             if existing:
                 return existing
+    payload = {
+        "a_terminations": [{"object_type": f"dcim.{a_type}", "object_id": a_id}],
+        "b_terminations": [{"object_type": f"dcim.{b_type}", "object_id": b_id}],
+        "status": "connected",
+    }
+    if label:
+        # NetBox's own cable label (100 characters at most): the two ends by name, so the
+        # preview, the created record and NetBox's cable list each say which link it is.
+        payload["label"] = label[:100]
     try:
-        return _nb_post(session, base, "dcim/cables/", {
-            "a_terminations": [{"object_type": f"dcim.{a_type}", "object_id": a_id}],
-            "b_terminations": [{"object_type": f"dcim.{b_type}", "object_id": b_id}],
-            "status": "connected",
-        })
+        return _nb_post(session, base, "dcim/cables/", payload)
     except RuntimeError as exc:
         _write_failed(f"cable {a_type}:{a_id} -> {b_type}:{b_id}", exc)
         return None
@@ -3169,6 +3175,156 @@ def _scan_device_from_golden(dev: dict, list_name: str = "") -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Cables from LLDP as Prometheus last read it (C1344)
+# ---------------------------------------------------------------------------
+
+#: The words every cable that is not made is reported in, by why (C1344): a neighbour is never
+#: invented in NetBox, and a link only one end reports is not a cable.
+CABLE_WHY = {
+    "unmanaged": "{far} is not a managed device of this network: reported, no cable",
+    "one_end": "only {by} reports it in LLDP: a cable is made from both ends' reports",
+    "no_record": "{far} has no NetBox record yet: import {far} first, then this one again",
+    "no_interface": "{dev}'s NetBox record has no interface {port}: import {dev} to add it",
+}
+
+
+def stored_lldp_links(list_name: str, clock=time.time, cached=None) -> dict:
+    """The network's LLDP links as the Topology reader last stored them (P.11's reader,
+    `readers/topology_graph`: both ends' `lldpRemEntry` as Prometheus scraped them, unioned per
+    link and classified). Never a device, never Prometheus per request: the import reads what
+    the reader stored, and only while it is within the reader's promise.
+
+    ``{"links": [{a, port_a, b, port_b, kind, reported_by}], "managed": {device: bool},
+    "value_at", "error"}``: *error* says why no link is offered (never read, stale, or this
+    network not in it), and then *links* is empty, which is not "no links"."""
+    import calendar
+
+    from modules import reader_job
+    from modules.readers import topology_graph as T
+
+    got = reader_job.read_cached(T.READER_NAME) if cached is None else cached
+    good = (got.get("doc") or {}).get("last_good") or {}
+    out = {"links": [], "managed": {}, "value_at": good.get("value_at") or "", "error": ""}
+    if not good:
+        out["error"] = ("the Topology reader has stored no LLDP read yet"
+                        + (f" ({got.get('why')})" if got.get("why") else ""))
+        return out
+    try:
+        at = calendar.timegm(time.strptime(good.get("value_at", ""), "%Y-%m-%dT%H:%M:%SZ"))
+    except ValueError:
+        out["error"] = f"the Topology reader's stored time {good.get('value_at')!r} is not a time"
+        return out
+    promise = reader_job.page_promise(T.READER)
+    if clock() - at > promise:
+        out["error"] = (f"the Topology reader's LLDP was last read at {good['value_at']}, more "
+                        f"than {promise} s ago")
+        return out
+    net = ((good.get("value") or {}).get("networks") or {}).get(list_name)
+    if net is None:
+        out["error"] = f"the Topology reader's last read holds no network {list_name!r}"
+        return out
+    out["managed"] = {n: bool(v.get("managed")) for n, v in (net.get("nodes") or {}).items()}
+    out["links"] = [dict(link) for link in (net.get("layers") or {}).get("physical") or []
+                    if not link.get("manager")]
+    return out
+
+
+def _iface_alias_map(interfaces) -> dict:
+    """``{name and its abbreviation: NetBox interface id}`` for a device's NetBox interfaces:
+    LLDP names a port by its short form (Gi2), the golden and NetBox by its full one."""
+    out = {}
+    for i in interfaces or []:
+        name = i.get("name") or ""
+        if name and i.get("id") is not None:
+            out.setdefault(name, i["id"])
+            out.setdefault(_shorten_iface_name(name), i["id"])
+    return out
+
+
+def lldp_cable_plan(links: list, managed: dict, devices) -> tuple:
+    """Which stored LLDP links are cables for *devices* (the names imported now), and which are
+    reported instead: ``(cables, not_made)``. A cable is a link BOTH ends report whose ends are
+    both managed devices of the network; every other link touching *devices* is reported with
+    why (`CABLE_WHY`), never made. Pure: the NetBox half is `_lldp_cable_pass`'s."""
+    devices = set(devices)
+    cables, not_made = [], []
+    for link in links or []:
+        a, b = link.get("a", ""), link.get("b", "")
+        if not ({a, b} & devices):
+            continue
+        ends = {"a": a, "port_a": link.get("port_a", ""), "b": b,
+                "port_b": link.get("port_b", "")}
+        unmanaged = [d for d in (a, b) if not managed.get(d)]
+        if unmanaged:
+            not_made.append(dict(ends, why=CABLE_WHY["unmanaged"].format(far=unmanaged[0])))
+        elif link.get("kind") != "both":
+            by = ", ".join(link.get("reported_by") or []) or "one end"
+            not_made.append(dict(ends, why=CABLE_WHY["one_end"].format(by=by)))
+        else:
+            cables.append(ends)
+    return cables, not_made
+
+
+def _cable_words(c: dict) -> str:
+    return f"{c['a']} {c['port_a']} to {c['b']} {c['port_b']}"
+
+
+def _lldp_cable_pass(session, base: str, list_name: str, site_id, device_registry: dict,
+                     ipam_stats: dict) -> dict:
+    """The import's cables from the Topology reader's stored LLDP (C1344): for every link both
+    ends report between two managed devices of the network, at least one of them imported now,
+    a cable through `_ensure_cable` (found or created, so recorded as created and listed in the
+    preview). An end not imported now is found in NetBox by name at the network's site; one
+    NetBox does not hold, or whose interface it does not hold, is reported, never invented.
+    Returns ``{"source", "value_at", "error", "cabled", "not_made"}``: *cabled* the links a
+    cable holds after this (created now, or already held), *not_made* each other one with why."""
+    stored = stored_lldp_links(list_name)
+    report = {"source": "the Topology reader's stored LLDP (Prometheus's lldpRemEntry, both "
+                        "ends)", "value_at": stored["value_at"], "error": stored["error"],
+              "cabled": [], "not_made": []}
+    if stored["error"]:
+        return report
+    cables, report["not_made"] = lldp_cable_plan(stored["links"], stored["managed"],
+                                                 device_registry)
+    held: dict = {}
+
+    def iface_map(dev: str):
+        if dev in device_registry:
+            return device_registry[dev].get("nb_iface_map") or {}, ""
+        if dev not in held:
+            record = _nb_first(session, base, "dcim/devices/", name=dev, site_id=site_id) \
+                if site_id is not None else None
+            held[dev] = (None if record is None else _iface_alias_map(
+                _nb_get(session, base, "dcim/interfaces/", device_id=record["id"])))
+        return held[dev], "" if held[dev] is not None else "no_record"
+
+    for c in cables:
+        ids, why = {}, ""
+        for end, port in (("a", "port_a"), ("b", "port_b")):
+            found, missing = iface_map(c[end])
+            if missing:
+                why = CABLE_WHY["no_record"].format(far=c[end])
+                break
+            ids[end] = found.get(c[port])
+            if not ids[end]:
+                why = CABLE_WHY["no_interface"].format(dev=c[end], port=c[port])
+                break
+        if why:
+            report["not_made"].append(dict(c, why=why))
+            continue
+        try:
+            with _attributed_to(c["a"] if c["a"] in device_registry else c["b"]):
+                cable = _ensure_cable(session, base, "interface", ids["a"], "interface",
+                                      ids["b"], label=_cable_words(c))
+            if cable:
+                ipam_stats["cables_synced"] = ipam_stats.get("cables_synced", 0) + 1
+                report["cabled"].append(c)
+        except Exception as exc:                      # noqa: BLE001 (a write that did not land)
+            _write_failed(f"cable {_cable_words(c)}", exc, c["a"])
+    return report
+
+
+# ---------------------------------------------------------------------------
 # Sync entry points
 # ---------------------------------------------------------------------------
 
@@ -3176,12 +3332,18 @@ def sync_list_to_netbox(list_name: str, devices: list[dict],
                         status_cache: Optional[dict] = None,
                         max_workers: int = 6,
                         dry_run: bool = False, progress_id: str = "",
-                        actor: str = "", authority: str = "") -> dict:
+                        actor: str = "", authority: str = "",
+                        cables_from_lldp: bool = False) -> dict:
     """Import a device list into NetBox. Returns a summary dict.
 
     *progress_id*, when the page supplied one, is where this reports what it
     is doing while it runs (`modules.op_progress`): the requests it has made
     and the device it is on. A 9-device preview makes ~300 requests.
+
+    *cables_from_lldp* (the NetBox page's import, C1344): cables from the Topology reader's
+    stored LLDP between managed devices of the network (`_lldp_cable_pass`), reported under
+    ``cables``. Off for onboarding's and adoption's own records, whose confirm is not the
+    import's preview: a cable is made only through the import's preview and confirm.
 
     With ``dry_run=True`` no write is issued: reads still hit NetBox, so the
     same code path runs and reports exactly what it *would* create and update.
@@ -3196,7 +3358,7 @@ def sync_list_to_netbox(list_name: str, devices: list[dict],
     if dry_run:
         with _guard.dry_run() as plan, _guard.for_list(list_name, actor=actor, authority=authority):
             result = _sync_list_to_netbox_impl(list_name, devices, status_cache, max_workers,
-                                               progress_id)
+                                               progress_id, cables_from_lldp)
         result["dry_run"] = True
         result["plan"] = plan.summary()
         return result
@@ -3212,7 +3374,7 @@ def sync_list_to_netbox(list_name: str, devices: list[dict],
         with _guard.list_writer(list_name, "import", actor), \
                 _guard.for_list(list_name, actor=actor, authority=authority):
             return _sync_list_to_netbox_impl(list_name, devices, status_cache, max_workers,
-                                             progress_id)
+                                             progress_id, cables_from_lldp)
     except _guard.NetBoxBusy as exc:
         return {"ok": False, "busy": True, "error": f"Not imported: {exc}. Nothing was written."}
 
@@ -3230,7 +3392,8 @@ def _count_requests(session, progress_id: str) -> None:
 
 def _sync_list_to_netbox_impl(list_name: str, devices: list[dict],
                               status_cache: Optional[dict] = None,
-                              max_workers: int = 6, progress_id: str = "") -> dict:
+                              max_workers: int = 6, progress_id: str = "",
+                              cables_from_lldp: bool = False) -> dict:
     """The sync itself. Always call through :func:`sync_list_to_netbox`."""
     cfg = get_netbox_config()
     if not cfg["url"] or not cfg["token"]:
@@ -3400,6 +3563,16 @@ def _sync_list_to_netbox_impl(list_name: str, devices: list[dict],
             except Exception as exc:
                 _write_failed(f"cable {local_iface} -> {remote_hostname}:{remote_iface}",
                               exc, local_hostname)
+    cables_report = None
+    if cables_from_lldp:
+        try:
+            cables_report = _lldp_cable_pass(session, base, list_name, site.get("id"),
+                                             device_registry, ipam_stats)
+        except Exception as exc:                      # noqa: BLE001 (said, never silent)
+            log.exception("netbox: the LLDP cable pass failed for '%s'", list_name)
+            cables_report = {"source": "the Topology reader's stored LLDP", "value_at": "",
+                             "error": f"the cable pass failed: {exc}", "cabled": [],
+                             "not_made": []}
 
     summary = {
         "ok":         True,
@@ -3432,6 +3605,8 @@ def _sync_list_to_netbox_impl(list_name: str, devices: list[dict],
         "netbox_url": f"{base}/dcim/sites/{site['id']}/",
         "ipam_url":   f"{base}/ipam/prefixes/",
     }
+    if cables_report is not None:
+        summary["cables"] = cables_report
 
     # A PREVIEW RECORDS NOTHING (C134). This summary is the RECORD of an
     # import, the one the NetBox page's network row draws as its result and reads
@@ -3978,7 +4153,8 @@ def _clear_sync_status(list_name: str) -> None:
 def sync_all_lists_to_netbox(lists_with_devices: list[tuple[str, list[dict]]],
                              status_cache: Optional[dict] = None,
                              dry_run: bool = False, progress_id: str = "",
-                             actor: str = "", authority: str = "") -> dict:
+                             actor: str = "", authority: str = "",
+                             cables_from_lldp: bool = False) -> dict:
     """Import multiple device lists sequentially. Each list becomes its own region.
 
     Sequential on purpose (C199, decided 2026-09-29): lists share NetBox objects
@@ -3992,7 +4168,7 @@ def sync_all_lists_to_netbox(lists_with_devices: list[tuple[str, list[dict]]],
     for name, devs in lists_with_devices:
         res = sync_list_to_netbox(name, devs, status_cache=status_cache, dry_run=dry_run,
                                   progress_id=progress_id, actor=actor,
-                                  authority=authority)
+                                  authority=authority, cables_from_lldp=cables_from_lldp)
         results.append(res)
         if not res.get("ok"):
             overall_ok = False
@@ -4004,6 +4180,8 @@ def sync_all_lists_to_netbox(lists_with_devices: list[tuple[str, list[dict]]],
         # Every list's deliberate skips, so the import-all preview names them
         # as the single-list one does.
         out["skipped"] = merge_skipped(r.get("skipped") for r in results)
+    if cables_from_lldp:
+        out["cables"] = {r.get("list", ""): r.get("cables") for r in results if r.get("cables")}
     return out
 
 

@@ -98,6 +98,12 @@ PAIRS = [
     ("settings_v2.group_save", "integrations"),
     ("deploy-job", "adjacencies"),                         # a deploy's intent and goldens
     ("deploy-job", "baseline-usability"),
+    # C1344: what NetBox lacks of each committed golden, re-read when NetBox or a golden moves.
+    ("netbox-job", "netbox-lag"),                          # an import's end
+    ("onboard_v2.verify", "netbox-lag"),                   # Verify's NetBox record
+    ("adopt", "netbox-lag"),
+    ("deploy-job", "netbox-lag"),                          # a deploy's golden commit
+    ("save", "netbox-lag"),
 ]
 
 
@@ -120,7 +126,8 @@ class TestTheMechanism:
     def test_a_wake_asks_each_reader_running_here_and_no_other(self, asked):
         woke = W.wake(("goldens",), "device_v2.capture_confirm")
         assert "remote-publication" not in woke, "not running in this process: not asked"
-        assert set(woke) == {"baseline-usability"}   # freshness retired; the lab's reader left (C663)
+        # freshness retired; the lab's reader left (C663); NetBox against the goldens (C1344)
+        assert set(woke) == {"baseline-usability", "netbox-lag"}
         assert {(n, k) for n, _b, k in asked} == {(n, "after_operation") for n in woke}
         assert {b for _n, b, _k in asked} == {"device_v2.capture_confirm"}
 
