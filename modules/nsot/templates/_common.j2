@@ -2,6 +2,150 @@
    never from a stored copy of the original line, which would make the round
    trip pass while modelling nothing. #}
 
+{#- ── The routing feature packs (K7, C764; docs/FEATURE_PACKS.md) ─────────────────────────
+    OSPFv2, OSPFv3, RIPv2 and RIPng, rendered from STRUCTURED intent. Shared by both Cisco
+    dialects (each `<platform>/base.j2` imports this file, the loader looking in the dialect's
+    directory first); a dialect that prints a line differently overrides here.
+
+    Every field has been completed by `modules.nsot.features.prepare` (the render calls it, as
+    it calls `complete_schema`): numbers arrive as strings, an absent field as its empty value,
+    so `{% if x %}` emits nothing for a field nobody set.
+
+    Each body macro emits the lines BELOW a block's header, one leading space each, in the
+    order IOS and IOS-XE print them where a capture shows it. The unmodelled lines (`settings`,
+    `networks` and `raw`, the shape intent had before the packs) are emitted by `routing` after
+    these, so an intent holding only those renders exactly as it did. The parser models a line
+    only when the macro here reproduces it exactly (`features.reproduces`); any other line
+    stays unmodelled, verbatim. -#}
+
+{%- macro redistribute(r) -%}
+redistribute {{ r.protocol }}{% if r.process %} {{ r.process }}{% endif %}{% if r.metric %} metric {{ r.metric }}{% endif %}{% if r.metric_type %} metric-type {{ r.metric_type }}{% endif %}{% if r.subnets %} subnets{% endif %}{% if r.tag %} tag {{ r.tag }}{% endif %}{% if r.include_connected %} include-connected{% endif %}{% if r.route_map %} route-map {{ r.route_map }}{% endif %}
+{%- endmacro -%}
+
+{%- macro _area_lines(a, family) -%}
+{% if a.type in ('stub', 'nssa') %} area {{ a.id }} {{ a.type }}{% if a.no_summary %} no-summary{% endif %}
+
+{% endif %}
+{%- if a.default_cost %} area {{ a.id }} default-cost {{ a.default_cost }}
+{% endif %}
+{%- for r in a.ranges %} area {{ a.id }} range {% if family == 'ipv4' %}{{ r.address }} {{ r.mask }}{% else %}{{ r.prefix }}{% endif %}{% if not r.advertise %} not-advertise{% endif %}{% if r.cost %} cost {{ r.cost }}{% endif %}
+
+{% endfor %}
+{%- endmacro -%}
+
+{%- macro _passive(p) -%}
+{% if p.passive_default %} passive-interface default
+{% endif %}
+{%- for n in p.no_passive_interfaces %} no passive-interface {{ n }}
+{% endfor %}
+{%- for n in p.passive_interfaces %} passive-interface {{ n }}
+{% endfor %}
+{%- endmacro -%}
+
+{%- macro _default_information(d) -%}
+{% if d.originate %} default-information originate{% if d.always %} always{% endif %}{% if d.metric %} metric {{ d.metric }}{% endif %}{% if d.metric_type %} metric-type {{ d.metric_type }}{% endif %}{% if d.route_map %} route-map {{ d.route_map }}{% endif %}
+
+{% endif %}
+{%- endmacro -%}
+
+{%- macro _process_head(o) -%}
+{% if o.router_id %} router-id {{ o.router_id }}
+{% endif %}
+{%- if o.log_adjacency_changes is sameas true %} log-adjacency-changes
+{% elif o.log_adjacency_changes == 'detail' %} log-adjacency-changes detail
+{% elif o.log_adjacency_changes is sameas false %} no log-adjacency-changes
+{% endif %}
+{%- if o.reference_bandwidth %} auto-cost reference-bandwidth {{ o.reference_bandwidth }}
+{% endif %}
+{%- endmacro -%}
+
+{#- `router ospf <process>`: router-id, logging, auto-cost, the areas' own lines, redistribution,
+    passive interfaces, the network statements area by area, the default route, distance. -#}
+{%- macro ospf_body(o) -%}
+{{ _process_head(o) }}
+{%- for a in o.areas %}{{ _area_lines(a, 'ipv4') }}{% endfor %}
+{%- for r in o.redistribute %} {{ redistribute(r) }}
+{% endfor %}
+{{- _passive(o) }}
+{%- for a in o.areas %}{% for n in a.networks %} network {{ n.address }} {{ n.wildcard }} area {{ a.id }}
+{% endfor %}{% endfor %}
+{{- _default_information(o.default_information) }}
+{%- if o.distance %} distance {{ o.distance }}
+{% endif %}
+{%- endmacro -%}
+
+{#- `ipv6 router ospf <process>`: as OSPFv2 without network statements (an interface joins an
+    area with `ipv6 ospf <process> area <area>`); IOS-XE prints the default route before
+    redistribution here. -#}
+{%- macro ospfv3_body(o) -%}
+{{ _process_head(o) }}
+{%- for a in o.areas %}{{ _area_lines(a, 'ipv6') }}{% endfor %}
+{{- _default_information(o.default_information) }}
+{%- for r in o.redistribute %} {{ redistribute(r) }}
+{% endfor %}
+{{- _passive(o) }}
+{%- if o.distance %} distance {{ o.distance }}
+{% endif %}
+{%- endmacro -%}
+
+{#- `router rip`: version, timers, redistribution, passive interfaces, the classful networks,
+    the default route, distance, summarisation. Subscripts for the timers, not attributes:
+    `.update` would be the mapping's own method. -#}
+{%- macro rip_body(r) -%}
+{% if r.version %} version {{ r.version }}
+{% endif %}
+{%- if r.timers['update'] %} timers basic {{ r.timers['update'] }} {{ r.timers['invalid'] }} {{ r.timers['holddown'] }} {{ r.timers['flush'] }}
+{% endif %}
+{%- for x in r.redistribute %} {{ redistribute(x) }}
+{% endfor %}
+{%- if r.default_metric %} default-metric {{ r.default_metric }}
+{% endif %}
+{{- _passive(r) }}
+{%- for n in r.classful_networks %} network {{ n }}
+{% endfor %}
+{%- if r.default_information.originate %} default-information originate{% if r.default_information.route_map %} route-map {{ r.default_information.route_map }}{% endif %}
+
+{% endif %}
+{%- if r.distance %} distance {{ r.distance }}
+{% endif %}
+{%- if r.auto_summary is sameas true %} auto-summary
+{% elif r.auto_summary is sameas false %} no auto-summary
+{% endif %}
+{%- endmacro -%}
+
+{#- `ipv6 router rip <name>`: redistribution. -#}
+{%- macro ripng_body(r) -%}
+{% for x in r.redistribute %} {{ redistribute(x) }}
+{% endfor %}
+{%- endmacro -%}
+
+{#- An interface's own OSPF lines; *prefix* is `ip ospf` (OSPFv2) or `ipv6 ospf` (OSPFv3). -#}
+{%- macro ospf_interface(x, prefix) -%}
+{% if x.network_type %} {{ prefix }} network {{ x.network_type }}
+{% endif %}
+{%- if x.hello_interval %} {{ prefix }} hello-interval {{ x.hello_interval }}
+{% endif %}
+{%- if x.dead_interval %} {{ prefix }} dead-interval {{ x.dead_interval }}
+{% endif %}
+{%- if x.priority %} {{ prefix }} priority {{ x.priority }}
+{% endif %}
+{%- if x.process %} {{ prefix }} {{ x.process }} area {{ x.area }}
+{% endif %}
+{%- if x.cost %} {{ prefix }} cost {{ x.cost }}
+{% endif %}
+{%- endmacro -%}
+
+{#- An interface's RIPng lines, one entry per RIPng process it takes part in. -#}
+{%- macro ripng_interface(entries) -%}
+{% for e in entries %}{% if e.enable %} ipv6 rip {{ e.name }} enable
+{% endif %}
+{%- if e.default_information %} ipv6 rip {{ e.name }} default-information {{ e.default_information }}
+{% endif %}
+{%- endfor %}
+{%- endmacro -%}
+{#- ── end of the routing feature packs ───────────────────────────────────────────────── -#}
+
+
 {%- macro globals(v) -%}
 {% for s in v.services %}{{ s }}
 {% endfor %}
@@ -85,6 +229,7 @@ interface {{ i.name }}
 {% endfor %}
 {%- for x in i.ip_nat or [] %} ip nat {{ x }}
 {% endfor %}
+{{- ospf_interface(i.ospf_interface, 'ip ospf') }}
 {%- for x in i.ospf or [] %} ip ospf {{ x }}
 {% endfor %}
 {%- if i.mtu %} mtu {{ i.mtu }}
@@ -101,8 +246,10 @@ interface {{ i.name }}
 {% endif %}
 {%- for x in i.ipv6_nd or [] %} ipv6 nd {{ x }}
 {% endfor %}
+{{- ospf_interface(i.ospfv3_interface, 'ipv6 ospf') }}
 {%- for x in i.ospfv3 or [] %} ipv6 ospf {{ x }}
 {% endfor %}
+{{- ripng_interface(i.ripng_interface) }}
 {%- for x in i.ripng or [] %} ipv6 rip {{ x }}
 {% endfor %}
 {%- for x in i.dhcpv6_relay or [] %} ipv6 dhcp relay destination {{ x }}
@@ -127,15 +274,17 @@ interface {{ i.name }}
 {% endfor %}
 {%- endmacro -%}
 
+{#- Each routing block: its feature pack's structured lines (`_routing.j2`), then the lines no
+    pack models, as intent held them before the packs. -#}
 {%- macro routing(v) -%}
 {% for o in (v.routing or {}).get('ospf', []) %}router ospf {{ o.process }}
-{% for s in o.settings %} {{ s }}
+{{ ospf_body(o) }}{% for s in o.settings %} {{ s }}
 {% endfor %}
 {%- for n in o.networks %} {{ n }}
 {% endfor %}
 {%- endfor %}
 {%- if (v.routing or {}).rip %}router rip
-{% for s in v.routing.rip.settings %} {{ s }}
+{{ rip_body(v.routing.rip) }}{% for s in v.routing.rip.settings %} {{ s }}
 {% endfor %}
 {%- for n in v.routing.rip.networks %} {{ n }}
 {% endfor %}
@@ -158,11 +307,11 @@ interface {{ i.name }}
 {% endfor %}
 {%- endif %}
 {%- for o in (v.routing or {}).get('ospfv3', []) %}ipv6 router ospf {{ o.process }}
-{% for s in o.raw %} {{ s }}
+{{ ospfv3_body(o) }}{% for s in o.raw %} {{ s }}
 {% endfor %}
 {%- endfor %}
 {%- for r in (v.routing or {}).get('ripng', []) %}ipv6 router rip {{ r.name }}
-{% for s in r.raw %} {{ s }}
+{{ ripng_body(r) }}{% for s in r.raw %} {{ s }}
 {% endfor %}
 {%- endfor %}
 {%- endmacro -%}

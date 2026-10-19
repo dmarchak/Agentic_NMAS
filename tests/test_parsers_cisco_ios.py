@@ -82,14 +82,24 @@ class TestSharedParsing:
         assert vlan10["dhcpv6_relay"] == ["2001:DB8:255::10"]
 
     def test_rip_is_parsed_with_networks_split_out(self, s1):
+        """Premise changed (K7, the RIP pack): the network statements still leave the
+        settings, now as the pack's `classful_networks`, and version and summarisation are
+        fields; nothing of the block is left as an unmodelled line."""
         rip = s1["routing"]["rip"]
-        assert "version 2" in rip["settings"]
-        assert "no auto-summary" in rip["settings"]
-        assert rip["networks"] == ["network 10.0.0.0"]
+        assert rip["version"] == "2"
+        assert rip["auto_summary"] is False
+        (block,) = [b for b in split_blocks(_config("s1_vios_l2.cfg"))
+                    if b.stripped == "router rip"]
+        statements = [c.split()[1] for c in block.children
+                      if c.strip().startswith("network ")]
+        assert len(statements) == 1 and rip["classful_networks"] == statements
+        assert rip["settings"] == [] and rip["networks"] == []
 
     def test_passive_interfaces_are_canonicalised(self, s1):
+        """Premise changed (K7): the passive interfaces are the RIP pack's field, each name
+        canonical."""
         rip = s1["routing"]["rip"]
-        assert "passive-interface Loopback0" in rip["settings"]
+        assert "Loopback0" in rip["passive_interfaces"]
 
     def test_logging_and_ntp(self, s1):
         # The syslog block (P.1): host, trap, origin-id and source-interface
@@ -172,10 +182,14 @@ class TestIosXeSpecific:
         assert gi1["vrf"] == "clab-mgmt"
 
     def test_ospf_networks_split_from_settings(self, r1):
+        """Premise changed (K7, the OSPF pack): the network statements leave the settings into
+        their area, the router id is a field, and no line is left unmodelled."""
         ospf = r1["routing"]["ospf"][0]
         assert ospf["process"] == "1"
-        assert "router-id 10.255.1.11" in ospf["settings"]
-        assert len(ospf["networks"]) == 2
+        assert ospf["router_id"] == "10.255.1.11"
+        assert [a["id"] for a in ospf["areas"]] == ["0"]
+        assert len(ospf["areas"][0]["networks"]) == 2
+        assert ospf["settings"] == [] and ospf["networks"] == []
 
     def test_ospfv3(self, r1):
         assert r1["routing"]["ospfv3"][0]["process"] == "1"

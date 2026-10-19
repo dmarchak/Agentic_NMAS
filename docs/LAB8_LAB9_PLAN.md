@@ -45,9 +45,9 @@ operator's lab tooling; **C** is code to build first.
 
 | # | Step | Who | Built? | Size | When |
 |---|---|---|---|---|---|
-| 0a | Retirement completeness: every per-device artefact removed or archived, each with a planted leftover test (C1332 to C1342) | C | no | L | tonight |
-| 0b | The device-name scan with its exact inventory (the lifecycle rule) | C | no | M | tonight |
-| 0c | Feature packs for OSPF (areas, ABR), RIPv2 and redistribution, rendered from intent for IOS and IOS-XE, with round trips on captured configs | C | no | L | tonight and 10-20 |
+| 0a | Retirement completeness: every per-device artefact removed or archived, each with a planted leftover test (C1332 to C1342) | C | **built** (73770853, deployed) | L | done 10-19 |
+| 0b | The device-name scan with its exact inventory (the lifecycle rule) | C | **built** (fa322848, deployed) | M | done 10-19 |
+| 0c | Feature packs for OSPF (areas, ABR), RIPv2 and redistribution, rendered from intent for IOS and IOS-XE, with round trips on captured configs | C | **built** (K7's commit, 10-19); IOS-XE 17's display of `subnets` unmeasured | L | done 10-19 |
 | 0d | The relayed-ZTP proof on a throwaway pair (a relay node, a configless C8000v behind it, with and without option 3) | L/measure | no | M | 10-20 (not run on the night of 10-19: s3's gaps were already widening, and the pair adds about 3.7 CPUs of the emulation work they follow; it also needs hand changes to the live Kea, the firewall and a route on the NMAS host) |
 | 0e | Relayed ZTP in Mercury: the plan and writer for a relayed subnet (server address, a fragment per relayed subnet, option 3 as the relay's own address if 0d needs it, the DNS check on the relayed path), and the firewall's udp/69 rule widened by a host step (C1346) | C | no | M to L | 10-20 to 10-21 |
 | 0f | NetBox on add: after a device's intent is deployed, its record brought up to the golden through Import's preview and confirm; cables from both ends' LLDP (C1344) | C | no | M | 10-21 |
@@ -67,6 +67,24 @@ operator's lab tooling; **C** is code to build first.
 NetBox ID) is onboarded by ZTP under the same name and inherits nothing. Each of these is shown
 empty or new: golden, intent, receipt, host key, reservation, target, policy membership and
 Needs attention row. Then R7, then H5 reaching the network, then the NSoT and the documentation.
+
+**r6's retirement, planned on the host (read only, 2026-10-19 07:3x UTC, after 0a was
+deployed).** The plan refuses nothing. Of its 15 steps, 9 have work to do, and 6 have nothing
+to do (no NetBox credential to mask, no staged credential, no Kea reservation, no rollback
+block, no approval item, no legacy file). The 9:
+1. clear the credential override at its address;
+2. one commit removing its intent and golden and releasing its identity;
+3. archive its 12 golden tags under `retired/r6/<identity>/`;
+4. remove it from the default credential-rotation policy's device list;
+5. withdraw its island declaration and its place on the map;
+6. remove its heartbeat rule (window 750 s) from the generated rules file, with the host step
+   named;
+7. set NetBox device 11 to Decommissioning and rename it `r6-retired-11`;
+8. forget its SSH host key;
+9. delete its inventory row (a current break-glass record is required first).
+
+One advisory: r6's golden still carries Mercury's heartbeat applet, which the deploy path cannot
+remove (C12).
 
 **The management path for R6 and R7.** Chained ZTP puts R6's and R7's management in band, behind
 R4. The rule "a change to the path the tool reaches a device on needs a repair route independent

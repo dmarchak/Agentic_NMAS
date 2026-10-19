@@ -31,6 +31,8 @@ import logging
 import os
 import re
 
+from modules.nsot.features import ospf as _ospf, rip as _rip
+
 log = logging.getLogger(__name__)
 
 STAGING_REL = os.path.join(".nsot", "staging", "host_vars")
@@ -352,6 +354,8 @@ INTERFACE_DEFAULTS = {
     "vrrp": [], "vrrp_groups": [], "mop": [], "ip_nat": [], "switchport": [],
     "switchport_trunk_vlans": [], "helper_addresses": [], "dhcpv6_relay": [],
     "unmodeled": [],
+    # The routing packs' interface fields (K7, `modules/nsot/features`).
+    "ospf_interface": {}, "ospfv3_interface": {}, "ripng_interface": [],
 }
 
 
@@ -371,7 +375,7 @@ def complete_interfaces(host_vars: dict) -> dict:
         if not isinstance(entry, dict):
             filled.append(entry)
             continue
-        merged = {key: (list(value) if isinstance(value, list) else value)
+        merged = {key: (copy.copy(value) if isinstance(value, (list, dict)) else value)
                   for key, value in INTERFACE_DEFAULTS.items()}
         merged.update(entry)
         filled.append(merged)
@@ -438,10 +442,30 @@ INTENT_SECTIONS = {
     "routing.bgp": frozenset({"asn", "settings", "neighbors", "networks",
                               "address_families"}),
     "routing.bgp.address_families[]": frozenset({"afi", "settings", "neighbors", "networks"}),
-    "routing.rip": frozenset({"settings", "networks", "neighbors"}),
-    "routing.ospf[]": frozenset({"process", "settings", "networks", "neighbors"}),
-    "routing.ospfv3[]": frozenset({"process", "raw"}),
-    "routing.ripng[]": frozenset({"name", "raw"}),
+    # The routing feature packs' fields (K7, `modules/nsot/features`, docs/FEATURE_PACKS.md)
+    # beside the lines no pack models (`settings`, `networks`, `raw`), which every intent
+    # written before the packs holds.
+    "routing.rip": frozenset({"settings", "networks", "neighbors"}) | frozenset(_rip.RIP),
+    "routing.rip.timers": frozenset(_rip.TIMERS),
+    "routing.rip.redistribute[]": frozenset(_ospf.REDISTRIBUTE),
+    "routing.rip.default_information": frozenset(_rip.DEFAULT_INFORMATION),
+    "routing.ospf[]": frozenset({"process", "settings", "networks", "neighbors"})
+    | frozenset(_ospf.PROCESS),
+    "routing.ospf[].areas[]": frozenset(_ospf.AREA),
+    "routing.ospf[].areas[].networks[]": frozenset(_ospf.NETWORK),
+    "routing.ospf[].areas[].ranges[]": frozenset(_ospf.RANGE),
+    "routing.ospf[].redistribute[]": frozenset(_ospf.REDISTRIBUTE),
+    "routing.ospf[].default_information": frozenset(_ospf.DEFAULT_INFORMATION),
+    "routing.ospfv3[]": frozenset({"process", "raw"}) | frozenset(_ospf.PROCESS_V3),
+    "routing.ospfv3[].areas[]": frozenset(_ospf.AREA_V3),
+    "routing.ospfv3[].areas[].ranges[]": frozenset(_ospf.RANGE),
+    "routing.ospfv3[].redistribute[]": frozenset(_ospf.REDISTRIBUTE),
+    "routing.ospfv3[].default_information": frozenset(_ospf.DEFAULT_INFORMATION),
+    "routing.ripng[]": frozenset({"name", "raw"}) | frozenset(_rip.RIPNG),
+    "routing.ripng[].redistribute[]": frozenset(_ospf.REDISTRIBUTE),
+    "interfaces[].ospf_interface": frozenset(_ospf.INTERFACE),
+    "interfaces[].ospfv3_interface": frozenset(_ospf.INTERFACE),
+    "interfaces[].ripng_interface[]": frozenset(_rip.RIPNG_INTERFACE),
     "logging": frozenset({"console", "settings", "hosts", "syslog"}),
     "logging.syslog": frozenset({"trap", "origin_id", "source_interface", "hosts",
                                  "heartbeat"}),

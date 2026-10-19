@@ -41,7 +41,8 @@ def _iso(ts: float) -> str:
 
 def runs(hv: dict) -> dict:
     """``{"rip": bool, "ripng": [interface]}``: what *hv*'s committed intent configures."""
-    hv = hv or {}
+    from modules.nsot.features import raw_view
+    hv = raw_view(hv or {})            # a pack's fields read as their lines (K7)
     return {"rip": bool((hv.get("routing") or {}).get("rip")),
             "ripng": sorted(i.get("name", "") for i in hv.get("interfaces") or []
                             if any(" enable" in f" {x}" for x in i.get("ripng") or []))}
@@ -60,8 +61,10 @@ def rip_interfaces(hv: dict) -> list:
     (`passive-interface default` with `no passive-interface X`, or `passive-interface X`)."""
     import ipaddress
 
+    from modules.nsot.features import raw_view
     from modules.nsot.ifnames import same_interface
 
+    hv = raw_view(hv or {})            # a pack's fields read as their lines (K7)
     rip = ((hv or {}).get("routing") or {}).get("rip")
     if not isinstance(rip, dict):
         return []

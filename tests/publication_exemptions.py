@@ -291,8 +291,6 @@ EXEMPT = {
     ('tests/test_onboard_snmp.py', 'ac9ab8567d24'): ('INVENTED', ('address',)),
     # tests/test_other_readers_real_output.py
     ('tests/test_other_readers_real_output.py', 'fbc4be37cf05'): ('VRNETLAB', ('address',)),
-    # tests/test_parsers_cisco_ios.py
-    ('tests/test_parsers_cisco_ios.py', 'e2cc45c9f8ca'): ('INVENTED', ('address',)),
     # tests/test_pipeline.py
     ('tests/test_pipeline.py', 'd8e521899eea'): ('INVENTED', ('address',)),
     ('tests/test_pipeline.py', 'e4b11e25c45f'): ('INVENTED', ('address',)),

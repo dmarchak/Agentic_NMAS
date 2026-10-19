@@ -196,8 +196,15 @@ def render(host_vars: dict, platform: str, secret_lookup=None,
     # committed (C568: `source_interfaces`, every intent on the host). Filling
     # changes no output, since `{% if x %}` emits nothing for a falsy value.
     from modules.nsot.hostvars import complete_schema
+    from modules.nsot import features
 
-    prepared = complete_schema(host_vars)
+    # The feature packs' fields completed the same way (K7): an absent field is its empty
+    # value, an authored prefix is written out in the dialect's notation, and a field a pack
+    # refuses stops the render naming it (`features.FeatureIntentInvalid`). A library from
+    # before the packs, which reads none of their fields, is handed them as the lines the
+    # shipped packs render, which it emits verbatim (`features.for_library`).
+    prepared = features.for_library(features.prepare(complete_schema(host_vars)),
+                                    template_root, platform, template_name)
     try:
         return template.render(vars=prepared, secret=_secret)
     except UndefinedError as exc:

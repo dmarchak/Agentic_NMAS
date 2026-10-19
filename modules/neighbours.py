@@ -149,6 +149,20 @@ def committed_intents(repo: str) -> tuple:
 # What intent implies.
 # ---------------------------------------------------------------------------
 
+def _lines(hv: dict) -> dict:
+    """*hv* as the functions below read it: a feature pack's fields (K7) as the lines they
+    render. Intent holding lines only (every intent written before the packs) is returned as
+    it is, with no render."""
+    from modules.nsot.features import raw_view
+    return raw_view(hv)
+
+
+def _all_lines(intents: dict) -> dict:
+    """`_lines` of each document, once per call of a function reading many (each render is
+    about a millisecond, and `expected` reads every other device's intent per link)."""
+    return {host: _lines(hv) for host, hv in (intents or {}).items()}
+
+
 def _v4(value: str):
     """``IPv4Interface`` from intent's ``"A M"``, or None (dhcp, absent)."""
     parts = (value or "").split()
@@ -189,6 +203,7 @@ def ospf_links(hv: dict) -> list:
     """``[(interface, IPv4Interface)]`` on which this device would form an OSPF
     adjacency: an address a network statement covers, not passive, not a
     loopback, not in a VRF, not shut, and not a /32."""
+    hv = _lines(hv)
     out = []
     procs = ((hv or {}).get("routing") or {}).get("ospf") or []
     for iface in (hv or {}).get("interfaces") or []:
@@ -206,6 +221,7 @@ def ospf_links(hv: dict) -> list:
 def ospfv3_links(hv: dict) -> list:
     """``[(interface, IPv6Interface)]`` carrying `ipv6 ospf`, not passive, not
     a loopback (link-local adjacencies, matched on the global prefix)."""
+    hv = _lines(hv)
     routing = (hv or {}).get("routing") or {}
     raw = [r for p in routing.get("ospfv3") or [] for r in p.get("raw") or []]
     out = []
@@ -223,6 +239,7 @@ def ospfv3_links(hv: dict) -> list:
 
 
 def router_id(hv: dict) -> str:
+    hv = _lines(hv)
     routing = (hv or {}).get("routing") or {}
     for proc in routing.get("ospf") or []:
         for s in proc.get("settings") or []:
@@ -269,6 +286,7 @@ def addresses(intents: dict) -> dict:
 def expected(intents: dict, host: str) -> list:
     """The adjacencies *host*'s committed intent implies, each
     ``{proto, peer, address, via, rid, managed}``."""
+    intents = _all_lines(intents)
     me = intents.get(host) or {}
     out = []
     for name, mine in ospf_links(me):
@@ -363,6 +381,7 @@ def compare(intents: dict, host: str, results: dict, up: dict, now: float = None
     (``unexpected``). With *now*, a reported value older than CURRENT_SECONDS carries
     ``as_of`` (its own scrape time), and so does a protocol whose newest sample is, with
     each neighbour it no longer reports: what a failed scrape left, never drawn as now."""
+    intents = _all_lines(intents)
     exp = expected(intents, host)
     rep = reported(results)
     rid_owner = {router_id(hv): h for h, hv in intents.items() if router_id(hv)}
@@ -469,6 +488,7 @@ def rip_protocols(intents: dict, host: str, rip: dict, error: str = "") -> list:
     from modules.readers.rip import runs
     from modules.readers.topology_graph import rip_links
 
+    intents = _all_lines(intents)
     wants = runs(intents.get(host) or {})
     run = {"rip": wants["rip"], "ripng": bool(wants["ripng"])}
     if not any(run.values()):

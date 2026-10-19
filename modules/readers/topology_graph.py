@@ -220,7 +220,9 @@ def _area(hv: dict, proto: str, port: str) -> str:
     import re
 
     from modules.neighbours import _covered, _v4
+    from modules.nsot.features import raw_view
 
+    hv = raw_view(hv)          # a pack's fields read as their lines (K7)
     iface = _iface(hv, port)
     if proto == "ospfv3":
         for line in iface.get("ospfv3") or []:
@@ -260,8 +262,9 @@ def routing_links(intents: dict, hosts: list, results: dict, up: dict) -> dict:
     The facts the map labels each neighbourship with (the operator, 2026-10-10): ``ports``, each
     end's interface it leaves on; ``area``, OSPF's and OSPFv3's by committed intent; ``asn``,
     each end's AS (its own from intent, the peer's from the neighbour statement)."""
-    from modules.neighbours import compare
+    from modules.neighbours import _all_lines, compare
 
+    intents = _all_lines(intents)       # a pack's fields read as their lines, once (K7)
     out = {"ospf": {}, "ospfv3": {}, "bgp": {}}
     rank = {"down": 3, "not_seen": 2, "up": 1}
     for host in hosts:
@@ -335,10 +338,11 @@ def rip_links(intents: dict, hosts: list, rip: dict) -> dict:
     ``unknown`` when neither did."""
     import ipaddress
 
-    from modules.neighbours import addresses
+    from modules.neighbours import _all_lines, addresses
     from modules.nsot.ifnames import same_interface
     from modules.readers.rip import rip_interfaces, runs
 
+    intents = _all_lines(intents)       # a pack's fields read as their lines, once (K7)
     owners = {str(k): v for k, v in addresses(intents).items()}
     out = {"rip": {}, "ripng": {}}
 

@@ -202,6 +202,8 @@ class BaseParser:
                 })
 
         out = self._apply_schema_defaults(out)
+        from modules.nsot.features import settle
+        out = settle(out, self.platform)
         return self._ref_unmodeled_secrets(self._redact_secret_echoes(out))
 
     #: Optional top-level keys and their empty values. Emitted even when absent
@@ -233,6 +235,8 @@ class BaseParser:
         "ipv6": [], "switchport": [], "switchport_trunk_vlans": [],
         "helper_addresses": [], "dhcpv6_relay": [], "ipv6_nd": [],
         "ospf": [], "ospfv3": [], "ripng": [], "vrrp": [], "mop": [],
+        # The routing packs' interface fields (K7, `modules/nsot/features`).
+        "ospf_interface": {}, "ospfv3_interface": {}, "ripng_interface": [],
     }
 
     #: Marker for a secret substituted into an otherwise opaque string. The
@@ -639,6 +643,17 @@ class BaseParser:
             entry["no_ip_address"] = True
             return True
 
+        # An interface's OSPF and RIPng lines go to their packs first; a line a pack does not
+        # model stays in the `ospf`/`ospfv3`/`ripng` list below, verbatim.
+        from modules.nsot.features import ospf as ospf_pack, rip as rip_pack
+        for prefix, kind in (("ip ospf ", "ospf"), ("ipv6 ospf ", "ospfv3")):
+            if text.startswith(prefix) and ospf_pack.claim_interface_line(
+                    entry, kind, text[len(prefix):], self.platform):
+                return True
+        if text.startswith("ipv6 rip ") and rip_pack.claim_interface_line(
+                entry, text[len("ipv6 rip "):], self.platform):
+            return True
+
         patterns = (
             (r"^description\s+(.+)$",                    "description"),
             (r"^ip address\s+(.+)$",                     "ipv4"),
@@ -686,22 +701,32 @@ class BaseParser:
             proto["raw"].append(ifnames.canonicalise_line(child.strip()))
         return proto
 
+    # OSPF, OSPFv3, RIP and RIPng go through their feature packs (K7, docs/FEATURE_PACKS.md):
+    # a line becomes a structured field only when this dialect's partial renders the field
+    # back as exactly that line; every other line stays where it always was, verbatim and in
+    # order (`settings` and `networks`, or `raw`).
+
     def _h_ospf(self, block, out, m):
-        entry = self._routing_block(block, "ospf", {"process": m.group(1)})
-        entry.update(self._split_routing(entry.pop("raw"), network_key="network"))
+        from modules.nsot.features import ospf as pack
+        lines = self._routing_block(block, "ospf")["raw"]
+        entry = {"process": m.group(1), **pack.claim_process(lines, "ipv4", self.platform)}
         out["routing"].setdefault("ospf", []).append(entry)
 
     def _h_ospfv3(self, block, out, m):
-        entry = self._routing_block(block, "ospfv3", {"process": m.group(1)})
+        from modules.nsot.features import ospf as pack
+        lines = self._routing_block(block, "ospfv3")["raw"]
+        entry = {"process": m.group(1), **pack.claim_process(lines, "ipv6", self.platform)}
         out["routing"].setdefault("ospfv3", []).append(entry)
 
     def _h_rip(self, block, out, m):
-        entry = self._routing_block(block, "rip")
-        entry.update(self._split_routing(entry.pop("raw"), network_key="network"))
-        out["routing"]["rip"] = entry
+        from modules.nsot.features import rip as pack
+        lines = self._routing_block(block, "rip")["raw"]
+        out["routing"]["rip"] = pack.claim_rip(lines, self.platform)
 
     def _h_ripng(self, block, out, m):
-        entry = self._routing_block(block, "ripng", {"name": m.group(1)})
+        from modules.nsot.features import rip as pack
+        lines = self._routing_block(block, "ripng")["raw"]
+        entry = {"name": m.group(1), **pack.claim_ripng(lines, self.platform)}
         out["routing"].setdefault("ripng", []).append(entry)
 
     #: Structure, not configuration: the template re-emits it around a family.

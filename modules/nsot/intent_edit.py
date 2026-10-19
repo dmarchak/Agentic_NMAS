@@ -174,6 +174,19 @@ def validate(hostname: str, text: str, list_name: str = "") -> dict:
         bad = problems[0].split(" is ", 1)[1].split(":", 1)[0].strip("'\"")
         return refuse("schema", "; ".join(problems), _line_of(text, "description:", bad), 1)
 
+    # 2e. The feature packs' fields (K7, docs/FEATURE_PACKS.md): an area that is no area, a
+    #     network that is no network, a protocol a pack does not redistribute. Each names the
+    #     field, its value and what it was compared with; the render refuses the same.
+    from modules.nsot import features
+    problems = features.problems(parsed)
+    if problems:
+        path, key, _message = problems[0]
+        line, column = _key_mark(text, path, key) if isinstance(key, str) \
+            else _key_mark(text, path[:-1], path[-1]) if path else (1, 1)
+        return refuse("schema", "; ".join(m for _p, _k, m in problems[:6])
+                      + (f"; and {len(problems) - 6} more" if len(problems) > 6 else ""),
+                      line, column)
+
     # 3. The secret guards, before anything is rendered or written.
     try:
         hostvars.assert_printable(text, hostname)
