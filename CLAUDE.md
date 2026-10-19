@@ -9,7 +9,9 @@ before acting.**
 
 **The operator's decision, 2026-10-09, for the rest of Phase 7** (the lab's Proxmox snapshots
 and backups taken). Where a rule below makes something the operator's, this section governs. It
-ends when the operator runs `scripts/host-steps/phase7-mode-off.sh`.
+ends when the operator runs `scripts/host-steps/phase7-mode-off.sh`. **Extended to Core 1.0 (the
+operator, 2026-10-18):** it stays in force until that script runs; the completion inventory's
+triage and Core 1.0's sign-off are the operator's, never a recommended option the agent takes.
 
 - **The agent runs deploys** (`nmas-deploy --wait`, CI green), host steps and host commands,
   sudo included, on the NMAS host and the lab host. A git write in a host's checkout stays
@@ -91,7 +93,8 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
 - **A writeup entry is written the turn its stage or sub-task closes**, numbers and forecast
   checked; forecast only from a finished stage of the same kind; publish once, at the end. [not mechanised] [why](docs/LESSONS.md#writeup-entries-and-forecasts)
 - **Sequence by dependency and by whether it works, never "before a demo". The frontend decides;
-  the backend is rewired to serve it, and test churn is a stated cost, never a veto.** [not mechanised]
+  the backend is rewired to serve it, and test churn is a stated cost, never a veto.** A course lab's due date counts as a dependency (the operator, 2026-10-18): a
+  Core 1.0 item a lab needs goes first; it never licenses demo-only work. [not mechanised]
 
 ### Git, the gate and deploys
 
