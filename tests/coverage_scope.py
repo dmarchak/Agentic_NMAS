@@ -80,6 +80,7 @@ EXCEPTIONS = {
     "modules/reads_page.py": (SUPPORT, "the reads page's model"),
     "modules/records_db.py": (SUPPORT, "the records database's access"),
     "modules/records_migrate.py": (SUPPORT, "the records database's migration"),
+    "modules/records_docs.py": (SUPPORT, "the records database's document stores (K31)"),
     "modules/remote_setup.py": (SUPPORT, "the git remote's setup page"),
     "modules/reveal_audit.py": (SUPPORT, "the audit of revealed values"),
     "modules/route_gates.py": (SUPPORT, "every mutating route's gate declaration"),

@@ -225,12 +225,25 @@ LINE_STORES = {"receipts": _receipts, "acknowledgements": _acknowledgements,
                                                       "removals", _removals_path)}
 
 
-def store_of(name: str = STORE) -> LineStore:
-    """The `LineStore` named *name*; `Refused` naming the stores there are for another."""
+def store_of(name: str = STORE):
+    """The `LineStore` named *name*, or the document store (`records_docs.DocStore`); `Refused`
+    naming the stores there are for another."""
+    from modules import records_docs
+
+    if records_docs.is_doc_store(name):
+        return records_docs.store_of(name)
     build = LINE_STORES.get(name)
     if build is None:
-        raise Refused(f"no record store {name!r}: the stores are {', '.join(LINE_STORES)}")
+        raise Refused(f"no record store {name!r}: the stores are "
+                      f"{', '.join(list(LINE_STORES) + list(records_docs.DOC_STORES))}")
     return build()
+
+
+def _docs(store: str):
+    """The document stores' module when *store* is one of them (K31 part 3), else None."""
+    from modules import records_docs
+
+    return records_docs if records_docs.is_doc_store(store) else None
 
 
 def _schema_sql(st: LineStore) -> tuple:
@@ -488,6 +501,8 @@ def plan(connector=None, store: str = STORE) -> dict:
     database could not be asked."""
     from modules import records_db
 
+    if _docs(store):
+        return _docs(store).plan(connector, store)
     st = store_of(store)
     backend = records_db.backend(st.name)
     nets = {n: _counts(_file(p), st) for n, p in file_networks(store).items()}
@@ -511,6 +526,7 @@ def plan(connector=None, store: str = STORE) -> dict:
     basis = json.dumps([st.name, backend, db["ok"], [(r["network"], r["lines"], r["copied"],
                                                       r["since"]) for r in out]], sort_keys=True)
     return {"store": st.name, "words": st.words, "second_kind": st.second_kind, "noun": st.noun,
+            "unit": "line",
             "backend": backend, "db": db, "networks": out,
             "fingerprint": hashlib.sha256(basis.encode()).hexdigest()[:16]}
 
@@ -549,6 +565,8 @@ def check(connector=None, store: str = STORE) -> dict:
     [file, table], "ok", "differs"}], "words"}``. Raises when the database cannot be asked."""
     from modules import records_db
 
+    if _docs(store):
+        return _docs(store).check(connector, store)
     st = store_of(store)
     results = []
     with (connector or records_db.connect)() as conn:
@@ -658,6 +676,8 @@ def move(fingerprint: str, actor: str, verified: str, connector=None,
     check switches back and says so."""
     from modules import records_db
 
+    if _docs(store):
+        return _docs(store).move(fingerprint, actor, verified, connector, store)
     st = store_of(store)
     steps = []
 
@@ -740,6 +760,8 @@ def move_back(fingerprint: str, actor: str, verified: str, connector=None,
     the folded rows read the same before and after."""
     from modules import records_db
 
+    if _docs(store):
+        return _docs(store).move_back(fingerprint, actor, verified, connector, store)
     st = store_of(store)
     steps = []
     with _Lock():
@@ -793,5 +815,6 @@ def view(cached=None) -> list:
     return [{"store": s, "words": records_db.STORE_WORDS[s], "backend": records_db.backend(s),
              "files": (per.get(s) or {}).get("files") or {},
              "check": (per.get(s) or {}).get("check"), "check_at": good.get("value_at", ""),
+             "unit": "item" if _docs(s) else "line",
              "check_error": attempt.get("error", "") if attempt.get("ok") is False else ""}
             for s in records_db.STORES]

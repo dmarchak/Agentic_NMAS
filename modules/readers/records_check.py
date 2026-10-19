@@ -25,7 +25,9 @@ def read() -> dict:
 
     out = {}
     for name in records_db.STORES:
-        files = {n: len(RM._file(p)) for n, p in RM.file_networks(name).items()}
+        # A line store counts its lines; a document store (K31 part 3) its entries.
+        files = (RM._docs(name).file_counts(name) if RM._docs(name) else
+                 {n: len(RM._file(p)) for n, p in RM.file_networks(name).items()})
         backend = records_db.backend(name)
         if backend != records_db.POSTGRES:
             out[name] = {"backend": backend, "files": files, "check": None,

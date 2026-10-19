@@ -82,7 +82,8 @@ SCOPES: dict = {
              "records_store_breakglass_drills", "records_store_reveals",
              "records_store_host_steps_done", "records_store_heartbeat_rules",
              "records_store_netbox_removals", "records_store_network_settings_record",
-             "records_store_onboarding_runs", "records_store_inventory_edits"),
+             "records_store_onboarding_runs", "records_store_inventory_edits",
+             "records_store_approval_queue"),
     # Lab 2's NETCONF demo script: global, and lab tooling (P.8 decision 4; NSOT_STAGE10_PLAN
     # 6.0b moves it to lab/).
     **_group(HOST, "lab_demo", "yang_push_script"),

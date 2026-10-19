@@ -52,11 +52,25 @@ def _lock(list_name: str = ""):
     return PathLock(lambda: _queue_path(list_name))
 
 
+#: The queue's store on the records database (K31 part 3: a document store, one per network).
+STORE = "approval_queue"
+
+
+def _network(path: str) -> str:
+    """The queue's network on the records database: its list folder's name, verbatim."""
+    return os.path.basename(os.path.dirname(path))
+
+
 def _load_queue(list_name: str = "") -> list:
     """The queue for a read-modify-write, under `_lock()`: [] when ABSENT; raises
-    `filestore.StoreUnreadable` (the file preserved) when it cannot be read."""
+    `filestore.StoreUnreadable` (the file preserved) when it cannot be read. On the records
+    database once moved (K31), the lock still held on the file's path serialises writers."""
+    from modules import records_docs
     from modules.filestore import StoreUnreadable, read_json_for_write
-    entries = read_json_for_write(_queue_path(list_name), empty=[])
+    path = _queue_path(list_name)
+    if records_docs.on_database(STORE):
+        return records_docs.load(STORE, _network(path), [])
+    entries = read_json_for_write(path, empty=[])
     if not isinstance(entries, list):
         raise StoreUnreadable("approval_queue.json does not hold a list, so nothing was "
                               "written: saving would have replaced it")
@@ -78,7 +92,10 @@ def read_list(ref) -> list:
 
 
 def _read_path(path: str) -> list:
+    from modules import records_docs
     from modules.filestore import StoreUnreadable
+    if records_docs.on_database(STORE):
+        return records_docs.load(STORE, _network(path), [])
     if not os.path.exists(path):
         return []
     try:
@@ -95,8 +112,13 @@ def _read_path(path: str) -> list:
 def _save_queue(entries: list, list_name: str = "") -> None:
     """Replace the queue atomically (a temp per write, then `os.replace`): never a
     truncate in place, which a concurrent read could catch half-written."""
+    from modules import records_docs
     from modules.filestore import write_atomic
-    write_atomic(_queue_path(list_name), json.dumps(entries, indent=2))
+    path = _queue_path(list_name)
+    if records_docs.on_database(STORE):
+        records_docs.save(STORE, _network(path), entries)
+        return
+    write_atomic(path, json.dumps(entries, indent=2))
 
 
 def _expire_old(entries: list) -> list:
@@ -190,16 +212,13 @@ def read_pending(list_name: str = "") -> tuple:
     applied in memory only, and unreadable is its own answer, because "no
     approval is waiting" and "the queue could not be read" must not share
     one. *list_name* is the network the page names (C487), else the active list."""
-    path = _queue_path(list_name)
-    if not os.path.exists(path):
-        return [], None
+    from modules.filestore import StoreUnreadable
+
+    # Through the one read (`_read_path`), so the records database answers once moved (K31).
     try:
-        with open(path, encoding="utf-8") as fh:
-            entries = json.load(fh)
-        if not isinstance(entries, list):
-            raise ValueError("not a list")
-    except (OSError, ValueError) as exc:
-        return None, f"the approval queue could not be read ({type(exc).__name__})"
+        entries = _read_path(_queue_path(list_name))
+    except StoreUnreadable as exc:
+        return None, str(exc)
     cutoff = time.time() - EXPIRY_HOURS * 3600
     return [e for e in entries if e.get("status") == "pending"
             and not (e.get("created_ts") and e["created_ts"] < cutoff)], None

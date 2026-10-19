@@ -44,7 +44,7 @@ APPLICATION_NAME = "mercury"
 STORES = ("receipts", "acknowledgements", "restarts", "restart_windows", "restart_window_ends",
           "rotations", "breakglass_exports", "breakglass_intact", "breakglass_checks",
           "breakglass_drills", "reveals", "host_steps_done", "heartbeat_rules", "netbox_removals",
-          "network_settings_record", "onboarding_runs", "inventory_edits")
+          "network_settings_record", "onboarding_runs", "inventory_edits", "approval_queue")
 STORE_WORDS = {"receipts": "Deploy receipts", "acknowledgements": "Acknowledgements",
                "restarts": "Restarts seen", "restart_windows": "Planned-restart windows",
                "restart_window_ends": "Planned-restart windows ended early",
@@ -56,7 +56,8 @@ STORE_WORDS = {"receipts": "Deploy receipts", "acknowledgements": "Acknowledgeme
                "heartbeat_rules": "Heartbeat window re-measures",
                "netbox_removals": "NetBox removals",
                "network_settings_record": "Network settings changes",
-               "onboarding_runs": "Onboarding runs", "inventory_edits": "Inventory edits"}
+               "onboarding_runs": "Onboarding runs", "inventory_edits": "Inventory edits",
+               "approval_queue": "Approval queue"}
 FILE, POSTGRES = "file", "postgres"
 
 

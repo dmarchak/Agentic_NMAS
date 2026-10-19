@@ -41,7 +41,7 @@
   <div class="table-wrap">
   <table class="table set-table">
     {%- set cols = 6 if pv.second_kind else 5 %}
-    <thead><tr><th>Network</th><th>File lines</th><th>{{ pv.noun | capitalize }}</th>{% if pv.second_kind %}<th>{{ pv.second_kind | capitalize }}</th>{% endif %}<th>In the table</th><th>Written since the move</th></tr></thead>
+    <thead><tr><th>Network</th><th>File {{ pv.unit or "line" }}s</th><th>{{ pv.noun | capitalize }}</th>{% if pv.second_kind %}<th>{{ pv.second_kind | capitalize }}</th>{% endif %}<th>In the table</th><th>Written since the move</th></tr></thead>
     <tbody>
     {%- for n in pv.networks %}
     <tr><td class="mono">{{ n.network or 'the installation' }}</td><td>{{ n.lines }}</td><td>{{ n.rows }}</td>{% if pv.second_kind %}<td>{{ n.completions }}</td>{% endif %}<td>{{ '—' if n.copied is none else n.copied }}</td><td>{{ '—' if n.since is none else n.since }}</td></tr>
@@ -75,7 +75,7 @@
     <tr>
       <td>{{ s.words }}</td>
       <td>{{ badge('the records database', 'ok') if s.backend == 'postgres' else badge('its files', 'neutral') }}
-        {%- if s.files %}<br><span class="muted small">{% for n, c in s.files.items() %}{{ n }}: {{ c }} line{{ '' if c == 1 else 's' }}{% if not loop.last %}, {% endif %}{% endfor %} in the files</span>{% endif %}</td>
+        {%- if s.files %}<br><span class="muted small">{% for n, c in s.files.items() %}{{ n }}: {{ c }} {{ s.unit }}{{ '' if c == 1 else 's' }}{% if not loop.last %}, {% endif %}{% endfor %} in the files</span>{% endif %}</td>
       <td>
         {%- if s.backend != 'postgres' %}<span class="muted small">on its files: nothing to compare</span>
         {%- elif s.check_error %}{{ badge('does not answer', 'danger') }} <span class="small">{{ s.check_error }}</span>
