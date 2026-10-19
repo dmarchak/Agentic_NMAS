@@ -14,11 +14,10 @@ You start a capture from the device page's **Actions > Capture** (that device, i
 in place of the tab), or from an approved drift item in the approval queue, which opens this
 preview for its device. The card posts its device to `/v2/device/<name>/capture/start`, which
 starts the job, and its confirm reaches the apply through `/v2/device/<name>/capture/confirm`.
-Every device of a network at once is **Devices > Save** (see [Save](save)), which reads and
+Every device of a network at once is Devices › Save (see [Save](save)), which reads and
 records each device the same way; the devices with no committed golden are one of its scopes,
-**Actions > Save the devices of the network with no golden…** (see [Save](save#no-golden)),
-which saves each one to startup as well as recording it. Today's device list, with its Save All
-Configs and Capture devices with no golden, left at cutover (2026-10-17).
+**Actions › Save the devices of <network> with no golden…** (see [Save](save#no-golden)),
+which saves each one to startup as well as recording it.
 
 1. **Start the job.** Read: this list's inventory. Sent: nothing. Recorded: a job in the server's memory (a restart loses
    it, and asking for it then says so). The request answers at once with the job's id, so no

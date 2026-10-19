@@ -78,17 +78,17 @@ The Actions menu:
   verified and rolled back alone, and stops after repeated failures. While it runs, the
   preview says so and its controls do nothing; once it has ended, the preview says that. Merge-only: lines a device holds that its intent lacks
   stay; Remove lines (Mode B) is on each device's page. See [Deploy](deploy).
-- **Save (N)…** opens Devices › Save for the ticked devices: each saves its running
+- **Save (<count>)…** opens Devices › Save for the ticked devices: each saves its running
   configuration to startup, is read back, and is recorded as golden, one commit for the batch.
   See [Save to startup and as golden](save).
-- **Change a setting on (N)…** opens a page for one change to the ticked devices' committed
+- **Change a setting on (<count>)…** opens a page for one change to the ticked devices' committed
   intent: each setting's path, the value it holds now and the value it becomes. Its preview
   refuses, by name, any device holding something else, groups the rest by what changes, and
   commits once; nothing is sent until you deploy. See [Edit intent in bulk](bulk-intent).
-- **Save every device of the network…** opens the same Save for every device in the inventory;
+- **Save every device of <network> (<count>)…** opens the same Save for every device in the inventory;
   it is Save All: it asks for a baseline, earned when every device was saved and recorded at
   its committed intent, and the result says which, or why not.
-- **Save the devices of the network with no golden…** opens the same Save for every device of
+- **Save the devices of <network> with no golden…** opens the same Save for every device of
   the inventory with no committed golden, decided from the network's repository; the plan
   names each device it left out, and says so when none is left to save. See
   [the devices with no golden](save#no-golden).
@@ -127,8 +127,8 @@ send (masked), what a save makes permanent, and what it does not do. The passwor
 drawn back, so **Adopt** asks for it again, with why; it needs a verified person, reads the
 device again and stops, sending nothing, if it moved since the preview. The card follows the
 run's steps and then draws each one's outcome. An adopted device's result names what finishes
-it, in order: **Seed its intent…** (the fidelity and one commit as its intent), then **Export
-the break-glass record…**. See [Adopt a device](adopt).
+it, in order: **Seed <device>'s intent…** (the fidelity and one commit as its intent), then
+**Export the break-glass record…**. See [Adopt a device](adopt).
 
 ## A pending device's page {#pending}
 
