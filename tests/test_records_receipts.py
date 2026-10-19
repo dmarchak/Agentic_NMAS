@@ -335,6 +335,7 @@ class TestTheCard:
         assert receipts.on_database()
         page = _stores(app_db["client"].get("/v2/settings/installation").get_data(as_text=True))
         assert "Move back to files…" in page and "1 of 1 on the database" in page
+        assert page.count("hx-vals='{\"store\": \"receipts\"}'") == 1, "Move back sends its store"
 
     def test_a_moved_preview_is_refused_and_nothing_changes(self, app_db):
         _r, pv = _post(app_db, "/v2/settings/installation/records/stores/move/preview")
@@ -348,13 +349,34 @@ class TestTheCard:
         r, html = _post(app_db, "/v2/settings/installation/records/stores/sideways/preview")
         assert r.status_code == 404 and "move or back" in html
 
+    def test_each_store_s_buttons_and_confirm_carry_its_name(self, app_db):
+        """K31: a store moves by its name, sent by the card, never assumed."""
+        page = _stores(app_db["client"].get("/v2/settings/installation").get_data(as_text=True))
+        assert page.count("hx-vals='{\"store\": \"receipts\"}'") == 1, page
+        _r, pv = _post(app_db, "/v2/settings/installation/records/stores/move/preview",
+                       {"store": "receipts"})
+        assert 'name="store" value="receipts"' in _stores(pv)
+
+    def test_an_unknown_store_is_refused_naming_the_stores(self, app_db):
+        from html import unescape
+
+        r, html = _post(app_db, "/v2/settings/installation/records/stores/move/preview",
+                        {"store": "nothing-here"})
+        said = unescape(html)
+        assert r.status_code == 404 and "no record store 'nothing-here'" in said, said
+        assert "the stores are receipts" in said
+        r, html = _post(app_db, "/v2/settings/installation/records/stores/move",
+                        {"fingerprint": "0" * 16, "store": "nothing-here"})
+        assert r.status_code == 409 and "no record store 'nothing-here'" in unescape(html)
+        assert not receipts.on_database()
+
 
 class TestTheReaderAndNeedsAttention:
     def test_on_files_the_reader_says_nothing_to_compare(self, db):
         from modules.readers import records_check
 
         _file_with_every_kind()
-        got = records_check.read()
+        got = records_check.read()["stores"]["receipts"]
         assert got["check"] is None and got["files"] == {"default": 6}
 
     def test_on_the_database_the_reader_runs_the_check(self, db):
@@ -362,7 +384,7 @@ class TestTheReaderAndNeedsAttention:
 
         _file_with_every_kind()
         assert _move()["ok"]
-        got = records_check.read()
+        got = records_check.read()["stores"]["receipts"]
         assert got["check"]["ok"] and got["backend"] == "postgres"
 
     def _cached(self, value, attempt_ok=True, error=""):
@@ -394,6 +416,21 @@ class TestTheReaderAndNeedsAttention:
         (row,) = got["rows"]
         assert row["kind"] == "unreachable" and "connection refused" in row["cause"]
         assert "Receipts" not in row["what"] and "receipts cannot be written" in row["what"]
+
+    def test_a_mismatch_in_the_per_store_value_names_the_store(self, db):
+        """K31: the reader's value holds each store under `stores`; a row names its store."""
+        from modules import attention
+
+        db["values"]["records_store_receipts"] = "postgres"
+        value = {"stores": {"receipts": {"backend": "postgres", "files": {"default": 7}, "check": {
+            "ok": False, "words": "default: file 7 lines, table 6", "networks": [
+                {"network": "default", "file": 7, "table": 6, "merged": [5, 5], "ok": False,
+                 "differs": "line 7 is in the file and not in the table"}]}}}}
+        got = attention.records_source(cached=self._cached(value))
+        (row,) = got["rows"]
+        assert row["id"] == "records:receipts:default" and row["operands"]["store"] == "receipts"
+        assert row["what"] == "Deploy receipts in default no longer match their file"
+        assert got["checked"].startswith("Deploy receipts: default: file 7 lines")
 
     def test_on_files_there_is_no_row(self, db):
         from modules import attention

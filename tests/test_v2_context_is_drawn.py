@@ -258,8 +258,7 @@ UNDRAWN = {
         ("first_failure_at", "GAP (minor): when redaction first failed since start-up; the "
                              "card draws the count and the last time only"),
         ("group", "a settings group's internal id; its title is drawn"),
-        ("rule_words", "the password rule, drawn by the records Replace form"),
-        ("store", "a store's internal id; its words and backend are drawn")],
+        ("rule_words", "the password rule, drawn by the records Replace form")],
     # P7-05 (2026-10-16): the Access cards read again on `posture`, the same context as the
     # page's tab.
     "GET /v2/settings/installation/access": [
@@ -283,8 +282,6 @@ UNDRAWN = {
     "GET /v2/settings/installation/records/replace": [
         ("config loaded record_unreadable stale steps stores test test_unreadable version",
          RECORDS_CARD)],
-    "GET /v2/settings/installation/records/stores": [
-        ("store", "a store's internal id; its words and backend are drawn")],
     "GET /v2/settings/network/<list_name>": [
         ("bucket", SCOPE_ROW), ("choice explicit follows url", GROUP_STATE)],
     "GET /v2/settings/network/<list_name>/group/<group>": [
@@ -349,7 +346,9 @@ UNDRAWN = {
 #: +9 2026-10-17: the pending page and its fragment measured for the first time (C1193's
 #: provider took them off UNREACHED, -2 there); their nine keys were carried and undrawn
 #: before, unmeasured (C1219).
-UNDRAWN_CEILING = 367
+#: -2 2026-10-19: the Record stores card draws each store's `store` (K31 part 2a: its Move and
+#: Move back buttons send it).
+UNDRAWN_CEILING = 365
 
 #: {route: [(keys, reason), ...]}: in the preview a card is built from, read by neither its
 #: adapter nor its template.

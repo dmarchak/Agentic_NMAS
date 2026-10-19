@@ -352,7 +352,7 @@ DECLARED = {
     "settings_v2.network_delete_preview": Nothing("counts what a network holds and where its data would go; writes nothing"),
     "netbox_v2.preview": Nothing("starts a dry run on a thread; the job announces netbox when it lands (ANNOUNCERS netbox-job)"),
     "remote_v2.publication": Nothing("reads what a first push would publish; writes nothing"),
-    "settings_v2.records_store_preview": Nothing("counts the receipts lines in the files and the table for a move's preview; writes nothing"),
+    "settings_v2.records_store_preview": Nothing("counts a record store's lines in the files and the table for a move's preview; writes nothing"),
 }
 
 

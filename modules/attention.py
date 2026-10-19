@@ -2374,25 +2374,34 @@ def records_source(cached=None) -> dict:
                         since=_ts(attempt.get("at")),
                         action={"label": "Test the records database on Settings › Installation "
                                          "› Connections: its failing check names why"}))
-    check = (good.get("value") or {}).get("check") or {}
-    for n in check.get("networks") or []:
-        if n.get("ok"):
-            continue
-        rows.append(row(source="records", kind="mismatch", key=f"receipts:{n.get('network')}",
-                        level="danger",
-                        what=f"Deploy receipts in {n.get('network')} no longer match their file",
-                        cause=f"{n.get('network')}: file {n.get('file')} lines, table "
-                              f"{n.get('table')}: {n.get('differs')}",
-                        read_at=value_at,
-                        operands={"network": n.get("network"), "file": n.get("file"),
-                                  "table": n.get("table")},
-                        action={"label": "Read the differing line; if a writer is still on "
-                                         "files, move the receipts back to their files on "
-                                         "Settings › Installation › Connections"}))
+    value = good.get("value") or {}
+    # A value stored before K31 is receipts' alone, its fields at the top.
+    per = value.get("stores") or ({"receipts": value} if "check" in value else {})
+    checked = []
+    for store, got_store in sorted(per.items()):
+        check = (got_store or {}).get("check") or {}
+        if check.get("words"):
+            checked.append(f"{records_db.STORE_WORDS.get(store, store)}: {check['words']}")
+        for n in check.get("networks") or []:
+            if n.get("ok"):
+                continue
+            where = n.get("network") or "the installation"
+            words = records_db.STORE_WORDS.get(store, store)
+            rows.append(row(source="records", kind="mismatch", key=f"{store}:{n.get('network')}",
+                            level="danger",
+                            what=f"{words} in {where} no longer match their file",
+                            cause=f"{where}: file {n.get('file')} lines, table "
+                                  f"{n.get('table')}: {n.get('differs')}",
+                            read_at=value_at,
+                            operands={"store": store, "network": n.get("network"),
+                                      "file": n.get("file"), "table": n.get("table")},
+                            action={"label": "Read the differing line; if a writer is still on "
+                                             f"files, move {words.lower()} back to their files "
+                                             "on Settings › Installation › Connections"}))
     return source_result("records", label, read_at=started, took_ms=took, rows=rows,
                          value_at=value_at, stale_after_seconds=promise,
                          reader="records-check",
-                         checked=check.get("words") or "checked")
+                         checked="; ".join(checked) or "checked")
 
 
 # ---------------------------------------------------------------------------

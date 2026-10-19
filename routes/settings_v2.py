@@ -304,13 +304,18 @@ def records_stores():
 
 @bp.route("/installation/records/stores/<direction>/preview", methods=["POST"])
 def records_store_preview(direction):
-    """What moving the receipts (or moving them back) would do, every network's counts read
-    now; writes nothing."""
+    """What moving a record store (the form's `store`, deploy receipts when it names none) to
+    the records database, or back, would do, every network's counts read now; writes nothing."""
     from modules import records_migrate as RM
 
     if direction not in DIRECTIONS:
         return _stores(404, refused=f"no such operation {direction!r}: move or back")
-    return _stores(pv=dict(RM.plan(), direction=direction,
+    store = request.form.get("store") or RM.STORE
+    try:
+        planned = RM.plan(store=store)
+    except RM.Refused as exc:
+        return _stores(404, refused=str(exc))
+    return _stores(pv=dict(planned, direction=direction,
                            steps=[(s, RM.STEP_WORDS[s]) for s in
                                   (RM.MOVE_STEPS if direction == "move" else RM.BACK_STEPS)]))
 
@@ -325,11 +330,14 @@ def records_store_apply(direction):
     if direction not in DIRECTIONS:
         return _stores(404, refused=f"no such operation {direction!r}: move or back")
     run = RM.move if direction == "move" else RM.move_back
+    store = request.form.get("store") or RM.STORE
     try:
-        out = run(request.form.get("fingerprint", ""), identity.request_actor(), _verified())
+        words = RM.store_of(store).words
+        out = run(request.form.get("fingerprint", ""), identity.request_actor(), _verified(),
+                  store=store)
     except RM.Refused as exc:
         return _stores(409, refused=str(exc))
-    return _stores(done=dict(out, direction=direction))
+    return _stores(done=dict(out, direction=direction, store=store, words=words))
 
 
 def _install(name: str, status: int = 200, **ctx):

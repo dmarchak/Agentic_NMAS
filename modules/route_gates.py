@@ -199,7 +199,7 @@ GATES = {
     "settings_v2.network_source_refresh": _g(N, "reads NetBox for a NetBox network now; the schedule does this anyway"),
     "settings_v2.network_create_preview": _g(N, "checks a new network's name and the folder it derives; writes nothing"),
     "settings_v2.network_delete_preview": _g(N, "counts what a network holds and says where its data would go; writes nothing"),
-    "settings_v2.records_store_preview": _g(N, "counts every network's receipts lines in the files and the records database for a move's preview; writes nothing"),
+    "settings_v2.records_store_preview": _g(N, "counts a record store's lines, network by network, in the files and the records database for a move's preview; writes nothing"),
     "settings_v2.install_writes_off": _g(K, "turns NetBox's master write switch off for every network, recorded; never turns it on"),
     "topology_v2.expected_declare": _g(K, "declares a device an expected island of its "
                                           "network, with a reason, recorded (P.11)"),

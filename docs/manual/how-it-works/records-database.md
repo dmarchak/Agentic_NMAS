@@ -72,10 +72,14 @@ The password shows only as set or not set. Rotating it is two halves, **the serv
 
 ## Move a store to the database {#move}
 
-Below the card, **Record stores** lists each store, where it is now and its last check. Deploy
-receipts move first. **Move to the database…** opens a preview of every network's receipts:
-lines, receipts, completions, and how many lines the table already holds. Nothing is written
-until **Move**, which is bound to that preview.
+Below the card, **Record stores** lists each store, where it is now and its last check. Each
+store moves on its own, by its own row's button; deploy receipts were the first. **Move to the
+database…** opens a preview of that store's lines, network by network (a store the installation
+keeps once is one row, "the installation"): lines, records (for receipts, the receipts and the
+completions that fill in a pending one), and how many lines the table already holds. Nothing
+is written until **Move**, which is bound to that preview and that store. The steps below name
+receipts; every store takes the same steps with its own file, table and setting
+(`records_store_<store>`).
 
 1. `plan`: the preview's counts are read again and compared. Read: every network's
    `deploy_receipts.jsonl` and the table's counts. Sent: nothing. Recorded: nothing. If anything
@@ -114,8 +118,8 @@ receipt.
 ## What it does not do
 
 - It contacts no device.
-- A store moves only when a person moves it here, with its count check; receipts are the first
-  and, so far, the only store that moves.
+- A store moves only when a person moves it here, with its count check, one store at a time;
+  the card lists the stores that can move (deploy receipts, so far).
 - Save never opens the database; Replace never changes the password on the server.
 - Moving never deletes a file: the files are deleted by a host step in the release after, once
   the check has matched since the move.
