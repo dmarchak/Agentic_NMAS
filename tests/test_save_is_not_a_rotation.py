@@ -87,7 +87,7 @@ class TestTheSaveRecordsItsOwnState:
         ({"ok": False, "detail": "the save or its read-back could not run"}, cr.SAVE_UNVERIFIED),
     ])
     def test_every_answer_records_a_save_state_never_a_rotations(self, answer, state):
-        REAL_RECORD("r2", answer, "person@example.invalid", via="device page")
+        REAL_RECORD("r2", answer, "person@example.invalid", via="device page", list_name="Lab")
         row = cr.rotation_records()[-1]
         assert row["state"] == state
         assert row["state"] in cr.SAVE_STATES and row["state"] not in cr.ROTATION_STATES

@@ -47,8 +47,8 @@ adopt(__name__)
 def _host_actor() -> str:
     """Who runs this on the host, the rotation CLI's convention: the person
     (the OS user), never blank, so the modification record names them (C149)."""
-    import getpass
-    return f"{getpass.getuser()} (host shell)"
+    from modules.identity import host_actor
+    return host_actor()
 
 def _lookup_is_interface_keyed() -> bool:
     """The precondition, checked rather than assumed."""

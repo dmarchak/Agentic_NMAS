@@ -773,8 +773,10 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
     # commit and receipt. A device another operation holds is refused alone,
     # by name, and the rest proceed.
     from modules.nsot import device_ops
+    from modules.nsot.receipts import operation
+    # Held as what it is (C364): a scoped batch is its scope's operation, never "deploy".
     held, busy = device_ops.acquire_many(
-        list_name, [a.device for a in artifacts], "deploy", actor)
+        list_name, [a.device for a in artifacts], operation(scope), actor)
     artifacts = [a for a in artifacts if a.device in held]
     refused += busy
     try:
@@ -783,7 +785,7 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
         extra = {**({"remove": remove} if remove else {}), **({"scope": scope} if scope else {}),
                  **({"declare": declare} if declare else {})}
         record, pending = _pending_receipts(list_name, "deploy", confirmations, command_hashes,
-                                            actor=actor, actor_kind=actor_kind)
+                                            actor=actor, actor_kind=actor_kind, scope=scope)
         def _one(entry):
             # *on_device* (a job, P.9 d2) hears each device start and finish,
             # in the rollout order, so its page can draw where the batch is.
@@ -812,7 +814,7 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
             **({"label": SCOPE_DONE.get(scope, "after a scoped deploy")} if scope else {}))
         report["receipts"] = _write_receipts(list_name, report, "deploy", confirmations,
                                              command_hashes, actor=actor,
-                                             actor_kind=actor_kind, pending=pending)
+                                             actor_kind=actor_kind, pending=pending, scope=scope)
     finally:
         device_ops.release_many(list_name, held)
     return report
@@ -838,7 +840,7 @@ def _prior_authorised(list_name: str, hostname: str, lines) -> dict:
 
 
 def _pending_receipts(list_name: str, action: str, confirmations: dict, command_hashes: dict,
-                      source_ref: str = "", *, actor: str, actor_kind: str):
+                      source_ref: str = "", *, actor: str, actor_kind: str, scope: str = ""):
     """``(record, pending)``: *record(result)* writes ONE device's receipt row the moment
     that device finishes, marked commit pending (CONCURRENCY_AUDIT R5), and returns the
     result unchanged; *pending* is the run's id and, by device, each row so recorded, for
@@ -855,7 +857,7 @@ def _pending_receipts(list_name: str, action: str, confirmations: dict, command_
         row = receipts.pending_row(result, list_name=list_name, action=action, actor=actor,
                                    actor_kind=actor_kind or "", confirmations=confirmations,
                                    command_hashes=command_hashes, source_ref=source_ref,
-                                   run_id=run_id)
+                                   run_id=run_id, scope=scope)
         if receipts.write(list_name, [row])["ok"]:
             pending["ids"][row["device"]] = row["id"]
         return result
@@ -865,7 +867,7 @@ def _pending_receipts(list_name: str, action: str, confirmations: dict, command_
 
 def _write_receipts(list_name: str, report: dict, action: str, confirmations: dict,
                     command_hashes: dict, source_ref: str = "", *, actor: str = None,
-                    actor_kind: str = None, pending: dict = None) -> dict:
+                    actor_kind: str = None, pending: dict = None, scope: str = "") -> dict:
     """Record what was sent, after the commit it names (C60). A failure is
     loud in the response and the log, and never turns a deploy that happened
     into one that reads as failed. A device whose row was written as it
@@ -886,7 +888,8 @@ def _write_receipts(list_name: str, report: dict, action: str, confirmations: di
     rows = receipts.rows_for(report, list_name=list_name, action=action,
                              actor=actor, actor_kind=actor_kind or "",
                              confirmations=confirmations,
-                             command_hashes=command_hashes, source_ref=source_ref)
+                             command_hashes=command_hashes, source_ref=source_ref,
+                             scope=scope)
     pending = pending or {}
     lines = []
     for row in rows:

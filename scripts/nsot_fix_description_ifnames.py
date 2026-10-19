@@ -306,10 +306,10 @@ def main() -> int:
     # the history describe nine decisions that nobody took separately.
     # Actor is WHO, not WHAT: nobody is accountable to a program, and the
     # person who typed the command is. See repo.ACTOR_CONVENTION.
-    import getpass
 
     try:
-        person = getpass.getuser()
+        from modules.identity import host_actor
+        person = host_actor()
     except Exception:                           # noqa: BLE001
         person = "unknown"
     result = _repo.save_host_vars(

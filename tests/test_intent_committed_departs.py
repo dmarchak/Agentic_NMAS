@@ -74,7 +74,7 @@ def s1(tmp_path, monkeypatch):
     document = get_parser("cisco_ios").parse(config)
     document["hostname"] = "s1"
     hostvars.write_committed(repo_dir, document)
-    _repo.save_host_vars("lab", ["s1"], actor="test", message="host_vars: s1 parsed")
+    _repo.save_host_vars("lab", ["s1"], actor="test", message="host_vars: s1 parsed", source="test")
     # Its template in the library and approved against s1, as the walk's was: a removal is
     # made as part of a deploy, and the deploy card builds no program from an unapproved one.
     from modules.nsot import approval, templates_repo

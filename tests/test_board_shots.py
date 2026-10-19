@@ -827,7 +827,7 @@ def test_bulk_intent(tmp_path, monkeypatch):
     R.init_repo(repo)
     for name in ("s1", "s2", "r1", "r3"):
         hostvars.write_committed(repo, T._old_shape_intent(name))
-    R.save_host_vars("Lab", ["s1", "s2", "r1", "r3"], message="host_vars: seed")
+    R.save_host_vars("Lab", ["s1", "s2", "r1", "r3"], message="host_vars: seed", source="test")
     monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path))
     monkeypatch.setattr("modules.device.get_device_lists",
                         lambda: [{"name": "Lab", "filename": "lab"}])
@@ -837,7 +837,7 @@ def test_bulk_intent(tmp_path, monkeypatch):
     doc = hostvars.read_committed(repo, "s2")
     doc["logging"]["settings"] = ["trap errors"] + T.OLD_SETTINGS[1:]
     hostvars.write_committed(repo, doc)
-    R.save_host_vars("Lab", ["s2"], message="host_vars: s2 drift")
+    R.save_host_vars("Lab", ["s2"], message="host_vars: s2 drift", source="test")
     before = subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"], capture_output=True,
                             text=True).stdout.strip()
     path = "/v2/devices/change?" + urlencode(

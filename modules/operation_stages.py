@@ -338,8 +338,7 @@ HISTORY = {
     "v2.credentials_intact": ("breakglass",),
     "v2.credentials_check": ("breakglass",),
     "v2.credentials_drill": ("breakglass",),
-    "v2.heartbeat_apply": ("MISSING: the heartbeat windows' record "
-                           "(heartbeat_rules.jsonl) has no History source yet"),
+    "v2.heartbeat_apply": ("heartbeat_windows",),
     "settings_v2.group_switch": NOT_A_DEVICE,
     "settings_v2.mode_switch": NOT_A_DEVICE,
     "settings_v2.group_save": NOT_A_DEVICE,
@@ -393,5 +392,6 @@ WRITTEN_ELSEWHERE = {
 #: 7 -> 5 the same day: Bulk file actions' upload and delete; 5 -> 3, 2026-10-14: the assistant's
 #: chat and agent run, removed with the AI family, D15; 3 -> 2, 2026-10-15: today's bulk
 #: commands, /bulk_execute, removed at 7.8; 2 -> 1, 2026-10-17: today's /run_command, removed
-#: at 7.8 with today's device page, P7-22).
-HISTORY_MISSING_CEILING = 1
+#: at 7.8 with today's device page, P7-22; 1 -> 0, 2026-10-19: the heartbeat windows'
+#: re-measure has its History source, C360, K31).
+HISTORY_MISSING_CEILING = 0

@@ -67,6 +67,18 @@ def _record_path() -> str:
     return os.path.join(DATA_DIR, "heartbeat_rules.jsonl")
 
 
+def records() -> dict:
+    """Every re-measure written from the app, oldest first: ``{"rows", "error"}``; an
+    unreadable record is its error, never no rows (C360: History's source)."""
+    try:
+        with open(_record_path(), encoding="utf-8") as fh:
+            return {"rows": [json.loads(l) for l in fh if l.strip()], "error": ""}
+    except FileNotFoundError:
+        return {"rows": [], "error": ""}
+    except (OSError, ValueError) as exc:
+        return {"rows": [], "error": f"the record cannot be read ({exc})"}
+
+
 def last_written() -> dict:
     """The newest record of a re-measure written from the app, or {}."""
     try:

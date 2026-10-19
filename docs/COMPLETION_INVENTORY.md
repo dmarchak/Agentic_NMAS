@@ -394,7 +394,8 @@ deploys included. No start time is recorded for any one item, so no per-item fig
 |---|---|---|---|---|---|
 | K1 | M | 1b66ad96 | 2026-10-19 02:46 | C1252: the responder serves every network's reservations; K11's inheritance (a network with no profile takes Default's) | Lab 9's last step, the operator's W5 sitting (docs/walks/W5.md) |
 | K2 | M | 63cc648d | 2026-10-19 03:12 | C589: one Needs attention row per adjacency a device logged down, acknowledged within its band | none in Core 1.0 (C1322, C1323 registered) |
-| K11 | M | this commit | | the remainder: one set of targets, one record and one job-health row per Prometheus owner; two owners naming one directory refused (C229 closed) | none |
+| K11 | M | d244d7b1 | 2026-10-19 03:31 | the remainder: one set of targets, one record and one job-health row per Prometheus owner; two owners naming one directory refused (C229 closed) | none |
+| K31, part 1 | (L) | this commit | | E18's record rows: C365 (an intent edit named as one), C361 (a rotation row names its network), C364 (a scoped batch held and recorded as its scope), C368 (a withdrawal drawn with who and why), C237 (one labelled host login), C360 (the heartbeat re-measure in History; History's gaps at 0); the record stores surveyed (C1324 to C1329 registered) | the stores into the records database, one line-store machinery for the 17 append-only stores (the survey's), then the document stores; C159 |
 
 ## 7. Not placed, and missing from the cross-check list
 

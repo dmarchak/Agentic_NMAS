@@ -177,7 +177,7 @@ def _persist(startup: str, *, earlier_by: int = 0):
     if earlier_by:
         time.gmtime = lambda *a: real(*a) if a else real(time.time() - earlier_by)
     try:
-        onboard._record_native_persist("s4", got, "op@example.invalid", via="device page")
+        onboard._record_native_persist("s4", got, "op@example.invalid", via="device page", list_name="Lab")
     finally:
         time.gmtime = real
     return got

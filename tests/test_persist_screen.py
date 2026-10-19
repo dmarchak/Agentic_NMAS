@@ -52,7 +52,7 @@ def lab(tmp_path, monkeypatch):
     device.write_devices_csv(rows, str(list_dir / "devices.csv"))
     records = []
     monkeypatch.setattr("modules.nsot.onboard._record_native_persist",
-                        lambda host, out, actor, via: records.append(
+                        lambda host, out, actor, via, **_k: records.append(
                             {"device": host, "state": out.get("state"), "actor": actor,
                              "via": via}))
     sent = []

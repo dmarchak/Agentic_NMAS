@@ -51,8 +51,8 @@ def main() -> int:
     ap.add_argument("--apply", action="store_true")
     # WHO is accountable (repo.ACTOR_CONVENTION): for a command run on the
     # host, the OS user. "operator" named nobody.
-    import getpass
-    ap.add_argument("--actor", default=getpass.getuser())
+    from modules.identity import host_actor
+    ap.add_argument("--actor", default=host_actor())
     args = ap.parse_args()
 
     from modules.config import get_current_list_name, get_list_data_dir

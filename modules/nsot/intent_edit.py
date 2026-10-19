@@ -27,6 +27,9 @@ log = logging.getLogger(__name__)
 
 #: An edit's steps, in order: the manual's How it works page names each (tests/test_manual.py).
 STEPS = ("open", "check", "acknowledge", "commit", "moved")
+#: The commit's `Source:`: a person's edit of committed intent (C365: it was recorded as
+#: `extraction`, `save_host_vars`' default then, and History drew a hand edit as one).
+SOURCE = "intent-edit"
 
 
 def _repo_for(list_name: str) -> str:
@@ -546,7 +549,7 @@ def commit(list_name: str, hostname: str, text: str, summary: str, base: str,
             return {"status": 400, "ok": False, "error": str(exc)}
         except ValueError as exc:
             return {"status": 400, "ok": False, "error": str(exc)}
-        result = repo_service.save_host_vars(list_name, [hostname], actor=actor,
+        result = repo_service.save_host_vars(list_name, [hostname], actor=actor, source=SOURCE,
                                              message=f"host_vars: {hostname} {summary}")
         after = hostvars.committed_blob(repo, hostname)
     return {"status": 200, "ok": result.get("ok", False), "hostname": hostname,

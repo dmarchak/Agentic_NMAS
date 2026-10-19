@@ -70,6 +70,33 @@ COMMIT_STATES = (PENDING, COMMITTED, NO_GOLDEN)
 #: How every reader words a pending row: never done, never green.
 PENDING_WORDS = "commit PENDING: its batch has not recorded it yet"
 
+#: A SCOPED batch (the monitoring profile, the IP SLA probes, the missing monitoring templates)
+#: is a deploy of part of intent, recorded `action: deploy` with its `scope` beside it (C364:
+#: History said "Deployed", Needs attention "the last deploy" and an interrupted one "A deploy
+#: was cut off" for a run that sent only the profile's or the probes' lines). Per scope: its
+#: noun, which is also the hold's operation and the job's kind, and its past tense.
+SCOPES = {"profile": ("monitoring profile apply", "Monitoring profile applied"),
+          "ip_sla": ("IP SLA send", "IP SLA probes sent"),
+          "templates": ("monitoring templates deploy", "Monitoring templates deployed")}
+_PAST = {"deploy": "Deployed", "restore": "Restored", "reapply": "Re-applied"}
+
+
+def noun(row: dict) -> str:
+    """What the receipt's run was, as a noun: its scope's, else its action."""
+    scope = SCOPES.get(row.get("scope") or "")
+    return scope[0] if scope else (row.get("action") or "deploy")
+
+
+def past(row: dict) -> str:
+    """What the receipt's run did, in the past tense, for History."""
+    scope = SCOPES.get(row.get("scope") or "")
+    return scope[1] if scope else _PAST.get(row.get("action") or "", "Changed")
+
+
+def operation(scope: str) -> str:
+    """The hold's operation for a batch of *scope*: its noun, or ``deploy`` unscoped."""
+    return SCOPES[scope][0] if scope in SCOPES else "deploy"
+
 
 def is_pending(row: dict) -> bool:
     """Whether *row* still waits for its batch's commit (a row read by `read()`)."""
@@ -190,7 +217,7 @@ def _saved_startup(result: dict) -> dict:
 
 def rows_for(report: dict, *, list_name: str, action: str, actor: str,
              actor_kind: str, confirmations: dict = None,
-             command_hashes: dict = None, source_ref: str = "") -> list:
+             command_hashes: dict = None, source_ref: str = "", scope: str = "") -> list:
     """One receipt row per device in *report* (sent, failed or refused)."""
     from modules.redact import redact_text
 
@@ -217,6 +244,7 @@ def rows_for(report: dict, *, list_name: str, action: str, actor: str,
             "actor": actor,
             "actor_kind": actor_kind,
             "source_ref": source_ref,
+            **({"scope": scope} if scope else {}),
             "outcome": result.get("outcome", ""),
             "stage": result.get("stage", ""),
             "reason": redact_text(result.get("reason", "") or ""),
@@ -265,14 +293,14 @@ def rows_for(report: dict, *, list_name: str, action: str, actor: str,
 
 def pending_row(result: dict, *, list_name: str, action: str, actor: str, actor_kind: str,
                 confirmations: dict = None, command_hashes: dict = None,
-                source_ref: str = "", run_id: str = "") -> dict:
+                source_ref: str = "", run_id: str = "", scope: str = "") -> dict:
     """The row for ONE device as it finishes, before the batch's commit: `rows_for`'s row
     with ``commit_state: pending`` and no commit. *run_id* names the batch run it is part of
     (the commit's own batch id does not exist yet)."""
     (row,) = rows_for({"results": [result], "golden": {}}, list_name=list_name,
                       action=action, actor=actor, actor_kind=actor_kind,
                       confirmations=confirmations, command_hashes=command_hashes,
-                      source_ref=source_ref)
+                      source_ref=source_ref, scope=scope)
     row.update(commit_state=PENDING, golden_commit="", run_id=run_id)
     return row
 

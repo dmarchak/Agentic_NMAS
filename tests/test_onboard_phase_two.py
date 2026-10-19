@@ -694,13 +694,13 @@ class TestTheNativePersistCommand:
         _record_native_persist("bp9", {"ok": False, "state": "not_persisted",
                                        "detail": "after write memory the device still has NO "
                                                  "startup config"}, "op",
-                               via="nmas-persist-native")
+                               via="nmas-persist-native", list_name="Lab")
         row = [r for r in job_health.rotation_rows() if r["unit"] == "rotation:bp9"][0]
         assert row["state"] == "not_safe_to_reboot"
         assert "nmas-persist-native bp9" in row["detail"]
         assert "nmas-persist-credential" not in row["detail"]
         _record_native_persist("bp9", {"ok": True, "detail": "carries it"}, "op",
-                               via="nmas-persist-native")
+                               via="nmas-persist-native", list_name="Lab")
         row = [r for r in job_health.rotation_rows() if r["unit"] == "rotation:bp9"][0]
         assert row["state"] == "ok"
 
@@ -717,9 +717,9 @@ class TestARotationRecordNamesThePathThatWroteIt:
         from modules.nsot.onboard import _record_native_persist
 
         _record_native_persist("bp8", {"ok": True, "detail": "d"}, "op",
-                               via="onboarding phase 2")
+                               via="onboarding phase 2", list_name="Lab")
         _record_native_persist("bp8", {"ok": True, "detail": "d"}, "op",
-                               via="nmas-persist-native")
+                               via="nmas-persist-native", list_name="Lab")
         rows = [r for r in cr.rotation_records() if r["device"] == "bp8"]
         assert [r["via"] for r in rows] == ["onboarding phase 2", "nmas-persist-native"]
 

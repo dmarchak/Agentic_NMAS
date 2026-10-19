@@ -120,10 +120,11 @@ def _export(args):
     # C182: the export is logged with each device's digest (never a value),
     # so job health can say when a rotation has made this record stale.
     try:
+        from modules.identity import host_actor
         bg.record_export(_data_dir(), list_name=list_name, devices=devices,
                          path=os.path.abspath(args.out),
                          key_fingerprint=bg.key_fingerprint(key),
-                         actor=getpass.getuser())
+                         actor=host_actor())
         print(f"logged  : {bg.EXPORT_LOG} (digests only), so job health tracks "
               "whether this record stays current")
     except OSError as exc:

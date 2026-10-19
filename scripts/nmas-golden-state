@@ -41,7 +41,6 @@ import sys
 sys.dont_write_bytecode = True
 
 import argparse  # noqa: E402
-import getpass  # noqa: E402
 import os  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -146,7 +145,8 @@ def main(argv=None) -> int:
     items = [GoldenItem(d.get("hostname"), captures[d.get("hostname")], d.get("ip", ""),
                         netbox_id=d.get("_netbox_id"), device_uid=d.get("device_uid", ""))
              for d in devices if d.get("hostname") in captures]
-    result = save_golden(list_name, items, source="golden_state", actor=getpass.getuser(),
+    from modules.identity import host_actor
+    result = save_golden(list_name, items, source="golden_state", actor=host_actor(),
                          baseline=True, allow_new=False, inventory_size=len(devices),
                          skipped=failures, operational=snapshot,
                          extra_trailers=["Tool: nmas-golden-state"])

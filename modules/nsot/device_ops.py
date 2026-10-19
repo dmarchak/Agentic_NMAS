@@ -56,6 +56,10 @@ log = logging.getLogger(__name__)
 #: What a holder is doing, in the words of the refusal.
 OPERATION_WORDS = {
     "deploy": "deployed to", "restore": "restored", "capture": "captured",
+    # A scoped batch's operation is its scope's noun (`receipts.SCOPES`, C364).
+    "monitoring profile apply": "given its monitoring profile",
+    "IP SLA send": "sent its IP SLA probes",
+    "monitoring templates deploy": "sent the missing monitoring templates",
     "rotate": "rotated", "onboard": "onboarded", "persist": "persisted",
     "retire": "retired",
     "save": "saved (write memory)",

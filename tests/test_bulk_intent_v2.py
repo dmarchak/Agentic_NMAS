@@ -90,7 +90,7 @@ def test_the_preview_groups_refuses_and_binds_one_confirm(web):
     doc = hostvars.read_committed(repo, "s2")
     doc["logging"]["settings"] = ["trap errors"] + OLD_SETTINGS[1:]
     hostvars.write_committed(repo, doc)
-    R.save_host_vars("Lab", ["s2"], message="host_vars: s2 drift")
+    R.save_host_vars("Lab", ["s2"], message="host_vars: s2 drift", source="test")
     html = web["client"].post("/v2/devices/change/preview", data=_form()) \
         .get_data(as_text=True)
     assert "2 device(s), 1 group(s), 1 refused" in html

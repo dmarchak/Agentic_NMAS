@@ -438,6 +438,19 @@ def actor_verification(actor: str) -> str:
     return "none" if route_gates.installed() else "host-shell"
 
 
+def host_actor() -> str:
+    """Who ran a host command, as every record names them: the OS login, LABELLED
+    (`inventory_edit.actor_label`'s rule), never bare. C237: the app records a verified
+    email and the host commands recorded the bare login, so the audit trail held two
+    unlabelled identities for one person. The one place a host command reads its login
+    for a record (tests/test_host_actor_is_labelled.py refuses another)."""
+    import getpass
+
+    from modules.inventory_edit import actor_label
+
+    return actor_label(getpass.getuser(), "host-shell")
+
+
 import contextlib as _contextlib  # noqa: E402
 import threading as _threading  # noqa: E402
 

@@ -91,7 +91,7 @@ def planted(lab, tmp_path, monkeypatch):  # noqa: F811
     for d in ("r3", "zz-in-no-list"):
         cr.record_outcome("rotate", {"device": d, "actor": "alex@example.com",
                                      "state": cr.ROTATED_PERSISTED, "via": "device page",
-                                     "steps": [{"name": "push", "ok": True}]})
+                                     "steps": [{"name": "push", "ok": True}]}, list_name="Lab")
     acknowledgements.record("authorisations:Lab:r4:shutdown", _now(), why="planned work",
                             by="alex@example.com", verified="person",
                             kind="repeated_authorisation", what="shutdown authorised 3 times")

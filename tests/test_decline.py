@@ -48,7 +48,7 @@ def make_lab(tmp_path, monkeypatch):
     if doc.pop("ip_sla", None) is not None or doc.pop("ip_sla_schedules", None) is not None:
         doc.pop("ip_sla_schedules", None)
         hostvars.write_committed(lab["repo"], doc)
-        assert save_host_vars(LIST, [HOST], actor="t", message="no probes")["ok"]
+        assert save_host_vars(LIST, [HOST], actor="t", message="no probes", source="test")["ok"]
     return lab
 
 
@@ -100,7 +100,7 @@ class TestTheEntry:
         doc["ip_sla"] = [{"id": "1", "settings": [" icmp-echo 192.0.2.1 source-interface "
                                                   "Loopback0", "  frequency 10"]}]
         hostvars.write_committed(lab["repo"], doc)
-        assert save_host_vars(LIST, [HOST], actor="t", message="probe")["ok"]
+        assert save_host_vars(LIST, [HOST], actor="t", message="probe", source="test")["ok"]
         e = decline.entry(LIST, HOST, "ip_sla", reason=WHY, actor=TEST_PERSON)
         assert "ip sla 1: icmp-echo 192.0.2.1" in e["error"]
         assert "remove them first" in e["error"]
@@ -137,7 +137,7 @@ class TestTheApply:
         doc = hostvars.read_committed(lab["repo"], HOST)
         doc["ntp_servers"] = list(doc.get("ntp_servers") or []) + ["192.0.2.123"]
         hostvars.write_committed(lab["repo"], doc)
-        assert save_host_vars(LIST, [HOST], actor="t", message="ntp")["ok"]
+        assert save_host_vars(LIST, [HOST], actor="t", message="ntp", source="test")["ok"]
         out = decline.apply(LIST, HOST, "ip_sla", e["hash"], actor=TEST_PERSON, reason=WHY,
                             at=e["at"])
         assert out["outcome"] == "moved"

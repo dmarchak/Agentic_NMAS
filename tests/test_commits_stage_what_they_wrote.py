@@ -52,7 +52,7 @@ def lab(tmp_path, monkeypatch):
         # The parser's whole document: an intent the templates cannot render is refused at
         # commit (C725), and a hand-typed two-key one does not render.
         fh.write(to_yaml(get_parser("cisco_ios").parse("hostname s1\n")))
-    assert save_host_vars(LIST, ["s1"], actor="t")["ok"]
+    assert save_host_vars(LIST, ["s1"], actor="t", source="test")["ok"]
     for rel, text in (("host_vars/s1.yml", "description: an unreviewed edit\n"),
                       ("golden/s1.cfg", "banner motd ^an unreviewed edit^\n")):
         with open(os.path.join(repo, rel), "a", encoding="utf-8") as fh:
@@ -105,7 +105,7 @@ class TestEveryWriterCommitsOnlyItsOwn:
         with open(os.path.join(lab["repo"], "host_vars", "r2.yml"), "a",
                   encoding="utf-8") as fh:
             fh.write("# an edit to r2\n")
-        out = save_host_vars(LIST, ["r2"], actor="t")
+        out = save_host_vars(LIST, ["r2"], actor="t", source="test")
         assert out["ok"] and _files(lab["repo"], out["commit"]) == ["host_vars/r2.yml"]
         assert _still_uncommitted(lab)
 
@@ -176,7 +176,7 @@ class TestEveryWriterCommitsOnlyItsOwn:
 
         head = _git(lab["repo"], "rev-parse", "HEAD")
         _git(lab["repo"], "add", "--", "golden/s1.cfg")
-        out = save_host_vars(LIST, ["r2"], actor="t")
+        out = save_host_vars(LIST, ["r2"], actor="t", source="test")
         assert out["ok"] is False and "golden/s1.cfg" in out["error"]
         assert _git(lab["repo"], "rev-parse", "HEAD") == head
 

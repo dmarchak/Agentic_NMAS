@@ -76,7 +76,7 @@ def lab(tmp_path, monkeypatch):
 
     monkeypatch.setattr("modules.nsot.onboard.persist_on_device", persist)
     monkeypatch.setattr("modules.nsot.onboard._record_native_persist",
-                        lambda host, out, actor, via: records.append(
+                        lambda host, out, actor, via, **_k: records.append(
                             {"device": host, "state": out.get("state"), "actor": actor,
                              "via": via}))
     return dict(cap, rows=rows, sent=sent, records=records, answers=answers, data=str(data))

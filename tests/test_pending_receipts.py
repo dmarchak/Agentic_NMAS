@@ -177,6 +177,51 @@ class TestTheApplyWritesEachDeviceAsItFinishes:
         assert deploy_job.state("j1")["steps"][0]["words"] == "done"
 
 
+class TestAScopedBatchIsRecordedAsWhatItIs:
+    """C364: a monitoring-profile apply and an IP SLA send were held as "deploy" and
+    recorded `action: deploy` with nothing beside it, so History said "Deployed", Needs
+    attention "The last deploy to" and an interrupted one "A deploy was cut off" for a run
+    that sent only the profile's or the probes' lines."""
+
+    def test_the_hold_and_every_receipt_name_the_scope(self, monkeypatch):
+        import routes.deploy as rd
+        from modules.nsot import device_ops
+
+        held = []
+        real_acquire, real_apply = device_ops.acquire_many, rd.apply_batch
+        monkeypatch.setattr(device_ops, "acquire_many",
+                            lambda lst, devices, op, actor: held.append(op)
+                            or real_acquire(lst, devices, op, actor))
+        monkeypatch.setattr(rd, "apply_batch",
+                            lambda *a, **k: real_apply(*a, **dict(k, scope="ip_sla")))
+        _plan, out = _Apply.run(monkeypatch, _deployed,
+                                lambda *a, **k: {"commit": "c0ffee", "batch_id": "batch-9",
+                                                 "devices": ["s4"]})
+        assert held == ["IP SLA send"], held
+        (row,) = receipts.read(out["list"])["rows"]
+        assert (row["action"], row["scope"]) == ("deploy", "ip_sla"), row
+        assert receipts.noun(row) == "IP SLA send" and receipts.past(row) == "IP SLA probes sent"
+
+    def test_history_and_needs_attention_word_it_by_its_scope(self, monkeypatch):
+        from modules import attention
+        from modules import history_sources as H
+
+        row = dict(_pending(device="s4"), list="Default", scope="profile", outcome="failed",
+                   commit_state="committed")
+        monkeypatch.setattr(receipts, "read", lambda *a, **k: {"state": "ok", "rows": [row]})
+        ref = types.SimpleNamespace(name="Default", repo_dir="/nonexistent")
+        (e,) = H.receipts({"ref": ref, "device": "s4", "members": None, "limit": 50})["events"]
+        assert e["what"].startswith("Monitoring profile applied: "), e["what"]
+        whats = [r["what"] for r in attention.deploy_source(
+            read=lambda: {"state": "ok", "rows": [row]})["rows"]]
+        assert any(w.startswith("The last monitoring profile apply to s4") for w in whats), whats
+
+    def test_an_unscoped_receipt_reads_as_before(self):
+        row = _pending(device="s4")
+        assert "scope" not in row
+        assert (receipts.noun(row), receipts.past(row)) == ("deploy", "Deployed")
+
+
 class TestEveryReaderDrawsPending:
     def test_the_result_component_never_says_done(self):
         from modules.nsot.deploy import command_fingerprint

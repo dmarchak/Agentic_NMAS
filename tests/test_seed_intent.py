@@ -270,7 +270,7 @@ class TestTheApply:
         full = to_yaml(get_parser("cisco_iosxe").parse("hostname r2\n"))
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(full)
-        assert save_host_vars(LIST, ["r2"], actor="t", paths=["host_vars/r2.yml"])["ok"]
+        assert save_host_vars(LIST, ["r2"], actor="t", paths=["host_vars/r2.yml"], source="test")["ok"]
         head = _git(lab["repo"], "rev-parse", "HEAD")
         _code, out = _apply(lab, {"r2": h})
         target = out["result"]["targets"][0]
@@ -365,7 +365,7 @@ class TestOnlyTheSeededFileIsCommitted:
         other = os.path.join(lab["repo"], "host_vars", "s1.yml")
         with open(other, "w", encoding="utf-8") as fh:
             fh.write("hostname: s1\ninterfaces: []\n")
-        assert save_host_vars(LIST, ["s1"], actor="t", paths=["host_vars/s1.yml"])["ok"]
+        assert save_host_vars(LIST, ["s1"], actor="t", paths=["host_vars/s1.yml"], source="test")["ok"]
         with open(other, "a", encoding="utf-8") as fh:
             fh.write("description: somebody's unreviewed edit\n")
 

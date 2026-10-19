@@ -286,7 +286,8 @@ def apply(list_name: str, hostname: str, *, actor: str, confirmed_hash: str,
     except device_ops.DeviceBusy as exc:
         return {"ok": False, "state": "refused", "plan": p,
                 "detail": f"{exc}. Nothing was sent."}
-    (record or onboard._record_native_persist)(hostname, out, actor, via="device page")
+    (record or onboard._record_native_persist)(hostname, out, actor, via="device page",
+                                               list_name=list_name)
     log.info("persist: %s/%s by %s: %s", list_name, hostname, actor, out.get("state"))
     return {"ok": bool(out.get("ok")), "state": out.get("state", "unknown"),
             "detail": out.get("detail", ""), "plan": p, "trail": trail, "ended": ended}

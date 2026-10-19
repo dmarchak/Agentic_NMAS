@@ -1343,7 +1343,7 @@ def _apply(list_name, hostname, *, mgmt_ip, platform, supplied_username, supplie
     # ---- persist, on the device, read back ----------------------------------
     pers = (persist or onboard.persist_on_device)(mgmt_ip, user, pw, pw, device_type)
     result["persist"] = pers
-    onboard._record_native_persist(hostname, pers, actor, via="adopt")
+    onboard._record_native_persist(hostname, pers, actor, via="adopt", list_name=list_name)
     if not _step("persist", pers.get("ok"), pers.get("detail", "")):
         return _stop("persist", (
             f"{pers.get('detail') or 'the save could not be confirmed'}. The tool's account "

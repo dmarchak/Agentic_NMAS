@@ -49,7 +49,7 @@ def lab(tmp_path, monkeypatch):
                                          platform="cisco_iosxe")],
                        source="capture", actor="t", allow_new=True, baseline=False)["ok"]
     hostvars.write_committed(repo, get_parser("cisco_iosxe").parse(captured))
-    assert save_host_vars(LIST, ["r2"], actor="t")["ok"]
+    assert save_host_vars(LIST, ["r2"], actor="t", source="test")["ok"]
     return {"repo": repo, "intent": os.path.join(repo, "host_vars", "r2.yml")}
 
 
@@ -164,7 +164,7 @@ def test_mercurys_commit_refuses_with_the_scripts_words(lab, tmp_path):
     _edit_intent(lab, lambda t: t.replace("\n  description:", "\n  descripton:", 1))
     script_fail = next(f for f in _fail_lines(_script(lab["repo"], tmp_path=tmp_path).stdout))
     before = _head(lab["repo"])
-    got = save_host_vars(LIST, ["r2"], actor="t")
+    got = save_host_vars(LIST, ["r2"], actor="t", source="test")
     assert got["ok"] is False
     assert "refused by the config check" in got["error"]
     # The same check, file, line and words as the script's FAIL line.
@@ -177,7 +177,7 @@ def test_mercurys_commit_refuses_an_intent_that_does_not_render(lab):
     from modules.nsot.repo import save_host_vars
 
     _edit_intent(lab, _unrenderable)
-    got = save_host_vars(LIST, ["r2"], actor="t")
+    got = save_host_vars(LIST, ["r2"], actor="t", source="test")
     assert got["ok"] is False and "- render: host_vars/r2.yml" in got["error"], got
 
 
@@ -294,7 +294,7 @@ def test_a_profile_exclusion_is_mercurys_own_key_and_commits(lab):
     r2 = hostvars.read_committed(lab["repo"], "r2")
     r2["profile_exclude"] = [{"section": "snmp", "reason": "polled by the carrier's NMS"}]
     hostvars.write_committed(lab["repo"], r2)
-    assert save_host_vars(LIST, ["r2"], actor="t")["ok"]
+    assert save_host_vars(LIST, ["r2"], actor="t", source="test")["ok"]
 
 
 # ---------------------------------------------------------------------------

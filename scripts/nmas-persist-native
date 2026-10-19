@@ -16,7 +16,6 @@ established). The output names each credential line's FORM, never its value.
 """
 
 import argparse
-import getpass
 import os
 import sys
 
@@ -49,14 +48,16 @@ def run(list_name: str, hostname: str, *, persist=None, record=None) -> dict:
     # It saves the device's startup config: one operation per device (C98).
     from modules.nsot import device_ops
     try:
+        from modules.identity import host_actor
         with device_ops.hold(ref.name, hostname, "persist",
-                             f"{getpass.getuser()} (host shell)"):
+                             host_actor()):
             out = (persist or onboard.persist_on_device)(
                 row.get("ip", ""), row.get("username", "admin"), password,
                 cr.enable_secret(row), device_type)
     except device_ops.DeviceBusy as exc:
         return {"state": "unknown", "detail": str(exc)}
-    (record or onboard._record_native_persist)(hostname, out, getpass.getuser(),
+    from modules.identity import host_actor
+    (record or onboard._record_native_persist)(hostname, out, host_actor(), list_name=ref.name,
                                                 via="nmas-persist-native")
     return out
 

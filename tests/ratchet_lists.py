@@ -86,6 +86,7 @@ RATCHETS = (
     ("tests/test_v2_one_confirm.py", "SECOND_IMPLEMENTATIONS", "shrinks"),
     ("tests/test_v2_one_confirm.py", "LEGACY_HOMES", "shrinks"),
     ("tests/test_v2_text_sends_nowhere_old.py", "EXCUSED", "shrinks"),
+    ("tests/test_host_actor_is_labelled.py", "EXCUSED", "shrinks"),
     ("tests/todays_page_links.py", "GAPS", "shrinks"),
     ("tests/todays_page_links.py", "OTHER_GAPS", "shrinks"),
     ("tests/coverage_baseline.json", "assertion_free", "shrinks"),

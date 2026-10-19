@@ -21,7 +21,6 @@ declaration that switches a check's meaning is made on the host.
 """
 
 import argparse
-import getpass
 import os
 import sys
 
@@ -53,7 +52,8 @@ def main(argv=None) -> int:
             print(f"{key}: declared by {d.get('by')} at {d.get('at')}: {d.get('reason')}")
         return 0
 
-    actor = args.actor or getpass.getuser()
+    from modules.identity import host_actor
+    actor = args.actor or host_actor()
     if args.withdraw:
         out = ss.withdraw_not_applicable(args.key, actor)
     else:

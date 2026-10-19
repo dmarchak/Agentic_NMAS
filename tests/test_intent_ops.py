@@ -40,7 +40,7 @@ def _edit(repo, mutate, subject):
     doc = hostvars.read_committed(repo, HOST)
     mutate(doc)
     hostvars.write_committed(repo, doc)
-    assert save_host_vars(LIST, [HOST], actor="t", message=subject)["ok"]
+    assert save_host_vars(LIST, [HOST], actor="t", message=subject, source="test")["ok"]
     return _git(repo, "rev-parse", "HEAD")
 
 

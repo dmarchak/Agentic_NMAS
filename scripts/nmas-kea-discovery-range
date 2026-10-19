@@ -19,7 +19,6 @@ Exit 0 done or as expected, 1 refused, failed or different, 2 Kea could not be a
 """
 
 import argparse
-import getpass
 import json
 import os
 import sys
@@ -164,7 +163,8 @@ def main(argv=None) -> int:
         print(f"the pools: REFUSED: {p['refused']}")
         return 1
     print(f"the pools: {p['title']}")
-    got = S.apply_edit(DEFAULT_LIST, values, p["hash"], actor=f"{getpass.getuser()} (host shell)",
+    from modules.identity import host_actor
+    got = S.apply_edit(DEFAULT_LIST, values, p["hash"], actor=host_actor(),
                        reason=REASON, kea=kea,
                        planner=lambda ln, v, kea=None, intent=None: L.plan(ln, v, kea=kea,
                                                                           intent=intent))

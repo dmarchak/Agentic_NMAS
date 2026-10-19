@@ -134,6 +134,9 @@ OPERATION_NAMES = {
     "retire": "Retire", "save": "Save", "command": "A command that is not a read",
     "bulk": "Bulk change", "reload": "Reload", "file": "File action",
     "probe": "Removal probe", "read": "Show commands",
+    # A scoped batch's operation is its scope's noun (`receipts.SCOPES`, C364).
+    "monitoring profile apply": "Monitoring profile apply", "IP SLA send": "IP SLA send",
+    "monitoring templates deploy": "Monitoring templates deploy",
 }
 
 #: A hold's operation -> the device-page card whose stepper draws its steps.

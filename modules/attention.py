@@ -1081,7 +1081,7 @@ def deploy_source(read=None, saves=None) -> dict:
                 continue
             rows.append(row(
                 source="deploys", kind="unsaved", key=f"{lst}:{host}", level="warning",
-                what=(f"The last {r.get('action') or 'deploy'} to {host} is running and NOT "
+                what=(f"The last {receipts.noun(r)} to {host} is running and NOT "
                       "saved to startup: a reload loses it"),
                 cause=unsaved_words + (f"; {saves_unread}" if saves_unread else ""),
                 action=_persist_action(lst, host, (
@@ -1123,7 +1123,7 @@ def deploy_source(read=None, saves=None) -> dict:
         rows.append(row(
             source="deploys", kind="failed", key=f"{lst}:{host}",
             level="danger" if r.get("sent") else "warning",
-            what=f"The last {r.get('action') or 'deploy'} to {host}: {words}",
+            what=f"The last {receipts.noun(r)} to {host}: {words}",
             cause=cause,
             action=(_persist_action(lst, host, read_it + f"; what {host} runs now is not "
                                     "saved to startup, and Persist… on its device page saves "

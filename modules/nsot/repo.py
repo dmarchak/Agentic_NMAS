@@ -1662,7 +1662,7 @@ ACTOR_CONVENTION = ("person | ai-agent | service:<client-id>; a script names "
 
 
 def save_host_vars(list_name: str, devices: list, actor: str = "user",
-                   message: str = "", source: str = "extraction",
+                   message: str = "", *, source: str,
                    tool: str = "", extra_trailers: list = None,
                    paths: list = None) -> dict:
     """Commit ``host_vars`` after human review.
@@ -1678,7 +1678,9 @@ def save_host_vars(list_name: str, devices: list, actor: str = "user",
 
     ``source`` names the workflow (``extraction``, ``repair``, …) and is free
     text by design — the vocabulary grows with the tool, and an enum here
-    would have to be edited before any new workflow could commit.
+    would have to be edited before any new workflow could commit. It has no
+    default (C365): a person's intent edit, passing none, was recorded as an
+    ``extraction``, so every write path names its own.
     """
     names = ", ".join(devices) if devices else "devices"
     subject = message or f"host_vars: commit extraction for {names}"

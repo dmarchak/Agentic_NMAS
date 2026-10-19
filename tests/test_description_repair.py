@@ -338,9 +338,10 @@ class TestTheWriteIsOneCommit:
 
     def test_the_actor_is_a_person_not_the_script(self):
         """An actor is who is accountable, never what ran. Nobody is
-        accountable to a program; the person who typed the command is."""
+        accountable to a program; the person who typed the command is: the OS login, labelled
+        (`identity.host_actor()`, C237)."""
         source = self._main_source()
-        assert "getpass.getuser()" in source
+        assert "person = host_actor()" in source
         assert 'actor="description-repair"' not in source
         assert 'actor="nsot' not in source
 
@@ -648,13 +649,16 @@ class TestTheActorConventionIsWrittenDown:
         assert "tool" in params and "source" in params
 
     def test_the_defaults_preserve_the_old_behaviour(self):
-        """Every existing caller must commit exactly as before."""
+        """Every existing caller commits as before, and names its source (C365: the old
+        `extraction` default recorded a person's intent edit as an extraction, so the source
+        has no default and every write path names its own)."""
         import inspect
 
         from modules.nsot import repo
 
         params = inspect.signature(repo.save_host_vars).parameters
-        assert params["source"].default == "extraction"
+        assert params["source"].default is inspect.Parameter.empty
+        assert params["source"].kind is inspect.Parameter.KEYWORD_ONLY
         assert params["tool"].default == ""
 
     def test_a_tool_trailer_appears_only_when_given(self, tmp_path,
@@ -673,7 +677,7 @@ class TestTheActorConventionIsWrittenDown:
         monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda ctx: None)
 
         hostvars.write_committed(repo_dir, {"hostname": "s1", "interfaces": []})
-        plain = _repo.save_host_vars("lab", ["s1"], actor="operator")
+        plain = _repo.save_host_vars("lab", ["s1"], actor="operator", source="extraction")
         assert plain["ok"], plain
 
         body = TestTheWritePathActuallyRuns._git(

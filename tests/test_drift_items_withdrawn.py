@@ -173,3 +173,33 @@ class TestARecordedGoldenAnswersTheDriftRow:
     def test_no_stored_run_is_left_alone(self, cap):
         from modules import drift_check as D
         assert D.answer_by_golden("Lab", ["r2"], "x") == []
+
+
+class TestHistoryDrawsWhoWithdrewIt:
+    """C368: a withdrawal records `withdrawn_by` and its reason, and History read only
+    `resolved_by`, so a withdrawn item was drawn with no person and no reason."""
+
+    def test_a_withdrawal_is_drawn_with_who_withdrew_it_and_why(self, monkeypatch):
+        from modules import history_sources as H
+
+        rows = [{"id": "a1", "device_hostname": "r2", "action_type": "config_drift",
+                 "status": "withdrawn", "created_at": 1790000000,
+                 "resolved_at": "2026-10-01 12:00:00", "withdrawn_by": "drift check",
+                 "withdrawn_reason": "r2 is at its golden under the rules in force"},
+                {"id": "a2", "device_hostname": "r2", "action_type": "config_drift",
+                 "status": "approved", "created_at": 1790000000,
+                 "resolved_at": "2026-10-02 12:00:00", "resolved_by": "alex@example.com",
+                 "context": "approved on the queue"}]
+        monkeypatch.setattr(Q, "read_list", lambda ref: rows)
+
+        class Ref:
+            name = "Lab"
+        events = H.approvals({"ref": Ref, "device": "r2", "members": None,
+                              "limit": 50})["events"]
+        by = {e["outcome"]: e for e in events}
+        assert by["withdrawn"]["who"] == "drift check", by["withdrawn"]
+        assert "r2 is at its golden" in by["withdrawn"]["detail"]
+        assert ("Why", "r2 is at its golden under the rules in force") in \
+            [tuple(x) for x in by["withdrawn"]["record"]]
+        assert by["approved"]["who"] == "alex@example.com"
+        assert by["approved"]["detail"] == "approved on the queue"

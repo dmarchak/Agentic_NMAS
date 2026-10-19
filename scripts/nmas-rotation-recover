@@ -21,7 +21,6 @@ settled (nothing changed). It prints no credential.
 """
 
 import argparse
-import getpass
 import os
 import sys
 
@@ -40,8 +39,9 @@ def main(argv=None) -> int:
 
     from modules.nsot import credential_rotation as cr
 
+    from modules.identity import host_actor
     out = cr.recover_staged(args.list_name, args.device,
-                            actor=f"{getpass.getuser()} (host shell)",
+                            actor=host_actor(),
                             via="nmas-rotation-recover")
     for step in out.get("steps") or []:
         print(f"  [{'ok' if step['ok'] else 'XX'}] {step['name']:<18} {step.get('detail', '')}")

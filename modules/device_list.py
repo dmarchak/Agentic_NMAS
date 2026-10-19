@@ -105,7 +105,8 @@ SOURCE_WORDS = {"save_all": "Save All", "capture": "a capture", "pipeline": "a d
                 "scheduled_rotation": "a scheduled rotation",
                 "onboarding": "onboarding",
                 "adopt": "adoption", "approval": "an approval", "manual": "a save",
-                "repair": "a repair", "extraction": "an extraction", "ai": "the agent"}
+                "repair": "a repair", "extraction": "an extraction", "ai": "the agent",
+                "intent-edit": "an intent edit"}
 
 
 def _split(text: str) -> list:

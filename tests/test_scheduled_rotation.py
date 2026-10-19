@@ -851,7 +851,7 @@ def test_history_names_a_scheduled_rotation(data, monkeypatch):
     from modules.nsot import credential_rotation as cr
     cr.record_outcome("rotate", {"device": "r1", "state": cr.ROTATED_PENDING_PERSIST,
                                  "actor": SETTER, "steps": [{"name": "commit", "ok": True}],
-                                 "via": f"scheduled rotation (policy set by {SETTER})"})
+                                 "via": f"scheduled rotation (policy set by {SETTER})"}, list_name="Lab")
 
     class Ref:
         name = "Lab"
@@ -872,7 +872,7 @@ def test_after_a_rotation_the_break_glass_row_says_since_when(data, monkeypatch)
     from modules.job_health import breakglass_rows
     from modules.nsot import credential_rotation as cr
     cr.record_outcome("rotate", {"device": "s1", "state": cr.ROTATED_PENDING_PERSIST,
-                                 "steps": [], "via": "scheduled rotation (policy set by x)"})
+                                 "steps": [], "via": "scheduled rotation (policy set by x)"}, list_name="Lab")
     when = SR.last_rotations()["s1"][1]
     old = {"s1": bg.currency_digest("s1", "admin", "old-s1-pass-1234")}
     new = {"s1": bg.currency_digest("s1", "admin", "new-s1-pass-5678")}

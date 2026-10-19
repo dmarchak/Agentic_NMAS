@@ -203,7 +203,7 @@ def _trail_of(list_name: str, host: str) -> list:
     return [[n, a] for n, a in progress.get("trail") or [] if n in _STEP_NAMES]
 
 
-def _save_one(row: dict, actor: str, persist=None, record=None) -> dict:
+def _save_one(row: dict, actor: str, list_name: str, persist=None, record=None) -> dict:
     """One held device's save and read-back: ``{"ok", "state", "detail"}``, recorded."""
     from modules.device import decrypt_field
     from modules.nsot import credential_rotation as cr
@@ -213,7 +213,8 @@ def _save_one(row: dict, actor: str, persist=None, record=None) -> dict:
     out = (persist or onboard.persist_on_device)(
         row.get("ip", ""), row.get("username", "admin"), decrypt_field(row.get("password", "")),
         cr.enable_secret(row), row.get("device_type", ""))
-    (record or onboard._record_native_persist)(row["hostname"], out, actor, via="save")
+    (record or onboard._record_native_persist)(row["hostname"], out, actor, via="save",
+                                               list_name=list_name)
     return out
 
 
@@ -275,7 +276,7 @@ def run(list_name: str, hostnames: list, actor: str, confirmed_hash: str, *, job
                 # trail it reached is kept when it lets go (C605).
                 _mark(job_id, host, "running")
                 try:
-                    got = _save_one(d, actor, persist, record)
+                    got = _save_one(d, actor, list_name, persist, record)
                 except Exception as exc:              # noqa: BLE001 (that device's outcome)
                     got = {"ok": False, "state": "unknown",
                            "detail": f"{type(exc).__name__}: {exc}"}

@@ -303,7 +303,7 @@ class TestEveryPushedLineIsAttributed:
 
     def _commit(self, R, repo, hostvars, doc, subject):
         hostvars.write_committed_text(repo, "s1", doc)
-        R.save_host_vars("Lab", ["s1"], message=f"host_vars: s1 {subject}")
+        R.save_host_vars("Lab", ["s1"], message=f"host_vars: s1 {subject}", source="test")
 
     def test_the_previous_intent_is_recoverable(self, lab):
         repo, hostvars, R = lab
@@ -511,9 +511,9 @@ class TestRolledBackIntentBlocksAReplan:
         repo = str(list_dir / "config_repo")
         R.init_repo(repo)
         hostvars.write_committed_text(repo, "s4", "hostname: s4\nmtu: 1500\n")
-        R.save_host_vars("Lab", ["s4"], message="host_vars: s4 initial")
+        R.save_host_vars("Lab", ["s4"], message="host_vars: s4 initial", source="test")
         hostvars.write_committed_text(repo, "s4", "hostname: s4\nmtu: 9000\n")
-        R.save_host_vars("Lab", ["s4"], message="host_vars: s4 jumbo")
+        R.save_host_vars("Lab", ["s4"], message="host_vars: s4 jumbo", source="test")
         return repo, hostvars
 
     def test_a_note_is_recorded_against_the_current_intent(self, lab):
@@ -564,7 +564,7 @@ class TestRolledBackIntentBlocksAReplan:
 
         from modules.nsot import repo as R
         hv.write_committed_text(repo, "s4", "hostname: s4\nmtu: 1600\n")
-        R.save_host_vars("Lab", ["s4"], message="host_vars: s4 try again")
+        R.save_host_vars("Lab", ["s4"], message="host_vars: s4 try again", source="test")
 
         # An edit alone changes nothing; a different program does.
         assert hv.rolled_back_note(repo, "s4", pushed) is not None
@@ -610,7 +610,7 @@ class TestTheBlockIsContainmentNotEquality:
         repo = str(list_dir / "config_repo")
         R.init_repo(repo)
         hostvars.write_committed_text(repo, "s4", "hostname: s4\n")
-        R.save_host_vars("Lab", ["s4"], message="host_vars: s4 shut Gi0/1")
+        R.save_host_vars("Lab", ["s4"], message="host_vars: s4 shut Gi0/1", source="test")
         note = hostvars.record_rolled_back(
             repo, "s4", hostvars.intent_commits(repo, "s4")[0]["sha"],
             reason="verify failed: intf_up 7->6", commands=self.FAILED)
@@ -687,7 +687,7 @@ class TestTheBlockIsContainmentNotEquality:
 
         assert hv.rolled_back_note(repo, "s4", self.FAILED) is not None
         hv.write_committed_text(repo, "s4", "hostname: s4\nmtu: 9000\n")
-        R.save_host_vars("Lab", ["s4"], message="host_vars: s4 edit")
+        R.save_host_vars("Lab", ["s4"], message="host_vars: s4 edit", source="test")
         assert hv.rolled_back_note(repo, "s4", self.FAILED) is None
 
 
@@ -734,7 +734,7 @@ class TestRevertUndoesOneCommitNotASnapshot:
 
     def _commit(self, repo, hv, R, doc, subject):
         hv.write_committed_text(repo, "s4", doc)
-        R.save_host_vars("Lab", ["s4"], message=f"host_vars: s4 {subject}")
+        R.save_host_vars("Lab", ["s4"], message=f"host_vars: s4 {subject}", source="test")
 
     # (a) ------------------------------------------------------------------
     def test_the_rolled_back_commit_at_head_is_reverted(self, lab):
@@ -746,7 +746,7 @@ class TestRevertUndoesOneCommitNotASnapshot:
         assert outcome["ok"] is True
         # The function writes; its route commits, and intent is read from
         # HEAD (C104), so the test commits the way the route does.
-        R.save_host_vars("Lab", ["s4"], message="host_vars: s4 revert")
+        R.save_host_vars("Lab", ["s4"], message="host_vars: s4 revert", source="test")
 
         current = hv.read_committed(repo, "s4")
         gi01 = next(i for i in current["interfaces"] if i["name"].endswith("0/1"))
@@ -765,7 +765,7 @@ class TestRevertUndoesOneCommitNotASnapshot:
 
         outcome = hv.revert_intent_change(repo, "s4", sha=a_sha)
         assert outcome["ok"] is True
-        R.save_host_vars("Lab", ["s4"], message="host_vars: s4 revert")
+        R.save_host_vars("Lab", ["s4"], message="host_vars: s4 revert", source="test")
 
         current = hv.read_committed(repo, "s4")
         gi01 = next(i for i in current["interfaces"] if i["name"].endswith("0/1"))
@@ -836,7 +836,7 @@ class TestRevertUndoesOneCommitNotASnapshot:
         self._commit(repo, hv, R, self._doc(gi01_shutdown=True), "shut Gi0/1")
 
         hv.revert_intent_change(repo, "s4")
-        R.save_host_vars("Lab", ["s4"], message="host_vars: s4 revert")
+        R.save_host_vars("Lab", ["s4"], message="host_vars: s4 revert", source="test")
 
         assert len(hv.intent_commits(repo, "s4")) == 3
 
@@ -1022,7 +1022,7 @@ class TestTheNotesListingEvaluatesApplicability:
         repo = str(list_dir / "config_repo")
         R.init_repo(repo)
         hostvars.write_committed_text(repo, "s4", "hostname: s4\n")
-        R.save_host_vars("Lab", ["s4"], message="host_vars: s4 initial")
+        R.save_host_vars("Lab", ["s4"], message="host_vars: s4 initial", source="test")
         hostvars.record_rolled_back(
             repo, "s4", hostvars.intent_commits(repo, "s4")[0]["sha"],
             reason="verify failed", commands=self.FAILED)

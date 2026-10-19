@@ -114,9 +114,12 @@ def _script():
 
 class TestTheScript:
     def test_it_declares_as_the_os_user(self, store, monkeypatch):
+        """As the OS user, labelled as one (C237: the bare login beside the app's verified
+        email was two unlabelled identities for one person)."""
         monkeypatch.setattr("getpass.getuser", lambda: "operator")
         assert _script().main([KEY, "--reason", "retired"]) == 0
-        assert store["settings_not_applicable"][KEY]["by"] == "operator"
+        assert store["settings_not_applicable"][KEY]["by"] == \
+            "operator (host login, not a verified identity)"
 
     def test_a_refusal_exits_1(self, store, capsys):
         assert _script().main([KEY]) == 1

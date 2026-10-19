@@ -107,7 +107,7 @@ _repo.init_repo(os.path.join(list_dir, "config_repo"))
 from modules.nsot import hostvars
 hostvars.write_committed(os.path.join(list_dir, "config_repo"),
                          {{"hostname": "s1", "interfaces": []}})
-out = _repo.save_host_vars("lab", ["s1"], actor="operator")
+out = _repo.save_host_vars("lab", ["s1"], actor="operator", source="test")
 assert out["ok"], out
 
 from modules.nsot import hooks

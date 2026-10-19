@@ -68,8 +68,14 @@ Filters:
   - **Decisions and records:** approvals, acknowledgements, break-glass exports, reveals,
     baseline decisions, app updates, NetBox imports and removals, and Grafana writes (each
     silence Mercury set, moved or expired in Grafana, for whom, with Grafana's answer; one
-    Grafana refused is drawn in red).
+    Grafana refused is drawn in red; and each re-measure of the heartbeat windows written from
+    Monitoring, who wrote it and each of the network's devices' windows).
 - **Since.**
+
+A row's **who** is a verified person's email, or, for a host command, the host login labelled
+"host login, not a verified identity". A deploy of part of intent is named by what it sent:
+**Monitoring profile applied**, **IP SLA probes sent** or **Monitoring templates deployed**,
+never "Deployed". A withdrawn approval names what withdrew it and why.
 
 **Every kind** and **Commits only** are one click away in the Kind menu. Under the filters, the
 kinds most often looked for are one click away too: **All**, **Goldens**, **Intent**, **Deploys

@@ -66,7 +66,7 @@ def lab(tmp_path, monkeypatch):
     R.init_repo(repo)
     for name in ("s1", "s2", "r1", "r3"):
         hostvars.write_committed(repo, _old_shape_intent(name))
-    R.save_host_vars("Lab", ["s1", "s2", "r1", "r3"], message="host_vars: seed")
+    R.save_host_vars("Lab", ["s1", "s2", "r1", "r3"], message="host_vars: seed", source="test")
     return repo, hostvars, R
 
 
@@ -107,7 +107,7 @@ class TestRefusals:
         doc["logging"]["settings"] = ["trap errors", "origin-id hostname",
                                       "source-interface Loopback0"]
         hostvars.write_committed(repo, doc)
-        R.save_host_vars("Lab", ["s2"], message="host_vars: s2 drift")
+        R.save_host_vars("Lab", ["s2"], message="host_vars: s2 drift", source="test")
         r = _plan(repo, ["s1", "s2", "r1"])
         assert [x["device"] for x in r["refused"]] == ["s2"]
         mm = r["refused"][0]["mismatched"][0]
@@ -120,7 +120,7 @@ class TestRefusals:
         doc = hostvars.read_committed(repo, "r3")
         doc["logging"] = {"hosts": [], "settings": []}
         hostvars.write_committed(repo, doc)
-        R.save_host_vars("Lab", ["r3"], message="host_vars: r3 like r6")
+        R.save_host_vars("Lab", ["r3"], message="host_vars: r3 like r6", source="test")
         r = _plan(repo, ["r1", "r3"])
         assert [x["device"] for x in r["refused"]] == ["r3"]
 
@@ -152,7 +152,7 @@ class TestRefusals:
             fh.write("# a note somebody left\n")
         # COMMITTED: the before-state is HEAD (C104), and an uncommitted
         # append is ignored (tests/test_readers_use_what_is_committed.py).
-        assert _R.save_host_vars("Lab", ["s1"], message="host_vars: s1 note")["ok"]
+        assert _R.save_host_vars("Lab", ["s1"], message="host_vars: s1 note", source="test")["ok"]
         r = _plan(repo, ["s1", "s2"])
         assert [x["device"] for x in r["refused"]] == ["s1"]
         assert "hand-formatted" in r["refused"][0]["reason"]
@@ -167,7 +167,7 @@ class TestRefusals:
         hostvars.write_committed(repo, doc)
         with open(hostvars.committed_path(repo, "r3"), "a") as fh:
             fh.write("# hand-written\n")
-        R.save_host_vars("Lab", ["r3"], message="host_vars: r3 like r6")
+        R.save_host_vars("Lab", ["r3"], message="host_vars: r3 like r6", source="test")
         refused = _plan(repo, ["r3"])["refused"][0]
         assert "hand-formatted" in refused["reason"]
         assert "not what the change expects" in refused["reason"]
@@ -194,7 +194,7 @@ class TestApplyIsOneShotAndOneCommit:
         doc = hostvars.read_committed(repo, "r3")
         doc["logging"] = {"hosts": [], "settings": []}
         hostvars.write_committed(repo, doc)
-        R.save_host_vars("Lab", ["r3"], message="host_vars: r3 like r6")
+        R.save_host_vars("Lab", ["r3"], message="host_vars: r3 like r6", source="test")
         before = R.git(repo, "rev-list", "--count", "HEAD")[1]
         preview = _plan(repo, ["s1", "s2", "r1", "r3"])
         out = BI.apply("Lab", repo, ["s1", "s2", "r1", "r3"], P1_MOVE,
@@ -216,7 +216,7 @@ class TestApplyIsOneShotAndOneCommit:
         doc = hostvars.read_committed(repo, "s2")
         doc["ntp_servers"] = ["192.0.2.1"]
         hostvars.write_committed(repo, doc)
-        R.save_host_vars("Lab", ["s2"], message="host_vars: s2 ntp")
+        R.save_host_vars("Lab", ["s2"], message="host_vars: s2 ntp", source="test")
         out = BI.apply("Lab", repo, ["s1", "s2"], P1_MOVE, preview["hash"],
                        render=_render, summary="x", actor="t")
         assert out["ok"] is False and "that hash doesn't match the preview" in out["error"]
@@ -243,7 +243,7 @@ class TestApplyIsOneShotAndOneCommit:
         out = hostvars.revert_intent_change(repo, "s1")
         assert out["ok"], out
         # The function writes; its route commits (intent is read from HEAD).
-        assert R.save_host_vars("Lab", ["s1"], message="host_vars: s1 revert")["ok"]
+        assert R.save_host_vars("Lab", ["s1"], message="host_vars: s1 revert", source="test")["ok"]
         assert hostvars.read_committed(repo, "s1")["logging"]["settings"] == OLD_SETTINGS
         assert hostvars.read_committed(repo, "s2")["logging"]["syslog"] == BLOCK
 

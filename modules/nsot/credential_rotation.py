@@ -1800,12 +1800,16 @@ def _rotation_record_path() -> str:
     return os.path.join(DATA_DIR, "rotation_audit.jsonl")
 
 
-def record_outcome(phase: str, result: dict) -> None:
+def record_outcome(phase: str, result: dict, *, list_name: str) -> None:
     """One durable row per rotate() or persist(): the state and every stage's
     name, outcome and reason. NEVER a credential: the reasons pass through
     redaction and are capped. s1's rotation of an exposed credential left its
     stage outcomes only in a terminal's scrollback, twice unrecoverable in one
-    incident (B2). Never raises; a failure is logged at ERROR."""
+    incident (B2). Never raises; a failure is logged at ERROR.
+
+    *list_name* is the device's network, written as the row's ``list`` (C361:
+    a row named the device and no network, so History matched it by hostname
+    alone, and a hostname in two networks drew each one's rotations on both)."""
     import json
     import time
     try:
@@ -1826,7 +1830,7 @@ def record_outcome(phase: str, result: dict) -> None:
                   for e in (result.get("persistence") if phase == "persist"
                             else result.get("steps")) or []]
         row = {"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-               "phase": phase, "device": result.get("device", ""),
+               "phase": phase, "device": result.get("device", ""), "list": list_name or "",
                "state": result.get("state", ""),
                "failed_stage": next((st["name"] for st in stages if not st["ok"]), ""),
                "actor": result.get("actor", ""), "stages": stages,
@@ -1970,11 +1974,11 @@ def rotate(list_name: str, hostname: str, **kw) -> dict:
     processes, since `nmas-rotate-credential` rotates from the host shell
     while the app may be deploying to the same device. A busy device is
     refused before anything is read or sent, naming the holder."""
-    import getpass
+    from modules.identity import host_actor
 
     from modules.nsot import device_ops
 
-    actor = kw.get("actor") or f"{getpass.getuser()} (host shell)"
+    actor = kw.get("actor") or host_actor()
     via = kw.pop("via", "") or "rotate(), caller not named"
     try:
         with device_ops.hold(list_name, hostname, "rotate", actor):
@@ -1986,7 +1990,7 @@ def rotate(list_name: str, hostname: str, **kw) -> dict:
                   "preflight_checks": [], "reason": str(exc)}
     result.setdefault("device", hostname)
     result.setdefault("via", via)
-    record_outcome("rotate", result)
+    record_outcome("rotate", result, list_name=list_name)
     return result
 
 
@@ -2003,7 +2007,7 @@ def persist(result: dict, **kw) -> dict:
     rotated unsaved. ``list_name`` therefore has no default, like
     ``platform``: the hold cannot be taken without it. The hold is re-entrant,
     so a caller already holding the device loses nothing."""
-    import getpass
+    from modules.identity import host_actor
 
     from modules.nsot import device_ops
 
@@ -2012,7 +2016,7 @@ def persist(result: dict, **kw) -> dict:
     if not list_name or not hostname:
         raise TypeError("persist() needs list_name and hostname: it holds the device "
                         "while it saves (C203), and a hold names both")
-    actor = kw.get("actor") or f"{getpass.getuser()} (host shell)"
+    actor = kw.get("actor") or host_actor()
     try:
         with device_ops.hold(list_name, hostname, "persist", actor,
                              ip=kw.get("mgmt_ip", "")):
@@ -2025,7 +2029,7 @@ def persist(result: dict, **kw) -> dict:
         out["persistence"] = [{"name": "device_free", "ok": False, "error": str(exc)}]
     out.setdefault("device", kw.get("hostname", ""))
     out["via"] = via
-    record_outcome("persist", out)
+    record_outcome("persist", out, list_name=list_name)
     return out
 
 
@@ -2113,7 +2117,7 @@ def recover_staged(list_name: str, hostname: str, *, actor: str, via: str,
         result["reason"] = (f"{hostname} is not in list {list_name!r}'s inventory, so there is "
                             "no address to ask and no record to write. The staged file is kept")
         _step("inventory", False, result["reason"])
-        record_outcome("recover", result)
+        record_outcome("recover", result, list_name=list_name)
         return result
     username = row.get("username", "admin")
     try:
@@ -2174,5 +2178,5 @@ def recover_staged(list_name: str, hostname: str, *, actor: str, via: str,
     except device_ops.DeviceBusy as exc:
         result.update(state=RECOVERY_INCONCLUSIVE,
                       reason=f"{exc}; nothing was asked and the staged file is kept")
-    record_outcome("recover", result)
+    record_outcome("recover", result, list_name=list_name)
     return result

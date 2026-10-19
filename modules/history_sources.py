@@ -106,6 +106,9 @@ SHARED_BY_DEVICE = {
                        "only its devices (one naming every device, `*`, is every network's)",
     "host_keys": "the host-key windows' summaries: one closed with no network names only its "
                  "devices",
+    "heartbeat_windows": "the heartbeat windows' re-measures (`heartbeat_rules.jsonl`): one "
+                         "file for the installation, each naming its devices' windows and no "
+                         "network",
 }
 
 
@@ -507,7 +510,6 @@ def receipts(ctx):
     got = R.read(ctx["ref"].name, device=ctx["device"], limit=ctx["limit"])
     if got["state"] == "unreadable":
         return _out(errors=[f"the deploy receipts could not be read: {got.get('error', '')}"])
-    verbs = {"deploy": "Deployed", "restore": "Restored", "reapply": "Re-applied"}
     events = []
     for r in got.get("rows") or []:
         if not _mine(ctx, r.get("device", "")):
@@ -516,7 +518,7 @@ def receipts(ctx):
         removals = r.get("removals") or []
         rb = r.get("rollback") or {}
         e = _event(r.get("at", ""), "receipt",
-                   f"{verbs.get(r.get('action', ''), 'Changed')}: "
+                   f"{R.past(r)}: "
                    f"{r.get('outcome', '?').replace('_', ' ')}"
                    + (f", {R.PENDING_WORDS}" if pending else ""), [r.get("device", "")],
                    who=r.get("actor", ""),
@@ -633,14 +635,23 @@ ROTATION_WORDS = {"rotate": "Rotation", "persist": "Rotation's persistence",
 
 def rotation(ctx):
     """Persist, rotate and recover: the rotation record job health's row reads (C359: a
-    persist was readable now and not later). Its rows name the device and NO list (C361), so
-    the list's own devices (`members`) choose them. A device's own save is kind `persist` and
+    persist was readable now and not later). A row names its network (`list`, C361) and is
+    this network's only when it is this one and the device is ours; an older row names none,
+    so the list's own devices (`members`) choose it, said on the row. A device's own save is
+    kind `persist` and
     worded by ITS state (C362: a save recorded with a rotation's state read as a rotation); a
     row `record_exceptions` corrects is drawn as what is known, marked corrected, with what it
     recorded and why."""
+    from modules.list_settings import same_network
     from modules.nsot import credential_rotation as cr
+
+    def mine(r):
+        if r.get("list") and not same_network(r["list"], ctx["ref"].name):
+            return False
+        return _ours(ctx, r.get("device", ""))
+
     try:
-        rows = [r for r in cr.rotation_records_as_known() if _ours(ctx, r.get("device", ""))]
+        rows = [r for r in cr.rotation_records_as_known() if mine(r)]
     except OSError as exc:
         return _out(errors=[f"the rotation record could not be read: {exc}"])
     events = []
@@ -660,7 +671,9 @@ def rotation(ctx):
         e = _event(r.get("at", ""), "persist" if save else "rotation", what, [r.get("device", "")],
                    who=r.get("actor", ""),
                    detail=(f"stopped at {failed}" if failed else "every stage passed")
-                   + f"; via {r.get('via') or known.get('via') or 'not named'}",
+                   + f"; via {r.get('via') or known.get('via') or 'not named'}"
+                   + ("" if r.get("list") else "; an older row naming no network, matched "
+                      "by the device's name alone"),
                    outcome=state, marks=marks,
                    record=[("Phase", phase), ("State", state)]
                    + ([("Recorded as", r.get("recorded_state", "")),
@@ -865,14 +878,25 @@ def approvals(ctx):
     except StoreUnreadable as exc:
         return _out(errors=[str(exc)])
     rows = [r for r in rows if _mine(ctx, r.get("device_hostname", "")) and r.get("resolved_at")]
+
+    def withdrawn(r):
+        # C368: a withdrawal records `withdrawn_by` and its reason, never `resolved_by`, so it
+        # was drawn with no person; who or what withdrew it, and why, are its record.
+        if r.get("status") != "withdrawn":
+            return {"who": r.get("resolved_by", ""), "detail": str(r.get("context") or ""),
+                    "record": []}
+        return {"who": r.get("withdrawn_by", ""),
+                "detail": "withdrawn: " + str(r.get("withdrawn_reason") or "no reason recorded"),
+                "record": [("Withdrawn by", r.get("withdrawn_by")),
+                           ("Why", r.get("withdrawn_reason"))]}
+
     return _out([_event(r.get("resolved_at"), "approval",
                         f"{str(r.get('action_type', 'item')).replace('_', ' ').capitalize()}: "
                         f"{r.get('status', '?')}", [r.get("device_hostname", "")],
-                        who=r.get("resolved_by", ""), detail=str(r.get("context") or ""),
-                        outcome=r.get("status", ""),
+                        who=w["who"], detail=w["detail"], outcome=r.get("status", ""),
                         record=[("Raised", iso(r.get("created_at"))), ("Status", r.get("status")),
-                                ("Item", r.get("id"))])
-                 for r in rows[-ctx["limit"]:]])
+                                ("Item", r.get("id"))] + w["record"])
+                 for r in rows[-ctx["limit"]:] for w in (withdrawn(r),)])
 
 
 def updates(ctx):
@@ -952,6 +976,32 @@ def grafana_writes(ctx):
                                 ("Grafana's answer", r.get("error") or "taken")])
                  for r in reversed(got["rows"])
                  if r.get("network") in (ctx["ref"].name, None, "") and _recent(ctx, r.get("at"))])
+
+
+def heartbeat_windows(ctx):
+    """Each re-measure of the heartbeat windows written from Monitoring (C360: `heartbeat_apply`
+    kept a record nothing drew): who, how many windows changed, and each device's window. The
+    record is the installation's (`SHARED_BY_DEVICE`), so a network draws a re-measure that
+    named one of its own devices, and a device's page one that named it."""
+    from modules import heartbeat_windows as hw
+    got = hw.records()
+    if got["error"]:
+        return _out(errors=[f"the heartbeat windows' record could not be read: {got['error']}"])
+    events = []
+    for r in reversed(got["rows"]):
+        windows = r.get("windows") or {}
+        ours = sorted(d for d in windows if _ours(ctx, d))
+        if not ours or not _recent(ctx, r.get("at")):
+            continue
+        events.append(_event(r.get("at"), "heartbeat",
+                             f"Heartbeat windows re-measured: {r.get('changes', 0)} changed",
+                             ours, who=r.get("actor", ""),
+                             detail="written for Grafana's next restart (its host step)",
+                             outcome="done",
+                             record=[("File", r.get("path"))]
+                             + [(d, f"{windows[d]} s" if windows[d] else "no window")
+                                for d in ours]))
+    return _out(events[:ctx["limit"]])
 
 
 def topology_expected(ctx):
@@ -1399,7 +1449,7 @@ SOURCES = {
     "reloads": reloads, "credential_profiles": credential_profiles,
     "topology_expected": topology_expected, "topology_layout": topology_layout,
     "saved_views": saved_views, "reveals": reveals, "host_keys": host_keys,
-    "netbox": netbox, "grafana_writes": grafana_writes,
+    "netbox": netbox, "grafana_writes": grafana_writes, "heartbeat_windows": heartbeat_windows,
 }
 
 #: The kind filter (board D): each a group of event kinds, in the board's four headings.
@@ -1430,7 +1480,7 @@ KIND_GROUPS = (
                                ("decisions", "Baseline decisions", ("decision",)),
                                ("updates", "App updates", ("update",)),
                                ("netbox", "NetBox imports and removals", ("netbox",)),
-                               ("grafana", "Grafana writes", ("grafana",)),
+                               ("grafana", "Grafana writes", ("grafana", "heartbeat")),
                                ("show_commands", "Show commands", ("show_commands",)))),
 )
 KIND_FILTERS = {key: kinds for _h, group in KIND_GROUPS for key, _w, kinds in group}

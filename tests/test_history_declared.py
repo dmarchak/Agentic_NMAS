@@ -99,12 +99,12 @@ class TestEachSourceReachesTheTab:
     def test_a_persist_and_a_rotation(self, lab):  # noqa: F811
         from modules.nsot import credential_rotation as cr
         REAL_RECORD_NATIVE_PERSIST("r3", {"ok": True, "detail": "read back"},
-                                   "operator@example.com", via="device page")
+                                   "operator@example.com", via="device page", list_name="Lab")
         cr.record_outcome("rotate", {"device": "r3", "actor": "alex@example.com",
                                      "state": cr.REVERTED, "via": "device page",
                                      "steps": [{"name": "push", "ok": True},
                                                {"name": cr.VERIFY, "ok": False,
-                                                "error": "the fresh login was refused"}]})
+                                                "error": "the fresh login was refused"}]}, list_name="Lab")
         html = _history(lab)
         assert "Persisted: the startup config carries the running credential" in html
         assert "Rotation: reverted" in html and "stopped at verify" in html
@@ -126,6 +126,17 @@ class TestEachSourceReachesTheTab:
         assert "Retry authorised after a rollback" in html
         assert "the neighbour was down for maintenance" in html
         assert "Onboarding verify: done" in html
+
+    def test_a_heartbeat_re_measure_naming_the_device(self, lab):  # noqa: F811
+        """C360: `heartbeat_apply` kept `heartbeat_rules.jsonl` and nothing drew it."""
+        from modules import heartbeat_windows as hw
+        with open(hw._record_path(), "a") as fh:
+            fh.write(json.dumps({"at": _now(), "actor": "alex@example.com", "fingerprint": "f",
+                                 "path": "/tmp/nmas-heartbeat.yaml", "changes": 2,
+                                 "windows": {"r3": 767, "elsewhere-9": 800}}) + "\n")
+        html = _history(lab)
+        assert "Heartbeat windows re-measured: 2 changed" in html
+        assert "767 s" in html and "elsewhere-9" not in html, "only this device's window"
 
     def test_every_acknowledgeable_kind_is_drawn_on_the_device(self, lab):  # noqa: F811
         """EVERY kind Needs attention acknowledges (`attention.ACKNOWLEDGED_HERE`) is drawn in

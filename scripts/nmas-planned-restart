@@ -32,7 +32,6 @@ ROOT = __import__("os").path.dirname(__import__("os").path.dirname(
 sys.path.insert(0, ROOT)
 
 import argparse  # noqa: E402
-import getpass  # noqa: E402
 import time  # noqa: E402
 
 # Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
@@ -69,7 +68,8 @@ def main(argv=None) -> int:
             print(f"refused: --from {args.start!r} is not a UTC time like 2026-10-01T15:20Z",
                   file=sys.stderr)
             return 1
-    by = args.by or f"{getpass.getuser()} (host login, not a verified identity)"
+    from modules.identity import host_actor
+    by = args.by or host_actor()
     out = restarts.record_planned(args.devices, now, now + args.minutes * 60, by, args.why,
                                   "nmas-planned-restart", list_name=args.list,
                                   correction=args.correction,

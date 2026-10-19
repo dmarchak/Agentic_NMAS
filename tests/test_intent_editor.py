@@ -106,7 +106,7 @@ def world(tmp_path, monkeypatch):
     # named third state and a different assertion.
     hostvars.write_committed(repo_dir, document)
     _repo.save_host_vars("lab", ["s4"], actor="test",
-                         message="host_vars: s4 seed for the editor tests")
+                         message="host_vars: s4 seed for the editor tests", source="test")
 
     import app as nmas
 
@@ -223,6 +223,25 @@ class TestTheRenderDiffIsShownBeforeCommitting:
         _preview(world, before.replace("uplink", "CHANGED"))
         after = open(os.path.join(world["repo"], "host_vars", "s4.yml")).read()
         assert after == before
+
+
+class TestAnEditIsRecordedAsOne:
+    """C365: a person's edit of committed intent was committed `Source: extraction`, so
+    History drew a hand edit as "Intent committed (extraction)" and the device list as "an
+    extraction"."""
+
+    def test_the_commit_names_an_intent_edit_and_is_drawn_as_one(self, world):
+        import subprocess
+
+        from modules.device_list import SOURCE_WORDS
+
+        text = open(os.path.join(world["repo"], "host_vars", "s4.yml")).read()
+        assert _commit(world, text.replace("uplink", "uplink to core"), "retitle").get_json()["ok"]
+        source = subprocess.run(["git", "-C", world["repo"], "log", "-1",
+                                 "--format=%(trailers:key=Source,valueonly)"],
+                                capture_output=True, text=True, check=True).stdout.strip()
+        assert source == "intent-edit", source
+        assert SOURCE_WORDS[source] == "an intent edit"
 
 
 class TestTextPreservesWhatAModelWouldDrop:

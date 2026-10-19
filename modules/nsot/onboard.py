@@ -3298,7 +3298,8 @@ def check_startup(mgmt_ip: str, username: str, password: str, secret: str,
     return startup_carries(startup, running)
 
 
-def _record_native_persist(hostname: str, pers: dict, actor: str, *, via: str) -> None:
+def _record_native_persist(hostname: str, pers: dict, actor: str, *, via: str,
+                           list_name: str) -> None:
     """A row in the rotation record, so job health's rotation row reads what happened on
     the DEVICE: SAFE only when the startup read-back matched. Its state is the SAVE's own
     (`cr.SAVE_STATES`), never a rotation's: a save rotates nothing, and wrote
@@ -3311,7 +3312,7 @@ def _record_native_persist(hostname: str, pers: dict, actor: str, *, via: str) -
     cr.record_outcome("persist", {
         "device": hostname, "actor": actor, "via": via, "state": state,
         "persistence": [{"name": "device_startup_config", "ok": bool(pers.get("ok")),
-                         "detail": pers.get("detail", "")}]})
+                         "detail": pers.get("detail", "")}]}, list_name=list_name)
 
 
 def _read_timeout() -> int:
@@ -3660,7 +3661,7 @@ def run_phase_two(repo: str, hostname: str, list_name: str, *, actor: str = "",
     # CARRIES THE ROTATED CREDENTIAL (the operator's acceptance, P.6 M4).
     pers = (persist or persist_on_device)(mgmt_ip, user, pw, sec, device_type)
     result["persist"] = pers
-    _record_native_persist(hostname, pers, actor, via="onboarding phase 2")
+    _record_native_persist(hostname, pers, actor, via="onboarding phase 2", list_name=list_name)
     if not _step("persist", pers.get("ok"), pers.get("detail", "")):
         return _stop("persist", (
             f"{pers.get('detail') or 'the save could not be confirmed'}. The "

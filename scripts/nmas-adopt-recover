@@ -21,7 +21,6 @@ changed). It prints no credential.
 """
 
 import argparse
-import getpass
 import os
 import sys
 
@@ -40,8 +39,9 @@ def main(argv=None) -> int:
 
     from modules.nsot import adopt
 
+    from modules.identity import host_actor
     out = adopt.recover_tool_account(args.list_name, args.device,
-                                     actor=f"{getpass.getuser()} (host shell)")
+                                     actor=host_actor())
     print(f"state: {out['state']}")
     print(out.get("reason", ""))
     if out["state"] in (adopt.RECOVERED, adopt.NOTHING_STAGED):
