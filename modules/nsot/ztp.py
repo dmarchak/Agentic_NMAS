@@ -39,6 +39,11 @@ both CHECKED:
      broadcast its queries to 255.255.255.255:53 (M3: 8 queries, 0
      replies); a host that answered would hand it a resolver with no DHCP
      option at all.
+
+**A device behind a relay (C1346)** is `modules/nsot/ztp_relayed.py`'s: a subnet declared
+relayed for ZTP has its own reservations file (this writer routes to it), its server is the
+relay's helper target that is this host's, option 3 may be the relay's own address on a
+reservation that chose it, and D4's second condition is measured for the relayed segment.
 """
 
 import ipaddress
@@ -65,6 +70,8 @@ FORBIDDEN_OPTIONS = {"routers": 3, "domain-name-servers": 6,
 #: 2.4.1 and would need an option definition.
 SERVER_OPTION = "tftp-server-name"
 FILE_OPTION = "boot-file-name"
+#: Option 3, only ever the relay's own address on a relayed ZTP subnet (C1346, D4 restated).
+ROUTER_OPTION = "routers"
 
 #: D4's second condition asks with a name nothing should resolve (RFC 6761),
 #: so the probe itself cannot make anything reach for the internet.
@@ -141,9 +148,14 @@ def _mac(value: str) -> str:
 
 # ── D4, condition 1: no route or resolver option ───────────────────────────
 
-def forbidden_options(dhcp4: dict, address: str) -> list:
+def forbidden_options(dhcp4: dict, address: str, relay_address: str = "") -> list:
     """Every route or resolver option a reservation for *address* would
     EFFECTIVELY receive, as ``(level, name_or_code)``. Empty means none.
+
+    *relay_address* (C1346, D4 restated 2026-10-19): on a RELAYED ZTP subnet, a reservation's
+    own ``routers`` equal to the relay's own address is that reservation's declared choice and
+    is not reported; ``routers`` anywhere else, or with any other value, still is, naming the
+    value and the one it may be.
 
     Kea sends an option the client requests from the most specific level
     that has it, so every level is looked at: global, every client class, the
@@ -168,8 +180,22 @@ def forbidden_options(dhcp4: dict, address: str) -> list:
         levels.append((f"pool {p.get('pool')}", p.get("option-data") or []))
     for r in subnet.get("reservations") or []:
         levels.append((f"reservation {r.get('hw-address')}", r.get("option-data") or []))
-    return [(level, o.get("name") or o.get("code")) for level, opts in levels
-            for o in opts if o.get("name") in names or o.get("code") in codes]
+    out = []
+    for level, opts in levels:
+        for o in opts:
+            if not (o.get("name") in names or o.get("code") in codes):
+                continue
+            is_router = o.get("name") == "routers" or o.get("code") == 3
+            if is_router and relay_address and level.startswith("reservation "):
+                from modules.nsot import ztp_relayed
+
+                why = ztp_relayed.routers_refusal(str(o.get("data", "")), relay_address)
+                if not why:
+                    continue
+                out.append((level, why))
+                continue
+            out.append((level, o.get("name") or o.get("code")))
+    return out
 
 
 # ── D3: the server address is derived, never stored ────────────────────────
@@ -192,7 +218,11 @@ def server_address(subnet_cidr: str, addrs=None) -> str:
                    if ipaddress.ip_address(a) in net})
     if len(hits) != 1:
         raise Refused(f"expected exactly one address of this host in {subnet_cidr}, "
-                      f"found {len(hits)}: {[a for _n, a in hits]}")
+                      f"found {len(hits)}: {[a for _n, a in hits]}"
+                      + ("; a subnet this host is not on is reached through a relay, and a "
+                         "ZTP reservation there needs the subnet added for ZTP behind its "
+                         "relay (DHCP › Add a subnet, For ZTP onboarding; C1346)"
+                         if not hits else ""))
     return hits[0][1]
 
 
@@ -264,14 +294,27 @@ def dns_posture(source: str, probe=dns_answerers, clock=time.time) -> dict:
 
 # ── the whole posture, for a plan and for job health ───────────────────────
 
-def posture(address: str, *, kea=None, dns=dns_posture, addrs=None) -> dict:
+def posture(address: str, *, kea=None, dns=dns_posture, addrs=None, relayed=None) -> dict:
     """D4 for a reservation at *address*: both conditions, plus D3's derived
-    server address. ``{"ok", "reasons", "server", "subnet_id", "dns"}``.
+    server address. ``{"ok", "reasons", "server", "subnet_id", "dns", "relayed", "relay"}``.
 
     Every failure to ASK is a reason too: a check that did not run has not
     passed, and a ZTP plan refused here has written nothing.
+
+    A subnet declared relayed for ZTP (C1346) is asked by `ztp_relayed.posture`: the server is
+    the relay's helper target that is this host's, the DNS check is made for the relayed
+    segment, and option 3 equal to the relay's own address is a reservation's allowed choice.
+    *relayed* holds that check's seams (``facts``, ``golden``, ``dns``, ``route``).
     """
-    out = {"ok": False, "reasons": [], "server": "", "subnet_id": None, "dns": {}}
+    from modules.nsot import ztp_relayed
+
+    out = {"ok": False, "reasons": [], "server": "", "subnet_id": None, "dns": {},
+           "relayed": False, "relay": {}}
+    try:
+        ztp_relayed.ipv4_only(address, "the address")
+    except Refused as exc:
+        out["reasons"].append(str(exc))
+        return out
     kea = kea or _kea()
     got = kea.command("config-get")
     if not got.get("ok"):
@@ -281,6 +324,8 @@ def posture(address: str, *, kea=None, dns=dns_posture, addrs=None) -> dict:
         dhcp4 = _dhcp4(got["result"])
         subnet, _net = subnet_for_address(dhcp4, address)
         out["subnet_id"] = subnet.get("id")
+        if ztp_relayed.declared(subnet):
+            return _relayed_posture(out, dhcp4, subnet, address, addrs, relayed or {})
         bad = forbidden_options(dhcp4, address)
         out["server"] = server_address(str(subnet.get("subnet")), addrs)
     except Refused as exc:
@@ -304,6 +349,24 @@ def posture(address: str, *, kea=None, dns=dns_posture, addrs=None) -> dict:
             "D4: whether anything on the ZTP segment answers DNS could not be "
             f"measured ({out['dns'].get('error') or 'no answer'}); a check that "
             "did not run has not passed")
+    out["ok"] = not out["reasons"]
+    return out
+
+
+def _relayed_posture(out: dict, dhcp4: dict, subnet: dict, address: str, addrs,
+                     seams: dict) -> dict:
+    """:func:`posture` for a subnet declared relayed for ZTP (C1346)."""
+    from modules.nsot import ztp_relayed
+
+    got = ztp_relayed.posture(dhcp4, subnet, address=address, addrs=addrs, **seams)
+    out.update(relayed=True, relay=got["relay"], server=got["server"], dns=got["dns"])
+    out["reasons"] += got["reasons"]
+    if got["relay"]:
+        for level, what in forbidden_options(dhcp4, address, got["relay"]["address"]):
+            out["reasons"].append(
+                f"D4: {what} reaches a reservation in subnet {subnet.get('id')} (at {level}). "
+                "On a relayed ZTP subnet only a reservation's own option 3, the relay's own "
+                "address, is allowed; no resolver or other route option is")
     out["ok"] = not out["reasons"]
     return out
 
@@ -355,15 +418,88 @@ def ztp_subnets(dhcp4: dict, addrs=None) -> list:
     return out
 
 
-def posture_rows(kea=None, dns=dns_posture, addrs=None, get=None) -> list:
+def posture_rows(kea=None, dns=dns_posture, addrs=None, get=None, relayed=None,
+                 firewall=None) -> list:
     """Job-health rows for D4, one per ZTP subnet. None while ZTP is not
     configured: an empty `kea_ztp_fragment` is already its own row
-    (`unset_guard`), and a second row saying the same thing is noise."""
+    (`unset_guard`), and a second row saying the same thing is noise.
+
+    C1346: one row per subnet declared relayed for ZTP too (`ztp_relayed.posture`: its relay,
+    server, route and DNS on the relayed segment, and D4's options), and one `ztp-firewall`
+    row while any is declared (udp/69 admitted from each, `ztp_relayed.firewall_row`).
+    *relayed* holds the relayed check's seams; *firewall* is ``(record, path)``."""
     if get is None:
         from modules.list_settings import default_layer as get   # one fragment, every list
-    if not (get("kea_ztp_fragment", "") or "").strip():
+    fragment = (get("kea_ztp_fragment", "") or "").strip()
+    if not fragment:
         return []
-    what = ("D4: a ZTP reservation gets no route or resolver option, and "
+    return (_direct_posture_rows(kea, dns, addrs)
+            + _relayed_posture_rows(kea, addrs, relayed or {}, firewall, fragment))
+
+
+def _relayed_posture_rows(kea, addrs, seams: dict, firewall, fragment: str) -> list:
+    from modules.nsot import ztp_relayed
+
+    what = ("D4 on a relayed ZTP subnet: the relay forwards to this host, a route back, no "
+            "resolver option, option 3 only the relay's own address, and nothing answers DNS")
+    kea = kea or _kea()
+    got = kea.command("config-get")
+    if not got.get("ok"):
+        return []                      # the direct rows already say Kea could not be asked
+    try:
+        dhcp4 = _dhcp4(got["result"])
+    except Refused:
+        return []
+    subnets = ztp_relayed.relayed_subnets(dhcp4)
+    rows = []
+    for subnet in subnets:
+        relay_out = {"reasons": []}
+        try:
+            ztp_relayed.ipv4_only(str(subnet.get("subnet", "")), "the subnet")
+            relay_out = ztp_relayed.posture(dhcp4, subnet, addrs=addrs, **seams)
+        except Refused as exc:
+            relay_out = {"reasons": [str(exc)], "relay": {}, "dns": {}}
+        reasons = list(relay_out["reasons"])
+        if relay_out.get("relay"):
+            reasons += [f"D4: {w} at {lvl}" for lvl, w in
+                        _subnet_forbidden(dhcp4, subnet, relay_out["relay"]["address"])]
+        measured = (relay_out.get("dns") or {}).get("measured_at")
+        when = (time.strftime(" (DNS measured %H:%M:%S)", time.localtime(measured))
+                if measured else "")
+        state = "ok" if not reasons else ("unknown" if any("could not" in r for r in reasons)
+                                          else "d4_violated")
+        relay = relay_out.get("relay") or {}
+        rows.append({"unit": f"ztp-posture:subnet-{subnet.get('id')}", "what": what,
+                     "state": state, "max_age_minutes": 0,
+                     "detail": ("; ".join(reasons) or
+                                f"relayed subnet {subnet.get('id')} {subnet.get('subnet')} "
+                                f"behind {relay.get('device')} {relay.get('iface')} "
+                                f"({relay.get('address')}): served from "
+                                f"{relay_out.get('server')}, a route back, no resolver option, "
+                                "and nothing answered DNS") + when})
+    if subnets:
+        if firewall is None:
+            path = ztp_relayed.firewall_record_path(fragment)
+            firewall = (ztp_relayed.read_firewall_record(path), path)
+        record, path = firewall
+        rows.append(ztp_relayed.firewall_row(
+            [(s.get("id"), str(s.get("subnet", ""))) for s in subnets], record, path))
+    return rows
+
+
+def _subnet_forbidden(dhcp4: dict, subnet: dict, relay_address: str) -> list:
+    """D4's options for a whole relayed subnet (job health has no one address): asked of the
+    subnet's own first address, which `forbidden_options` places in that subnet."""
+    first = str(ipaddress.ip_network(str(subnet.get("subnet")), strict=False).network_address)
+    try:
+        return forbidden_options(dhcp4, first, relay_address)
+    except Refused as exc:
+        return [("the subnet", str(exc))]
+
+
+def _direct_posture_rows(kea, dns, addrs) -> list:
+    """The rows for the ZTP subnets this host is on."""
+    what =("D4: a ZTP reservation gets no route or resolver option, and "
             "nothing on the segment answers DNS")
     kea = kea or _kea()
     got = kea.command("config-get")
@@ -400,7 +536,8 @@ def posture_rows(kea=None, dns=dns_posture, addrs=None, get=None) -> list:
 
 # ── the writer (D1) ────────────────────────────────────────────────────────
 
-def reservation_entry(mac: str, address: str, hostname: str, server: str) -> dict:
+def reservation_entry(mac: str, address: str, hostname: str, server: str,
+                      router: str = "") -> dict:
     """The one shape the writer puts in the fragment. Both config-source
     options are `always-send`, as M3 offered them, so what the node gets
     does not depend on what it happens to request.
@@ -408,11 +545,17 @@ def reservation_entry(mac: str, address: str, hostname: str, server: str) -> dic
     `hostname` is sent as option 12. M3 showed AutoInstall APPLIES option 12
     ("Setting hostname router from DHCP reply", from Kea echoing the node's
     own name), so a reservation that names the device makes it name itself
-    correctly before its config arrives, rather than after an echo."""
+    correctly before its config arrives, rather than after an echo.
+
+    *router* (C1346, D4 restated): on a relayed ZTP subnet only, the relay's own address as
+    option 3, when the onboarding chose to offer it; empty (no option 3, D4 as decided) by
+    default. The writer refuses any other value, naming both."""
+    opts = [{"name": SERVER_OPTION, "data": server, "always-send": True},
+            {"name": FILE_OPTION, "data": f"{hostname}.cfg", "always-send": True}]
+    if router:
+        opts.append({"name": ROUTER_OPTION, "data": router, "always-send": True})
     return {"hw-address": _mac(mac), "ip-address": address, "hostname": hostname,
-            "option-data": [
-                {"name": SERVER_OPTION, "data": server, "always-send": True},
-                {"name": FILE_OPTION, "data": f"{hostname}.cfg", "always-send": True}]}
+            "option-data": opts}
 
 
 def _read_fragment(path: str) -> list:
@@ -545,11 +688,18 @@ def write_reservations(adds=(), removes=(), *, list_name: str = "", actor: str =
     lock, `record` is the commit of :data:`RECORD` in the owner's repository as *actor* with
     *message* (:func:`record_commit`, C1243), or why it failed. A write for no network names
     its fragment, Kea's configuration and Kea itself, and records nothing (`record` None).
+
+    C1346: a write for a network ROUTES each reservation to its subnet's ZTP file: an address
+    in a subnet declared relayed for ZTP goes in that subnet's own reservations file (ZTP's
+    whole, `ztp_relayed`), every other in the network's fragment; a removal goes to the ZTP
+    file holding its MAC. Each file is written under its own lock, and the record (every ZTP
+    file) is taken under the network fragment's lock after the last write.
     """
     from modules.list_settings import ListSettingsUnreadable
 
     out = {"ok": False, "outcomes": {}, "error": "", "reloaded": False, "record": None}
     owner = ""
+    routed = False
     if list_name:
         try:
             home = kea_home(list_name)
@@ -558,6 +708,7 @@ def write_reservations(adds=(), removes=(), *, list_name: str = "", actor: str =
                             "reservation goes cannot be said. Nothing was written")
             return out
         owner = home["owner"]
+        routed = fragment is None
         fragment = home["fragment"] if fragment is None else fragment
         main_config = main_config or home["main_config"]
     elif fragment is None or not main_config or kea is None:
@@ -569,19 +720,98 @@ def write_reservations(adds=(), removes=(), *, list_name: str = "", actor: str =
         out["error"] = ("kea_ztp_fragment is not configured: a reservation written "
                         "anywhere else lives in Kea's memory until its next restart (C49)")
         return out
-    with fragment_lock(fragment):
-        _write_reservations_locked(out, adds, removes, kea or _kea(owner), fragment,
-                                   main_config, run_test)
-        # THE RECORD, under the same lock, so each write's commit holds that write's fragment.
-        # Taken whenever Kea was reloaded with a new fragment (even one whose read-back then
-        # failed: it is in Kea) or the write succeeded unchanged (which commits nothing unless
-        # an earlier record failed: the record is the whole fragment, so this one catches up).
-        if list_name and (out["reloaded"] or out["ok"]):
-            out["record"] = record_commit(list_name, fragment, message=message, actor=actor)
-            if not out["record"].get("ok"):
-                log.error("ztp: the reservation record for %s was NOT committed: %s",
-                          list_name, out["record"].get("error"))
-        return out
+    kea = kea or _kea(owner)
+    if routed:
+        groups, error = _route(adds, removes, fragment, main_config)
+        if error:
+            out["error"] = error + ". Nothing was written"
+            return out
+    else:
+        groups = {fragment: (list(adds), list(removes), None)}
+    errors, oks = [], []
+    for path, (some_adds, some_removes, sid) in groups.items():
+        part = {"ok": False, "outcomes": {}, "error": "", "reloaded": False}
+        with fragment_lock(path):
+            _write_reservations_locked(part, some_adds, some_removes, kea, path, main_config,
+                                       run_test, relayed_id=sid)
+        out["outcomes"].update(part["outcomes"])
+        out["reloaded"] = out["reloaded"] or part["reloaded"]
+        if part["error"]:
+            errors.append(part["error"] if len(groups) == 1 else f"{path}: {part['error']}")
+        oks.append(part["ok"])
+    out["ok"] = bool(oks) and all(oks)
+    out["error"] = "; ".join(errors)
+    # THE RECORD, under the network fragment's lock, so a write's commit holds what it left.
+    # Taken whenever Kea was reloaded with a new file (even one whose read-back then failed: it
+    # is in Kea) or the write succeeded unchanged (which commits nothing unless an earlier
+    # record failed: the record is every ZTP file whole, so this one catches up).
+    if list_name and (out["reloaded"] or out["ok"]):
+        with fragment_lock(fragment):
+            out["record"] = record_commit(list_name, fragment, message=message, actor=actor,
+                                          main_config=main_config)
+        if not out["record"].get("ok"):
+            log.error("ztp: the reservation record for %s was NOT committed: %s",
+                      list_name, out["record"].get("error"))
+    return out
+
+
+def fragments(fragment: str, main_config: str) -> tuple:
+    """``([(subnet_id_or_None, path)], error)``: every file ZTP's writer owns for a Kea: the
+    network's fragment (``None``: the subnet this host is on), then each subnet declared relayed
+    for ZTP's own reservations file (C1346). *error* names Mercury's subnet file when it could
+    not be read, so a reader can say which reservations it did not look at."""
+    from modules.nsot import ztp_relayed
+
+    out = [(None, fragment)] if fragment else []
+    if not main_config:
+        return out, ""
+    relayed, error = ztp_relayed.declared_in_file(main_config)
+    out += [(sid, path) for sid, _prefix, path in relayed if path != fragment]
+    return out, error
+
+
+def _route(adds, removes, fragment: str, main_config: str) -> tuple:
+    """``({path: (adds, removes, relayed_subnet_id_or_None)}, error)``: each add to the ZTP
+    file of the subnet holding its address, each removal to the ZTP file holding its MAC."""
+    from modules.nsot import ztp_relayed
+
+    relayed, error = ztp_relayed.declared_in_file(main_config)
+    groups = {fragment: ([], [], None)}
+    if error and (adds or removes):
+        return {}, (f"Mercury's subnet file could not be read ({error}), so whether a "
+                    "reservation belongs in a relayed ZTP subnet's file cannot be told")
+    nets = []
+    for sid, prefix, path in relayed:
+        try:
+            nets.append((ipaddress.ip_network(prefix, strict=False), sid, path))
+        except ValueError:
+            continue
+    for entry in adds:
+        try:
+            ip = ipaddress.ip_address(str(entry.get("ip-address", "")))
+        except ValueError:
+            ip = None
+        hit = next(((sid, path) for net, sid, path in nets
+                    if ip is not None and ip.version == net.version and ip in net), None)
+        if hit:
+            groups.setdefault(hit[1], ([], [], hit[0]))[0].append(entry)
+        else:
+            groups[fragment][0].append(entry)
+    for raw in removes:
+        mac, where = _mac(raw), fragment
+        for sid, _prefix, path in relayed:
+            try:
+                held = _read_fragment(path)
+            except Refused:
+                continue
+            if any(_mac(e.get("hw-address", "")) == mac for e in held if isinstance(e, dict)):
+                where = path
+                groups.setdefault(path, ([], [], sid))
+                break
+        groups[where][1].append(raw)
+    busy = {p: g for p, g in groups.items() if g[0] or g[1]}
+    # An empty write still asks the network's fragment, as it always has.
+    return busy or {fragment: groups[fragment]}, ""
 
 
 #: ZTP's record (C1243): every reservation in the ZTP fragment, as the writer left it, committed
@@ -590,34 +820,49 @@ def write_reservations(adds=(), removes=(), *, list_name: str = "", actor: str =
 RECORD = "dhcp/ztp-reservations.yml"
 
 
-def record_rows(entries) -> list:
+def record_rows(entries, subnet_id=None) -> list:
     """The record's rows: each reservation's MAC, address, hostname and the two config-source
-    options (:func:`reservation_entry`'s shape), in the fragment's order."""
+    options (:func:`reservation_entry`'s shape), in the fragment's order. A reservation in a
+    relayed ZTP subnet's file (C1346) also names that subnet, and its option 3 when it was
+    chosen (the relay's own address), so the record holds the choice."""
     rows = []
     for e in entries:
         if not isinstance(e, dict):
             continue
         opts = {o.get("name"): o.get("data") for o in e.get("option-data") or []
                 if isinstance(o, dict)}
-        rows.append({"mac": _mac(e.get("hw-address", "")), "address": e.get("ip-address", ""),
-                     "hostname": e.get("hostname", ""), "server": opts.get(SERVER_OPTION, ""),
-                     "file": opts.get(FILE_OPTION, "")})
+        row = {"mac": _mac(e.get("hw-address", "")), "address": e.get("ip-address", ""),
+               "hostname": e.get("hostname", ""), "server": opts.get(SERVER_OPTION, ""),
+               "file": opts.get(FILE_OPTION, "")}
+        if subnet_id is not None:
+            row["relayed_subnet"] = subnet_id
+        if opts.get(ROUTER_OPTION):
+            row["router"] = opts[ROUTER_OPTION]
+        rows.append(row)
     return rows
 
 
-def record_commit(list_name: str, fragment: str, *, message: str, actor: str) -> dict:
-    """Commit :data:`RECORD`, read from *fragment* now, through the one commit of a Kea record
+def record_commit(list_name: str, fragment: str, *, message: str, actor: str,
+                  main_config: str = "") -> dict:
+    """Commit :data:`RECORD`, read now from *fragment* and (C1346, given *main_config*) from
+    every relayed ZTP subnet's file, through the one commit of a Kea record
     (`dhcp_reservations.commit_in_owner`: the Kea owner's repository, `From-Network:` when
     *list_name* is another network). ``{"ok", "commit", "owner", "error"}``."""
     import yaml
 
     from modules import dhcp_reservations as D
 
-    try:
-        rows = record_rows(_read_fragment(fragment))
-    except Refused as exc:
+    every, error = fragments(fragment, main_config)
+    if error:
         return {"ok": False, "commit": "", "owner": "",
-                "error": f"the fragment could not be read for the record: {exc}"}
+                "error": f"the relayed ZTP subnets could not be read for the record: {error}"}
+    rows = []
+    for sid, path in every:
+        try:
+            rows += record_rows(_read_fragment(path), sid)
+        except Refused as exc:
+            return {"ok": False, "commit": "", "owner": "",
+                    "error": f"the fragment could not be read for the record: {exc}"}
     text = ("# Kea reservations ZTP's onboarding holds in its fragment (C1243); written on "
             "each change.\n" + yaml.safe_dump({"reservations": rows}, sort_keys=False))
     return D.commit_in_owner(list_name, RECORD, lambda _owner: text,
@@ -642,8 +887,30 @@ def _includer(main_config: str, main_text: str, fragment: str) -> str:
         return ""
 
 
+def _placement_refusal(dhcp4: dict, address: str, relayed_id) -> tuple:
+    """``(why, relay_address)``: why a reservation for *address* may not go in this file (one
+    whose relayed subnet is *relayed_id*, or the network's fragment when None), and, in a
+    relayed ZTP subnet, the relay's own address (Kea's ``relay.ip-addresses``), option 3's only
+    allowed value (C1346)."""
+    from modules.nsot import ztp_relayed
+
+    try:
+        subnet, _net = subnet_for_address(dhcp4, address)
+    except Refused as exc:
+        return str(exc), ""
+    is_relayed = ztp_relayed.declared(subnet)
+    if relayed_id is None and is_relayed:
+        return (f"{address} is in subnet {subnet.get('id')}, declared relayed for ZTP: its "
+                "reservation goes in that subnet's own file, not this fragment"), ""
+    if relayed_id is not None and (subnet.get("id") != relayed_id or not is_relayed):
+        return (f"{address} is in Kea's subnet {subnet.get('id')}, not in the relayed ZTP "
+                f"subnet {relayed_id} whose file this is"), ""
+    relay = ztp_relayed.kea_relay(subnet) if is_relayed else []
+    return "", (relay[0] if len(relay) == 1 else "")
+
+
 def _write_reservations_locked(out, adds, removes, kea, fragment, main_config,
-                               run_test) -> dict:
+                               run_test, relayed_id=None) -> dict:
     try:
         with open(main_config, encoding="utf-8") as fh:
             main_text = fh.read()
@@ -679,14 +946,28 @@ def _write_reservations_locked(out, adds, removes, kea, fragment, main_config,
         if found:
             refuse(mac, "; ".join(found))
             continue
+        placed, relay_address = _placement_refusal(dhcp4, address, relayed_id)
+        if placed:
+            refuse(mac, placed)
+            continue
         try:
-            bad = forbidden_options(dhcp4, address)
+            bad = forbidden_options(dhcp4, address, relay_address)
         except Refused as exc:
             refuse(mac, str(exc))
             continue
-        bad += [("this reservation", o.get("name") or o.get("code"))
-                for o in entry.get("option-data") or []
-                if o.get("name") in FORBIDDEN_OPTIONS or o.get("code") in FORBIDDEN_OPTIONS.values()]
+        for o in entry.get("option-data") or []:
+            if not (o.get("name") in FORBIDDEN_OPTIONS
+                    or o.get("code") in FORBIDDEN_OPTIONS.values()):
+                continue
+            if o.get("name") == ROUTER_OPTION or o.get("code") == 3:
+                # C1346, D4 restated: the relay's own address on a relayed ZTP subnet only.
+                from modules.nsot import ztp_relayed
+
+                why = ztp_relayed.routers_refusal(str(o.get("data", "")), relay_address)
+                if why:
+                    bad.append(("this reservation", why))
+                continue
+            bad.append(("this reservation", o.get("name") or o.get("code")))
         if bad:
             refuse(mac, "D4: " + "; ".join(f"{w} at {lvl}" for lvl, w in bad))
             continue
@@ -778,9 +1059,11 @@ def _leases(kea) -> dict:
 
 
 def plan_check(mac: str, address: str, *, kea=None, dns=dns_posture, addrs=None,
-               get=None, list_name: str = "") -> dict:
+               get=None, list_name: str = "", relayed=None) -> dict:
     """Everything a `ztp` plan must know before anything is created:
-    ``{"ok", "reasons", "server", "subnet_id", "dns"}``.
+    ``{"ok", "reasons", "server", "subnet_id", "dns", "relayed", "relay"}`` (*relayed*: the
+    relayed check's seams, :func:`posture`; ``relay`` is the relay's device, interface and own
+    address when the subnet is declared relayed for ZTP, C1346).
 
     The writer's own preconditions (configured, no conflict) plus D4's two
     conditions and D3's derived server. Found at PLAN time, so the review
@@ -799,7 +1082,8 @@ def plan_check(mac: str, address: str, *, kea=None, dns=dns_posture, addrs=None,
             return value(owner, key, default)
     if get is None:
         from modules.list_settings import default_layer as get   # one fragment, every list
-    out = {"ok": False, "reasons": [], "server": "", "subnet_id": None, "dns": {}}
+    out = {"ok": False, "reasons": [], "server": "", "subnet_id": None, "dns": {},
+           "relayed": False, "relay": {}}
     if not (get("kea_ztp_fragment", "") or "").strip():
         out["reasons"].append(
             "kea_ztp_fragment is not configured: a reservation written anywhere "
@@ -808,8 +1092,9 @@ def plan_check(mac: str, address: str, *, kea=None, dns=dns_posture, addrs=None,
     if not mac or not address:
         return out
     kea = kea or _kea(owner)
-    p = posture(address, kea=kea, dns=dns, addrs=addrs)
-    out.update(server=p["server"], subnet_id=p["subnet_id"], dns=p["dns"])
+    p = posture(address, kea=kea, dns=dns, addrs=addrs, relayed=relayed)
+    out.update(server=p["server"], subnet_id=p["subnet_id"], dns=p["dns"],
+               relayed=p.get("relayed", False), relay=p.get("relay") or {})
     out["reasons"] += p["reasons"]
     try:
         got = kea.command("config-get")

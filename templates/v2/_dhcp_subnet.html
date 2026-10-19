@@ -37,6 +37,8 @@
     <div class="op-part"><h3>Subnet</h3><div class="dh-fields">
       <label class="dh-f">Family<select name="family">{% for f in ('IPv4', 'IPv6') %}<option{% if f == (s.family or 'IPv4') %} selected{% endif %}>{{ f }}</option>{% endfor %}</select><span class="dh-msg">the Kea id is assigned: the VLAN's when free</span></label>
       <label class="dh-f">Prefix<input type="text" name="prefix" value="{{ s.prefix }}" class="mono" autocomplete="off" spellcheck="false" required><span class="dh-msg">its gateway and relays are offered from intent</span></label>
+      {#- C1346: a relayed subnet declared for ZTP (IPv4 only); its reservations are onboarding's. #}
+      <label class="dh-f"><span><input type="checkbox" name="ztp" value="1"{% if s.ztp == '1' %} checked{% endif %}> For ZTP onboarding</span><span class="dh-msg">a device behind a relay, IPv4 only: its reservations are written by Add device, and it carries no gateway or DNS option</span></label>
     </div></div>
     {%- else %}
     <input type="hidden" name="family" value="{{ s.family }}"><input type="hidden" name="id" value="{{ s.id }}">
@@ -78,6 +80,8 @@
   {%- endif %}
   <form class="op-ft" method="post" action="{{ url_for('dhcp_v2.subnet_confirm', list=g.list) }}" hx-post="{{ url_for('dhcp_v2.subnet_confirm', list=g.list) }}" hx-target="#dhcp" hx-swap="outerHTML">
     {%- for k in ('op', 'family', 'id', 'prefix', 'pool', 'gateway', 'dns', 'domain', 'valid', 'preferred') %}<input type="hidden" name="{{ k }}" value="{{ s[k] }}">{% endfor %}
+    {#- C1346: the ZTP declaration is in the preview's hash, so the confirm carries it. #}
+    <input type="hidden" name="ztp" value="{{ s.ztp }}">
     {#- The pool's description goes with the confirm when the preview had one (C1121: it was in
         the preview's hash and never in the confirm's); none sent keeps the pool's own. -#}
     {%- if s.pool_note is not none %}<input type="hidden" name="pool_note" value="{{ s.pool_note }}">{% endif %}

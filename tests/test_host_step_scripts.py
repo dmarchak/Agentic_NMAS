@@ -72,7 +72,9 @@ EXPECTED = {"phase3-step1.sh", "phase3-step2.sh", "c584-loki-writer.sh",
             # C794: Loki's own detected_level off; severity the one level (2026-10-15).
             "c794-loki-detected-level-off.sh",
             # C730: the golden archive's versions counted, masked or not, read-only (2026-10-15).
-            "c730-golden-archive-census.sh"}
+            "c730-golden-archive-census.sh",
+            # C1346: udp/69 admitted from each relayed ZTP subnet, and recorded (2026-10-19).
+            "c1346-ztp-relayed-firewall.sh"}
 # minio-4d-4e.sh (pip into the app's interpreter) was removed on 2026-10-08: the operator
 # decided on boto3, the host's apt package, so nothing is installed and the lock is
 # regenerated from the host, read-only, once the release importing it is deployed.

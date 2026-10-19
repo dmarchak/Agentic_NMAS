@@ -105,6 +105,12 @@ class OnboardPlan:
     ztp_subnet_id: object = None
     ztp_reasons: tuple = field(default_factory=tuple)
     ztp_dns_measured_at: float = 0.0
+    #: C1346: the relay a device behind one is reached through (``"<device> <iface>
+    #: (<address>)"``, from committed intent), empty on the subnet this host is on; and option
+    #: 3 as the reservation will carry it (the relay's own address, only when the person chose
+    #: to offer it, D4 restated), empty by default. Both are in the summary, so in the hash.
+    ztp_relay: str = ""
+    ztp_router: str = ""
     #: Chosen, never defaulted -- the first interface may be the environment's own.
     manager_interface: str = ""
     #: Omitted unless the manager is on another subnet. See
@@ -474,6 +480,16 @@ class OnboardPlan:
                 return (f"ZTP: a Kea reservation {self.mgmt_mac or '(no MAC)'} → "
                         f"{self.reservation_address or '(no address)'} would be "
                         "written, and it cannot be yet (the reasons are above)")
+            if self.ztp_relay:
+                return (f"ZTP behind the relay {self.ztp_relay}: this onboarding WRITES Kea "
+                        f"reservation {self.mgmt_mac} → {self.reservation_address} in the "
+                        f"relayed subnet {self.ztp_subnet_id}"
+                        + (f", offering option 3 (routers) {self.ztp_router}, the relay's own "
+                           "address" if self.ztp_router else ", with no option 3")
+                        + f", and the device fetches {self.hostname}.cfg by TFTP from "
+                        f"{self.ztp_server}, the relay's helper target. Checked a moment ago: "
+                        "no resolver option reaches it, this host routes back to it, and "
+                        "nothing the relay forwards DNS to answered (D4)")
             return (f"ZTP: this onboarding WRITES Kea reservation {self.mgmt_mac} → "
                     f"{self.reservation_address} in subnet {self.ztp_subnet_id}, "
                     f"and the device fetches {self.hostname}.cfg by TFTP from "
@@ -531,6 +547,8 @@ class OnboardPlan:
             "reservation_address": self.reservation_address,
             "ztp_server":        self.ztp_server,
             "ztp_subnet_id":     self.ztp_subnet_id,
+            "ztp_relay":         self.ztp_relay,
+            "ztp_router":        self.ztp_router,
             "cred_source":    self.cred_source,
             "template":       self.template,
             # NOT a count of what phase 1 creates: phase 1 creates nothing
@@ -632,6 +650,54 @@ def _ztp_check(mac: str, address: str, kea, check=None, list_name: str = "") -> 
                 "server": "", "subnet_id": None, "dns": {}}
 
 
+#: The ZTP card's option-3 choice (C1346, D4 restated 2026-10-19): "" offers no option 3 (D4 as
+#: decided, the default until the relayed proof measures that AutoInstall needs it); "relay"
+#: offers the relay's own address, on a relayed ZTP subnet only.
+ZTP_ROUTER_CHOICES = ("", "relay")
+
+
+def ztp_relayed_choice(check: dict, choice: str, gateway: str) -> dict:
+    """What a ZTP plan's relay means for it: ``{"relay": words, "router": option 3 or "",
+    "reasons": [...]}``. On a relayed ZTP subnet (``check["relayed"]``):
+
+    - option 3 is the relay's own address when *choice* is ``relay``, and absent otherwise;
+    - the bootstrap config's gateway must be the relay's own address: this host is not on the
+      device's subnet, and the relay is the device's one neighbour toward it, so a config with
+      no route back (or another next hop) boots a device this host cannot reach.
+
+    On the subnet this host is on, *choice* ``relay`` is refused (D4 as decided: no option 3).
+    Every refusal names what was asked and what it may be."""
+    out = {"relay": "", "router": "", "reasons": []}
+    choice = (choice or "").strip().lower()
+    if choice not in ZTP_ROUTER_CHOICES:
+        out["reasons"].append(f"option 3 choice {choice!r} is not one of: none, relay")
+        return out
+    relay = (check or {}).get("relay") or {}
+    if not (check or {}).get("relayed"):
+        if choice == "relay":
+            out["reasons"].append(
+                "option 3 (routers) is offered only on a relayed ZTP subnet, as the relay's own "
+                f"address; subnet {(check or {}).get('subnet_id')} is one this host is on, "
+                "where a ZTP reservation carries no route option (D4)")
+        return out
+    if not relay.get("address"):
+        return out                         # the check's own reasons say why there is no relay
+    out["relay"] = f"{relay.get('device')} {relay.get('iface')} ({relay['address']})"
+    if choice == "relay":
+        out["router"] = relay["address"]
+    given = (gateway or "").strip()
+    if not given:
+        out["reasons"].append(
+            f"no gateway given: the device is behind the relay {out['relay']}, this host is "
+            "not on its subnet, so its config needs a route back. Set Gateway to the relay's "
+            f"own address, {relay['address']}")
+    elif given != relay["address"]:
+        out["reasons"].append(
+            f"the gateway {given} is not the relay's own address {relay['address']} "
+            f"({out['relay']}): the relay is the device's one neighbour toward this host")
+    return out
+
+
 def plan_shown(plan: OnboardPlan) -> str:
     """What a Create's preview showed, canonically: the plan's summary and its intent (the
     secret reaches neither, so the placeholder preview and the real build agree)."""
@@ -683,7 +749,8 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
                mgmt_mask: str = "", manager_interface: str = "",
                manager_gateway: str = "", address_source: str = "static",
                mgmt_mac: str = "", kea=None, ztp_check=None,
-               role: str = "", platform_slug: str = "") -> OnboardPlan:
+               role: str = "", platform_slug: str = "",
+               ztp_router: str = "") -> OnboardPlan:
     """The only constructor. Always validates; never writes anything.
 
     *secret* is the one-time bootstrap credential (4C.2). It reaches the
@@ -747,9 +814,13 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
     if address_source == "dhcp" and mgmt_mac:
         reservation = _reservation(mgmt_mac, kea)
     ztp = {"ok": False, "reasons": [], "server": "", "subnet_id": None, "dns": {}}
+    relayed = {"relay": "", "router": "", "reasons": []}
     if address_source == "ztp":
         ztp = _ztp_check(mgmt_mac, requested, kea, ztp_check, list_name)
-        reservation = {"state": "to_write" if ztp["ok"] else "refused",
+        relayed = ztp_relayed_choice(ztp, ztp_router, manager_gateway)
+        ztp = dict(ztp, reasons=list(ztp.get("reasons") or []) + relayed["reasons"])
+        reservation = {"state": "to_write" if ztp["ok"] and not relayed["reasons"]
+                       else "refused",
                        "address": requested, "source": "this onboarding",
                        "error": ""}
 
@@ -811,6 +882,7 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
         ztp_server=ztp["server"], ztp_subnet_id=ztp["subnet_id"],
         ztp_reasons=tuple(ztp["reasons"]),
         ztp_dns_measured_at=float((ztp.get("dns") or {}).get("measured_at") or 0),
+        ztp_relay=relayed["relay"], ztp_router=relayed["router"],
         manager_interface=manager_interface, manager_gateway=manager_gateway,
         domain=domain,
         bootstrap_config=config, cred_source=cred_source,
@@ -1745,8 +1817,15 @@ def reserve_step(plan, *, actor: str = "", kea=None, check=None, write=None) -> 
     live = check(plan.mgmt_mac, plan.reservation_address, kea=kea, list_name=plan.list_name)
     if not live.get("ok"):
         raise RuntimeError("; ".join(live.get("reasons") or ["the ZTP check failed"]))
+    # C1346: option 3 as the plan carried it (the relay's own address, chosen), checked
+    # against the relay the write-time check reads now: a relay that moved refuses.
+    router = getattr(plan, "ztp_router", "") or ""
+    if router and router != ((live.get("relay") or {}).get("address") or ""):
+        raise RuntimeError(f"the plan offers option 3 {router}, and the relay's own address "
+                           f"is now {(live.get('relay') or {}).get('address') or '(no relay)'}: "
+                           "preview again")
     entry = ztp.reservation_entry(plan.mgmt_mac, plan.reservation_address,
-                                  plan.hostname, live["server"])
+                                  plan.hostname, live["server"], router=router)
     out = (write or ztp.write_reservations)(
         [entry], kea=kea, list_name=plan.list_name, actor=actor or "unknown",
         message=(f"ztp: {plan.hostname} reserved {entry['hw-address']} -> "

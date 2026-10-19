@@ -187,7 +187,7 @@ def reservation_files(main_text: str, main: str, family: str, ids: list) -> dict
 OPTIONS = {"IPv4": {"gateway": "routers", "dns": "domain-name-servers", "domain": "domain-name"},
            "IPv6": {"dns": "dns-servers", "domain": "domain-search"}}
 ASKS = ("op", "family", "id", "prefix", "pool", "pool_note", "gateway", "dns", "domain",
-         "valid", "preferred", "ack")
+         "valid", "preferred", "ack", "ztp")
 #: C709: a pool's description, kept in Kea's `user-context` with the pool (Kea carries it and
 #: answers it in config-get). Words a person reads, so printable and short.
 POOL_NOTE_MAX = 80
@@ -520,7 +520,10 @@ def _plan_add(list_name, s, p, kea, file_text, intent, D) -> None:
     relay = sorted({e.get("address") for e in entries if e.get("address")})
     if relay:
         after["relay"] = {"ip-addresses": relay}
-    if family == "IPv4" and not s["gateway"]:
+    for_ztp = s.get("ztp") == "1"
+    if for_ztp:
+        _declare_for_ztp(p, s, after, family, prefix, entries)
+    elif family == "IPv4" and not s["gateway"]:
         gw = sorted({g for e in entries for g in e.get("gateway") or []})
         if len(gw) == 1:
             s = dict(s, gateway=gw[0])
@@ -548,6 +551,38 @@ def _plan_add(list_name, s, p, kea, file_text, intent, D) -> None:
     p["leases"].append("no lease is held in a subnet Kea does not have yet")
 
 
+def _declare_for_ztp(p, s, after, family, prefix, entries) -> None:
+    """C1346: a new subnet declared relayed for ZTP (``user-context: {"mercury-ztp":
+    "relayed"}``, `ztp_relayed`). Its reservations file is then ZTP's writer's alone, the DHCP
+    page refuses reservations there, and D4 holds: no gateway (option 3, which only a
+    reservation may carry, as the relay's own address) and no DNS server option. Refused: an
+    IPv6 subnet (ZTP is IPv4 only, C1245), and a prefix whose relay is not one interface of a
+    device Mercury manages, with a helper target (the relay is read from committed intent)."""
+    from modules.nsot import ztp_relayed
+
+    try:
+        ztp_relayed.ipv4_only(prefix, "the subnet")
+    except ztp_relayed.Refused as exc:
+        raise Refused(str(exc)) from None
+    if family != "IPv4":
+        raise Refused(f"{prefix} is an {family} subnet: ZTP reserves and serves IPv4 (DHCPv4) "
+                      "addresses only (C1245)")
+    if s.get("gateway") or s.get("dns"):
+        raise Refused("a relayed ZTP subnet carries no gateway or DNS option (D4): a "
+                      "configless device given a route and a resolver phones Cisco; option 3 "
+                      "is a reservation's own choice, as the relay's own address, made at "
+                      "Add device")
+    try:
+        relay = ztp_relayed.relay_for(prefix, {"IPv4": {prefix: entries}})
+    except ztp_relayed.Refused as exc:
+        raise Refused(str(exc)) from None
+    after["relay"] = {"ip-addresses": [relay["address"]]}
+    after["user-context"] = ztp_relayed.declaration()
+    p["checks"].append(("pass", f"for ZTP behind {relay['device']} {relay['iface']} "
+                                f"({relay['address']}, its relay); its reservations are "
+                                "onboarding's, and it carries no gateway or DNS option (D4)"))
+
+
 def _plan_remove(list_name, s, p, kea, file_text, intent, D) -> None:
     """Board C's section 5: refused until its effect on the leases held now is acknowledged."""
     subnets, config, kea = _state(list_name, s, p, kea, file_text, D)
@@ -560,8 +595,17 @@ def _plan_remove(list_name, s, p, kea, file_text, intent, D) -> None:
     hit = [x for x in subnets if x.get("id") == sid]
     if len(hit) != 1:
         raise Refused(f"subnet {sid} is in Mercury's {family} subnet file {len(hit)} times")
+    from modules.nsot import ztp_relayed
     from modules.readers.dhcp import _ztp_ids
-    if family == "IPv4" and sid in _ztp_ids(config):
+    running = next((x for x in config.get(FILES[family][0]) or [] if x.get("id") == sid), {})
+    if family == "IPv4" and ztp_relayed.declared(running):
+        # C1346: a relayed ZTP subnet goes only when onboarding holds nothing in it.
+        held = running.get("reservations") or []
+        if held:
+            raise Refused(f"subnet {sid} is a relayed ZTP subnet holding {len(held)} "
+                          "reservation(s) onboarding wrote: abandon or retire those devices "
+                          "first (each removes its own)")
+    elif family == "IPv4" and sid in _ztp_ids(config):
         raise Refused(f"subnet {sid} is ZTP's: onboarding's, never removed here")
     before = hit[0]
     p["before"] = before

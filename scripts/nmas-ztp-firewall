@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+"""C1346: the app's side of the host step `scripts/host-steps/c1346-ztp-relayed-firewall.sh`,
+which admits TFTP (udp/69, the ZTP responder) from each relayed ZTP subnet Mercury holds
+(`modules/nsot/ztp_relayed.py`). Run as the app's user; ufw is root's, so the host step runs
+`sudo ufw` and pipes `ufw status` here. Asks Kea nothing: the subnets are read from Mercury's
+IPv4 subnet file, the interface from the responder's installed socket unit.
+
+    nmas-ztp-firewall interface   # the responder socket's BindToDevice=
+    nmas-ztp-firewall prefixes    # each relayed ZTP subnet's prefix, one a line (none: no line)
+    nmas-ztp-firewall check       # stdin `ufw status`: every prefix admitted on the interface
+    nmas-ztp-firewall record      # stdin `ufw status`: the record job health reads, beside the ZTP fragment
+    nmas-ztp-firewall verify      # the record reads back and admits every prefix
+
+Exit 0 done or as expected, 1 refused or different.
+"""
+
+import json
+import os
+import sys
+import time
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+
+def main_config() -> str:
+    from modules.list_settings import default_layer
+
+    return (default_layer("kea_dhcp4_config", "/etc/kea/kea-dhcp4.conf")
+            or "/etc/kea/kea-dhcp4.conf")
+
+
+def record_path() -> str:
+    """Where job health reads the record: beside the ZTP fragment (`ztp.posture_rows`)."""
+    from modules.list_settings import default_layer
+    from modules.nsot import ztp_relayed
+
+    fragment = (default_layer("kea_ztp_fragment", "") or "").strip()
+    if not fragment:
+        print("refused: kea_ztp_fragment is not configured, so ZTP is not and nothing is "
+              "recorded (docs/DEPLOY_LINUX.md, the Kea section)", file=sys.stderr)
+        sys.exit(1)
+    return ztp_relayed.firewall_record_path(fragment)
+
+
+def declared(main: str) -> list:
+    """``[(id, prefix)]``, or exits 1 naming the subnet file that could not be read."""
+    from modules.nsot import ztp_relayed
+
+    got, error = ztp_relayed.declared_in_file(main)
+    if error:
+        print(f"refused: {error}", file=sys.stderr)
+        sys.exit(1)
+    return [(sid, prefix) for sid, prefix, _path in got]
+
+
+def interface() -> str:
+    from modules.nsot import ztp_relayed
+
+    name = ztp_relayed.responder_interface()
+    if not name:
+        print(f"refused: {ztp_relayed.RESPONDER_SOCKET_UNIT} names no BindToDevice= "
+              "(docs/DEPLOY_LINUX.md installs it)", file=sys.stderr)
+        sys.exit(1)
+    return name
+
+
+def closed(subnets: list, admitted: list) -> list:
+    from modules.nsot import ztp_relayed
+
+    return [f"subnet {sid} ({prefix})" for sid, prefix in subnets
+            if not ztp_relayed.admitted(prefix, admitted)]
+
+
+def main(argv) -> int:
+    from modules.nsot import ztp, ztp_relayed
+
+    if len(argv) != 2 or argv[1] not in ("interface", "prefixes", "check", "record", "verify"):
+        print(__doc__, file=sys.stderr)
+        return 1
+    what, main = argv[1], main_config()
+    if what == "interface":
+        print(interface())
+        return 0
+    subnets = declared(main)
+    if what == "prefixes":
+        for _sid, prefix in subnets:
+            print(prefix)
+        return 0
+    if what == "verify":
+        path = record_path()
+        row = ztp_relayed.firewall_row(subnets, ztp_relayed.read_firewall_record(path), path)
+        print(row["detail"])
+        return 0 if row["state"] == "ok" else 1
+    iface = interface()
+    admitted = ztp_relayed.parse_ufw_status(sys.stdin.read(), iface)
+    if what == "check":
+        missing = closed(subnets, admitted)
+        if missing:
+            print(f"not admitted to udp/69 on {iface}: {', '.join(missing)}; ufw admits "
+                  f"{admitted or 'nothing'}")
+            return 1
+        print(f"admitted to udp/69 on {iface}: "
+              + (", ".join(p for _i, p in subnets) or "no relayed ZTP subnet is declared"))
+        return 0
+    path = record_path()
+    doc = {"read_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "interface": iface,
+           "admitted": admitted, "source": "ufw status, read by the host step as root"}
+    ztp._replace(path, json.dumps(doc, indent=2) + "\n")           # noqa: SLF001 (0644, atomic)
+    print(f"recorded {path}: {len(admitted)} source(s) admitted to udp/69 on {iface}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

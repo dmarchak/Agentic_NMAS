@@ -65,7 +65,12 @@
     <label for="f-ob-intf">Management interface</label>
     <div><input id="f-ob-intf" name="manager_interface" type="text" value="{{ f.manager_interface }}" autocomplete="off" placeholder="GigabitEthernet2"><span class="set-origin">where the address goes; spelling is checked, the port is not (the device does not exist yet)</span></div>
     <label for="f-ob-gw">Gateway</label>
-    <div><input id="f-ob-gw" name="manager_gateway" type="text" value="{{ f.manager_gateway }}" autocomplete="off" placeholder="(optional)"><span class="set-origin">blank when this host is on the device's subnet</span></div>
+    <div><input id="f-ob-gw" name="manager_gateway" type="text" value="{{ f.manager_gateway }}" autocomplete="off" placeholder="(optional)"><span class="set-origin">blank when this host is on the device's subnet; behind a relay, the relay's own address</span></div>
+    {#- C1346, D4 restated: option 3 on a relayed ZTP subnet, the relay's own address and nothing else; none by default. #}
+    <label class="ob-ztp" for="f-ob-router">Route option (3)</label>
+    <div class="ob-ztp"><select id="f-ob-router" name="ztp_router">
+      {%- for v, words in (('', 'None (D4)'), ('relay', "The relay's own address")) %}<option value="{{ v }}"{% if v == (f.ztp_router or '') %} selected{% endif %}>{{ words }}</option>{% endfor %}
+    </select><span class="set-origin">ZTP behind a relay only: offered when AutoInstall needs a route to fetch its config off its subnet; never a DNS server</span></div>
     <label for="f-ob-oob">Platform management port</label>
     <div><input id="f-ob-oob" name="mgmt_interface" type="text" value="{{ f.mgmt_interface }}" autocomplete="off" placeholder="(optional)"><span class="set-origin">a separate port the platform manages itself on, apart from the address above; blank when there is none</span></div>
     <label for="f-ob-domain">Domain</label>

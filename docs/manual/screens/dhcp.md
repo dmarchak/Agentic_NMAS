@@ -42,7 +42,8 @@ One that has never been read is said so, never drawn as empty.
 
 The counts lead: how many subnets (IPv4, ZTP's among them, and IPv6), leases and
 reservations. **Add a subnet…** opens a card in place for a new one ([how it
-works](dhcp-subnet)).
+works](dhcp-subnet)); **For ZTP onboarding** on it adds a subnet for ZTP behind a relay, whose
+reservations are onboarding's ([how it works](dhcp-subnet#add-for-ztp)).
 
 One row per subnet, as Kea runs it: its prefix, Kea's id for it and how many addresses are
 reserved in it; its **Pools as set**; its **Gateway** (Kea's option 3, beside the first-hop

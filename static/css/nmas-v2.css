@@ -1499,6 +1499,9 @@ button[data-refused]::after { content: " (" attr(data-refused) ")"; font-weight:
    and a MAC is read only for DHCP and ZTP. */
 .ob-form:has(#f-ob-source option[value="dhcp"]:checked) .ob-addr { display: none; }
 .ob-form:has(#f-ob-source option[value="static"]:checked) .ob-mac { display: none; }
+/* C1346: the route option (3) is ZTP's alone, behind a relay. */
+.ob-form:has(#f-ob-source option[value="static"]:checked) .ob-ztp,
+.ob-form:has(#f-ob-source option[value="dhcp"]:checked) .ob-ztp { display: none; }
 .inline-form { display: inline-flex; margin: 0; }
 .set-config { margin: 6px 0 0; white-space: pre; background: var(--surface-2); border: 1px solid var(--line-2);
   border-radius: var(--r); padding: 10px 12px; line-height: 1.5; }

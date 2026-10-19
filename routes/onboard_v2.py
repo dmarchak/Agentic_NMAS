@@ -29,7 +29,7 @@ bp = Blueprint("onboard_v2", __name__, url_prefix="/v2/onboard")
 #: test_server_reads_nothing_the_form_cannot_send.py holds the two to each other).
 FIELDS = ("list_name", "hostname", "platform", "role", "address_source", "mgmt_ip",
           "mgmt_mask", "mgmt_mac", "manager_interface", "manager_gateway", "mgmt_interface",
-          "domain")
+          "domain", "ztp_router")
 
 
 def _form() -> dict:

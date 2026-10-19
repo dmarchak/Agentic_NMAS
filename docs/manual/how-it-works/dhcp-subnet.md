@@ -19,6 +19,19 @@ Kea already serves. A prefix no interface in intent is on is said plainly: no re
 client's request, so Kea would answer nobody on it. The new subnet takes its reservations from a
 fresh file of Mercury's, created empty.
 
+### For ZTP onboarding {#add-for-ztp}
+
+Tick **For ZTP onboarding** to add a subnet a device is onboarded on by ZTP behind a relay
+([ZTP behind a relay](onboard#ztp-behind-a-relay)). The subnet then carries Mercury's mark
+(`"user-context": {"mercury-ztp": "relayed"}`, in the preview's change and in
+`dhcp/subnets.yml`), and its reservations file is onboarding's alone: Add device writes it, and a
+reservation there on this page is refused. Its relay address is the one interface intent has on
+the prefix, and that interface must relay to a DHCP server (`ip helper-address`): a prefix no
+device Mercury manages is on is refused, as is one with two such interfaces. It carries no
+gateway and no DNS option, and a value in either field is refused (option 3, the relay's own
+address, is a reservation's own choice, made at Add device). ZTP is IPv4 only: an IPv6 subnet
+for ZTP is refused by name. Without the tick the Add is as above.
+
 ## Removing a subnet {#remove}
 
 The card says what the removal does to the clients served now: each client holding a lease keeps
@@ -27,7 +40,9 @@ subnet; its reservations go with it. When any client or reservation is affected,
 needs the acknowledgement ticked, and is refused without it. **What survives:** the subnet's
 definition and its reservations stay in the repository's history (`dhcp/subnets.yml`,
 `dhcp/reservations.yml`), so adding it back is one Add; Mercury's reservations file for it stays
-on disk, included by nothing. ZTP's subnet is onboarding's and never removed here.
+on disk, included by nothing. ZTP's subnet is onboarding's and never removed here; a subnet
+added for ZTP behind a relay is removed here only when it holds no reservation (abandon or
+retire its devices first, each removing its own), and is refused naming how many it holds.
 
 ## Where a subnet lives
 

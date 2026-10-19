@@ -377,6 +377,12 @@ def _plan(list_name, s, p, kea, main_text) -> None:
             os.path.abspath(path) == os.path.abspath(_ztp_fragment(list_name)):
         raise Refused(f"subnet {sid} is ZTP's: its reservations are onboarding's (Devices › Add "
                       "device), written by onboarding's own writer")
+    from modules.nsot import ztp_relayed
+    if family == "IPv4" and ztp_relayed.declared(subnet):
+        # C1346: a relayed ZTP subnet's file has one owner, ZTP's writer.
+        raise Refused(f"subnet {sid} ({p['prefix']}) is a relayed ZTP subnet: its reservations "
+                      "file is onboarding's (Devices › Add device, ZTP), written by "
+                      "onboarding's own writer")
     if main_text is None:
         try:
             with open(main, encoding="utf-8") as fh:
@@ -732,9 +738,15 @@ def record_commit(list_name: str, p: dict, *, actor: str, reason: str) -> dict:
 
 
 def held_by_mercury(list_name: str) -> list:
-    """Every reservation in Mercury's subnet files (ZTP's excluded: onboarding's), as recorded."""
+    """Every reservation in Mercury's subnet files (ZTP's excluded: onboarding's, the directly
+    attached ZTP subnet's fragment and each relayed ZTP subnet's file, C1346), as recorded."""
+    from modules.nsot import ztp_relayed
+
     out = []
     ztp_file = os.path.abspath(_ztp_fragment(list_name)) if _ztp_fragment(list_name) else ""
+    relayed, _error = ztp_relayed.declared_in_file(main_config(list_name, "IPv4"))
+    ztp_files = {ztp_file} | {os.path.abspath(path) for _sid, _prefix, path in relayed}
+    ztp_files.discard("")
     for family, f in FAMILY.items():
         folder = os.path.join(os.path.dirname(main_config(list_name, family)), "nmas")
         pattern = re.compile("^" + re.escape(f["file"]).replace(r"\{id\}", r"(\d+)") + "$")
@@ -745,7 +757,7 @@ def held_by_mercury(list_name: str) -> list:
         for name in names:
             m = pattern.match(name)
             path = os.path.join(folder, name)
-            if not m or os.path.abspath(path) == ztp_file:
+            if not m or (family == "IPv4" and os.path.abspath(path) in ztp_files):
                 continue
             try:
                 entries, _t = _read_file(path)

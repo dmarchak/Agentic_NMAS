@@ -402,3 +402,113 @@ hand, then by `nmas-persist-native`. The first real ZTP onboarding (Lab 9's
 demonstration or a real device) is the step's first execution. Its
 acceptance: the step reads `persisted` from a real read-back, and a failed
 read-back makes promotion REFUSE. Treat it as unproven until then.
+
+---
+
+## 9. Relayed ZTP (C1346)
+
+Built 2026-10-19 (docs/LAB8_LAB9_PLAN.md, step 0e) and **not yet run on any device**: step 0d's
+throwaway proof is what closes C1346. Section 6 listed "a relayed path" among what P.6 does not
+prove; this section says what was built for it and what 0d must measure. The code is
+`modules/nsot/ztp_relayed.py`, called from `ztp.posture`, the writer and the responder; the
+tests are `tests/test_ztp_relayed.py`.
+
+**Which subnets are relayed ZTP subnets: a declaration on the subnet.** Nothing measurable tells
+a ZTP segment behind a relay from a host VLAN behind the same relay: both are relayed to this
+host, and both are subnets this host is not on. So the subnet carries one declaration, kept with
+the subnet: `"user-context": {"mercury-ztp": "relayed"}`, set by DHCP › Subnets › **Add a
+subnet…** with **For ZTP onboarding** (`dhcp_subnets`, the one write path for subnets), in the
+preview's hash and in `dhcp/subnets.yml`. Kea returns it in `config-get`, so the checks read it
+from the running server; the responder and the host step read it from Mercury's subnet file
+without asking Kea. Refused at Add: an IPv6 subnet (C1245), a gateway or a DNS value (D4), and a
+prefix whose relay is not exactly one interface of a device Mercury manages with a helper
+address. The relay address Kea matches the subnet on (`relay.ip-addresses`) is that interface's
+address. A declared subnet that holds a reservation is not removed (abandon or retire its devices
+first).
+
+**The fragment: the declared subnet's own reservations file, and it is ZTP's whole.** The DHCP
+page's Add already gives each subnet its own `reservations-<id>.json`. For a declared subnet that
+file has one owner, ZTP's writer: the DHCP page refuses a reservation there (as it refuses one in
+the directly attached ZTP subnet), its record (`dhcp/reservations.yml`) leaves the file out, and
+ZTP's record (`dhcp/ztp-reservations.yml`) holds every ZTP file, each relayed row naming its
+subnet and any option 3. The writer, for a network, routes each reservation to the ZTP file of
+the subnet holding its address (Mercury's subnet file read, never Kea asked), and a removal to
+the file holding its MAC; each file is written under its own lock, tested with Kea's own check
+through the nested include, reloaded and read back, and a reservation is refused if its address
+is not in the subnet whose file it is going into. The responder reads every ZTP file; retirement
+looks in every one.
+
+**D3 for a relayed subnet: the relay's helper target that is this host's.** The server address
+(option 66) is the one `ip helper-address` target, in the relay's COMMITTED intent on that
+prefix, that is also one of this host's own addresses on an interface Kea listens on (measured
+from the host's interfaces each time, as D3). That is where the relay forwards the device's
+DISCOVER, so it is where Kea hears it and an address the device's path reaches. Chosen over "the
+address on the interface Kea receives relayed traffic on" because that interface may hold several
+addresses, and only the relay's configuration says which one it forwards to; chosen over a
+setting for C48's reason. None, or more than one, is refused naming the relay's helper targets and
+this host's addresses. Kea's `relay.ip-addresses` for the subnet must be exactly the relay's
+address in intent, refused naming both. A relay Mercury does not manage is refused, not allowed
+with an address given: its helper target, its own address (option 3's only value) and its
+configuration (the DNS check) would all be typed copies, which is how `tftp_server_ip` came to
+name an address the host does not have. The plan also measures a route back: `ip -4 route get
+<address> from <server>` must find one (the TFTP reply and phase 2's SSH both take it).
+
+**D4 condition 1, restated for relayed subnets (the operator, 2026-10-19).** On a declared
+subnet, a reservation may carry `routers` equal to the relay's own address and nothing else;
+option 6 is never sent. `routers` at any other level (global, class, shared network, subnet,
+pool), or with another value, is still refused, naming the value and the one it may be. It is a
+per-reservation choice, **off by default** (D4 as decided, until 0d's measurement says
+otherwise): Add device's **Route option (3)**, **None (D4)** or **The relay's own address**,
+refused on a subnet this host is on. The choice is in the plan's summary, so in the preview's
+fingerprint; Create's reserve step refuses if the relay's address moved since the preview; the
+reservation and the record both hold it. Behind a relay the bootstrap's **Gateway** must be the
+relay's own address (the device needs a route back to this host once its configuration is
+applied), refused blank or otherwise naming both.
+
+**D4 condition 2 on a relayed segment.** A broadcast from the device never reaches this host as a
+broadcast, so P.6's probe from the management interface says nothing about it. What reaches
+anything: IOS's `ip helper-address` forwards UDP broadcasts for its default ports, DNS (53) among
+them, to every helper target, as unicasts from the relay's address; and the relay itself answers
+a broadcast query if it runs `ip dns server`. So, per relayed segment, at plan time and as a
+job-health row (`ztp-posture:subnet-<id>`):
+- MEASURED: a unicast DNS query (the RFC 6761 name P.6 uses) to every helper target, sent from
+  the server address; any reply with the query's id is an answer; an ICMP port unreachable is
+  silence; a query that could not be sent is unknown. Each answer is reused for five minutes,
+  with its time;
+- READ from the relay's committed golden: no top-level `ip dns server` (`no ip
+  forward-protocol udp domain` is read and reported, not required). A golden that cannot be read
+  is unknown, never silent.
+
+What this does not measure: a helper target that answers this host and not the relay (an ACL
+keyed on the source), and anything else on the segment; on a /30 the segment holds the relay
+and the device only.
+
+**The firewall.** ufw admits udp/69 from the management subnet only (docs/DEPLOY_LINUX.md). The
+host step `scripts/host-steps/c1346-ztp-relayed-firewall.sh` (the operator's; not run) admits
+udp/69 on the responder's interface (its socket unit's `BindToDevice=`) from each declared
+subnet, idempotently, reads `ufw status` back, and records what it showed beside the ZTP
+fragment (`ztp-firewall.json`), because this process cannot read ufw. Job health's
+`ztp-firewall` row compares the declared subnets with that record: a subnet not admitted is
+named (`firewall_closed`); an absent record (the step has not run) and an unreadable one are
+different `unknown` rows. The record is what ufw showed when the step ran, and the row says when.
+
+**Left as they are:** the discovery classes (board L) test `pkt4.giaddr == 0.0.0.0` and `not
+member('KNOWN')`, so they match neither a relayed client nor a reserved one. The responder needed
+no new rule: it serves the peer whose source is a reserved address, and a routed request arrives
+from the device's own address; what changed is that it reads every ZTP file. IPv6 is refused by
+name at each door: the address, the subnet at Add, the relayed prefix, and the job-health row.
+
+**What 0d must measure on the throwaway to close C1346** (a relay node and a configless C8000v
+behind it, a /30 between them, the relay's `ip helper-address` naming Kea's address):
+1. without option 3: does AutoInstall take the relayed lease and fetch `<device>.cfg` from the
+   off-subnet option-66 address? Captured at the relay (giaddr set, DISCOVER forwarded) and at
+   this host (the RRQ's source is the reserved address);
+2. if not, the same with Route option (3) = the relay's own address, and whether that changes
+   what the node asks for (its DNS queries, Cisco's endpoints) with no resolver offered;
+3. the broadcast DNS queries the node sends behind the relay, and that the helper target
+   answers none of them (0 replies), beside what the plan's probe said;
+4. the TFTP transfer across the routed path: the responder's reply from the asked address, the
+   ACKs back through conntrack, and the firewall rule the host step added;
+5. Verify reaching the device through the relay with the bootstrap's gateway, the persist step's
+   read-back (C57's acceptance), and Kea's reservation surviving `config-reload` in the
+   relayed subnet's file (M5's question for a nested include).

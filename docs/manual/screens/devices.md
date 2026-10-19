@@ -103,7 +103,9 @@ The rows ticked are kept when the list redraws.
 network picker chooses which). Fill in its name, platform and role, how it gets its address
 (static, a DHCP reservation, or ZTP, where the tool reserves the address and serves the
 configuration), the address, mask and MAC that source needs, the interface the address goes
-on, a gateway when this host is not on the device's subnet, the **Platform management port**
+on, a gateway when this host is not on the device's subnet (behind a relay, the relay's own
+address), for ZTP the **Route option (3)** (None (D4) by default; the relay's own address only
+behind a relay: [ZTP behind a relay](onboard#ztp-behind-a-relay)), the **Platform management port**
 (optional: a separate port the platform manages itself on, apart from that address), and the
 DNS domain. A platform not yet onboardable would be listed and disabled, with its reason; no
 platform is held back today.

@@ -567,8 +567,15 @@ def _reservation_facts(list_name: str, hostname: str, entry, known: list) -> dic
     fragment = home["fragment"]
     mac = ztp._mac((entry or {}).get("mgmt_mac") or "")       # noqa: SLF001 - its one form
     if fragment:
+        # Every file ZTP's writer owns: the network's fragment and each relayed ZTP subnet's
+        # own file (C1346), whose reservations the DHCP page's record leaves to ZTP.
+        every, error = ztp.fragments(fragment, home.get("main_config", ""))
+        held = []
         try:
-            held = ztp._read_fragment(fragment)               # noqa: SLF001 - a read
+            if error:
+                raise ztp.Refused(error)
+            for _sid, path in every:
+                held += ztp._read_fragment(path)              # noqa: SLF001 - a read
         except ztp.Refused as exc:
             return {"refuse": (f"ZTP's reservations could not be read ({exc}), so whether "
                                f"one is held for {hostname} cannot be told: could not read "

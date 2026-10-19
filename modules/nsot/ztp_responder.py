@@ -79,12 +79,17 @@ def error_packet(code: int, text: str) -> bytes:
 
 # ── the decision ───────────────────────────────────────────────────────────
 
-def _fragment_paths() -> dict:
+def _fragment_paths(errors=None) -> dict:
     """``{fragment path: [networks]}``: every network's ZTP fragment, each path once, with the
     networks whose Kea owner writes there (`ztp.kea_home`, C1235). C1252: this read only
     Default's, so a device onboarded into a network with a Kea of its own was refused its file.
     A network whose Kea owner cannot be read is skipped and logged; another network's fragment
-    still serves."""
+    still serves.
+
+    C1346: each relayed ZTP subnet's own reservations file too (`ztp.fragments`, read from
+    Mercury's subnet file, never by asking Kea), so a device behind a relay is served at the
+    reserved address its routed request comes from. A subnet file that cannot be read is
+    appended to *errors*, so a refusal can say which reservations were not looked at."""
     from modules.device import get_device_lists
     from modules.list_settings import DEFAULT_LIST, default_layer
     from modules.nsot import ztp
@@ -92,13 +97,21 @@ def _fragment_paths() -> dict:
     out = {}
     for item in get_device_lists():
         try:
-            path = ztp.kea_home(item["name"])["fragment"]
+            home = ztp.kea_home(item["name"])
+            path = home["fragment"]
         except Exception as exc:                  # noqa: BLE001
             log.error("ztp responder: %s's Kea owner could not be read (%s); its "
                       "reservations are not served", item["name"], exc)
             continue
-        if path:
-            out.setdefault(path, []).append(item["name"])
+        if not path:
+            continue
+        every, error = ztp.fragments(path, home.get("main_config", ""))
+        if error and errors is not None:
+            errors.append(f"the relayed ZTP subnets of {item['name']}: {error}")
+        for _sid, each in every:
+            out.setdefault(each, [])
+            if item["name"] not in out[each]:
+                out[each].append(item["name"])
     if not out:
         path = default_layer("kea_ztp_fragment", "")
         if path:
@@ -113,11 +126,12 @@ def _fragment_entries() -> list:
     refusal can say which reservations were not looked at."""
     from modules.nsot import ztp
 
-    paths = _fragment_paths()
+    errors = []
+    paths = _fragment_paths(errors)
     if not paths:
         raise LookupError("kea_ztp_fragment is not configured on any network, so no address "
                           "was reserved by the tool and none can be served")
-    out = []
+    out = [{"_unread": e} for e in errors]
     for path, networks in paths.items():
         try:
             got = ztp._read_fragment(path)

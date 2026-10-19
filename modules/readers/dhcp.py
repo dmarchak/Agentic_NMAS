@@ -273,10 +273,12 @@ def leases(raw: list, family: str) -> list:
 
 def _ztp_ids(dhcp4: dict) -> list:
     """ZTP's subnets, by ZTP's own rule (`ztp.ztp_subnets`: a subnet holding one of this
-    host's addresses on an interface Kea listens on). A failure to measure names none."""
-    from modules.nsot import ztp
+    host's addresses on an interface Kea listens on), and each subnet declared relayed for ZTP
+    (`ztp_relayed.relayed_subnets`, C1346). A failure to measure names none."""
+    from modules.nsot import ztp, ztp_relayed
     try:
-        return [s.get("id") for s, _a in ztp.ztp_subnets(dhcp4)]
+        return [s.get("id") for s, _a in ztp.ztp_subnets(dhcp4)] + [
+            s.get("id") for s in ztp_relayed.relayed_subnets(dhcp4)]
     except Exception as exc:                                  # noqa: BLE001 (a measurement)
         log.warning("dhcp: ZTP's subnets could not be measured: %s", exc)
         return []

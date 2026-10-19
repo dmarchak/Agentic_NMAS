@@ -154,6 +154,16 @@ sudo ufw allow in on enp6s19 proto udp from 10.255.0.0/24 to any port 69 comment
 sudo ufw status numbered | grep -n 69
 ```
 
+**A device behind a relay (C1346)** asks from its own subnet, which that rule does not admit.
+Once a subnet is added for ZTP behind a relay (DHCP › Add a subnet, For ZTP onboarding), run the
+host step that admits udp/69 from each such subnet on the responder's interface and records
+what `ufw status` shows, for job health's `ztp-firewall` row (it is idempotent; run it again
+after adding another):
+
+```bash
+bash <checkout>/scripts/host-steps/c1346-ztp-relayed-firewall.sh
+```
+
 Every fetch and every refusal is a row in `data/reveal_audit.jsonl`
 (`actor: ztp:<address>`, `kind: device`), with the served config's sha256
 and never its text.

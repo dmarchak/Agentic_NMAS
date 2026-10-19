@@ -138,6 +138,8 @@ def _plan_args(data, list_name: str, *, secret: str) -> dict:
         mgmt_mac=(data.get("mgmt_mac") or "").strip(),
         # ASKED, never guessed from the platform (C225).
         role=(data.get("role") or "").strip().lower(),
+        # C1346: option 3 on a relayed ZTP subnet, the person's choice ("" none, "relay").
+        ztp_router=(data.get("ztp_router") or "").strip().lower(),
     )
 
 
