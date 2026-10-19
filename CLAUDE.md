@@ -321,10 +321,12 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   through a gate. Every test holds one stated purpose.** [the operator, 2026-10-18, Lab 7
   closed; mechanised in part: scripts/nmas-test-weakening-check]
   [why](docs/LESSONS.md#lab-7s-lessons-kept)
-- **New code that parses, formats, validates, compares or stores an address is tested with an
-  IPv6 case beside its IPv4 one** (IPv6 parity, the operator's decision of 2026-10-17: a feature
-  that works only over IPv4 management is unfinished). [not mechanised; the audit and its
-  burn-down: docs/IPV6_PARITY.md]
+- **New code that parses, formats, validates, compares, stores, connects to or serves an address
+  is built and tested with an IPv6 case beside its IPv4 one, and adds no break site; a capability
+  that cannot serve IPv6 says so by name on its screen and manual page, never failing silently**
+  (IPv6 parity, the operator's decisions of 2026-10-17 and 2026-10-18: a feature that works only
+  over IPv4 management is unfinished; the existing break sites are C1245's epic, before Stage
+  10). [not mechanised; the audit, its burn-down and the rule's detail: docs/IPV6_PARITY.md]
 - **A scan has a floor on its population and a planted case it finds; a control's expectation
   comes by a path independent of the code it breaks.** [partly: many tests' floors; not required of new scans] [why](docs/LESSONS.md#floors-and-independent-controls)
 - **An absence is a finding only if the store that would hold it was checked and shown able to

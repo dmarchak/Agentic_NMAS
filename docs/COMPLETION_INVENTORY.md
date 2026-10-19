@@ -334,6 +334,11 @@ Plus K35, Respond's observe mode, in the tail.
 
 If the re-forecast after the first four capabilities shows the box will not hold, they move to
 post-1.0, with their B rows re-ranked for that reason. That is the operator's call.
+**The operator's call, 2026-10-19, on the re-forecast after the first four** (docs/NSOT_WRITEUP.md,
+"Core 1.0 — the first four capabilities"): the should-haves stay in Core 1.0, and the order
+stands (K28, then K25). Added before K35 starts: K31's 24 stores moved on the host, one at a time,
+smallest and least-read first, after a move back is shown on a store with real rows; C1330's
+readers' values moved over a connection pool (`psycopg_pool`, approved); C1318's cause measured.
 
 **Plus no open A or B:** the A and B rows left after the re-ranking (A 3: C139, C551, C552; B
 14). Each is folded into a capability above, or closed on its own: C7, C230, C472, C554, C556,
