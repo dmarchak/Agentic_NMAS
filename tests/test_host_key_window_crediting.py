@@ -191,7 +191,12 @@ class TestTheWindowIsDrawnByItsTimes:
         _reader(now + 3540 + restarts.PLANNED_SLACK_SECONDS + 5)
         row = _window_rows()[0]
         wid = HK.window_id(w2)
-        start, until = w2["from"].replace("T", " ").rstrip("Z"), w2["until"][11:19]
+        start = w2["from"].replace("T", " ").rstrip("Z")
+        # `until` carries its date when it falls on another day than `from`: this test runs at the
+        # real time, and a window recorded after 23:00 UTC ends the next day (the gate, 23:23 UTC,
+        # 2026-10-19; `test_a_window_past_midnight_names_its_until_date` pins that case).
+        until = (w2["until"][11:19] if w2["until"][:10] == w2["from"][:10]
+                 else w2["until"].replace("T", " ").rstrip("Z"))
         assert row["operands"]["window"].startswith(f"from {start} until {until} UTC"), row
         assert f"recorded {w2['recorded_at'].replace('T', ' ').rstrip('Z')} UTC" in \
             row["operands"]["window"]
@@ -201,6 +206,18 @@ class TestTheWindowIsDrawnByItsTimes:
         assert f"from {start} until {until} UTC" in html
         text = re.sub(r"<[^>]*>", " ", html)
         assert "1 new host key accepted" in text and wid not in text
+
+
+def test_a_window_past_midnight_names_its_until_date():
+    """A window's `until` on another day than its `from` is drawn with its date, never a bare
+    time that reads as the same day (fixed times, so it does not depend on the clock)."""
+    same = HK.window_words({"from": "2026-10-19T19:25:29Z", "until": "2026-10-19T20:25:29Z",
+                            "recorded_at": "2026-10-19T19:25:29Z"})
+    assert same == ("from 2026-10-19 19:25:29 until 20:25:29 UTC, "
+                    "recorded 2026-10-19 19:25:29 UTC")
+    late = HK.window_words({"from": "2026-10-19T23:23:30Z", "until": "2026-10-20T00:23:30Z",
+                            "recorded_at": "2026-10-19T23:23:30Z"})
+    assert late.startswith("from 2026-10-19 23:23:30 until 2026-10-20 00:23:30 UTC"), late
 
 
 def _old_crediting(monkeypatch, w1, hosts, keys):

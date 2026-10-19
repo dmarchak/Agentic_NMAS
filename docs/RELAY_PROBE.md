@@ -133,6 +133,43 @@ P-G1 is not run.
    - `ufw delete allow in on enp6s19 proto udp from 10.255.96.0/30 to any port 69`.
 3. **s3's gap rate** read again.
 
-## Results
+## Results (2026-10-19, 20:57 to 23:18 UTC)
 
-(Written when the probe has run.)
+**The answer: relayed ZTP works through Mercury's own path, and it needs option 3, the relay's
+own address** (D4 restated's allowance). Without it, DHCP through the relay completes and the
+device never fetches its file. Lab 8's R6 is added with Route option (3) "The relay's own
+address".
+
+| | Prediction | Measured |
+|---|---|---|
+| P-R1 | the DISCOVER reaches Kea relayed, an offer with 66 and 67 | **held.** 22:07:22 (run 1) and 23:05:12 (run 2): zr4 relays from giaddr 10.255.96.1 to 10.255.0.10:67; Kea offers 10.255.96.2 from subnet 256 with option 66 (10.255.0.10) and 67 (`probe-zr6.cfg`), no 3 and no 6 in run 1 |
+| P-R2 | without option 3, no RRQ reaches 10.255.0.10 | **held.** Run 1: no packet to udp/69 in 60 captured; from 22:09 the device asks DNS for `tools.cisco.com` (Plug and Play's cloud fallback) once a minute, those packets reaching 10.255.0.10 (the relay answering proxy ARP), but AutoInstall never asks for its file |
+| P-R3 | with option 3, the RRQ reaches the host routed through the relay | **held.** Run 2: `RRQ "probe-zr6.cfg"` from 10.255.96.2 at 23:05:49, 28 in all |
+| P-R4 | the responder refuses (before 0e) | **held for the wrong reason, then served.** The running responder had started at 02:57, before 0e's change was deployed (C1404): "10.255.96.2 holds no reservation the tool wrote". Restarted at 23:07:40, it served the next retry at 23:07:43 to 23:07:44, 476 bytes, DATA and ACK through the relay |
+
+Then Verify promoted probe-zr6 over the relay at 23:11 (answered, captured, credential rotated
+and persisted, NetBox 22 objects).
+
+**What the run cost, each registered:**
+- the throwaway network could not use its own relay: C1399. The probe moved into Default (the
+  operator's option 2), relay-probe retired and deleted, its 8 NetBox objects left by Stop
+  tracking (C1097);
+- a transient first-contact key: C1400 (Verify waits about 3 min after the fetch);
+- Verify ignores declined profile sections: C1402;
+- run 1's lease blocked run 2 (`ALLOC_ENGINE_V4_DISCOVER_ADDRESS_CONFLICT`): C1403, deleted by
+  hand with `lease4-del` at 22:57:53, and both probes' leases at 23:16:52;
+- the responder ran pre-0e code: C1404;
+- the firewall had never admitted the relayed subnet: `c1346-ztp-relayed-firewall.sh` run at
+  22:07:48, before any TFTP request (none was sent in run 1, so it decided nothing);
+- the subnet's Remove left its empty reservations file: C1405.
+
+**Reverted and shown gone (23:16 to 23:19 UTC):** probe-zr6 and probe-zr4 retired (every step);
+their two leases deleted; subnet 256 removed through Mercury (Kea holds 10, 20 and 255 only);
+the ufw rule for 10.255.96.0/30 deleted and the firewall record re-written (udp/69 from
+10.255.0.0/24 only); the host route deleted; both probe labs destroyed, no container or network
+left; `br-zr96` deleted; br-mgmt holding `enp6s19`, `s3-mgmt`, `r6-mgmt`. Nothing inherited: no
+current host key at 10.255.0.94 or 10.255.96.2; no probe in Default's inventory, manifest or
+intent; no monitoring target, heartbeat rule or telemetry rule naming one; the telemetry check
+passing; no Needs attention row naming one but the baseline row, which a Save All after Lab 8's
+R4 and R6 deploys answers (C1406). s3's gap rate for 10-19: 6.2% before the run (20:52 UTC), 5.5%
+after it (23:20 UTC), under the 6.5% gate throughout; the 24-hour test reads it again (C1380).
