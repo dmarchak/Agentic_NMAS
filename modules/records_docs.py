@@ -86,6 +86,25 @@ def _repo_doc(name: str, words: str, rel: str, shape: type, noun: str):
     return build
 
 
+def _installation_doc(name: str, words: str, path: Callable[[], str], shape: type, noun: str):
+    """A document the installation keeps once (network ""), its path read late, so a test's
+    patch of the owner's path holds (K31)."""
+    def build() -> DocStore:
+        from modules import records_migrate as RM
+
+        return DocStore(name=name, words=words, table=f"{name}_docs",
+                        files=lambda: RM.file_of(path()), path_for=lambda _network: path(),
+                        shape=shape, noun=noun)
+    return build
+
+
+def _netbox_path(attr: str):
+    def path() -> str:
+        from modules import netbox_guard
+        return getattr(netbox_guard, attr)
+    return path
+
+
 def repo_network(repo: str) -> str:
     """A repository's network on the records database: its list folder's name, verbatim."""
     return os.path.basename(os.path.dirname(os.path.abspath(repo)))
@@ -99,6 +118,12 @@ DOC_STORES = {
                                  "blocked devices"),
     "retry_log": _repo_doc("retry_log", "Retries authorised",
                            os.path.join(".nsot", "retry_log.json"), list, "retries"),
+    "netbox_created": _installation_doc("netbox_created", "NetBox objects created",
+                                        _netbox_path("_CREATED_IDS_FILE"), dict, "networks"),
+    "netbox_modified": _installation_doc("netbox_modified", "NetBox objects modified",
+                                         _netbox_path("_MODIFIED_FILE"), dict, "networks"),
+    "netbox_adopted": _installation_doc("netbox_adopted", "NetBox objects adopted",
+                                        _netbox_path("_ADOPTED_FILE"), dict, "networks"),
 }
 
 

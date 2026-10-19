@@ -103,8 +103,8 @@ receipts; every store takes the same steps with its own file, table and setting
 After the move, the **records-check** reader runs the same check every 5 minutes; a mismatch,
 or a database that stops answering, is a row in Needs attention.
 
-**The approval queue, the rollback blocks and the authorised retries are documents, not
-logs.** Each network's queue is one list its items
+**The approval queue, the rollback blocks, the authorised retries and NetBox's bookkeeping
+(what Mercury created, modified and adopted there) are documents, not logs.** Each network's queue is one list its items
 are changed in place, so on the database it is one row per network: the queue now, and the queue
 as it was copied. The steps are the same; the preview counts each network's items, "written
 since the move" counts the saves made since, and the check compares each file with its copy

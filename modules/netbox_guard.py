@@ -317,11 +317,10 @@ class CreatedRecordUnreadable(_filestore.StoreUnreadable):
 def _load_created() -> dict:
     """The record for a READ: ``{}`` when absent or unreadable. A reader that
     must tell those apart uses :func:`recorded_objects`."""
-    if not os.path.exists(_CREATED_IDS_FILE):
+    if not _doc_exists(_CREATED_IDS_FILE):
         return {}
     try:
-        with open(_CREATED_IDS_FILE, encoding="utf-8") as fh:
-            return json.load(fh)
+        return _read_doc(_CREATED_IDS_FILE)
     except (json.JSONDecodeError, OSError) as exc:
         log.warning("netbox_guard: could not read created-id record: %s", exc)
         return {}
@@ -334,7 +333,7 @@ def _load_created_for_write() -> dict:
     one combination Remove cannot act on. Refuses, keeps the damaged file as
     ``.corrupt-<ts>`` and counts it."""
     try:
-        return _filestore.read_json_for_write(_CREATED_IDS_FILE)
+        return _read_doc_for_write(_CREATED_IDS_FILE)
     except _filestore.StoreUnreadable as exc:
         _FAILURES["unreadable"] += 1
         _FAILURES["last_error"] = str(exc)
@@ -343,6 +342,53 @@ def _load_created_for_write() -> dict:
 
 def _save_created(data: dict) -> None:
     _write_json_atomic(_CREATED_IDS_FILE, data)
+
+
+#: Each of the three documents and its store on the records database (K31 part 3), by the
+#: constant naming its path, read at each call so a test's patch of the path holds.
+_DOC_STORES = {"_CREATED_IDS_FILE": "netbox_created", "_MODIFIED_FILE": "netbox_modified",
+               "_ADOPTED_FILE": "netbox_adopted"}
+
+
+def _db_store(path: str):
+    """The document store *path* is kept in once moved to the records database, else None."""
+    from modules import records_docs
+
+    for attr, store in _DOC_STORES.items():
+        if globals()[attr] == path and records_docs.on_database(store):
+            return store
+    return None
+
+
+def _read_doc(path: str):
+    """The document at *path* for a READ: its file's JSON, or, once moved, the records
+    database's (none there reads as ``{}``, as these readers answer an absent file). A database
+    that does not answer raises `OSError`, which each reader already says as unreadable."""
+    store = _db_store(path)
+    if store:
+        from modules import records_docs
+        try:
+            got = records_docs.load(store, "", {})
+        except _filestore.StoreUnreadable as exc:
+            raise OSError(str(exc)) from exc
+        return got
+    with open(path, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def _doc_exists(path: str) -> bool:
+    """Whether a reader should read *path*: once moved, always (the database answers)."""
+    return bool(_db_store(path)) or os.path.exists(path)
+
+
+def _read_doc_for_write(path: str):
+    """The document for a read-modify-write: `filestore.read_json_for_write` on its file, or,
+    once moved, the database's (`StoreUnreadable` when it cannot be asked, never ``{}``)."""
+    store = _db_store(path)
+    if store:
+        from modules import records_docs
+        return records_docs.load(store, "", {})
+    return _filestore.read_json_for_write(path)
 
 
 def _write_json_atomic(path: str, data: dict) -> bool:
@@ -359,6 +405,16 @@ def _write_json_atomic(path: str, data: dict) -> bool:
     # A temp file PER WRITE (C158): the shared ``<path>.tmp`` let two writers
     # land two documents in one inode (C20's corruption). mkstemp creates it
     # 0600, and the replace carries that mode.
+    store = _db_store(path)
+    if store:
+        from modules import records_docs
+        try:
+            records_docs.save(store, "", data)
+            return True
+        except Exception as exc:                      # noqa: BLE001 (said: False)
+            log.error("netbox_guard: could not persist %s to the records database: %s",
+                      os.path.basename(path), exc)
+            return False
     try:
         _filestore.write_atomic(path, json.dumps(data, indent=2))
         return True
@@ -619,11 +675,10 @@ def read_modified() -> tuple:
     is unknown, and a reader told *"0 modified"* in that case has been given
     the most reassuring of the possible answers.
     """
-    if not os.path.exists(_MODIFIED_FILE):
+    if not _doc_exists(_MODIFIED_FILE):
         return {}, None
     try:
-        with open(_MODIFIED_FILE, encoding="utf-8") as fh:
-            data = json.load(fh)
+        data = _read_doc(_MODIFIED_FILE)
     except json.JSONDecodeError as exc:
         return None, f"{_MODIFIED_FILE} is not readable JSON: {exc}"
     except OSError as exc:
@@ -800,11 +855,10 @@ def recorded_objects(list_name: str) -> tuple:
     for *list_name*, as ``[(endpoint, id, name), ...]``. *reason* is non-empty
     when the record exists and cannot be read, which is NOT "owns nothing":
     `_load_created()` collapses the two, and list deletion must not (C155)."""
-    if not os.path.exists(_CREATED_IDS_FILE):
+    if not _doc_exists(_CREATED_IDS_FILE):
         return [], ""
     try:
-        with open(_CREATED_IDS_FILE, encoding="utf-8") as fh:
-            data = json.load(fh)
+        data = _read_doc(_CREATED_IDS_FILE)
     except (json.JSONDecodeError, OSError) as exc:
         return [], f"the created-object record could not be read ({type(exc).__name__})"
     held = []
@@ -828,7 +882,7 @@ def record_adopted(list_name: str, hostname: str, objects, *, actor: str, reason
     stamp = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())
     try:
         with _adopted_lock:
-            data = _filestore.read_json_for_write(_ADOPTED_FILE)
+            data = _read_doc_for_write(_ADOPTED_FILE)
             bucket = data.setdefault(list_slug(list_name), {})
             added = 0
             for endpoint, obj_id, name in objects or ():
@@ -853,11 +907,10 @@ def get_adopted(list_name: str) -> tuple:
     """``(entries, reason)``: ``[(endpoint, id, name, device), ...]`` adopted for
     *list_name*; *reason* non-empty when the record exists and cannot be read
     (not the same as "nothing adopted")."""
-    if not os.path.exists(_ADOPTED_FILE):
+    if not _doc_exists(_ADOPTED_FILE):
         return [], ""
     try:
-        with open(_ADOPTED_FILE, encoding="utf-8") as fh:
-            data = json.load(fh)
+        data = _read_doc(_ADOPTED_FILE)
     except (json.JSONDecodeError, OSError) as exc:
         return [], f"the adoption record could not be read ({type(exc).__name__})"
     return [(ep, r.get("id"), r.get("name", ""), r.get("device", ""))
