@@ -371,6 +371,28 @@ def in_flight(list_name: str, now: float = None) -> list:
 #: Where an operation that did not finish is kept once the next operation takes its device
 #: (CONCURRENCY_AUDIT R5), one per list's folder.
 INTERRUPTED_LOG = "interrupted.jsonl"
+#: The kept log's store on the records database (K31: a line store per list folder).
+INTERRUPTED_STORE = "interrupted_holds"
+
+
+def _interrupted_on_database() -> bool:
+    from modules import records_db
+
+    return records_db.backend(INTERRUPTED_STORE) == records_db.POSTGRES
+
+
+def interrupted_files() -> dict:
+    """``{folder name: path}`` for every list folder's kept log that exists (the migration)."""
+    from modules import config
+
+    root = os.path.join(config.DATA_DIR, "device_ops")
+    out = {}
+    if os.path.isdir(root):
+        for name in sorted(os.listdir(root)):
+            path = os.path.join(root, name, INTERRUPTED_LOG)
+            if os.path.isfile(path):
+                out[name] = path
+    return out
 
 
 def _list_folders() -> list:
@@ -457,9 +479,18 @@ def _record_interrupted(list_name: str, hostname: str, left: dict, operation: st
     entry = {"record": dict(left, device=left.get("device") or hostname),
              "found_at": time.time(), "found_by": {"operation": operation, "actor": actor}}
     try:
-        with open_secure(path, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(entry, sort_keys=True) + "\n")
-    except OSError as exc:
+        line = json.dumps(entry, sort_keys=True)
+        if _interrupted_on_database():
+            # The records database once moved (K31), the folder's name the network. No
+            # `records_migrate.store_append` here: its lock file would sit among the device lock
+            # files an unindexed folder reads as devices.
+            from modules import records_migrate
+            records_migrate.append_lines("", [line], store=INTERRUPTED_STORE,
+                                         network=os.path.basename(os.path.dirname(path)))
+        else:
+            with open_secure(path, "a", encoding="utf-8") as fh:
+                fh.write(line + "\n")
+    except Exception as exc:                          # noqa: BLE001 (logged loudly, as before)
         log.error("device_ops: an interrupted %s on %s could not be kept (%s); it is lost",
                   left.get("operation", "operation"), hostname, exc)
         return
@@ -487,13 +518,21 @@ def interrupted(list_name: str) -> list:
         out.append(dict(rec, list=rec.get("list") or list_name, found_at=found_at))
 
     kept = os.path.join(folder, INTERRUPTED_LOG)
-    try:
-        with open(kept, encoding="utf-8") as fh:
-            lines = fh.read().splitlines()
-    except FileNotFoundError:
-        lines = []
-    except OSError as exc:
-        raise HoldsUnreadable(kept, exc) from exc
+    if _interrupted_on_database():
+        from modules import records_migrate
+        try:
+            lines = [json.dumps(r, sort_keys=True) for r in records_migrate.table_lines(
+                "", store=INTERRUPTED_STORE, network=os.path.basename(folder))]
+        except Exception as exc:                      # noqa: BLE001 (unreadable, said)
+            raise HoldsUnreadable(kept, OSError(f"the records database: {exc}")) from exc
+    else:
+        try:
+            with open(kept, encoding="utf-8") as fh:
+                lines = fh.read().splitlines()
+        except FileNotFoundError:
+            lines = []
+        except OSError as exc:
+            raise HoldsUnreadable(kept, exc) from exc
     for line in lines:
         try:
             entry = json.loads(line)

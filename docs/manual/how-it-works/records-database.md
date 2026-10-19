@@ -113,6 +113,17 @@ database holds it to its file. On a database that does not answer, a rollback bl
 cannot be read blocks every plan on its network, and a retry whose record cannot be written is
 not authorised: the block stands.
 
+**The operations interrupted while they held a device** are a log per list folder
+(`device_ops/<folder>/interrupted.jsonl`), the folder's name the network. On a database that
+does not answer, Needs attention's interrupted-operations source is unreadable, never empty.
+
+**What stays on files.** The installation's own settings record stays on its file by design: it
+records this database's Test and every move, so it must be readable when the database is not.
+Three others have not moved yet, each a finding in the register: the readers' stored values (a
+new connection costs about 26 ms on the host, the median of 20 measured on 2026-10-19, and the
+screens read stored values in 58 places, so they wait for connections kept open), Show commands' runs (each run is a file of its own,
+which neither store shape here holds), and update requests.
+
 ## Move a store back to its files {#back}
 
 **Move back to files…** opens the same preview; **Move back** undoes the move without losing a

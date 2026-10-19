@@ -451,6 +451,22 @@ LINE_STORES.update({
 })
 
 
+def _interrupted_holds() -> LineStore:
+    """The operations interrupted while they held a device: one kept log per list folder under
+    `device_ops/`, the folder's name the network (K31)."""
+    from modules import config
+    from modules.nsot import device_ops as D
+
+    return LineStore(name="interrupted_holds", words="Interrupted operations",
+                     table="interrupted_hold_lines", files=D.interrupted_files,
+                     path_for=lambda network: os.path.join(config.DATA_DIR, "device_ops",
+                                                           network, D.INTERRUPTED_LOG),
+                     per_network=True, noun="interrupted operations")
+
+
+LINE_STORES["interrupted_holds"] = _interrupted_holds
+
+
 # ── The files ────────────────────────────────────────────────────────────────────────────────
 
 def file_networks(store: str = STORE) -> dict:

@@ -85,7 +85,8 @@ SCOPES: dict = {
              "records_store_onboarding_runs", "records_store_inventory_edits",
              "records_store_approval_queue", "records_store_rollback_blocks",
              "records_store_retry_log", "records_store_netbox_created",
-             "records_store_netbox_modified", "records_store_netbox_adopted"),
+             "records_store_netbox_modified", "records_store_netbox_adopted",
+             "records_store_interrupted_holds"),
     # Lab 2's NETCONF demo script: global, and lab tooling (P.8 decision 4; NSOT_STAGE10_PLAN
     # 6.0b moves it to lab/).
     **_group(HOST, "lab_demo", "yang_push_script"),

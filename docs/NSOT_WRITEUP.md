@@ -4855,6 +4855,108 @@ are the committer's local time (UTC−6).*
 - How many of the 471 rows opened were closed within the phase, by row: only the Closed table's
   dates hold that, and some rows closed the day they were opened.
 
+### Core 1.0 — the first four capabilities: K1, K2, K11, K31 (reported 2026-10-19)
+
+*Written at the operator's second stop-and-report point, 2026-10-19 (UTC): "after the first four
+capabilities, with the time box re-forecast from their measured pace only". Core 1.0 is not
+closed; this entry covers its first four items. Times are UTC.*
+
+1. **What it was.** The first four capabilities of the operator's triage of 2026-10-18
+   (docs/COMPLETION_INVENTORY.md section 6), in the operator's order:
+   - **K1, ZTP for Labs 8 and 9** (M): C1252, the responder serving every network's
+     reservations; then Lab 9's last step, a ZTP device's heartbeat in Loki.
+   - **K2, troubleshooting for Lab 10, with C589** (M): adjacencies a device logged down.
+   - **K11, monitoring automatic per network** (M): its first part came with K1; the remainder
+     was C229, one set of Prometheus targets per owner.
+   - **K31, records consolidated** (L): E18's record rows, then the stores into the records
+     database.
+2. **How it was implemented.**
+   - K1 (1b66ad96): the responder reads every network's reservations; a network with no profile
+     takes Default's (K11's inheritance). Lab 9's last step is written as the operator's walk
+     W5 (f43ee57b), since its device is staged by a person.
+   - K2 (63cc648d): one Needs attention row per adjacency a device logged down, acknowledged
+     within its band. On the host it read 223 adjacency lines from 9 devices.
+   - K11 (d244d7b1): one targets file, one record and one job-health row per Prometheus owner;
+     two owners naming one directory are refused.
+   - K31 in eleven commits:
+     - part 1 (c9aeef2c): six E18 record rows, and a survey of the record stores;
+     - part 2a (38c09beb): the migrator, its card and its reader made per store;
+     - part 2b (13a95c7a to 9910d43f): the append-only records as line stores, one seam
+       (`records_migrate.store_rows`, `store_append`), per network where the files are;
+     - part 3 (37b4b3b6 to this commit): `modules/records_docs.py` for the stores rewritten in
+       place (the approval queue, rollback blocks, retries, NetBox's three records), and the
+       interrupted holds as the last line store.
+   - 24 stores can now move to the records database, each by its own row's Move, each with a
+     test against a real PostgreSQL and controls shown failing. Every commit was gated, pushed
+     with CI green, deployed with `nmas-deploy --wait` and walked on the host (23 of 23 paths
+     each time).
+3. **Issues encountered.**
+   - K2's first deploy deployed nothing and still exited 0. The deploy script now compares the
+     host's HEAD with the commit, and the walk stops if they differ.
+   - K31's survey found C1324 to C1329. Building it found C1330 (the readers' values) and C1331
+     (Show commands' runs).
+   - The survey's claim that `inventory_edit.apply` had no caller was wrong. The code read
+     after it showed a host command calls it, and C1329 was corrected the same turn.
+   - The readers' values were measured before they were moved, and not moved: a new connection
+     costs a median of 25.8 ms on the host, and the values are read in 58 places.
+4. **How they were resolved.**
+   - Closed: C1252, C589, C229, C237, C360, C361, C364, C365, C368 and C1324.
+   - Left open, each a C row: C1325 (update requests: two writers, no reader), C1327 (unparsable
+     lines read two ways), C1328 (appends without a lock, fixed in part), C1329 (role edits on
+     no screen), C1330 (the readers' values wait for a connection kept per process; a pool
+     library is a new package licence, the operator's) and C1331 (Show commands' runs need a
+     third store shape). C1326 stays UNKNOWN.
+   - Kept on files by decision: the installation's own settings record, since it records the
+     database's own Test and moves (docs/STANDING_APPROVAL_LOG.md).
+   - K1's Lab 9 step waits for the operator's W5 sitting.
+5. **Numbers.**
+   - **Time and commits:** from the triage's commit (b7988607, 02:34) to this entry's commit:
+     15 commits, this one included. At writing (05:34) the span was 3 h 00 min, gates, deploys
+     and walks included.
+   - **Tests:** `def test` functions went from 9,949 at b7988607 to 10,086 at this commit,
+     counted with `grep` over `tests/*.py`.
+   - **The register:** 531 open at the triage (A 3, B 14, UNKNOWN 50, C 464) and 531 at this
+     commit (A 3, B 14, UNKNOWN 52, C 462). Ten were closed and ten opened (C1322 to C1331).
+   - **Forecast checked.** The triage sized the four M, M, M and L: 14 h low, 31 h mid, 48 h high
+     (S 1 to 2 h, M 2 to 8 h, L 8 to 24 h). They took about 3 h of wall time, a tenth of the mid
+     figure and a fifth of the low one.
+   - **The re-forecast from that pace only:** the must-have's mid figure less the four is
+     276 − 31 = 245 h, and at a tenth that is about 25 h. The should-haves' 31 h would be about
+     3 h. At this pace the box holds and the cut line holds.
+   - **Why that figure is a floor, not a centre.** None of the four touched a device. Three were
+     each one finding's fix on machinery that existed. K31 repeated one machinery over 24 stores.
+     Still to come are:
+     - board-drawn screens: K5, K6, K25, K27;
+     - device operations with restarts and windows: K10, K19, K23;
+     - the mutation pass in K32, one mutant at a time;
+     - K3, which waits on a handout.
+     Phase 7's sizes also overstated its wall time by a wide margin, so the error runs the same
+     way twice. A forecast from the next four, which include a device item, would be the first
+     made from the same kind of work.
+6. **Where it left the product.**
+   - Every network's ZTP reservations are served, and a network with no monitoring profile
+     inherits Default's.
+   - Needs attention names each adjacency a device logged down.
+   - Each Prometheus owner has its own targets and its own health row.
+   - 24 record stores can move to the records database one at a time, each checked every 5
+     minutes once moved. None had been moved on the host when this was written (its records
+     database configured, `records_db.stores()` empty).
+   - The host ran 70de42fd when this was written. 38900ec7 and this commit were to be deployed
+     next.
+
+#### Sources read (the first four)
+
+- `git log --format="%h %cI" b7988607..HEAD`; `grep -c "def test_"` over `tests/*.py` at
+  b7988607 and in the working tree.
+- docs/OPEN_FINDINGS.md's Count at b7988607 and now; the highest row number at b7988607.
+- docs/COMPLETION_INVENTORY.md section 6: the sizes, the time box and the Landed table.
+- The host: the records database's connection time (20 connections), the reader registry (25).
+
+#### Could not recover (the first four)
+
+- The agent hours per item, as distinct from wall time: no start time was recorded per item,
+  so only the span of all four is measured.
+
 ## Part III. Side campaigns
 
 Threads that ran across stages rather than inside one: each started from one finding and followed its class. Their commits interleave with the stages', so each entry states the rule that selected them.
