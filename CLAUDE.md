@@ -327,6 +327,12 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   (IPv6 parity, the operator's decisions of 2026-10-17 and 2026-10-18: a feature that works only
   over IPv4 management is unfinished; the existing break sites are C1245's epic, before Stage
   10). [not mechanised; the audit, its burn-down and the rule's detail: docs/IPV6_PARITY.md]
+- **No device is known to the product by name: a device enters only by onboarding (static,
+  DHCP or ZTP) and leaves only by retirement, identified by its NetBox ID, its name a label.
+  Retirement removes or archives every per-device artefact (intent, goldens, receipts, host
+  keys, reservations, monitoring targets, credential overrides, policy device lists, Needs
+  attention rows) and frees the name for a new device that inherits nothing** (the operator,
+  2026-10-19). [not mechanised]
 - **A scan has a floor on its population and a planted case it finds; a control's expectation
   comes by a path independent of the code it breaks.** [partly: many tests' floors; not required of new scans] [why](docs/LESSONS.md#floors-and-independent-controls)
 - **An absence is a finding only if the store that would hold it was checked and shown able to

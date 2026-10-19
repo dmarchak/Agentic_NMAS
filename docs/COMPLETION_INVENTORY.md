@@ -339,6 +339,14 @@ post-1.0, with their B rows re-ranked for that reason. That is the operator's ca
 stands (K28, then K25). Added before K35 starts: K31's 24 stores moved on the host, one at a time,
 smallest and least-read first, after a move back is shown on a store with real rows; C1330's
 readers' values moved over a connection pool (`psycopg_pool`, approved); C1318's cause measured.
+**The operator's order, later on 2026-10-19 (Labs 8 and 9's handout, docs/LAB_REQUIREMENTS.md):**
+Labs 8 and 9 first. Lab 8 is due 2026-10-26 (built by 10-22, walked 10-23); Lab 9 is due
+2026-11-04 (built by 10-31, walked 11-01). K28 is paused before its first commit, and K25 waits.
+K31's store moves wait until Lab 8 is submitted; the move-back proof comes with the first move.
+C1330's pool comes after the Lab 8 plan. K7's feature packs move up for the expansion: OSPF
+(areas, ABR), RIPv2 and redistribution first, with RIPv2 added to the starter list. The surveys
+and measurements the handout needs come first, then a plan for each lab, stopped and reported
+before anything runs on the lab's devices. Core items fill only time the labs do not need.
 
 **Plus no open A or B:** the A and B rows left after the re-ranking (A 3: C139, C551, C552; B
 14). Each is folded into a capability above, or closed on its own: C7, C230, C472, C554, C556,

@@ -1,4 +1,34 @@
-# Lab requirements: Labs 4 and 5 (the NSoT), and how to demo each objective
+# Lab requirements: Labs 4 and 5 (the NSoT), Labs 8 and 9 (expansion by ZTP), and how to demo each objective
+
+## Labs 8 and 9: the handout's objectives
+
+Quoted exactly as the operator gave them from the handout, 2026-10-19. Both deliverables are
+videos only, with no written report. Lab 8 is due Mon 2026-10-26; Lab 9 is due Wed 2026-11-04.
+The plan for each is written separately, after the surveys; nothing runs on the lab's devices
+until the operator signs it off.
+
+- Prerequisite: "your network automation code, NSOT, and CI/CD pipeline in order".
+- Lab 8, Objective 1: add R6 and R7 by ZTP.
+  (a) The devices get their config automatically after connecting to the network.
+  (b) The NSoT is updated appropriately when the new devices are added.
+  (c) The documentation is appropriate.
+  Video: what happens when the devices are added, how the automation framework is implemented
+  and updated, and examples of the documentation.
+- Lab 8 topology: R6 attached to R4 in OSPF area 10; RIPv2 between R6 and R7; H5 on VLAN 10
+  behind R7.
+- Lab 9, Objective 1: add R8 and a "Switch" through the same ZTP framework, with the full
+  framework involved: ZTP, monitoring, visualization, DevOps testing, documentation. Video: what
+  happens when the devices are added; a general overview of unit testing and code coverage;
+  examples of the tools being used and tested; examples of the documentation.
+- Lab 9 topology: R8 attached to R2 in OSPF area 20; a switch behind R8 with H6 and H7 on
+  VLAN 10. The diagram labels the second host H1; call it H7 and note the label.
+
+**The handout's diagram labels Lab 9's second host H1.** It is H7 here, in Mercury and in the
+lab, so that it does not collide with the existing H1; the video says so once.
+
+---
+
+## Labs 4 and 5
 
 The course's objectives for Labs 4 and 5 Part 2, where each is met in Mercury, and the demo
 script for the video: the screen, the clicks, and one line to say, **in the order to record**,
