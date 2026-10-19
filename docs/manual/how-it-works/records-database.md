@@ -125,12 +125,20 @@ not authorised: the block stands.
 (`device_ops/<folder>/interrupted.jsonl`), the folder's name the network. On a database that
 does not answer, Needs attention's interrupted-operations source is unreadable, never empty.
 
+**The readers' stored values** (each reader's last answer, `readers/<reader>.json`) are a
+document per reader's store, and the screens read them in many places, so every store here
+takes its connection from one pool per Mercury process rather than signing in each time: a
+pooled read took 0.32 ms on a test server against 4.15 ms with a new sign-in. The pool holds at
+most four connections, and a process that has used none for ten minutes holds none. A reader
+writes its value again every cycle, so a value rewritten between the copy and the switch is
+copied again rather than refused. On a database that does not answer, every stored value reads
+as unreadable, never as absent or empty, and no reader stores over its last good value until
+the database answers again.
+
 **What stays on files.** The installation's own settings record stays on its file by design: it
 records this database's Test and every move, so it must be readable when the database is not.
-Three others have not moved yet, each a finding in the register: the readers' stored values (a
-new connection costs about 26 ms on the host, the median of 20 measured on 2026-10-19, and the
-screens read stored values in 58 places, so they wait for connections kept open), Show commands' runs (each run is a file of its own,
-which neither store shape here holds), and update requests.
+Two others have not moved yet, each a finding in the register: Show commands' runs (each run is
+a file of its own, which neither store shape here holds), and update requests.
 
 ## Move a store back to its files {#back}
 

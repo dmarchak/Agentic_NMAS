@@ -14,12 +14,27 @@ The Test (`test_connection`) is a person's, and checks what host step 6a made (b
 operator's condition, 2026-10-09): it signs in, reads the server's version, checks Mercury's
 role owns its database and is not a superuser (P4-1: its database and nothing more), that
 Mercury reaches it on a loopback address, and, with *write*, writes a row to a temporary table
-and reads it back inside a transaction it rolls back, so nothing persists.
+and reads it back inside a transaction it rolls back, so nothing persists. It opens a FRESH
+connection (`connect`), because what it proves is that Mercury can sign in now.
+
+**The stores use one pool of connections per process** (`pooled`, C1330; psycopg's own pool,
+`psycopg_pool`, the operator's decision, 2026-10-19). A new connection cost a median of 25.8 ms
+on the host, and the readers' stored values are read many times per page; a pooled read took
+0.32 ms on the laptop against 4.15 ms with a fresh sign-in (`POOL_WAIT_S`). The pool is
+made on first use and keyed by the connection settings (the password by a keyed hash, never the
+value) and by the process: a changed setting retires the old pool, and a forked process makes
+its own, never touching its parent's sockets. Each failure is `Unavailable` in the words
+`connect` uses, and an absent `psycopg_pool` is a reason of its own.
 """
 
+import contextlib
+import hashlib
+import hmac
 import ipaddress
 import logging
+import os
 import socket
+import threading
 
 log = logging.getLogger(__name__)
 
@@ -46,7 +61,7 @@ STORES = ("receipts", "acknowledgements", "restarts", "restart_windows", "restar
           "breakglass_drills", "reveals", "host_steps_done", "heartbeat_rules", "netbox_removals",
           "network_settings_record", "onboarding_runs", "inventory_edits", "approval_queue",
           "rollback_blocks", "retry_log", "netbox_created", "netbox_modified", "netbox_adopted",
-          "interrupted_holds")
+          "interrupted_holds", "reader_values")
 STORE_WORDS = {"receipts": "Deploy receipts", "acknowledgements": "Acknowledgements",
                "restarts": "Restarts seen", "restart_windows": "Planned-restart windows",
                "restart_window_ends": "Planned-restart windows ended early",
@@ -63,7 +78,8 @@ STORE_WORDS = {"receipts": "Deploy receipts", "acknowledgements": "Acknowledgeme
                "retry_log": "Retries authorised", "netbox_created": "NetBox objects created",
                "netbox_modified": "NetBox objects modified",
                "netbox_adopted": "NetBox objects adopted",
-               "interrupted_holds": "Interrupted operations"}
+               "interrupted_holds": "Interrupted operations",
+               "reader_values": "Stored reader values"}
 FILE, POSTGRES = "file", "postgres"
 
 
@@ -103,8 +119,13 @@ def configured() -> bool:
     return bool(config()["host"])
 
 
-def connect(timeout: float = CONNECT_TIMEOUT_S):
-    """An open psycopg connection, or `Unavailable` naming why there is none."""
+def _first(exc) -> str:
+    return (str(exc).strip().splitlines() or [type(exc).__name__])[0]
+
+
+def _resolve():
+    """``(config, password, psycopg)``, or `Unavailable` naming the first thing missing: the
+    checks every connection, fresh or pooled, makes before it is tried."""
     from modules.secrets_store import get_secret
 
     c = config()
@@ -128,16 +149,233 @@ def connect(timeout: float = CONNECT_TIMEOUT_S):
         raise Unavailable(f"psycopg could not be loaded on this host ({first}): Ubuntu's "
                           "python3-psycopg and its libpq5, docs/NSOT_PHASE4_RECORDS_POSTGRES.md, "
                           "step 6a") from None
+    return c, password, psycopg
+
+
+def _refused(c: dict, first: str) -> Unavailable:
+    """The server's own words (a refused password, no such database, nothing listening), its
+    first line only; psycopg never puts the password in them."""
+    return Unavailable(f"{c['user']}@{c['host']}:{c['port']}/{c['name']} did not accept the "
+                       f"connection: {first}")
+
+
+def _kwargs(c: dict, password: str, timeout: float) -> dict:
+    return {"host": c["host"], "port": c["port"], "dbname": c["name"], "user": c["user"],
+            "password": password, "connect_timeout": timeout,
+            "application_name": APPLICATION_NAME}
+
+
+def connect(timeout: float = CONNECT_TIMEOUT_S):
+    """A FRESH psycopg connection, or `Unavailable` naming why there is none. The Test's, and
+    the probe a new pool is made after; the stores take `pooled`."""
+    c, password, psycopg = _resolve()
     try:
-        return psycopg.connect(host=c["host"], port=c["port"], dbname=c["name"],
-                               user=c["user"], password=password, connect_timeout=timeout,
-                               application_name=APPLICATION_NAME)
+        return psycopg.connect(**_kwargs(c, password, timeout))
     except psycopg.Error as exc:
-        # The server's own words (a refused password, no such database, nothing listening),
-        # its first line only; psycopg never puts the password in them.
-        first = (str(exc).strip().splitlines() or [type(exc).__name__])[0]
-        raise Unavailable(f"{c['user']}@{c['host']}:{c['port']}/{c['name']} did not accept "
-                          f"the connection: {first}") from None
+        raise _refused(c, _first(exc)) from None
+
+
+# ── One pool per process (C1330) ─────────────────────────────────────────────────────────────
+
+#: At most this many connections per process. A hold is one statement or one short transaction
+#: (a stored document's read held its connection a median of 0.07 ms on the laptop, 2026-10-19,
+#: and the whole pooled read with its checkout 0.32 ms), so a thread that finds all four busy
+#: waits a hold, not a sign-in. Who asks at once: the request threads (Flask-SocketIO in
+#: threading mode; a browser opens at most six requests per page at once), the reader threads
+#: (25 readers, each on its own interval, the fastest every 5 s) and at most one move
+#: (`records_migrate._Lock`), which holds one for its copy. Four leaves three free during a move,
+#: and four server processes per Mercury process.
+POOL_MAX = 4
+#: A pool shrinks to none when idle: a process that never touches a moved store holds no
+#: connection, and the first use after an idle spell makes one (a sign-in, as before C1330).
+POOL_MIN = 0
+#: How long a store waits for a pooled connection before `Unavailable`. 2.5x the slowest of 20
+#: sign-ins measured on the host (234.8 ms, K31, 2026-10-19; median 25.8 ms), since the longest
+#: wait is the pool making one: 0.6 s. On the laptop's real PostgreSQL (2026-10-19, median of 20
+#: each, `records_docs.load` of one document): 4.15 ms with a fresh sign-in per read, 0.32 ms
+#: pooled (the check that the connection answers included).
+POOL_WAIT_S = 0.6
+#: The pool's own retries of a sign-in that failed stop after this; the next store's use makes a
+#: new pool after a fresh sign-in succeeds (`_entry`), so a database back up is used at once.
+POOL_RECONNECT_S = CONNECT_TIMEOUT_S
+#: Visible to the pool's own log lines and stats.
+POOL_NAME = "mercury-records"
+
+#: A random key per process for the password's hash in the pool's key: the value is never kept
+#: beside the pool, and the hash means nothing outside this process.
+_TAG_KEY = os.urandom(16)
+_LOCK = threading.Lock()
+_ENTRY = None
+#: A parent's pool seen in a forked child: kept, never closed (closing it would end the
+#: parent's sessions on the sockets the child inherited).
+_ABANDONED: list = []
+
+
+class _Entry:
+    """This process's pool: its *key*, and the sign-in failure the pool last met (``""`` once
+    one succeeds), so a store that times out says why."""
+
+    def __init__(self, key: tuple, pool):
+        self.key, self.pool = key, pool
+        self.last_error = ""
+        self.retired = False
+
+
+def _after_fork_in_child() -> None:
+    # A lock another thread held at the fork is never released here: a fresh one. The parent's
+    # pool is left as it is (`_ABANDONED`).
+    global _LOCK, _ENTRY
+    _LOCK = threading.Lock()
+    if _ENTRY is not None:
+        _ABANDONED.append(_ENTRY)
+        _ENTRY = None
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_after_fork_in_child)
+
+
+def _tag(password: str) -> bytes:
+    return hmac.new(_TAG_KEY, password.encode("utf-8"), hashlib.sha256).digest()
+
+
+def _pool_module():
+    try:
+        import psycopg_pool
+    except ImportError as exc:
+        raise Unavailable(f"psycopg_pool could not be loaded on this host ({_first(exc)}): the "
+                          "psycopg-pool package requirements.lock pins (C1330); a virtualenv "
+                          "built before it lacks it, and scripts/host-steps/venv-1-build.sh "
+                          "builds one that has it") from None
+    return psycopg_pool
+
+
+def _retire(entry) -> None:
+    """Close *entry*'s pool off the caller's thread: a worker inside a sign-in to a server that
+    does not answer would hold `close` for up to `CONNECT_TIMEOUT_S`."""
+    entry.retired = True
+    if entry.key[0] != os.getpid():
+        _ABANDONED.append(entry)
+        return
+
+    def close():
+        try:
+            entry.pool.close(timeout=CONNECT_TIMEOUT_S)
+        except Exception:                             # noqa: BLE001
+            log.debug("records_db: closing a retired pool failed", exc_info=True)
+    threading.Thread(target=close, name="records-db-pool-close", daemon=True).start()
+
+
+def _new_pool(psycopg, psycopg_pool, c: dict, password: str, entry_box: list):
+    class Recording(psycopg.Connection):
+        """The pool's connections, each sign-in's failure kept on the entry in the words
+        `connect` uses, so a store that times out waiting says what the server said."""
+
+        @classmethod
+        def connect(cls, conninfo: str = "", **kwargs):
+            try:
+                conn = super().connect(conninfo, **kwargs)
+            except psycopg.Error as exc:
+                if entry_box:
+                    entry_box[0].last_error = _first(exc)
+                raise
+            if entry_box:
+                entry_box[0].last_error = ""
+            return conn
+
+    # Its INFO lines are one per connection handed out: the pool's warnings only.
+    logging.getLogger("psycopg.pool").setLevel(logging.WARNING)
+    return psycopg_pool.ConnectionPool(
+        "", kwargs=_kwargs(c, password, CONNECT_TIMEOUT_S), connection_class=Recording,
+        min_size=POOL_MIN, max_size=POOL_MAX, timeout=POOL_WAIT_S, name=POOL_NAME,
+        reconnect_timeout=POOL_RECONNECT_S, open=True)
+
+
+def _entry():
+    """``(entry, config)``: this process's pool for the settings now, made when there is none,
+    when a setting (or the password) changed, in a forked child, or after the last pool failed.
+    A new pool is made only after a fresh sign-in succeeds, so a database that does not answer
+    is named in the server's words at once, as `connect` names it."""
+    global _ENTRY
+    c, password, psycopg = _resolve()
+    psycopg_pool = _pool_module()
+    key = (os.getpid(), c["host"], c["port"], c["name"], c["user"], _tag(password))
+    with _LOCK:
+        current = _ENTRY
+        if current is not None and current.key == key and not current.retired:
+            return current, c
+    try:
+        psycopg.connect(**_kwargs(c, password, CONNECT_TIMEOUT_S)).close()
+    except psycopg.Error as exc:
+        raise _refused(c, _first(exc)) from None
+    with _LOCK:
+        current = _ENTRY
+        if current is not None and current.key == key and not current.retired:
+            return current, c                 # another thread made it meanwhile
+        box: list = []
+        made = _Entry(key, _new_pool(psycopg, psycopg_pool, c, password, box))
+        box.append(made)
+        if current is not None and not current.retired:
+            _retire(current)              # a forked child's parent pool is kept, never closed
+        _ENTRY = made
+        log.info("records_db: a pool of up to %d connection(s) for %s@%s:%s/%s in process %d",
+                 POOL_MAX, c["user"], c["host"], c["port"], c["name"], os.getpid())
+        return made, c
+
+
+def _checkout(psycopg_pool):
+    """A pooled connection that answers, or `Unavailable`. One that does not (the server
+    restarted under the pool) retires the pool and is tried once more on a new one."""
+    for attempt in (1, 2):
+        entry, c = _entry()
+        try:
+            conn = entry.pool.getconn(timeout=POOL_WAIT_S)
+        except psycopg_pool.PoolClosed:
+            continue                          # another thread retired it: the next pool
+        except psycopg_pool.PoolTimeout:
+            if entry.last_error:
+                with _LOCK:
+                    if not entry.retired:
+                        _retire(entry)
+                raise _refused(c, entry.last_error) from None
+            raise Unavailable(f"no connection to {c['user']}@{c['host']}:{c['port']}/"
+                              f"{c['name']} came free within {POOL_WAIT_S} s: all "
+                              f"{POOL_MAX} of this process's are in use") from None
+        try:
+            psycopg_pool.ConnectionPool.check_connection(conn)
+        except Exception as exc:                      # noqa: BLE001 (a broken connection)
+            entry.pool.putconn(conn)
+            with _LOCK:
+                if not entry.retired:
+                    _retire(entry)
+            if attempt == 2:
+                raise _refused(c, _first(exc)) from None
+            continue
+        return entry, conn
+    raise Unavailable("the records database's pool was replaced twice while this store "
+                      "waited for a connection")
+
+
+@contextlib.contextmanager
+def pooled():
+    """A connection from this process's pool, as ``with records_db.pooled() as conn:``: the
+    transaction committed when the block ends and rolled back when it raises (as a fresh
+    connection's ``with`` does), and the connection returned to the pool, never closed.
+    `Unavailable` names why there is none, in `connect`'s words."""
+    entry, conn = _checkout(_pool_module())
+    try:
+        with conn:
+            yield conn
+    finally:
+        entry.pool.putconn(conn)
+
+
+def pool_stats() -> dict:
+    """This process's pool's counters (psycopg_pool's `get_stats`), ``{}`` when there is none."""
+    entry = _ENTRY
+    if entry is None or entry.retired or entry.key[0] != os.getpid():
+        return {}
+    return dict(entry.pool.get_stats())
 
 
 def loopback(host: str, resolve=None) -> tuple:

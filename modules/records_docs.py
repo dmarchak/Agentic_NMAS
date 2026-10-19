@@ -53,6 +53,10 @@ class DocStore:
     path_for: Callable[[str], str]
     shape: type = list
     noun: str = "documents"
+    #: A CACHE (the readers' stored values, C1330): rewritten by its owner every cycle, so a
+    #: document whose file changed between the copy and the switch is copied again, never
+    #: refused; its row's body follows it only while no save has been made since the move.
+    cache: bool = False
 
     @property
     def setting(self) -> str:
@@ -98,6 +102,27 @@ def _installation_doc(name: str, words: str, path: Callable[[], str], shape: typ
     return build
 
 
+def _reader_values() -> DocStore:
+    """Each reader's stored value (C1330), one document per reader's store, its key the store's
+    name (a reader's own, or ``<reader>@<configuration>`` for one read per configuration): the
+    document exactly as `data/readers/<name>.json` holds it."""
+    from modules import reader_job
+
+    def files() -> dict:
+        root = os.path.dirname(reader_job.store_path("x"))
+        out = {}
+        if os.path.isdir(root):
+            for name in sorted(os.listdir(root)):
+                path = os.path.join(root, name)
+                if name.endswith(".json") and os.path.isfile(path):
+                    out[name[:-len(".json")]] = path
+        return out
+
+    return DocStore(name="reader_values", words="Stored reader values",
+                    table="reader_values_docs", files=files, path_for=reader_job.store_path,
+                    shape=dict, noun="stored values", cache=True)
+
+
 def _netbox_path(attr: str):
     def path() -> str:
         from modules import netbox_guard
@@ -124,6 +149,7 @@ DOC_STORES = {
                                          _netbox_path("_MODIFIED_FILE"), dict, "networks"),
     "netbox_adopted": _installation_doc("netbox_adopted", "NetBox objects adopted",
                                         _netbox_path("_ADOPTED_FILE"), dict, "networks"),
+    "reader_values": _reader_values,
 }
 
 
@@ -181,7 +207,7 @@ def load(name: str, network: str, empty):
 
     st = store_of(name)
     try:
-        with records_db.connect() as conn:
+        with records_db.pooled() as conn:
             if not _exists(conn, st):
                 return empty
             row = conn.execute(f"select body from {st.qualified} where network = %s",
@@ -207,7 +233,7 @@ def save(name: str, network: str, value) -> None:
     from modules import records_db
 
     st = store_of(name)
-    with records_db.connect() as conn:
+    with records_db.pooled() as conn:
         for sql in _schema(st):
             conn.execute(sql)
         empty = st.shape()
@@ -264,7 +290,7 @@ def plan(connector=None, store: str = "") -> dict:
     db = {"ok": False, "error": ""}
     table = {}
     try:
-        with (connector or records_db.connect)() as conn:
+        with (connector or records_db.pooled)() as conn:
             if _exists(conn, st):
                 for n, copied, version in conn.execute(
                         f"select network, copied, version from {st.qualified}").fetchall():
@@ -300,6 +326,14 @@ def copy(conn, store: str) -> dict:
         h = _sha(_canonical(value))
         row = conn.execute(f"select copied_sha256 from {st.qualified} where network = %s",
                            (network,)).fetchone()
+        if row is not None and st.cache and bytes(row[0]) != h:
+            # Its owner wrote the file again before the switch: the newer value is the copy, and
+            # the body too unless a save already replaced it on the database.
+            conn.execute(f"update {st.qualified} set copied = %s, copied_sha256 = %s,"
+                         " body = case when version = 1 then %s else body end"
+                         " where network = %s", (Jsonb(value), h, Jsonb(value), network))
+            out[network] = {"copied": len(value), "skipped": 0}
+            continue
         if row is not None:
             if bytes(row[0]) != h:
                 raise Refused(f"{network}: the document has sha256 {h.hex()[:16]} and the table "
@@ -321,7 +355,7 @@ def check(connector=None, store: str = "") -> dict:
 
     st = store_of(store)
     results = []
-    with (connector or records_db.connect)() as conn:
+    with (connector or records_db.pooled)() as conn:
         exists = _exists(conn, st)
         rows = {n: (copied, version) for n, copied, version in (conn.execute(
             f"select network, copied, version from {st.qualified}").fetchall()
@@ -366,7 +400,7 @@ def back(actor: str, verified: str, connector=None, store: str = "") -> dict:
     for path in st.files().values():
         os.chmod(path, 0o600)
     exported = {}
-    with (connector or records_db.connect)() as conn:
+    with (connector or records_db.pooled)() as conn:
         if _exists(conn, st):
             got = conn.execute(f"select network, body, version from {st.qualified}").fetchall()
             for network, body, version in got:
@@ -396,7 +430,7 @@ def move(fingerprint: str, actor: str, verified: str, connector=None, store: str
     with RM._Lock():
         RM._preconditions(plan(connector, store), records_db.FILE, fingerprint)
         step("plan", "the counts the preview drew, read again: unchanged")
-        with (connector or records_db.connect)() as conn:
+        with (connector or records_db.pooled)() as conn:
             for sql in _schema(st):
                 conn.execute(sql)
             conn.commit()
@@ -408,7 +442,7 @@ def move(fingerprint: str, actor: str, verified: str, connector=None, store: str
              + ("" if entry.get("recorded", True) else
                 f"; its record could not be written: {entry.get('record_error')}"))
         try:
-            with (connector or records_db.connect)() as conn:
+            with (connector or records_db.pooled)() as conn:
                 again = copy(conn, store)
             step("copy-again", ", ".join(f"{n}: {v['copied']} more" for n, v in again.items())
                  or "nothing more")
@@ -444,7 +478,7 @@ def move_back(fingerprint: str, actor: str, verified: str, connector=None,
         RM._preconditions(plan(connector, store), records_db.POSTGRES, fingerprint)
         steps.append({"name": "plan", "ok": True,
                       "detail": "the counts the preview drew, read again: unchanged"})
-        with (connector or records_db.connect)() as conn:
+        with (connector or records_db.pooled)() as conn:
             before = {n: body for n, body in (conn.execute(
                 f"select network, body from {st.qualified}").fetchall()
                 if _exists(conn, st) else [])}

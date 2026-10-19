@@ -301,9 +301,55 @@ def refuse_truncated(items, limit: int, what: str):
     return items
 
 
+#: The records database's store for the stored values (C1330): a document per reader's store,
+#: read and written through the process's pool once moved (Settings › Installation ›
+#: Connections, Record stores). On its files until then, as before.
+VALUES_STORE = "reader_values"
+
+
+def _on_database() -> bool:
+    """Whether the stored values are on the records database now, read at each call so every
+    process follows a move together. Raises when the settings cannot be read."""
+    from modules import records_db
+
+    return records_db.backend(VALUES_STORE) == records_db.POSTGRES
+
+
+def _read_from_database(name: str) -> dict:
+    """`read_cached`'s answer from the records database. A database that could not be asked is
+    ``unanswered``: unreadable, and a run refuses to store over it (`_run_once`)."""
+    from modules import records_docs
+    from modules.filestore import StoreUnreadable
+
+    try:
+        doc = records_docs.load(VALUES_STORE, name, None)
+    except StoreUnreadable as exc:
+        cause = exc.__cause__
+        if cause is None:
+            return {"state": "unreadable", "doc": None,
+                    "why": f"{name}'s stored value in the records database is not an object"}
+        first = (str(cause).strip().splitlines() or [type(cause).__name__])[0]
+        return {"state": "unreadable", "doc": None, "unanswered": True,
+                "why": (f"the records database could not be asked for {name}'s stored value "
+                        f"({type(cause).__name__}: {first})")}
+    if doc is None:
+        return {"state": "absent", "doc": None,
+                "why": f"no reader has stored {name} in the records database"}
+    return {"state": "ok", "doc": doc, "why": ""}
+
+
 def read_cached(name: str) -> dict:
     """``{"state": "absent"|"unreadable"|"ok", "doc": ..., "why": ...}``.
-    Absent and unreadable are different facts (rule 3's sibling)."""
+    Absent and unreadable are different facts (rule 3's sibling). From the records database
+    once the stored values are moved there (C1330), else the reader's file."""
+    try:
+        on_database = _on_database()
+    except Exception as exc:                            # noqa: BLE001 (said, never a raise)
+        return {"state": "unreadable", "doc": None, "unanswered": True,
+                "why": (f"where {name}'s stored value is kept could not be read from the "
+                        f"settings ({type(exc).__name__})")}
+    if on_database:
+        return _read_from_database(name)
     path = store_path(name)
     if not os.path.exists(path):
         return {"state": "absent", "doc": None, "why": f"no reader has written {path}"}
@@ -511,12 +557,23 @@ def _run_once(reader: Reader, announce, clock, trigger) -> dict:
     took = int((time.monotonic() - t0) * 1000)
 
     path = store_path(reader.name)
+    # The lock stays on the file's path when the value is on the records database (C1330), as
+    # every document store's owner keeps its own (records_docs), so runs stay one at a time.
     with _filestore.PathLock(path):
         prior = read_cached(reader.name)
         replaced = ""
+        if prior["state"] == "unreadable" and prior.get("unanswered"):
+            # Nothing could ask where the last good value is: storing now would replace it with
+            # none, so this run's value is not stored (its failure is logged where a failed
+            # file write is) and the last good one stands.
+            raise _filestore.StoreUnreadable(f"reader {reader.name}: {prior['why']}: nothing "
+                                             "was stored")
+        on_database = _on_database()
         if prior["state"] == "unreadable":
-            # Rule 10: a cache is replaced, and the replacement says so.
-            _filestore.preserve_corrupt(path, prior["why"])
+            # Rule 10: a cache is replaced, and the replacement says so. On the records
+            # database there is no file to keep aside; the row is replaced.
+            if not on_database:
+                _filestore.preserve_corrupt(path, prior["why"])
             replaced = prior["why"]
         before = prior["doc"] or {}
         previous_value = (before.get("last_good") or {}).get("value")
@@ -555,7 +612,14 @@ def _run_once(reader: Reader, announce, clock, trigger) -> dict:
         else:
             doc["last_good"] = {"value": value, "value_at": _iso(started), "took_ms": took,
                                 "trigger": trigger, "read_started": started}
-        _filestore.write_atomic(path, json.dumps(doc, indent=1, sort_keys=True))
+        if on_database:
+            from modules import records_docs
+
+            # One transaction; raises naming why the database did not take it, as a file that
+            # could not be written raises.
+            records_docs.save(VALUES_STORE, reader.name, doc)
+        else:
+            _filestore.write_atomic(path, json.dumps(doc, indent=1, sort_keys=True))
     if requested:
         # Rule 13: "did my click run, and how long did it take" in the log too.
         log.info("reader %s: run %s on %s by %s took %d ms: %s", reader.name,
@@ -653,7 +717,9 @@ def health_rows(now: float = None, population: list = None) -> list:
             continue
         if got["state"] == "unreadable":
             rows.append({**base, "state": "unknown",
-                         "detail": f"{got['why']}; the next run replaces it"})
+                         "detail": (f"{got['why']}; nothing is stored until it can be asked"
+                                    if got.get("unanswered") else
+                                    f"{got['why']}; the next run replaces it")})
             continue
         doc = got["doc"]
         attempt = doc.get("last_attempt") or {}

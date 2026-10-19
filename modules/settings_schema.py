@@ -461,6 +461,7 @@ DEFAULTS: dict = {
     "records_store_netbox_modified": "file",
     "records_store_netbox_adopted": "file",
     "records_store_interrupted_holds": "file",
+    "records_store_reader_values": "file",
 
     # ── Platform map (NetBox platform slug → how NMAS treats the device) ────
     # This map is what makes multi-vendor support a configuration change rather
@@ -867,6 +868,7 @@ SCHEMA: dict = {
         "records_store_netbox_modified": {"type": "string", "enum": ["file", "postgres"]},
         "records_store_netbox_adopted": {"type": "string", "enum": ["file", "postgres"]},
         "records_store_interrupted_holds": {"type": "string", "enum": ["file", "postgres"]},
+        "records_store_reader_values": {"type": "string", "enum": ["file", "postgres"]},
 
         "platform_map": {
             "type": "object",

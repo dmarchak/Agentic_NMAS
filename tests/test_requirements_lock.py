@@ -27,6 +27,7 @@ IMPORT_TO_DIST = {
     "dotenv": "python-dotenv", "flask": "Flask", "flask_socketio": "Flask-SocketIO",
     "jinja2": "Jinja2", "jsonschema": "jsonschema", "jwt": "PyJWT",
     "boto3": "boto3", "botocore": "botocore", "psycopg": "psycopg",
+    "psycopg_pool": "psycopg-pool",
     "minio": "minio", "ncclient": "ncclient", "netmiko": "netmiko",
     "paramiko": "paramiko", "ping3": "ping3", "psutil": "psutil",
     "requests": "requests", "urllib3": "urllib3",

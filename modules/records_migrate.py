@@ -324,7 +324,7 @@ def append_lines(list_name: str, texts: list, store: str = STORE, network: str =
 
     st = store_of(store)
     network = network if network is not None else network_of(list_name, store)
-    with records_db.connect() as conn:
+    with records_db.pooled() as conn:
         for text in texts:
             _insert(conn, st, network, text)
 
@@ -342,7 +342,7 @@ def table_lines(list_name: str, copied_only: bool = False, conn=None,
                network_of(list_name, store) if st.per_network else "")
     if conn is not None:
         return [r[0] for r in conn.execute(sql, (network,)).fetchall()]
-    with records_db.connect() as c:
+    with records_db.pooled() as c:
         return [r[0] for r in c.execute(sql, (network,)).fetchall()]
 
 
@@ -525,7 +525,7 @@ def plan(connector=None, store: str = STORE) -> dict:
     db = {"ok": False, "error": ""}
     table = {}
     try:
-        with (connector or records_db.connect)() as conn:
+        with (connector or records_db.pooled)() as conn:
             if _table_exists(conn, st):
                 for n, copied, since in conn.execute(
                         "select network, count(source_line), count(*) - count(source_line)"
@@ -585,7 +585,7 @@ def check(connector=None, store: str = STORE) -> dict:
         return _docs(store).check(connector, store)
     st = store_of(store)
     results = []
-    with (connector or records_db.connect)() as conn:
+    with (connector or records_db.pooled)() as conn:
         exists = _table_exists(conn, st)
         files = file_networks(store)
         nets = sorted(set(files) | set(
@@ -703,7 +703,7 @@ def move(fingerprint: str, actor: str, verified: str, connector=None,
     with _Lock():
         _preconditions(plan(connector, store), records_db.FILE, fingerprint)
         step("plan", "the counts the preview drew, read again: unchanged")
-        with (connector or records_db.connect)() as conn:
+        with (connector or records_db.pooled)() as conn:
             ensure_schema(conn, store)
             conn.commit()
             got = copy(conn, store)
@@ -715,7 +715,7 @@ def move(fingerprint: str, actor: str, verified: str, connector=None,
              + ("" if entry.get("recorded", True) else
                 f"; its record could not be written: {entry.get('record_error')}"))
         try:
-            with (connector or records_db.connect)() as conn:
+            with (connector or records_db.pooled)() as conn:
                 again = copy(conn, store)
             step("copy-again", ", ".join(f"{n or 'the installation'}: {v['copied']} more"
                                          for n, v in again.items()) or "nothing more")
@@ -747,7 +747,7 @@ def _back(actor: str, verified: str, connector=None, store: str = STORE) -> dict
     st = store_of(store)
     _chmod(0o600, store)
     exported = {}
-    with (connector or records_db.connect)() as conn:
+    with (connector or records_db.pooled)() as conn:
         if _table_exists(conn, st):
             for network, in conn.execute(f"select distinct network from {st.qualified}"
                                          " where source_line is null").fetchall():
@@ -786,7 +786,7 @@ def move_back(fingerprint: str, actor: str, verified: str, connector=None,
         steps.append({"name": "plan", "ok": True,
                       "detail": "the counts the preview drew, read again: unchanged"})
         names = list(file_networks(store)) or []
-        with (connector or records_db.connect)() as conn:
+        with (connector or records_db.pooled)() as conn:
             if _table_exists(conn, st):
                 names = sorted(set(names) | {r[0] for r in conn.execute(
                     f"select distinct network from {st.qualified}").fetchall()})
