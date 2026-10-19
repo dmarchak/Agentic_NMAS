@@ -1,8 +1,8 @@
 name: nmas-relay-probe
 
 # ---------------------------------------------------------------------------
-# Labs 8 and 9, step 0d (docs/LAB8_LAB9_PLAN.md) and 0g: a C8000v ZTP'd THROUGH A DHCP RELAY,
-# and `containerlab restart -n` measured on a healthy node. Runbook: docs/RELAY_PROBE.md.
+# Labs 8 and 9, step 0d (docs/LAB8_LAB9_PLAN.md): a C8000v ZTP'd THROUGH A DHCP RELAY.
+# Runbook: docs/RELAY_PROBE.md.
 # A throwaway lab of its own: no lab node is touched, s3 is never on its path, and it is
 # destroyed afterwards.
 #
@@ -11,7 +11,8 @@ name: nmas-relay-probe
 #        Kea, read 2026-10-19), onboarded in a throwaway network, then given Gi3 10.255.96.1/30
 #        with `ip helper-address 10.255.0.10` by a deploy of its intent (Lab 8's R4 step).
 #        The configless launch removes the saved configuration at every CONTAINER start: after
-#        zr4 is onboarded it is never restarted (0g runs on it BEFORE its onboarding).
+#        zr4 is onboarded it is never restarted (and no lab node is restarted by containerlab or
+#        docker: lab/REDEPLOY.md).
 #   zr6  a CONFIGLESS C8000v (P.6's patch and management passthrough, as bp-ztp-a), Gi2 to zr4
 #        Gi3, its MAC pinned so Kea's reservation names it: aa:bb:cc:00:02:96 -> 10.255.96.2.
 #
@@ -68,5 +69,3 @@ topology:
           mac: aa:bb:cc:00:02:96
         - node: zr4
           interface: eth2
-    # 0g (after 0d): a second link, zr4 Gi4 (eth3) to zr6 Gi3 (eth2), is added here and zr4 is
-    # restarted alone with `containerlab restart -n zr4` (docs/RELAY_PROBE.md, part 3).

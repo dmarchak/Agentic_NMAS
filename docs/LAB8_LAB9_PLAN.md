@@ -24,9 +24,9 @@ four touched a device, so the sizes are kept here as they are.
     option 3 is unmeasured. If it needs option 3, the charter's D4 rule (no `routers` option on a
     ZTP subnet) needs the operator's decision for relayed subnets.
   - **R4 has no spare interface (C1350).** A link added to a running node is never seen by its
-    VM, so R4 restarts with the new link. Whether `containerlab restart -n` brings it up alone is
-    unmeasured. The measured alternative is a full redeploy: 23.8 minutes, a 60-minute window,
-    and new host keys on every device.
+    VM, so R4 restarts with the new link. A lab node is never restarted by containerlab or
+    docker (the operator, 2026-10-19; lab/REDEPLOY.md), so R4 gets its link through a full
+    redeploy: 23.8 minutes, a 60-minute window, and new host keys on every device.
 - **Lab 9's largest unknown is the switch (C1349).** No vIOS has ever booted without a
   configuration under vrnetlab, or run AutoInstall here. The measurement is after Lab 8 is
   built, on 10-22 or 10-23. If it fails, section 5 sets out the fallback.
@@ -51,10 +51,10 @@ operator's lab tooling; **C** is code to build first.
 | 0d | The relayed-ZTP proof on a throwaway pair (a relay node, a configless C8000v behind it, with and without option 3) | L/measure | no | M | 10-20 (not run on the night of 10-19: s3's gaps were already widening, and the pair adds about 3.7 CPUs of the emulation work they follow; it also needs hand changes to the live Kea, the firewall and a route on the NMAS host) |
 | 0e | Relayed ZTP in Mercury: the plan and writer for a relayed subnet (server address, a fragment per relayed subnet, option 3 as the relay's own address if 0d needs it, the DNS check on the relayed path), and the firewall's udp/69 rule widened by a host step (C1346) | C | no | M to L | 10-20 to 10-21 |
 | 0f | NetBox on add: after a device's intent is deployed, its record brought up to the golden through Import's preview and confirm; cables from both ends' LLDP (C1344) | C | **built** (0f's commit, 10-19; not deployed): the device tab's one-device Import into NetBox…, a Needs attention row while NetBox holds less than the golden, cables from the Topology reader's stored LLDP | M | done 10-19 |
-| 0g | `containerlab restart -n` measured on a throwaway (does a link added to the file come up, the time, the other end, the host key) | L/measure | no | S | with 0d |
+| 0g | DROPPED (the operator, 2026-10-19): a lab node is never restarted by containerlab or docker (lab/REDEPLOY.md), so there is nothing to measure | | | | |
 | 1 | r6 retired through the GUI (Device page › Retire), then its separate lab (`clab-r6`) destroyed | M, then L | retire built; completeness is 0a | S | 10-22 |
 | 2 | R6 and R7 planned in NetBox as Planned devices, addresses from NetBox's prefixes (section 4) | M (NetBox) | NetBox's own screens; no Mercury screen plans a device | S | 10-22 |
-| 3 | R4's new link: the lab topology gains R4 GiN to R6, R4 restarted alone (0g) or the lab redeployed, a planned-restart window declared first | L | the window is built | S to M | 10-22 |
+| 3 | R4's new link: the lab topology gains R4 GiN to R6 (host bridge br-r4r6) and R2 GiN to R8 (br-r2r8), the lab redeployed (lab/REDEPLOY.md), a planned-restart window declared first | L | the window is built; the redeploy's pre-flight passes | S to M | 10-22 |
 | 4 | R4's side deployed first: the area-10 interface and `ip helper-address` to Kea, through preview, confirm by hash and verify | M | built (intent edit, deploy); the area through the pack (0c) | S | 10-22 |
 | 5 | R6 by ZTP through R4's relay: Add device › ZTP, reservation in Kea, R6 boots configless, fetches its bootstrap; Verify promotes it | M | no (0e) | — | 10-22 |
 | 6 | R6's full intent deployed: OSPF area 10, RIPv2 toward R7, redistribution, a relay facing R7 | M | packs (0c) | S | 10-22 |
@@ -418,11 +418,13 @@ Lab 8.
 3. **R4:** `containerlab restart -n r4` if 0g proves R4 comes up alone with its new link. If a
    full redeploy is needed, it is done the evening before the build day in a 60-minute window,
    with the nine host keys re-keyed through the GUI. **Not r5's interface:** R4–R5 is the lab's
-   BGP link to the web server in the handout's topology, and it stays.
+   BGP link to the web server in the handout's topology, and it stays. **Superseded the same
+   day:** a lab node is never restarted by containerlab or docker (lab/REDEPLOY.md). R4 and R2
+   get their new links through one full redeploy, and 0g is dropped.
 4. **The addressing in section 4 is approved as proposed.**
 5. **Lab 9's switch fallback, if the vIOS-L2 fails:** DHCP onboarding through R8's relay, and the
    video says why the switch is not zero-touch.
-6. **Timing:** 0d and 0g start on 10-19, not 10-20. 0e (relayed ZTP's plan and writer) and 0f
+6. **Timing (0g since dropped, decision 3):** 0d and 0g start on 10-19, not 10-20. 0e (relayed ZTP's plan and writer) and 0f
    (NetBox brought up to the deployed intent, cables from LLDP) start in code on 10-19 too,
    since they are needed whatever 0d shows.
 7. **Before the throwaway:** r5's spinning container (C1354) is restarted, not removed (R5 stays

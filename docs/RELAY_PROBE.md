@@ -1,12 +1,11 @@
-# The relayed-ZTP probe (Labs 8 and 9, steps 0d and 0g)
+# The relayed-ZTP probe (Labs 8 and 9, step 0d)
 
 **The questions.**
 - **0d (C1346):** does a configless C8000v's AutoInstall work through a DHCP relay? That means
   DORA through the relay, Kea choosing the subnet by giaddr, and the TFTP fetch routed back.
   And does it need option 3? D4 restated (docs/P6_ZTP.md) allows option 3 only if it does.
-- **0g (C1350):** does `containerlab restart -n` bring a HEALTHY node back with a link added to
-  the topology file since it was deployed? How long does it take, and does the other end's link
-  survive?
+- **0g (C1350): dropped** (the operator, 2026-10-19; part 3). It asked whether
+  `containerlab restart -n` brings a healthy node back with a link added to the topology file.
 
 The agent's attempt on r5 showed that the restart parks the links before it stops the node
 (C1372).
@@ -30,7 +29,7 @@ path. Cost: two C8000v, about 9 GiB and 3.7 CPUs on the lab host (C1318's capaci
 | P-R2 | **without option 3**, no RRQ reaches 10.255.0.10: zr6 holds a /30 address and no route to an off-subnet server | AutoInstall has no route until a config gives one |
 | P-R3 | **with option 3** = 10.255.96.1, the RRQ for `zr6.cfg` reaches the NMAS host from 10.255.96.2, routed through zr4 | a default route through the relay |
 | P-R4 | the responder REFUSES it, naming the peer and the file: the reservation is not tool-written (0e builds that) | the responder serves only a Mercury fragment's reservation |
-| P-G1 | `containerlab restart -n zr4` brings zr4 back with both links, the new one included; zr6's ends stay up | a healthy node can be stopped and started, unlike r5 |
+| P-G1 | (0g, dropped: not run) | |
 
 ## Part 1: set up (each step's revert is in part 4)
 
@@ -64,15 +63,12 @@ path. Cost: two C8000v, about 9 GiB and 3.7 CPUs on the lab host (C1318's capaci
     or the configless boot again).
   - Record P-R3 and P-R4, and the responder's refusal row naming the peer and `zr6.cfg`.
 
-## Part 3: 0g
+## Part 3: 0g (dropped)
 
-Add the second link (zr4 eth3, zr6 eth2) to the topology file. Then run
-`containerlab restart -t nmas-relay-probe.clab.yml -n zr4`, timing it to zr4's console prompt.
-Record P-G1:
-- zr4's interfaces, the new one included;
-- zr6's two links;
-- the park namespace emptied;
-- `tc` mirroring present on each eth/tap pair.
+Dropped by the operator on 2026-10-19: a lab node is never restarted by containerlab
+(`restart`, `restart -n`) or by docker (`restart`, `start`), so there is nothing to measure.
+A node restarts only by a reload from its own CLI, or by a full redeploy (lab/REDEPLOY.md).
+P-G1 is not run.
 
 ## Part 4: revert (always, and on any stop)
 

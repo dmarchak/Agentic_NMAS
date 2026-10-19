@@ -38,13 +38,73 @@ def _write(path: str, text: str) -> None:
         fh.write(text)
 
 
+def _check(list_name: str) -> int:
+    """The redeploy's pre-flight (the operator, 2026-10-19): one line per device, facts only.
+    A built file fails when a credential family differs from its current golden, a placeholder
+    is in it, its golden is older than its last rotation, the last drift run could not read the
+    device, or it lacks something `startup_source._carries()` names."""
+    import time
+
+    from modules.nsot.startup_source import check
+    try:
+        got = check(list_name)
+    except Exception as exc:                       # noqa: BLE001
+        print(f"UNPROVEN: the pre-flight could not run: {type(exc).__name__}: {exc}",
+              file=sys.stderr)
+        return EXIT_UNPROVEN
+    if not got["ok"]:
+        print(f"UNPROVEN: {got['error']}", file=sys.stderr)
+        return EXIT_UNPROVEN
+    base = got["baseline"]
+    print(f"baseline {base['tag']} at {base['commit'][:10]}")
+    failing = []
+    for host, r in got["devices"].items():
+        if not r["built"]:
+            print(f"{host}: NOT BUILT: {r.get('why')}")
+            failing.append(host)
+            continue
+        problems = []
+        if not r["credentials_current"]:
+            problems.append("credentials differ from its current golden: " + ", ".join(
+                n for n, f in r["families"].items() if not f["equal"]))
+        if r["placeholders"]:
+            problems.append(f"{r['placeholders']} placeholder line(s)")
+        if r["golden_after_rotation"] is False:
+            problems.append(f"its golden is older than its last rotation ({r['rotated_at']})")
+        if not r["read_by_drift"]:
+            problems.append("the last drift run did not read it")
+        if r["lacks"]:
+            problems.append("lacks " + ", ".join(r["lacks"]))
+        at = (time.strftime("%Y-%m-%dT%H:%MZ", time.gmtime(r["drift_at"]))
+              if r.get("drift_at") else "never")
+        fams = ", ".join(f"{n} {f['lines']}" for n, f in r["families"].items())
+        print(f"{host}: {'FAILS: ' + '; '.join(problems) if problems else 'ok'} | golden "
+              f"{r['baseline_golden']} (baseline) / {r['latest_golden']} (latest), "
+              f"{r['commits_since']} newer | credentials current: {r['credentials_current']} "
+              f"({fams}) | golden after last rotation: {r['golden_after_rotation']} "
+              f"({r['rotated_at'] or 'no rotation'}) | read by drift: {r['read_by_drift']} "
+              f"({at}) | carries: {', '.join(r['carries'])}")
+        if problems:
+            failing.append(host)
+    print(f"{len(got['devices']) - len(failing)} of {len(got['devices'])} pass"
+          + (f"; failing: {', '.join(failing)}" if failing else ""))
+    return 1 if failing else EXIT_OK
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--out", help="where the sources are written (not with --check)")
     ap.add_argument("--list", dest="list_name", required=True,
                     help="the network whose lab startup files are built")
+    ap.add_argument("--check", action="store_true",
+                    help="write nothing: print each device's facts for a redeploy's pre-flight "
+                         "(never a value) and exit 1 when any built file fails one")
     args = ap.parse_args(argv)
+    if args.check:
+        return _check(args.list_name)
+    if not args.out:
+        ap.error("--out is required unless --check")
     try:
         from modules.nsot.startup_source import build
         list_name = args.list_name

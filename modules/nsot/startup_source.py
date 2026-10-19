@@ -92,6 +92,118 @@ def compose(baseline_text: str, current_text: str) -> dict:
     return {"text": "\n".join(out) + "\n", "replaced": replaced, "nested": differs}
 
 
+#: What a lab startup file must carry for Mercury to manage the device it boots (the redeploy's
+#: pre-flight, the operator, 2026-10-19): the heartbeat applet, the monitoring lines, the
+#: management access. Each a pattern searched line by line (`re.M`); the check says which are
+#: absent. The monitoring three are `monitoring_coverage.CHECKS`, the one owner of what shows a
+#: device monitored.
+def _carries():
+    from modules.monitoring_coverage import CHECKS
+    return (
+        ("heartbeat applet", CHECKS["heartbeat"]),
+        ("syslog host", CHECKS["syslog"]),
+        ("SNMP community", CHECKS["snmp"]),
+        ("NTP", re.compile(r"^ntp server\s", re.M)),
+        ("SSH", re.compile(r"^ip ssh\s", re.M)),
+        ("vty lines", re.compile(r"^line vty\s", re.M)),
+        ("an account", re.compile(r"^username\s", re.M)),
+    )
+#: A masked placeholder where a secret should be: a file holding one boots a device nobody can
+#: sign in to (Mercury masks on the way OUT; a golden is kept verbatim).
+PLACEHOLDER = re.compile(r"<redacted|<masked|\*{6,}", re.I)
+
+
+def _git1(repo: str, *args) -> str:
+    from modules.nsot.repo import git
+
+    rc, out, _ = git(repo, *args)
+    return (out or "").strip() if rc == 0 else ""
+
+
+def check(list_name: str, hosts=None, built=None) -> dict:
+    """The pre-flight of a redeploy (the operator, 2026-10-19): for each device the lab boots,
+    facts about its startup file, never a value. ``{"ok", "baseline", "devices": {host:
+    {...}}, "error"?}``; per device:
+
+    - ``built``: whether a file is built (else ``why``);
+    - ``baseline_golden`` / ``latest_golden``: the commit of the device's golden the file's
+      configuration comes from (the newest earned baseline's) and the device's latest golden
+      commit, with ``commits_since`` between them;
+    - ``credentials_current``: every credential family's lines in the file equal its current
+      golden's, compared inside this function (sha256), the families named;
+    - ``placeholders``: lines holding a masked placeholder (none is the only right answer);
+    - ``golden_after_rotation``: the current golden was committed at or after the device's last
+      rotation that reached it (a golden older than the rotation holds the retired secret);
+    - ``read_by_drift``: the last drift run read the device (its session signed in with the
+      credential Mercury holds), and when;
+    - ``carries`` / ``lacks``: which of `_carries()` the file holds.
+
+    Together ``credentials_current``, ``golden_after_rotation`` and ``read_by_drift`` say the
+    file holds the secret the device runs and that Mercury's held credential signs in to it,
+    shown without any secret being read here."""
+    import hashlib
+
+    from modules import drift_check
+    from modules.nsot import listref, manifest
+    from modules.nsot import repo as R
+    from modules.nsot.scheduled_rotation import last_rotations
+
+    got = build(list_name, hosts) if built is None else built
+    if not got.get("ok"):
+        return {"ok": False, "baseline": {}, "devices": {}, "error": got.get("error", "")}
+    ref = listref.resolve(list_name)
+    base = got["baseline"]
+    rotations = last_rotations()
+    drift = drift_check._load_state(list_name)                  # noqa: SLF001
+    last = (drift or {}).get("last_result") or {}
+    # A run stores the devices it could not read (`errors`) and did not check (`skipped`), each
+    # `{"hostname", "reason"}`; every other device of its inventory it read (clean or drifted).
+    failed = {str((e or {}).get("hostname", "")) for e in last.get("errors") or []}
+    failed |= {str((s or {}).get("hostname", "")) for s in last.get("skipped") or []}
+    out = {}
+    for host, d in sorted(got["devices"].items()):
+        row = {"built": d["state"] == "ok"}
+        rel = f"golden/{host}.cfg"
+        row["baseline_golden"] = _git1(ref.repo_dir, "log", "-1", "--format=%h", base["commit"],
+                                       "--", rel)
+        row["latest_golden"] = _git1(ref.repo_dir, "log", "-1", "--format=%h", "HEAD", "--", rel)
+        since = _git1(ref.repo_dir, "rev-list", "--count",
+                      f"{row['baseline_golden']}..HEAD", "--", rel) if row["baseline_golden"] else ""
+        row["commits_since"] = int(since) if since.isdigit() else None
+        if not row["built"]:
+            row["why"] = d.get("why", "")
+            out[host] = row
+            continue
+        text = d["text"]
+        _ident, entry = manifest.find_by_name(ref.repo_dir, host)
+        now = R.committed_golden_for(ref.repo_dir, entry) if entry else {}
+        current = (now or {}).get("text") or ""
+
+        def family_digest(t, rx):
+            lines = [l.rstrip() for l in t.splitlines() if rx.match(l)]
+            return hashlib.sha256("\n".join(lines).encode()).hexdigest(), len(lines)
+
+        fams = {}
+        for name, rx in FAMILIES:
+            a, na = family_digest(text, rx)
+            b, _nb = family_digest(current, rx)
+            fams[name] = {"equal": a == b, "lines": na}
+        row["credentials_current"] = all(f["equal"] for f in fams.values())
+        row["families"] = fams
+        row["placeholders"] = sum(1 for l in text.splitlines() if PLACEHOLDER.search(l))
+        committed_at = _git1(ref.repo_dir, "log", "-1", "--format=%ct", "HEAD", "--", rel)
+        rotated = rotations.get(host)
+        row["golden_after_rotation"] = (None if not rotated or not committed_at.isdigit()
+                                        else int(committed_at) >= int(rotated[0]))
+        row["rotated_at"] = rotated[1] if rotated else ""
+        row["read_by_drift"] = bool(last.get("checked")) and host not in failed
+        row["drift_at"] = drift.get("last_check_ts") if isinstance(drift, dict) else None
+        row["carries"] = [n for n, rx in _carries() if rx.search(text)]
+        row["lacks"] = [n for n, _rx in _carries() if n not in row["carries"]]
+        out[host] = row
+    return {"ok": True, "baseline": base, "devices": out}
+
+
 def build(list_name: str, hosts=None) -> dict:
     """Every device's startup source for *list_name*.
 

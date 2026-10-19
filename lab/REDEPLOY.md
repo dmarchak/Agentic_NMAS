@@ -10,6 +10,20 @@ this page is the window and the keys around it. Real hosts, users and paths are 
 `data/lab_hosts.json` (gitignored); here they are `<nmas-host>`, `<lab-host>`, `<user>` and
 `<home>` (the user's home directory on each host).
 
+## How a lab node restarts: two ways only (the operator, 2026-10-19)
+
+**A lab node is never restarted by containerlab (`restart`, `restart -n`) or by docker
+(`restart`, `start`).** A node restarts in only two ways:
+
+- a reload from its own CLI, which is Mercury's Reload, with its planned window;
+- a full redeploy with the one redeploy command below, in its planned window.
+
+Why: on 2026-10-19 the agent's `containerlab restart -n r5` moved r5's links into a park
+namespace (`clab-park-<node>`) before it stopped the node, and they were never brought back. r3's
+and r4's BGP sessions to r5 went down, and so did the path to the web server (C1372). Docker's own
+restart and start were already refused for the configless launch (C478). A link added to the
+topology reaches a node only through the redeploy.
+
 ## What is redeployed, and what Mercury knows of it
 
 - The topology `<home>/labs/lab/rcn-lab1.clab.yml` on `<lab-host>` has nine network nodes, r1 to

@@ -205,3 +205,108 @@ class TestTheMappingCheckCountsANotBuiltDevice:
         assert h._reconcile(str(tmp_path), self.ROWS) == h.EXIT_MISSING_OUTPUT
         assert h._reconcile(str(tmp_path), self.ROWS, not_built={"r7"}) == h.EXIT_OK
         assert "not built: 1 — r7" in capsys.readouterr().out
+
+
+#: r2's real config with Mercury's heartbeat applet added (r2's capture predates it): the one
+#: edit, so every line the pre-flight looks for is in the file. The file's configuration is the
+#: BASELINE's, so the baseline carries the applet too.
+APPLET = "event manager applet NMAS-HEARTBEAT\n event timer watchdog time 60\n action 1.0 syslog msg \"NMAS heartbeat\"\n"
+R2_APPLET = R2.replace("\nend", "\n" + APPLET + "end")
+WITH_APPLET = ROTATED.replace("\nend", "\n" + APPLET + "end")
+
+
+class TestThePreflightCheck:
+    """The redeploy's pre-flight (the operator, 2026-10-19): per device, facts about the built
+    file, never a value; any failing fact fails the device."""
+
+    def _ready(self, lab, monkeypatch, rotated_at=None, drift=None):
+        _seed("Lab", [R.GoldenItem("r2", R2_APPLET, "203.0.113.12", platform="cisco_ios")],
+              source="save_all")
+        assert R.save_golden("Lab", [R.GoldenItem("r2", WITH_APPLET, "203.0.113.12",
+                                                  platform="cisco_ios")],
+                             source="rotation", actor="t", allow_new=False)["ok"]
+        rot = {} if rotated_at is None else {"r2": (rotated_at, "2026-10-19T12:00:00Z")}
+        monkeypatch.setattr("modules.nsot.scheduled_rotation.last_rotations", lambda: rot)
+        state = {"last_check_ts": 1760000000,
+                 "last_result": {"checked": 1, "errors": [], "skipped": []}}
+        monkeypatch.setattr("modules.drift_check._load_state",
+                            lambda list_name="": state if drift is None else drift)
+
+    def test_a_file_built_after_a_rotation_passes_every_fact(self, lab, monkeypatch):
+        self._ready(lab, monkeypatch, rotated_at=1)
+        got = SS.check("Lab", hosts=["r2"])
+        r = got["devices"]["r2"]
+        assert got["ok"] and r["built"] and r["credentials_current"] is True
+        assert r["families"]["accounts"] == {"equal": True, "lines": 1}
+        assert r["placeholders"] == 0 and r["golden_after_rotation"] is True
+        assert r["read_by_drift"] is True and r["lacks"] == []
+        # The configuration is the baseline's; one newer commit of r2's golden since.
+        assert r["baseline_golden"] and r["latest_golden"] and r["baseline_golden"] != r["latest_golden"]
+        assert r["commits_since"] == 1
+
+    def test_a_credential_line_that_is_not_the_current_one_fails_its_family(self, lab, monkeypatch):
+        self._ready(lab, monkeypatch)
+        built = SS.build("Lab", hosts=["r2"])
+        built["devices"]["r2"]["text"] = built["devices"]["r2"]["text"].replace(NEW_ACCOUNT, OLD_ACCOUNT)
+        r = SS.check("Lab", hosts=["r2"], built=built)["devices"]["r2"]
+        assert r["credentials_current"] is False
+        assert r["families"]["accounts"]["equal"] is False
+        assert r["families"]["SNMP communities"]["equal"] is True
+
+    def test_a_masked_placeholder_is_counted(self, lab, monkeypatch):
+        self._ready(lab, monkeypatch)
+        built = SS.build("Lab", hosts=["r2"])
+        built["devices"]["r2"]["text"] = built["devices"]["r2"]["text"].replace(
+            "snmp-server community public RO", "snmp-server community <redacted:community> RO")
+        r = SS.check("Lab", hosts=["r2"], built=built)["devices"]["r2"]
+        assert r["placeholders"] == 1 and r["credentials_current"] is False
+
+    def test_a_file_without_the_heartbeat_applet_lacks_it(self, lab, monkeypatch):
+        self._ready(lab, monkeypatch)
+        built = SS.build("Lab", hosts=["r2"])
+        built["devices"]["r2"]["text"] = built["devices"]["r2"]["text"].replace(APPLET, "")
+        r = SS.check("Lab", hosts=["r2"], built=built)["devices"]["r2"]
+        assert r["lacks"] == ["heartbeat applet"]
+
+    def test_a_golden_older_than_the_last_rotation_fails(self, lab, monkeypatch):
+        self._ready(lab, monkeypatch, rotated_at=4102444800)       # 2100: after every commit
+        r = SS.check("Lab", hosts=["r2"])["devices"]["r2"]
+        assert r["golden_after_rotation"] is False and r["rotated_at"] == "2026-10-19T12:00:00Z"
+
+    def test_a_device_the_last_drift_run_could_not_read_fails(self, lab, monkeypatch):
+        self._ready(lab, monkeypatch, drift={"last_check_ts": 1760000000, "last_result": {
+            "checked": 1, "errors": [{"hostname": "r2", "reason": "authentication failed"}]}})
+        assert SS.check("Lab", hosts=["r2"])["devices"]["r2"]["read_by_drift"] is False
+
+    def test_no_drift_run_is_not_read(self, lab, monkeypatch):
+        self._ready(lab, monkeypatch, drift={})
+        assert SS.check("Lab", hosts=["r2"])["devices"]["r2"]["read_by_drift"] is False
+
+    def test_the_helper_prints_facts_never_a_value_and_exits_by_the_result(
+            self, lab, monkeypatch, capsys):
+        self._ready(lab, monkeypatch, rotated_at=1)
+        monkeypatch.setattr("modules.device.load_saved_devices",
+                            lambda path: [{"hostname": "r2"}])
+        assert _cli().main(["--check", "--list", "Lab"]) == 0
+        out = capsys.readouterr().out
+        assert "r2: ok | golden " in out and out.rstrip().endswith("1 of 1 pass")
+        assert "$9$" not in out and "public" not in out and "admin" not in out
+        monkeypatch.setattr("modules.nsot.scheduled_rotation.last_rotations",
+                            lambda: {"r2": (4102444800, "2100-01-01T00:00:00Z")})
+        assert _cli().main(["--check", "--list", "Lab"]) == 1
+        out = capsys.readouterr().out
+        assert "r2: FAILS: its golden is older than its last rotation" in out
+        assert out.rstrip().endswith("0 of 1 pass; failing: r2")
+
+    def test_check_writes_nothing_and_out_is_required_without_it(self, lab, monkeypatch, tmp_path):
+        self._ready(lab, monkeypatch, rotated_at=1)
+        monkeypatch.setattr("modules.device.load_saved_devices",
+                            lambda path: [{"hostname": "r2"}])
+        cli = _cli()
+        here = tmp_path / "cwd"
+        here.mkdir()
+        monkeypatch.chdir(here)
+        assert cli.main(["--check", "--list", "Lab"]) == 0
+        assert list(here.iterdir()) == []
+        with pytest.raises(SystemExit):
+            cli.main(["--list", "Lab"])
