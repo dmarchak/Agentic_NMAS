@@ -43,14 +43,17 @@ APPLICATION_NAME = "mercury"
 #: switches and checks; the Settings card draws each ("Stores on it").
 STORES = ("receipts", "acknowledgements", "restarts", "restart_windows", "restart_window_ends",
           "rotations", "breakglass_exports", "breakglass_intact", "breakglass_checks",
-          "breakglass_drills")
+          "breakglass_drills", "reveals", "host_steps_done", "heartbeat_rules", "netbox_removals")
 STORE_WORDS = {"receipts": "Deploy receipts", "acknowledgements": "Acknowledgements",
                "restarts": "Restarts seen", "restart_windows": "Planned-restart windows",
                "restart_window_ends": "Planned-restart windows ended early",
                "rotations": "Rotations and saves",
                "breakglass_exports": "Break-glass exports",
                "breakglass_intact": "Break-glass download verdicts",
-               "breakglass_checks": "Break-glass checks", "breakglass_drills": "Break-glass drills"}
+               "breakglass_checks": "Break-glass checks", "breakglass_drills": "Break-glass drills",
+               "reveals": "Reveals", "host_steps_done": "Host steps said done",
+               "heartbeat_rules": "Heartbeat window re-measures",
+               "netbox_removals": "NetBox removals"}
 FILE, POSTGRES = "file", "postgres"
 
 

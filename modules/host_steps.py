@@ -22,7 +22,6 @@ needed (scripts/nmas-host-step-check).
 """
 
 import hashlib
-import json
 import logging
 import os
 import re
@@ -339,19 +338,23 @@ def check(step: dict, root: str = ROOT) -> dict:
 # Done, said by a person
 # ---------------------------------------------------------------------------
 
+#: The done record's store on the records database (K31: one file for the installation).
+STORE = "host_steps_done"
+
+
 def done_records() -> dict:
-    """{step id: row}; an unreadable record is said, never read as none."""
+    """{step id: row}; an unreadable record is said, never read as none. From its file or, once
+    moved, the records database (K31)."""
+    from modules import records_migrate
+
+    got = records_migrate.store_rows(STORE, DONE)
+    if got["state"] == "unreadable":
+        return {"__unreadable__": {"error": got["error"]}}
     out = {}
-    try:
-        with open(DONE, encoding="utf-8") as fh:
-            for line in fh:
-                if line.strip():
-                    row = json.loads(line)
-                    out[row["id"]] = row
-    except FileNotFoundError:
-        pass
-    except (OSError, ValueError, KeyError) as exc:
-        return {"__unreadable__": {"error": f"{type(exc).__name__}: {exc}"}}
+    for row in got["rows"]:
+        if "id" not in row:
+            return {"__unreadable__": {"error": "KeyError: 'id' (a done row names no step)"}}
+        out[row["id"]] = row
     return out
 
 
@@ -360,8 +363,9 @@ def record_done(sha: str, step: str, actor: str) -> dict:
         return {"ok": False, "reason": "no verified person: a host step is said done by a person"}
     row = {"id": step_id(sha, step), "sha": sha, "step": step, "by": actor,
            "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
-    with config.open_secure(DONE, "a") as fh:
-        fh.write(json.dumps(row, sort_keys=True) + "\n")
+    from modules import records_migrate
+
+    records_migrate.store_append(STORE, DONE, row)
     log.info("host step %s said done by %s", row["id"], actor)
     return {"ok": True, "row": row}
 

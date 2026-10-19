@@ -66,6 +66,8 @@ _MODIFIED_FILE = os.path.join(DATA_DIR, "netbox_modified.json")
 #: so what was removed existed only in a toast and NetBox's changelog. Names
 #: and ids only; a NetBox object name is not a secret. Append-only, 0600.
 _REMOVALS_FILE = os.path.join(DATA_DIR, "netbox_removals.jsonl")
+#: The removals record's store on the records database (K31: one file for the installation).
+REMOVALS_STORE = "netbox_removals"
 
 #: What NMAS ADOPTED: per-device objects that EXISTED in NetBox before an
 #: adoption (7.3), made by a person. A third record, never merged into the
@@ -1103,7 +1105,6 @@ def record_removal(list_name: str, actor: str, result: dict, *,
     """Append one removal's outcome: ``{"ok", "row", "error"}``. Never raises:
     a removal has happened whether or not its record could be written, and
     the result says which."""
-    import json
     import time
 
     def _objs(key):
@@ -1120,9 +1121,9 @@ def record_removal(list_name: str, actor: str, result: dict, *,
            # record says WHICH objects it no longer tracks, not only that it forgot.
            "forgotten": _objs("forgotten")}
     try:
-        from modules.config import open_secure
-        with open_secure(_REMOVALS_FILE, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(row, sort_keys=True) + "\n")
+        from modules import records_migrate
+        # Its file, or the records database once moved (K31).
+        records_migrate.store_append(REMOVALS_STORE, _REMOVALS_FILE, row)
         return {"ok": True, "row": row, "error": ""}
     except Exception as exc:                  # noqa: BLE001
         log.error("netbox: removal record NOT written for %s: %s", list_name, exc)
@@ -1132,15 +1133,12 @@ def record_removal(list_name: str, actor: str, result: dict, *,
 def read_removals(list_name: str = "") -> dict:
     """``{"state": "ok"|"absent"|"unreadable", "rows": [...newest first],
     "error"}``. Absent and unreadable are different facts."""
-    import json
+    from modules import records_migrate
 
-    if not os.path.exists(_REMOVALS_FILE):
-        return {"state": "absent", "rows": [], "error": ""}
-    try:
-        with open(_REMOVALS_FILE, encoding="utf-8") as fh:
-            rows = [json.loads(line) for line in fh if line.strip()]
-    except Exception as exc:                  # noqa: BLE001
-        return {"state": "unreadable", "rows": [], "error": str(exc)}
+    got = records_migrate.store_rows(REMOVALS_STORE, _REMOVALS_FILE)
+    if got["state"] != "ok":
+        return {"state": got["state"], "rows": [], "error": got["error"]}
+    rows = got["rows"]
     if list_name:
         rows = [r for r in rows if r.get("list") == list_name]
     return {"state": "ok", "rows": list(reversed(rows)), "error": ""}

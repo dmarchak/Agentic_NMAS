@@ -16,7 +16,6 @@ value — an audit trail that copies the secret it is recording has become a
 second place the secret lives.
 """
 
-import json
 import logging
 import os
 import threading
@@ -27,6 +26,10 @@ from modules.identity import UNVERIFIED as _UNVERIFIED
 log = logging.getLogger(__name__)
 
 _lock = threading.Lock()
+
+
+#: The record's store on the records database (K31: one file for the installation).
+STORE = "reveals"
 
 
 def _path() -> str:
@@ -56,10 +59,12 @@ def record(*, actor: str, kind: str, what: str, target: str, detail: str = "",
 
     recorded = False
     try:
-        path = _path()
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with _lock, open(path, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(entry, sort_keys=True) + "\n")
+        from modules import records_migrate
+
+        # Its file under its cross-process lock, owner-only (C1328: a thread lock and a plain
+        # open before), or the records database once moved (K31).
+        with _lock:
+            records_migrate.store_append(STORE, _path(), entry)
         recorded = True
     except Exception as exc:                  # noqa: BLE001
         log.error("reveal_audit: COULD NOT RECORD a reveal of %s/%s by %s (%s)",
@@ -75,23 +80,12 @@ def record(*, actor: str, kind: str, what: str, target: str, detail: str = "",
 def read() -> dict:
     """Every reveal, newest first: ``{"state": "ok"|"absent"|"unreadable", "rows", "error"}``.
     A record that cannot be read is said (History draws it as an error), never an empty one."""
-    path = _path()
-    if not os.path.exists(path):
-        return {"state": "absent", "rows": [], "error": ""}
-    out = []
-    try:
-        with open(path, encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if line:
-                    try:
-                        out.append(json.loads(line))
-                    except ValueError:
-                        continue
-    except OSError as exc:
-        log.error("reveal_audit: unreadable (%s)", exc)
-        return {"state": "unreadable", "rows": [], "error": str(exc)}
-    return {"state": "ok", "rows": list(reversed(out)), "error": ""}
+    from modules import records_migrate
+
+    got = records_migrate.store_rows(STORE, _path(), skip_unparsable=True)
+    if got["state"] == "unreadable":
+        log.error("reveal_audit: unreadable (%s)", got["error"])
+    return dict(got, rows=list(reversed(got["rows"])))
 
 
 def entries(limit: int = 200) -> list:

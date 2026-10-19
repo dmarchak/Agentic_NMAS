@@ -166,6 +166,37 @@ def _breakglass_store(name: str, words: str, noun: str):
     return build
 
 
+def _installation_store(name: str, words: str, noun: str, path: Callable[[], str]):
+    """A store the installation keeps once, its file named by *path* when asked (an owner's
+    path read late, so a test's patch of it holds), read and written through `store_rows`
+    and `store_append` (K31)."""
+    def build() -> LineStore:
+        return LineStore(name=name, words=words, table=f"{name}_lines",
+                         files=lambda: file_of(path()), path_for=lambda _network: path(),
+                         per_network=False, noun=noun)
+    return build
+
+
+def _reveals_path() -> str:
+    from modules import reveal_audit
+    return reveal_audit._path()
+
+
+def _host_steps_path() -> str:
+    from modules import host_steps
+    return host_steps.DONE
+
+
+def _heartbeat_path() -> str:
+    from modules import heartbeat_windows
+    return heartbeat_windows._record_path()
+
+
+def _removals_path() -> str:
+    from modules import netbox_guard
+    return netbox_guard._REMOVALS_FILE
+
+
 #: Each line store, by name, built when asked (its owner module imports late), in
 #: `records_db.STORES` order.
 LINE_STORES = {"receipts": _receipts, "acknowledgements": _acknowledgements,
@@ -183,7 +214,15 @@ LINE_STORES = {"receipts": _receipts, "acknowledgements": _acknowledgements,
                "breakglass_checks": _breakglass_store("breakglass_checks",
                                                       "Break-glass checks", "checks"),
                "breakglass_drills": _breakglass_store("breakglass_drills",
-                                                      "Break-glass drills", "drills")}
+                                                      "Break-glass drills", "drills"),
+               "reveals": _installation_store("reveals", "Reveals", "reveals", _reveals_path),
+               "host_steps_done": _installation_store("host_steps_done", "Host steps said done",
+                                                      "host steps", _host_steps_path),
+               "heartbeat_rules": _installation_store("heartbeat_rules",
+                                                      "Heartbeat window re-measures",
+                                                      "re-measures", _heartbeat_path),
+               "netbox_removals": _installation_store("netbox_removals", "NetBox removals",
+                                                      "removals", _removals_path)}
 
 
 def store_of(name: str = STORE) -> LineStore:
@@ -291,6 +330,65 @@ def table_lines(list_name: str, copied_only: bool = False, conn=None,
         return [r[0] for r in conn.execute(sql, (network,)).fetchall()]
     with records_db.connect() as c:
         return [r[0] for r in c.execute(sql, (network,)).fetchall()]
+
+
+def store_rows(store: str, path: str, skip_unparsable: bool = False) -> dict:
+    """A line store's rows, oldest first, from its file or, once moved, the records database:
+    ``{"state": "absent"|"unreadable"|"ok", "rows", "error"}``. Absent and unreadable are
+    different answers, and a database that does not answer is unreadable, never no rows.
+    *skip_unparsable*: a store whose reader has always skipped a line that does not parse
+    keeps doing so (C1327 names the disagreement; it is not settled here). The one read of
+    the line stores that came after part 2b's first five."""
+    from modules import records_db
+
+    if records_db.backend(store) == records_db.POSTGRES:
+        try:
+            return {"state": "ok", "rows": table_lines("", store=store), "error": ""}
+        except Exception as exc:                      # noqa: BLE001 (said, never "none")
+            first = (str(exc).strip().splitlines() or [type(exc).__name__])[0]
+            return {"state": "unreadable", "rows": [],
+                    "error": f"the records database: {type(exc).__name__}: {first}"}
+    if not os.path.exists(path):
+        return {"state": "absent", "rows": [], "error": ""}
+    rows = []
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                if not line.strip():
+                    continue
+                try:
+                    rows.append(json.loads(line))
+                except ValueError:
+                    if not skip_unparsable:
+                        raise
+    except (OSError, ValueError) as exc:
+        return {"state": "unreadable", "rows": [], "error": f"{type(exc).__name__}: {exc}"}
+    return {"state": "ok", "rows": rows, "error": ""}
+
+
+def store_append(store: str, path: str, row: dict) -> None:
+    """Append *row* to a line store: its file, owner-only and under its cross-process lock
+    (C1328), or, once moved, the records database. Raises naming why when it could not be kept:
+    the caller decides whether its record failing stops it."""
+    from modules import records_db
+
+    line = json.dumps(row, sort_keys=True)
+    if records_db.backend(store) == records_db.POSTGRES:
+        append_lines("", [line], store=store)
+        return
+    from modules.config import open_secure
+    from modules.filestore import PathLock
+
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with PathLock(path):
+        with open_secure(path, "a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+
+
+def file_of(path: str) -> dict:
+    """``{"": path}`` when *path* exists, else ``{}``: a store kept once for the installation,
+    as the migration counts its files."""
+    return {"": path} if os.path.exists(path) else {}
 
 
 # ── The files ────────────────────────────────────────────────────────────────────────────────

@@ -106,16 +106,14 @@ class TestOffUntilSet:
         from modules import secrets_store, settings_scope
 
         group = [k for k, (scope, g) in settings_scope.SCOPES.items() if g == "records_db"]
-        assert sorted(group) == ["records_db_host", "records_db_name", "records_db_password",
-                                 "records_db_port", "records_db_user",
-                                 "records_store_acknowledgements",
-                                 "records_store_breakglass_checks",
-                                 "records_store_breakglass_drills",
-                                 "records_store_breakglass_exports",
-                                 "records_store_breakglass_intact", "records_store_receipts",
-                                 "records_store_restart_window_ends",
-                                 "records_store_restart_windows", "records_store_restarts",
-                                 "records_store_rotations"]
+        from modules import records_db
+
+        # The connection's five, and exactly one switch per store (K31: each store moves on
+        # its own), never one more.
+        assert sorted(group) == sorted(
+            ["records_db_host", "records_db_name", "records_db_password", "records_db_port",
+             "records_db_user"] + [f"records_store_{s}" for s in records_db.STORES])
+        assert len(records_db.STORES) >= 14, "the floor: K31's 14 stores, 2026-10-19"
         assert {settings_scope.SCOPES[k][0] for k in group} == {settings_scope.HOST}
         assert "records_db_password" in secrets_store.SECRET_KEYS
 

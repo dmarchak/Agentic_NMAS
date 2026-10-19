@@ -447,6 +447,10 @@ DEFAULTS: dict = {
     "records_store_breakglass_intact": "file",
     "records_store_breakglass_checks": "file",
     "records_store_breakglass_drills": "file",
+    "records_store_reveals": "file",
+    "records_store_host_steps_done": "file",
+    "records_store_heartbeat_rules": "file",
+    "records_store_netbox_removals": "file",
 
     # ── Platform map (NetBox platform slug → how NMAS treats the device) ────
     # This map is what makes multi-vendor support a configuration change rather
@@ -838,6 +842,10 @@ SCHEMA: dict = {
         "records_store_breakglass_intact": {"type": "string", "enum": ["file", "postgres"]},
         "records_store_breakglass_checks": {"type": "string", "enum": ["file", "postgres"]},
         "records_store_breakglass_drills": {"type": "string", "enum": ["file", "postgres"]},
+        "records_store_reveals": {"type": "string", "enum": ["file", "postgres"]},
+        "records_store_host_steps_done": {"type": "string", "enum": ["file", "postgres"]},
+        "records_store_heartbeat_rules": {"type": "string", "enum": ["file", "postgres"]},
+        "records_store_netbox_removals": {"type": "string", "enum": ["file", "postgres"]},
 
         "platform_map": {
             "type": "object",

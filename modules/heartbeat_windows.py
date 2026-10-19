@@ -22,7 +22,6 @@ puts a preview, a confirm and a record around it.
 """
 
 import hashlib
-import json
 import logging
 import os
 import time
@@ -67,28 +66,28 @@ def _record_path() -> str:
     return os.path.join(DATA_DIR, "heartbeat_rules.jsonl")
 
 
+#: The record's store on the records database (K31: one file for the installation).
+STORE = "heartbeat_rules"
+
+
 def records() -> dict:
     """Every re-measure written from the app, oldest first: ``{"rows", "error"}``; an
-    unreadable record is its error, never no rows (C360: History's source)."""
-    try:
-        with open(_record_path(), encoding="utf-8") as fh:
-            return {"rows": [json.loads(l) for l in fh if l.strip()], "error": ""}
-    except FileNotFoundError:
-        return {"rows": [], "error": ""}
-    except (OSError, ValueError) as exc:
-        return {"rows": [], "error": f"the record cannot be read ({exc})"}
+    unreadable record is its error, never no rows (C360: History's source). From its file or,
+    once moved, the records database (K31)."""
+    from modules import records_migrate
+
+    got = records_migrate.store_rows(STORE, _record_path())
+    if got["state"] == "unreadable":
+        return {"rows": [], "error": f"the record cannot be read ({got['error']})"}
+    return {"rows": got["rows"], "error": ""}
 
 
 def last_written() -> dict:
     """The newest record of a re-measure written from the app, or {}."""
-    try:
-        with open(_record_path(), encoding="utf-8") as fh:
-            rows = [json.loads(l) for l in fh if l.strip()]
-    except FileNotFoundError:
-        return {}
-    except (OSError, ValueError) as exc:
-        return {"error": f"the record cannot be read ({exc})"}
-    return rows[-1] if rows else {}
+    got = records()
+    if got["error"]:
+        return {"error": got["error"]}
+    return got["rows"][-1] if got["rows"] else {}
 
 
 def plan(H=None, installed_path: str = "") -> dict:
@@ -197,7 +196,6 @@ def host_step(written_path: str, installed_path: str = "") -> str:
 def apply(fingerprint: str, actor: str, H=None, installed_path: str = "") -> dict:
     """Measure again, refuse a moved plan, write the generated file and record
     it. Returns the host step that installs it."""
-    from modules.config import open_secure
     from modules.filestore import write_atomic
 
     if not actor:
@@ -219,9 +217,10 @@ def apply(fingerprint: str, actor: str, H=None, installed_path: str = "") -> dic
            "changes": fresh["changes"]}
     recorded = True
     try:
-        with open_secure(_record_path(), "a") as fh:
-            fh.write(json.dumps(row) + "\n")
-    except OSError as exc:
+        from modules import records_migrate
+
+        records_migrate.store_append(STORE, _record_path(), row)
+    except Exception as exc:                          # noqa: BLE001 (said: recorded False)
         log.error("heartbeat re-measure: the file was written and the record could not be: %s", exc)
         recorded = False
     return {"outcome": "written", "path": fresh["written_path"], "changes": fresh["changes"],
