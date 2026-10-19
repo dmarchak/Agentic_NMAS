@@ -140,9 +140,9 @@ service (CLAUDE.md), so CI cannot call a model. Evals run two ways:
 
 | Sub-phase | Builds | Exit criteria (measured on the host) |
 |---|---|---|
-| **8.0 Foundations** (no user-facing AI; **E18, the records database, is its prerequisite**, decision 8) | roles from sign-in and `TOOLS_BY_ROLE` (IBN_DESIGN section 12), every tool bound on behalf of the asking person and filtered to their scope; the change-request queue and its board (viewer asks → flagged → filed → approver's queue → approve or decline); the security row for repeated or injection-like attempts; separation of duties per network; the gateway (provider-agnostic, Anthropic first, exact model versions pinned; a per-network switch, cost caps; the built-in local model behind the same gateway, section 10; *2026-10-16, offline-first: the local profile first and required, a hosted provider optional, section 12*); the prompt registry; the schema library; the MCP tool server; tracing (OpenTelemetry GenAI conventions); masking through C733's index (C745's shapes closed first); the eval harness (recorded in CI, live on the host) with a golden dataset from real lab incidents; the cost dashboard | the red-team set (IBN_DESIGN section 13: "I'm an admin", "ignore previous instructions", role-play, data-borne injections, link exfiltration) passes with zero unauthorised tool calls, proposals and external links, recorded in CI and live on the host; every tool re-checks `may` as the person and a denial is audited (shown by test); a viewer's session holds no `propose_*` tool and a misclassified change still changes nothing (shown by test); every tool call recorded as the asking person; no tool approves or reveals; the gateway refuses at a cap; masking shown on planted secrets of every shape; every tool read-only but `propose_*` (shown by test); a recorded and a live eval run end to end; the dashboard shows a test feature's cost per use |
+| **8.0 Foundations** (no user-facing AI; **E18, the records database, is its prerequisite**, decision 8). ***Amended 2026-10-18 (the operator, section 13.2):* 8.0 shrinks to what feature 1 needs end to end; each other piece below arrives with the first feature that needs it. Whether feature 1 needs E18 is reported in 13.2, not decided.** | roles from sign-in and `TOOLS_BY_ROLE` (IBN_DESIGN section 12), every tool bound on behalf of the asking person and filtered to their scope; the change-request queue and its board (viewer asks → flagged → filed → approver's queue → approve or decline); the security row for repeated or injection-like attempts; separation of duties per network; the gateway (provider-agnostic, Anthropic first, exact model versions pinned; a per-network switch, cost caps; the built-in local model behind the same gateway, section 10; *2026-10-16, offline-first: the local profile first and required, a hosted provider optional, section 12*); the prompt registry; the schema library; the MCP tool server; tracing (OpenTelemetry GenAI conventions); masking through C733's index (C745's shapes closed first); the eval harness (recorded in CI, live on the host) with a golden dataset from real lab incidents; the cost dashboard | the red-team set (IBN_DESIGN section 13: "I'm an admin", "ignore previous instructions", role-play, data-borne injections, link exfiltration) passes with zero unauthorised tool calls, proposals and external links, recorded in CI and live on the host; every tool re-checks `may` as the person and a denial is audited (shown by test); a viewer's session holds no `propose_*` tool and a misclassified change still changes nothing (shown by test); every tool call recorded as the asking person; no tool approves or reveals; the gateway refuses at a cap; masking shown on planted secrets of every shape; every tool read-only but `propose_*` (shown by test); a recorded and a live eval run end to end; the dashboard shows a test feature's cost per use |
 | **8.1 Assure** | the deterministic verifier model and compliance status first (history on E18); then, where cards justify it, natural-language questions → PromQL or LogQL read back by the E3/F3 builder before running, and alert correlation over deterministically grouped alerts | the verifiers' statuses on the host match the readers'; each AI feature past its observe threshold, or killed |
-| **8.2 Respond, observe** | the golden state rule's maintainer (IBN_DESIGN section 11): no baseline, no autonomy; convergence of the deviating lines only; the operational catalog; holds, windows and Capture-or-Revert for attributed drift; its state on Needs attention and each device page (a board first). All in observe mode ("would have converged"), on the deterministic policy engine (rotation's pattern). Plus AI root-cause proposals for novel deviations, approved by a person; incident record drafts; AI classification of deliberate vs unexplained drift, with evidence | each class's false-positive rate measured over its period; no convergence would have touched a secret line, the management path or routing; root-cause proposals' confirmed-true rate measured |
+| **8.2 Respond, observe** (***moved in part, 2026-10-18 (the operator):*** *the deterministic observe-mode part moves into Core 1.0's tail: the maintainer's "would have converged" records, the false-positive count per class, and lab-only drift drills labelled as drills (NSOT_PLAN section 9, "The path after Phase 7", item 3). What stays here is the AI part: root-cause proposals, incident drafts and drift classification. Enabling a class stays in 8.3.*) | the golden state rule's maintainer (IBN_DESIGN section 11): no baseline, no autonomy; convergence of the deviating lines only; the operational catalog; holds, windows and Capture-or-Revert for attributed drift; its state on Needs attention and each device page (a board first). All in observe mode ("would have converged"), on the deterministic policy engine (rotation's pattern). Plus AI root-cause proposals for novel deviations, approved by a person; incident record drafts; AI classification of deliberate vs unexplained drift, with evidence | each class's false-positive rate measured over its period; no convergence would have touched a secret line, the management path or routing; root-cause proposals' confirmed-true rate measured |
 | **8.3 Respond, enabled per class** | convergence and catalog classes enabled once observe mode meets the threshold; a verified action re-earns the baseline; AI selection only among actions that leave the golden state unchanged, if decision 9 is confirmed, after its own observe period | each enabled class within its rate and with no rail breached for its period |
 | **8.4 Activate** | commit-triggered deploys in change windows, canary then fleet (deterministic, on rotation's scheduler) | a canary failure stops the fleet (shown on the lab); a management-path commit waits for a person |
 | **8.5 Translate** | the network intent model and its deterministic compiler, first scoped to management-plane services (decided 2026-10-13), the policy-conflict layer, intent authorisation (scopes: network, site, device role), pre-change verification (Batfish for routing-affecting changes, and Mercury's IOS checks for every change; a single-node containerlab twin booted with the candidate configuration for startup-configuration, credential and AAA, and platform-upgrade changes, queued 2026-10-13, IBN_DESIGN section 9); then the 8-step natural-language → intent pipeline (IBN_DESIGN section 8), AI writing intent only; template drafting for new platforms, accepted only by round trip | the compiler's round trip on the lab's real intent; a conflict and an unauthorised intent each refused by name; the pipeline's acceptance rate at target |
@@ -222,7 +222,7 @@ section 12.2 audits the ten.
 | The gateway | AI off per network by default; a global monthly cap of $50 and $25 per network; per-feature monthly caps of $5 (features 1, 2, 3, 4, 8) and $10 (features 5, 6, 7, 9, 10) | lab scale; a cap reached refuses the next call, by name |
 | Per-use budgets | as section 6's table, enforced by the gateway (a use over its token budget stops and reports) | each card's measured minimum context times 1.5 will replace the table's estimate |
 | Agent loops | at most 8 tool calls by default, 60 s wall time and the feature's token budget per run; a feature may raise the 8 only where its eval shows the need (decided 2026-10-13) | a run that hits a cap stops and reports |
-| Model tiers | small by default (Claude Haiku 5.5); medium (Claude Sonnet 5.5) only where the eval shows the small tier misses its target; large (Claude Opus 5.5) never by default; **exact model versions pinned, and any model change re-runs the full eval suite** (decided 2026-10-13); Anthropic first behind the provider-agnostic client; the built-in local model (section 10) offered beside it, only where it passed the eval, its score shown beside the hosted one. *Amended 2026-10-16 (the operator, offline-first, section 12.1): every feature must pass on the local profile; a hosted tier is optional and may improve a result, never the only working path* | the smallest that meets the target |
+| Model tiers | small by default (Claude Haiku 5.5); medium (Claude Sonnet 5.5) only where the eval shows the small tier misses its target; large (Claude Opus 5.5) never by default; **exact model versions pinned, and any model change re-runs the full eval suite** (decided 2026-10-13); Anthropic first behind the provider-agnostic client; the built-in local model (section 10) offered beside it, only where it passed the eval, its score shown beside the hosted one. *Amended 2026-10-16 (the operator, offline-first, section 12.1): every feature must pass on the local profile; a hosted tier is optional and may improve a result, never the only working path.* **Amended 2026-10-18 (the operator, section 13.1):** features are built and accepted on Anthropic, Haiku 5.5 by default and Sonnet 5.5 where the eval shows the need, exact versions pinned. The local profile is the release gate (Stage 10), never a build condition | the smallest that meets the target |
 | Evals | at least 30 golden cases per feature before observe mode; labelled replayed or synthesised cases allowed, with **at least 10 real cases per feature** (decided 2026-10-13); a prompt or model change merges only when the live score stays at or above target | measured, not argued |
 | Observe mode | at least 30 days AND the card's minimum uses (50 for frequent features, 20 for rare) | enough uses to measure a rate |
 | Kill | below the card's floor after its uses, or cost per accepted output above 2× budget, or (for features 4 and 7) one out-of-scope result reaching execution or confirm | removed, not left running |
@@ -478,6 +478,12 @@ the same OpenAI-compatible adapter as a hosted OpenAI-compatible provider (10.3)
   operator's action in the wizard.
 
 ### 10.5 Hardware tiers, chosen by the wizard's hardware check (PROPOSED)
+
+*Note, 2026-10-18 (the operator):* the installation's tiers are the charter's: Minimum (4 vCPU,
+8 GiB), Standard (4 to 8 vCPU, 16 GiB) and Large (16 or more vCPU, 32 GiB or more). **The local
+model belongs to Large.** The model tiers below are which model a Large host admits. A Minimum or
+Standard host admits no local tier. It follows 12.1's rule for such a host: AI off by default,
+and hosted AI allowed by an admin's recorded setting. Hosted AI adds no hardware.
 
 The wizard measures free RAM (MemAvailable with the whole stack running), the CPU's features
 (AVX2, AVX-512, AMX) and its speed (a 30-second test of prompt and generation tokens per second),
@@ -812,6 +818,12 @@ NetOps** builds the standard every kit runs, and **the operator** is this projec
 
 ### 12.1 The rule: offline-first is an acceptance rule for all of Phase 8 (DECIDED, the operator, 2026-10-16)
 
+> **Amended 2026-10-18 (the operator; section 13.1): from a build rule to a RELEASE GATE.**
+> Phase 8's features are built and accepted on Anthropic. Every feature must pass on the local
+> profile before the public release (Stage 10), never before it is built. The rest of this
+> section stands as the gate's content. The gateway stays provider-neutral, and the
+> OpenAI-compatible adapter for `llama-server` stays in the design.
+
 - **Every AI feature works fully with the local profile and no network.** The local profile is
   llama.cpp's `llama-server` reached through 10.3's OpenAI-compatible adapter, serving a US-origin
   model only (10.2). Its file is in place by 10.4's import path, and the server is bound to
@@ -875,21 +887,26 @@ Every feature's inputs and tools are already local:
 
 **The data path is therefore never what fails. The model path and the budgets are.**
 
-| Feature (where planned) | In and out vs the local context (8k) | Latency budget vs 10.8's estimate | Today, as written | What it needs to pass |
+*Amended 2026-10-18 (the operator; section 13.1):* each row once marked "fails" is now a
+**release-gate row**. The feature is built and accepted on Anthropic. What its last column names
+must pass on the local profile before the public release (Stage 10), never before the feature is
+built.
+
+| Feature (where planned) | In and out vs the local context (8k) | Latency budget vs 10.8's estimate | Against offline-first | What it needs to pass the release gate |
 |---|---|---|---|---|
-| 1. Natural language → PromQL or LogQL (section 6; 8.1), and its extension to Mercury's records and NetBox inventory (11.9) | 2k + 200: fits | 3 s: far below the estimate | **fails** | a latency budget the local small tier meets, measured (12.6, measurement 1); its eval, consistency and red-team runs on the local profile |
-| 2. Alert correlation (8.1) | 3k + 400: fits | 5 s: far below | **fails** | the same as 1 |
-| 3. Incident record draft (8.2) | 5k + 600: fits | 15 s: unmeasured | **fails** | a measured local latency; its eval on the local profile |
-| 4. AI catalog selection (8.3) | 3k + 300: fits | 5 s: far below | **fails** | the same as 1. Section 7's 95% agreement over 100 selections is measured on the local model itself; a hosted model's agreement does not carry over |
-| 5. Root-cause proposal (8.2) | 15k + 1.5k: **exceeds** | 60 s: unmeasured | **fails** | one of: a measured minimum context (section 4) small enough to fit; or a larger local context, its memory measured against section 7's 20% reserve. Plus a local candidate meeting 50% confirmed-true. Its tier is "medium" (a hosted Sonnet), and the large local tier does not fit the lab host (10.8) |
-| 6. A proposed pipeline check (8.2) | 8k + 1k: **exceeds** | 30 s: unmeasured | **fails** | the same as 5 |
-| 7. Natural language → intent (8.5) | 10k + 1.5k: **exceeds** (its few-shot examples count) | 20 s: unmeasured | **fails** | the same as 5 |
-| 8. A verifier draft (8.1) | 4k + 800: fits | 15 s: unmeasured | **fails** | a measured local latency; its eval on the local profile |
-| 9. Inferring higher-level intent (8.5) | 20k + 2k: **exceeds** | 60 s: unmeasured | **fails** | the device set split deterministically (by role or site) so each part fits the local context, or the larger local context as in 5 |
-| 10. Template draft for a new platform (8.5) | 30k + 6k: **far exceeds** | 120 s: unmeasured | **fails** | drafted section by section, since the round trip already compares section by section (`roundtrip.compare`, IBN_DESIGN section 1), each section within the local context; or a large local tier with a long context, which the lab host cannot admit (10.8) |
-| AI classification of deliberate vs unexplained drift (section 5, 8.2) | no card | no card | **fails** (no card, so not built: section 3) | a card, written offline-first from the start |
-| 8.0's gateway | n/a | n/a | **fails** ("Anthropic first") | the local profile as the first and required profile; each hosted adapter optional and off unless configured; 11.8's busy and degraded states naming the local model's own states (not admitted, unloaded, one request at a time) |
-| 8.0's eval harness and red-team set | n/a | n/a | **fails** ("live on the host" names no profile) | the live runs, and the exit criteria's red-team run, made through the local profile, with hosted runs optional beside them |
+| 1. Natural language → PromQL or LogQL (section 6; 8.1), and its extension to Mercury's records and NetBox inventory (11.9) | 2k + 200: fits | 3 s: far below the estimate | **release gate** | a latency budget the local small tier meets, measured (12.6, measurement 1); its eval, consistency and red-team runs on the local profile |
+| 2. Alert correlation (8.1) | 3k + 400: fits | 5 s: far below | **release gate** | the same as 1 |
+| 3. Incident record draft (8.2) | 5k + 600: fits | 15 s: unmeasured | **release gate** | a measured local latency; its eval on the local profile |
+| 4. AI catalog selection (8.3) | 3k + 300: fits | 5 s: far below | **release gate** | the same as 1. Section 7's 95% agreement over 100 selections is measured on the local model itself; a hosted model's agreement does not carry over |
+| 5. Root-cause proposal (8.2) | 15k + 1.5k: **exceeds** | 60 s: unmeasured | **release gate** | one of: a measured minimum context (section 4) small enough to fit; or a larger local context, its memory measured against section 7's 20% reserve. Plus a local candidate meeting 50% confirmed-true. Its tier is "medium" (a hosted Sonnet), and the large local tier does not fit the lab host (10.8) |
+| 6. A proposed pipeline check (8.2) | 8k + 1k: **exceeds** | 30 s: unmeasured | **release gate** | the same as 5 |
+| 7. Natural language → intent (8.5) | 10k + 1.5k: **exceeds** (its few-shot examples count) | 20 s: unmeasured | **release gate** | the same as 5 |
+| 8. A verifier draft (8.1) | 4k + 800: fits | 15 s: unmeasured | **release gate** | a measured local latency; its eval on the local profile |
+| 9. Inferring higher-level intent (8.5) | 20k + 2k: **exceeds** | 60 s: unmeasured | **release gate** | the device set split deterministically (by role or site) so each part fits the local context, or the larger local context as in 5 |
+| 10. Template draft for a new platform (8.5) | 30k + 6k: **far exceeds** | 120 s: unmeasured | **release gate** | drafted section by section, since the round trip already compares section by section (`roundtrip.compare`, IBN_DESIGN section 1), each section within the local context; or a large local tier with a long context, which the lab host cannot admit (10.8) |
+| AI classification of deliberate vs unexplained drift (section 5, 8.2) | no card | no card | **release gate** (no card, so not built: section 3) | a card, written offline-first from the start |
+| 8.0's gateway | n/a | n/a | **release gate** ("Anthropic first") | the local profile as the first and required profile; each hosted adapter optional and off unless configured; 11.8's busy and degraded states naming the local model's own states (not admitted, unloaded, one request at a time) |
+| 8.0's eval harness and red-team set | n/a | n/a | **release gate** ("live on the host" names no profile) | the live runs, and the exit criteria's red-team run, made through the local profile, with hosted runs optional beside them |
 | 8.0's prompt registry, schema library, MCP tool server, masking, cost dashboard | n/a | n/a | passes | none. The dashboard shows zero cost per token for the local profile, and latency and the one-at-a-time queue as its binding budgets (section 7) |
 | 8.0's tracing (OpenTelemetry GenAI conventions) | n/a | n/a | passes, if exported on-premises | an on-premises collector or none; never an external exporter (non-negotiable 6) |
 | 10.7's evaluation | n/a | n/a | passes | none: it already runs every candidate locally through `llama-server` |
@@ -1102,6 +1119,76 @@ it on 2026-10-16 (decision 16). Gap 9 is answered by the operator's own decision
 BRINGUP_FROM_DOCUMENTS's own "Measurements still owed" (its items 1 to 7) stand beside these and
 are not repeated here.
 
+### 12.6a Measurement 1 on the NMAS host at the Minimum shape: the host procedure (written 2026-10-18; NOT RUN)
+
+**The operator's instruction, 2026-10-18:** written as a procedure, and not run. The model's
+download and its licence are the operator's (CLAUDE.md, stop 3), and so is the inference
+server's binary. The Minimum tier is 4 vCPU and 8 GiB (docs/MERCURY_CHARTER.md). The NMAS host
+has 4 vCPU and 15.6 GiB (10.8).
+
+**Before it starts (the operator's):**
+1. **Choose the model.** It comes from 10.2's US-origin list. The smallest are Granite 4.0-H-Tiny
+   and Gemma 4 E4B, so they are the candidates at this shape. Read its licence on the pinned
+   file (12.7), and record the file's sha256.
+2. **Get the binary:** a pinned `llama-server` (llama.cpp, MIT), with its version and sha256
+   recorded.
+3. **Shape the host.** Either:
+   - **(a)** set the NMAS VM to 8 GiB in Proxmox (the operator's change there), restart it, and
+     check `nproc` is 4 and `MemTotal` about 8 GiB; or
+   - **(b)** keep 15.6 GiB and judge Minimum by arithmetic: what the stack uses
+     (`MemTotal - MemAvailable`) plus what the model uses must leave 20% of 8 GiB (1.6 GiB)
+     free (section 7's reserve). Option (a) measures the shape; option (b) only estimates it,
+     and the record says which was used.
+4. **Pick a time** outside the backup window (08:30 to 09:10 UTC) and outside a walk. Nothing
+   in the procedure touches a device.
+
+**The steps (on the NMAS host; every number recorded with its UTC time):**
+1. **The stack's baseline:**
+   - `MemAvailable` from `/proc/meminfo`, every 30 s for 10 minutes, with the whole stack
+     running (Mercury, Prometheus, Loki, Grafana, NetBox, Kea);
+   - `sar -u 30 20` for CPU.
+2. **Start the server:** bound to loopback, with all but one vCPU, the profile's 8k context, and
+   capped so it cannot starve the stack (10.6):
+   `systemd-run --scope -p MemoryMax=<limit> -p CPUQuota=300% llama-server -m <file> --host 127.0.0.1 --port 8081 -t 3 -c 8192`.
+   - The limit is 8 GiB minus the stack's lowest measured use, minus the 1.6 GiB reserve. If
+     that is under the model's file size, stop: it does not fit Minimum, and that is the
+     result.
+   - Record the server's resident size (`ps -o rss`) once it reports ready.
+3. **Prompt and generation speed:**
+   - `llama-bench -m <file> -t 3 -p 512,2048 -n 128`, three repetitions, giving prompt and
+     generation tokens per second;
+   - the same from the server: its `timings` on `/completion` (`prompt_per_second`,
+     `predicted_per_second`).
+4. **Memory with the model loaded:**
+   - `MemAvailable` every 30 s, idle for 5 minutes, then during step 5;
+   - the lowest value against the reserve: 1.6 GiB at the Minimum shape, or under (b), the
+     arithmetic.
+5. **Feature 1's prompt, end to end:**
+   - **The prompt:** its card's shape (section 6, rank 1). That is the system text, the query
+     model's JSON schema, the metric names and labels retrieved for the question's terms from
+     the host's Prometheus (`/api/v1/label/__name__/values`, filtered to the terms), and the
+     question. About 2,000 tokens in, at most 200 out. It is written as a file under `lab/`
+     (lab material, never the product's) before the run, with its token count recorded.
+   - **The run:** five runs of `POST /v1/chat/completions` with the schema as the response
+     format.
+   - **Record for each run:** time to first token, total seconds, prompt and generation tokens
+     per second, whether the output parses against the schema, and whether the five structured
+     outputs are identical (11.1's consistency).
+6. **Stop the server.** Check `MemAvailable` returns to the baseline.
+
+**The result is a row in 12.6's measurement 1**, with:
+- the model and its sha256, the binary's version, and the shape used, (a) or (b);
+- tokens per second (prompt, generation);
+- seconds per answer (median and 95th percentile);
+- the lowest `MemAvailable`;
+- whether it fits Minimum.
+
+The expected reading, from 10.8, is an estimate only: the stack used about 4.3 GiB on
+2026-10-14 (15.6 GiB less 11.3 GiB available), and a small model needs about 5 to 6 GiB. That
+sum, 9.3 to 10.3 GiB, already exceeds 8 GiB before the reserve. If the measurement agrees, the
+local model does not fit Minimum, which is consistent with the charter placing it in Large. The
+measurement decides; the estimate does not.
+
 ### 12.7 Governance (DECIDED, the operator, 2026-10-16)
 
 **Each candidate's licence is read from its own terms, on the pinned file.** The licences are
@@ -1214,3 +1301,187 @@ Each is written in 10.9's form: shown able to fail, with a planted case.
      - two matching regions refuse with a call-in code for the kit operator's role.
    - Planted cases: a resolver that takes the first region, and one that trusts a cited
      location without reading it.
+
+## 13. The amendments of 2026-10-18 (the operator; documents only)
+
+**The operator's message of 2026-10-18 (evening), "the path after Phase 7", part 4.** Documents
+only: nothing is built. Phase 8 comes after Core 1.0 (NSOT_PLAN section 9, "The path after Phase
+7"). A dated note points here from each sentence these amendments change: sections 5, 7, 10.5,
+12.1 and 12.2.
+
+### 13.1 Built on Anthropic; offline-first is the release gate (4a)
+
+- **Phase 8's features are built and accepted on Anthropic,** in the plan's tiers:
+  - Claude Haiku 5.5 by default;
+  - Claude Sonnet 5.5 where the eval shows the need;
+  - exact model versions pinned, and any change re-running the full eval suite (section 7).
+- **Every feature must pass on the local profile before the public release** (Stage 10), never
+  before it is built. 12.1 is the gate's content. 12.2's rows once marked "fails" are its
+  release-gate rows.
+- **The gateway stays provider-neutral:** one adapter per API shape (10.3). The OpenAI-compatible
+  adapter for `llama-server` stays in the design. Only its build waits for the release work.
+- **What stays from 12.1:** with AI off, the deterministic path answers (non-negotiable 3). A
+  host that admits no local tier has AI off by default, with hosted AI allowed by an admin's
+  recorded setting. A classification marking forces it off with no override.
+
+### 13.2 8.0 shrinks to what feature 1 needs (4b)
+
+**8.0 is only what feature 1 (natural language to PromQL or LogQL) needs, end to end:**
+1. **The gateway:**
+   - the Anthropic adapter;
+   - the model profile (data, 10.3);
+   - the pinned model version;
+   - the cost cap: a cap reached refuses the next call, by name (section 7).
+2. **The prompt registry:** prompts are versioned code in `prompts/` (section 4).
+3. **The schema library** (Pydantic).
+4. **Masking** before every prompt (C733's index).
+5. **The eval harness:** recorded responses in CI, live runs on the host (section 4).
+6. **History's record of every prompt and response:**
+   - the masked prompt;
+   - the model and its version;
+   - the raw response;
+   - the structured output;
+   - validation's verdict;
+   - IBN_DESIGN's logging row (one id linking them).
+7. **The red-team cases that apply to a read-only feature,** data-borne injection included:
+   instructions planted in metric labels, label values and log lines that the retrieval returns.
+   The rest of IBN_DESIGN section 13's set arrives with the first feature that can act.
+
+**Arriving later, each with the first feature that needs it:**
+- roles from sign-in;
+- the change-request queue and its board;
+- the MCP tool server;
+- OpenTelemetry tracing;
+- the cost dashboard.
+
+**`TOOLS_BY_ROLE` stays data from the start.** Even feature 1's single read-only retrieval is
+bound through it, so a role model added later changes data, not code.
+
+**Does feature 1 really need E18? Reported, not decided** (the operator: "report whether
+feature 1 really needs it, with the reason. Don't decide it").
+- **What E18 is today, measured 2026-10-18:** the records database (Phase 4) exists.
+  `modules/records_db.py` runs PostgreSQL 18, with its connection test and the Records database
+  card on Settings › Installation. But its `STORES` holds one store only, `receipts`
+  (`records_db.STORES = ("receipts",)`). Acknowledgements, approvals, restart windows, runbook
+  runs and the readers' values are still files.
+- **Why decision 8 made E18 a prerequisite:** IBN_DESIGN decision 8, "History on E18: yes; E18
+  becomes a Phase 8.0 prerequisite", is about **Assure's history**: the verifiers' statuses over
+  time (IBN_DESIGN, Assure "waits on E18"). That is 8.1's verifier work, not feature 1.
+- **What feature 1 itself reads:** Prometheus's metric names and labels, and Loki's stream
+  labels. What it produces is the E3/F3 builder's query model, read back by the builder (built,
+  History › Query). **None of that touches E18.**
+- **Where feature 1 does meet E18:**
+  - (a) **The record of every prompt and response** (item 6 above) needs a store. The charter
+    says Mercury's own records consolidate into ONE store, the database. That points to E18,
+    and E18 can take a new store as it took `receipts`. A file store that History reads (as
+    `credential_changes.jsonl` is today) would also work, and would be a second home to migrate
+    later.
+  - (b) **11.9's extension** of feature 1, to Mercury's records (changes, rotations,
+    approvals), needs those records queryable. In E18 they are not yet: it holds receipts only.
+- **So:** feature 1's first slice, PromQL and LogQL, does not need E18 to work. It needs a home
+  for its prompt record, which the charter's one-store rule would put in E18. 11.9's extension
+  needs E18 holding the record kinds it queries. Which way to go is the operator's.
+
+### 13.3 The order (4c)
+
+1. **Feature 1:** natural language to PromQL or LogQL.
+2. **Feature 7:** natural language to intent.
+3. **The Analysts:** features 2 (alert correlation), 3 (incident drafts) and 5 (root cause).
+4. **Respond's classes, enabled one at a time** as each class's observe data qualifies: 1% false
+   positives or fewer over at least 30 days and 100 events. The observe period itself runs in
+   Core 1.0's tail.
+5. **The rest, as ranked** (section 6).
+
+### 13.4 An output shape on every feature card (4d)
+
+Section 3's card gains a row, **Output shape**:
+
+| Shape | What it is | Features |
+|---|---|---|
+| **A** | plain JSON: translators and choices, and enums such as drift classification | 1, 4, 7 |
+| **B** | JSON whose FIRST field is a short rationale, then the answer fields; never step-by-step reasoning | the Analysts: 2, 5, 9 |
+| **C** | JSON metadata, plus the artifact in a delimited raw block, so code is never escaped inside JSON; the deterministic test or round trip accepts the artifact | 6, 8, 10 |
+
+- **Feature 3's human prose** stays in string fields, and is never compared (11.1 compares
+  structured fields only).
+- **The evidence:**
+  - Tam et al. 2024, "Let Me Speak Freely?" (arXiv 2408.02442): restricting the format hurts
+    reasoning; an answer-before-reason key order turns the reasoning into guessing; JSON helps
+    classification. Hence shape B's rationale first, and shape A for choices.
+  - Aider, 2024-08-14, "LLMs are bad at returning code in JSON": models write worse code when
+    asked to return it inside JSON. Hence shape C's raw block.
+- **Enforced by `tests/test_feature_cards.py`, extended** (11.12): every card names its output
+  shape. A shape B schema's first property is the rationale. A shape C card names its delimiter
+  and the deterministic test that accepts the artifact. Planted cases: a card with no shape, and
+  a shape B schema with the rationale last.
+
+### 13.5 Anthropic's structured outputs (4e)
+
+- **The API carries the schema:**
+  - responses use `output_config.format` with a `json_schema`;
+  - tools use `strict: true`.
+  The prompt never asks for JSON. This replaces 11.12's "constrained decoding" row for the
+  Anthropic adapter. On the local profile the same row is `llama-server`'s grammar (10.6).
+- **Pydantic still validates what the API schema cannot express:**
+  - number ranges;
+  - string lengths;
+  - item counts beyond 0 or 1.
+- **Enums:**
+  - enum values are compared case-insensitively;
+  - no two values of one enum may differ only in case, enforced by the schema library's own
+    test with a planted pair.
+- **A refusal** (`stop_reason` `"refusal"`) and a hit on **`max_tokens`** each land in the
+  error contract (11.4), never in a parser crash. Each has its own error kind, counted on the
+  card's evals (13.9's incidence).
+- **Few-shot and the error contract stay** (11.4).
+- **References are still resolved by code** (11.2). This is a deliberate departure from the
+  course's W9 example, where the model maps names to addresses: here code resolves every name
+  against NetBox and intent, and a zero or several match is code's question.
+
+### 13.6 Every feature's eval set is a versioned, reusable dataset (4f)
+
+- Each case holds its inputs, the expected structured output, and its provenance: real (its
+  source and date), replayed, or synthesised (section 7).
+- Each set is versioned with the feature's prompt and schema, so a change to either names the
+  set version it was scored on.
+- **Why:** the same set later serves as a local model's test set, for the release gate (13.1) and
+  for any 13.7 question. It is never a training set unless 13.7's question is answered yes.
+
+### 13.7 Fine-tuning: unchanged, with one open question for Stage 10 (4g)
+
+- **IBN_DESIGN section 10's "retrieved, never trained" is unchanged.**
+- **Open for Stage 10, decided on local eval data:** whether task adapters are allowed that teach
+  format and skill only, never the network's facts.
+- **If they ever are allowed,** their training data comes only from Mercury's deterministic
+  tools and labelled cases. It never comes from Claude's outputs: Anthropic's commercial terms
+  bar using outputs to train competing models.
+
+### 13.8 Planning discipline (4h)
+
+- **The plan details only the next feature,** feature 1 (13.2).
+- **Later cards keep their numbers** (section 6). No further design is written for them until
+  the slice before them has its measurements.
+- Sections 10 to 12's designs for later features stand as written. They are not extended.
+
+### 13.9 What the CSCI 5280 prototype brings back (part 6)
+
+**The operator's CSCI 5280 Labs 7 and 8** (a natural-language controller, and a closed loop) are
+Phase 8's prototype. They are built in their own repository, with no Mercury code. **They
+bring back numbers, not code**, for each pattern they exercise:
+- **Translator:** Lab 7's natural-language controller;
+- **Decision-maker:** Lab 8's closed loop;
+- **Analyst:** the operator's Lab 6 formatter and summariser, already done.
+
+| What | Measured how | Why Phase 8 needs it |
+|---|---|---|
+| **Consistency** over 5 runs on the structured fields | 11.1's method: the same input 5 times, identical structured output counted | the 95% and 90% floors are set without a measurement on a real task |
+| **Latency** | time to first token and total seconds per call, median and 95th percentile | section 6's budgets (3 to 5 s) are estimates |
+| **Tokens and cost per use** | input and output tokens per call, and the cost at the pinned model's price | section 7's caps ($5 and $10 a month per feature) are estimates |
+| **Schema failures** | outputs that fail validation, per 100 calls, with structured outputs on (13.5) | how often the error contract fires on valid inputs |
+| **Refusal and max_tokens incidence** | `stop_reason` counts per 100 calls | sizes 13.5's error kinds |
+| **Shape A against shape B, for one task** | the same task, the same cases, scored both ways (13.4) | whether a rationale-first field changes accuracy or consistency on Mercury's kind of task |
+
+- **Recording:** each number comes with its model and pinned version, its date and its case
+  count. Each lands in feature 1's card as a prototype measurement, distinct from the card's own
+  eval.
+- **No prototype code or prompt is copied into Mercury.**

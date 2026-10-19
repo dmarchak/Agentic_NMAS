@@ -668,6 +668,22 @@ with a platform DEFINITION (data) and the pipeline that proves it (12.4).
 | **The name: a trademark search** (the operator, 2026-10-04: the product is "Mercury Network Automation Platform", "Mercury" for short) | Before the public release, a search for "Mercury Network Automation Platform" in the software classes (Nice classes 9 and 42), recorded with its date and where it was searched. And the README notes the name's origin: a nod to the first place the author worked as a network engineer |
 | **Rename the internals to Mercury** (the operator, 2026-10-04: house-cleaning, close to the public release, NOT before) | Today's internal names stay `nmas`: modules, scripts, services (`nmas-update`, `nmas-deploy`), paths, settings keys, the `NMAS_*` environment variables. Done near the release as ONE planned change: its own inventory (a scan of every `nmas` name), host steps for every host-installed file and service renamed, with old names kept as aliases for one release and then removed. The user-facing name moves first and separately (NSOT_STAGE7_PLAN 19) |
 
+### 7.4 Hardware tiers: what an install is sized for (the operator, 2026-10-18)
+
+The tiers are the charter's (docs/MERCURY_CHARTER.md, "Hardware tiers"). They replace any
+earlier capacity line, and the release states them:
+
+| Tier | The host | What it runs |
+|---|---|---|
+| Minimum | 4 vCPU, 8 GiB, about 100 GB | an edge kit; about 100 devices |
+| Standard | 4 to 8 vCPU, 16 GiB | about 1,000 devices |
+| Large | 16 or more vCPU, 32 GiB or more | the local model added (PHASE8_PLAN section 10) |
+
+- Core 1.0 fits Minimum, and the release's install check (the first-run wizard, section 5)
+  measures the host against the tiers. Hosted AI adds no hardware.
+- **The device counts are targets until measured** on a fleet of that size. The release
+  statement says which are measured and which are still targets.
+
 ## 8. The repository
 
 ### 8.1 A fresh curated export

@@ -48,7 +48,7 @@ second implementation: Deploy stays `routes/deploy.apply_batch`, Save stays
 | Planned-restart windows and their silences | `modules/restarts.record_planned` (refuses a window after the restart it covers unless a correction), `silence_window` (C1025: Grafana silences per window, plus `SETTLE_SECONDS`), `end_window`, `holding`; `POST /restarts/planned` (`routes/restarts.planned`) | One writer for windows | Unchanged; the guardrails read `holding` |
 | Blast radius | `modules/nsot/blast_radius.radius` (pure) / `for_device` | From committed intent's subnets and this host's addresses: the devices Mercury loses reach to while one restarts; `state` `known` (with `cut`) or `unknown` (with why); a switch's VLAN subnets go down with it; a layer-2-only carrier is not seen (`CAVEAT`) | The management-path guardrail (section 8.3) |
 | Drained | `modules/drained.py` (`ENABLED = False`, C552); [NSOT_DRAINED_DESIGN](NSOT_DRAINED_DESIGN.md) re-labelled by the charter: NetBox's status is the fact | The measured badge is off; the NetBox custom status is designed, not built | The guardrail reads NetBox's status (section 8.4) |
-| Scheduled rotation | `modules/nsot/scheduled_rotation.py` | "Rotate due devices now" and a timer: one at a time, at most K a run, the first failure stops the run, never two runs at once (an exclusive `flock`), never inside `BACKUP_WINDOW` | The bulk form of Rotate, unchanged; its single-run rule is copied (section 7.6) |
+| Scheduled rotation | `modules/nsot/scheduled_rotation.py` | "Rotate due devices now" and a timer: one at a time, at most K a run, the first failure stops the run, never two runs at once (an exclusive `flock`), never inside a no-change window (`no_change_windows`, the installation's setting since C1317) | The bulk form of Rotate, unchanged; its single-run rule is copied (section 7.6) |
 | Fan-out reads | `modules/fanout.read_each`, `MAX_WORKERS = 16` ("a cap and not a measured optimum") | Concurrent reads across devices | The Reload preview's reads; the ceiling on any batch size |
 | Jobs | `modules/nsot/capture_job.start` / `get` (in memory, `KEEP_S` 1800, a restart loses a job and says so) | Every long operation's job | The bulk preview and run are jobs; the run also writes its own record (section 7.7) |
 | Announcements | `modules/invalidation.announce(keys, by, ok)`; `modules/deploy_job` `PROGRESS_KEYS` / `DONE_KEYS` | Panels re-fetch on a key | A run announces per device step and per batch |
@@ -207,7 +207,7 @@ What failure means, per action:
 |---|---|---|
 | Deploy | `CircuitBreaker.counts`: not deployed, or a verify that did not pass (C10) | drifted at apply (C78), program hash moved, held |
 | Reload | `reload_op.run` outcomes `unread`, `no_window`, `not_reloaded`, `not_back`, `unverified`, `differs`; and, in bulk only, a Grafana silence that failed where Grafana is configured (section 8.1) | `moved` (fingerprint changed), `refused` (a gate fails now), `busy` |
-| Save | — | Save keeps going (as `save_op.run` does today): a failed save harms no other device and leaves the device as it was. Its result is partial and says so. Open question 3 asks whether the operator wants Save to stop too |
+| Save | — | Save keeps going (as `save_op.run` does today): a failed save harms no other device and leaves the device as it was. Its result is partial and says so. **Answered (question 3, the operator, 2026-10-18):** Save keeps going, and its partial result says so |
 
 The person can also **Stop after this batch**: no new batch starts; the working devices
 finish. A mutating route, declared in `route_gates.py`, a person only, recorded.
@@ -238,6 +238,7 @@ At most one bulk run of a disruptive action (Reload, Deploy, Re-apply) runs in a
 time, refused by name across processes (`scheduled_rotation`'s exclusive lock, the shape that
 exists). The pair and path guardrails are computed for one run; two runs could each be safe and
 together reload both members of a pair. Save and Change a setting are not limited this way.
+**Decided (question 8, the operator, 2026-10-18):** one disruptive bulk run per network at a time.
 
 ### 7.7 The record
 
@@ -265,6 +266,8 @@ adds no second writer of windows. In bulk, a silence that failed where Grafana i
 counts as a failure and stops the run after that batch: one device alerting is a row, a
 thousand is a storm. "Grafana is not configured for this network" is said on the preview and
 does not stop anything. A Re-apply or Deploy restarts nothing and declares no window.
+**Agreed (question 7, the operator, 2026-10-18):** a failed silence stops a bulk Reload
+(planned-restart windows' silences, C1025), never a single one.
 
 ### 8.2 Never both members of a redundant pair
 
@@ -294,8 +297,9 @@ does not parse is **refused in bulk** ("whether rtr-x has a redundancy peer coul
 <why>"), with its remedy: Seed intent, or reload it alone from its own page.
 
 **What intent cannot show** (said on the preview, as `blast_radius.CAVEAT` is): redundancy
-without a first-hop protocol (two route reflectors, dual-homed links, a stack). Open question 1
-asks for a declared redundancy group for those.
+without a first-hop protocol (two route reflectors, dual-homed links, a stack). **Answered (question 1, the operator,
+2026-10-18):** a redundancy group is declared in NetBox, as a custom field or tag naming the group.
+NetBox owns identity and role.
 
 ### 8.3 Never the management path's device alongside others
 
@@ -314,9 +318,8 @@ alone. When every device's radius is unknown, every batch is one device, and the
 so with the reason.
 
 **The layer-2 gap:** a switch carrying the management VLAN with no address in it is not seen
-(`blast_radius.CAVEAT`). Open question 2 asks for a declaration for it (a NetBox tag, or a
-committed intent key), which may only ADD a device to the path set, never remove one the
-measurement found. CLAUDE.md's rule that "a change to the path the tool reaches a device on
+(`blast_radius.CAVEAT`). **Answered (question 2, the operator, 2026-10-18):** a declaration in NetBox, as for redundancy,
+which may only ADD a device to the path set, never remove one the measurement found. CLAUDE.md's rule that "a change to the path the tool reaches a device on
 needs a repair route independent of that path" applies: the preview of a run that includes a
 path device names the repair route (console, out-of-band) as the person's to confirm in the
 reason, not Mercury's to provide.
@@ -327,8 +330,8 @@ reason, not Mercury's to provide.
   makes NetBox's status the fact. Once C551's custom status exists, a device NetBox calls
   drained is **left out of a bulk action by default** (someone took it out of service on
   purpose; its runbook, P.22, brings it back), named, with "Include drained devices" offered
-  with a stated reason. Until then nothing is called drained. Open question 4 asks whether the
-  operator reads drained the other way (the safest to reload).
+  with a stated reason. Until then nothing is called drained. **Answered (question 4, the operator,
+  2026-10-18):** left out by default, as designed.
 - **Another planned-restart window** covering a device now (`restarts.holding`): left out,
   naming the window's declarer and end.
 - **Held** at the preview (`device_ops.busy_text`): left out, naming the holder; at its batch's
@@ -336,10 +339,9 @@ reason, not Mercury's to provide.
 - **No-change windows**: no batch starts inside one, and no batch starts that its estimated time
   (the wait bound plus the read and verify) would carry into one; the run ends there as
   "stopped: a no-change window begins at 02:00 UTC", the rest not attempted, with Plan the rest….
-  Today the one such window is a constant in the scheduled rotation
-  (`scheduled_rotation.BACKUP_WINDOW`, 08:30 to 09:10 UTC), a lab fact in product code; the
-  frame needs it as a network setting (`no_change_windows`, default empty) that the rotation
-  reads too: one home. Open question 5.
+  **Answered (question 5) by C1317, 2026-10-18:** the windows are the installation's setting,
+  `no_change_windows` (`modules/change_windows.py`), empty by default. The scheduled rotation
+  already reads it, and a bulk run reads the same one home. The constant left the product.
 - **The person's own window**: "start batches until" on the confirm, judged the same way.
 
 ### 8.5 The maximum blast radius per batch
@@ -349,7 +351,8 @@ Three bounds, each drawn on the preview with its value:
 1. **The batch size** (section 7.1).
 2. **At most a quarter of any site-and-role group in one batch** (rounded down, at least one):
    four access switches at a site go one at a time; forty go ten at a time if the batch size
-   allows. A placeholder named as one; open question 6.
+   allows. A placeholder named as one on the preview, until measured (question 6, the operator,
+   2026-10-18).
 3. **Path devices alone** (8.3) and **redundant members apart** (8.2).
 
 ### 8.6 The batch planner
@@ -418,6 +421,23 @@ model, not this); rollback of a reload (none exists); bulk Retire, Re-key, Mode 
 image upgrade (a reload with a new boot file is NSOT_REVERT_BY_RELOAD's and a later design's).
 
 ## 12. Open questions for the operator
+
+**ANSWERED by the operator, 2026-10-18 (evening). The build waits for Core 1.0's order.**
+1. **Redundancy without a first-hop protocol:** declared in NetBox, as a custom field or tag
+   naming the redundancy group. NetBox owns identity and role.
+2. **The layer-2 management-path gap:** an add-only declaration, in NetBox as in 1.
+3. **Save after a failure:** Save keeps going (today's behaviour), and its partial result says so.
+4. **Drained devices:** left out of bulk actions by default, as designed.
+5. **No-change windows:** answered by C1317. They are the installation's setting,
+   `no_change_windows` (`modules/change_windows.py`), none by default.
+6. **The per-batch bounds:** a canary of 1, then 6, a ceiling of 16, and a quarter of a
+   site-and-role group. These are placeholders until measured, and the preview names them as
+   placeholders.
+7. **Agreed:** a failed Grafana silence stops a bulk Reload (planned-restart windows' silences,
+   C1025). It does not stop a single Reload.
+8. **One disruptive bulk run per network at a time.**
+
+The questions as they were asked:
 
 1. **Redundancy without a first-hop protocol** (route reflectors, stacks, dual-homed pairs):
    declare a redundancy group, and where: a NetBox tag or custom field (NetBox owns identity and

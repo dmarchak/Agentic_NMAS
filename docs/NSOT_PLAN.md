@@ -912,6 +912,52 @@ Part 1 is submitted. Phases 0–3c and 2b are built; Phase 4 and 5 are not.
 next.** Section 6 still describes what each phase *is*; this describes the
 order the remaining work happens in, and what "done" means for each stage.
 
+### The path after Phase 7 (the operator's decision, 2026-10-18)
+
+Phase 7 closed on 2026-10-18 (docs/PHASE7_CLOSE.md). This is the order of everything after it.
+It lives here, in the plan's one home for sequence; there is no separate roadmap file. Where an
+older paragraph below orders the work otherwise, this governs.
+
+1. **Core 1.0: a complete, defined program before any AI.**
+   - Core 1.0 is a fixed list of capabilities the operator signs off, plus no open A or B.
+   - **It is never "the register is empty."** On Phase 7's last day the count went from 512 to
+     532 while about 20 rows closed, so a finish defined by the register never arrives.
+   - **After sign-off its scope is frozen.** A new request goes to a post-1.0 list unless it is
+     an A or a B.
+   - The candidates, measured, and the proposed list are docs/COMPLETION_INVENTORY.md. The
+     inventory's triage and the sign-off are the operator's (CLAUDE.md, the operating mode).
+2. **Core 1.0 is built in lab-deadline order where a course lab needs an item** (CLAUDE.md: a
+   course lab's due date counts as a dependency):
+   1. ZTP, for 5840 Labs 8 and 9;
+   2. troubleshooting capability, for Lab 10;
+   3. then the rest by dependency.
+   The handouts are still locked. When the operator supplies one, its objectives are mapped in
+   docs/LAB_REQUIREMENTS.md.
+3. **Core 1.0's tail starts deterministic Respond in OBSERVE mode only:** "would have fixed"
+   records, no class enabled, no AI. Its clock (30 days and 100 events per class, PHASE8_PLAN
+   section 7) then runs while Phase 8 is built. **What moves into Core 1.0** (from PHASE8_PLAN
+   8.2, the operator, 2026-10-18):
+   - the golden-state maintainer's "would have converged" records (IBN_DESIGN section 11), on
+     the deterministic policy engine;
+   - the false-positive count per class;
+   - lab-only drift drills, each labelled a drill and never counted as production evidence.
+   **Enabling any class stays in Phase 8 (8.3),** under its existing thresholds: 1% false
+   positives or fewer over at least 30 days and 100 events.
+4. **Phase 8 (AI), on Anthropic, one complete feature first:** natural language to PromQL or
+   LogQL (PHASE8_PLAN, amended 2026-10-18).
+5. **Stage 10, the public release.**
+   - **Offline-first becomes its release gate:** every AI feature passes on the local profile
+     before the public release (PHASE8_PLAN 12.1).
+   - Then: the local model, other providers, sign-in and roles, OpenBao, the edge-kit manager
+     and multi-vendor.
+   - SDN last.
+6. **In parallel, outside this repository:** the operator's CSCI 5280 Labs 7 and 8 (a
+   natural-language controller, and a closed loop) are Phase 8's prototype. They are built in
+   their own repository, with no Mercury code. PHASE8_PLAN section 13 says what they bring back.
+
+**Hardware:** Core 1.0 must fit the charter's Minimum tier (4 vCPU, 8 GiB, about 100 GB;
+docs/MERCURY_CHARTER.md, "Hardware tiers").
+
 ### Standing rules
 
 These are not aspirations. Each one is here because ignoring it cost real

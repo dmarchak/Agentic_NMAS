@@ -45,6 +45,23 @@ The operator's decision, 2026-10-18 (it replaces "its remote chosen by the deplo
 
 What still assumes a remote, each place marked fine or must change, is `docs/REMOTE_OPTIONAL.md`.
 
+## Hardware tiers (the operator, 2026-10-18)
+
+| Tier | The host | What it runs |
+|---|---|---|
+| **Minimum** | 4 vCPU, 8 GiB, about 100 GB | an edge kit; about 100 devices |
+| **Standard** | 4 to 8 vCPU, 16 GiB | about 1,000 devices |
+| **Large** | 16 or more vCPU, 32 GiB or more | Standard's fleet, and the local model (PHASE8_PLAN section 10) |
+
+- **Core 1.0 must fit Minimum.**
+- **Hosted AI adds no hardware.** The local model is what needs Large.
+- **The device counts are targets, not measurements,** until a fleet of that size is run on
+  that tier. Each is replaced by its measurement when one is taken.
+- **The lab's NMAS host is a Standard host:** 4 vCPU and 15.6 GiB (PHASE8_PLAN 10.8, measured
+  2026-10-14), with 11 devices.
+- These tiers replace any earlier capacity line. The Stage 10 plan's install sizing points here
+  (NSOT_STAGE10_PLAN section 7.4).
+
 ## New devices: Mercury is a front door to NetBox, never a second inventory
 
 A device exists in NetBox before Mercury touches it, by one of two entry points:
