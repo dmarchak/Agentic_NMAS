@@ -1597,7 +1597,11 @@ def _device_id_from(created: dict, hostname: str):
     existed and nothing could write it. The `next_ts` shape, in the identity
     map.
     """
-    for entry in (created.get("dcim/devices") or []):
+    from modules.netbox_guard import live_created
+
+    # Never a retired device's entry (C1342): a device of the same name that was retired kept
+    # its record, and its id must not be written into the new device's manifest.
+    for entry in live_created(created.get("dcim/devices") or []):
         if (entry.get("name") or "").lower() == hostname.lower():
             return entry.get("id")
     return None
@@ -2121,8 +2125,11 @@ def _abandon_onboarding(repo: str, hostname: str, list_name: str, *,
     if remover is None:
         from modules.netbox_client import remove_device_from_netbox as remover
     try:
+        # By the id onboarding recorded (C1342): the remover never deletes by name.
+        extra = ({"netbox_id": entry["netbox_id"]}
+                 if (entry or {}).get("netbox_id") not in (None, "") else {})
         nb = remover(list_name, hostname, dry_run=dry_run, actor=actor,
-                     authority=f"Abandon by {actor or 'unknown'}") or {}
+                     authority=f"Abandon by {actor or 'unknown'}", **extra) or {}
         if nb.get("ok"):
             # The remover's own sentence rides along: "0 removed, 0 left
             # alone" alone could not say WHY there was nothing (R1's

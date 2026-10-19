@@ -987,16 +987,21 @@ def heartbeat_windows(ctx):
     events = []
     for r in reversed(got["rows"]):
         windows = r.get("windows") or {}
-        ours = sorted(d for d in windows if _ours(ctx, d))
+        # A retirement's removal of one device's rule (C1338) names the device it removed.
+        removed = [d for d in r.get("removed") or [] if d]
+        ours = sorted(d for d in set(windows) | set(removed) if _ours(ctx, d))
         if not ours or not _recent(ctx, r.get("at")):
             continue
         events.append(_event(r.get("at"), "heartbeat",
-                             f"Heartbeat windows re-measured: {r.get('changes', 0)} changed",
+                             (f"Heartbeat rule removed: {', '.join(removed)}" if removed else
+                              f"Heartbeat windows re-measured: {r.get('changes', 0)} changed"),
                              ours, who=r.get("actor", ""),
-                             detail="written for Grafana's next restart (its host step)",
+                             detail=((r.get("why") or "retired") + "; " if removed else "")
+                             + "written for Grafana's next restart (its host step)",
                              outcome="done",
                              record=[("File", r.get("path"))]
-                             + [(d, f"{windows[d]} s" if windows[d] else "no window")
+                             + [(d, "rule removed" if d in removed else
+                                 f"{windows[d]} s" if windows[d] else "no window")
                                 for d in ours]))
     return _out(events[:ctx["limit"]])
 
@@ -1037,6 +1042,8 @@ def topology_layout(ctx):
                            + (f" to ({to[0]}, {to[1]})" if len(to) == 2 else "")
                            + ", the network's layout saved for everyone"
                            if r.get("action") == "moved" else
+                           f"{device}'s place removed from Topology's layout: it was retired"
+                           if r.get("action") == "forgot" else
                            "Topology's layout reset: the generated one drawn for everyone",
                            [device] if device else [], who=r.get("actor", ""),
                            record=[("Action", r.get("action")), ("Device", device),

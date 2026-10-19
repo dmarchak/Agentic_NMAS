@@ -69,7 +69,9 @@ class TestNetBoxStoredCredentials:
     def test_a_held_credential_is_masked_FIRST_when_writes_are_on(self, nb):
         p = RT.plan("Lab", "r5", "left management")
         assert p["ok"], p["refusals"]
-        assert _pending(p) == ["netbox_mask", "commit", "row"], _pending(p)
+        # With writes on, retire also sets NetBox's record Decommissioning and renames it
+        # (C1342), after the commit; the mask is still FIRST.
+        assert _pending(p) == ["netbox_mask", "commit", "netbox_record", "row"], _pending(p)
         step = next(s["what"] for s in p["steps"] if s["key"] == "netbox_mask")
         assert "NetBox device 9" in step and "read back" in step
         assert COMMUNITY not in str(p), "the plan names the slot kinds, never a value"
@@ -79,7 +81,10 @@ class TestNetBoxStoredCredentials:
         out = _retire(p)
         assert out["ok"], out
         assert out["done"][0] == "netbox_mask" and "commit" in out["done"]
-        assert [x[0] for x in nb["fake"].patches] == ["dcim/devices"]
+        # The mask, then (C1342) the record set Decommissioning and renamed, after the commit.
+        assert [x[0] for x in nb["fake"].patches] == ["dcim/devices", "dcim/devices"]
+        assert nb["fake"].patches[1][1:] == (9, {"status": "decommissioning",
+                                                 "name": "r5-retired-9"})
         held = str(nb["fake"].store["dcim/devices"][0]["local_context_data"])
         assert COMMUNITY not in held
         # Resumable: planning again finds nothing left to mask.
@@ -241,9 +246,13 @@ class TestWhatStillWatchesIt:
         p = RT.plan("Lab", "r5", "x y z")
         assert [w["what"] for w in p["generated"] if "heartbeat" in w["what"]] == [
             "its Grafana heartbeat rule (window 915 s)"]
+        # Retirement now removes the rule itself (C1338): the plan says so, with the host step
+        # that installs the file, and the step is one to do.
         how = self._kind(p, "generated", "heartbeat")
-        assert "leaves with this commit" in how and "EXTRA until the windows are re-measured" in how
-        assert "its Grafana heartbeat rule (window 915 s): generated" in " ".join(p["not_doing"])
+        assert "removed by this retirement from the generated rules file" in how
+        assert "sudo install -m 0644" in how and "names it EXTRA" in how
+        assert "its Grafana heartbeat rule (window 915 s): removed" in " ".join(p["not_doing"])
+        assert any(s["key"] == "heartbeat" and not s["done"] for s in p["steps"])
 
     def test_no_rule_is_said_as_read(self, world, tmp_path, monkeypatch):  # noqa: F811
         self._rules(tmp_path, monkeypatch, ["r4"])

@@ -1053,7 +1053,9 @@ def deploy_source(read=None, saves=None) -> dict:
         return source_result("deploys", "Deploys and restores", read_at=started, took_ms=took,
                              error=f"the deploy receipts could not be read ({got.get('error')})")
     latest = {}
-    for r in got.get("rows") or []:                # newest first
+    # A retired device's receipts are not a new device's of the name (C1334): only receipts
+    # after the name's newest retirement are the device's now (they stay on History).
+    for r in receipts.current_rows(lst, got.get("rows") or []):       # newest first
         latest.setdefault(r.get("device") or "?", r)
     rows, pending_named, saved_later = [], 0, 0
     # Read only when a device's one fault is the save: one read of one record, not per device.
@@ -3032,7 +3034,9 @@ def _pending_receipts_of(list_name: str) -> list:
     from modules.nsot import receipts
 
     got = receipts.read(list_name, limit=10 ** 6)
-    return [r for r in got.get("rows") or [] if receipts.is_pending(r)]
+    # A retired device's are not a new device's of the name (C1334).
+    return [r for r in receipts.current_rows(list_name, got.get("rows") or [])
+            if receipts.is_pending(r)]
 
 
 def adjacency_source(cached=None) -> dict:

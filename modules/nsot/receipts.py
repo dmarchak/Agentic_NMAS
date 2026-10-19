@@ -433,6 +433,22 @@ def read(list_name: str, device: str = "", limit: int = 50) -> dict:
     return {"state": "ok", "rows": list(reversed(rows))[:limit]}
 
 
+def current_rows(list_name: str, rows: list, cut: dict = None) -> list:
+    """*rows* without a RETIRED device's receipts (C1334): a receipt names its device by name,
+    and one written at or before that name's newest retirement in *list_name* was the retired
+    device's, never a new device's of that name. Those stay in the record, read on History;
+    the readers that act for the device now (Needs attention's deploy and authorisation rows,
+    a preview's prior authorisations) read these. *cut*: `retire.retirements`' answer, read
+    here when not given."""
+    from modules.nsot import retire
+
+    cut = retire.retirements(list_name) if cut is None else cut
+    if not cut:
+        return list(rows or [])
+    return [r for r in rows or []
+            if not retire.before_retirement(cut, r.get("device", ""), r.get("at", ""))]
+
+
 def _authorisation_counts(rows: list, want=None) -> dict:
     """``{device: {line: {count, first_at, last_at, last_actor, last_reason}}}``
     from receipt rows given NEWEST FIRST: the one counting both readers use
@@ -479,10 +495,12 @@ def prior_authorisations(list_name: str, device: str, lines=None) -> dict:
         return {"state": got["state"], "lines": {}}
     want = set(lines) if lines is not None else None
     # The preview's shape, unchanged: `first_at` is the page's, and a key the
-    # preview carries and does not draw would be a new undrawn field.
+    # preview carries and does not draw would be a new undrawn field. A retired device's
+    # authorisations are not a new device's of the name (C1334).
+    rows = current_rows(list_name, got["rows"])
     return {"state": "ok",
             "lines": {k: {f: v for f, v in e.items() if f != "first_at"}
-                      for k, e in _authorisation_counts(got["rows"], want).get(device, {}).items()}}
+                      for k, e in _authorisation_counts(rows, want).get(device, {}).items()}}
 
 
 def authorisations_by_device(list_name: str) -> dict:
@@ -492,4 +510,5 @@ def authorisations_by_device(list_name: str) -> dict:
     got = read(list_name, limit=10 ** 6)
     if got["state"] != "ok":
         return {"state": got["state"], "error": got.get("error", ""), "devices": {}}
-    return {"state": "ok", "error": "", "devices": _authorisation_counts(got["rows"])}
+    return {"state": "ok", "error": "",
+            "devices": _authorisation_counts(current_rows(list_name, got["rows"]))}

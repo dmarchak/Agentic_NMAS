@@ -227,6 +227,80 @@ def apply(fingerprint: str, actor: str, H=None, installed_path: str = "") -> dic
             "recorded": recorded, "host_step": host_step(fresh["written_path"], installed_path)}
 
 
+def drop_plan(hostname: str, H=None, written_path: str = "", installed_path: str = "") -> dict:
+    """What removing *hostname*'s rule from the generated rules would do, reading only
+    (retirement, C1338): the rules are read from the file written for installing (the
+    script's OUT) when there is one, else from the file Grafana loads. ``{"state", "window",
+    "written_path", "installed_path", "source", "text", "fingerprint", "host_step",
+    "error"}``; *state* is ``names`` (a rule names it: *text* is the file without it),
+    ``none``, ``last`` (it is the only rule: a file with no rules alerts on nothing and is
+    never written), ``absent`` (neither file is here) or ``unreadable``."""
+    import yaml
+
+    H = H or _script()
+    written_path = written_path or H.OUT
+    installed_path = installed_path or INSTALLED
+    out = {"state": "absent", "window": None, "written_path": written_path,
+           "installed_path": installed_path, "source": "", "text": "", "fingerprint": "",
+           "host_step": host_step(written_path, installed_path), "error": ""}
+    source = written_path if os.path.exists(written_path) else installed_path
+    text = _read(source)
+    if text is None:
+        return out
+    out["source"] = source
+    try:
+        doc = yaml.safe_load(text) or {}
+        rules = H.installed(doc)
+    except Exception as exc:                          # noqa: BLE001 - said as unreadable
+        return dict(out, state="unreadable", error=f"{source}: {type(exc).__name__}: {exc}")
+    if hostname not in rules:
+        return dict(out, state="none")
+    out["window"] = rules[hostname][0]
+    if len(rules) == 1:
+        return dict(out, state="last")
+    for group in doc.get("groups") or []:
+        group["rules"] = [r for r in group.get("rules") or []
+                          if (r.get("labels") or {}).get("device") != hostname]
+    new = H.render(doc)
+    return dict(out, state="names", text=new, fingerprint=_sha(new))
+
+
+def drop_device(hostname: str, fingerprint: str, *, actor: str, why: str, H=None,
+                written_path: str = "", installed_path: str = "") -> dict:
+    """Remove *hostname*'s rule as :func:`drop_plan` previewed it: planned again and refused
+    when it moved, written where the re-measure writes (never the installed file, which is
+    root's), and recorded beside the re-measures with who and why. ``{"ok", "error",
+    "path", "host_step", "recorded"}``; the host step installs it, as a re-measure's does."""
+    from modules.filestore import write_atomic
+
+    if not actor:
+        return {"ok": False, "error": "a removal records who made it, and no actor was given"}
+    got = drop_plan(hostname, H, written_path, installed_path)
+    if got["state"] == "none":
+        return {"ok": True, "error": "", "path": got["written_path"], "recorded": False,
+                "host_step": got["host_step"]}
+    if got["state"] != "names" or got["fingerprint"] != fingerprint:
+        return {"ok": False, "error": (
+            f"the heartbeat rules moved since the preview ({got['state']}, "
+            f"{got['fingerprint'] or 'no file'} against {fingerprint}): nothing was written")}
+    os.makedirs(os.path.dirname(got["written_path"]), exist_ok=True)
+    write_atomic(got["written_path"], got["text"])
+    row = {"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "actor": actor,
+           "fingerprint": got["fingerprint"], "path": got["written_path"],
+           "windows": {}, "changes": 1, "removed": [hostname], "why": why}
+    recorded = True
+    try:
+        from modules import records_migrate
+
+        records_migrate.store_append(STORE, _record_path(), row)
+    except Exception as exc:                          # noqa: BLE001 (said: recorded False)
+        log.error("heartbeat rules: %s's rule was removed and the record could not be: %s",
+                  hostname, exc)
+        recorded = False
+    return {"ok": True, "error": "", "path": got["written_path"], "recorded": recorded,
+            "host_step": got["host_step"]}
+
+
 def state(written_path: str = "", installed_path: str = "") -> dict:
     """``{"written", "installed", "pending"}``: whether the file the app wrote
     is the one Grafana loads (by hash). Pending until the host step is done."""

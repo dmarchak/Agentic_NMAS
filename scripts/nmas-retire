@@ -86,6 +86,9 @@ def main() -> int:
     print(f"\nRETIRED {args.device}: done {', '.join(result['done']) or 'nothing (already retired)'}"
           + (f"; commit {result['commit'][:8]}" if result.get("commit") else ""))
     print(f"  break-glass: {(result.get('breakglass') or {}).get('statement', '')}")
+    # The heartbeat rule's host step, among them, when retirement removed its rule (C1338).
+    for a in result.get("advisories") or []:
+        print(f"\nADVISORY: {a}")
     return 0
 
 

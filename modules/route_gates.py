@@ -160,7 +160,7 @@ GATES = {
     "device_v2.revert_confirm": _g(A, "commits the inverse of one intent commit's change from the v2 device page (7.3, board 11; intent_ops.revert_apply, in the list its card carries)"),
     "device_v2.retry_confirm": _g(A, "lifts a blocked change so it may be sent again, with a stated reason, from the v2 device page (7.3, board 11; intent_ops.retry_apply, in the list its card carries)"),
     "device_v2.seed_confirm": _g(A, "commits a device's first full intent, parsed from its committed golden, from the v2 device page (7.3, board 8; seed.apply, in the list its card carries)"),
-    "device_v2.retire_confirm": _g(A, "retires a device from the v2 device page (7.3, board 12; retire.apply, in the list its card carries): removes its intent and golden in a commit, declares its startup unmapped, clears its override and deletes its CSV row against the export log"),
+    "device_v2.retire_confirm": _g(A, "retires a device from the v2 device page (7.3, board 12; retire.apply, in the list its card carries): masks NetBox's stored credentials, clears its overrides and staged credential, removes its Kea reservations, removes its intent, golden and template override in a commit, archives its golden tags and rollback block, withdraws its approval items, rotation-policy memberships, Topology entries and heartbeat rule, sets its NetBox record Decommissioning, forgets its SSH host key and deletes its CSV row against the export log"),
     # Capture (7.1 step 4, C82, C89): Save All is its whole-fleet form, and
     # the old one-click route is gone, because nothing in it asked whether the
     # state being enshrined was the one intended. Today's capture routes (golden.capture_preview

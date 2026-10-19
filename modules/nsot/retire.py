@@ -34,6 +34,19 @@ that stops part way is finished by running it again:
 4. deletes the CSV row, LAST, and only against a break-glass record that
    holds this device's CURRENT credential.
 
+**It leaves nothing a new device of the same name could inherit** (the operator's
+device-lifecycle rule, 2026-10-19; C1332 to C1342): every per-device artefact is removed or
+archived, and the name is free. :data:`STEPS` is the whole list, in order: besides the above,
+the credential overrides at every address the device was known by and its staged credential
+(``staged``), its Kea reservations (``reservations``), its template override (in the commit),
+its golden tags archived under ``retired/`` (``tags``), its rollback block archived in the
+retire commit and cleared (``rolled_back``), its approval-queue items withdrawn
+(``approvals``), its rotation-policy memberships (``rotation_policy``), its Topology
+declaration and place (``topology``), its Grafana heartbeat rule (``heartbeat``) and its
+NetBox record set to Decommissioning and renamed, Mercury's created-object entry marked
+retired (``netbox_record``). Readers keyed by the name (restore points, receipts, rotation
+age) count only what came after the name's newest retirement (:func:`retirements`).
+
 The steps were modelled on r5's retirement (`3592113`, 2026-09-25, the
 operator's model for 7.3): its six `Not-Done:` trailers are the list the
 screen draws before the confirm and again in the result, and the gaps that
@@ -56,8 +69,8 @@ rotated password. Two bases, and each says which it is:
 Either way an export taken before the last rotation does not count.
 
 **What retire does NOT do, stated every time**, because each is correct and
-each looks like an omission unless it is named: the NetBox device stays
-(NetBox records what exists, not what NMAS manages); the device's running
+each looks like an omission unless it is named: the NetBox device stays, set to
+Decommissioning and renamed (NetBox records what exists, not what NMAS manages); the device's running
 configuration is not changed; and a session the app has pooled is not closed by a command
 that runs outside it. (Oxidized's polling was named here until Oxidized was retired, Phase 3,
 2026-10-08; "backups are kept" until today's Backups left, 7.8, 2026-10-15.)
@@ -66,8 +79,9 @@ that runs outside it. (Oxidized's polling was named here until Oxidized was reti
 2026-10-03; `_watchers`): GENERATED, dropped at the next regeneration and
 said with when (Prometheus's scrape targets, generated from the inventory
 when a target directory is set, drop a device with no golden at the
-keeper's next run; the heartbeat rule, generated from committed intent, is
-named EXTRA by the hourly check until the windows are re-measured), and
+keeper's next run; the heartbeat rule leaves the generated rules file with
+retire's own ``heartbeat`` step, and Grafana drops it once the host step
+installs that file), and
 SURVIVES, named with how it is removed (the NetBox device,
 a hand-built dashboard panel, the template's approval).
 """
@@ -83,6 +97,87 @@ log = logging.getLogger(__name__)
 
 class RetireRefused(Exception):
     pass
+
+
+#: Every step retirement can take, in the order `apply` runs them: `plan()["steps"]`'s keys.
+#: The manual's page names each (tests/test_manual.py reads this tuple).
+STEPS = ("netbox_mask", "override", "staged", "reservations", "commit", "tags", "rolled_back",
+         "approvals", "rotation_policy", "topology", "heartbeat", "netbox_record", "legacy",
+         "host_key", "row")
+
+#: The namespace a retired device's golden tags are archived under:
+#: ``retired/<device>/<identity>/<the tag's time>``. Never listed as a restore point.
+ARCHIVE_PREFIX = "retired"
+
+
+def _addr_key(value: str) -> str:
+    """An address as one comparable string: an IPv4 or IPv6 address in its compressed form
+    (``2001:DB8:0::5`` and ``2001:db8::5`` are one address), anything else stripped."""
+    import ipaddress
+
+    text = (value or "").strip()
+    try:
+        return ipaddress.ip_address(text).compressed
+    except ValueError:
+        return text.lower()
+
+
+def retirements_in(repo: str) -> dict:
+    """Every retired name in *repo*, newest retirement each: ``{name lowercased: {"name",
+    "sha", "at", "epoch"}}``, from the retire commits' `Retired-Device:` trailers (one `git
+    log`). A record keyed by a device's NAME (a receipt, a rotation, a tag) from at or before
+    its name's newest retirement is the retired device's, never a new device's of that name
+    (C1332, C1334, C1336). {} when the history cannot be read."""
+    from modules.nsot import repo as R
+
+    rc, out, _err = R.git(repo, "log", "--format=%H%x1f%ct%x1f%cI%x1f%B%x1e",
+                          "--fixed-strings", "--grep=Retired-Device: ")
+    if rc != 0:
+        return {}
+    found = {}
+    for chunk in (out or "").split("\x1e"):
+        parts = chunk.strip().split("\x1f")
+        if len(parts) != 4:
+            continue
+        sha, ct, at, body = parts
+        for line in body.splitlines():
+            key, sep, value = line.partition(": ")
+            if sep and key == "Retired-Device" and value.strip():
+                name = value.strip()
+                if name.lower() not in found:          # newest first
+                    found[name.lower()] = {"name": name, "sha": sha, "at": at,
+                                           "epoch": int(ct)}
+    return found
+
+
+def retirements(list_name: str) -> dict:
+    """:func:`retirements_in` for *list_name*'s repository, found WITHOUT creating the list
+    (C51); {} when it has none."""
+    from modules.config import list_data_path
+
+    repo = os.path.join(list_data_path(list_name), "config_repo")
+    if not os.path.isdir(os.path.join(repo, ".git")):
+        return {}
+    return retirements_in(repo)
+
+
+def before_retirement(cut: dict, name: str, at) -> bool:
+    """Is a record about *name* made at *at* (epoch seconds, or an ISO-8601 UTC string) the
+    retired device's? True when *name* was retired at or after *at*, or *at* cannot be read
+    for a retired name (a record that cannot be dated after the retirement is not the new
+    device's). *cut* is :func:`retirements`'s."""
+    import calendar
+
+    c = (cut or {}).get((name or "").lower())
+    if not c:
+        return False
+    if isinstance(at, (int, float)):
+        return at <= c["epoch"]
+    try:
+        epoch = calendar.timegm(time.strptime(str(at or "")[:19], "%Y-%m-%dT%H:%M:%S"))
+    except ValueError:
+        return True
+    return epoch <= c["epoch"]
 
 
 def _norm(value) -> str:
@@ -170,26 +265,56 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
     rel_golden = f"golden/{hostname}.cfg"
     files = [rel for rel in (rel_intent, rel_golden)
              if os.path.exists(os.path.join(repo, rel))]
-    if row is None and identity is None and not files:
+    # Its per-device template override (C1337): removed in the retire commit, so a new device
+    # of the name is rendered through its platform's template, never the retired one's.
+    try:
+        override_tpl = templates_repo.load_bindings(repo)["overrides"].get(hostname) or ""
+    except templates_repo.BindingsUnreadable as exc:
+        refuse("bindings", str(exc))
+        override_tpl = ""
+    if row is None and identity is None and not files and not override_tpl:
         refuse("present", f"{hostname!r} is not in list {list_name!r}: nothing to retire")
     if hostname in {p.get("name") for p in manifest.pending_devices(repo)}:
         refuse("pending", f"{hostname} is pending onboarding: use abandon, which also "
                "reverses what onboarding created")
 
-    rc, dirty, _e = R.git(repo, "status", "--porcelain", "--",
-                          "host_vars", "golden", ".nsot/manifest.json")
+    watched = ["host_vars", "golden", ".nsot/manifest.json"] + (
+        [_bindings_rel()] if override_tpl else [])
+    rc, dirty, _e = R.git(repo, "status", "--porcelain", "--", *watched)
     if rc != 0 or dirty.strip():
-        refuse("clean", "uncommitted changes under host_vars/, golden/ or the "
-               "manifest would ride into the retire commit: "
-               + (dirty.strip() or "git status failed"))
+        refuse("clean", "uncommitted changes under host_vars/, golden/, the manifest"
+               + (" or templates/bindings.yml" if override_tpl else "")
+               + " would ride into the retire commit: " + (dirty.strip() or "git status failed"))
 
     ip = (row or {}).get("ip") or (entry or {}).get("mgmt_ip") or ""
+    # EVERY address the device was known by (C1340): its row's, its manifest's and the address
+    # ZTP reserved for it, as abandon clears them. An override at an address another device
+    # now has is that device's, and is kept.
     from modules import credentials
+    known = [a for a in dict.fromkeys([ip, (entry or {}).get("mgmt_ip") or "",
+                                       (entry or {}).get("reserved_address") or ""]) if a]
+    overrides, kept_overrides = [], []
     try:
-        has_override = bool(ip) and credentials.has_device_override(ip)
+        for addr in known:
+            if not credentials.has_device_override(addr):
+                continue
+            if addr != ip:
+                from modules import host_keys
+                held_by = host_keys.holders(addr, network=list_name, device=hostname)
+                if held_by["unreadable"]:
+                    raise RuntimeError("whether another device has " + addr + " could not be "
+                                       "told (" + "; ".join(held_by["unreadable"]) + ")")
+                if held_by["others"]:
+                    kept_overrides.append(
+                        f"the credential override at {addr} (the address reserved for "
+                        f"{hostname}) is KEPT: it is now the address of "
+                        + ", ".join(f"{h} in {n}" for n, h in held_by["others"]))
+                    continue
+            overrides.append(addr)
     except Exception as exc:                   # noqa: BLE001
         refuse("credentials", f"the credential store could not be checked: {exc}")
-        has_override = False
+        overrides = []
+    has_override = bool(overrides)
 
     # Scheme 3 (P.5) approves the TEMPLATE, never its devices: releasing one
     # changes no approval. This listed "this withdraws the approval ...
@@ -212,13 +337,52 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
         refuse("netbox_mask", mask["refuse"])
     if mask.get("step"):
         step("netbox_mask", mask["step"], mask["done"])
-    step("override", f"clear the credential override for {ip}"
+    step("override", ("clear the credential override for " + " and ".join(overrides)
+                      + (" (every address it was known by)" if len(overrides) > 1 else ""))
          if has_override else "no credential override to clear",
          not has_override)
+    out["not_doing"] += kept_overrides
+
+    work = {}
+
+    def take(key, facts):
+        """A step from its facts: a refusal by name, what is said as not done, the step."""
+        if facts.get("refuse"):
+            refuse(key, facts["refuse"])
+        out["not_doing"].extend(facts.get("not_doing") or [])
+        if facts.get("step"):
+            step(key, facts["step"], facts["done"])
+        if facts.get("work"):
+            work[key] = facts["work"]
+
+    # Its staged credential and an adoption's sidecar (C1340), as abandon clears them.
+    take("staged", _staged_facts(repo, hostname, row))
+    # Its Kea reservations, ZTP's and the DHCP page's (C1335), before the commit as abandon
+    # removes them first: an address reserved for a device nobody knows refuses the next one.
+    take("reservations", _reservation_facts(list_name, hostname, entry, known))
     step("commit", "one commit: remove " + (", ".join(files) or "(nothing)")
-         + (f" and release identity {identity}" if identity else "")
-         + " -- history keeps both",
-         identity is None and not files)
+         + (f", and its template override ({override_tpl}) from {_bindings_rel()}"
+            if override_tpl else "")
+         + (f", and release identity {identity}" if identity else "")
+         + " -- history keeps all of it",
+         identity is None and not files and not override_tpl)
+    # What is keyed by its NAME and would pass to a new device of the name (C1332 to C1341),
+    # each after the commit: archived or withdrawn, recorded, never deleted unread.
+    take("tags", _tag_facts(repo, hostname, identity or _former_identity(repo, hostname)))
+    take("rolled_back", _rolled_back_facts(repo, hostname))
+    take("approvals", _approval_facts(list_name, hostname, known))
+    take("rotation_policy", _policy_facts(list_name, hostname))
+    take("topology", _topology_facts(list_name, hostname))
+    # Its heartbeat rule never refuses: a rules file that cannot be read is said in what
+    # still watches it (`_watchers`), the hourly check naming the rule EXTRA meanwhile.
+    hb = _heartbeat_facts(hostname)
+    if hb.get("step"):
+        step("heartbeat", hb["step"], hb["done"])
+    if hb.get("work"):
+        work["heartbeat"] = hb["work"]
+    # Its NetBox record and Mercury's created-object entry (C1342).
+    nbr = _netbox_record_facts(list_name, hostname, nb)
+    take("netbox_record", nbr)
     legacy = _legacy_facts(list_name, list_dir, hostname, ip)
     if legacy.get("step"):
         step("legacy", legacy["step"], legacy["done"])
@@ -262,13 +426,18 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
     out["not_doing"] += [n for n in (mask.get("not_doing"), legacy.get("not_doing")) if n]
     # Board 12: what is GENERATED is dropped at its next regeneration, said with when; what
     # SURVIVES is named with how it is removed. Both are the commit's Not-Done trailers too.
-    watchers = _watchers(hostname, ip, list_name)
+    watchers = _watchers(hostname, ip, list_name, hb)
     out["generated"] = [w for w in watchers if w["kind"] == "generated"]
     out["survives"] = [w for w in watchers if w["kind"] == "survives"]
     if nb.get("checked") and nb.get("exists"):
+        renamed = (nbr.get("work") or {}).get("patch") or {}
         out["survives"].insert(0, {
             "kind": "survives", "what": f"the NetBox device {nb['id']}",
-            "how": ("KEPT, its credential masked: delete it in NetBox if it is gone for good"
+            "how": (("KEPT, set to Decommissioning and renamed " + renamed["name"]
+                     + " so the name is free" if renamed else
+                     "KEPT, NOT set to Decommissioning or renamed (NetBox writes are off "
+                     "here), so its name stays taken in NetBox")
+                    + ", its credential masked: delete it in NetBox if it is gone for good"
                     + (" (Mercury created it, so Remove could also delete it, a separate "
                        "decision)" if nb["created_by_nmas"] else
                        " (Mercury did not create it, so Mercury never deletes it)"))})
@@ -296,6 +465,8 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
     if mask.get("advisory"):
         out["advisories"].append(mask["advisory"])
     out["identity"], out["ip"], out["files"] = identity, ip, files
+    out["overrides"], out["template_override"] = overrides, override_tpl
+    out["work"] = work
     out["legacy_path"] = legacy.get("path", "")
     out["breakglass_log"] = (breakglass_logged(list_name, row) if row is not None
                              else {"ok": True, "why": "", "export": None,
@@ -303,8 +474,368 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
     out["hash"] = hashlib.sha256(_norm({
         "steps": out["steps"], "reason": reason, "files": {
             rel: _blob(os.path.join(repo, rel)) for rel in files},
-        "row": bool(row), "identity": identity}).encode()).hexdigest()[:16]
+        "row": bool(row), "identity": identity, "work": work}).encode()).hexdigest()[:16]
     return out
+
+
+def _bindings_rel() -> str:
+    """The template bindings' path in the repository (`templates_repo.bindings_path`'s)."""
+    from modules.nsot import templates_repo as T
+
+    return f"{T.TEMPLATES_REL}/{T.BINDINGS_FILE}"
+
+
+def _identity_slug(identity: str) -> str:
+    """An identity as one ref-name component (``uid:<uuid>`` has a colon, never in a ref)."""
+    import re
+
+    return re.sub(r"[^A-Za-z0-9._-]", "-", identity or "") or "unrecorded"
+
+
+def _former_identity(repo: str, hostname: str) -> str:
+    """The identity *hostname* had before its newest retire commit, for a run finishing a
+    retirement whose commit already released it; "" when there is none."""
+    rec = retired_record(repo, hostname)
+    return _entry_before(repo, rec["sha"], hostname)[0] if rec else ""
+
+
+def _staged_facts(repo: str, hostname: str, row) -> dict:
+    """Its staged credential (`.nsot/staging/credential/<h>.enc`) and an adoption's sidecar
+    (C1340): deleted, as abandon deletes them, only when the staged password is the CSV row's,
+    which the break-glass export holds. A different one is what an interrupted rotation or
+    adoption left, perhaps the only copy of what the device accepts now: refused, naming the
+    recovery. Compared in memory; no value is returned."""
+    import hmac
+
+    from modules.device import open_stored
+    from modules.nsot import adopt as A
+    from modules.nsot import credential_rotation as CR
+
+    rel_enc = f"{CR.STAGING_REL}/{hostname}.enc"
+    rel_side = f"{A.SIDECAR_REL}/{hostname}.json"
+    has_enc = os.path.exists(os.path.join(repo, rel_enc))
+    has_side = os.path.exists(os.path.join(repo, rel_side))
+    if not has_enc and not has_side:
+        return {"step": "no staged credential or adoption sidecar to delete", "done": True}
+    if has_enc:
+        recovery = "scripts/nmas-adopt-recover" if has_side else "scripts/nmas-rotation-recover"
+        try:
+            staged = CR.staged_plaintext(repo, hostname) or ""
+        except Exception as exc:               # noqa: BLE001 - said as the refusal
+            return {"refuse": (f"the staged credential {rel_enc} could not be opened "
+                               f"({type(exc).__name__}), so whether it is the only copy of "
+                               "the device's password cannot be told: could not read is not "
+                               f"nothing there. Settle it with {recovery}, then retire")}
+        current, unopened = open_stored(row) if row else ("", "there is no CSV row")
+        if unopened or not current or not hmac.compare_digest(staged.encode(),
+                                                              current.encode()):
+            return {"refuse": (
+                f"{rel_enc} holds a staged password that is not the CSV row's: an interrupted "
+                + ("adoption" if has_side else "rotation") + " left it, and it may be the "
+                "only copy of what the device accepts now. Settle it with " + recovery
+                + ", then retire")}
+    return {"step": "delete " + " and ".join(x for x in (
+        f"the staged credential {rel_enc} (the same password as the CSV row's, which the "
+        "break-glass export holds)" if has_enc else "",
+        f"the adoption's sidecar {rel_side}" if has_side else "") if x), "done": False}
+
+
+def _dhcp_held(list_name: str) -> list:
+    """Every reservation in Mercury's DHCP subnet files (`dhcp_reservations.held_by_mercury`).
+    A seam: a test plants reservations without Kea's files."""
+    from modules import dhcp_reservations as D
+
+    return D.held_by_mercury(list_name)
+
+
+def _reservation_facts(list_name: str, hostname: str, entry, known: list) -> dict:
+    """Its Kea reservations (C1335): ZTP's (the fragment, by its recorded MAC or its name)
+    and the DHCP page's (Mercury's subnet files, by its name or any address it was known
+    by), each removed by its own writer at apply: ZTP's `write_reservations`, the one
+    abandon uses, and the DHCP page's `dhcp_reservations.apply`, planned here (Kea is asked)
+    and confirmed by its hash. Each records itself in the Kea owner's repository."""
+    from modules import dhcp_reservations as D
+    from modules.list_settings import ListSettingsUnreadable
+    from modules.nsot import ztp
+
+    work = {"ztp": [], "dhcp": []}
+    try:
+        home = ztp.kea_home(list_name)
+    except ListSettingsUnreadable as exc:
+        return {"refuse": (f"whose Kea {list_name} uses could not be read ({exc}), so whether "
+                           f"a reservation is still held for {hostname} cannot be told")}
+    fragment = home["fragment"]
+    mac = ztp._mac((entry or {}).get("mgmt_mac") or "")       # noqa: SLF001 - its one form
+    if fragment:
+        try:
+            held = ztp._read_fragment(fragment)               # noqa: SLF001 - a read
+        except ztp.Refused as exc:
+            return {"refuse": (f"ZTP's reservations could not be read ({exc}), so whether "
+                               f"one is held for {hostname} cannot be told: could not read "
+                               "is not nothing there")}
+        for e in held:
+            if not isinstance(e, dict):
+                continue
+            if (mac and ztp._mac(e.get("hw-address", "")) == mac) or \
+                    (e.get("hostname") or "").lower() == hostname.lower():   # noqa: SLF001
+                work["ztp"].append({"mac": ztp._mac(e.get("hw-address", "")),  # noqa: SLF001
+                                    "address": e.get("ip-address", "")})
+    keys = {_addr_key(a) for a in known}
+    key_of = {v: k for k, v in D.WORDS.items()}
+    not_doing = []
+    for r in _dhcp_held(list_name):
+        if (r.get("hostname") or "").lower() != hostname.lower() and \
+                not keys & {_addr_key(a) for a in r.get("addresses") or []}:
+            continue
+        values = {"op": "remove", "family": r["family"], "subnet": str(r["subnet"]),
+                  "was": f"{key_of.get(r['by'], r['by'])}={r['identity']}"}
+        sub = D.plan(list_name, values)
+        what = (f"{r['family']} subnet {r['subnet']}: {r['by']} {r['identity']} -> "
+                + ", ".join(r.get("addresses") or []))
+        if not sub["ok"]:
+            return {"refuse": f"its DHCP reservation ({what}) cannot be removed: {sub['refused']}"}
+        work["dhcp"].append({"values": values, "hash": sub["hash"], "what": what})
+        not_doing += [f"its DHCP reservation ({what}): {n}" for n in sub.get("not_done") or []]
+    if not work["ztp"] and not work["dhcp"]:
+        return {"step": "no Kea reservation names it" + (
+            "" if fragment else " (no ZTP fragment is configured for this network)"),
+            "done": True}
+    parts = [f"ZTP's reservation for {z['mac']} ({z['address']}) through ZTP's writer, the one "
+             "abandon uses, recorded in dhcp/ztp-reservations.yml" for z in work["ztp"]]
+    parts += [f"its DHCP reservation {d['what']} through the DHCP page's own removal, "
+              "recorded in dhcp/reservations.yml" for d in work["dhcp"]]
+    return {"step": ("remove from Kea " + "; ".join(parts) + ", each committed in the Kea "
+                     "owner's repository as you: the reservation stays in that record's "
+                     "history, and its address is free for a new device"),
+            "done": False, "work": work, "not_doing": not_doing}
+
+
+def _tag_facts(repo: str, hostname: str, identity: str) -> dict:
+    """Its golden tags (C1332): archived as ``retired/<h>/<identity>/<time>``, kept in git on
+    the same commit with their message, and never listed as a restore point."""
+    from modules.nsot import repo as R
+
+    safe = R._safe_name(hostname)                              # noqa: SLF001 - the tags' form
+    prefix = f"golden/{safe}/"
+    rc, out, err = R.git(repo, "tag", "--list", f"{prefix}*")
+    if rc != 0:
+        return {"refuse": f"its golden tags could not be listed ({err or f'git exited {rc}'})"}
+    tags = sorted(t for t in (out or "").split() if t)
+    if not tags:
+        return {"step": f"no golden tags ({prefix}*) to archive", "done": True}
+    slug = _identity_slug(identity)
+    moves = [[t, f"{ARCHIVE_PREFIX}/{safe}/{slug}/{t[len(prefix):]}"] for t in tags]
+    return {"step": (f"archive its {len(tags)} golden tag(s) {prefix}* as "
+                     f"{ARCHIVE_PREFIX}/{safe}/{slug}/<time>: each kept in git on its commit, "
+                     "with its message, and pushed; never offered as a restore point, so a new "
+                     f"device named {hostname} is offered none of them. The remote keeps its "
+                     "copies under the old names (a push deletes no tag), and a restore point "
+                     "at or before this retirement is never offered, whatever its name"),
+            "done": False, "work": {"moves": moves}}
+
+
+def _rolled_back_facts(repo: str, hostname: str) -> dict:
+    """Its rollback block (C1333): archived in the retire record, masked, then cleared."""
+    from modules.nsot import hostvars
+    from modules.redact import redact_text
+
+    note = hostvars.rolled_back_note(repo, hostname)
+    if not note:
+        return {"step": "no rollback block to clear", "done": True}
+    if note.get("unreadable"):
+        return {"refuse": note.get("reason") or "the record of rolled-back changes is unreadable"}
+    commands = [redact_text(str(c)) for c in note.get("commands") or []]
+    block = {"at": note.get("at", ""), "intent_commit": note.get("intent_commit", ""),
+             "command_fingerprint": note.get("command_fingerprint", ""),
+             "pipeline_id": note.get("pipeline_id", ""),
+             "reason": redact_text(note.get("reason") or ""), "commands": commands}
+    when = block["at"] or "at an unrecorded time"
+    return {"step": (f"clear its rollback block (recorded {when}: {len(commands)} command(s) "
+                     "rolled back"
+                     + (f", fingerprint {block['command_fingerprint']}"
+                        if block["command_fingerprint"] else "")
+                     + "), archived first in the retire record's Rollback-Block trailer, its "
+                     "commands masked: it survives there, in the repository's history"),
+            "done": False, "work": {"block": block}}
+
+
+def _approval_facts(list_name: str, hostname: str, known: list) -> dict:
+    """Its pending approval-queue items (C1339), by its name or any address it was known by:
+    withdrawn, recorded in the queue with the reason, never deleted."""
+    from modules import approval_queue as Q
+
+    pending, err = Q.read_pending(list_name)
+    if err:
+        return {"refuse": (f"the approval queue could not be read ({err}), so whether an item "
+                           f"for {hostname} waits there cannot be told")}
+    keys = {_addr_key(a) for a in known}
+    mine = [e for e in pending or [] if e.get("device_hostname") == hostname
+            or (e.get("device_ip") and _addr_key(e["device_ip"]) in keys)]
+    if not mine:
+        return {"step": "no pending approval-queue item names it", "done": True}
+    kinds = ", ".join(sorted({e.get("action_type", "?") for e in mine}))
+    return {"step": (f"withdraw its {len(mine)} pending approval-queue item(s) ({kinds}), each "
+                     "kept in the queue as withdrawn by retire with your reason, so an item for "
+                     "a new device at its address is queued again"),
+            "done": False, "work": {"ids": [e["id"] for e in mine]}}
+
+
+def _named_elsewhere(list_name: str, hostname: str) -> list:
+    """The other networks with a device named *hostname* in their inventory. Raises when one
+    cannot be read: could not read is not no other device."""
+    from modules.config import LISTS_DIR
+    from modules.device import get_device_lists, load_saved_devices
+
+    found = []
+    for lst in get_device_lists():
+        if lst["name"] == list_name:
+            continue
+        csv_path = os.path.join(LISTS_DIR, lst["filename"], "devices.csv")
+        if not os.path.exists(csv_path):
+            continue
+        if any(d.get("hostname") == hostname for d in load_saved_devices(csv_path)):
+            found.append(lst["name"])
+    return found
+
+
+def _policy_facts(list_name: str, hostname: str) -> dict:
+    """The credential-rotation policies naming it in their device list (C1336): the name
+    removed through the policy's own write (`scheduled_rotation.drop_device`); a policy naming
+    it alone is turned off, never widened to every device. Kept, and said, while another
+    network has a device of the name: the policies name devices across networks."""
+    from modules.nsot import scheduled_rotation as SR
+
+    naming = SR.policies_naming(hostname)
+    if not naming:
+        return {"step": "no credential-rotation policy names it", "done": True}
+    try:
+        elsewhere = _named_elsewhere(list_name, hostname)
+    except Exception as exc:                   # noqa: BLE001 - said as the refusal
+        return {"refuse": (f"whether another network has a device named {hostname} could not "
+                           f"be told ({exc}), so the rotation policies naming it cannot be "
+                           "changed: could not read is not no other device")}
+    if elsewhere:
+        return {"not_doing": [
+            f"the credential-rotation policies naming {hostname} ({', '.join(naming)}) keep "
+            f"the name: {hostname} is also a device in {', '.join(elsewhere)}, and a policy "
+            "names devices across networks"]}
+    alone = [p for p, devices in naming.items() if list(devices) == [hostname]]
+    shared = [p for p in naming if p not in alone]
+    parts = []
+    if shared:
+        parts.append(f"remove {hostname} from the device list of the credential-rotation "
+                     f"polic{'ies' if len(shared) > 1 else 'y'} of {', '.join(shared)}")
+    if alone:
+        parts.append(f"turn off the rotation policy of {', '.join(alone)}, which names only "
+                     f"{hostname}: a policy naming no device covers every device its profile "
+                     "covers, so removing the name alone would widen it")
+    return {"step": "; ".join(parts) + " -- a settings write, as you, recorded with the "
+                    "credential changes", "done": False, "work": {"profiles": sorted(naming)}}
+
+
+def _topology_facts(list_name: str, hostname: str) -> dict:
+    """Its Topology declaration and place (C1341): the expected-island declaration withdrawn
+    and its place on the arranged map removed, each through its own write, recorded in its own
+    log (History reads both)."""
+    from modules import topology_expected as TE
+    from modules import topology_positions as TP
+
+    ex, pos = TE.read(list_name), TP.read(list_name)
+    for got in (ex, pos):
+        if got["state"] == "unreadable":
+            return {"refuse": (f"{got['error']}, so whether it names {hostname} cannot be "
+                               "told: could not read is not nothing there")}
+    island = (ex.get("islands") or {}).get(hostname)
+    placed = hostname in (pos.get("positions") or {})
+    if not island and not placed:
+        return {"step": "no Topology declaration or arranged place names it", "done": True}
+    parts = []
+    if island:
+        parts.append(f"withdraw its expected-island declaration (\"{island.get('reason', '')}\", "
+                     f"by {island.get('by') or 'an unrecorded person'})")
+    if placed:
+        parts.append("remove its place on the arranged Topology map")
+    return {"step": " and ".join(parts) + ", each recorded in the Topology's own log, which "
+                                          "History reads",
+            "done": False, "work": {"island": bool(island), "placed": placed}}
+
+
+def _heartbeat_installed_path() -> str:
+    """Where Grafana loads the heartbeat rules from. A seam, so a test never reads the host's."""
+    from modules import heartbeat_windows as HW
+
+    return HW.INSTALLED
+
+
+def _heartbeat_facts(hostname: str) -> dict:
+    """Its Grafana heartbeat rule (C1338): removed from the generated rules file
+    (`heartbeat_windows.drop_plan`), recorded with the re-measures, and installed by the host
+    step the plan names. ``state`` is drop_plan's; only ``names`` is a step to do."""
+    from modules import heartbeat_windows as HW
+
+    try:
+        hb = HW._script()                                      # noqa: SLF001 - the one loader
+        got = HW.drop_plan(hostname, H=hb, written_path=_heartbeat_rules_path(hb),
+                           installed_path=_heartbeat_installed_path())
+    except Exception as exc:                   # noqa: BLE001 - said in what watches it
+        return {"state": "unreadable", "error": f"{type(exc).__name__}: {exc}"}
+    if got["state"] == "names":
+        return dict(got, step=(
+            f"remove its Grafana heartbeat rule (window {got['window']} s) from the generated "
+            f"rules file {got['written_path']}, recorded with the heartbeat re-measures; the "
+            f"host step installs it: {got['host_step']}"), done=False,
+            work={"fingerprint": got["fingerprint"]})
+    if got["state"] == "none":
+        return dict(got, step="no generated heartbeat rule names it (the rules file was read)",
+                    done=True)
+    return got
+
+
+def _netbox_record_facts(list_name: str, hostname: str, nb: dict) -> dict:
+    """Its NetBox record and Mercury's created-object entry (C1342; the operator's ownership
+    plan, C556). The record is set to Decommissioning and RENAMED ``<h>-retired-<id>``, kept:
+    NetBox holds a device's name unique in its site and tenant, so a new device of the name
+    needs it free, and onboarding then creates a NEW record. Only with NetBox writes allowed,
+    through the write gate (the before recorded); otherwise said as not done, and why. The
+    created-object entry is marked retired (kept, with its id), so nothing matches it by name
+    again."""
+    from modules import netbox_guard
+
+    try:
+        created = (netbox_guard.get_created(list_name, "dcim/devices").get("dcim/devices")
+                   or [])
+    except Exception as exc:                   # noqa: BLE001 - said as the refusal
+        return {"refuse": f"Mercury's created-object record could not be read ({exc})"}
+    nb_id = nb.get("id") if nb.get("checked") and nb.get("exists") else None
+    mark = [e for e in created if not e.get("retired") and (
+        (nb_id is not None and e.get("id") == nb_id)
+        or (e.get("name") or "").lower() == hostname.lower())]
+    patch, not_doing = None, []
+    if nb_id is not None:
+        if nb.get("writes"):
+            patch = {"id": nb_id, "name": f"{hostname}-retired-{nb_id}"}
+        else:
+            not_doing.append(
+                f"NetBox device {nb_id} is NOT set to Decommissioning or renamed: NetBox writes "
+                "are off here (netbox_allow_writes), so its name stays taken in NetBox, and "
+                f"onboarding a new device named {hostname} is refused until the record is "
+                "renamed or decommissioned there")
+    if not mark and not patch:
+        return {"step": "nothing to change in NetBox's record or Mercury's created-object "
+                        "record", "done": True, "not_doing": not_doing}
+    parts = []
+    if patch:
+        parts.append(f"set NetBox device {nb_id} to Decommissioning and rename it "
+                     f"{patch['name']}, through Mercury's NetBox write gate with its before "
+                     "recorded, then read back: the record and its history are KEPT, and the "
+                     "name is free for a new device (NetBox holds a device's name unique in its "
+                     "site and tenant)")
+    if mark:
+        parts.append("mark Mercury's created-object entry for dcim/devices "
+                     + ", ".join(str(e.get("id")) for e in mark) + " retired: kept with its "
+                     "id, and never matched by name again")
+    return {"step": "; ".join(parts), "done": False, "not_doing": not_doing,
+            "work": {"patch": patch, "mark": [e.get("id") for e in mark]}}
 
 
 def _host_key_facts(ip: str, list_name: str, hostname: str) -> dict:
@@ -469,50 +1000,45 @@ def _heartbeat_rules_path(hb) -> str:
     return hb.OUT
 
 
-def _watchers(hostname: str, ip: str, list_name: str = "") -> list:
+def _watchers(hostname: str, ip: str, list_name: str = "", hb: dict = None) -> list:
     """What still watches the device after it leaves, each ``{"kind", "what", "how"}``:
     GENERATED (the tool regenerates it from what retire removes, so it is dropped at the next
     regeneration, said with when) or SURVIVES (nobody regenerates it: named with how it is
-    removed). Board 12 (the operator, 2026-10-03). Each names what was READ."""
+    removed). Board 12 (the operator, 2026-10-03). Each names what was READ. *hb*: the plan's
+    `_heartbeat_facts` (read here when not given)."""
     out = []
 
     def item(kind, what, how):
         out.append({"kind": kind, "what": what, "how": how})
 
-    try:
-        import importlib.machinery
-        import importlib.util
-
-        import yaml
-
-        path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
-            os.path.abspath(__file__)))), "scripts", "nmas-heartbeat-rules")
-        loader = importlib.machinery.SourceFileLoader("nmas_heartbeat_rules", path)
-        spec = importlib.util.spec_from_loader(loader.name, loader)
-        hb = importlib.util.module_from_spec(spec)
-        loader.exec_module(hb)
-        rules_path = _heartbeat_rules_path(hb)
-        if not os.path.exists(rules_path):
-            item("generated", "its Grafana heartbeat rule",
-                 f"generated from committed intent, which leaves with this commit; the "
-                 f"generated rules file ({rules_path}) is not here, so whether one names it is "
-                 "unknown: the hourly check names one EXTRA if it does, and re-measuring the "
-                 "heartbeat windows (Monitoring, then its host step) removes it")
-        else:
-            with open(rules_path, encoding="utf-8") as fh:
-                rules = hb.installed(yaml.safe_load(fh) or {})
-            if hostname in rules:
-                item("generated", f"its Grafana heartbeat rule (window {rules[hostname][0]} s)",
-                     "generated from committed intent, which leaves with this commit: the "
-                     "hourly check names it EXTRA until the windows are re-measured and the "
-                     "rules installed without it (Monitoring, then its host step)")
-            else:
-                item("generated", "its Grafana heartbeat rule",
-                     "none names it (the generated rules file was read)")
-    except Exception as exc:                   # noqa: BLE001
+    hb = _heartbeat_facts(hostname) if hb is None else hb
+    state = hb.get("state")
+    if state == "names":
+        # Retirement removes it itself (C1338): the step writes the rules file without it.
+        item("generated", f"its Grafana heartbeat rule (window {hb['window']} s)",
+             f"removed by this retirement from the generated rules file "
+             f"({hb['written_path']}); Grafana drops it once the host step installs that file "
+             f"({hb['host_step']}), and until then the hourly check names it EXTRA")
+    elif state == "none":
         item("generated", "its Grafana heartbeat rule",
-             f"the generated rules file could not be read ({exc}), so whether one names it is "
-             "unknown")
+             "none names it (the generated rules file was read)")
+    elif state == "last":
+        item("generated", f"its Grafana heartbeat rule (window {hb['window']} s)",
+             "it is the only rule in the generated rules file, and a file with no rules reads "
+             "like a fleet that is all heartbeating, so it is not written without it: the "
+             "hourly check names it EXTRA until the windows are re-measured (Monitoring, then "
+             "its host step)")
+    elif state == "absent":
+        item("generated", "its Grafana heartbeat rule",
+             f"generated from committed intent, which leaves with this commit; the generated "
+             f"rules file ({hb.get('written_path')}) is not here, nor the installed one "
+             f"({hb.get('installed_path')}), so whether one names it is unknown: the hourly "
+             "check names one EXTRA if it does, and re-measuring the heartbeat windows "
+             "(Monitoring, then its host step) removes it")
+    else:
+        item("generated", "its Grafana heartbeat rule",
+             f"the generated rules file could not be read ({hb.get('error')}), so whether one "
+             "names it is unknown")
     try:
         from modules import prometheus_targets
 
@@ -623,19 +1149,25 @@ def retired_record(repo: str, hostname: str):
 def _address_before(repo: str, sha: str, hostname: str) -> str:
     """The device's management address as the manifest held it just before its retire commit
     (the commit releases it), or "" when it cannot be read. A read of git only."""
+    return (_entry_before(repo, sha, hostname)[1] or {}).get("mgmt_ip") or ""
+
+
+def _entry_before(repo: str, sha: str, hostname: str) -> tuple:
+    """``(identity, entry)`` as the manifest held *hostname* just before commit *sha*, or
+    ``("", None)`` when it cannot be read. A read of git only."""
     from modules.nsot import repo as R
 
     rc, out, _err = R.git(repo, "show", f"{sha}^:{R.MANIFEST_REL}")
     if rc != 0:
-        return ""
+        return "", None
     try:
         devices = (json.loads(out) or {}).get("devices") or {}
     except ValueError:
-        return ""
-    for entry in devices.values():
+        return "", None
+    for identity, entry in devices.items():
         if (entry.get("name") or "").lower() == hostname.lower():
-            return entry.get("mgmt_ip") or ""
-    return ""
+            return identity, entry
+    return "", None
 
 
 def _blob(path: str) -> str:
@@ -749,8 +1281,12 @@ def _holds_the_device(func):
 
 #: The plan's steps (`plan()["steps"]`, by key) in a step's few words on THE stepper; the
 #: plan's own sentence is the step's hover.
-STEP_WORDS = {"netbox_mask": "NetBox's copy masked", "override": "Override cleared",
-              "declare": "Startup declared unmapped", "commit": "Intent and golden removed",
+STEP_WORDS = {"netbox_mask": "NetBox's copy masked", "override": "Overrides cleared",
+              "staged": "Staged credential deleted", "reservations": "Kea reservations removed",
+              "commit": "Intent and golden removed", "tags": "Golden tags archived",
+              "rolled_back": "Rollback block archived", "approvals": "Queue items withdrawn",
+              "rotation_policy": "Rotation policies updated", "topology": "Topology entries removed",
+              "heartbeat": "Heartbeat rule removed", "netbox_record": "NetBox record retired",
               "legacy": "Legacy file deleted", "host_key": "SSH host key forgotten",
               "row": "Inventory row deleted"}
 
@@ -881,24 +1417,56 @@ def apply(list_name: str, hostname: str, *, reason: str, actor: str,
         except Exception as exc:               # noqa: BLE001
             return fail("netbox_mask", exc)
 
+    work = p.get("work") or {}
+    why = f"{hostname} retired by {actor}: {reason}"
+    advisories = list(p["advisories"])
+
     if "override" in pending:
         try:
-            credentials.clear_device_override(p["ip"])
+            for addr in p.get("overrides") or [p["ip"]]:
+                credentials.clear_device_override(addr)
             done.append("override")
         except Exception as exc:               # noqa: BLE001
             return fail("override", exc)
 
+    if "staged" in pending:
+        # The staged password and the adoption's sidecar go together (`adopt.clear_staged`).
+        from modules.nsot import adopt as A
+
+        try:
+            A.clear_staged(repo, hostname)
+            done.append("staged")
+        except Exception as exc:               # noqa: BLE001
+            return fail("staged", exc)
+
+    if "reservations" in pending:
+        try:
+            _remove_reservations(list_name, hostname, work.get("reservations") or {},
+                                 actor=actor, reason=reason)
+            done.append("reservations")
+        except Exception as exc:               # noqa: BLE001
+            return fail("reservations", exc)
+
+    block = (work.get("rolled_back") or {}).get("block")
     if "commit" in pending:
         # The removal, the manifest release, the commit and any undo under the repository
         # lock, across processes (CONCURRENCY_AUDIT R1); the undo puts back ONLY the paths
         # retire touched (R25: it reset whole trees, taking another writer's work too).
-        own = list(p["files"]) + [R.MANIFEST_REL]
+        bindings = _bindings_rel() if p.get("template_override") else ""
+        own = list(p["files"]) + [R.MANIFEST_REL] + ([bindings] if bindings else [])
         with R.repo_lock(repo):
             try:
                 for rel in p["files"]:
                     rc, _o, err = R.git(repo, "rm", "--quiet", "--", rel)
                     if rc != 0:
                         raise RuntimeError(f"git rm {rel}: {err}")
+                if bindings:
+                    # Its per-device template override leaves in the same commit (C1337).
+                    from modules.nsot import templates_repo
+
+                    b = templates_repo.load_bindings(repo)
+                    b["overrides"].pop(hostname, None)
+                    templates_repo.save_bindings(repo, b)
                 if p["identity"]:
                     rel = manifest.release(repo, p["identity"], list_name, actor,
                                            against="index", retained=("netbox",))
@@ -906,10 +1474,17 @@ def apply(list_name: str, hostname: str, *, reason: str, actor: str,
                         raise RuntimeError(rel.get("error"))
                 trailers = [f"Actor: {actor}", "Tool: nmas-retire",
                             f"Retired-Device: {hostname}", f"Reason: {reason}"]
+                # The plan's steps to do are the record of what this retirement does (each
+                # step's own store records it as well); the rollback block is archived HERE,
+                # before the block is cleared, its commands masked (C1333).
+                trailers += [f"Retire-Step: {s['key']}: {s['what']}" for s in p["steps"]
+                             if not s["done"]]
+                if block and "rolled_back" in pending:
+                    trailers.append("Rollback-Block: " + json.dumps(block, sort_keys=True))
                 trailers += [f"Not-Done: {n}" for n in p["not_doing"]]
                 # Exactly what retire removed and the manifest, never the trees
                 # (C175): another device's uncommitted edit must not leave with r5.
-                result = R._commit_paths(list_name, list(p["files"]) + [R.MANIFEST_REL],
+                result = R._commit_paths(list_name, own,
                                          f"retire: {hostname} -- {reason}",
                                          trailers, "retire")
                 if not result.get("ok"):
@@ -923,6 +1498,91 @@ def apply(list_name: str, hostname: str, *, reason: str, actor: str,
                 R.git(repo, "reset", "-q", "HEAD", "--", *own)
                 R.git(repo, "checkout", "-q", "HEAD", "--", *own)
                 return fail("commit", exc)
+
+    if "tags" in pending:
+        try:
+            _archive_tags(repo, list_name, hostname, (work.get("tags") or {}).get("moves") or [],
+                          actor=actor)
+            done.append("tags")
+        except Exception as exc:               # noqa: BLE001
+            return fail("tags", exc)
+
+    if "rolled_back" in pending:
+        from modules.nsot import hostvars
+
+        try:
+            if not commit and block:
+                # A run finishing a retirement whose commit landed before: the block is
+                # archived in a record commit of its own first, never cleared unread.
+                _record_commit(repo, list_name, hostname, actor=actor, reason=reason,
+                               trailers=["Rollback-Block: " + json.dumps(block, sort_keys=True)])
+            hostvars.clear_rolled_back(repo, hostname)
+            done.append("rolled_back")
+        except Exception as exc:               # noqa: BLE001
+            return fail("rolled_back", exc)
+
+    if "approvals" in pending:
+        from modules import approval_queue as Q
+
+        try:
+            for entry_id in (work.get("approvals") or {}).get("ids") or []:
+                got = Q.withdraw(entry_id, why, f"retire ({actor})", list_name)
+                if not got.get("ok") and "already" not in (got.get("error") or ""):
+                    raise RuntimeError(got.get("error") or "the withdrawal was refused")
+            done.append("approvals")
+        except Exception as exc:               # noqa: BLE001
+            return fail("approvals", exc)
+
+    if "rotation_policy" in pending:
+        from modules.nsot import scheduled_rotation as SR
+
+        try:
+            got = SR.drop_device(hostname, actor=actor, why=why)
+            if not got["ok"]:
+                raise RuntimeError(got["error"])
+            done.append("rotation_policy")
+        except Exception as exc:               # noqa: BLE001
+            return fail("rotation_policy", exc)
+
+    if "topology" in pending:
+        from modules import topology_expected as TE
+        from modules import topology_positions as TP
+
+        try:
+            t = work.get("topology") or {}
+            for got in ((TE.withdraw(list_name, hostname, actor) if t.get("island") else None),
+                        (TP.forget(list_name, hostname, actor) if t.get("placed") else None)):
+                if got is not None and not got.get("ok"):
+                    raise RuntimeError(got.get("error"))
+            done.append("topology")
+        except Exception as exc:               # noqa: BLE001
+            return fail("topology", exc)
+
+    if "heartbeat" in pending:
+        from modules import heartbeat_windows as HW
+
+        try:
+            hb = HW._script()                                  # noqa: SLF001 - the one loader
+            got = HW.drop_device(hostname, (work.get("heartbeat") or {}).get("fingerprint", ""),
+                                 actor=actor, why=why, H=hb,
+                                 written_path=_heartbeat_rules_path(hb),
+                                 installed_path=_heartbeat_installed_path())
+            if not got["ok"]:
+                raise RuntimeError(got["error"])
+            advisories.append("its heartbeat rule left the generated rules file; Grafana drops "
+                              f"it once the host step installs that file: {got['host_step']}")
+            done.append("heartbeat")
+        except Exception as exc:               # noqa: BLE001
+            return fail("heartbeat", exc)
+
+    if "netbox_record" in pending:
+        try:
+            _retire_netbox_record(list_name, hostname, work.get("netbox_record") or {},
+                                  actor=actor, authority=(f"retire of {hostname}, confirmed by "
+                                                          f"{actor} (plan {p['hash']})"))
+            done.append("netbox_record")
+        except Exception as exc:               # noqa: BLE001
+            return fail("netbox_record", exc)
 
     if "legacy" in pending:
         try:
@@ -957,4 +1617,112 @@ def apply(list_name: str, hostname: str, *, reason: str, actor: str,
             return fail("row", exc)
 
     return {"ok": True, "done": list(done), "commit": commit, "breakglass": basis,
-            "not_doing": p["not_doing"], "advisories": p["advisories"]}
+            "not_doing": p["not_doing"], "advisories": advisories}
+
+
+def _remove_reservations(list_name: str, hostname: str, w: dict, *, actor: str,
+                         reason: str) -> None:
+    """Remove the reservations the plan named (C1335), each through its own writer: ZTP's
+    `write_reservations` (abandon's), the DHCP page's `dhcp_reservations.apply` with the hash
+    the plan read. Raises naming the first that did not go."""
+    from modules import dhcp_reservations as D
+    from modules.nsot import ztp
+
+    for z in w.get("ztp") or []:
+        got = ztp.write_reservations(
+            removes=[z["mac"]], list_name=list_name, actor=actor,
+            message=(f"ztp: {hostname}'s reservation removed ({z['mac']})\n\n"
+                     f"Retirement of {hostname} in {list_name}: {reason}"))
+        o = (got.get("outcomes") or {}).get(z["mac"], {})
+        if not got.get("ok") or o.get("outcome") not in ("removed", "absent"):
+            raise RuntimeError(f"ZTP's reservation for {z['mac']} was not removed: "
+                               + (o.get("detail") or got.get("error") or "no reason"))
+        kept = got.get("record")
+        if kept is not None and not kept.get("ok"):
+            raise RuntimeError(f"ZTP's reservation for {z['mac']} was removed from Kea and its "
+                               f"record was NOT committed ({kept.get('error')}): the next ZTP "
+                               "change commits the whole fragment as its record")
+    for d in w.get("dhcp") or []:
+        got = D.apply(list_name, d["values"], d["hash"], actor=actor,
+                      reason=f"{hostname} retired: {reason}")
+        if not got.get("ok"):
+            raise RuntimeError(f"the DHCP reservation {d['what']} was not removed: "
+                               + (got.get("error") or "no reason"))
+
+
+def _archive_tags(repo: str, list_name: str, hostname: str, moves: list, *,
+                  actor: str) -> None:
+    """Archive each golden tag as the plan named (C1332): an annotated tag of the same commit
+    under ``retired/``, carrying the old one's message and where it came from, then the old
+    name deleted; the new tags are published (pushed with the list's remote). Under the
+    repository lock. A tag already archived is not made twice."""
+    from modules.nsot import repo as R
+
+    made = []
+    with R.repo_lock(repo):
+        for old, new in moves:
+            have_old = R.git(repo, "rev-parse", "--verify", "-q", f"refs/tags/{old}")[0] == 0
+            have_new = R.git(repo, "rev-parse", "--verify", "-q", f"refs/tags/{new}")[0] == 0
+            if have_old and not have_new:
+                _rc, body, _e = R.git(repo, "tag", "-l", "--format=%(contents)", old)
+                message = ((body or "").strip() + f"\n\nArchived-From: {old}\n"
+                           f"Retired-Device: {hostname}\nActor: {actor}\n")
+                rc, _o, err = R.git(repo, "tag", "-a", new, "-m", message, f"{old}^{{commit}}")
+                if rc != 0:
+                    raise RuntimeError(f"git tag {new}: {err or f'git exited {rc}'}")
+                made.append(new)
+            if have_old:
+                rc, _o, err = R.git(repo, "tag", "-d", old)
+                if rc != 0:
+                    raise RuntimeError(f"git tag -d {old}: {err or f'git exited {rc}'}")
+        _rc, head, _e = R.git(repo, "rev-parse", "HEAD")
+    if made:
+        R.publish(repo, (head or "").strip(), list_name=list_name, source="retire",
+                  actor=actor, tags=made)
+
+
+def _record_commit(repo: str, list_name: str, hostname: str, *, actor: str, reason: str,
+                   trailers: list) -> str:
+    """An empty commit recording what a run finishing a retirement archives (its rollback
+    block) when the retire commit landed in an earlier run. Returns its sha."""
+    from modules.nsot import repo as R
+
+    message = (f"retire: {hostname} -- record\n\n" + "\n".join(
+        [f"Actor: {actor}", "Tool: nmas-retire", f"Reason: {reason}", *trailers,
+         "Source: retire"]) + "\n")
+    with R.repo_lock(repo):
+        rc, sha, err = R.commit(repo, message, list_name=list_name, allow_empty=True,
+                                source="retire", actor=actor)
+    if rc != 0:
+        raise RuntimeError(f"the record commit failed: {err}")
+    return sha
+
+
+def _retire_netbox_record(list_name: str, hostname: str, w: dict, *, actor: str,
+                          authority: str) -> None:
+    """Mark Mercury's created-object entries retired, then set the NetBox record to
+    Decommissioning and rename it through the write gate (`_nb_patch`: writes allowed, the
+    before recorded), and read it back (C1342). The entry is marked first: a run that stops
+    after it is finished by running retire again."""
+    from modules import netbox_guard
+
+    if w.get("mark"):
+        netbox_guard.mark_created_retired(list_name, "dcim/devices", w["mark"],
+                                          device=hostname, by=actor)
+    patch = w.get("patch")
+    if not patch:
+        return
+    from modules.netbox_client import _nb_get_by_id, _nb_patch, _nb_ready, _status_value
+
+    ok, err, session, base = _nb_ready()
+    if not ok:
+        raise RuntimeError(f"NetBox is not reachable: {err}")
+    with netbox_guard.list_writer(list_name, f"retiring {hostname}", actor), \
+            netbox_guard.for_list(list_name, actor=actor, authority=authority):
+        _nb_patch(session, base, f"dcim/devices/{patch['id']}/",
+                  {"status": "decommissioning", "name": patch["name"]})
+    got = _nb_get_by_id(session, base, "dcim/devices", patch["id"]) or {}
+    status = _status_value(got)
+    if got.get("name") != patch["name"] or status != "decommissioning":
+        raise RuntimeError(f"NetBox device {patch['id']} read back as {got.get('name')!r}, "
+                           f"status {status!r}: the write did not land")

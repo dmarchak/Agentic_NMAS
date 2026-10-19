@@ -2225,9 +2225,22 @@ def device_restore_points(repo: str, hostname: str) -> list:
     holds a golden for it. A baseline predating the device is not a restore
     point for it: re-applying it would leave the device exactly as it is, so
     offering it would be a choice that does nothing. Each point says which
-    kind it is and, for a baseline, which claim the baseline makes."""
+    kind it is and, for a baseline, which claim the baseline makes.
+
+    ONLY THIS DEVICE'S (C1332): a point at or before the newest retirement of
+    its NAME (an ancestor of that retire commit) is the retired device's, and a
+    new device of the name is never offered it, whatever its tag is called. The
+    retirement also archives the old device's tags out of ``golden/`` (retire's
+    ``tags`` step); this holds for a tag fetched back or a baseline as well."""
+    from modules.nsot.retire import retirements_in
+
     sep = "@@|@@"
     name = _safe_name(hostname)
+    cut = retirements_in(repo).get((hostname or "").lower())
+
+    def current(ref: str) -> bool:
+        return not cut or git(repo, "merge-base", "--is-ancestor", ref, cut["sha"])[0] != 0
+
     points = [{"ref": "HEAD", "kind": "head", "created": "",
                "subject": "its golden now"}]
     rc, out, _ = git(repo, "tag", "--list", f"golden/{name}/*",
@@ -2235,13 +2248,13 @@ def device_restore_points(repo: str, hostname: str) -> list:
     own = []
     for line in (out.splitlines() if rc == 0 else []):
         parts = line.split(sep)
-        if len(parts) >= 3:
+        if len(parts) >= 3 and current(parts[0]):
             own.append({"ref": parts[0], "kind": "device", "created": parts[1],
                         "subject": parts[2]})
     for b in list_baselines(repo):
         if b["deleted"] or b["withdrawn"]:
             continue    # a withdrawn restore point is not offered (C70)
-        if name in devices_at(repo, b["tag"]):
+        if name in devices_at(repo, b["tag"]) and current(b["tag"]):
             own.append({"ref": b["tag"], "kind": "baseline", "created": b["created"],
                         "subject": b["subject"], "claim": b["claim"],
                         "claim_detail": b["claim_detail"]})

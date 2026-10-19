@@ -157,7 +157,7 @@ OPERATIONS = {
     "onboard-phase-two": ("modules.nsot.onboard", "PHASE_TWO_STEPS"),
     "onboard-ztp": ("modules.nsot.onboard", "ZTP_STEPS"),
     "adopt": ("modules.nsot.adopt", "APPLY_STEPS"),
-    "retire": None,
+    "retire": ("modules.nsot.retire", "STEPS"),
     "monitoring-templates": ("modules.pipeline", "STAGE_NAMES"),
     "update": ("modules.update_op", "STEPS"),
     "settings-switch": ("modules.list_settings", "SWITCH_STEPS"),
@@ -217,7 +217,6 @@ UNDECLARED = {
     "capture": "the capture job reads, previews and records in code paths with no step tuple",
     "persist": "persist_op builds its step list in plan(), with the device's name in each",
     "seed": "seed's preview, confirm and apply are three routes with no step tuple",
-    "retire": "retire builds its step list in plan(), per device",
 }
 
 

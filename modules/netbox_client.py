@@ -2038,6 +2038,13 @@ def _ensure_config_template(session: requests.Session, base: str) -> Optional[in
 # NetBox device upsert
 # ---------------------------------------------------------------------------
 
+def _status_value(obj: dict) -> str:
+    """A NetBox object's status as its value (``active``, ``decommissioning``), whether NetBox
+    answered it as ``{"value", "label"}`` or as the bare value."""
+    status = (obj or {}).get("status")
+    return (status.get("value") if isinstance(status, dict) else status) or ""
+
+
 def _existing_device(session, base: str, hostname: str, site_id, serial: str,
                      sharing=None) -> Optional[dict]:
     """The NetBox device this sync updates: by serial only when the serial is UNIQUE, else by
@@ -2054,7 +2061,10 @@ def _existing_device(session, base: str, hostname: str, site_id, serial: str,
 
         sharing = device_serials.devices_with(serial) if sharing is None else sharing
         others = sorted({d for _l, d in sharing if d and d != hostname})
-        held = _nb_get(session, base, "dcim/devices/", serial=serial) or []
+        # A record set to Decommissioning is a device that left (retire sets it, C1342): a new
+        # device reporting its serial (the same machine onboarded again) gets a NEW record.
+        held = [d for d in _nb_get(session, base, "dcim/devices/", serial=serial) or []
+                if _status_value(d) != "decommissioning"]
         if others or len(held) > 1:
             log.warning("netbox: %s not matched by serial %s: also reported by %s%s; matched "
                         "by name", hostname, serial, ", ".join(others) or "no other device",
@@ -3629,7 +3639,7 @@ def _cascade_preview(session, base: str, planned: list,
 
 def remove_device_from_netbox(list_name: str, hostname: str,
                               dry_run: bool = False, actor: str = "",
-                              authority: str = "") -> dict:
+                              authority: str = "", netbox_id=None) -> dict:
     """Remove ONE device's NetBox objects, provenance-gated.
 
     `remove_list_from_netbox` walks everything in the created-id record for a
@@ -3663,14 +3673,41 @@ def remove_device_from_netbox(list_name: str, hostname: str,
     session = _session_from_config(cfg)
     base = cfg["url"]
 
-    # EXACT name. `test_device_lookup.py` pins this for the import path and
-    # the reason is sharper here: a fuzzy hit would delete a device that
-    # merely resembles the one being abandoned.
-    device = _nb_first(session, base, "dcim/devices/", name=hostname)
-    if device is None:
+    # BY ID, NEVER BY NAME (C1342): a device of the same name retired before kept its record
+    # (Decommissioning, renamed), and a lookup by name could find a record that is not this
+    # onboarding's. The id is the one *netbox_id* names (the manifest's), else the one
+    # Mercury's created-object record holds for this name (a retired device's entry never
+    # matches by name). A record by that name with no id to reach it is named, never deleted.
+    if netbox_id in (None, ""):
+        mine = [e for e in _guard.live_created(
+            (_guard.get_created(list_name, "dcim/devices") or {}).get("dcim/devices") or [])
+            if e.get("name") == hostname]
+        netbox_id = mine[-1].get("id") if mine else None
+    if netbox_id in (None, ""):
+        # EXACT name, read only, to say what is there. `test_device_lookup.py` pins this for
+        # the import path: a fuzzy hit would name a device that merely resembles this one.
+        named = _nb_first(session, base, "dcim/devices/", name=hostname)
+        if named is None:
+            return {"ok": True, "deleted": [], "skipped": [], "retained": [],
+                    "message": f"no device named '{hostname}' in NetBox — nothing "
+                               f"to remove"}
+        return {"ok": False, "error": (
+            f"'{hostname}' (id {named.get('id')}) is not in Mercury's created-object "
+            f"record for list '{list_name}', so Mercury will not delete it. "
+            f"Remove it in NetBox if that is what you want.")}
+    # Gone and unreadable are different facts (C130): only a 404 is "nothing to remove".
+    state, device = _nb_read_by_id(session, base, "dcim/devices", int(netbox_id))
+    if state == "gone":
         return {"ok": True, "deleted": [], "skipped": [], "retained": [],
-                "message": f"no device named '{hostname}' in NetBox — nothing "
-                           f"to remove"}
+                "message": f"NetBox device {netbox_id} ('{hostname}') no longer exists — "
+                           f"nothing to remove"}
+    if state != "ok":
+        return {"ok": False, "error": f"NetBox device {netbox_id} could not be read ({device}): "
+                                      "nothing was deleted"}
+    if device.get("name") != hostname:
+        return {"ok": False, "error": (
+            f"NetBox device {netbox_id} is named {device.get('name')!r}, not '{hostname}': "
+            f"it is not this device's record, so nothing was deleted")}
 
     dev_id = device.get("id")
     if not _guard.was_created_by_nmas(list_name, "dcim/devices", dev_id):

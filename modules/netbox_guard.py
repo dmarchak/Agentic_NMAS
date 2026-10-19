@@ -836,6 +836,34 @@ def record_created(list_name: str, endpoint: str, obj_id: int, name: str = "") -
             _save_created(data)
 
 
+def mark_created_retired(list_name: str, endpoint: str, ids, *, device: str, by: str) -> list:
+    """Mark the created-object entries *ids* at *endpoint* RETIRED (a device retired, C1342):
+    each kept, with its id, and a ``retired`` record of which device left, who and when. A
+    reader that finds a device's record by NAME skips a retired entry (`live_created`), so a
+    new device of the name never inherits it; one by id still finds it. Returns the ids
+    marked now."""
+    endpoint = endpoint.strip("/")
+    wanted = set(ids or [])
+    marked = []
+    with _created_lock:
+        data = _load_created_for_write()
+        for e in data.get(list_slug(list_name), {}).get(endpoint, []):
+            if e.get("id") in wanted and not e.get("retired"):
+                e["retired"] = {"device": device, "by": by or "unattributed",
+                                "at": datetime.datetime.now(datetime.timezone.utc)
+                                .strftime("%Y-%m-%dT%H:%M:%SZ")}
+                marked.append(e.get("id"))
+        if marked:
+            _save_created(data)
+    return marked
+
+
+def live_created(entries) -> list:
+    """The created-object entries a device's NAME may match: every one but a retired
+    device's (:func:`mark_created_retired`)."""
+    return [e for e in entries or [] if not e.get("retired")]
+
+
 def get_created(list_name: str, endpoint: str = "") -> dict:
     """Return objects NMAS created for *list_name*, optionally one endpoint."""
     data = _load_created().get(list_slug(list_name), {})

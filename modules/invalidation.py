@@ -232,7 +232,11 @@ DECLARED = {
     "device_v2.revert_confirm": ("intent", "remote", "rolled_back"),
     "device_v2.retry_confirm": ("rolled_back",),
     "device_v2.seed_confirm": ("intent", "remote"),
-    "device_v2.retire_confirm": ("inventory", "goldens", "intent", "credentials", "settings", "remote"),
+    # Retirement leaves nothing the name keeps (C1332 to C1342): its tags, template override,
+    # queue items, rollback block, Kea reservations, Topology entries, NetBox record and key.
+    "device_v2.retire_confirm": ("inventory", "goldens", "baselines", "intent", "templates",
+                                 "credentials", "settings", "remote", "approvals",
+                                 "rolled_back", "dhcp", "topology", "netbox", "host_keys"),
     # Onboarding on v2 (cutover blocker 3). Verify runs phase 2, which PROMOTES: the device list
     # is the first of the three measured cases. Today's onboarding routes and its deploy wizard
     # (onboard.*, deploy.plan, deploy.apply) left at 7.8 (2026-10-17, P7-25).

@@ -177,8 +177,10 @@ class TestEveryRefusalHasAGate:
         from modules.preview_confirm import RETIRE_GATES
 
         tree = ast.parse(open(os.path.join(ROOT, "modules", "nsot", "retire.py")).read())
+        # `take(key, facts)` refuses by its key too (retirement's leftovers, C1332 to C1342):
+        # both calls are the population.
         keys = {n.args[0].value for n in ast.walk(tree)
-                if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "refuse"
+                if isinstance(n, ast.Call) and getattr(n.func, "id", "") in ("refuse", "take")
                 and n.args and isinstance(n.args[0], ast.Constant)}
         keys.add("list")             # the early return names it directly
         assert len(keys) >= 7, keys  # the scan found the refusals

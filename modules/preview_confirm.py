@@ -2815,6 +2815,22 @@ RETIRE_GATES = (
      "its stored config context is masked, or will be, or holds none"),
     ("host_key", "its SSH host key, and who else has its address, can be read",
      "the key record and every network's inventory were read (C940)"),
+    ("bindings", "its template bindings can be read",
+     "templates/bindings.yml was read: an override of its own leaves in the commit"),
+    ("staged", "no staged credential is the only copy of its password",
+     "none is staged, or the staged one is the CSV row's"),
+    ("reservations", "its Kea reservations can be read, and each removal planned",
+     "ZTP's fragment and the DHCP page's files were read; Kea planned each removal"),
+    ("tags", "its golden tags can be listed", "each is archived under retired/ after the commit"),
+    ("rolled_back", "the record of rolled-back changes can be read",
+     "its block, if any, is archived in the retire record, then cleared"),
+    ("approvals", "the approval queue can be read", "its pending items, if any, are withdrawn"),
+    ("rotation_policy", "the rotation policies naming it can be changed",
+     "every network's inventory was read: no other device has its name"),
+    ("topology", "the Topology declarations and layout can be read",
+     "its declaration and place, if any, are removed"),
+    ("netbox_record", "Mercury's created-object record can be read",
+     "its entry, if any, is marked retired"),
 )
 BREAKGLASS_GATE = "a break-glass export holds its current credential"
 
@@ -2886,8 +2902,6 @@ def retire_preview(plan: dict, *, busy: str, request) -> dict:
             {"name": "management address", "value": plan.get("ip") or "none recorded"},
             {"name": "files removed (kept in history)",
              "value": ", ".join(plan.get("files") or []) or "none"},
-            {"name": "startup config, frozen",
-             "value": f"{plan.get('startup') or 'none recorded'} (lab {plan.get('lab') or 'none named'})"},
             {"name": "break-glass basis",
              "value": ("the export log (not the record): newest export "
                        f"{export.get('at') or 'none'}"
@@ -2923,10 +2937,27 @@ def retire_preview(plan: dict, *, busy: str, request) -> dict:
 
 RETIRE_STEP_WORDS = {"netbox_mask": "masked the credentials NetBox held in its stored config "
                                     "context, read back clean (C139)",
-                     "override": "cleared its credential override",
-                     "declare": "declared its startup config deliberately unmapped",
-                     "commit": "removed its intent and golden and released its identity, "
-                               "in one commit",
+                     "override": "cleared its credential overrides, at every address it was "
+                                 "known by",
+                     "staged": "deleted its staged credential and any adoption sidecar (the "
+                               "same password as its CSV row's)",
+                     "reservations": "removed its Kea reservations, each recorded in the Kea "
+                                     "owner's repository",
+                     "commit": "removed its intent, golden and template override and released "
+                               "its identity, in one commit",
+                     "tags": "archived its golden tags under retired/, never offered as a "
+                             "restore point (C1332)",
+                     "rolled_back": "archived its rollback block in the retire record and "
+                                    "cleared it (C1333)",
+                     "approvals": "withdrew its pending approval-queue items (C1339)",
+                     "rotation_policy": "took it out of the credential-rotation policies "
+                                        "naming it (C1336)",
+                     "topology": "removed its Topology declaration and arranged place (C1341)",
+                     "heartbeat": "removed its Grafana heartbeat rule from the generated rules "
+                                  "file; its host step installs it (C1338)",
+                     "netbox_record": "set its NetBox record to Decommissioning and renamed it, "
+                                      "and marked Mercury's created-object entry retired "
+                                      "(C1342)",
                      "legacy": "deleted its file from the deprecated golden_configs/ store, "
                                "whose content survives in the repository (C176)",
                      "host_key": "forgot the SSH host key Mercury kept for its address, kept "
@@ -2977,8 +3008,9 @@ def retire_result(result: dict, plan: dict) -> dict:
         nothing_left_out="Nothing: every step was done.",
         record={"commit": commit, "tags": [], "baseline": "",
                 "statement": (f"Retire commit {commit[:12]} (`Source: retire`, `Retired-Device: "
-                              f"{name}`, one `Not-Done:` trailer per thing it did not do) removed "
-                              "its intent and golden; history keeps both."
+                              f"{name}`, one `Retire-Step:` trailer per step and one `Not-Done:` "
+                              "trailer per thing it did not do) removed its intent, golden and "
+                              "template override; history keeps them."
                               if commit else "No retire commit was made by this run.")},
         not_watched=(f"Nothing in Mercury watches {name} after this: no drift check, capture or "
                      "deploy. "

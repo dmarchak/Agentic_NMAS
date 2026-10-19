@@ -769,29 +769,37 @@ def adopt():
 
 
 def retire():
-    return svg(470, (
-        "Retiring a device: the whole exit, sending nothing to it. The preview checks the "
-        "break-glass export holds its current credential. The apply masks credentials NetBox "
-        "holds in its context where the tool wrote them, clears the credential override, "
-        "commits the exit as you, removes its legacy file only if its content survives, "
-        "forgets the SSH host key kept for its address (kept in the record's history; kept "
-        "while another device has the address), and deletes its inventory row last. NetBox "
-        "keeps the device and history is kept."), [
-        lanes(20, 464),
+    return svg(640, (
+        "Retiring a device: the whole exit, sending nothing to it, and leaving nothing a new "
+        "device of the same name inherits. The preview checks the break-glass export holds its "
+        "current credential. The apply masks credentials NetBox holds in its context where the "
+        "tool wrote them, clears the credential overrides and the staged credential, removes "
+        "its Kea reservations, commits the exit as you (intent, golden and template override), "
+        "archives its golden tags and rollback block, withdraws its queued items, policy "
+        "memberships and Topology entries, removes its heartbeat rule, sets its NetBox record "
+        "to Decommissioning and renames it, removes its legacy file only if its content "
+        "survives, forgets the SSH host key kept for its address, and deletes its inventory "
+        "row last. NetBox keeps the record and history is kept."), [
+        lanes(20, 634),
         band(20, 70, "Preview"),
         store(14, 40, 186, 36, "Break-glass export", "holds the current credential?"),
         device(240, 36, 140, 40, "The device", "never contacted", off=True),
-        band(96, 300, "The apply · in order"),
+        band(96, 472, "The apply · in order"),
         svc(14, 118, 186, 34, "NetBox context", "credentials masked"), num(14, 118, 1),
-        store(14, 162, 186, 34, "Credential override", "cleared"), num(14, 162, 2),
-        repo(14, 208, 186, 44, "One commit", "the exit, as you"), num(14, 214, 3),
-        store(14, 262, 186, 34, "Legacy file", "removed if it survives"), num(14, 262, 4),
-        store(14, 306, 186, 34, "SSH host key", "forgotten, kept in history"), num(14, 306, 5),
-        store(14, 350, 186, 34, "Inventory row", "deleted last"), num(14, 350, 6),
-        nosend(310, 240, ("nothing is sent", "to the device")),
-        band(402, 62, "Kept, by design"),
-        t(14, 434, "NetBox's record, history,", "sm"),
-        t(14, 447, "backups: each named in the commit.", "sm"),
+        store(14, 162, 186, 34, "Credentials", "overrides, staged: cleared"), num(14, 162, 2),
+        svc(14, 206, 186, 34, "Kea reservations", "removed, recorded"), num(14, 206, 3),
+        repo(14, 250, 186, 44, "One commit", "the exit, as you"), num(14, 256, 4),
+        store(14, 304, 186, 34, "Golden tags, block", "archived, kept"), num(14, 304, 5),
+        store(14, 348, 186, 34, "Queue, policies, map", "withdrawn, recorded"), num(14, 348, 6),
+        store(14, 392, 186, 34, "Heartbeat rule", "removed; host step installs"),
+        num(14, 392, 7),
+        svc(14, 436, 186, 34, "NetBox record", "Decommissioning, renamed"), num(14, 436, 8),
+        store(14, 480, 186, 34, "Legacy file, SSH key", "removed, forgotten"), num(14, 480, 9),
+        store(14, 524, 186, 34, "Inventory row", "deleted last"), num(14, 524, 10),
+        nosend(310, 330, ("nothing is sent", "to the device")),
+        band(574, 60, "Kept, by design"),
+        t(14, 604, "NetBox's record, history,", "sm"),
+        t(14, 617, "archived tags: each named in the commit.", "sm"),
     ])
 
 

@@ -25,6 +25,10 @@ def world(tmp_path, monkeypatch):
         # A device NetBox holds with an EMPTY stored context: nothing to mask.
         "device": {"id": 9, "name": h, "local_context_data": {}}})
     monkeypatch.setattr("modules.credentials.has_device_override", lambda ip: False)
+    # Retirement now reads Grafana's installed heartbeat rules and Kea's DHCP files (C1338,
+    # C1335): never this machine's; tests/test_retire_leaves_nothing.py plants them.
+    monkeypatch.setattr(RT, "_heartbeat_installed_path", lambda: str(tmp_path / "absent.yaml"))
+    monkeypatch.setattr(RT, "_dhcp_held", lambda l: [])
     # One approved template, so the withdrawal branch RUNS: the bound set is
     # still computed for real from the manifest. The LIVE approvals (C955: retire
     # lists only those; a revoked template's tombstone stays no approval).

@@ -450,7 +450,8 @@ def references(repo: str, identity: str, list_name: str = "",
             from modules import netbox_guard
 
             created = netbox_guard.get_created(list_name) or {}
-            hits = [e for e in created.get("dcim/devices", [])
+            # A retired device's entry is never matched by name (C1342): it is not this one.
+            hits = [e for e in netbox_guard.live_created(created.get("dcim/devices", []))
                     if (e.get("name") or "").lower() == name.lower()]
             if hits:
                 found.append({

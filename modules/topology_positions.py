@@ -109,6 +109,20 @@ def reset(list_name: str, actor: str) -> dict:
     return _change(list_name, None, actor, "reset")
 
 
+def forget(list_name: str, device: str, actor: str) -> dict:
+    """Remove *device*'s place from the saved layout (a device retired, C1341), recorded like a
+    move: every other place stays where people put it. Nothing to do when it has none."""
+    got = read(list_name)
+    if got["state"] == "unreadable":
+        return {"ok": False, "error": got["error"] + ": nothing was written"}
+    if device not in got["positions"]:
+        return {"ok": True, "error": "", "recorded": False, "record_error": ""}
+    # The places are taken from the layout read again UNDER the lock (`_change`), so a move
+    # saved meanwhile is kept.
+    return _change(list_name, lambda now: {n: xy for n, xy in now.items() if n != device},
+                   actor, "forgot", device)
+
+
 def _change(list_name: str, positions, actor: str, action: str, moved: str = "") -> dict:
     from modules import filestore
 
@@ -117,6 +131,10 @@ def _change(list_name: str, positions, actor: str, action: str, moved: str = "")
     set_aside = ""
     with filestore.PathLock(lambda: path):
         got = read(list_name)
+        if callable(positions):
+            if got["state"] == "unreadable":
+                return {"ok": False, "error": got["error"] + ": nothing was written"}
+            positions = positions(got["positions"])
         if got["state"] == "unreadable" and positions is None:
             # Reset of a layout that cannot be read: set aside under a dated name (kept, never
             # deleted), so the generated layout is drawn and a person can move devices again.

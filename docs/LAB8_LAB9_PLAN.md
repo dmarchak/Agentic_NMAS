@@ -48,7 +48,7 @@ operator's lab tooling; **C** is code to build first.
 | 0a | Retirement completeness: every per-device artefact removed or archived, each with a planted leftover test (C1332 to C1342) | C | no | L | tonight |
 | 0b | The device-name scan with its exact inventory (the lifecycle rule) | C | no | M | tonight |
 | 0c | Feature packs for OSPF (areas, ABR), RIPv2 and redistribution, rendered from intent for IOS and IOS-XE, with round trips on captured configs | C | no | L | tonight and 10-20 |
-| 0d | The relayed-ZTP proof on a throwaway pair (a relay node, a configless C8000v behind it, with and without option 3) | L/measure | no | M | tonight if the lab host's load allows, otherwise 10-20 |
+| 0d | The relayed-ZTP proof on a throwaway pair (a relay node, a configless C8000v behind it, with and without option 3) | L/measure | no | M | 10-20 (not run on the night of 10-19: s3's gaps were already widening, and the pair adds about 3.7 CPUs of the emulation work they follow; it also needs hand changes to the live Kea, the firewall and a route on the NMAS host) |
 | 0e | Relayed ZTP in Mercury: the plan and writer for a relayed subnet (server address, a fragment per relayed subnet, option 3 as the relay's own address if 0d needs it, the DNS check on the relayed path), and the firewall's udp/69 rule widened by a host step (C1346) | C | no | M to L | 10-20 to 10-21 |
 | 0f | NetBox on add: after a device's intent is deployed, its record brought up to the golden through Import's preview and confirm; cables from both ends' LLDP (C1344) | C | no | M | 10-21 |
 | 0g | `containerlab restart -n` measured on a throwaway (does a link added to the file come up, the time, the other end, the host key) | L/measure | no | S | with 0d |
@@ -208,8 +208,47 @@ single documentation view or export exists (C1351). Composing one from the exist
 
 ## 8. Capacity
 
-Pending: the C1318 measurement is running (a sampling window on the lab host, and Proxmox's
-load and steal). Filled in before this plan is reported.
+Measured read-only 2026-10-19, 06:09 to 07:12 UTC, inside the containerlab VM and on the Proxmox
+host (C1318).
+
+**Per node, measured inside the containerlab VM (24 vCPUs, 78.5 GiB):**
+
+| Node | Allocation | Memory | CPU |
+|---|---|---|---|
+| C8000v (each router) | 2 vCPUs, 4 GiB | 4.5 GiB | 1.86 to 1.89 CPUs: one vCPU at 100% always (the data plane polls), the other about 93% |
+| vIOS-L2 (each switch) | 1 vCPU, 768 MiB | 0.38 GiB | 0.82 to 1.01 CPUs |
+| Linux host | — | under 10 MiB | about none |
+
+**Today:** 28.0 GiB used (51.1 GiB available), about 15.0 CPUs busy (64%).
+
+**Adding R7, R8, the switch and H5 to H7:** R6 replaces r6, so it is net zero. The rest adds about
+9.6 GiB and 4.7 CPUs, giving 37.6 GiB used and about 19.7 of 24 vCPUs busy (82%).
+
+**The Proxmox host:**
+- **Hardware:** 2 × Xeon E5-2650 v3, so 20 physical cores (40 threads). 125.8 GiB of RAM, 58.1
+  available.
+- **Running guests:** 31 vCPUs.
+- **This week:** node CPU 45 to 50%. Steal inside the lab and NMAS VMs is about 0.03%. CPU
+  pressure is about zero.
+- **With the expansion:** the lab VM uses about 22.6 host CPUs. That is about 24 busy threads on
+  20 physical cores, so some vCPUs share a core with a hyperthread sibling. That slowdown does not
+  show as steal.
+- The stopped VMs 201 to 203 must stay stopped.
+
+**The answer: there is room.**
+- Memory has ample room at both levels.
+- CPU fits inside the VM, but the hypervisor goes past its physical cores.
+- The measured lever is the C8000v's data plane. A router at 1 vCPU, or a lighter profile, could
+  save about 0.9 CPU each. That is untested: it would be measured on r2 first, never s3, keeping
+  the 10 Mbit/s throughput level in view.
+
+**s3 is not a capacity question.**
+- Its gaps widen during short bursts of emulation work on its own single thread, which already
+  runs at 95 to 100% of a CPU. The bursts are more frequent each day since 10-14.
+- The host's load is not the cause. Neither is steal, and s3's wait for a CPU is under 1%.
+- More vCPUs or pinning will not help it. A fifth vIOS-L2 adds the same kind of work.
+- Separately, r5's container (retired from Mercury, still in the topology) has been spinning since
+  10-18 ~10:25 UTC and adds about 1 to the load. Repairing it, or removing r5, is lab tooling.
 
 ## 9. Multi-vendor (survey only)
 

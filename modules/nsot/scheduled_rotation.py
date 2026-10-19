@@ -215,6 +215,53 @@ def set_policy(profile: str, form: dict, *, actor: str, verified: str,
             "recorded": rec["ok"], "record_error": rec["error"]}
 
 
+def policies_naming(hostname: str) -> dict:
+    """``{profile: [devices]}``: each policy whose device list (its pilot set) names
+    *hostname*."""
+    return {profile: list(p.get("devices") or []) for profile, p in sorted(policies().items())
+            if isinstance(p, dict) and hostname in (p.get("devices") or [])}
+
+
+def drop_device(hostname: str, *, actor: str, why: str, verified: str = "") -> dict:
+    """Take *hostname* out of every policy's device list (a device retired, C1336): one
+    settings write as *actor*, each policy changed recorded with the credential changes. A
+    policy naming ONLY *hostname* is turned off rather than left naming no device, which
+    would widen it to every device its profile covers. ``{"ok", "error", "changed", "off"}``."""
+    from modules import credential_changes
+    from modules.settings_schema import write_settings
+
+    if not actor:
+        return {"ok": False, "error": "a policy change records who made it",
+                "changed": [], "off": []}
+    merged = dict(policies())
+    changed, off = [], []
+    for profile, p in sorted(merged.items()):
+        if not isinstance(p, dict) or hostname not in (p.get("devices") or []):
+            continue
+        rest = [d for d in p["devices"] if d != hostname]
+        new = dict(p, set_by=actor, set_at=_iso(time.time()), verified=verified)
+        if rest:
+            new["devices"] = rest
+        else:
+            new.pop("devices", None)
+            new["state"] = "off"
+            off.append(profile)
+        merged[profile] = new
+        changed.append(profile)
+    if not changed:
+        return {"ok": True, "error": "", "changed": [], "off": []}
+    got = write_settings({SETTING: merged}, actor=actor)
+    if not got["ok"]:
+        return {"ok": False, "error": f"the setting was refused, nothing changed: {got['error']}",
+                "changed": [], "off": []}
+    for profile in changed:
+        credential_changes.record(action="rotation_policy", profile=profile, fields=[],
+                                  actor=actor, verified=verified,
+                                  policy=f"{policy_words(merged[profile])} ({why})")
+    log.info("scheduled rotation: %s left %s's policies (%s)", hostname, ", ".join(changed), why)
+    return {"ok": True, "error": "", "changed": changed, "off": off}
+
+
 def governing_profile(dev: dict, names: set) -> str:
     """The profile whose policy *dev* follows: the most specific that exists, in the
     resolver's order (role, site, default), or ""."""
@@ -305,8 +352,13 @@ def device_states(now=None, *, lists=None, devices_of=None, rotations=None,
     read_commits = rotations is None                  # a caller's *rotations* is the whole truth
     rotations = last_rotations() if rotations is None else rotations
     out = []
+    from modules.nsot import retire as _retire
+
     for list_name in (sorted(listref._registry()) if lists is None else lists):
         committed = committed_rotations(list_name) if read_commits else {}
+        # A rotation of a NAME at or before its newest retirement was the retired device's,
+        # never a new device's of that name (C1336): its age starts again.
+        retired = _retire.retirements(list_name)
         try:
             rows = (devices_of(list_name) if devices_of else
                     load_saved_devices(listref.resolve(list_name).csv_path))
@@ -326,6 +378,8 @@ def device_states(now=None, *, lists=None, devices_of=None, rotations=None,
             on = on and not outside
             at, iso = max(rotations.get(host, (None, "")), committed.get(host, (None, "")),
                           key=lambda r: r[0] or 0)
+            if at is not None and _retire.before_retirement(retired, host, at):
+                at, iso = None, ""
             s = {"list": list_name, "device": host, "profile": profile, "policy": pol or {},
                  "outside": outside,
                  "policy_words": policy_words(pol), "on": on, "rotated_at": iso,

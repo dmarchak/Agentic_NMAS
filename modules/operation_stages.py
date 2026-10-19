@@ -172,7 +172,8 @@ STAGES = {
         "device_v2.revert", "hash", NO_DEVICE, FORWARD, "modules.nsot.intent_ops.revert_apply"),
     "device_v2.retire_confirm": Stages(
         "device_v2.retire", "hash",
-        "n/a: retirement changes no device; the NetBox mask is read back inside the apply",
+        "n/a: retirement changes no device; the NetBox mask and its record's Decommissioning "
+        "are read back inside the apply, and each Kea removal reads Kea back",
         "n/a: one commit; a failed commit restores the tree", "modules.nsot.repo.commit"),
     "device_v2.seed_confirm": Stages(
         "device_v2.seed", "hash", NO_DEVICE,
