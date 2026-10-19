@@ -1288,8 +1288,10 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
                           + "; ".join(declare_problems)}
     ctx.expected_effects = {device.get("ip", ""): effects}
     # The capture the program was computed against, for stage 4 to compare the device
-    # with before anything is sent (C78).
+    # with before anything is sent (C78), and the dialect the program was computed for, which
+    # answers whether a device-only interface block is its measured default (C1383).
     ctx.confirmed_capture = {device.get("ip", ""): captured}
+    ctx.capture_dialect = {device.get("ip", ""): getattr(artifact, "platform", "")}
 
     try:
         result = PipelineRunner(ctx).run()
@@ -1364,6 +1366,9 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
         # held it: the receipt ties the selection to what was sent (Mode B).
         "removals": [{"id": i, "chain": list(u["chain"]), "line": u["line"]}
                      for i, u in zip(full["ids"], full["removed"])],
+        # The device-only lines stage 4 accepted as new hardware (C1383): an interface the
+        # capture lacks, at its platform's measured default, that this program configures.
+        "new_hardware": list((result.new_hardware or {}).get(device.get("ip", ""), [])),
     }
 
 

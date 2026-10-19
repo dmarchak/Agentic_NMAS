@@ -1623,7 +1623,108 @@ class DeviceMoved(Exception):
 
 def device_moved_reason(capture: str, running: str) -> str:
     """Why a device read at apply is not the capture its program was computed against, or
-    ``""`` when it is (C78).
+    ``""`` when it is (C78). `device_against_capture` with no program: a device with nothing
+    to send configures no interface, so no device-only line is accepted as new hardware."""
+    return device_against_capture(capture, running)["reason"]
+
+
+def _canonical(line: str) -> str:
+    """A config line as the capture comparison keys it: interface names canonical, whitespace
+    collapsed (`roundtrip`'s own normalisation, through the same public helper)."""
+    import re
+    return re.sub(r"\s+", " ",
+                  _ifnames_module.canonicalise_line((line or "").strip())).strip()
+
+
+def _top_level_blocks(text: str, header: str) -> list:
+    """Every top-level block of *text* opened by *header* (canonical), each its child lines
+    as printed (trailing whitespace out), in order. A blank or unindented line ends a block."""
+    blocks, current = [], None
+    for raw in (text or "").splitlines():
+        line = raw.rstrip()
+        if line[:1].isspace() and current is not None:
+            current.append(line)
+            continue
+        current = None
+        if line and not line[:1].isspace() and _canonical(line) == header:
+            current = []
+            blocks.append(current)
+    return blocks
+
+
+def _new_hardware(capture: str, running: str, compared: dict, program, dialect: str):
+    """The device-only lines accepted as NEW HARDWARE, ``[{"interface", "lines"}]``, or
+    ``None`` when any condition fails (C1383, the operator's conditions of 2026-10-19; any one
+    failing refuses):
+
+    0. nothing is only in the capture, and every device-only line is in an ``interface``
+       section (its section is what ``only_right`` names before " :: "). A section nested
+       deeper is a path no top-level block matches, so condition 2 refuses it;
+    1. that interface is ABSENT from the capture entirely: no top-level block opens it there
+       (an interface the golden has, now at its defaults, is someone defaulting it: drift);
+    2. its one top-level block on the device is *dialect*'s MEASURED default block for an
+       unconfigured interface, exactly (`interface_defaults.unconfigured_interface_default`):
+       one line more refuses, and an unmeasured platform refuses;
+    3. the confirmed *program* configures that same interface (opens its block): a default
+       block on an interface the program does not touch refuses."""
+    from modules.nsot import interface_defaults
+
+    if compared["only_left"] or not compared["only_right"]:
+        return None
+    configured = {_canonical(c) for c in (program or []) if (c or "").strip()}
+    sections = list(dict.fromkeys(entry.split(" :: ", 1)[0]
+                                  for entry in compared["only_right"]))
+    accepted = []
+    for header in sections:
+        if not header.startswith("interface "):
+            log.info("deploy: a device-only line is in %r, not an interface: not new hardware",
+                     header or "the global section")
+            return None
+        interface = header.removeprefix("interface ").strip()
+        if _top_level_blocks(capture, header):
+            log.info("deploy: %s is in the capture: not new hardware", interface)
+            return None
+        blocks = _top_level_blocks(running, header)
+        if len(blocks) != 1 or not interface_defaults.unconfigured_interface_default(
+                dialect, interface, blocks[0]):
+            log.info("deploy: %s's block on the device is not %s's measured default for an "
+                     "unconfigured interface (%d block(s) read): not new hardware",
+                     interface, dialect or "an unknown platform", len(blocks))
+            return None
+        if header not in configured:
+            log.info("deploy: the program does not configure %s: not new hardware", interface)
+            return None
+        accepted.append({"interface": interface, "lines": [header] + list(blocks[0])})
+    return accepted
+
+
+def device_against_capture(capture: str, running: str, program=(), dialect: str = "") -> dict:
+    """``{"reason", "new_hardware"}``: why a device read at apply is not the capture its
+    program was computed against (``reason``, ``""`` when it is, C78), and the device-only
+    lines accepted as new hardware (C1383).
+
+    **The new-hardware exception, narrow** (the operator, 2026-10-19): a NIC added to the
+    device prints its default block, and the capture, taken before the NIC existed, lacks the
+    interface. Capturing would bake that drift into the golden. So the device-only lines are
+    accepted, and the device goes on, only when every one is a whole interface absent from
+    the capture, whose block is *dialect*'s measured default exactly, and which the confirmed
+    *program* configures (`_new_hardware`, its conditions). Otherwise the reason is today's,
+    word for word. ``new_hardware`` is ``[{"interface", "lines"}]`` (the lines as the device
+    printed them, unmasked: the caller masks what it records), ``[]`` when none was accepted.
+    """
+    from modules.nsot import roundtrip
+
+    result = roundtrip.stored_is_device(capture, running)
+    if result["equal"]:
+        return {"reason": "", "new_hardware": []}
+    accepted = _new_hardware(capture, running, result, program, dialect)
+    if accepted:
+        return {"reason": "", "new_hardware": accepted}
+    return {"reason": _moved_words(result), "new_hardware": []}
+
+
+def _moved_words(result: dict) -> str:
+    """Why a device read at apply is not the capture its program was computed against (C78).
 
     The apply's "fresh" capture is the STORED one the preview used, so its hash check
     catches a golden that moved and nothing else; a change made on the device since its
@@ -1632,13 +1733,9 @@ def device_moved_reason(capture: str, running: str) -> str:
     running config the pipeline reads before anything is sent (stage 4), or the read of
     a device with nothing to send, is compared with it by `roundtrip.stored_is_device`.
     Both operands are named by the lines that differ,
-    a few of each, masked: the raw texts' hashes would differ on volatile lines alone."""
-    from modules.nsot import roundtrip
+    a few of each, masked: the raw texts' hashes would differ on volatile lines alone.
+    *result* is that comparison's, not equal."""
     from modules.redact import redact_text
-
-    result = roundtrip.stored_is_device(capture, running)
-    if result["equal"]:
-        return ""
 
     def few(lines):
         # A top-level line is its section's child under an empty header (" :: line").

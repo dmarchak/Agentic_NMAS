@@ -276,16 +276,23 @@ class TestOnlyOneConditionProducesThisOutcome:
             f"the outcome spelled out rather than named: {literals}")
 
     def test_the_device_comparisons_reason_is_the_drift_reason(self):
-        """`drifted` is `ctx.drifted`, which stage 4 fills from `device_moved_reason` only,
-        and `moved` is the `DeviceMoved` that `_measure_unchanged` raises with it."""
+        """`drifted` is `ctx.drifted`, which stage 4 fills from `device_against_capture`'s
+        reason only (since C1383 it is handed the program and the dialect, for the
+        new-hardware exception; `device_moved_reason` is the same function's reason with no
+        program), and `moved` is the `DeviceMoved` that `_measure_unchanged` raises with it."""
         import inspect
+        import re
 
         import modules.pipeline as P
         import routes.deploy as rd
 
         stage = inspect.getsource(P._stage_pre_snapshot)
-        assert "moved = device_moved_reason(capture, running_cfg)" in stage
+        assert re.search(r"compared = device_against_capture\(\s*capture, running_cfg,", stage)
+        assert 'moved = compared["reason"]' in stage
         assert "ctx.drifted[ip] = moved" in stage
+        unchanged = inspect.getsource(rd._measure_unchanged)
+        assert "moved = device_moved_reason(capture, config)" in unchanged
+        assert "raise DeviceMoved(moved)" in unchanged
         assert "raise DeviceMoved(moved)" in inspect.getsource(rd._measure_unchanged)
 
     def test_a_command_hash_mismatch_is_refused_not_drifted(self):

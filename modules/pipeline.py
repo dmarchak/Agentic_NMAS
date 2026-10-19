@@ -266,8 +266,14 @@ class PipelineContext:
     #: ``None`` when the caller computed against nothing stored. Stage 4 compares the
     #: running config it reads with it and sends nothing to a device that differs.
     confirmed_capture:   dict = None
-    #: ip -> why stage 4 found the device is not that capture (`deploy.device_moved_reason`).
+    #: ip -> the config dialect that capture's program was computed for, or absent: stage 4
+    #: asks it whether a device-only interface block is its measured default (C1383).
+    capture_dialect:     dict = None
+    #: ip -> why stage 4 found the device is not that capture (`deploy.device_against_capture`).
     drifted:             dict = field(default_factory=dict)
+    #: ip -> the device-only lines stage 4 accepted as new hardware, ``[{"interface",
+    #: "lines"}]`` (`deploy.device_against_capture`, C1383): for the receipt.
+    new_hardware:        dict = field(default_factory=dict)
 
     # ---- Bookkeeping -----------------------------------------------------
     stages_completed: list[str] = field(default_factory=list)
@@ -702,6 +708,8 @@ def _stage_pre_snapshot(ctx: PipelineContext) -> None:
             # THE DEVICE AGAINST THE CAPTURE THE PROGRAM WAS COMPUTED FROM (C78). The
             # confirm hash covers the stored capture only; a device changed by hand since
             # would get a program computed against a stale one. Unreadable is not a match.
+            # The one exception is new hardware the confirmed program configures, its lines
+            # the platform's measured default (C1383): accepted, and kept for the receipt.
             capture = (ctx.confirmed_capture or {}).get(ip)
             if capture is not None:
                 if not running_cfg:
@@ -709,12 +717,20 @@ def _stage_pre_snapshot(ctx: PipelineContext) -> None:
                                   "so it could not be compared with the capture the program "
                                   "was computed against; nothing was sent")
                     continue
-                from modules.nsot.deploy import device_moved_reason
-                moved = device_moved_reason(capture, running_cfg)
+                from modules.nsot.deploy import device_against_capture
+                compared = device_against_capture(
+                    capture, running_cfg, program=ctx.rendered_commands.get(ip) or [],
+                    dialect=(ctx.capture_dialect or {}).get(ip, ""))
+                moved = compared["reason"]
                 if moved:
                     ctx.drifted[ip] = moved
                     errors.append(f"{hostname} ({ip}): {moved}")
                     continue
+                if compared["new_hardware"]:
+                    ctx.new_hardware[ip] = compared["new_hardware"]
+                    log.info("pipeline[4/pre_snapshot]: %s: device-only lines accepted as new "
+                             "hardware: %s", hostname,
+                             ", ".join(n["interface"] for n in compared["new_hardware"]))
 
             ctx.pre_snapshots[ip] = snap
             nbr = snap.get("routing_neighbors", {})

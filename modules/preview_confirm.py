@@ -206,7 +206,10 @@ CAPTURE_GATE = "device and capture unchanged since this preview"
 CAPTURE_GATE_DETAIL = ("the stored capture is re-read at apply, and a change to it "
                        "refuses this device. The device's running config, read before "
                        "anything is sent, is compared with that capture: a device changed "
-                       "since its capture is skipped as drifted, with nothing sent")
+                       "since its capture is skipped as drifted, with nothing sent. The one "
+                       "exception is new hardware: an interface the capture lacks, printing "
+                       "only its platform's measured default lines, which this program "
+                       "configures, is accepted and named in the receipt")
 
 
 BUSY_GATE = "no other operation holds this device"

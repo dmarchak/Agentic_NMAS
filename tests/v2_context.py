@@ -950,9 +950,37 @@ def _netbox_lag(client, _lab, _mp):
         mp.undo()
 
 
+def _update_owed(client, _lab, _mp):
+    """Update with a host step the running release still owes (C795): `host_steps.owed` read
+    from one real commit's trailer, 99664f27's not-checkable `Host-Step-After`, never from the
+    checkout's history. The walk drew this only while the checkout's last 200 commits held an
+    owed step, and 3db04b01 moved 99664f27 to 201 back (CI #994). Its patches are undone before
+    the next provider."""
+    import pytest
+
+    from modules import host_steps
+    from routes import health
+
+    sha = "99664f2792d7e8eb872f8c2728364b3896f6a07c"
+    body = ("C794: the host step turning Loki's own detected_level off\n\nHost-Step-After: on "
+            "the NMAS host: bash scripts/host-steps/c794-loki-detected-level-off.sh (Loki's own "
+            "detected_level off; severity the one level)\n")
+    real = host_steps.owed
+    mp = pytest.MonkeyPatch()
+    try:
+        mp.setattr(health, "_COMMIT", sha)
+        mp.setattr(host_steps, "owed",
+                   lambda running, **kw: real(running, log_text=f"{sha}\x1f{body}\x1e"))
+        r = client.get("/v2/update", headers={"Accept": "text/html"})
+        assert r.status_code == 200 and 'id="update-owed-steps"' in r.get_data(as_text=True), \
+            r.status_code
+    finally:
+        mp.undo()
+
+
 #: What no followed GET reaches, each on the lab's own state: a POST's card, a script's GET,
 #: a state the lab's walk does not hold. In order: `_deploy` changes r3, so it is last.
 PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _drift,
                    _in_progress, _pending, _netbox_source, _netbox_lag, _silenced_alert,
                    _save_no_golden, _profile_versions,
-                   _no_change_window, _deploy]
+                   _no_change_window, _update_owed, _deploy]

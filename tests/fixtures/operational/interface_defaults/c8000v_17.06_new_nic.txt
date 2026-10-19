@@ -1,0 +1,24 @@
+! An unconfigured interface's default block, measured 2026-10-19 (register C1383).
+! The lab's redeploy that day gave two C8000v routers (IOS-XE 17.06.01a) one new NIC each:
+! r2 gained GigabitEthernet4, r4 gained GigabitEthernet5. Nobody configured either. Each
+! device's drift check then held the block as lines only on the device; read from the drift
+! check's stored diff through Mercury's masking (nothing masked), the two blocks identical but
+! for the interface's name. In r2's running config the block sat after GigabitEthernet3's and
+! before interface Loopback0. Each block below is as the device printed it.
+!
+! r2
+interface GigabitEthernet4
+ no ip address
+ shutdown
+ negotiation auto
+ no mop enabled
+ no mop sysid
+!
+! r4
+interface GigabitEthernet5
+ no ip address
+ shutdown
+ negotiation auto
+ no mop enabled
+ no mop sysid
+!

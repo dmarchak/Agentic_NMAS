@@ -1,0 +1,20 @@
+{
+  "_about": "Per dialect and interface type: the block a device prints for an interface nobody has configured (a NIC just added), as `show running-config` prints it, child lines exactly and in order. Measured, never taken from the vendor's documentation or a pattern: a dialect or interface type with no row has no measured default, and `interface_defaults.unconfigured_interface_default` answers False for it, so the deploy's capture guard refuses (C1383).",
+  "by_dialect": {
+    "cisco_iosxe": {
+      "GigabitEthernet": {
+        "lines": [
+          " no ip address",
+          " shutdown",
+          " negotiation auto",
+          " no mop enabled",
+          " no mop sysid"
+        ],
+        "platform": "C8000v, IOS-XE 17.06.01a",
+        "measured_at": "2026-10-19",
+        "evidence": "two routers each given one new NIC printed the same five child lines for it, read through Mercury's masking from the drift check's stored diff; nobody had configured either interface",
+        "fixture": "tests/fixtures/operational/interface_defaults/c8000v_17.06_new_nic.txt"
+      }
+    }
+  }
+}

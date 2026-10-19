@@ -126,6 +126,22 @@ the run ends. Its stages, in the order the code declares them:
    many lines are only in the capture and only on the device, the first few of each, masked.
    Capture it, then preview again. A running configuration that cannot be read cannot be
    compared, so that device is refused with nothing sent.
+
+   **One narrow exception: new hardware.** A NIC added to the device since its capture prints
+   its default block, and the capture lacks the interface; capturing would record that as the
+   golden. The device goes on, its device-only lines accepted, only when every line found only
+   on the device meets all three conditions, and nothing is only in the capture:
+   - the interface is absent from the capture entirely. An interface the capture has, now at
+     its defaults, is someone defaulting it, and is refused;
+   - its block is exactly the platform's measured default for an interface nobody has
+     configured, every line in order. One line more refuses. Measured only for IOS-XE
+     GigabitEthernet on the C8000v, 17.06, so every other platform and interface type refuses;
+   - the confirmed program configures that same interface. A default block on an interface the
+     program does not touch is refused.
+
+   The receipt names the interface and the accepted lines (`new_hardware`). The capture
+   recorded after verify becomes the golden, which withdraws the device's pending drift item
+   and answers its drift-check row. Anything else is refused as above, in the same words.
 5. `config_diff`. Read: the program and the pre-change running configuration. Sent: nothing.
    Recorded: the counts, in the audit entry. It compares each program line's text with the
    running configuration's lines (by text, not by section) and refuses a program whose every

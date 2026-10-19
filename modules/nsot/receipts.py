@@ -269,6 +269,12 @@ def rows_for(report: dict, *, list_name: str, action: str, actor: str,
             # reason, in the hash: testimony, masked like the authorisations' reasons.
             "declared": [dict(d, reason=redact_text(d.get("reason", "")))
                          for d in (result.get("declared") or [])],
+            # The capture guard ACCEPTED these device-only lines as new hardware (C1383): an
+            # interface the capture lacked, its block the platform's measured default, which
+            # the program configured. Each interface with its lines, masked like the program.
+            "new_hardware": [{"interface": n.get("interface", ""),
+                              "lines": [redact_text(x) for x in n.get("lines") or []]}
+                             for n in (result.get("new_hardware") or [])],
             "checks": _checks(result),
             "rollback": {
                 "performed": bool(result.get("rolled_back")),
