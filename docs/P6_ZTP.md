@@ -424,7 +424,11 @@ without asking Kea. Refused at Add: an IPv6 subnet (C1245), a gateway or a DNS v
 prefix whose relay is not exactly one interface of a device Mercury manages with a helper
 address. The relay address Kea matches the subnet on (`relay.ip-addresses`) is that interface's
 address. A declared subnet that holds a reservation is not removed (abandon or retire its devices
-first).
+first). The DHCP page draws a declared subnet as Mercury's, with Edit… and Remove… (C1377): its
+Edit goes through board C's one write path, held to D4: a gateway or DNS value is refused at the
+preview, and so is any route or resolver option on the subnet or a pool it would leave, each
+named with its value and the relay's own address (option 3's only value, and only on a
+reservation).
 
 **The fragment: the declared subnet's own reservations file, and it is ZTP's whole.** The DHCP
 page's Add already gives each subnet its own `reservations-<id>.json`. For a declared subnet that

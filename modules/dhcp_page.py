@@ -273,6 +273,8 @@ def view(list_name: str, values, now: float = None) -> dict:
         if n_beside:
             flags.append(f"{n_beside} from the pool where a reservation exists")
         groups.append({"sub": sub, "rows": shown, "total": len(mine_rows), "flags": flags,
+                       # C1377: a relayed ZTP subnet's leases said by what they are.
+                       "reserved": sum(1 for r in mine_rows if r["reserved"]),
                        "open": bool(flags) or bool(needle) or s["show"] != "all"
                        or s["open"] == f"{sub['svc']}:{sub['id']}"})
     res_rows = []
@@ -284,8 +286,14 @@ def view(list_name: str, values, now: float = None) -> dict:
     held = {svc: f.get("held") for svc, f in _families(st["value"])}
     for sub in subnets:
         used = sum(1 for l in active if l["svc"] == sub["svc"] and l["subnet_id"] == sub["id"])
+        # C1377: of those, the leases a reservation names for their client (a relayed ZTP
+        # subnet's are onboarding's devices; Discovered never lists a relayed client).
+        used_reserved = sum(1 for r in rows if r["svc"] == sub["svc"]
+                            and r["subnet_id"] == sub["id"] and r["state"] == "active"
+                            and r["reserved"])
         same = all(sub["times"].get(k) == sub["global_times"].get(k) for k in sub["times"])
-        sub_rows.append(dict(sub, used=used, size=pool_size(sub["pools"]), same_as_global=same,
+        sub_rows.append(dict(sub, used=used, used_reserved=used_reserved,
+                             size=pool_size(sub["pools"]), same_as_global=same,
                              gateway=gateway(sub, intent), dns=dns(sub),
                              held=(held.get(sub["svc"]) or {}).get(str(sub["id"]), "")))
     # Board D: the exclusions recorded (committed) and the conflicts found against the pools.

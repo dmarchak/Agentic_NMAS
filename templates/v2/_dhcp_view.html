@@ -62,7 +62,7 @@
         {%- else %}<span class="mono">{{ gw.kea or '—' }}</span>{% if gw.inherited %} <span class="faint">(global)</span>{% endif %}<br><span class="small{% if gw.state in ('differs', 'missing') %} dh-warn{% else %} faint{% endif %}"{% if gw.where %} title="intent: {{ gw.where | join(', ') }}"{% endif %}>{{ gw.words }}</span>{% endif %}</td>
       <td class="mono">{% for d in x.dns.servers %}{{ d }}{% if not loop.last %}<br>{% endif %}{% else %}<span class="faint">none</span>{% endfor %}{% if x.dns.inherited %} <span class="faint">(global)</span>{% endif %}</td>
       <td>{{ g.duration(x.times.valid) }} · {{ g.duration(x.times.preferred) }} · {{ g.tee_words(x) }}{% if x.same_as_global %} <span class="faint">the same as Kea's global</span>{% endif %}</td>
-      <td>{% if x.ztp %}{{ x.used }} asking{% elif x.size %}{{ x.used }} of {{ x.size }}{% else %}{{ x.used }}{% endif %}</td>
+      <td>{% if x.ztp_relayed %}{{ x.used_reserved }} reserved{% if x.used > x.used_reserved %}, {{ x.used - x.used_reserved }} other{% endif %}{% elif x.ztp %}{{ x.used }} asking{% elif x.size %}{{ x.used }} of {{ x.size }}{% else %}{{ x.used }}{% endif %}</td>
       <td class="small">{% if x.held %}{{ g.held_words[x.held] }}{% else %}<span class="faint">not known: Kea's file is not on this host</span>{% endif %}</td>
       <td>{% if x.held == 'mercury' and g.writable %}<a class="btn btn-small" href="{{ url_for('dhcp_v2.subnet_preview', list=g.list, family=x.family, id=x.id) }}" hx-get="{{ url_for('dhcp_v2.subnet_preview', list=g.list, family=x.family, id=x.id) }}" hx-target="#dhcp" hx-swap="outerHTML" data-op="dhcp-subnet" aria-label="Edit {{ x.prefix }}">Edit…</a>{{ how('dhcp-subnet', compact=True, op='a subnet') }} <a class="btn btn-small" href="{{ url_for('dhcp_v2.subnet_preview', list=g.list, op='remove', family=x.family, id=x.id) }}" hx-get="{{ url_for('dhcp_v2.subnet_preview', list=g.list, op='remove', family=x.family, id=x.id) }}" hx-target="#dhcp" hx-swap="outerHTML" data-op="dhcp-subnet" aria-label="Remove {{ x.prefix }}">Remove…</a>{{ how('dhcp-subnet', compact=True, op='a subnet') }}{% endif %}</td>
     </tr>
@@ -96,7 +96,7 @@
   {%- for grp in g.groups %}
   {%- set x = grp.sub %}
   <details class="dh-grp" data-keep="dh-{{ x.svc }}-{{ x.id }}"{% if grp.open %} open{% endif %}>
-    <summary><span class="mono">{{ x.prefix }}</span>{% if x.ztp %}, ZTP{% endif %} <span class="muted small">· {% if x.ztp %}{{ grp.total }} asking: onboarding's Discovered list (board L, not built yet){% else %}{{ grp.total }} lease{{ 's' if grp.total != 1 }}{% endif %}</span>{% for f in grp.flags %} {{ badge(f, 'warn') }}{% endfor %}</summary>
+    <summary><span class="mono">{{ x.prefix }}</span>{% if x.ztp_relayed %}, ZTP behind a relay{% elif x.ztp %}, ZTP{% endif %} <span class="muted small">· {% if x.ztp and not x.ztp_relayed %}{{ grp.total }} asking: onboarding's Discovered list (board L, not built yet){% else %}{{ grp.total }} lease{{ 's' if grp.total != 1 }}{% if x.ztp_relayed %}, {{ grp.reserved }} reserved{% endif %}{% endif %}</span>{% for f in grp.flags %} {{ badge(f, 'warn') }}{% endfor %}</summary>
     {%- if grp.rows %}
     <div class="dh-scroll"><table class="table">
       <thead><tr><th scope="col">Address</th><th scope="col">Identity</th><th scope="col">Hostname</th><th scope="col">Device</th><th scope="col">Kea's lease</th><th scope="col">As the host holds it</th></tr></thead>

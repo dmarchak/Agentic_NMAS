@@ -537,6 +537,145 @@ class TestTheSubnetIsDeclaredAtAdd:
         assert ok["ok"], ok["refused"]
 
 
+class TestTheDhcpPageChangesARelayedSubnet:
+    """C1377: a relayed ZTP subnet Mercury's Add wrote is Mercury's to edit and remove, through
+    board C's one path (`dhcp_subnets.plan`, `apply_edit`), held to D4; its reservations stay
+    onboarding's, and the directly attached ZTP subnet stays onboarding's whole."""
+
+    @staticmethod
+    def _plan(kea_files, monkeypatch, kea=None, **ask):
+        from modules import dhcp_reservations as D
+        from modules import dhcp_subnets as S
+
+        monkeypatch.setattr(D, "main_config", lambda ln, fam: kea_files["main"])
+        values = {"op": "edit", "family": "IPv4", "id": "40"}
+        values.update(ask)
+        return S.plan("Lab", values, intent={"IPv4": {}, "IPv6": {}},
+                      kea=kea or FakeKea({255: kea_files["direct"], 40: kea_files["relayed"]}))
+
+    @staticmethod
+    def _hold(kea_files, *macs):
+        """Onboarding's reservations in subnet 40's own file (ZTP's writer's shape)."""
+        with open(kea_files["relayed"], "w", encoding="utf-8") as fh:
+            json.dump([ztp.reservation_entry(m, f"198.51.100.{2 + i}", f"edge{i + 1}", SERVER)
+                       for i, m in enumerate(macs)], fh)
+
+    def test_the_reader_marks_it_relayed_and_held_by_mercury(self, kea_files, monkeypatch):
+        from modules import dhcp_reservations as Dr
+        from modules.readers import dhcp as R
+
+        got = {s["id"]: s for s in R.subnets(_dhcp4(_relayed_subnet()), "IPv4", "subnet4",
+                                             ztp_ids=[255])}
+        assert got[40]["ztp"] and got[40]["ztp_relayed"], got[40]
+        assert got[255]["ztp"] and not got[255]["ztp_relayed"], got[255]
+        monkeypatch.setattr(Dr, "main_config", lambda ln, fam: kea_files["main"])
+        held = R.held_by("Lab", "IPv4", list(got.values()))
+        assert held == {255: "ztp", 40: "mercury"}, held
+        # Control: the same subnet without the declaration is neither.
+        plain = R.subnets(_dhcp4(_relayed_subnet(declared=False)), "IPv4", "subnet4", [255])
+        assert not [s for s in plain if s["id"] == 40][0]["ztp_relayed"]
+
+    def test_an_ipv6_subnet_carrying_the_declaration_is_not_relayed_ztp(self):
+        """IPv6's twin: ZTP is IPv4 only (C1245), so the mark on a DHCPv6 subnet is not ZTP's."""
+        from modules.readers import dhcp as R
+
+        config = {"subnet6": [{"id": 40, "subnet": "2001:db8:4::/64",
+                               "relay": {"ip-addresses": ["2001:db8:4::1"]},
+                               "user-context": ztp_relayed.declaration()}]}
+        [sub] = R.subnets(config, "IPv6", "subnet6")
+        assert not sub["ztp"] and not sub["ztp_relayed"], sub
+
+    def test_remove_is_refused_while_onboarding_holds_reservations_naming_how_many(
+            self, kea_files, monkeypatch):
+        self._hold(kea_files, MAC, "aa:bb:cc:00:04:03")
+        p = self._plan(kea_files, monkeypatch, op="remove")
+        assert not p["ok"], p
+        assert "relayed ZTP subnet holding 2 reservation(s) onboarding wrote" in p["refused"]
+
+    def test_remove_is_planned_when_it_holds_none(self, kea_files, monkeypatch):
+        p = self._plan(kea_files, monkeypatch, op="remove")
+        assert p["ok"], p["refused"]
+        assert p["title"] == f"Remove {RELAYED}" and p["hash"]
+        assert p["before"].get("user-context") == {"mercury-ztp": "relayed"}
+
+    def test_an_edit_of_its_pool_is_planned_and_keeps_the_declaration(self, kea_files,
+                                                                      monkeypatch):
+        p = self._plan(kea_files, monkeypatch, pool=f"{DEVICE} - {DEVICE}")
+        assert p["ok"], p["refused"]
+        assert p["after"]["pools"] == [{"pool": f"{DEVICE} - {DEVICE}"}]
+        assert p["after"]["user-context"] == {"mercury-ztp": "relayed"}
+        assert p["after"]["relay"] == {"ip-addresses": [RELAY]}
+        assert "option-data" not in p["after"], p["after"]
+        said = " | ".join(t for _s, t in p["checks"])
+        assert "(D4)" in said and "VRRP" not in said, said
+
+    @pytest.mark.parametrize("dns", ["192.0.2.53", "2001:db8::53"])
+    def test_an_edit_adding_dns_is_refused_under_d4(self, kea_files, monkeypatch, dns):
+        p = self._plan(kea_files, monkeypatch, dns=dns)
+        assert not p["ok"], p
+        assert p["refused"].startswith("D4: option 6 (domain-name-servers) " + dns), p["refused"]
+
+    @pytest.mark.parametrize("gateway", [DEVICE, "203.0.113.1", RELAY, "2001:db8::1"])
+    def test_an_edit_adding_a_router_is_refused_under_d4_naming_both(self, kea_files,
+                                                                     monkeypatch, gateway):
+        """Any option 3 at the subnet, the relay's own address too (D4 restated allows it on a
+        reservation only), and one outside the prefix or of the other family is refused as D4,
+        never first as "not in the prefix"."""
+        p = self._plan(kea_files, monkeypatch, gateway=gateway)
+        assert not p["ok"], p
+        assert p["refused"].startswith(f"D4: option 3 (routers) {gateway} at the subnet"), \
+            p["refused"]
+        assert f"the relay's own address ({RELAY})" in p["refused"], p["refused"]
+
+    def test_a_route_option_already_on_the_subnet_refuses_any_edit(self, kea_files,
+                                                                   monkeypatch):
+        """The shape, not the form: whatever put a route option on the subnet, an edit that
+        would keep it is refused naming it."""
+        from modules import dhcp_subnets as S
+
+        with open(kea_files["subnets"], encoding="utf-8") as fh:
+            subnets = S.load(fh.read())
+        subnets[1]["option-data"] = [{"name": "classless-static-route",
+                                      "data": "0.0.0.0/0 - 198.51.100.1", "space": "dhcp4"}]
+        with open(kea_files["subnets"], "w", encoding="utf-8") as fh:
+            fh.write(S.dump(subnets))
+        p = self._plan(kea_files, monkeypatch, pool=f"{DEVICE} - {DEVICE}")
+        assert not p["ok"], p
+        assert "D4: option classless-static-route" in p["refused"], p["refused"]
+
+    def test_the_directly_attached_ztp_subnet_stays_onboardings(self, kea_files, monkeypatch):
+        """Control: subnet 255, ZTP's by ZTP's own rule, is still refused both ways."""
+        from modules.readers import dhcp as R
+
+        monkeypatch.setattr(R, "_ztp_ids", lambda config: [255, 40])
+        edit = self._plan(kea_files, monkeypatch, id="255", pool="192.0.2.60 - 192.0.2.70")
+        assert not edit["ok"] and "is ZTP's: its posture is onboarding's" in edit["refused"]
+        gone = self._plan(kea_files, monkeypatch, id="255", op="remove")
+        assert not gone["ok"] and "is ZTP's: onboarding's, never removed" in gone["refused"]
+
+    def test_an_ipv6_subnet_carrying_the_declaration_is_edited_as_board_c_s(self, monkeypatch):
+        """IPv6's twin of the DNS refusal: the mark on a DHCPv6 subnet is not D4's, so a DNS
+        server is board C's to set there."""
+        from modules import dhcp_reservations as D
+        from modules import dhcp_subnets as S
+
+        sub = {"id": 40, "subnet": "2001:db8:4::/64", "user-context": ztp_relayed.declaration(),
+               "relay": {"ip-addresses": ["2001:db8:4::1"]}}
+
+        class Kea6:
+            def command(self, command, service=None):
+                if command == "config-get":
+                    return {"ok": True, "result": [{"arguments": {"Dhcp6": {"subnet6": [sub]}}}]}
+                assert command == "lease6-get-all", command
+                return {"ok": True, "result": [{"arguments": {"leases": []}}]}
+        monkeypatch.setattr(D, "main_config", lambda ln, fam: "/nonexistent/kea-dhcp6.conf")
+        p = S.plan("Lab", {"op": "edit", "family": "IPv6", "id": "40", "dns": "2001:db8::53"},
+                   kea=Kea6(), file_text=S.dump([sub]), intent={"IPv4": {}, "IPv6": {}})
+        assert p["ok"], p["refused"]
+        assert {"name": "dns-servers", "data": "2001:db8::53", "space": "dhcp6"} in \
+            p["after"]["option-data"]
+
+
 # ── 3. option 3: the relay's own address and nothing else ─────────────────────────────────
 
 class TestOptionThree:

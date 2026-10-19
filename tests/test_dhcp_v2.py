@@ -16,6 +16,7 @@ by region; this checks what each region holds):
 - no read stored, an unreadable store, Kea not configured: each its own words.
 """
 
+import copy
 import json
 import os
 import re
@@ -226,6 +227,112 @@ def test_a_gateway_that_differs_from_intent_says_both():
     assert gw["state"] == "missing" and "Kea offers none; intent says 10.10.20.1" in gw["words"]
     gw = P.gateway(dict(sub, prefix="10.10.40.0/24"), _s1_intent())
     assert gw["state"] == "none" and "no interface in intent is on it" in gw["words"]
+
+
+RELAYED_ZTP = "198.51.100.0/29"
+
+
+class _RelayedKea(FakeKea):
+    """The captured Kea with a subnet Mercury's Add wrote for ZTP behind a relay (C1346's
+    declaration, written here by its literal words), and an IPv6 subnet carrying the same mark;
+    each planted as a copy of the captured subnet 10 with its id, prefix, relay and pool
+    edited. Subnet 40 holds onboarding's one reservation (edge1) and two leases: edge1's on its
+    reserved address, and another client's from the pool."""
+
+    MAC, OTHER = "aa:bb:cc:00:04:02", "aa:bb:cc:00:04:03"
+
+    @staticmethod
+    def _plant(svc, result):
+        conf = result[0]["arguments"]["Dhcp4" if svc == "dhcp4" else "Dhcp6"]
+        key = "subnet4" if svc == "dhcp4" else "subnet6"
+        sub = copy.deepcopy(conf[key][0])
+        if svc == "dhcp4":
+            sub.update({"id": 40, "subnet": RELAYED_ZTP,
+                        "relay": {"ip-addresses": ["198.51.100.1"]}, "option-data": [],
+                        "pools": [{"option-data": [], "pool": "198.51.100.3-198.51.100.6"}],
+                        "reservations": [{"hw-address": _RelayedKea.MAC,
+                                          "ip-address": "198.51.100.2", "hostname": "edge1"}]})
+        else:
+            sub.update({"id": 40, "subnet": "2001:db8:40::/64",
+                        "relay": {"ip-addresses": ["2001:db8:40::1"]}, "reservations": []})
+        sub["user-context"] = {"mercury-ztp": "relayed"}
+        conf[key].append(sub)
+        return result
+
+    def __init__(self):
+        super().__init__(plant=self._plant)
+
+    def command(self, cmd, svc):
+        got = super().command(cmd, svc)
+        if cmd == "lease4-get-all":
+            got = copy.deepcopy(got)
+            entry = got["result"][0] if isinstance(got["result"], list) else got["result"]
+            leases = entry["arguments"]["leases"]
+            for mac, address in ((self.MAC, "198.51.100.2"), (self.OTHER, "198.51.100.3")):
+                lease = copy.deepcopy(leases[0])
+                lease.update({"hw-address": mac, "client-id": "01:" + mac,
+                              "ip-address": address, "subnet-id": 40})
+                leases.append(lease)
+        return got
+
+
+@pytest.fixture
+def relayed(web, tmp_path):
+    """The page fed the reader's value over `_RelayedKea`, with Kea's main files including
+    Mercury's subnet files (the host step run), so the reader's own `held_by` says who holds
+    each subnet."""
+    from modules import dhcp_reservations as R
+    from modules import dhcp_subnets as S
+
+    mains = {}
+    for family, key in (("IPv4", "subnet4"), ("IPv6", "subnet6")):
+        main = tmp_path / f"kea-{key}.conf"
+        main.write_text('{ "Dhcp": { "%s": <?include "%s"?> } }\n'
+                        % (key, S.subnets_file(str(main), family)))
+        mains[family] = str(main)
+    web["monkeypatch"].setattr(R, "main_config", lambda ln, fam: mains[fam])
+    _store(_value(kea=_RelayedKea()))
+    return web
+
+
+def test_a_relayed_ztp_subnet_mercury_holds_draws_edit_and_remove(relayed):
+    """C1377: the subnet Mercury's Add wrote for ZTP behind a relay is Mercury's (Edit… and
+    Remove…), still marked ZTP; the directly attached ZTP subnet is still ZTP's posture."""
+    html = _get(relayed)
+    row = html.split(f"{RELAYED_ZTP} ")[1].split("</tr>")[0]
+    assert re.match(r"<span[^>]*>ZTP</span>", row), row[:200]
+    assert '<td class="small">Mercury</td>' in row, row
+    assert f'aria-label="Edit {RELAYED_ZTP}"' in row and f'aria-label="Remove {RELAYED_ZTP}"' in row
+    direct = html.split("10.255.0.0/24 ")[1].split("</tr>")[0]
+    assert "ZTP&#39;s posture" in direct and "Edit…" not in direct and "Remove…" not in direct
+
+
+def test_a_relayed_ztp_subnet_s_leases_are_said_by_what_they_are(relayed):
+    """C1377: Discovered lists only clients the discovery classes match (giaddr 0, no
+    reservation), never a relayed one: a relayed ZTP subnet's leases are its reserved ones and
+    the others, never "asking"; the directly attached ZTP subnet keeps its words."""
+    html = _get(relayed)
+    row = html.split(f"{RELAYED_ZTP} ")[1].split("</tr>")[0]
+    assert "<td>1 reserved, 1 other</td>" in row, row
+    assert "asking" not in row
+    assert "asking" in html.split("10.255.0.0/24 ")[1].split("</tr>")[0]
+    lea = _get(relayed, "&tab=lea")
+    group = re.search(r'data-keep="dh-dhcp4-40".*?</details>', lea, re.S).group(0)
+    summary = group[:group.index("</summary>")]
+    assert ", ZTP behind a relay" in summary and "2 leases, 1 reserved" in summary, summary
+    assert "asking" not in group and "Discovered" not in group
+    assert group.count(">reserved</span>") == 1, group
+    direct = re.search(r'data-keep="dh-dhcp4-255".*?</summary>', lea, re.S).group(0)
+    assert "asking: onboarding's Discovered list" in direct, direct
+
+
+def test_an_ipv6_subnet_carrying_the_mark_is_not_drawn_as_ztp(relayed):
+    """IPv6's twin: ZTP is IPv4 only (C1245), so the same mark on a DHCPv6 subnet is a plain
+    subnet of Mercury's."""
+    html = _get(relayed)
+    row = html.split("2001:db8:40::/64<br>")[1].split("</tr>")[0]
+    assert "ZTP" not in row and "reserved," not in row and "asking" not in row
+    assert 'aria-label="Edit 2001:db8:40::/64"' in row
 
 
 def test_intent_s_facts_read_from_committed_host_vars():

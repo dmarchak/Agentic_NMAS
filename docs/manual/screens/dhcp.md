@@ -46,7 +46,9 @@ works](dhcp-subnet)). Its **For ZTP onboarding** checkbox, unticked by default, 
 subnet for devices onboarded by ZTP behind a relay: its reservations are written by Add device,
 never on this page, and it carries no gateway or DNS option, so a value in Gateway (3) or DNS
 servers (6) is refused at the preview ([how it works](dhcp-subnet#add-for-ztp)). Once Kea runs
-it, its row is drawn as ZTP's (marked ZTP, Held by ZTP's posture), with no Edit… or Remove….
+it, its row is marked ZTP and Held by Mercury, with **Edit…** and **Remove…**: an edit never
+gives it a gateway or a DNS server (D4), and its removal is refused while onboarding holds a
+reservation in it, naming how many ([how it works](dhcp-subnet#edit-relayed-ztp)).
 
 One row per subnet, as Kea runs it: its prefix, Kea's id for it and how many addresses are
 reserved in it; its **Pools as set**; its **Gateway** (Kea's option 3, beside the first-hop
@@ -73,9 +75,14 @@ lifetime at its next renewal, so a change reaches a long-held lease only when it
 host step put these in place (`scripts/host-steps/e19-dhcp-lifetimes.sh`), proving nothing else
 moved, as the subnet move below did.
 
-**Leases now** is the active leases against the size of the pools. ZTP's subnet is marked ZTP:
-its pools are the discovery range, so its count is the devices asking, and beyond them it
-answers only the reservations onboarding writes.
+**Leases now** is the active leases against the size of the pools. ZTP's subnet, the one this
+host is on, is marked ZTP: its pools are the discovery range, so its count is the devices
+asking, and beyond them it answers only the reservations onboarding writes. A subnet added for
+ZTP behind a relay is marked ZTP too, and its count says what its leases are: "1 reserved, 1
+other", the leases a reservation names for their client (onboarding's devices) and the rest.
+Never "asking": Onboard devices › Discovered lists only clients on the segment Kea listens on
+(the discovery classes match a request with no relay, `giaddr` 0.0.0.0, from a client with no
+reservation), so a relayed client is never there.
 
 Under each pool's range is what the pool is for: the description kept with it in Kea (in the
 pool's `user-context`), or, for ZTP's discovery pools, the vendor class it serves. A pool on a
@@ -101,7 +108,10 @@ has something to look at: an identity holding several leases (a client that aske
 given a new address each time), or a lease from the pool to a host that has a reservation for
 another address. **Find** matches an address, MAC, DUID or hostname; **Show** narrows to leases
 sharing an identity, those not in the inventory, or those expiring within a day. Either shows a
-part and says how much of the whole.
+part and says how much of the whole. ZTP's subnet's line counts the devices asking and names
+onboarding's Discovered list; a subnet added for ZTP behind a relay reads "ZTP behind a relay",
+its leases counted with how many are reserved ("2 leases, 1 reserved"), and each reserved
+lease carries **reserved** in **Kea's lease**, as in any subnet.
 
 An IPv4 lease is held by its MAC, an IPv6 lease by its DUID, and an IPv6 lease also shows its
 **IAID**, the identifier of the client's address association: a client that asks with a new IAID

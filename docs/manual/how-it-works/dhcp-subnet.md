@@ -49,11 +49,30 @@ subnet; its reservations go with it. When any client or reservation is affected,
 needs the acknowledgement ticked, and is refused without it. **What survives:** the subnet's
 definition and its reservations stay in the repository's history (`dhcp/subnets.yml`,
 `dhcp/reservations.yml`), so adding it back is one Add; Mercury's reservations file for it stays
-on disk, included by nothing. ZTP's subnet is onboarding's and never removed here. A subnet
-added for ZTP behind a relay is drawn as ZTP's once Kea runs it (marked ZTP, Held by ZTP's
-posture), so its row has no **Edit…** and no **Remove…**: this page cannot yet change or remove
-it. The removal behind Remove… would refuse it while onboarding holds any reservation in it,
-naming how many (abandon or retire those devices first, each removing its own).
+on disk, included by nothing. ZTP's subnet, the one this host is on, is onboarding's and never
+removed here. A subnet added for ZTP behind a relay is Mercury's: its row is marked ZTP, Held by
+Mercury, with **Edit…** and **Remove…**. Its removal is refused while onboarding holds any
+reservation in it, naming how many ("subnet 40 is a relayed ZTP subnet holding 2
+reservation(s) onboarding wrote: abandon or retire those devices first"), because each device's
+abandon or retirement removes its own; once it holds none, the removal is planned like any
+other.
+
+## Editing a subnet added for ZTP behind a relay {#edit-relayed-ztp}
+
+Its **Edit…** changes its pool, the pool's description, its domain and its lease times, as for
+any subnet, and keeps its ZTP mark and its relay address. D4 holds: such a subnet never carries
+a route or resolver option. Gateway (3) and DNS servers (6) stay on the card, and a value in
+either is refused at the preview, naming the value and what D4 allows. Option 3 may be only the
+relay's own address, and only on a reservation that chose it at Add device, never at the subnet,
+where it would reach every device there ("D4: option 3 (routers) 198.51.100.2 at the subnet: on
+relayed ZTP subnet 40 option 3 may be only the relay's own address (198.51.100.1), and only on a
+reservation that chose it at Add device"). Option 6 is never sent. The subnet the edit would
+leave is checked too: a route or resolver option already on it or on a pool (`routers`,
+`domain-name-servers`, `static-routes`, `classless-static-route`), whoever put it there, refuses
+the edit, naming each. Its checks say D4 in place of the gateway's comparison with intent: a ZTP
+subnet carries no gateway, so intent's VRRP address is not its value. Its reservations stay
+onboarding's. The mark is IPv4's alone: ZTP is IPv4 only (C1245), so an IPv6 subnet carrying
+it is an ordinary subnet.
 
 ## Where a subnet lives
 
@@ -61,8 +80,9 @@ Every subnet is in Mercury's own file beside Kea's configuration, `nmas/subnets4
 (`nmas/subnets6.json` for IPv6), which Kea's configuration includes; each subnet's reservations
 stay in their own file, which the subnet includes. One host step, once, moved Kea's hand-written
 subnets there (see [DHCP](dhcp)). Until it has run, Edit… is not offered and a change is
-refused, naming the step. ZTP's subnet is onboarding's, and is changed only where onboarding
-sets it. A network whose Kea is its own keeps its ZTP reservations in that Kea's ZTP file, and
+refused, naming the step. ZTP's subnet, the one this host is on, is onboarding's, and is
+changed only where onboarding sets it; a subnet added for ZTP behind a relay is edited here,
+held to D4 ([above](#edit-relayed-ztp)). A network whose Kea is its own keeps its ZTP reservations in that Kea's ZTP file, and
 the ZTP responder serves every network's, each from its Kea owner's file.
 
 ## The preview
@@ -79,8 +99,9 @@ nothing. Recorded: nothing. It says:
   new lifetime applies to leases granted or renewed after the change.
 - **Checks**, each by name: the pool lies inside the subnet and overlaps no other subnet's pool;
   the gateway against intent's first-hop address for the prefix (the VRRP group's virtual
-  address on its interfaces), said when it differs; Kea's own check on the candidate runs when you
-  confirm; Mercury's subnet file is the version the preview read.
+  address on its interfaces), said when it differs, or, on a subnet added for ZTP behind a
+  relay, that it carries no route or resolver option (D4); Kea's own check on the candidate runs
+  when you confirm; Mercury's subnet file is the version the preview read.
 
 **IPv6** has no gateway option: a host's default route comes from the routers' advertisements on
 the link. The card reads from intent whether each router advertising on the prefix sets M

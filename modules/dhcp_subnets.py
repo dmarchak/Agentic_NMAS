@@ -659,13 +659,24 @@ def _plan_edit(list_name, s, p, kea, file_text, intent, D) -> None:
     p["before"] = before
     prefix = before.get("subnet", "")
     p["prefix"] = prefix
+    from modules.nsot import ztp_relayed
     from modules.readers.dhcp import _ztp_ids
-    if family == "IPv4" and sid in _ztp_ids(config):
+    running = next((x for x in config.get(FILES[family][0]) or [] if x.get("id") == sid), {})
+    # C1377: a relayed ZTP subnet is Mercury's to edit (its Add wrote it), held to D4; the
+    # directly attached ZTP subnet stays onboarding's. Declared in Kea or in Mercury's file:
+    # either one makes D4 apply.
+    relayed = family == "IPv4" and (ztp_relayed.declared(running)
+                                    or ztp_relayed.declared(before))
+    if not relayed and family == "IPv4" and sid in _ztp_ids(config):
         raise Refused(f"subnet {sid} is ZTP's: its posture is onboarding's, changed only where "
                       "onboarding sets it")
+    if relayed:
+        _d4_form(s, sid, running or before)
     after = json.loads(json.dumps(before))
     # The pool: one range as the form sets it (board D's exclusions shape it later).
     _pool_given, valid = _settings(s, after, before, family, prefix, config, sid, intent)
+    if relayed:
+        _d4_subnet(after, sid, running or before)
     if after == before:
         raise Refused("nothing would change: the values are those Kea's subnet holds now")
     p["after"] = after
@@ -698,12 +709,68 @@ def _plan_edit(list_name, s, p, kea, file_text, intent, D) -> None:
     # Checks, each a measurement.
     p["checks"].append(("pass", f"the pool lies inside {prefix} and overlaps no other subnet's "
                                 "pool" if s["pool"] else "the pool is as Kea holds it"))
-    if family == "IPv4":
+    if relayed:
+        # D4, not intent's VRRP address: a ZTP subnet carries no gateway at all (C1377).
+        p["checks"].append(("pass", "a relayed ZTP subnet: no route or resolver option at the "
+                                    "subnet or its pools (D4); its reservations stay "
+                                    "onboarding's"))
+    elif family == "IPv4":
         _gateway_check(p, after, prefix, intent)
     p["checks"].append(("pending", f"kea-{'dhcp4' if family == 'IPv4' else 'dhcp6'} -t on the "
                                    "candidate, at confirm; the live file untouched until then"))
     p["checks"].append(("pass", f"Mercury's subnet file is the version this preview read "
                                 f"({p['version']})"))
+
+
+def _relay_words(subnet: dict) -> str:
+    """The relay's own address Kea matches *subnet* on, for a refusal: D4 restated's only
+    option 3 value, and only on a reservation."""
+    from modules.nsot import ztp_relayed
+
+    got = ztp_relayed.kea_relay(subnet)
+    return ", ".join(got) if got else "none named"
+
+
+def _d4_option_words(name, value, level: str, sid, subnet: dict) -> str:
+    """Why option *name* = *value* at *level* breaks D4 on relayed ZTP subnet *sid*."""
+    if name in ("routers", 3):
+        return (f"option 3 (routers) {value} at {level}: on relayed ZTP subnet {sid} option 3 "
+                f"may be only the relay's own address ({_relay_words(subnet)}), and only on a "
+                "reservation that chose it at Add device; at the subnet it would reach every "
+                "device there (D4 restated)")
+    if name in ("domain-name-servers", 6):
+        return (f"option 6 (domain-name-servers) {value} at {level}: a ZTP subnet never sends "
+                "a resolver (D4): a configless device given one phones Cisco")
+    return (f"option {name} {value} at {level}: a ZTP subnet never sends a route option (D4)")
+
+
+def _d4_form(s: dict, sid, subnet: dict) -> None:
+    """D4 for an edit of a relayed ZTP subnet, on what the form sends: a gateway or a DNS
+    server is refused naming the value and what D4 allows, before any other check of it."""
+    bad = []
+    if s.get("gateway"):
+        bad.append(_d4_option_words("routers", s["gateway"], "the subnet", sid, subnet))
+    if s.get("dns"):
+        bad.append(_d4_option_words("domain-name-servers", s["dns"], "the subnet", sid, subnet))
+    if bad:
+        raise Refused("D4: " + "; ".join(bad))
+
+
+def _d4_subnet(after: dict, sid, subnet: dict) -> None:
+    """D4 for an edit of a relayed ZTP subnet, on the subnet it would leave: no route or
+    resolver option (`ztp.FORBIDDEN_OPTIONS`, by name or code) at the subnet or any pool,
+    whoever put it there. Refused naming each, with its value."""
+    from modules.nsot import ztp
+
+    names, codes = set(ztp.FORBIDDEN_OPTIONS), set(ztp.FORBIDDEN_OPTIONS.values())
+    levels = [("the subnet", after.get("option-data") or [])] + [
+        (f"pool {pl.get('pool')}", pl.get("option-data") or []) for pl in after.get("pools") or []]
+    bad = [_d4_option_words(o.get("name") or o.get("code"), o.get("data", ""), level, sid,
+                            subnet)
+           for level, opts in levels for o in opts
+           if o.get("name") in names or o.get("code") in codes]
+    if bad:
+        raise Refused("D4: " + "; ".join(bad))
 
 
 def _host(lease: dict) -> str:

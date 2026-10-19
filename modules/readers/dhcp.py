@@ -113,7 +113,14 @@ def pool_note(pool: dict) -> str:
 
 def subnets(config: dict, family: str, sub_key: str, ztp_ids=()) -> list:
     """Each subnet as Kea runs it, those inside a shared network too: id, prefix, pools, its
-    lease times and the global ones, its reservations, and which reservations Kea uses there."""
+    lease times and the global ones, its reservations, and which reservations Kea uses there.
+
+    ``ztp_relayed`` (C1377): an IPv4 subnet carrying ZTP's relayed declaration
+    (`ztp_relayed.declared`), which Mercury's Add put there. It is ZTP's for its reservations
+    and D4, and Mercury's to edit and remove; its clients are relayed, so the discovery classes
+    (``pkt4.giaddr == 0.0.0.0``) never match them and Discovered never lists them."""
+    from modules.nsot import ztp_relayed
+
     glob = {name: config.get(key) for name, key in TIMES}
     every = [(s, {}) for s in config.get(sub_key) or []]
     for net in config.get("shared-networks") or []:
@@ -122,6 +129,7 @@ def subnets(config: dict, family: str, sub_key: str, ztp_ids=()) -> list:
     for s, net in every:
         uses = {name: bool(s.get(key, net.get(key, config.get(key, default))))
                 for name, key, default in USES}
+        relayed = family == "IPv4" and ztp_relayed.declared(s)
         out.append({"id": s.get("id"), "prefix": s.get("subnet", ""),
                     "shared_network": net.get("name", ""),
                     "pools": [p.get("pool", "") for p in s.get("pools") or []],
@@ -141,7 +149,8 @@ def subnets(config: dict, family: str, sub_key: str, ztp_ids=()) -> list:
                     # inherits where it sets none (C529 step 3).
                     "options": _options(s.get("option-data")),
                     "global_options": _options(config.get("option-data")),
-                    "uses": uses, "ztp": s.get("id") in ztp_ids, "family": family})
+                    "uses": uses, "ztp": s.get("id") in ztp_ids or relayed,
+                    "ztp_relayed": relayed, "family": family})
     return out
 
 
@@ -157,7 +166,9 @@ def _options(data) -> dict:
 def held_by(list_name: str, family_words: str, subnets_: list) -> dict:
     """Who writes each subnet (board C's "Held by"): ``{id: "mercury"|"ztp"|"kea-file"}``, from
     whether Kea's main file takes the family's subnets from Mercury's file (C529 step 5's
-    move); ``{}`` when Kea's file cannot be read here (a Kea on another host)."""
+    move); ``{}`` when Kea's file cannot be read here (a Kea on another host). A relayed ZTP
+    subnet is Mercury's like any other (C1377: Mercury's Add wrote it, and its Edit and Remove
+    keep D4); only the directly attached ZTP subnet is ZTP's posture."""
     from modules import dhcp_reservations as D
     from modules import dhcp_subnets as S
 
@@ -167,7 +178,8 @@ def held_by(list_name: str, family_words: str, subnets_: list) -> dict:
             state = S.move_plan(fh.read(), main, family_words)["state"]
     except OSError:
         return {}
-    return {s["id"]: ("ztp" if s.get("ztp") else "mercury" if state == "done" else "kea-file")
+    return {s["id"]: ("ztp" if s.get("ztp") and not s.get("ztp_relayed")
+                      else "mercury" if state == "done" else "kea-file")
             for s in subnets_}
 
 

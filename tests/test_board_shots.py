@@ -2542,3 +2542,45 @@ def test_dhcp_subnet_add_for_ztp(tmp_path, monkeypatch):
                       ((1440, 1.0), (1280, 1.0), (390, 2.0)))
         _group_a_page("dhcp-subnet-add-ztp-refused", served, "/v2/dhcp/subnet?" + urlencode(
             dict(ztp, gateway="198.51.100.5")), ((1440, 1.0),))
+
+
+def test_dhcp_relayed_ztp_subnet(tmp_path, monkeypatch):
+    """C1377: DHCP › Subnets and Leases with a subnet Mercury's Add wrote for ZTP behind a relay
+    (tests/test_dhcp_v2.py's `_RelayedKea`: the lab's Kea answers with subnet 40,
+    198.51.100.0/29, declared relayed, onboarding's one reservation and two leases, and an IPv6
+    subnet carrying the same mark), Kea's main files including Mercury's subnet files so the
+    reader's own `held_by` says who holds each. Beside board C's section 1
+    (`DhcpSubnets.dc.html`, 1440), which draws a Mercury row and ZTP's row and no relayed one."""
+    from tests import browser
+    from tests import test_dhcp_v2 as T
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    (tmp_path / "lab").mkdir()
+    monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(tmp_path / "lab"))
+    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
+    monkeypatch.setattr("modules.dhcp_page._devices", lambda name: set())
+    monkeypatch.setattr("modules.reader_job.read_cached_for",
+                        lambda name, list_name: __import__("modules.reader_job").reader_job
+                        .read_cached(name))
+    monkeypatch.setattr("modules.list_settings.kea_owner",
+                        lambda name: (name, "it sets its own Kea"))
+    from modules import dhcp_subnets as S
+    mains = {}
+    for family, key in (("IPv4", "subnet4"), ("IPv6", "subnet6")):
+        main = tmp_path / f"kea-{key}.conf"
+        main.write_text('{ "Dhcp": { "%s": <?include "%s"?> } }\n'
+                        % (key, S.subnets_file(str(main), family)))
+        mains[family] = str(main)
+    monkeypatch.setattr("modules.dhcp_reservations.main_config",
+                        lambda list_name, family: mains[family])
+    T._store(T._value(kea=T._RelayedKea()))
+    import app as A
+    html = A.app.test_client().get("/v2/dhcp/view?list=Lab").get_data(as_text=True)
+    assert 'aria-label="Remove 198.51.100.0/29"' in html and "1 reserved, 1 other" in html
+    _group_a_boards("dhcp-relayed-ztp", "DhcpSubnets.dc.html", ((1440, 1.0),))
+    with browser.Served(A.app) as served:
+        _group_a_page("dhcp-relayed-ztp-sub", served, "/v2/dhcp?list=Lab",
+                      ((1440, 1.0), (1280, 1.0), (390, 2.0)))
+        _group_a_page("dhcp-relayed-ztp-lea", served, "/v2/dhcp?list=Lab&tab=lea&open=dhcp4:40",
+                      ((1440, 1.0), (390, 2.0)))
