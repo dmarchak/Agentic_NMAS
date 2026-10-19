@@ -1,5 +1,12 @@
 # Phase 7 burn-down: every item between today and cutover
 
+> **CLOSED 2026-10-18** (the operator: "Close Phase 7 now"). Cutover is done: P7-27 removed the
+> last of today's (v1) pages, merged in 4e631168, deployed and walked by the operator. The burn-down's
+> last items are done: 7.D, C650 and P7-27. Every A and B row from the baseline 318cf42f is closed
+> or deferred by the operator's word. The accounting and the commit the phase closed at are in
+> docs/PHASE7_CLOSE.md. Approved as the first job after the close: C1192's record. The lists
+> below are as they stood at the close; section 4 stands as the declared out-of-Phase-7 list.
+
 **The operator, 2026-10-15 ("Phase 7 first").** Cutover is the retirement of today's (v1) pages
 (docs/CUTOVER.md) with Stage 7's acceptance criteria met (docs/NSOT_STAGE7_PLAN.md section 10).
 Built from two read-only surveys at fcd1e4f6, 2026-10-15; **revised the same day with the
@@ -161,8 +168,8 @@ network), C1182 (`bgp log-neighbor-changes`), C1183 (misplaced intent keys), C11
 
 | List | Now | At cutover |
 |---|---|---|
-| tests/test_board_fidelity.py `UNCHECKED` | **12** (W4's Save, pending and retired recorded 2026-10-18 from local board shots, About waiting on the operator's screenshot in the P7-27 walk; 15 after W2 and W3's five, 2026-10-17; 20 before, W1's twelve recorded 2026-10-16): 4 for W4, 11 to the tail | the walked screens out; the rest to the tail |
-| modules/operation_stages.py `MISSING` / `HISTORY_MISSING` | **6 / 1** (P7-23, 2026-10-17: the editors' four gaps gone; 10 / 1 after P7-22, run_command's gone; only `v2.heartbeat_apply` lacks a history; 17 / 2 before) | run_command's go with v1; the rest stay until built (not a cutover condition) |
+| tests/test_board_fidelity.py `UNCHECKED` | **11 at the close** (About recorded from the operator's walk, ee1f85f7; the 11 no walk touched are C1302, Stage 7's tail). Before: **12** (W4's Save, pending and retired recorded 2026-10-18 from local board shots, About waiting on the operator's screenshot in the P7-27 walk; 15 after W2 and W3's five, 2026-10-17; 20 before, W1's twelve recorded 2026-10-16): 4 for W4, 11 to the tail | the walked screens out; the rest to the tail |
+| modules/operation_stages.py `MISSING` / `HISTORY_MISSING` | **ceilings 2 / 1 at the close**; before: **6 / 1** (P7-23, 2026-10-17: the editors' four gaps gone; 10 / 1 after P7-22, run_command's gone; only `v2.heartbeat_apply` lacks a history; 17 / 2 before) | run_command's go with v1; the rest stay until built (not a cutover condition) |
 | tests/test_results_are_drawn.py `PENDING` | **0, met** (P7-23, 2026-10-17; 3 after P7-21; 7 after P7-22; 8 before) | 0 (all v1 handlers) |
 | tests/test_concepts_are_taught.py `PENDING` | **0** (P7-03) | 0 |
 | tests/test_v2_one_confirm.py `SECOND_IMPLEMENTATIONS` | **1** (C850, 2026-10-16) | 1, IP SLA's `ipslaPost` with P.12 (D3); 0 after |
@@ -173,7 +180,7 @@ network), C1182 (`bgp log-neighbor-changes`), C1183 (misplaced intent keys), C11
 | tests/test_v2_context_is_drawn.py `UNDRAWN` (GAP) / `UPSTREAM` / `UNREACHED` | **358** (C868, C869's GAP gone) / **11** (C867) / 23 (2026-10-16) | met: the GAP entries cutover needs gone; `UPSTREAM` 11; the rest reasoned or the tail's |
 | tests/signed_off_screens.py `UNSIGNED` | 3 | 1 (not_found stays; heartbeat and ip_sla go with P.12, D3) |
 | modules/manual.py `ON_TODAYS_APP` | **0** (P7-19) | 0 |
-| tests/test_route_reachability.py `KNOWN_UNREACHABLE` / `NON_GUI` | 0 / 8 | 0 / 8 (D1 keeps two) |
+| tests/test_route_reachability.py `KNOWN_UNREACHABLE` / `NON_GUI` | 0 / 8; **0 / 9 at the close** | 0 / 8 (D1 keeps two) |
 | Moved to the tail: tests/test_large_fleets.py `EXCUSED` 4 (C450); tests/todays_page_links.py `OTHER_GAPS` 1 (P7-30) | | after cutover |
 
 ## 4. Out of Phase 7 (declared, not a backlog)
@@ -467,3 +474,15 @@ blocks cutover or is a security issue (B).
   removed (f764fafd, tag `pre-remove/v1-netbox`, walked by GETs on the host: 10 paths as
   expected) with C1123 (B) fixed; C650's W1 to W3 records (5e1413d0, UNCHECKED 20 to 15);
   P7-09's entries (96c0b719).
+- **2026-10-18, the last day:**
+  - P7-27 merged (4e631168), deployed and walked by the operator, steps 1 to 12 PASS.
+  - C650 recorded (ee1f85f7); 7.8 and 7.D closed in the writeup.
+  - The walk's four fixes deployed: C1303, C1304, C1305, C1306.
+  - The operator's evening decisions, each done:
+    - C1316 fixed (0e02403b).
+    - C1317 fixed (7f715f4d), and the host's window written.
+    - C1192 split; its record is approved as the first job after the close.
+    - C472, C822 and C828's deferrals accepted.
+    - C1315 re-scoped to post-Phase 7.
+    - The charter now names the repository on the host as the source of truth.
+  - **Phase 7 closed** (docs/PHASE7_CLOSE.md).

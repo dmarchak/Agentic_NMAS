@@ -56,7 +56,7 @@ and `agent_runner`, the background AI daemon, were removed with the AI family (D
 | Device inventory + credentials | NMAS | `data/lists/{slug}/devices.csv`, Fernet-encrypted fields |
 | Settings, integration config | NMAS | `data/user_settings.json`, secrets Fernet-encrypted |
 | Encryption key | NMAS | `data/key.key` — **back this up** |
-| Golden configs and committed intent | NMAS | `data/lists/{slug}/config_repo/` (`golden/`, `host_vars/`), read as committed; `golden_configs/` is a read-only legacy fallback, retirable (7.8) |
+| Golden configs, committed intent and templates | The network's repository **on the Mercury host**, the source of truth (the charter, the operator's decision of 2026-10-18); Mercury its one writer | `data/lists/{slug}/config_repo/` (`golden/`, `host_vars/`, `templates/`), read as committed; a remote is an optional off-host copy, never required, and Mercury works fully offline without one (`docs/REMOTE_OPTIONAL.md`); `golden_configs/` is a read-only legacy fallback |
 | Sites, devices, interfaces, IPs | NetBox | remote; NMAS reads freely, writes are gated |
 | NMAS-created NetBox object ids | NMAS | `data/netbox_created_ids.json` |
 | Metrics, logs, config history | External tools | Phase 5 |
@@ -1403,6 +1403,14 @@ to it since.)
 - **`.gitignore` rules are applied on repo access, not only at creation.**
   `ensure_repo_hygiene()` runs from `git()`; `GITIGNORE_RULES` is the list. A
   repo created before a rule existed is topped up on first touch.
+- **The repository on the host is the source of truth; a remote is optional** (the charter, the
+  operator's decision of 2026-10-18). A remote is an off-host copy, published to when one is
+  configured. A list with no remote is complete and works fully offline. A GitHub-specific
+  check belongs only where a GitHub remote is configured. What in the code still assumes a
+  remote, each place marked fine or must change, is `docs/REMOTE_OPTIONAL.md`. The two
+  post-Phase 7 builds are C1315, a remote's commits Mercury lacks reviewed as foreign changes
+  through preview and confirm, and the durability statement that replaces the "no remote"
+  notice.
 - **Every commit publishes, by construction** (C223, 2026-09-29): `repo.commit()`
   commits and hands the commit to the hooks, and a scan fails the suite on any
   other git call naming `commit`. Abandon, the rename commit, the migration and

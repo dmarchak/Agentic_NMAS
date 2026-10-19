@@ -16,11 +16,34 @@ the other is re-labelled.
 | Facts | Owner | Mercury |
 |---|---|---|
 | Devices: existence, identity, role, site, platform, status; IPAM as decided | **NetBox** | reads them; writes only as the first step of a confirmed operation |
-| Intent, configurations (goldens, baselines), templates | **The network's git repository**, its remote chosen by the deploying team: GitHub in this lab, an internal server for kits (the operator, 2026-10-16) | the one writer, through confirmed operations, every write a commit |
+| Intent, configurations (goldens, baselines), templates | **The network's git repository on the Mercury host** (the operator, 2026-10-18). A remote (GitHub, Gitea or GitLab, a kit's upstream Mercury) is an optional off-host copy, never required | the one writer, through confirmed operations, every write a commit |
 | DHCP | **Kea** | the front end to its reservations |
 | Monitoring | **Prometheus / Grafana** | reads; generates targets and rules from the inventory |
 | Logs | **Loki** | reads |
 | The queryable archive past retention | **MinIO** | reads |
+
+### The network's repository: on the host; a remote is optional
+
+The operator's decision, 2026-10-18 (it replaces "its remote chosen by the deploying team" of
+2026-10-16):
+- **The source of truth is the repository on the Mercury host.** Mercury reads what is
+  committed there and is its one writer.
+- **A remote is an optional off-host copy.** It may be GitHub, Gitea or GitLab, or a kit's
+  upstream Mercury. It is never required.
+- **Mercury works fully offline, with no remote at all.** A missing remote is not an error,
+  and no screen asks for one.
+- **A GitHub-specific check runs only when a GitHub remote is configured.** This covers
+  privacy, deploy-key scope and the API.
+- **Durability is stated, not nagged** (post-Phase 7). Mercury says whether an off-host copy
+  exists (a remote, or the VM's backup) and how old it is. An installation that chose a
+  single copy is not in error.
+- **A remote's commits that Mercury lacks are foreign changes** (C1315, post-Phase 7). They are
+  reviewed and taken in, or declined, through preview and confirm, designed together with the
+  edge kit's offline sync. They are never a reason to hold Mercury's own pushes behind a
+  terminal step.
+- **"Mercury is the one writer" is policy.** No GitHub ruleset holds it on the remote for now.
+
+What still assumes a remote, each place marked fine or must change, is `docs/REMOTE_OPTIONAL.md`.
 
 ## New devices: Mercury is a front door to NetBox, never a second inventory
 

@@ -4775,6 +4775,86 @@ design, and the walks.
   decision on it is recorded.
 - Adopt's, onboarding's and C529's confirms on the host: not yet run (W4).
 
+### Phase 7 — The burn-down to cutover (closed 2026-10-18)
+
+*Written at the close, 2026-10-18 (UTC). Phase 7's operating mode began 2026-10-09. Its
+burn-down (docs/PHASE7_BURNDOWN.md) began 2026-10-15 and is what this entry measures. Commit times
+are the committer's local time (UTC−6).*
+
+1. **What it was.** Phase 7 ran every item between the operator's "Phase 7 first" of 2026-10-15
+   and cutover. Cutover means today's (v1) pages removed, with Stage 7's acceptance criteria met.
+   - The work was walks by the operator (W1 to W4, and P7-27's), the agent's P7 items, host steps,
+     and the register's A and B rows.
+   - The agent deployed and self-signed boards under the operating mode. Each such decision is a
+     line in docs/STANDING_APPROVAL_LOG.md.
+2. **How it was implemented.**
+   - The burn-down's first version (418ab3ce, 15:37 on 10-15) listed 18 P7 items.
+   - v1 left in families: P7-20 (NetBox), P7-21 to P7-23 (the editors and handlers), P7-25 and P7-26,
+     and P7-27, the last of today's pages. P7-27 was merged in 4e631168, deployed, and walked by
+     the operator on 10-18, steps 1 to 12 PASS.
+   - The fidelity records (C650) were made from walk screenshots and local board shots.
+   - Every commit went through the gate. Every deploy waited for CI and was followed by a GET walk
+     on the host.
+3. **Issues encountered.**
+   - The walks found defects in waves: W2's A1 and B1 to B9, W3's C1109, and the P7-27 walk's four
+     fixes and seven questions.
+   - The Lab 7 history audit (553 items, C1166 to C1178) found tests weakened to pass gates.
+   - On the last evening, two Bs came from the operator's questions: C1315, an outside edit to the
+     network's repository, and C1317, the lab's backup window hard-coded in the product. A
+     third finding started as UNKNOWN: C1316, s3's heartbeat check naming the wrong cause.
+4. **How they were resolved.**
+   - Each walk's A and B items were fixed, deployed and walked again before the next walk.
+   - The weakening audit became a standing rule and a commit-message check
+     (`scripts/nmas-test-weakening-check`).
+   - On the last evening:
+     - C1316 was measured and fixed (0e02403b).
+     - C1317 was fixed, its window now the installation's setting (7f715f4d).
+     - C1315 was re-scoped by the operator: the repository on the host is the source of truth, a
+       remote is optional, and the build is post-Phase 7.
+     - C1192 was split, its record approved as the first job after the close.
+     - C472, C822 and C828's deferrals were accepted with their costs on their rows.
+5. **Numbers.**
+   - **Time and commits:** from fcd1e4f6 (15:15 on 10-15) to the close: 148 commits.
+   - **Tests:** `def test` functions grew from 9,260 to 9,927, counted with `git grep` at
+     fcd1e4f6 and at the close.
+   - **The register:** the highest row went from C849 to C1320, so 471 rows were opened in the
+     burn-down's days. The open count went from 215 (2026-10-15) to 531 at the close, most of them
+     C rows the walks found and the tail holds.
+   - **The baseline 318cf42f** held 6 A and 19 B. At the close, 1 A is closed (C650) and 5 are
+     deferred by the operator. Of the B, 3 are closed. 12 are deferred by the triage or by mutation
+     being parked. C472, C822 and C828 are deferred with the operator's acceptance. C1192 is
+     deferred as the first job after the close.
+   - **Opened since that baseline:** 1 A and 17 B. 16 are closed. C1315 is re-ranked C and
+     deferred; C1319 is deferred to Stage 7's tail.
+   - **Forecast checked:** the burn-down sized its items (12 M, 2 M–L, 1 S–M, 2 S, 1 S with a
+     walk; M is one to three agent-days) and gave no date. Read as sequential agent-days, those
+     sizes come to about 20 to 45 days. The phase closed 3.3 days after the list was written. The
+     sizes overstated the wall time by a wide margin: items ran in parallel and overnight, and
+     some (P7-20, P7-23's editors) were removed rather than rebuilt.
+     A forecast for the next phase's items should come from this phase's measured pace, not from
+     the S/M/L table.
+6. **Where it left the product.**
+   - v2 is the only interface. `/` answers 302 to `/v2/`, and every v2 page answers 200 on the
+     host.
+   - The host ran af5571d3 (CI #950), walked 23 of 23, when the close was written.
+   - The repository on the host is the source of truth, and Mercury works with no remote
+     (docs/MERCURY_CHARTER.md; what still assumes a remote is in docs/REMOTE_OPTIONAL.md).
+   - Approved next: C1192's record. Waiting for the operator: docs/BULK_ACTIONS.md's eight
+     questions and C1312's six board redraws.
+
+#### Sources read (the Phase 7 entry)
+
+- `git rev-list --count fcd1e4f6..HEAD`; `git grep -c "def test_"` at fcd1e4f6 and HEAD.
+- docs/OPEN_FINDINGS.md's Count at fcd1e4f6 and now; the highest row number in each.
+- docs/PHASE7_BURNDOWN.md at 418ab3ce (its first version, the size column) and now.
+- docs/PHASE7_CLOSE.md (the A and B accounting from 318cf42f).
+
+#### Could not recover (the Phase 7 entry)
+
+- The agent hours, as distinct from wall time: no start or stop was recorded per item.
+- How many of the 471 rows opened were closed within the phase, by row: only the Closed table's
+  dates hold that, and some rows closed the day they were opened.
+
 ## Part III. Side campaigns
 
 Threads that ran across stages rather than inside one: each started from one finding and followed its class. Their commits interleave with the stages', so each entry states the rule that selected them.

@@ -1,5 +1,16 @@
 # Closing Phase 7
 
+> **PHASE 7 IS CLOSED, 2026-10-18** (the operator: "Close Phase 7 now").
+> - **It closed at af5571d3** (CI #950, deployed 2026-10-19 00:00:41 UTC and walked 23 of 23).
+>   That is the last release before the close. The commit that records the close follows it.
+> - **Final accounting** (below, from the baseline 318cf42f):
+>   - Of the 6 A, 1 is closed and 5 are deferred by the operator.
+>   - Of the 19 B, 3 are closed and 16 are deferred by the operator's word.
+>   - Opened since the baseline: 1 A and 17 B. 16 are closed. C1315 is re-ranked C and
+>     deferred. C1319 is deferred to Stage 7's tail.
+> - **No A or B is open in Phase 7.** The first job after the close is C1192's record
+>   (approved).
+
 Written 2026-10-18, 18:36 UTC, for the operator, to close Phase 7 today. Phase 7's operating
 mode (CLAUDE.md) and its burn-down (docs/PHASE7_BURNDOWN.md) are what this closes. Times are UTC,
 with MDT (UTC−6) beside where it helps.
@@ -8,7 +19,8 @@ with MDT (UTC−6) beside where it helps.
 
 *Updated 2026-10-18 23:5x UTC, after the operator's decisions of the evening.*
 
-**The host runs 7f715f4d** (CI #949), deployed 2026-10-18 at 23:44:32 UTC. Its GET walk passed 23
+**The host ran af5571d3 at the close** (CI #950, deployed 2026-10-19 00:00:41 UTC, docs only, walked
+23 of 23); before it, **7f715f4d** (CI #949), deployed 2026-10-18 at 23:44:32 UTC. Its GET walk passed 23
 of 23 paths: `/` answers 302 to `/v2/`, keeping `?list=`; today's old addresses answer 404, drawn
 in v2's look for a browser; every v2 page answers 200. Before it, 3a2d19be (23:08:20) and
 0e02403b (23:27:33) were each deployed and walked, 23 of 23. This installation's no-change window
@@ -35,13 +47,26 @@ Profiles names it. The deployed heartbeat check reads "JITTER s3" with both meas
 - **C1316, fixed.** s3's tail follows the lab host's load, not its CPU or its rate. The check
   now says JITTER. What raised that load is C1318 (UNKNOWN, LAB).
 
-**Phase 7 is not closed. Two things still block it, both yours:**
-1. **C1192's record:** build it in Phase 7 at 2.5 to 3.5 h, or defer it.
-2. **Accepting C472's, C822's and C828's deferral** on their lines below.
-
-Nothing else in Phase 7 is open.
+**Your last decisions (2026-10-18, the message that closed Phase 7), each done:**
+- **C1192's record:** deferred past the close, and approved as the first job after it. Only the
+  record: rows built when each reader finishes, a store safe across workers, and tests including
+  the appear-and-clear case. The screen stays C1319.
+- **C472, C822, C828:** deferrals accepted, each with its cost written on its row.
+- **The source of truth for intent, configurations and templates is the network's repository on
+  the Mercury host.**
+  - Any remote is an optional off-host copy, never required.
+  - Mercury works fully offline.
+  - Written into docs/MERCURY_CHARTER.md and docs/ARCHITECTURE.md.
+  - The audit of what still assumes a remote is docs/REMOTE_OPTIONAL.md.
+  - C1315 is re-scoped: a remote's commits are foreign changes, reviewed through preview and
+    confirm, never a reason to hold Mercury's pushes. Its build is post-Phase 7.
+  - The durability statement that replaces the "no remote" notice is C1320, post-Phase 7.
+- **No GitHub ruleset for now (no Pro):** the rule stays policy. The section below stays as the
+  record of the answer.
 
 ## C1315: can your account block every push but Mercury's?
+
+*Answered 2026-10-18. The operator's decision: no ruleset for now (no Pro); the rule stays policy.*
 
 **It depends on your plan, which an anonymous read cannot see.** The network's configuration
 repository, `<account>/<repo>`, answers 404 to an anonymous API read, so it is private. It is on a personal account. GitHub's
@@ -114,12 +139,9 @@ The branch `p7-27` (e2f27b84, 078c1bd0) is in main through the merge 4e631168.
 
 ## What only you can do, in order
 
-1. **C1192's record**: build it in Phase 7 (2.5 to 3.5 h), or defer it. This is the last
-   decision Phase 7 waits on, with item 2.
-2. **Accept, or not, the deferral of C472, C822 and C828** on their one-line accounts in the B
-   table below.
-3. **C1315's ruleset** on GitHub, if your plan allows one: the clicks are above (outside the
-   lab, yours; it does not block the close).
+1. ~~C1192's record~~ deferred past the close, approved as the first job after it.
+2. ~~Accept, or not, the deferral of C472, C822 and C828~~ accepted, each cost on its row.
+3. ~~C1315's ruleset~~ none for now (no Pro); the rule stays policy.
 4. ~~Decide C1192~~ split by you; ~~choose C1315's rule~~ it stands; ~~C1317~~ fixed;
    ~~paste the replacement for CLAUDE.md's v1-pages bullet~~ **done** (the operator's paste,
    2026-10-18: "Instructions name only v2's screens and controls"), committed in be204be2.
@@ -139,8 +161,9 @@ Done since this was first written: the CLAUDE.md script ran and its lines are co
 - Your walk's four fixes, each gated and deployed: C1303 History's Kind filter (9205ba01); C1304
   Devices' select-all (fd1ec370); C1305 Coverage never blank; C1306 the failure page (e5cc8840).
 
-The burn-down's last items are done: P7-09's 7.D, C650 and P7-27. **Phase 7 closes when C1192's
-record is built or deferred by your word, and C472, C822 and C828's deferral is accepted.**
+The burn-down's last items are done: P7-09's 7.D, C650 and P7-27. **Phase 7 closed on
+2026-10-18 at af5571d3:** C1192's record deferred past the close by your word, and C472, C822
+and C828's deferral accepted.
 
 ## Every A and B: how each was resolved
 
@@ -172,11 +195,11 @@ was opened since.
 | C1160 | **Closed: 11b0a1ef** (the Inventory source card names what NetBox left out). |
 | C1168 | **Closed: 898d1bad** (the rotation halt takes the operator's two-strikes rule). |
 | C1259 | **Closed: 2b78a931** (an unreadable NetBox-sourced list is a Needs attention row; deployed in 898d1bad). |
-| C1192 | **Split by the operator (2026-10-18); the record open, for the operator's go:** estimated at 2.5 to 3.5 h, over the ~2 h line, so registered and not built, as decided. The screen and its board are C1319, deferred to Stage 7's tail by the operator. |
+| C1192 | **Deferred past the close by the operator, and approved as the first job after it (2026-10-18):** the record only, estimated at 2.5 to 3.5 h. The screen and its board are C1319, deferred to Stage 7's tail by the operator. |
 | C7 | **Deferred, by the operator (the triage):** FUTURE (7.7). Burn-down section 4: after cutover. |
 | C60 | **Deferred, by the operator (the triage):** FUTURE (Stage 8's follow-up window). Burn-down section 4: "Phase 8 / Stage 8". |
 | C230 | **Deferred, by the operator (the triage):** FUTURE; the operator's one-time step. Burn-down section 4: "Stage 9, security" (D4). |
-| C472 | **Deferred:** the triage placed it CORE, Stage 7. The burn-down placed it "multi-user, after cutover", Stage 7's tail: the agent's placement under the operator's D3. **In one line (for the operator's acceptance, asked 2026-10-18):** when another person's write is broadcast, three live regions still redraw over this person's state (History's loaded diff closes to its row, the remote card's Push or Verify answer is replaced, Coverage scrolls back to its left edge); deferred because it needs two people on one screen at once, which the lab's single operator never is; lost meanwhile: that view state only, never a record, a result or a confirm (each is kept and readable again). |
+| C472 | **Deferred:** the triage placed it CORE, Stage 7. The burn-down placed it "multi-user, after cutover", Stage 7's tail: the agent's placement under the operator's D3. **Deferral accepted by the operator, 2026-10-18; its cost on the row.** **In one line:** when another person's write is broadcast, three live regions still redraw over this person's state (History's loaded diff closes to its row, the remote card's Push or Verify answer is replaced, Coverage scrolls back to its left edge); deferred because it needs two people on one screen at once, which the lab's single operator never is; lost meanwhile: that view state only, never a record, a result or a confirm (each is kept and readable again). |
 | C531 | **Deferred, by the operator (the triage):** FUTURE. Burn-down section 4: "After Phase 7". |
 | C554 | **Deferred, by the operator (the triage):** FUTURE, with the parked removal work. Burn-down section 4: "After Phase 7". |
 | C556 | **Deferred, by the operator (the triage):** CORE, NetBox Phase 1, after cutover. |
@@ -186,8 +209,8 @@ was opened since.
 | C618 | **Deferred, by the operator (the triage):** CORE, Phase 2. |
 | C792 | **Deferred, by the operator:** mutation parked (C835). |
 | C834 | **Deferred, by the operator:** mutation parked (C835). |
-| C822 | **Deferred:** burn-down section 4, "Harness and measurement only". The agent's placement under the operator's D5. **In one line (for the operator's acceptance, asked 2026-10-18):** a test that patches `<module>.time.time` patches the one shared `time` module, so while it runs every wait in that process (the app's threads it started among them) reads the fake clock; deferred because it is the test harness only and touches nothing Mercury runs; lost meanwhile: a hang inside such a test is not stopped by its own bound, only later by faulthandler's 120 s and nmas-test's process bound, both real-time timers outside `time.time`. |
-| C828 | **Deferred:** burn-down section 4, "Stage 9, functional or minor". The agent's placement under the operator's D4. **In one line (for the operator's acceptance, asked 2026-10-18):** History › Query's Code mode does not read a PromQL query back into the metrics builder, and board E3's notice "can't read this back" is not drawn; deferred as Stage 9, functional and minor (a convenience of the query screen, no record or device touched); lost meanwhile: a person who edits a query as code cannot return to the builder with it, and is not told so (they keep editing as code, or build it again). |
+| C822 | **Deferred:** burn-down section 4, "Harness and measurement only". The agent's placement under the operator's D5. **Deferral accepted by the operator, 2026-10-18; its cost on the row.** **In one line:** a test that patches `<module>.time.time` patches the one shared `time` module, so while it runs every wait in that process (the app's threads it started among them) reads the fake clock; deferred because it is the test harness only and touches nothing Mercury runs; lost meanwhile: a hang inside such a test is not stopped by its own bound, only later by faulthandler's 120 s and nmas-test's process bound, both real-time timers outside `time.time`. |
+| C828 | **Deferred:** burn-down section 4, "Stage 9, functional or minor". The agent's placement under the operator's D4. **Deferral accepted by the operator, 2026-10-18; its cost on the row.** **In one line:** History › Query's Code mode does not read a PromQL query back into the metrics builder, and board E3's notice "can't read this back" is not drawn; deferred as Stage 9, functional and minor (a convenience of the query screen, no record or device touched); lost meanwhile: a person who edits a query as code cannot return to the builder with it, and is not told so (they keep editing as code, or build it again). |
 
 ### Opened since 318cf42f
 
@@ -208,7 +231,8 @@ was opened since.
 | C1313 | B | **Closed: ee1f85f7.** About's footer claimed a host behind is always a row (found by your question 7). |
 | C1303 | B | **Closed: 9205ba01.** History's Kind filter, goldens one click away (your walk). |
 | C1304 | B | **Closed with C902: fd1ec370.** Devices' select-all; all matching is resolved by each action on the server (your walk). |
-| C1315 | B, now C | **Re-ranked B to C and deferred by the operator (2026-10-18):** the rule stands (Mercury the only writer); held on GitHub by a ruleset where the plan allows (above); adopting the remote's commits after Phase 7, designed with the edge kit's offline sync (docs/EDGE_ARCHITECTURE.md). |
+| C1315 | B, now C | **Re-ranked B to C and re-scoped by the operator (2026-10-18):** the repository on the host is the source of truth and a remote optional; a remote's commits Mercury lacks are foreign changes, reviewed and taken in or declined through preview and confirm, never a reason to hold Mercury's pushes; the build is post-Phase 7, designed with the edge kit's offline sync (docs/EDGE_ARCHITECTURE.md). No GitHub ruleset for now (no Pro). |
+| C1320 | B | **Registered by the operator as post-Phase 7 (2026-10-18):** durability replaces the "no remote" notice; Mercury states whether an off-host copy exists (a remote, or the VM backup) and how old it is. |
 | C1317 | B | **Closed: 7f715f4d, fixed in Phase 7 by the operator's decision.** No-change windows the installation's setting, none by default; the product names no window; this installation's value written on the host after its deploy (23:4x UTC). |
 | C1316 | UNKNOWN | **Closed: 0e02403b.** Measured: s3's tail follows the lab host's load; the check says JITTER where the spread widened and STALE RATE only where the rate alone breaks the window. |
 | C1318 | UNKNOWN | **Open, LAB:** what raised the lab host's load on 10-18 (each VM's CPU by hour is the measurement); s3's rule reads JITTER until then. Not Phase 7's: a lab VM's contention, the product's check reporting it rightly. |
@@ -218,12 +242,17 @@ was opened since.
 
 - **Of the 6 A:** C650 is closed (ee1f85f7). 5 are deferred by your decisions: the triage, and
   mutation parked.
-- **Of the 19 B:** 3 are closed. 1 waits on your go (C1192's record, 2.5 to 3.5 h). 12 are
-  deferred by the triage or the parked mutation. 3 wait on your acceptance of their deferral
-  (C472, C822, C828, one line each above).
+- **Of the 19 B:** 3 are closed. C1192 is deferred past the close as the first job after it.
+  12 are deferred by the triage or the parked mutation. C472, C822 and C828 are deferred, your
+  acceptance on each row with its cost.
 - **Since then:** 18 B-or-A rows opened (1 A, 17 B with C1319). 16 are closed (C1317 among
   them). C1315 is re-ranked C and deferred by you. C1319 is deferred by you to Stage 7's tail.
   The UNKNOWN C1316 is closed. C1318 is a new UNKNOWN, a LAB one.
+- **At the close, 2026-10-18:**
+  - C1320 (B, the durability statement) is registered by you as post-Phase 7, not a Phase 7
+    row.
+  - C1321 (B) is post-Phase 7 with it. It was found by the remote audit (docs/REMOTE_OPTIONAL.md):
+    a network's remote works only if it is GitHub. No A or B is open in Phase 7. **Phase 7 is closed.**
 
 ## The inferences, as the operator decided them (2026-10-18, by 21:20 UTC)
 
@@ -249,7 +278,8 @@ Each is a line in docs/STANDING_APPROVAL_LOG.md (c9b263d8).
 - **C1265's rest**: mutants 129 to 131 not yet judged (mutation parked).
 - **C1288** (a test reading the checkout's real log); the seven C defects C650's records found
   (C1295 to C1301), each a fidelity-held template.
-- **C1192's record** (your go) and **C1319** (Stage 7's tail); **C1318** (the lab host's load).
+- **C1192's record** (approved, the first job after the close), **C1315** and **C1320** (post-Phase
+  7) and **C1319** (Stage 7's tail); **C1318** (the lab host's load).
 - **s3's heartbeat window** is not re-measured: the check reads JITTER s3 until the lab host's
   load falls or you choose to fit the window to it (C1318).
 - Done since this list was first written: "Lab 7's lessons, kept" and CLAUDE.md's post-merge
