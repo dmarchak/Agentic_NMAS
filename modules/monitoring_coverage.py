@@ -10,7 +10,7 @@ configuration has no SNMP. So:
   (`prometheus_targets.generate()` asks `configured(...)["snmp"]`), the same
   way the IP SLA targets follow the goldens;
 - a device NOT configured for an integration the network uses is a job-health
-  row, `not_monitored`, saying which and why ("r6 is not monitored by SNMP: its
+  row, `not_monitored`, saying which and why ("edge1 is not monitored by SNMP: its
   configuration has no SNMP"), drawn by Needs attention.
 
 An integration is EXPECTED only when its connector is configured in the NMAS:
@@ -42,7 +42,7 @@ CHECKS = {
     "telemetry": re.compile(r"^telemetry ietf subscription \d+", re.M),
 }
 
-#: The words for each, in a sentence "r6 is not monitored by <words>".
+#: The words for each, in a sentence "edge1 is not monitored by <words>".
 WORDS = {"snmp": "SNMP", "syslog": "syslog", "heartbeat": "the syslog heartbeat"}
 #: What the configuration lacks, in "its configuration has no <lack>".
 LACK = {"snmp": "SNMP community", "syslog": "`logging host`",
@@ -206,7 +206,7 @@ def rows(devices=None, golden=None, get=None, now=None, keeper=None, record=True
             continue
         unit = f"monitoring:{host}"
         # The CHECK's name, never a claim: the operator read the old wording
-        # ("r6 is configured for every integration ...") as a second check
+        # ("edge1 is configured for every integration ...") as a second check
         # contradicting the headline. One check, one golden, one definition
         # (`configured()`, which the targets use too).
         what = (f"whether {host}'s committed configuration has what the network's integrations "

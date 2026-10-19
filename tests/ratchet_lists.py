@@ -47,6 +47,7 @@ RATCHETS = (
     ("tests/test_confirm_buttons_drawn.py", "EXCUSED", "shrinks"),
     ("tests/test_deploy_receipts.py", "STILL_NAMED", "shrinks"),
     ("tests/test_deploy_receipts.py", "UNDRAWN_ON_V2", "shrinks"),
+    ("tests/test_device_names.py", "INVENTORY", "shrinks"),
     ("tests/test_device_text_is_refused.py", "NOT_REQUEST_TEXT", "shrinks"),
     ("tests/test_host_step_scripts.py", "UNEXPORTED_EXCUSED", "shrinks"),
     ("tests/test_invalidation_map.py", "NOT_YET_SUBSCRIBED", "shrinks"),

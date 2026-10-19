@@ -18,7 +18,7 @@ devices that went through would be a record that silently omits the rest.
 counts, or why verify did not run at all. That is only honest because the
 verify it records now reads real output (C62, C64-C68): built before those
 fixes, a receipt would have recorded "verified" for four devices checked
-against nothing. A device with no routing protocol (r6) records that
+against nothing. A device with no routing protocol (edge1, say) records that
 genuine state, which is different from a check that did not run.
 
 **The program is MASKED on the way in** (`redact_text`), as the modification

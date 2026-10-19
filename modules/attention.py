@@ -639,7 +639,7 @@ def job_health_source(health=None, now=None, cached=None, readers_now=None) -> d
             ops["missing"] = list(job["missing"])
         rows.append(row(
             source="job_health", kind="job", key=job.get("unit", "?"),
-            # A row may name its own headline, in the reader's words ("r6 is not
+            # A row may name its own headline, in the reader's words ("edge1 is not
             # monitored by SNMP"); otherwise the unit and its state's words.
             what=job.get("headline") or f"{job.get('unit', '?')} {words}",
             devices=list(job.get("devices") or ([device] if device else [])),
@@ -2038,7 +2038,7 @@ def reachability_source(cached=None) -> dict:
 
 def _planned_down(down: list, now: float = None) -> tuple:
     """``(held, problem, ended)`` for the devices not answering: *held* maps ``(hostname,
-    list)`` to the words of the planned window each is inside ("r6 is restarting as planned
+    list)`` to the words of the planned window each is inside ("edge1 is restarting as planned
     (until T, by X): open its reload on its page"); *ended* maps a device whose window ended
     while it was down to the clause its row adds. An unreadable planned record holds
     nothing, and *problem* says so."""

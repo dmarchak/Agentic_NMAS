@@ -48,7 +48,7 @@ class Environment:
     reserved: dict = field(default_factory=dict)
     #: the environment's own configuration lines, verbatim
     owned_lines: tuple = ()
-    #: where this was read, in words ("NetBox device r6 (id 12)", "not in NetBox", ...)
+    #: where this was read, in words ("NetBox device edge1 (id 12)", "not in NetBox", ...)
     source: str = "none given"
     #: NetBox's record of the device, when it holds one: ``{id, status, status_label, site,
     #: role, role_name, role_kind, platform, platform_name, tags, url}`` (`_record`); empty
