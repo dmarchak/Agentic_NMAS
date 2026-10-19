@@ -442,6 +442,11 @@ DEFAULTS: dict = {
     "records_store_restarts": "file",
     "records_store_restart_windows": "file",
     "records_store_restart_window_ends": "file",
+    "records_store_rotations": "file",
+    "records_store_breakglass_exports": "file",
+    "records_store_breakglass_intact": "file",
+    "records_store_breakglass_checks": "file",
+    "records_store_breakglass_drills": "file",
 
     # ── Platform map (NetBox platform slug → how NMAS treats the device) ────
     # This map is what makes multi-vendor support a configuration change rather
@@ -828,6 +833,11 @@ SCHEMA: dict = {
         "records_store_restarts": {"type": "string", "enum": ["file", "postgres"]},
         "records_store_restart_windows": {"type": "string", "enum": ["file", "postgres"]},
         "records_store_restart_window_ends": {"type": "string", "enum": ["file", "postgres"]},
+        "records_store_rotations": {"type": "string", "enum": ["file", "postgres"]},
+        "records_store_breakglass_exports": {"type": "string", "enum": ["file", "postgres"]},
+        "records_store_breakglass_intact": {"type": "string", "enum": ["file", "postgres"]},
+        "records_store_breakglass_checks": {"type": "string", "enum": ["file", "postgres"]},
+        "records_store_breakglass_drills": {"type": "string", "enum": ["file", "postgres"]},
 
         "platform_map": {
             "type": "object",

@@ -140,6 +140,32 @@ def _restart_store(name: str, words: str, noun: str):
     return build
 
 
+def _rotations() -> LineStore:
+    """The rotation and save record: one file for the installation (K31)."""
+    from modules.nsot import credential_rotation as cr
+
+    return LineStore(name="rotations", words="Rotations and saves", table="rotation_lines",
+                     files=cr.rotation_record_files,
+                     path_for=lambda _network: cr._rotation_record_path(), per_network=False,
+                     noun="rotations and saves")
+
+
+def _breakglass_store(name: str, words: str, noun: str):
+    """One of the four break-glass logs, each one file for the installation (K31)."""
+    def build() -> LineStore:
+        import os
+
+        from modules import breakglass as bg
+        from modules import config
+
+        log_name = next(f for f, s in bg.LOG_STORES.items() if s == name)
+        return LineStore(name=name, words=words, table=f"{name}_lines",
+                         files=lambda: bg.log_files(config.DATA_DIR, log_name),
+                         path_for=lambda _network: os.path.join(config.DATA_DIR, log_name),
+                         per_network=False, noun=noun)
+    return build
+
+
 #: Each line store, by name, built when asked (its owner module imports late), in
 #: `records_db.STORES` order.
 LINE_STORES = {"receipts": _receipts, "acknowledgements": _acknowledgements,
@@ -147,7 +173,17 @@ LINE_STORES = {"receipts": _receipts, "acknowledgements": _acknowledgements,
                "restart_windows": _restart_store("restart_windows", "Planned-restart windows",
                                                  "windows"),
                "restart_window_ends": _restart_store(
-                   "restart_window_ends", "Planned-restart windows ended early", "ends")}
+                   "restart_window_ends", "Planned-restart windows ended early", "ends"),
+               "rotations": _rotations,
+               "breakglass_exports": _breakglass_store("breakglass_exports",
+                                                       "Break-glass exports", "exports"),
+               "breakglass_intact": _breakglass_store("breakglass_intact",
+                                                      "Break-glass download verdicts",
+                                                      "verdicts"),
+               "breakglass_checks": _breakglass_store("breakglass_checks",
+                                                      "Break-glass checks", "checks"),
+               "breakglass_drills": _breakglass_store("breakglass_drills",
+                                                      "Break-glass drills", "drills")}
 
 
 def store_of(name: str = STORE) -> LineStore:

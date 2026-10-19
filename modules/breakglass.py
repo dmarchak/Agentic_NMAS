@@ -488,7 +488,6 @@ def record_export(data_dir: str, *, list_name: str, devices: list, path: str,
     (or ``via: browser``, downloaded, with the file's sha256 and the name the
     download was given), the key's fingerprint and each device's digest. Never
     a value."""
-    from modules.config import open_secure
 
     row = {"at": at if at is not None else time.time(), "list": list_name,
            "path": path, "key_fingerprint": key_fingerprint, "actor": actor,
@@ -497,8 +496,7 @@ def record_export(data_dir: str, *, list_name: str, devices: list, path: str,
         row["sha256"] = sha256
     if filename:
         row["filename"] = filename
-    with open_secure(os.path.join(data_dir, EXPORT_LOG), "a") as fh:
-        fh.write(json.dumps(row, sort_keys=True) + "\n")
+    _append(data_dir, EXPORT_LOG, row)
     return row
 
 
@@ -512,27 +510,22 @@ def record_intact(data_dir: str, *, list_name: str, sha256: str, browser_sha256:
                   actor: str, at: float = None) -> dict:
     """Append the browser's verdict on one download: ``ok`` when its sha256 of the bytes it
     received is the server's."""
-    from modules.config import open_secure
 
     row = {"at": at if at is not None else time.time(), "list": list_name,
            "sha256": sha256, "browser_sha256": browser_sha256,
            "ok": bool(sha256) and sha256 == browser_sha256, "actor": actor}
-    with open_secure(os.path.join(data_dir, INTACT_LOG), "a") as fh:
-        fh.write(json.dumps(row, sort_keys=True) + "\n")
+    _append(data_dir, INTACT_LOG, row)
     return row
 
 
 def intact_verdicts(data_dir: str) -> dict:
     """``{"state", "by_sha": {sha256: newest verdict row}}``; absent and unreadable differ."""
-    path = os.path.join(data_dir, INTACT_LOG)
-    if not os.path.exists(path):
-        return {"state": "absent", "by_sha": {}}
-    try:
-        rows = [json.loads(line) for line in open(path, encoding="utf-8") if line.strip()]
-    except (OSError, ValueError) as exc:
-        return {"state": "unreadable", "by_sha": {}, "error": str(exc)}
+    got = _jsonl(data_dir, INTACT_LOG)
+    if got["state"] != "ok":
+        return {"state": got["state"], "by_sha": {},
+                **({"error": got["error"]} if got.get("error") else {})}
     out = {}
-    for r in rows:
+    for r in got["rows"]:
         if r.get("sha256") and r.get("at", 0) >= out.get(r["sha256"], {}).get("at", 0):
             out[r["sha256"]] = r
     return {"state": "ok", "by_sha": out}
@@ -561,25 +554,16 @@ CHECK_LOG = "breakglass_checks.jsonl"
 
 def record_check(data_dir: str, *, list_name: str, actor: str, sha256: str, created: str,
                  devices: dict, key: str, at: float = None) -> dict:
-    from modules.config import open_secure
 
     row = {"at": at if at is not None else time.time(), "list": list_name, "actor": actor,
            "sha256": sha256, "created": created, "devices": devices, "key": key}
-    with open_secure(os.path.join(data_dir, CHECK_LOG), "a") as fh:
-        fh.write(json.dumps(row, sort_keys=True) + "\n")
+    _append(data_dir, CHECK_LOG, row)
     return row
 
 
 def checks(data_dir: str) -> dict:
     """``{"state", "rows"}`` (oldest first); absent and unreadable differ."""
-    path = os.path.join(data_dir, CHECK_LOG)
-    if not os.path.exists(path):
-        return {"state": "absent", "rows": []}
-    try:
-        return {"state": "ok", "rows": [json.loads(line) for line in open(path, encoding="utf-8")
-                                         if line.strip()]}
-    except (OSError, ValueError) as exc:
-        return {"state": "unreadable", "rows": [], "error": str(exc)}
+    return _jsonl(data_dir, CHECK_LOG)
 
 
 #: The offline drill (board 7, D): the only proof the record opens WITHOUT the tool. Run where
@@ -632,16 +616,61 @@ def parse_drill_receipt(line: str) -> dict:
 
 def record_drill(data_dir: str, *, list_name: str, actor: str, receipt: dict,
                  at: float = None) -> dict:
-    from modules.config import open_secure
 
     row = {"at": at if at is not None else time.time(), "list": list_name, "actor": actor,
            **{k: receipt[k] for k in _DRILL_KEYS if k != "list"}}
-    with open_secure(os.path.join(data_dir, DRILL_LOG), "a") as fh:
-        fh.write(json.dumps(row, sort_keys=True) + "\n")
+    _append(data_dir, DRILL_LOG, row)
     return row
 
 
+#: Each log and its line store on the records database (K31: one file each for the
+#: installation, moved by a person on Settings › Installation › Connections). `_append` and
+#: `_jsonl` are the only writes and reads of the four.
+LOG_STORES = {EXPORT_LOG: "breakglass_exports", INTACT_LOG: "breakglass_intact",
+              CHECK_LOG: "breakglass_checks", DRILL_LOG: "breakglass_drills"}
+
+
+def log_files(data_dir: str, name: str) -> dict:
+    """``{"": path}`` when log *name* exists, else ``{}`` (the records migration)."""
+    path = os.path.join(data_dir, name)
+    return {"": path} if os.path.exists(path) else {}
+
+
+def _on_database(name: str) -> bool:
+    from modules import records_db
+
+    return records_db.backend(LOG_STORES[name]) == records_db.POSTGRES
+
+
+def _append(data_dir: str, name: str, row: dict) -> None:
+    """Append *row* to log *name*: its file, 0600, or, once moved, the records database. Raises
+    naming why when it could not be kept: an export, a verdict, a check or a drill nobody can
+    read back is never answered as recorded."""
+    from modules.config import open_secure
+
+    line = json.dumps(row, sort_keys=True)
+    if _on_database(name):
+        from modules import records_migrate
+
+        records_migrate.append_lines("", [line], store=LOG_STORES[name])
+        return
+    with open_secure(os.path.join(data_dir, name), "a") as fh:
+        fh.write(line + "\n")
+
+
 def _jsonl(data_dir: str, name: str) -> dict:
+    """Log *name*'s rows: ``{"state": absent|unreadable|ok, "rows"}`` (oldest first), from its
+    file or, once moved, the records database (one that does not answer is unreadable)."""
+    if _on_database(name):
+        from modules import records_migrate
+
+        try:
+            return {"state": "ok",
+                    "rows": records_migrate.table_lines("", store=LOG_STORES[name])}
+        except Exception as exc:                      # noqa: BLE001 (said, never "none")
+            first = (str(exc).strip().splitlines() or [type(exc).__name__])[0]
+            return {"state": "unreadable", "rows": [],
+                    "error": f"the records database: {type(exc).__name__}: {first}"}
     path = os.path.join(data_dir, name)
     if not os.path.exists(path):
         return {"state": "absent", "rows": []}
@@ -681,15 +710,12 @@ def drill_due(list_name: str, exports: list, drill_rows: list, now: float) -> di
 def last_exports(data_dir: str) -> dict:
     """``{"state": absent|unreadable|ok, "by_list": {list: newest row}}``.
     Absent and unreadable are different answers (the settings erasure)."""
-    path = os.path.join(data_dir, EXPORT_LOG)
-    if not os.path.exists(path):
-        return {"state": "absent", "by_list": {}}
-    try:
-        rows = [json.loads(line) for line in open(path, encoding="utf-8") if line.strip()]
-    except (OSError, ValueError) as exc:
-        return {"state": "unreadable", "by_list": {}, "error": str(exc)}
+    got = _jsonl(data_dir, EXPORT_LOG)
+    if got["state"] != "ok":
+        return {"state": got["state"], "by_list": {},
+                **({"error": got["error"]} if got.get("error") else {})}
     newest = {}
-    for r in rows:
+    for r in got["rows"]:
         if r.get("list") and r.get("at", 0) >= newest.get(r["list"], {}).get("at", 0):
             newest[r["list"]] = r
     return {"state": "ok", "by_list": newest}

@@ -120,8 +120,8 @@ receipt.
 - It contacts no device.
 - A store moves only when a person moves it here, with its count check, one store at a time;
   the card lists the stores that can move (deploy receipts, Needs attention's
-  acknowledgements, and the restart records: the restarts seen, the planned-restart windows and
-  the windows ended early, so far). On the database, an acknowledgement the database does not take is
+  acknowledgements, the restart records (the restarts seen, the planned-restart windows and the
+  windows ended early), the rotation and save record, and the four break-glass logs, so far). On the database, an acknowledgement the database does not take is
   refused with what it answered, and the row stays.
 - Save never opens the database; Replace never changes the password on the server.
 - Moving never deletes a file: the files are deleted by a host step in the release after, once

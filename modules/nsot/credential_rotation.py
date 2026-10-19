@@ -1800,6 +1800,23 @@ def _rotation_record_path() -> str:
     return os.path.join(DATA_DIR, "rotation_audit.jsonl")
 
 
+#: The rotation record's store on the records database (K31: one file for the installation,
+#: moved by a person on Settings › Installation › Connections).
+RECORD_STORE = "rotations"
+
+
+def rotation_record_files() -> dict:
+    """``{"": path}`` when the record's file exists, else ``{}`` (the records migration)."""
+    import os
+    path = _rotation_record_path()
+    return {"": path} if os.path.exists(path) else {}
+
+
+def _record_on_database() -> bool:
+    from modules import records_db
+    return records_db.backend(RECORD_STORE) == records_db.POSTGRES
+
+
 def record_outcome(phase: str, result: dict, *, list_name: str) -> None:
     """One durable row per rotate() or persist(): the state and every stage's
     name, outcome and reason. NEVER a credential: the reasons pass through
@@ -1840,17 +1857,31 @@ def record_outcome(phase: str, result: dict, *, list_name: str) -> None:
                # two CLI rows the step never wrote: C110's shape, a marker
                # the path under watch is not the only writer of (C111).
                "via": result.get("via") or "not named"}
-        with open_secure(_rotation_record_path(), "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(row, sort_keys=True) + "\n")
+        line = json.dumps(row, sort_keys=True)
+        if _record_on_database():
+            from modules import records_migrate
+            records_migrate.append_lines("", [line], store=RECORD_STORE)
+        else:
+            with open_secure(_rotation_record_path(), "a", encoding="utf-8") as fh:
+                fh.write(line + "\n")
     except Exception as exc:                          # noqa: BLE001
         log.error("rotation record: COULD NOT RECORD %s of %s (%s)", phase,
                   result.get("device", "?"), exc)
 
 
 def rotation_records() -> list:
-    """Every recorded row, oldest first; unreadable lines are skipped."""
+    """Every recorded row, oldest first; unreadable lines are skipped. On the records database
+    (K31), one that does not answer raises `OSError` naming it, as an unreadable file does:
+    never an empty record."""
     import json
     import os
+    if _record_on_database():
+        from modules import records_migrate
+        try:
+            return records_migrate.table_lines("", store=RECORD_STORE)
+        except Exception as exc:                      # noqa: BLE001 (re-raised as unreadable)
+            first = (str(exc).strip().splitlines() or [type(exc).__name__])[0]
+            raise OSError(f"the records database: {type(exc).__name__}: {first}") from exc
     path = _rotation_record_path()
     if not os.path.exists(path):
         return []

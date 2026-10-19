@@ -781,17 +781,14 @@ def acknowledgements(ctx):
 def breakglass(ctx):
     """Each break-glass export of the list's record, about every device whose credential it
     sealed."""
-    import json
-    import os
     from modules import breakglass as bg
     from modules import config
-    path = os.path.join(config.DATA_DIR, bg.EXPORT_LOG)
-    if not os.path.exists(path):
-        return _out()
-    try:
-        rows = [json.loads(line) for line in open(path, encoding="utf-8") if line.strip()]
-    except (OSError, ValueError) as exc:
-        return _out(errors=[f"the break-glass export log could not be read: {exc}"])
+    # Through its owner (C1324): once moved, the log is on the records database (K31).
+    got = bg.all_exports(config.DATA_DIR)
+    if got["state"] == "unreadable":
+        return _out(errors=[f"the break-glass export log could not be read: "
+                            f"{got.get('error')}"])
+    rows = got["rows"]
     verdicts = bg.intact_verdicts(config.DATA_DIR)
     if verdicts.get("state") == "unreadable":
         return _out(errors=[f"the break-glass download verdicts could not be read: "
