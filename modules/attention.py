@@ -3295,8 +3295,11 @@ def _attach(rows: list) -> list:
         if target is None or target is r:
             kept.append(r)
             continue
-        target["attached"].append({"source": r["source"], "what": r["what"],
-                                   "since": r["since"]})
+        # Its id and kind kept, so Needs attention's record (C1192) sees a folded row as
+        # still present, never as cleared.
+        target["attached"].append({"id": r["id"], "kind": r["kind"], "source": r["source"],
+                                   "what": r["what"], "since": r["since"],
+                                   "devices": r["devices"]})
         if r.get("attach_action", True):
             target["action"] = r["action"]
     return kept

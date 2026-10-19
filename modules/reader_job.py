@@ -396,6 +396,22 @@ CHANGE_ONLY = {
 }
 
 
+#: Steps run after EVERY reader's store, each given the reader (C1192: Needs attention's record
+#: sights its rows when a reader it draws finishes). Installed where the readers start
+#: (`start`), so a process that runs no readers runs none of these.
+_AFTER_ANY_STORE: list = []
+
+
+def after_any_store(step, remove: bool = False) -> None:
+    """Add *step*, called after each store with the reader and whether what a page draws
+    moved (its `announce_if`, or True), or remove it."""
+    if remove:
+        while step in _AFTER_ANY_STORE:
+            _AFTER_ANY_STORE.remove(step)
+    elif step not in _AFTER_ANY_STORE:
+        _AFTER_ANY_STORE.append(step)
+
+
 def run_once(reader: Reader, announce=None, clock=time.time, trigger: dict = None) -> dict:
     """Read, store, announce. Returns the stored document.
 
@@ -557,6 +573,23 @@ def _run_once(reader: Reader, announce, clock, trigger) -> dict:
         except Exception as exc:                        # noqa: BLE001
             log.error("reader %s: its after-store step failed: %s: %s", reader.name,
                       type(exc).__name__, exc)
+    # Did what a page draws move? A reader that announces only on change (rule 9: the 5 s
+    # reachability probe, the 10 s onboarding progress) says so by its own `announce_if`;
+    # any other reader's finish counts as a move, and so does a failed read.
+    moved = True
+    if not error and reader.announce_if is not None:
+        try:
+            moved = bool(reader.announce_if(previous_value, value)) or bool(acted)
+        except Exception:                               # noqa: BLE001
+            moved = True                                # when unsure, it moved
+    for step in list(_AFTER_ANY_STORE):
+        # Before the announcement too, so the record holds what the page will draw. A step
+        # that fails is logged and never stops the reader.
+        try:
+            step(reader, moved)
+        except Exception as exc:                        # noqa: BLE001
+            log.error("reader %s: an after-any-store step failed: %s: %s", reader.name,
+                      type(exc).__name__, exc)
 
     should = True
     if announce is not None and not error and reader.announce_if is not None and not requested:
@@ -683,7 +716,10 @@ def start(announce=None) -> list:
     operator, 2026-10-15, after the 18:40 UTC restart; not reproduced by two threads alone).
     A package imported whole before the threads start is one no thread has to initialise."""
     import modules.integrations  # noqa: F401 (imported for its effect: every client loaded)
+    from modules import attention_record
 
+    # C1192: Needs attention's rows sighted whenever a reader it draws finishes.
+    attention_record.install()
     _stop.clear()
     started = []
     for r in readers():

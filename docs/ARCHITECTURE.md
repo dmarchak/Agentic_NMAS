@@ -907,6 +907,13 @@ and others have left since too.
   restart after the fact. A script that restarts devices (the lab redeploy) declares its
   window through **[routes/restarts.py](routes/restarts.py)** (`POST /restarts/planned`, gate
   configure, operation `planned_restart`), recorded as the verified caller
+- **[modules/attention_record.py](modules/attention_record.py)** — C1192 (2026-10-19, the first
+  job after Phase 7): Needs attention's RECORD. When a reader the page draws finishes
+  (`reader_job.after_any_store`, installed by `reader_job.start`), the page's own rows are
+  sighted, and each row's life is kept: first and last seen, when and how it cleared (resolved,
+  acknowledged, by time). A row whose source was unread stays open. The store is
+  `attention_record.json`, locked across processes and replaced atomically. The page read
+  writes nothing. Its screen is C1319.
 - **[modules/acknowledgements.py](modules/acknowledgements.py)** — C344 (2026-10-02): a person
   ACKNOWLEDGES an event row on Needs attention (an unplanned restart, a line authorised again
   and again: `attention.ACKNOWLEDGED_HERE`) with a reason in the shape of one, recorded with

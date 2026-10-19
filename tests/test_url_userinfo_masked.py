@@ -89,6 +89,9 @@ ENTRY_POINTS = {
         __import__("modules.outbound", fromlist=["x"]).mask_payload({"e": PLANTED})),
     "modules/reader_job.py:_redacted": lambda: __import__(
         "modules.reader_job", fromlist=["x"])._redacted(PLANTED),
+    # Needs attention's record (C1192): what a row says, and an acknowledgement's why, at rest.
+    "modules/attention_record.py:_masked": lambda: __import__(
+        "modules.attention_record", fromlist=["x"])._masked(PLANTED),
     "modules/netbox_guard.py:_redact": lambda: __import__(
         "modules.netbox_guard", fromlist=["x"])._redact(PLANTED),
     "modules/netbox_guard.py:_redact_leaves": lambda: repr(__import__(
