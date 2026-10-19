@@ -1799,7 +1799,7 @@ def retire_confirm(name):
                           confirmed_hash=confirmed, breakglass_log=True)
     log.info("retire (v2): %s/%s by %s: ok=%s done=%s", ref.name, host, actor,
              out.get("ok"), out.get("done"))
-    targets = (retire_op.targets_after(host, before.get("ip", ""))
+    targets = (retire_op.targets_after(host, before.get("ip", ""), ref.name)
                if "commit" in (out.get("done") or []) else {})
     c = device_actions.retire_result_card(
         ref, host, mask_payload(retire_result(out, out.get("plan") or before)),

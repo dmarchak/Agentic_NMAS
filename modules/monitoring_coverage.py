@@ -184,8 +184,20 @@ def rows(devices=None, golden=None, get=None, now=None, keeper=None, record=True
     devices = P.inventory() if devices is None else devices
     golden = golden or P.read_golden
     if keeper is None:
-        got = P.last_sync()
-        keeper = (got.get("excluded") or {}) if isinstance(got, dict) else {}
+        # Each device's own Prometheus owner's record (K11): another network's
+        # keeper never dates this one's exclusion.
+        keeper, records = {}, {}
+        for ref, dev in devices:
+            host = (dev.get("hostname") or "").strip()
+            try:
+                owner = P.owner_of(ref.name)
+            except Exception:                           # noqa: BLE001
+                continue
+            if owner not in records:
+                got = P.last_sync(owner)
+                records[owner] = (got.get("excluded") or {}) if isinstance(got, dict) else {}
+            if host in records[owner]:
+                keeper[host] = records[owner][host]
     state, seen = (_read_state() if record else {}), {}
     out = []
     for ref, dev in devices:

@@ -385,6 +385,17 @@ M 5, L 16; the L ceiling is an assumption):
   measured pace only (CLAUDE.md, writeup forecasts).
 - **No calendar figure** is derived from the sizes (Phase 7's entry).
 
+**Landed** (section 2's Status column stays the survey's snapshot; each landing is here). The
+re-forecast after the first four takes their pace from these commits' times only: the span
+from the triage's commit (b7988607, 2026-10-19 02:34 UTC) to the fourth one's push, gates and
+deploys included. No start time is recorded for any one item, so no per-item figure is drawn.
+
+| # | Size | Commit | Pushed (UTC) | What landed | Left |
+|---|---|---|---|---|---|
+| K1 | M | 1b66ad96 | 2026-10-19 02:46 | C1252: the responder serves every network's reservations; K11's inheritance (a network with no profile takes Default's) | Lab 9's last step, the operator's W5 sitting (docs/walks/W5.md) |
+| K2 | M | 63cc648d | 2026-10-19 03:12 | C589: one Needs attention row per adjacency a device logged down, acknowledged within its band | none in Core 1.0 (C1322, C1323 registered) |
+| K11 | M | this commit | | the remainder: one set of targets, one record and one job-health row per Prometheus owner; two owners naming one directory refused (C229 closed) | none |
+
 ## 7. Not placed, and missing from the cross-check list
 
 - **"Perigo's one-click pre-made configurations":** no list of them exists in the repository.

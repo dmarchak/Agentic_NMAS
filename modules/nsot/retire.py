@@ -262,7 +262,7 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
     out["not_doing"] += [n for n in (mask.get("not_doing"), legacy.get("not_doing")) if n]
     # Board 12: what is GENERATED is dropped at its next regeneration, said with when; what
     # SURVIVES is named with how it is removed. Both are the commit's Not-Done trailers too.
-    watchers = _watchers(hostname, ip)
+    watchers = _watchers(hostname, ip, list_name)
     out["generated"] = [w for w in watchers if w["kind"] == "generated"]
     out["survives"] = [w for w in watchers if w["kind"] == "survives"]
     if nb.get("checked") and nb.get("exists"):
@@ -469,7 +469,7 @@ def _heartbeat_rules_path(hb) -> str:
     return hb.OUT
 
 
-def _watchers(hostname: str, ip: str) -> list:
+def _watchers(hostname: str, ip: str, list_name: str = "") -> list:
     """What still watches the device after it leaves, each ``{"kind", "what", "how"}``:
     GENERATED (the tool regenerates it from what retire removes, so it is dropped at the next
     regeneration, said with when) or SURVIVES (nobody regenerates it: named with how it is
@@ -516,15 +516,15 @@ def _watchers(hostname: str, ip: str) -> list:
     try:
         from modules import prometheus_targets
 
-        if prometheus_targets.target_dir():
+        # The device's network's Prometheus (K11): its owner's directory and client.
+        owner = prometheus_targets.owner_of(list_name)
+        if prometheus_targets.target_dir(owner):
             item("generated", "Prometheus's scrape targets",
                  f"generated from the inventory, and a device with no committed golden is no "
                  f"target: retire's commit removes {hostname}'s golden, so the targets keeper "
                  "drops it at its next run, and the result reads the target files back")
         else:
-            from modules.integrations import get_integration
-
-            prom = get_integration("prometheus")
+            prom = prometheus_targets.client_for(owner)
             if prom is None or not prom.is_configured():
                 item("survives", "Prometheus's scrape targets",
                      f"not generated here (no target directory is set) and Prometheus is not "
@@ -554,19 +554,21 @@ def _watchers(hostname: str, ip: str) -> list:
     return out
 
 
-def targets_after(hostname: str, ip: str) -> dict:
+def targets_after(hostname: str, ip: str, list_name: str = "") -> dict:
     """After retire's commit, regenerate Prometheus's targets now (the keeper the commit
     woke does the same) and READ THE FILES BACK: ``{"state", "statement", "at"}``, state one
     of ``dropped``, ``still`` (a file still names it), ``failed`` (the regeneration did not
     happen) or ``not_managed`` (no target directory is set, so the tool writes none)."""
     from modules import prometheus_targets as PT
 
-    directory = PT.target_dir()
+    # The device's network's Prometheus owner (K11): its directory, its record.
+    owner = PT.owner_of(list_name)
+    directory = PT.target_dir(owner)
     if not directory:
         return {"state": "not_managed", "at": "",
                 "statement": "Prometheus's targets are not generated here (no target "
                              "directory is set)"}
-    rec = PT.sync(f"retire of {hostname}")
+    rec = PT.sync(f"retire of {hostname}", owner=owner)
     if not rec.get("ok"):
         return {"state": "failed", "at": rec.get("at", ""),
                 "statement": (f"Prometheus's targets were NOT regenerated "

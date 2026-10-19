@@ -398,7 +398,7 @@ class TestTheJobHealthRow:
         from modules import job_health
 
         monkeypatch.setattr("modules.prometheus_targets.health_rows",
-                            lambda client=None, generated=None: [{"unit": "prometheus-targets",
+                            lambda client=None, generated=None, **_k: [{"unit": "prometheus-targets",
                                                                   "state": "mismatch",
                                                                   "max_age_minutes": 0}])
         assert {"unit": "prometheus-targets", "state": "mismatch", "max_age_minutes": 0} in \

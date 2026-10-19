@@ -821,7 +821,10 @@ and others have left since too.
   `device` and `role` (per platform dialect, every device, and the devices whose committed
   golden defines an IP SLA operation). The APP keeps them current: a keeper thread writes
   `prometheus_targets_dir` (empty by default: nothing written) whenever a `devices.csv` is
-  written or a NetBox inventory refreshed, with a 300 s backstop, recording each run. Job
+  written or a NetBox inventory refreshed, with a 300 s backstop, recording each run. One
+  set of files, one record and one row per Prometheus OWNER (K11): a network inheriting
+  Prometheus is in Default's directory, one setting its own is in its own
+  (`list_settings.group_owner`), and two owners naming one directory are both refused. Job
   health's `prometheus-targets` row checks the files on disk against the inventory and the
   running Prometheus against the files, reading what Prometheus has LOADED beside what it
   has discovered (C234): not loaded, not yet discovered (`settling`, dated, no attention

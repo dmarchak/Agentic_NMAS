@@ -1501,7 +1501,7 @@ def prometheus_target_rows() -> list:
     is not configured."""
     try:
         from modules import prometheus_targets
-        return prometheus_targets.health_rows()
+        return prometheus_targets.every_health_row()
     except Exception as exc:                            # noqa: BLE001
         return [{"unit": "prometheus-targets", "state": "unknown", "max_age_minutes": 0,
                  "what": "Prometheus scrapes the inventory, labelled device and role",

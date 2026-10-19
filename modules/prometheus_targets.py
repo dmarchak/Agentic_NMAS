@@ -33,12 +33,17 @@ import tempfile
 import threading
 import time
 
+from modules.list_settings import DEFAULT_LIST
+
 log = logging.getLogger(__name__)
 
 PREFIX = "nmas-snmp-"
 ALL = "all"
 IPSLA = "ipsla"
 DEFAULT_DIR = "/etc/prometheus/nmas"
+#: The network whose Prometheus every caller meant before K11: the record, the
+#: directory and the client each keep their meaning when no owner is named.
+DEFAULT_OWNER = DEFAULT_LIST
 _IPSLA_OP = re.compile(r"^ip sla \d+\s*$", re.M)
 
 #: The routing-adjacency files (staged run 5, the operator, 2026-09-30): the
@@ -446,22 +451,22 @@ def disk_state(directory: str, generated: dict) -> dict:
     return {"read": True, "dir": directory, "differs": differs, "mtimes": mtimes}
 
 
-def check(client=None, generated=None, directory=None, now=None) -> dict:
-    """Ask the running Prometheus (read-only) and compare. ``state``:
-    ``not_configured`` (no Prometheus URL: no row), ``unknown`` (could not
-    ask for the discovered targets), else the comparison's ``ok``,
-    ``settling`` or ``mismatch``, with the files on disk beside it."""
-    if client is None:
-        from modules.integrations.prometheus import PrometheusIntegration
-        client = PrometheusIntegration()
+def check(client=None, generated=None, directory=None, now=None,
+          owner: str = DEFAULT_OWNER) -> dict:
+    """Ask *owner*'s running Prometheus (read-only) and compare it with its
+    lists' targets. ``state``: ``not_configured`` (no Prometheus URL: no
+    row), ``unknown`` (could not ask for the discovered targets), else the
+    comparison's ``ok``, ``settling`` or ``mismatch``, with the files on disk
+    beside it."""
+    client = client_for(owner) if client is None else client
     if not client.is_configured():
         return {"state": "not_configured"}
     try:
         active = _json_of(client._get("api/v1/targets", state="active")).get("activeTargets") or []
     except Exception as exc:                            # noqa: BLE001
         return {"state": "unknown", "error": str(exc) or type(exc).__name__}
-    generated = generate() if generated is None else generated
-    directory = target_dir() if directory is None else directory
+    generated = generate(owned_devices(owner)) if generated is None else generated
+    directory = target_dir(owner) if directory is None else directory
     disk = disk_state(directory, generated)
     result = compare(generated, active, loaded=read_loaded(client), now=now,
                      disk_mtimes=disk.get("mtimes"))
@@ -508,23 +513,78 @@ KEEPER_BACKSTOP_SECONDS = 300
 _keeper = {"thread": None, "event": threading.Event(), "reasons": [], "lock": threading.Lock()}
 
 
-def target_dir() -> str:
-    # The Default network's: one targets directory serves every list until P.7.
-    from modules.list_settings import default_layer
+def owners(names=None) -> dict:
+    """``{owner network: [its lists]}``: which Prometheus serves each network
+    (K11, Core 1.0). A network inheriting Prometheus is Default's; one that
+    sets its own, or declares it not applicable, is its own owner
+    (`list_settings.group_owner`). *names*: the networks, default every
+    registered one. Raises when a network's settings cannot be read: whose
+    Prometheus it is cannot then be said, and guessing Default's would scrape
+    a network under someone else's."""
+    from modules.list_settings import group_owner
 
-    return str(default_layer("prometheus_targets_dir", "") or "").strip()
+    if names is None:
+        from modules.device import get_device_lists
+
+        names = [l["name"] for l in get_device_lists()]
+    out = {}
+    for name in names:
+        owner, _why = group_owner(name, "prometheus")
+        out.setdefault(owner, []).append(name)
+    return out
 
 
-def _record_path() -> str:
+def _with_default(groups: dict) -> dict:
+    """*groups* with the Default network always among them, its lists or none:
+    its Prometheus is the one every install had before K11, so its row and its
+    keeper run stand whether or not a network inherits it (an empty one is
+    refused and said, never an empty file)."""
+    return {DEFAULT_OWNER: [], **groups}
+
+
+def owner_of(list_name: str) -> str:
+    """The network whose Prometheus scrapes *list_name*'s devices."""
+    from modules.list_settings import group_owner
+
+    return group_owner(list_name or DEFAULT_OWNER, "prometheus")[0]
+
+
+def client_for(owner: str):
+    from modules.integrations.prometheus import PrometheusIntegration
+    from modules.list_settings import is_default
+
+    # Default's client is built for no list, as every caller built it before K11.
+    return PrometheusIntegration(list_name="" if is_default(owner) else owner)
+
+
+def owned_devices(owner: str = DEFAULT_OWNER, lists=None) -> list:
+    """The devices *owner*'s Prometheus scrapes: its lists' (ref, row) pairs."""
+    return inventory(lists=owners().get(owner, []) if lists is None else lists)
+
+
+def target_dir(owner: str = DEFAULT_OWNER) -> str:
+    """*owner*'s targets directory; ``""`` when it names none (Mercury then
+    writes nothing for it). Each Prometheus owner names its own (K11): one
+    directory serving every network wrote a network with its own Prometheus
+    into Default's."""
+    from modules.list_settings import value
+
+    return str(value(owner or DEFAULT_OWNER, "prometheus_targets_dir", "") or "").strip()
+
+
+def _record_path(owner: str = DEFAULT_OWNER) -> str:
     from modules import config
+    from modules.list_settings import is_default
 
-    return os.path.join(config.DATA_DIR, "prometheus_targets_sync.json")
+    if is_default(owner or DEFAULT_OWNER):
+        return os.path.join(config.DATA_DIR, "prometheus_targets_sync.json")
+    return os.path.join(config.DATA_DIR, f"prometheus_targets_sync@{config.list_slug(owner)}.json")
 
 
-def last_sync() -> dict:
-    """The keeper's last run, as recorded. ``{}`` when none is (absent);
+def last_sync(owner: str = DEFAULT_OWNER) -> dict:
+    """*owner*'s keeper's last run, as recorded. ``{}`` when none is (absent);
     ``{"unreadable": reason}`` when the record exists and cannot be read."""
-    path = _record_path()
+    path = _record_path(owner)
     if not os.path.exists(path):
         return {}
     try:
@@ -534,19 +594,31 @@ def last_sync() -> dict:
         return {"unreadable": f"{type(exc).__name__}: {exc}"}
 
 
-def sync(reason: str, directory: str = None, generate_fn=None) -> dict:
-    """Regenerate the files into the configured directory, and record the run.
-    Nothing to do (no directory set) is ``{"state": "not_managed"}`` and is
-    not recorded. An inventory with no device is refused and recorded: an
-    empty file would tell Prometheus to scrape nothing."""
+def sync(reason: str, directory: str = None, generate_fn=None, owner: str = DEFAULT_OWNER,
+         lists=None, groups: dict = None) -> dict:
+    """Regenerate *owner*'s files (its lists' devices, *lists* when given)
+    into its directory, and record the run. Nothing to do (no directory set)
+    is ``{"state": "not_managed"}`` and is not recorded. An inventory with no
+    device, or a directory another owner names too (*groups*, default every
+    owner), is refused and recorded: an empty file would tell Prometheus to
+    scrape nothing, and a shared one would scrape one network as another's."""
     from modules.filestore import write_atomic
+    from modules.list_settings import is_default
 
-    directory = target_dir() if directory is None else directory
+    directory = target_dir(owner) if directory is None else directory
     if not directory:
         return {"state": "not_managed"}
     rec = {"at": _iso(time.time()), "reason": reason, "dir": directory}
+    if not is_default(owner):
+        rec["network"] = owner
     try:
-        generated = (generate_fn or generate)()
+        if generate_fn is None:
+            groups = _with_default(owners()) if groups is None else groups
+            _refuse_shared(owner, directory, groups)
+            generated = generate(owned_devices(owner, groups.get(owner, [])
+                                               if lists is None else lists))
+        else:
+            generated = generate_fn()
         if not generated["devices"]:
             raise RuntimeError(f"of the {generated.get('inventory', 0)} device(s) in the "
                                "inventory, none is configured for SNMP with an address; writing "
@@ -555,7 +627,8 @@ def sync(reason: str, directory: str = None, generate_fn=None) -> dict:
         # WHEN each device left the targets (the operator, 2026-09-30: "the
         # condition began at a known moment"): the first run that excluded
         # it, carried forward while it stays out, gone when it returns.
-        before = (last_sync().get("excluded") or {}) if isinstance(last_sync(), dict) else {}
+        prior = last_sync(owner)
+        before = (prior.get("excluded") or {}) if isinstance(prior, dict) else {}
         rec.update(ok=True, devices=generated["devices"], inventory=generated.get("inventory"),
                    changed=out["changed"], unchanged=out["unchanged"],
                    excluded={h: {"since": (before.get(h) or {}).get("since") or rec["at"], "why": w}
@@ -566,7 +639,7 @@ def sync(reason: str, directory: str = None, generate_fn=None) -> dict:
         rec.update(ok=False, error=f"{type(exc).__name__}: {exc}")
         log.error("prometheus targets: NOT regenerated for %s: %s", reason, rec["error"])
     try:
-        write_atomic(_record_path(), json.dumps(rec, indent=2, sort_keys=True) + "\n")
+        write_atomic(_record_path(owner), json.dumps(rec, indent=2, sort_keys=True) + "\n")
     except OSError as exc:
         log.error("prometheus targets: the run could not be recorded: %s", exc)
         rec["record_error"] = f"{type(exc).__name__}: {exc}"
@@ -606,12 +679,34 @@ def golden_hook(context: dict, run=None) -> dict:
     return {"ok": True, "message": f"woke the targets keeper ({len(goldens)} golden(s))"}
 
 
+def _refuse_shared(owner: str, directory: str, groups: dict) -> None:
+    """Raise when another Prometheus owner names *directory* too. Each would
+    rewrite the files with its own devices alone, so every run would drop the
+    other's, and each Prometheus reading the directory would scrape both
+    networks' devices as its own: both are refused, each naming the other."""
+    here = os.path.realpath(directory)
+    others = sorted(o for o in groups if o != owner and target_dir(o)
+                    and os.path.realpath(target_dir(o)) == here)
+    if others:
+        raise RuntimeError(f"{directory} is also the targets directory of {', '.join(others)}: "
+                           "one directory holds one Prometheus's files, so neither is written "
+                           "until each network names its own (Settings, the Prometheus card)")
+
+
+def sync_all(reason: str, groups: dict = None, sync_fn=None) -> dict:
+    """One keeper run: every Prometheus owner that names a targets directory
+    gets its own lists' files there (K11). ``{owner: its record}``."""
+    groups = _with_default(owners()) if groups is None else groups
+    sync_fn = sync_fn or sync
+    return {owner: sync_fn(reason, owner=owner, lists=lists, groups=groups)
+            for owner, lists in sorted(groups.items()) if target_dir(owner)}
+
+
 def _keeper_loop(sleep=time.sleep) -> None:
     reasons = ["the app started"]
     while True:
         try:
-            if target_dir():
-                sync("; ".join(dict.fromkeys(reasons)))
+            sync_all("; ".join(dict.fromkeys(reasons)))
         except Exception as exc:                        # noqa: BLE001
             log.error("prometheus targets: the keeper's run raised: %s", exc)
         woke = _keeper["event"].wait(timeout=KEEPER_BACKSTOP_SECONDS)
@@ -649,7 +744,35 @@ def _row(state: str, detail: str, action: dict = None) -> list:
     return [row]
 
 
-def health_rows(client=None, generated=None, directory=None, now=None, record=None) -> list:
+def every_health_row(groups: dict = None, rows_fn=None) -> list:
+    """The job-health rows of every Prometheus owner (K11): one per owner whose
+    Prometheus is configured, each comparing it with its own lists' targets."""
+    groups = _with_default(owners()) if groups is None else groups
+    out = []
+    for owner in sorted(groups):
+        out += (rows_fn or health_rows)(owner=owner)
+    return out
+
+
+def health_rows(client=None, generated=None, directory=None, now=None, record=None,
+                owner: str = DEFAULT_OWNER) -> list:
+    """*owner*'s job-health row; another network's is its own unit, naming it."""
+    from modules.config import list_slug
+    from modules.list_settings import is_default
+
+    rows = _rows_for(client, generated, directory, now, record, owner)
+    if is_default(owner):
+        return rows
+    for row in rows:
+        row.update(unit=f"prometheus-targets@{list_slug(owner)}", list=owner,
+                   what=f"{_WHAT}, for {owner}'s Prometheus")
+        if row.get("action") == _SETTINGS_ACTION:
+            row["action"] = dict(_SETTINGS_ACTION, label=_SETTINGS_ACTION["label"].replace(
+                "Settings › Default", f"Settings › {owner}"))
+    return rows
+
+
+def _rows_for(client, generated, directory, now, record, owner) -> list:
     """The job-health row. No row when Prometheus is not configured (ZTP's
     precedent): an install without Prometheus has nothing to scrape.
 
@@ -660,7 +783,7 @@ def health_rows(client=None, generated=None, directory=None, now=None, record=No
     A change inside the window is ``settling``: dated, with when to ask
     again, and nothing to do."""
     try:
-        r = check(client, generated, directory=directory, now=now)
+        r = check(client, generated, directory=directory, now=now, owner=owner)
     except Exception as exc:                            # noqa: BLE001
         return _row("unknown", f"the check raised {type(exc).__name__}: {exc} -- not the same as ok")
     if r["state"] == "not_configured":
@@ -684,7 +807,7 @@ def health_rows(client=None, generated=None, directory=None, now=None, record=No
                     {"label": "Install the generated targets once (a person's step on the "
                               "Prometheus host)", "reference": "docs/PROMETHEUS_TARGETS.md"})
     disk = r.get("disk") or {}
-    record = last_sync() if record is None else record
+    record = last_sync(owner) if record is None else record
     if disk.get("read") and disk["differs"]:
         return _disk_row(disk, record, r, now)
     if r["drift"]:

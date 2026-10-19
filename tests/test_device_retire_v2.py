@@ -73,10 +73,10 @@ def _targets(monkeypatch, tmp_path, devices):
     from modules import prometheus_targets as PT
     d = tmp_path / "targets"
     d.mkdir(exist_ok=True)
-    monkeypatch.setattr(PT, "target_dir", lambda: str(d))
-    monkeypatch.setattr(PT, "_record_path", lambda: str(tmp_path / "targets-record.json"))
+    monkeypatch.setattr(PT, "target_dir", lambda *_a: str(d))
+    monkeypatch.setattr(PT, "_record_path", lambda *_a: str(tmp_path / "targets-record.json"))
     groups = [{"targets": [ip], "labels": {"device": h}} for h, ip in devices]
-    monkeypatch.setattr(PT, "generate", lambda: {
+    monkeypatch.setattr(PT, "generate", lambda *_a: {
         "files": {"nmas-snmp-all.json": groups}, "devices": len(groups), "inventory": 2,
         "notes": [], "excluded": {}})
     return d
@@ -235,14 +235,14 @@ class TestTheReadBack:
     def test_targets_after_says_dropped_still_or_not_managed(self, monkeypatch, tmp_path):
         from modules import prometheus_targets as PT
         from modules.nsot import retire as RT
-        monkeypatch.setattr(PT, "target_dir", lambda: "")
+        monkeypatch.setattr(PT, "target_dir", lambda *_a: "")
         assert RT.targets_after("r5", "192.0.2.15")["state"] == "not_managed"
         _targets(monkeypatch, tmp_path, [("r4", "192.0.2.14")])
         assert RT.targets_after("r5", "192.0.2.15")["state"] == "dropped"
         _targets(monkeypatch, tmp_path, [("r4", "192.0.2.14"), ("r5", "192.0.2.15")])
         got = RT.targets_after("r5", "192.0.2.15")
         assert got["state"] == "still" and "nmas-snmp-all.json" in got["statement"]
-        monkeypatch.setattr(PT, "generate", lambda: (_ for _ in ()).throw(OSError("disk")))
+        monkeypatch.setattr(PT, "generate", lambda *_a: (_ for _ in ()).throw(OSError("disk")))
         assert RT.targets_after("r5", "192.0.2.15")["state"] == "failed"
 
     def test_a_retirement_that_stopped_draws_where_on_the_stepper(self):

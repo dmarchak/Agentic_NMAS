@@ -33,7 +33,6 @@ INVENTORY = {
     "modules/readers/coverage_reporting.py": (1, "a reader of one global integration (step 5)"),
     "modules/readers/credential_health.py": (2, "a reader of one global integration (step 5)"),
     "modules/netbox_client.py": (1, "the sync that asks carries no list down to here yet"),
-    "modules/prometheus_targets.py": (1, "one targets directory serves every list (P.7)"),
     # 4 until C1243/C1235 (2026-10-17): the writer's two reads went to its network's Kea owner.
     "modules/nsot/ztp.py": (2, "one Kea fragment and responder serve every list (P.7): job "
                                "health's D4 rows and a check asked for no network"),
@@ -175,8 +174,9 @@ class TestTheDefaultLayerReadsAreAnExactInventory:
         """The floor: a parse that found nothing would satisfy an empty inventory."""
         # 19 after 7.8's topology service; 16 on 2026-10-15, after today's general Settings
         # form's three left with today's Settings modal (7.8); 14 on 2026-10-17, after ZTP's
-        # writer took its network's Kea owner's settings (C1235).
-        assert sum(default_layer_calls(_program_files()).values()) >= 14
+        # writer took its network's Kea owner's settings (C1235); 13 on 2026-10-18, after the
+        # Prometheus targets took each network's Prometheus owner's directory (C229, K11).
+        assert sum(default_layer_calls(_program_files()).values()) >= 13
 
     def test_the_parse_sees_each_shape_and_ignores_prose(self, tmp_path):
         """The planted case: a call by name, by alias, as an attribute, and a docstring that

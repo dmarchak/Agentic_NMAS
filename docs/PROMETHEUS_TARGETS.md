@@ -145,6 +145,31 @@ directory's owner or mode, step 1); files behind a recent run read
 longer than the backstop mean the keeper is not running. With no directory
 named, nothing is written and the row's action is the Settings field.
 
+## One Prometheus per network that sets its own (K11, 2026-10-19)
+
+Each Prometheus scrapes the networks it serves. A network that inherits
+Prometheus from Default (its settings mode, or the Prometheus card left to
+inherit) is scraped by Default's, so its devices go in Default's targets
+directory. A network that sets its own Prometheus names its own targets
+directory on its own Settings page, the Prometheus card, and the keeper
+writes that network's devices there and only there. A network that declares
+Prometheus not applicable is in no file.
+
+- **Each owner is its own run and record.** Default's is
+  `data/prometheus_targets_sync.json`, as before; another network's is
+  `data/prometheus_targets_sync@<its slug>.json`.
+- **Each owner is its own job-health row,** asking that network's
+  Prometheus: Default's is `prometheus-targets`, another's
+  `prometheus-targets@<its slug>`, naming the network.
+- **Two networks naming one directory are both refused,** each record
+  naming the other, and nothing is written there: each would rewrite the
+  files with its own devices alone. Give each network its own directory.
+- The install's steps are the same for each Prometheus host. The script
+  (`scripts/nmas-prometheus-targets`) prints and checks Default's.
+
+Before this, every network's devices went into Default's one directory,
+whatever Prometheus the network named.
+
 ## Scrape intervals (the operator's change, 2026-10-01)
 
 To take load off s3, the management gateway (register C93), the operator

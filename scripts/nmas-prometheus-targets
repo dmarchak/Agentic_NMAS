@@ -5,7 +5,9 @@
     nmas-prometheus-targets --write /etc/prometheus/nmas
     nmas-prometheus-targets --check                # does the running Prometheus match?
 
-Every device of every list, labelled `device` (its hostname) and `role` (the
+Every device the Default network's Prometheus scrapes (its own and every
+network inheriting it; a network with its own Prometheus has its own targets
+directory, written by the app), labelled `device` (its hostname) and `role` (the
 inventory's, omitted where empty and said). Files, in the directory given:
 `nmas-snmp-<dialect>.json` per platform, `nmas-snmp-all.json` for fleet-wide
 jobs, `nmas-snmp-ipsla.json` for devices whose committed golden defines an IP
@@ -101,7 +103,7 @@ def main(argv=None) -> int:
     from modules import prometheus_targets as P
 
     try:
-        generated = P.generate()
+        generated = P.generate(P.owned_devices())
     except Exception as exc:                            # noqa: BLE001
         print(f"COULD NOT READ THE INVENTORY: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2

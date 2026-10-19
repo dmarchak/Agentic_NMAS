@@ -258,7 +258,7 @@ class TestWhatStillWatchesIt:
 
     def test_generated_targets_are_dropped_at_the_keepers_next_run(self, world,  # noqa: F811
                                                                     monkeypatch):
-        monkeypatch.setattr("modules.prometheus_targets.target_dir", lambda: "/srv/targets")
+        monkeypatch.setattr("modules.prometheus_targets.target_dir", lambda *_a: "/srv/targets")
         p = RT.plan("Lab", "r5", "x y z")
         how = self._kind(p, "generated", "Prometheus")
         assert "a device with no committed golden is no target" in how
