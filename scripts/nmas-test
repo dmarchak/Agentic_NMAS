@@ -95,12 +95,43 @@ report_timeout() {
 }
 
 # Run under the bound, then report. Not `exec`: the report runs after.
-# `timeout` signals its whole process group, so xdist workers get the SIGTERM
-# too, and --kill-after ends anything that ignores it.
+# Without a terminal (the gate, CI) `timeout` runs the command in a process group of its own and
+# signals the whole group, so xdist workers get the SIGTERM too, and --kill-after ends anything
+# that ignores it.
+#
+# WITH A TERMINAL (C1414, the operator, 2026-10-20: a run from a terminal hung for ever in state
+# T, and Ctrl+C could not reach it): that group of its own is a BACKGROUND group on the
+# terminal, so the first touch of the terminal stops it (SIGTTIN, SIGTTOU) and the terminal's
+# Ctrl+C goes to the foreground group it is not in. `--foreground` keeps it in the terminal's
+# own group; `timeout` then signals only the command, so on a fired bound what the run left
+# (the workers, anything a test started) is ended by IDENTITY: this run's own INFLIGHT folder
+# in its environment, never a name pattern.
+end_leftovers() {
+  local p pids=()
+  for p in /proc/[0-9]*; do
+    [ "${p#/proc/}" = "$$" ] && continue
+    if tr '\0' '\n' < "$p/environ" 2>/dev/null | grep -qxF "NMAS_TEST_INFLIGHT=$INFLIGHT"; then
+      pids+=("${p#/proc/}")
+    fi
+  done
+  [ "${#pids[@]}" -eq 0 ] && return 0
+  echo "nmas-test: ending ${#pids[@]} process(es) this run left (each names $INFLIGHT): ${pids[*]}" >&2
+  kill -TERM "${pids[@]}" 2>/dev/null
+  sleep 2
+  kill -KILL "${pids[@]}" 2>/dev/null
+  return 0
+}
+
 run() {
-  timeout --kill-after=15 "$TIMEOUT" "$@"
-  rc=$?
-  if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then report_timeout; fi
+  if [ -t 0 ]; then
+    timeout --foreground --kill-after=15 "$TIMEOUT" "$@"
+    rc=$?
+    if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then report_timeout; end_leftovers; fi
+  else
+    timeout --kill-after=15 "$TIMEOUT" "$@"
+    rc=$?
+    if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then report_timeout; fi
+  fi
   exit "$rc"
 }
 
