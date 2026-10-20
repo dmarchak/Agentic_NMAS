@@ -143,13 +143,17 @@ If a plan asks for one anyway, stop and read it before confirming.
 
 ### Step 6: R6's full intent [DEVICE: R6]
 - **C1432 at this step:** R6's bootstrap renders none of the multi-valued lines (hostname,
-  account, domain, its Gi2 address and default route, SSH key, vty). NTP, logging host and
+  account, domain, `ip address dhcp` on Gi2, SSH key, vty). NTP, logging host and
   SNMP host arrive from Default's profile at onboarding, with the same values the draft
   inherits (the draft sets none of them). The helper and the IPv6 addresses are new, with no
   old value. So nothing is replaced, and C1432 does not bite, provided step 5b's "before" read
   shows the profile's values. The agent reads R6's capture after step 5 to confirm.
-- **Repair route:** R6's console. The management address (10.255.4.2 on Gi2) and the
-  bootstrap's default route stay exactly as onboarding left them. The draft does not touch Gi2's
+- **Repair route:** R6's console. Gi2 keeps `ip address dhcp` exactly as the bootstrap left it
+  (the operator, 2026-10-20: switching the management interface from DHCP to static
+  mid-session would change the path the tool reaches R6 on). Its address, 10.255.4.2, is
+  Kea's reservation, and its default route is the lease's option 3 (10.255.4.1, distance 254).
+  After this step OSPF's default from R4 (E2, distance 110, the same next hop) is preferred.
+  The draft does not touch Gi2's
   address, the vty lines, SSH or the account.
 - R6's page › Intent › **Seed intent…** (bootstrap-only intent is seeded from the capture first). Then paste
   section 4's sections over the seed's, removing the traps it names. Commit. Plan a deploy.
@@ -392,8 +396,12 @@ sudo containerlab destroy -t lab8-r7.clab.yml --cleanup
 capture on the Intent tab, then replace or add the sections below. Leave unchanged everything
 the seed holds for:
 - **Gi1** (vrnetlab's management passthrough);
-- **Gi2's address**, the management path from the bootstrap;
-- **the bootstrap's default route via 10.255.4.1**, the management path's return route;
+- **Gi2's `ipv4: dhcp`**, the management path from the bootstrap: R6 is reached at its leased
+  address (Kea's reservation, 10.255.4.2) and takes its default route from the lease (option 3,
+  10.255.4.1). No static address or route stands for either (corrected 2026-10-20, the
+  operator: the draft had written the address static, a mid-session change of the management
+  path). R6's management therefore rests on its lease renewing through R4's relay. Kea's
+  reservation keeps the address, and C1410 (DHCP for bootstrap only) is the Core 1.0 answer;
 - **the vty lines, SSH and the account** onboarding made.
 
 Monitoring comes from Default's profile, so it is NOT in the draft: NTP, SNMP, syslog with
@@ -423,9 +431,9 @@ interfaces:
   - 2001:DB8:1::16/128
   ospfv3:
   - 1 area 10
-- name: GigabitEthernet2            # from the seed: KEEP its ipv4 (the management address)
+- name: GigabitEthernet2            # from the seed: KEEP ipv4: dhcp (the management path)
   description: to R4 Gi5 - OSPF area 10 uplink (management)
-  ipv4: 10.255.4.2 255.255.255.252  # as the bootstrap set it; unchanged
+  ipv4: dhcp                         # as the bootstrap set it (10.255.4.2 by reservation); unchanged
   ipv6:
   - 2001:DB8:2:46::2/64
   ospfv3:
@@ -487,15 +495,18 @@ login:
 - RIP is redistributed into OSPF (and RIPng into OSPFv3), and R6 originates a default into RIP
   and RIPng. Nothing is redistributed back into RIP.
 - R7 reaches everything by R6's default.
-- R6's own default comes from OSPF (R4's `default-information originate always`, E2) and from
-  the bootstrap's static, which wins at distance 1 with the same next hop.
+- R6's own default comes from its DHCP lease (option 3, 10.255.4.1, distance 254) until step 6,
+  then from OSPF (R4's `default-information originate always`, E2, distance 110), with the same
+  next hop either way.
 
 ---
 
 ## 5. R7's intent (draft, today's model)
 
-Applied the same way: seed, then these sections. Leave unchanged Gi1, Gi2's address (the
-bootstrap's), the default route via 10.255.4.5, the vty lines, SSH and the account.
+Applied the same way: seed, then these sections. Leave unchanged Gi1, Gi2's `ipv4: dhcp` (the
+bootstrap's; 10.255.4.6 by Kea's reservation, its default route the lease's option 3,
+10.255.4.5, which RIP's default from R6 replaces at distance 120 once R6 originates it), the vty
+lines, SSH and the account.
 
 **Traps:** Gi3, the dot1Q parent, carries no address: **keep its `no_ip_address: true`**
 (the device prints ` no ip address` on a parent without one, and dropping the key leaves that
@@ -518,9 +529,9 @@ interfaces:
   - 2001:DB8:1::17/128
   ripng:
   - RCN enable
-- name: GigabitEthernet2            # from the seed: KEEP its ipv4 (the management address)
+- name: GigabitEthernet2            # from the seed: KEEP ipv4: dhcp (the management path)
   description: to R6 Gi3 - RIPv2 and RIPng uplink (management)
-  ipv4: 10.255.4.6 255.255.255.252  # as the bootstrap set it; unchanged
+  ipv4: dhcp                         # as the bootstrap set it (10.255.4.6 by reservation); unchanged
   ipv6:
   - 2001:DB8:2:67::2/64
   ripng:
