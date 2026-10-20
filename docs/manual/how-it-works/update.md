@@ -130,8 +130,13 @@ and the Update page draws each step as the updater records it:
    commit. A version that does not come up within 120 s is rolled back: the checkout is reset
    to the commit it ran (and the venv link to the venv it ran, when the update moved it),
    restarted, and confirmed the same way. After a venv moved and the target came up, the venvs
-   older than the previous one that no running process has loaded are removed.
+   older than the previous one that no running process has loaded are removed. Once the app
+   runs the target, every other long-running unit that runs the checkout's code (today the ZTP
+   responder) is restarted with `systemctl try-restart` and confirmed by its new MainPID; one
+   not running is left, and its next start loads the new code. A terminal `nmas-deploy` does
+   the same (C1404: a responder that kept its old code refused a device the new code serves).
 9. **Running** (`running`). Read: `/health`. Sent: nothing. Recorded: the outcome (updated,
+   updated with a unit not restarted, which is a warning naming the unit and the command,
    refused, rolled back, rollback failed, or failed) in `outcome.json` and appended to
    `history.jsonl`. This is the page's end state: the target is running.
 

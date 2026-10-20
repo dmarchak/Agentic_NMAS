@@ -4,7 +4,7 @@
     in its parts, and the confirm, which then waits on /health. Re-fetched when
     the `app-pushed` reader announces. -#}
 {%- set f = p.facts -%}
-{%- set OUT_KIND = {'updated': 'ok', 'refused': 'warn', 'rolled_back': 'warn', 'rollback_failed': 'danger', 'failed': 'danger', 'running': 'info'} -%}
+{%- set OUT_KIND = {'updated': 'ok', 'updated_partly': 'warn', 'refused': 'warn', 'rolled_back': 'warn', 'rollback_failed': 'danger', 'failed': 'danger', 'running': 'info'} -%}
 {%- set CI_KIND = {'verified': 'ok', 'failed': 'danger', 'cancelled': 'warn', 'pending': 'warn', 'could_not_ask': 'muted'} -%}
 <div id="update-panel" class="stack" hx-get="{{ url_for('v2.update_panel') }}" hx-swap="outerHTML"
      hx-include="find #update-host-steps"

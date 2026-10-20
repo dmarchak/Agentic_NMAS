@@ -89,7 +89,9 @@ def _fetch_from_real_origin(world):
 
 def _run(world, runs_by_sha, passed=(), offline=False, suite_rc=0, health="fresh",
          reachable=True, restart_fails=False, ready=(True, "test: sudo authorised"),
-         wait=False, host_check=None, operations=None, to=None, setup=None):
+         wait=False, host_check=None, operations=None, to=None, setup=None, units=None):
+    """*units*: ``(restart_unit, unit_of)`` for the checkout's other units (C1404); by default
+    none is installed here, as on a host without the ZTP responder."""
     mod = _script()
     if setup:
         setup(mod)              # e.g. the venv's paths in a temporary folder (section 8.4)
@@ -166,7 +168,10 @@ def _run(world, runs_by_sha, passed=(), offline=False, suite_rc=0, health="fresh
                     get=get, run=lambda *a, **k: Out(), restart=restart,
                     health=fake_health, clock=clock, sleep=sleep, unit=unit,
                     ready=lambda: ready, host_check=host_check or (lambda repo: None),
-                    operations=operations or (lambda: ("clear", [])))
+                    operations=operations or (lambda: ("clear", [])),
+                    restart_unit=(units or (None, None))[0] or (lambda u: pytest.fail(u)),
+                    unit_of=(units or (None, None))[1] or (lambda u: {"MainPID": 0, "start": "",
+                                                                      "load": "not-found"}))
     return code, restarted, calls
 
 

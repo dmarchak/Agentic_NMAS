@@ -30,7 +30,7 @@
 (function (root) {
   'use strict';
 
-  var TERMINAL = ['updated', 'refused', 'rolled_back', 'rollback_failed', 'failed'];
+  var TERMINAL = ['updated', 'updated_partly', 'refused', 'rolled_back', 'rollback_failed', 'failed'];
 
   /* PURE. Each step's state (done, current, failed, pending) and its note,
      from what the page last read. *keys*: the stepper's steps in order, from
@@ -61,7 +61,10 @@
       for (var j = k + 1; j < keys.length; j++) st[keys[j]] = {state: 'not_reached', note: 'not reached'};
     }
     var short = String(target || '').slice(0, 10);
-    if (health && health.commit === target && (!mine || o.outcome !== 'rolled_back')) {
+    // C1404: the app runs the target and another unit of the checkout may not; that update is
+    // drawn by its outcome below, never as a plain Updated.
+    if (health && health.commit === target &&
+        (!mine || (o.outcome !== 'rolled_back' && o.outcome !== 'updated_partly'))) {
       upTo('running', 'done', 'running ' + short);
       return {steps: st, done: true, reload: true, failed: false,
               words: 'Updated: the app runs ' + short + '. Reloading…'};
@@ -72,6 +75,11 @@
         upTo('running', 'done', 'running ' + short);
         return {steps: st, done: true, reload: true, failed: false,
                 words: 'Updated: the app runs ' + short + '. Reloading…'};
+      }
+      if (o.outcome === 'updated_partly') {
+        upTo('running', 'done', 'running ' + short);
+        return {steps: st, done: true, reload: false, failed: true,
+                words: 'The update ' + (words[o.outcome] || o.outcome) + ': ' + (o.reason || 'no reason recorded')};
       }
       failAt(at, o.reason || '');
       return {steps: st, done: true, reload: false, failed: true,

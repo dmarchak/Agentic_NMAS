@@ -316,6 +316,12 @@ def restart_service(service: str, run=subprocess.run):
                check=True, capture_output=True, text=True, timeout=120)
 
 
+def run_unit_restart(unit_name: str, run=subprocess.run):
+    """A checkout unit (C1404, the gate's `CHECKOUT_UNITS`) restarted only if running."""
+    return run([BINARIES["systemctl"], "try-restart", unit_name],
+               check=True, capture_output=True, text=True, timeout=120)
+
+
 def load_gate(path: str = GATE_PATH):
     """The root-owned copy of `nmas-deploy`, loaded as a module. Refused unless
     root owns it and nobody else can write it: a gate someone else can edit is
@@ -344,7 +350,8 @@ def host_steps(git, repo: str, head: str, target: str) -> list:
 # ---------------------------------------------------------------------------
 
 def update(req: dict, *, repo: str, gate, git, restart, unit, health, clock=time.time,
-           sleep=time.sleep, report=lambda step: None, venv=None) -> dict:
+           sleep=time.sleep, report=lambda step: None, venv=None, restart_unit=None,
+           unit_of=None) -> dict:
     """Run one request. Returns the outcome record. Nothing moves before every
     check has passed; after the checkout moves, any failure rolls back.
 
@@ -432,6 +439,25 @@ def update(req: dict, *, repo: str, gate, git, restart, unit, health, clock=time
             except Exception as exc:                     # noqa: BLE001
                 words += (f"; venv {plan['to']}, previous {plan['from']}; older venvs were "
                           f"not removed ({type(exc).__name__}: {exc})")
+        # The checkout's other long-running units (C1404): each restarted and confirmed by its
+        # new MainPID through the gate's one function, or the outcome says which runs old code.
+        units = getattr(gate, "restart_checkout_units", None)
+        if restart_unit is not None and units is None:
+            return dict(rec, outcome="updated_partly", step="wait", ended_at=iso(clock()),
+                        reason=words + "; the installed gate (the root-owned nmas-deploy) "
+                               "predates C1404, so the ZTP responder was not restarted: "
+                               "re-install it (docs/UPDATE.md) and restart "
+                               "nmas-ztp-responder.service")
+        if restart_unit is not None:
+            try:
+                units_ok, said = units(restart_unit, unit_of, clock, sleep)
+            except Exception as exc:                     # noqa: BLE001
+                units_ok, said = False, [f"the units' restart raised {type(exc).__name__}: "
+                                         f"{exc}"]
+            words += "; " + "; ".join(said) if said else ""
+            if not units_ok:
+                return dict(rec, outcome="updated_partly", step="wait", ended_at=iso(clock()),
+                            reason=words)
         return dict(rec, outcome="updated", step="wait", ended_at=iso(clock()), reason=words)
     return rollback(rec, reason, repo=repo, head=head, gate=gate, git=git, restart=restart,
                     unit=unit, health=health, clock=clock, sleep=sleep, report=report,
@@ -550,7 +576,9 @@ def main(env=None) -> int:
         rec = update(req, repo=repo, gate=gate, git=git,
                      restart=lambda: restart_service(service),
                      unit=lambda: gate.unit_state(service, systemctl=BINARIES["systemctl"]),
-                     health=gate._health, report=report, venv=Venv(gate, repo, user))
+                     health=gate._health, report=report, venv=Venv(gate, repo, user),
+                     restart_unit=lambda u: run_unit_restart(u),
+                     unit_of=lambda u: gate.unit_state(u, systemctl=BINARIES["systemctl"]))
     except Refused as exc:
         rec = {"id": req["id"], "from": req["from"], "to": req["target"],
                "requested_by": req["requested_by"], "outcome": "refused", "step": last["step"],

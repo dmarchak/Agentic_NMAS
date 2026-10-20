@@ -119,6 +119,8 @@ CI_PERSON = {
 
 OUTCOME_WORDS = {
     "updated": "updated",
+    "updated_partly": ("updated, but not every unit that runs the checkout restarted: the one "
+                       "named still runs the code it started with (C1404)"),
     "refused": "refused: nothing was changed",
     "rolled_back": "rolled back: the new version did not come up, the previous one runs again",
     "rollback_failed": "ROLLBACK FAILED: neither the new version nor the previous one came up",
@@ -706,7 +708,7 @@ def plan(cached=None, install=None, running=None, pending_now=None, now_outcome=
 
 
 #: The updater's outcomes that end a run (its record names one of these last).
-FINISHED = ("updated", "refused", "rolled_back", "rollback_failed", "failed")
+FINISHED = ("updated", "updated_partly", "refused", "rolled_back", "rollback_failed", "failed")
 
 
 def following(ended: dict, last: dict, running: str, clock=time.time) -> str:

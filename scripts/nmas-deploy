@@ -81,6 +81,16 @@ import urllib.request
 
 DEFAULT_REPO = os.path.expanduser("~/python/Agentic_NMAS")
 SERVICE = "flask-app.service"
+#: Every OTHER long-running unit that runs the checkout's code (C1404, 0d run 2: the ZTP
+#: responder ran the code it started with, 21 hours and a deployed change behind, and refused
+#: a relayed device the new code would serve). Each is restarted after SERVICE is confirmed,
+#: by this and by the Update button's updater (`restart_checkout_units`). Held equal to the
+#: unit templates (every non-oneshot `deploy/systemd/*.service` whose ExecStart runs the
+#: checkout) by tests/test_checkout_units_restart.py.
+CHECKOUT_UNITS = ("nmas-ztp-responder.service",)
+#: Each unit's new process, waited for: the responder starts in about a second (a Python
+#: process binding one socket); 30 s is the bound, generous for a loaded host.
+CHECKOUT_UNIT_BOUND_S = 30
 USER_AGENT = "nmas-automation/1.0"      # honest; Cloudflare-style checks reject urllib's default
 WORKFLOW_PATH = ".github/workflows/ci.yml"
 
@@ -659,14 +669,60 @@ def unit_state(service=SERVICE, systemctl="systemctl"):
     the program: by name from a login shell, and by ABSOLUTE path from the
     root-owned updater, which never resolves a program by name (C246)."""
     out = subprocess.run([systemctl, "show", service, "-p", "MainPID",
-                          "-p", "ExecMainStartTimestamp", "--timestamp=us"],
+                          "-p", "ExecMainStartTimestamp", "-p", "LoadState", "--timestamp=us"],
                          capture_output=True, text=True).stdout
     props = dict(l.split("=", 1) for l in out.splitlines() if "=" in l)
     try:
         pid = int(props.get("MainPID", "0"))
     except ValueError:
         pid = 0
-    return {"MainPID": pid, "start": props.get("ExecMainStartTimestamp", "")}
+    return {"MainPID": pid, "start": props.get("ExecMainStartTimestamp", ""),
+            "load": props.get("LoadState", "")}
+
+
+def restart_checkout_units(restart_unit, unit, clock, sleep, units=CHECKOUT_UNITS,
+                           timeout=CHECKOUT_UNIT_BOUND_S, interval=1):
+    """``(ok, words)``: each unit in *units* restarted and its new process confirmed by
+    IDENTITY (C1404): systemd's MainPID changed from the one it had and is not 0. Called once
+    SERVICE runs the target, so each new process loads the checkout the target is in.
+
+    A unit not installed here is said and skipped; one installed and not running (the ZTP
+    responder waits on its socket until a device asks) is not started: `try-restart` leaves it,
+    and its next start loads this checkout. *restart_unit(u)* is `systemctl try-restart u`
+    (sudo here, the absolute path in the root updater); *unit(u)* is :func:`unit_state`."""
+    ok, words = True, []
+    for u in units:
+        before = unit(u)
+        if before.get("load") not in ("loaded", ""):
+            words.append(f"{u}: not installed here ({before.get('load')}), nothing to restart")
+            continue
+        if not before.get("MainPID"):
+            words.append(f"{u}: not running, so not restarted; its next start loads this "
+                         "checkout")
+            continue
+        try:
+            restart_unit(u)
+        except (subprocess.CalledProcessError, OSError, subprocess.TimeoutExpired) as exc:
+            detail = getattr(exc, "stderr", "") or str(exc)
+            ok = False
+            words.append(f"{u}: NOT restarted ({str(detail).strip()}): it still runs the code "
+                         f"it started with -- run `sudo systemctl restart {u}`")
+            continue
+        deadline = clock() + timeout
+        while True:
+            now = unit(u)
+            if now.get("MainPID") not in (0, before["MainPID"]):
+                words.append(f"{u}: restarted, pid {before['MainPID']} -> {now['MainPID']}")
+                break
+            if clock() >= deadline:
+                ok = False
+                words.append(f"{u}: restart issued, but systemd's MainPID is "
+                             f"{now.get('MainPID')} after {timeout} s (it was "
+                             f"{before['MainPID']}): NOT confirmed running the new code -- "
+                             f"run `sudo systemctl restart {u}`")
+                break
+            sleep(interval)
+    return ok, words
 
 
 def wait_for_running(target, pid_before, health, unit, clock, sleep, timeout=90, interval=2):
@@ -706,7 +762,7 @@ def wait_for_running(target, pid_before, health, unit, clock, sleep, timeout=90,
 
 def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=None,
          clock=time.time, sleep=time.sleep, unit=unit_state, ready=None, host_check=None,
-         operations=None) -> int:
+         operations=None, restart_unit=None, unit_of=None) -> int:
     # In the order it happened: over SSH stdout was block-buffered and the
     # verdict (stderr) printed first, above the lines that led to it.
     if hasattr(sys.stdout, "reconfigure"):
@@ -748,7 +804,7 @@ def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=Non
                               "again when it has finished (Help > About shows the last update)")
     try:
         code = _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, unit,
-                       ready, operations)
+                       ready, operations, restart_unit, unit_of)
     finally:
         os.close(lock)
     # LAST on screen: the host steps, when the checkout is at the target (a
@@ -855,7 +911,7 @@ def take_lock(repo):
 
 
 def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, unit, ready,
-            operations=None):
+            operations=None, restart_unit=None, unit_of=None):
     dirty = git(repo, "status", "--porcelain", "--untracked-files=no")
     if dirty:
         return finish(LOCAL_REFUSED, "local changes present, refused:\n" + dirty)
@@ -988,6 +1044,20 @@ def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, un
                  f"it back at {venv['from']}." if venv["state"] == "swap" else "")
         return finish(UNHEALTHY, _mixed_headline(health or _health, target)
                       + f"{what}, restart issued, but NOT confirmed running: {reason}.{moved}")
+    # The checkout's other long-running units (C1404), once the app runs the target: each
+    # restarted and confirmed by its new MainPID, or the verdict says which still runs old code.
+    units_ok, units_words = restart_checkout_units(
+        restart_unit or (lambda u: subprocess.run(["sudo", "systemctl", "try-restart", u],
+                                                  check=True, capture_output=True, text=True,
+                                                  timeout=120)),
+        unit_of or (lambda u: unit_state(u)), clock, sleep)
+    row.update(checkout_units=units_words)
+    for line in units_words:
+        print(line)
+    if not units_ok:
+        return finish(UNHEALTHY, f"{what}, {SERVICE} restarted and running {target[:10]}, but "
+                                 "not every unit that runs the checkout was: "
+                                 + "; ".join(w for w in units_words if "NOT" in w))
     pruned = ""
     if venv["state"] == "swap":
         # Keep the current venv and the previous one (the operator, 2026-10-09).
