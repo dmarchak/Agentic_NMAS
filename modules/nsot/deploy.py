@@ -165,8 +165,13 @@ def prepare_device(artifact, template_root: str = None) -> dict:
 # Merge-only diff
 # ---------------------------------------------------------------------------
 
-def classify_diff(target_config: str, running_config: str) -> dict:
+def classify_diff(target_config: str, running_config: str, held_defaults: set = None) -> dict:
     """Split a diff into ``add`` / ``replace`` / ``residue``.
+
+    *held_defaults*, when given, is filled with ``(chain, line)`` (as `config_leaves` gives
+    them) for each target line the device already holds at a default it does not print
+    (`platform_defaults`, C14, C1401): `merge_diff` leaves those out of the program, so the
+    preview's ``add`` and what is sent are one answer.
 
     ``removal_warnings`` over-reported. A device holding
     ``description batch 4 baseline`` against a target of ``description old``
@@ -220,6 +225,15 @@ def classify_diff(target_config: str, running_config: str) -> dict:
         candidates = broad_index.get((chain_key, key_broad), [])
         return candidates[0] if len(candidates) == 1 else None
 
+    # Every section the device holds, as a path of canonical headers: a default the device
+    # does not print is held only where the section is (C1401). A new interface's
+    # `no shutdown`, or a new `ip sla`'s frequency, is part of creating it.
+    held_sections = set()
+    for line, chain in _section_chains(running_config):
+        path = tuple(ifnames.canonicalise_line(c) for c in chain) + (
+            ifnames.canonicalise_line(line),)
+        held_sections.update(path[:depth] for depth in range(1, len(path) + 1))
+
     add, replace, residue = [], [], []
     for leaf in config_leaves(target_config):
         line = leaf.line
@@ -228,9 +242,13 @@ def classify_diff(target_config: str, running_config: str) -> dict:
         if (chain_key, canonical) in run_verbatim:
             continue
         current = _counterpart(chain_key, canonical, run_index)
-        if current is None and platform_defaults.hidden(leaf.chain, line):
+        if current is None and chain_key in held_sections \
+                and platform_defaults.hidden(leaf.chain, line):
             # At the device's default, which it does not print (C14): satisfied, never sent
-            # again on every deploy. A counterpart printing another value is still a replace.
+            # again on every deploy. A counterpart printing another value is still a replace
+            # (a shut interface's `shutdown` for intent's `no shutdown`, C1401).
+            if held_defaults is not None:
+                held_defaults.add((tuple(leaf.chain), line))
             continue
         if current is None:
             add.append(line)
@@ -488,19 +506,25 @@ def merge_diff(intended_config: str, running_config: str) -> dict:
     # `classify_diff()`, above, was chain-aware all along, so the preview's
     # "add" list named the line the program did not send: two answers to one
     # question in one function, and the one that reached the wire was wrong.
+    # `removal_warnings` used to be every device line absent from the intended
+    # config, which listed a line about to be REPLACED as one that would not be
+    # removed. Batch 4's plan warned about ' description mgmt identity' while
+    # pushing a new description straight over it. Only residue is untouched.
+    # It also names the lines the device holds at a default it never prints
+    # (C1401): an up interface's `no shutdown` was sent on every plan, because
+    # the capture never shows it, so intent bringing an interface up never
+    # converged. The program leaves them out, as the preview's `add` always did.
+    held_defaults = set()
+    classified = classify_diff(intended_config, running_config, held_defaults)
+
     intended = _section_chains(intended_config)
     running_keys = {(tuple(chain), line) for line, chain in
                     _section_chains(running_config)}
     to_add_keyed = [(tuple(chain), line) for line, chain in intended
                     if line.strip() not in _NOT_A_COMMAND
-                    and (tuple(chain), line) not in running_keys]
+                    and (tuple(chain), line) not in running_keys
+                    and (tuple(chain), line) not in held_defaults]
     to_add = [line for _chain, line in to_add_keyed]
-
-    # `removal_warnings` used to be every device line absent from the intended
-    # config, which listed a line about to be REPLACED as one that would not be
-    # removed. Batch 4's plan warned about ' description mgmt identity' while
-    # pushing a new description straight over it. Only residue is untouched.
-    classified = classify_diff(intended_config, running_config)
 
     return {
         "to_add": to_add,

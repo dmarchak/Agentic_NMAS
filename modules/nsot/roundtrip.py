@@ -556,8 +556,15 @@ def change_rows(left: str, right: str) -> dict:
 
 def compare(running_config: str, rendered_config: str, host_vars: dict = None) -> dict:
     """Compare a rendered config against the real one. Returns a coverage report."""
-    running = _sections("\n".join(normalize.strip_for_roundtrip(running_config)))
-    rendered = _sections("\n".join(normalize.strip_for_roundtrip(rendered_config)))
+    # The lines a device holds without printing at their default (C14, `platform_defaults`)
+    # are left out of both sides, as `canonical_lines` leaves them: intent bringing an
+    # interface up renders `no shutdown`, which the device never prints, and Intent-Match
+    # read the up interface as intent ahead of the device (C1401).
+    from modules.nsot import platform_defaults
+    running = _sections(platform_defaults.strip(
+        "\n".join(normalize.strip_for_roundtrip(running_config))))
+    rendered = _sections(platform_defaults.strip(
+        "\n".join(normalize.strip_for_roundtrip(rendered_config))))
 
     matched, missing, extra, reordered = [], [], [], []
 
