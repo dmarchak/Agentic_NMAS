@@ -55,7 +55,7 @@ operator's lab tooling; **C** is code to build first.
 | 1 | r6 retired through the GUI (Device page › Retire), then its separate lab (`clab-r6`) destroyed | M, then L | **done** 10-20: retired by the operator ~06:38 UTC (5452e316, 16 steps green, the heartbeat host step PASS); every Mercury artefact read gone on the host; `clab-r6` destroyed with `--cleanup` 06:48. Left: Grafana's live rules for r6 (C1419, its stopgap host step), NetBox's `r6-retired-11` (deleted by the operator) | S | 10-20 |
 | 2 | R6 and R7 planned in NetBox as Planned devices, addresses from NetBox's prefixes (section 4) | M (NetBox) | NetBox's own screens; no Mercury screen plans a device | S | 10-22 |
 | 3 | R4's new link: the lab topology gains R4 GiN to R6 (host bridge br-r4r6) and R2 GiN to R8 (br-r2r8), the lab redeployed (lab/REDEPLOY.md), a planned-restart window declared first | L | the window is built; the redeploy's pre-flight passes | S to M | 10-22 |
-| 4 | R4's side deployed first: the area-10 interface and `ip helper-address` to Kea, through preview, confirm by hash and verify | M | built (intent edit, deploy); the area through the pack (0c) | S | 10-22 |
+| 4 | R4's side deployed first: the area-10 interface and `ip helper-address` to Kea, through preview, confirm by hash and verify | M | **done** 10-20 by the operator: 12 lines, Verify FULL, saved to startup (golden c0c6bb158295). Read after (07:44 UTC, Mercury's read path): Gi5 up/up, 10.255.4.1/30 and 2001:DB8:2:46::1, in area 10 for OSPFv2 and OSPFv3, DR with no neighbour; R4 "an area border and autonomous system boundary router" (areas 0 and 10); r4's adjacencies 6 and 4 as at 07:0x; Gi5 NAT inside, and NAT-PRIVATE on r3 and r4 permits every RFC 1918 range, so area 10's sources are translated; r3 reaches 10.255.4.0/30 as inter-area. Findings C1426 to C1429 | S | 10-22 |
 | 4b | s3's static route to the retired r6's loopback (`ip route 10.255.1.16 255.255.255.255 10.255.0.32`, C1422) removed: the intent entry deleted, then the line ticked under "Left on the device" (Mode B, `global.ip-route`, measured exact on IOS) with its reason, confirmed by hash; s3's console the repair route. Before and after: `show ip route 10.255.1.16` on r1 and r4 (the E2 route there, then gone). Right after step 4 verifies, before R6's subnet and ZTP (the operator, 2026-10-20) | M | built (Mode B) | — | 10-20 |
 | 5 | R6 by ZTP through R4's relay: Add device › ZTP, reservation in Kea, R6 boots configless, fetches its bootstrap; Verify promotes it | M | no (0e) | — | 10-22 |
 | 6 | R6's full intent deployed: OSPF area 10, RIPv2 toward R7, redistribution, a relay facing R7 | M | packs (0c) | S | 10-22 |
@@ -68,6 +68,13 @@ operator's lab tooling; **C** is code to build first.
 NetBox ID) is onboarded by ZTP under the same name and inherits nothing. Each of these is shown
 empty or new: golden, intent, receipt, host key, reservation, target, policy membership and
 Needs attention row. Then R7, then H5 reaching the network, then the NSoT and the documentation.
+
+**Lab 8's checks** (each read through Mercury: a Show commands run, or Verify's own reads):
+R4 an ABR for areas 0 and 10; R6 and R7 adjacent (OSPF area 10 R4 to R6, RIPv2 R6 to R7) and
+their routes redistributed both ways; every router's adjacency counts as before plus the new
+ones; R6 and R7 reachable from Mercury by their loopbacks; H5 holds a Kea lease from
+10.70.10.0/24 through R7's relay; **H5 reaches 8.8.8.8** (the operator, 2026-10-20: NAT on r3
+or r4, NAT-PRIVATE covering every RFC 1918 range); IPv6 the same, if dual-stack lands (section 4).
 
 **r6's retirement, planned on the host (read only, 2026-10-19 07:3x UTC, after 0a was
 deployed).** The plan refuses nothing. Of its 15 steps, 9 have work to do, and 6 have nothing
