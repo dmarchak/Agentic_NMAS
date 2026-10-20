@@ -838,6 +838,13 @@ def _heartbeat_facts(hostname: str) -> dict:
             f"rules file {got['written_path']}, recorded with the heartbeat re-measures; the "
             f"host step installs it: {got['host_step']}"), done=False,
             work={"fingerprint": got["fingerprint"]})
+    if got["state"] == "grafana":
+        return dict(got, step=(
+            f"delete its Grafana heartbeat rule {got['uid']}, which Grafana still runs though no "
+            f"generated rules file names it (Grafana keeps a provisioned rule its file dropped, "
+            f"C1419): a delete file is written beside {got['written_path']}, recorded with the "
+            f"heartbeat re-measures; the host step installs it: {got['host_step']}"),
+            done=False, work={"fingerprint": got["fingerprint"]})
     if got["state"] == "none":
         return dict(got, step="no generated heartbeat rule names it (the rules file was read)",
                     done=True)
@@ -1070,8 +1077,14 @@ def _watchers(hostname: str, ip: str, list_name: str = "", hb: dict = None) -> l
         # Retirement removes it itself (C1338): the step writes the rules file without it.
         item("generated", f"its Grafana heartbeat rule (window {hb['window']} s)",
              f"removed by this retirement from the generated rules file "
-             f"({hb['written_path']}); Grafana drops it once the host step installs that file "
-             f"({hb['host_step']}), and until then the hourly check names it EXTRA")
+             f"({hb['written_path']}) and named in its delete file (C1419); Grafana deletes it "
+             f"once the host step installs both ({hb['host_step']}), and until then the hourly "
+             "check names it EXTRA")
+    elif state == "grafana":
+        item("generated", f"its Grafana heartbeat rule {hb.get('uid')}",
+             "Grafana still runs it though no generated rules file names it; this retirement "
+             f"names it in a delete file beside {hb['written_path']} (C1419), and Grafana "
+             f"deletes it once the host step installs that ({hb['host_step']})")
     elif state == "none":
         item("generated", "its Grafana heartbeat rule",
              "none names it (the generated rules file was read)")
@@ -1631,8 +1644,10 @@ def apply(list_name: str, hostname: str, *, reason: str, actor: str,
                                  installed_path=_heartbeat_installed_path())
             if not got["ok"]:
                 raise RuntimeError(got["error"])
-            advisories.append("its heartbeat rule left the generated rules file; Grafana drops "
-                              f"it once the host step installs that file: {got['host_step']}")
+            advisories.append("its heartbeat rule left the generated rules file and is named in "
+                              "its delete file (C1419); Grafana deletes it once the host step "
+                              f"installs both: {got['host_step']}"
+                              + (f". {got['deletes_said']}" if got.get("deletes_said") else ""))
             done.append("heartbeat")
         except Exception as exc:               # noqa: BLE001
             return fail("heartbeat", exc)

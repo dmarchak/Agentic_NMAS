@@ -250,7 +250,8 @@ class TestWhatStillWatchesIt:
         # that installs the file, and the step is one to do.
         how = self._kind(p, "generated", "heartbeat")
         assert "removed by this retirement from the generated rules file" in how
-        assert "sudo install -m 0644" in how and "names it EXTRA" in how
+        assert "c1419-install-alert-rules.sh heartbeat" in how and "names it EXTRA" in how
+        assert "named in its delete file (C1419)" in how
         assert "its Grafana heartbeat rule (window 915 s): removed" in " ".join(p["not_doing"])
         assert any(s["key"] == "heartbeat" and not s["done"] for s in p["steps"])
 

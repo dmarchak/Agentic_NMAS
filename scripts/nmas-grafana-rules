@@ -5,8 +5,10 @@ a file names it under `deleteRules`. Read only. Run as the app's user on the hos
 
     nmas-grafana-rules list [UID-PREFIX ...]   # uid<TAB>provenance<TAB>title, one rule per line
     nmas-grafana-rules count                   # the number of live rules
+    nmas-grafana-rules rules FILE              # the rule uids a provisioning file generates
+    nmas-grafana-rules deletes FILE            # the uids a delete file names (none: no file)
 
-Exit 0 read, 2 Grafana could not be asked.
+Exit 0 read, 2 Grafana (or the file) could not be read.
 """
 
 import argparse
@@ -35,9 +37,30 @@ def live_rules(grafana=None) -> list:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("what", choices=("list", "count"))
+    ap.add_argument("what", choices=("list", "count", "rules", "deletes"))
     ap.add_argument("prefixes", nargs="*")
     args = ap.parse_args(argv)
+    if args.what in ("rules", "deletes"):
+        # A provisioning FILE, read (C1419's install step): no Grafana asked.
+        import yaml
+        if len(args.prefixes) != 1:
+            print(f"{args.what} takes one file")
+            return 2
+        path = args.prefixes[0]
+        if args.what == "deletes" and not os.path.exists(path):
+            return 0
+        try:
+            with open(path, encoding="utf-8") as fh:
+                doc = yaml.safe_load(fh) or {}
+        except (OSError, yaml.YAMLError) as exc:
+            print(f"could not read {path}: {exc}")
+            return 2
+        from modules.grafana_rule_deletes import rule_uids
+        uids = (rule_uids(doc) if args.what == "rules" else
+                {str(d.get("uid")) for d in doc.get("deleteRules") or [] if d.get("uid")})
+        for uid in sorted(uids):
+            print(uid)
+        return 0
     try:
         rules = live_rules()
     except RuntimeError as exc:

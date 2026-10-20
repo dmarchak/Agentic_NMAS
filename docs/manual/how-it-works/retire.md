@@ -205,9 +205,14 @@ drops at its next regeneration, and the card says when:
   regenerates them and reads the files back, saying whether the device is gone from them.
   Where no target directory is set, the targets are not the tool's, and they are listed under
   what survives, with what Prometheus answered for the address.
-- Its Grafana heartbeat rule: retiring removes it from the generated rules file (step 11),
-  and Grafana drops it once the host step installs that file; the hourly check names it
-  EXTRA until then.
+- Its Grafana heartbeat rule: retiring removes it from the generated rules file (step 11)
+  and names it in a delete file beside it. Grafana keeps a rule its file has dropped unless a
+  file names it for deletion, so the host step (`c1419-install-alert-rules.sh heartbeat`)
+  installs both, restarts Grafana, proves the rule gone and every other rule running, and
+  removes the delete file. When no rules file names the device but Grafana still runs its
+  rule, the step names it for deletion alone. The hourly check names it EXTRA until then.
+  Its telemetry rules leave the same way when `nmas-telemetry-rules` is run after the
+  retirement and its file installed with `c1419-install-alert-rules.sh telemetry`.
 
 **What survives**, each with how it is removed:
 

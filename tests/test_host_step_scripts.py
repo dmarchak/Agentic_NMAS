@@ -44,6 +44,9 @@ EXPECTED = {"phase3-step1.sh", "phase3-step2.sh", "c584-loki-writer.sh",
             "c1403-ztp-lease-identity.sh",
             # C1419's stopgap: a retired device's live Grafana rules deleted (2026-10-20).
             "c1419-retired-device-rules.sh",
+            # C1419: a generated rules file and its delete file installed, the deletes proved,
+            # the delete file removed (2026-10-20).
+            "c1419-install-alert-rules.sh",
             # C1423's one-off: a retired device's pre-change config removed (2026-10-20).
             "c1423-retired-pre-change.sh",
             # C665: Device Roles' kinds with the operator's admin token, prompted (2026-10-11).

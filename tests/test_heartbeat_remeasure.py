@@ -119,8 +119,10 @@ class TestTheConfirm:
         p = _plan(lab)
         out = HW.apply(p["fingerprint"], "op@example.com", lab["H"], str(lab["installed"]))
         assert out["outcome"] == "written" and lab["written"].read_text() == p["text"]
-        assert out["host_step"] == (f"sudo install -m 0644 {lab['written']} {lab['installed']} "
-                                    f"&& sudo systemctl restart grafana-server")
+        # The one install step (C1419): the rules file and its delete file, Grafana restarted,
+        # the deletes proved, the delete file removed.
+        assert out["host_step"] == (f"bash {HW.INSTALL_STEP} heartbeat {lab['written']} "
+                                    f"{lab['installed']}")
         assert HW.last_written()["actor"] == "op@example.com"
         assert HW.state(str(lab["written"]), str(lab["installed"]))["pending"] is True
 
@@ -167,7 +169,8 @@ class TestThePage:
         assert r.status_code == 200, r.get_json()
         page = c.get("/v2/monitoring/heartbeat").get_data(as_text=True)
         step = re.search(r'<p class="cmd"><code>([^<]*)</code>', page)
-        assert step and str(lab["written"]) in step.group(1) and "grafana-server" in step.group(1)
+        assert step and str(lab["written"]) in step.group(1) \
+            and "c1419-install-alert-rules.sh heartbeat" in step.group(1)
         assert "NOT YET INSTALLED" in page
 
     def test_the_heartbeat_checks_action_opens_the_page_with_no_placeholder(self):

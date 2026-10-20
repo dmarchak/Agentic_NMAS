@@ -234,6 +234,11 @@ def main(argv=None) -> int:
     for h in quiet:
         print(f"  not streaming: {h} -- its committed configuration declares no subscription")
     print(f"wrote {sum(len(s) for s in want.values())} rule(s) to {args.out}")
+    # The rules it no longer generates, for Grafana to delete (C1419): a retired device's
+    # streams, which Grafana kept running after its file dropped them.
+    from modules import grafana_rule_deletes as GD
+    for line in GD.write_beside(doc, "nmas-tel-", args.out, "telemetry"):
+        print(line)
     print("Then delete the hand-built rule \"gRPC telemetry stream lost\" in Grafana, "
           "or both fire.")
     return EXIT_OK

@@ -515,7 +515,7 @@ class TestHeartbeatRule:
         p = RT.plan("Lab", HOST, REASON)
         what = _step(p, "heartbeat")["what"]
         assert "remove its Grafana heartbeat rule (window 915 s)" in what
-        assert f"sudo install -m 0644 {lab['tmp'] / 'written.yaml'} " in what
+        assert f"c1419-install-alert-rules.sh heartbeat {lab['tmp'] / 'written.yaml'} " in what
         _p, out = _retire()
         assert (lab["tmp"] / "written.yaml").exists(), "the rules were not written without it"
         doc = yaml.safe_load((lab["tmp"] / "written.yaml").read_text())
@@ -523,7 +523,8 @@ class TestHeartbeatRule:
         assert devices == [OTHER], devices
         rec = HW.records()["rows"][-1]
         assert rec["removed"] == [HOST] and rec["actor"] == ACTOR
-        assert any("host step installs that file" in a for a in out["advisories"])
+        assert any("Grafana deletes it once the host step installs both" in a
+                   for a in out["advisories"])
 
     def test_a_moved_file_refuses_with_nothing_written(self, lab):
         from modules import heartbeat_windows as HW

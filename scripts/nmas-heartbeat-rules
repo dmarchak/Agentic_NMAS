@@ -677,6 +677,11 @@ def main() -> int:
               "block in its committed intent")
     print(restart_words(restarts, restart_note))
     print(f"wrote {len(fresh)} rule(s) to {args.out}")
+    # The rules it no longer generates, for Grafana to delete (C1419): Grafana keeps a
+    # provisioned rule its file dropped.
+    from modules import grafana_rule_deletes as GD
+    for line in GD.write_beside(doc, "nmas-hb-", args.out, "heartbeat"):
+        print(line)
     return EXIT_OK
 
 
