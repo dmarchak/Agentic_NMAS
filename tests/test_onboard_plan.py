@@ -536,3 +536,24 @@ class TestOnboardingGivesEveryDeviceTheSyslogBlock:
         committed = hostvars.read_committed(repo, "r6")
         assert committed["logging"]["syslog"]["heartbeat"] == 300
         assert committed["logging"]["syslog"]["hosts"] == ["192.0.2.10"]
+
+    def test_create_commits_its_pending_manifest_entry_and_leaves_the_tree_clean(self, lab):
+        """C1468 (Lab 8, 2026-10-20): Create wrote the device's pending entry into
+        `.nsot/manifest.json` and committed only its host_vars, so the entry rode into the
+        next commit, or Retire refused ("no uncommitted changes would ride into the commit")."""
+        import json
+        import os
+
+        from modules.config import get_list_data_dir
+        from modules.nsot import repo as R
+        from modules.nsot.onboard import commit_step
+
+        plan = _plan()
+        sha = commit_step(plan, actor="t@example.com")
+        repo = os.path.join(get_list_data_dir("probe"), "config_repo")
+        assert R.git(repo, "status", "--porcelain")[1].strip() == ""
+        changed = R.git(repo, "show", "--name-only", "--format=", sha)[1].split()
+        assert ".nsot/manifest.json" in changed and "host_vars/r6.yml" in changed
+        head = json.loads(R.git(repo, "show", "HEAD:.nsot/manifest.json")[1])
+        entry = next(e for e in head["devices"].values() if e.get("name") == "r6")
+        assert entry["verified_at"] is None and entry["onboarded_at"]

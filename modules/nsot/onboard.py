@@ -1813,9 +1813,16 @@ def commit_step(plan, *, actor: str) -> str:
     hostvars.write_committed(repo, dict(plan.host_vars or {},
                                         hostname=plan.hostname,
                                         bootstrap=bootstrap_intent))
+    # The pending entry written above is this commit's too (C1468): staged with the intent, so
+    # Create leaves the repository clean. Left out, it rode into whichever commit came next
+    # (the device's own rotation at Verify, Lab 8 2026-10-20) or, when that was Retire,
+    # refused it.
+    from modules.nsot.hostvars import committed_rel
     result = save_host_vars(plan.list_name, [plan.hostname], actor=actor,
                             message=f"onboarding: {plan.hostname}",
-                            source="onboarding")
+                            source="onboarding",
+                            paths=[committed_rel(plan.hostname),
+                                   os.path.relpath(manifest.manifest_path(repo), repo)])
     if not result.get("ok"):
         raise RuntimeError(result.get("error") or "the commit did not succeed")
     return result.get("commit", "")
@@ -2463,7 +2470,24 @@ def _abandon_onboarding(repo: str, hostname: str, list_name: str, *,
 
     released = _m.release(repo, identity, list_name=list_name, actor=actor)
     if released.get("ok"):
-        _step("identity", True, f"released '{released.get('released')}'")
+        # The release is the manifest's last write, after the intent's commit, so it is
+        # committed here, as the person who abandoned (C1468): once Create commits its pending
+        # entry, an uncommitted release left the repository dirty and Retire refused. Nothing
+        # is committed when the manifest did not change.
+        from modules.nsot import repo as _repo_mod
+
+        rec = _repo_mod.save_manifest(list_name, f"abandon: {hostname} - identity released",
+                                      actor=actor or "unknown", source="onboarding",
+                                      devices=[hostname])
+        if rec.get("ok"):
+            _step("identity", True, f"released '{released.get('released')}'"
+                  + (f" and committed the release ({rec['commit'][:10]})"
+                     if rec.get("commit") else ""))
+        else:
+            _step("identity", False, f"released '{released.get('released')}', and the "
+                  f"release could not be committed: {rec.get('error')}",
+                  "commit the network's .nsot/manifest.json through Mercury before the next "
+                  "operation")
         result["released"] = released.get("released", "")
     else:
         _step("identity", False, released.get("error", "release refused"),

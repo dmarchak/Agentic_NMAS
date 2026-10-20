@@ -254,14 +254,21 @@ class TestItPublishesForReal:
 
         path, fired = repo_dir
         _onboard(path)
+        before = subprocess.run(["git", "-C", path, "rev-parse", "HEAD"],
+                                capture_output=True, text=True).stdout.strip()
         fired.clear()
         out = abandon_onboarding(path, "bp1", "Probe", actor="t",
                                  remove_netbox=lambda l, h, dry_run=False, **k:
                                  {"ok": True, "deleted": [], "skipped": []})
-        head = subprocess.run(["git", "-C", path, "log", "-1", "--format=%H %s"],
-                              capture_output=True, text=True).stdout.strip()
-        assert "abandon: bp1" in head, (out, head)
-        assert [(c["list_name"], c["sha"]) for c in fired] == [("Probe", head.split()[0])]
+        # Every commit abandon made, oldest first: the intent's removal and, since C1468,
+        # the identity's release (its manifest write, committed as its own last step).
+        made = subprocess.run(["git", "-C", path, "log", "--reverse", "--format=%H %s",
+                               f"{before}..HEAD"],
+                              capture_output=True, text=True).stdout.strip().splitlines()
+        assert [m.split(" ", 1)[1] for m in made] == [
+            "abandon: bp1 - onboarding withdrawn", "abandon: bp1 - identity released"], (out, made)
+        assert [(c["list_name"], c["sha"]) for c in fired] == [
+            ("Probe", m.split()[0]) for m in made]
 
 
 def _unrecorded_failures(func_src: str) -> list:

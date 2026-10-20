@@ -172,6 +172,21 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   never a way around through a removed page or a terminal. No v2 link or Needs attention row
   names a removed page or control. [tests/test_v2_links_stay_on_v2.py; tests/todays_page_links.py;
   instructions: not mechanised]
+- **Mercury is the one interface: every task a Mercury workflow creates, needs or leaves
+  behind is completable in Mercury.** NetBox stays the source of truth underneath, and its UI
+  stays for audit and break-glass, but having to open NetBox (or another service's own UI,
+  or a host shell) to finish a job is a finding, registered under C1445 (the operator,
+  2026-10-20). [not mechanised; a criterion of the usability review, C1438]
+- **Mercury automates labour; people make decisions.** Every step an operator performs is
+  either a DECISION only a person should make (approving a change by hash, giving a reason,
+  declaring a window, the break-glass passphrase) or LABOUR, which carries a written
+  justification for why Mercury cannot do it yet and the finding that removes it. Typing
+  data Mercury could derive, copying files, running host scripts, pressing a button whose
+  outcome is already approved, and cleaning up after Mercury's own operations are labour
+  (the operator, 2026-10-20). [docs/MANUAL_STEPS.md: every operator step in the walks, host
+  steps, runbooks and the manual, DECISION or LABOUR, each LABOUR row with its justification
+  and finding; that every step named is in it: not mechanised yet (C1461); a criterion of
+  the usability review, C1438]
 - **An element carrying `hx-select` disinherits it; a v2 action that cannot draw its answer says
   "Couldn't load: <why>" in place.** [tests/test_v2_swaps_never_silent.py]
 - **Built for large fleets: a screen listing devices or results leads with a summary (counts by

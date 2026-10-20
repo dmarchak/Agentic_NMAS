@@ -141,6 +141,25 @@ class TestAbandonRunsTheSequenceInReverse:
                              capture_output=True, text=True).stdout
         assert "abandon: bp1" in log, log
 
+    def test_the_release_is_committed_and_the_tree_left_clean(self, repo):
+        """C1468 (Lab 8, 2026-10-20): Create now commits its pending manifest entry, so the
+        release, Abandon's last write, must be committed too; left uncommitted, the next
+        committing operation (Retire) refuses on a dirty repository."""
+        import json
+        import subprocess
+
+        _onboard(repo)
+        out = self._abandon(repo)
+        assert out["ok"] is True, out
+        status = subprocess.run(["git", "-C", repo, "status", "--porcelain"],
+                                capture_output=True, text=True).stdout
+        assert status.strip() == "", status
+        head = json.loads(subprocess.run(["git", "-C", repo, "show", "HEAD:.nsot/manifest.json"],
+                                         capture_output=True, text=True).stdout)
+        assert not [e for e in head.get("devices", {}).values() if e.get("name") == "bp1"]
+        assert "committed the release" in next(s["detail"] for s in out["steps"]
+                                               if s["step"] == "identity")
+
     def test_the_credential_override_is_cleared(self, repo):
         import modules.credentials as creds
 
