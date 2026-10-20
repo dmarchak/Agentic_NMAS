@@ -1,5 +1,128 @@
 # End of session: where Phase 7 stands
 
+## 2026-10-20, overnight run 08:05 to ~14:00 UTC (02:05 to 08:00 UTC−6): the morning report
+
+The operator's brief: unattended, no device, Kea, NetBox or lab-host change; Mercury updates
+allowed one at a time outside 08:30 to 09:10 UTC. Nothing was changed on any device, in Kea or
+NetBox, or on the lab host. No Copilot pytest run appeared (checked before every gate).
+
+### 1. Decisions waiting for the operator (each with the recommendation)
+
+1. **C1432 (B, new):** the planner reads a change to a multi-valued command (`ntp server`,
+   `ip helper-address`, `ipv6 address`, `ip name-server`, an `ip route` to a second next hop)
+   as a REPLACEMENT, so the old value is never "left on the device" and Mode B never offers it.
+   IOS keeps both. **Recommend:** one measurement first, the removal probe's pattern on s1 and
+   r2 (a second `ntp server` beside the first, the capture read: a device change, yours), then
+   a measured list of multi-valued shapes keyed by whole text. It blocks C1426. Until then,
+   don't change a relay or an NTP server in intent on a live device without reading the plan's
+   "Left on the device" by hand.
+2. **C1426 stopped, not forced:** the editor-as-planner build works for step 4's
+   ` no shutdown`, but would carry C1432 into the editor (the editor's old one-setting list was
+   right about `ntp server`). Kept as a patch on the laptop:
+   `<home>/Documents/nmas-reports/2026-10-20-c1426-wip.patch`. **Recommend:** C1432 first, then
+   this patch, with its eight failing editor tests examined.
+3. **C1427 re-sorted B to C:** its premise was wrong, as measured in the code. Verify counts
+   neighbour ROWS, so it does fail a lost parallel adjacency. What remains is the checks table
+   (one row per neighbour) and a planned drop of both parallel links failing Verify. Neither
+   touches R6. **Recommend:** agree, and leave it after Lab 9.
+4. **The Planned-record decision (due Thursday, the plan's item 8).** **Recommend:** no Planned
+   records for the build. If the video should show NetBox declaring R6 first, fix C1421 (Verify
+   leaves the record Planned) before Friday; it is S.
+5. **C1419 part 2** (Retire's own telemetry step): not built tonight. **Recommend:** build it
+   before Friday (M). Until then, after each retirement: `nmas-telemetry-rules`, then the
+   install step for telemetry.
+6. **H5's VLAN 10:** drafted as a dot1Q subinterface on R7 (`Gi3.10`) with H5 tagging.
+   **Recommend** that over untagged Gi3, so VLAN 10 is on the wire as the NetBox VLAN says.
+7. **NetBox:** grant C1424's view permissions (IP ranges, VLAN groups, racks, locations,
+   circuits). Delete the relay-probe leftovers (devices 18 and 20, the site, region and VRF):
+   **recommend** delete, as device 11's deletion showed Mercury does not react.
+8. **`host-net.sh` gains an `h5` case** (lab tooling, yours): the draft is in
+   docs/LAB8_MORNING_WALK.md section 6.
+
+### 2. What is deployed
+
+**The host runs 61373b8f** (09:43:17 UTC, CI #1016). `/health` reports it. Job health: 67 jobs,
+3 not ok, none new (s3's heartbeat jitter, the break-glass record older than r2's rotation, one
+informational row). The telemetry check cleared at its 08:01 run.
+
+| Item | Commit | CI | State |
+|---|---|---|---|
+| C1422's Mode B guard: a static route is the management path only if it reaches the manager (a default route, a destination holding one of this host's addresses, or that route's next hop, recursively) | 08217992 | green | deployed 09:22 |
+| C1429: contradictory interface keys refused by name, in the editor, `nmas-config-check` and bulk intent | 5725b4ff | green | deployed 09:22; C1429 closed |
+| C1420: a name onboarded again starts its History at the name's retirement | 740299fe | #1015 | deployed 09:22; C1420 closed |
+| C1419 part 1: a delete file beside each generated rules file, and one install step | 61373b8f | #1016 | deployed 09:43 |
+| docs: the morning walk and drafts, the design and plan additions, this report | (this commit) | — | pushed |
+
+**Shown read-only after the deploy (09:26 UTC):** s3's plan sends nothing and offers
+`ip route 10.255.1.16 255.255.255.255 10.255.0.32` with a box. In a what-if with the manager's
+route left out of intent, `ip route 10.255.1.10 …` is refused: "the management path: its
+destination 10.255.1.10/32 holds 10.255.1.10, an address of this host (the manager)".
+
+### 3. What stopped, and why
+
+- **C1426** (the editor's preview as the planner's): stopped on C1432 (decision 1).
+- **C1427:** not built, since its premise was wrong (decision 3).
+- **C1428** (search and jump in the editor): not started. The Intent tab's template is under
+  the board-fidelity check, so a change means comparing its regions again; that is past S for
+  a C item at the end of the night.
+- **C1419 part 2:** not built (decision 5).
+- The gate refused twice, each fixed forward, never twice on one cause:
+  - the C1423 commit (a homelab address in the register);
+  - the C1419 commit (the device-name scan read "r6" in a module docstring).
+
+### 4. Host steps queued for the operator (each with its PASS line)
+
+1. **After R6's step 6, and after every later retirement:** the rules install,
+   `bash ~/python/Agentic_NMAS/scripts/host-steps/c1419-install-alert-rules.sh heartbeat
+   <written> <installed>` (the heartbeat page prints the values), and the same with
+   `telemetry` after `nmas-telemetry-rules`. PASS 8 of 8. It replaces the per-device stopgap
+   `c1419-retired-device-rules.sh` once its first real run passes.
+2. **After each relayed ZTP subnet is added (R6's, then R7's):**
+   `bash ~/python/Agentic_NMAS/scripts/host-steps/c1346-ztp-relayed-firewall.sh`. PASS, and
+   udp/69 admitted from the new /30.
+3. **Optional, C1423's one-off for another device:** `pre_change/` holds 10 files, none tracked
+   in git. Two belong to devices in no inventory: `probe-zr4.cfg` (retired) and `r5.cfg` (never
+   retired, so the step refuses it). Running
+   `bash ~/python/Agentic_NMAS/scripts/host-steps/c1423-retired-pre-change.sh probe-zr4` removes
+   the first. PASS 10 of 10.
+
+### 5. The morning walk
+
+**docs/LAB8_MORNING_WALK.md**, ready to follow: step 4b (s3's .16 route by Mode B, before and
+after on r1 and r4), then R6's subnet, onboarding and boot, R6's intent, R6's monitoring, R7,
+H5, NetBox, and Lab 8's checks. It holds every draft:
+- the three Kea subnets and two reservations;
+- the three lab files and their commands;
+- R6's and R7's full intents in today's model, every trap marked;
+- H5's lab file and its `host-net.sh` case;
+- the NetBox checklist.
+
+**Read overnight for it:**
+- the lab reaches 8.8.8.8 (r3 and r4, 5 of 5);
+- s3 learns 10.255.4.0/30 by OSPF, so no host route is needed;
+- the lab host has 56.8 GiB available and no swap activity;
+- the three management subnets are free.
+
+### 6. The register
+
+**595 open** (A 3, B 26, UNKNOWN 56, C 510).
+- Opened tonight: C1430 (B, the s3 near miss), C1431 (C, s3's hardening) and C1432 (B, the
+  planner's multi-valued replace).
+- Closed: C1420 and C1429.
+- Re-sorted: C1427.
+- Extended: C1422 (its guard built; the removal and Retire's step remain), C1426 (stopped) and
+  C1419 (part 1 built).
+- Kea's VLAN 10 and 20 DNS (the brief's item) was already C1425.
+
+**The 0 answers:**
+- **daf69f8c did remove s3's route to the manager from intent.** It had been there since
+  2026-09-21. 86f3fc4 put it back 3.5 minutes later, and nothing was deployed between (C1430).
+  So "never in intent" is not the finding. Only s3 carries a static route to the manager; every
+  other device reaches it by routing.
+- **`pre_change/`:** see host step 3.
+- **The search of every device's intent** for r6's old addresses: since 86f3fc4 nothing
+  references them. vrnetlab's shared internal address on r1 to r4 is not r6's (C1422).
+
 ## 2026-10-20, 04:00 to 06:30 UTC (22:00 to 00:30 UTC−6): Lab 8's pre-build fixes landed and deployed
 
 **The host runs 165065a1** (deployed 06:20 UTC by `nmas-deploy --wait`, CI #1006), with the ZTP

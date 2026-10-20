@@ -399,6 +399,48 @@ and checkable problem. An action's parameter space is a few typed fields, each v
 whole-document intent is open-ended. **Recommendation:** re-scope feature 7 onto actions. It is
 `propose_intent_change` (docs/IBN_DESIGN.md) with the action as its argument.
 
+### 4.6 The parameters are the contract from day one (the operator, 2026-10-20)
+
+An action's parameters are the vendor-neutral, decision-shaped interface from its first
+version: `enabled`, `ospf.area`, `nat: inside|outside`, `relay: kea|<address>`, a prefix, a
+peer. They are never today's IOS keys, even while the action's internals still write
+`no_shutdown`, `routing.ospf[].networks` and `ip_nat`. Three things then use the same
+parameters unchanged:
+1. the person, on the action's form;
+2. the dialect contract's input, once the model migrates (2.8);
+3. Phase 8's tool schema (4.5).
+
+Only the internals move. A test per action pins that one decision renders the same program
+before and after the migration. Writing IOS keys into the parameters "for now" would make every
+later step a breaking change to the form, the contract and the AI's tools at once.
+
+### 4.7 Two more named actions
+
+- **Remove a static route.** The device's routes are offered to pick from (intent's
+  `static_routes` and the capture's, side by side). The action deletes the intent entry and
+  names the device line for Mode B, with its reason. The planner's guard decides the box: a
+  route to the manager, a default route, or a route to the next hop of one of those is refused,
+  naming the address (C1422's guard, 08217992).
+  - **Evidence (C1430):** on 2026-10-20 a hand edit of s3's intent deleted the route to the
+    manager (`10.255.1.10/32`) instead of the stale route beside it (`10.255.1.16/32`), two
+    look-alike lines in `static_routes`. It was put back 3.5 minutes later, and nothing was
+    deployed between. Picking from a list that names each route's reach, and the guard refusing
+    the manager's, removes that slip.
+- **Connect two devices** (4.2), named here as an action of its own: both ends, a free prefix
+  from NetBox, the protocol and area, one commit, each end's ordinary preview.
+
+### 4.8 What the overnight run of 2026-10-20 changed here
+
+- **E2 is built:** C1429 (5725b4ff) refuses the contradictory pairs by name, in the editor and
+  in bulk intent.
+- **E1 is blocked on C1432.** The planner reads a change to a multi-valued command (`ntp
+  server`, `ip helper-address`, `ipv6 address`) as a replacement where IOS keeps both, and the
+  editor's old one-setting list was right there. E1 waits for the planner's classification to
+  be fixed (measured first). It is kept as a patch.
+- **V1 is narrower than drawn:** Verify counts neighbour rows, so it does fail a lost parallel
+  adjacency (C1427, re-sorted C). What remains is the checks table drawing one row per
+  neighbour, and a planned drop of both parallel links failing Verify.
+
 ---
 
 ## 5. Arguments against (including against the operator's ideas)
