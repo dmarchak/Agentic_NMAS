@@ -160,6 +160,122 @@ class TestRefusals:
         assert out["commands"] == ["no ip prefix-list UNUSED seq 5 permit 192.0.2.0/24"]
 
 
+#: This host's addresses as the lab's NMAS host has them (read 2026-10-20 with `ip -br addr`:
+#: enp6s19 10.255.0.10 and 2001:db8:255::10, dummy0 10.255.1.10), so the static-route tests
+#: never depend on the machine running them.
+MANAGER = ["10.255.0.10", "10.255.1.10", "2001:db8:255::10"]
+S3 = _cfg("s3")
+STALE = "ip route 10.255.1.16 255.255.255.255 10.255.0.32"
+#: s3 as it stood at Lab 8 step 4b (C1422): its real capture plus the retired r6's /32, which
+#: s3 carried beside its route to the manager.
+S3_STALE = S3.replace("ip route 10.255.1.10 255.255.255.255 10.255.0.10\n",
+                      "ip route 10.255.1.10 255.255.255.255 10.255.0.10\n" + STALE + "\n")
+
+
+@pytest.fixture
+def manager(monkeypatch):
+    monkeypatch.setattr(RM, "host_addresses", lambda: list(MANAGER))
+
+
+@pytest.mark.real_measurements
+@pytest.mark.usefixtures("manager")
+class TestAStaticRouteIsTheManagementPathOnlyIfItReachesTheManager:
+    """C1422 (C531 part 2): every static route was refused as "may be the path to the manager",
+    so s3's /32 to the retired r6 could not leave by Mode B. A route is the manager's path when
+    what it REACHES holds this host's address, a default route, or the next hop of such a
+    route; never judged by its next hop's subnet (s3's two routes share VLAN 99's)."""
+
+    def _out(self, running, line):
+        return program(running, [_unit([], line)], mgmt_ip="10.255.1.23", dialect="cisco_ios")
+
+    def test_the_fixture_holds_both_routes(self):
+        assert S3_STALE.count("\nip route ") == S3.count("\nip route ") + 1
+        assert "ip route 10.255.1.10 255.255.255.255 10.255.0.10" in S3
+
+    def test_the_stale_route_to_a_retired_device_is_removed(self):
+        out = self._out(S3_STALE, STALE)
+        assert out["refused"] == [], out["refused"]
+        assert out["commands"] == ["no " + STALE]
+
+    def test_the_route_to_the_manager_is_refused_naming_the_address(self):
+        why = self._out(S3_STALE, "ip route 10.255.1.10 255.255.255.255 10.255.0.10")
+        assert why["commands"] == []
+        reason = why["refused"][0]["reason"]
+        assert reason.startswith("the management path: ")
+        assert "10.255.1.10/32 holds 10.255.1.10, an address of this host" in reason
+
+    def test_a_default_route_of_either_family_is_refused(self):
+        why = self._out(S3, "ipv6 route ::/0 2001:DB8:3::13")["refused"][0]["reason"]
+        assert "a default route (::/0)" in why
+        default = next(line for line in R2.splitlines()
+                       if line.startswith("ip route vrf clab-mgmt 0.0.0.0 0.0.0.0 "))
+        r2 = self._out(R2, default)
+        assert "a default route (0.0.0.0/0)" in r2["refused"][0]["reason"]
+
+    def test_a_wider_route_holding_the_manager_is_refused(self):
+        wide = "ip route 10.255.0.0 255.255.0.0 Null0"
+        out = self._out(S3 + wide + "\n", wide)
+        assert "10.255.0.0/16 holds 10.255.0.10" in out["refused"][0]["reason"]
+
+    def test_a_route_to_the_next_hop_of_the_managers_route_is_refused(self):
+        """Recursive: removing it would leave the manager's route unresolved."""
+        to_mgr = "ip route 10.255.1.10 255.255.255.255 192.0.2.9"
+        to_hop = "ip route 192.0.2.0 255.255.255.0 GigabitEthernet0/1"
+        text = S3.replace("ip route 10.255.1.10 255.255.255.255 10.255.0.10\n",
+                          to_mgr + "\n" + to_hop + "\n")
+        reason = self._out(text, to_hop)["refused"][0]["reason"]
+        assert "192.0.2.0/24 holds 192.0.2.9, the next hop of `" + to_mgr + "`" in reason
+
+    def test_a_route_in_a_vrf_holding_the_manager_is_refused(self):
+        line = "ip route vrf MGMT 10.255.1.10 255.255.255.255 192.0.2.1"
+        assert "holds 10.255.1.10" in self._out(S3 + line + "\n", line)["refused"][0]["reason"]
+
+    def test_ipv6_routes_by_the_same_rule(self):
+        to_mgr = "ipv6 route 2001:DB8:255::/64 2001:DB8:3::13"
+        other = "ipv6 route 2001:DB8:99::/64 2001:DB8:3::14"
+        text = S3 + to_mgr + "\n" + other + "\n"
+        assert "holds 2001:db8:255::10" in self._out(text, to_mgr)["refused"][0]["reason"]
+        assert self._out(text, other)["commands"] == ["no " + other]
+
+    def test_a_route_line_not_read_as_one_is_refused(self):
+        line = "ip route static bfd GigabitEthernet0/1 192.0.2.1"
+        reason = self._out(S3 + line + "\n", line)["refused"][0]["reason"]
+        assert "not read as one" in reason
+
+    def test_unreadable_host_addresses_refuse_every_static_route(self, monkeypatch):
+        def broken():
+            raise OSError("no interfaces")
+        monkeypatch.setattr(RM, "host_addresses", broken)
+        reason = self._out(S3_STALE, STALE)["refused"][0]["reason"]
+        assert "this host's addresses could not be read" in reason
+
+    def test_the_plan_offers_the_stale_route_with_a_box_and_the_managers_without(self):
+        offered = {c["line"]: c["why_not"] for c in RM.removable(
+            S3, S3_STALE, mgmt_ip="10.255.1.23", dialect="cisco_ios")}
+        assert offered == {STALE: ""}, offered
+        target = S3.replace("ip route 10.255.1.10 255.255.255.255 10.255.0.10\n", "")
+        offered = {c["line"]: c["why_not"] for c in RM.removable(
+            target, S3_STALE, mgmt_ip="10.255.1.23", dialect="cisco_ios")}
+        assert offered[STALE] == ""
+        assert offered["ip route 10.255.1.10 255.255.255.255 10.255.0.10"].startswith(
+            "the management path: ")
+
+
+def test_host_addresses_leave_out_loopback_and_link_local(monkeypatch):
+    import socket
+    from types import SimpleNamespace as NS
+
+    import psutil
+    monkeypatch.setattr(psutil, "net_if_addrs", lambda: {
+        "lo": [NS(family=socket.AF_INET, address="127.0.0.1"),
+               NS(family=socket.AF_INET6, address="::1")],
+        "eth0": [NS(family=socket.AF_INET, address="192.0.2.10"),
+                 NS(family=socket.AF_INET6, address="2001:db8::10"),
+                 NS(family=socket.AF_INET6, address="fe80::1%eth0"),
+                 NS(family=getattr(socket, "AF_PACKET", 17), address="aa:bb:cc:dd:ee:ff")]})
+    assert RM.host_addresses() == ["192.0.2.10", "2001:db8::10"]
+
+
 class TestTheFleet:
     def test_every_device_offers_nothing_against_itself(self):
         """Floors: the whole real fleet, and a candidate list that CAN be

@@ -36,8 +36,12 @@ A line that is itself a ``no`` is removed by its positive form.
   WHOLE of list 10 on IOS, not the one entry.
 - The path the tool reaches the device on. A rollback would travel over the
   thing being changed (the repair-path class): the management interface's
-  stanza, the vty lines, SSH, AAA, the RSA key, a static route or a default
-  gateway, which may be the manager's path.
+  stanza, the vty lines, SSH, AAA, the RSA key, a default gateway, and a
+  static route that may be the manager's path: a default route, a route whose
+  destination holds an address of this host (the manager), and a route to the
+  next hop of one of those, recursively; a route line that cannot be read as
+  one is refused too (C1422: every static route was refused, so a stale /32
+  to a retired device could not leave).
 - An account: removing one is retirement's or rotation's job, never a residue
   clean-up.
 - A named object something else still uses (a prefix-list a neighbour
@@ -63,6 +67,7 @@ the preview can require a stated reason for it the way C79 does. The flag is
 set from `redact.redact_positional`, the same slots every mask uses.
 """
 
+import ipaddress
 import json
 import logging
 import os
@@ -169,9 +174,8 @@ SHAPES = (
     Shape("interface.ipv6-rip-default-originate", "interface", "leaf",
           r"^ipv6 rip \S+ default-information (originate|only)( metric \d+)?$"),
     Shape("interface.shutdown", "interface", "leaf", r"^shutdown$"),
-    # Measured like every shape; a static route stays REFUSED by the repair-path class
-    # (`MANAGEMENT_GLOBAL`: it may be the manager's path) until that refusal is narrowed to the
-    # routes that can be (C531 part 2).
+    # Measured like every shape; a static route that may be the manager's path stays REFUSED
+    # by the repair-path class (`_management_routes`, C1422, C531 part 2).
     Shape("global.ip-route", "global", "leaf", r"^ip route .+$"),
     Shape("global.ipv6-route", "global", "leaf", r"^ipv6 route .+$"),
 )
@@ -264,9 +268,117 @@ MANAGEMENT_GLOBAL = (
     (re.compile(r"^aaa\b"), "AAA decides whether the tool can log in"),
     (re.compile(r"^crypto key\b"), "the RSA key is what SSH runs on"),
     (re.compile(r"^ip domain[ -]name\b"), "the RSA key depends on the domain name"),
-    (re.compile(r"^ip(v6)? route\b"), "a static route may be the path to the manager"),
     (re.compile(r"^ip default-gateway\b"), "the default gateway may be the path to the manager"),
 )
+
+#: A global static route: its family, then what follows `route` (past any `vrf <name>`).
+STATIC_ROUTE = re.compile(r"^(?P<family>ip|ipv6) route (?:vrf \S+ )?(?P<rest>.+)$")
+
+
+def host_addresses() -> list:
+    """This host's own addresses, both families (loopback and link-local left out), read every
+    time: the addresses the manager is reached at, its source address among them, measured
+    rather than declared (C1422)."""
+    import socket
+
+    import psutil
+
+    out = []
+    for _name, entries in psutil.net_if_addrs().items():
+        for a in entries:
+            if a.family not in (socket.AF_INET, socket.AF_INET6):
+                continue
+            try:
+                ip = ipaddress.ip_address(a.address.split("%")[0])
+            except ValueError:
+                continue
+            if not (ip.is_loopback or ip.is_link_local):
+                out.append(str(ip))
+    return out
+
+
+def _route(text: str):
+    """``(destination network, [next-hop addresses])`` of a static route line, or None when the
+    line cannot be read as one (`ip route static bfd …`, a profile)."""
+    m = STATIC_ROUTE.match(text)
+    if not m:
+        return None
+    words = m.group("rest").split()
+    try:
+        if m.group("family") == "ip":
+            if len(words) < 2:
+                return None
+            dest = ipaddress.ip_network(f"{words[0]}/{words[1]}", strict=False)
+            rest = words[2:]
+        else:
+            dest = ipaddress.ip_network(words[0], strict=False)
+            rest = words[1:]
+    except ValueError:
+        return None
+    hops = []
+    for w in rest:
+        try:
+            hops.append(ipaddress.ip_address(w))
+        except ValueError:
+            continue
+    return dest, hops
+
+
+def _management_routes(running: list, addresses) -> dict:
+    """``{route line: why}`` for every global static route that may be the path to the manager
+    (C1422, C531 part 2), judged by what the route REACHES, never by its next hop's subnet:
+
+    - a default route (`0.0.0.0 0.0.0.0`, `::/0`), which reaches everything;
+    - a route whose destination holds one of *addresses* (this host's own, `host_addresses`);
+    - a route whose destination holds the next hop of a route above, recursively (removing it
+      would leave the protected route unresolved);
+    - a route line that cannot be read as one.
+
+    *addresses* None means this host's addresses could not be read: every static route is then
+    refused, saying so. A route the device learns by a routing protocol is not configuration
+    and is never offered for removal."""
+    routes = []
+    for line, chain in running:
+        text = line.strip()
+        if chain or not STATIC_ROUTE.match(text):
+            continue
+        routes.append((text, _route(text)))
+    out = {}
+    if addresses is None:
+        return {text: ("a static route may be the path to the manager: this host's addresses "
+                       "could not be read, so which routes reach it is not known")
+                for text, _r in routes}
+    targets = []
+    for a in addresses:
+        try:
+            targets.append((ipaddress.ip_address(a), f"{a}, an address of this host (the "
+                                                     "manager)"))
+        except ValueError:
+            continue
+    for text, parsed in routes:
+        if parsed is None:
+            out[text] = "a static route may be the path to the manager: this line is not read as one"
+        elif parsed[0].prefixlen == 0:
+            out[text] = f"a default route ({parsed[0]}) may be the path to the manager"
+    changed = True
+    while changed:
+        changed = False
+        for text, parsed in routes:
+            if parsed is None:
+                continue
+            dest, hops = parsed
+            if text not in out:
+                hit = next(((a, said) for a, said in targets
+                            if a.version == dest.version and a in dest), None)
+                if hit is None:
+                    continue
+                out[text] = f"its destination {dest} holds {hit[1]}"
+                changed = True
+            for h in hops:
+                if all(h != a for a, _said in targets):
+                    targets.append((h, f"{h}, the next hop of `{text}`"))
+                    changed = True
+    return out
 
 ACCOUNT = re.compile(r"^(username\s|enable (secret|password)\b)")
 NUMBERED_ACL = re.compile(r"^access-list\s+\d+\s")
@@ -393,11 +505,16 @@ def _is_physical(header: str) -> bool:
     return bool(name) and "." not in name and not name.startswith(VIRTUAL_INTERFACES)
 
 
-def _refusal(unit: dict, running: list, mgmt_ifaces: set) -> str:
+def _refusal(unit: dict, running: list, mgmt_ifaces: set, mgmt_routes: dict = None) -> str:
     chain, line = tuple(unit["chain"]), unit["line"]
     text = line.strip()
     top = chain[0] if chain else text
     if not chain:
+        if STATIC_ROUTE.match(text):
+            why = (mgmt_routes or {}).get(text) if mgmt_routes is not None else (
+                "a static route may be the path to the manager")
+            if why:
+                return "the management path: " + why
         for pattern, why in UNREMOVABLE:
             if pattern.search(text):
                 return why
@@ -502,6 +619,12 @@ def removal_program(running_config: str, selected: list, *, mgmt_ip: str = "",
     headers = _headers(running)
     present = {chain + (line,) for line, chain in running}
     mgmt_ifaces = _management_interfaces(running, mgmt_ip)
+    try:
+        addresses = host_addresses()
+    except Exception as exc:                          # noqa: BLE001 (refuses, never raises)
+        log.warning("removal: this host's addresses could not be read: %s", exc)
+        addresses = None
+    mgmt_routes = _management_routes(running, addresses)
     units = []
     for u in selected or []:
         chain = tuple(ifnames.canonicalise_line(c) for c in u.get("chain") or [])
@@ -518,7 +641,7 @@ def removal_program(running_config: str, selected: list, *, mgmt_ip: str = "",
         if any(path[:len(w)] == w and path != w for w in whole):
             continue                     # implied by a stanza also selected
         kind = "stanza" if path in headers else "leaf"
-        why = (_refusal(u, running, mgmt_ifaces)
+        why = (_refusal(u, running, mgmt_ifaces, mgmt_routes)
                or _unmeasured(u["chain"], u["line"], kind, dialect))
         if why:
             refused.append({**u, "reason": why})

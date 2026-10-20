@@ -36,8 +36,13 @@ supersedes, never ticked for you.
   - a numbered access-list entry in the global form (`access-list 10 …`), because removing one
     deletes the whole list;
   - the path the tool reaches the device by: the interface holding the management address (or
-    an address from DHCP), the vty lines, `ip ssh`, `aaa`, `crypto key`, the domain name, a
-    static route, the default gateway;
+    an address from DHCP), the vty lines, `ip ssh`, `aaa`, `crypto key`, the domain name, the
+    default gateway, and a static route that may carry the manager's traffic: a default route,
+    a route whose destination holds one of this host's own addresses (read from the host each
+    time), or a route to the next hop of one of those. The reason names the address. Any other
+    static route, such as a /32 to a retired device, can be ticked; a route line that cannot be
+    read as a route is refused, and when this host's addresses cannot be read, every static
+    route is;
   - an account (`username`, `enable secret`, `enable password`), which is retiring's or
     rotation's job;
   - a named object something still uses (an access list, prefix list, route map, VRF,
