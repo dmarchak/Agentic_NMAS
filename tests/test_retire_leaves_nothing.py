@@ -519,6 +519,7 @@ class TestHeartbeatRule:
         what = _step(p, "heartbeat")["what"]
         assert "remove its Grafana heartbeat rule (window 915 s)" in what
         assert f"c1419-install-alert-rules.sh heartbeat {lab['tmp'] / 'written.yaml'} " in what
+        assert "name it in its delete file (C1419)" in what
         _p, out = _retire()
         assert (lab["tmp"] / "written.yaml").exists(), "the rules were not written without it"
         doc = yaml.safe_load((lab["tmp"] / "written.yaml").read_text())

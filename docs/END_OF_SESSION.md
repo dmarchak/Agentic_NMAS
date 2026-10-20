@@ -42,9 +42,16 @@ NetBox, or on the lab host. No Copilot pytest run appeared (checked before every
 
 ### 2. What is deployed
 
-**The host runs 61373b8f** (09:43:17 UTC, CI #1016). `/health` reports it. Job health: 67 jobs,
-3 not ok, none new (s3's heartbeat jitter, the break-glass record older than r2's rotation, one
-informational row). The telemetry check cleared at its 08:01 run.
+**The host runs 801b5e23** (10:19:34 UTC, CI #1018). The last commit below (wording only)
+follows it through CI and deploys. After each deploy, job health read the same: 67 jobs, the
+same rows not ok, none new (s3's heartbeat jitter, the break-glass record older than r2's
+rotation, two informational rows). The telemetry check cleared at its 08:01 run. The live
+checkout is clean.
+
+**Read on the live host after 801b5e23 (10:19 UTC), a Retire PLAN for r1, nothing retired:**
+- the heartbeat step names r1's rule (window 750 s);
+- the telemetry step names `nmas-tel-r1-101` and `-102`;
+- each names the real files and the install step.
 
 | Item | Commit | CI | State |
 |---|---|---|---|
@@ -52,7 +59,9 @@ informational row). The telemetry check cleared at its 08:01 run.
 | C1429: contradictory interface keys refused by name, in the editor, `nmas-config-check` and bulk intent | 5725b4ff | green | deployed 09:22; C1429 closed |
 | C1420: a name onboarded again starts its History at the name's retirement | 740299fe | #1015 | deployed 09:22; C1420 closed |
 | C1419 part 1: a delete file beside each generated rules file, and one install step | 61373b8f | #1016 | deployed 09:43 |
-| docs: the morning walk and drafts, the design and plan additions, this report | (this commit) | — | pushed |
+| docs: the morning walk and drafts, the design and plan additions, this report; `.gitignore` for the delete files | 9c1ca462 | — | deployed with the next |
+| C1419 part 2: Retire's telemetry step | 801b5e23 | #1018 | deployed 10:19 |
+| The heartbeat step's words name its delete file; this report's last state | (the last commit) | — | pushed, deploying on CI's pass |
 
 **Shown read-only after the deploy (09:26 UTC):** s3's plan sends nothing and offers
 `ip route 10.255.1.16 255.255.255.255 10.255.0.32` with a box. In a what-if with the manager's

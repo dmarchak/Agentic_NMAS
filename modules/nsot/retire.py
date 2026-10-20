@@ -842,8 +842,9 @@ def _heartbeat_facts(hostname: str) -> dict:
     if got["state"] == "names":
         return dict(got, step=(
             f"remove its Grafana heartbeat rule (window {got['window']} s) from the generated "
-            f"rules file {got['written_path']}, recorded with the heartbeat re-measures; the "
-            f"host step installs it: {got['host_step']}"), done=False,
+            f"rules file {got['written_path']} and name it in its delete file (C1419), recorded "
+            f"with the heartbeat re-measures; the host step installs both: {got['host_step']}"),
+            done=False,
             work={"fingerprint": got["fingerprint"]})
     if got["state"] == "grafana":
         return dict(got, step=(
