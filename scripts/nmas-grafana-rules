@@ -1,0 +1,56 @@
+#!/usr/bin/env python3
+"""Grafana's LIVE alert rules, read from its provisioning API (C1419): what Grafana runs, not
+what a provisioning file says, since Grafana keeps a provisioned rule its file has dropped unless
+a file names it under `deleteRules`. Read only. Run as the app's user on the host.
+
+    nmas-grafana-rules list [UID-PREFIX ...]   # uid<TAB>provenance<TAB>title, one rule per line
+    nmas-grafana-rules count                   # the number of live rules
+
+Exit 0 read, 2 Grafana could not be asked.
+"""
+
+import argparse
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+
+def live_rules(grafana=None) -> list:
+    """Every live alert rule, ``[{"uid", "title", "provenance"}]``. Raises RuntimeError naming
+    why Grafana could not be asked."""
+    from modules.integrations.grafana import GrafanaIntegration
+
+    g = grafana or GrafanaIntegration()
+    got = g._get("api/v1/provisioning/alert-rules")                      # noqa: SLF001
+    if not got.get("ok"):
+        raise RuntimeError(f"Grafana's provisioning API: {got.get('error')}")
+    return [{"uid": r.get("uid", ""), "title": r.get("title", ""),
+             "provenance": r.get("provenance", "")} for r in got["response"].json()]
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("what", choices=("list", "count"))
+    ap.add_argument("prefixes", nargs="*")
+    args = ap.parse_args(argv)
+    try:
+        rules = live_rules()
+    except RuntimeError as exc:
+        print(f"could not ask Grafana: {exc}")
+        return 2
+    if args.what == "count":
+        print(len(rules))
+        return 0
+    for r in sorted(rules, key=lambda r: r["uid"]):
+        if not args.prefixes or any(r["uid"].startswith(p) for p in args.prefixes):
+            print(f"{r['uid']}\t{r['provenance']}\t{r['title']}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

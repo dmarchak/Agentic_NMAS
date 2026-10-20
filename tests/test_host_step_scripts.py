@@ -41,6 +41,8 @@ EXPECTED = {"phase3-step1.sh", "phase3-step2.sh", "c584-loki-writer.sh",
             "ztp-discovery-range.sh",
             # C1403 part 2: every ZTP subnet matches leases by MAC (2026-10-20).
             "c1403-ztp-lease-identity.sh",
+            # C1419's stopgap: a retired device's live Grafana rules deleted (2026-10-20).
+            "c1419-retired-device-rules.sh",
             # C665: Device Roles' kinds with the operator's admin token, prompted (2026-10-11).
             "netbox-role-kinds.sh",
             # 7.8: the retired topology service's unit and link removed (2026-10-12).
