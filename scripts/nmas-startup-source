@@ -75,6 +75,12 @@ def _check(list_name: str) -> int:
             problems.append("the last drift run did not read it")
         if r["lacks"]:
             problems.append("lacks " + ", ".join(r["lacks"]))
+        if not r["config_current"]:
+            # C1454: the file is the baseline's configuration, and the device's golden moved on.
+            problems.append(
+                f"a redeploy would undo {r['lines_undone']} configuration line(s) committed "
+                f"after {base['tag']}: " + ("; ".join(r["undoes"]) or "its commits could not "
+                                            "be listed") + " (Save All earns a current baseline)")
         at = (time.strftime("%Y-%m-%dT%H:%MZ", time.gmtime(r["drift_at"]))
               if r.get("drift_at") else "never")
         fams = ", ".join(f"{n} {f['lines']}" for n, f in r["families"].items())

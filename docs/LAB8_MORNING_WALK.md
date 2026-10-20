@@ -1,9 +1,10 @@
 # Lab 8: the morning walk and its drafts (2026-10-21)
 
-**Status:** drafts for the operator, written overnight 2026-10-20 (the overnight run's
-section 2). Nothing here was applied: no device, Kea, NetBox or lab-host change. Every value is
-from docs/LAB8_LAB9_PLAN.md section 4 or read from the host the same night. A draft that the
-walk shows wrong is corrected here before it is used.
+**Status (2026-10-20 19:3x UTC):** steps 4b to 6 ran on 2026-10-20 (section 1a, the record).
+From here the walk follows the one-lab-file model (section 1; docs/LAB_ONE_TOPOLOGY_PLAN.md),
+reviewed by the operator; nothing of section 1 has run. Written first overnight 2026-10-20
+as drafts; every value is from docs/LAB8_LAB9_PLAN.md section 4 or read from the host. A draft
+that the walk shows wrong is corrected here before it is used.
 
 **Read overnight (2026-10-20 09:11 UTC, read-only, Mercury's read path and the lab host):**
 - **The lab reaches 8.8.8.8:** r4 and r3, `ping 8.8.8.8 source Loopback0`, 5 of 5 each.
@@ -22,9 +23,10 @@ Verify, record). **[KEA]**, **[NETBOX]**, **[LAB]** and **[HOST]** change those 
 **[READ]** changes nothing.
 
 Contents:
-1. The walk, step by step
+1. The walk from 2026-10-20 evening: one lab file (A to E, R6 again, steps 7 to 10)
+1a. The walk as run on 2026-10-20 (steps 4b to 6; the record)
 2. Kea: the three subnets and two reservations
-3. The lab files (lab host)
+3. The lab files (RETIRED 2026-10-20: the one lab file replaced them)
 4. R6's intent (draft)
 5. R7's intent (draft)
 6. H5
@@ -33,7 +35,215 @@ Contents:
 
 ---
 
-## 1. The walk
+## 1. The walk from 2026-10-20 evening: one lab file
+
+**The operator's decision (2026-10-20 ~19:05 UTC):** R6, R7, R8 and H5 join `rcn-lab1.clab.yml`
+as configless nodes on direct links in one declared full redeploy; s5, H6 and H7 join at one
+more redeploy after Lab 9's 0a. The plan and its reasons are docs/LAB_ONE_TOPOLOGY_PLAN.md.
+Steps 4b to 6 ran on 2026-10-20 under the old model and are kept in section 1a; R6 is redone
+here from its kept intent.
+
+**Who does what.** **[YOU]** is the operator: every Mercury screen action (it is the walk, and
+the recording), every console step, and every "go". **[ME]** is the agent: host and lab-host
+commands (sudo included, Phase 7 mode), reads, and the gate; never a Mercury action, never a
+device console. A step marked **[ME, on your go]** waits for your word. Every step ends with
+its **Expected** output; anything else is a stop, and the step's owner says so.
+
+Times are UTC (yours, UTC−6, beside them). Nothing runs from 08:30 to 09:10 UTC, nor within
+75 minutes before 08:30 once the window is declared.
+
+### A. Before anything restarts
+
+**A1 [ME, on your go]. The release.** `nmas-deploy --wait` on the NMAS host: 3d26c7a2 (C1421,
+C1436), C1454's pre-flight refusal and the docs since. Then job health.
+- **Expected:** "deployed <sha>" with CI's pass named; job health's not-ok rows the same as
+  before (67 jobs, 3 not ok: break-glass out of date, `nmas-heartbeat-check`, and none new).
+
+**A2 [ME]. R6's intent kept.** `nmas-config-read host_vars/r6.yml` (masked; it holds secret
+references, never values) to `lab/lab8/r6-intent.yml`, committed through the gate. The file
+says: Gi2's `ip dhcp client client-id ascii <serial>` is the boot's serial, new each boot, so at
+re-use the NEW seed's Gi2 entry stays and everything else comes from this file.
+- **Expected:** the commit's sha; the file's Gi2 holds `ipv4: dhcp`, Gi3 10.255.4.5/30 with its
+  helper, Loopback0 10.255.1.16/32.
+
+**A3 [YOU]. R7's subnet, while r6's intent still holds its relay** (this order is forced:
+Add a subnet reads the relay from committed intent, LAB_ONE_TOPOLOGY_PLAN A5).
+DHCP › Add a subnet with section 2.2's values (10.255.4.4/30, pool 10.255.4.6 - 10.255.4.6,
+For ZTP onboarding ticked, no DNS). Preview, confirm.
+- **Expected:** the relay line "relayed to <Kea> by r6 GigabitEthernet3 (intent)", relay
+  `10.255.4.5`; D4's check: no DNS, no subnet-level route option; Kea's `-t` passes.
+
+**A4 [ME]. The firewall host step** for the new relayed subnet:
+`bash ~/python/Agentic_NMAS/scripts/host-steps/c1346-ztp-relayed-firewall.sh`.
+- **Expected:** PASS, udp/69 admitted from 10.255.4.4/30 (and still from 10.255.4.0/30).
+
+**A5 [YOU]. Add device › ZTP for R7** (section 2.2): `r7`, IOS-XE, router, 10.255.4.6/30, MAC
+`aa:bb:cc:00:04:07`, management `GigabitEthernet2`, route option (3) the relay's own address.
+- **Expected:** the result names the reservation `aa:bb:cc:00:04:07 -> 10.255.4.6` (C1441's
+  wording may still say `-> ?`); a pending row "r7: reserved, not leased".
+
+**A6 [YOU]. Retire r6** (R6's page › Retire…). Read the preview: every step, including
+reservations (ZTP's for `aa:bb:cc:00:04:06`), leases, heartbeat and telemetry (their delete
+files). No step touches a Kea subnet. Confirm with the reason "one lab file: R6 rebuilt
+configless by ZTP (LAB_ONE_TOPOLOGY_PLAN)".
+- **Expected:** "Retired"; the name `r6` free; NetBox's record renamed `r6-retired-<id>`,
+  Decommissioning. Between here and R6's step 6, a row about 10.255.4.4/30's relay being in no
+  intent may appear: expected, it clears at R6's step 6.
+
+**A7 [ME]. The C1419 install step, removal path:**
+`bash ~/python/Agentic_NMAS/scripts/host-steps/c1419-install-alert-rules.sh heartbeat` then
+the same with `telemetry` (the retire result prints each one's values).
+- **Expected:** PASS for each (8 of 8); Grafana shows no rule naming r6. The first real run of
+  the install step.
+
+**A8 [YOU]. Add device › ZTP for R6** (section 2.1's values; the subnet 10.255.4.0/30 stayed):
+`r6`, `aa:bb:cc:00:04:06`, 10.255.4.2/30, route option (3) the relay's own address.
+- **Expected:** the reservation `aa:bb:cc:00:04:06 -> 10.255.4.2`; a pending row "r6:
+  reserved, not leased". **R6 must not boot before this exists** (without it R6 takes the pool
+  address with no boot file, and AutoInstall gives up: M4).
+
+### B. The startup files: today's goldens
+
+**B1 [YOU]. Save All** for Default (Actions › Save All).
+- **Expected:** 8 of 8 captured (r1 to r4, s1 to s4), and `Baseline: earned` with a new
+  `baseline/<ts>`. Denied means a device is not at its intent: the record names it and the
+  lines; stop and resolve that first.
+
+**B2 [ME]. The sync,** started by the baseline event (`clab-sync.path`): its journal for the run.
+- **Expected:** "committed" for the lab's `configs/`; per device, the `REMOVED` counts as in its
+  last run (the sanitiser's rules, never the lines). I read result lines only, never a file.
+
+**B3 [ME]. The pre-flight:** `nmas-startup-source --check --list Default`.
+- **Expected:** `baseline <B1's tag>`, and for each of the eight `ok | ... 0 newer |
+  credentials current: True ... | golden after last rotation: True | read by drift: True`;
+  last line `8 of 8 pass`. Any "a redeploy would undo" line is a stop (C1454's refusal).
+
+**B4 [ME]. The files' mode on the lab host:** `chmod 600` on `configs/*.cfg` and the
+`configs.bak-*` copies (C1453), then `ls -l --time-style=+%FT%T configs/`.
+- **Expected:** r1 to r4 and s1 to s4 `-rw-------`, each dated after B1; r5's unchanged (the lab
+  repository's own, DECLARED-UNMAPPED).
+
+### C. The lab host
+
+**C1 [ME]. The new file and its pieces** (LAB_ONE_TOPOLOGY_PLAN section 3, option 1: r6, r7,
+r8, h5): the configless patch copied to `~/labs/lab/patches/` (sha256 equal to lab8's), and
+`configs/host-net-lab89.sh`; the lab repository's own uncommitted changes committed first,
+then the new file and the script in a second commit.
+- **Expected:** both commits' shas; `git status` clean in `~/labs/lab`.
+
+**C2 [ME]. A dry run** of a renamed copy (`name: rcn-lab1-check`, in `/tmp/check/`):
+`containerlab deploy -t /tmp/check/rcn-lab1.clab.yml --dry-run`.
+- **Expected:** a dry-run result and no container created (`docker ps` count unchanged, 16).
+  A parse error names the line: fix it in C1 and run again.
+
+**C3 [ME, on your go]. R6's old lab out:** `containerlab destroy -t ~/labs/lab8/lab8-r6.clab.yml
+--cleanup`, then `docker network rm clab-lab8-r6` if it is left.
+- **Expected:** `clab-lab8-r6-r6` gone (`docker ps` 15); the network gone.
+
+**C4 [ME]. Its two bridges:** `ip -br link show master br-r6r7` and `master br-r7h5` each
+empty, then `sudo ip link del` each.
+- **Expected:** `ip -br link show type bridge` lists `br-mgmt`, `br-r4r6`, `br-r2r8` and
+  docker's own; not `br-r6r7` or `br-r7h5`.
+
+### D. The redeploy
+
+**D1 [ME]. Time:** start only if 08:30 UTC is more than 75 minutes away, or after 09:10.
+
+**D2 [ME]. The lab host:** `free -g`; `vmstat 5 5`; `uptime`.
+- **Expected:** at least 20 GiB available; `si` and `so` 0 in every row; `st` 0 (`gu` is the
+  routers' nested VMs).
+
+**D3 [ME]. The hypervisor** (read-only): `free -g`; `uptime`; `qm list`.
+- **Expected:** at least 20 GiB available; VMs 201 and 202 stopped (yours).
+
+**D4 [YOU, I read]. Before:** Drift › Check now for Default; Needs attention's rows. I read the
+adjacency reader's per-device neighbour counts.
+- **Expected:** 8 of 8 read, none drifted; the counts recorded (as at 10-20: r1 2/2, r2 2/2,
+  r3 6/4, r4 7/5 with R6 retired, so its R6 neighbour gone, s3 2, s4 2).
+
+**D5 [ME, on your go]. The window, then at once the redeploy:**
+`scripts/nmas-planned-restart Default r1 r2 r3 r4 s1 s2 s3 s4 --minutes 60 --new-host-keys
+--why "lab redeploy: rcn-lab1 one file, Labs 8 and 9 nodes added configless" --by <operator>`,
+then on the lab host in tmux `cd ~/labs/lab && containerlab deploy -t rcn-lab1.clab.yml
+--reconfigure`.
+- **Expected:** `recorded: r1, r2, r3, r4, s1, s2, s3, s4 ...` with its `<recorded_at>` (kept:
+  it names the window if the attempt stops); the deploy blocks about 25 minutes on the stages
+  while the fleet boots, then creates r6, r7 and r8 and finishes. If it stops before it runs,
+  end the window at once (REDEPLOY.md).
+
+### E. After
+
+**E1 [YOU, I read]. The fleet:** Devices page; Drift › Check now inside the window; History's
+host keys; Needs attention.
+- **Expected:** all eight Answering (about 24 minutes); 8 of 8 read, none drifted; eight "SSH
+  host key kept under a planned window" rows, then one Needs attention row to acknowledge; the
+  neighbour counts equal D4's (r4 and r2 each have one more port up, no new neighbour); no
+  "restarted unexpectedly" row.
+
+**E2 [ME]. The old bridges:** `master br-r4r6` and `master br-r2r8` empty, then `sudo ip link
+del` each.
+- **Expected:** only `br-mgmt` and docker's bridges remain.
+
+**E3 [ME]. The new nodes and the captures:** each of r6, r7, r8 `healthy` (docker's health
+state, read only); the two captures started (LAB_ONE_TOPOLOGY_PLAN section 4) on r7's and r8's
+uplinks, and a short one on r6's.
+- **Expected:** R6's DISCOVERs leave Gi2, Kea's offer of 10.255.4.2 with options 66, 67 and 3
+  arrives through R4, and the fetch of `r6.cfg` follows; R7's and R8's DISCOVERs repeat with
+  no answer.
+
+### R6, again (steps 5.5 to 6)
+
+**R1 [YOU]. Onboarding** runs from the pending row: Verify waits out the key settle (C1400) and
+promotes R6.
+- **Expected:** about 10 to 15 minutes after R6's container was created: answered, captured,
+  credential rotated and persisted, NetBox records written; the pending row gone.
+
+**R2 [YOU]. Step 6 again** (section 1a's step 6): Seed intent…, commit, then the kept intent
+(A2) applied as edits to the seed, KEEPING the new seed's Gi2 entry; commit; plan; confirm;
+Verify.
+- **Expected:** the plan as section 1a's step 6 (Loopback0 created; Gi3 with its helper, RIP
+  and RIPng; router ospf with two networks in area 10). Verify amber with RIP and RIPng unmet
+  until R7 forms (C1450). After [I read]: R6 and R4 OSPF Full; s3's route to 10.255.1.16 O IA.
+
+**R3 [YOU, then ME]. R6's monitoring:** Monitoring › Heartbeat › re-measure [YOU]; the install
+step `heartbeat` [ME]; `nmas-telemetry-rules` and the install step `telemetry` [ME].
+- **Expected:** PASS for each; Grafana shows R6's heartbeat rule and its two telemetry rules.
+  With A7's removal run, this closes C1419.
+
+### Step 7: R7 (no lab step)
+
+**7.1 [I read].** R7 has been asking since the redeploy; once R6's Gi3 helper is deployed (R2),
+its next DISCOVER is relayed. The capture shows the first answered one.
+- **Expected:** Kea's offer of 10.255.4.6; R7's fetch of `r7.cfg`; the pending row advancing.
+  **If the capture shows R7 stopped asking** (AutoInstall gave up): **[YOU]** R7's console,
+  answer `no` to the dialog, `reload`, confirm. R7 asks again within its boot time.
+
+**7.2 [YOU]. R7's onboarding, then its intent** (section 5): seed, edit, commit, plan, confirm,
+Verify.
+- **Expected:** as section 1a's step 7.5: Loopback0, Gi3 up, Gi3.10 10.70.10.1/24 and
+  2001:db8:70:10::1/64 with its helper, router rip, ipv6 rip RCN. After [I read]: on R6,
+  `show ip rip database` holds 10.70.10.0/24; on R4, `show ip route 10.70.10.0` is O E2 via R6.
+
+### Step 8: H5 (no lab step)
+
+**8.1 [YOU]. DHCP › Add a subnet** 10.70.10.0/24 (section 2.3).
+**8.2 [I read].** H5 has been retrying since the redeploy (`host-net-lab89.sh`, no give-up).
+- **Expected:** the DHCP page shows H5's lease in .100 to .200; on R7, `show ipv6 interface
+  GigabitEthernet3.10` holds the /64; H5's own log line "done after N tries" (read on the lab
+  host).
+
+### Steps 9 and 10, and Friday
+
+- Steps 9 and 10 as section 1a's.
+- **The break-glass export** after R6 and R7 are verified, before Friday.
+- **Friday's rehearsal reset, no containerlab** (LAB_ONE_TOPOLOGY_PLAN section 6), R7 then R6:
+  [YOU] Retire; [YOU] Add device › ZTP again with the same MAC; [YOU] the device's console:
+  `write erase`, confirm, `reload`, confirm, do not save. It boots configless and asks again.
+  C1432's measurement (section 1a's 5b) runs on R6 just before its Retire.
+
+---
+
+## 1a. The walk as run on 2026-10-20 (steps 4b to 6; kept as the record)
 
 Times are UTC. Nothing runs between 08:30 and 09:10. One device-changing step at a time, each
 verified before the next. A Mercury update to the host happens only between steps, never
@@ -260,7 +470,12 @@ If a plan asks for one anyway, stop and read it before confirming.
 
 ---
 
-## 3. The lab files (lab host, `<home>/labs/lab8/`)
+## 3. The lab files (lab host, `<home>/labs/lab8/`) — RETIRED 2026-10-20
+
+**Replaced by the one lab file** (the operator's decision, 2026-10-20; docs/LAB_ONE_TOPOLOGY_PLAN.md
+section 3): R6, R7, R8 and H5 are nodes of `rcn-lab1.clab.yml`, and `bridges.sh` and the
+per-device files below are no longer used. `lab8-r6` is destroyed at section 1's C3. Kept as
+the record of what step 5 ran.
 
 **Names that cannot collide:** labs `lab8-r6`, `lab8-r7`, `lab8-h5`; containers
 `clab-lab8-r6-r6`, `clab-lab8-r7-r7`, `clab-lab8-h5-h5`. The old `clab-r6` lab is destroyed.

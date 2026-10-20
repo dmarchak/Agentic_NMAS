@@ -495,3 +495,100 @@ Lab 8.
    measurement (0a, which sizes 0b); then the action framework (docs/INTENT_AUTHORING_DESIGN.md
    A1 with "Enable OSPF on…"). "Connect two devices" (A4) is in Lab 9's video only if both A1
    and A4 land by 10-28; otherwise R8's link is authored by hand, as R6's was.
+14. **(2026-10-20 ~19:05 UTC) One lab file:** R6, R7, R8, the Lab 9 switch and H5 to H7 move into
+   `rcn-lab1.clab.yml` as configless nodes on direct links, in one declared full redeploy; the
+   per-device labs and bridges go away; the zt-probe experiment is cancelled. Planned in
+   docs/LAB_ONE_TOPOLOGY_PLAN.md, for the operator's review before anything runs. It replaces
+   item 10's re-add (Friday's reset becomes Retire, `write erase` and a console reload), section
+   2's item 3 and Lab 9's 0c (R4's and R2's links come with this redeploy), and section 10's
+   per-device labs and bridges.
+
+## 12. Why one lab file, with every node configless until ZTP (for the video)
+
+**The operator's decision, 2026-10-20 ~19:05 UTC.** R6, R7, R8, the Lab 9 switch and H5 to H7
+are nodes in `rcn-lab1.clab.yml`, on direct links, deployed with the whole lab in one declared
+full redeploy. Each waits unprovisioned until it is onboarded by ZTP. The per-device labs
+(`lab8-r6`, `lab8-r7`, `lab8-h5`) and the Linux bridges go away. The plan is
+docs/LAB_ONE_TOPOLOGY_PLAN.md.
+
+**Why this, for the video:**
+- **The whole lab is described in one file.** That file is Lab 9's infrastructure as code.
+- **It matches cabling a new router to a running network.** Every cable and every port is
+  there from the start; a device arrives by powering on, asking and being onboarded. Nothing
+  else is touched when it does, and Retire takes it out the same way.
+- **A rehearsal resets a device without containerlab.** Retire, `write erase` and a reload
+  from its own console bring back the configless boot (LAB_ONE_TOPOLOGY_PLAN section 6).
+
+**Why everything joins in ONE redeploy.** Containerlab cannot add a node to the running lab
+without restarting its neighbour (reason 1 below), and the restart rule (3) allows only the one
+full redeploy. Each later addition would cost another one.
+
+**What the one file has to answer for ZTP (2, below):** each node boots with the lab, long
+before its relay is configured. So each must keep asking until it is answered. That is measured
+for the first time in LAB_ONE_TOPOLOGY_PLAN section 4. A reload from its own console is the
+remedy if AutoInstall gives up.
+
+**The reasons the separate labs were chosen (kept as the record; reasons 1 and 3 still decide
+how nodes are added):**
+
+1. **Containerlab cannot add a node to the running lab without restarting its neighbour.**
+   Read in containerlab 0.79.0's source (`core/topology_reconcile.go`, `nodes/vr_node.go`,
+   `nodes/node.go`; 2026-10-20). Deploying an edited topology over a running lab, without
+   `--reconfigure`, reconciles it in place. A running node that gains a link is handled by its
+   kind's link-apply mode. For vrnetlab VM nodes (R4's `cisco_c8000v`, the switches'
+   `cisco_vios`) the default is **recreate**: the container is deleted and created again, which
+   boots the router. The default becomes live only for an image whose
+   `org.opencontainers.image.vendor` label is `Boxen`. The lab's two images have no such label
+   (read on the lab host 2026-10-20). `--node-filter` is refused on a running lab ("node filter
+   is not supported when reconciling deployed lab: running nodes excluded by the filter would be
+   deleted"). `--reconfigure` destroys and redeploys the whole lab. Each path restarts R4 or the
+   whole fleet for every node added.
+2. **AutoInstall needs its upstream to be ready before it boots.** A configless router asks for
+   its bootstrap at boot and gives up after about 2.5 minutes. R6's request is relayed by R4;
+   R7's is relayed by R6, and only after R6's intent (step 6) is deployed. One file boots every
+   node together, and the fleet takes about 24 minutes to answer, so R7 would give up long before
+   R6 could relay for it. As separate labs, each node boots when its relay, subnet and
+   reservation exist.
+3. **The restart rule** (CLAUDE.md, C1372). A lab node restarts only by a reload from its own CLI
+   or by the one full redeploy, each inside a planned-restart window declared first. Adding a
+   router is not a reason to restart the fleet, and a rehearsal that adds R6 and R7 twice would
+   restart it twice.
+4. **It matches how a new router joins a running network.** R4's port toward R6 was cabled once,
+   in a planned full redeploy (section 2, item 3), to a patch panel: the bridge. After that, R6
+   is plugged in, boots, asks for its configuration and is onboarded, and nothing already
+   running is touched. Retiring R6 unplugs it the same way.
+
+**Not measured:** a node can be given `link-apply-mode: live` to override recreate, and
+containerlab warns when it is. Whether the vrnetlab VM then sees the new interface was not
+tried: no lab node is used for that experiment. The VM is started with the interfaces that
+exist at boot, so most likely it does not see it.
+
+## 13. One description of the whole lab (WITHDRAWN 2026-10-20: the one file is it)
+
+The operator's decision (section 12) makes `rcn-lab1.clab.yml` the one description. The
+generated reference in (a) is not needed. (b)'s first two consequences assumed R6 and R7 would
+boot from startup files; under the decision they boot configless and are onboarded by ZTP
+instead. Kept as the record of the options weighed:
+
+**(a) A generated reference topology (recommended, now).** Lab tooling (`lab/`, never the
+product) reads `rcn-lab1.clab.yml` and every `lab8-*.clab.yml`. It checks that each bridge has
+exactly two endpoints, replaces each bridge with the direct link it stands for (for example,
+`r4:eth5` to `r6:ethN` via `br-r4r6`), and writes one `lab-reference.clab.yml` headed "generated
+from <files> at <time>; not deployed". `containerlab graph` draws it. The deployed files stay
+the source, and the reference is regenerated whenever one of them changes, so it cannot drift.
+It restarts nothing and is a short script (S). For Lab 9's IaC story, the reference is the
+network as code, and the per-node files show how it was brought up in order.
+
+**(b) Fold R6 and R7 into `rcn-lab1.clab.yml` at the next planned full redeploy.** Only if a full
+redeploy is already planned for another reason, and after Lab 9. What it costs for their ZTP:
+
+- **They stop arriving by ZTP.** A full redeploy boots every node at once, so (2) above applies.
+  R6 and R7 must boot from startup files like r1 to r5, so `clab-startup-sync.sh`'s targets
+  gain them, and they come up configured.
+- **They cannot stay configless in that file.** An onboarded device that asks for a bootstrap
+  is not a pending onboarding, so Mercury's responder serves it nothing, and it would come up
+  blank.
+- **Their arrival lives on only in the record.** Lab 8's receipts and History remain, but the
+  redeploy no longer exercises the ZTP path.
+- **Anything added later by ZTP (R8, Lab 9's switch) keeps its own file and bridge** until it is
+  onboarded, for the same reasons.

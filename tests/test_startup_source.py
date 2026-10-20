@@ -308,6 +308,41 @@ class TestThePreflightCheck:
         assert "r2: FAILS: its golden is older than its last rotation" in out
         assert out.rstrip().endswith("0 of 1 pass; failing: r2")
 
+    def test_a_rotation_only_since_the_baseline_leaves_the_configuration_current(
+            self, lab, monkeypatch):
+        """C1454's control: r2's one commit after the baseline is a rotation, which the build
+        already carries, so nothing is undone."""
+        self._ready(lab, monkeypatch, rotated_at=1)
+        r = SS.check("Lab", hosts=["r2"])["devices"]["r2"]
+        assert r["commits_since"] == 1
+        assert r["config_current"] is True and r["undoes"] == [] and r["lines_undone"] == 0
+
+    def test_a_deploy_after_the_baseline_is_named_as_what_a_redeploy_would_undo(
+            self, lab, monkeypatch, capsys):
+        """C1454 (Lab 8, 2026-10-20): r4's Gi5 and s3's removed route were verified and
+        committed after the newest earned baseline, and the pre-flight said "9 of 9 pass".
+        A golden committed after the baseline with a configuration change FAILS the device,
+        naming the commit and the count of lines, never a line."""
+        self._ready(lab, monkeypatch, rotated_at=1)
+        changed = WITH_APPLET.replace("\nend", "\nip route 192.0.2.0 255.255.255.0 Null0\nend")
+        got = R.save_golden("Lab", [R.GoldenItem("r2", changed, "203.0.113.12",
+                                                 platform="cisco_ios")],
+                            source="deploy", actor="t", allow_new=False)
+        assert got["ok"]
+        r = SS.check("Lab", hosts=["r2"])["devices"]["r2"]
+        assert r["commits_since"] == 2 and r["config_current"] is False
+        assert r["lines_undone"] == 1
+        assert len(r["undoes"]) == 2 and r["undoes"][0].split()[0] == got["commit"][:len(
+            r["undoes"][0].split()[0])]
+        monkeypatch.setattr("modules.device.load_saved_devices",
+                            lambda path: [{"hostname": "r2"}])
+        assert _cli().main(["--check", "--list", "Lab"]) == 1
+        out = capsys.readouterr().out
+        assert "r2: FAILS: a redeploy would undo 1 configuration line(s) committed after " \
+               "baseline/" in out
+        assert got["commit"][:7] in out and "192.0.2.0" not in out
+        assert out.rstrip().endswith("0 of 1 pass; failing: r2")
+
     def test_check_writes_nothing_and_out_is_required_without_it(self, lab, monkeypatch, tmp_path):
         self._ready(lab, monkeypatch, rotated_at=1)
         monkeypatch.setattr("modules.device.load_saved_devices",

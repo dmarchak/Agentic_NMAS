@@ -117,6 +117,13 @@ def _placeholder():
     return re.compile(re.escape(PLACEHOLDER.split("{", 1)[0]))
 
 
+def _configuration(text: str) -> list:
+    """*text*'s lines outside the credential families, blank lines and trailing space
+    dropped: what a startup file must hold of the current golden (the credential families
+    are compared on their own, `credentials_current`)."""
+    return [l.rstrip() for l in (text or "").splitlines() if l.strip() and not _family(l)]
+
+
 def _git1(repo: str, *args) -> str:
     from modules.nsot.repo import git
 
@@ -140,11 +147,17 @@ def check(list_name: str, hosts=None, built=None) -> dict:
       rotation that reached it (a golden older than the rotation holds the retired secret);
     - ``read_by_drift``: the last drift run read the device (its session signed in with the
       credential Mercury holds), and when;
-    - ``carries`` / ``lacks``: which of `_carries()` the file holds.
+    - ``carries`` / ``lacks``: which of `_carries()` the file holds;
+    - ``config_current``: every line of the file outside the credential families equals the
+      current golden's (C1454: the baseline is a moment, so a deploy verified after it is in no
+      file, and a redeploy reverts it while every other fact here reads green); when it does
+      not, ``undoes`` names the device's golden commits after the baseline's (short sha and
+      subject) and ``lines_undone`` counts the configuration lines that differ, never one.
 
     Together ``credentials_current``, ``golden_after_rotation`` and ``read_by_drift`` say the
     file holds the secret the device runs and that Mercury's held credential signs in to it,
     shown without any secret being read here."""
+    import difflib
     import hashlib
 
     from modules import drift_check
@@ -205,6 +218,16 @@ def check(list_name: str, hosts=None, built=None) -> dict:
         row["drift_at"] = drift.get("last_check_ts") if isinstance(drift, dict) else None
         row["carries"] = [n for n, rx in _carries() if rx.search(text)]
         row["lacks"] = [n for n, _rx in _carries() if n not in row["carries"]]
+        built_cfg, current_cfg = _configuration(text), _configuration(current)
+        row["config_current"] = built_cfg == current_cfg
+        row["undoes"], row["lines_undone"] = [], 0
+        if not row["config_current"]:
+            row["lines_undone"] = sum(1 for d in difflib.ndiff(built_cfg, current_cfg)
+                                      if d[:2] in ("- ", "+ "))
+            log_out = _git1(ref.repo_dir, "log", "--format=%h %s",
+                            f"{row['baseline_golden']}..HEAD", "--", rel) \
+                if row["baseline_golden"] else ""
+            row["undoes"] = [l for l in log_out.splitlines() if l.strip()]
         out[host] = row
     return {"ok": True, "baseline": base, "devices": out}
 
