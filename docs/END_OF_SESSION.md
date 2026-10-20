@@ -1,5 +1,39 @@
 # End of session: where Phase 7 stands
 
+## 2026-10-19 (to 2026-10-20 ~04:00 UTC; 22:00 UTC−6): Lab 7 submitted, the lab rebuilt, 0d done, Lab 8's fixes next
+
+**The host runs 08ae8669** (deployed 22:01 UTC, walked for C1389). **CI on main is green** (#999 on
+c27347eb). The previous session ended without its own entry (its panel can no longer be opened);
+this one, from the next session's start, covers the day.
+
+- **Lab 7 (CSCI 5840)** is recorded and submitted. **Lab 8 is due Mon 10-26** (built by Thu 10-22,
+  walked Fri 10-23); **Lab 9 Wed 11-04.** The plan: docs/LAB8_LAB9_PLAN.md, signed off 2026-10-19.
+- **The lab host.** The hypervisor had swapped out the lab VM's memory, and a KVM page fault that
+  never completed wedged r5's container (C1380, the cause of C1354). The operator's fix at ~19:24
+  UTC: `vm.swappiness=1`, persisted, swap cycled. The lab host was rebooted (19:25 to 19:32 UTC).
+- **rcn-lab1 redeployed** in one planned window (19:25 to 20:25 UTC) with R4 Gi5 on `br-r4r6` and
+  R2 Gi4 on `br-r2r8` (C1350). r2 Gi4 and r4 Gi5 carry placeholder intent (shutdown, a
+  description). All nine devices clean (the operator). A lab node is restarted only by a CLI reload
+  or a full redeploy, never by containerlab or docker (CLAUDE.md, C1372).
+- **0d done (20:57 to 23:18 UTC):** relayed ZTP works through Mercury's own path, and only with
+  Route option (3) = the relay's own address (docs/RELAY_PROBE.md, "Results"). D4 restated is in
+  force for relayed subnets. The probes are retired; their NetBox leftovers were deleted by the
+  operator in NetBox's UI (C1407). Its costs: C1399 to C1405.
+- **Lab 8's state:** 0a, 0b, 0c, 0e and 0f built; 0d done; 0g dropped. **Before the build, in
+  order (the operator):** C1403 parts 1 and 2 (leases released at Retire and Abandon, DHCP's
+  Release lease…; ZTP subnets with `match-client-id` false); C1401 (B: an interface's `no
+  shutdown` intent never converges; Lab 8's step 4 needs it); C1404 (a deploy restarts the ZTP
+  responder); C1400 (a ZTP'd device's first SSH key); C1402 if it touches R6 or R7; and a new B,
+  `scripts/nmas-test` hanging in an interactive terminal (C1414). Two paused agents left uncommitted work
+  in worktrees: C1401 (nearly complete, with its test) and C1403 part 1 (the module and the
+  Retire and Abandon steps, no route, template or tests).
+- **Waiting on the operator:** the go before Lab 8's step 1 (r6's retirement). **Tomorrow
+  (10-20 19:32 UTC onward):** the 24-hour s3 gap rate and r1's dead-timer drops since the swap
+  fix (C1380, C1318, C1323); VM 100's VmSwap after the nightly job.
+- **After Lab 8 (registered):** C1409 (the tests' real-clock reads), C1410 (DHCP for bootstrap
+  only), C1406 (Save All after R4's and R6's deploys), C1407 (NetBox's leaving half), C1412 and
+  C1413 (ZTP everywhere); PHASE8_PLAN sections 11 and 13 gain the CSCI 5280 Lab 7 lessons.
+
 ## OVERNIGHT, 2026-10-17 (06:20 to 10:00 UTC; 00:20 to 04:00 UTC−6): W3 recorded, W4 written, five removals
 
 **The host runs ac53abf2** (deployed 09:54:21 UTC, CI #891), every release walked by GETs on the

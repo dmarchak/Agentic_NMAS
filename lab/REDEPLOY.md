@@ -32,6 +32,11 @@ topology reaches a node only through the redeploy.
 - Network `Default` in Mercury holds r1 to r4, r6 and s1 to s4 (read 2026-10-16 from its Devices
   page). r5 is in the lab and not in Mercury, so Mercury never meets its key. The window below
   names the eight devices both hold, never `*`, which would also cover r6.
+- **r5 is unmapped by design (the operator, 2026-10-19):** it is the handout's ISP router,
+  outside the lab's administrative boundary, so it is declared `DECLARED-UNMAPPED` in the lab's
+  map (`data/lab_targets/default.tsv` on `<nmas-host>`, gitignored, declared 2026-09-25) and
+  boots from its startup file in the lab's own repository, never from Mercury's startup source.
+  A redeploy that finds r5 unmapped is as intended.
 
 ## The bound: 60 minutes, measured
 

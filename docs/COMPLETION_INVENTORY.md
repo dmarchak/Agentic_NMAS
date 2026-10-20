@@ -132,7 +132,7 @@ feature 1 needs it. **What could not be placed:** section 7.
 | K44 | **Deploy follow-up window** (B C60) | not started | `receipts.FOLLOW_UP_NOT_BUILT` | Core 1.0 (B), or re-rank | a second reading after a deploy, deterministic | M | — | yes |
 | K45 | **The device as witness of its own changes** (B E6: archive, log config, notify syslog) | not started | `parsers/base.py:268` keeps it unmodelled | Core 1.0 (B), or re-rank | | L | — | yes |
 | K46 | **Sign-in and roles** (9.I; Stage 10 sections 2 and 3; local accounts, OIDC, AD) | not started | `modules/identity.py` trusts the access proxy's assertion only; `may()` has no roles | Stage 10 | the operator's path | L | — | yes |
-| K47 | **Multi-vendor and the platform layer** (9.P; Stage 10 section 12) | not started | `platform.DIALECTS` holds two Cisco dialects | Stage 10 | | L | — | yes |
+| K47 | **Multi-vendor and the platform layer** (9.P; Stage 10 section 12) | not started | `platform.DIALECTS` holds two Cisco dialects | Core 1.0 for the contract and the Cisco dialects on it (design after Lab 8, the move after Lab 9); Stage 10 for EOS (section 6, the operator, 2026-10-19) | | L | — | yes |
 | K48 | **gunicorn behind nginx** (9.S; Stage 10 section 4.1) | not started | `app.py:630` runs Werkzeug | Stage 10 | | M | — | yes |
 | K49 | **Docker and the install script** (Stage 10 section 1) | not started | systemd units only (`deploy/systemd/`) | Stage 10 | | L | — | yes |
 | K50 | **The first-run wizard** (Stage 10 section 5) | not started | — | Stage 10 | | L | — | yes |
@@ -347,6 +347,14 @@ C1330's pool comes after the Lab 8 plan. K7's feature packs move up for the expa
 (areas, ABR), RIPv2 and redistribution first, with RIPv2 added to the starter list. The surveys
 and measurements the handout needs come first, then a plan for each lab, stopped and reported
 before anything runs on the lab's devices. Core items fill only time the labs do not need.
+**Multi-vendor (the operator, 2026-10-19; Mercury must not force Cisco, like IPv6):** after Lab 8,
+the dialect contract's design and a scan of the Cisco strings outside it (docs/LAB8_LAB9_PLAN.md
+section 9); after Lab 9, IOS and IOS-XE moved onto the contract, a Core 1.0 item; EOS sized after
+the contract, at Stage 10. NAPALM only as read functions behind the contract, never a transport
+for what is confirmed (C1352). K47 is split accordingly. **Joining Core 1.0 after Lab 8 (the
+operator, 2026-10-19):** C1407 (NetBox's leaving half), C1410 (DHCP for bootstrap only) and C1412
+(ZTP's just-in-time parent-port relay); C1413 (site management networks) goes with the edge kit.
+The time box is not recomputed for these until the first four's re-forecast.
 
 **Plus no open A or B:** the A and B rows left after the re-ranking (A 3: C139, C551, C552; B
 14). Each is folded into a capability above, or closed on its own: C7, C230, C472, C554, C556,

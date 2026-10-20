@@ -241,7 +241,8 @@ server on its own `/24` (D3 derives that address from the interface Kea
 serves the subnet on), so it needs neither.
 
 **D4 restated for relayed subnets (the operator, 2026-10-19, Labs 8 and 9; it applies ONLY if
-the relayed-ZTP proof, docs/LAB8_LAB9_PLAN.md step 0d, shows AutoInstall needs it).** A device
+the relayed-ZTP proof, docs/LAB8_LAB9_PLAN.md step 0d, shows AutoInstall needs it; 0d showed
+that it does, 2026-10-19, docs/RELAY_PROBE.md "Results", so it is in force).** A device
 behind a relay reaches the config server off its own subnet, so on a RELAYED ZTP subnet option 3
 (`routers`) is allowed as the relay's own interface address (the subnet's giaddr) and nothing
 else. Option 6 (`domain-name-servers`) is still never sent. D4's second condition (nothing on the

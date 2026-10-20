@@ -48,8 +48,8 @@ operator's lab tooling; **C** is code to build first.
 | 0a | Retirement completeness: every per-device artefact removed or archived, each with a planted leftover test (C1332 to C1342) | C | **built** (73770853, deployed) | L | done 10-19 |
 | 0b | The device-name scan with its exact inventory (the lifecycle rule) | C | **built** (fa322848, deployed) | M | done 10-19 |
 | 0c | Feature packs for OSPF (areas, ABR), RIPv2 and redistribution, rendered from intent for IOS and IOS-XE, with round trips on captured configs | C | **built** (K7's commit, 10-19); IOS-XE 17's display of `subnets` unmeasured | L | done 10-19 |
-| 0d | The relayed-ZTP proof on a throwaway pair (a relay node, a configless C8000v behind it, with and without option 3) | L/measure | no | M | 10-20 (not run on the night of 10-19: s3's gaps were already widening, and the pair adds about 3.7 CPUs of the emulation work they follow; it also needs hand changes to the live Kea, the firewall and a route on the NMAS host) |
-| 0e | Relayed ZTP in Mercury: the plan and writer for a relayed subnet (server address, a fragment per relayed subnet, option 3 as the relay's own address if 0d needs it, the DNS check on the relayed path), and the firewall's udp/69 rule widened by a host step (C1346) | C | no | M to L | 10-20 to 10-21 |
+| 0d | The relayed-ZTP proof on a throwaway pair (a relay node, a configless C8000v behind it, with and without option 3) | L/measure | **done** 10-19, 20:57 to 23:18 UTC, through Mercury's own path (docs/RELAY_PROBE.md, "Results"): relayed ZTP works and **needs option 3, the relay's own address**; without it DHCP through the relay completes and the device never asks for its file. Its costs registered: C1399 to C1405 | M | done 10-19 (deferred from the night before: s3's gaps were widening; run with s3's gap rate under its 6.5% gate before and after) |
+| 0e | Relayed ZTP in Mercury: the plan and writer for a relayed subnet (server address, a fragment per relayed subnet, option 3 as the relay's own address if 0d needs it, the DNS check on the relayed path), and the firewall's udp/69 rule widened by a host step (C1346) | C | **built** (5920f15d; its cards compared with boards E and C in 13b50e30; deployed and run in 0d): Add device's Route option (3), DHCP › Add a subnet's For ZTP onboarding. Before R6's run: C1403 (an old lease blocks a redone onboarding), C1404 (a deploy leaves the ZTP responder on old code), C1400 (a transient first-contact key) | M to L | done 10-19 |
 | 0f | NetBox on add: after a device's intent is deployed, its record brought up to the golden through Import's preview and confirm; cables from both ends' LLDP (C1344) | C | **built** (0f's commit, 10-19; not deployed): the device tab's one-device Import into NetBox…, a Needs attention row while NetBox holds less than the golden, cables from the Topology reader's stored LLDP | M | done 10-19 |
 | 0g | DROPPED (the operator, 2026-10-19): a lab node is never restarted by containerlab or docker (lab/REDEPLOY.md), so there is nothing to measure | | | | |
 | 1 | r6 retired through the GUI (Device page › Retire), then its separate lab (`clab-r6`) destroyed | M, then L | retire built; completeness is 0a | S | 10-22 |
@@ -414,7 +414,9 @@ Lab 8.
 2. **D4 restated for relayed subnets, only if 0d shows AutoInstall needs it.** Option 3 is
    allowed as the relay's own interface address and nothing else. Option 6 is never sent. D4's
    second condition is checked on every relayed segment by the job-health row. Recorded in
-   docs/P6_ZTP.md under D4.
+   docs/P6_ZTP.md under D4. **0d showed that AutoInstall needs it (2026-10-19, docs/RELAY_PROBE.md),
+   so the allowance is in force for relayed subnets:** Lab 8's R6 and R7 are added with Route
+   option (3) "The relay's own address".
 3. **R4:** `containerlab restart -n r4` if 0g proves R4 comes up alone with its new link. If a
    full redeploy is needed, it is done the evening before the build day in a 60-minute window,
    with the nine host keys re-keyed through the GUI. **Not r5's interface:** R4–R5 is the lab's
