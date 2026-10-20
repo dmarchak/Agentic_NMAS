@@ -4,7 +4,8 @@ Retiring takes a device out of management completely, in one recorded act, keepi
 history. It is the only way a device leaves: deleting a row would leave it half-managed and
 destroy the only stored copy of its credential. It also frees the device's name: a new device
 given the same name later inherits nothing of the old one (no restore point, receipt, block,
-queued item, policy, template, map place, heartbeat rule, reservation or NetBox record).
+queued item, policy, template, map place, heartbeat or telemetry rule, reservation or NetBox
+record).
 Retiring sends nothing to the device; it changes the tool's own records, Kea's reservations
 and NetBox's record of the device.
 
@@ -134,12 +135,23 @@ finished by running it again:
     its place on the arranged map removed, each in the Topology's own log, which History
     reads.
 11. **Its heartbeat rule** (`heartbeat`). Read: the generated heartbeat rules (the file
-    written for installing, else the one Grafana loads). Sent: nothing. Recorded: the rules
-    file written without the device's rule where a re-measure writes it, with who and why
-    beside the re-measures, and the result names the one host step that installs it; until
-    then the hourly check names the rule EXTRA. The only rule in the file is not removed (a
-    file with no rules reads like a healthy fleet), and the preview says so.
-12. **Its NetBox record** (`netbox_record`). Read: Mercury's created-object record and the
+    written for installing, else the one Grafana loads), and Grafana's own rules. Sent:
+    nothing. Recorded: the rules file written without the device's rule where a re-measure
+    writes it, with who and why beside the re-measures, and a delete file beside it naming the
+    rule (Grafana keeps a rule its file dropped unless a file names it for deletion, C1419);
+    the result names the one host step that installs both and proves the rule gone. Until then
+    the hourly check names the rule EXTRA. When no rules file names the device but Grafana
+    still runs its rule, the delete file alone is the work. The only rule in the file is not
+    removed (a file with no rules reads like a healthy fleet), and the preview says so.
+12. **Its telemetry rules** (`telemetry`). Read: the generated telemetry rules (the file
+    written for installing, else the one Grafana loads), and Grafana's own rules. Sent:
+    nothing. Recorded: the rules file written without the device's rules (one per
+    subscription), and a delete file beside it naming them (C1419); the result names the host
+    step that installs both, `c1419-install-alert-rules.sh telemetry`. When no rules file names
+    the device but Grafana still runs its rules, the delete file alone is the work. When the
+    device's rules are the file's only rules, the file is not written without them (the
+    generator never writes an empty population), and the preview says so.
+13. **Its NetBox record** (`netbox_record`). Read: Mercury's created-object record and the
     NetBox device. Sent: nothing to the device; to NetBox, with writes allowed, the record
     set to Decommissioning and renamed `<device>-retired-<id>` through the tool's write gate,
     its before recorded, then read back. NetBox keeps a device's name unique in its site and
@@ -148,12 +160,12 @@ finished by running it again:
     reports). Recorded: Mercury's created-object entry marked retired, kept with its id and
     never matched by name again. With NetBox writes off, the record is not changed and the
     preview says so: the name stays taken in NetBox until it is renamed there.
-13. **The legacy file** (`legacy`). Read: the deprecated `golden_configs/` store and the
+14. **The legacy file** (`legacy`). Read: the deprecated `golden_configs/` store and the
     repository. Sent: nothing. Recorded: the device's legacy file deleted, only when its
     content survives in the repository (the migration's verbatim backup or an equivalent
     committed golden), and the step says where. A file whose lines exist nowhere else is
     kept and named.
-14. **The SSH host key** (`host_key`). Read: the tool's record of SSH host keys, and every
+15. **The SSH host key** (`host_key`). Read: the tool's record of SSH host keys, and every
     network's inventory and onboarding record. Sent: nothing. Recorded: the key the tool kept
     for the device's address (see [Re-key](rekey#every-session)) is forgotten: it moves into
     the record's history with when, who and why ("r5 retired by you: your reason"), and the
@@ -162,7 +174,7 @@ finished by running it again:
     When another device in any network has the same address, the key is still that device's:
     it is KEPT, and the preview says so naming both devices. Before the row, so a run that
     stops here can be run again.
-15. **The inventory row** (`row`). Read: the break-glass basis again. Sent: nothing.
+16. **The inventory row** (`row`). Read: the break-glass basis again. Sent: nothing.
     Recorded: the device's row deleted from the list's inventory. LAST, and only against a
     break-glass record holding this device's current credential, because the row is the
     only stored copy. Deleting it also tells the app's Prometheus target keeper the
@@ -211,8 +223,10 @@ drops at its next regeneration, and the card says when:
   installs both, restarts Grafana, proves the rule gone and every other rule running, and
   removes the delete file. When no rules file names the device but Grafana still runs its
   rule, the step names it for deletion alone. The hourly check names it EXTRA until then.
-  Its telemetry rules leave the same way when `nmas-telemetry-rules` is run after the
-  retirement and its file installed with `c1419-install-alert-rules.sh telemetry`.
+- Its Grafana telemetry rules, one per subscription: retiring removes them from the generated
+  telemetry rules file (step 12) and names them in its delete file, and the host step
+  (`c1419-install-alert-rules.sh telemetry`) installs both; the hourly telemetry check names
+  them EXTRA until then.
 
 **What survives**, each with how it is removed:
 

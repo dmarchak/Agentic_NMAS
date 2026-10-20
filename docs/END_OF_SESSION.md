@@ -28,9 +28,10 @@ NetBox, or on the lab host. No Copilot pytest run appeared (checked before every
 4. **The Planned-record decision (due Thursday, the plan's item 8).** **Recommend:** no Planned
    records for the build. If the video should show NetBox declaring R6 first, fix C1421 (Verify
    leaves the record Planned) before Friday; it is S.
-5. **C1419 part 2** (Retire's own telemetry step): not built tonight. **Recommend:** build it
-   before Friday (M). Until then, after each retirement: `nmas-telemetry-rules`, then the
-   install step for telemetry.
+5. **C1419:** both parts are built. Part 2 is Retire's own `telemetry` step, deployed with the
+   last commit. What remains is the install step's first real run (yours, sudo; host step 1
+   below). **Recommend:** run it after R6's onboarding, so Friday's rehearsal retires R6 and R7
+   through a path that has run once.
 6. **H5's VLAN 10:** drafted as a dot1Q subinterface on R7 (`Gi3.10`) with H5 tagging.
    **Recommend** that over untagged Gi3, so VLAN 10 is on the wire as the NetBox VLAN says.
 7. **NetBox:** grant C1424's view permissions (IP ranges, VLAN groups, racks, locations,
@@ -65,10 +66,12 @@ destination 10.255.1.10/32 holds 10.255.1.10, an address of this host (the manag
 - **C1428** (search and jump in the editor): not started. The Intent tab's template is under
   the board-fidelity check, so a change means comparing its regions again; that is past S for
   a C item at the end of the night.
-- **C1419 part 2:** not built (decision 5).
-- The gate refused twice, each fixed forward, never twice on one cause:
+- **C1419 part 2:** built after the first report was written (decision 5).
+- The gate refused three times, each fixed forward, never twice on one cause:
   - the C1423 commit (a homelab address in the register);
-  - the C1419 commit (the device-name scan read "r6" in a module docstring).
+  - the C1419 commit (the device-name scan read "r6" in a module docstring);
+  - the docs commit (a publication exemption added, which the ratchet check refuses; the drafts
+    now hold a placeholder instead).
 
 ### 4. Host steps queued for the operator (each with its PASS line)
 

@@ -104,8 +104,8 @@ class RetireRefused(Exception):
 #: Every step retirement can take, in the order `apply` runs them: `plan()["steps"]`'s keys.
 #: The manual's page names each (tests/test_manual.py reads this tuple).
 STEPS = ("netbox_mask", "override", "staged", "reservations", "leases", "commit", "tags",
-         "rolled_back", "approvals", "rotation_policy", "topology", "heartbeat", "netbox_record",
-         "legacy", "host_key", "row")
+         "rolled_back", "approvals", "rotation_policy", "topology", "heartbeat", "telemetry",
+         "netbox_record", "legacy", "host_key", "row")
 
 #: The namespace a retired device's golden tags are archived under:
 #: ``retired/<device>/<identity>/<the tag's time>``. Never listed as a restore point.
@@ -386,6 +386,13 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
         step("heartbeat", hb["step"], hb["done"])
     if hb.get("work"):
         work["heartbeat"] = hb["work"]
+    # Its telemetry rules (C1419 part 2): the same, from the generated telemetry rules. Never
+    # refuses either: an unreadable file is said in what still watches it.
+    tel = _telemetry_facts(hostname)
+    if tel.get("step"):
+        step("telemetry", tel["step"], tel["done"])
+    if tel.get("work"):
+        work["telemetry"] = tel["work"]
     # Its NetBox record and Mercury's created-object entry (C1342).
     nbr = _netbox_record_facts(list_name, hostname, nb)
     take("netbox_record", nbr)
@@ -432,7 +439,7 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
     out["not_doing"] += [n for n in (mask.get("not_doing"), legacy.get("not_doing")) if n]
     # Board 12: what is GENERATED is dropped at its next regeneration, said with when; what
     # SURVIVES is named with how it is removed. Both are the commit's Not-Done trailers too.
-    watchers = _watchers(hostname, ip, list_name, hb)
+    watchers = _watchers(hostname, ip, list_name, hb, tel)
     out["generated"] = [w for w in watchers if w["kind"] == "generated"]
     out["survives"] = [w for w in watchers if w["kind"] == "survives"]
     if nb.get("checked") and nb.get("exists"):
@@ -851,6 +858,50 @@ def _heartbeat_facts(hostname: str) -> dict:
     return got
 
 
+def _telemetry_rules_path(tel) -> str:
+    """Where the telemetry generator writes its rules: on the host, never committed. A seam,
+    so a test reads a real rules document instead of the checkout's."""
+    return tel.OUT
+
+
+def _telemetry_installed_path() -> str:
+    """Where Grafana loads the telemetry rules from. A seam, so a test never reads the host's."""
+    from modules import telemetry_rules as TR
+
+    return TR.INSTALLED
+
+
+def _telemetry_facts(hostname: str) -> dict:
+    """Its Grafana telemetry rules (C1419 part 2): removed from the generated rules file and
+    named in its delete file (`telemetry_rules.drop_plan`), installed by the host step the plan
+    names. ``state`` is drop_plan's; ``names`` and ``grafana`` are steps to do."""
+    from modules import telemetry_rules as TR
+
+    try:
+        tel = TR._script()                                     # noqa: SLF001 - the one loader
+        got = TR.drop_plan(hostname, T=tel, written_path=_telemetry_rules_path(tel),
+                           installed_path=_telemetry_installed_path())
+    except Exception as exc:                   # noqa: BLE001 - said in what watches it
+        return {"state": "unreadable", "error": f"{type(exc).__name__}: {exc}"}
+    uids = ", ".join(got["uids"])
+    if got["state"] == "names":
+        return dict(got, step=(
+            f"remove its {got['rules']} Grafana telemetry rule(s) ({uids}) from the generated "
+            f"rules file {got['written_path']} and name them in its delete file (C1419); the "
+            f"host step installs both: {got['host_step']}"), done=False,
+            work={"fingerprint": got["fingerprint"]})
+    if got["state"] == "grafana":
+        return dict(got, step=(
+            f"delete its Grafana telemetry rule(s) {uids}, which Grafana still runs though no "
+            f"generated rules file names them (C1419): a delete file is written beside "
+            f"{got['written_path']}; the host step installs it: {got['host_step']}"),
+            done=False, work={"fingerprint": got["fingerprint"]})
+    if got["state"] == "none":
+        return dict(got, step="no generated telemetry rule names it (the rules file was read)",
+                    done=True)
+    return got
+
+
 def _netbox_record_facts(list_name: str, hostname: str, nb: dict) -> dict:
     """Its NetBox record and Mercury's created-object entry (C1342; the operator's ownership
     plan, C556). The record is set to Decommissioning and RENAMED ``<h>-retired-<id>``, kept:
@@ -1060,7 +1111,8 @@ def _heartbeat_rules_path(hb) -> str:
     return hb.OUT
 
 
-def _watchers(hostname: str, ip: str, list_name: str = "", hb: dict = None) -> list:
+def _watchers(hostname: str, ip: str, list_name: str = "", hb: dict = None,
+              tel: dict = None) -> list:
     """What still watches the device after it leaves, each ``{"kind", "what", "how"}``:
     GENERATED (the tool regenerates it from what retire removes, so it is dropped at the next
     regeneration, said with when) or SURVIVES (nobody regenerates it: named with how it is
@@ -1105,6 +1157,37 @@ def _watchers(hostname: str, ip: str, list_name: str = "", hb: dict = None) -> l
         item("generated", "its Grafana heartbeat rule",
              f"the generated rules file could not be read ({hb.get('error')}), so whether one "
              "names it is unknown")
+    tel = _telemetry_facts(hostname) if tel is None else tel
+    tstate, tuids = tel.get("state"), ", ".join(tel.get("uids") or [])
+    if tstate == "names":
+        item("generated", f"its Grafana telemetry rules ({tuids})",
+             f"removed by this retirement from the generated rules file "
+             f"({tel['written_path']}) and named in its delete file (C1419); Grafana deletes "
+             f"them once the host step installs both ({tel['host_step']}), and until then the "
+             "hourly telemetry check names them EXTRA")
+    elif tstate == "grafana":
+        item("generated", f"its Grafana telemetry rules ({tuids})",
+             "Grafana still runs them though no generated rules file names them; this "
+             f"retirement names them in a delete file beside {tel['written_path']} (C1419), "
+             f"and Grafana deletes them once the host step installs that ({tel['host_step']})")
+    elif tstate == "none":
+        item("generated", "its Grafana telemetry rules",
+             "none names it (the generated telemetry rules file was read)")
+    elif tstate == "last":
+        item("generated", f"its Grafana telemetry rules ({tuids})",
+             "they are the only rules in the generated file, and the generator never writes an "
+             "empty population, so the file is not written without them: the hourly telemetry "
+             "check names them EXTRA until another device streams")
+    elif tstate == "absent":
+        item("generated", "its Grafana telemetry rules",
+             f"generated from committed goldens, which leave with this commit; neither the "
+             f"generated rules file ({tel.get('written_path')}) nor the installed one "
+             f"({tel.get('installed_path')}) is here, so whether one names it is unknown: "
+             "`nmas-telemetry-rules`, then its install step, removes any")
+    else:
+        item("generated", "its Grafana telemetry rules",
+             f"the generated telemetry rules file could not be read ({tel.get('error')}), so "
+             "whether one names it is unknown")
     try:
         from modules import prometheus_targets
 
@@ -1353,7 +1436,8 @@ STEP_WORDS = {"netbox_mask": "NetBox's copy masked", "override": "Overrides clea
               "commit": "Intent and golden removed", "tags": "Golden tags archived",
               "rolled_back": "Rollback block archived", "approvals": "Queue items withdrawn",
               "rotation_policy": "Rotation policies updated", "topology": "Topology entries removed",
-              "heartbeat": "Heartbeat rule removed", "netbox_record": "NetBox record retired",
+              "heartbeat": "Heartbeat rule removed", "telemetry": "Telemetry rules removed",
+              "netbox_record": "NetBox record retired",
               "legacy": "Legacy file deleted", "host_key": "SSH host key forgotten",
               "row": "Inventory row deleted"}
 
@@ -1651,6 +1735,24 @@ def apply(list_name: str, hostname: str, *, reason: str, actor: str,
             done.append("heartbeat")
         except Exception as exc:               # noqa: BLE001
             return fail("heartbeat", exc)
+
+    if "telemetry" in pending:
+        from modules import telemetry_rules as TR
+
+        try:
+            tel = TR._script()                                 # noqa: SLF001 - the one loader
+            got = TR.drop_device(hostname, (work.get("telemetry") or {}).get("fingerprint", ""),
+                                 T=tel, written_path=_telemetry_rules_path(tel),
+                                 installed_path=_telemetry_installed_path())
+            if not got["ok"]:
+                raise RuntimeError(got["error"])
+            advisories.append("its telemetry rules left the generated rules file and are named "
+                              "in its delete file (C1419); Grafana deletes them once the host "
+                              f"step installs both: {got['host_step']}"
+                              + (f". {got['deletes_said']}" if got.get("deletes_said") else ""))
+            done.append("telemetry")
+        except Exception as exc:               # noqa: BLE001
+            return fail("telemetry", exc)
 
     if "netbox_record" in pending:
         try:

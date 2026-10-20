@@ -46,6 +46,9 @@ def lab(tmp_path, monkeypatch):
     monkeypatch.setattr(RT, "_dhcp_held", lambda l: list(state["held"]))
     monkeypatch.setattr(RT, "_heartbeat_rules_path", lambda hb: str(tmp_path / "written.yaml"))
     monkeypatch.setattr(RT, "_heartbeat_installed_path", lambda: str(tmp_path / "installed.yaml"))
+    monkeypatch.setattr(RT, "_telemetry_rules_path", lambda tel: str(tmp_path / "tel-written.yaml"))
+    monkeypatch.setattr(RT, "_telemetry_installed_path",
+                        lambda: str(tmp_path / "tel-installed.yaml"))
     monkeypatch.setattr("modules.credentials.has_device_override",
                         lambda ip: ip in state["overrides"])
     monkeypatch.setattr("modules.credentials.clear_device_override",
@@ -534,6 +537,52 @@ class TestHeartbeatRule:
                              installed_path=str(lab["tmp"] / "installed.yaml"))
         assert not got["ok"] and "moved since the preview" in got["error"]
         assert not (lab["tmp"] / "written.yaml").exists()
+
+
+# ----------------------------------------------------------------------------- C1419 part 2
+
+def _tel_rules(path, devices):
+    """A telemetry rules document as the generator writes it: subscriptions 101 and 102 per
+    device, each rule labelled with its device and carrying its uid."""
+    from modules import telemetry_rules as TR
+    rules = [{"uid": f"{TR.device_prefix(d)}{s}", "title": f"NMAS telemetry stream lost: {d} "
+              f"subscription {s}", "labels": {"device": d, "subscription": s}}
+             for d in devices for s in ("101", "102")]
+    path.write_text(yaml.safe_dump({"apiVersion": 1, "groups": [
+        {"orgId": 1, "name": "nmas-telemetry", "folder": "NMAS", "rules": rules}]}))
+
+
+class TestTelemetryRules:
+    """Retire's telemetry step (C1419 part 2): a retired device's telemetry rules outlived it
+    (Lab 8 step 1), since nothing ran the generator after its golden left and Grafana keeps a
+    rule its file dropped. The step drops them from the generated file and names them in its
+    delete file, as the heartbeat step does."""
+
+    def test_the_rules_leave_the_file_and_are_named_for_deletion(self, lab, monkeypatch):
+        from modules import grafana_rule_deletes as GD
+        monkeypatch.setattr(GD, "live_uids", lambda prefix, client=None: (None, "not asked"))
+        _tel_rules(lab["tmp"] / "tel-installed.yaml", [OTHER, HOST])
+        p = RT.plan("Lab", HOST, REASON)
+        what = _step(p, "telemetry")["what"]
+        assert f"remove its 2 Grafana telemetry rule(s) (nmas-tel-{HOST}-101, " \
+               f"nmas-tel-{HOST}-102)" in what
+        assert f"c1419-install-alert-rules.sh telemetry {lab['tmp'] / 'tel-written.yaml'} " in what
+        _p, out = _retire()
+        assert "telemetry" in out["done"], out
+        doc = yaml.safe_load((lab["tmp"] / "tel-written.yaml").read_text())
+        assert {r["labels"]["device"] for g in doc["groups"] for r in g["rules"]} == {OTHER}
+        deletes = yaml.safe_load((lab["tmp"] / "tel-written-delete.yaml").read_text())
+        assert [d["uid"] for d in deletes["deleteRules"]] == [f"nmas-tel-{HOST}-101",
+                                                             f"nmas-tel-{HOST}-102"]
+        assert any("Grafana deletes them once the host step installs both" in a
+                   for a in out["advisories"])
+
+    def test_no_file_names_it_and_grafana_runs_none_is_no_step(self, lab, monkeypatch):
+        from modules import grafana_rule_deletes as GD
+        monkeypatch.setattr(GD, "live_uids", lambda prefix, client=None: (set(), ""))
+        _tel_rules(lab["tmp"] / "tel-installed.yaml", [OTHER])
+        p = RT.plan("Lab", HOST, REASON)
+        assert not [s for s in p["steps"] if s["key"] == "telemetry" and not s["done"]]
 
 
 # ----------------------------------------------------------------------------- C1339

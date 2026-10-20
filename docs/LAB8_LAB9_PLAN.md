@@ -486,11 +486,11 @@ Lab 8.
    Friday 10-23 the rehearsal retires R6 and R7 and adds them again (ZTP, intent, Verify, H5
    reaching 8.8.8.8); Saturday 10-24 recorded live. The break-glass export after R6 and R7 are
    verified and before Friday (item 9). The Planned-record decision (item 8) is due Thursday.
-   State on 10-20: C1418 and C1420 fixed and deployed; C1419's first half built (a delete file
-   beside each generated rules file, and one install step, `c1419-install-alert-rules.sh`,
-   replacing the per-device stopgap once its first real run passes); Retire's own telemetry step
-   is still to build. Until then, after each retirement: `nmas-telemetry-rules`, then the
-   install step for telemetry.
+   State on 10-20: C1418 and C1420 fixed and deployed. C1419 is built in both halves: a delete
+   file beside each generated rules file, Retire's heartbeat and telemetry steps writing it, and
+   one install step, `c1419-install-alert-rules.sh`, which replaces the per-device stopgap once
+   its first real run passes (after R6's onboarding). After each retirement, that install step
+   for heartbeat and for telemetry.
 13. **(2026-10-20) Lab 9's order:** Lab 8's build first; then the vIOS-L2 configless AutoInstall
    measurement (0a, which sizes 0b); then the action framework (docs/INTENT_AUTHORING_DESIGN.md
    A1 with "Enable OSPF on…"). "Connect two devices" (A4) is in Lab 9's video only if both A1

@@ -2994,7 +2994,11 @@ RETIRE_STEP_WORDS = {"netbox_mask": "masked the credentials NetBox held in its s
                                         "naming it (C1336)",
                      "topology": "removed its Topology declaration and arranged place (C1341)",
                      "heartbeat": "removed its Grafana heartbeat rule from the generated rules "
-                                  "file; its host step installs it (C1338)",
+                                  "file and named it for deletion; its host step installs both "
+                                  "(C1338, C1419)",
+                     "telemetry": "removed its Grafana telemetry rules from the generated rules "
+                                  "file and named them for deletion; its host step installs "
+                                  "both (C1419)",
                      "netbox_record": "set its NetBox record to Decommissioning and renamed it, "
                                       "and marked Mercury's created-object entry retired "
                                       "(C1342)",

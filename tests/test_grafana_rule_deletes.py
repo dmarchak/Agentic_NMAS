@@ -127,6 +127,36 @@ class TestTheHeartbeatDrop:
         assert rule["uid"] == HW.device_uid("r6") == "nmas-hb-r6"
 
 
+class TestTheTelemetryDrop:
+    """C1419 part 2, Retire's telemetry step: the same states as the heartbeat drop."""
+
+    def _file(self, tmp_path, devices):
+        from modules import telemetry_rules as TR
+        return _write(tmp_path / "tel-installed.yaml", _doc(*[
+            _rule(d, uid=f"{TR.device_prefix(d)}{s}") for d in devices for s in ("101", "102")]))
+
+    def test_a_device_grafana_still_runs_that_no_file_names_is_a_step(self, tmp_path):
+        from modules import telemetry_rules as TR
+        installed = self._file(tmp_path, ["r1"])
+        p = TR.drop_plan("r6", written_path=str(tmp_path / "w.yaml"), installed_path=installed,
+                         live={"nmas-tel-r6-101", "nmas-tel-r1-101"})
+        assert p["state"] == "grafana" and p["uids"] == ["nmas-tel-r6-101"]
+        assert TR.drop_plan("r6", written_path=str(tmp_path / "w.yaml"),
+                            installed_path=installed, live=set())["state"] == "none"
+
+    def test_the_only_rules_are_never_dropped_to_an_empty_file(self, tmp_path):
+        from modules import telemetry_rules as TR
+        installed = self._file(tmp_path, ["r6"])
+        p = TR.drop_plan("r6", written_path=str(tmp_path / "w.yaml"), installed_path=installed,
+                         live=set())
+        assert p["state"] == "last" and p["rules"] == 2
+
+    def test_its_uid_prefix_is_the_generators(self):
+        from modules import telemetry_rules as TR
+        T = TR._script()                                       # noqa: SLF001 - the one loader
+        assert T.rule_for("r6", "101", "u")["uid"].startswith(TR.device_prefix("r6"))
+
+
 def _helper(*args):
     return subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "nmas-grafana-rules"),
                            *args], capture_output=True, text=True, timeout=60, cwd=ROOT)
