@@ -102,6 +102,13 @@ during one.
 
 ### Step 5b: C1432's measurement on R6, out of service [DEVICE: R6] (the operator, 10-20)
 
+**SKIPPED (2026-10-20 18:3x UTC): it cannot be undone cleanly through Mercury.** No Mode B
+shape exists for an `ip helper-address`, an `ipv6 address` or a virtual interface's stanza, and
+a second `ntp server` is never offered for removal, because C1432 itself reads the profile's NTP
+server as its setting-key mate. **The alternative:** run the measurement on R6 at Friday's
+rehearsal, just before R6 is retired. Retirement then takes R6 away, so nothing needs removing.
+C1432's fix stays after Lab 8. The steps below are kept for that run.
+
 R6 carries no traffic yet, so it measures what the planner gets wrong about multi-valued
 commands (C1432: it reads a new value as REPLACING the old, while IOS keeps both). Values are
 documentation addresses that reach nothing.
@@ -151,12 +158,13 @@ If a plan asks for one anyway, stop and read it before confirming.
 - **Repair route:** R6's console. Gi2 keeps `ip address dhcp` exactly as the bootstrap left it
   (the operator, 2026-10-20: switching the management interface from DHCP to static
   mid-session would change the path the tool reaches R6 on). Its address, 10.255.4.2, is
-  Kea's reservation, and its default route is the lease's option 3 (10.255.4.1, distance 254).
-  After this step OSPF's default from R4 (E2, distance 110, the same next hop) is preferred.
-  The draft does not touch Gi2's
-  address, the vty lines, SSH or the account.
-- R6's page › Intent › **Seed intent…** (bootstrap-only intent is seeded from the capture first). Then paste
-  section 4's sections over the seed's, removing the traps it names. Commit. Plan a deploy.
+  Kea's reservation. The bootstrap also wrote a static `ip route 0.0.0.0 0.0.0.0 10.255.4.1`
+  (read in R6's capture at 18:31 UTC), which stays: distance 1, so it remains R6's default
+  after OSPF's E2 default from R4 arrives (the same next hop). The draft does not touch Gi2's
+  address, the static default, the vty lines, SSH or the account.
+- R6's page › Intent › **Seed intent…**, commit. Then edit the SEED IN PLACE (section 4's
+  "Step 6 as edits to the seed"); never replace the seed's Gi2 entry, which holds
+  `ipv4: dhcp` and the DHCP client-id line. Commit. Plan a deploy.
 - **Expected preview:**
   - Loopback0 created;
   - Gi3 addressed, with its helper, RIP and RIPng;
@@ -397,20 +405,40 @@ capture on the Intent tab, then replace or add the sections below. Leave unchang
 the seed holds for:
 - **Gi1** (vrnetlab's management passthrough);
 - **Gi2's `ipv4: dhcp`**, the management path from the bootstrap: R6 is reached at its leased
-  address (Kea's reservation, 10.255.4.2) and takes its default route from the lease (option 3,
-  10.255.4.1). No static address or route stands for either (corrected 2026-10-20, the
-  operator: the draft had written the address static, a mid-session change of the management
-  path). R6's management therefore rests on its lease renewing through R4's relay. Kea's
+  address (Kea's reservation, 10.255.4.2), and its default route is the bootstrap's static
+  `ip route 0.0.0.0 0.0.0.0 10.255.4.1` (the seed's `static_routes`; read in the capture
+  18:31 UTC). Both stay as they are (corrected 2026-10-20, the operator: the draft had written
+  the address static, a mid-session change of the management path). R6's management therefore rests on its lease renewing through R4's relay. Kea's
   reservation keeps the address, and C1410 (DHCP for bootstrap only) is the Core 1.0 answer;
 - **the vty lines, SSH and the account** onboarding made.
 
 Monitoring comes from Default's profile, so it is NOT in the draft: NTP, SNMP, syslog with
 heartbeat, telemetry, LLDP, IP SLA and the Loopback0 source interfaces (read 2026-10-20).
 
+**Step 6 as edits to the seed** (written 2026-10-20 18:3x UTC from R6's capture after
+onboarding: Gi2 `ip address dhcp` with `ip dhcp client client-id ascii <serial>`; Loopback0, Gi1
+and Gi3 each `no ip address`, no `shutdown` on any; the static default via 10.255.4.1; the
+profile's lines; no `cdp run`, `ipv6 unicast-routing` or `netconf-yang`):
+- **Loopback0:** delete the seed's `no_ip_address: true` (C1429 refuses it beside an address);
+  add `description`, `ipv4`, `ipv6` and `ospfv3` as drafted below.
+- **Gi2:** leave `ipv4: dhcp`, the client-id line and every other seed key; change only the
+  `description`, and add `ipv6` and `ospfv3` as drafted.
+- **Gi3:** delete the seed's `no_ip_address: true`; add `description`, `ipv4`, `ipv6`,
+  `helper_addresses`, `ripng` and `no_shutdown: true` as drafted (Gi3 is not shut, so
+  ` no shutdown` is held at its default and nothing is sent for it).
+- **Gi1:** unchanged.
+- **flags:** add `cdp run`, `ipv6 unicast-routing` and `netconf-yang` (the seed has `lldp run`).
+- **routing:** add the four blocks as drafted (the RIP `network` line copied from r2's intent).
+- **static_routes:** unchanged (the bootstrap's default).
+- **services and login:** unchanged (the seed's own).
+- **Expected plan:** additions only. Nothing under "Left on the device", and no authorisation
+  or declaration asked. Loopback0 now holds the address the profile's sources (logging, SNMP
+  traps, SSH, TFTP) point at.
+
 **Traps, each marked `# TRAP`:**
-- Gi3 on a configless C8000v prints ` no ip address` and ` shutdown`. The seed then holds
-  `no_ip_address: true` and `shutdown: true`. Both must be removed when the address and
-  `no_shutdown` are added (C1429 refuses the pairs once deployed).
+- Gi3 (and Loopback0) on R6 print ` no ip address` and no ` shutdown` (read 18:31 UTC). The
+  seed then holds `no_ip_address: true`, which must be removed when the address is added
+  (C1429 refuses the pair); there is no `shutdown` key to remove.
 - `redistribute rip subnets` prints as `redistribute rip` on 17.6 (r2's intent holds the
   printed form). Write the printed form, or every later plan sends it again.
 - The RIP `network` line is a placeholder (the public repository holds no lab address
@@ -452,7 +480,7 @@ interfaces:
   - RCN default-information originate
   negotiation: auto
   mop: [no mop enabled, no mop sysid]
-  no_shutdown: true                  # TRAP: remove the seed's shutdown: true
+  no_shutdown: true                  # the seed has no shutdown key on R6 (read 18:31)
 flags:
   cdp run: true
   ipv6 unicast-routing: true
@@ -495,18 +523,18 @@ login:
 - RIP is redistributed into OSPF (and RIPng into OSPFv3), and R6 originates a default into RIP
   and RIPng. Nothing is redistributed back into RIP.
 - R7 reaches everything by R6's default.
-- R6's own default comes from its DHCP lease (option 3, 10.255.4.1, distance 254) until step 6,
-  then from OSPF (R4's `default-information originate always`, E2, distance 110), with the same
-  next hop either way.
+- R6's own default is the bootstrap's static route via 10.255.4.1 (distance 1), which stays;
+  OSPF's E2 default from R4 arrives behind it with the same next hop.
 
 ---
 
 ## 5. R7's intent (draft, today's model)
 
-Applied the same way: seed, then these sections. Leave unchanged Gi1, Gi2's `ipv4: dhcp` (the
-bootstrap's; 10.255.4.6 by Kea's reservation, its default route the lease's option 3,
-10.255.4.5, which RIP's default from R6 replaces at distance 120 once R6 originates it), the vty
-lines, SSH and the account.
+Applied the same way: seed, then edits to the seed in place. Leave unchanged Gi1, Gi2's
+`ipv4: dhcp` (the bootstrap's; 10.255.4.6 by Kea's reservation) and its DHCP client-id line, the
+bootstrap's static default via 10.255.4.5 (as R6's holds, read 18:31; it stays preferred over
+RIP's default from R6, distance 120, with the same next hop), the vty lines, SSH and the
+account.
 
 **Traps:** Gi3, the dot1Q parent, carries no address: **keep its `no_ip_address: true`**
 (the device prints ` no ip address` on a parent without one, and dropping the key leaves that
@@ -543,7 +571,7 @@ interfaces:
   negotiation: auto
   mop: [no mop enabled, no mop sysid]
   no_ip_address: true                # KEEP: the parent has no address
-  no_shutdown: true                  # TRAP: remove the seed's shutdown: true only
+  no_shutdown: true                  # remove a seed shutdown: true if there is one (R6 had none)
 - name: GigabitEthernet3.10
   description: VLAN 10 - H5, 10.70.10.0/24 (DHCP through Kea, SLAAC)
   encapsulation: dot1Q 10

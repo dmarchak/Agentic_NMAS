@@ -24,4 +24,8 @@ row is named. A fix that ships closes nothing here; the review decides each line
 | 2026-10-20 | Add device (r6, step 5.3) | Gateway and Route option (3) ask for the same fact | the same address typed or chosen twice | C1439 |
 | 2026-10-20 | Add device › the bootstrap (r6, step 5.3) | Gi2's description says "manager is on this subnet" on a relayed device | a description that is wrong on the device | C1440 |
 | 2026-10-20 | Add device › the result (r6, step 5.3) | The reserve step read "(aa:bb:cc:00:04:06 -> ?)" while the row said "awaiting DHCP (10.255.4.2)"; Kea held the reservation complete | a doubt about the reservation, a read to settle it | C1441 |
+| 2026-10-20 | Device page left open across Verify (r6, step 5) | It kept "Pending onboarding: pending" after Verify promoted r6 | a stale page that looked current | C1443 |
+| 2026-10-20 | Device page header (r6, step 5) | "Onboarded 2 h ago" for a device created minutes earlier | a wrong age, a doubt | C1443 |
+| 2026-10-20 | Onboarding row (r6, step 5) | "fetched its config 12 times" in 6 s, each a reveal-audit record | a question whether something looped | C1444 |
+| 2026-10-20 | Step 5b, C1432's measurement on R6 | Not possible cleanly through Mercury: no Mode B shape for a helper, an IPv6 address or a virtual interface, and C1432 itself hides an extra NTP server from Mode B | a planned measurement skipped | C1432 |
 | 2026-10-20 | Device page left open across Retire (r6, step 1) | The open page did not switch to the retired view; a reload did | a stale page that looked live | C1418 (fixed) |
