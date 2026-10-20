@@ -92,7 +92,35 @@ during one.
   without an answer, M4), destroy R6's lab with `--cleanup` and deploy it again. Never a
   restart.
 
+### Step 5b: C1432's measurement on R6, out of service [DEVICE: R6] (the operator, 10-20)
+
+R6 carries no traffic yet, so it measures what the planner gets wrong about multi-valued
+commands (C1432: it reads a new value as REPLACING the old, while IOS keeps both). Values are
+documentation addresses that reach nothing.
+1. **[READ] Before:** R6's capture after Verify, masked: its `ntp server`, `logging host`,
+   `snmp-server host`, `ip helper-address` and `ipv6 address` lines (the agent reads them).
+2. R6's page › Intent › **Seed intent…**, commit.
+3. **Edit A** [DEVICE]: Gi3 `helper_addresses: [192.0.2.1]` and `ipv6: [2001:DB8:2:67::1/64]`;
+   top level `ntp_servers: [10.255.1.10, 192.0.2.123]` (a device's own list replaces the
+   profile's whole). Commit, plan (three lines added), confirm, Verify.
+4. **Edit B** [DEVICE]: the same three values changed to `192.0.2.2`,
+   `2001:DB8:2:67::9/64` and `192.0.2.124`. Commit, plan. **Record what the plan says under
+   "Left on the device"**: C1432 predicts nothing for the three old values. Confirm, Verify.
+5. **[READ] After:** R6's capture. C1432 predicts both values of each present: helper .1 and
+   .2, both IPv6 addresses, NTP .123 and .124. Each line is recorded in C1432.
+6. **Back to the bootstrap state:** Mode B cannot remove these lines (`global.ntp-server` is
+   unmeasured on IOS-XE, and no shape exists for a helper or an IPv6 address), so R6 goes back
+   by Friday's own path: a break-glass export first (it now holds R6), then Retire R6, then
+   `containerlab destroy -t lab8-r6.clab.yml --cleanup`, then step 5 again (the reservation
+   is made again by Add device). This is also the first real run of C1418, C1419 and C1420.
+
 ### Step 6: R6's full intent [DEVICE: R6]
+- **C1432 at this step:** R6's bootstrap renders none of the multi-valued lines (hostname,
+  account, domain, its Gi2 address and default route, SSH key, vty). NTP, logging host and
+  SNMP host arrive from Default's profile at onboarding, with the same values the draft
+  inherits (the draft sets none of them). The helper and the IPv6 addresses are new, with no
+  old value. So nothing is replaced, and C1432 does not bite, provided step 5b's "before" read
+  shows the profile's values. The agent reads R6's capture after step 5 to confirm.
 - **Repair route:** R6's console. The management address (10.255.4.2 on Gi2) and the
   bootstrap's default route stay exactly as onboarding left them. The draft does not touch Gi2's
   address, the vty lines, SSH or the account.
@@ -509,6 +537,10 @@ topology:
       binds:
         - ../lab/configs/host-net.sh:/etc/host-net.sh
       exec:
+        # VLAN 10 tagged on eth1, then DHCP on it by host-net.sh, as h1 and h3 run it
+        - ip link add link eth1 name eth1.10 type vlan id 10
+        - ip link set eth1 up
+        - ip link set eth1.10 up
         - sh -c "nohup /etc/host-net.sh h5 > /tmp/host-net.log 2>&1 &"
     br-r7h5:
       kind: bridge
@@ -526,17 +558,20 @@ topology:
 It is a draft: VLAN 10 tagged, DHCPv4 on `eth1.10`, SLAAC on `eth1.10`, Docker's default routes
 removed as for h1 to h4:
 ```sh
-  h5)    V4="10.70.10." ; V6="" ; VLAN=10 ;;     # SLAAC, no DHCPv6 (Lab 8)
-# … and before step 2, for a host with VLAN set:
-if [ -n "${VLAN:-}" ]; then
-  ip link show eth1.$VLAN >/dev/null 2>&1 || ip link add link eth1 name eth1.$VLAN type vlan id $VLAN
-  ip link set eth1.$VLAN up
-  sysctl -qw net.ipv6.conf.eth1/$VLAN.accept_ra=2 net.ipv6.conf.eth1/$VLAN.autoconf=1
-  IF=eth1.$VLAN
+  h5)    V4="10.70.10." ; V6="" ; IF=eth1.10 ;;   # VLAN 10 (lab8-h5 makes eth1.10); SLAAC
+# after the case:
+IF="${IF:-eth1}"
+# step 2: the same udhcpc retry loop h1 and h3 run, with $IF for eth1 in its four places
+# step 3, for a host with no V6 (SLAAC, no DHCPv6):
+if [ -z "$V6" ]; then
+  echo 1 > /proc/sys/net/ipv6/conf/$IF/accept_ra
+  echo 1 > /proc/sys/net/ipv6/conf/$IF/autoconf
+else
+  : # the dhcpcd block as it is, for h1 to h4
 fi
 ```
-Steps 2 and 3 of the script then use `$IF` (default `eth1`) in place of `eth1`, and skip the
-dhcpcd block when `V6` is empty. This is the smallest change that keeps h1 to h4 as they are.
+This is the smallest change that keeps h1 to h4 as they are: `IF` defaults to `eth1`, and
+their `V6` is set.
 
 ---
 
