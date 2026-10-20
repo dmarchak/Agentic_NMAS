@@ -52,6 +52,22 @@ its **Expected** output; anything else is a stop, and the step's owner says so.
 Times are UTC (yours, UTC−6, beside them). Nothing runs from 08:30 to 09:10 UTC, nor within
 75 minutes before 08:30 once the window is declared.
 
+**The order run (the operator's adjustments, 2026-10-20 ~19:40 UTC; first block until ~21:25
+UTC is A, C and B; D and E in a later block):**
+1. A1 the release, A2 R6's intent kept.
+2. A3 R7's subnet, A4 the firewall step, A5 Add device R7.
+3. **The break-glass export [YOU]**, before Retire: r6's credential was rotated at onboarding
+   (18:29) after the last export (10-19 23:15), and Retire's inventory-row step refuses
+   against a record that does not hold the current credential. Passphrase, `/dev/shm`, scp,
+   `rm`. **[ME]** confirms afterwards that the record covers r6 and r2.
+4. A6 Retire r6, A7 the C1419 install step (removal path).
+5. **C3 then C4 right after Retire, before A8:** the old R6, with the same MAC and its 7-day
+   lease, is gone before the new reservation exists.
+6. A8 Add device R6.
+7. C1 and C2: the new file, the patch, the hosts' script, the dry run.
+8. **B last** (B1 Save All, B2 the sync, B3 the pre-flight, B4 the files' mode), so the baseline
+   is taken with r6 already out. **B3 is run again at D time; anything newer then is a stop.**
+
 ### A. Before anything restarts
 
 **A1 [ME, on your go]. The release.** `nmas-deploy --wait` on the NMAS host: 3d26c7a2 (C1421,
