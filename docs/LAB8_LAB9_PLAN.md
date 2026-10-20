@@ -52,7 +52,7 @@ operator's lab tooling; **C** is code to build first.
 | 0e | Relayed ZTP in Mercury: the plan and writer for a relayed subnet (server address, a fragment per relayed subnet, option 3 as the relay's own address if 0d needs it, the DNS check on the relayed path), and the firewall's udp/69 rule widened by a host step (C1346) | C | **built** (5920f15d; its cards compared with boards E and C in 13b50e30; deployed and run in 0d): Add device's Route option (3), DHCP › Add a subnet's For ZTP onboarding. Before R6's run: C1403 (an old lease blocks a redone onboarding), C1404 (a deploy leaves the ZTP responder on old code), C1400 (a transient first-contact key) | M to L | done 10-19 |
 | 0f | NetBox on add: after a device's intent is deployed, its record brought up to the golden through Import's preview and confirm; cables from both ends' LLDP (C1344) | C | **built** (0f's commit, 10-19; not deployed): the device tab's one-device Import into NetBox…, a Needs attention row while NetBox holds less than the golden, cables from the Topology reader's stored LLDP | M | done 10-19 |
 | 0g | DROPPED (the operator, 2026-10-19): a lab node is never restarted by containerlab or docker (lab/REDEPLOY.md), so there is nothing to measure | | | | |
-| 1 | r6 retired through the GUI (Device page › Retire), then its separate lab (`clab-r6`) destroyed | M, then L | retire built; completeness is 0a | S | 10-22 |
+| 1 | r6 retired through the GUI (Device page › Retire), then its separate lab (`clab-r6`) destroyed | M, then L | **done** 10-20: retired by the operator ~06:38 UTC (5452e316, 16 steps green, the heartbeat host step PASS); every Mercury artefact read gone on the host; `clab-r6` destroyed with `--cleanup` 06:48. Left: Grafana's live rules for r6 (C1419, its stopgap host step), NetBox's `r6-retired-11` (deleted by the operator) | S | 10-20 |
 | 2 | R6 and R7 planned in NetBox as Planned devices, addresses from NetBox's prefixes (section 4) | M (NetBox) | NetBox's own screens; no Mercury screen plans a device | S | 10-22 |
 | 3 | R4's new link: the lab topology gains R4 GiN to R6 (host bridge br-r4r6) and R2 GiN to R8 (br-r2r8), the lab redeployed (lab/REDEPLOY.md), a planned-restart window declared first | L | the window is built; the redeploy's pre-flight passes | S to M | 10-22 |
 | 4 | R4's side deployed first: the area-10 interface and `ip helper-address` to Kea, through preview, confirm by hash and verify | M | built (intent edit, deploy); the area through the pack (0c) | S | 10-22 |
@@ -432,6 +432,30 @@ Lab 8.
 7. **Before the throwaway:** r5's spinning container (C1354) is restarted, not removed (R5 stays
    in the lab's topology), with its health check read before and after. 0d runs only if s3's gap
    rate is no worse than its 10-19 baseline, reported before and after.
-8. **Capacity:** VMs 201 to 203 are the operator's lab VMs for another course. Those sessions run
+8. **(2026-10-20) Step 2's path, and NetBox's Planned records.** For the build: no Planned
+   record; Verify's NetBox step creates R6's and R7's records, Active, from the bootstrap golden,
+   and 0f's Import brings each up to the deployed intent after step 6. For the video the
+   operator leans toward Planned records (NetBox declares R6 before it boots, then Planned →
+   Active) and decides by Thursday; Friday's rehearsal uses that path. **The difference, read in
+   the code:** Create reads a Planned record (its site, role, platform, tags, config context) and
+   Verify's NetBox step updates that same record (found by name AND site, so the Planned record
+   must be in the network's site, or a second device is created beside it); the update keeps
+   NetBox's role, site and platform and writes the interfaces, addresses and context from the
+   golden, but **never sets status**, so the record stays Planned after Verify (C1421, size S:
+   Verify sets a record it took over from Planned to Active through the write gate). With no
+   Planned record, the record is created Active. A Planned record is made in NetBox's own
+   screens; no Mercury screen plans a device.
+9. **(2026-10-20) Break-glass:** one export after R6 and R7 are verified, before Friday's
+   rehearsal (their retirement deletes their inventory rows only against a record holding their
+   current credentials). The operator types the passphrase.
+10. **(2026-10-20) What a re-add (Friday's rehearsal, Saturday's recording) needs that a first add
+   does not:** the R6/R7 lab destroyed with `--cleanup` before each re-add, so each boots
+   configless; the break-glass export above; a Planned record made again each time, if that path
+   is chosen (Retire leaves `<name>-retired-<id>` Decommissioning); C1418 (an open page switches
+   to the retired view), C1419 (Grafana keeps a retired device's rules; until its fix, the host
+   step `c1419-retired-device-rules.sh <device>` after each retirement) and C1420 (a re-added
+   name's History starts at its retirement) fixed before Friday; Verify waits 120 s after the
+   fetch (C1400), and Retire releases the device's leases (C1403).
+11. **Capacity:** VMs 201 to 203 are the operator's lab VMs for another course. Those sessions run
    only when the containerlab lab is quiet. The 1-vCPU C8000v lever is measured on r2 (never s3)
    when a window allows, keeping the 10 Mbit/s level in view.

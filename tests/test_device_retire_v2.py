@@ -157,6 +157,27 @@ class TestTheConfirm:
         assert head[:12] in page_html
         assert "/v2/history?device=r5" in page_html.replace("&amp;", "&")
 
+    def test_an_open_page_s_regions_reload_it_into_the_retired_view(self, exported,
+                                                                   monkeypatch, tmp_path):
+        """C1418 (Lab 8 step 1, r6): a page left open while its device was retired kept asking
+        for its regions and drew "Couldn't load this view" until reloaded. A region asked as
+        htmx asks, for a RETIRED device, now answers HX-Refresh; one for a name nothing ever
+        held still says it could not be found."""
+        _targets(monkeypatch, tmp_path, [("r4", "192.0.2.14")])
+        _r, card = _card(exported)
+        assert exported["client"].post("/v2/device/r5/retire/confirm",
+                                       data=_vals(card)).status_code == 200
+        for region in ("status", "overview", "actions"):
+            r = exported["client"].get(f"/v2/device/r5/{region}",
+                                       headers={"HX-Request": "true"})
+            assert r.status_code == 200 and r.headers.get("HX-Refresh") == "true", \
+                (region, r.status_code, dict(r.headers))
+            assert r.headers.get("Content-Security-Policy"), "the strict policy on every answer"
+        plain = exported["client"].get("/v2/device/r5/status")
+        assert "HX-Refresh" not in plain.headers, "only an htmx region asks the page to reload"
+        never = exported["client"].get("/v2/device/nosuch9/status", headers={"HX-Request": "true"})
+        assert never.status_code == 404 and "HX-Refresh" not in never.headers
+
     def test_a_plan_that_moved_does_nothing(self, exported):
         _r, card = _card(exported)
         vals = dict(_vals(card), hash="0" * 16)

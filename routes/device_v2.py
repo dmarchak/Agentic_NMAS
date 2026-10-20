@@ -102,6 +102,13 @@ def _device_or_404(name):
     try:
         found = device_page.find_device(name, ref=ref)
     except device_page.NoSuchDevice as exc:
+        if request.headers.get("HX-Request") and _retired(name):
+            # C1418 (Lab 8 step 1, 2026-10-20): a page left open while its device was retired kept
+            # asking for its regions and drew "Couldn't load this view" until reloaded. A region
+            # of a RETIRED device reloads the page instead, which then draws the retired view.
+            resp = _strict("", 200)
+            resp.headers["HX-Refresh"] = "true"
+            return None, resp
         elsewhere = [] if _page_list() else device_page.networks_holding(name, besides=ref.name)
         return None, _strict(render_template("v2/not_found.html", why=str(exc), name=name,
                                              elsewhere=elsewhere, who=_who()), 404)
