@@ -1,5 +1,30 @@
 # End of session: where Phase 7 stands
 
+## 2026-10-20, 04:00 to 06:30 UTC (22:00 to 00:30 UTC−6): Lab 8's pre-build fixes landed and deployed
+
+**The host runs 165065a1** (deployed 06:20 UTC by `nmas-deploy --wait`, CI #1006), with the ZTP
+responder restarted onto it (pid 424088, 06:20:39) and the updater's copies re-installed
+(`nmas-update-check`: ok, matching this release). Pushed since: 549dc82e (C1414), CI running.
+
+| Item | Commit | State |
+|---|---|---|
+| The day's decisions recorded (C1409 to C1414; 0d's answer; r5 unmapped; multi-vendor) | de2bc1c7 | docs |
+| C1401: an interface brought up by intent converges | 4c1baf98 | deployed; walked at Lab 8's step 4 |
+| C1403 part 1: leases released at Retire and Abandon, DHCP's Release lease… (C697 closed) | 8b8161e1 | deployed |
+| C1416: CI #1002's red, a timing race in a browser test | f0900963 | CI green again |
+| C1403 part 2: every ZTP subnet matches leases by MAC, measured on this host's Kea | dc65be92 | deployed; host step PASS 7 of 7; C1403 closed |
+| C1404: deploys and updates restart the ZTP responder too | 63c0b436 | deployed (this deploy ran the older script, so the responder was restarted once by hand) |
+| C1400: Verify waits 120 s after a ZTP device's fetch before its first contact; C1417 (C) a pending Re-key | 165065a1 | deployed |
+| C1414: nmas-test from a terminal no longer stops or ignores Ctrl+C | 549dc82e | pushed |
+
+**Waiting on the operator:** the Update page lists C1403's host step as not checkable: say it
+done there (it ran, PASS 7 of 7, 06:21 UTC). Copilot's runtime in this workspace started three
+full pytest runs in the checkout during the session (each stopped by its PID): disable it.
+**C1402** (Verify sends declined profile sections) not built: it touches R6 or R7 only if a
+section is declined for them before Verify. **Next:** the Lab 8 build, stopping for the
+operator's go before step 1 (r6's retirement). **Tomorrow (10-20 19:32 UTC on):** the 24-hour s3
+gap rate and r1's dead-timer drops since the swap fix (C1380, C1318, C1323).
+
 ## 2026-10-19 (to 2026-10-20 ~04:00 UTC; 22:00 UTC−6): Lab 7 submitted, the lab rebuilt, 0d done, Lab 8's fixes next
 
 **The host runs 08ae8669** (deployed 22:01 UTC, walked for C1389). **CI on main is green** (#999 on
