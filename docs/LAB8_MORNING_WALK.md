@@ -78,10 +78,18 @@ during one.
 2. **[HOST] The firewall host step** for the relayed subnet, AFTER the subnet exists (it reads
    the relayed ZTP subnets from Mercury's own subnet file):
    `bash ~/python/Agentic_NMAS/scripts/host-steps/c1346-ztp-relayed-firewall.sh`. Expected:
-   PASS, and udp/69 admitted from 10.255.4.0/30.
+   PASS, and udp/69 admitted from 10.255.4.0/30. **Read 2026-10-20 16:31 UTC:** the NMAS
+   host's ufw has default incoming ALLOW, with no rule for udp/67 or udp/547. So DHCP from
+   every relay (10.255.4.1, 10.255.4.5, 10.70.10.1) and TFTP from the ZTP subnets already
+   reach Kea and the responder. Neither R6, R7 nor H5 needs another host step; this one
+   records the TFTP admission for job health's `ztp-firewall` row. The default-allow itself is
+   C1435.
 3. **[DEVICE: none yet] Add device › ZTP** in Default, as in section 2.1's reservation: Create
    writes the reservation (options 66 and 67, option 3 = 10.255.4.1, no 6).
-4. **[LAB] Deploy R6's lab** (section 3), after the memory read. R6 boots configless, sends a
+4. **[LAB] The bridges, then R6's lab** (section 3), after the memory read:
+   `bash ~/labs/lab8/bridges.sh` (it makes `br-r6r7` and `br-r7h5` when absent and prints PASS;
+   `lab8-r6` references `br-r6r7`, and neither bridge survives a lab-host reboot), then
+   `sudo containerlab deploy -t lab8-r6.clab.yml`. R6 boots configless, sends a
    DISCOVER through R4 Gi5 (giaddr 10.255.4.1), gets 10.255.4.2 with 66, 67 and 3, and fetches
    its bootstrap over TFTP routed through R4.
 5. **Onboarding's Verify** waits out the key settle (C1400, 120 s after the last fetch), then
@@ -113,6 +121,25 @@ documentation addresses that reach nothing.
    by Friday's own path: a break-glass export first (it now holds R6), then Retire R6, then
    `containerlab destroy -t lab8-r6.clab.yml --cleanup`, then step 5 again (the reservation
    is made again by Add device). This is also the first real run of C1418, C1419 and C1420.
+
+### Declarations and authorisations at each step (the operator's 3e)
+
+A plan asks for an authorisation with a reason for every dangerous line it sends (`shutdown`,
+`no ip address`, `no router …`, `crypto key zeroize`, `erase nvram`, `reload`) and for every
+Mode B removal (`removal.removal_keys`). Step 4b's removal of s3's route was one; C1434 is why
+the plan did not say so before Confirm. The "Routes are expected to change" declaration is
+consulted only when the route table shrinks by more than 10%. Read against each step's drafted
+program:
+
+| Step | Authorisation | Declaration |
+|---|---|---|
+| 4b, s3's route (done) | the removal (`no ip route …`) | not needed (one /32 of many) |
+| 5b, edits A and B on R6 | none: the lines are additions | none |
+| 6, R6's intent | none: no dangerous line (` no shutdown`, `no passive-interface`, `no auto-summary` are not), no removal | none: routes are added |
+| 7, R7's intent | none, while Gi3 keeps `no_ip_address: true` (the device already prints ` no ip address`, so it is not sent) | none |
+| 5b's return and the rehearsal: Retire | none in a plan; Retire's own preview takes its reason | none |
+
+If a plan asks for one anyway, stop and read it before confirming.
 
 ### Step 6: R6's full intent [DEVICE: R6]
 - **C1432 at this step:** R6's bootstrap renders none of the multi-valued lines (hostname,
@@ -156,7 +183,8 @@ documentation addresses that reach nothing.
 1. **[KEA]** DHCP › Add a subnet for R7's link (section 2.2).
 2. **[HOST]** The firewall host step again, after the subnet exists (10.255.4.4/30).
 3. Add device › ZTP for R7 (section 2.2).
-4. **[LAB]** Deploy R7's lab (section 3). Onboarding's Verify promotes R7 over two relays'
+4. **[LAB]** Deploy R7's lab (section 3; the bridges exist from step 5, or run
+   `bash ~/labs/lab8/bridges.sh` again). Onboarding's Verify promotes R7 over two relays'
    worth of routing: Mercury → s3 → OSPF → R4 → R6 (RIP into OSPF) → R7.
 5. **[DEVICE: R7]** R7's intent (section 5): seed, paste, commit, plan, confirm, Verify.
    - Repair route: R7's console.
@@ -188,8 +216,12 @@ documentation addresses that reach nothing.
 **DHCP › Add a subnet:**
 - Subnet: `10.255.4.0/30`
 - Relay: `10.255.4.1` (R4 Gi5, from R4's intent)
+- Pool: `10.255.4.2 - 10.255.4.2`, the device's one address. **Corrected 2026-10-20 16:3x
+  UTC:** the draft said "no pool", and the preview never runs for an Add without a pool. It
+  re-renders the form unchanged and says nothing (C1436). The tested ZTP shape is a pool of
+  the device's own address, with Kea's reservation by MAC inside it.
 - For ZTP onboarding: ticked. That gives `match-client-id: false` on a relayed ZTP subnet
-  (C1403 part 2, `dhcp_subnets._match_by_mac`) and no pool: reservations only.
+  (C1403 part 2, `dhcp_subnets._match_by_mac`).
 - No DNS option (D4). No subnet-level route option: option 3 goes on the reservation.
 
 **Add device › ZTP (Default):**
@@ -202,7 +234,8 @@ documentation addresses that reach nothing.
 - DNS: none.
 
 ### 2.2 R7's link (step 7)
-- Subnet `10.255.4.4/30`, relay `10.255.4.5` (R6 Gi3), For ZTP onboarding ticked, no DNS.
+- Subnet `10.255.4.4/30`, relay `10.255.4.5` (R6 Gi3), pool `10.255.4.6 - 10.255.4.6`, For ZTP
+  onboarding ticked, no DNS.
 - Add device › ZTP: `r7`, IOS-XE, router, `10.255.4.6/30`, MAC `aa:bb:cc:00:04:07` (R7's Gi2 =
   eth1), management interface `GigabitEthernet2`, Route option (3) the relay's own address
   (10.255.4.5).
@@ -225,12 +258,26 @@ exist (AutoInstall gives up after about 2.5 min), and no node is ever restarted 
 again. A re-add for Friday's rehearsal is `containerlab destroy -t <file> --cleanup` then
 `deploy` (lab/REDEPLOY.md's rule).
 
-**Host bridges** (made by the operator, not persisted; `br-r4r6` already exists from the
-redeploy):
+**Host bridges: `~/labs/lab8/bridges.sh`** (the operator's lab tooling; run at step 5 before
+`lab8-r6`, and first in the rehearsal script, since a lab-host reboot drops them; `br-r4r6`
+and `br-r2r8` come with rcn-lab1's redeploy):
+```sh
+#!/bin/sh
+# Lab 8: the host bridges R6, R7 and H5 join (not persisted). Idempotent: a bridge that
+# exists is left as it is. Run before lab8-r6 (it references br-r6r7).
+set -u
+fail=0
+for br in br-r6r7 br-r7h5; do
+  if ! ip link show "$br" >/dev/null 2>&1; then
+    sudo ip link add "$br" type bridge stp_state 0 forward_delay 0 || fail=1
+  fi
+  sudo ip link set "$br" up || fail=1
+  ip link show "$br" | grep -q "[<,]UP[,>]" || { echo "FAIL: $br is not set up"; fail=1; }
+done
+[ "$fail" -eq 0 ] && echo "PASS: br-r6r7 and br-r7h5 exist and are set up" || exit 1
 ```
-sudo ip link add br-r6r7 type bridge stp_state 0 forward_delay 0 && sudo ip link set br-r6r7 up
-sudo ip link add br-r7h5 type bridge stp_state 0 forward_delay 0 && sudo ip link set br-r7h5 up
-```
+A bridge with nothing attached reads state `DOWN` (no carrier) though it is set up; the script
+checks the `UP` flag, not the state, and the state turns `UP` when the first veth joins.
 
 **Management subnets:** 172.30.98.0/24, 172.30.99.0/24 and 172.30.100.0/24. Check they are
 unused before deploying: `ip -br addr | grep -c 172.30.9[89]\|172.30.100` should print 0. The
@@ -329,6 +376,7 @@ cp ~/labs/ztp-a/patches/c8000v-launch-configless.py ~/labs/lab8/patches/
 cd ~/labs/lab8
 free -m && vmstat 1 5                                  # C1380: no swap pressure
 ip -br addr | grep -c '172.30.9[89]\|172.30.100'       # 0: the management subnets are free
+bash bridges.sh                                        # PASS: br-r6r7 and br-r7h5 (section 3)
 sudo containerlab deploy -t lab8-r6.clab.yml           # step 5, after the reservation
 sudo containerlab deploy -t lab8-r7.clab.yml           # step 7, after R6's intent and R7's reservation
 sudo containerlab deploy -t lab8-h5.clab.yml           # step 8, after R7's intent and H5's subnet
@@ -449,8 +497,11 @@ login:
 Applied the same way: seed, then these sections. Leave unchanged Gi1, Gi2's address (the
 bootstrap's), the default route via 10.255.4.5, the vty lines, SSH and the account.
 
-**Traps:** Gi3 and Gi3.10 as for R6's Gi3 (`no_ip_address` and `shutdown` in the seed). The
-subinterface is new, so the seed has no entry for it.
+**Traps:** Gi3, the dot1Q parent, carries no address: **keep its `no_ip_address: true`**
+(the device prints ` no ip address` on a parent without one, and dropping the key leaves that
+line as residue on every plan). Remove only the seed's `shutdown: true`, and set
+`no_shutdown: true` (the operator's correction, 2026-10-20). Gi3.10 is new, so the seed has no
+entry for it; it has its address and no `no_ip_address`.
 
 **VLAN 10** is a dot1Q subinterface (`GigabitEthernet3.10`, `encapsulation dot1Q 10`), so
 VLAN 10 is on the wire and H5 tags it. The untagged fallback: put the address on Gi3 itself and
@@ -480,7 +531,8 @@ interfaces:
   description: VLAN 10 trunk to H5
   negotiation: auto
   mop: [no mop enabled, no mop sysid]
-  no_shutdown: true                  # TRAP: remove the seed's shutdown: true and no_ip_address: true
+  no_ip_address: true                # KEEP: the parent has no address
+  no_shutdown: true                  # TRAP: remove the seed's shutdown: true only
 - name: GigabitEthernet3.10
   description: VLAN 10 - H5, 10.70.10.0/24 (DHCP through Kea, SLAAC)
   encapsulation: dot1Q 10
@@ -535,13 +587,13 @@ topology:
       image: ghcr.io/hellt/network-multitool    # the fleet's hosts' image
       mgmt-ipv4: 172.30.100.35
       binds:
-        - ../lab/configs/host-net.sh:/etc/host-net.sh
+        - configs/host-net-h5.sh:/etc/host-net-h5.sh
       exec:
-        # VLAN 10 tagged on eth1, then DHCP on it by host-net.sh, as h1 and h3 run it
+        # VLAN 10 tagged on eth1, then DHCP on it the way h1 and h3 run it (its own script)
         - ip link add link eth1 name eth1.10 type vlan id 10
         - ip link set eth1 up
         - ip link set eth1.10 up
-        - sh -c "nohup /etc/host-net.sh h5 > /tmp/host-net.log 2>&1 &"
+        - sh -c "nohup /etc/host-net-h5.sh > /tmp/host-net.log 2>&1 &"
     br-r7h5:
       kind: bridge
   links:
@@ -557,21 +609,39 @@ topology:
 **`host-net.sh` gains an `h5` case** (lab tooling, the operator's file, `configs/host-net.sh`).
 It is a draft: VLAN 10 tagged, DHCPv4 on `eth1.10`, SLAAC on `eth1.10`, Docker's default routes
 removed as for h1 to h4:
+**Superseded (the operator, 2026-10-20 16:30):** the shared `host-net.sh` is NOT changed (it
+lives at `~/labs/lab/configs/host-net.sh`, rcn-lab1's, for h1 to h4, and a slip there breaks
+them on the next redeploy). H5 binds its own script, `~/labs/lab8/configs/host-net-h5.sh`:
 ```sh
-  h5)    V4="10.70.10." ; V6="" ; IF=eth1.10 ;;   # VLAN 10 (lab8-h5 makes eth1.10); SLAAC
-# after the case:
-IF="${IF:-eth1}"
-# step 2: the same udhcpc retry loop h1 and h3 run, with $IF for eth1 in its four places
-# step 3, for a host with no V6 (SLAAC, no DHCPv6):
-if [ -z "$V6" ]; then
-  echo 1 > /proc/sys/net/ipv6/conf/$IF/accept_ra
-  echo 1 > /proc/sys/net/ipv6/conf/$IF/autoconf
-else
-  : # the dhcpcd block as it is, for h1 to h4
-fi
+#!/bin/sh
+# H5 (Lab 8): VLAN 10 tagged on eth1, DHCPv4 through R7's relay as h1 and h3 run it, SLAAC
+# for IPv6 (R7's RA on Gi3.10). Its own script: rcn-lab1's host-net.sh is never touched.
+# Safe to re-run.
+IF=eth1.10
+V4="10.70.10."
+log() { echo "host-net-h5: $*"; }
+# 0. VLAN 10 (the lab file's exec makes it too; this is idempotent).
+ip link show "$IF" >/dev/null 2>&1 || ip link add link eth1 name "$IF" type vlan id 10
+ip link set eth1 up
+ip link set "$IF" up
+# 1. Docker's default routes off: eth0 stays reachable on its own subnet.
+ip route del default dev eth0 2>/dev/null
+ip -6 route del default dev eth0 2>/dev/null
+# 2. IPv6 by SLAAC: accept R7's RA (2 accepts it even if forwarding is on).
+echo 2 > /proc/sys/net/ipv6/conf/$IF/accept_ra 2>/dev/null || log "accept_ra not set"
+echo 1 > /proc/sys/net/ipv6/conf/$IF/autoconf 2>/dev/null || log "autoconf not set"
+# 3. IPv4: h1's retry loop, on eth1.10: until the address is in 10.70.10.0/24 with a default.
+i=0
+until ip -4 addr show dev "$IF" | grep -q "inet $V4" && ip route | grep -q "^default .*dev $IF"; do
+  ip -4 addr flush dev "$IF" scope global 2>/dev/null
+  udhcpc -i "$IF" -n -q -t 3 -T 3 >/dev/null 2>&1
+  i=$((i+1)); [ "$i" -ge 60 ] && { log "no IPv4 lease in ${V4}0/24 after 60 tries"; break; }
+  [ "$(ip -4 addr show dev "$IF" | grep -c "inet $V4")" -gt 0 ] || sleep 5
+done
+log "done: $(ip -4 addr show dev "$IF" | grep -o 'inet [0-9.]*') $(ip -6 addr show dev "$IF" scope global | grep -o 'inet6 [0-9a-f:]*')"
 ```
-This is the smallest change that keeps h1 to h4 as they are: `IF` defaults to `eth1`, and
-their `V6` is set.
+`mkdir -p ~/labs/lab8/configs` first (section 3's commands). Make it executable
+(`chmod +x configs/host-net-h5.sh`), since the exec runs `/etc/host-net-h5.sh` directly.
 
 ---
 
