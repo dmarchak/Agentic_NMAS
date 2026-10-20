@@ -99,7 +99,11 @@ class TestC399:
                     release.clear()
                     b.go("about:blank")
                     b.go(srv.url(f"/v2/device/r2?cold={attempt}"))
-                    b.wait_for(f"return !!document.querySelector('{BUTTON}')", 10)
+                    # The button of THIS attempt's page (C1469): with page_load "none", `go`
+                    # returns before the navigation commits, and the previous attempt's page,
+                    # its Alpine already run, still answered the query (CI #1028, attempt 2).
+                    b.wait_for(f"return location.search.indexOf('cold={attempt}') !== -1 && "
+                               f"!!document.querySelector('{BUTTON}')", 10)
                     assert b.js("return !window.Alpine"), "the click must land before Alpine"
                     b.click(BUTTON)
                     release.set()           # Alpine is served once the click has landed
