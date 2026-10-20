@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 
 import pytest
 
@@ -43,6 +44,8 @@ EXPECTED = {"phase3-step1.sh", "phase3-step2.sh", "c584-loki-writer.sh",
             "c1403-ztp-lease-identity.sh",
             # C1419's stopgap: a retired device's live Grafana rules deleted (2026-10-20).
             "c1419-retired-device-rules.sh",
+            # C1423's one-off: a retired device's pre-change config removed (2026-10-20).
+            "c1423-retired-pre-change.sh",
             # C665: Device Roles' kinds with the operator's admin token, prompted (2026-10-11).
             "netbox-role-kinds.sh",
             # 7.8: the retired topology service's unit and link removed (2026-10-12).
@@ -546,3 +549,71 @@ def test_the_sudo_scan_finds_the_first_runs_bug():
     assert sudo_env_reads(planted.replace('os.environ[\\"W\\"]', "sys.argv[2]")) == []
     assert sudo_env_reads("    'sudo bash -c \"echo $X\"'\n") == [1]
     assert sudo_env_reads("    'sudo cp -a \"$A\" \"$B\"'\n") == []
+
+
+# --- C1423: a retired device's pre-change config, removed only when it is that device's -------
+
+def _c1423_network(tmp_path, *, listed=False, header="zz9", mode=0o600, after=False, link=False):
+    """A temporary data folder holding network Default: an inventory (zz9 in it when *listed*),
+    a repository whose one commit retires zz9, and the pipeline's evidence folder holding zz9's
+    file (its header naming *header*, *mode*, written two hours before the retire commit unless
+    *after*, or a link when *link*) beside another device's, which must not move."""
+    data = tmp_path / "data"
+    net = data / "lists" / "default"
+    kept = net / "pre_change"
+    kept.mkdir(parents=True)
+    rows = "hostname,ip\nzz1,192.0.2.1\n" + ("zz9,192.0.2.9\n" if listed else "")
+    (net / "devices.csv").write_text(rows)
+    repo = net / "config_repo"
+    repo.mkdir()
+    git = ["git", "-C", str(repo), "-c", "user.email=t@example.invalid", "-c", "user.name=t"]
+    subprocess.run(git[:3] + ["init", "-q"], check=True)
+    subprocess.run(git + ["commit", "-q", "--allow-empty", "-m", "retire zz9",
+                          "-m", "Retired-Device: zz9"], check=True)
+    other = kept / "zz1.cfg"
+    other.write_text("! Pre-change snapshot — zz1 (192.0.2.1)\n")
+    target = kept / "zz9.cfg"
+    if link:
+        target.symlink_to(other)
+    else:
+        target.write_text(f"! Pre-change snapshot — {header} (192.0.2.9)\n! a line\n")
+        target.chmod(mode)
+        when = os.path.getmtime(repo / ".git") + (3600 if after else -7200)
+        os.utime(target, (when, when))
+    stub = tmp_path / "bin"
+    stub.mkdir()
+    (stub / "sudo").write_text('#!/bin/sh\nexec "$@"\n')
+    (stub / "sudo").chmod(0o755)
+    env = dict(os.environ, NMAS_DATA_DIR=str(data), NMAS_PY=sys.executable,
+               PATH=f"{stub}:{os.environ['PATH']}")
+    return env, target, other
+
+
+def _c1423_run(env):
+    return subprocess.run(["bash", os.path.join(FOLDER, "c1423-retired-pre-change.sh"), "zz9"],
+                          capture_output=True, text=True, timeout=60, env=env, cwd=ROOT)
+
+
+def test_c1423_removes_only_the_retired_devices_own_file(tmp_path):
+    env, target, other = _c1423_network(tmp_path)
+    got = _c1423_run(env)
+    assert got.returncode == 0, got.stdout + got.stderr
+    assert "== RESULT: PASS (10 of 10 checks)" in got.stdout
+    assert not target.exists() and other.exists()
+    assert "a line" not in got.stdout + got.stderr        # its contents are never printed
+
+
+@pytest.mark.parametrize("case, failed", [
+    ({"listed": True}, "the device is not in the network's inventory now"),
+    ({"link": True}, "the file is a regular file, not a link"),
+    ({"mode": 0o644}, "the file is owned by the inventory's owner, mode 600"),
+    ({"after": True}, "the file was written before the retire commit"),
+    ({"header": "zz1"}, "the file's first line is the pipeline's header naming the device"),
+])
+def test_c1423_refuses_anything_else_and_removes_nothing(tmp_path, case, failed):
+    env, target, other = _c1423_network(tmp_path, **case)
+    got = _c1423_run(env)
+    assert got.returncode == 1, got.stdout + got.stderr
+    assert f"FAIL     {failed}" in got.stdout
+    assert os.path.lexists(target) and other.exists()
+    assert "a line" not in got.stdout + got.stderr

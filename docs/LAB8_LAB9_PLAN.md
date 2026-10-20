@@ -56,6 +56,7 @@ operator's lab tooling; **C** is code to build first.
 | 2 | R6 and R7 planned in NetBox as Planned devices, addresses from NetBox's prefixes (section 4) | M (NetBox) | NetBox's own screens; no Mercury screen plans a device | S | 10-22 |
 | 3 | R4's new link: the lab topology gains R4 GiN to R6 (host bridge br-r4r6) and R2 GiN to R8 (br-r2r8), the lab redeployed (lab/REDEPLOY.md), a planned-restart window declared first | L | the window is built; the redeploy's pre-flight passes | S to M | 10-22 |
 | 4 | R4's side deployed first: the area-10 interface and `ip helper-address` to Kea, through preview, confirm by hash and verify | M | built (intent edit, deploy); the area through the pack (0c) | S | 10-22 |
+| 4b | s3's static route to the retired r6's loopback (`ip route 10.255.1.16 255.255.255.255 10.255.0.32`, C1422) removed: the intent entry deleted, then the line ticked under "Left on the device" (Mode B, `global.ip-route`, measured exact on IOS) with its reason, confirmed by hash; s3's console the repair route. Before and after: `show ip route 10.255.1.16` on r1 and r4 (the E2 route there, then gone). Right after step 4 verifies, before R6's subnet and ZTP (the operator, 2026-10-20) | M | built (Mode B) | — | 10-20 |
 | 5 | R6 by ZTP through R4's relay: Add device › ZTP, reservation in Kea, R6 boots configless, fetches its bootstrap; Verify promotes it | M | no (0e) | — | 10-22 |
 | 6 | R6's full intent deployed: OSPF area 10, RIPv2 toward R7, redistribution, a relay facing R7 | M | packs (0c) | S | 10-22 |
 | 7 | R7 by ZTP through R6's relay, then its intent (RIPv2, VLAN 10 gateway for H5, its relay) | M | as 5 and 6 | S | 10-22 |
@@ -114,15 +115,30 @@ to .16 for routers and .21 to .24 for switches. Point-to-point links are /31s in
 Host VLANs are 10.10.<vlan>.0/24 and 2001:db8:<vlan>::/64. VLAN 10's Kea subnet id 10 is taken,
 so each new VLAN 10 segment is its own prefix with its own id. Nothing new may sit in `<LAN>`.
 
+**Revised 2026-10-20 by the operator** (against rcn-lab1-design.md: routers are .1x, switches
+.2x), before step 4:
+
 | Segment | IPv4 | IPv6 | Notes |
 |---|---|---|---|
-| R4–R6, OSPF area 10 | 10.255.4.0/30 (R4 .1, the relay; R6 .2, reserved) | 2001:db8:2:46::/64 | A /30, not the lab's usual /31: a relayed Kea subnet needs a client address besides the relay's |
-| R6–R7, RIPv2 | 10.255.4.4/30 (R6 .5, the relay; R7 .6) | 2001:db8:2:67::/64 (RIPng) | |
-| VLAN 10 behind R7 (H5) | 10.70.10.0/24 (R7 .1; pool .100 to .199) | 2001:db8:70:10::/64 | R6 redistributes RIP into OSPF area 10; R4 is the ABR |
+| R4–R6, OSPF area 10 | 10.255.4.0/30 (R4 Gi5 .1, the relay; R6 .2, reserved: its management address) | 2001:db8:2:46::/64 (R4 ::1) | A /30, not the lab's usual /31: a relayed Kea subnet needs a client address besides the relay's |
+| R6–R7, RIPv2 | 10.255.4.4/30 (R6 .5, the relay; R7 .6, reserved) | 2001:db8:2:67::/64 (RIPng) | |
+| VLAN 10 at R7's site (H5) | 10.70.10.0/24 (R7 .1; Kea pool .100 to .200, router .1, through R7's helper) | 2001:db8:70:10::/64 | VLAN ID 10 used again at R7's site, not H1/H3's 10.10.10.0/24 (it ends at s1/s2's SVIs): in NetBox, a VLAN group for R7's site holding VID 10, attached to the prefix (C1424: Mercury's token cannot read VLAN groups). H5's DNS server: **none** (the operator, 2026-10-20: no DNS option on the subnet; 10.255.0.10 answers no DNS, by D4 on the ZTP segment it sits on, and the subnets that carry it today are C1425) |
 | R2–R8, OSPF area 20 | 10.255.4.8/30 (R2 .9, the relay; R8 .10) | 2001:db8:2:28::/64 | |
 | R8–switch, the switch's management (VLAN 1, untagged) | 10.255.4.12/30 (R8 .13, the relay; switch .14) | — | AutoInstall runs on VLAN 1's SVI (to confirm in Lab 9's 0a) |
-| VLAN 10 behind the switch (H6, H7) | 10.80.10.0/24 (R8 Gi.10 .1; pool .100 to .199) | 2001:db8:80:10::/64 | |
-| Loopbacks | R6 10.255.1.26, R7 .27, R8 .28, the switch .25 | 2001:db8:1::26, ::27, ::28, ::25 | Never r6's 10.255.1.16: NetBox keeps the retired record and its addresses (C1342) |
+| VLAN 10 behind the switch (H6, H7) | 10.80.10.0/24 (R8 Gi.10 .1; pool .100 to .199) | 2001:db8:80:10::/64 | A VLAN group for R8's site, as R7's |
+| Loopbacks | R6 10.255.1.16, R7 .17, R8 .18, the switch .25 | 2001:db8:1::16, ::17, ::18, ::25 | .16 was the retired r6's: addresses are not identity, so reuse is allowed. Read 2026-10-20: no host key, Kea lease or reservation, Prometheus target or series, or Grafana rule is recorded against 10.255.1.16 or 2001:db8:1::16; NetBox's `r6-retired-11` and its two addresses deleted by the operator (2026-10-20); **s3 routes 10.255.1.16/32 to 10.255.0.32** (C1422), redistributed as an OSPF E2 route to every router: removed by Mode B in step 4b. The search of every network's intent for r6's old addresses found no other reference |
+
+Read in NetBox's IPAM 2026-10-20: 10.255.4.0/24 and 10.70.0.0/16 hold no prefix and no address.
+10.255.3.0/24 is NOT free: it is an existing segment in area 0 (r1 to r4 .11 to .14, s3 .23,
+s4 .24). Site `relay-probe` (0d's) is still in NetBox.
+
+**IPv6 (the operator's question, 2026-10-20):** the pack renders OSPFv3 and RIPng from intent
+(K7). Dual-stack costs, beyond the IPv4 work: R4 Gi5's address and `ipv6 ospf 1 area 10` (in
+step 4's edit); R6 and R7's link and loopback addresses, OSPFv3 area 10 on R6, RIPng between R6
+and R7 and its redistribution into OSPFv3 on R6, written in the same intent as their IPv4; H5 by
+SLAAC from R7's VLAN 10 interface (no Kea DHCPv6). Under an hour of intent and verification;
+the untested part is RIPng on IOS-XE devices (the pack is tested on captures only). If it does not
+converge on build day, R7's side and H5 fall back to IPv4 and the screen and manual say why.
 
 ZTP is IPv4 only (C1245). The new links and VLANs are dual-stack in intent, as the lab's are.
 
