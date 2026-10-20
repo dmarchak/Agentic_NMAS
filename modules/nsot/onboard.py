@@ -1875,7 +1875,14 @@ ABANDON_STEPS = ("intent", "netbox", "credentials", "host_key", "identity")
 #: removed the name is NOT released: a released name with a reservation still
 #: holding its address is the "reclaimed while referenced" state this flow
 #: exists to prevent, and Kea is a store `manifest.release()` cannot see.
-ZTP_ABANDON_STEPS = ("reservation",) + ABANDON_STEPS
+#:
+#: `leases` (C1403) follows it: every lease Kea holds for the device's MAC or its reserved
+#: address is released (`dhcp_leases`), read back and recorded. Removing the reservation
+#: leaves the lease, and the lease refuses the address to the next device asking with another
+#: client-id until it ends (0d's run 2: a recreated VM was answered none of 238 requests).
+#: Only a ZTP device's: a DHCP device's reservation is not Mercury's and stays, so its lease
+#: is still its client's.
+ZTP_ABANDON_STEPS = ("reservation", "leases") + ABANDON_STEPS
 
 
 # ---------------------------------------------------------------------------
@@ -1967,6 +1974,57 @@ def read_runs(repo: str) -> dict:
     return dict(got, rows=list(reversed(got["rows"])))
 
 
+def _abandon_leases(_step, entry, hostname: str, list_name: str, *, actor: str,
+                    dry_run: bool, read_leases=None, release_leases=None) -> None:
+    """Abandon's ``leases`` step (C1403): the leases Kea holds for a ZTP device's MAC or the
+    address reserved for it, read (*read_leases*, `dhcp_leases.for_device`), named, and released
+    (*release_leases*, `dhcp_leases.release_for_device`). Each a seam for a test."""
+    from modules import dhcp_leases
+
+    read_leases = read_leases or dhcp_leases.for_device
+    release_leases = release_leases or dhcp_leases.release_for_device
+    mac = (entry or {}).get("mgmt_mac", "")
+    addresses = [a for a in dict.fromkeys([(entry or {}).get("reserved_address", ""),
+                                           (entry or {}).get("mgmt_ip", "")]) if a]
+    finish = ("release each on DHCP › Leases with Release lease…, or run abandon again "
+              "before the name is released")
+    try:
+        got = read_leases(list_name, macs=[mac] if mac else [], addresses=addresses)
+    except Exception as exc:                   # noqa: BLE001
+        log.exception("abandon: leases step could not read Kea for %r", hostname)
+        got = {"ok": False, "error": str(exc)}
+    if not got.get("ok"):
+        _step("leases", False, f"Kea's leases could not be read ({got.get('error')}), so "
+              f"whether one is held for {hostname} cannot be told", finish)
+        return
+    if not got.get("configured", True):
+        _step("leases", True, "no Kea lease to release (Kea is not configured for this "
+                              "network)")
+        return
+    leases = got.get("leases") or []
+    named = "; ".join(dhcp_leases.words(r, times=False) for r in leases)
+    if not leases:
+        _step("leases", True, "no Kea lease is held for "
+              + " or ".join(([mac] if mac else []) + addresses or ["it"]))
+        return
+    if dry_run:
+        _step("leases", True, f"would release from Kea {named}")
+        return
+    try:
+        rel = release_leases(list_name, leases, actor=actor or "unknown",
+                             reason=f"{hostname}'s onboarding abandoned",
+                             source=f"abandon of {hostname}", device=hostname)
+    except Exception as exc:                   # noqa: BLE001
+        log.exception("abandon: leases step failed for %r", hostname)
+        rel = {"ok": False, "outcomes": [], "error": str(exc)}
+    said = dhcp_leases.summary(rel.get("outcomes") or [])
+    if rel.get("ok"):
+        _step("leases", True, said + (f"; recorded ({rel['commit'][:8]})"
+                                      if rel.get("commit") else ""))
+    else:
+        _step("leases", False, f"{said}: {rel.get('error') or 'not released'}", finish)
+
+
 def abandon_fingerprint(dry: dict) -> str:
     """What an Abandon's preview showed, as the one value its confirm sends back: each step of
     the dry run in order with its words, and whether it would finish."""
@@ -1982,7 +2040,7 @@ def abandon_fingerprint(dry: dict) -> str:
 def abandon_onboarding(repo: str, hostname: str, list_name: str, *,
                        actor: str = "", dry_run: bool = False,
                        remove_netbox=None, remove_reservation=None,
-                       confirmed: str = "") -> dict:
+                       confirmed: str = "", read_leases=None, release_leases=None) -> dict:
     """Undo an onboarding, holding the device for the whole run (CONCURRENCY_AUDIT R23).
 
     Abandon took no hold and refused only when `verified_at` was set, which phase two sets
@@ -1995,7 +2053,8 @@ def abandon_onboarding(repo: str, hostname: str, list_name: str, *,
     3): under the hold the dry run is taken again, and a different one (the reservation gone,
     NetBox moved, the intent already removed) is refused naming both, with nothing removed."""
     kwargs = dict(actor=actor, dry_run=dry_run, remove_netbox=remove_netbox,
-                  remove_reservation=remove_reservation)
+                  remove_reservation=remove_reservation, read_leases=read_leases,
+                  release_leases=release_leases)
     if dry_run:
         return _abandon_onboarding(repo, hostname, list_name, **kwargs)
     from modules.nsot import device_ops
@@ -2024,7 +2083,8 @@ def abandon_onboarding(repo: str, hostname: str, list_name: str, *,
 
 def _abandon_onboarding(repo: str, hostname: str, list_name: str, *,
                         actor: str = "", dry_run: bool = False,
-                        remove_netbox=None, remove_reservation=None) -> dict:
+                        remove_netbox=None, remove_reservation=None, read_leases=None,
+                        release_leases=None) -> dict:
     """Undo an onboarding, in the reverse of the order that created it.
 
     **Why this exists rather than `manifest.release()` alone.** Release
@@ -2152,6 +2212,14 @@ def _abandon_onboarding(repo: str, hostname: str, list_name: str, *,
             except Exception as exc:           # noqa: BLE001
                 log.exception("abandon: reservation step failed for %r", hostname)
                 _step("reservation", False, str(exc), how)
+
+    # 0b. THE LEASES (ztp only, C1403; see ZTP_ABANDON_STEPS): every lease Kea holds for its
+    #     MAC or its reserved address, both families, named in the dry run (so the confirm is
+    #     bound to them) and released through the one release, read back and recorded. Not
+    #     released is not a reason to keep the name: DHCP › Leases' Release lease… finishes it.
+    if ztp_device:
+        _abandon_leases(_step, entry, hostname, list_name, actor=actor, dry_run=dry_run,
+                        read_leases=read_leases, release_leases=release_leases)
 
     # 1. INTENT. Staged first because it is the only step that needs the
     #    repo lock, and the only one whose failure is purely local.

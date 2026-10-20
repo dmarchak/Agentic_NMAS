@@ -33,18 +33,19 @@ WRITE_STEPS = (("test", "Kea's own check"), ("write", "Mercury's file written"),
                ("reload", "Kea reloaded"), ("read_back", "Read back"), ("record", "Recorded"))
 
 
-def write_run(got: dict):
+def write_run(got: dict, steps_of=WRITE_STEPS):
     """A DHCP write's result on THE stepper: the steps before the one it reached done, that one
     done (the change landed) or failed with its error and what the rollback did, the rest not
-    reached. None for a refusal before Kea's own check (nothing ran: the card says why)."""
+    reached. None for a refusal before Kea's own check (nothing ran: the card says why).
+    *steps_of* is the write's own steps (a lease's release, `dhcp_leases.RUN_STEPS`, C1403)."""
     from modules import run_stepper as RS
 
     at = (got or {}).get("at")
-    if at not in dict(WRITE_STEPS):
+    if at not in dict(steps_of):
         return None
-    reached = [k for k, _w in WRITE_STEPS].index(at)
+    reached = [k for k, _w in steps_of].index(at)
     steps = []
-    for i, (k, w) in enumerate(WRITE_STEPS):
+    for i, (k, w) in enumerate(steps_of):
         if i < reached or got.get("ok"):
             steps.append(RS.step(k, w, "done"))
         elif i == reached:
@@ -69,6 +70,17 @@ def write_said(got: dict) -> str:
     if at == "read_back" and not back:
         return "Written and Kea reloaded; what Kea runs now could not be read back."
     return "Nothing was changed" + (f" in the end: {back}" if back else "") + "."
+
+
+def release_said(got: dict) -> str:
+    """A failed lease release's first words, from the step it reached (C1403): Kea keeps no copy
+    of a deleted lease, so nothing is rolled back, and the words say what is true now."""
+    at = (got or {}).get("at")
+    if at == "record":
+        return "Released in Kea and read back, and not recorded."
+    if at == "read_back":
+        return "Kea answered the release; whether the lease is gone could not be read back."
+    return "Nothing was released."
 
 
 def ask(values) -> dict:

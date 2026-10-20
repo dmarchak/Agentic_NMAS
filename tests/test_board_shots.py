@@ -2584,3 +2584,38 @@ def test_dhcp_relayed_ztp_subnet(tmp_path, monkeypatch):
                       ((1440, 1.0), (1280, 1.0), (390, 2.0)))
         _group_a_page("dhcp-relayed-ztp-lea", served, "/v2/dhcp?list=Lab&tab=lea&open=dhcp4:40",
                       ((1440, 1.0), (390, 2.0)))
+
+
+def test_dhcp_lease_release(tmp_path, monkeypatch):
+    """C1403: DHCP › Leases with each row's Release lease… (subnet 10's group open), and the
+    release card drawn from a real preview of 10.10.10.102 (tests/test_dhcp_leases.py's
+    `LeaseKea`: the lab's captured leases), beside board A's Leases tab (`DhcpNetwork.dc.html`,
+    1440), which draws no change control on a lease."""
+    from tests import browser
+    from tests import test_dhcp_v2 as T
+    from tests.test_dhcp_leases import LeaseKea
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    (tmp_path / "lab").mkdir()
+    monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(tmp_path / "lab"))
+    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
+    monkeypatch.setattr("modules.dhcp_page._devices", lambda name: set())
+    monkeypatch.setattr("modules.reader_job.read_cached_for",
+                        lambda name, list_name: __import__("modules.reader_job").reader_job
+                        .read_cached(name))
+    monkeypatch.setattr("modules.list_settings.kea_owner",
+                        lambda name: (name, "it sets its own Kea"))
+    kea = LeaseKea({})
+    monkeypatch.setattr("modules.integrations.kea.KeaIntegration", lambda **kw: kea)
+    T._store(T._value())
+    import app as A
+    card = "/v2/dhcp/lease?list=Lab&family=IPv4&address=10.10.10.102"
+    assert "Release 10.10.10.102" in A.app.test_client().get(card).get_data(as_text=True)
+    _group_a_boards("dhcp-lease-release", "DhcpNetwork.dc.html", ((1440, 1.0),))
+    with browser.Served(A.app) as served:
+        _group_a_page("dhcp-lease-release-lea", served, "/v2/dhcp?list=Lab&tab=lea&open=dhcp4:10",
+                      ((1440, 1.0), (1280, 1.0), (390, 2.0)))
+        _group_a_page("dhcp-lease-release-card", served, card,
+                      ((1440, 1.0), (1280, 1.0), (390, 2.0)))
+    assert kea.dels == [], "a shot released a lease"

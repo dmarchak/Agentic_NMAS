@@ -183,6 +183,7 @@ DECLARED = {
     "dhcp_v2.reservation_confirm": ("dhcp",),
     "dhcp_v2.subnet_confirm": ("dhcp",),
     "dhcp_v2.exclusion_confirm": ("dhcp",),
+    "dhcp_v2.lease_confirm": ("dhcp",),
     "credential_profiles_v2.save": ("credentials",),
     "credential_profiles_v2.delete": ("credentials",),
     "credential_profiles_v2.policy_save": ("credentials",),
@@ -245,7 +246,8 @@ DECLARED = {
     "onboard_v2.create": ("pending", "intent", "credentials", "remote", "in_progress"),
     "onboard_v2.verify": ("pending", "inventory", "credentials", "netbox",
                           "device_state", "baselines", "in_progress") + _COMMIT,
-    "onboard_v2.abandon": ("pending", "intent", "credentials", "remote", "in_progress"),
+    # A ZTP device's abandon removes its Kea reservation and releases its leases (C1403).
+    "onboard_v2.abandon": ("pending", "intent", "credentials", "remote", "in_progress", "dhcp"),
     # NetBox. Today's NetBox tab's import and removal routes (/netbox/safety/*) left at 7.8
     # (2026-10-17); v2's NetBox page's confirm (`netbox_v2.confirm`) is declared with v2's routes.
     # Today's NetBox Test (/netbox/test_connection), which persisted the auth scheme that

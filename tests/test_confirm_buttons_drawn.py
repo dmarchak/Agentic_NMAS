@@ -913,6 +913,9 @@ class TestDhcpCards(_Cards):
         "exclusion": ("_dhcp_exclusion.html", "{{ 'Remove the exclusion' if s.op == 'remove' "
                       "else 'Exclude ' ~ s.range }}", r"Exclude 10\.10\.10\.120 - 10\.10\.10\.129",
                       "viewer"),
+        # C1403: DHCP › Leases' Release lease…, on Kea's captured leases.
+        "lease": ("_dhcp_lease.html", "Release {{ p.address }}", r"Release 10\.10\.10\.102",
+                  "viewer"),
     }
 
     def drawn_reservation(self, request):
@@ -963,6 +966,19 @@ class TestDhcpCards(_Cards):
         as_service(monkeypatch)
         html = self._get(request, monkeypatch, "exclusion", RIG)
         assert "10.10.10.120 - 10.10.10.129" in html, "floor: the preview is drawn"
+        return html
+
+    def drawn_lease(self, request):
+        from tests.test_dhcp_leases import RIG
+        return self._get(request, request.getfixturevalue("monkeypatch"), "lease", RIG)
+
+    def blocked_lease(self, request, monkeypatch):
+        from tests.test_dhcp_leases import RIG
+        self._kea(request, monkeypatch)
+        as_service(monkeypatch)
+        html = self._get(request, monkeypatch, "lease", RIG)
+        assert "lease 10.10.10.102 (IPv4, MAC aa:c1:ab:b0:85:65" in html, \
+            "floor: the preview is drawn"
         return html
 
 
@@ -1428,9 +1444,10 @@ class TestThePopulation:
             assert why and len(why) > 20, (key, "an excuse says why")
 
     def test_netbox_jobs_one_site_is_two_controls(self):
-        """`_netbox_job.html` draws Import and Remove at one site, two previews: 52 controls."""
+        """`_netbox_job.html` draws Import and Remove at one site, two previews: 53 controls
+        (52 until C1403's Release lease… joined)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 52, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 53, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

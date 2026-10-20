@@ -532,16 +532,10 @@ EMPTY_IN_FIXTURE = {
     "v2/_dhcp_subnet.html sub.gateway.ra": _KEA_OP,
     "v2/_dhcp_view.html g.conflicts": _KEA,
     "v2/_dhcp_view.html g.exclusions": _KEA,
-    "v2/_dhcp_view.html g.families": _KEA,
     "v2/_dhcp_view.html g.families #2": _KEA,
-    "v2/_dhcp_view.html g.groups": _KEA,
     "v2/_dhcp_view.html g.reservations": _KEA,
     "v2/_dhcp_view.html g.shaped": _KEA,
-    "v2/_dhcp_view.html g.shows.items()": _KEA,
     "v2/_dhcp_view.html g.subnets": _KEA,
-    "v2/_dhcp_view.html g.tabs.items()": _KEA,
-    "v2/_dhcp_view.html grp.flags": _KEA,
-    "v2/_dhcp_view.html grp.rows": _KEA,
     "v2/_dhcp_view.html gw.ra": _KEA,
     "v2/_dhcp_view.html lc": _KEA,
     "v2/_dhcp_view.html m.elsewhere": _KEA,
@@ -841,8 +835,9 @@ EMPTY_IN_FIXTURE = {
 }
 #: 386 measured 2026-10-18 (C1274), when the list was made: it only shrinks. 382 with C1277's
 #: provider (a silenced Grafana alert), which draws a row's devices and its members; 377 with
-#: C1232's (Save's no-golden scope), which draws the plan's groups and their devices.
-EMPTY_IN_FIXTURE_CEILING = 377
+#: C1232's (Save's no-golden scope), which draws the plan's groups and their devices; 371 with
+#: C1403's (DHCP › Leases' Release lease…), which draws the DHCP page's tabs and lease groups.
+EMPTY_IN_FIXTURE_CEILING = 371
 #: The population and how many of it drew, measured 2026-10-18 (557 and 171): floors, a little
 #: under the measurement, so a scan that stopped seeing loops, or a walk that stopped drawing,
 #: fails.

@@ -1,0 +1,53 @@
+{%- from "v2/_macros.html" import icon, badge, how -%}
+{%- from "v2/_run_stepper.html" import run_stepper -%}
+{#- DHCP › Leases › Release lease… (C1403; signed off under the Phase 7 mode, 2026-10-20, a
+    card on board A's Leases tab like board D's exclusion card): one Kea lease, named by its
+    family and address from its row, previewed (the lease, its client, whether the address is
+    reserved, what survives), confirmed by hash as a verified person with a reason, released
+    with lease4-del or lease6-del, read back from Kea and recorded in dhcp/released-leases.yml
+    (modules/dhcp_leases.py); the result in place. -#}
+{%- set s = lop.ask -%}
+{%- set p = lop.plan -%}
+{%- set back = url_for('dhcp_v2.region') ~ g.qs({'tab': 'lea'}) -%}
+{%- if lop.state == 'done' %}
+{%- set r = lop.result %}
+<div class="op-card op-ok" id="dh-op" aria-labelledby="dh-op-h">
+  <div class="op-hd"><h2 id="dh-op-h">{{ p.title }} {{ badge('released', 'ok') }}</h2>
+    <div class="op-hd-actions">{{ how('dhcp-lease-release') }}<button type="button" class="btn" hx-get="{{ back }}" hx-target="#dhcp" hx-swap="outerHTML">Close</button></div></div>
+  <div class="op-part"><h3>What happened</h3><div>
+    {{ run_stepper(lop.run) }}
+    <p><span class="mono">{{ 'lease4-del' if p.family == 'IPv4' else 'lease6-del' }} {{ p.address }}</span> sent through Kea's control agent, and Kea's leases read back: {{ r.read_back }}.</p></div></div>
+  <div class="op-part"><h3>Recorded</h3><div>
+    <p>Commit <span class="mono">{{ (r.commit or '')[:7] }}</span> "{{ p.subject }}", Actor: {{ lop.actor }}, your reason in its body, in <span class="mono">dhcp/released-leases.yml</span>. In History.</p></div></div>
+</div>
+{%- else %}
+<div class="op-card{{ ' op-danger' if lop.state == 'refused' or (p and not p.ok) }}" id="dh-op" aria-labelledby="dh-op-h">
+  <div class="op-hd"><h2 id="dh-op-h">{{ p.title if p and p.title else 'Release a lease' }}</h2>
+    <div class="op-hd-actions">{{ how('dhcp-lease-release') }}{% if not (p and p.ok and may.may) %}<button type="button" class="btn" hx-get="{{ back }}" hx-target="#dhcp" hx-swap="outerHTML">Cancel</button>{% endif %}</div></div>
+  {%- if lop.state == 'refused' %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>{{ lop.said }}</strong> {{ lop.result.error }}</p></div>
+  {%- if lop.run %}{{ run_stepper(lop.run) }}{% endif %}
+  {%- endif %}
+  {%- if p and not p.ok %}
+  <div class="op-part"><h3>Not released</h3><div class="dh-refuse" role="alert"><p>{{ p.refused }}</p></div></div>
+  {%- elif p %}
+  <div class="op-part dh-cont"><h3>The lease</h3><div>
+    <pre class="op-diff">{% for sign, line in p.change %}<span class="{{ 'op-add' if sign == '+' else ('op-del' if sign == '-' else 'muted') }}">{{ sign }} {{ line }}</span>{% if not loop.last %}
+{% endif %}{% endfor %}</pre>
+    {%- set l = p.lease %}
+    <p class="small">{% if l.hostname %}<span class="mono">{{ l.hostname }}</span>, {% endif %}{% if l.mac and l.by != 'MAC' %}MAC <span class="mono">{{ l.mac }}</span>, {% endif %}{% if l.client_id and l.by != 'client-id' %}client-id <span class="mono">{{ l.client_id }}</span>, {% endif %}last renewed {% if l.last_seen %}<time datetime="{{ l.last_seen }}">{{ l.last_seen[:16] | replace('T', ' ') }} UTC</time>{% else %}at a time Kea did not give{% endif %}{% if l.ends %}; Kea holds it until <time datetime="{{ l.ends }}">{{ l.ends[:16] | replace('T', ' ') }} UTC</time>{% endif %}.</p></div></div>
+  <div class="op-part"><h3>Checks</h3><div>
+    <ul class="op-gates">{% for state, text in p.checks %}<li>{{ badge({'pass': 'pass', 'pending': 'at confirm', 'note': 'note', 'warn': 'differs', 'fail': 'fail'}[state], {'pass': 'ok', 'pending': '', 'note': '', 'warn': 'warn', 'fail': 'danger'}[state]) }}<span>{{ text }}</span></li>{% endfor %}</ul></div></div>
+  {%- if p.survives %}<div class="op-part"><h3>What survives</h3><div>{% for n in p.survives %}<p>{{ n }}</p>{% endfor %}</div></div>{% endif %}
+  <form class="op-ft" method="post" action="{{ url_for('dhcp_v2.lease_confirm', list=g.list) }}" hx-post="{{ url_for('dhcp_v2.lease_confirm', list=g.list) }}" hx-target="#dhcp" hx-swap="outerHTML">
+    {%- for k in ('family', 'address') %}<input type="hidden" name="{{ k }}" value="{{ s[k] }}">{% endfor %}
+    <input type="hidden" name="list" value="{{ g.list }}"><input type="hidden" name="hash" value="{{ p.hash }}">
+    <label class="op-reason">Why (recorded with the release, in its commit)<input type="text" name="reason" value="{{ lop.reason or '' }}" autocomplete="off" required maxlength="200"></label>
+    <p class="op-note">Kea's leases are read again and compared with this preview, then <span class="mono">{{ 'lease4-del' if p.family == 'IPv4' else 'lease6-del' }} {{ p.address }}</span> is sent for this lease alone, Kea's leases are read back, and the release is recorded in <span class="mono">dhcp/released-leases.yml</span>. A deleted lease cannot be put back. {{ may.statement }} Bound to this preview.</p>
+    {%- if may.may %}
+    <span class="op-act"><button type="button" class="btn" hx-get="{{ back }}" hx-target="#dhcp" hx-swap="outerHTML">Cancel</button><button type="submit" class="btn btn-primary op-confirm" data-op="dhcp-lease-release" hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">Release {{ p.address }}</span><span class="op-busy">Releasing, reading back…</span></button>{{ how('dhcp-lease-release', compact=True, op='a lease release') }}</span>
+    {%- endif %}
+  </form>
+  {%- endif %}
+</div>
+{%- endif %}

@@ -98,6 +98,10 @@ GATES = {
     "dhcp_v2.subnet_confirm": _g(C, "changes a Kea subnet's pool, options or lease times: writes "
                                     "Mercury's subnet file, reloads Kea and reads it back, as a "
                                     "verified person with a reason (C529 step 3, board C)"),
+    "dhcp_v2.lease_confirm": _g(C, "releases one Kea lease (lease4-del or lease6-del through "
+                                   "Kea's control agent), reads Kea's leases back and records "
+                                   "it in dhcp/released-leases.yml, as a verified person with a "
+                                   "reason (C1403, DHCP › Leases' Release lease…)"),
     "dhcp_v2.reservation_confirm": _g(C, "adds, changes or removes a Kea reservation: writes "
                                          "Mercury's file for the subnet and reloads Kea, which "
                                          "clients then receive (C529 step 2, board B)",
@@ -105,7 +109,9 @@ GATES = {
     "onboard_v2.verify": _g(C, "reaches the pending device and rotates its credential, from its "
                                "v2 page (`routes.onboard.verify_run`)", "onboard_verify"),
     "onboard_v2.abandon": _g(C, "deletes the pending device's records from NetBox and the "
-                                "repository, from its v2 page", "onboard_abandon"),
+                                "repository, from its v2 page; a ZTP device's Kea reservation "
+                                "is removed and its Kea leases released (C1403)",
+                             "onboard_abandon"),
     "device_v2.restore_confirm": _g(C, "re-applies a moment (its golden now, an older golden or a baseline) to one device from the v2 device page (7.3; THE restore plan and apply, run as a job, in the list its preview was drawn in, C396), merge-only, every line needing a reason (a dangerous line, an account added back) with its stated reason in the hash"),
     "device_v2.deploy_confirm": _g(C, "deploys a device's committed intent from the v2 device page (7.3; THE plan and apply (`routes.deploy.plan_devices`, `apply_batch`) the batch apply runs too, as a job), merge-only, with any line ticked for removal (Mode B) and every dangerous line's stated reason in the hash"),
     "device_v2.rotate_confirm": _g(C, "rotates a device's login credential from the v2 device page (7.3; rotate_op.confirm_and_start): the device then accepts only the new password"),
@@ -160,7 +166,7 @@ GATES = {
     "device_v2.revert_confirm": _g(A, "commits the inverse of one intent commit's change from the v2 device page (7.3, board 11; intent_ops.revert_apply, in the list its card carries)"),
     "device_v2.retry_confirm": _g(A, "lifts a blocked change so it may be sent again, with a stated reason, from the v2 device page (7.3, board 11; intent_ops.retry_apply, in the list its card carries)"),
     "device_v2.seed_confirm": _g(A, "commits a device's first full intent, parsed from its committed golden, from the v2 device page (7.3, board 8; seed.apply, in the list its card carries)"),
-    "device_v2.retire_confirm": _g(A, "retires a device from the v2 device page (7.3, board 12; retire.apply, in the list its card carries): masks NetBox's stored credentials, clears its overrides and staged credential, removes its Kea reservations, removes its intent, golden and template override in a commit, archives its golden tags and rollback block, withdraws its approval items, rotation-policy memberships, Topology entries and heartbeat rule, sets its NetBox record Decommissioning, forgets its SSH host key and deletes its CSV row against the export log"),
+    "device_v2.retire_confirm": _g(A, "retires a device from the v2 device page (7.3, board 12; retire.apply, in the list its card carries): masks NetBox's stored credentials, clears its overrides and staged credential, removes its Kea reservations, releases its Kea leases (C1403), removes its intent, golden and template override in a commit, archives its golden tags and rollback block, withdraws its approval items, rotation-policy memberships, Topology entries and heartbeat rule, sets its NetBox record Decommissioning, forgets its SSH host key and deletes its CSV row against the export log"),
     # Capture (7.1 step 4, C82, C89): Save All is its whole-fleet form, and
     # the old one-click route is gone, because nothing in it asked whether the
     # state being enshrined was the one intended. Today's capture routes (golden.capture_preview

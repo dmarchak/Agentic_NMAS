@@ -95,6 +95,12 @@ finished by running it again:
    its hash. Recorded: `dhcp/ztp-reservations.yml` or `dhcp/reservations.yml` committed in
    the Kea owner's repository as you, so each reservation stays in that record's history.
    Before the commit, so an address is never left reserved for a device nobody knows.
+   **Then its Kea leases** (`leases`). Read: every lease Kea holds, either family, for the
+   device's recorded MAC or any address it was known by. Sent: nothing to the device; to Kea,
+   `lease4-del` or `lease6-del` for each, through [the one release](dhcp-lease-release), read
+   back. Recorded: `dhcp/released-leases.yml` in the Kea owner's repository as you. A lease
+   outlives its reservation and refuses the address to the next device that asks with another
+   client identifier, so it goes too; one Kea now holds for another client is left, and said.
 5. **One commit** (`commit`). Read: the repository. Sent: nothing. Recorded: `git rm` of the
    device's `host_vars/<device>.yml` and `golden/<device>.cfg`, its own template override
    taken out of `templates/bindings.yml`, its identity released from the manifest (NetBox

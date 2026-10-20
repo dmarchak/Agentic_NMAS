@@ -978,9 +978,45 @@ def _update_owed(client, _lab, _mp):
         mp.undo()
 
 
+def _lease_release(client, _lab, _mp):
+    """DHCP › Leases' Release lease… (C1403): the card from a real preview, on Kea's captured
+    leases (tests/fixtures/kea) behind the page, as tests/test_dhcp_leases.py reads them, on
+    Lab owning its Kea (the walk's Lab inherits Default's, and changes nothing, C1181). The
+    walk's DHCP reader has never read, so no followed GET draws a lease row to release. Its
+    patches are undone before the next provider."""
+    import pytest
+
+    from modules import reader_job
+    from tests.test_dhcp_leases import RIG, LeaseKea
+    from tests.test_dhcp_v2 import _value
+
+    # The DHCP reader's value as test_dhcp_v2 builds it from the same captures: the page draws
+    # its Leases tab only over a stored read.
+    doc = {"last_attempt": {"at": "2026-10-11T01:38:20Z", "ok": True, "error": ""},
+           "last_good": {"value": _value(), "value_at": "2026-10-11T01:38:20Z"}}
+    real = reader_job.read_cached_for
+    mp = pytest.MonkeyPatch()
+    try:
+        kea = LeaseKea({})
+        mp.setattr("modules.integrations.kea.KeaIntegration", lambda **kw: kea)
+        mp.setattr("modules.reader_job.read_cached_for",
+                   lambda name, list_name: ({"state": "ok", "doc": doc, "why": ""}
+                                            if name == "dhcp" else real(name, list_name)))
+        # Lab setting its own Kea, as test_dhcp_v2's `web` gives it (C1181: the owner's page).
+        mp.setattr("modules.list_settings.kea_owner", lambda page: (page, "set here"))
+        r = client.get("/v2/dhcp/lease?list=Lab&family=IPv4&address=" + RIG["address"],
+                       headers={"Accept": "text/html", "HX-Request": "true"})
+        html = r.get_data(as_text=True)
+        assert r.status_code == 200 and "Release 10.10.10.102" in html, \
+            (r.status_code, re.findall(r'class="dh-refuse"[^>]*><p>([^<]*)', html),)
+        assert kea.dels == [], "a preview released a lease"
+    finally:
+        mp.undo()
+
+
 #: What no followed GET reaches, each on the lab's own state: a POST's card, a script's GET,
 #: a state the lab's walk does not hold. In order: `_deploy` changes r3, so it is last.
 PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _drift,
                    _in_progress, _pending, _netbox_source, _netbox_lag, _silenced_alert,
                    _save_no_golden, _profile_versions,
-                   _no_change_window, _update_owed, _deploy]
+                   _no_change_window, _update_owed, _lease_release, _deploy]

@@ -85,6 +85,7 @@
 {%- elif g.s.tab == 'lea' %}
 <section class="card dh-sec" aria-labelledby="dh-lea-h">
   <h2 id="dh-lea-h">Leases</h2>
+  {%- if lop is defined and lop %}{% include "v2/_dhcp_lease.html" %}{% endif %}
   <form class="dh-find" method="get" action="{{ url_for('dhcp_v2.page') }}" hx-get="{{ url_for('dhcp_v2.region') }}" hx-target="#dhcp" hx-swap="outerHTML" hx-trigger="change, submit">
     <input type="hidden" name="list" value="{{ g.list }}"><input type="hidden" name="tab" value="lea">
     <label class="sr" for="dh-q">Find by address, MAC, DUID or hostname</label>
@@ -99,7 +100,7 @@
     <summary><span class="mono">{{ x.prefix }}</span>{% if x.ztp_relayed %}, ZTP behind a relay{% elif x.ztp %}, ZTP{% endif %} <span class="muted small">· {% if x.ztp and not x.ztp_relayed %}{{ grp.total }} asking: onboarding's Discovered list (board L, not built yet){% else %}{{ grp.total }} lease{{ 's' if grp.total != 1 }}{% if x.ztp_relayed %}, {{ grp.reserved }} reserved{% endif %}{% endif %}</span>{% for f in grp.flags %} {{ badge(f, 'warn') }}{% endfor %}</summary>
     {%- if grp.rows %}
     <div class="dh-scroll"><table class="table">
-      <thead><tr><th scope="col">Address</th><th scope="col">Identity</th><th scope="col">Hostname</th><th scope="col">Device</th><th scope="col">Kea's lease</th><th scope="col">As the host holds it</th></tr></thead>
+      <thead><tr><th scope="col">Address</th><th scope="col">Identity</th><th scope="col">Hostname</th><th scope="col">Device</th><th scope="col">Kea's lease</th><th scope="col">As the host holds it</th>{% if g.writable %}<th scope="col"><span class="sr-only">Change</span></th>{% endif %}</tr></thead>
       <tbody>
       {%- for l in grp.rows %}
       <tr>
@@ -112,6 +113,10 @@
         <td rowspan="{{ l.span }}" class="dh-shared"><strong>{{ l.span }} addresses for one client.</strong> It asked again and was given a new address each time{% if l.iaids > 1 %}, with a new IAID each time ({{ l.iaids }} different){% endif %}; Kea keeps each until it ends. A client that installs its address with no lifetime ("forever", as Linux does for DHCPv6) keeps using it whatever Kea's lease says, so a lease ending changes nothing on the host. A reservation for the address the host uses is the fix: it is given that one address every time it asks.</td>
         {%- elif not l.same %}
         <td>{% if l.holds == 'pending' %}{{ badge('pending: reading the device’s own lease is designed, not built') }}{% else %}<span class="faint">not readable: a host the tool does not reach</span>{% endif %}</td>
+        {%- endif %}
+        {%- if g.writable %}
+        {%- set fam = 'IPv6' if x.svc == 'dhcp6' else 'IPv4' %}
+        <td class="dh-acts"><a class="btn btn-small" href="{{ url_for('dhcp_v2.lease_preview', list=g.list, family=fam, address=l.address) }}" hx-get="{{ url_for('dhcp_v2.lease_preview', list=g.list, family=fam, address=l.address) }}" hx-target="#dhcp" hx-swap="outerHTML" data-op="dhcp-lease-release" aria-label="Release the lease on {{ l.address }}">Release lease…</a>{{ how('dhcp-lease-release', compact=True, op='a lease release') }}</td>
         {%- endif %}
       </tr>
       {%- endfor %}

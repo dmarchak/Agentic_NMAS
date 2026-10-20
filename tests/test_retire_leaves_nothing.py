@@ -377,6 +377,55 @@ class TestKeaReservations:
         assert s["done"] and "no Kea reservation names it" in s["what"]
 
 
+# ----------------------------------------------------------------------------- C1403
+
+class TestKeaLeases:
+    """A lease outlives its reservation and refuses the address to the next device asking with
+    another client identifier (0d's run 2): every lease Kea holds for the device, either family,
+    by its MAC or an address it was known by, is named in the plan and released at the apply
+    through the one release (`dhcp_leases.release_for_device`), read back and recorded."""
+
+    def _leases(self):
+        from modules import dhcp_leases as L
+        return [L.row({"ip-address": IP, "hw-address": MAC, "client-id": "01:52:54:00:00:21:01",
+                       "subnet-id": 7, "cltt": 1760911000, "valid-lft": 604800, "state": 0},
+                      "IPv4"),
+                L.row({"ip-address": "2001:db8::21", "duid": "00:03:00:01:52:54:00:00:21:01",
+                       "hw-address": MAC, "subnet-id": 9, "type": "IA_NA", "iaid": 1,
+                       "cltt": 1760911000, "valid-lft": 604800, "state": 0}, "IPv6")]
+
+    def test_its_leases_are_named_and_released_through_the_one_release(self, lab, monkeypatch):
+        from modules import dhcp_leases as L
+        asked, released = [], []
+        monkeypatch.setattr(RT, "_device_leases", lambda l, macs, addresses: asked.append(
+            (l, macs, addresses)) or {"ok": True, "configured": True, "leases": self._leases(),
+                                      "error": ""})
+        monkeypatch.setattr(L, "release_for_device", lambda l, leases, **kw: released.append(
+            (l, [r["address"] for r in leases], kw)) or {"ok": True, "outcomes": [],
+                                                         "commit": "feed1234", "error": ""})
+        p = RT.plan("Lab", HOST, REASON)
+        what = _step(p, "leases")["what"]
+        assert f"{IP} (IPv4, MAC {MAC})" in what and "2001:db8::21 (IPv6, DUID" in what, what
+        assert asked and IP in asked[0][2]
+        _p, out = _retire()
+        assert "leases" in out["done"]
+        assert [(l, a) for l, a, _kw in released] == [("Lab", [IP, "2001:db8::21"])], released
+        assert released[0][2]["actor"] == ACTOR and REASON in released[0][2]["reason"]
+
+    def test_kea_not_answering_refuses_the_plan_naming_the_leases(self, lab, monkeypatch):
+        monkeypatch.setattr(RT, "_device_leases", lambda l, macs, addresses: {
+            "ok": False, "configured": True, "leases": [], "error": "IPv4: connection refused"})
+        p = RT.plan("Lab", HOST, REASON)
+        assert not p["ok"]
+        assert "could not read is not none" in p["refused_by"]["leases"], p["refused_by"]
+
+    def test_none_is_a_done_step_saying_so(self, lab, monkeypatch):
+        monkeypatch.setattr(RT, "_device_leases", lambda l, macs, addresses: {
+            "ok": True, "configured": True, "leases": [], "error": ""})
+        s = _step(RT.plan("Lab", HOST, REASON), "leases")
+        assert s["done"] and "no Kea lease names it" in s["what"]
+
+
 # ----------------------------------------------------------------------------- C1336
 
 class TestRotationPolicies:

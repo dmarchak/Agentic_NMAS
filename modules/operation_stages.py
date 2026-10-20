@@ -137,6 +137,15 @@ STAGES = {
         "dhcp_v2.exclusion_preview", "hash",
         "modules.dhcp_subnets._moved", "modules.nsot.ztp._replace",
         "modules.dhcp_exclusions.record_commit"),
+    # DHCP › Leases, Release lease… (C1403): the preview reads Kea's leases and names the one;
+    # the apply reads them again and compares the hash, sends lease4-del or lease6-del for
+    # that address alone, and reads the leases back. A deleted lease cannot be put back (Kea
+    # keeps no copy), and the preview says so.
+    "dhcp_v2.lease_confirm": Stages(
+        "dhcp_v2.lease_preview", "hash", "modules.dhcp_leases.release",
+        "n/a: a lease Kea deleted cannot be put back (Kea keeps no copy of it); the client is "
+        "answered afresh at its next request, and the preview says so",
+        "modules.dhcp_leases.record"),
     "update.apply": Stages(
         "v2.update", "hash",
         "n/a: the root-owned updater (deploy/update/nmas-update) confirms the new version by identity",
@@ -292,6 +301,8 @@ HISTORY = {
                                     "the network's repository keeps it (dhcp/reservations.yml)"),
     "dhcp_v2.subnet_confirm": ("n/a: changes a Kea subnet, never one device's record; the "
                                "network's repository keeps it (dhcp/subnets.yml)"),
+    "dhcp_v2.lease_confirm": ("n/a: releases a Kea lease, never one device's record; the "
+                              "network's repository keeps it (dhcp/released-leases.yml)"),
     "dhcp_v2.exclusion_confirm": ("n/a: changes a Kea subnet's pools, never one device's "
                                   "record; the network's repository keeps it "
                                   "(dhcp/exclusions.yml)"),

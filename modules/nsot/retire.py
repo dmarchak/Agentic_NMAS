@@ -38,7 +38,9 @@ that stops part way is finished by running it again:
 device-lifecycle rule, 2026-10-19; C1332 to C1342): every per-device artefact is removed or
 archived, and the name is free. :data:`STEPS` is the whole list, in order: besides the above,
 the credential overrides at every address the device was known by and its staged credential
-(``staged``), its Kea reservations (``reservations``), its template override (in the commit),
+(``staged``), its Kea reservations (``reservations``), every Kea lease held for its MAC or an
+address it was known by (``leases``, C1403: a lease outlives its reservation and refuses the
+address to the next device), its template override (in the commit),
 its golden tags archived under ``retired/`` (``tags``), its rollback block archived in the
 retire commit and cleared (``rolled_back``), its approval-queue items withdrawn
 (``approvals``), its rotation-policy memberships (``rotation_policy``), its Topology
@@ -101,9 +103,9 @@ class RetireRefused(Exception):
 
 #: Every step retirement can take, in the order `apply` runs them: `plan()["steps"]`'s keys.
 #: The manual's page names each (tests/test_manual.py reads this tuple).
-STEPS = ("netbox_mask", "override", "staged", "reservations", "commit", "tags", "rolled_back",
-         "approvals", "rotation_policy", "topology", "heartbeat", "netbox_record", "legacy",
-         "host_key", "row")
+STEPS = ("netbox_mask", "override", "staged", "reservations", "leases", "commit", "tags",
+         "rolled_back", "approvals", "rotation_policy", "topology", "heartbeat", "netbox_record",
+         "legacy", "host_key", "row")
 
 #: The namespace a retired device's golden tags are archived under:
 #: ``retired/<device>/<identity>/<the tag's time>``. Never listed as a restore point.
@@ -360,6 +362,10 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
     # Its Kea reservations, ZTP's and the DHCP page's (C1335), before the commit as abandon
     # removes them first: an address reserved for a device nobody knows refuses the next one.
     take("reservations", _reservation_facts(list_name, hostname, entry, known))
+    # Every lease Kea holds for it (C1403), after its reservations go: a lease outlives its
+    # reservation and refuses the address to the next device until it ends.
+    take("leases", _lease_facts(list_name, hostname, entry, known,
+                                (work.get("reservations") or {}).get("ztp") or []))
     step("commit", "one commit: remove " + (", ".join(files) or "(nothing)")
          + (f", and its template override ({override_tpl}) from {_bindings_rel()}"
             if override_tpl else "")
@@ -615,6 +621,46 @@ def _reservation_facts(list_name: str, hostname: str, entry, known: list) -> dic
                      "owner's repository as you: the reservation stays in that record's "
                      "history, and its address is free for a new device"),
             "done": False, "work": work, "not_doing": not_doing}
+
+
+def _device_leases(list_name: str, macs: list, addresses: list) -> dict:
+    """Every Kea lease for the device (`dhcp_leases.for_device`). A seam: a test plants leases
+    without a Kea."""
+    from modules import dhcp_leases
+
+    return dhcp_leases.for_device(list_name, macs=macs, addresses=addresses)
+
+
+def _lease_facts(list_name: str, hostname: str, entry, known: list, ztp_work: list) -> dict:
+    """Its Kea leases (C1403): every lease Kea holds, either family, for its recorded MAC (and
+    the MAC of any ZTP reservation the plan removes) or any address it was known by, each
+    named, released at apply through the one release (`dhcp_leases.release_for_device`) and
+    recorded in the Kea owner's repository. Kea not answering refuses: could not read is not
+    no lease."""
+    from modules import dhcp_leases
+
+    macs = [m for m in dict.fromkeys([(entry or {}).get("mgmt_mac") or ""]
+                                     + [z.get("mac", "") for z in ztp_work]) if m]
+    addresses = list(known) + [z.get("address", "") for z in ztp_work]
+    got = _device_leases(list_name, macs, addresses)
+    if not got["ok"]:
+        return {"refuse": (f"Kea's leases could not be read ({got['error']}), so whether one is "
+                           f"held for {hostname} cannot be told: could not read is not none")}
+    if not got.get("configured", True):
+        return {"step": "no Kea lease to release (Kea is not configured for this network)",
+                "done": True}
+    leases = got["leases"]
+    if not leases:
+        return {"step": "no Kea lease names it (its MAC or an address it was known by)",
+                "done": True}
+    return {"step": ("release from Kea " + "; ".join(dhcp_leases.words(r, times=False)
+                                                     for r in leases)
+                     + ", with lease4-del or lease6-del, each read back and recorded in "
+                       f"{dhcp_leases.RECORD} in the Kea owner's repository as you: the "
+                       "address is then free for a new device"),
+            "done": False, "work": {"leases": [dhcp_leases.bound(r)
+                                               | {"hostname": r["hostname"]}
+                                               for r in leases]}}
 
 
 def _tag_facts(repo: str, hostname: str, identity: str) -> dict:
@@ -1290,6 +1336,7 @@ def _holds_the_device(func):
 #: plan's own sentence is the step's hover.
 STEP_WORDS = {"netbox_mask": "NetBox's copy masked", "override": "Overrides cleared",
               "staged": "Staged credential deleted", "reservations": "Kea reservations removed",
+              "leases": "Kea leases released",
               "commit": "Intent and golden removed", "tags": "Golden tags archived",
               "rolled_back": "Rollback block archived", "approvals": "Queue items withdrawn",
               "rotation_policy": "Rotation policies updated", "topology": "Topology entries removed",
@@ -1453,6 +1500,14 @@ def apply(list_name: str, hostname: str, *, reason: str, actor: str,
             done.append("reservations")
         except Exception as exc:               # noqa: BLE001
             return fail("reservations", exc)
+
+    if "leases" in pending:
+        try:
+            _release_leases(list_name, hostname, (work.get("leases") or {}).get("leases") or [],
+                            actor=actor, reason=reason)
+            done.append("leases")
+        except Exception as exc:               # noqa: BLE001
+            return fail("leases", exc)
 
     block = (work.get("rolled_back") or {}).get("block")
     if "commit" in pending:
@@ -1655,6 +1710,19 @@ def _remove_reservations(list_name: str, hostname: str, w: dict, *, actor: str,
         if not got.get("ok"):
             raise RuntimeError(f"the DHCP reservation {d['what']} was not removed: "
                                + (got.get("error") or "no reason"))
+
+
+def _release_leases(list_name: str, hostname: str, leases: list, *, actor: str,
+                    reason: str) -> None:
+    """Release the leases the plan named (C1403) through the one release
+    (`dhcp_leases.release_for_device`), each read back and recorded. A lease now another
+    client's is left (said in its outcome). Raises naming what was not released."""
+    from modules import dhcp_leases
+
+    got = dhcp_leases.release_for_device(list_name, leases, actor=actor, reason=reason,
+                                         source=f"retirement of {hostname}", device=hostname)
+    if not got["ok"]:
+        raise RuntimeError(f"its Kea leases were not all released: {got['error']}")
 
 
 def _archive_tags(repo: str, list_name: str, hostname: str, moves: list, *,

@@ -1102,6 +1102,33 @@ def dhcp_exclusion():
     ])
 
 
+def dhcp_lease_release():
+    return svg(470, (
+        "Releasing one Kea lease (C1403). The preview asks Kea for its leases and its "
+        "configuration and names the lease, its client and whether the address is reserved. You "
+        "confirm with a reason. The apply reads Kea's leases again and compares the hash, sends "
+        "lease4-del or lease6-del for that address alone through Kea's control agent, and reads "
+        "the leases back. Then the release is committed with your reason. Retire and Abandon run "
+        "the same release for the leases a device leaves."), [
+        lanes(20, 464, right="KEA"),
+        doc("box", 14, 40, 186, 40, "The preview: the lease", "its client, reserved or not"),
+        num(14, 40, 1),
+        person(14, 96, 186, 30, "You confirm, with a reason"), num(14, 96, 2),
+        _down(107, 128, 148),
+        band(150, 300, "The release · this address alone"),
+        store(262, 172, 118, 150, "Kea", "its leases"),
+        *rows([
+            (174, "read", 3, "Plan again", "moved: nothing released"),
+            (228, "send", 4, "Release", "lease4-del or lease6-del"),
+            (282, "read", 5, "Read back", "no lease for this client"),
+        ]),
+        repo(14, 330, 186, 40, "One commit", "dhcp/released-leases.yml"),
+        num(14, 330, 6),
+        t(14, 400, "Kea keeps no copy of a deleted lease;", "sm"),
+        t(14, 413, "the record is the commit.", "sm"),
+    ])
+
+
 def show_commands():
     return svg(470, (
         "Show commands, and Ask the device its one-device form. Every command is checked "
@@ -1478,6 +1505,7 @@ DIAGRAMS = {
     "dhcp-reservation": dhcp_reservation,
     "dhcp-subnet": dhcp_subnet,
     "dhcp-exclusion": dhcp_exclusion,
+    "dhcp-lease-release": dhcp_lease_release,
     "show-commands": show_commands,
     "logging-path": logging_path,
     "reveal-log-line": reveal_log_line,

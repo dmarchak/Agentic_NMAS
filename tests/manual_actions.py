@@ -76,6 +76,8 @@ NOT_AN_OPERATION = {
     ("_dhcp_subnet.html", "Close"): "puts the Subnets tab back after a change, a read",
     ("_dhcp_exclusion.html", "Cancel"): "puts the Exclusions tab back, writing nothing",
     ("_dhcp_exclusion.html", "Close"): "puts the Exclusions tab back after a change, a read",
+    ("_dhcp_lease.html", "Cancel"): "puts the Leases tab back, releasing nothing",
+    ("_dhcp_lease.html", "Close"): "puts the Leases tab back after a release, a read",
     ("_decline.html", "Cancel"): "closes the decline card, committing nothing",
     ("_decline.html", "Close"): "closes the decline card after its answer, a read",
     ("_macros.html", "btn btn-small"): "Check again: re-reads origin and CI now, a read",

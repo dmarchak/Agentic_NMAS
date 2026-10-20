@@ -268,6 +268,58 @@ def exclusion_confirm():
                         "actor": actor, "subnets": _op_subnets()})
 
 
+# ------------------------------------------------------------------ Leases: Release lease… (C1403)
+
+def _lop_region(lop: dict, code: int = 200):
+    """The Leases tab with the release card in place (region for htmx, the page otherwise)."""
+    from modules import dhcp_leases as L
+    from modules.preview_confirm import confirm_part
+
+    lop = dict(lop, run=dhcp_page.write_run(lop.get("result"), L.RUN_STEPS),   # THE stepper
+               said=dhcp_page.release_said(lop.get("result")))
+    ctx = _ctx()
+    ctx["g"]["s"] = dict(ctx["g"]["s"], tab="lea")
+    extra = dict(lop=lop, may=confirm_part(request, "confirm"))
+    if not request.headers.get("HX-Request"):
+        from routes.v2 import _page
+        return _page("v2/dhcp.html", active_nav="dhcp", list_name=_list_name(), **extra,
+                     **ctx), code
+    return _strict(render_template("v2/_dhcp_view.html", **extra, **ctx), code)
+
+
+@bp.route("/lease", methods=["GET"])
+def lease_preview():
+    """The release card in place of the Leases tab, for the lease its row names (family and
+    address): the lease and its client, whether the address is reserved, what survives, and its
+    hash. A read: Kea's leases and configuration are asked; nothing is written."""
+    from modules import dhcp_leases as L
+
+    refused = _not_owner()
+    p = _refused_plan(refused) if refused else L.plan(_list_name(), request.args)
+    return _lop_region({"state": "preview", "ask": L.ask(request.args), "plan": p})
+
+
+@bp.route("/lease", methods=["POST"])
+def lease_confirm():
+    """Release the previewed lease as the verified person, bound to the preview's hash: Kea's
+    leases read again, lease4-del or lease6-del for that address alone, read back, recorded; the
+    result in place."""
+    from modules import dhcp_leases as L
+    from modules import identity
+
+    actor = identity.request_actor()
+    refused = _not_owner()
+    got = _refused_result(refused) if refused else L.apply(
+        _list_name(), request.form, request.form.get("hash", ""), actor=actor,
+        reason=request.form.get("reason", ""))
+    s = L.ask(request.form)
+    if not got["ok"]:
+        return _lop_region({"state": "refused", "ask": s, "plan": got.get("plan"),
+                            "result": got, "reason": request.form.get("reason", "")}, 409)
+    return _lop_region({"state": "done", "ask": s, "plan": got["plan"], "result": got,
+                        "actor": actor})
+
+
 def _op_subnets() -> list:
     """The subnets a reservation can be made in, from the DHCP reader's stored value: every
     subnet of both families but ZTP's (onboarding's)."""

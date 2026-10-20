@@ -2857,6 +2857,8 @@ RETIRE_GATES = (
      "none is staged, or the staged one is the CSV row's"),
     ("reservations", "its Kea reservations can be read, and each removal planned",
      "ZTP's fragment and the DHCP page's files were read; Kea planned each removal"),
+    ("leases", "Kea's leases can be read, so every lease left for it is named (C1403)",
+     "Kea's leases in both families were read for its MAC and every address it was known by"),
     ("tags", "its golden tags can be listed", "each is archived under retired/ after the commit"),
     ("rolled_back", "the record of rolled-back changes can be read",
      "its block, if any, is archived in the retire record, then cleared"),
@@ -2979,6 +2981,8 @@ RETIRE_STEP_WORDS = {"netbox_mask": "masked the credentials NetBox held in its s
                                "same password as its CSV row's)",
                      "reservations": "removed its Kea reservations, each recorded in the Kea "
                                      "owner's repository",
+                     "leases": "released its Kea leases, each read back and recorded in the "
+                               "Kea owner's repository",
                      "commit": "removed its intent, golden and template override and released "
                                "its identity, in one commit",
                      "tags": "archived its golden tags under retired/, never offered as a "

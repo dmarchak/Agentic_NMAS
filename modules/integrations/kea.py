@@ -32,7 +32,7 @@ class KeaIntegration(IntegrationClient):
     RESULT_CONFLICT = 4
     OK_RESULTS = (RESULT_SUCCESS, RESULT_EMPTY)
 
-    def command(self, command: str, service=None) -> dict:
+    def command(self, command: str, service=None, arguments=None) -> dict:
         """Send a Control Agent command. Never raises.
 
         **`ok` means Kea did the thing**, not that an HTTP request completed.
@@ -50,10 +50,15 @@ class KeaIntegration(IntegrationClient):
         answers `result: 1` for a bare string — a caller-facing footgun, since
         the settings default is already a list and only a hand-written call
         hits it.
+
+        *arguments* is the command's ``arguments`` map, sent as given (``lease4-del``'s
+        ``{"ip-address": …}``, C1403); none is sent when it is None.
         """
         if not self.is_configured():
             return {"ok": False, "error": "Not configured — set in Settings"}
         payload = {"command": command}
+        if arguments is not None:
+            payload["arguments"] = dict(arguments)
         services = service or self._setting("kea_services", ["dhcp4"])
         if isinstance(services, str):
             services = [services]
