@@ -48,13 +48,23 @@ def _browser_or_skip():
     return browser
 
 
-def _slow_alpine(monkeypatch):
+#: How long the served app holds Alpine at most when a test never releases it (CI #1002: a
+#: fixed delay is a race, and under CI's load the page drew its button after Alpine arrived).
+ALPINE_HOLD_BOUND = 30.0
+
+
+def _slow_alpine(monkeypatch, release=None):
+    """Hold Alpine back: for ALPINE_DELAY, or, given *release* (a ``threading.Event``), until
+    the test sets it, so a click lands before Alpine by construction, not by a race."""
     import app as A
     real = A.app.view_functions["static"]
 
     def slow(**kw):
         if kw.get("filename", "").endswith("alpinejs-csp/cdn.min.js"):
-            time.sleep(ALPINE_DELAY)
+            if release is None:
+                time.sleep(ALPINE_DELAY)
+            else:
+                release.wait(ALPINE_HOLD_BOUND)
         return real(**kw)
     monkeypatch.setitem(A.app.view_functions, "static", slow)
 
@@ -77,24 +87,29 @@ class TestC399:
                                                                       monkeypatch):
         browser = _browser_or_skip()
         import app as A
-        _slow_alpine(monkeypatch)
+        import threading
+        release = threading.Event()
+        _slow_alpine(monkeypatch, release)
         with browser.Served(A.app) as srv, browser.Browser(prefs=NO_CACHE,
                                                            page_load="none") as b:
             try:
                 b._call("POST", f"/session/{b.session}/window/rect",
                         {"width": 1280, "height": 1000})
                 for attempt in range(3):
+                    release.clear()
                     b.go("about:blank")
                     b.go(srv.url(f"/v2/device/r2?cold={attempt}"))
                     b.wait_for(f"return !!document.querySelector('{BUTTON}')", 10)
                     assert b.js("return !window.Alpine"), "the click must land before Alpine"
                     b.click(BUTTON)
+                    release.set()           # Alpine is served once the click has landed
                     # Open BY THE CLICK, once Alpine runs: Alpine started (the page's scripts
                     # loaded at all), the button says it is expanded, and the menu shows.
                     b.wait_for("return !!window.Alpine && document.querySelector('"
                                + BUTTON + "').getAttribute('aria-expanded') === 'true' && "
                                "(function () { " + MENU + " })()", ALPINE_DELAY + 8)
             finally:
+                release.set()
                 b.go("about:blank")
                 browser.close_socketio_sessions()
 
