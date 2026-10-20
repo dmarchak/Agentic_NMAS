@@ -168,6 +168,15 @@ def validate(hostname: str, text: str, list_name: str = "") -> dict:
     if problems:
         return refuse("schema", "; ".join(problems), _line_of(text, "syslog:"), 1)
 
+    # 2c'. No interface holds two keys that undo each other (C1429): both lines render and the
+    #      device keeps the template's later one, silently.
+    problems = hostvars.contradiction_problems(parsed)
+    if problems:
+        line, column = _key_mark(text, ("interfaces", problems[0][0]), "name")
+        return refuse("schema", "; ".join(m for _n, m in problems[:6])
+                      + (f"; and {len(problems) - 6} more" if len(problems) > 6 else ""),
+                      line, column)
+
     # 2d. No run's notes as a description (C428).
     problems = hostvars.description_problems(parsed)
     if problems:

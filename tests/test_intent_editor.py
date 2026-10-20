@@ -182,6 +182,52 @@ class TestValidationRefusesWithLineAndColumn:
         assert out.get_json()["valid"] is True
 
 
+#: The interface r4's Gi5 became in Lab 8 step 4 (2026-10-20), before its stale keys were
+#: removed: an address and `no_shutdown` added beside the `no_ip_address` and `shutdown` it held.
+GI5 = ("hostname: s4\ninterfaces:\n- name: GigabitEthernet0/0\n  description: kept\n"
+       "- name: GigabitEthernet5\n  ipv4: 192.0.2.1 255.255.255.252\n  no_ip_address: true\n"
+       "  shutdown: true\n  no_shutdown: true\n")
+
+
+class TestContradictoryKeysAreRefusedByName:
+    """C1429: an interface holding two keys that undo each other passed every check, both lines
+    rendered, and the device kept the template's later one. The check refuses each pair by
+    name, both keys and the interface, at the preview and the commit alike (one `validate`)."""
+
+    def test_both_of_step_4s_pairs_are_named(self, world):
+        body = _preview(world, GI5).get_json()
+        assert body["stage"] == "schema"
+        err = body["error"]
+        assert "GigabitEthernet5 sets both 'shutdown' and 'no_shutdown'" in err
+        assert "GigabitEthernet5 sets both 'ipv4' and 'no_ip_address'" in err
+        assert "ends up with no address" in err
+
+    def test_the_refusal_points_at_the_interface(self, world):
+        body = _preview(world, GI5).get_json()
+        assert body["line"] == 5, body
+
+    def test_no_switchport_with_a_switchport_key(self, world):
+        text = ("hostname: s4\ninterfaces:\n- name: GigabitEthernet0/1\n  no_switchport: true\n"
+                "  switchport_mode: access\n")
+        assert ("GigabitEthernet0/1 sets both 'switchport_mode' and 'no_switchport'"
+                in _preview(world, text).get_json()["error"])
+
+    def test_the_commit_refuses_it_too(self, world):
+        out = _commit(world, GI5, "C1429: a contradiction")
+        assert out.status_code == 400
+        assert "sets both" in out.get_json()["error"]
+
+    @pytest.mark.parametrize("keep", ["shutdown", "no_shutdown"])
+    def test_one_of_each_pair_passes(self, world, keep):
+        """The controls: an address alone, and either admin key alone, are fine; an empty value
+        (false) is no value."""
+        text = GI5.replace("  no_ip_address: true\n", "  no_ip_address: false\n")
+        text = text.replace("  shutdown: true\n" if keep == "no_shutdown" else
+                            "  no_shutdown: true\n", "")
+        body = _preview(world, text).get_json()
+        assert "sets both" not in body.get("error", ""), body
+
+
 class TestTheSecretGuardsApplyInTheEDITOR:
     """`write_committed_text()` refuses at commit; the editor must refuse
     before the operator has typed a summary and pressed the button."""

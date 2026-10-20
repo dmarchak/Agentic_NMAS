@@ -253,6 +253,7 @@ def plan(repo: str, devices: list, steps: list, *, render, eligible=None,
         gate += [f"unknown interface key {k!r} (interfaces[{i}])"
                  for i, k in hostvars.unknown_interface_keys(after)]
         gate += hostvars.description_problems(after)                  # C428
+        gate += [m for _n, m in hostvars.contradiction_problems(after)]  # C1429
         try:
             hostvars.assert_printable(new_text, host)
             hostvars.assert_no_secret_values(new_text, host)

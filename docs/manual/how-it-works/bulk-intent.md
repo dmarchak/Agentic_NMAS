@@ -59,7 +59,9 @@ name is never touched.
    reasons are given at once.
 5. **Apply the steps and check the result**. Read: nothing more. Sent: nothing. Recorded:
    nothing. The new document must pass the same checks a hand edit does: the syslog block
-   whole or absent, no unknown interface key, no description that is a run's notes (the
+   whole or absent, no unknown interface key, no interface holding two keys that undo each
+   other (`shutdown` with `no_shutdown`, `no_ip_address` with an address, `no_switchport` with a
+   `switchport` key), no description that is a run's notes (the
    tool's "NSoT-managed - " prefix, "smoke", "check", a course code: C428), printable
    characters only, no secret value.
    A device whose result would be refused is named with why.

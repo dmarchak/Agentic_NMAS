@@ -769,6 +769,39 @@ def description_problems(host_vars: dict) -> list:
     return problems
 
 
+#: Interface keys that cannot both be set (C1429, Lab 8 step 4, 2026-10-20): each pair renders
+#: two lines that undo each other, and the device keeps whichever the interface template
+#: (`_common.j2`'s `interface` macro) writes LAST, silently. ``(key, other keys, what renders)``.
+CONTRADICTIONS = (
+    ("no_shutdown", ("shutdown",),
+     "` shutdown` and then ` no shutdown` both render, and the interface ends up enabled"),
+    ("no_ip_address", ("ipv4",),
+     "` ip address …` and then ` no ip address` both render, and the interface ends up with "
+     "no address"),
+    ("no_switchport", ("switchport_mode", "switchport_access_vlan", "switchport_trunk_vlans",
+                       "switchport_trunk_encapsulation", "switchport"),
+     "` no switchport` and then a ` switchport …` line both render, and the port ends up "
+     "switched again"),
+)
+
+
+def contradiction_problems(host_vars: dict) -> list:
+    """``[(index, message)]``: each interface holding a pair of keys that undo each other
+    (`CONTRADICTIONS`), naming the interface, both keys and what the device would keep. A key
+    set to an empty value (None, false, "", []) is not set. ``[]`` if none."""
+    out = []
+    for n, i in enumerate((host_vars or {}).get("interfaces") or []):
+        if not isinstance(i, dict):
+            continue
+        for key, others, renders in CONTRADICTIONS:
+            set_others = [o for o in others if i.get(o) not in (None, False, "", [], {})]
+            if i.get(key) not in (None, False, "", [], {}) and set_others:
+                out.append((n, f"{i.get('name') or f'interfaces[{n}]'} sets both "
+                               f"{set_others[0]!r} and {key!r}: {renders}. Keep the one that "
+                               "says what you mean and remove the other"))
+    return out
+
+
 class SessionDescription(ValueError):
     """Authored intent carrying a description that is a run's notes (C428)."""
 

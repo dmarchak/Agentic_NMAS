@@ -181,6 +181,24 @@ class TestRefusals:
         r = _plan(repo, ["s1"], steps=partial)
         assert r["refused"] and "heartbeat" in r["refused"][0]["reason"]
 
+    def test_a_contradiction_the_change_makes_is_refused_by_name(self, lab):
+        """C1429: a bulk "enable" on an interface intent holds shut would leave both keys; the
+        result is refused naming the interface and both keys, as a hand edit is."""
+        repo, hostvars, _R = lab
+        doc = hostvars.read_committed(repo, "s1")
+        iface = next(i for i in doc["interfaces"]
+                     if not i.get("shutdown") and not i.get("no_shutdown"))
+        steps = [{"path": ["interfaces", iface["name"], "shutdown"],
+                  "before": iface.get("shutdown", BI.ABSENT), "after": True},
+                 {"path": ["interfaces", iface["name"], "no_shutdown"],
+                  "before": iface.get("no_shutdown", BI.ABSENT), "after": True}]
+        r = _plan(repo, ["s1"], steps=steps)
+        assert r["refused"], r
+        assert (f"{iface['name']} sets both 'shutdown' and 'no_shutdown'"
+                in r["refused"][0]["reason"])
+        one = _plan(repo, ["s1"], steps=steps[1:])
+        assert not one["refused"], one["refused"]
+
     def test_eligibility_refuses_by_name(self, lab):
         repo, _hv, _R = lab
         r = BI.plan(repo, ["s1", "gone"], P1_MOVE, render=_render,
