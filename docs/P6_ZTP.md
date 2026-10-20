@@ -517,3 +517,19 @@ behind it, a /30 between them, the relay's `ip helper-address` naming Kea's addr
 5. Verify reaching the device through the relay with the bootstrap's gateway, the persist step's
    read-back (C57's acceptance), and Kea's reservation surviving `config-reload` in the
    relayed subnet's file (M5's question for a nested include).
+
+## 10. A ZTP lease is matched by MAC (C1403 part 2)
+
+**Measured 2026-10-20** on this installation's Kea 2.4.1, a throwaway copy on loopback with 0d's
+relayed shape (`tests/fixtures/kea/c1403_match_client_id_probe.txt`): with `match-client-id`
+true (Kea's default, and this installation's global setting), a reserved device back with the
+same MAC and a new client-id is never answered (`ALLOC_ENGINE_V4_DISCOVER_ADDRESS_CONFLICT`, 0d's
+run 2) and its REQUEST is NAKed; with it false it is offered and acknowledged its reserved
+address. A configless IOS-XE device sends its serial as its client-id, and a redeployed VM can
+come back with another, so every ZTP subnet says `"match-client-id": false` at the subnet: a
+relayed one from its Add (and an earlier one from its next Edit…), the directly attached one by
+the one-time host step `scripts/host-steps/c1403-ztp-lease-identity.sh`, through board C's write
+path. Job health's `ztp-lease-identity:subnet-<id>` row says, for each ZTP subnet, the value Kea
+runs and the level that sets it, and names the fix while it is not false
+(`modules/dhcp_lease_identity.py`). The leases a retired or abandoned device leaves are released
+by part 1 (`modules/dhcp_leases.py`).

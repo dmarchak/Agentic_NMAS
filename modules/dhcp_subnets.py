@@ -578,9 +578,21 @@ def _declare_for_ztp(p, s, after, family, prefix, entries) -> None:
         raise Refused(str(exc)) from None
     after["relay"] = {"ip-addresses": [relay["address"]]}
     after["user-context"] = ztp_relayed.declaration()
+    _match_by_mac(p, after)
     p["checks"].append(("pass", f"for ZTP behind {relay['device']} {relay['iface']} "
                                 f"({relay['address']}, its relay); its reservations are "
                                 "onboarding's, and it carries no gateway or DNS option (D4)"))
+
+
+def _match_by_mac(p, after: dict) -> None:
+    """C1403: a ZTP subnet matches a lease by the device's MAC, never its client-id
+    (`dhcp_lease_identity`, measured on this installation's Kea)."""
+    from modules import dhcp_lease_identity as LI
+
+    after[LI.KEY] = LI.WANTED
+    p["checks"].append(("pass", f"{LI.KEY} false: a lease is matched by the device's MAC, so "
+                                "a device redeployed with a new client-id keeps its address "
+                                "(C1403)"))
 
 
 def _plan_remove(list_name, s, p, kea, file_text, intent, D) -> None:
@@ -677,6 +689,7 @@ def _plan_edit(list_name, s, p, kea, file_text, intent, D) -> None:
     _pool_given, valid = _settings(s, after, before, family, prefix, config, sid, intent)
     if relayed:
         _d4_subnet(after, sid, running or before)
+        _match_by_mac(p, after)          # one written before C1403 converges on its next edit
     if after == before:
         raise Refused("nothing would change: the values are those Kea's subnet holds now")
     p["after"] = after

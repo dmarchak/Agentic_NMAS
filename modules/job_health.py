@@ -1422,6 +1422,18 @@ def ztp_rows() -> list:
                  "detail": f"the check raised {type(exc).__name__}: {exc}"}]
 
 
+def ztp_lease_rows() -> list:
+    """C1403: whether each ZTP subnet matches its leases by MAC, never client-id."""
+    from modules.nsot import ztp
+
+    try:
+        return ztp.lease_identity_rows()
+    except Exception as exc:                       # noqa: BLE001
+        return [{"unit": "ztp-lease-identity", "state": "unknown", "max_age_minutes": 0,
+                 "what": "A ZTP subnet matches a lease by the device's MAC (C1403)",
+                 "detail": f"the check raised {type(exc).__name__}: {exc}"}]
+
+
 def reader_rows() -> list:
     """Each reader job's liveness (modules/reader_job.py, rule 7). A reader
     whose store cannot be judged is one `unknown` row, never no row."""
@@ -1512,7 +1524,7 @@ def health(now: float = None, run=None, images=None, settings=None,
            rotations=None, ztp=None, responder=None,
            startup=None, sessions=None, version=None, readers=None,
            breakglass=None, prometheus=None, monitoring=None, updater=None,
-           helpers=None, serials=None) -> dict:
+           helpers=None, serials=None, lease_identity=None) -> dict:
     """*images*: the image rows, for a caller that has them; by default they
     are read from Proxmox. *settings*, *rotations*: likewise."""
     jobs = [job_status(j, now, run) for j in JOBS]
@@ -1522,6 +1534,7 @@ def health(now: float = None, run=None, images=None, settings=None,
     if rotations is None:
         jobs += staged_rotation_rows()
     jobs += ztp_rows() if ztp is None else list(ztp)
+    jobs += ztp_lease_rows() if lease_identity is None else list(lease_identity)
     jobs += ztp_responder_rows(run) if responder is None else list(responder)
     jobs += startup_rows() if startup is None else list(startup)
     jobs += ssh_session_rows() if sessions is None else list(sessions)

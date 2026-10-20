@@ -39,6 +39,8 @@ EXPECTED = {"phase3-step1.sh", "phase3-step2.sh", "c584-loki-writer.sh",
             "c529-step5-subnet-files.sh",
             # Board L: the discovery range's classes and pools on the ZTP segment (2026-10-11).
             "ztp-discovery-range.sh",
+            # C1403 part 2: every ZTP subnet matches leases by MAC (2026-10-20).
+            "c1403-ztp-lease-identity.sh",
             # C665: Device Roles' kinds with the operator's admin token, prompted (2026-10-11).
             "netbox-role-kinds.sh",
             # 7.8: the retired topology service's unit and link removed (2026-10-12).

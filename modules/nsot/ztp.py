@@ -428,13 +428,37 @@ def posture_rows(kea=None, dns=dns_posture, addrs=None, get=None, relayed=None,
     server, route and DNS on the relayed segment, and D4's options), and one `ztp-firewall`
     row while any is declared (udp/69 admitted from each, `ztp_relayed.firewall_row`).
     *relayed* holds the relayed check's seams; *firewall* is ``(record, path)``."""
-    if get is None:
-        from modules.list_settings import default_layer as get   # one fragment, every list
-    fragment = (get("kea_ztp_fragment", "") or "").strip()
+    fragment = _job_fragment(get)
     if not fragment:
         return []
     return (_direct_posture_rows(kea, dns, addrs)
             + _relayed_posture_rows(kea, addrs, relayed or {}, firewall, fragment))
+
+
+def _job_fragment(get=None) -> str:
+    """The ZTP fragment job health's ZTP rows ask under: "" while ZTP is not configured, when
+    they are none. One read for D4's rows and C1403's (*get* a test's seam)."""
+    if get is None:
+        from modules.list_settings import default_layer as get   # one fragment, every list
+    return (get("kea_ztp_fragment", "") or "").strip()
+
+
+def lease_identity_rows(kea=None, addrs=None, get=None) -> list:
+    """C1403: one job-health row per ZTP subnet, whether Kea matches its leases by MAC
+    (`dhcp_lease_identity.rows`). None while ZTP is not configured, as D4's rows; Kea not
+    answering is D4's own `ztp-posture` row already."""
+    from modules import dhcp_lease_identity
+
+    if not _job_fragment(get):
+        return []
+    got = (kea or _kea()).command("config-get")
+    if not got.get("ok"):
+        return []
+    try:
+        dhcp4 = _dhcp4(got["result"])
+    except Refused:
+        return []
+    return dhcp_lease_identity.rows(dhcp4, addrs)
 
 
 def _relayed_posture_rows(kea, addrs, seams: dict, firewall, fragment: str) -> list:

@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+"""C1403 part 2 (`modules/dhcp_lease_identity.py`), the app's side of the one-time host step
+`scripts/host-steps/c1403-ztp-lease-identity.sh`: every ZTP subnet Kea runs says
+`"match-client-id": false`, written to Mercury's IPv4 subnet file through board C's one write
+path (Kea's own check on a candidate, write, config-reload, read back, recorded in
+dhcp/subnets.yml). Run as the app's user, for the Default network's Kea.
+
+    nmas-kea-lease-identity plan              # each ZTP subnet: what it runs, what would change
+    nmas-kea-lease-identity apply             # write each that does not say false yet
+    nmas-kea-lease-identity verify            # Kea runs match-client-id false on every one
+    nmas-kea-lease-identity expected <a> <b>  # two snapshots (nmas-kea-subnet-files snapshot):
+                                              # only match-client-id moved, on ZTP subnets
+
+Exit 0 done or as expected, 1 refused, failed or different, 2 Kea could not be asked.
+"""
+
+import argparse
+import json
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+REASON = ("C1403: a ZTP subnet matches leases by the device's MAC, never its client-id, so a "
+          "device redeployed with a new client-id is answered (measured on this Kea 2.4.1, "
+          "2026-10-20; the one-time host step, scripts/host-steps/c1403-ztp-lease-identity.sh)")
+
+
+def expected(a: dict, b: dict, ztp_ids) -> list:
+    """What moved between two snapshots besides `match-client-id` on the ZTP subnets, in words;
+    [] when only that did."""
+    from modules import dhcp_lease_identity as LI
+
+    moved = []
+    for family in sorted(set(a) | set(b)):
+        x, y = a.get(family) or {}, b.get(family) or {}
+        cx, cy = x.get("config") or {}, y.get("config") or {}
+        for key in sorted(set(cx) | set(cy)):
+            if cx.get(key) == cy.get(key):
+                continue
+            if family == "IPv4" and key == "subnet4":
+                sx = {s.get("id"): s for s in cx.get(key) or []}
+                sy = {s.get("id"): s for s in cy.get(key) or []}
+                if set(sx) != set(sy):
+                    moved.append(f"IPv4: the subnets are {sorted(sy)} after, {sorted(sx)} before")
+                for i in sorted(set(sx) & set(sy)):
+                    if sx[i] == sy[i]:
+                        continue
+                    rest = ({k: v for k, v in sx[i].items() if k != LI.KEY},
+                            {k: v for k, v in sy[i].items() if k != LI.KEY})
+                    if i not in ztp_ids or rest[0] != rest[1]:
+                        moved.append(f"IPv4: subnet {i} moved beyond {LI.KEY}")
+                    elif sy[i].get(LI.KEY) is not LI.WANTED:
+                        moved.append(f"IPv4: subnet {i} does not say {LI.KEY} false after")
+                continue
+            moved.append(f"{family}: Kea's configuration key {key!r} differs")
+        for what in ("reservations", "leases"):
+            if (x.get(what) or []) != (y.get(what) or []):
+                moved.append(f"{family}: the {what} differ")
+    return moved
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("what", choices=("plan", "apply", "verify", "expected"))
+    ap.add_argument("args", nargs="*")
+    args = ap.parse_args(argv)
+
+    from modules import dhcp_lease_identity as LI
+    from modules import dhcp_reservations as D
+    from modules import dhcp_subnets as S
+    from modules.integrations.kea import KeaIntegration
+    from modules.list_settings import DEFAULT_LIST
+
+    kea = KeaIntegration()
+    if not kea.is_configured():
+        print("Kea is not configured for the Default network (its Kea card in Settings)")
+        return 2
+    try:
+        config = D.kea_config(kea, "IPv4")
+    except D.Refused as exc:
+        print(f"Kea could not be asked: {exc}")
+        return 2
+    found = LI.ztp_subnets(config)
+    if not found:
+        print("REFUSED: Kea runs no ZTP subnet (none holds this host's address on an interface "
+              "Kea listens on, and none is declared relayed)")
+        return 1
+    if args.what == "expected":
+        if len(args.args) != 2:
+            print("expected takes two snapshot files")
+            return 1
+        snaps = []
+        for path in args.args:
+            with open(path, encoding="utf-8") as fh:
+                snaps.append(json.load(fh))
+        moved = expected(*snaps, {s.get("id") for s, _n, _k in found})
+        print("\n".join(moved) if moved else
+              f"AS EXPECTED: only {LI.KEY} moved, on the ZTP subnets; every other setting, "
+              "subnet, reservation and lease, both families, as before")
+        return 1 if moved else 0
+    rows = LI.rows(config)
+    if args.what == "verify":
+        for r in rows:
+            print(f"{r['unit']}: {r['state']}: {r['detail']}")
+        return 0 if all(r["state"] == "ok" for r in rows) else 1
+    from modules.identity import host_actor
+    failed = False
+    for subnet, _net, kind in found:
+        sid = subnet.get("id")
+        values = {"family": "IPv4", "id": str(sid)}
+        p = LI.plan(DEFAULT_LIST, values, kea=kea)
+        if not p["ok"]:
+            done = p["refused"].startswith("nothing would change")
+            print(f"{kind} subnet {sid}: {'done: ' if done else 'REFUSED: '}{p['refused']}")
+            failed = failed or not done
+            continue
+        print(f"{kind} subnet {sid}: {p['title']}")
+        if args.what == "plan":
+            for sign, line in p["change"]:
+                print(f"  {sign} {line}")
+            continue
+        got = S.apply_edit(DEFAULT_LIST, values, p["hash"], actor=host_actor(), reason=REASON,
+                           kea=kea, planner=LI.plan)
+        print(f"  written: {got['outcome'] or 'no'}; read back: {got['read_back'] or '-'}; "
+              f"recorded: {got['commit'] or '-'}"
+              + (f"; rolled back: {got['rolled_back']}" if got["rolled_back"] else "")
+              + (f"; ERROR: {got['error']}" if got["error"] else ""))
+        failed = failed or not got["ok"]
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

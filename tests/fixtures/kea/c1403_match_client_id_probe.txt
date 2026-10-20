@@ -1,0 +1,29 @@
+# C1403 part 2's measurement, 2026-10-20 04:59 UTC, on the NMAS host's own Kea 2.4.1 binary
+# (`kea-dhcp4 -v`: 2.4.1), run as a throwaway copy on loopback (an unprivileged server port, its
+# own memfile in a temporary folder; never the live Kea, its files or its port), removed after.
+# Subnet 256, 10.255.96.0/30, relay 127.0.0.2 (0d's relayed shape), a reservation by
+# hw-address 52:54:00:aa:bb:01 for 10.255.96.2. The probe is the relay (giaddr 127.0.0.2,
+# hops 1). OLD client-id 00:39:4a:4c:4e:58:47:49:41:34:54:34 (0d run 1's, "9JLNXGIA4T4"),
+# NEW client-id 00:39:4e:45:57:53:45:52:49:41:4c:30. Answers as received; Kea's log lines kept
+# from the message id on.
+== match-client-id true
+  1a DISCOVER, old client-id: OFFER 10.255.96.2
+  1b REQUEST, old client-id: ACK 10.255.96.2
+  the lease file after 1: 10.255.96.2,52:54:00:aa:bb:01,00:39:4a:4c:4e:58:47:49:41:34:54:34,604800,1793077010,256,0,0,,0,,0
+  2a DISCOVER, NEW client-id, same MAC: no answer
+  2b REQUEST, NEW client-id, same MAC: NAK 0.0.0.0
+  the lease file after 2: 10.255.96.2,52:54:00:aa:bb:01,00:39:4a:4c:4e:58:47:49:41:34:54:34,604800,1793077010,256,0,0,,0,,0
+  3  control: DISCOVER, old client-id again: OFFER 10.255.96.2
+   log: ALLOC_ENGINE_V4_DISCOVER_ADDRESS_CONFLICT [hwtype=1 52:54:00:aa:bb:01], cid=[00:39:4e:45:57:53:45:52:49:41:4c:30]: conflicting reservation for address 10.255.96.2 with existing lease
+   log: ALLOC_ENGINE_V4_ALLOC_FAIL_SUBNET [hwtype=1 52:54:00:aa:bb:01], cid=[00:39:4e:45:57:53:45:52:49:41:4c:30]: failed to allocate an IPv4 lease in the subnet 10.255.96.0/30, subnet-id 256, shared network (none)
+   log: ALLOC_ENGINE_V4_REQUEST_IN_USE [hwtype=1 52:54:00:aa:bb:01], cid=[00:39:4e:45:57:53:45:52:49:41:4c:30]: requested address 10.255.96.2 is in use
+== match-client-id false
+  1a DISCOVER, old client-id: OFFER 10.255.96.2
+  1b REQUEST, old client-id: ACK 10.255.96.2
+  the lease file after 1: 10.255.96.2,52:54:00:aa:bb:01,,604800,1793077015,256,0,0,,0,,0
+  2a DISCOVER, NEW client-id, same MAC: OFFER 10.255.96.2
+  2b REQUEST, NEW client-id, same MAC: ACK 10.255.96.2
+  the lease file after 2: 10.255.96.2,52:54:00:aa:bb:01,,604800,1793077015,256,0,0,,0,,0
+  3  control: DISCOVER, old client-id again: OFFER 10.255.96.2
+   log: DHCP4_LEASE_ADVERT [hwtype=1 52:54:00:aa:bb:01], cid=[00:39:4e:45:57:53:45:52:49:41:4c:30]: lease 10.255.96.2 will be advertised
+   log: ALLOC_ENGINE_V4_REQUEST_EXTEND_LEASE [hwtype=1 52:54:00:aa:bb:01], cid=[00:39:4e:45:57:53:45:52:49:41:4c:30]: extending lifetime of the lease for address 10.255.96.2
