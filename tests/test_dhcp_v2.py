@@ -603,3 +603,21 @@ def test_the_confirm_writes_reads_back_and_records_in_place(board_b, monkeypatch
                                    data=dict(ADD, hash=h, reason="twice")).get_data(as_text=True)
     assert "Nothing was changed" in again
 
+
+
+def test_an_add_with_no_pool_says_so_never_the_form_again(web):
+    """C1436 (Lab 8 step 5.1): Add a subnet's Preview with a prefix and no pool drew the form
+    again, byte for byte, and nothing on the page moved (the browser then got 304s). It now
+    answers in the card's refusal, naming the prefix and the missing pool, and plans nothing."""
+    from modules import dhcp_subnets as S
+    planned = []
+    web["monkeypatch"].setattr(S, "plan", lambda *a, **k: planned.append(a) or {"ok": True})
+    query = {"list": "Lab", "op": "add", "family": "IPv4", "prefix": "192.0.2.4/30", "ztp": "1",
+             "pool": ""}
+    html = web["client"].get("/v2/dhcp/subnet", query_string=query,
+                             headers={"HX-Request": "true"}).get_data(as_text=True)
+    assert "a new subnet needs a pool to hand out, and 192.0.2.4/30 has none" in html
+    assert planned == [], "nothing is planned without a pool"
+    form = web["client"].get("/v2/dhcp/subnet", query_string={"list": "Lab", "op": "add"},
+                             headers={"HX-Request": "true"}).get_data(as_text=True)
+    assert html != form, "the answer is not the empty form drawn again"

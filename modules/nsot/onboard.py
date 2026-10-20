@@ -1650,15 +1650,60 @@ def create_netbox_record(repo: str, hostname: str, list_name: str, *,
         out["reason"] = (f"recorded, but {len(mine)} write(s) did not land: "
                          + "; ".join(f"{w['write']} ({w['error']})" for w in mine[:3]))
 
+    # A PLANNED RECORD BECOMES ACTIVE (C1421). The sync never writes `status` (a ping must not
+    # write liveness into NetBox), so a record a person planned stayed Planned after the device
+    # was onboarded. Onboarding is the lifecycle claim a create already makes: the record Create
+    # took over (its id, recorded with the bootstrap parameters) is set Active, through the write
+    # gate, and read back. A record not Planned is left as it is; a failure is a write that did
+    # not land, said, never a failed step (the record exists).
+    if env.get("netbox_id"):
+        got = activate_planned(list_name, hostname, env["netbox_id"], actor=actor,
+                               authority=authority)
+        out["activated"] = got
+        if got.get("error"):
+            out["write_failures"] = mine = mine + [
+                {"device": hostname, "write": "status Planned to Active", "error": got["error"]}]
+            out["reason"] = (f"recorded, but {len(mine)} write(s) did not land: "
+                             + "; ".join(f"{w['write']} ({w['error']})" for w in mine[:3]))
+
     from modules.netbox_guard import get_created
 
     created = get_created(list_name) or {}
     out["created"] = [f"{endpoint}:{obj_id}"
                       for endpoint, objects in created.items()
                       for obj_id in (objects or {})]
-    out["device_id"] = _device_id_from(created, hostname)
+    out["device_id"] = _device_id_from(created, hostname) or env.get("netbox_id")
     out["ok"] = True
     return out
+
+
+def activate_planned(list_name: str, hostname: str, nb_id, *, actor: str = "",
+                     authority: str = "") -> dict:
+    """Set NetBox device *nb_id* from Planned to Active (C1421), as Retire sets Decommissioning
+    (`retire._retire_netbox_record`): through the write gate (writes allowed, the before
+    recorded), then read back. ``{"state", "id", "before", "error"}``; *state* is
+    ``activated``, ``not_planned`` (left as it is: its status named), or ``failed``."""
+    from modules import netbox_guard
+    from modules.netbox_client import _nb_get_by_id, _nb_patch, _nb_ready, _status_value
+
+    try:
+        ok, err, session, base = _nb_ready()
+        if not ok:
+            return {"state": "failed", "id": nb_id, "error": f"NetBox is not reachable: {err}"}
+        before = _status_value(_nb_get_by_id(session, base, "dcim/devices", nb_id) or {})
+        if before != "planned":
+            return {"state": "not_planned", "id": nb_id, "before": before, "error": ""}
+        with netbox_guard.list_writer(list_name, f"onboarding {hostname}: Planned to Active",
+                                      actor), \
+                netbox_guard.for_list(list_name, actor=actor, authority=authority):
+            _nb_patch(session, base, f"dcim/devices/{nb_id}/", {"status": "active"})
+        after = _status_value(_nb_get_by_id(session, base, "dcim/devices", nb_id) or {})
+    except Exception as exc:                   # noqa: BLE001 - said as a write that did not land
+        return {"state": "failed", "id": nb_id, "error": f"{type(exc).__name__}: {exc}"}
+    if after != "active":
+        return {"state": "failed", "id": nb_id, "before": before,
+                "error": f"NetBox device {nb_id} read back as status {after!r}, not active"}
+    return {"state": "activated", "id": nb_id, "before": before, "error": ""}
 
 
 def _device_id_from(created: dict, hostname: str):

@@ -213,6 +213,59 @@ class TestPhaseTwoUpdatesThatRecord:
                                      sync=lambda l, devs, **k: seen.extend(devs) or {})
         assert seen and seen[0]["netbox_id"] == 12
 
+    def test_the_planned_record_becomes_active_and_is_read_back(self, monkeypatch):
+        """C1421: Verify took the Planned record over and left it Planned (the sync never writes
+        status); onboarding now sets it Active through the write gate and reads it back."""
+        from modules.nsot import onboard
+        nb, dev, ready = _world()
+        monkeypatch.setattr("modules.netbox_client._nb_ready", ready)
+        got = onboard.activate_planned("probe", "r6", dev["id"], actor="op@example.com",
+                                       authority="test")
+        assert got == {"state": "activated", "id": dev["id"], "before": "planned", "error": ""}
+        assert [p[2] for p in nb.patches if p[0] == "dcim/devices"] == [{"status": "active"}]
+
+    def test_a_record_that_is_not_planned_is_left_as_it_is(self, monkeypatch):
+        from modules.nsot import onboard
+        nb, dev, ready = _world(status={"label": "Active", "value": "active"})
+        monkeypatch.setattr("modules.netbox_client._nb_ready", ready)
+        got = onboard.activate_planned("probe", "r6", dev["id"])
+        assert got["state"] == "not_planned" and got["before"] == "active"
+        assert not nb.patches
+
+    def test_onboarding_activates_the_record_it_took_over(self, monkeypatch):
+        from modules.nsot import onboard
+        nb, dev, ready = _world()
+        monkeypatch.setattr("modules.netbox_client._nb_ready", ready)
+        monkeypatch.setattr("modules.nsot.manifest.find_by_name",
+                            lambda repo, name: ("uid:x", {"mgmt_ip": "192.0.2.6"}))
+        monkeypatch.setattr("modules.goldens._load_golden_config_file",
+                            lambda ip, list_name: "hostname r6\n")
+        monkeypatch.setattr("modules.nsot.hostvars.read_committed", lambda repo, h: {
+            "bootstrap": {"environment": {"netbox_id": dev["id"], "netbox_status": "planned"}}})
+        monkeypatch.setattr("modules.netbox_guard.get_created", lambda *a, **k: {})
+        out = onboard.create_netbox_record("/nowhere", "r6", "probe",
+                                           sync=lambda l, devs, **k: {"ok": True})
+        assert out["ok"] and out["activated"]["state"] == "activated", out
+        assert out["device_id"] == dev["id"] and not out["write_failures"]
+        assert [p[2] for p in nb.patches if p[0] == "dcim/devices"] == [{"status": "active"}]
+
+    def test_a_record_that_could_not_be_activated_is_said(self, monkeypatch):
+        from modules.nsot import onboard
+        monkeypatch.setattr("modules.netbox_client._nb_ready",
+                            lambda: (False, "NetBox URL and API token are not configured", None,
+                                     ""))
+        monkeypatch.setattr("modules.nsot.manifest.find_by_name",
+                            lambda repo, name: ("uid:x", {"mgmt_ip": "192.0.2.6"}))
+        monkeypatch.setattr("modules.goldens._load_golden_config_file",
+                            lambda ip, list_name: "hostname r6\n")
+        monkeypatch.setattr("modules.nsot.hostvars.read_committed", lambda repo, h: {
+            "bootstrap": {"environment": {"netbox_id": 12, "netbox_status": "planned"}}})
+        monkeypatch.setattr("modules.netbox_guard.get_created", lambda *a, **k: {})
+        out = onboard.create_netbox_record("/nowhere", "r6", "probe",
+                                           sync=lambda l, devs, **k: {"ok": True})
+        assert out["ok"], "the record exists: the step did its work"
+        assert "status Planned to Active (NetBox is not reachable" in out["reason"]
+
     def test_a_device_with_no_recorded_record_is_imported_as_before(self, monkeypatch):
         from modules.nsot import onboard
         monkeypatch.setattr("modules.nsot.manifest.find_by_name",

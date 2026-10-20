@@ -174,13 +174,25 @@ def subnet_preview():
                                          # C709: the description is always sent once the form
                                          # is submitted; unchanged, the plan says nothing moves.
                                          or s["pool_note"] is not None)))
-    refused = _not_owner()
+    # An Add that names its subnet and no pool is SAID, never the form drawn again unchanged
+    # (C1436, Lab 8 step 5.1: the button came back and nothing on the page moved).
+    if not refused_missing_pool(s):
+        refused = _not_owner()
+    else:
+        refused = (f"a new subnet needs a pool to hand out, and {s['prefix']} has none: name "
+                   "one in Pool (for a subnet For ZTP onboarding, the device's own address as "
+                   "both its start and its end). Nothing was planned")
     if refused:
         p = _refused_plan(refused)
     else:
         p = S.plan(_list_name(), request.args, intent=_intent()) if filled else None
     return _sop_region({"state": "preview" if filled or refused else "form", "ask": s,
                         "plan": p})
+
+
+def refused_missing_pool(s: dict) -> bool:
+    """An Add naming its subnet with no pool: the preview cannot plan it (C1436)."""
+    return s.get("op") == "add" and bool(s.get("prefix")) and not s.get("pool")
 
 
 @bp.route("/subnet", methods=["POST"])
