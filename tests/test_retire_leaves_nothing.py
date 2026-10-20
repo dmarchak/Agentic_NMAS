@@ -429,6 +429,90 @@ class TestKeaLeases:
         assert s["done"] and "no Kea lease names it" in s["what"]
 
 
+class TestTheLinkSubnetAddDeviceAdded:
+    """C1460: Retire removes the relayed ZTP subnet its Add device added for its link, through
+    the subnet writer, only when nothing else is in it once its own reservation and lease go;
+    a subnet still serving another device stays, said; none added is a done step."""
+
+    LINK = "198.51.100.4/30"
+
+    def _sub(self, reservations=(), leases=()):
+        return [{"id": 41, "prefix": self.LINK, "reservations": list(reservations),
+                 "leases": list(leases)}]
+
+    def _quiet(self, monkeypatch):
+        monkeypatch.setattr(RT, "_device_leases", lambda l, macs, addresses: {
+            "ok": True, "configured": True, "leases": [], "error": ""})
+
+    def test_its_subnet_is_removed_through_the_writer_bound_by_its_hash(self, lab, monkeypatch):
+        from modules import dhcp_subnets as S
+        self._quiet(monkeypatch)
+        monkeypatch.setattr(RT, "_created_link_subnets", lambda l, h: self._sub(
+            reservations=[{"hw-address": MAC, "ip-address": IP, "hostname": HOST}]))
+        calls = []
+        monkeypatch.setattr(S, "plan", lambda l, values, **kw: calls.append(("plan", values)) or {
+            "ok": True, "before": {"subnet": self.LINK}, "hash": "h-rm", "refused": ""})
+        monkeypatch.setattr(S, "apply_edit", lambda l, values, h, **kw: calls.append(
+            ("apply", values["op"], values["id"], h, kw.get("actor"))) or {"ok": True})
+        p = RT.plan("Lab", HOST, REASON)
+        s = _step(p, "ztp_subnet")
+        assert not s["done"] and f"remove Kea subnet 41 ({self.LINK})" in s["what"]
+        _p, out = _retire()
+        assert "ztp_subnet" in out["done"]
+        assert calls[-1] == ("apply", "remove", "41", "h-rm", ACTOR), calls
+
+    def test_a_subnet_still_serving_another_device_stays_and_is_said(self, lab, monkeypatch):
+        self._quiet(monkeypatch)
+        monkeypatch.setattr(RT, "_created_link_subnets", lambda l, h: self._sub(
+            reservations=[{"hw-address": "aa:bb:cc:00:09:09", "ip-address": "198.51.100.6",
+                           "hostname": "other-dev"}]))
+        p = RT.plan("Lab", HOST, REASON)
+        assert _step(p, "ztp_subnet")["done"]
+        assert any("Kea subnet 41" in n and "1 other reservation(s)" in n
+                   for n in p["not_doing"]), p["not_doing"]
+
+    def test_none_added_is_a_done_step_saying_so(self, lab, monkeypatch):
+        self._quiet(monkeypatch)
+        monkeypatch.setattr(RT, "_created_link_subnets", lambda l, h: [])
+        s = _step(RT.plan("Lab", HOST, REASON), "ztp_subnet")
+        assert s["done"] and "no Kea subnet was added for its link" in s["what"]
+
+    def test_subnets_that_cannot_be_read_refuse_the_plan(self, lab, monkeypatch):
+        self._quiet(monkeypatch)
+
+        def boom(l, h):
+            raise OSError("permission denied")
+        monkeypatch.setattr(RT, "_created_link_subnets", boom)
+        p = RT.plan("Lab", HOST, REASON)
+        assert not p["ok"] and "could not read is not none" in p["refused_by"]["ztp_subnet"]
+
+    def test_only_a_subnet_recording_this_device_is_its_own(self, lab, monkeypatch, tmp_path):
+        """The read: a person's subnet and another device's are never this device's."""
+        from modules import dhcp_leases, dhcp_reservations as D, dhcp_subnets as S
+        from modules.nsot import ztp_relayed
+        nmas = tmp_path / "kea" / "nmas"
+        nmas.mkdir(parents=True)
+        main = tmp_path / "kea" / "kea-dhcp4.conf"
+        main.write_text("{}\n")
+        decl = ztp_relayed.declaration()
+        subnets = [
+            {"id": 41, "subnet": self.LINK, "user-context": dict(decl, **{
+                ztp_relayed.CREATED_BY: {"device": HOST, "list": "Lab"}})},
+            {"id": 42, "subnet": "198.51.100.8/30", "user-context": dict(decl)},
+            {"id": 43, "subnet": "198.51.100.12/30", "user-context": dict(decl, **{
+                ztp_relayed.CREATED_BY: {"device": OTHER, "list": "Lab"}})}]
+        for s in subnets:
+            (nmas / f"reservations4-{s['id']}.json").write_text("[]\n")
+        monkeypatch.setattr(D, "main_config", lambda l, fam: str(main))
+        monkeypatch.setattr(S, "subnets_file", lambda m, fam: str(nmas / "subnets4.json"))
+        (nmas / "subnets4.json").write_text(S.dump(subnets))
+        monkeypatch.setattr(D, "fragment", lambda m, fam, sid: str(nmas / f"reservations4-{sid}.json"))
+        monkeypatch.setattr(dhcp_leases, "_kea_for", lambda l: None)
+        monkeypatch.setattr(dhcp_leases, "read", lambda kea, fam: [])
+        got = RT._created_link_subnets("Lab", HOST)                          # noqa: SLF001
+        assert [g["id"] for g in got] == [41] and got[0]["prefix"] == self.LINK
+
+
 # ----------------------------------------------------------------------------- C1336
 
 class TestRotationPolicies:

@@ -337,7 +337,7 @@ class TestAFailedBackupStopsItsCopy:
 set -uo pipefail
 CLAB=clab; STAGE={str(stage)!r}
 ssh() {{ local cmd="${{@: -1}}"
-  if [[ "$cmd" == "cp -r '{refuse}'"* ]]; then echo "cp: Permission denied" >&2; return 1; fi
+  if [[ "$cmd" == *"cp -r '{refuse}'"* ]]; then echo "cp: Permission denied" >&2; return 1; fi
   bash -c "$cmd"; }}
 # rsync is a network tool, refused under the harness (C46): a local copy of
 # exactly the --files-from list stands in for it.

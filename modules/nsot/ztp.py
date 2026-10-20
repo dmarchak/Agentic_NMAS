@@ -294,7 +294,54 @@ def dns_posture(source: str, probe=dns_answerers, clock=time.time) -> dict:
 
 # ── the whole posture, for a plan and for job health ───────────────────────
 
-def posture(address: str, *, kea=None, dns=dns_posture, addrs=None, relayed=None) -> dict:
+def _link_subnet(address: str, dhcp4: dict, *, kea, list_name: str, hostname: str,
+                 relayed: dict) -> dict:
+    """C1460: when no Kea subnet holds *address*, the relayed ZTP subnet Add device would ADD
+    for the device's link, derived from committed intent (`ztp_relayed.link_for_address`) and
+    planned by the one subnet writer (`dhcp_subnets.plan`, its pool the device's own address,
+    declared for ZTP, recording the onboarding that adds it). ``{"add", "candidate"}``: *add* is
+    what the plan carries and its preview states (prefix, pool, relay, id, the writer's values
+    and hash); *candidate* is Kea's configuration with that subnet in it, so every D4 check
+    reads what would be written. Refused, naming why, as the derivation or the writer refuses."""
+    import copy
+
+    from modules import dhcp_subnets
+    from modules.nsot import ztp_relayed
+
+    facts = (relayed or {}).get("facts") or ztp_relayed.intent_everywhere()
+    link = ztp_relayed.link_for_address(address, facts)
+    values = {"op": "add", "family": "IPv4", "prefix": link["prefix"],
+              "pool": f"{address} - {address}", "ztp": "1"}
+    made = {"device": hostname, "list": list_name}
+    p = dhcp_subnets.plan(list_name, values, kea=kea, intent=facts, created_by=made)
+    if not p.get("ok"):
+        raise Refused(f"its link's ZTP subnet {link['prefix']} cannot be added: "
+                      f"{p.get('refused') or 'the subnet writer refused'}")
+    relay = link["relay"]
+    candidate = copy.deepcopy(dhcp4)
+    candidate.setdefault("subnet4", []).append(dict(p["after"], reservations=[]))
+    return {"add": {"prefix": link["prefix"], "pool": values["pool"], "id": p["id"],
+                    "relay": f"{relay['device']} {relay['iface']} ({relay['address']})",
+                    "values": values, "hash": p["hash"], "created_by": made},
+            "candidate": candidate}
+
+
+def _no_subnet_holds(dhcp4: dict, address: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return False
+    for subnet, _net in _all_subnets(dhcp4):
+        try:
+            if ip in ipaddress.ip_network(str(subnet.get("subnet")), strict=False):
+                return False
+        except ValueError:
+            continue
+    return True
+
+
+def posture(address: str, *, kea=None, dns=dns_posture, addrs=None, relayed=None,
+            list_name: str = "", hostname: str = "") -> dict:
     """D4 for a reservation at *address*: both conditions, plus D3's derived
     server address. ``{"ok", "reasons", "server", "subnet_id", "dns", "relayed", "relay"}``.
 
@@ -322,6 +369,12 @@ def posture(address: str, *, kea=None, dns=dns_posture, addrs=None, relayed=None
         return out
     try:
         dhcp4 = _dhcp4(got["result"])
+        if list_name and hostname and _no_subnet_holds(dhcp4, address):
+            # C1460: Add device behind a relay adds its link's subnet, checked as it would be.
+            link = _link_subnet(address, dhcp4, kea=kea, list_name=list_name,
+                                hostname=hostname, relayed=relayed or {})
+            out["subnet_to_add"] = link["add"]
+            dhcp4 = link["candidate"]
         subnet, _net = subnet_for_address(dhcp4, address)
         out["subnet_id"] = subnet.get("id")
         if ztp_relayed.declared(subnet):
@@ -1083,7 +1136,7 @@ def _leases(kea) -> dict:
 
 
 def plan_check(mac: str, address: str, *, kea=None, dns=dns_posture, addrs=None,
-               get=None, list_name: str = "", relayed=None) -> dict:
+               get=None, list_name: str = "", relayed=None, hostname: str = "") -> dict:
     """Everything a `ztp` plan must know before anything is created:
     ``{"ok", "reasons", "server", "subnet_id", "dns", "relayed", "relay"}`` (*relayed*: the
     relayed check's seams, :func:`posture`; ``relay`` is the relay's device, interface and own
@@ -1107,7 +1160,7 @@ def plan_check(mac: str, address: str, *, kea=None, dns=dns_posture, addrs=None,
     if get is None:
         from modules.list_settings import default_layer as get   # one fragment, every list
     out = {"ok": False, "reasons": [], "server": "", "subnet_id": None, "dns": {},
-           "relayed": False, "relay": {}}
+           "relayed": False, "relay": {}, "subnet_to_add": {}}
     if not (get("kea_ztp_fragment", "") or "").strip():
         out["reasons"].append(
             "kea_ztp_fragment is not configured: a reservation written anywhere "
@@ -1116,9 +1169,13 @@ def plan_check(mac: str, address: str, *, kea=None, dns=dns_posture, addrs=None,
     if not mac or not address:
         return out
     kea = kea or _kea(owner)
-    p = posture(address, kea=kea, dns=dns, addrs=addrs, relayed=relayed)
+    # *hostname* given (Add device's plan, C1460): an address no Kea subnet holds is checked
+    # on the link's subnet Add device would add, derived from committed intent.
+    p = posture(address, kea=kea, dns=dns, addrs=addrs, relayed=relayed,
+                list_name=list_name if hostname else "", hostname=hostname)
     out.update(server=p["server"], subnet_id=p["subnet_id"], dns=p["dns"],
-               relayed=p.get("relayed", False), relay=p.get("relay") or {})
+               relayed=p.get("relayed", False), relay=p.get("relay") or {},
+               subnet_to_add=p.get("subnet_to_add") or {})
     out["reasons"] += p["reasons"]
     try:
         got = kea.command("config-get")

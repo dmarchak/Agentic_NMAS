@@ -357,18 +357,23 @@ def _option_of(subnet: dict, name: str) -> str:
                  if o.get("name") == name), "")
 
 
-def plan(list_name: str, values, kea=None, file_text=None, intent=None) -> dict:
+def plan(list_name: str, values, kea=None, file_text=None, intent=None,
+         created_by=None) -> dict:
     """What board C's preview draws, for an edit, an add or a removal: ``{ok, refused, op,
     family, id, prefix, title, change: [(sign, text)], checks: [(state, text)], leases: [str],
     survives: [str], ack: bool, before, after, path, version, hash, subject}``. A read: Kea is
-    asked and Mercury's subnet file is read; nothing is written."""
+    asked and Mercury's subnet file is read; nothing is written.
+
+    *created_by* (C1460, ``{"device", "list"}``): the onboarding adding a relayed ZTP subnet
+    for its link (Add device), recorded in the subnet's `user-context` and so in the hash; never
+    a form field, so the DHCP page cannot send it."""
     from modules import dhcp_reservations as D
 
     s = ask(values)
     p = {"ok": False, "refused": "", "ask": s, "op": s["op"], "family": s["family"],
          "id": None, "prefix": "", "title": "", "change": [], "checks": [], "leases": [],
          "survives": [], "ack": False, "before": None, "after": None, "path": "",
-         "version": "", "hash": "", "subject": ""}
+         "version": "", "hash": "", "subject": "", "created_by": dict(created_by or {})}
     steps = {"edit": _plan_edit, "add": _plan_add, "remove": _plan_remove}
     try:
         if s["op"] not in steps:
@@ -582,6 +587,14 @@ def _declare_for_ztp(p, s, after, family, prefix, entries) -> None:
     p["checks"].append(("pass", f"for ZTP behind {relay['device']} {relay['iface']} "
                                 f"({relay['address']}, its relay); its reservations are "
                                 "onboarding's, and it carries no gateway or DNS option (D4)"))
+    made = p.get("created_by") or {}
+    if made:
+        # C1460: the onboarding adding it for its link, so Retire removes it with that device.
+        after["user-context"][ztp_relayed.CREATED_BY] = {"device": str(made.get("device", "")),
+                                                         "list": str(made.get("list", ""))}
+        p["checks"].append(("pass", f"added by {made.get('device')}'s onboarding (Add device, "
+                                    f"{made.get('list')}): Retire removes it with that device "
+                                    "once nothing else is in it"))
 
 
 def _match_by_mac(p, after: dict) -> None:
@@ -820,7 +833,7 @@ def _change_lines(before: dict, after: dict, sid, prefix) -> list:
 
 def apply_edit(list_name: str, values, confirmed_hash: str, *, actor: str, reason: str,
                kea=None, run_test=None, main_text=None, record=None, intent=None,
-               planner=None) -> dict:
+               planner=None, created_by=None) -> dict:
     """``{ok, error, outcome, read_back, rolled_back, commit, plan}``: board C's change applied,
     holding Mercury's subnet file from its read to its read-back. *planner* is board D's
     (an exclusion shapes a subnet's pools: the same write, its own record); board C's `plan`
@@ -845,7 +858,8 @@ def apply_edit(list_name: str, values, confirmed_hash: str, *, actor: str, reaso
     main = D.main_config(list_name, family)
     path = subnets_file(main, family)
     with ztp.fragment_lock(path):
-        p = (planner or plan)(list_name, values, kea=kea, intent=intent)
+        p = (planner or plan)(list_name, values, kea=kea, intent=intent,
+                              **({"created_by": created_by} if created_by else {}))
         out["plan"] = p
         if not p["ok"]:
             out["error"] = p["refused"]

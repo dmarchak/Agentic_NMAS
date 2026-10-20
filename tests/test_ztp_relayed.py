@@ -816,6 +816,209 @@ class TestTheChoiceInThePlan:
         assert written == []
 
 
+# ── 3b. C1460: Add device adds its link's ZTP subnet ──────────────────────────────────────
+
+LINK, LINK_RELAY, LINK_DEVICE, LINK_MAC = ("198.51.100.4/30", "198.51.100.5", "198.51.100.6",
+                                           "aa:bb:cc:00:04:07")
+
+
+def _link_facts(relays=(SERVER,), extra=()):
+    entries = [{"device": "relay-b", "iface": "GigabitEthernet3", "address": LINK_RELAY,
+                "relays": list(relays), "network": "Lab", "gateway": []}] + list(extra)
+    return {"IPv4": {LINK: entries}, "errors": []}
+
+
+class TestTheLinkIsDerivedFromIntent:
+    """`ztp_relayed.link_for_address`: the one intent interface whose prefix holds the device's
+    address, with its helper; every other shape refused by name."""
+
+    def test_the_link_and_its_relay(self):
+        got = ztp_relayed.link_for_address(LINK_DEVICE, _link_facts())
+        assert got["prefix"] == LINK
+        assert got["relay"]["address"] == LINK_RELAY and got["relay"]["relays"] == [SERVER]
+
+    def test_no_interface_on_a_prefix_holding_it_is_refused_saying_what_to_do(self):
+        with pytest.raises(ztp.Refused, match="no interface in committed intent.*in intent first"):
+            ztp_relayed.link_for_address("203.0.113.9", _link_facts())
+
+    def test_the_relay_s_own_address_or_the_network_address_is_refused(self):
+        with pytest.raises(ztp.Refused, match="the relay's own address"):
+            ztp_relayed.link_for_address(LINK_RELAY, _link_facts())
+        with pytest.raises(ztp.Refused, match="network"):
+            ztp_relayed.link_for_address("198.51.100.4", _link_facts())
+
+    def test_a_link_whose_port_has_no_helper_is_refused(self):
+        with pytest.raises(ztp.Refused, match="no ip helper-address"):
+            ztp_relayed.link_for_address(LINK_DEVICE, _link_facts(relays=()))
+
+    def test_an_ipv6_address_is_refused_by_name(self):
+        """IPv6's twin: ZTP is IPv4 only (C1245), so no link is derived for an IPv6 address."""
+        with pytest.raises(ztp.Refused, match="IPv6.*C1245"):
+            ztp_relayed.link_for_address("2001:db8:4::6", _link_facts())
+
+
+class TestTheWriterRecordsWhoAddedIt:
+    """`dhcp_subnets.plan(created_by=...)`: the onboarding is in the subnet's user-context, so
+    in the hash, and Retire can tell an onboarding's subnet from a person's."""
+
+    def _plan(self, kea_files, monkeypatch, created_by=None):
+        from modules import dhcp_reservations as D
+        from modules import dhcp_subnets as S
+
+        kea = FakeKea({255: kea_files["direct"], 40: kea_files["relayed"]})
+        monkeypatch.setattr(D, "main_config", lambda ln, fam: kea_files["main"])
+        values = {"op": "add", "family": "IPv4", "prefix": LINK,
+                  "pool": f"{LINK_DEVICE} - {LINK_DEVICE}", "ztp": "1"}
+        return S.plan("Lab", values, kea=kea, intent=_link_facts(), created_by=created_by)
+
+    def test_an_onboarding_s_subnet_names_it_and_a_person_s_does_not(self, kea_files,
+                                                                     monkeypatch):
+        made = self._plan(kea_files, monkeypatch, {"device": "r7", "list": "Lab"})
+        person = self._plan(kea_files, monkeypatch)
+        assert made["ok"] and person["ok"], (made["refused"], person["refused"])
+        assert ztp_relayed.created_by(made["after"]) == {"device": "r7", "list": "Lab"}
+        assert ztp_relayed.created_by(person["after"]) == {}
+        assert ztp_relayed.declared(made["after"]) and ztp_relayed.declared(person["after"])
+        assert made["hash"] != person["hash"]
+
+
+class TestThePlanAddsTheLinkSubnet:
+    """`ztp.plan_check` with the onboarding's hostname: an address no Kea subnet holds is checked
+    on the subnet Add device would add (C1460), every D4 check reading it."""
+
+    def _check(self, kea_files, monkeypatch, hostname="r7", facts=None):
+        from modules import dhcp_reservations as D
+        monkeypatch.setattr(D, "main_config", lambda ln, fam: kea_files["main"])
+        kea = FakeKea({255: kea_files["direct"], 40: kea_files["relayed"]})
+        seams = _seams(facts=facts or _link_facts(),
+                       golden=lambda relay: {"text": "hostname relay-b\ninterface "
+                                             f"GigabitEthernet3\n ip helper-address {SERVER}\n!\n",
+                                             "refused": ""})
+        return ztp.plan_check(LINK_MAC, LINK_DEVICE, kea=kea, addrs=ADDRS,
+                              get=lambda k, d="": "/f", relayed=seams, list_name="Lab",
+                              hostname=hostname)
+
+    def test_the_subnet_to_add_is_planned_and_the_checks_pass_on_it(self, kea_files,
+                                                                    monkeypatch):
+        p = self._check(kea_files, monkeypatch)
+        assert p["ok"], p["reasons"]
+        add = p["subnet_to_add"]
+        assert add["prefix"] == LINK and add["pool"] == f"{LINK_DEVICE} - {LINK_DEVICE}"
+        assert add["created_by"] == {"device": "r7", "list": "Lab"} and add["hash"]
+        assert p["relayed"] and p["relay"]["address"] == LINK_RELAY and p["server"] == SERVER
+        assert p["subnet_id"] == add["id"]
+
+    def test_without_the_onboarding_s_name_it_is_refused_as_before(self, kea_files, monkeypatch):
+        """Control: the same address, checked as before C1460, has no subnet: refused."""
+        p = self._check(kea_files, monkeypatch, hostname="")
+        assert not p["ok"] and not p["subnet_to_add"] and "found 0" in _said(p)
+
+    def test_a_link_intent_does_not_hold_is_refused_saying_so(self, kea_files, monkeypatch):
+        p = self._check(kea_files, monkeypatch, facts={"IPv4": {}, "errors": []})
+        assert not p["ok"] and "no interface in committed intent" in _said(p)
+
+
+class TestCreateAddsTheSubnetThenTheReservation:
+    """The reserve step: the subnet the plan states first, through the one writer bound by its
+    hash; then the reservation; a reservation that fails takes the subnet out again."""
+
+    ADD = {"prefix": LINK, "pool": f"{LINK_DEVICE} - {LINK_DEVICE}", "id": 41,
+           "relay": f"relay-b GigabitEthernet3 ({LINK_RELAY})",
+           "values": {"op": "add", "family": "IPv4", "prefix": LINK,
+                      "pool": f"{LINK_DEVICE} - {LINK_DEVICE}", "ztp": "1"},
+           "hash": "h-preview", "created_by": {"device": "r7", "list": "Lab"}}
+    CHECK = {"ok": True, "reasons": [], "server": SERVER, "subnet_id": 41, "dns": {},
+             "relayed": True, "relay": {"device": "relay-b", "iface": "GigabitEthernet3",
+                                        "address": LINK_RELAY}}
+
+    class P:
+        mgmt_mac, reservation_address, hostname, list_name = LINK_MAC, LINK_DEVICE, "r7", "Lab"
+        ztp_router = LINK_RELAY
+
+    def _writer(self, monkeypatch, *, moved=False):
+        from modules import dhcp_subnets as S
+        calls = []
+
+        def plan(list_name, values, kea=None, intent=None, created_by=None, **kw):
+            calls.append(("plan", values["op"]))
+            sid = 42 if moved else 41
+            return {"ok": True, "id": sid if values["op"] == "add" else int(values["id"]),
+                    "after": {"subnet": LINK}, "hash": f"h-{values['op']}", "refused": ""}
+
+        def apply_edit(list_name, values, confirmed_hash, **kw):
+            calls.append(("apply", values["op"], confirmed_hash,
+                          (kw.get("created_by") or {}).get("device")))
+            return {"ok": True, "commit": "c0ffee"}
+        monkeypatch.setattr(S, "plan", plan)
+        monkeypatch.setattr(S, "apply_edit", apply_edit)
+        monkeypatch.setattr(ztp_relayed, "intent_everywhere", lambda: _link_facts())
+        return calls
+
+    def _p(self, add=None):
+        p = self.P()
+        p.ztp_subnet_add = dict(self.ADD) if add is None else add
+        return p
+
+    def test_the_subnet_is_added_first_bound_by_the_writer_s_hash_then_the_reservation(
+            self, monkeypatch):
+        from modules.nsot import onboard
+        calls = self._writer(monkeypatch)
+
+        def write(adds, kea=None, list_name="", actor="", message=""):
+            calls.append(("reserve", adds[0]["hw-address"]))
+            return {"ok": True, "outcomes": {LINK_MAC: {"outcome": "written", "detail": ""}}}
+        out = onboard.reserve_step(self._p(), actor="t", check=lambda *a, **k: dict(self.CHECK),
+                                   write=write)
+        assert [c[0] for c in calls] == ["plan", "apply", "reserve"]
+        assert calls[1] == ("apply", "add", "h-add", "r7")
+        assert out["subnet_added"] == {"id": 41, "prefix": LINK, "commit": "c0ffee"}
+
+    def test_a_failed_reservation_takes_the_subnet_out_again(self, monkeypatch):
+        from modules.nsot import onboard
+        calls = self._writer(monkeypatch)
+
+        def write(adds, **kw):
+            return {"ok": False, "error": "the fragment is locked", "outcomes": {}}
+        with pytest.raises(RuntimeError, match="the fragment is locked"):
+            onboard.reserve_step(self._p(), actor="t", check=lambda *a, **k: dict(self.CHECK),
+                                 write=write)
+        assert [c[:2] for c in calls] == [("plan", "add"), ("apply", "add"),
+                                          ("plan", "remove"), ("apply", "remove")]
+
+    def test_a_subnet_that_moved_since_the_preview_is_refused_and_nothing_is_written(
+            self, monkeypatch):
+        from modules.nsot import onboard
+        calls = self._writer(monkeypatch, moved=True)
+        with pytest.raises(RuntimeError, match="moved since the preview.*preview again"):
+            onboard.reserve_step(self._p(), actor="t", check=lambda *a, **k: dict(self.CHECK),
+                                 write=lambda *a, **k: calls.append(("reserve",)))
+        assert [c[0] for c in calls] == ["plan"]
+
+    def test_a_plan_adding_no_subnet_writes_none(self, monkeypatch):
+        """Control: the subnet exists (Kea id 257 today), so Create only reserves."""
+        from modules.nsot import onboard
+        calls = self._writer(monkeypatch)
+
+        def write(adds, **kw):
+            calls.append(("reserve",))
+            return {"ok": True, "outcomes": {LINK_MAC: {"outcome": "written", "detail": ""}}}
+        out = onboard.reserve_step(self._p(add={}), actor="t",
+                                   check=lambda *a, **k: dict(self.CHECK), write=write)
+        assert calls == [("reserve",)] and "subnet_added" not in out
+
+    def test_the_preview_states_the_subnet_it_adds_and_so_hashes_it(self):
+        from modules.nsot import onboard
+        base = dict(hostname="r7", platform="cisco_iosxe", list_name="Lab",
+                    address_source="ztp", mgmt_mac=LINK_MAC, reservation_address=LINK_DEVICE,
+                    ztp_server=SERVER, ztp_subnet_id=41, ztp_relay=self.ADD["relay"])
+        adds = onboard.OnboardPlan(**base, ztp_subnet_add=dict(self.ADD))
+        none = onboard.OnboardPlan(**base)
+        assert f"ADDS Kea subnet 41 ({LINK})" in adds.address_claim
+        assert "Retire removes it with this device" in adds.address_claim
+        assert "ADDS Kea subnet" not in none.address_claim
+        assert adds.summary["address_claim"] != none.summary["address_claim"]
+
+
 # ── 4. DNS on the relayed segment ─────────────────────────────────────────────────────────
 
 RELAY_FACT = {"device": "relay-a", "iface": "GigabitEthernet3", "address": RELAY,

@@ -112,6 +112,11 @@ class OnboardPlan:
     #: to offer it, D4 restated), empty by default. Both are in the summary, so in the hash.
     ztp_relay: str = ""
     ztp_router: str = ""
+    #: C1460: the relayed ZTP subnet this Create ADDS for the device's link, when no Kea subnet
+    #: holds its address (`ztp.plan_check`'s ``subnet_to_add``: prefix, pool, relay, id, the
+    #: writer's values and hash); empty when the subnet exists. Stated in the summary, so in
+    #: the hash; applied by the reserve step before the reservation.
+    ztp_subnet_add: dict = field(default_factory=dict)
     #: Chosen, never defaulted -- the first interface may be the environment's own.
     manager_interface: str = ""
     #: Omitted unless the manager is on another subnet. See
@@ -482,8 +487,14 @@ class OnboardPlan:
                         f"{self.reservation_address or '(no address)'} would be "
                         "written, and it cannot be yet (the reasons are above)")
             if self.ztp_relay:
-                return (f"ZTP behind the relay {self.ztp_relay}: this onboarding WRITES Kea "
-                        f"reservation {self.mgmt_mac} → {self.reservation_address} in the "
+                add = self.ztp_subnet_add or {}
+                adds = (f"ADDS Kea subnet {add.get('id')} ({add.get('prefix')}) for the "
+                        f"device's link, relayed by {add.get('relay')}, its pool "
+                        f"{add.get('pool')}, declared for ZTP with no gateway or DNS option (the "
+                        "link derived from committed intent; Retire removes it with this device "
+                        "once nothing else is in it), then " if add else "")
+                return (f"ZTP behind the relay {self.ztp_relay}: this onboarding {adds}WRITES "
+                        f"Kea reservation {self.mgmt_mac} → {self.reservation_address} in the "
                         f"relayed subnet {self.ztp_subnet_id}"
                         + (f", offering option 3 (routers) {self.ztp_router}, the relay's own "
                            "address" if self.ztp_router else ", with no option 3")
@@ -636,14 +647,21 @@ def _reservation(mac: str, kea=None) -> dict:
                 "error": f"{type(exc).__name__}: {exc}"}
 
 
-def _ztp_check(mac: str, address: str, kea, check=None, list_name: str = "") -> dict:
+def _ztp_check(mac: str, address: str, kea, check=None, list_name: str = "",
+               hostname: str = "") -> dict:
     """`ztp.plan_check()`, **never raising**: an exception is a reason, and a
     check that did not run has not passed. Asked of *list_name*'s Kea owner, the Kea
-    the reserve step writes (C1235)."""
+    the reserve step writes (C1235). *hostname* (C1460) lets the check plan the link's subnet
+    Add device would add when no Kea subnet holds *address*; given to a check that takes it."""
+    import inspect
+
     try:
         if check is None:
             from modules.nsot.ztp import plan_check as check
-        return check(mac, address, kea=kea, list_name=list_name)
+        params = inspect.signature(check).parameters
+        named = "hostname" in params or any(p.kind == p.VAR_KEYWORD for p in params.values())
+        return check(mac, address, kea=kea, list_name=list_name,
+                     **({"hostname": hostname} if hostname and named else {}))
     except Exception as exc:                   # noqa: BLE001
         log.warning("onboard: the ZTP check failed for %s: %s", mac, exc)
         return {"ok": False, "reasons": [f"the ZTP check could not run: "
@@ -817,7 +835,7 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
     ztp = {"ok": False, "reasons": [], "server": "", "subnet_id": None, "dns": {}}
     relayed = {"relay": "", "router": "", "reasons": []}
     if address_source == "ztp":
-        ztp = _ztp_check(mgmt_mac, requested, kea, ztp_check, list_name)
+        ztp = _ztp_check(mgmt_mac, requested, kea, ztp_check, list_name, hostname=hostname)
         relayed = ztp_relayed_choice(ztp, ztp_router, manager_gateway)
         ztp = dict(ztp, reasons=list(ztp.get("reasons") or []) + relayed["reasons"])
         reservation = {"state": "to_write" if ztp["ok"] and not relayed["reasons"]
@@ -884,6 +902,7 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
         ztp_reasons=tuple(ztp["reasons"]),
         ztp_dns_measured_at=float((ztp.get("dns") or {}).get("measured_at") or 0),
         ztp_relay=relayed["relay"], ztp_router=relayed["router"],
+        ztp_subnet_add=dict(ztp.get("subnet_to_add") or {}),
         manager_interface=manager_interface, manager_gateway=manager_gateway,
         domain=domain,
         bootstrap_config=config, cred_source=cred_source,
@@ -1867,6 +1886,80 @@ def reserve_step(plan, *, actor: str = "", kea=None, check=None, write=None) -> 
     from modules.nsot import ztp
 
     check = check or ztp.plan_check
+    # C1460: the link's subnet first, when the plan adds one, so the reservation lands in it.
+    added = _add_link_subnet(plan, actor=actor, kea=kea)
+    try:
+        return _reserve(plan, actor=actor, kea=kea, check=check, write=write, added=added)
+    except Exception:
+        if added:
+            _remove_link_subnet(plan, added, actor=actor, kea=kea)
+        raise
+
+
+def _add_link_subnet(plan, *, actor: str, kea=None) -> dict:
+    """C1460: the relayed ZTP subnet the plan states it ADDS for the device's link, applied
+    through the one subnet writer bound by the hash the writer gives it NOW, after checking the
+    writer's plan still says what the preview said (prefix, pool, relay, id): Create's own
+    `plan_moved` binds the claim, this binds the write. ``{}`` when the plan adds none;
+    ``{"id", "prefix", "commit"}`` once added. Refused, naming what moved, otherwise."""
+    add = getattr(plan, "ztp_subnet_add", None) or {}
+    if not add:
+        return {}
+    from modules import dhcp_subnets
+    from modules.nsot import ztp_relayed
+
+    facts = ztp_relayed.intent_everywhere()
+    now = dhcp_subnets.plan(plan.list_name, add["values"], kea=kea, intent=facts,
+                            created_by=add.get("created_by"))
+    if not now.get("ok"):
+        raise RuntimeError(f"the link's ZTP subnet {add.get('prefix')} cannot be added now: "
+                           f"{now.get('refused')}")
+    if now["id"] != add.get("id") or (now.get("after") or {}).get("subnet") != add.get("prefix"):
+        raise RuntimeError(f"the link's ZTP subnet moved since the preview: it showed "
+                           f"{add.get('prefix')} as Kea id {add.get('id')}, and the writer "
+                           f"would now add {(now.get('after') or {}).get('subnet')} as id "
+                           f"{now['id']}: preview again")
+    got = dhcp_subnets.apply_edit(
+        plan.list_name, add["values"], now["hash"], actor=actor or "unknown",
+        reason=f"Add device {plan.hostname}: its link's ZTP subnet (C1460)", kea=kea,
+        intent=facts, created_by=add.get("created_by"))
+    if not got.get("ok"):
+        raise RuntimeError(f"the link's ZTP subnet {add.get('prefix')} was not added: "
+                           f"{got.get('error') or 'the subnet writer refused'}")
+    return {"id": now["id"], "prefix": add.get("prefix"), "commit": got.get("commit", "")}
+
+
+def _remove_link_subnet(plan, added: dict, *, actor: str, kea=None) -> None:
+    """Undo `_add_link_subnet` when the reservation after it failed: the subnet this Create
+    added, removed through the same writer, so a refused Create leaves no subnet behind. A
+    removal that fails is logged and named in the raised error's log; it never hides the
+    reservation's failure."""
+    from modules import dhcp_subnets
+
+    values = {"op": "remove", "family": "IPv4", "id": str(added.get("id"))}
+    try:
+        p = dhcp_subnets.plan(plan.list_name, values, kea=kea)
+        if p.get("ok"):
+            got = dhcp_subnets.apply_edit(
+                plan.list_name, dict(values, ack="1"), p["hash"], actor=actor or "unknown",
+                reason=f"Add device {plan.hostname} failed after adding its link's ZTP subnet "
+                       "(C1460): taken out again", kea=kea)
+            if got.get("ok"):
+                return
+            log.error("onboard: the link subnet %s added for %s could not be removed: %s",
+                      added.get("prefix"), plan.hostname, got.get("error"))
+            return
+        log.error("onboard: the link subnet %s added for %s could not be planned for removal: "
+                  "%s", added.get("prefix"), plan.hostname, p.get("refused"))
+    except Exception as exc:                   # noqa: BLE001
+        log.error("onboard: removing the link subnet %s added for %s raised: %s",
+                  added.get("prefix"), plan.hostname, exc)
+
+
+def _reserve(plan, *, actor: str, kea, check, write, added: dict) -> dict:
+    """The reservation itself, D4 and the conflicts checked again at write time."""
+    from modules.nsot import ztp
+
     live = check(plan.mgmt_mac, plan.reservation_address, kea=kea, list_name=plan.list_name)
     if not live.get("ok"):
         raise RuntimeError("; ".join(live.get("reasons") or ["the ZTP check failed"]))
@@ -1888,7 +1981,7 @@ def reserve_step(plan, *, actor: str = "", kea=None, check=None, write=None) -> 
     if not out.get("ok") or outcome.get("outcome") not in ("written", "unchanged"):
         raise RuntimeError(outcome.get("detail") or out.get("error")
                            or "the reservation was not written")
-    return out
+    return dict(out, subnet_added=added) if added else out
 
 
 def real_steps(repo: str, actor: str) -> dict:

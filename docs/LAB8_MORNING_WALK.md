@@ -52,6 +52,60 @@ its **Expected** output; anything else is a stop, and the step's owner says so.
 Times are UTC (yours, UTC−6, beside them). Nothing runs from 08:30 to 09:10 UTC, nor within
 75 minutes before 08:30 once the window is declared.
 
+### Where it stands (2026-10-20 ~21:00 UTC, the operator paused the block)
+
+**Done:**
+- A1 (dc1b95ef deployed 19:55 UTC, job health 3 not ok as before).
+- A2 (`lab/lab8/r6-intent.yml`, 43023866).
+- The break-glass export (the browser download at 19:13 UTC, current for all 9 devices; its
+  row cleared).
+- A3 (R7's subnet, Kea id 257).
+- A4 (firewall PASS 6 of 6).
+- A5 (Add device r7), then **Abandon r7**: Create had left its pending manifest entry
+  uncommitted (C1468), and Retire refused. Abandon's release returned the file to HEAD.
+- A6 (Retire r6, 60b825b14bce, "Lab 8 preparations"; C1418's retired view confirmed).
+- A7 (the C1419 install step, heartbeat and telemetry, PASS 8 of 8 each; no live r6 rule was
+  left to remove).
+- C3 (`lab8-r6` destroyed with `--cleanup`), C4 (`br-r6r7`, `br-r7h5` deleted).
+- C1 and C2: the patch, `configs/host-net-lab89.sh` and `rcn-lab1.clab.yml.next` staged, and the
+  dry run of a renamed copy clean.
+- **Lab repository commit 1 = 2485440** (the operator: its earlier uncommitted changes).
+
+**The fix for C1468** (Create commits its pending entry; Abandon commits its release) is
+`bb047997`, deployed with `d097f5d4`, which fixed the red CI it met (C1469). **C1460** (Add device
+creates its link's ZTP subnet) is built and gated while the operator is away, but deployed
+only when the operator is here, and never inside the D/E window.
+
+**Next, in this order (the operator, 2026-10-20 ~20:55 UTC), each with its expected output:**
+
+1. **[YOU] Add device › ZTP for R7** (section 2.2's values, subnet 257 exists): `r7`, IOS-XE,
+   router, 10.255.4.6/30, MAC `aa:bb:cc:00:04:07`, management `GigabitEthernet2`, route option
+   (3) the relay's own address, no DNS.
+   - **Expected:** reservation `aa:bb:cc:00:04:07 -> 10.255.4.6` (C1441 may print `-> ?`);
+     pending row "r7: reserved, not leased"; the stop notice after 15 minutes is C1467's false
+     alarm.
+   - **[ME, read]:** Default's repository: `git status` empty; the commit "onboarding: r7"
+     holds BOTH `host_vars/r7.yml` and `.nsot/manifest.json`.
+2. **[YOU] Add device › ZTP for R6** (section 2.1's values, subnet 256 stayed): `r6`,
+   `aa:bb:cc:00:04:06`, 10.255.4.2/30, route option (3) the relay's own address.
+   - **Expected and [ME, read]:** as for R7: reservation `-> 10.255.4.2`, a pending row, the
+     repository clean, "onboarding: r6" holding both files.
+3. **B.** [YOU] B1 Save All; [ME] B2 to B4 as written below.
+   - **Expected:** `Baseline: earned`, a new `baseline/<ts>`; the sync "committed";
+     `nmas-startup-source --check --list Default` printing `0 newer` and `ok` for each of the
+     eight, last line `8 of 8 pass` (C1454's refusal names any device a redeploy would undo).
+   - **B4 runs the C1453 script** (`lab/clab-sync/c1453-startup-files-owner-only.sh`), which
+     makes the files and backups owner-only and ignores the backups in the lab repository.
+4. **[YOU] Lab repository commit 2**, on the lab host in `~/labs/lab`:
+   `mv rcn-lab1.clab.yml.next rcn-lab1.clab.yml`, then commit `rcn-lab1.clab.yml`,
+   `configs/host-net-lab89.sh` and `patches/c8000v-launch-configless.py`.
+   - **Expected:** the commit's sha; `git status` shows no tracked change; `sha256sum
+     rcn-lab1.clab.yml` begins `9075221bf446`.
+5. **D** then **E** as written below (D2's and D3's reads, VMs 201 and 202 stopped; D4's before
+   counts; D5's window and the redeploy on your go), **B3 run again at D** (anything newer then
+   is a stop).
+6. **R6's redo** (R1 to R3 below), then steps 7 and 8.
+
 **The order run (the operator's adjustments, 2026-10-20 ~19:40 UTC; first block until ~21:25
 UTC is A, C and B; D and E in a later block):**
 1. A1 the release, A2 R6's intent kept.

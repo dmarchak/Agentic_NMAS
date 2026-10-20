@@ -102,6 +102,15 @@ finished by running it again:
    back. Recorded: `dhcp/released-leases.yml` in the Kea owner's repository as you. A lease
    outlives its reservation and refuses the address to the next device that asks with another
    client identifier, so it goes too; one Kea now holds for another client is left, and said.
+   **Then its link's ZTP subnet** (`ztp_subnet`). Read: Mercury's IPv4 subnet file, for a
+   relayed ZTP subnet whose record says this device's Add device added it for its link (C1460),
+   with the reservations and leases still in it. Sent: nothing to the device; to Kea, the
+   subnet's removal through [the subnet writer](dhcp-subnet) (its own hash, `-t` on the
+   candidate, a reload, a read-back). Recorded: `dhcp/subnets.yml` in the Kea owner's
+   repository as you. Only when nothing else is in it once this device's reservation and lease
+   are gone; a subnet a person added, or one still serving another device, stays, and is said.
+   The parent's relay stays in its intent and the link's NetBox prefix stays: a device added
+   there again gets the subnet again.
 5. **One commit** (`commit`). Read: the repository. Sent: nothing. Recorded: `git rm` of the
    device's `host_vars/<device>.yml` and `golden/<device>.cfg`, its own template override
    taken out of `templates/bindings.yml`, its identity released from the manifest (NetBox

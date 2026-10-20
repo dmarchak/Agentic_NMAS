@@ -97,6 +97,58 @@ def declaration() -> dict:
     return {DECLARATION: RELAYED}
 
 
+#: C1460: the user-context key naming the onboarding that ADDED a relayed ZTP subnet (Add device
+#: behind a relay), ``{"device", "list"}``. Retire removes a subnet only when it carries this
+#: record for the device it retires; a subnet a person added (the DHCP page) carries none.
+CREATED_BY = "mercury-ztp-created-by"
+
+
+def created_by(subnet) -> dict:
+    """The onboarding that added *subnet* (``{"device", "list"}``), or ``{}``: a person's."""
+    ctx = subnet.get("user-context") if isinstance(subnet, dict) else None
+    got = ctx.get(CREATED_BY) if isinstance(ctx, dict) else None
+    return dict(got) if isinstance(got, dict) else {}
+
+
+def link_for_address(address: str, facts: dict) -> dict:
+    """C1460: the relayed link *address* sits on, from committed intent: the one interface whose
+    IPv4 prefix holds it, with its helper (`relay_for`). ``{"prefix", "relay"}``.
+
+    Add device behind a relay derives its link's ZTP subnet from this, so a person types no
+    prefix and no relay. Refused, naming what was found: no interface on a prefix holding the
+    address (the parent's port is not on the link in intent yet), more than one, the address
+    being the prefix's network or broadcast address, or the relay's own."""
+    ipv4_only(address, "the address")
+    ip = ipaddress.ip_address(address)
+    hits = []
+    for prefix in ((facts or {}).get("IPv4") or {}):
+        try:
+            if ip in ipaddress.ip_network(prefix, strict=False):
+                hits.append(prefix)
+        except ValueError:
+            continue
+    if not hits:
+        errors = list((facts or {}).get("errors") or [])
+        raise Refused(
+            f"no Kea subnet holds {address}, and no interface in committed intent is on a prefix "
+            "holding it, so its link's ZTP subnet cannot be derived: give the parent device's "
+            "port its address on the link, with its ip helper-address, in intent first"
+            + (f"; these networks' intent could not be read, so it may be there: "
+               f"{'; '.join(errors)}" if errors else ""))
+    if len(hits) != 1:
+        raise Refused(f"{address} is on {len(hits)} prefixes in committed intent "
+                      f"({', '.join(sorted(hits))}), so its link is not one")
+    net = ipaddress.ip_network(hits[0], strict=False)
+    if net.prefixlen < 31 and ip in (net.network_address, net.broadcast_address):
+        raise Refused(f"{address} is {net}'s {'network' if ip == net.network_address else 'broadcast'} "
+                      "address, not a device's")
+    relay = relay_for(str(net), facts)
+    if relay["address"] == address:
+        raise Refused(f"{address} is the relay's own address ({relay['device']} "
+                      f"{relay['iface']}), not the new device's")
+    return {"prefix": str(net), "relay": relay}
+
+
 def relayed_subnets(dhcp4: dict) -> list:
     """Every declared subnet in Kea's IPv4 configuration, those in shared networks too."""
     every = list(dhcp4.get("subnet4") or [])

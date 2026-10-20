@@ -103,7 +103,8 @@ class RetireRefused(Exception):
 
 #: Every step retirement can take, in the order `apply` runs them: `plan()["steps"]`'s keys.
 #: The manual's page names each (tests/test_manual.py reads this tuple).
-STEPS = ("netbox_mask", "override", "staged", "reservations", "leases", "commit", "tags",
+STEPS = ("netbox_mask", "override", "staged", "reservations", "leases", "ztp_subnet", "commit",
+         "tags",
          "rolled_back", "approvals", "rotation_policy", "topology", "heartbeat", "telemetry",
          "netbox_record", "legacy", "host_key", "row")
 
@@ -366,6 +367,11 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
     # reservation and refuses the address to the next device until it ends.
     take("leases", _lease_facts(list_name, hostname, entry, known,
                                 (work.get("reservations") or {}).get("ztp") or []))
+    # Its link's ZTP subnet (C1460), after its reservation and lease: only one its Add device
+    # added, and only when nothing else is in it.
+    take("ztp_subnet", _ztp_subnet_facts(
+        list_name, hostname, entry, (work.get("reservations") or {}).get("ztp") or [],
+        (work.get("leases") or {}).get("leases") or []))
     step("commit", "one commit: remove " + (", ".join(files) or "(nothing)")
          + (f", and its template override ({override_tpl}) from {_bindings_rel()}"
             if override_tpl else "")
@@ -668,6 +674,100 @@ def _lease_facts(list_name: str, hostname: str, entry, known: list, ztp_work: li
             "done": False, "work": {"leases": [dhcp_leases.bound(r)
                                                | {"hostname": r["hostname"]}
                                                for r in leases]}}
+
+
+def _created_link_subnets(list_name: str, hostname: str) -> list:
+    """The relayed ZTP subnets Add device added for *hostname*'s link (C1460, their
+    `user-context` naming it and its network), each with the reservations in its file and the
+    IPv4 leases Kea holds in it: ``[{"id", "prefix", "reservations", "leases"}]``. A read, and a
+    seam: a test plants subnets without Kea's files. No subnet file yet means none was added."""
+    from modules import dhcp_leases
+    from modules import dhcp_reservations as D
+    from modules import dhcp_subnets as S
+    from modules.nsot import ztp, ztp_relayed
+
+    main = D.main_config(list_name, "IPv4")
+    try:
+        with open(S.subnets_file(main, "IPv4"), encoding="utf-8") as fh:
+            subnets = S.load(fh.read())
+    except FileNotFoundError:
+        return []
+    mine = [s for s in subnets
+            if ztp_relayed.created_by(s) == {"device": hostname, "list": list_name}]
+    if not mine:
+        return []
+    leases = dhcp_leases.read(dhcp_leases._kea_for(list_name), "IPv4")      # noqa: SLF001
+    return [{"id": s.get("id"), "prefix": s.get("subnet", ""),
+             "reservations": ztp._read_fragment(D.fragment(main, "IPv4", s.get("id"))),  # noqa: SLF001
+             "leases": [r for r in leases if r.get("subnet_id") == s.get("id")]}
+            for s in mine]
+
+
+def _ztp_subnet_facts(list_name: str, hostname: str, entry, ztp_work: list,
+                      lease_work: list) -> dict:
+    """Its link's ZTP subnet (C1460): removed only when Add device added it for this device
+    (its record) AND nothing else is in it once the reservations and leases steps have taken
+    this device's own. A subnet a person added, or one still holding another device's
+    reservation or lease, stays, said in what is not done. The parent's relay stays in its
+    intent and the NetBox prefix stays: the parent's interface is still on the link."""
+    from modules.nsot import ztp
+
+    try:
+        subs = _created_link_subnets(list_name, hostname)
+    except Exception as exc:                   # noqa: BLE001
+        return {"refuse": (f"Mercury's Kea subnets could not be read ({exc}), so whether Add "
+                           f"device added one for {hostname}'s link cannot be told: could not "
+                           "read is not none")}
+    if not subs:
+        return {"step": "no Kea subnet was added for its link by its Add device", "done": True}
+    macs = {ztp._mac(m) for m in [(entry or {}).get("mgmt_mac") or ""]     # noqa: SLF001
+            + [z.get("mac", "") for z in ztp_work] if m}
+    gone = {(r.get("address"), r.get("mac")) for r in lease_work}
+    work, not_doing = [], []
+    for s in subs:
+        res = [r for r in s["reservations"] if isinstance(r, dict)
+               and ztp._mac(r.get("hw-address", "")) not in macs                 # noqa: SLF001
+               and (r.get("hostname") or "").lower() != hostname.lower()]
+        held = [r for r in s["leases"] if (r.get("address"), r.get("mac")) not in gone
+                and ztp._mac(r.get("mac") or "") not in macs]                      # noqa: SLF001
+        if res or held:
+            not_doing.append(f"Kea subnet {s['id']} ({s['prefix']}), added for its link by its "
+                             f"Add device, stays: {len(res)} other reservation(s) and "
+                             f"{len(held)} other lease(s) are in it")
+            continue
+        work.append({"id": s["id"], "prefix": s["prefix"]})
+    if not work:
+        return {"step": "no Kea subnet to remove: the one its Add device added still serves "
+                        "another device", "done": True, "not_doing": not_doing}
+    return {"step": ("remove Kea subnet " + ", ".join(f"{w['id']} ({w['prefix']})" for w in work)
+                     + ", which its Add device added for its link (C1460), through the subnet "
+                       "writer, once its reservation and lease are gone: nothing else is in it. "
+                       "The parent's relay stays in its intent and the link's NetBox prefix "
+                       "stays; a device added there again gets the subnet again"),
+            "done": False, "work": work, "not_doing": not_doing}
+
+
+def _remove_link_subnets(list_name: str, hostname: str, work: list, *, actor: str,
+                         reason: str) -> None:
+    """Each subnet the plan named, removed through the one subnet writer (`apply_edit`), bound
+    by the hash its plan gives now, after checking it is still the subnet named."""
+    from modules import dhcp_subnets as S
+
+    for w in work:
+        values = {"op": "remove", "family": "IPv4", "id": str(w["id"]), "ack": "1"}
+        p = S.plan(list_name, values)
+        if not p.get("ok"):
+            raise RuntimeError(f"Kea subnet {w['id']} cannot be removed: {p.get('refused')}")
+        if (p.get("before") or {}).get("subnet") != w["prefix"]:
+            raise RuntimeError(f"Kea subnet {w['id']} is now "
+                               f"{(p.get('before') or {}).get('subnet')}, not {w['prefix']}: "
+                               "re-run the plan")
+        got = S.apply_edit(list_name, values, p["hash"], actor=actor,
+                           reason=(f"retire of {hostname}: its link's ZTP subnet, added by "
+                                   f"its Add device (C1460): {reason}"))
+        if not got.get("ok"):
+            raise RuntimeError(f"Kea subnet {w['id']} ({w['prefix']}) was not removed: "
+                               f"{got.get('error')}")
 
 
 def _tag_facts(repo: str, hostname: str, identity: str) -> dict:
@@ -1433,7 +1533,7 @@ def _holds_the_device(func):
 #: plan's own sentence is the step's hover.
 STEP_WORDS = {"netbox_mask": "NetBox's copy masked", "override": "Overrides cleared",
               "staged": "Staged credential deleted", "reservations": "Kea reservations removed",
-              "leases": "Kea leases released",
+              "leases": "Kea leases released", "ztp_subnet": "Link's ZTP subnet removed",
               "commit": "Intent and golden removed", "tags": "Golden tags archived",
               "rolled_back": "Rollback block archived", "approvals": "Queue items withdrawn",
               "rotation_policy": "Rotation policies updated", "topology": "Topology entries removed",
@@ -1606,6 +1706,14 @@ def apply(list_name: str, hostname: str, *, reason: str, actor: str,
             done.append("leases")
         except Exception as exc:               # noqa: BLE001
             return fail("leases", exc)
+
+    if "ztp_subnet" in pending:
+        try:
+            _remove_link_subnets(list_name, hostname, work.get("ztp_subnet") or [],
+                                 actor=actor, reason=reason)
+            done.append("ztp_subnet")
+        except Exception as exc:               # noqa: BLE001
+            return fail("ztp_subnet", exc)
 
     block = (work.get("rolled_back") or {}).get("block")
     if "commit" in pending:

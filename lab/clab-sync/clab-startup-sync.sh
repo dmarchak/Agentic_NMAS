@@ -182,6 +182,11 @@
 # ALWAYS review 'git diff configs/' before redeploying.
 # ---------------------------------------------------------------------------
 set -uo pipefail
+# OWNER-ONLY FROM CREATION (C1453): every file this writes holds the devices' accounts and SNMP
+# communities. With the default umask the built files, the staged copies, the lab's configs and
+# their timestamped backups were all 0664 on the lab host (read 2026-10-20). Here, and on the
+# lab host below, files are 0600 and folders 0700.
+umask 077
 
 OUT="${OUT:-configs}"
 # Whether CLAB was set in the environment, checked BEFORE the default is
@@ -671,8 +676,9 @@ if ! ssh -n -o ConnectTimeout=10 -o BatchMode=yes "$CLAB" true 2>/dev/null; then
   exit 1
 fi
 
-ssh -n "$CLAB" "rm -rf $STAGE && mkdir -p $STAGE" || exit 1
+ssh -n "$CLAB" "rm -rf $STAGE && (umask 077 && mkdir -p $STAGE)" || exit 1
 rsync -a "$OUT"/ "${CLAB}:${STAGE}/" || exit 1
+ssh -n "$CLAB" "chmod -R go-rwx $STAGE" || exit 1
 
 # >>> reconcile
 # EVERY MANAGED FILE, EVERY RUN -- before the early exit and before any copy.
@@ -893,11 +899,12 @@ while read -r dir; do
     FAILED_DIRS+=("$dir: the file list could not be staged; NOTHING was copied, its configs are untouched")
     continue
   fi
-  if ! err="$(ssh -n "$CLAB" "cp -r '$dir' '${dir}.bak-${ts}'" 2>&1)"; then
+  if ! err="$(ssh -n "$CLAB" "(umask 077 && cp -r '$dir' '${dir}.bak-${ts}') && chmod -R go-rwx '${dir}.bak-${ts}'" 2>&1)"; then
     FAILED_DIRS+=("$dir: BACKUP FAILED (${err%%$'\n'*}); NOTHING was copied, its configs are untouched")
     continue
   fi
-  if ssh -n "$CLAB" "rsync -a --files-from='$STAGE/.files' '$STAGE/' '$dir/'"; then
+  # Each copied file owner-only on arrival (C1453), by name from the staged list.
+  if ssh -n "$CLAB" "rsync -a --files-from='$STAGE/.files' '$STAGE/' '$dir/' && cd '$dir' && xargs -r -d '\n' chmod 600 -- < '$STAGE/.files'"; then
     echo "Copied $count file(s) to $dir   (backup ${dir}.bak-${ts})"
     COPIED_DIRS+=("$dir")
   else

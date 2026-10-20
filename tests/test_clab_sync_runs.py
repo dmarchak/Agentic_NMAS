@@ -128,6 +128,30 @@ def test_the_first_sync_writes_and_commits_every_file(world):
     assert "Startup-configs updated for 2 of 2 lab(s)" in out
 
 
+def test_the_files_and_their_backups_are_owner_only(world):
+    """C1453 (read on the lab host 2026-10-20: the startup files and their backups 0664). Every
+    file the sync leaves in a lab's configs, and every backup it takes, is 0600 in 0700."""
+    import stat
+
+    def mode(p):
+        return stat.S_IMODE(os.stat(p).st_mode)
+
+    assert run(world)[0] == 0
+    configs = {h: CONFIG.format(h=h, n=n) for h, (_l, n) in DEVICES.items()}
+    configs["r1"] = configs["r1"].replace("192.0.2.1 ", "192.0.2.101 ")
+    set_source(world, configs)
+    rc, out = run(world)
+    assert rc == 0, out
+    for h, (lab, _n) in DEVICES.items():
+        assert mode(world["tmp"] / lab / "configs" / f"{h}.cfg") == 0o600, h
+    backups = sorted((world["tmp"] / "labA").glob("configs.bak-*"))
+    assert backups, "the second run backed labA up before copying"
+    for b in backups:
+        assert mode(b) == 0o700
+        for f in b.rglob("*"):
+            assert mode(f) & 0o077 == 0, f
+
+
 def test_every_device_built_and_nothing_changed_exits_0_saying_so(world):
     """The host's 01:51 run: the best outcome, which crashed."""
     assert run(world)[0] == 0
