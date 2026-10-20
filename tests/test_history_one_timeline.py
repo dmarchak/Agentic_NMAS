@@ -102,6 +102,66 @@ def planted(lab, tmp_path, monkeypatch):  # noqa: F811
     return listref.resolve("Lab")
 
 
+def _retire_later(repo, device, seconds):
+    """A retirement of *device*'s name, its commit dated *seconds* from now (the planted
+    records all come before it): its golden removed, the trailer Retire writes."""
+    import subprocess
+    stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + seconds))
+    env = dict(os.environ, GIT_COMMITTER_DATE=stamp, GIT_AUTHOR_DATE=stamp,
+               GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@example.invalid",
+               GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@example.invalid")
+    subprocess.run(["git", "-C", repo, "rm", "-q", f"golden/{device}.cfg"], check=True, env=env)
+    subprocess.run(["git", "-C", repo, "commit", "-q", "-m",
+                    f"retire: {device}\n\nSource: retire\nActor: alex@example.com\n"
+                    f"Retired-Device: {device}"], check=True, env=env)
+    return subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"], check=True, env=env,
+                          capture_output=True, text=True).stdout.strip()
+
+
+class TestANameOnboardedAgainStartsAtItsRetirement:
+    """C1420 (Lab 8 step 1): once a device is onboarded again under a retired name, its History
+    (the tab, and History filtered to it) read every name-keyed record across the retirement,
+    so the new device showed the old one's two weeks. A live name's view now starts at the
+    name's newest retirement, whose row says where the earlier records are; History of every
+    device keeps them."""
+
+    def test_the_view_starts_at_the_retirement_and_says_where_the_rest_is(self, lab, planted):
+        from modules import device_page
+        from modules.nsot import receipts
+        before = device_page.history(planted, {"hostname": "r3"})["events"]
+        assert len(before) >= 3, "the floor: r3 has records before the retirement"
+        sha = _retire_later(lab["repo"], "r3", 60)
+        assert receipts.write("Lab", [{"id": "after", "at": _now(120), "action": "deploy",
+                                       "device": "r3", "actor": "operator@example.com",
+                                       "outcome": "deployed", "program_lines": 1,
+                                       "golden_commit": ""}])["ok"]
+        tab = device_page.history(planted, {"hostname": "r3"})
+        assert not tab["errors"], tab["errors"]
+        assert [e["kind"] for e in tab["events"]] == ["receipt", "golden"], [
+            (e["kind"], e["what"], e["at"]) for e in tab["events"]]
+        retired = tab["events"][1]
+        assert retired["sha"] == sha
+        assert "before this retirement are the retired device's" in retired["detail"]
+        page = HS.timeline(planted, device="r3", limit=HS.MAX_LIMIT)
+        assert [e["at"] for e in page["events"]] == [e["at"] for e in tab["events"]]
+
+    def test_every_device_keeps_every_row(self, lab, planted):
+        fleet_before = HS.timeline(planted, limit=HS.MAX_LIMIT, members=list(DEVICES))["events"]
+        mine = len([e for e in fleet_before if HS.about(e, "r3")])
+        _retire_later(lab["repo"], "r3", 60)
+        fleet = HS.timeline(planted, limit=HS.MAX_LIMIT, members=list(DEVICES))["events"]
+        assert len([e for e in fleet if HS.about(e, "r3")]) == mine + 1
+
+    def test_a_retired_name_no_live_device_holds_is_not_cut(self, lab, planted):
+        """The control: r4 is in no inventory row, so its records are its own, all of them."""
+        from modules import device_page
+        before = device_page.history(planted, {"hostname": "r4"})["events"]
+        _retire_later(lab["repo"], "r4", 60)
+        after = device_page.history(planted, {"hostname": "r4"})["events"]
+        assert len(after) == len(before) + 1
+        assert not any("retired device's" in (e.get("detail") or "") for e in after)
+
+
 class TestOneReaderTheSameRows:
     def test_every_device_tab_is_the_fleet_timeline_filtered_to_it(self, planted):
         from modules import device_page

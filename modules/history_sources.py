@@ -1587,6 +1587,42 @@ def devices_words(devices: list) -> str:
     return f"{len(devices)} devices"
 
 
+def name_reused(ref, device: str):
+    """The newest retirement of *device*'s name while a live device holds the name again
+    (C1420): ``{"sha", "at", "epoch"}``, or None (no retirement, the name not in the inventory
+    now, or either unreadable: then nothing is cut). Name-keyed records before it are the
+    retired device's, which a device onboarded again under the name inherits nothing of."""
+    from modules.nsot import retire
+
+    try:
+        from modules.device import load_saved_devices
+
+        live = {d.get("hostname", "") for d in load_saved_devices(ref.csv_path)}
+        rec = retire.retired_record(ref.repo_dir, device) if device in live else None
+    except Exception as exc:                          # noqa: BLE001 (nothing cut, logged)
+        log.warning("history: whether %s's name was used before could not be read: %s",
+                    device, exc)
+        return None
+    if not rec:
+        return None
+    return {"sha": rec["sha"], "at": rec["at"], "epoch": epoch(rec["at"])}
+
+
+def _from_reuse(events: list, device: str, reused: dict) -> list:
+    """*events* about *device* from its name's retirement on (C1420): the retirement's own row
+    kept and saying where the earlier records are, the rows before it left out."""
+    kept = [e for e in events if epoch(e["at"]) >= reused["epoch"]]
+    said = (f"the records about {device} before this retirement are the retired device's: "
+            "History of every device still holds them")
+    row = next((e for e in kept if e.get("sha") == reused["sha"]), None)
+    if row is not None:
+        row["detail"] = (row["detail"] + "; " if row.get("detail") else "") + said
+    else:
+        kept.append(_event(reused["at"], "intent", f"{device} retired (the device before)",
+                           [device], sha=reused["sha"], detail=said))
+    return kept
+
+
 def timeline(ref, device: str = "", person: str = "", kinds=None, since_days: str = "",
              limit: int = DEFAULT_LIMIT, members=None, unverified: bool = False) -> dict:
     """THE reader (C369): ``{"events", "errors", "cut", "limit", "total", "people",
@@ -1619,6 +1655,11 @@ def timeline(ref, device: str = "", person: str = "", kinds=None, since_days: st
         unborn += got.get("unborn") or []
     events = [e for e in events if _recent(ctx, e["at"])
               and (not device or about(e, device))]
+    # A name onboarded again starts its history at the name's retirement (C1420): the device
+    # view only; History of every device keeps every row.
+    reused = name_reused(ref, device) if device else None
+    if reused:
+        events = _from_reuse(events, device, reused)
     for e in events:
         # The row's ONE line (the operator, 2026-10-02): what, its marks and the person's short
         # name; the full wording, who with how they were identified, expands under the row.

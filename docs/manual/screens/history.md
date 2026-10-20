@@ -62,7 +62,10 @@ The Baselines tab works the same way, with each baseline's reasons under its lin
 
 Filters:
 
-- **Device:** that device's records only; the fleet's own records drop out.
+- **Device:** that device's records only; the fleet's own records drop out. When the name
+  belonged to a device that was retired and a new device has been onboarded under it, the
+  records start at the retirement: its row says the earlier records are the retired device's,
+  and History of every device still holds them. A device's History tab reads the same way.
 - **Person.**
 - **Kind,** in four groups:
   - **The repository:** goldens, intent, commits (golden, intent and profile together) and
