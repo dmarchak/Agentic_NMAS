@@ -151,7 +151,7 @@ feature 1 needs it. **What could not be placed:** section 7.
 | K63 | **SDN controllers** (P.19, Floodlight among them) | not started | no code | Stage 10, last | the operator's order | L | — | yes |
 | K64 | **Phase 8: 8.0 (shrunk, PHASE8_PLAN 13.2) and feature 1** | not started | no AI code | Phase 8 | | L | — | yes (hosted) |
 | K65 | **Phase 8: features 7, 2, 3, 5, the rest; Respond's classes enabled** | not started | — | Phase 8 | PHASE8_PLAN 13.3's order | L | — | yes (hosted) |
-| K67 | **The usability review** (C1438; the operator's standing direction, 2026-10-20) | not started; the friction log runs from 2026-10-20 (docs/FRICTION_LOG.md) | docs/INTENT_AUTHORING_DESIGN.md folds into it | Core 1.0 (after Lab 9, before the sign-off) | "ease of use is a product requirement, not polish"; every screen, action and field inventoried, each with a verdict and a measured task count against a target; reviewed before anything is built | L | — | yes |
+| K67 | **The usability review** (C1438; the operator's standing direction, 2026-10-20) | not started; the friction log runs from 2026-10-20 (docs/FRICTION_LOG.md) | docs/INTENT_AUTHORING_DESIGN.md folds into it | Core 1.0 (after Lab 9, before the sign-off) | "ease of use is a product requirement, not polish"; every screen, action and field inventoried, each with a verdict and a measured task count against a target, and every task's last step checked for a hop out of Mercury (C1445, the one-interface rule, 2026-10-20); reviewed before anything is built | L | — | yes |
 | K66 | **Pre-made "mutation" testing nights** (the parked runner) | parked | `.github/workflows/mutation-nightly.yml` dispatch only | post-1.0 | parked by the operator (C835) | M | — | yes |
 
 ## 3. The open A, B and UNKNOWN rows
