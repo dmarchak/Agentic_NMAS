@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from dataclasses import dataclass, field
 
 log = logging.getLogger(__name__)
@@ -3242,6 +3243,48 @@ def _profile_for(repo: str, list_name: str, hostname: str, entry: dict, config: 
                                      entry.get("role", ""), config, repo=repo)
 
 
+#: C1400 (0d, 2026-10-19, measured once on an IOS-XE 17 C8000v): probe-zr4 fetched its
+#: bootstrap at 21:41:13; Verify's preview at 21:41:45 (32 s after) met one SSH key and kept it
+#: on first contact; its own capture at 21:42:02 (49 s after) met another, the device having
+#: made its key anew while it applied the bootstrap, and was refused. Verify's first contact
+#: with a ZTP device therefore waits until its last fetch is this far behind: about 2.5x the
+#: 49 s measured (the bounds rule). Why the key changes after SSH first answers is unmeasured.
+KEY_SETTLE_S = 120
+
+
+def ztp_key_settling(entry: dict, list_name: str, *, hostname: str = "", now=None,
+                     progress=None, held=None) -> str:
+    """Why Verify must wait before it reaches a ZTP device, or "" (C1400). Only a ZTP device
+    with no SSH key kept for its address yet: its first contact keeps the key it meets, and a
+    key made anew moments later refuses every session after. Reaches nothing: the fetch time
+    is the responder's own record (`ztp.progress`), the key the host-key store's."""
+    if entry.get("address_source") != "ztp":
+        return ""
+    from modules import host_keys
+    from modules.nsot import ztp
+
+    ip = entry.get("reserved_address") or entry.get("mgmt_ip") or ""
+    try:
+        if ip and (held or host_keys.held)(ip):
+            return ""                 # a key is kept: every session is compared with it
+    except host_keys.HostKeyStoreUnreadable:
+        return ""                     # the session's own policy refuses, naming the store
+    fetch = ((progress or ztp.progress)(entry, list_name=list_name) or {}).get("fetch") or {}
+    if fetch.get("state") != "fetched":
+        return ""                     # Verify's own reach says what is wrong
+    at = host_keys._epoch(fetch.get("at"))                                 # noqa: SLF001
+    now = time.time() if now is None else now
+    ready = at + KEY_SETTLE_S
+    if not at or now >= ready:
+        return ""
+    return (f"'{hostname or entry.get('name', '')}' fetched its bootstrap at {fetch.get('at')} "
+            f"({int(now - at)} s ago), and a ZTP'd device can make a new SSH key while it "
+            "applies it (measured: 32 to 49 s after the fetch); Verify keeps the first key it "
+            "meets, so it waits until "
+            f"{time.strftime('%H:%M:%S', time.gmtime(ready))} UTC ({KEY_SETTLE_S} s after the "
+            f"fetch, {int(ready - now) + 1} s from now). Nothing was reached")
+
+
 def phase_two_plan(repo: str, hostname: str, list_name: str, *, online=None, reach=None,
                    capture=None) -> dict:
     """VERIFY'S PREVIEW (P.9 step c; the operator's decision 1, 2026-09-30:
@@ -3272,6 +3315,10 @@ def phase_two_plan(repo: str, hostname: str, list_name: str, *, online=None, rea
         # and a managed device is changed through the deploy path.
         out["reason"] = (f"'{hostname}' is not being onboarded: Verify is phase 2 of "
                          "onboarding, and nothing was reached")
+        return out
+    settling = ztp_key_settling(entry, list_name, hostname=hostname)
+    if settling:
+        out["reason"] = settling
         return out
     platform = entry.get("platform", "")
     try:
