@@ -56,13 +56,51 @@ onboardings and deploys are added the day they run.
 the lease time, and the stop rule counts from Create, not boot (C1467). Once C1467 counts
 from the first DISCOVER, "boot → lease → fetch → promoted" can be read from one record.
 
+### R7 (Lab 8, network Default, ZTP behind R6's relay), 2026-10-21
+
+| Event | Time (UTC) | From | Note |
+|---|---|---|---|
+| Capture started on the R6–R7 link | 02:02:26 | the lab host's capture file and its tcpdump process | read-only, the lab's own tooling |
+| R7's first DHCP DISCOVER | 02:06:24.06 | the capture | about 4 min after the redeploy's window ended |
+| Add device (Create): intent | 02:30:02 | commit "onboarding: r7" | its link's subnet already existed (C1460 part 1 not deployed) |
+| Add device (Create): Kea reservation | 02:30:03 | commit "ztp: r7 reserved aa:bb:cc:00:04:07 -> 10.255.4.6" | |
+| First OFFER, relayed by R6 | 02:32:10.01 | the capture | 40 ms after the DISCOVER it answered |
+| Lease (ACK) | 02:32:10.09 | the capture | |
+| First fetch of its bootstrap | 02:32:50 | responder journal, "served r7 to 10.255.4.6: 1 block(s), 468 bytes" | |
+| Last fetch | 02:32:59 | responder journal | 12 fetches in 9 s, each a full transfer (C1444) |
+| Credential rotated | 02:41:06 | commit "credential: r7 rotated …" | onboarding's Verify |
+| Promoted, recorded in NetBox | 02:42:08 | commit "onboarding: r7 verified and recorded in NetBox" | |
+| Seed intent committed | 02:42:29 | commit "host_vars: seed r7 from the committed golden" | |
+
+**It keeps asking** (the capture, `udp port 67 or 68` on R7's uplink):
+- **310 DISCOVERs** from 02:06:24 to 02:32:09, alternating two client identities in bursts of
+  three about every 15 s: AutoInstall's MAC form (`cisco-aabb.cc00.0407-Gi2`) and the
+  device's serial. **309 went unanswered**; the 310th was answered in 40 ms.
+- **25 min 46 s** from the first DISCOVER to the relayed lease. The wait was the walk's order:
+  nothing on R7's side changed while it waited. R6 had to be onboarded and its Day 1 deployed
+  for the relay to exist on Gi3. Mercury's own part, from the answered DISCOVER to the lease,
+  was 71 ms.
+- **From the lease to the first fetch:** 40 s. **From the first fetch to promotion:** 9 min 18 s
+  (02:32:50 to 02:42:08), including Verify's key settle and the operator pressing Verify (M14).
+
+**What the record cannot show yet:** the same as R6's. Mercury does not hold the first
+DISCOVER (C1467); this page reads it from a capture the lab ran. Which client identity was
+answered decides whether R7's seed blocks its deploys (C1479).
+
 ## 2. Deploys
 
-| Device, step | Applied (UTC) | Apply to verified | Lines sent | Sent as confirmed | Verify | Rollback | Saved |
+**The two time columns** (corrected 2026-10-21, C1481): "Receipt written" is the receipt's `at`,
+stamped as the batch's rows are built, after apply, Verify and the golden capture. It is
+**not** the apply. "To commit" is `at` to `completed_at`, the receipt to its commit. No record
+holds when the program was applied or when Verify ended. R6's Day 1 had landed by 02:32:10
+(R7 leased through its relay then), and its receipt reads 02:36:19.
+
+| Device, step | Receipt written (UTC) | To commit | Lines sent | Sent as confirmed | Verify | Rollback | Saved |
 |---|---|---|---|---|---|---|---|
 | r4, Lab 8 step 4 (Gi5 toward R6, area 10) | 07:35:18 | 2 s | 12 | yes | FULL: interfaces 5/5, routes 30/30, OSPF 6/6, OSPFv3 4/4, BGP 2/2; 7 lines read back, 1 skipped | none | to startup |
 | s3, Lab 8 step 4b (a stale static route removed, Mode B) | 16:28:14 | 2 s | 1 (1 removal, 1 authorised line) | yes | FULL: interfaces 9/9, routes 24 → 23 (the removed route), OSPF 5/5 | none | to startup |
 | r6, Lab 8 step 6 (full intent) | 18:50:11 | 4 s | 42 | yes | FULL: interfaces 4/4, routes 5 → 25; 28 lines read back, 2 skipped (`no` lines); RIP and RIPng declared and not up, no neighbour yet (amber, C1450) | none | to startup |
+| r6, Lab 8 R6 redo, Day 1 (2026-10-21) | 02:36:19 | 2 s | 43 | yes | FULL: OSPF 0 → 1, OSPFv3 0 → 1; RIP and RIPng declared and not up until R7's Day 1 (amber, C1450) | none | to startup |
 
 **What these show:**
 - Every deploy sent exactly the program confirmed (`matches_confirmed`).

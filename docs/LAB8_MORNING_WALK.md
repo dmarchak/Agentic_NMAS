@@ -115,7 +115,8 @@ not try it untried.
 5. **D** then **E** as written below (D2's and D3's reads, VMs 201 and 202 stopped; D4's before
    counts; D5's window and the redeploy on your go), **B3 run again at D** (anything newer then
    is a stop).
-6. **R6's redo** (R1 to R3 below), then steps 7 and 8.
+6. **R6's redo** (R1 to R3 below; **Add device r7 falls inside R2, after R6's intent commit
+   and before its deploy**), then steps 7 and 8.
 
 **The order run (the operator's adjustments, 2026-10-20 ~19:40 UTC; first block until ~21:25
 UTC is A, C and B; D and E in a later block):**
@@ -237,7 +238,9 @@ empty, then `sudo ip link del` each.
 **D3 [ME]. The hypervisor** (read-only): `free -g`; `uptime`; `qm list`.
 - **Expected:** at least 20 GiB available; VMs 201 and 202 stopped (yours).
 
-**D4 [YOU, I read]. Before:** Drift › Check now for Default; Needs attention's rows. I read the
+**D4 [YOU, I read]. Before:** Settings › **Installation** (the scope bar at the top of
+Settings) › **Diagnostics** tab › the **Drift checks** card › Default's row › **Check now**
+(`/v2/settings/installation?tab=diagnostics`) for Default; Needs attention's rows. I read the
 adjacency reader's per-device neighbour counts.
 - **Expected:** 8 of 8 read, none drifted; the counts recorded (as at 10-20: r1 2/2, r2 2/2,
   r3 6/4, r4 7/5 with R6 retired, so its R6 neighbour gone, s3 2, s4 2).
@@ -254,7 +257,8 @@ then on the lab host in tmux `cd ~/labs/lab && containerlab deploy -t rcn-lab1.c
 
 ### E. After
 
-**E1 [YOU, I read]. The fleet:** Devices page; Drift › Check now inside the window; History's
+**E1 [YOU, I read]. The fleet:** Devices page; Settings › Installation › Diagnostics › Drift
+checks › Default › Check now, inside the window; History's
 host keys; Needs attention.
 - **Expected:** all eight Answering (about 24 minutes); 8 of 8 read, none drifted; eight "SSH
   host key kept under a planned window" rows, then one Needs attention row to acknowledge; the
@@ -279,12 +283,27 @@ promotes R6.
 - **Expected:** about 10 to 15 minutes after R6's container was created: answered, captured,
   credential rotated and persisted, NetBox records written; the pending row gone.
 
-**R2 [YOU]. Step 6 again** (section 1a's step 6): Seed intent…, commit, then the kept intent
-(A2) applied as edits to the seed, KEEPING the new seed's Gi2 entry; commit; plan; confirm;
-Verify.
-- **Expected:** the plan as section 1a's step 6 (Loopback0 created; Gi3 with its helper, RIP
-  and RIPng; router ospf with two networks in area 10). Verify amber with RIP and RIPng unmet
-  until R7 forms (C1450). After [I read]: R6 and R4 OSPF Full; s3's route to 10.255.1.16 O IA.
+**R2. R6's Day 1, with R7 added between its COMMIT and its DEPLOY** (the operator, 2026-10-21:
+Add device r7 was refused at 01:3x UTC, "relay not in any committed intent" (C48), because r6
+Gi3 left intent at the Retire):
+1. **[YOU]** Seed intent… on R6, confirm.
+2. **[ME]** The complete Day 1 document. The new seed is read masked; its own Gi2 entry, its
+   `unmodeled_ack`, `call_home` and the image's default lines are kept, and
+   `lab/lab8/r6-intent.yml` supplies everything else.
+3. **[YOU]** Paste it whole on the Intent tab and commit. r6 Gi3 (10.255.4.5, with its helper)
+   is now in committed intent, so subnet 257's relay can be read.
+4. **[YOU] Add device › ZTP for r7 HERE, before R6's deploy** (section 2.2's values).
+   - **Why here:** once R6's deploy puts the helper on Gi3, R6 relays R7's DISCOVERs. Without
+     the reservation, R7 takes the pool's address with no boot file, asks for default files the
+     responder refuses, and AutoInstall gives up (M4).
+   - **Expected:** reservation `aa:bb:cc:00:04:07 -> 10.255.4.6`; the pending row "r7:
+     reserved, not leased". **[ME]** the repository clean, "onboarding: r7" holding both files.
+   - The `d4_violated` row for 10.255.4.4/30 clears here too: its relay is back in intent.
+5. **[YOU]** Plan R6's deploy, confirm, Verify.
+   - **Expected:** the plan as section 1a's step 6 (Loopback0 created; Gi3 with its helper, RIP
+     and RIPng; router ospf with two networks in area 10).
+   - Verify amber, with RIP and RIPng unmet until R7 forms (C1450).
+   - After, **[I read]**: R6 and R4 OSPF Full; s3's route to 10.255.1.16 O IA.
 
 **R3 [YOU, then ME]. R6's monitoring:** Monitoring › Heartbeat › re-measure [YOU]; the install
 step `heartbeat` [ME]; `nmas-telemetry-rules` and the install step `telemetry` [ME].
@@ -293,8 +312,9 @@ step `heartbeat` [ME]; `nmas-telemetry-rules` and the install step `telemetry` [
 
 ### Step 7: R7 (no lab step)
 
-**7.1 [I read].** R7 has been asking since the redeploy; once R6's Gi3 helper is deployed (R2),
-its next DISCOVER is relayed. The capture shows the first answered one.
+**7.1 [I read].** R7 has been asking since the redeploy. It was reserved at R2.4, before R6's
+deploy, so once R6's Gi3 helper is deployed (R2.5) its next DISCOVER is relayed and answered
+with its own reservation. The capture shows the first answered one.
 - **Expected:** Kea's offer of 10.255.4.6; R7's fetch of `r7.cfg`; the pending row advancing.
   **If the capture shows R7 stopped asking** (AutoInstall gave up): **[YOU]** R7's console,
   answer `no` to the dialog, `reload`, confirm. R7 asks again within its boot time.
