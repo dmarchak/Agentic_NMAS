@@ -25,9 +25,12 @@ import pytest
 OUT = os.environ.get("NMAS_BOARD_SHOTS", "")
 BOARDS = os.environ.get("NMAS_BOARDS_DIR", "")
 
-pytestmark = pytest.mark.skipif(not (OUT and BOARDS),
-                                reason="board shots run only when asked (NMAS_BOARD_SHOTS, "
-                                       "NMAS_BOARDS_DIR)")
+pytestmark = [pytest.mark.skipif(not (OUT and BOARDS),
+                                 reason="board shots run only when asked (NMAS_BOARD_SHOTS, "
+                                        "NMAS_BOARDS_DIR)"),
+              # C1522: eleven shots write reader stores (topology-graph, dhcp, logs-summary);
+              # each keeps them in its own folder.
+              pytest.mark.usefixtures("reader_stores_in_tmp")]
 
 
 def _full(b, path):

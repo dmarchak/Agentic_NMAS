@@ -39,8 +39,10 @@ class TestRegistrationFollowsTheModuleNotTheApp:
                              text=True, timeout=120)
         assert out.stdout.strip() == "[]", out.stdout + out.stderr
 
-    def test_run_post_commit_registers_them_itself(self):
-        """In a process that never imports Flask."""
+    def test_run_post_commit_registers_them_itself(self, tmp_path):
+        """In a process that never imports Flask. The child's store is this test's folder: the
+        hooks it runs wake the publication reader, whose value must not reach the session's
+        store (C1522)."""
         code = ("import sys; sys.path.insert(0, %r)\n"
                 "from modules.nsot import hooks\n"
                 "assert 'flask' not in sys.modules\n"
@@ -48,7 +50,8 @@ class TestRegistrationFollowsTheModuleNotTheApp:
                 "assert 'flask' not in sys.modules, 'importing flask would hide the bug'\n"
                 "print(sorted(hooks.registered()))\n" % ROOT)
         out = subprocess.run([sys.executable, "-c", code], capture_output=True,
-                             text=True, timeout=120)
+                             text=True, timeout=120,
+                             env={**os.environ, "NMAS_DATA_DIR": str(tmp_path / "data")})
         assert out.returncode == 0, out.stderr
         assert out.stdout.strip() == ("['baseline-event', 'git-push', 'golden-event', 'prometheus-targets', "
                                       "'publication-check', 's3-archive']"), out.stdout
@@ -119,7 +122,9 @@ for _ in range(100):
 print(json.dumps({{"commit": out["commit"], "recorded": _recorded}}))
 '''
         out = subprocess.run([sys.executable, "-c", script],
-                             capture_output=True, text=True, timeout=180)
+                             capture_output=True, text=True, timeout=180,
+                             # The child's store is this test's folder (C1522).
+                             env={**os.environ, "NMAS_DATA_DIR": str(tmp_path / "data")})
         assert out.returncode == 0, out.stderr
         import json
 

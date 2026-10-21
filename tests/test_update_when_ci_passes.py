@@ -17,6 +17,10 @@ import pytest
 
 from tests.test_update_button import _plan_kw, _updater, _value
 
+#: C1522: its tests write reader stores, or wake readers that do; each test keeps them
+#: in its own folder.
+pytestmark = pytest.mark.usefixtures("reader_stores_in_tmp")
+
 PENDING = {"tip": "b" * 40, "state": "pending", "asked_at": "2026-09-30T10:01:00Z",
            "sentence": "PENDING: CI run #120 is still in_progress for bbbbbbbbbb: <url>. Wait, "
                        "and run nmas-deploy again when it completes, or run `nmas-deploy --wait`"}

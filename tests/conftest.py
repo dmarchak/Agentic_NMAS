@@ -618,6 +618,99 @@ assert len(STORE_WRITERS_EXEMPT) <= 3
 STORE_REWRITERS_EXEMPT: dict = {}
 assert len(STORE_REWRITERS_EXEMPT) <= 3
 
+#: Test modules whose fixtures share a reader's stored value across tests ON PURPOSE (module or
+#: session scope), each with the stores it shares and why (C1522). Only these may leave a
+#: reader store for the next test, and only of the module; every other test that leaves one
+#: fails. Shrinks only, and each entry must still leave something (no ghosts).
+READER_STORES_SHARED: dict = {}
+assert len(READER_STORES_SHARED) <= 3
+
+
+@pytest.fixture
+def reader_stores_in_tmp(tmp_path, monkeypatch):
+    """Every reader's stored value under this test's own folder (C1522): `reader_job` reads and
+    writes through `store_path`, looked up at call time, so a value the test writes, or a
+    reader the code under test wakes, never reaches the session's store. A module whose tests
+    write stores, or wake readers that do, uses it (`pytestmark`)."""
+    from modules import reader_job
+
+    root = tmp_path / "readers"
+    monkeypatch.setattr(reader_job, "store_path", lambda name: str(root / f"{name}.json"))
+    return root
+
+
+@pytest.fixture(autouse=True)
+def _no_test_leaves_a_reader_store(request):
+    """No test may leave a reader's stored value behind (C1522, the operator, 2026-10-21).
+
+    A reader stores its last value in `<DATA_DIR>/readers/<name>.json`, and the test session's
+    data directory lives for the whole session, so a value one test writes is read by every
+    later test in its worker: `test_v2_brand` failed in a gate because an earlier test's
+    `topology-graph` drew Mercury's own map node, and its `<title>`, into a fragment that
+    otherwise has none. The lists guard above watches only the lists folder.
+
+    Like that guard: every file under the readers folder is snapshotted with its bytes, and
+    after the test anything created, rewritten or deleted is PUT BACK first (one offender must
+    not become the next test's failure), then the test fails naming each store. A silent reset
+    would hide the next leaker. Patch the store's path, or remove what the test wrote in its
+    teardown."""
+    import os
+
+    from modules import config
+    from tests import store_contents
+
+    root = os.path.join(config.DATA_DIR, "readers")
+    kept = store_contents.contents(root) if os.path.isdir(root) else {}
+    yield
+    now = store_contents.contents(root) if os.path.isdir(root) else {}
+    created = sorted(set(now) - set(kept))
+    changed = store_contents.changes(kept)
+    store_contents.restore(kept, changed)
+    for path in created:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    left = sorted({os.path.relpath(p, root) for p in created}
+                  | {os.path.relpath(p, root) for p, _kind in changed})
+    module = request.node.nodeid.split("::", 1)[0]
+    shared = READER_STORES_SHARED.get(module)
+    if shared:
+        left = [n for n in left if n not in shared["stores"]]
+    assert not left, (
+        f"{request.node.nodeid} left reader store(s) behind in {root}: {', '.join(left)}. "
+        "They are put back; remove what the test wrote in its teardown, or patch "
+        "`modules.reader_job.store_path` (C1522).")
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _no_module_leaves_a_reader_store(request):
+    """The same rule for a module (C1522): a module-scoped fixture writes its store before any
+    test's snapshot, so only the module's own start and end can see it left behind. A module
+    in READER_STORES_SHARED shares its stores between its tests; it must still leave none."""
+    import os
+
+    from modules import config
+    from tests import store_contents
+
+    root = os.path.join(config.DATA_DIR, "readers")
+    kept = store_contents.contents(root) if os.path.isdir(root) else {}
+    yield
+    now = store_contents.contents(root) if os.path.isdir(root) else {}
+    created = sorted(set(now) - set(kept))
+    changed = store_contents.changes(kept)
+    store_contents.restore(kept, changed)
+    for path in created:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    left = sorted({os.path.relpath(p, root) for p in created}
+                  | {os.path.relpath(p, root) for p, _kind in changed})
+    assert not left, (
+        f"{request.node.nodeid} left reader store(s) behind after its last test, in {root}: "
+        f"{', '.join(left)}. They are put back; a module fixture removes what it wrote (C1522).")
+
 
 @pytest.fixture(autouse=True)
 def _no_test_writes_into_live_data(request):

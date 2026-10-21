@@ -25,6 +25,10 @@ import re
 import dukpy
 import pytest
 
+#: C1522: its tests write reader stores, or wake readers that do; each test keeps them
+#: in its own folder.
+pytestmark = pytest.mark.usefixtures("reader_stores_in_tmp")
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DASH = os.path.join(ROOT, "deploy", "grafana", "nmas-device.json")
 

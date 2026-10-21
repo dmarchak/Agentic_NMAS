@@ -24,6 +24,10 @@ from modules import dhcp_leases as L
 from tests.test_dhcp_reservations import FakeKea, kea_dir  # noqa: F401 (the fixture)
 from tests.test_dhcp_v2 import web  # noqa: F401 (the fixture)
 
+#: C1522: its tests write reader stores, or wake readers that do; each test keeps them
+#: in its own folder.
+pytestmark = pytest.mark.usefixtures("reader_stores_in_tmp")
+
 RIG = {"family": "IPv4", "address": "10.10.10.102"}
 RIG6 = {"family": "IPv6", "address": "2001:db8:10::103"}
 #: The MAC whose client holds 10.10.10.100 and three IPv6 leases (by its DUID-LL).

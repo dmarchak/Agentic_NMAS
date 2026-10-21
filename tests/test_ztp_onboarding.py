@@ -15,6 +15,10 @@ import pytest
 from modules.nsot import onboard
 from modules.nsot.onboard import ZTP_STEPS, build_plan, run_onboarding
 
+#: C1522: its tests write reader stores, or wake readers that do; each test keeps them
+#: in its own folder.
+pytestmark = pytest.mark.usefixtures("reader_stores_in_tmp")
+
 MAC = "aa:bb:cc:00:02:50"
 ADDR = "192.0.2.50"
 SERVER = "192.0.2.10"

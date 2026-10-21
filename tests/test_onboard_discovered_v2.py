@@ -22,6 +22,10 @@ from modules.readers import ztp_discovery as Z
 from tests.test_ztp_discovery_reader import (ADDRS, NOW, PLAIN, PNP, _captured, _config,
                                              _lease)
 
+#: C1522: its tests write reader stores, or wake readers that do; each test keeps them
+#: in its own folder.
+pytestmark = pytest.mark.usefixtures("reader_stores_in_tmp")
+
 QUIET = "52:54:00:77:0e:31"
 PICKED = "52:54:00:51:aa:02"
 OTHER = "0c:d1:9e:44:02:b0"

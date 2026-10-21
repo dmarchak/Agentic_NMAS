@@ -37,6 +37,7 @@ RATCHETS = (
     ("modules/manual.py", "UNDECLARED", "shrinks"),
     ("tests/conftest.py", "STORE_WRITERS_EXEMPT", "shrinks"),
     ("tests/conftest.py", "STORE_REWRITERS_EXEMPT", "shrinks"),
+    ("tests/conftest.py", "READER_STORES_SHARED", "shrinks"),
     ("tests/mutation_equivalent.py", "EQUIVALENT", "shrinks"),
     ("tests/publication_exemptions.py", "EXEMPT", "shrinks"),
     ("tests/signed_off_screens.py", "UNSIGNED", "shrinks"),

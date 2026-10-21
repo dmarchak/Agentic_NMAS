@@ -23,6 +23,10 @@ import pytest
 from modules import job_health, reader_job
 from modules.readers import job_health_reader
 
+#: C1522: its tests write reader stores, or wake readers that do; each test keeps them
+#: in its own folder.
+pytestmark = pytest.mark.usefixtures("reader_stores_in_tmp")
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UNITS = os.path.join(ROOT, "deploy", "systemd")
 

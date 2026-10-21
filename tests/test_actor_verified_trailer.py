@@ -28,6 +28,10 @@ from modules import identity, route_gates
 from modules.identity import Identity
 from modules.nsot import repo as R
 
+#: C1522: its tests write reader stores, or wake readers that do; each test keeps them
+#: in its own folder.
+pytestmark = pytest.mark.usefixtures("reader_stores_in_tmp")
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 

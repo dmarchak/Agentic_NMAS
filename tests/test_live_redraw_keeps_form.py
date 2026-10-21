@@ -14,6 +14,10 @@ import pytest
 from tests.test_device_v2 import lab  # noqa: F401 (the fixture)
 from tests.test_swaps_in_a_browser import READY, SETTLED, served  # noqa: F401
 
+#: C1522: its tests write reader stores, or wake readers that do; each test keeps them
+#: in its own folder.
+pytestmark = pytest.mark.usefixtures("reader_stores_in_tmp")
+
 ROW = {"id": "grafana:s3:discards", "level": "warning", "what": "Interface output discards",
        "source": "grafana", "since": "2026-10-05T02:00:00Z", "devices": ["s3"], "action": {},
        "clears": "when the alert stops firing, or acknowledged", "clears_at": None,
