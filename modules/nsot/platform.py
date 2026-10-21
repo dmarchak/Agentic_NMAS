@@ -157,6 +157,29 @@ def dialect_for_netbox_slug(slug: str) -> str:
     return template_dir.replace("-", "_") if template_dir else ""
 
 
+def netbox_slugs_for_dialect(dialect: str) -> list:
+    """The NetBox platform slugs that name *dialect*, the reverse of
+    `dialect_for_netbox_slug` (C1442): this program's own table's first, then the
+    `platform_map` setting's, each once. The NetBox import gives a device it creates the
+    platform NetBox already holds under one of them, so a new record reads as the fleet's do."""
+    dialect = (dialect or "").strip()
+    if not is_dialect(dialect):
+        return []
+    out = [s for s, d in _FROM_NETBOX_SLUG.items() if d == dialect and "-" in s]
+    try:
+        from modules.settings_schema import get_setting
+        mapped = sorted(get_setting("platform_map", {}) or {})
+    except Exception:                          # noqa: BLE001 - the table alone, said by absence
+        mapped = []
+    out += [s for s in mapped if s not in out and dialect_for_netbox_slug(s) == dialect]
+    return out
+
+
+#: How the NetBox import's reading of config text names each dialect (`netbox_client.
+#: _parse_facts_from_config`'s words). Used when the text says nothing (C1442).
+FACT_WORDS = {"cisco_ios": "IOS", "cisco_iosxe": "IOS-XE"}
+
+
 def platform_for_device(device: dict) -> str:
     """Config dialect for *device*, in order of decreasing authority.
 

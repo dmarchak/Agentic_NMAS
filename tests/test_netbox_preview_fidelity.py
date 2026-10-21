@@ -40,6 +40,15 @@ def allow_writes(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def own_created_record(monkeypatch, tmp_path):
+    """Each test records what it creates in its own file (C1503, 2026-10-21): the record is
+    per list in the worker's data folder, and the creations these imports record for "Lab"
+    (the fake's device id 9 among them) made a later test_retire.py plan read its NetBox step
+    as owed, in an order the gate and CI can draw."""
+    monkeypatch.setattr(netbox_guard, "_CREATED_IDS_FILE", str(tmp_path / "netbox_created_ids.json"))
+
+
+@pytest.fixture(autouse=True)
 def fresh_tag_cache(monkeypatch):
     """The managed-tag id is cached per NetBox base URL.
 

@@ -330,16 +330,25 @@ def _run_history(repo: str, pending_names: set) -> dict:
     """What a pending device's page reads back (`routes/device_v2.py`): each pending
     device's last run, and the runs that took a device OFF the list (promoted or abandoned),
     newest first. A row that leaves the list takes its result with it
-    otherwise, and those are the results most worth reading again."""
+    otherwise, and those are the results most worth reading again.
+
+    A pending device's last run is ITS OWN (C1476): a run of its name from at or before the
+    name's cut (`retire.name_cuts_in`: its Create, or a newer retirement or abandon) was an
+    earlier device's, a retired edge1's Verify or an abandoned edge2's Abandon, never drawn
+    as this one's. Those stay in the record."""
     from modules.nsot.onboard import read_runs, run_heading
+    from modules.nsot.retire import before_retirement, name_cuts_in
     from modules.preview_confirm import onboard_run_result
 
     read = read_runs(repo)
+    cut = name_cuts_in(repo) if pending_names and read["rows"] else {}
     last, finished = {}, []
     for r in read["rows"]:
         name = r.get("device", "")
         if name in last:
             continue
+        if name in pending_names and before_retirement(cut, name, r.get("at", "")):
+            continue                                  # an earlier device's run of the name
         last[name] = {**run_heading(r), "result": onboard_run_result(r)}
         if name not in pending_names and len(finished) < 10:
             finished.append(dict(last[name], device=name))

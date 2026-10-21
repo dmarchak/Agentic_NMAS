@@ -148,6 +148,32 @@ class TestTheStepper:
         assert rows[7]["took_s"] == 30 and "settle window" in rows[7]["waits"]
         assert rows[3]["took_s"] == 5, "read before ran from its start to the compare's"
 
+    def test_a_batch_device_s_first_step_starts_at_its_turn_not_the_batch_s_start(self):
+        """C887 (W1's s1 "NetBox record 104 s"; step 6's IP SLA send, r3's 176 s, 2026-10-21):
+        a batch holds every device from its start and notes each "waiting its turn", so the
+        trail opens long before the device's first step. That wait is its own figure, never
+        the first step's: here 78 s waited, then NetBox record 2 s, as r2's would read."""
+        from modules import pipeline
+        from modules.nsot import device_ops
+        trail = _trail((device_ops.WAITING, 1000), ("netbox_query", 1078),
+                       ("template_render", 1080), ("ci_gate", 1081), ("pre_snapshot", 1082))
+        rows = DA.stepper(pipeline.STEPS, trail, now=1090.0, starts=True)
+        assert [r["took_s"] for r in rows[:3]] == [2, 1, 1], rows[:3]
+        assert rows[3]["state"] == "running" and rows[3]["took_s"] == 8
+        assert DA.waited_for_turn(pipeline.STEPS, trail["trail"]) == 78
+        # Nothing waited: a single device's deploy, its first step noted as its hold began.
+        alone = _trail(("netbox_query", 1000), ("template_render", 1003))
+        assert DA.waited_for_turn(pipeline.STEPS, alone["trail"]) == 0
+        assert DA.stepper(pipeline.STEPS, alone, now=1004.0, starts=True)[0]["took_s"] == 3
+
+    def test_the_batch_card_says_the_wait_apart(self):
+        from modules import deploy_job
+        from modules.nsot import device_ops
+        done = {"took_s": 5.2, "trail": _trail((device_ops.WAITING, 1000),
+                                               ("netbox_query", 1078))["trail"]}
+        assert deploy_job._took(done) == "5.2 s, after 78 s waiting its turn"
+        assert deploy_job._took({"took_s": 3, "trail": []}) == "3 s"
+
     def test_a_step_noted_as_it_starts_is_never_its_own_last_done(self):
         """C741: an operation noting each step as it BEGINS (the deploy, `starts`) notes the
         running step itself; the card said "Verify ... (last done: verify)"."""

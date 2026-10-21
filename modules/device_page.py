@@ -504,9 +504,11 @@ def _acknowledged_alerts(instances: list, bands: dict):
     if got["state"] == "unreadable" or not instances:
         return [], list(instances)
     acked, open_ = [], []
+    # One made for an earlier device of the name covers nothing of this one's (C1476).
+    acks = ACK.current(got["rows"])
     for i in instances:
         series = series_key(i.get("rule_uid"), i.get("labels"))
-        a = ACK.covering(f"grafana:series:{series}", series, got["rows"])
+        a = ACK.covering(f"grafana:series:{series}", series, acks)
         # The acknowledgement's band governs, against the newest value (C533): the one
         # judgement Needs attention makes (`acknowledgements.within_band`).
         judged = (ACK.within_band(a, bands.get(series))

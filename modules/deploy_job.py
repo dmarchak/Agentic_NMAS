@@ -190,6 +190,16 @@ _DONE = {"deployed": "done", "captured": "done", "unchanged": "done",
          "unattempted": "not_reached", "skipped_not_selected": "not_reached"}
 
 
+def _took(done: dict) -> str:
+    """A finished device's time on its row: its own turn, and apart from it the time it waited
+    for that turn (C887: the wait was charged to its first step)."""
+    from modules import device_actions, pipeline
+
+    waited = device_actions.waited_for_turn(pipeline.STEPS, done.get("trail") or [])
+    return f"{done.get('took_s') or 0} s" + (f", after {waited} s waiting its turn"
+                                             if waited else "")
+
+
 def failed_devices(st: dict) -> list:
     """The devices a FINISHED batch did not deploy, in its order (C1499: its card offers each a
     Retry): every target whose outcome is not done and not "not reached", read from the result,
@@ -239,7 +249,7 @@ def run_card(st: dict, list_name: str, *, q: str = "") -> dict:
                                  group if group in ("done", "partial") else "failed")
                      if kept.get("trail") else [])
             rows.append(RS.row(name, group, steps, detail="" if group == "done" else words,
-                               elapsed_words=f"{kept.get('took_s') or 0} s" if steps else ""))
+                               elapsed_words=_took(kept) if steps else ""))
         return RS.card(rows, label=f"Applied to {len(rows)} devices", key=f"apply-{st['job']}",
                        search=("v2.profile_apply_job", {"job": st["job"]}),
                        search_target="#apply-job",
@@ -266,7 +276,7 @@ def run_card(st: dict, list_name: str, *, q: str = "") -> dict:
             else:
                 steps = []
             rows.append(RS.row(name, group, steps, detail=detail,
-                               elapsed_words=f"{s.get('took_s') or 0} s" if steps else ""))
+                               elapsed_words=_took(s) if steps else ""))
         elif s["state"] == "pending":
             rows.append(RS.row(name, "waiting", detail="waiting its turn: one device at a time, "
                                                        "in the rollout order"))

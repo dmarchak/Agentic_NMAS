@@ -166,9 +166,15 @@ finished by running it again:
     its before recorded, then read back. NetBox keeps a device's name unique in its site and
     tenant, so the rename is what frees the name: onboarding a new device of the name then
     creates a NEW record, and never matches the retired one (by name, or by a serial it
-    reports). Recorded: Mercury's created-object entry marked retired, kept with its id and
+    reports). Its IP addresses leave it too, so a new device given the same address can be
+    given it in NetBox: the record's primary addresses are cleared in the same write, each
+    address the tool created (tagged `nmas-managed` and in its created-object record) is
+    deleted, and every other one is unassigned and kept, its before recorded; the preview names
+    each address and which it will be, and the read-back checks the record holds none.
+    Recorded: Mercury's created-object entry marked retired, kept with its id and
     never matched by name again. With NetBox writes off, the record is not changed and the
-    preview says so: the name stays taken in NetBox until it is renamed there.
+    preview says so: the name stays taken in NetBox until it is renamed there, and its
+    addresses stay assigned to it.
 14. **The legacy file** (`legacy`). Read: the deprecated `golden_configs/` store and the
     repository. Sent: nothing. Recorded: the device's legacy file deleted, only when its
     content survives in the repository (the migration's verbatim backup or an equivalent

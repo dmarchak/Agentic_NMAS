@@ -7,10 +7,12 @@
     "intent changed since measured"; Last measured says when, and the golden's last
     change is on its hover. The device page's Overview compares intent live as well.
     Redrawn when the reachability reader, a golden, intent (the profile's too), the
-    template library or the inventory moves it. -#}
+    template library, the inventory or a pending onboarding's progress moves it. A pending
+    row reads the onboarding-progress reader's stored value as its page does (C1477: its ZTP
+    stage and its probe's answer), with that value's age. -#}
 {%- set KIND = {'ok': 'ok', 'danger': 'danger', 'warn': 'warn', 'unknown': 'muted'} -%}
 <section class="card devices" id="devices" hx-get="{{ url_for('v2.devices_table', q=d.q, state=d.state, platform=d.platform) }}"
-         hx-trigger="nmas:reachability from:body, nmas:goldens from:body, nmas:intent from:body, nmas:templates from:body, nmas:inventory from:body" hx-swap="outerHTML"
+         hx-trigger="nmas:reachability from:body, nmas:goldens from:body, nmas:intent from:body, nmas:templates from:body, nmas:inventory from:body, nmas:pending from:body" hx-swap="outerHTML"
          hx-include="find .dev-form">
   {#- The redraw carries the person's ticks (C472, as Coverage does for C435). -#}
   {%- if d.error %}
@@ -81,7 +83,7 @@
             <td>{{ badge(r.status.words, KIND.get(r.status.state, 'muted')) }}{% if r.status.since %} <span class="muted">since {{ stamp(r.status.since) }}</span>{% endif %}</td>
             <td class="mono">{{ r.address }}</td>
             <td>{{ r.platform or '—' }}</td>
-            <td data-label="Intent:">{{ badge(r.intent.words, INTENT_KIND.get(r.intent.state, 'muted'), title=(r.intent.why ~ ('; that measurement read ' ~ r.intent.recorded.words if r.intent.recorded else '')) if r.intent.why else '') }}{% if r.measured %} <span class="muted dev-measured">by {{ r.measured.words }}</span>{% endif %}</td>
+            <td data-label="Intent:">{{ badge(r.intent.words, INTENT_KIND.get(r.intent.state, 'muted'), title=(r.intent.why ~ ('; that measurement read ' ~ r.intent.recorded.words if r.intent.recorded else '')) if r.intent.why else '') }}{% if r.measured %} <span class="muted dev-measured">by {{ r.measured.words }}</span>{% endif %}{% if r.progress %} <span class="muted">read {{ stamp(r.progress.at) }}</span>{% endif %}</td>
             <td data-label="Startup:">{{ badge(r.startup.words, {'persisted': 'ok', 'not_persisted': 'warn'}.get(r.startup.state, 'muted'), title=r.startup.why) }}{% if r.startup.at %} <span class="muted">{{ stamp(r.startup.at) }}</span>{% endif %}</td>
             <td data-label="Last measured:">{% if r.measured %}{{ stamp(r.measured.iso, note=('the golden changed in this measurement' if r.measured.changed else 'golden last changed ' ~ (r.golden_changed.iso if r.golden_changed else 'before the last ' ~ d.bound ~ ' golden commits') ~ (' (' ~ r.golden_changed.sha ~ ')' if r.golden_changed else '')) ~ '; measurement ' ~ r.measured.sha) }}{% else %}<span class="muted">none</span>{% endif %}</td>
           </tr>

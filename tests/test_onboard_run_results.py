@@ -15,8 +15,10 @@ are different facts, and an unreadable record is drawn as that, never as
 "no runs". A record that could not be written is part of the result.
 """
 
+import json
 import os
 import stat
+import time
 
 import pytest
 
@@ -213,6 +215,76 @@ class TestTheRunsAreReadBack:
         """The floor: an absent record draws no row and no failure."""
         got = self._history(str(lab / "probe" / "config_repo"))
         assert got["events"] == [] and got["errors"] == []
+
+
+class TestAnEarlierDevicesRunIsNotThisOnes:
+    """C1476 (the operator, 2026-10-21): the new pending r6's page read "Last verify: 8 h ago
+    … r6 is onboarded", the RETIRED r6's Verify, and the new r7's read "Last abandon" from the
+    afternoon's abandoned r7. A pending device's last run (`routes/onboard._run_history`, the
+    one reader its page draws, `device_v2._pending_facts`) is cut at its name's cut
+    (`retire.name_cuts_in`); the record keeps every run (History reads them all)."""
+
+    NOW = time.time()
+
+    def _plant(self, lab):
+        from tests.test_retire_leaves_nothing import plant_name_history
+
+        return plant_name_history(str(lab / "probe" / "config_repo"),
+                                  retired=[("r6", self.NOW - 8 * 3600)],
+                                  abandoned=[("r7", self.NOW - 12 * 3600)],
+                                  created=[("r6", self.NOW - 600), ("r7", self.NOW - 300)])
+
+    def _record(self, repo, kind, device, at, result):
+        """A run as `record_run` writes it, its time set to *at*."""
+        from modules.nsot.onboard import record_run, runs_path
+
+        record_run(repo, kind, "probe", device, PERSON, result)
+        path = runs_path(repo)
+        rows = [json.loads(line) for line in open(path, encoding="utf-8") if line.strip()]
+        rows[-1]["at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at))
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write("".join(json.dumps(r) + "\n" for r in rows))
+
+    def _earlier_lives(self, repo):
+        from modules.nsot.onboard import PHASE_TWO_STEPS
+
+        self._record(repo, "verify", "r6", self.NOW - 9 * 3600, {
+            "ok": True, "promoted": True, "mgmt_ip": "192.0.2.16",
+            "steps": [{"step": st, "ok": True, "detail": ""} for st in PHASE_TWO_STEPS]})
+        self._record(repo, "abandon", "r7", self.NOW - 12 * 3600 - 5, {
+            "ok": True, "released": "r7", "remaining": [],
+            "steps": [{"step": "identity", "ok": True, "detail": "released 'r7'"}]})
+
+    def test_a_retired_or_abandoned_devices_run_is_not_the_new_ones_last(self, lab):
+        from routes.onboard import _run_history
+
+        repo = self._plant(lab)
+        self._earlier_lives(repo)
+        got = _run_history(repo, {"r6", "r7"})
+        assert got["state"] == "ok"
+        assert got["last"] == {}, ("the retired r6's Verify or the abandoned r7's Abandon was "
+                                   f"drawn as the new device's: {got['last']}")
+
+    def test_the_new_devices_own_run_is_its_last(self, lab):
+        """The floor: the cut leaves the device's own runs, after its Create."""
+        from routes.onboard import _run_history
+
+        repo = self._plant(lab)
+        self._earlier_lives(repo)
+        self._record(repo, "verify", "r6", self.NOW - 60, {
+            "ok": False, "reason": "did not answer", "steps": _steps(0, "did_not_answer")})
+        got = _run_history(repo, {"r6", "r7"})
+        assert set(got["last"]) == {"r6"} and got["last"]["r6"]["kind"] == "verify"
+        assert got["last"]["r6"]["at"] == time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                                        time.gmtime(self.NOW - 60))
+
+    def test_the_record_keeps_the_earlier_runs(self, lab):
+        """Nothing is removed: History of the network reads every run."""
+        from modules.nsot.onboard import read_runs
+
+        repo = self._plant(lab)
+        self._earlier_lives(repo)
+        assert {r["device"] for r in read_runs(repo)["rows"]} == {"r6", "r7"}
 
 
 class TestAPromotedDeviceIsNeverDrawnAsPending:

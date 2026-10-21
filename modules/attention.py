@@ -3774,7 +3774,8 @@ def _standing_acknowledgements(hiding: list) -> list:
         return []
     shown = {k.get("id") for k in hiding}
     out = []
-    for a in ACK.standing_bands(got["rows"]):
+    # One made for an earlier device of the name is in force for nothing (C1476).
+    for a in ACK.standing_bands(ACK.current(got["rows"])):
         if a.get("row") in shown:
             continue
         value = a.get("value")
@@ -3822,8 +3823,11 @@ def _without_acknowledged(rows: list):
             error=(f"the acknowledgement record could not be read ({got.get('error')}): every "
                    "row is shown, acknowledged or not"))
     kept, gone = [], []
+    # An acknowledgement made for an earlier device of a name hides none of the new one's rows
+    # (C1476, `acknowledgements.current`): it can only hide less.
+    acks = ACK.current(got["rows"])
     for r in rows:
-        a = ACK.covering(r["id"], r.get("event"), got["rows"]) if r.get("acknowledge") else None
+        a = ACK.covering(r["id"], r.get("event"), acks) if r.get("acknowledge") else None
         if a and a.get("band") is not None:
             # WITHIN ITS BAND ONLY (C433): hidden while the reader's reading is inside the
             # band recorded with the acknowledgement; outside it, or unread, the row stays and

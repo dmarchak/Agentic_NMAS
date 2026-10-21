@@ -156,6 +156,52 @@ def stored(list_name: str, name: str):
     return dict(d, read_at=good.get("value_at") or ""), ""
 
 
+def stored_network(list_name: str) -> tuple:
+    """``({name: its last read}, the value's time, why)`` for every pending device of
+    *list_name*, from the reader's store in ONE read: the Devices list's rows (C1477; no
+    per-device work per request). ``({}, "", why)`` when the reader holds no value."""
+    got = reader_job.read_cached(READER_NAME)
+    good = ((got.get("doc") or {}).get("last_good") or {})
+    if got["state"] != "ok" or not good:
+        return {}, "", got.get("why") or "the reader has not stored a value yet"
+    devices = ((good.get("value") or {}).get("devices") or {}).values()
+    return ({d.get("name", ""): d for d in devices if d.get("list") == list_name},
+            good.get("value_at") or "", "")
+
+
+#: A ZTP stage in a Devices row's few words (C1477); its page's card says it at length.
+ZTP_WORDS = {"reservation_missing": "ZTP: reservation missing",
+             "reserved_not_leased": "ZTP: no lease yet",
+             "leased_not_fetched": "ZTP: leased, not fetched",
+             "asked_not_served": "ZTP: asked, not served",
+             "fetched_not_reached": "ZTP: fetched its config",
+             "unknown": "ZTP: progress unknown"}
+
+
+def row_words(d: dict, onboarded_at: str = "") -> tuple:
+    """``(words, why)``: where a pending device has got to, in a Devices row's few words, from
+    its stored read *d* (:func:`stored_network`) as its page reads it (its ZTP stage, and the
+    probe's answer); *why* is the stage's summary and the probe's claim, for the row's hover.
+    A read made for an earlier device of the name (its Create differs from *onboarded_at*) or
+    none at all is said as not read yet, never as this device's progress (C1476)."""
+    if not d or (onboarded_at and d.get("onboarded_at") != onboarded_at):
+        return "pending: not read yet", ("the onboarding-progress reader has not read it since "
+                                         "its Create; its next read is within "
+                                         f"{INTERVAL_SECONDS} s")
+    claim = (f"{d.get('address')} {d['claim']}" if d.get("claim") else "")
+    why = "; ".join(x for x in (d.get("summary"), claim) if x)
+    if d.get("answering"):
+        return "answering: ready to Verify", why
+    if d.get("stop"):
+        return f"ZTP: no fetch {STOP_AFTER_S // 60} minutes after its Create: stop", why
+    if d.get("source") == "ztp":
+        words = ZTP_WORDS.get(d.get("stage") or "unknown", ZTP_WORDS["unknown"])
+        return (words + ("; not answering yet" if d.get("answering") is False else "")), why
+    if d.get("answering") is False:
+        return "pending: not answering yet", why
+    return "pending: not probed yet", why or "it has no address to probe"
+
+
 READER = reader_job.register(reader_job.Reader(
     name=READER_NAME,
     what="where each pending onboarding has got to: a ZTP device's stage (Kea's reservation "

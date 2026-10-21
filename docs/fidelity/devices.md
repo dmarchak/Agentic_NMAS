@@ -26,7 +26,18 @@ Shots: board A at 1440 and 1280, the first board at 1440, its phone board at 390
 (`devices-selected-page-*`), each phone shot also as its first screen.
 Compared 2026-10-16.
 Templates compared: templates/v2/devices.html, templates/v2/_devices.html, templates/v2/_onboard_add.html
-Templates sha256: `e81b3cb0a0ba7c5d4dc92a96802dce5526c40cd2b6089be27cc37617e2bce1ff`
+Templates sha256: `95b50310531aa06d18151d288295ba3307e21d3a7ab00b7b8ac887e141cd3ba9`
+
+Compared again 2026-10-21 (C1477, the overnight run): a pending row's Intent chip reads where
+its onboarding has got to, from the onboarding-progress reader's stored value as the device's
+pending page reads it ("answering: ready to Verify", "ZTP: fetched its config; not answering
+yet", "ZTP: no lease yet", "pending: not read yet"; the stage's summary and the probe's claim on
+its hover), followed by "read <age>", the value's age; a ZTP device's address reads "awaiting
+ZTP (<address>)" where it read "awaiting DHCP"; the list redraws on `pending` as well. The board
+drew "not reached yet" on the chip and no age, so it is a deviation (below). Every other region
+unchanged: one span added to the Intent cell and one key to the list's redraw, read from the
+diff and drawn by `tests/test_devices_v2.py`'s `TestAPendingRowReadsItsProgress`, not a new
+shot.
 
 Compared again 2026-10-19 (C1346, 0e): Add device's card (`_onboard_add.html`, opened in place
 above the list) joins the record, compared with board E for the first time since it was built
@@ -88,7 +99,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Intent | a chip: at intent, departs, unknown, no intent | the chip, and after it which measurement it was read at ("by Save All, no change, which earned a baseline" in capture 29; "by onboarding, golden changed" here), its reason on hover; since C532 a fifth chip, "intent changed since measured", where what the measurement judged against has moved since (r2 here) | **deviation** (log: Devices: the intent state says which measurement), and since C532 (log: Devices: a fifth intent chip, intent changed since measured) |
 | Startup | saved, not saved (its detail on hover), unknown | "accounts saved", "accounts not saved" (the check's detail on hover), "not checked", each with the reading's age | **deviation** (log: Devices: the Startup column names what it compares) |
 | Last measured | "12 min ago" | the age, the golden's last change and the measurement's commit on hover | **same** |
-| Pending onboarding | r7 with its chip, no tick, "not reached yet" | no tick for a pending row (compared by the template and tests/test_devices_v2.py's TestAPendingDevicesPage; the lab has none) | **same** |
+| Pending onboarding | r7 with its chip, no tick, "not reached yet" | no tick for a pending row (compared by the template and tests/test_devices_v2.py's TestAPendingDevicesPage; the lab has none); since C1477 its chip reads its onboarding's progress as its page does, with the value's age, and a ZTP device's address says ZTP (`TestAPendingRowReadsItsProgress`) | **same**, and since C1477 **deviation** (log: Devices: a pending row reads its onboarding's progress (C1477)) |
 | Footer | "Showing 6 of 10. Startup is the hourly startup check's last reading. A device pending onboarding has no tick." | "Showing N of M" above the table when a filter hides rows; the note adds "it compares the accounts only" and "Tick devices to plan a deploy for them (Actions › Plan a deploy for the ticked devices…)"; it names the hourly check while the rows show Save All's read-back ("52 min ago" in capture 12) | **deviation** (log: Devices: the footer names one source of the Startup column (C899)) |
 | First board's selection actions | Plan a deploy… beside Actions; Add device ▾ as the primary | board A's one Actions menu replaces both, as built | **same** |
 | Phone: rows | each device one line, its name and one state (Answering, Departs, Not answering) | each device a block with every column labelled (status, address, platform, Intent:, Startup:, Last measured:), as capture 13 | **deviation** (log: Devices: a phone row shows every column) |

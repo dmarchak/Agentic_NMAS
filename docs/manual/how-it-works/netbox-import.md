@@ -48,6 +48,31 @@ A dry run is always allowed, because it writes nothing.
    example addresses in an excluded VRF, `netbox_excluded_vrfs`), each LLDP link not made a
    cable with why, and the gates.
 
+## What a device's record carries {#what-it-carries}
+
+Most of a record comes from the golden's own lines. Four things come from elsewhere, because
+the golden cannot say them:
+
+- **A leased management address.** An interface that says `ip address dhcp` holds no address
+  the golden can name. For a device onboarded with a DHCP or ZTP address, the import reads the
+  address and prefix length that onboarding's Verify recorded from Kea's lease (the committed
+  manifest), and puts them on the device's one `dhcp` interface, as its primary address. A
+  device with several `dhcp` interfaces outside a VRF is not guessed: no interface gets it. An
+  IPv6 lease is never recorded (DHCPv6 is not supported), so only IPv4 is placed this way.
+- **The platform of a record it creates.** The device's dialect comes from the inventory,
+  never from the config text, and the record gets the platform NetBox already holds for that
+  dialect, by the platform map's slug (`cisco-ios-xe`, `cisco-ios`). The config text's reading
+  is used only when NetBox holds none. An update never changes a record's platform: NetBox owns
+  it.
+- **A routed dot1Q subinterface** (`Gi3.10` with `encapsulation dot1Q 10`) is a `virtual`
+  interface under its parent, with its addresses, and never an untagged VLAN. Its VLAN, set as
+  802.1Q tagged, is the one in a VLAN group scoped to the device's own site. If the site's
+  groups hold none (or the token cannot read VLAN groups), no VLAN is set, another site's VLAN
+  of the same number is never used, and the preview names the refusal. The interface and its
+  addresses are still written.
+- **A retired record holding the address.** If a Decommissioning device (a retired one) still
+  holds the device's management address, the import says so, naming that record.
+
 ## Cables from LLDP {#cables}
 
 A cable is a link that LLDP shows from both of its ends, between two managed devices of the

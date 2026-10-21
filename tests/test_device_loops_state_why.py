@@ -218,7 +218,9 @@ class TestTheConvertedReadsRunAtOnce:
                  # routes/onboard.py's pending banner read (read_each(_ztp.progress, …)) left
                  # with today's pending banner at 7.8 (2026-10-17, P7-25); v2's pending page
                  # reads one device.
-                 ("scripts/nmas-heartbeat-rules", "read_each(lambda h: gaps_from(")]
+                 # C1476 (2026-10-21): each device measured from its name's cut, through
+                 # measure_device, which reads gaps_from; still one read_each over them all.
+                 ("scripts/nmas-heartbeat-rules", "read_each(lambda h: measure_device(")]
 
     def test_each_uses_the_helper(self):
         for path, call in self.CONVERTED:

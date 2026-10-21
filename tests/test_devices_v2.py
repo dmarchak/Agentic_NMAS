@@ -221,6 +221,111 @@ class TestTheListing:
         assert listing(_ref(), platform="cisco_ios")["rows"] == []
 
 
+class TestAPendingRowReadsItsProgress:
+    """C1477 (the operator, 2026-10-21, R6's redo): the list said "awaiting DHCP · pending: not
+    reached yet" for a ZTP device whose page said "fetched 12 times" and "Answering: ready to
+    Verify". A pending row reads the onboarding-progress reader's stored value as the page
+    does (its ZTP stage and its probe's answer), ONE read for every pending row, says ZTP for a
+    ZTP device and the value's age, and its fragment redraws on `pending`. The stored value is
+    made by the reader's own code (`onboarding_progress.read`) with the device's answers at its
+    two seams, as tests/test_onboarding_progress.py does."""
+
+    CREATED = "2026-10-21T01:50:00Z"
+    VALUE_AT = "2026-10-21T02:14:10Z"
+    R7 = {"name": "r7", "address_source": "ztp", "mgmt_ip": "", "mgmt_mac": "52:54:00:00:07:01",
+          "reserved_address": "192.0.2.17", "onboarded_at": CREATED, "state": "in_flight"}
+    R8 = {"name": "r8", "address_source": "static", "mgmt_ip": "192.0.2.18",
+          "onboarded_at": CREATED, "state": "in_flight"}
+    FETCHED = ("fetched its config 12 time(s) between 2026-10-21T02:01:13Z and "
+               "2026-10-21T02:12:40Z (sha256 0123456789ab); next, Verify must reach it over "
+               "SSH with the staged credential")
+
+    def _pending(self, monkeypatch, *rows):
+        monkeypatch.setattr("modules.nsot.manifest.pending_devices",
+                            lambda repo: [dict(r) for r in rows])
+
+    def _stored(self, monkeypatch, rows, answers=True, stage="fetched_not_reached"):
+        """The reader's store holding *rows*' reads; returns the list of reads asked of it."""
+        from modules import reader_job
+        from modules.readers import onboarding_progress as OP
+
+        def probe(ip):
+            return (True, "accepted a TCP connection on port 22 within 2 s") if answers else (
+                False, "answered neither ICMP nor TCP 22 within 2 s each")
+        value = OP.read(pop=[("Lab", dict(r)) for r in rows], clock=lambda: 1_792_550_050.0,
+                        progress=lambda row, list_name="": {"stage": stage,
+                                                            "summary": self.FETCHED},
+                        probe=probe)
+        asked, real = [], reader_job.read_cached
+
+        def cached(name):
+            if name != OP.READER_NAME:
+                return real(name)
+            asked.append(name)
+            return {"state": "ok", "doc": {"last_good": {"value": value,
+                                                         "value_at": self.VALUE_AT}}}
+        monkeypatch.setattr(reader_job, "read_cached", cached)
+        return asked
+
+    def _rows(self):
+        from modules import device_list
+        return {r["name"]: r for r in device_list.listing(_ref())["rows"]}
+
+    def test_a_ztp_device_that_fetched_and_answers_says_so_with_its_age(self, inv, monkeypatch):
+        self._pending(monkeypatch, self.R7)
+        self._stored(monkeypatch, [self.R7])
+        r7 = self._rows()["r7"]
+        assert r7["intent"]["words"] == "answering: ready to Verify", r7["intent"]
+        assert "fetched its config 12 time(s)" in r7["intent"]["why"]
+        assert "accepted a TCP connection on port 22" in r7["intent"]["why"]
+        assert r7["address"] == "awaiting ZTP (192.0.2.17)", "a ZTP device said DHCP"
+        assert r7["progress"] == {"at": self.VALUE_AT}
+
+    def test_fetched_and_not_answering_is_its_stage(self, inv, monkeypatch):
+        self._pending(monkeypatch, self.R7, self.R8)
+        self._stored(monkeypatch, [self.R7, self.R8], answers=False)
+        rows = self._rows()
+        assert rows["r7"]["intent"]["words"] == "ZTP: fetched its config; not answering yet"
+        assert rows["r8"]["intent"]["words"] == "pending: not answering yet"
+        assert rows["r8"]["address"] == "192.0.2.18"
+
+    def test_a_read_of_an_earlier_device_of_the_name_is_not_its_progress(self, inv,
+                                                                         monkeypatch):
+        """C1476's class: the stored read was made for an r7 created before this one."""
+        self._pending(monkeypatch, self.R7)
+        self._stored(monkeypatch, [dict(self.R7, onboarded_at="2026-10-20T15:00:00Z")])
+        r7 = self._rows()["r7"]
+        assert r7["intent"]["words"] == "pending: not read yet", r7["intent"]
+        assert "since its Create" in r7["intent"]["why"]
+
+    def test_no_stored_value_is_said_as_that(self, inv, monkeypatch):
+        from modules import reader_job
+        self._pending(monkeypatch, self.R7)
+        monkeypatch.setattr(reader_job, "read_cached", lambda name: {
+            "state": "absent", "doc": None, "why": "the reader has never run"})
+        r7 = self._rows()["r7"]
+        assert r7["intent"] == {"state": "pending", "words": "pending: not read yet",
+                                "why": "the reader has never run"}
+        assert r7["progress"] is None
+
+    def test_one_read_for_every_pending_row(self, inv, monkeypatch):
+        many = [dict(self.R8, name=f"p{i}", mgmt_ip=f"192.0.2.{100 + i}") for i in range(30)]
+        self._pending(monkeypatch, self.R7, *many)
+        asked = self._stored(monkeypatch, [self.R7, *many])
+        rows = self._rows()
+        assert asked == ["onboarding-progress"], asked
+        assert sum(r["intent"]["words"] == "answering: ready to Verify"
+                   for r in rows.values()) == 31
+
+    def test_the_fragment_draws_the_words_and_the_values_age(self, inv, monkeypatch):
+        self._pending(monkeypatch, self.R7)
+        self._stored(monkeypatch, [self.R7])
+        html = inv["client"].get("/v2/devices/table").get_data(as_text=True)
+        assert "answering: ready to Verify" in html and "awaiting ZTP (192.0.2.17)" in html
+        assert f'read <time class="stamp" datetime="{self.VALUE_AT}"' in html
+        assert "nmas:pending from:body" in re.search(r'hx-trigger="([^"]*)"', html).group(1)
+
+
 def _save_all(lab, texts):
     """A real Save All over the given captures, the whole two-device inventory."""
     from modules.nsot.repo import GoldenItem, save_golden
@@ -346,8 +451,9 @@ class TestThePage:
         keys = re.findall(r"nmas:(\w+) from:body", re.search(r'hx-trigger="([^"]*)"', html).group(1))
         src = open(os.path.join(ROOT, "static", "js", "nmas_v2.js"), encoding="utf-8").read()
         # inventory: a drained mark; intent and templates: what an intent state is judged
-        # against moved (C532), so the state becomes "intent changed since measured".
-        assert keys == ["reachability", "goldens", "intent", "templates", "inventory"]
+        # against moved (C532), so the state becomes "intent changed since measured"; pending:
+        # a pending onboarding's progress moved (C1477, the onboarding-progress reader).
+        assert keys == ["reachability", "goldens", "intent", "templates", "inventory", "pending"]
         for k in keys:
             assert k in invalidation.VOCABULARY and f"NMAS.subscribe('{k}'" in src
 

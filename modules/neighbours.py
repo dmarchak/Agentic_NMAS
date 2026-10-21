@@ -108,41 +108,64 @@ def committed_intents(repo: str) -> tuple:
     """``({hostname: host_vars}, error)`` for every `host_vars/*.yml` committed
     at HEAD: one `git ls-tree` and one `git cat-file --batch`, never a read per
     device (the scale rule). A document that does not parse is left out and
-    named in *error*."""
-    from modules.nsot import hostvars
-    from modules.nsot.repo import GIT_TIMEOUT, _git_env, git, run_git
+    named in *error*.
 
-    rc, out, err = git(repo, "ls-tree", "HEAD", "host_vars/")
+    A LEASED ADDRESS IS ITS INTERFACE'S (C1442): the manifest committed beside the intent
+    is read in the same two calls, and a device whose management address Kea leases has
+    its one ``ip address dhcp`` interface given that address (`leased_address.with_leases`).
+    Every reader of this answer (Neighbours, Topology, the RIP reader, Verify's expectations,
+    blast radius, the IP SLA policy) then sees the address the device holds; intent itself
+    is never written."""
+    from modules.nsot import hostvars, leased_address
+    from modules.nsot.repo import GIT_TIMEOUT, MANIFEST_REL, _git_env, git, run_git
+
+    rc, out, err = git(repo, "ls-tree", "HEAD", "host_vars/", MANIFEST_REL)
     if rc != 0:
         if "Not a valid object name" in err or "not a tree" in err:
             return {}, ""
         return {}, f"the committed intent could not be listed ({err or rc})"
-    entries = []
+    entries, manifest_sha = [], ""
     for line in out.splitlines():
         m = re.match(r"^\d+ blob ([0-9a-f]+)\thost_vars/([^/]+)\.yml$", line)
         if m:
             entries.append((m.group(2), m.group(1)))
+        m = re.match(r"^\d+ blob ([0-9a-f]+)\t" + re.escape(MANIFEST_REL) + "$", line)
+        if m:
+            manifest_sha = m.group(1)
     if not entries:
         return {}, ""
+    blobs = [sha for _h, sha in entries] + ([manifest_sha] if manifest_sha else [])
     try:
         proc = run_git(repo, "cat-file", "--batch", text=False,
-                       input="".join(f"{sha}\n" for _h, sha in entries).encode(),
+                       input="".join(f"{sha}\n" for sha in blobs).encode(),
                        timeout=GIT_TIMEOUT, env=_git_env())
     except (OSError, subprocess.TimeoutExpired) as exc:
         return {}, f"the committed intent could not be read ({exc})"
     if proc.returncode != 0:
         return {}, f"the committed intent could not be read ({proc.stderr.decode(errors='replace').strip()})"
     data, pos, docs, bad = proc.stdout, 0, {}, []
-    for host, _sha in entries:
+
+    def _next() -> str:
+        nonlocal pos
         nl = data.index(b"\n", pos)
         size = int(data[pos:nl].split()[2])
         body = data[nl + 1:nl + 1 + size].decode("utf-8", errors="replace")
         pos = nl + 1 + size + 1
+        return body
+
+    for host, _sha in entries:
+        body = _next()
         try:
             docs[host] = hostvars.from_yaml(body)
         except Exception:                             # noqa: BLE001
             bad.append(host)
-    return docs, (f"intent that does not parse is left out: {', '.join(bad)}" if bad else "")
+    errors = [f"intent that does not parse is left out: {', '.join(bad)}"] if bad else []
+    if manifest_sha:
+        manifest, why = leased_address.parse_manifest(_next())
+        if why:
+            errors.append(f"{why}: no leased address is drawn")
+        docs = leased_address.with_leases(docs, manifest)
+    return docs, "; ".join(errors)
 
 
 # ---------------------------------------------------------------------------

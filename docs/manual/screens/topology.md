@@ -13,6 +13,13 @@ cannot be read, when Prometheus is not configured, or when the network was not i
 the page says which and draws no map; when its last read failed, it draws the last good read and
 says when it was.
 
+An interface's address is its static one in committed intent. An interface that says
+`ip address dhcp` on a device onboarded with a DHCP or ZTP address has the address its lease
+gave it, recorded by onboarding's Verify (the committed manifest), so the OSPF and RIP it runs
+there are intended like any other. Only IPv4 is leased this way (DHCPv6 is not supported); a
+device with several `dhcp` interfaces outside a VRF is not guessed, and none of them has an
+address here.
+
 ## The map {#map}
 
 One physical map. Each device is drawn as its class's icon (a switch that runs a routing protocol

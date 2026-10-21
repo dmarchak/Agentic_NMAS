@@ -649,6 +649,13 @@ and others have left since too.
   old definition from the snapshot. The delete is the removal shape
   `global.ip-sla-operation`, refused until `nmas-removal-probe` measures it per platform
   (staged run 9); an operation a `track` or reaction names is refused naming the line
+- **[modules/nsot/leased_address.py](modules/nsot/leased_address.py)** — C1442: an
+  interface's IPv4 address for every reader: its static one in intent, else, on a device whose
+  manifest says its address is leased (DHCP or ZTP), the lease Verify recorded, on its one
+  `ip address dhcp` interface (several outside a VRF are not guessed). Applied once where
+  committed intent is read (`neighbours.committed_intents`, the manifest in the same two git
+  calls), so Neighbours, Topology, the RIP reader and Verify's expectations see it, and by the
+  NetBox import's scan. IPv4 only: DHCPv6 is out of scope
 - **[modules/nsot/golden_state.py](modules/nsot/golden_state.py)** — E7:
   a baseline that is CONFIGURED AND WORKING. Every routing protocol a
   device's committed intent declares is judged up from real output (OSPF and

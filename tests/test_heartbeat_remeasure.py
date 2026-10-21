@@ -13,6 +13,7 @@ written. The heartbeat check's Needs attention action opens the page."""
 import json
 import os
 import re
+import time
 
 import pytest
 
@@ -178,6 +179,60 @@ class TestThePage:
         job = next(j for j in J.JOBS if j["unit"] == "nmas-heartbeat-check")
         assert job["remedy"]["href"] == "/v2/monitoring/heartbeat"
         assert "command" not in job["remedy"] and "<" not in json.dumps(job["remedy"])
+
+
+class TestAnEarlierDeviceOfTheNameIsNotMeasured:
+    """C1476 (the operator, 2026-10-21): the re-measure read a new r6's window from Loki's
+    arrivals by NAME over 7 days, 1,723 gaps and 4 restarts of the RETIRED r6. Each device is
+    measured from its own life: its heartbeats, configuration changes and restarts after its
+    name's cut (`retire.name_cuts_everywhere`), planted here as a real retire commit of s3 in
+    the network's repository."""
+
+    @pytest.fixture(autouse=True)
+    def _lists(self, monkeypatch, tmp_path):
+        """The network's repository in this test's own folder, never the store's."""
+        monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path / "lists"))
+
+    def _cut(self, at):
+        from modules.config import list_data_path
+        from tests.test_retire_leaves_nothing import plant_name_history
+
+        plant_name_history(os.path.join(list_data_path("Default"), "config_repo"),
+                           retired=[("s3", at)])
+
+    def test_the_window_is_measured_from_the_names_cut_only(self, lab):
+        H = lab["H"]
+        whole = {r["device"]: r for r in _plan(lab)["rows"]}["s3"]
+        boot = max(w[1] for w in H.prometheus_restarts(["s3"])[0]["s3"])
+        cut = int(boot) + 1                     # the device of the name since its reboot
+        self._cut(cut)
+        s3 = {r["device"]: r for r in _plan(lab)["rows"]}["s3"]
+        own = [t for t in lab["state"]["arrivals"] if t > cut]
+        assert own and len(own) < len(lab["state"]["arrivals"]), "floor: the cut divides them"
+        assert s3["new"]["n"] == len(H.gaps_from(own)) < whole["new"]["n"], (s3, whole)
+        assert (whole["restarts"], s3["restarts"]) == (1, 0), \
+            "the reboot before the cut was counted as the device's"
+
+    def test_a_name_reused_since_its_history_is_provisional_and_reads_only_since(self, lab,
+                                                                                 monkeypatch):
+        """A new device of the name two hours old: none of the week's arrivals are its own, so
+        its window is PROVISIONAL (the script's rule for a new device), and Loki is asked for
+        the two hours since its cut, never the week."""
+        H = lab["H"]
+        asked = []
+        real = H.loki_arrivals
+
+        def arrivals(url, h, hours=6, query=""):
+            asked.append(hours)
+            return real(url, h, hours=hours, query=query)
+        monkeypatch.setattr(H, "loki_arrivals", arrivals)
+        self._cut(time.time() - 2 * 3600)
+        s3 = {r["device"]: r for r in _plan(lab)["rows"]}["s3"]
+        assert s3["new"]["basis"] == "provisional" and s3["new"]["n"] == 0, s3
+        assert s3["restarts"] == 0
+        short = {h for h in asked if h != H.LOOKBACK_HOURS}
+        assert short and short <= {2, 3} and H.LOOKBACK_HOURS in asked, \
+            f"s3 read for its two hours (rounded up); s9, uncut, for the lookback: {asked}"
 
 
 class TestOnlyWhatNeedsIt:

@@ -174,6 +174,12 @@ preview, nothing is written and the refusal names both windows. A heartbeat arri
 elsewhere in the fleet does not move the confirm. That host step is still a person's: an
 automatic re-measure and install is decided, and not built.
 
+A window is measured from the device's own life only. Loki holds a device's lines under its
+name, so a device that took a retired or abandoned device's name, or any device since its
+Create, is measured from the arrivals, configuration changes and restarts after the newest of
+its name's retirement, abandoned onboarding and Create. A new device has few of its own, so its
+window is provisional until it has heartbeated for a few hours, and the rule says so.
+
 ## Propose the profile {#propose}
 
 On Monitoring › Profile, **Propose from the connectors…** derives each section from the tool

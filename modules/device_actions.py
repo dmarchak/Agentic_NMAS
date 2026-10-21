@@ -413,7 +413,13 @@ def stepper(steps, progress, *, detours=None, now=None, starts=False) -> list:
     progress = progress or {}
     trail = progress.get("trail") or ([[progress["step"], progress["at"]]]
                                       if progress.get("at") else [])
-    begun = trail[0][1] if trail else now
+    # C887: an operation that notes each step as it begins (`starts`, the pipeline) begins its
+    # first step at the first DECLARED step it noted. A batch holds every device from its
+    # start, so the trail opens with the hold and "waiting its turn"; counting from there
+    # charged the wait for the turn to the first step ("NetBox record 104 s" in the walk W1,
+    # 176 s for a batch's third device in an IP SLA send).
+    first = next((at for name, at in trail if name in index), None) if starts else None
+    begun = first if first is not None else (trail[0][1] if trail else now)
     ends, current, last = {}, 0, ""
     for name, at in trail:
         if name not in index:
@@ -448,6 +454,16 @@ def stepper(steps, progress, *, detours=None, now=None, starts=False) -> list:
         else:
             rows.append({"key": key, "words": words, "state": "waiting"})
     return rows
+
+
+def waited_for_turn(steps, trail) -> int:
+    """C887: the seconds a device waited for its turn in a batch, from the hold's first note to
+    the first DECLARED step it noted (0 with no declared step noted yet, or none waited)."""
+    names = {name for s in steps for name in s[3]}
+    first = next((at for name, at in trail or [] if name in names), None)
+    if first is None or not trail:
+        return 0
+    return round(max(0.0, first - trail[0][1]))
 
 
 def job_steps(op: str, list_name: str, host: str, *, now=None) -> list:

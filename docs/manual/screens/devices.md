@@ -9,7 +9,11 @@ search or a filter, the list says "Showing N of M".
 Each row: the device's status (answering or not, from the reachability reader), its address
 and platform, whether it was at its committed intent when it was last MEASURED and by
 what, and when that was. Hover the time to see when its golden last changed. Onboardings
-still pending are rows too, and open their own page.
+still pending are rows too, and open their own page. A pending row says where its onboarding
+has got to as its page does, from the onboarding-progress reader's last read: "answering:
+ready to Verify", a ZTP device's stage ("ZTP: fetched its config; not answering yet"), or
+"pending: not read yet", the stage's detail on hover and "read <age>" after it; a ZTP device's
+address says ZTP. The list draws itself again when that reader sees a pending device move.
 
 ## Drained {#drained}
 
@@ -166,6 +170,10 @@ after boot: stop", and marks it in amber once 15 minutes have passed since the C
 fetch of its own (the tool cannot see the boot, only the Create before it). The wait is also
 listed in the top bar's In progress chip ([What is running now](getting-started#in-progress)),
 until Verify or Abandon ends it.
+
+Its last Verify or Abandon is drawn beside its facts, when there is one of its own: a run of
+the same name before this device's Create (a retired device's Verify, an earlier onboarding's
+Abandon) is that device's, never this one's, and stays in History.
 
 - **Verify…** reaches the device and reads it (sending nothing), then shows what Verify will
   send; **Verify** confirms that preview. See [Onboard a device](onboard#phase-two-verify).

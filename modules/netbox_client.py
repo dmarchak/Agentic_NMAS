@@ -661,6 +661,19 @@ def _ensure_platform(session, base: str, name: str, manufacturer_id: int) -> dic
     })
 
 
+def _platform_for(session, base: str, name: str, dialect: str, manufacturer_id: int):
+    """The DCIM Platform a device of *dialect* is given: the one NetBox holds under a slug
+    naming that dialect (`platform.netbox_slugs_for_dialect`), else get-or-create *name*
+    (the config text's reading), else None."""
+    from modules.nsot.platform import netbox_slugs_for_dialect
+
+    for slug in netbox_slugs_for_dialect(dialect):
+        found = _nb_first(session, base, "dcim/platforms/", slug=slug)
+        if found:
+            return found
+    return _ensure_platform(session, base, name, manufacturer_id) if name else None
+
+
 def _ensure_vrf(session, base: str, name: str, rd: str = "") -> dict:
     """Get-or-create an IPAM VRF."""
     existing = _nb_first(session, base, "ipam/vrfs/", name=name)
@@ -1042,11 +1055,14 @@ def _ensure_interface(session, base: str, device_id: int,
                       untagged_vlan_id: Optional[int] = None,
                       tagged_vlan_ids: Optional[list] = None,
                       duplex: Optional[str] = None,
-                      mgmt_only: bool = False) -> dict:
-    """Get-or-create a DCIM interface, updating physical attributes if changed."""
+                      mgmt_only: bool = False,
+                      parent_id: Optional[int] = None) -> dict:
+    """Get-or-create a DCIM interface, updating physical attributes if changed.
+
+    *parent_id*: a SUBINTERFACE's parent (C1492): the interface is `virtual`, under it."""
     existing = _nb_first(session, base, "dcim/interfaces/",
                          device_id=device_id, name=name)
-    iface_type = _netbox_iface_type(name)
+    iface_type = "virtual" if parent_id else _netbox_iface_type(name)
     payload: dict = {
         "device":      device_id,
         "name":        name,
@@ -1073,6 +1089,8 @@ def _ensure_interface(session, base: str, device_id: int,
         payload["tagged_vlans"] = tagged_vlan_ids
     if duplex:
         payload["duplex"] = duplex
+    if parent_id:
+        payload["parent"] = parent_id
 
     if existing:
         update: dict = {}
@@ -1105,6 +1123,10 @@ def _ensure_interface(session, base: str, device_id: int,
                 update["tagged_vlans"] = tagged_vlan_ids
         if duplex and (existing.get("duplex") or {}).get("value") != duplex:
             update["duplex"] = duplex
+        held_parent = existing.get("parent")
+        if parent_id and (held_parent.get("id") if isinstance(held_parent, dict)
+                          else held_parent) != parent_id:
+            update["parent"] = parent_id
         if update:
             try:
                 return _nb_patch(session, base,
@@ -1115,6 +1137,106 @@ def _ensure_interface(session, base: str, device_id: int,
                 return existing
         return existing
     return _nb_post(session, base, "dcim/interfaces/", payload)
+
+
+def _say_held_by_decommissioned(session, base: str, ip: str, device_id, hostname: str) -> list:
+    """Name each Decommissioning NetBox device whose interface holds *ip* (C1494), as a write
+    of *hostname*'s that did not land as it should; returns the records named. One read of the
+    address, and one of each other device holding it. A read that fails is said too."""
+    try:
+        hits = _nb_get(session, base, "ipam/ip-addresses/", address=ip)
+    except Exception as exc:                           # noqa: BLE001 - said, never silent
+        _write_failed(f"check of who else holds {ip}", exc, hostname)
+        return []
+    named = []
+    for h in hits:
+        if (h.get("assigned_object_type") or "") != "dcim.interface":
+            continue
+        assigned = h.get("assigned_object") or {}
+        other = _object_id(assigned.get("device"))
+        if other is None:
+            iface = _nb_get_by_id(session, base, "dcim/interfaces",
+                                  h.get("assigned_object_id")) or {}
+            other = _object_id(iface.get("device"))
+        if other is None or other == device_id:
+            continue
+        record = _nb_get_by_id(session, base, "dcim/devices", other) or {}
+        if _status_value(record) != "decommissioning":
+            continue
+        name = record.get("name") or str(other)
+        named.append(name)
+        _write_failed(f"management address {ip}", RuntimeError(
+            f"{h.get('address') or ip} is held by {name} (NetBox device {other}, "
+            "Decommissioning), a record retired before retire freed its addresses (C1494); "
+            "Mercury has no action that frees it yet, so unassign it from that record in "
+            f"NetBox, then import {hostname} again"), hostname)
+    return named
+
+
+def _subinterface_parent(intf: dict) -> str:
+    """The parent of a routed dot1Q subinterface (``<parent>.<n>`` carrying ``encapsulation
+    dot1Q <vid>``), or "" for any other interface (C1492)."""
+    name = intf.get("name") or ""
+    if "." not in name or not intf.get("dot1q_tag"):
+        return ""
+    return name.rsplit(".", 1)[0]
+
+
+def _object_id(value) -> Optional[int]:
+    """An object reference's id: a nested object's, or the id itself."""
+    return value.get("id") if isinstance(value, dict) else value
+
+
+def _site_vlan(session, base: str, site_id, vid: int) -> tuple:
+    """``(vlan, why)``: VLAN *vid* in the VLAN groups scoped to site *site_id* (C1492), exactly
+    one, never another site's VLAN of the number nor one in no group; else None and why, naming
+    the site's groups."""
+    try:
+        groups = _nb_get(session, base, "ipam/vlan-groups/", scope_type="dcim.site",
+                         scope_id=site_id)
+    except Exception as exc:                           # noqa: BLE001 - said by the caller
+        return None, (f"VLAN groups could not be read ({exc}): Mercury's NetBox token may "
+                      "have no view on ipam/vlan-groups (C1424)")
+    if not groups:
+        return None, f"no VLAN group is scoped to the device's site (site {site_id})"
+    names = ", ".join(sorted(g.get("name") or str(g.get("id")) for g in groups))
+    hits = []
+    for g in groups:
+        hits += [v for v in _nb_get(session, base, "ipam/vlans/", group_id=g["id"], vid=vid)
+                 if str(v.get("vid")) == str(vid)]
+    if len(hits) == 1:
+        return hits[0], ""
+    if not hits:
+        return None, (f"the device's site's VLAN groups ({names}) hold no VLAN {vid}: it is "
+                      "never taken from another site or from no group; add it to the site's "
+                      "group, then import again")
+    return None, (f"the device's site's VLAN groups ({names}) hold {len(hits)} VLANs {vid}: "
+                  "none is chosen")
+
+
+def _subinterface_vlan(session, base: str, nb_intf: dict, intf: dict, device: dict,
+                       list_site_id, hostname: str, stats: dict) -> None:
+    """Give a written subinterface its VLAN as 802.1Q tagged (C1492): its device's site's
+    (`_site_vlan`, the record's own site, which an update never moves, else the list's), in a
+    write of its own after the interface, so a refusal leaves the interface and its addresses
+    written. Refused by name when the site's groups hold none; already so, nothing written."""
+    vid = intf.get("dot1q_tag")
+    site_id = _object_id((device or {}).get("site")) or list_site_id
+    vlan, why = _site_vlan(session, base, site_id, vid)
+    if vlan is None:
+        _write_failed(f"VLAN {vid} on {intf['name']}", RuntimeError(why), hostname)
+        return
+    held_mode = nb_intf.get("mode")
+    held_mode = held_mode.get("value") if isinstance(held_mode, dict) else held_mode
+    held = sorted(_object_id(v) for v in nb_intf.get("tagged_vlans") or [])
+    if held_mode == "tagged" and held == [vlan["id"]]:
+        return
+    try:
+        _nb_patch(session, base, f"dcim/interfaces/{nb_intf['id']}/",
+                  {"mode": "tagged", "tagged_vlans": [vlan["id"]]})
+        stats["vlans_synced"] = stats.get("vlans_synced", 0) + 1
+    except Exception as exc:                           # noqa: BLE001 - said, never silent
+        _write_failed(f"VLAN {vid} on {intf['name']} (802.1Q tagged)", exc, hostname)
 
 
 #: A prefix's site, as NetBox 4.2 and later take it (C1010). NetBox 4.2.0 replaced the `site`
@@ -2107,7 +2229,8 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
                    list_vrf_id: Optional[int] = None,
                    status: str = "active",
                    mgmt_prefix_len: int = 0,
-                   netbox_id: Optional[int] = None) -> dict:
+                   netbox_id: Optional[int] = None,
+                   dialect: str = "") -> dict:
     """Create or update a device in NetBox with full DCIM + IPAM data.
 
     Syncs: device record, platform, interfaces (with MAC/MTU/speed/state),
@@ -2119,14 +2242,18 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
     manuf    = _ensure_manufacturer(session, base, facts.get("manufacturer") or "Cisco")
     dev_type = _ensure_device_type(session, base, facts.get("model") or "Unknown", manuf["id"])
 
-    # Platform (OS)
+    # Platform (OS): a created record's only (an update never sets it, below). The platform
+    # NetBox holds under a slug naming the device's dialect first (C1442: the fleet's records
+    # read "Cisco IOS XE", slug cisco-ios-xe, while the text's own "IOS-XE" made a second
+    # platform and a ZTP router was given "IOS"); the text's name only when NetBox holds none.
     platform_id: Optional[int] = None
-    if facts.get("platform"):
+    if facts.get("platform") or dialect:
         try:
-            plat = _ensure_platform(session, base, facts["platform"], manuf["id"])
-            platform_id = plat["id"]
+            plat = _platform_for(session, base, facts.get("platform") or "", dialect,
+                                 manuf["id"])
+            platform_id = plat["id"] if plat else None
         except Exception as exc:
-            _write_failed(f"platform {facts['platform']}", exc, hostname)
+            _write_failed(f"platform {facts.get('platform') or dialect}", exc, hostname)
 
     # VRFs (IPAM) — build a name→id map used when assigning IPs later
     vrf_id_map: dict = {}
@@ -2337,9 +2464,25 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
             elif sw_mode in ("trunk", "dot1q-tunnel"):
                 nb_mode = "tagged"
 
+            # A ROUTED dot1Q SUBINTERFACE (C1492) is `virtual`, under its parent, and never
+            # given an untagged VLAN: NetBox refused that with no 802.1Q mode (400, "Interface
+            # mode does not support untagged vlan", 2026-10-21), and the VLAN taken by number
+            # at the list's site could be another site's. Its VLAN is set after it is written
+            # (`_subinterface_vlan`), from its device's site's VLAN group, or refused by name.
+            parent_name = _subinterface_parent(intf)
+            parent_id: Optional[int] = None
+            if parent_name:
+                parent_id = nb_iface_map.get(parent_name) or (_nb_first(
+                    session, base, "dcim/interfaces/", device_id=device_id,
+                    name=parent_name) or {}).get("id")
+                if not parent_id:
+                    _write_failed(f"parent of subinterface {intf['name']}", RuntimeError(
+                        f"its parent {parent_name} is not in NetBox, so it is not placed "
+                        "under it"), hostname)
+
             # Untagged VLAN (access vlan or dot1q tag)
             untagged_vlan_id: Optional[int] = None
-            vlan_vid = intf.get("dot1q_tag") or intf.get("access_vlan")
+            vlan_vid = None if parent_name else (intf.get("dot1q_tag") or intf.get("access_vlan"))
             if vlan_vid:
                 try:
                     nb_vlan = _ensure_vlan(session, base, vlan_vid,
@@ -2377,8 +2520,12 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
                 tagged_vlan_ids=tagged_vlan_ids,
                 duplex=intf.get("duplex"),
                 mgmt_only=iface_is_mgmt,
+                parent_id=parent_id,
             )
             nb_iface_map[intf["name"]] = nb_intf["id"]
+            if parent_name:
+                _subinterface_vlan(session, base, nb_intf, intf, device, site_id, hostname,
+                                   ipam_stats)
             # Alias under the abbreviated form too — LLDP commonly reports
             # local interfaces abbreviated (see _shorten_iface_name) even
             # though the golden config and CDP both use the full name.
@@ -2613,6 +2760,12 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
             except Exception as exc:
                 _write_failed(f"static route {route.get('prefix')}", exc, hostname)
 
+    # A RETIRED RECORD HOLDING THIS DEVICE'S ADDRESS is said, naming it (C1494): a device
+    # retired before retire unassigned its addresses keeps them, and the next device given the
+    # address cannot be given it in NetBox, or holds it twice.
+    if ip:
+        _say_held_by_decommissioned(session, base, ip, device_id, hostname)
+
     # Set primary_ip4 from management IP.
     # The strict match during the interface loop only fires when one interface IP
     # equals the device's SSH IP exactly.  If it didn't fire (e.g. the device is
@@ -2733,7 +2886,7 @@ def _parse_all_interfaces_from_config(config: str) -> list[dict]:
     """Parse ALL interface blocks from a running/golden config.
 
     Returns one entry per interface regardless of whether it has an IP.
-    Keys: name, cidr, prefix, secondary_ips, ipv6_addresses, description,
+    Keys: name, cidr, prefix, dhcp, secondary_ips, ipv6_addresses, description,
           mtu, duplex, mac, speed_mbps, bandwidth_kbps, admin_up, oper_up,
           vrf_name, channel_group, switchport_mode, access_vlan,
           trunk_vlans, dot1q_tag.
@@ -2743,8 +2896,10 @@ def _parse_all_interfaces_from_config(config: str) -> list[dict]:
         name = m.group(1)
         body = m.group(2)
 
-        # Primary IPv4
+        # Primary IPv4. `ip address dhcp` holds none the config can say: the lease is the
+        # manifest's (C1442, `_lease_onto_interface`).
         cidr = prefix = None
+        dhcp = bool(re.search(r"^\s+ip address\s+dhcp\b", body, re.MULTILINE))
         ip_m = _RE_RC_IP_ADDR.search(body)
         if ip_m:
             try:
@@ -2854,6 +3009,7 @@ def _parse_all_interfaces_from_config(config: str) -> list[dict]:
             "name":               name,
             "cidr":               cidr,
             "prefix":             prefix,
+            "dhcp":               dhcp,
             "secondary_ips":      secondary_ips,
             "ipv6_addresses":     ipv6_addresses,
             "description":        raw_desc,
@@ -3092,12 +3248,61 @@ def _parse_routing_context_from_config(config: str) -> dict:
     return ctx
 
 
-def _scan_device_from_golden(dev: dict, list_name: str = "") -> dict:
+def _committed_manifest(list_name: str = "") -> tuple:
+    """``(manifest document, error)``: *list_name*'s manifest committed at HEAD (the active
+    list's when none is named), read once per import (C1442: the leased addresses)."""
+    from modules.nsot import leased_address
+
+    try:
+        if list_name:
+            from modules.nsot import listref
+            if not listref.exists(list_name):      # resolving a path creates it (C51)
+                return {"devices": {}}, ""
+            repo = listref.resolve(list_name).repo_dir
+        else:
+            from modules.goldens import _nsot_repo_dir
+            repo = _nsot_repo_dir()
+        return leased_address.committed_manifest(repo)
+    except Exception as exc:                          # noqa: BLE001 - said, never raised
+        return {"devices": {}}, f"the committed manifest could not be read ({exc})"
+
+
+def _lease_onto_interface(interfaces: list, entry: dict) -> str:
+    """Give the device's one ``ip address dhcp`` interface its leased address (C1442), in
+    place: the address the manifest recorded from Kea's lease at Verify, with its prefix
+    length, through the one helper every reader uses (`leased_address.interface_ipv4`).
+    Returns the interface given it, or "" (`leased_address.why_not` says why, logged)."""
+    import ipaddress as _ip
+
+    from modules.nsot import leased_address
+
+    shape = [{"name": i.get("name", ""), "vrf": i.get("vrf_name", ""),
+              "ipv4": "dhcp" if i.get("dhcp") else (i.get("cidr") or "")}
+             for i in interfaces or []]
+    if not any(s["ipv4"] == "dhcp" for s in shape):
+        return ""
+    for intf, iface in zip(interfaces, shape):
+        value = leased_address.interface_ipv4(iface, shape, entry) if iface["ipv4"] == "dhcp" \
+            else ""
+        if value:
+            address, mask = value.split()
+            lease = _ip.ip_interface(f"{address}/{mask}")
+            intf["cidr"], intf["prefix"] = str(lease), str(lease.network)
+            return intf.get("name", "")
+    log.info("netbox: no leased address placed: %s", leased_address.why_not(shape, entry))
+    return ""
+
+
+def _scan_device_from_golden(dev: dict, list_name: str = "", manifest: dict = None) -> dict:
     """Build a NetBox scan result from the device's saved golden config.
 
     No SSH session is opened — all data comes from the golden config file.
     This is the only scanner; the SSH one was removed in Stage 3.3 because
     nothing called it.
+
+    *manifest*: the list's committed manifest document (`_committed_manifest`), read once by
+    the import; absent, read here. A device whose address Kea leases has its one
+    ``ip address dhcp`` interface given that address (C1442).
     """
     from modules.goldens import _golden_record
 
@@ -3136,7 +3341,23 @@ def _scan_device_from_golden(dev: dict, list_name: str = "") -> dict:
     # Prefer the CSV hostname; fall back to the IOS hostname from the config;
     # final fallback is the IP address.
     hostname = csv_hostname or golden_hostname or ip
+    # THE DIALECT IS THE INVENTORY'S (C1442): a config text cannot say what it is. The fleet's
+    # goldens carry the capture's `! Cisco IOS XE Software` header and read IOS-XE; a capture
+    # without it (onboarding's own, a ZTP device's first) read "IOS", and NetBox recorded an
+    # IOS-XE router as IOS. The text is still read for a device whose dialect is unknown.
+    from modules.nsot.platform import FACT_WORDS, platform_for_device
+    dialect = platform_for_device(dev) or ""
+    if facts.get("platform") == "IOS" and FACT_WORDS.get(dialect):   # "IOS": the text said none
+        facts["platform"] = FACT_WORDS[dialect]
     interfaces      = _parse_all_interfaces_from_config(golden)
+    if any(i.get("dhcp") for i in interfaces):
+        from modules.nsot import leased_address
+        if manifest is None:
+            manifest, why = _committed_manifest(list_name)
+            if why:
+                log.warning("netbox: %s: %s; no leased address placed", hostname, why)
+        _lease_onto_interface(interfaces, leased_address.entries_by_name(manifest)
+                              .get(hostname.lower()) or {})
     vrfs            = _parse_vrfs_from_config(golden)
     vlans           = _parse_vlans_from_config(golden)
     static_routes   = _parse_static_routes_from_config(golden)
@@ -3159,6 +3380,8 @@ def _scan_device_from_golden(dev: dict, list_name: str = "") -> dict:
         "hostname":        hostname,
         "app_role":        app_role,
         "facts":           facts,
+        # The inventory's dialect, for the platform a CREATED record is given (C1442).
+        "dialect":         dialect,
         "interfaces":      interfaces,
         "vlans":           vlans,
         "vrfs":            vrfs,
@@ -3452,7 +3675,11 @@ def _sync_list_to_netbox_impl(list_name: str, devices: list[dict],
         _write_failed(f"list VRF {list_name}", exc)
 
     # Populate from golden configs — no SSH needed, works for offline devices.
-    scanned: list[dict] = [_scan_device_from_golden(d, list_name) for d in devices]
+    # The committed manifest, read once: a leased address's interface (C1442).
+    manifest, manifest_why = _committed_manifest(list_name)
+    if manifest_why:
+        log.warning("netbox: %s; no leased address is placed this import", manifest_why)
+    scanned: list[dict] = [_scan_device_from_golden(d, list_name, manifest) for d in devices]
 
     # CDP/LLDP neighbors are learned operational state, not something a
     # golden config file can contain — this is the one piece of the sync
@@ -3521,6 +3748,7 @@ def _sync_list_to_netbox_impl(list_name: str, devices: list[dict],
                     list_vrf_id=list_vrf_id,
                     mgmt_prefix_len=result.get("mgmt_prefix_len") or 0,
                     netbox_id=result.get("netbox_id"),
+                    dialect=result.get("dialect") or "",
                 )
                 if outcome["action"] == "created":
                     created += 1

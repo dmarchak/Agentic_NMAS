@@ -276,7 +276,15 @@ def measured(tmp_path_factory):
                 # by +3.0 and -3.3 in three gates of one night while passing alone. The rule is
                 # work per request at steady state, so each size is measured warm.
                 client.get(page)
-                out[page][size] = measure(client, page, os.path.dirname(lab["repo"]), loads)
+                # C875 (recurred in CI #1039 at -1.1, the warm-up and the store set-aside in
+                # place): three readings, each counter's least kept. Work done per device shows
+                # in every reading; a cost that lands on one request (a stored value read again
+                # because its age passed, a cache refilled on a timer) does not, and is not per
+                # device. CI's order cannot be replayed to bisect it: its shards run under
+                # xdist's load scheduling, which depends on the runner's timing, with no seed.
+                runs = [measure(client, page, os.path.dirname(lab["repo"]), loads)
+                        for _ in range(3)]
+                out[page][size] = {k: min(r[k] for r in runs) for k in runs[0]}
     finally:
         mp.undo()
         _store_back(aside)

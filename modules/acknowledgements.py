@@ -137,6 +137,26 @@ def devices_of(entry: dict, host_by_address: dict = None) -> list:
     return []
 
 
+def current(rows: list, cut: dict = None) -> list:
+    """*rows* without an acknowledgement made at or before the CUT of a device's name it is
+    about (C1476): a row keyed by a name (an adjacency, an alert series' `device` label)
+    acknowledged for a retired or abandoned device of the name is not the new device's, so it
+    hides none of the new one's rows. It can only ever hide LESS: an acknowledgement dropped
+    here covers nothing, and none is added. One whose devices cannot be named (an older
+    series' `instance=` alone) is kept, as before. The record keeps every one (History reads
+    them all). *cut*: `retire.name_cuts_everywhere`'s, read here when not given."""
+    from modules.nsot import retire
+
+    if not rows:
+        return []
+    cut = retire.name_cuts_everywhere() if cut is None else cut
+    if not cut:
+        return list(rows or [])
+    return [a for a in rows or []
+            if not any(retire.before_retirement(cut, d, a.get("at", ""))
+                       for d in devices_of(a))]
+
+
 def standing_bands(rows: list) -> list:
     """The band acknowledgements in force (C433): the newest per alert series. Each holds
     while its series' value stays at or under its band, firing or not, so a person can find

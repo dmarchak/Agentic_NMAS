@@ -12,6 +12,8 @@ Held here (History's half is tests/test_history_declared.py, every acknowledgeab
   Needs attention makes.
 """
 
+import time
+
 import pytest
 
 from modules import acknowledgements as ACK
@@ -102,3 +104,77 @@ class TestTheDevicePageSaysAcknowledged:
         other = _instance(labels={"ifDescr": "GigabitEthernet1/2", "instance": "192.0.2.23"})
         acked, open_ = _acknowledged_alerts([other], {})
         assert not acked and len(open_) == 1
+
+
+class TestAnEarlierDevicesAcknowledgementHidesNothing:
+    """C1476: a band acknowledged for a RETIRED s3 kept hiding the new s3's rows, its series and
+    adjacencies keyed by name. An acknowledgement made at or before the name's cut
+    (`retire.name_cuts_everywhere`; planted as a real retire commit and the new device's Create
+    in the network's repository) hides nothing: Needs attention, its in-force list and the
+    device page. It can only ever hide LESS: one made after the cut still hides (the other
+    direction, held beside it)."""
+
+    NOW = time.time()
+    ADJ = "adjacency_log:Default|s3|ospf|r1"
+
+    @pytest.fixture(autouse=True)
+    def _new_s3(self, band_ack, tmp_path, monkeypatch):
+        import os
+
+        from modules.config import list_data_path
+        from tests.test_retire_leaves_nothing import plant_name_history
+
+        monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path / "lists"))
+        plant_name_history(os.path.join(list_data_path("Default"), "config_repo"),
+                           retired=[("s3", self.NOW - 3600)], created=[("s3", self.NOW - 600)])
+        ACK.record(self.ADJ, self.ADJ, why="a known flap on this link", by="operator@example.com",
+                   verified="access", kind="adjacency_log/flap",
+                   what="s3's ospf adjacency to r1 went down 2 times", band=3, value=2,
+                   devices=["s3"])
+
+    def _made_at(self, row, at):
+        """The recorded acknowledgement of *row*, its time set to *at* (the record's own file)."""
+        import json
+
+        path = ACK._path()
+        rows = [json.loads(line) for line in open(path, encoding="utf-8") if line.strip()]
+        for r in rows:
+            if r["row"] == row:
+                r["at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at))
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write("".join(json.dumps(r) + "\n" for r in rows))
+
+    def _rows(self):
+        return [{"id": ROW, "event": SERIES, "acknowledge": True, "what": "discards on s3",
+                 "cause": "alerting", "operands": {"band_reading": {"value": 3.0,
+                                                                    "at": _after_ack()}}},
+                {"id": self.ADJ, "event": self.ADJ, "acknowledge": True,
+                 "what": "s3's ospf adjacency to r1 went down 2 times", "cause": "logged",
+                 "operands": {"band_reading": {"value": 2, "at": _after_ack()}}}]
+
+    def test_made_after_the_cut_it_still_hides_both(self):
+        from modules.attention import _without_acknowledged
+        kept, gone, problem = _without_acknowledged(self._rows())
+        assert problem is None and kept == [], kept
+        assert {g["id"] for g in gone} == {ROW, self.ADJ}
+
+    def test_made_before_the_cut_it_hides_neither(self):
+        from modules.attention import _standing_acknowledgements, _without_acknowledged
+        from modules.device_page import _acknowledged_alerts
+        self._made_at(ROW, self.NOW - 7200)
+        self._made_at(self.ADJ, self.NOW - 5400)
+        kept, gone, _problem = _without_acknowledged(self._rows())
+        assert {r["id"] for r in kept} == {ROW, self.ADJ} and gone == [], gone
+        assert _standing_acknowledgements([]) == [], "an earlier device's is in force for nothing"
+        acked, open_ = _acknowledged_alerts([_instance()], {})
+        assert not acked and len(open_) == 1
+
+    def test_one_before_and_one_after_only_the_after_hides(self):
+        from modules.attention import _without_acknowledged
+        self._made_at(self.ADJ, self.NOW - 5400)
+        kept, gone, _problem = _without_acknowledged(self._rows())
+        assert [r["id"] for r in kept] == [self.ADJ] and [g["id"] for g in gone] == [ROW]
+
+    def test_the_record_keeps_every_one(self):
+        self._made_at(ROW, self.NOW - 7200)
+        assert {a["row"] for a in ACK.read()["rows"]} == {ROW, self.ADJ}

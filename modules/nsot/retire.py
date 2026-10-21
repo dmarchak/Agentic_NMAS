@@ -45,8 +45,9 @@ its golden tags archived under ``retired/`` (``tags``), its rollback block archi
 retire commit and cleared (``rolled_back``), its approval-queue items withdrawn
 (``approvals``), its rotation-policy memberships (``rotation_policy``), its Topology
 declaration and place (``topology``), its Grafana heartbeat rule (``heartbeat``) and its
-NetBox record set to Decommissioning and renamed, Mercury's created-object entry marked
-retired (``netbox_record``). Readers keyed by the name (restore points, receipts, rotation
+NetBox record set to Decommissioning and renamed, its IP addresses freed (C1494: those Mercury
+created deleted, the rest unassigned and kept, each before recorded), Mercury's created-object
+entry marked retired (``netbox_record``). Readers keyed by the name (restore points, receipts, rotation
 age) count only what came after the name's newest retirement (:func:`retirements`).
 
 The steps were modelled on r5's retirement (`3592113`, 2026-09-25, the
@@ -181,6 +182,89 @@ def before_retirement(cut: dict, name: str, at) -> bool:
     except ValueError:
         return True
     return epoch <= c["epoch"]
+
+
+def name_cuts_in(repo: str) -> dict:
+    """Each name's CUT in *repo* (C1476): where the life of the device holding the name now
+    began, so a record keyed by the name made at or before it is an earlier device's (a
+    retired one, an abandoned onboarding) and never this one's. The NEWEST of the name's
+    retirement (:func:`retirements_in`), its abandoned onboarding (the abandon's commit,
+    ``abandon: <name> - onboarding withdrawn``) and its current device's Create (the
+    manifest's ``onboarded_at``), as ``{name lowercased: {"name", "at", "epoch", "why"}}``,
+    *why* one of ``retired``, ``abandoned``, ``created``. :func:`before_retirement` judges a
+    record against it, as it judges one against :func:`retirements_in`'s.
+
+    An abandon NEWER than the current device's Create is that device's own half-run abandon
+    (its manifest entry is still there), never a new life, so it moves nothing. A device
+    adopted or imported has no Create and is cut at its retirement or abandon only. A read
+    that fails contributes nothing, logged (as :func:`retirements_in` does)."""
+    import calendar
+    import re
+
+    from modules.nsot import manifest
+    from modules.nsot import repo as R
+
+    cuts = {k: dict(v, why="retired") for k, v in retirements_in(repo).items()}
+    created = {}
+    try:
+        for entry in (manifest.load(repo).get("devices") or {}).values():
+            name, at = entry.get("name") or "", entry.get("onboarded_at") or ""
+            try:
+                epoch = calendar.timegm(time.strptime(at, "%Y-%m-%dT%H:%M:%SZ"))
+            except (TypeError, ValueError):
+                continue
+            created[name.lower()] = {"name": name, "at": at, "epoch": epoch, "why": "created"}
+    except Exception as exc:                           # noqa: BLE001 (a read, logged)
+        log.warning("name cuts: the manifest of %s could not be read: %s", repo, exc)
+    rc, out, _err = R.git(repo, "log", "--format=%H%x1f%ct%x1f%cI%x1f%s%x1e",
+                          "--grep=^abandon: ")
+    subject = re.compile(r"^abandon: (\S+) - onboarding withdrawn$")
+    for chunk in (out or "").split("\x1e") if rc == 0 else ():
+        parts = chunk.strip().split("\x1f")
+        m = subject.match(parts[3]) if len(parts) == 4 else None
+        if not m:
+            continue
+        key = m.group(1).lower()
+        mine = created.get(key)
+        if mine and int(parts[1]) >= mine["epoch"]:
+            continue                               # this device's own half-run abandon
+        if key not in cuts or int(parts[1]) > cuts[key]["epoch"]:
+            cuts[key] = {"name": m.group(1), "sha": parts[0], "at": parts[2],
+                         "epoch": int(parts[1]), "why": "abandoned"}
+    for key, c in created.items():
+        if key not in cuts or c["epoch"] > cuts[key]["epoch"]:
+            cuts[key] = c
+    return cuts
+
+
+def name_cuts(list_name: str) -> dict:
+    """:func:`name_cuts_in` for *list_name*'s repository, found WITHOUT creating the list
+    (C51); {} when it has none."""
+    from modules.config import list_data_path
+
+    repo = os.path.join(list_data_path(list_name), "config_repo")
+    if not os.path.isdir(os.path.join(repo, ".git")):
+        return {}
+    return name_cuts_in(repo)
+
+
+def name_cuts_everywhere() -> dict:
+    """:func:`name_cuts` of every network, the newest per name: for a record keyed by a name
+    alone, in no network (an acknowledgement, a device's syslog in Loki). A network whose
+    cuts cannot be read contributes nothing, logged."""
+    from modules import integration_groups as IG
+
+    out = {}
+    for list_name in IG.network_names():
+        try:
+            got = name_cuts(list_name)
+        except Exception as exc:                       # noqa: BLE001 (a read, logged)
+            log.warning("name cuts: %s's could not be read: %s", list_name, exc)
+            continue
+        for key, c in got.items():
+            if key not in out or c["epoch"] > out[key]["epoch"]:
+                out[key] = c
+    return out
 
 
 def _norm(value) -> str:
@@ -1008,6 +1092,27 @@ def _telemetry_facts(hostname: str) -> dict:
     return got
 
 
+def _netbox_address_facts(list_name: str, nb_id) -> dict:
+    """``{"delete": [...], "unassign": [...]}``, each ``{"id", "address"}``: the IP addresses
+    NetBox holds on device *nb_id*'s interfaces (C1494), split by Mercury's delete rule (tagged
+    ``nmas-managed`` AND in its created-object record: deleted) from the rest (unassigned,
+    kept). Raises when NetBox cannot be read: unknown is not none."""
+    from modules import netbox_guard
+    from modules.netbox_client import _nb_get, _nb_ready
+
+    ok, err, session, base = _nb_ready()
+    if not ok:
+        raise RuntimeError(err or "NetBox is not reachable")
+    out = {"delete": [], "unassign": []}
+    for obj in sorted(_nb_get(session, base, "ipam/ip-addresses/", device_id=nb_id) or [],
+                      key=lambda o: o.get("id") or 0):
+        mine = (netbox_guard.has_managed_tag(obj)
+                and netbox_guard.was_created_by_nmas(list_name, "ipam/ip-addresses", obj["id"]))
+        out["delete" if mine else "unassign"].append(
+            {"id": obj["id"], "address": str(obj.get("address") or obj["id"])})
+    return out
+
+
 def _netbox_record_facts(list_name: str, hostname: str, nb: dict) -> dict:
     """Its NetBox record and Mercury's created-object entry (C1342; the operator's ownership
     plan, C556). The record is set to Decommissioning and RENAMED ``<h>-retired-<id>``, kept:
@@ -1027,16 +1132,24 @@ def _netbox_record_facts(list_name: str, hostname: str, nb: dict) -> dict:
     mark = [e for e in created if not e.get("retired") and (
         (nb_id is not None and e.get("id") == nb_id)
         or (e.get("name") or "").lower() == hostname.lower())]
-    patch, not_doing = None, []
+    patch, not_doing, addresses = None, [], {"delete": [], "unassign": []}
     if nb_id is not None:
         if nb.get("writes"):
             patch = {"id": nb_id, "name": f"{hostname}-retired-{nb_id}"}
+            try:
+                addresses = _netbox_address_facts(list_name, nb_id)
+            except Exception as exc:           # noqa: BLE001 - said as the refusal
+                return {"refuse": (f"NetBox device {nb_id}'s IP addresses could not be read "
+                                   f"({exc}): whether they would stay held by the retired "
+                                   "record is unknown, which is not none; preview again when "
+                                   "NetBox answers")}
         else:
             not_doing.append(
                 f"NetBox device {nb_id} is NOT set to Decommissioning or renamed: NetBox writes "
                 "are off here (netbox_allow_writes), so its name stays taken in NetBox, and "
                 f"onboarding a new device named {hostname} is refused until the record is "
-                "renamed or decommissioned there")
+                "renamed or decommissioned there; its IP addresses stay assigned to it, so a "
+                "new device given one of them is told the retired record holds it (C1494)")
     if not mark and not patch:
         return {"step": "nothing to change in NetBox's record or Mercury's created-object "
                         "record", "done": True, "not_doing": not_doing}
@@ -1047,6 +1160,21 @@ def _netbox_record_facts(list_name: str, hostname: str, nb: dict) -> dict:
                      "recorded, then read back: the record and its history are KEPT, and the "
                      "name is free for a new device (NetBox holds a device's name unique in its "
                      "site and tenant)")
+        held = addresses["delete"] + addresses["unassign"]
+        if held:
+            words = []
+            if addresses["delete"]:
+                words.append("delete the IP address(es) Mercury created on it ("
+                             + ", ".join(a["address"] for a in addresses["delete"])
+                             + "; tagged nmas-managed AND recorded as created)")
+            if addresses["unassign"]:
+                words.append("unassign the other(s) from it ("
+                             + ", ".join(a["address"] for a in addresses["unassign"])
+                             + "), each kept in NetBox with its before recorded")
+            parts.append(" and ".join(words) + ", its primary addresses cleared first (C1494): "
+                         "a retired record holds no address a new device needs, and the "
+                         "unassigned ones survive, named, in NetBox's IPAM")
+            patch = dict(patch, addresses=addresses)
     if mark:
         parts.append("mark Mercury's created-object entry for dcim/devices "
                      + ", ".join(str(e.get("id")) for e in mark) + " retired: kept with its "
@@ -2019,17 +2147,39 @@ def _retire_netbox_record(list_name: str, hostname: str, w: dict, *, actor: str,
     patch = w.get("patch")
     if not patch:
         return
-    from modules.netbox_client import _nb_get_by_id, _nb_patch, _nb_ready, _status_value
+    from modules.netbox_client import (_nb_delete, _nb_get, last_delete_failure,
+                                       _nb_get_by_id, _nb_patch, _nb_ready, _status_value)
 
     ok, err, session, base = _nb_ready()
     if not ok:
         raise RuntimeError(f"NetBox is not reachable: {err}")
+    addresses = patch.get("addresses") or {}
+    held = (addresses.get("delete") or []) + (addresses.get("unassign") or [])
+    record = {"status": "decommissioning", "name": patch["name"]}
+    if held:
+        # NetBox refuses to move an address off its interface while it is the device's primary.
+        record.update(primary_ip4=None, primary_ip6=None)
     with netbox_guard.list_writer(list_name, f"retiring {hostname}", actor), \
             netbox_guard.for_list(list_name, actor=actor, authority=authority):
-        _nb_patch(session, base, f"dcim/devices/{patch['id']}/",
-                  {"status": "decommissioning", "name": patch["name"]})
+        _nb_patch(session, base, f"dcim/devices/{patch['id']}/", record)
+        # ITS ADDRESSES LEAVE IT (C1494): the retired record held the management address
+        # the next device of the name was given, and NetBox could not give it again.
+        for a in addresses.get("delete") or []:
+            if not _nb_delete(session, base, "ipam/ip-addresses/", a["id"]):
+                raise RuntimeError(f"IP address {a['address']} (NetBox {a['id']}) was not "
+                                   f"deleted: {last_delete_failure()}")
+        for a in addresses.get("unassign") or []:
+            _nb_patch(session, base, f"ipam/ip-addresses/{a['id']}/",
+                      {"assigned_object_type": None, "assigned_object_id": None})
     got = _nb_get_by_id(session, base, "dcim/devices", patch["id"]) or {}
     status = _status_value(got)
     if got.get("name") != patch["name"] or status != "decommissioning":
         raise RuntimeError(f"NetBox device {patch['id']} read back as {got.get('name')!r}, "
                            f"status {status!r}: the write did not land")
+    if held:
+        left = _nb_get(session, base, "ipam/ip-addresses/", device_id=patch["id"]) or []
+        if left:
+            raise RuntimeError(f"NetBox device {patch['id']} still holds "
+                               + ", ".join(str(o.get("address")) for o in left)
+                               + " after its addresses were deleted or unassigned: the "
+                                 "write did not land")

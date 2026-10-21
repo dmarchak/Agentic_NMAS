@@ -106,6 +106,8 @@ NOT_COUNTED = {
     "users/tokens": "the token list changes with every token: READ (proving the view), never "
                     "compared",
     "dcim/roles": "NetBox 3.x's name for device roles; 4.x answers dcim/device-roles, counted",
+    "ipam/vlan-groups": "the import only READS a site's VLAN groups, for a subinterface's VLAN "
+                        "(C1492), and never writes one",
 }
 
 

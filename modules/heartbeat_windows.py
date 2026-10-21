@@ -137,10 +137,16 @@ def plan(H=None, installed_path: str = "") -> dict:
         raise Refused(f"the syslog job could not be measured from {loki}: {exc} (a window "
                       "measured from a guessed job is a guess)") from exc
     restarts, note = H.prometheus_restarts(hosts)
-    got = read_each(lambda h: H.gaps_from(H.loki_arrivals(loki, h, query=H.query_for(h, job)),
-                                          H.loki_arrivals(loki, h,
-                                                          query=H.config_query_for(h, job)),
-                                          restarts.get(h, ())),
+    # Each device from its OWN life (C1476): Loki keys a device's lines by its name, so a
+    # name's arrivals and restarts before its cut (the newest of its retirement, abandoned
+    # onboarding and Create) are an earlier device's, never measured into the new one's window.
+    try:
+        since = H.measured_since(hosts)
+    except Exception as exc:                          # noqa: BLE001 (refused, named)
+        raise Refused(f"where each device's own heartbeats begin could not be read ({exc}): a "
+                      "window measured from an earlier device of the name is a guess") from exc
+    restarts = {h: H.restarts_since(w, since.get(h)) for h, w in restarts.items()}
+    got = read_each(lambda h: H.measure_device(loki, h, job, restarts.get(h, ()), since.get(h)),
                     hosts, name="heartbeat-remeasure")
     failed = next((g for g in got if isinstance(g, Failed)), None)
     if failed is not None:

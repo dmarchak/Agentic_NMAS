@@ -8,6 +8,8 @@ number of reads, whatever its size:
 
 - the inventory (one read) and the manifest's pending devices (one read);
 - the reachability reader's stored value (one read, never a probe);
+- the onboarding-progress reader's stored value, for the pending rows (one read: each pending
+  device's ZTP stage and its probe's answer, as its page reads them, C1477);
 - ONE bounded `git log` over `golden/`: when each device's golden last CHANGED;
 - ONE bounded `git log` over the commits carrying `Intent-Match:` (every save
   since C89, the decision a Save All records when nothing changed included):
@@ -526,15 +528,27 @@ def listing(ref, *, q: str = "", state: str = "", platform: str = "", now: float
                                   if m and not hist_err else None),
                      "golden_changed": ({"at": h["at"], "iso": _iso(h["at"]), "sha": h["sha"]}
                                         if h and not hist_err else None)})
+    # Where each pending device has got to, as its page reads it (C1477): the
+    # onboarding-progress reader's stored value, ONE read for every pending row (its ZTP stage
+    # and its probe's answer), never the manifest's creation state; the value's age is drawn.
+    from modules.readers import onboarding_progress as OP
+
+    progress, progress_at, progress_why = (OP.stored_network(ref.name) if pending
+                                           else ({}, "", ""))
     for p in pending:
+        way = {"ztp": "ZTP", "dhcp": "DHCP"}.get(p.get("address_source"), "")
+        words, why = OP.row_words(progress.get(p.get("name", "")), p.get("onboarded_at", ""))
+        if progress_why:
+            words, why = "pending: not read yet", progress_why
         rows.append({"name": p.get("name", ""), "pending": True,
                      "status": {"state": "warn", "words": "Pending onboarding"},
                      "address": p.get("mgmt_ip") or (
-                         f"awaiting DHCP ({p['reserved_address']})" if p.get("reserved_address")
-                         else "no address recorded"),
+                         f"awaiting {way or 'DHCP'} ({p['reserved_address']})"
+                         if p.get("reserved_address") else "no address recorded"),
                      "platform": "", "role": "", "measured": None, "golden_changed": None,
                      "startup": {"state": "none", "words": "none", "why": "not onboarded yet"},
-                     "drained": "", "intent": {"state": "pending", "words": "pending: not reached yet"}})
+                     "drained": "", "intent": {"state": "pending", "words": words, "why": why},
+                     "progress": {"at": progress_at} if progress_at else None})
 
     total = len(rows)
     counts = {s: sum(1 for r in rows if r["intent"]["state"] == s) for s in STATES}

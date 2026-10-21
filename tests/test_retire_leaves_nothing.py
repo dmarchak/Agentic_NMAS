@@ -935,3 +935,85 @@ class TestANewDeviceOfTheNameInheritsNothing:
                     if r["kind"] == "netbox"]
         names = sorted(d["name"] for d in netbox["fake"].store["dcim/devices"])
         assert names == [f"{HOST}-retired-31"], names
+
+
+# ----------------------------------------------------------------------------- C1476
+
+def plant_name_history(repo: str, *, retired=(), abandoned=(), created=()) -> str:
+    """A real repository at *repo* holding a name's earlier lives, each at its own time: a
+    retire commit per ``(name, epoch)`` in *retired* (its `Retired-Device:` trailer, as
+    `retire.apply` writes it), an abandon commit per ``(name, epoch)`` in *abandoned*
+    (onboarding's own subject, `onboard._abandon_onboarding`), and the manifest holding a
+    PENDING device per ``(name, epoch)`` in *created* (its Create's ``onboarded_at``).
+    The commits are made in time order with those dates. Returns *repo*."""
+    import subprocess
+
+    os.makedirs(repo, exist_ok=True)
+
+    def git(*args, when=None):
+        env = dict(os.environ)
+        if when is not None:
+            env.update(GIT_COMMITTER_DATE=f"@{int(when)} +0000",
+                       GIT_AUTHOR_DATE=f"@{int(when)} +0000")
+        subprocess.run(["git", "-C", repo, "-c", "user.email=t@example.invalid",
+                        "-c", "user.name=t", *args], check=True, capture_output=True, env=env)
+
+    git("init", "-q")
+    events = ([(at, f"retire: {n} -- {REASON}\n\nActor: {ACTOR}\nRetired-Device: {n}\n"
+                    f"Reason: {REASON}\n") for n, at in retired]
+              + [(at, f"abandon: {n} - onboarding withdrawn\n\nSource: onboarding\n"
+                      f"Actor: {ACTOR}\n") for n, at in abandoned])
+    git("commit", "-q", "--allow-empty", "-m", "start",
+        when=min([at for at, _m in events] or [time.time()]) - 60)
+    for at, message in sorted(events):
+        git("commit", "-q", "--allow-empty", "-m", message, when=at)
+    devices = {f"uid-{n}": {"name": n, "verified_at": None, "address_source": "static",
+                            "onboarded_at": time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                                          time.gmtime(at))}
+               for n, at in created}
+    os.makedirs(os.path.join(repo, ".nsot"), exist_ok=True)
+    with open(os.path.join(repo, ".nsot", "manifest.json"), "w", encoding="utf-8") as fh:
+        json.dump({"schema_version": 1, "devices": devices}, fh)
+    return repo
+
+
+class TestTheNameCut:
+    """C1476: ONE cut per name (`retire.name_cuts_in`), the newest of its retirement, its
+    abandoned onboarding and its current device's Create, so a record keyed by the name from
+    before it is an earlier device's. Planted on a real repository with each life dated."""
+
+    NOW = 1_790_000_000
+
+    def test_the_newest_of_retirement_abandon_and_create_wins(self, tmp_path):
+        repo = plant_name_history(str(tmp_path / "r"),
+                                  retired=[(HOST, self.NOW - 7200)],
+                                  abandoned=[(OTHER, self.NOW - 5400)],
+                                  created=[(HOST, self.NOW - 600)])
+        cuts = RT.name_cuts_in(repo)
+        assert (cuts[HOST]["why"], cuts[HOST]["epoch"]) == ("created", self.NOW - 600)
+        assert (cuts[OTHER]["why"], cuts[OTHER]["epoch"]) == ("abandoned", self.NOW - 5400)
+
+    def test_an_abandon_after_the_retirement_moves_the_cut_to_it(self, tmp_path):
+        repo = plant_name_history(str(tmp_path / "r"), retired=[(HOST, self.NOW - 7200)],
+                                  abandoned=[(HOST, self.NOW - 3600)])
+        assert RT.name_cuts_in(repo)[HOST]["why"] == "abandoned"
+        assert RT.retirements_in(repo)[HOST]["epoch"] == self.NOW - 7200, \
+            "the retirement alone is still the receipts' cut (C1334)"
+
+    def test_a_half_run_abandon_of_the_device_itself_moves_nothing(self, tmp_path):
+        """Its entry is still in the manifest: the abandon is the current device's own."""
+        repo = plant_name_history(str(tmp_path / "r"), abandoned=[(HOST, self.NOW - 60)],
+                                  created=[(HOST, self.NOW - 600)])
+        assert RT.name_cuts_in(repo)[HOST]["why"] == "created"
+
+    def test_a_record_before_the_cut_is_the_earlier_devices(self, tmp_path):
+        repo = plant_name_history(str(tmp_path / "r"), retired=[(HOST, self.NOW - 7200)],
+                                  created=[(HOST, self.NOW - 600)])
+        cuts = RT.name_cuts_in(repo)
+        assert RT.before_retirement(cuts, HOST, self.NOW - 3600)
+        assert not RT.before_retirement(cuts, HOST, self.NOW - 60)
+        assert not RT.before_retirement(cuts, "edge9", self.NOW - 3600), "an uncut name"
+
+    def test_a_name_with_no_earlier_life_has_no_cut_but_its_create(self, tmp_path):
+        repo = plant_name_history(str(tmp_path / "r"), created=[(HOST, self.NOW - 600)])
+        assert set(RT.name_cuts_in(repo)) == {HOST}

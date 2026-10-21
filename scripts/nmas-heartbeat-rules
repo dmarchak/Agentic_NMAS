@@ -282,6 +282,44 @@ def loki_arrivals(loki_url: str, hostname: str,
     return out
 
 
+def measured_since(hosts) -> dict:
+    """``{host: epoch}``: where each device's OWN arrivals begin (C1476, the operator,
+    2026-10-21: a new device's window was measured from 7 days of the retired device's of
+    the same name, 1,723 gaps and 4 restarts). Loki keys a device's lines by its NAME alone,
+    so a name's arrivals before its cut (`retire.name_cuts_everywhere`: the newest of the name's
+    retirement, abandoned onboarding and its device's Create) are an earlier device's. A
+    host with no cut is measured over the whole lookback, as before."""
+    from modules.nsot import retire
+
+    cuts = retire.name_cuts_everywhere()
+    return {h: cuts[h.lower()]["epoch"] for h in hosts if h.lower() in cuts}
+
+
+def measure_device(loki_url: str, hostname: str, job: str, restarts=(), since=None) -> list:
+    """One device's gaps (:func:`gaps_from`) from its own life: its heartbeats, its
+    configuration changes and its restarts after *since* (:func:`measured_since`), the read
+    bounded to the hours since then, never more than the lookback; None for the whole
+    lookback. A gap spanning the cut is not measured: nothing before it is read."""
+    hours = LOOKBACK_HOURS
+    if since is not None:
+        hours = max(1, min(LOOKBACK_HOURS, math.ceil((time.time() - since) / 3600)))
+
+    def own(times):
+        return [t for t in times if since is None or t > since]
+
+    return gaps_from(own(loki_arrivals(loki_url, hostname, hours=hours,
+                                       query=query_for(hostname, job))),
+                     own(loki_arrivals(loki_url, hostname, hours=hours,
+                                       query=config_query_for(hostname, job))),
+                     restarts_since(restarts, since))
+
+
+def restarts_since(windows, since=None) -> list:
+    """A device's restart windows (:func:`restart_windows`) that end after *since*: one
+    before its name's cut was an earlier device's."""
+    return [w for w in windows or () if since is None or w[1] > since]
+
+
 # ---------------------------------------------------------------------------
 # The rules
 # ---------------------------------------------------------------------------
@@ -626,9 +664,11 @@ def main() -> int:
         from modules.fanout import Failed, read_each
         hosts = sorted(expected)
         restarts, restart_note = prometheus_restarts(hosts)
-        got = read_each(lambda h: gaps_from(loki_arrivals(loki, h, query=query_for(h, job)),
-                                            loki_arrivals(loki, h, query=config_query_for(h, job)),
-                                            restarts.get(h, ())),
+        # Each device from its own life only (C1476): its name's cut.
+        since = measured_since(hosts)
+        restarts = {h: restarts_since(w, since.get(h)) for h, w in restarts.items()}
+        got = read_each(lambda h: measure_device(loki, h, job, restarts.get(h, ()),
+                                                 since.get(h)),
                         hosts, name="heartbeat-measure")
         failed = next((g for g in got if isinstance(g, Failed)), None)
         if failed is not None:

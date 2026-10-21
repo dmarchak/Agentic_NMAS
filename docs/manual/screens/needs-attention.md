@@ -208,6 +208,10 @@ name, how your identity was established and the time, and the row leaves the pag
   window's new host keys, corrected after you acknowledged them (a key moved to the window
   that should have taken it: [Re-key](rekey#planned-window)), are a new row
   too.
+- **An acknowledgement covers the device it was made for.** One made for a device that was
+  retired or abandoned, or before the Create of the device now holding the name, hides none of
+  the new device's rows (an alert series or an adjacency named by the device), and is not
+  listed in force. History keeps it.
 - **The record keeps the event.** The device's History still shows the restart as unexpected,
   marked "acknowledged" with who and why.
 - **A planned window cannot be declared afterwards to clear one.** A restart is planned only
