@@ -316,8 +316,12 @@ class TestTheConfirm:
         try:
             # Wait for the state photographed below, r6 done AND r2 being applied (C422: "being
             # applied" alone is also r6's state before its spy returns, and under the gate's
-            # load the fragment was read then).
-            for _ in range(200):
+            # load the fragment was read then). Bounded by time, the job's own 20 s wait below
+            # (2026-10-21: 200 polls 20 ms apart, about 4 s and never measured, ran out before r6
+            # finished on CI #1043's loaded browser2 shard; the state is reached in under 1 s
+            # on the laptop, so 20 s is far past 2.5 times it, and a pass ends the wait).
+            deadline = time.time() + 20
+            while time.time() < deadline:
                 _rr, frag = _get(ready, out["url"])
                 if 'run-row-done" data-row="r6"' in frag and \
                         'run-row-running" data-row="r2"' in frag:
