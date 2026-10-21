@@ -106,6 +106,10 @@ def read(previous=None, clock=time.time, source=None, population=None, rip=None)
     rip_lists, rip_error = (rip or _rip_answer)()
     now = clock()
     seen, unmeasured, errors, checked, devices = {}, [], [], 0, 0
+    # C1450: each device's state per protocol intent runs on it, ``{"<list>:<host>": {proto:
+    # "up"|"down"|"unknown"}}``: up when every row it judged is up, down when any is down or not
+    # seen, unknown when it was not measured. A deploy's "declared and not up" clears on it.
+    states = {}
     for list_name, ref, hosts in (population or lists)():
         intents, err = committed_intents(ref.repo_dir)
         if err:
@@ -118,6 +122,11 @@ def read(previous=None, clock=time.time, source=None, population=None, rip=None)
             view["protocols"] = list(view["protocols"]) + rip_protocols(
                 intents, host, rip, rip_error)
             for p in view["protocols"]:
+                kinds = {r["state"] for r in p["rows"]}
+                states.setdefault(f"{list_name}:{host}", {})[p.get("proto") or p["words"]] = (
+                    "down" if kinds & {"down", "not_seen"} else
+                    "up" if p["measured"] and "up" in kinds and "unknown" not in kinds else
+                    "unknown")
                 if not p["measured"] and any(r["state"] == "unknown" for r in p["rows"]):
                     unmeasured.append({"list": list_name, "device": host, "protocol": p["words"],
                                        "why": p["why"]})
@@ -156,7 +165,7 @@ def read(previous=None, clock=time.time, source=None, population=None, rip=None)
         e["since"] = before.get("since") or _iso(now)
         e["devices"] = sorted(e["devices"])
     return {"configured": configured, "adjacencies": seen, "unmeasured": unmeasured,
-            "errors": errors, "checked": checked, "devices": devices}
+            "errors": errors, "checked": checked, "devices": devices, "states": states}
 
 
 def _rip_answer() -> tuple:

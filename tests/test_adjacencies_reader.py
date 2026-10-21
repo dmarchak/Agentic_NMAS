@@ -188,6 +188,19 @@ class TestWhatCannotBeJudged:
         v = _read(fleet, _capture(), rip={})
         un = {(u["device"], u["protocol"]) for u in v["unmeasured"]}
         assert ("s1", "RIP") in un and ("r1", "RIPng") in un
+        # C1450: its per-protocol state is unknown, never up.
+        assert v["states"]["Lab:s1"]["rip"] == "unknown"
+
+    def test_each_device_s_protocol_states_are_stored(self, fleet):
+        """C1450: the state per device and protocol, which Needs attention's deploy row clears
+        on (a protocol a deploy found unmet, up since): up as captured, down when a neighbour
+        is lost, unknown when not measured."""
+        v = _read(fleet, _capture())
+        assert v["states"]["Lab:r3"]["ospf"] == "up" and v["states"]["Lab:s1"]["rip"] == "up"
+        lost = _read(fleet, _capture(), rip=self._rip_lost("2026-10-13T06:00:00Z"))
+        assert lost["states"]["Lab:s1"]["rip"] == "down"
+        broken = _read(fleet, _break_r3_r4_link(_capture()))
+        assert broken["states"]["Lab:r3"]["ospf"] == "down"
 
     def test_not_configured_says_so(self, fleet):
         from modules.readers import adjacencies

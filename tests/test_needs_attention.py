@@ -697,6 +697,59 @@ class TestDeploysAsASource:
         assert r["level"] == "danger" and r["since"] == "2026-09-28T11:00:00Z"
         assert "ospf: 5 -> 3 neighbours" in r["cause"] and "rollback: restored" in r["cause"]
 
+    #: Verify's words on R6's real receipt (Lab 8 step 6, 2026-10-20): RIP and RIPng declared by
+    #: intent, with no neighbour until R7 existed.
+    UNMET = ["rip is declared by intent and is not up after the change (no RIP neighbour); it "
+             "was not up before it either",
+             "ripng is declared by intent and is not up after the change (no RIPng neighbour); "
+             "it was not up before it either"]
+
+    def _landed_unmet(self, **kw):
+        row = self._row("r6", "deployed", True, "2026-10-20T18:49:00Z",
+                        saved_startup={"state": "saved"}, **kw)
+        row["checks"].update(ok=False, intent_unmet=list(self.UNMET))
+        return row
+
+    def _adjacency(self, states, at):
+        lst = A._page_network()
+        return {"state": "ok", "doc": {"last_good": {
+            "value": {"states": {f"{lst}:r6": states}}, "value_at": at}}}
+
+    def test_a_deploy_whose_only_fault_is_an_unmet_protocol_says_so_and_how_it_clears(self):
+        """C1450 (the operator, Lab 8 step 6): R6's deploy landed, read back and saved, with RIP
+        and RIPng unmet only for want of R7. The row names what is unmet and that it clears when
+        the adjacency forms, never "done … plan again"."""
+        res = A.deploy_source(lambda: {"state": "ok", "rows": [self._landed_unmet()]},
+                              adjacency={"state": "absent", "doc": None, "why": "none yet"})
+        (r,) = res["rows"]
+        assert r["kind"] == "unmet" and r["level"] == "warning"
+        assert r["what"] == ("The last deploy to r6 landed, and RIP, RIPng declared by its "
+                             "intent was not up after it")
+        assert "RIP not read; RIPng not read" in r["cause"]
+        assert r["action"]["label"].startswith("Build or check r6's RIP, RIPng peer: this "
+                                               "clears when the adjacency reader sees it up")
+
+    def test_it_clears_when_the_adjacency_reader_sees_each_up_after_the_deploy(self):
+        rows = [self._landed_unmet()]
+        up_after = self._adjacency({"rip": "up", "ripng": "up"}, "2026-10-21T03:00:00Z")
+        res = A.deploy_source(lambda: {"state": "ok", "rows": rows}, adjacency=up_after)
+        assert res["rows"] == []
+        assert "1 with a protocol unmet after the deploy and up since" in res["checked"]
+        # A read from before the deploy, or one protocol still down, keeps it.
+        before = self._adjacency({"rip": "up", "ripng": "up"}, "2026-10-20T18:00:00Z")
+        assert A.deploy_source(lambda: {"state": "ok", "rows": rows}, adjacency=before)["rows"]
+        half = self._adjacency({"rip": "up", "ripng": "down"}, "2026-10-21T03:00:00Z")
+        (r,) = A.deploy_source(lambda: {"state": "ok", "rows": rows}, adjacency=half)["rows"]
+        assert "RIP up; RIPng down" in r["cause"]
+
+    def test_an_unmet_protocol_beside_another_fault_stays_a_failed_row(self):
+        row = self._landed_unmet(issues=["ospf: 5 -> 3 neighbours"])
+        row["checks"]["issues"] = ["ospf: 5 -> 3 neighbours"]
+        (r,) = A.deploy_source(lambda: {"state": "ok", "rows": [row]},
+                               adjacency=self._adjacency({"rip": "up", "ripng": "up"},
+                                                         "2026-10-21T03:00:00Z"))["rows"]
+        assert r["kind"] == "failed" and "ospf: 5 -> 3 neighbours" in r["cause"]
+
     def test_unreadable_receipts_are_the_unreadable_row_and_absent_is_none(self):
         bad = A.deploy_source(lambda: {"state": "unreadable", "error": "line 3 is not JSON"})
         assert bad["state"] == "unreadable" and "line 3 is not JSON" in bad["rows"][0]["cause"]

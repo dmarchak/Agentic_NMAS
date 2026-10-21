@@ -81,6 +81,10 @@ ROW_KINDS = {
     ("deploys", "unsaved"): ("a change verified and running on a device is not saved to "
                              "startup, so a reload loses it",
                              "persist it from the device's page"),
+    # C1450: sent, read back and saved, with only a protocol intent declares not up after it.
+    ("deploys", "unmet"): ("a deploy landed, and a protocol its intent declares was not up "
+                           "after it (often a peer not built yet)",
+                           "build or check the peer; read the receipt if the peer exists"),
     ("baseline", "denied"): ("the last baseline was not earned", "resolve each departure, then Save All"),
     ("baseline", "unusable"): ("no stored baseline can be re-applied", "take a current baseline"),
     ("authorisations", "repeated"): ("one line is authorised again and again",
@@ -209,6 +213,9 @@ CLEARS = {
     ("deploys", "unsaved"): (("resolves",), "a save of the device after the deploy reads its "
                              "startup config back saved (its page's Persist, or Save), or a "
                              "later deploy or restore to it finishes clean"),
+    ("deploys", "unmet"): (("resolves",), "the adjacency reader, reading after the deploy, sees "
+                           "each protocol it names up on the device, or a later deploy or "
+                           "restore to it finishes clean"),
     ("baseline", "denied"): (("resolves",), "a later save earns a baseline"),
     ("baseline", "unusable"): (("resolves",), "a stored baseline can be re-applied: a new one "
                                "is earned"),
@@ -1035,7 +1042,37 @@ def _persist_action(lst: str, host: str, label: str) -> dict:
     return {"label": label, "open": "persist", "device": host, "list": lst}
 
 
-def deploy_source(read=None, saves=None) -> dict:
+#: Verify's protocol keys (`pipeline`'s intent-declared protocols) as a person reads them.
+_PROTO_WORDS = {"ospf": "OSPF", "ospfv3": "OSPFv3", "bgp": "BGP", "rip": "RIP",
+                "ripng": "RIPng", "eigrp": "EIGRP", "isis": "IS-IS"}
+
+
+def _unmet_protocols(unmet: list) -> list:
+    """The protocol keys Verify names in its "declared by intent and is not up" lines, each
+    line's first word (`pipeline`'s wording); a line of another shape names none."""
+    out = []
+    for line in unmet:
+        m = re.match(r"^(\w+) is declared by intent and is not up after the change", line)
+        if m and m.group(1).lower() in _PROTO_WORDS:
+            out.append(m.group(1).lower())
+    return out
+
+
+def _adjacency_states(cached=None) -> dict:
+    """``{"states", "at", "why"}``: the adjacency reader's stored per-device protocol states
+    (C1450), when they were read, and why there are none (a read that failed is never "up")."""
+    from modules import reader_job
+
+    got = reader_job.read_cached("adjacencies") if cached is None else cached
+    good = (got.get("doc") or {}).get("last_good") or {}
+    if got.get("state") != "ok" or not good:
+        return {"states": {}, "at": 0.0,
+                "why": "the adjacency reader has no stored value: " + str(got.get("why") or "")}
+    return {"states": (good.get("value") or {}).get("states") or {},
+            "at": _ts(good.get("value_at")) or 0.0, "why": ""}
+
+
+def deploy_source(read=None, saves=None, adjacency=None) -> dict:
     """Each device's LATEST deploy or restore receipt, judged by the ONE
     decision the result screen uses (`preview_confirm.result_level`): a row
     unless it finished clean. A later clean run supersedes an earlier
@@ -1066,7 +1103,7 @@ def deploy_source(read=None, saves=None) -> dict:
     # after the name's newest retirement are the device's now (they stay on History).
     for r in receipts.current_rows(lst, got.get("rows") or []):       # newest first
         latest.setdefault(r.get("device") or "?", r)
-    rows, pending_named, saved_later = [], 0, 0
+    rows, pending_named, saved_later, met_later, adj = [], 0, 0, 0, None
     # Read only when a device's one fault is the save: one read of one record, not per device.
     saved_at, saves_unread = ((_saved_since(saves)) if any(
         _only_unsaved(r) for r in latest.values()) else ({}, ""))
@@ -1109,6 +1146,38 @@ def deploy_source(read=None, saves=None) -> dict:
         issues = [str(i) for i in checks.get("issues") or []]
         unmet = [str(p) for p in checks.get("intent_unmet") or []]
         unread = [str(p) for p in checks.get("unreadable") or []]
+        protos = _unmet_protocols(unmet)
+        if (outcome == "deployed" and protos and len(protos) == len(unmet) and not issues
+                and not unread and not rb.get("performed") and not r.get("stage")
+                and r.get("matches_confirmed") is not False and not receipts.is_pending(r)
+                and not unsaved_words):
+            # C1450: landed, read back and saved; only a protocol intent declares was not up
+            # after it, often for want of a peer not built yet. It clears when the adjacency
+            # reader, reading after the receipt, sees each up; until then it says what is unmet.
+            if adj is None:
+                adj = _adjacency_states(adjacency)
+            states = adj["states"].get(f"{lst}:{host}") or {}
+            if adj["at"] > (_ts(r.get("completed_at") or r.get("at")) or float("inf")) and \
+                    all(states.get(p) == "up" for p in protos):
+                met_later += 1
+                continue
+            named = ", ".join(_PROTO_WORDS.get(p, p) for p in protos)
+            now_words = "; ".join(f"{_PROTO_WORDS.get(p, p)} {states.get(p, 'not read')}"
+                                  for p in protos)
+            rows.append(row(
+                source="deploys", kind="unmet", key=f"{lst}:{host}", level="warning",
+                what=(f"The last {receipts.noun(r)} to {host} landed, and {named} declared by "
+                      "its intent was not up after it"),
+                cause=("; ".join(unmet) + f". The adjacency reader now reads: {now_words}"
+                       + (f" ({adj['why']})" if adj["why"] else "")),
+                action={"label": (f"Build or check {host}'s {named} peer: this clears when the "
+                                  "adjacency reader sees it up. If the peer exists, read the "
+                                  "receipt on the device's History tab"),
+                        "href": f"/v2/device/{host}?tab=history"},
+                devices=[host], since=_ts(r.get("at")),
+                operands={"list": lst, "action": r.get("action"), "outcome": outcome,
+                          "unmet": protos, "by": r.get("actor")}))
+            continue
         cause = "; ".join(x for x in (
             r.get("reason"),
             f"stopped at {r['stage']}" if r.get("stage") else "",
@@ -1149,8 +1218,10 @@ def deploy_source(read=None, saves=None) -> dict:
                          checked=(f"list {lst}: no deploy or restore recorded"
                                   if got.get("state") == "absent" else
                                   f"list {lst}: the latest receipt of {len(latest)} device(s), "
-                                  f"{len(latest) - len(rows) - pending_named - saved_later} "
+                                  f"{len(latest) - len(rows) - pending_named - saved_later - met_later} "
                                   "clean"
+                                  + (f", {met_later} with a protocol unmet after the deploy and "
+                                     "up since (the adjacency reader)" if met_later else "")
                                   + (f", {pending_named} commit PENDING (a batch still "
                                      "running, or an interrupted operation named under "
                                      "Operations that did not finish)" if pending_named
