@@ -1,5 +1,180 @@
 # End of session: where Phase 7 stands
 
+## 2026-10-21, overnight run 06:37 to ~14:00 UTC (00:37 to 08:00 UTC−6): the morning report
+
+The operator's brief: unattended; no device change but item 2 (s1); nothing on s3 or any
+management-path interface; nothing in 08:30 to 09:10 UTC; no hypervisor, lab-host, containerlab
+or docker command; deploys only between measurement hours, CI green, job health after each.
+**No device was changed.** Item 2 stopped before its device step (section 5). Every device
+read was a show command through Mercury's read path, outside 08:25 to 09:15 UTC.
+
+### 1. Decisions waiting for the operator (each with the recommendation)
+
+1. **Take the shipped `_common.j2` into Default (C1498).** Measured with Templates' own bring
+   preview: the shipped file adds 159 lines and removes 6, and **all 10 devices render the same
+   with it as without**. It revokes the two base templates' approvals, which a person gives
+   again by hash. **Recommend:** bring it and approve the two today. It unblocks `hold_queue`
+   (item 2, then s3's Gi1/1), R7's single-deploy re-add (C1478) and K7's packs.
+2. **Phase 3: GO for Thursday 10-22, conditionally.** The pinning cut the stalls by about 90%
+   (failed scrapes about 669 an hour before it; 0 to 60 an hour overnight outside the backup),
+   but the criteria are not met. Every hour but the last had an OSPF drop toward s3 or s4, and
+   s3's clock still runs at about 0.5×. The condition: the morning's two cheap levers on s3
+   (its IP SLA retry, then `hold_queue` after decision 1), each measured an hour. If they give
+   two clean hours, Phase 3 moves after Saturday. If not, run Phase 3's core (BIOS Performance,
+   1 GiB hugepages, VM 100 as 2×12 bound to the NUMA nodes at 64 GiB) Thursday, outside 08:30
+   to 09:10 UTC, without option (b), with the run sheet in `docs/HOST_TUNING.md` (Phase 3,
+   section 5).
+3. **Option (b) (r6 and r7 boot from their goldens):** **recommend after Saturday's
+   recording.** Its day-0 disk may stop the rehearsal's `write erase` reset from booting
+   configless (C1502, unmeasured); the lab-file diff is ready in `lab/phase3/`.
+4. **Free `r6-retired-21`'s hold on 10.255.4.2/30 (C1504, built and deployed):** r6's NetBox tab
+   › Import into NetBox… now warns and offers **Free 10.255.4.2 from r6-retired-21…**, a preview
+   and a confirm by hash. **Recommend:** at Friday's step 9 (or before), so the re-import gives
+   r6 Gi2 its address.
+5. **C1506:** may the import correct a platform Mercury itself wrote (r6 and r7 read "IOS")?
+   **Recommend yes** for records Mercury created; otherwise correct the two in NetBox once.
+6. **The rehearsal walk's decisions D1 to D8** (`docs/LAB8_REHEARSAL_WALK.md`), each with its
+   recommendation. C1460 part 1 IS deployed (on main since c05330b0), so D1 reads "landed, not
+   yet walked": keep subnets 256 and 257 unless it is walked once on a throwaway link first.
+7. **NetBox permissions (C1424):** Mercury's token cannot read VLAN groups, so C1492's VLAN
+   tagging on r7's Gi3.10 is refused by name until it can. Yours, in NetBox's admin.
+8. **C1501:** fourteen inconsistencies between Lab 8's documents and the code (the documents
+   agent's list); none blocks a step. Review when convenient.
+
+### 2. The measurements
+
+**Step 6's verdict (r1 to r4 at 60 s, s3 not changed): no measurable gain, kept.** The hour
+06:35 to 07:35 against the pinning hour (04:38 to 05:38): 33 of 241 gauge steps below 10 (15),
+94 failed scrapes (38), 4 OSPF drops (2), 4 missed-ping transitions (0), 0 SSH auth timeouts,
+s3's heartbeat spread 78 s (54). It leaves s3's own load where it was: s3's CPU 54% over five
+minutes, its IP SLA process about 10%. The hour-to-hour spread is wide, so the long reading is
+the measure. `docs/HOST_TUNING.md`, change 3.
+
+**The overnight long reading** (the same script each hour; deploys at 07:38, 09:39, 10:39 and
+11:39 at the start of their hours):
+
+| Hour (UTC) | Gauge steps below 10 | Failed scrapes | OSPF drops | Missed-ping transitions | SSH auth timeouts | s3 gaps: spread (max) | s3 clock |
+|---|---|---|---|---|---|---|---|
+| 06:35–07:35 (step 6) | 33 | 94 | 4 | 4 | 0 | 78 s (652) | 0.49× |
+| 07:35–08:35 | 9 | 16 | 3 | 2 | 0 | 61 s (649) | 0.46× (two hours, the backup inside) |
+| 08:35–09:35 (the backup, 08:30–09:10) | 46 | 164 | 9 | 7 | 0 | 632 s (1221) | |
+| 09:35–10:35 | 7 | 13 | 2 | 1 | 0 | 94 s (622) | 0.56× |
+| 10:35–11:35 | 19 | 34 | 1 | 1 | 0 | 631 s (1169) | 0.51× |
+| 11:35–12:35 | 15 | 60 | 1 | 2 | 0 | 89 s (617) | 0.53× |
+| 12:35–13:35 | **0** | **0** | **0** | 1 (s3, 13:00) | 0 | **60 s (584)** | 0.55× |
+
+- **Against the success criteria** (two hours with no OSPF dead-timer drop, no gauge step
+  below 10, no missed ping, no SSH auth timeout): **not met.** The last hour came closest,
+  missing only s3's one missed-ping event at 13:00:19 UTC. SSH auth timeouts were 0 all night.
+  For scale, the hours before the pinning ran 669 failed scrapes, 14.8 drops and 26.6
+  missed-ping transitions an hour.
+- **Every OSPF drop overnight was r1's toward s3 or s4** but one, toward r3 at 08:52, inside the
+  backup. Needs attention counts 38 to s3 and 13 to s4 in the last day.
+- **s3's heartbeat spread** tightened to 60 s in the last hour (median 542 s). It widens only
+  when a heartbeat is missed (the 1221 s and 1169 s gaps).
+- **The switches' clocks** (hourly, from show clock against the host): s3 0.46× to 0.56×, s4
+  0.63× to 0.69×, s1 and s2 0.89× to 0.95×. The backup hours were the slowest, and none
+  reached 1.0×.
+- **s3 Gi1/1** keeps an output queue of 0/0 and dropped 8.2% of its output across the backup
+  hours, about 2.7 to 3.0% an hour after, and 0.9% in the last hour. Its five-minute CPU ran 48
+  to 54%.
+- **s1's `hold_queue`: not tested** (section 5, decision 1).
+
+### 3. s3's IP SLA failure
+
+- **Reason:** s3's SSH connect failed after 27 s in the deploy's pre-snapshot (06:35:03 to
+  06:35:30 UTC), as the batch's own reader wakes opened sessions to four routers. The exception
+  carried no message, so the receipt read "s3 (10.255.1.23): " with nothing after it (C1497,
+  fixed: the type is named now).
+- **State (read 06:40 UTC):** untouched. `ip sla 1`, icmp-echo 10.255.1.11, `frequency 10`,
+  scheduled, last run OK; nothing was sent to it.
+- **Records:** intent commit `c89fe3e` holds s3 at 60 s; the golden commit `f7c95d3` names r1
+  to r4 only; s3's receipt reads failed at pre_snapshot. Correct.
+- **The morning fix (yours, in Mercury):** Monitoring › IP SLA › "Committed, not yet on the
+  device" lists s3 (read on the host at 10:5x UTC) › **Retry s3** (C1499), or Devices › s3 ›
+  Plan a deploy. Expected program, hash `773f8d5a21d7c891`: `no ip sla 1` / `ip sla 1` /
+  ` icmp-echo 10.255.1.11 source-interface Loopback0` / `exit` / `ip sla schedule 1 life
+  forever start-time now`. No frequency line: 60 s is the device default. Then measure an
+  hour: s3's own probe is its largest process (about 10% of its CPU), the last cheap lever.
+
+### 4. What is deployed
+
+The host runs **`f14bd314`** (since 11:39 UTC). Job health after each deploy: 73 jobs, the two
+known not-ok rows (the heartbeat check's INSEPARABLE s3, C1318; the retired yang-push job,
+declared not applicable). CI: every run green but #1043, a timing flake fixed forward by
+`79e6b3df`.
+
+| Commit | What | Deployed (UTC) |
+|---|---|---|
+| `df0a93df` | the PIT pinning's timer and install (lab tooling); C1496, C875 sorted | not deployed: lab tooling and documents only |
+| `58ed0e17` | C1497 (a failed stage names the exception's type), C1478 (encapsulation first) | 07:38, with the next |
+| `144d77c6` | C1499 (a committed probe its device does not run stays listed, with Retry; a batch card's Retry) | 07:38 |
+| `c660591b` | C1487 (Topology accepts a weak point with why); the Lab 8 rehearsal walk, documentation and video outline | 09:39, with the next |
+| `5bf59ab3` | C1450 (an unmet protocol's deploy row clears when the adjacency forms) | 09:39 |
+| `79e6b3df` | CI #1043's fix-forward | 09:39 |
+| `79905b38` | C1442 (a DHCP lease everywhere), C1492 (subinterfaces), C1494 (Retire frees addresses), C887, C875, C1476's camera members, C1477, C1503 | 09:39 |
+| `224e18e9` | C1489 (an INSEPARABLE device never ticked by default) | 09:39 |
+| `3966e50b` | C1498 measured, C1508 measured, the walk's reads | 10:39, with the next |
+| `891207c7` | C1504 (Free an address a retired record holds) | 10:39 |
+| `f14bd314` | C1479 (AutoInstall's serial-form client-id) | 11:39 |
+
+Seen working on the host after the deploys: r6 Gi2 and r7 Gi2 carry their leases in committed
+intent, and Neighbours expects OSPF between r4 Gi5 and r6 Gi2 (C1442). r6's "last deploy … done"
+row has cleared (C1450). The IP SLA page lists s3 with Retry s3 (C1499).
+`name_cuts_everywhere()` costs 41 to 51 ms (C1508).
+
+### 5. What stopped, and why
+
+- **Item 2 (s1's `hold_queue`) stopped before any device step.** The intent change previewed
+  with no line added: Default's `_common.j2` is two shipped versions behind, so `hold_queue`
+  renders on no device (C1498). Taking the seed is a fleet-wide approval by hash, larger than an
+  acceptance test. The bring is now measured harmless (decision 1); the change file is
+  `lab/intent-changes/c1485-hold-queue-s1.json` (s1 Gi1/1, the access port to h2).
+- **C1483** (the heartbeat page's Loki reads as a stored job) left open: its reads are already
+  concurrent; a stored value is size M.
+- **C1476:** its camera members are built (Last verify, Last abandon, the heartbeat re-measure,
+  band acknowledgements); members 2 to 5 and 7 to 13 remain.
+- **CI #1043 went red** on a timing bound in the batch card test (200 polls of 20 ms); fixed
+  forward by `79e6b3df` before anything else, every run since green.
+- **Two gates refused** and were fixed before committing: a test literal naming the heartbeat
+  script's old callee (C1476), and a test fake missing Free's arguments (C1504).
+- **One deploy refused itself** at 09:38: my own show-command read held s4; it deployed at
+  09:39 once the read ended.
+
+### 6. Steps queued for the operator, with exact commands
+
+In `<home>/Documents/nmas-reports/2026-10-21-morning-steps.md` on `<laptop>` (it holds the
+lab host's paths): s3's Retry (above); the PIT timer install (`scp -r lab/pinning` to the lab
+host, then `sudo bash /tmp/lab-pinning/install.sh`; then I take REDEPLOY's step 5a out);
+option (b)'s lab-repo commit and the startup map (after Saturday); s3's `hold_queue` after
+decision 1; Phase 3 per decision 2.
+
+### 7. Needs attention's rows (9, read 13:3x UTC; 8 at 06:37)
+
+| Row | How it clears |
+|---|---|
+| The last IP SLA send to s3: failed | s3's Retry deploys clean (section 3) |
+| nmas-heartbeat-check is failing (INSEPARABLE s3) | s3's clock (C1318); Phase 3 is the lever; it remains until then |
+| r1's OSPF adjacency to 10.255.1.23 (s3) went down 38 times in the last day | the stalls' symptom: acknowledge with the cause (C1485), or it ages out of the day |
+| r1's OSPF adjacency to 10.255.1.24 (s4) went down 13 times | the same |
+| r1's OSPF adjacency to 10.255.1.13 (r3) went down once | at 08:52, inside the backup: acknowledge with that cause |
+| The network's last baseline was not earned (pipeline) | step 6's batch failed on s3; a later Save All earns one (after s3's Retry) |
+| 9 new host keys accepted during the lab host reboot and redeploy window | review each device's new key against the one it replaced, then acknowledge |
+| NetBox holds less than r7's committed configuration (1 interface, 2 addresses) | Import into NetBox for r7 (now possible: C1492; its VLAN waits on C1424's permissions) |
+| 2 alerts began together (12:01 UTC) | read the members together and acknowledge with the cause |
+
+The "Log redaction is not working" row seen once during the night was a script process's own
+false alarm (C1493): a fresh process reads redaction healthy, and the app's list does not carry
+it.
+
+### 8. The open-findings count
+
+**651 open** (A 4, B 36, UNKNOWN 61, C 550), from 650 at the run's start (06:2x UTC). Closed
+overnight: C1497, C1478, C1499, C1487, C1450, C1442, C1492, C1494, C887, C1477, C1489, C1504,
+C1479, C1508, and C1503 found and closed. Opened and still open: C1498, C1500, C1501, C1502,
+C1505, C1506, C1507, C1509, C1510, C1511, C1512. C875 changed by design and held open for five clean runs;
+C1476's camera members built, the rest open.
+
 ## 2026-10-20, overnight run 08:05 to ~14:00 UTC (02:05 to 08:00 UTC−6): the morning report
 
 The operator's brief: unattended, no device, Kea, NetBox or lab-host change; Mercury updates
