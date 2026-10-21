@@ -47,7 +47,9 @@
             {%- elif r.new %}{{ r.new.n }} gap(s): too few to measure; {{ r.new.assumed_rate }} assumed
             {%- endif %}{% if r.restarts %}; {{ r.restarts }} restart(s) excluded{% endif %}</td>
           <td>{{ r.check }}</td>
-          <td>{% if r.new %}<input type="checkbox" name="pick" value="{{ r.device }}" id="hb-pick-{{ r.device }}" aria-label="Write {{ r.device }}'s new window"{% if r.needs %} checked{% endif %}>{% else %}<span class="muted">its rule goes</span>{% endif %}</td>
+          {#- C1489: an INSEPARABLE device needs a window no window can satisfy, so it is never
+              ticked by default; its tick stays for a person who chooses it. -#}
+          <td>{% if r.new %}<input type="checkbox" name="pick" value="{{ r.device }}" id="hb-pick-{{ r.device }}" aria-label="Write {{ r.device }}'s new window"{% if r.needs and r.new.basis != 'inseparable' %} checked{% endif %}>{% if r.new.basis == 'inseparable' %} <span class="muted">not ticked: its gaps overlap one miss and two, so no window is right; the cause is the device's clock (C1318)</span>{% endif %}{% else %}<span class="muted">its rule goes</span>{% endif %}</td>
         </tr>
         {%- endfor %}
       </tbody>

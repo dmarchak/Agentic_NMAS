@@ -305,6 +305,27 @@ class TestATickedWrite:
                      picked=[], bound=p["bound"])
         assert not lab["written"].exists()
 
+    def test_an_inseparable_device_is_never_ticked_by_default(self, lab, monkeypatch):
+        """C1489 (the operator, 2026-10-21 04:16 UTC): s3 drew ticked at 1568 s right after a
+        write, where the check calls it INSEPARABLE: no window tells one miss from two. A
+        device that needs a window no window can satisfy is not ticked; the row says why, and
+        its tick stays for a person who chooses it."""
+        import app as A
+        HW, real = lab["HW"], lab["HW"].plan
+
+        def plan(*a, **k):
+            p = real(*a, **k)
+            for r in p["rows"]:
+                if r["device"] == "s3":
+                    r["needs"], r["new"] = True, dict(r["new"], basis="inseparable")
+            return p
+        monkeypatch.setattr(HW, "plan", plan)
+        page = A.app.test_client().get("/v2/monitoring/heartbeat").get_data(as_text=True)
+        s3 = re.search(r'<input[^>]*id="hb-pick-s3"[^>]*>', page).group(0)
+        s9 = re.search(r'<input[^>]*id="hb-pick-s9"[^>]*>', page).group(0)
+        assert "checked" not in s3 and "checked" in s9, (s3, s9)
+        assert "no window is right; the cause is the device's clock (C1318)" in page
+
     def test_the_page_ticks_what_needs_a_window_and_posts_the_ticks(self, lab):
         import app as A
         c = A.app.test_client()
