@@ -1379,8 +1379,8 @@ class TestHeartbeatCards(_Cards):
     lab = hosted(_hb.lab)
 
     CASES = {
-        "heartbeat": ("heartbeat.html", "Write the re-measured windows",
-                      r"Write the re-measured windows", "data: every window is current"),
+        "heartbeat": ("heartbeat.html", "Write the ticked windows",
+                      r"Write the ticked windows", "data: every window is current"),
     }
 
     def _page(self):

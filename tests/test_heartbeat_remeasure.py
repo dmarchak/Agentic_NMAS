@@ -199,3 +199,66 @@ class TestOnlyWhatNeedsIt:
         with pytest.raises(lab["HW"].Refused, match="nothing was written"):
             lab["HW"].apply(p["fingerprint"], "op@example.com", lab["H"], str(lab["installed"]))
         assert not lab["written"].exists()
+
+
+class TestATickedWrite:
+    """C1482 (the operator, 2026-10-21, Lab 8): with ten devices at 300 s a heartbeat arrives
+    about every 30 s and a measure takes 10 to 15 s, so a confirm bound to the whole file
+    (every rule's description carries its gap count) was refused three times running, and s3's
+    window moved between previews. A ticked write binds each ticked device to the window the
+    preview showed, and every other device keeps the rule Grafana runs now."""
+
+    @staticmethod
+    def _rules(text):
+        import yaml
+        doc = yaml.safe_load(text) or {}
+        return {r["labels"]["device"]: r for g in doc["groups"] for r in g["rules"]}
+
+    def test_a_ticked_write_keeps_the_others_installed_rule_while_their_measure_moves(self, lab):
+        HW = lab["HW"]
+        p = _plan(lab)
+        lab["state"]["arrivals"].append(lab["state"]["arrivals"][-1] + 530.0)
+        # The whole-file confirm races the heartbeat that just arrived...
+        with pytest.raises(HW.Refused, match="moved since the preview"):
+            HW.apply(p["fingerprint"], "op@example.com", lab["H"], str(lab["installed"]))
+        # ...and the ticked one writes s9 alone, s3 as Grafana runs it.
+        out = HW.apply(p["fingerprint"], "op@example.com", lab["H"], str(lab["installed"]),
+                       picked=["s9"], bound=p["bound"])
+        assert out["outcome"] == "written"
+        written = self._rules(lab["written"].read_text())
+        installed = self._rules(lab["installed"].read_text())
+        assert written["s3"] == installed["s3"]
+        assert written["s9"]["labels"]["window_basis"] == "provisional"
+        assert HW.last_written()["picked"] == ["s9"]
+        assert set(HW.last_written()["windows"]) == {"s9"}
+
+    def test_a_ticked_window_that_moved_is_refused_naming_both(self, lab):
+        HW = lab["HW"]
+        p = _plan(lab)
+        with pytest.raises(HW.Refused, match=r"s9's window moved since the preview: previewed "
+                                             r"1 s provisional, measured now " +
+                                             re.escape(p["bound"]["s9"])):
+            HW.apply(p["fingerprint"], "op@example.com", lab["H"], str(lab["installed"]),
+                     picked=["s9"], bound={"s9": "1 s provisional"})
+        assert not lab["written"].exists()
+
+    def test_nothing_ticked_writes_nothing(self, lab):
+        HW = lab["HW"]
+        p = _plan(lab)
+        with pytest.raises(HW.Refused, match="no device was ticked"):
+            HW.apply(p["fingerprint"], "op@example.com", lab["H"], str(lab["installed"]),
+                     picked=[], bound=p["bound"])
+        assert not lab["written"].exists()
+
+    def test_the_page_ticks_what_needs_a_window_and_posts_the_ticks(self, lab):
+        import app as A
+        c = A.app.test_client()
+        page = c.get("/v2/monitoring/heartbeat").get_data(as_text=True)
+        s9 = re.search(r'<input[^>]*id="hb-pick-s9"[^>]*>', page).group(0)
+        s3 = re.search(r'<input[^>]*id="hb-pick-s3"[^>]*>', page).group(0)
+        assert 'name="pick"' in s9 and "checked" in s9 and "checked" not in s3
+        body = json.loads(re.search(r"data-body='([^']*)'", page).group(1).replace("&#34;", '"'))
+        assert set(body["bound"]) == {"s3", "s9"}
+        r = c.post("/v2/monitoring/heartbeat/apply", json=dict(body, picked=["s9"]))
+        assert r.status_code == 200, r.get_json()
+        assert set(self._rules(lab["written"].read_text())) == {"s3", "s9"}

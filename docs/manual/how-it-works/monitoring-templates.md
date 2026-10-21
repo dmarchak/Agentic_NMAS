@@ -167,8 +167,12 @@ heartbeat stops; the tool reads Grafana's alerts every minute and the stopped he
 Needs attention row. An hourly check on the host (`nmas-heartbeat-check`, a systemd timer)
 re-measures each window; when a device's rate has moved, job health raises a row whose
 action opens the re-measure, which writes new rules as you and names the one host step that
-installs them in Grafana. That host step is still a person's: an automatic re-measure and
-install is decided, and not built.
+installs them in Grafana. Its Write column is ticked for each device whose check fails. Only
+the ticked devices' windows are written; every other device keeps the rule Grafana runs now.
+At the confirm, each ticked device is measured again, and if its window moved since the
+preview, nothing is written and the refusal names both windows. A heartbeat arriving
+elsewhere in the fleet does not move the confirm. That host step is still a person's: an
+automatic re-measure and install is decided, and not built.
 
 ## Propose the profile {#propose}
 

@@ -626,6 +626,17 @@ class TestPersistOnTheDevice:
         out = _persist(_Conn(startup="", save_raises=True))
         assert not out["ok"] and out["state"] == "unknown"
 
+    def test_a_failure_with_an_empty_message_still_names_its_cause(self):
+        """C1488 (Save All, 2026-10-21 03:34 UTC): r7's save died with an exception whose
+        message was empty, and the result read "the save or its read-back could not run: " with
+        nothing after it. The exception's type is the cause a person can act on."""
+        def connect(**kw):
+            raise TimeoutError()
+        from modules.nsot.onboard import persist_on_device
+        out = persist_on_device("203.0.113.31", "admin", "x", "x", "cisco_xe", connect=connect)
+        assert out["state"] == "unknown"
+        assert out["detail"].endswith("could not run: TimeoutError (no message)"), out["detail"]
+
 
 class TestPhaseTwoWaitsForIt:
     def test_the_step_sits_after_both_device_changes_and_before_the_golden(self):

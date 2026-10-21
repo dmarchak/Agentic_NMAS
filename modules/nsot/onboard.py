@@ -3598,8 +3598,11 @@ def persist_on_device(mgmt_ip: str, username: str, password: str, secret: str,
         finally:
             conn.disconnect()
     except Exception as exc:                   # noqa: BLE001
-        log.error("phase2: persisting on %s failed: %s", mgmt_ip, exc)
-        out["detail"] = f"the save or its read-back could not run: {exc}"
+        # The type always (C1488): a Save All failure raised with an empty message, and the
+        # reason read "could not run: " with nothing after it.
+        why = f"{type(exc).__name__}: {exc}" if str(exc) else f"{type(exc).__name__} (no message)"
+        log.error("phase2: persisting on %s failed: %s", mgmt_ip, why)
+        out["detail"] = f"the save or its read-back could not run: {why}"
         return out
 
     out.update(startup_carries(startup, running, after_save=True))

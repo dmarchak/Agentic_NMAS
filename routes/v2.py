@@ -1846,7 +1846,10 @@ def heartbeat_apply():
 
     data = request.get_json(silent=True) or {}
     try:
-        out = HW.apply(data.get("fingerprint") or "", identity.request_actor())
+        picked = data.get("picked")
+        out = HW.apply(data.get("fingerprint") or "", identity.request_actor(),
+                       picked=picked if isinstance(picked, list) else None,
+                       bound=data.get("bound") if isinstance(data.get("bound"), dict) else None)
     except HW.Refused as exc:
         return jsonify({"ok": False, "error": str(exc)}), 409
     return jsonify({"ok": True, **out})

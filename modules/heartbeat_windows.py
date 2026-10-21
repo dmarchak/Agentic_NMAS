@@ -182,8 +182,39 @@ def plan(H=None, installed_path: str = "") -> dict:
             "heartbeat": heartbeat, "not_expected": list(not_expected), "text": text,
             "fingerprint": _sha(text), "changes": sum(1 for r in rows if r["changes"]),
             "needs": sum(1 for r in rows if r["needs"]),
+            "bound": {r["device"]: _bound(r["new"]) for r in rows if r["new"]},
+            "installed_text": installed_text,
             "installed_sha": _sha(installed_text), "written_path": H.OUT,
             "installed_path": installed_path}
+
+
+def _bound(new: dict) -> str:
+    """What a confirm of one device is bound to: the window it writes and its basis, never the
+    gap counts in the rule's description, which move on every heartbeat (C1482: with ten devices
+    at 300 s one arrives about every 30 s, and a measure takes 10 to 15 s, so a confirm bound to
+    the whole file never matched)."""
+    return f"{(new or {}).get('window')} s {(new or {}).get('basis')}"
+
+
+def _picked_text(fresh: dict, picked: list, H) -> str:
+    """The rules file for a PICKED write: each picked device's new rule, every other device's
+    INSTALLED rule as Grafana runs it now (byte for byte through the YAML), and no rule for a
+    device the generator no longer measures (retired, or no longer told to heartbeat), as the
+    whole-file write drops it. A device neither picked nor installed gets no rule."""
+    import yaml
+
+    new_doc = yaml.safe_load(fresh["text"]) or {}
+    old_doc = yaml.safe_load(fresh.get("installed_text") or "") or {}
+
+    def by_device(doc):
+        return {r.get("labels", {}).get("device"): r
+                for g in doc.get("groups") or [] for r in g.get("rules") or []}
+
+    new_rules, old_rules = by_device(new_doc), by_device(old_doc)
+    rules = [new_rules[d] if d in picked else old_rules[d]
+             for d in sorted(new_rules) if d in picked or d in old_rules]
+    group = dict((new_doc.get("groups") or [{}])[0], rules=rules)
+    return H.render(dict(new_doc, groups=[group]))
 
 
 #: Every heartbeat rule's uid starts so (`nmas-heartbeat-rules`' `rule_for`): the range a
@@ -213,9 +244,14 @@ def _write_deletes(text: str, written_path: str, installed_path: str, live=...) 
             "said": got["said"]}
 
 
-def apply(fingerprint: str, actor: str, H=None, installed_path: str = "") -> dict:
+def apply(fingerprint: str, actor: str, H=None, installed_path: str = "",
+          picked=None, bound=None) -> dict:
     """Measure again, refuse a moved plan, write the generated file and record
-    it. Returns the host step that installs it."""
+    it. Returns the host step that installs it.
+
+    *picked* (C1482, the page's ticks): only those devices' new windows are written, each bound
+    to the window and basis the preview showed (*bound*), and every other device keeps its
+    installed rule. Without it the whole file is written, bound to the whole preview."""
     from modules.filestore import write_atomic
 
     if not actor:
@@ -223,19 +259,37 @@ def apply(fingerprint: str, actor: str, H=None, installed_path: str = "") -> dic
     installed_path = installed_path or INSTALLED
     H = H or _script()
     fresh = plan(H, installed_path)
-    if fresh["fingerprint"] != fingerprint:
-        raise Refused("the measurement moved since the preview (a heartbeat arrived, or a device "
-                      "changed): nothing was written; preview again")
-    if not fresh["needs"]:
-        raise Refused("every installed window still tells one missed heartbeat from two: "
-                      "nothing was written (a write costs a Grafana restart)")
+    if picked is None:
+        if fresh["fingerprint"] != fingerprint:
+            raise Refused("the measurement moved since the preview (a heartbeat arrived, or a "
+                          "device changed): nothing was written; preview again")
+        if not fresh["needs"]:
+            raise Refused("every installed window still tells one missed heartbeat from two: "
+                          "nothing was written (a write costs a Grafana restart)")
+        text, written = fresh["text"], {r["device"] for r in fresh["rows"] if r["new"]}
+    else:
+        picked = sorted({str(p) for p in picked if str(p).strip()})
+        if not picked:
+            raise Refused("no device was ticked: nothing was written")
+        bound = bound or {}
+        for device in picked:
+            if device not in fresh["bound"]:
+                raise Refused(f"{device} is not measured now (not told to heartbeat, or gone): "
+                              "nothing was written; preview again")
+            if bound.get(device) != fresh["bound"][device]:
+                raise Refused(f"{device}'s window moved since the preview: previewed "
+                              f"{bound.get(device) or 'nothing'}, measured now "
+                              f"{fresh['bound'][device]}; nothing was written; preview again")
+        text, written = _picked_text(fresh, picked, H), set(picked)
     os.makedirs(os.path.dirname(fresh["written_path"]), exist_ok=True)
-    write_atomic(fresh["written_path"], fresh["text"])
-    deletes = _write_deletes(fresh["text"], fresh["written_path"], installed_path)
+    write_atomic(fresh["written_path"], text)
+    deletes = _write_deletes(text, fresh["written_path"], installed_path)
     row = {"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "actor": actor,
-           "fingerprint": fingerprint, "path": fresh["written_path"],
-           "windows": {r["device"]: (r["new"] or {}).get("window") for r in fresh["rows"]},
-           "changes": fresh["changes"], "deletes": deletes["uids"]}
+           "fingerprint": fingerprint if picked is None else _sha(text),
+           "path": fresh["written_path"],
+           "windows": {r["device"]: (r["new"] or {}).get("window") for r in fresh["rows"]
+                       if r["device"] in written},
+           "picked": picked, "changes": fresh["changes"], "deletes": deletes["uids"]}
     recorded = True
     try:
         from modules import records_migrate
