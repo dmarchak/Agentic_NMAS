@@ -209,6 +209,10 @@ redistribute {{ r.protocol }}{% if r.process %} {{ r.process }}{% endif %}{% if 
 interface {{ i.name }}
 {% if i.description %} description {{ i.description }}
 {% endif %}
+{#- `encapsulation` before every address line (C1478): IOS refuses an address on a LAN
+    subinterface that has no `encapsulation dot1Q` yet, and the device prints it here. -#}
+{%- if i.encapsulation %} encapsulation {{ i.encapsulation }}
+{% endif %}
 {%- if i.no_switchport %} no switchport
 {% endif %}
 {%- if i.switchport_mode %} switchport mode {{ i.switchport_mode }}
@@ -235,8 +239,6 @@ interface {{ i.name }}
 {%- if i.mtu %} mtu {{ i.mtu }}
 {% endif %}
 {%- if i.negotiation %} negotiation {{ i.negotiation }}
-{% endif %}
-{%- if i.encapsulation %} encapsulation {{ i.encapsulation }}
 {% endif %}
 {%- if i.channel_group %} channel-group {{ i.channel_group }}
 {% endif %}

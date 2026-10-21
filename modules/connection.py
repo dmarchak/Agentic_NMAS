@@ -71,6 +71,15 @@ def _first_line(exc: BaseException) -> str:
     return (str(exc).strip().splitlines() or [type(exc).__name__])[0][:160]
 
 
+def failure_words(exc: BaseException) -> str:
+    """*exc* as a record says it: its message, or its type when it carries none. A session that
+    died or never opened can raise an exception with no message (a switch's deploy on
+    2026-10-21 recorded "<device> (<address>): " and nothing after it, C1497; a router's save
+    the same, C1488), and an empty reason cannot tell a stall from a refused credential."""
+    text = str(exc).strip()
+    return text if text else f"{type(exc).__name__} (no message)"
+
+
 def read_floor() -> float:
     """The least any read on a tool session may wait: the config read's
     measured bound (`nsot_config_read_timeout`, 120 s), never Netmiko's fixed

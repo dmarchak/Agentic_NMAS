@@ -1,0 +1,18 @@
+{
+  "summary": "hold-queue 256 out on s1 Gi1/1 (the access port to h2, off the management path): the vIOS acceptance test of the hold_queue key before s3's Gi1/1, whose output queue reads 0/0 and drops (C1485)",
+  "steps": [
+    {
+      "path": [
+        "interfaces",
+        "GigabitEthernet1/1",
+        "hold_queue"
+      ],
+      "before": {
+        "__absent__": true
+      },
+      "after": [
+        "256 out"
+      ]
+    }
+  ]
+}

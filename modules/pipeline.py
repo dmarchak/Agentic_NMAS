@@ -123,6 +123,14 @@ class PipelineStageError(PipelineError):
     """Raised by a stage handler to signal failure and halt the pipeline."""
 
 
+def _why(exc: BaseException) -> str:
+    """*exc* as a stage records it: its message, or its type when it carries none (C1497,
+    `connection.failure_words`; imported when a stage fails, as this module imports the
+    connection module)."""
+    from modules.connection import failure_words
+    return failure_words(exc)
+
+
 # ---------------------------------------------------------------------------
 # Shared context (mutable state passed through every stage)
 # ---------------------------------------------------------------------------
@@ -544,8 +552,8 @@ def _stage_netbox_query(ctx: PipelineContext) -> None:
                 errors.append(f"{hostname}: {built['error']}")
         except Exception as exc:
             intended[ip] = {"device": None, "interfaces": [], "site": {},
-                            "context": {}, "error": str(exc)}
-            errors.append(f"{hostname}: {exc}")
+                            "context": {}, "error": _why(exc)}
+            errors.append(f"{hostname}: {_why(exc)}")
 
     ctx.intended_config = {"available": True, "devices": intended}
 
@@ -744,8 +752,8 @@ def _stage_pre_snapshot(ctx: PipelineContext) -> None:
                 snap.get("interfaces", {}).get("up_count", "?"),
             )
         except Exception as exc:
-            errors.append(f"{hostname} ({ip}): {exc}")
-            log.error("pipeline[4/pre_snapshot]: FAILED for %s: %s", hostname, exc)
+            errors.append(f"{hostname} ({ip}): {_why(exc)}")
+            log.error("pipeline[4/pre_snapshot]: FAILED for %s: %s", hostname, _why(exc))
 
     if errors:
         raise PipelineStageError(
@@ -885,9 +893,9 @@ def _stage_deploy(ctx: PipelineContext) -> None:
             ctx.push_results[ip] = {"ok": False, "error": "canary sanity check failed"}
             raise
         except Exception as exc:
-            ctx.push_results[ip] = {"ok": False, "error": str(exc)}
+            ctx.push_results[ip] = {"ok": False, "error": _why(exc)}
             raise PipelineStageError(
-                f"Deploy failed on {'canary ' if is_canary else ''}{hostname}: {exc}"
+                f"Deploy failed on {'canary ' if is_canary else ''}{hostname}: {_why(exc)}"
             ) from exc
 
 
@@ -1089,8 +1097,8 @@ def _stage_post_snapshot(ctx: PipelineContext) -> None:
             ctx.post_snapshots[ip] = snap
             log.info("pipeline[7/post_snapshot]: %s OK", hostname)
         except Exception as exc:
-            errors.append(f"{hostname}: {exc}")
-            log.error("pipeline[7/post_snapshot]: FAILED for %s: %s", hostname, exc)
+            errors.append(f"{hostname}: {_why(exc)}")
+            log.error("pipeline[7/post_snapshot]: FAILED for %s: %s", hostname, _why(exc))
 
     if errors:
         raise PipelineStageError(
@@ -1915,7 +1923,7 @@ def _capture_failure_state(ctx: PipelineContext) -> None:
             else:
                 log.info("pipeline[failure-state]: %s unchanged", hostname)
         except Exception as exc:               # noqa: BLE001
-            entry.update({"error": str(exc), "device_changed": None})
+            entry.update({"error": _why(exc), "device_changed": None})
             log.error("pipeline[failure-state]: could not read %s back: %s",
                       hostname, exc)
             # A fresh connection could not read it either, so the pooled one is
@@ -1956,7 +1964,7 @@ def _rollback_readback(ctx, dev, pushed, pre_cfg, units=(), recreated=()) -> dic
             dev, lambda c: c.send_command("show running-config", read_timeout=timeout))
     except Exception as exc:                    # noqa: BLE001
         return {"state": "sent_unverified",
-                "detail": f"the device could not be read back: {exc}", "remaining": []}
+                "detail": f"the device could not be read back: {_why(exc)}", "remaining": []}
     from modules.nsot.deploy import landed_between
     remaining = rollback_commands(pushed, pre_cfg, landed=landed_between(pre_cfg, post or ""))
     if units:
@@ -2144,9 +2152,9 @@ def _stage_rollback(ctx: PipelineContext) -> None:
                 log.error("pipeline[rollback]: %s NOT confirmed restored: %s", hostname,
                           ctx.rollback_outcome[ip]["detail"])
         except Exception as exc:
-            ctx.rollback_failures[ip] = str(exc)
+            ctx.rollback_failures[ip] = _why(exc)
             ctx.rollback_outcome[ip] = {"state": "failed", "remaining": [],
-                                        "detail": str(exc)}
+                                        "detail": _why(exc)}
             log.error("pipeline[rollback]: FAILED to restore %s: %s", hostname, exc)
 
     # Rollback restored the DEVICE. The intent still says the change should be
@@ -2256,7 +2264,7 @@ def _stage_save_startup(ctx: PipelineContext) -> None:
                                     decrypt_field(dev.get("secret", "")),
                                     dev.get("device_type", ""))
         except Exception as exc:              # noqa: BLE001
-            got = {"ok": False, "detail": str(exc)}
+            got = {"ok": False, "detail": _why(exc)}
         if got.get("ok"):
             ctx.saved_startup[ip] = {"ok": True}
             log.info("pipeline[save_startup]: %s saved to startup after verify", hostname)
@@ -2523,7 +2531,7 @@ def _capture_operational_snapshot(conn, ip: str, hostname: str) -> dict:
             "states":     interface_states(intf_out),
         }
     except Exception as exc:
-        snap["interfaces"] = {"error": str(exc), "up_count": -1, "down_count": -1}
+        snap["interfaces"] = {"error": _why(exc), "up_count": -1, "down_count": -1}
 
     # ── Route table size ──────────────────────────────────────────────────
     try:
@@ -2531,7 +2539,7 @@ def _capture_operational_snapshot(conn, ip: str, hostname: str) -> dict:
         total     = _parse_route_total(route_out)
         snap["routes"] = {"output": route_out[:1000], "total_count": total}
     except Exception as exc:
-        snap["routes"] = {"error": str(exc), "total_count": -1}
+        snap["routes"] = {"error": _why(exc), "total_count": -1}
 
     return snap
 
