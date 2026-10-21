@@ -194,7 +194,12 @@ class TestTheNameLeavesTheScreens:
             html = re.sub(r"""<input type="hidden" name="loaded" value='[^']*'>""", "", html)
             if nmas_shown(html):
                 found[path] = nmas_shown(html)
-            title = re.search(r"<title>(.*?)</title>", html, re.S)
+            # The PAGE's title, anchored in its <head>: an SVG <title> (a map node's tooltip,
+            # "Mercury: server, this host…" when the map draws Mercury itself) is not one, and a
+            # fragment has no head (the gate, 2026-10-21: an earlier test's map data in the
+            # worker made the first <title> on /v2/topology/expected a node's).
+            head = re.search(r"<head\b.*?</head>", html, re.S)
+            title = re.search(r"<title>(.*?)</title>", head.group(0), re.S) if head else None
             if title:
                 titled += 1
                 assert title.group(1).strip().endswith(brand.PRODUCT_SHORT), (path, title.group(1))

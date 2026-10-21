@@ -174,6 +174,10 @@ SHAPES = (
     Shape("interface.ipv6-rip-default-originate", "interface", "leaf",
           r"^ipv6 rip \S+ default-information (originate|only)( metric \d+)?$"),
     Shape("interface.shutdown", "interface", "leaf", r"^shutdown$"),
+    # An interface's hold queue (C1521, the operator 2026-10-21): C1485 deploys
+    # `hold-queue 256 out` to a switch's port, the management uplink among them, and only a
+    # measured removal makes taking it back a Mercury operation rather than a console one.
+    Shape("interface.hold-queue", "interface", "leaf", r"^hold-queue \d+ (in|out)$"),
     # Measured like every shape; a static route that may be the manager's path stays REFUSED
     # by the repair-path class (`_management_routes`, C1422, C531 part 2).
     Shape("global.ip-route", "global", "leaf", r"^ip route .+$"),

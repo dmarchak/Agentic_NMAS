@@ -550,3 +550,47 @@ class TestTheCdpRunFlag:
         ios = program(self.R6_LIKE, [_unit([], "cdp run")], dialect="cisco_ios")
         assert ios["commands"] == []
         assert "scripts/nmas-removal-probe --shape global.cdp-run" in ios["refused"][0]["reason"]
+
+
+class TestTheHoldQueue:
+    """C1521 (the operator, 2026-10-21): C1485 deploys `hold-queue 256 out` to a switch's port,
+    s3's management uplink among them, and Mercury could not take it back: no removal shape
+    matched it, so Mode B refused it and the rollback was the console. The shape
+    `interface.hold-queue` is refused, naming the probe, until the probe measures it on the
+    platform; once measured exact, the removal is `no` plus the line. On s1's REAL capture
+    (tests/fixtures/configs/fleet/s1.cfg) with the acceptance test's line under Gi1/1."""
+
+    PORT = "interface GigabitEthernet1/1"
+    LINE = " hold-queue 256 out"
+
+    @classmethod
+    def _configs(cls):
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "configs",
+                            "fleet", "s1.cfg")
+        with open(path, encoding="utf-8") as fh:
+            intent = fh.read()
+        at = intent.index(cls.PORT + "\n") + len(cls.PORT) + 1
+        return intent, intent[:at] + cls.LINE + "\n" + intent[at:]
+
+    def test_the_line_is_the_one_candidate_and_an_instance_of_the_shape(self):
+        intent, running = self._configs()
+        cands = RM.candidates(intent, running)
+        assert [(c["chain"], c["line"]) for c in cands] == [([self.PORT], self.LINE)]
+        assert RM.shape_for([self.PORT], self.LINE, "leaf").key == "interface.hold-queue"
+        assert RM.shape_for([self.PORT], " hold-queue 75 in", "leaf").key == \
+            "interface.hold-queue"
+
+    @pytest.mark.real_measurements
+    def test_refused_until_the_probe_measures_it_naming_the_probe(self):
+        _intent, running = self._configs()
+        out = program(running, [_unit([self.PORT], self.LINE)], dialect="cisco_ios")
+        assert out["commands"] == []
+        assert "scripts/nmas-removal-probe --shape interface.hold-queue" in \
+            out["refused"][0]["reason"]
+
+    def test_once_measured_exact_it_is_no_plus_the_line(self, monkeypatch):
+        _measure(monkeypatch, dialect="cisco_ios")
+        _intent, running = self._configs()
+        out = program(running, [_unit([self.PORT], self.LINE)], dialect="cisco_ios")
+        assert not out["refused"], out
+        assert out["commands"][:2] == [self.PORT, " no hold-queue 256 out"], out

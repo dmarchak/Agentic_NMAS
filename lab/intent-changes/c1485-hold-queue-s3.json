@@ -1,0 +1,18 @@
+{
+  "summary": "hold-queue 256 out on s3 Gi1/1 (the management uplink, NMAS via br-mgmt to the hypervisor's vmbr10; its output queue reads 0/0 and drops), after s1's acceptance test read 0/256 (C1485). The key is ADDED: s3's committed intent holds no hold_queue key",
+  "steps": [
+    {
+      "path": [
+        "interfaces",
+        "GigabitEthernet1/1",
+        "hold_queue"
+      ],
+      "before": {
+        "__absent__": true
+      },
+      "after": [
+        "256 out"
+      ]
+    }
+  ]
+}

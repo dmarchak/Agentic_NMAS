@@ -199,14 +199,18 @@ C1498), then Phase 3 (the morning report's decision 2).
     being measured.
   - **The first one, with its before and after** (s1):
     ```
-    p=$(docker inspect -f '{{.State.Pid}}' clab-rcn-lab1-s1)
-    for t in /proc/$p/task/*; do taskset -pc ${t##*/}; done | sort -u -k6   # before
+    q=$(docker top clab-rcn-lab1-s1 -eo pid,comm | awk '/qemu/{print $1}')   # qemu, not init
+    for t in /proc/$q/task/*; do taskset -pc ${t##*/}; done | sort -u -k6   # before: every thread 20
     docker update --cpuset-cpus 20 clab-rcn-lab1-s1
     docker inspect -f '{{.HostConfig.CpusetCpus}}' clab-rcn-lab1-s1      # 20
-    cat /sys/fs/cgroup$(cut -d: -f3 /proc/$p/cgroup)/cpuset.cpus.effective   # 20
-    for t in /proc/$p/task/*; do taskset -pc ${t##*/}; done | sort -u -k6   # after: every thread 20
+    cat /sys/fs/cgroup$(cut -d: -f3 /proc/$q/cgroup)/cpuset.cpus.effective   # 20
+    for t in /proc/$q/task/*; do taskset -pc ${t##*/}; done | sort -u -k6   # after: every thread 20
     sudo /usr/local/lib/lab-pinning/check-pinning.sh
     ```
+    **Corrected 2026-10-21 after the run (the operator):** the first version read `$p`, the
+    container's init (`docker inspect … .State.Pid`), which is the launcher, so its before and
+    after listed one line (0-23 to 20) and qemu's threads were covered only by check-pinning.
+    qemu's pid is `docker top`'s, as change 2's revert reads it.
   - **Then, one at a time, the check after each:**
     ```
     docker update --cpuset-cpus 21 clab-rcn-lab1-s2 && sudo /usr/local/lib/lab-pinning/check-pinning.sh
@@ -216,6 +220,12 @@ C1498), then Phase 3 (the morning report's decision 2).
     for n in h1 h2 h3 h4 h5 web; do docker update --cpuset-cpus 0-19 clab-rcn-lab1-$n; done && sudo /usr/local/lib/lab-pinning/check-pinning.sh
     ```
     Expected at the end: PINNING HOLDS, every node "applied by the container".
+  - **RUN by the operator, 2026-10-21, PINNING HOLDS at ~19:04 UTC:** s1 20, s2 21, s3 22, s4 23;
+    r1 to r8, h1 to h5 and web 0 to 19. The final check: every container "runs within CPUs …
+    (applied by the container)", all 12 `kvm-pit` threads in place with the same pids before and
+    after (nothing restarted), the timer active and its last run a success. The intermediate
+    checks showed LOST only for containers not yet updated, fewer at each step. Its hour,
+    19:04 to 20:04, is measured with the same script (change 5).
   - **Revert** (each container back to the whole VM, as before): `docker update --cpuset-cpus
     0-23 clab-rcn-lab1-<node>`. An empty value cannot be written back, and 0-23 is what the
     empty set meant. A full redeploy applies the lab file's declared sets either way.

@@ -219,6 +219,13 @@ EXEMPLARS = {
         "setup": [LOOP, " shutdown"],
         "unit": {"chain": [LOOP], "line": " shutdown"},
         "teardown": ["no " + LOOP]}],
+    # C1521: the scratch on Loopback199 like every interface shape. A device that rejects a
+    # hold queue on a loopback reads `unsupported` here, which is a fact about the scratch
+    # interface, not the port C1485 changes: read the run before recording it.
+    "interface.hold-queue": [{
+        "setup": [LOOP, " hold-queue 199 out"],
+        "unit": {"chain": [LOOP], "line": " hold-queue 199 out"},
+        "teardown": ["no " + LOOP]}],
     # Routes to Null0 for documentation prefixes: nothing is sent anywhere. Refused on a
     # device that redistributes static routes, where the scratch would be advertised.
     "global.ip-route": [
