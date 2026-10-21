@@ -642,3 +642,17 @@ Each is named with its finding, so the recording can say why it is there.
     (g, C1424).
 13. Job health › `nmas-heartbeat-check`: its last run's reason (h3).
 14. Topology › Single points of failure: the weak points the map names after d2 (D8).
+
+**Filled 2026-10-21 by the overnight run (read on the host, ~09:4x UTC):**
+- **1.** The host runs `224e18e9` (deployed 09:39:47 UTC). It carries C1442, C1460's part 1
+  (c05330b0, on main since 2026-10-20), C1476's camera members (Last verify, Last abandon, the
+  heartbeat re-measure, band acknowledgements), C1487, C1492 and C1494. Not C1479. Live: r6
+  Gi2 now reads 10.255.4.2/30 and r7 Gi2 10.255.4.6/30 in committed intent (the lease), and
+  Neighbours expects OSPF between r4 Gi5 and r6 Gi2.
+- **2.** Deployed: Monitoring › IP SLA's "Committed, not yet on the device" lists s3 with
+  Retry s3 (C1499).
+- **8.** `_common.j2` is Behind (`stale`, the shipped version of 177b78ed). The bring preview
+  measured every one of the 10 devices rendering the same with the shipped file; it revokes
+  the two base templates' approvals (C1498's row).
+- **13.** `nmas-heartbeat-check` fails on INSEPARABLE s3 (64 consecutive failures by 09:39 UTC),
+  the C1318 jitter; it remains.
