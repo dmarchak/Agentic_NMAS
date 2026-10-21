@@ -49,6 +49,26 @@
   {%- endif %}
 </section>
 
+{%- if unsent or unsent_error %}
+{#- C1499: a batch commits intent before it sends, so a device it failed to reach would match
+    the policy and vanish from this page; it stays here, with its Retry, until its golden
+    carries its intent. -#}
+<section class="card ipsla" id="ipsla-unsent">
+  <h2 class="apply-h">Committed, not yet on the device</h2>
+  {%- if unsent_error %}
+  <p class="apply-refused">Couldn't load: {{ unsent_error }}</p>
+  {%- else %}
+  <p>{{ unsent | length }} device(s) hold IP SLA probes in their committed intent that their configuration does not run: the change was committed, and sending it did not land. Retry previews that device's program alone; the row clears when its configuration carries its intent.</p>
+  <ul class="apply-not">
+    {%- for d in unsent %}
+    <li><strong>{{ d.on }}</strong>: {% for r in d.ops %}ip sla {{ r.id }} probes <code>{{ r.target }}</code> every {{ r.want }} s in intent; {% if not r.has %}the device runs no such operation{% elif r.elsewhere %}the device's probes <code>{{ r.has.target }}</code> every {{ r.has.frequency }} s{% else %}the device's runs every {{ r.has.frequency }} s{% endif %}{{ '. ' if loop.last else '; ' }}{% endfor %}
+      {%- if d.last %}Its last send {{ d.last.words }} at {{ d.last.at }}{% if d.last.reason %}: {{ d.last.reason }}{% endif %}. {% endif %}
+      <a class="btn btn-small" id="ipsla-retry-{{ d.on }}" data-op="monitoring-templates" href="{{ url_for('v2.profile_apply', list=list_name, scope='ip_sla', device=d.on) }}">Retry {{ d.on }}</a>{{ how('monitoring-templates', compact=True) }}</li>
+    {%- endfor %}
+  </ul>
+  {%- endif %}
+</section>
+{%- endif %}
 {%- if plan and plan.retunes %}
 <section class="card ipsla" id="ipsla-retunes">
   <h2 class="apply-h">Probes off the policy's frequency</h2>

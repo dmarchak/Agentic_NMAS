@@ -1614,8 +1614,13 @@ def _apply_answer(job: str, code: int = 200, started_op: str = "", refused: str 
             "is missing or empty), so where it is cannot be read. What each device received "
             "is in its receipts and in the golden history.")), 409)
     run = deploy_job.run_card(got, got["list"], q=request.args.get("q", "")) if got else None
+    # C1499: a finished batch on a scope this page previews offers each failed device's Retry:
+    # a new preview of that device alone, never a resend of this batch's hash.
+    scope = (got or {}).get("scope") or ""
+    retry = deploy_job.failed_devices(got) if scope in SCOPE_WORDS else []
     return _strict(render_template("v2/_apply_job.html", j=got, job=job, run=run,
-                                   arrivals=arrival_watch.state(job), started_op=started_op),
+                                   arrivals=arrival_watch.state(job), started_op=started_op,
+                                   retry=retry, retry_scope=scope),
                    code if got or started_op else 404)
 
 
@@ -1690,6 +1695,48 @@ def profile_apply_job(job):
 # Changing a running probe is the re-create (C290), gated on staged run 9.
 # ---------------------------------------------------------------------------
 
+def _ip_sla_unsent(ref, name: str) -> tuple:
+    """C1499: ``(rows, error)``, a row per device whose committed IP SLA intent its golden does
+    not run (`ip_sla_policy.unsent`): ``{on, ops, last}``, ``last`` its newest IP SLA send when
+    that one did not deploy (``{at, words, reason}``). Every golden read in one `cat-file`
+    batch and the receipts once, never a read per device (the scale rule)."""
+    from modules.neighbours import committed_intents
+    from modules.nsot import ip_sla_policy, receipts
+    from modules.preview_confirm import OUTCOME_WORDS
+    from modules.readers.netbox_lag import goldens_by_device
+
+    intents, err = committed_intents(ref.repo_dir)
+    if err:
+        return [], err
+    holding = {h: hv for h, hv in (intents or {}).items() if (hv or {}).get("ip_sla")}
+    if not holding:
+        return [], ""
+    goldens, _ids, gerr = goldens_by_device(name, ref, list(holding))
+    if gerr:
+        return [], gerr
+    by_on = {}
+    for r in ip_sla_policy.unsent(holding, goldens):
+        by_on.setdefault(r["on"], []).append(r)
+    if not by_on:
+        return [], ""
+    newest = {}
+    for row in receipts.read(name, limit=400).get("rows") or []:      # newest first
+        dev = row.get("device")
+        if dev in by_on and dev not in newest and row.get("scope") == ip_sla_policy.SCOPE:
+            newest[dev] = row
+    out = []
+    for on, ops in by_on.items():
+        last = newest.get(on)
+        if last and last.get("outcome") != "deployed":
+            last = {"at": (last.get("at") or "").replace("T", " ").replace("Z", " UTC"),
+                    "words": OUTCOME_WORDS.get(last.get("outcome"), last.get("outcome", "")),
+                    "reason": " ".join(str(last.get("reason") or "").split())}
+        else:
+            last = None
+        out.append({"on": on, "ops": ops, "last": last})
+    return out, ""
+
+
 def _ip_sla_ctx(req) -> dict:
     from modules.nsot import ip_sla_policy, listref, profile
     from routes.list_param import named_list
@@ -1709,6 +1756,9 @@ def _ip_sla_ctx(req) -> dict:
         ctx["error"] = f"no list named {name!r}"
         return ctx
     ctx["policy"] = ip_sla_policy.policy_view(ref)
+    # C1499: probes committed and not on their device (a send that failed after the batch
+    # committed intent), listed whatever was chosen, each with its Retry.
+    ctx["unsent"], ctx["unsent_error"] = _ip_sla_unsent(ref, name)
     if not chosen:
         # Opened from the tab: every device whose committed intent declares no
         # probe, said as such (a population the page chose is named).

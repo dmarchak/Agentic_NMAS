@@ -354,6 +354,35 @@ class TestTheConfirm:
         steps = {s["device"]: s for s in deploy_job.state(out["job"])["steps"]}
         assert steps["r6"]["state"] == "done" and steps["r6"]["outcome"] == "refused", steps["r6"]
 
+    def test_a_finished_batch_offers_retry_for_each_device_it_did_not_deploy(self, ready,
+                                                                           monkeypatch):
+        """C1499 (step 6, 2026-10-21): a batch that committed intent first and failed on one
+        device left it with no way back from the card. Each device the batch did not deploy
+        gets Retry <device>, a new preview of that device alone on the batch's scope; a
+        deployed one gets none."""
+        import routes.deploy as rd
+        from urllib.parse import parse_qs, urlsplit
+
+        from modules.nsot import capture_job
+
+        def spy(entry, list_name, rows, authorise, **kw):
+            name = entry["artifact"].device
+            if name == "r6":
+                return {"device": name, "outcome": "failed", "stage": "pre_snapshot",
+                        "reason": "Pre-snapshot failed for 1 device(s)"}
+            return {"device": name, "outcome": "deployed", "commands": ["x"]}
+        monkeypatch.setattr(rd, "_deploy_one", spy)
+        monkeypatch.setattr(rd, "_commit_batch_golden", lambda *a, **k: {})
+        _r, page = _page(ready, devices=("r2", "r6"))
+        out = _out(_confirm(ready, _body(page)))
+        assert capture_job.wait(out["job"], 20)
+        _rr, frag = _get(ready, out["url"])
+        retry = re.findall(r'id="apply-retry-([^"]+)"[^>]* href="([^"]+)"', frag)
+        assert [d for d, _h in retry] == ["r6"], frag[:3000]
+        url = urlsplit(html_mod.unescape(retry[0][1]))
+        assert url.path == "/v2/monitoring/apply" and parse_qs(url.query) == {
+            "list": ["Lab"], "scope": ["profile"], "device": ["r6"]}
+
     def test_the_confirm_refuses_what_carries_nothing(self, ready):
         r = _confirm(ready, {"order": ["r6"], "confirmations": {"r6": "x"},
                              "command_hashes": {"r6": "y"}})

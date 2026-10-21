@@ -9,7 +9,7 @@ the lab having no IP SLA policy), then the Decline… card opened as its button 
 reason typed. The board draws no phone width; at 390 the rows stack (label, why, then the
 controls) and the card's parts sit one above the other, as every op card does.
 Templates compared: templates/v2/_decline.html, templates/v2/_coverage.html, templates/v2/ip_sla.html
-Templates sha256: `0f2233126791c14baedf30641052c0457ad10cded894e220edcf02399ce2d921`
+Templates sha256: `471a9bc42cf0dbccd6342dc1b17640db8d44930d0be4766a448e790b837fa366`
 
 Compared again 2026-10-21 (C1491, the tuning sprint): `ip_sla.html` gained a section above the
 suggestions, "Probes off the policy's frequency". It lists each probe that intent holds at
@@ -20,6 +20,15 @@ controls, the suggestions' legend and the Not suggested list are as before. The 
 not on this board, so it is a deviation (below). It was compared by the template and
 `tests/test_ip_sla_policy.py`'s `TestTheFrequencyPath`, not a new shot: words and a ticked list
 in the page's existing form.
+
+Compared again 2026-10-21 (C1499, the overnight run): `ip_sla.html` gained a section above the
+frequency section, "Committed, not yet on the device". It lists each device whose committed IP
+SLA intent its configuration does not run (a send that failed after the batch committed),
+saying what intent holds and what the device runs, its last failed send's reason, and "Retry
+<device>", a link to the same scoped preview for that device alone. No region of this board
+changed. The new section is not on this board, so it is a deviation (below). Compared by the
+template and `tests/test_ip_sla_policy.py`'s `TestACommittedProbeNotOnItsDeviceStaysListed`,
+not a new shot: words and a link in the page's existing card style.
 
 Compared again 2026-10-18 (C1305, the operator's walk): Coverage's grid draws a declined cell as
 its own "declined" mark (who, when and why on hover) linking its row in this table, which now
@@ -47,5 +56,6 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Declined on Coverage | "Declined", the section, "Declined by <operator>, <date> UTC: "<reason>". Not a gap: the summary counts it as declined, never as covered or missing." Undo decline… | the same words and control | **same** |
 | Declined on the IP SLA page | a row of its probe table: "Declined by …" · Undo decline…, "no probe" | a line of the page's Not suggested list: Declined, who, when, why, Undo decline… | **deviation** (log: C718: the IP SLA page's declined device in its Not suggested list) |
 | A declined cell on the grid (C1305) | not drawn: the board draws the rows | its own "declined" mark, who and why on hover, linking its row here | **deviation** (log: Coverage: a declined cell is its own mark, linking its Undo decline row (the operator's walk, 2026-10-18)) |
+| Committed, not yet on the device (C1499) | not drawn: the board predates it | a section above the frequency section, each device whose committed probes its configuration does not run: intent's frequency and target against the device's, its last failed send's reason, and Retry <device> to the scoped preview of that device alone | **deviation** (log: IP SLA: a committed probe its device does not run stays listed with Retry) |
 | Probes off the policy's frequency (C1491) | not drawn: the board predates it | a section above the suggestions, each probe's frequency now and after with its cost, ticked, and its own commit; the preview's re-create refused until the delete is measured | **deviation** (log: IP SLA: probes off the policy's frequency get their own section) |
 | Undo decline… | the same preview with the entry removed, "Afterwards r6's IP SLA reads Not in intent again", the decline's commit kept, "Remove the decline from r6's intent" | the same | **same** |

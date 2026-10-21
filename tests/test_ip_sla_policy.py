@@ -515,6 +515,89 @@ class TestTheFrequencyPath:
         assert "global.ip-sla-operation" in text and "nmas-removal-probe" in text, text[:3000]
 
 
+class TestACommittedProbeNotOnItsDeviceStaysListed:
+    """C1499 (the operator, 2026-10-21, step 6): the batch committed six probes to 60 s, sent
+    four, and failed on s3 before anything was sent; s3's intent then matched the policy, so
+    the page no longer listed it and offered no retry. A probe committed in intent that the
+    device's golden does not run as committed stays listed, with Retry <device>."""
+
+    def test_what_each_device_runs_is_read_from_its_golden(self):
+        from modules.nsot import ip_sla_policy as P
+        assert P.running_operations(_cfg("s3")) == {
+            "1": {"target": "10.255.1.11", "frequency": 10}}
+        # IOS-XE prints the frequency under icmp-echo; the device default is never printed.
+        assert P.running_operations(_cfg("r2"))["1"] == {"target": "10.255.1.13", "frequency": 10}
+        assert P.running_operations("ip sla 4\n icmp-echo 192.0.2.4\n") == {
+            "4": {"target": "192.0.2.4", "frequency": P.DEVICE_DEFAULT_FREQUENCY}}
+
+    def test_a_retuned_probe_the_device_still_runs_at_its_old_frequency_is_unsent(self, fleet):
+        from modules.nsot import ip_sla_policy as P
+        intents, devices = fleet
+        tuned = {r["on"]: r for r in P.retunes(intents, devices, {"policy": "upstream",
+                                                                   "frequency": 60})}
+        committed = {"s3": dict(intents["s3"], ip_sla=[tuned["s3"]["op"]])}
+        assert P.unsent(committed, {"s3": _cfg("s3")}) == [
+            {"on": "s3", "id": "1", "target": "10.255.1.11", "want": 60,
+             "has": {"target": "10.255.1.11", "frequency": 10}, "elsewhere": False}]
+        # The device running what intent commits: nothing listed.
+        assert P.unsent({"s3": intents["s3"]}, {"s3": _cfg("s3")}) == []
+        # No golden: not judged. A golden without the operation: listed as absent.
+        assert P.unsent(committed, {}) == []
+        assert P.unsent(committed, {"s3": "hostname s3\n"})[0]["has"] is None
+
+    @pytest.mark.parametrize("intent_target, printed, listed", [
+        ("192.0.2.9", "192.0.2.9", False), ("192.0.2.9", "192.0.2.10", True),
+        ("2001:db8::9", "2001:DB8::9", False), ("2001:db8::9", "2001:DB8::10", True)])
+    def test_a_target_compares_as_an_address(self, intent_target, printed, listed):
+        from modules.nsot import ip_sla_policy as P
+        intent = {"x": {"ip_sla": [{"id": "5", "settings": [
+            f" icmp-echo {intent_target} source-interface Loopback0"]}]}}
+        golden = f"ip sla 5\n icmp-echo {printed} source-interface Loopback0\n"
+        got = P.unsent(intent, {"x": golden})
+        assert bool(got) is listed, got
+        if listed:
+            assert got[0]["elsewhere"] is True
+
+    def test_the_page_lists_it_with_retry_after_its_commit(self, lab):
+        assert _policy(lab).status_code == 200
+        _r, page = _page(lab)
+        assert 'id="ipsla-unsent"' not in page, "r2 runs what its intent commits"
+        assert lab["client"].post("/v2/monitoring/ip-sla/commit?list=Lab", json={
+            **_commit_body(page), "picked": ["retune/r2/1"]}).get_json()["ok"]
+        _r, again = _page(lab)
+        assert _retune_keys(again) == [], "intent now matches the policy"
+        assert 'id="ipsla-unsent"' in again, "and the device still runs the old frequency"
+        text = html_mod.unescape(again.split('id="ipsla-unsent"', 1)[1].split("</section>")[0])
+        assert ("<strong>r2</strong>: ip sla 1 probes <code>10.255.1.13</code> every 60 s in "
+                "intent; the device's runs every 10 s.") in text, text
+        href = re.search(r'id="ipsla-retry-r2"[^>]* href="([^"]+)">Retry r2</a>', text)
+        assert href, text
+        from urllib.parse import parse_qs, urlsplit
+        url = urlsplit(href.group(1))
+        assert url.path == "/v2/monitoring/apply" and parse_qs(url.query) == {
+            "list": ["Lab"], "scope": ["ip_sla"], "device": ["r2"]}
+
+    def test_its_last_failed_send_is_named(self, lab, monkeypatch):
+        from modules.nsot import receipts
+        assert _policy(lab).status_code == 200
+        _r, page = _page(lab)
+        assert lab["client"].post("/v2/monitoring/ip-sla/commit?list=Lab", json={
+            **_commit_body(page), "picked": ["retune/r2/1"]}).get_json()["ok"]
+        monkeypatch.setattr(receipts, "read", lambda name, device="", limit=50: {
+            "state": "ok", "rows": [
+                {"device": "r2", "scope": "ip_sla", "outcome": "failed",
+                 "at": "2026-10-21T06:35:30Z",
+                 "reason": "Pre-snapshot failed for 1 device(s) — aborting before deploy:\n"
+                           "r2 (192.0.2.12): _Silent (no message)"},
+                {"device": "r2", "scope": "ip_sla", "outcome": "deployed",
+                 "at": "2026-10-20T01:00:00Z"}]})
+        _r, again = _page(lab)
+        text = html_mod.unescape(again)
+        assert ("Its last send failed at 2026-10-21 06:35:30 UTC: Pre-snapshot failed for 1 "
+                "device(s) — aborting before deploy: r2 (192.0.2.12): _Silent (no message).") \
+            in text, text[text.find("ipsla-unsent"):][:1500]
+
+
 class TestTheScopeIsCarried:
     def test_an_unknown_scope_is_refused_never_read_as_the_profile(self, lab):
         r = lab["client"].get("/v2/monitoring/apply?list=Lab&device=r2&scope=<b>x</b>")

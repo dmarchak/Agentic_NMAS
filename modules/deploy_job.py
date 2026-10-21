@@ -64,7 +64,7 @@ def start(list_name: str, order: list, confirmations: dict, command_hashes: dict
 
         with _lock:
             _progress[job_id] = {"order": list(order), "done": {}, "current": "",
-                                 "started": {}}
+                                 "started": {}, "scope": scope}
 
         def on_device(event, name, result):
             with _lock:
@@ -190,6 +190,17 @@ _DONE = {"deployed": "done", "captured": "done", "unchanged": "done",
          "unattempted": "not_reached", "skipped_not_selected": "not_reached"}
 
 
+def failed_devices(st: dict) -> list:
+    """The devices a FINISHED batch did not deploy, in its order (C1499: its card offers each a
+    Retry): every target whose outcome is not done and not "not reached", read from the result,
+    the authority once the batch ends (never the card's rows, which Find may filter)."""
+    if not st or st.get("state") == "running":
+        return []
+    result = (st.get("payload") or {}).get("result") or {}
+    return [t.get("name", "") for t in result.get("targets") or []
+            if t.get("name") and _DONE.get(t.get("outcome"), "failed") == "failed"]
+
+
 def run_card(st: dict, list_name: str, *, q: str = "") -> dict:
     """The batch on THE stepper (`modules.run_stepper`): a row per device in the rollout order,
     the pipeline's declared steps (`pipeline.STEPS`) with the time in each, read from its hold
@@ -291,8 +302,9 @@ def _doing(list_name: str, host: str) -> str:
 
 
 def state(job_id: str):
-    """``{"job", "state", "order", "steps", "elapsed_s", "payload", "error"}``,
-    or None when this server has no record of the job. Each step is a device
+    """``{"job", "state", "order", "steps", "list", "scope", "elapsed_s", "payload", "error"}``,
+    or None when this server has no record of the job (``scope``: the batch's, so its card can
+    offer a failed device's Retry on the same scope, C1499). Each step is a device
     in the rollout order: ``done`` (with its outcome in words), ``running``,
     ``pending`` (its turn has not come) while the batch runs, or
     ``not_reached`` once it has ended without reaching it (the breaker)."""
@@ -305,7 +317,7 @@ def state(job_id: str):
     with _lock:
         p = _progress.get(job_id) or {"order": [], "done": {}, "current": "", "started": {}}
         p = {"order": list(p["order"]), "done": dict(p["done"]), "current": p["current"],
-             "started": dict(p["started"])}
+             "started": dict(p["started"]), "scope": p.get("scope", "")}
     now = time.time()
     steps = []
     for name in p["order"]:
@@ -324,6 +336,6 @@ def state(job_id: str):
             steps.append({"device": name, "state": ("pending" if job["state"] == "running"
                                                     else "not_reached")})
     return {"job": job_id, "state": job["state"], "order": p["order"], "steps": steps,
-            "list": job.get("list", ""),
+            "list": job.get("list", ""), "scope": p["scope"],
             "elapsed_s": job.get("elapsed_s"), "payload": job.get("payload"),
             "error": job.get("error", "")}

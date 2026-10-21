@@ -30,8 +30,15 @@ did not look for with why; drawn only when the receipt recorded them, so a resul
 is drawn as before. No board draws these lines (today's renderer did, which P7-27 removes); the
 deviation is a line in STANDING_APPROVAL_LOG.md. Every other region unchanged: one line added
 to `_apply_job.html`, read from the diff.
+Compared again 2026-10-21 (C1499, the overnight run): a finished batch's card draws, under its
+stepper, a "Retry <device>" link for each device the batch did not deploy, opening a new preview
+of that device alone on the batch's scope. Board B draws the same control on its result ("Retry
+the 1 rolled back"); the built one covers every device not deployed, not only a rolled-back one,
+so it is a deviation (below). Every other region unchanged: one paragraph added to
+`_apply_job.html` and the `how` macro imported, read from the diff and drawn by
+`tests/test_profile_apply_v2.py`'s retry test, not a new shot.
 Templates compared: templates/v2/apply.html, templates/v2/_apply_preview.html, templates/v2/_apply_job.html
-Templates sha256: `eb82472dd3c4c4fb1c0cfc952987ea89f00ec0cc6c633b16fb87f3d98d072d70`
+Templates sha256: `14596a1c1126e2272e9963024de1c7bd0da098ea244a92934fd7d59c038ca362`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).
@@ -52,4 +59,5 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | The job at fleet scale (board B) | count tiles, Find a device and Every outcome, the devices grouped by outcome and collapsed (running open, rolled back with Retry and Revert, done and waiting folded) | every device a row drawn open, with no search, no outcome filter and no grouping (captures 18 to 20) | **deviation** (log: Batch deploy: the job draws every device open, with no search or outcome groups (a defect, register C650 follow-up)) |
 | The result | "486 devices: 485 deployed and verified, 1 rolled back", partial, one golden commit linked, a receipt per device, Retry the 1 rolled back, Open in History | badged Done, "2 of 2 device(s) deployed. 2 device(s) accounted for: every device in the batch appears here."; each device "what was sent and what was checked" open; the golden commit as text, not a link; no Open in History (capture 20) | **deviation** (log: Batch deploy: the result's commit is text and it has no link to History) |
 | The result's words | not drawn | "No baseline tag: 7 device(s) not targeted: ['r1', 'r2', …]", a raw list, and "the follow-up window … is a job behind 7.1 (register C60), not built yet", an internal note (capture 20; C901) | **deviation** (log: Batch deploy: the result prints a raw list and an internal note (C901)) |
+| Retry (C1499) | "Retry the 1 rolled back" on the result | "Retry <device>" under the stepper for each device the batch did not deploy (failed, refused, rolled back), each a new preview of that device alone on the batch's scope, with How does this work?; none while it runs | **deviation** (log: Batch deploy: Retry for every device the batch did not deploy) |
 | The way back | Open in History | "Back to Coverage: it redraws from the new goldens." after a deploy from Devices (capture 20; C861) | **deviation** (log: Batch deploy: the result ends Back to Coverage after a Devices deploy (C861)) |

@@ -242,6 +242,14 @@ closest:
    it again from intent. That is refused, naming its removal probe, until the delete
    (`global.ip-sla-operation`) is measured on the device's platform.
 
+   **A probe committed and not on its device** stays listed in "Committed, not yet on the
+   device". The batch commits intent before it sends, so a device it failed to reach already
+   matches the policy in intent while it still runs its old probe. Each row says what intent
+   holds and what the device runs, with the last failed send's reason, and **Retry
+   <device>** opens the same preview for that device alone: a new program and a new confirm,
+   never the old batch's. The row clears when the device's configuration carries its intent.
+   The batch's own card offers the same Retry for each device it did not deploy.
+
    The targeting is one of four. **Upstream** probes what each device depends on: its static
    default gateway, else its routing peers, else the next hop of its widest static route, so
    a network whose devices differ (one with a static default, one running only RIP, one

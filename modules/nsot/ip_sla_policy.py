@@ -122,6 +122,64 @@ def running_probes(texts: dict) -> list:
     return out
 
 
+def running_operations(text: str) -> dict:
+    """``{id: {"target", "frequency"}}`` for every icmp-echo operation in one device's
+    configuration *text* (its golden): what runs, its frequency the printed line, else the
+    device's own default, which a device does not print (C713). Read as `running_probes` reads
+    the block: `ip sla <id>`, then its indented lines."""
+    out, op = {}, None
+    for line in (text or "").splitlines():
+        m = _SLA_OP.match(line)
+        if m:
+            op = m.group(1)
+            out[op] = {"target": "", "frequency": DEVICE_DEFAULT_FREQUENCY}
+            continue
+        if op and line.startswith(" "):
+            e, f = _ECHO.match(line), _FREQ.match(line)
+            if e:
+                out[op]["target"] = e.group(1)
+            if f:
+                out[op]["frequency"] = int(f.group(2))
+            continue
+        op = None
+    return {k: v for k, v in out.items() if v["target"]}
+
+
+def _same_address(a: str, b: str) -> bool:
+    """Two targets as addresses (an IPv6 one printed upper case by the device and typed lower
+    case in intent is one address); text that is not an address compares as text."""
+    try:
+        return ipaddress.ip_address(a) == ipaddress.ip_address(b)
+    except ValueError:
+        return a == b
+
+
+def unsent(intents: dict, goldens: dict) -> list:
+    """C1499: every icmp-echo operation committed in a device's intent that its golden does not
+    run as committed: absent there, toward another target, or at another frequency. A batch that
+    commits intent before it sends (this page's) leaves exactly this behind on a device it
+    failed to reach. ``[{on, id, target, want, has, elsewhere}]``, ``has`` the running
+    operation (``{target, frequency}``) or None, ``elsewhere`` whether it probes another
+    address. A device with no golden is not judged: nothing says what it runs."""
+    out = []
+    for host in sorted(intents):
+        if host not in goldens:
+            continue
+        running = running_operations(goldens[host])
+        for op in (intents[host] or {}).get("ip_sla") or []:
+            echo = next((_ECHO.match(l) for l in op.get("settings") or [] if _ECHO.match(l)), None)
+            if not echo:
+                continue
+            oid, want = str(op.get("id")), probe_frequency(op)
+            has = running.get(oid)
+            elsewhere = bool(has) and not _same_address(has["target"], echo.group(1))
+            if has and not elsewhere and has["frequency"] == want:
+                continue
+            out.append({"on": host, "id": oid, "target": echo.group(1), "want": want, "has": has,
+                        "elsewhere": elsewhere})
+    return out
+
+
 def measured_paths(probes: list, intents: dict) -> dict:
     """``{frozenset((prober, other)): {"prober", "id", "with"}}``: the path each probe
     measures, keyed by its two ends (the target's owner by committed intent, else its

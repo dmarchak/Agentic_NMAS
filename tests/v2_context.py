@@ -1038,9 +1038,30 @@ def _ip_sla_retunes(client, _lab, _mp):
         assert P.commit_profile("Lab", back, "v2-context", "the profile put back")["ok"]
 
 
+def _ip_sla_unsent(client, _lab, _mp):
+    """C1499: the IP SLA page with a probe committed in intent that its device does not run
+    (r3's, at 60 s in intent while its golden runs it every 10 s), so the page's "Committed,
+    not yet on the device" section draws its row and Retry. Planted at `ip_sla_policy.unsent`
+    for this one GET, through the real route and receipts read, and put back before the next
+    provider."""
+    import pytest
+
+    from modules.nsot import ip_sla_policy as P
+
+    row = {"on": "r3", "id": "1", "target": "192.0.2.13", "want": 60,
+           "has": {"target": "192.0.2.13", "frequency": 10}, "elsewhere": False}
+    with pytest.MonkeyPatch.context() as m:
+        m.setattr(P, "unsent", lambda intents, goldens: [row])
+        r = client.get("/v2/monitoring/ip-sla?list=Lab")
+        assert r.status_code == 200, r.status_code
+        assert 'id="ipsla-retry-r3"' in r.get_data(as_text=True), \
+            "floor: the committed probe r3 does not run is listed with its Retry"
+
+
 #: What no followed GET reaches, each on the lab's own state: a POST's card, a script's GET,
 #: a state the lab's walk does not hold. In order: `_deploy` changes r3, so it is last.
 PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _drift,
                    _in_progress, _pending, _netbox_source, _netbox_lag, _silenced_alert,
                    _save_no_golden, _profile_versions,
-                   _no_change_window, _update_owed, _lease_release, _ip_sla_retunes, _deploy]
+                   _no_change_window, _update_owed, _lease_release, _ip_sla_retunes, _ip_sla_unsent,
+                   _deploy]
