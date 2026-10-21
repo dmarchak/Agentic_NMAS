@@ -275,7 +275,17 @@ def _commit_body(page_html):
 
 
 def _keys(page_html):
-    return re.findall(r'<input type="checkbox" name="pick" value="([^"]+)"', page_html)
+    """The new-probe suggestions' ticks: the page's suggestions section only, since C1491 drew
+    a second form beside it (the frequency changes, `_retune_keys`)."""
+    section = page_html.split('id="ipsla-suggestions"', 1)[-1]
+    return re.findall(r'<input type="checkbox" name="pick" value="([^"]+)"', section)
+
+
+def _retune_keys(page_html):
+    if 'id="ipsla-retunes"' not in page_html:
+        return []
+    section = page_html.split('id="ipsla-retunes"', 1)[1].split('id="ipsla-suggestions"', 1)[0]
+    return re.findall(r'<input type="checkbox" name="pick" value="([^"]+)"', section)
 
 
 class TestThePolicy:
@@ -419,6 +429,86 @@ class TestTheCommit:
         assert r.status_code == 409 and "disk full" in err and "put back" in err
         with open(os.path.join(lab["repo"], "host_vars", "r2.yml"), encoding="utf-8") as fh:
             assert fh.read() == committed
+
+
+class TestTheFrequencyPath:
+    """C1491 (the operator, 2026-10-21): the policy said 60 s (the operator's decision of
+    2026-10-01, shown on the page as in force) while probes that predate it ran every 10 s: s3's
+    on the real fleet, the switch that stalls, where the probe is its largest process. A probe in
+    intent off its device's resolved frequency is proposed back to it, committed the same way,
+    and sent by the same scoped Apply."""
+
+    def test_the_fleet_s_probes_off_the_policy_are_proposed_and_one_at_its_default_is_not(self, fleet):
+        from modules.nsot import ip_sla_policy as P
+        intents, devices = fleet
+        got = {r["key"]: r for r in P.retunes(intents, devices, {"policy": "upstream",
+                                                                   "frequency": 60})}
+        assert "retune/s3/1" in got and "retune/r2/1" in got
+        s3 = got["retune/s3/1"]
+        assert (s3["frm"], s3["to"], s3["target"]) == (10, 60, "10.255.1.11")
+        # 60 s is the device's own default, which it does not print (C713): no frequency line.
+        assert s3["op"]["settings"] == [" icmp-echo 10.255.1.11 source-interface Loopback0"]
+        assert not any(k.startswith("retune/s2/") for k in got), \
+            "s2's probe runs at the device default, which the policy resolves to"
+
+    def test_the_platform_s_frequency_wins_and_the_line_keeps_its_own_indentation(self, fleet):
+        from modules.nsot import ip_sla_policy as P
+        intents, devices = fleet
+        got = {r["key"]: r for r in P.retunes(intents, devices, {
+            "policy": "upstream", "frequency": 60,
+            "frequency_by_platform": {"cisco_ios": 120, "cisco_iosxe": 300}})}
+        assert got["retune/s3/1"]["op"]["settings"] == [
+            " icmp-echo 10.255.1.11 source-interface Loopback0", " frequency 120"]
+        assert got["retune/r2/1"]["op"]["settings"] == [
+            " icmp-echo 10.255.1.13 source-interface Loopback0", "  frequency 300"]
+        assert got["retune/s3/1"]["cost_before"].startswith(
+            "about 12.0% of its CPU for 1 probe(s) every 10 s")
+        assert got["retune/s3/1"]["cost_after"].startswith(
+            "about 1.0% of its CPU for 1 probe(s) every 120 s")
+
+    def test_the_page_draws_each_with_its_cost_now_and_after(self, lab):
+        assert _policy(lab).status_code == 200
+        r, page = _page(lab)
+        assert r.status_code == 200
+        assert _retune_keys(page) == ["retune/r2/1"]
+        text = html_mod.unescape(page)
+        assert ("<strong>ip sla 1</strong> on r2 probes <code>10.255.1.13</code> every "
+                "<strong>10 s</strong>: to every <strong>60 s</strong>, the policy's.") in text
+        assert "Cost now:" in text and "After:" in text
+        assert "refused until the delete is measured" in text
+
+    def test_one_intent_commit_of_the_ticked_frequency(self, lab):
+        from modules.nsot import hostvars
+        from modules.nsot.repo import git
+        assert _policy(lab).status_code == 200
+        _r, page = _page(lab)
+        body = {**_commit_body(page), "picked": ["retune/r2/1"]}
+        r = lab["client"].post("/v2/monitoring/ip-sla/commit?list=Lab", json=body)
+        out = r.get_json()
+        assert r.status_code == 200 and out["ok"], out
+        assert out["devices"] == ["r2"] and out["retuned"] == [
+            {"on": "r2", "id": "1", "frm": 10, "to": 60}]
+        assert git(lab["repo"], "show", "--name-only", "--format=", "HEAD")[1].split() == [
+            "host_vars/r2.yml"]
+        msg = git(lab["repo"], "log", "-1", "--format=%B")[1]
+        assert "r2 ip sla 1 -> 10.255.1.13 every 10 s to every 60 s (the policy's)" in msg
+        op = next(o for o in hostvars.read_committed(lab["repo"], "r2")["ip_sla"] if o["id"] == "1")
+        assert op["settings"] == [" icmp-echo 10.255.1.13 source-interface Loopback0"]
+        _r, again = _page(lab)
+        assert _retune_keys(again) == [], "the probe now runs at the policy's frequency"
+
+    def test_the_scoped_apply_refuses_the_re_create_until_its_delete_is_measured(self, lab):
+        """The running operation cannot be edited in place (C290): the program deletes and
+        re-creates it, and the delete is a removal shape measured per platform. Unmeasured here,
+        as on the lab tonight, the Apply refuses it by name and sends nothing."""
+        assert _policy(lab).status_code == 200
+        _r, page = _page(lab)
+        url = lab["client"].post("/v2/monitoring/ip-sla/commit?list=Lab", json={
+            **_commit_body(page), "picked": ["retune/r2/1"]}).get_json()["url"]
+        r = lab["client"].get(url)
+        text = html_mod.unescape(r.get_data(as_text=True))
+        assert r.status_code == 200
+        assert "global.ip-sla-operation" in text and "nmas-removal-probe" in text, text[:3000]
 
 
 class TestTheScopeIsCarried:

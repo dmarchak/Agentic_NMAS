@@ -232,6 +232,16 @@ closest:
    the scoped apply (scope `ip_sla`, "Send the IP SLA probes") the IP SLA page opens once
    they are committed, never by the profile's Apply.
 
+   **A probe that already runs at another frequency than the policy's** is listed in its own
+   section, "Probes off the policy's frequency". Each shows its frequency now and after, and
+   its cost on the device. The frequency is the platform's when the policy names one, else the
+   network's. Ticked probes are committed to their devices' intent the same way (`Source:
+   ip-sla`) and sent by the same scoped apply.
+
+   A probe that runs cannot be edited in place, so the preview's program deletes it and creates
+   it again from intent. That is refused, naming its removal probe, until the delete
+   (`global.ip-sla-operation`) is measured on the device's platform.
+
    The targeting is one of four. **Upstream** probes what each device depends on: its static
    default gateway, else its routing peers, else the next hop of its widest static route, so
    a network whose devices differ (one with a static default, one running only RIP, one

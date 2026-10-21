@@ -1716,7 +1716,9 @@ def _ip_sla_ctx(req) -> dict:
         ctx.update(chosen=chosen, defaulted=True, error=err)
         if err:
             return ctx
-    if chosen and (ctx["policy"]["section"] or {}).get("policy"):
+    # The plan whenever there is a policy (C1491): its frequency changes for probes that already
+    # run concern every device, not only the chosen ones without a probe.
+    if (ctx["policy"]["section"] or {}).get("policy"):
         try:
             got = ip_sla_policy.plan(ref, chosen)
         except ip_sla_policy.Refused as exc:
@@ -1727,9 +1729,16 @@ def _ip_sla_ctx(req) -> dict:
                 by_on.setdefault(s["on"], []).append(s)
             got["by_on"] = [{"on": on, "rows": rows, "cost": got["cost_by_device"].get(on, "")}
                             for on, rows in by_on.items()]
-            ctx["plan"] = got
             ctx["commit_body"] = {"list": name, "devices": chosen,
                                   "fingerprint": got["fingerprint"]}
+            # Carried only as the page draws it (every carried field is drawn): the
+            # suggestions and their costs as `by_on`, the fingerprint in the commit's body, and
+            # no row's platform, which only the costs and the operation's text needed.
+            for k in ("suggestions", "cost_by_device", "fingerprint"):
+                got.pop(k, None)
+            for row in [r for g in got["by_on"] for r in g["rows"]] + got.get("retunes", []):
+                row.pop("platform", None)
+            ctx["plan"] = got
     return ctx
 
 

@@ -1340,7 +1340,25 @@ class TestIpSlaCards(_Cards):
         "probes": ("ip_sla.html", "Commit the ticked probes to intent, then preview sending them",
                    r"Commit the ticked probes to intent, then preview sending them",
                    "data: no policy chosen, so nothing is suggested"),
+        "retunes": ("ip_sla.html", "Commit the ticked frequencies to intent, then preview "
+                    "sending them",
+                    r"Commit the ticked frequencies to intent, then preview sending them",
+                    "data: no policy chosen, so no probe is off its frequency"),
     }
+
+    def drawn_retunes(self, request):
+        """C1491: the lab's r2 runs `ip sla 1` every 10 s; with the policy at 60 s it is
+        proposed back."""
+        from tests.test_ip_sla_policy import _page, _policy
+        lab = request.getfixturevalue("lab")
+        assert _policy(lab).status_code == 200
+        return _page(lab)[1]
+
+    def blocked_retunes(self, request, monkeypatch):
+        from tests.test_ip_sla_policy import _page
+        html = _page(request.getfixturevalue("lab"))[1]
+        assert "Choose a policy above" in html, "floor: no policy, so nothing is proposed"
+        return html
 
     def drawn_policy(self, request):
         from tests.test_ip_sla_policy import _page
@@ -1444,10 +1462,10 @@ class TestThePopulation:
             assert why and len(why) > 20, (key, "an excuse says why")
 
     def test_netbox_jobs_one_site_is_two_controls(self):
-        """`_netbox_job.html` draws Import and Remove at one site, two previews: 53 controls
-        (52 until C1403's Release lease… joined)."""
+        """`_netbox_job.html` draws Import and Remove at one site, two previews: 54 controls
+        (52 until C1403's Release lease… joined, 53 until C1491's IP SLA frequency commit)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 53, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 54, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

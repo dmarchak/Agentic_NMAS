@@ -829,7 +829,6 @@ EMPTY_IN_FIXTURE = {
     "v2/ip_sla.html g.rows": _IP_SLA,
     "v2/ip_sla.html plan.by_on": _IP_SLA,
     "v2/ip_sla.html plan.skipped": _IP_SLA,
-    "v2/ip_sla.html policies": _IP_SLA,
     "v2/not_found.html elsewhere": "the not-found page's other networks holding the name: the walk's installation has one network",
     "v2/show_commands.html runs.rows": "Show commands' recent runs: no run has been made on the walk's store",
 }
@@ -837,7 +836,7 @@ EMPTY_IN_FIXTURE = {
 #: provider (a silenced Grafana alert), which draws a row's devices and its members; 377 with
 #: C1232's (Save's no-golden scope), which draws the plan's groups and their devices; 371 with
 #: C1403's (DHCP › Leases' Release lease…), which draws the DHCP page's tabs and lease groups.
-EMPTY_IN_FIXTURE_CEILING = 371
+EMPTY_IN_FIXTURE_CEILING = 370
 #: The population and how many of it drew, measured 2026-10-18 (557 and 171): floors, a little
 #: under the measurement, so a scan that stopped seeing loops, or a walk that stopped drawing,
 #: fails.

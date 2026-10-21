@@ -1014,9 +1014,33 @@ def _lease_release(client, _lab, _mp):
         mp.undo()
 
 
+def _ip_sla_retunes(client, _lab, _mp):
+    """C1491: the IP SLA page with a policy, so r3's probe (r2's real `ip sla 1`, every 10 s)
+    is drawn off its 60 s in the page's frequency section. The profile is put back as it was
+    before the next provider."""
+    import copy
+
+    from modules.nsot import listref
+    from modules.nsot import profile as P
+
+    repo = listref.resolve("Lab").repo_dir
+    before = P.read_committed(repo)
+    doc = copy.deepcopy(before) if before else {"version": P.VERSION, "sections": {}}
+    doc.setdefault("sections", {})["ip_sla"] = {"policy": "upstream", "frequency": 60}
+    assert P.commit_profile("Lab", doc, "v2-context", "IP SLA policy for the walk")["ok"]
+    try:
+        r = client.get("/v2/monitoring/ip-sla?list=Lab")
+        assert r.status_code == 200, r.status_code
+        assert 'id="ipsla-retunes"' in r.get_data(as_text=True), \
+            "floor: r3's 10 s probe is proposed back to the policy's 60 s"
+    finally:
+        back = before if before else {"version": P.VERSION, "sections": {}}
+        assert P.commit_profile("Lab", back, "v2-context", "the profile put back")["ok"]
+
+
 #: What no followed GET reaches, each on the lab's own state: a POST's card, a script's GET,
 #: a state the lab's walk does not hold. In order: `_deploy` changes r3, so it is last.
 PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _drift,
                    _in_progress, _pending, _netbox_source, _netbox_lag, _silenced_alert,
                    _save_no_golden, _profile_versions,
-                   _no_change_window, _update_owed, _lease_release, _deploy]
+                   _no_change_window, _update_owed, _lease_release, _ip_sla_retunes, _deploy]

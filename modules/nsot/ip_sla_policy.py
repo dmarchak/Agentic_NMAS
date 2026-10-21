@@ -1,7 +1,14 @@
 """P.9 (d4), the ADD path: IP SLA probes SUGGESTED from the profile's policy
 for devices that have none, reviewed, committed into the devices' own intent,
-then sent by a deploy scoped to IP SLA lines (`SCOPE`). Only ADDING: changing
-a running operation is the re-create (C290), gated on staged run 9.
+then sent by a deploy scoped to IP SLA lines (`SCOPE`).
+
+The FREQUENCY path (C1491, the operator, 2026-10-21): an operation intent
+already holds at another frequency than its device's resolved one (the
+platform's, else the network's) is proposed back to it (:func:`retunes`),
+committed the same way, and sent by the same scoped deploy. A running
+operation cannot be edited in place, so the deploy's program deletes and
+re-creates it (`recreate.py`, C290), refused until the removal shape
+``global.ip-sla-operation`` is measured on the device's platform.
 
 The profile holds the POLICY, never addresses (MONITORING_PROFILE.md section
 6: a probe targets another device's address, so addresses are the device's
@@ -264,6 +271,63 @@ def frequency_for(section: dict, platform: str) -> int:
     by = (section or {}).get("frequency_by_platform") or {}
     f = by.get(platform, (section or {}).get("frequency", DEFAULT_FREQUENCY))
     return int(f)
+
+
+_FREQ = re.compile(r"^(\s*)frequency\s+(\d+)\s*$")
+
+
+def probe_frequency(op: dict) -> int:
+    """The frequency an operation in intent runs at: its `frequency` line, else the device's own
+    default, which a device does not print (C713)."""
+    for line in (op or {}).get("settings") or []:
+        m = _FREQ.match(line)
+        if m:
+            return int(m.group(2))
+    return DEVICE_DEFAULT_FREQUENCY
+
+
+def with_frequency(op: dict, platform: str, frequency: int) -> dict:
+    """*op* with its frequency set to *frequency*, every other line kept as it stands: the line
+    is dropped at the device's own default, which the device does not print (C713), and written
+    where the platform prints it (IOS-XE under `icmp-echo`, vIOS beside it), keeping an
+    existing line's own indentation."""
+    lines = list((op or {}).get("settings") or [])
+    old = next((_FREQ.match(l) for l in lines if _FREQ.match(l)), None)
+    rest = [l for l in lines if not _FREQ.match(l)]
+    if int(frequency) != DEVICE_DEFAULT_FREQUENCY:
+        indent = old.group(1) if old else ("  " if platform == "cisco_iosxe" else " ")
+        at = next((i + 1 for i, l in enumerate(rest) if _ECHO.match(l)), len(rest))
+        rest.insert(at, f"{indent}frequency {int(frequency)}")
+    return dict(op, settings=rest)
+
+
+def retunes(intents: dict, devices: dict, section: dict) -> list:
+    """C1491: every operation in committed intent that runs at another frequency than its
+    device's resolved one (the platform's, else the network's), as a change to propose:
+    ``{key, on, id, platform, target, frm, to, op, cost_before, cost_after}``. The policy's
+    frequency is the operator's decision (2026-10-01); a probe that predates it kept running at
+    its own while the page said the policy's."""
+    out = []
+    for host in sorted(intents):
+        platform = (devices.get(host) or {}).get("platform") or ""
+        if host not in devices:
+            continue
+        want = frequency_for(section, platform)
+        for op in (intents[host] or {}).get("ip_sla") or []:
+            echo = next((_ECHO.match(l) for l in op.get("settings") or [] if _ECHO.match(l)), None)
+            if not echo:
+                continue
+            frm = probe_frequency(op)
+            if frm == want:
+                continue
+            # Slashes, never `<device>:<name>`: that shape is the template-secret key's alone.
+            out.append({"key": "/".join(("retune", host, str(op.get("id")))), "on": host,
+                        "id": str(op.get("id")),
+                        "platform": platform, "target": echo.group(1), "frm": frm, "to": want,
+                        "op": with_frequency(op, platform, want),
+                        "cost_before": cost_words(platform, frm),
+                        "cost_after": cost_words(platform, want)})
+    return out
 
 
 def cost_words(platform: str, frequency: int, probes: int = 1) -> str:
@@ -576,11 +640,13 @@ def plan(ref, chosen: list) -> dict:
     intents, err = committed_intents(ref.repo_dir)
     if err:
         raise Refused(err)
-    out = suggest(intents, _inventory(ref), sec, list(chosen))
+    devices = _inventory(ref)
+    out = suggest(intents, devices, sec, list(chosen))
     for s in out["suggestions"]:
         s["key"] = f"{s['on']}:{s['op']['id']}"
+    out["retunes"] = retunes(intents, devices, sec)
     out.update(words=view["words"],
-               fingerprint=_hash([out["suggestions"], view["hash"]]))
+               fingerprint=_hash([out["suggestions"], out["retunes"], view["hash"]]))
     return out
 
 
@@ -607,28 +673,39 @@ def _apply_locked(ref, chosen: list, picked: list, fingerprint: str, actor: str)
         raise Refused("the suggestions changed since they were shown (intent or the policy "
                       "moved): nothing was committed; preview again")
     take = [s for s in fresh["suggestions"] if s["key"] in set(picked)]
-    if not take:
-        raise Refused("no suggested probe was ticked: nothing to commit")
+    tune = [r for r in fresh["retunes"] if r["key"] in set(picked)]
+    if not take and not tune:
+        raise Refused("no suggested probe was ticked, nor a frequency change: nothing to commit")
     rc, dirty, _err = git(ref.repo_dir, "status", "--porcelain", "--", "host_vars")
     if rc != 0 or dirty.strip():
         raise Refused("host_vars/ has uncommitted changes, which this commit would carry under "
                       "its own name: " + (dirty.strip() or "status failed"))
-    by_dev = {}
+    by_dev, tune_by = {}, {}
     for s in take:
         by_dev.setdefault(s["on"], []).append(s)
+    for r in tune:
+        tune_by.setdefault(r["on"], {})[r["id"]] = r["op"]
+    hosts = sorted(set(by_dev) | set(tune_by))
+    said = ([f"add {s['on']} -> {s['target_device']} ({s['target']}, every {s['frequency']} s)"
+             for s in take]
+            + [f"{r['on']} ip sla {r['id']} -> {r['target']} every {r['frm']} s to every "
+               f"{r['to']} s (the policy's)" for r in tune])
     written = []
     try:
-        for host, rows in by_dev.items():
+        for host in hosts:
             hv = hostvars.read_committed(ref.repo_dir, host)
-            hv.setdefault("ip_sla", []).extend(s["op"] for s in rows)
-            hv.setdefault("ip_sla_schedules", []).extend(s["schedule"] for s in rows)
+            if host in tune_by:
+                hv["ip_sla"] = [tune_by[host].get(str(op.get("id")), op)
+                                for op in hv.get("ip_sla") or []]
+            rows = by_dev.get(host) or []
+            if rows:
+                hv.setdefault("ip_sla", []).extend(s["op"] for s in rows)
+                hv.setdefault("ip_sla_schedules", []).extend(s["schedule"] for s in rows)
             hostvars.write_committed(ref.repo_dir, hv)
             written.append(host)
         out = save_host_vars(
-            ref.name, sorted(by_dev), actor=actor, source="ip-sla",
-            message=("host_vars: add IP SLA probes from the profile's policy: "
-                     + "; ".join(f"{s['on']} -> {s['target_device']} ({s['target']}, every "
-                                 f"{s['frequency']} s)" for s in take)))
+            ref.name, hosts, actor=actor, source="ip-sla",
+            message="host_vars: IP SLA from the profile's policy: " + "; ".join(said))
     except Exception:
         _put_back(ref.repo_dir, written)
         raise
@@ -637,6 +714,8 @@ def _apply_locked(ref, chosen: list, picked: list, fingerprint: str, actor: str)
         raise Refused(f"the commit failed ({out.get('error') or 'no reason given'}): "
                       + (f"LEFT UNCOMMITTED: {', '.join(left)}" if left
                          else "every file was put back as committed, nothing changed"))
-    return {"outcome": "committed", "commit": out.get("commit", ""), "devices": sorted(by_dev),
+    return {"outcome": "committed", "commit": out.get("commit", ""), "devices": hosts,
             "added": [{"on": s["on"], "id": s["op"]["id"], "target": s["target"],
-                       "measures": s["measures"]} for s in take]}
+                       "measures": s["measures"]} for s in take],
+            "retuned": [{"on": r["on"], "id": r["id"], "frm": r["frm"], "to": r["to"]}
+                        for r in tune]}

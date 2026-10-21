@@ -12,7 +12,7 @@
 <div class="page-head">
   <div class="page-title">
     <h1>IP SLA probes {{ info('monitoring-templates') }}</h1>
-    <p class="sub">Probes for devices that run none, suggested from the monitoring profile's policy. Each probe is committed to its device's own intent, then sent after a preview of its exact program. Changing a probe that already runs waits on staged run 9.</p>
+    <p class="sub">Probes for devices that run none, suggested from the monitoring profile's policy, and probes that run at another frequency than the policy's, brought back to it. Each change is committed to its device's own intent, then sent after a preview of its exact program.</p>
   </div>
 </div>
 {% include "v2/_monitoring_tabs.html" %}
@@ -48,6 +48,27 @@
   </div>
   {%- endif %}
 </section>
+
+{%- if plan and plan.retunes %}
+<section class="card ipsla" id="ipsla-retunes">
+  <h2 class="apply-h">Probes off the policy's frequency</h2>
+  <p>{{ plan.retunes | length }} probe(s) in intent run at another frequency than the policy's {{ plan.words.split('every ')[-1] if plan.words else '' }}: each is shown with what it costs now and after. A probe that runs cannot be edited in place, so the preview's program deletes it and creates it again from intent; that is refused until the delete is measured on the device's platform (its removal probe).</p>
+  <div x-data="ipslaPost" data-url="{{ url_for('v2.ip_sla_commit') }}" data-body='{{ commit_body | tojson }}'
+       data-label="Commit the ticked frequencies to intent, then preview sending them" data-busy="Committing to intent…">
+    {%- for r in plan.retunes %}
+    <div class="apply-line">
+      <input type="checkbox" name="pick" value="{{ r.key }}" id="pick-{{ r.key }}" checked>
+      <label for="pick-{{ r.key }}"><strong>ip sla {{ r.id }}</strong> on {{ r.on }} probes <code>{{ r.target }}</code> every <strong>{{ r.frm }} s</strong>: to every <strong>{{ r.to }} s</strong>, the policy's.</label>
+      <span class="muted">Cost now: {{ r.cost_before }}. After: {{ r.cost_after }}.</span>
+      <pre class="apply-program">ip sla {{ r.id }}
+{{ r.op.settings | join('\n') }}</pre>
+    </div>
+    {%- endfor %}
+    <button type="button" class="btn btn-primary" id="ipsla-retune-commit" data-op="monitoring-templates" x-on:click="post" x-bind:disabled="busy" x-text="label">Commit the ticked frequencies to intent, then preview sending them</button>{{ how('monitoring-templates') }}
+    <p class="apply-refused" x-show="hasError" x-text="error" x-cloak></p>
+  </div>
+</section>
+{%- endif %}
 
 <section class="card ipsla" id="ipsla-suggestions">
   <h2 class="apply-h">Suggested probes</h2>

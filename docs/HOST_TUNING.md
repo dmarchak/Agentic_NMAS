@@ -135,7 +135,8 @@ protocol timers run slow.**
 
 | # | Change | Applied (UTC), by | Before | After | Verdict | Revert |
 |---|---|---|---|---|---|---|
-| 1 | Renice the switches' qemu (s1 to s4, all 16 threads) to nice −5 on `<lab-host>` | 03:48:16, the agent, on the operator's go | 03:17 to 03:47: 76 of 112 gauge steps below 10, 449 failed scrapes, 11 OSPF dead-timer drops, 17 missed-ping transitions, 0 SSH auth timeouts, s3 discards every minute (max 23.8/s), s3 heartbeat gaps 775 to 829 s | 03:49 to 04:19: 60 of 112 steps, 446 failed scrapes, 7 drops, 23 transitions, 0 timeouts, discards every minute (max 26.9/s), gaps 755 to 830 s | **No measurable gain:** the failed scrapes are unchanged and the missed pings rose. These were 30-minute windows (about three stalls each); later changes take 60. **Reverted at 04:24:46 UTC by the agent, on the operator's go;** all 16 threads read back at nice 0. | on `<lab-host>`: `for n in s1 s2 s3 s4; do for p in $(docker top clab-rcn-lab1-$n -eo pid,comm \| awk '/qemu/{print $1}'); do for t in /proc/$p/task/*; do sudo renice --priority 0 -p ${t##*/}; done; done; done` (a redeploy also reverts it) |
+| 1 | Renice the switches' qemu (s1 to s4, all 16 threads) to nice −5 on `<lab-host>` | 03:48:16, the agent, on the operator's go | 03:17 to 03:47: 76 of 112 gauge steps below 10, 449 failed scrapes, 11 OSPF dead-timer drops, 17 missed-ping transitions, 0 SSH auth timeouts, s3 discards every minute (max 23.8/s), s3 heartbeat gaps 775 to 829 s | 03:49 to 04:19: 60 of 112 steps, 446 failed scrapes, 7 drops, 23 transitions, 0 timeouts, discards every minute (max 26.9/s), gaps 755 to 830 s | **No measurable gain:** the failed scrapes are unchanged and the missed pings rose. These were 30-minute windows (about three stalls each); later changes take 60. **Reverted at 04:24:46 UTC by the agent, on the operator's go;** all 16 threads read back at nice 0. |
+| 2 | Each switch on a vCPU of its own inside the lab VM, on `<lab-host>`: s1 to s4's qemu (every thread) and each one's `kvm-pit` thread pinned to CPUs 20, 21, 22 and 23; every router's qemu (r1 to r8, every thread) confined to CPUs 0 to 19 | 04:37:34, the agent, on the operator's go; read back: s1 to s4 at 20 to 23 (4 threads each), the routers at 0 to 19, the PIT threads 964075, 964184, 964235 and 964044 at 20 to 23 | 02:47 to 04:24 (the operator's choice: the renice changed nothing) | 04:38 to 05:38: pending | pending | on `<lab-host>`: `for n in s1 s2 s3 s4 r1 r2 r3 r4 r5 r6 r7 r8; do p=$(docker top clab-rcn-lab1-$n -eo pid,comm \| awk '/qemu/{print $1}'); sudo taskset -a -pc 0-23 $p; done; for t in 964075 964184 964235 964044; do sudo taskset -pc 0-23 $t; done` (a redeploy also reverts it) | on `<lab-host>`: `for n in s1 s2 s3 s4; do for p in $(docker top clab-rcn-lab1-$n -eo pid,comm \| awk '/qemu/{print $1}'); do for t in /proc/$p/task/*; do sudo renice --priority 0 -p ${t##*/}; done; done; done` (a redeploy also reverts it) |
 
 **Candidates, in order of evidence:**
 1. **Give each switch a vCPU of its own inside the lab VM.** This acts on the correlated variable
@@ -149,9 +150,28 @@ protocol timers run slow.**
 2. **Real-time priority for the four switches' `kvm-pit` threads,** so tick injection never waits.
    - Apply: `chrt -f -p 1 <tid>`.
    - Revert: `chrt -o -p 0 <tid>`.
-3. **The switches' NTP:** find why they do not synchronise. This corrects their wall clocks, not
+3. **Less work on s3, through Mercury** (device configuration: a preview and a confirm each;
+   measured 2026-10-21 ~04:40 UTC).
+   - **How s3 spends its CPU:** it routes the routers' management traffic to the NMAS in
+     software, 63% CPU with 0% at interrupt level:
+     - the vIOS NIC driver ("IOSv e1000") takes 11.1% and IP Input 3.4%;
+     - about 200 pps leave on Gi1/1, and the queue there has dropped 85,832 packets since the
+       redeploy.
+   - **What crosses Gi1/1 (2-minute capture):** gRPC telemetry 116 pps (692 kbit/s, about 58%),
+     SNMP 20 pps (about 10%), SSH, mostly reachability's probes, 13 pps.
+   - **What longer intervals would save on s3:**
+     - its own IP SLA probes (12.7%, its largest process), 10 s to 60 s: about 10.5%;
+     - being polled by SNMP (7.9%), 1 minute to 2 minutes: about 4%;
+     - forwarding the routers' telemetry (about 5%), 10 s to 30 s: about 3.3%.
+   - Together these take s3 from about 63% to about 45 to 48%.
+   - On the routers the same polling costs under 1% (r2: IOSd 5% in all).
+   - **No vrnetlab launch change for the PIT:** QEMU's in-kernel PIT defaults to
+     `lost_tick_policy=delay`, which keeps KVM's tick reinjection on (`hw/i386/kvm/i8254.c`), and
+     vrnetlab does not override it. The ticks are reinjected, not discarded; `discard` would lose
+     more time.
+4. **The switches' NTP:** find why they do not synchronise. This corrects their wall clocks, not
    their timers.
-4. **Automatic NUMA balancing off** (uncorrelated; kept for completeness).
+5. **Automatic NUMA balancing off** (uncorrelated; kept for completeness).
    - Apply: `sysctl -w kernel.numa_balancing=0`.
    - Revert: `sysctl -w kernel.numa_balancing=1`.
    - Risk: none to data; pages stay where they are.
