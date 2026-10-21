@@ -1,0 +1,10 @@
+[Unit]
+Description=Lab: re-pin the kvm-pit threads every two minutes (a redeploy makes new ones)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target

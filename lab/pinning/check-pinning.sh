@@ -1,50 +1,78 @@
 #!/bin/bash
 # Read-only, on the lab host: are the switches still pinned? (C1485: losing the pinning brings
-# the stalls back silently, so the check says so.) It judges where the threads RUN, whichever
-# way they were pinned:
-#   - each switch's qemu threads exactly on its own CPU;
-#   - every other node's processes within the others' set;
-#   - every kvm-pit thread within the switches' set.
-# Each line says whether the container's cpuset declares it (rcn-lab1.clab.yml's cpu-set,
-# reapplied by every deploy) or it is pinned by hand (taskset, lost at the next deploy).
+# the stalls back silently, so the check says so.) Four parts, each line ok or LOST:
+#   1. the timer that pins the kernel's kvm-pit threads is active, and its last run succeeded;
+#   2. the lab file declares each node's cpu-set (so the next deploy applies it);
+#   3. each container applies it, and where its threads run: a switch's qemu threads exactly
+#      on its own CPU, every other node's processes within the others' set;
+#   4. each switch's own kvm-pit thread on its CPU (matched as the timer matches it), every other
+#      kvm-pit thread within the others' set.
 # Exits 0 when all hold, 1 naming what was lost, 2 when the lab is not deployed.
 set -u
 here=$(dirname "$(readlink -f "$0")")
 . "$here/pinning.conf"
+. "$here/pinning-lib.sh"
 lost=0
-cpuset() { docker inspect -f '{{.HostConfig.CpusetCpus}}' "$LAB_PREFIX-$1" 2>/dev/null; }
-how() { [ "$(cpuset "$1")" = "$2" ] && echo "declared" || echo "by hand"; }
-# Every CPU a list like "0-19" or "20,22" names, one per line.
+say() { echo "$1"; [ "${1%% *}" = "LOST" ] && lost=1; return 0; }
 expand() { tr ',' '\n' <<<"$1" | awk -F- '{ if (NF == 2) for (i = $1; i <= $2; i++) print i; else print $1 }'; }
-within() { # within <affinity> <set>: every CPU of the affinity is in the set
-  local a s
-  a=$(expand "$1" | sort); s=$(expand "$2" | sort)       # comm compares lexical order
-  [ -z "$(comm -23 <(echo "$a") <(echo "$s"))" ]
-}
-pids_of() { docker top "$LAB_PREFIX-$1" -eo pid 2>/dev/null | tail -n +2; }
-for pair in $SWITCHES; do
-  node=${pair%%:*}; cpu=${pair##*:}
-  [ -n "$(docker ps -q -f name="^$LAB_PREFIX-$node$")" ] || { echo "NOT DEPLOYED: $node"; exit 2; }
-  pid=$(docker top "$LAB_PREFIX-$node" -eo pid,comm | awk '/qemu/{print $1; exit}')
-  aff=$(for t in /proc/"$pid"/task/*; do taskset -pc "${t##*/}" | sed 's/.*: //'; done | sort -u | tr '\n' ' ')
-  if [ "$aff" = "$cpu " ]; then echo "ok    $node: qemu threads on CPU $cpu ($(how "$node" "$cpu"))";
-  else echo "LOST  $node: qemu threads on '$aff', want CPU $cpu"; lost=1; fi
-done
-for node in $OTHERS; do
-  [ -n "$(docker ps -q -f name="^$LAB_PREFIX-$node$")" ] || continue
+within() { [ -z "$(comm -23 <(expand "$1" | sort) <(expand "$2" | sort))" ]; }
+
+# 1. The timer.
+if systemctl is-active --quiet lab-pin-pit.timer; then
+  res=$(systemctl show lab-pin-pit.service -p Result --value 2>/dev/null)
+  if [ "$res" = success ]; then say "ok    timer: lab-pin-pit.timer active, its last run $res";
+  else say "LOST  timer: lab-pin-pit.timer active, its last run '$res'"; fi
+else
+  say "LOST  timer: lab-pin-pit.timer is not active (install: lab/pinning/install.sh)"
+fi
+
+# 2. The lab file.
+if [ -r "$LAB_FILE" ]; then
+  declared=$(python3 - "$LAB_FILE" <<'PY'
+import sys, yaml
+t = yaml.safe_load(open(sys.argv[1]))["topology"]
+kinds = t.get("kinds") or {}
+for name, n in (t.get("nodes") or {}).items():
+    s = n.get("cpu-set") or (kinds.get(n.get("kind")) or {}).get("cpu-set") or ""
+    print(name, s)
+PY
+)
+  for node in $(lab_nodes); do
+    want=$(switch_cpu "$node"); want=${want:-$OTHERS_SET}
+    got=$(awk -v n="$node" '$1 == n {print $2}' <<<"$declared")
+    if [ "$got" = "$want" ]; then say "ok    $node: the lab file declares cpu-set $got";
+    else say "LOST  $node: the lab file declares cpu-set '$got', want $want"; fi
+  done
+else
+  say "LOST  the lab file $LAB_FILE cannot be read"
+fi
+
+# 3. The containers.
+for node in $(lab_nodes); do
+  [ -n "$(docker ps -q -f name="^$LAB_PREFIX-$node$")" ] || {
+    [ -n "$(switch_cpu "$node")" ] && { echo "NOT DEPLOYED: $node"; exit 2; }; continue; }
+  want=$(switch_cpu "$node"); want=${want:-$OTHERS_SET}
+  applied=$(docker inspect -f '{{.HostConfig.CpusetCpus}}' "$LAB_PREFIX-$node" 2>/dev/null)
   bad=""
-  for p in $(pids_of "$node"); do
+  for p in $(docker top "$LAB_PREFIX-$node" -eo pid 2>/dev/null | tail -n +2); do
     for t in /proc/"$p"/task/*; do
       a=$(taskset -pc "${t##*/}" 2>/dev/null | sed 's/.*: //')
-      [ -n "$a" ] && ! within "$a" "$OTHERS_SET" && bad="$bad ${t##*/}:$a"
+      [ -n "$a" ] && ! within "$a" "$want" && bad="$bad ${t##*/}:$a"
     done
   done
-  if [ -z "$bad" ]; then echo "ok    $node: within CPUs $OTHERS_SET ($(how "$node" "$OTHERS_SET"))";
-  else echo "LOST  $node: threads outside $OTHERS_SET:$bad"; lost=1; fi
+  how=$([ "$applied" = "$want" ] && echo "applied by the container" || echo "by hand, the container's cpuset '$applied'")
+  if [ -z "$bad" ]; then say "ok    $node: runs within CPUs $want ($how)";
+  else say "LOST  $node: threads outside $want:$bad ($how)"; fi
 done
-for t in $(ps -eLo tid,comm | awk '$2 ~ /^kvm-pit/ {print $1}'); do
-  aff=$(taskset -pc "$t" | sed 's/.*: //')
-  within "$aff" "$SWITCH_SET" || { echo "LOST  kvm-pit thread $t on '$aff', want within $SWITCH_SET"; lost=1; }
-done
-if [ "$lost" = 0 ]; then echo "PINNING HOLDS"; else echo "PINNING LOST: run lab/pinning/pin-pit-threads.sh, or redeploy with the lab file's cpu-set"; fi
+
+# 4. The kvm-pit threads.
+while read -r node pid pit; do
+  [ "$pit" = none ] && continue
+  want=$(switch_cpu "$node"); want=${want:-$OTHERS_SET}
+  a=$(taskset -pc "$pit" 2>/dev/null | sed 's/.*: //')
+  if within "$a" "$want"; then say "ok    $node: kvm-pit $pit on $a";
+  else say "LOST  $node: kvm-pit $pit on '$a', want within $want"; fi
+done < <(pit_map)
+
+if [ "$lost" = 0 ]; then echo "PINNING HOLDS"; else echo "PINNING LOST: see the LOST lines"; fi
 exit "$lost"

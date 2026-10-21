@@ -1,0 +1,7 @@
+[Unit]
+Description=Lab: pin each VM's kvm-pit thread to its node's CPUs (C1485, docs/HOST_TUNING.md)
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/lab-pinning/pin-pit-threads.sh

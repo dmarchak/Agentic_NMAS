@@ -160,11 +160,16 @@ judged, so it needs `--correction "<why it is recorded late>"`.
 
 ## After the redeploy
 
-5a. **The CPU pinning (C1485, docs/HOST_TUNING.md).** The lab file's `cpu-set` lines pin each
-   node's container, and containerlab reapplies them on every deploy. The kernel's kvm-pit
-   threads, which tick the vIOS switches' clocks, are outside every container. On `<lab-host>`:
-   `lab/pinning/pin-pit-threads.sh`, then `lab/pinning/check-pinning.sh`, which must read
-   PINNING HOLDS, every line "declared". A lost pinning brings the stalls back silently.
+5a. **The CPU pinning (C1485, docs/HOST_TUNING.md): automatic, until it is installed.**
+   - The lab file's `cpu-set` lines pin each node's container, and containerlab reapplies them
+     on every deploy.
+   - The kernel's kvm-pit threads, which tick the vIOS switches' clocks, are outside every
+     container. `lab-pin-pit.timer` pins them every two minutes, once the operator has run
+     `lab/pinning/install.sh` on `<lab-host>`.
+   - **This step goes when the timer is installed.** Until then, after a deploy, run
+     `sudo lab/pinning/pin-pit-threads.sh` by hand.
+   - Either way, `lab/pinning/check-pinning.sh` reads PINNING HOLDS. A lost pinning brings the
+     stalls back silently.
 
 6. Then the post-items of `docs/STAGE2_SESSION_CHECKLIST.md` section 4, through Mercury (its
    revision of 2026-10-16, C948). They are the same steps, not a second set: its 3.2 is steps 1

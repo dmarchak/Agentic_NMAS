@@ -37,7 +37,9 @@ import time
 
 API = "https://api.github.com"
 TOKEN_FILE = os.path.expanduser("~/.config/nmas/gh-dispatch-token")
-WARN_DAYS = 2
+#: Said on every call within a week of the expiry (the operator, 2026-10-21: renewal is theirs,
+#: and two days' warning left none to plan in).
+WARN_DAYS = 7
 EXIT_TOKEN, EXIT_GITHUB = 1, 2
 #: The run a dispatch made appears within seconds; asked every 5 s for up to 90 s (measured:
 #: run #4's dispatch showed in the runs list within about 10 s, 2026-10-14).

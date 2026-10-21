@@ -111,7 +111,9 @@ not try it untried.
    `mv rcn-lab1.clab.yml.next rcn-lab1.clab.yml`, then commit `rcn-lab1.clab.yml`,
    `configs/host-net-lab89.sh` and `patches/c8000v-launch-configless.py`.
    - **Expected:** the commit's sha; `git status` shows no tracked change; `sha256sum
-     rcn-lab1.clab.yml` begins `9075221bf446`.
+     rcn-lab1.clab.yml` begins `9075221bf446`. **Since then:** the lab repo's `33916b7`
+     (2026-10-21, the cpu-set pinning, docs/HOST_TUNING.md change 2) changed the file, whose
+     sha256 now begins `c23c5d4014d5`. The record above is that step's.
 5. **D** then **E** as written below (D2's and D3's reads, VMs 201 and 202 stopped; D4's before
    counts; D5's window and the redeploy on your go), **B3 run again at D** (anything newer then
    is a stop).

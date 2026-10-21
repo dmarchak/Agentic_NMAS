@@ -146,14 +146,39 @@ protocol timers run slow.**
   - containerlab reapplies it on every deploy.
   - It covers each container's whole cgroup: qemu and every thread, the launcher and the hosts'
     processes.
+- **Committed by the operator** on the lab host: `33916b7` (11 lines added); the lab file's
+  sha256 now begins `c23c5d4014d5`. It applies at the next redeploy, and the hand pinning holds
+  until then.
 - **It does not cover the PIT threads.** `kvm-pit/<n>` are kernel threads (parent `kthreadd`,
-  cgroup root, measured), so after a deploy `lab/pinning/pin-pit-threads.sh` pins every one to
-  the switches' set (20 to 23); only the switches' tick. It is a step in lab/REDEPLOY.md.
+  cgroup root, measured), and a redeploy makes new ones. So the pinning is automatic: the
+  operator installs it once with `lab/pinning/install.sh` (sudo, on the lab host).
+  - `lab-pin-pit.timer` runs `pin-pit-threads.sh` every two minutes, idempotent, logging to the
+    journal (`-t lab-pin-pit`).
+  - **The match is not guessed.** The kernel names each thread `kvm-pit/<the qemu's pid inside
+    its container>`, which two containers can share. Each qemu, in pid order, takes the
+    `kvm-pit/<n>` thread with the lowest tid above its own pid that no earlier qemu took.
+  - **A switch's match is confirmed by behaviour:** a switch's PIT ticks about 1,000 times a
+    second, a router's none. A match that does not tick is not trusted, and every PIT thread
+    then goes to the switches' set, logged.
+  - **Measured on all twelve, 2026-10-21:** every qemu matched a distinct thread; s1 983
+    ticks/s, s2 1,001, s3 1,038, s4 1,086; every router 0.
+  - A switch's PIT thread goes to its own CPU, a router's to 0 to 19.
+  - lab/REDEPLOY.md's step 5a goes once it is installed.
 - **The check:** `lab/pinning/check-pinning.sh` is read-only, on the lab host, with its values
-  in `lab/pinning/pinning.conf`.
-  - It judges where the threads run: each switch's qemu threads on its own CPU, every other
-    node's processes within 0 to 19, every kvm-pit thread within 20 to 23.
-  - Each line says whether the pinning is declared or by hand.
+  in `lab/pinning/pinning.conf`. It checks four parts, one line each:
+  - the timer is active and its last run succeeded;
+  - the lab file declares each node's cpu-set;
+  - each container applies it, and where its processes run (a switch's on its own CPU,
+    everyone else's within 0 to 19), saying "applied by the container" or "by hand";
+  - each PIT thread is on its node's CPUs, matched as the timer matches it.
+
+  **Second run, 05:5x UTC, before the install and the redeploy:**
+  - the timer LOST (not installed);
+  - the lab file declares all (ok);
+  - every node "by hand", its launcher and shell processes still on 0 to 23;
+  - the four switches' PIT threads on their own CPUs, the eight routers' floating.
+
+  The true state. It reads PINNING HOLDS after the install and the next redeploy.
   - **First run, 05:4x UTC:** the four switches ok (by hand). Every router and host LOST: the
     hand `taskset` pinned their qemu but not their launcher and shell processes, which the
     declared cpuset will. The routers' idle PIT threads LOST. Exit 1, as it should be until the
@@ -395,8 +420,8 @@ qm set 100 --memory 65536 --balloon 0 --sockets 2 --cores 12 --numa 1 --hugepage
 | 7 | Shut down VM 100 and VM 102 (`qm shutdown`), then reboot the host. The BIOS job runs on the way | operator | 10 to 15 min (an R630's POST) |
 | 8 | Read back: the profile in iDRAC, `/proc/meminfo` HugePages_Total 64, `numastat` 32/32, VM 100's `qm config`, the hookscript's journal lines | agent | 5 min |
 | 9 | Start VM 102 (Mercury), then VM 100; the redeploy with the new lab file (lab/REDEPLOY.md) | operator | 15 to 20 min (the C8000vs boot) |
-| 9a | The CPU sets for the 2 × 12 layout, set in the lab file before the redeploy and checked after (see below) | operator (lab file); agent (check) | 5 min |
-| 10 | E checks: every device answering, the adjacency counts as at D4, r6 and r7 at their goldens (drift clean), the heartbeat and telemetry rules; `lab/pinning/pin-pit-threads.sh`, then `check-pinning.sh` reads PINNING HOLDS with every line "declared" | agent | 15 min |
+| 9a | The CPU sets for the 2 × 12 layout (see below), set in the lab file before the redeploy: a lab-repo commit after `33916b7` (the file's sha256 at 33916b7 begins `c23c5d4014d5`), with `pinning.conf` set to the same values | operator (lab file and conf); agent (check) | 5 min |
+| 10 | E checks: every device answering, the adjacency counts as at D4, r6 and r7 at their goldens (drift clean), the heartbeat and telemetry rules; `check-pinning.sh` reads PINNING HOLDS (the timer active, the file declaring, each container "applied by the container", each PIT thread on its node's CPUs) | agent | 15 min |
 | 11 | 2 hours measured against tonight's final numbers | agent | 2 h |
 
 **The outage:** Mercury is down about 15 to 20 minutes (host reboot to VM 102 up). The lab is

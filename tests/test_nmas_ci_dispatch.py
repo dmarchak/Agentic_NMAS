@@ -113,6 +113,11 @@ class TestRefusalsAreSaidPlainly:
         far = "github-authentication-token-expiration: 2026-11-21 12:00:00 UTC\n"
         assert "expires 2026-10-21 12:00 UTC (1 day(s) left)" in D.expiry_warning(near, now)
         assert D.expiry_warning(far, now) == ""
+        # A week ahead (the operator, 2026-10-21): six days left is said, eight is not.
+        six = "github-authentication-token-expiration: 2026-10-26 12:00:00 UTC\n"
+        eight = "github-authentication-token-expiration: 2026-10-28 12:00:00 UTC\n"
+        assert "(6 day(s) left)" in D.expiry_warning(six, now)
+        assert D.expiry_warning(eight, now) == ""
 
 
 class TestADispatchFindsTheRunItMade:
