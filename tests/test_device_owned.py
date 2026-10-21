@@ -149,6 +149,48 @@ class TestAutoInstallsClientId:
         assert line.rstrip() in normalize.strip_for_roundtrip(text)
 
 
+def _serial(name):
+    """The serial r2's real capture's licence UDI line names: the identity the second DHCP
+    client sends."""
+    return re.search(r"^license udi pid \S+ sn (\S+)\s*$", _text(name), re.M).group(1)
+
+
+class TestAutoInstallsSerialClientId:
+    """C1479 (measured 2026-10-21 from R6's and R7's captures): a configless C8000v's second DHCP
+    client sends its SERIAL NUMBER, and AutoInstall writes whichever client-id was answered, so
+    R7's seed held `ip dhcp client client-id ascii <its serial>` and blocked its deploys where
+    R6's MAC form did not. The serial form is the device's own when it is exactly the serial its
+    licence UDI names; any other text stays configuration."""
+
+    def test_its_own_serial_is_device_owned_never_parsed_never_sent(self):
+        from modules.nsot import normalize
+        from modules.nsot.deploy import merge_commands, merge_diff
+        from modules.nsot.parsers import get_parser
+        from modules.nsot.roundtrip import validate_device
+        line = f" ip dhcp client client-id ascii {_serial('r2')}"
+        text = _with_autoinstall(line)
+        assert f"interface GigabitEthernet2: {line.strip()}" in normalize.device_owned(text)
+        hv = get_parser("cisco_iosxe").parse(text)
+        held = [l for i in hv.get("interfaces") or [] for l in i.get("unmodeled") or []]
+        assert not [l for l in held if "client-id" in l], held
+        r = validate_device(text, "cisco_iosxe")
+        assert r.get("ok") and r.get("round_trip_fidelity") == 100.0, r.get("details")
+        rendered = _render(get_parser("cisco_iosxe").parse(_text("r2")), "cisco_iosxe")
+        assert not [l for l in merge_commands(rendered, text) if "client-id" in l]
+        assert not [x for x in merge_diff(rendered, text)["residue"] if "client-id" in str(x)]
+
+    def test_another_serial_or_none_stays_configuration(self):
+        from modules.nsot import normalize
+        line = " ip dhcp client client-id ascii " + _serial("r2") + "7"
+        text = _with_autoinstall(line)
+        assert not [h for h in normalize.device_owned(text) if "client-id" in h]
+        assert line.rstrip() in normalize.strip_for_roundtrip(text)
+        # A configuration naming no serial judges the serial form as configuration.
+        own = f" ip dhcp client client-id ascii {_serial('r2')}"
+        bare = re.sub(r"^license udi pid .*$\n", "", _with_autoinstall(own), flags=re.M)
+        assert own.rstrip() in normalize.strip_for_roundtrip(bare)
+
+
 #: The fleet's IOS-XE captures that run BGP (measured 2026-10-17: r3, r4 and r5 of the five).
 BGP_XE = [n for n in NAMES if SELF_SIGNED.search(_text(n)) and "\nrouter bgp " in _text(n)]
 LOG_CHANGES = " bgp log-neighbor-changes"

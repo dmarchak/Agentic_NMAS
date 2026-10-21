@@ -388,12 +388,32 @@ _AUTOINSTALL_CLIENT_ID = re.compile(
     r"^\s+ip dhcp client client-id ascii cisco-[0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4}-(\S+)\s*$")
 
 
-def _autoinstall_client_id(line: str, interface: str) -> bool:
-    """Whether *line*, a child of ``interface <interface>``, is AutoInstall's own client-id."""
+#: C1479 (2026-10-21, measured from R6's and R7's captures): a configless C8000v runs two DHCP
+#: clients on its uplink, one sending the MAC form above and one sending its SERIAL NUMBER, and
+#: AutoInstall writes the client-id of whichever exchange was answered. The serial form is the
+#: device's own only when it is exactly the serial the same configuration's licence UDI names
+#: (`license udi pid <pid> sn <serial>`): equality with the device's own identity, never a
+#: resemblance, so a client-id a person chose keeps its normal path.
+_AUTOINSTALL_SERIAL_CLIENT_ID = re.compile(r"^\s+ip dhcp client client-id ascii (\S+)\s*$")
+_LICENCE_SERIAL = re.compile(r"^license udi pid \S+ sn (\S+)\s*$", re.M)
+
+
+def _device_serial(text: str) -> str:
+    """The serial the configuration's licence UDI line names, or '' when it names none."""
+    m = _LICENCE_SERIAL.search(text or "")
+    return m.group(1) if m else ""
+
+
+def _autoinstall_client_id(line: str, interface: str, serial: str = "") -> bool:
+    """Whether *line*, a child of ``interface <interface>``, is AutoInstall's own client-id: the
+    MAC form for that interface (C485), or the device's own *serial* (C1479)."""
     from modules.nsot import ifnames
 
     m = _AUTOINSTALL_CLIENT_ID.match(line)
-    return bool(m and interface and m.group(1) == ifnames.abbreviate(interface))
+    if m and interface and m.group(1) == ifnames.abbreviate(interface):
+        return True
+    s = _AUTOINSTALL_SERIAL_CLIENT_ID.match(line)
+    return bool(s and interface and serial and s.group(1) == serial)
 
 
 #: BGP's neighbour-change logging (C1182, the operator, W4 after step 50, 2026-10-17): IOS-XE
@@ -565,6 +585,7 @@ def excluded_unrenderable(text: str) -> list:
     this says what the figure beside it did not examine.
     """
     found, in_block, in_banner, interface, section = [], False, False, "", ""
+    serial = _device_serial(text)
 
     for line in (text or "").splitlines():
         stripped = line.strip()
@@ -592,7 +613,7 @@ def excluded_unrenderable(text: str) -> list:
         if not line[:1].isspace():
             section = stripped
             interface = stripped[len("interface "):] if stripped.startswith("interface ") else ""
-        elif _autoinstall_client_id(line, interface):
+        elif _autoinstall_client_id(line, interface, serial):
             found.append(f"interface {interface}: {stripped}")
         elif _bgp_own(line, section):
             found.append(f"{section}: {stripped}")
@@ -614,6 +635,7 @@ def strip_for_roundtrip(text: str) -> list:
     in_block = False
     in_banner = False
     interface = section = ""
+    serial = _device_serial(text)
 
     for line in (text or "").splitlines():
         stripped = line.strip()
@@ -642,8 +664,8 @@ def strip_for_roundtrip(text: str) -> list:
         if not line[:1].isspace():
             section = stripped
             interface = stripped[len("interface "):] if stripped.startswith("interface ") else ""
-        elif _autoinstall_client_id(line, interface):
-            continue                        # AutoInstall's own (C485): never intent, never sent
+        elif _autoinstall_client_id(line, interface, serial):
+            continue                        # AutoInstall's own (C485, C1479): never intent, never sent
         elif _bgp_own(line, section):
             continue                        # IOS-XE's own (C1182): never intent, never sent
 
