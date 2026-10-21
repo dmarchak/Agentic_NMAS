@@ -101,6 +101,15 @@ of that path" applies to R4's step 4 and R6's step 6. The repair route is the co
 
 ## 3. Lab 9: steps
 
+**Day 0, Day 1, Day 2 in Lab 9** (docs/DAY1_AUTOMATION.md, 2026-10-20):
+- **Day 0** stays ZTP and onboarding's Verify, as in Lab 8.
+- **Day 1 moves up front:**
+  - its program is approved at Verify and applied automatically after promotion, through the
+    deploy path ((a′), section 5 of that document);
+  - if (b) lands by 10-30, R8's and the switch's Day 1 intent is generated from their NetBox
+    Planned records and a role template, and approved at Add device;
+  - otherwise Lab 9 shows the approval at Verify, and the generation is the next step.
+
 | # | Step | Who | Built? | Size | When |
 |---|---|---|---|---|---|
 | 0a | vIOS-L2 with no configuration under vrnetlab: a configless launch patch with its own test (the C8000v's needed six changes and management passthrough; the vIOS launcher types on the console and restarts a quiet VM), DISCOVER captured, the file names it asks for (C1349) | L/measure, C | no | M | 10-22 or 10-23 |
@@ -129,10 +138,10 @@ so each new VLAN 10 segment is its own prefix with its own id. Nothing new may s
 |---|---|---|---|
 | R4–R6, OSPF area 10 | 10.255.4.0/30 (R4 Gi5 .1, the relay; R6 .2, reserved: its management address) | 2001:db8:2:46::/64 (R4 ::1) | A /30, not the lab's usual /31: a relayed Kea subnet needs a client address besides the relay's |
 | R6–R7, RIPv2 | 10.255.4.4/30 (R6 .5, the relay; R7 .6, reserved) | 2001:db8:2:67::/64 (RIPng) | |
-| VLAN 10 at R7's site (H5) | 10.70.10.0/24 (R7 .1; Kea pool .100 to .200, router .1, through R7's helper) | 2001:db8:70:10::/64 | VLAN ID 10 used again at R7's site, not H1/H3's 10.10.10.0/24 (it ends at s1/s2's SVIs): in NetBox, a VLAN group for R7's site holding VID 10, attached to the prefix (C1424: Mercury's token cannot read VLAN groups). H5's DNS server: **none** (the operator, 2026-10-20: no DNS option on the subnet; 10.255.0.10 answers no DNS, by D4 on the ZTP segment it sits on, and the subnets that carry it today are C1425) |
+| VLAN 10 at R7's site (H5) | 10.70.10.0/24 (R7 .1; Kea pool .100 to .200, router .1, through R7's helper) | 2001:db8:70:10::/64 | VLAN ID 10 used again at R7's site, not H1/H3's 10.10.10.0/24 (it ends at s1/s2's SVIs): in NetBox, a VLAN group for R7's site holding VID 10, attached to the prefix (C1424: Mercury's token cannot read VLAN groups). H5's DNS server: **none** (the operator, 2026-10-20: no DNS option on the subnet; 10.255.0.10 answers no DNS, by D4 on the ZTP segment it sits on, and the subnets that carry it today are C1425). **Confirmed by the course instructor, 2026-10-20: a VLAN 10 at each site, each with its own subnet, is correct** (H5 on 10.70.10.0/24 behind R7; Lab 9's on 10.80.10.0/24 behind R8). The question is closed |
 | R2–R8, OSPF area 20 | 10.255.4.8/30 (R2 .9, the relay; R8 .10) | 2001:db8:2:28::/64 | |
 | R8–switch, the switch's management (VLAN 1, untagged) | 10.255.4.12/30 (R8 .13, the relay; switch .14) | — | AutoInstall runs on VLAN 1's SVI (to confirm in Lab 9's 0a) |
-| VLAN 10 behind the switch (H6, H7) | 10.80.10.0/24 (R8 Gi.10 .1; pool .100 to .199) | 2001:db8:80:10::/64 | A VLAN group for R8's site, as R7's |
+| VLAN 10 behind the switch (H6, H7) | 10.80.10.0/24 (R8 Gi.10 .1; pool .100 to .199) | 2001:db8:80:10::/64 | A VLAN group for R8's site, as R7's; a VLAN 10 per site confirmed by the course instructor (2026-10-20, the row above) |
 | Loopbacks | R6 10.255.1.16, R7 .17, R8 .18, the switch .25 | 2001:db8:1::16, ::17, ::18, ::25 | .16 was the retired r6's: addresses are not identity, so reuse is allowed. Read 2026-10-20: no host key, Kea lease or reservation, Prometheus target or series, or Grafana rule is recorded against 10.255.1.16 or 2001:db8:1::16; NetBox's `r6-retired-11` and its two addresses deleted by the operator (2026-10-20); **s3 routes 10.255.1.16/32 to 10.255.0.32** (C1422), redistributed as an OSPF E2 route to every router: removed by Mode B in step 4b. The search of every network's intent for r6's old addresses found no other reference |
 
 Read in NetBox's IPAM 2026-10-20: 10.255.4.0/24 and 10.70.0.0/16 hold no prefix and no address.

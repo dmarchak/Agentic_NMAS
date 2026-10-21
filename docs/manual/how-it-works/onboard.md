@@ -1,5 +1,15 @@
 # Onboard a device
 
+**Day 0, Day 1, Day 2.**
+- **Onboarding is Day 0:** the management plane only (hostname, a one-time account, the domain,
+  the management address, SSH), then the credential rotated, the first capture, the NetBox
+  record and the monitoring profile. Over ZTP, the bootstrap travels by TFTP and carries no
+  service configuration and no lasting secret.
+- **Day 1 is the device's full service configuration:** its intent, deployed over SSH after the
+  rotation through the deploy path ([Deploy](deploy)), with its preview, confirm by hash,
+  verify and rollback. Day 1 is a separate step today: Seed intent, the intent, a deploy.
+- **Day 2 is operating it.**
+
 Onboarding brings a NEW device into the tool in two phases. Create sends nothing to any device: it stages a one-time credential, commits the device's bootstrap intent and makes a bootstrap configuration to boot it with. Verify then reaches the device, replaces that credential, cleans it up, saves it, records its first golden and adds it to the inventory. A device the tool did not build is adopted instead (see [Adopt a device](adopt)).
 
 ![The onboarding flow: Create stages a credential and commits a bootstrap with nothing sent; the device boots on that bootstrap config (static, DHCP, or served by the tool through ZTP); Verify reaches it, rotates its credential, saves it and records its first golden, then promotes it; seeding and deploys follow.](diagrams/onboard.svg)

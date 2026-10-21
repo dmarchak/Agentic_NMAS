@@ -945,6 +945,36 @@ older paragraph below orders the work otherwise, this governs.
    positives or fewer over at least 30 days and 100 events.
 4. **Phase 8 (AI), on Anthropic, one complete feature first:** natural language to PromQL or
    LogQL (PHASE8_PLAN, amended 2026-10-18).
+
+   **Amended 2026-10-20 (the operator): Phase 8's first release is PULLED FORWARD.** Its first
+   features ship before Core 1.0's sign-off, with a feature freeze around 11-20, so that real AI
+   on Anthropic's API is in the project's showcase at the end of November. The release's scope,
+   order and sizes are docs/AI_ANTHROPIC_PLAN.md.
+
+   **What the decision does not change:**
+   - **No demo-only work:** every AI feature shown ships, tested, behind the same safety model.
+   - **The labs still come first:** Labs 8 and 9 keep priority as dependencies (item 2).
+   - **Offline-first stays a release gate:** Mercury without AI is complete, and with no key
+     configured each AI feature is disabled, saying why.
+   - **Other providers come after the showcase:** OpenAI-compatible local endpoints,
+     PHASE8_PLAN section 14, for the public release.
+
+   **Its consequences, stated:**
+   - **Core 1.0 finishes later.** The AI release's weeks (AI_ANTHROPIC_PLAN section 5) come out
+     of the time box above, so Core 1.0's remaining must-haves move behind the freeze. The
+     re-forecast after the first four capabilities counts them.
+   - **Respond's observe-mode clock (K35) still starts in Core 1.0's tail**, now after the AI
+     release. No Respond class is enabled by this release.
+   - **8.0's masking dependency changes for this release.** PHASE8_PLAN 13.2 masks through C733's
+     keyed-digest index, a Stage 10 redesign. The pulled-forward release masks through
+     `redact.redact_payload` (known values and positions) instead, with C745's unknown
+     credential shapes closed first and a red-team set that fails on any secret leaving. C733
+     replaces it at Stage 10. The operator decides this (AI_ANTHROPIC_PLAN section 2).
+   - **E18 (K31), the one records store, is not ready.** The AI calls' record (masked prompt,
+     model and version, tokens, cost, verdict) gets its own append-only record, as the receipts
+     have, moved into E18 when K31 lands.
+   - **Hardware:** hosted AI adds none (the charter). Core 1.0 still fits Minimum.
+   - **The local model (K57) stays in Stage 10.** It is not part of this release.
 5. **Stage 10, the public release.**
    - **Offline-first becomes its release gate:** every AI feature passes on the local profile
      before the public release (PHASE8_PLAN 12.1).

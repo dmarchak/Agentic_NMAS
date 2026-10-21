@@ -1,5 +1,10 @@
 # Phase 8: AI, in service of an intent-based network (a plan; not built)
 
+**2026-10-20 (the operator): Phase 8's first release is pulled forward,** before Core 1.0's
+sign-off, on Anthropic only, to a feature freeze around 11-20. Its scope and order are
+docs/AI_ANTHROPIC_PLAN.md, NSOT_PLAN section 9 records the decision and its consequences, and
+section 14 below is the endpoint direction after it.
+
 **The operator's charter, 2026-10-13.** Phase 8 starts only after Phase 7 closes. **The operator
 approves this plan, and every number in it, before any code.** **Approved 2026-10-13 with the
 changes recorded in section 9 ("Decided") and applied in sections 5 to 7.** It builds on
@@ -1497,3 +1502,92 @@ bring back numbers, not code**, for each pattern they exercise:
   count. Each lands in feature 1's card as a prototype measurement, distinct from the card's own
   eval.
 - **No prototype code or prompt is copied into Mercury.**
+
+## 14. The endpoint direction, after the showcase (the operator, 2026-10-20; docs only)
+
+**Status:** a direction for the public release (Stage 10), recorded before any of it is built.
+The first AI release (docs/AI_ANTHROPIC_PLAN.md) is Anthropic only. Its provider layer is
+shaped so that what follows is a second provider type, not a rewrite.
+
+### 14.1 AI is an optional service at an endpoint, never bundled
+
+- **Where:** Settings names one endpoint, either Anthropic or an OpenAI-compatible server
+  (vLLM, llama.cpp's `llama-server`, Ollama).
+- **Never bundled:** Mercury ships no model and runs no inference engine in its own process or
+  on its own host.
+- **This supersedes 10.4's "Local (built-in)"** (`llama-server` beside Mercury, bound to
+  127.0.0.1). The engine moves to a **reference AI host** (14.3), which Mercury reaches as any
+  other OpenAI-compatible endpoint. 10.2's origin rule, 10.5's tiers and 10.7's evaluation
+  carry over to that host.
+- **One adapter per API shape, never per model** (10.3): Anthropic Messages, and
+  OpenAI-compatible. **The provider layer hides each server's schema mechanism.**
+  - Anthropic's structured outputs (13.5).
+  - Each OpenAI-compatible server's own: `response_format` with a JSON schema where the
+    server supports it, or a grammar or guided-decoding option where it does not, each
+    measured by the conformance suite (14.2).
+  - A feature asks for a shape (A, B or C, 13.4) and a Pydantic model, never for a server's
+    mechanism.
+- **The redactor runs before every endpoint, local ones included.** A self-hosted model is
+  still outside Mercury's process, and its logs are not Mercury's.
+
+### 14.2 "Test connection" runs a conformance suite
+
+Pressing **Test connection** on an endpoint runs, against that endpoint and model:
+- **the shapes:** A, B and C, each schema-valid over N runs;
+- **the eval cases:** each feature's golden cases (section 7: at least 30 per feature);
+- **latency:** time to first token and total, median and 95th percentile;
+- **context:** the largest prompt the endpoint accepts and answers correctly.
+
+**Each feature is enabled only above its own threshold** (its card's target, section 3). A
+feature below it is disabled, naming the measured figure and the threshold. The suite's
+result is recorded with the endpoint, model, version and date. **A model change at the
+endpoint is detected** (the model id or version it reports, and a canary case's answer), and
+the suite runs again before any feature uses it.
+
+### 14.3 The reference AI host
+
+- **What it is:** a VM image or a compose file, built and published with each release, that
+  runs one pinned engine and one pinned model. 10.2 holds: the reference model Mercury ships is
+  of **US origin**, with no setting to change that for the reference.
+- **Air-gapped sites self-host it:** the image and its model file arrive through the offline
+  update path (K58, docs/OFFLINE_OPERATION.md), never a download from the site.
+- **Hardware tiers:**
+  - Minimum and Standard are Mercury alone, with hosted AI or none.
+  - Large is Mercury plus the AI host, on the same hardware class or beside it (the charter's
+    tiers; 10.5's model tiers apply to the AI host).
+
+### 14.4 What Mercury does with an endpoint
+
+- **Any endpoint, monitored:**
+  - availability and latency;
+  - error rate, including schema failures, refusals and truncations;
+  - conformance drift: a canary case answered differently, or the model's identity changed;
+  - cost, for a priced endpoint.
+
+  Each is a job-health row and, when wrong, a Needs attention row with its action.
+- **Only the reference host, managed.** Its upgrades are a Mercury operation with the usual
+  lifecycle:
+  1. **preview:** the bundle's manifest, the engine and model versions, and what the
+     conformance suite will run;
+  2. **confirm by the bundle's hash**, as a verified person;
+  3. **install beside** the running version, never over it;
+  4. **verify** by the conformance suite against the new version;
+  5. switch, with **instant rollback** to the version kept beside it;
+  6. **record** the whole run.
+
+  Mercury acts on that host only through a **least-privilege update agent** there. The agent
+  accepts only bundles signed by the release key, runs only the install, switch and roll-back
+  verbs, and answers to Mercury's request alone. At air-gapped sites the bundle comes through
+  the offline update path.
+- **A site's own endpoint** (its vLLM, its Ollama) is monitored and never managed: Mercury
+  neither upgrades nor restarts what it does not own.
+
+### 14.5 What stays the same
+
+- The release gate of 12.1 and 13.1.
+- The model as an untrusted component (non-negotiable 6), and the red-team set blocking any
+  release.
+- AI advising and never confirming: the charter's AI-assisted actions.
+- Masking before every call.
+- An endpoint's feature off, with its reason, when the endpoint is absent or below
+  threshold: Mercury without AI is complete.

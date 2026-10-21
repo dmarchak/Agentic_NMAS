@@ -76,6 +76,17 @@ Times are UTC (yours, UTC−6, beside them). Nothing runs from 08:30 to 09:10 UT
 creates its link's ZTP subnet) is built and gated while the operator is away, but deployed
 only when the operator is here, and never inside the D/E window.
 
+**Day 0, Day 1, Day 2** (docs/DAY1_AUTOMATION.md, 2026-10-20), named at each device below:
+- **Day 0 is automatic:** ZTP serves the minimal bootstrap over TFTP; onboarding's Verify
+  rotates the credential, captures, records NetBox and applies the monitoring profile.
+- **Day 1 is one approved, verified change:** the stored intent (`lab/lab8/r6-intent.yml`,
+  R7's) applied as edits to the seed, keeping the seed's per-boot keys, then one preview and one
+  confirm by hash through the deploy path.
+- **Day 2 is operating it.**
+
+Approving Day 1 at Verify, or at Add device, is Lab 9's (DAY1_AUTOMATION section 5); Lab 8 does
+not try it untried.
+
 **Next, in this order (the operator, 2026-10-20 ~20:55 UTC), each with its expected output:**
 
 1. **[YOU] Add device › ZTP for R7** (section 2.2's values, subnet 257 exists): `r7`, IOS-XE,
