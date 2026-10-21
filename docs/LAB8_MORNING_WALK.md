@@ -1043,18 +1043,64 @@ log "done: $(ip -4 addr show dev "$IF" | grep -o 'inet [0-9.]*') $(ip -6 addr sh
 
 Each is read through Mercury (a Show commands run, or Verify's own reads):
 1. R4 an ABR for areas 0 and 10 (done 10-20: `show ip ospf`).
+**Results, 2026-10-21** (through Mercury's read path at 03:17:53 UTC, after R7's Day 1 deploy 2
+at 03:12:47; H5's by the operator on the lab host; the figures in docs/PITCH_METRICS.md
+section 2b):
+- **PASS:** checks 2, 4, 5, 6, 7 and 8, and check 3's first half.
+- **Check 3's second half reads otherwise, by design.** R7's IPv4 default is the bootstrap's
+  static, as section 5 keeps it, and R6's originated RIP default loses to it. R7's IPv6 default
+  is RIPng's.
+- **Check 5:** PASS. The pings from r4 ran at 03:2x UTC.
+
+1. R4 an ABR for areas 0 and 10 (done 10-20: `show ip ospf`).
 2. R6 adjacent to R4 (OSPF area 10, OSPFv3 area 10); R6 to R7 RIPv2 and RIPng
    (`show ip rip database`, `show ipv6 rip RCN database`).
+   **PASS 10-21:**
+   - R4–R6 OSPF and OSPFv3 FULL on Gi5;
+   - R6 and R7 each name the other as their one RIP gateway;
+   - RIPng has one next hop each way;
+   - R6's databases hold R7's 10.70.10.0/24, 10.255.1.17/32, 2001:DB8:70:10::/64 and
+     2001:DB8:1::17/128.
 3. The redistribution, as designed (RIP into OSPF one way, a default into RIP the other):
-   - R4 holds 10.70.10.0/24 and 10.255.1.17/32 as O E2;
-   - R7 holds 0.0.0.0/0 by RIP.
-4. Every router's adjacency counts as at 10-20 07:0x, plus R4's and R6's new one:
-   r1 2/2, r2 2/2, r3 6/4, r4 7/5, s3 2, s4 2.
+   - R4 holds 10.70.10.0/24 and 10.255.1.17/32 as O E2. **PASS 10-21:** both O E2, metric
+     20, via 10.255.4.2 (Gi5), from 10.255.1.16.
+   - R7 holds 0.0.0.0/0 by RIP. **Reads otherwise 10-21:**
+     - R7's 0.0.0.0/0 is the bootstrap's static via 10.255.4.5, distance 1. Section 5 keeps
+       that static, with the same next hop as RIP's.
+     - R6 originates a RIP default (its database shows 0.0.0.0/0 "redistributed"), and R7's
+       RIP database holds none while the static is preferred.
+     - R7's IPv6 default IS RIPng's, from R6.
+     - To show the IPv4 default by RIP, the static would have to go: a Mode B removal on R7's
+       management path, with the console as its repair route. That is the operator's decision.
+4. Every router's adjacency counts as at the redeploy's D4 (2026-10-21 01:4x UTC), plus R4's
+   and R6's new one. **PASS 10-21** (Prometheus, up of all):
+   - r1: OSPF 5/5, OSPFv3 3/3;
+   - r2: OSPF 5/5, OSPFv3 3/3;
+   - r3: BGP 2/2, OSPF 6/6, OSPFv3 4/4;
+   - r4: BGP 2/2, OSPF 7/7, OSPFv3 5/5 (one more of each: R6);
+   - r6: OSPF 1/1, OSPFv3 1/1;
+   - s3: OSPF 5/5;
+   - s4: OSPF 5/5.
+
+   This list read "r1 2/2, r2 2/2, r3 6/4, r4 7/5, s3 2, s4 2" before; r1, r2, s3 and s4's
+   figures there were never a reading.
 5. R6 and R7 reachable from Mercury by their management addresses, and their loopbacks
-   reachable by `ping` from r4.
-6. H5 holds a Kea lease from 10.70.10.0/24 through R7's relay (the DHCP page).
-7. **H5 reaches 8.8.8.8** (the operator, 2026-10-20). The lab itself reaches it: r4 and r3, 5 of
+   reachable by `ping` from r4. **PASS 10-21:**
+   - both verified and answering;
+   - from r4 (Loopback0 source): 10.255.1.16 5/5 and 10.255.1.17 5/5;
+   - 2001:DB8:1::17 5/5.
+6. H5 holds a Kea lease from 10.70.10.0/24 through R7's relay (the DHCP page). **PASS 10-21**
+   (the operator): 10.70.10.100.
+7. **H5 reaches 8.8.8.8** (the operator, 2026-10-20). **PASS 10-21** (the operator, from H5):
+   - 5 of 5;
+   - traceroute R7 → R6 → R4 → R5 → 8.8.8.8;
+   - `curl` returns "hello world from RCN". The lab itself reaches it: r4 and r3, 5 of
    5 each from their loopbacks (read 2026-10-20 09:11 UTC). H5's path is R7's RIP default, then
    R6's OSPF default from R4, then R4's NAT out of Gi2. Read it from H5 (the operator, on the lab
    host) and, through Mercury, `traceroute 8.8.8.8 source GigabitEthernet3.10` on R7.
 8. IPv6: H5's SLAAC address in 2001:db8:70:10::/64. `ping 2001:DB8:70:10::1` from r4.
+   **PASS 10-21** (the operator, from H5):
+   - its SLAAC address is in 2001:db8:70:10::/64;
+   - `ping 2001:4860:4860::8888` 3 of 3.
+
+   From r4: `ping 2001:DB8:70:10::1` 5/5.

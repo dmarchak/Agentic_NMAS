@@ -101,6 +101,8 @@ holds when the program was applied or when Verify ended. R6's Day 1 had landed b
 | s3, Lab 8 step 4b (a stale static route removed, Mode B) | 16:28:14 | 2 s | 1 (1 removal, 1 authorised line) | yes | FULL: interfaces 9/9, routes 24 → 23 (the removed route), OSPF 5/5 | none | to startup |
 | r6, Lab 8 step 6 (full intent) | 18:50:11 | 4 s | 42 | yes | FULL: interfaces 4/4, routes 5 → 25; 28 lines read back, 2 skipped (`no` lines); RIP and RIPng declared and not up, no neighbour yet (amber, C1450) | none | to startup |
 | r6, Lab 8 R6 redo, Day 1 (2026-10-21) | 02:36:19 | 2 s | 43 | yes | FULL: OSPF 0 → 1, OSPFv3 0 → 1; RIP and RIPng declared and not up until R7's Day 1 (amber, C1450) | none | to startup |
+| r7, Lab 8 step 7, Day 1 deploy 1 (2026-10-21; Gi3.10 without its address, C1478) | 03:09:44 | 2 s | 31 | yes | FULL, green: RIP 0 → 1, RIPng 0 → 1, interfaces 4 of 5 up, routes 5 → 8; 19 lines read back, 1 skipped (a `no` line) | none | to startup |
+| r7, Lab 8 step 7, Day 1 deploy 2 (Gi3.10's address and helper) | 03:12:47 | 4 s | 4 | yes | FULL, green: RIP 1/1, RIPng 1/1, interfaces 5 of 5 up, routes 8 → 10; 2 lines read back | none | to startup |
 
 **What these show:**
 - Every deploy sent exactly the program confirmed (`matches_confirmed`).
@@ -112,11 +114,58 @@ holds when the program was applied or when Verify ended. R6's Day 1 had landed b
 for before Confirm (C1434). Refusals are part of the record, and a showcase can quote them.
 
 **Gaps:**
-- **Preview to verified:** the receipt records the apply (`at` to `completed_at`), not when the
-  preview was drawn, so this span cannot be read yet. The preview's time is in the audit of
+- **Preview to verified:** the receipt records neither the apply nor the end of Verify (its
+  `at` is when it was written, C1481), nor when the preview was drawn, so this span cannot be
+  read yet. The preview's time is in the audit of
   the confirm; a row is to be registered when the first figure is wanted.
 - **Rollback time to restore:** no rollback has run in Lab 8. The figure comes from the first
   one that does (Lab 9's testing segment, or an earlier lab's receipts).
+
+## 2b. Lab 8's network, end to end (2026-10-21)
+
+**From H5** (*operator-reported*, read on the lab host by the operator, after R7's Day 1 deploy 2
+at 03:12:47 UTC):
+- **DHCPv4:** H5 leased 10.70.10.100 from 10.70.10.0/24, through R7's relay (Gi3.10's helper).
+- **IPv6:** SLAAC address in 2001:db8:70:10::/64, from R7's router advertisements.
+- **Out to the internet:**
+  - `ping 8.8.8.8`: 5 of 5;
+  - traceroute: R7 → R6 → R4 → R5 → 8.8.8.8;
+  - `curl` returns "hello world from RCN";
+  - `ping 2001:4860:4860::8888`: 3 of 3.
+
+**Through Mercury** (`reads.run`, the Ask tab's read path, recorded as the agent's run;
+03:17:53 UTC):
+- **R6 ↔ R7, RIPv2:** each names the other as its one RIP source (R6's gateway 10.255.4.6, R7's
+  10.255.4.5). R6's RIP database holds 10.70.10.0/24 and 10.255.1.17/32 via 10.255.4.6.
+- **R6 ↔ R7, RIPng RCN:** one next hop each way. R6 installs 2001:DB8:1::17/128 and
+  2001:DB8:70:10::/64 from R7, and R7's IPv6 default is RIPng's, from R6.
+- **Redistribution into OSPF:** R4 holds 10.70.10.0/24 and 10.255.1.17/32 as O E2 (metric 20),
+  via 10.255.4.2 on Gi5, advertised by 10.255.1.16 (R6).
+- **R7's IPv4 default:** the bootstrap's static via 10.255.4.5 (distance 1), not RIP. R6
+  originates a RIP default (its database shows 0.0.0.0/0 "redistributed"). R7's RIP database
+  holds no default, because the static, with the same next hop, is preferred. That is the
+  design of section 5 of the walk, and it differs from the Lab 8 checks list's "by RIP" (the
+  checks list says so).
+- **Adjacencies** (Prometheus, up of all):
+  - r1: OSPF 5/5, OSPFv3 3/3;
+  - r2: OSPF 5/5, OSPFv3 3/3;
+  - r3: BGP 2/2, OSPF 6/6, OSPFv3 4/4;
+  - r4: BGP 2/2, OSPF 7/7, OSPFv3 5/5;
+  - r6: OSPF 1/1, OSPFv3 1/1;
+  - s3: OSPF 5/5;
+  - s4: OSPF 5/5.
+
+  Each equals the redeploy's D4 reading (01:4x UTC), except r4, which has one more of each (R6
+  on Gi5), and r6, which is new.
+
+- **Reachability from r4** (the same path, 03:2x UTC), each 5 of 5:
+  - R6's loopback 10.255.1.16 and R7's 10.255.1.17, from r4's Loopback0;
+  - 2001:DB8:1::17;
+  - 2001:DB8:70:10::1, R7's VLAN 10 address.
+
+**Count of Mercury operations for Lab 8's routing** (receipts, 2026-10-21): 3 deploys (R6 Day 1,
+R7 Day 1 in two parts), 78 lines sent, each sent as confirmed, each verified FULL and saved,
+none rolled back.
 
 ## 3. The suite and its checks (2026-10-20)
 
@@ -142,7 +191,8 @@ A count over all time needs each row's "found by" read as a property; it is not 
 
 ## 4. To fill through Lab 8 and Lab 9
 
-- R6 again, R7 and H5 (Lab 8), with Kea's lease time read from its record.
+- H5's lease time, read from Kea's record (R6, R7 and H5's end to end are in sections 1, 2
+  and 2b).
 - R8 and the switch (Lab 9).
 - The first rollback's time to restore.
 - The first onboarding with C1460's subnet created by Add device: one LABOUR step fewer.
