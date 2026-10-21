@@ -48,6 +48,17 @@ def measured(monkeypatch):
     monkeypatch.setattr("modules.nsot.removal.measured", lambda: MEASURED)
 
 
+#: A record WITHOUT the shape on either platform, planted: the committed record measured it on
+#: s1 and r2 (2026-10-21, C1485's tuning sprint), so "unmeasured" is a state a test makes, never
+#: one it assumes of the shipped file.
+UNMEASURED = {"state": "ok", "unmeasured": {}, "by_dialect": {"cisco_ios": {}, "cisco_iosxe": {}}}
+
+
+@pytest.fixture
+def unmeasured(monkeypatch):
+    monkeypatch.setattr("modules.nsot.removal.measured", lambda: UNMEASURED)
+
+
 def _plan(intended=SIXTY, captured=S3, dialect="cisco_ios"):
     from modules.nsot import recreate
     return recreate.plan(intended, captured, dialect=dialect)
@@ -120,8 +131,8 @@ class TestTheProgram:
 
 
 class TestTheRefusals:
-    def test_unmeasured_is_refused_naming_the_shape_and_the_probe(self):
-        p = _plan()                                       # the committed record
+    def test_unmeasured_is_refused_naming_the_shape_and_the_probe(self, unmeasured):
+        p = _plan()
         assert p["units"] == [] and p["commands"] == []
         (r,) = p["refused"]
         assert "ip sla 1 is running" in r["reason"] and "refuses to modify" in r["reason"]
@@ -150,7 +161,7 @@ class TestTheRefusals:
 # ---------------------------------------------------------------- the measurement
 
 class TestTheShapeIsMeasured:
-    def test_the_operation_is_a_measured_shape_refused_until_measured(self):
+    def test_the_operation_is_a_measured_shape_refused_until_measured(self, unmeasured):
         from modules.nsot import removal
         shape = removal.shape_for((), "ip sla 1", "stanza")
         assert shape is not None and shape.key == "global.ip-sla-operation"
@@ -257,7 +268,7 @@ class TestThePlanRoute:
         assert titles[0].startswith("ip sla 1 is running"), titles
         assert any(t.startswith("The IP SLA probes committed to its intent") for t in titles), titles
 
-    def test_unmeasured_blocks_the_device_and_sends_nothing(self, client):
+    def test_unmeasured_blocks_the_device_and_sends_nothing(self, client, unmeasured):
         _out, d = _route_plan(client)
         assert d["deployable"] is False
         assert any("global.ip-sla-operation" in r for r in d["blocking_reasons"])
@@ -311,7 +322,7 @@ class TestThePathThatConnects:
         assert rm["recreate_commands"] == PROGRAM and rm["recreates"][0]["number"] == "1"
         assert rm["commands"] == []
 
-    def test_unmeasured_fails_before_the_pipeline(self, monkeypatch):
+    def test_unmeasured_fails_before_the_pipeline(self, monkeypatch, unmeasured):
         import routes.deploy as rd
         from modules.nsot.render_artifact import build_artifact
 

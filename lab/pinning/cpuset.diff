@@ -1,0 +1,47 @@
+--- a/rcn-lab1.clab.yml
++++ b/rcn-lab1.clab.yml
+@@ -24,14 +24,21 @@
+ 
+ topology:
+   kinds:
++    # CPU sets (C1485, the tuning sprint, 2026-10-21: the switches on lab-VM CPUs of their own
++    # cut failed SNMP scrapes 94% and OSPF dead-timer drops 86% in an hour). Every router and
++    # host stays off CPUs 20-23; each switch takes one of them (below). A node's own cpu-set
++    # overrides its kind's. It covers each node's qemu and its threads, not the kernel's
++    # kvm-pit threads: lab/REDEPLOY.md pins those after a deploy.
+     cisco_c8000v:
+       image: vrnetlab/cisco_c8000v:17.06.01a
++      cpu-set: "0-19"
+     cisco_vios:
+       image: vrnetlab/cisco_vios:L2-20180619
+       env:
+         CLAB_MGMT_PASSTHROUGH: "false"     # required for 'ip address dhcp'
+     linux:
+       image: ghcr.io/hellt/network-multitool
++      cpu-set: "0-19"
+ 
+   nodes:
+     # ---- Routers (Cisco C8000v) ----
+@@ -71,18 +78,22 @@
+       kind: cisco_vios
+       mgmt-ipv4: 172.20.20.21              # access, RIPv2, VRRP VLAN 10/30 master
+       startup-config: configs/s1.cfg
++      cpu-set: "20"
+     s2:
+       kind: cisco_vios
+       mgmt-ipv4: 172.20.20.22              # access, RIPv2, VRRP VLAN 20 master
+       startup-config: configs/s2.cfg
++      cpu-set: "21"
+     s3:
+       kind: cisco_vios
+       mgmt-ipv4: 172.20.20.23              # dist, OSPF, owns VLAN 99 / NMAS
+       startup-config: configs/s3.cfg
++      cpu-set: "22"
+     s4:
+       kind: cisco_vios
+       mgmt-ipv4: 172.20.20.24              # dist, OSPF
+       startup-config: configs/s4.cfg
++      cpu-set: "23"
+ 
+     # ---- Hosts ----
+     h1:

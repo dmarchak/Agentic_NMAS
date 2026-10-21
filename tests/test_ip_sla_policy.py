@@ -497,10 +497,14 @@ class TestTheFrequencyPath:
         _r, again = _page(lab)
         assert _retune_keys(again) == [], "the probe now runs at the policy's frequency"
 
-    def test_the_scoped_apply_refuses_the_re_create_until_its_delete_is_measured(self, lab):
+    def test_the_scoped_apply_refuses_the_re_create_until_its_delete_is_measured(self, lab,
+                                                                                 monkeypatch):
         """The running operation cannot be edited in place (C290): the program deletes and
         re-creates it, and the delete is a removal shape measured per platform. Unmeasured here,
-        as on the lab tonight, the Apply refuses it by name and sends nothing."""
+        as it was on the lab until s1's and r2's probes (2026-10-21), the Apply refuses it by
+        name and sends nothing. The state is planted, never assumed of the committed record."""
+        monkeypatch.setattr("modules.nsot.removal.measured", lambda: {
+            "state": "ok", "unmeasured": {}, "by_dialect": {"cisco_ios": {}, "cisco_iosxe": {}}})
         assert _policy(lab).status_code == 200
         _r, page = _page(lab)
         url = lab["client"].post("/v2/monitoring/ip-sla/commit?list=Lab", json={

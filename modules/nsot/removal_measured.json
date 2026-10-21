@@ -20,6 +20,12 @@
         "device": "s1",
         "result": "exact"
       },
+      "global.ip-sla-operation": {
+        "at": "2026-10-21T05:38:32Z",
+        "detail": "",
+        "device": "s1",
+        "result": "exact"
+      },
       "global.ipv6-route": {
         "at": "2026-10-07T03:39:48Z",
         "detail": "",
@@ -132,6 +138,12 @@
       },
       "global.ip-route": {
         "at": "2026-10-07T03:33:56Z",
+        "detail": "",
+        "device": "r2",
+        "result": "exact"
+      },
+      "global.ip-sla-operation": {
+        "at": "2026-10-21T05:41:07Z",
         "detail": "",
         "device": "r2",
         "result": "exact"

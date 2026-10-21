@@ -136,7 +136,52 @@ protocol timers run slow.**
 | # | Change | Applied (UTC), by | Before | After | Verdict | Revert |
 |---|---|---|---|---|---|---|
 | 1 | Renice the switches' qemu (s1 to s4, all 16 threads) to nice −5 on `<lab-host>` | 03:48:16, the agent, on the operator's go | 03:17 to 03:47: 76 of 112 gauge steps below 10, 449 failed scrapes, 11 OSPF dead-timer drops, 17 missed-ping transitions, 0 SSH auth timeouts, s3 discards every minute (max 23.8/s), s3 heartbeat gaps 775 to 829 s | 03:49 to 04:19: 60 of 112 steps, 446 failed scrapes, 7 drops, 23 transitions, 0 timeouts, discards every minute (max 26.9/s), gaps 755 to 830 s | **No measurable gain:** the failed scrapes are unchanged and the missed pings rose. These were 30-minute windows (about three stalls each); later changes take 60. **Reverted at 04:24:46 UTC by the agent, on the operator's go;** all 16 threads read back at nice 0. |
-| 2 | Each switch on a vCPU of its own inside the lab VM, on `<lab-host>`: s1 to s4's qemu (every thread) and each one's `kvm-pit` thread pinned to CPUs 20, 21, 22 and 23; every router's qemu (r1 to r8, every thread) confined to CPUs 0 to 19 | 04:37:34, the agent, on the operator's go; read back: s1 to s4 at 20 to 23 (4 threads each), the routers at 0 to 19, the PIT threads 964075, 964184, 964235 and 964044 at 20 to 23 | 02:47 to 04:24 (the operator's choice: the renice changed nothing) | 04:38 to 05:38: pending | pending | on `<lab-host>`: `for n in s1 s2 s3 s4 r1 r2 r3 r4 r5 r6 r7 r8; do p=$(docker top clab-rcn-lab1-$n -eo pid,comm \| awk '/qemu/{print $1}'); sudo taskset -a -pc 0-23 $p; done; for t in 964075 964184 964235 964044; do sudo taskset -pc 0-23 $t; done` (a redeploy also reverts it) | on `<lab-host>`: `for n in s1 s2 s3 s4; do for p in $(docker top clab-rcn-lab1-$n -eo pid,comm \| awk '/qemu/{print $1}'); do for t in /proc/$p/task/*; do sudo renice --priority 0 -p ${t##*/}; done; done; done` (a redeploy also reverts it) |
+| 2 | Each switch on a vCPU of its own inside the lab VM, on `<lab-host>`: s1 to s4's qemu (every thread) and each one's `kvm-pit` thread pinned to CPUs 20, 21, 22 and 23; every router's qemu (r1 to r8, every thread) confined to CPUs 0 to 19 | 04:37:34, the agent, on the operator's go; read back: s1 to s4 at 20 to 23 (4 threads each), the routers at 0 to 19, the PIT threads 964075, 964184, 964235 and 964044 at 20 to 23 | 02:47 to 04:24 (the operator's choice: the renice changed nothing), 97 minutes, scaled to an hour:<br>- 47% of gauge steps below 10 (108 an hour), minimum 1;<br>- 669 failed scrapes an hour;<br>- 14.8 OSPF dead-timer drops an hour;<br>- 26.6 missed-ping transitions an hour;<br>- 0 SSH auth timeouts;<br>- s3 discards every minute, max 26.9/s;<br>- s3 heartbeat gaps 562 to 830 s (spread 267, median 774) | 04:38 to 05:38:<br>- **15 of 241 steps (6%)**, minimum 3;<br>- **38 failed scrapes (−94%)**;<br>- **2 drops (−86%)**;<br>- **0 missed pings**;<br>- 0 timeouts;<br>- discards every minute, max 8.8/s;<br>- **gaps 569 to 623 s (spread 54, median 604)**.<br>Clocks from 04:32 to 05:39: s3 at about 0.50× (from 0.43), s4 0.66× (from 0.61), s2 0.92× (unchanged), s1 not read.<br>In the window: the operator's Save All at 05:13 (10 of 10 saved, where it failed on s3, s4 and r7 at 03:33) and NetBox import at 05:22 (NetBox writes only). | **Kept: the largest gain measured.** Not yet the success criteria: 2 drops, 15 gauge steps and the discards remain, and the switches' clocks still run slow, so s3's own load is the next lever (IP SLA, then `hold_queue`). | on `<lab-host>`: `for n in s1 s2 s3 s4 r1 r2 r3 r4 r5 r6 r7 r8; do p=$(docker top clab-rcn-lab1-$n -eo pid,comm \| awk '/qemu/{print $1}'); sudo taskset -a -pc 0-23 $p; done; for t in 964075 964184 964235 964044; do sudo taskset -pc 0-23 $t; done` (a redeploy also reverts it) | on `<lab-host>`: `for n in s1 s2 s3 s4; do for p in $(docker top clab-rcn-lab1-$n -eo pid,comm \| awk '/qemu/{print $1}'); do for t in /proc/$p/task/*; do sudo renice --priority 0 -p ${t##*/}; done; done; done` (a redeploy also reverts it) |
+
+**Change 2 made persistent (the operator, 2026-10-21):**
+- **The lab file declares it:** `lab/pinning/cpuset.diff`, for the operator's commit to the lab
+  repo.
+  - The `cisco_c8000v` and `linux` kinds get `cpu-set: "0-19"`, and s1 to s4 `cpu-set: "20"`
+    to `"23"`.
+  - containerlab reapplies it on every deploy.
+  - It covers each container's whole cgroup: qemu and every thread, the launcher and the hosts'
+    processes.
+- **It does not cover the PIT threads.** `kvm-pit/<n>` are kernel threads (parent `kthreadd`,
+  cgroup root, measured), so after a deploy `lab/pinning/pin-pit-threads.sh` pins every one to
+  the switches' set (20 to 23); only the switches' tick. It is a step in lab/REDEPLOY.md.
+- **The check:** `lab/pinning/check-pinning.sh` is read-only, on the lab host, with its values
+  in `lab/pinning/pinning.conf`.
+  - It judges where the threads run: each switch's qemu threads on its own CPU, every other
+    node's processes within 0 to 19, every kvm-pit thread within 20 to 23.
+  - Each line says whether the pinning is declared or by hand.
+  - **First run, 05:4x UTC:** the four switches ok (by hand). Every router and host LOST: the
+    hand `taskset` pinned their qemu but not their launcher and shell processes, which the
+    declared cpuset will. The routers' idle PIT threads LOST. Exit 1, as it should be until the
+    redeploy.
+- **Mercury cannot run the check.** The lab host is not Mercury's, and the product carries
+  nothing lab-specific, so it is lab tooling. A generic "declared host checks" source in job
+  health is C1495.
+
+**The CPU budget for Lab 9's full lab on 24 vCPUs** (the operator's question, measured
+2026-10-21 05:4x UTC):
+- **Now** (`vmstat`): guest 69%, system 9%, user 3%, idle 20%, so about 19.5 of 24 busy.
+- **Per node:**
+  - a C8000v takes 1.56 to 1.86 host CPUs: its data plane always one full vCPU, plus its
+    control plane;
+  - a vIOS switch takes 0.76 to 0.96 of its own CPU;
+  - the Linux hosts take about 0;
+  - the lab VM's kernel (nested exits) takes about 2.2, and helpers and captures about 0.7.
+- **Lab 9** (8 routers, 5 switches, 7 hosts and web):
+  - routers about 13.6;
+  - 5 dedicated switch CPUs (about 4.4 used);
+  - kernel and helpers about 2.9;
+  - **about 21 of 24 on average.**
+- **The routers' pool:** with the switches on 19 to 23, the routers and the VM's OS share 0 to
+  18, needing about 16.5 of 19 (87%) on average. That is enough on average and tight at peaks
+  (a redeploy's boot storm, a capture, a Save All).
+- **What to measure when s5 joins:** the stall script, and the lab VM's CPU pressure on the
+  routers' CPUs. If that pressure tracks the routers' OSPF drops, the levers are Phase 3's
+  binding, then more lab-VM vCPUs (ruled out by the operator for now).
 
 **Candidates, in order of evidence:**
 1. **Give each switch a vCPU of its own inside the lab VM.** This acts on the correlated variable
@@ -350,11 +395,28 @@ qm set 100 --memory 65536 --balloon 0 --sockets 2 --cores 12 --numa 1 --hugepage
 | 7 | Shut down VM 100 and VM 102 (`qm shutdown`), then reboot the host. The BIOS job runs on the way | operator | 10 to 15 min (an R630's POST) |
 | 8 | Read back: the profile in iDRAC, `/proc/meminfo` HugePages_Total 64, `numastat` 32/32, VM 100's `qm config`, the hookscript's journal lines | agent | 5 min |
 | 9 | Start VM 102 (Mercury), then VM 100; the redeploy with the new lab file (lab/REDEPLOY.md) | operator | 15 to 20 min (the C8000vs boot) |
-| 10 | E checks: every device answering, the adjacency counts as at D4, r6 and r7 at their goldens (drift clean), the heartbeat and telemetry rules | agent | 15 min |
+| 9a | The CPU sets for the 2 × 12 layout, set in the lab file before the redeploy and checked after (see below) | operator (lab file); agent (check) | 5 min |
+| 10 | E checks: every device answering, the adjacency counts as at D4, r6 and r7 at their goldens (drift clean), the heartbeat and telemetry rules; `lab/pinning/pin-pit-threads.sh`, then `check-pinning.sh` reads PINNING HOLDS with every line "declared" | agent | 15 min |
 | 11 | 2 hours measured against tonight's final numbers | agent | 2 h |
 
 **The outage:** Mercury is down about 15 to 20 minutes (host reboot to VM 102 up). The lab is
 down about 45 to 60 minutes, from the shutdown to the E checks passing.
+
+**The CPU sets for the 2 × 12 layout (step 9a).** Inside VM 100, guest vCPUs 0 to 11 are node 0
+(host socket 0) and 12 to 23 node 1 (socket 1).
+- **The switches, one per CPU and spread across the two sockets:**
+  - s3 (the management gateway) on 11, node 0;
+  - s4 on 23, node 1;
+  - s1 on 10, node 0;
+  - s2 on 22, node 1;
+  - s5 (Lab 9) on 21, node 1.
+- **Routers and hosts:** `0-9,12-20`.
+- **Physical cores:** the hookscript pins each guest node's vCPUs to its host node's whole set,
+  so a switch's vCPU is on its own socket but not alone on a physical core. Giving s3 and s4 a
+  physical core each means pinning their guest vCPUs (11 and 23) to one hyperthread pair each,
+  and keeping the others off both siblings. It is a change to the hookscript, measured after.
+- **Verified after the redeploy:** `check-pinning.sh` with `pinning.conf` set to these values,
+  and the hookscript's journal lines.
 
 ### 6. Live tonight instead?
 

@@ -174,7 +174,7 @@ INVENTORY = {
     "modules/nsot/recreate.py": (1, HISTORY, "a dated incident or finding names the device it happened on: r1, s3"),
     "modules/nsot/remote.py": (1, HISTORY, "a dated incident or finding names the device it happened on: r6"),
     "modules/nsot/removal.py": (9, PROVENANCE, "a measurement names the device it was taken on: r1, r2, r3, r6, s1, s2, s4"),
-    "modules/nsot/removal_measured.json": (39, PROVENANCE, "a measurement names the device it was taken on: r2, r3, s1, s4"),
+    "modules/nsot/removal_measured.json": (41, PROVENANCE, "a measurement names the device it was taken on: r2, r3, s1, s4 (41 since the IP SLA operation's, s1 and r2, 2026-10-21)"),
     "modules/nsot/repo.py": (5, EXAMPLE, "an example, usage line or placeholder uses a lab device's name: r1, r2"),
     "modules/nsot/retire.py": (4, PROVENANCE, "a measurement names the device it was taken on: r5"),
     "modules/nsot/scheduled_rotation.py": (2, EXAMPLE, "an example, usage line or placeholder uses a lab device's name: r1, r2, s1"),

@@ -423,7 +423,9 @@ class TestTheCommittedRecord:
             "global.ip-route", "global.ipv6-route", "interface.ipv6-rip-default-originate",
             "interface.shutdown", "interface.ospf-cost",
             # re-measured with the bare negation, s1, 2026-10-07:
-            "ospf.max-metric"}
+            "ospf.max-metric",
+            # the IP SLA re-create's delete, s1 (and r2), 2026-10-21 (C1485's tuning sprint):
+            "global.ip-sla-operation"}
         # vIOS-L2 rejects the IPv6 forms themselves: a fact about the platform, recorded.
         assert rows["interface.ipv6-ospf-cost"]["result"] == "unsupported"
         assert rows["ospfv3.max-metric"]["result"] == "unsupported"
