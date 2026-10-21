@@ -11,7 +11,10 @@ truthful plan, with the token beside it: a capability this server issued for the
 back, never a stored secret. A removal runs in its request (it deletes only what Mercury created
 and recorded), and its result is the recorded removal's own. So does Stop tracking (`forget`,
 C954), the Remove card's second choice: previewed from Mercury's created record alone, confirmed
-by its hash, deleting nothing in NetBox, recorded as a forget-only removal.
+by its hash, deleting nothing in NetBox, recorded as a forget-only removal. And so does Free
+(`free`, C1504), offered on an import's preview for each device address a Decommissioning record
+holds: previewed from that record's addresses, confirmed by its hash, written as Retire frees a
+record's, read back, and recorded in its own job record.
 
 An import's job record is also its record for History (B8, `history`): who confirmed it
 (``actor``, with ``previewed_by`` beside it), when it started and ended, and its result; a removal's and a Stop
@@ -61,6 +64,9 @@ def run_card(job: dict, progress) -> dict:
     elif op == "forget":
         # Stop tracking reads Mercury's created record alone (C954); it names no phase.
         steps, current = (("read", "Mercury's record, read"), ("preview", "The preview")), 0
+    elif op == "free":
+        # Free reads the retired record and its addresses (C1504); it names no phase.
+        steps, current = (("read", "The retired record, read"), ("preview", "The preview")), 0
     elif state == "previewing":
         steps = tuple((k, w + (" read and planned" if k == "devices" else ""))
                       for _ph, k, w in PHASES) + (("preview", "The preview"),)
@@ -161,42 +167,55 @@ def history(list_name: str) -> dict:
 
 
 def start_preview(operation: str, list_name: str, actor: str, confirm: dict,
-                  device: str = "") -> str:
+                  device: str = "", holder: int = 0, address: str = "") -> str:
     """Start a preview job; its id. *confirm* is who would confirm, read in the request.
     *device* scopes an import to one device of the list (C1344); the job keeps it, so its
-    confirm recomputes the same plan."""
+    confirm recomputes the same plan. Free (``free``, C1504) previews freeing *address* (the
+    management address of *device*'s import) from the Decommissioning record *holder*, and
+    the job keeps all three, so its confirm recomputes the same plan."""
     from modules import netbox_ops, op_progress
     from modules.outbound import mask_payload
-    from modules.preview_confirm import (netbox_forget_preview, netbox_import_preview,
-                                         netbox_removal_preview)
+    from modules.preview_confirm import (netbox_forget_preview, netbox_free_preview,
+                                         netbox_import_preview, netbox_removal_preview)
 
     job_id = new_id()
-    device = device if operation == "import" else ""
+    device = device if operation in ("import", "free") else ""
     label = "every network" if operation == "import_all" else (
         f"{device} in {list_name}" if device else list_name)
     op_progress.start(job_id, "previewed for " + {"remove": "removal",
-                                                  "forget": "stopping tracking"}.get(
+                                                  "forget": "stopping tracking",
+                                                  "free": "freeing an address"}.get(
                                                       operation, "import"),
                       f"NetBox ({label})", actor=actor)
     op_progress.on_phase(job_id, _announce)           # THE stepper redraws as the phase moves
     scope = {"device": device} if device else {}
+    if operation == "free":
+        scope.update(holder=holder, address=address)
     _write(job_id, {"state": "previewing", "operation": operation, "list": list_name,
                     "actor": actor, **scope})
 
     def _run():
         try:
             d = netbox_ops.dry_run(operation, list_name, actor, progress_id=job_id,
-                                   device=device)
+                                   device=device, holder=holder, address=address)
+            extra = {}
             if operation == "remove":
                 # v2's Remove card offers Stop tracking beside it (C954).
                 pv = netbox_removal_preview(d, confirm, forget_offered=FORGET_CONTROL)
             elif operation == "forget":
                 pv = netbox_forget_preview(d, confirm)
+            elif operation == "free":
+                pv = netbox_free_preview(d, confirm)
+                extra = {"holder_name": (d.get("holder") or {}).get("name", "")}
             else:
                 pv = mask_payload(netbox_import_preview(d, confirm,
                                                         all_lists=operation == "import_all"))
+                # Each device address a Decommissioning record holds (C1504): the card offers
+                # Free <address> from <record>… for each.
+                extra = {"held": list(d.get("held") or [])}
             _write(job_id, {"state": "previewed", "operation": operation, "list": list_name,
-                            **scope, "actor": actor, "preview": pv, "token": d.get("token", ""),
+                            **scope, **extra, "actor": actor, "preview": pv,
+                            "token": d.get("token", ""),
                             "writes_allowed": bool(d.get("writes_allowed")),
                             "device_count": d.get("device_count")})
         except netbox_ops.Refused as exc:
@@ -318,5 +337,37 @@ def forget(job_id: str, data: dict, actor: str) -> dict:
     _write(job_id, dict(_confirmed(job, actor), state="imported" if result.get("ok") else
                         "failed", token="",
                         removal=drawn))
+    _announce()
+    return read(job_id)
+
+
+def free(job_id: str, data: dict, actor: str) -> dict:
+    """Confirm the previewed Free *job_id* (C1504) and run it in the request (`netbox_ops.free`:
+    bound to the preview's hash, through the write gate, read back). Its record is this job's:
+    who confirmed it, when, each address deleted or unassigned with the interface it was on,
+    and what NetBox held after (each PATCH's before is in the modification record too); drawn
+    from it now and when the card is read again. Raises `netbox_ops.Refused`."""
+    from modules import netbox_ops
+    from modules.preview_confirm import netbox_free_result
+
+    job = read(job_id)
+    if job.get("state") != "previewed" or job.get("operation") != "free":
+        raise netbox_ops.Refused({"ok": False, "error": "that preview is not one ready to "
+                                  "confirm: preview again"}, 409)
+    result = netbox_ops.free(job["list"], job.get("device") or "", job.get("holder"),
+                             job.get("address") or "", dict(data, token=job.get("token", "")),
+                             actor)
+    at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    row = dict(result, actor=actor, at=at)
+    record = dict(_confirmed(job, actor), state="imported" if result.get("ok") else "failed",
+                  token="", freed_at=at, free_record=result)
+    try:
+        _write(job_id, dict(record, freed=netbox_free_result(row)))
+    except OSError as exc:
+        # Its record not written is drawn as such (C1221): this answer is all that holds it.
+        log.error("netbox_jobs: the record of freeing %s could not be written: %s",
+                  job.get("address"), exc)
+        return dict(record, id=job_id, freed=netbox_free_result(
+            row, {"ok": False, "error": f"the job record could not be written: {exc}"}))
     _announce()
     return read(job_id)

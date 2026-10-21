@@ -142,7 +142,8 @@ def seen(monkeypatch):
 
     got = {}
 
-    def start_preview(operation, list_name, actor, confirm, device=""):
+    def start_preview(operation, list_name, actor, confirm, device="", holder=0, address=""):
+        # C1504 (2026-10-21): the route passes Free's holder and address on every preview.
         got["netbox"] = actor
         return "job-b2"
 

@@ -6,20 +6,24 @@
     on), refused, importing, and its result. While it runs it redraws when the job announces
     `netbox`; once it holds an answer it stays until closed. A removal's preview offers Stop
     tracking instead… (C954): its own preview job (`forget`), drawn in this card, whose confirm
-    deletes nothing in NetBox and never asks for writes. -#}
+    deletes nothing in NetBox and never asks for writes. An import's preview that finds a
+    device's management address held by a Decommissioning record (job.held) offers Free
+    <address> from <record>… for each (C1504): its own preview job (`free`), drawn in this card,
+    whose confirm frees that record's addresses as Retire does, then offers the import's
+    preview again. -#}
 {%- set op = job.operation or '' %}
 {%- set label = 'every network' if op == 'import_all' else (job.list or '') %}
 {%- set live = job.state in ('previewing', 'importing') %}
 <section class="card" id="netbox-job" aria-labelledby="h-netbox-job"
   {%- if live %} hx-get="{{ url_for('netbox_v2.job', job_id=job.id) }}" hx-trigger="nmas:netbox from:body" hx-swap="outerHTML"{% endif %}>
-  <div class="card-head"><h2 id="h-netbox-job">{{ {'remove': 'Remove from NetBox', 'forget': 'Stop tracking in NetBox'}.get(op, 'Import into NetBox') }}{% if label %}: {{ label }}{% endif %}</h2>
+  <div class="card-head"><h2 id="h-netbox-job">{% if op == 'free' %}Free {{ job.address or 'an address' }} in NetBox{% if job.holder_name %} from {{ job.holder_name }}{% endif %}{% else %}{{ {'remove': 'Remove from NetBox', 'forget': 'Stop tracking in NetBox'}.get(op, 'Import into NetBox') }}{% if label %}: {{ label }}{% endif %}{% endif %}</h2>
     <a class="btn btn-small" href="{{ url_for('netbox_v2.page') }}">Close</a></div>
   {%- if refused %}
   <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not done:</strong> {{ refused }}. {{ "Nothing was forgotten, and nothing was sent to NetBox." if op == 'forget' else "Nothing was written to NetBox." }}</div></div>
   {%- endif %}
   {%- if job.state == 'previewing' %}
   {{ run_stepper(run) }}
-  <p class="muted">{% if op == 'forget' %}A read of Mercury's own record of what it created for this network; NetBox is not asked.{% else %}A dry run of the real {{ 'removal' if op == 'remove' else 'import' }} against the real NetBox, writing nothing.{% endif %} This card fills in when it is ready.</p>
+  <p class="muted">{% if op == 'forget' %}A read of Mercury's own record of what it created for this network; NetBox is not asked.{% elif op == 'free' %}A read of the retired record and its addresses in NetBox, writing nothing.{% else %}A dry run of the real {{ 'removal' if op == 'remove' else 'import' }} against the real NetBox, writing nothing.{% endif %} This card fills in when it is ready.</p>
   {%- elif job.state == 'refused' %}
   <p class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<span>{{ job.error or 'Not previewed' }}.</span></p>
   {%- elif job.state == 'unknown' %}
@@ -29,6 +33,13 @@
   {#- A target that cannot be selected is never confirmed (C932; B9: a removal whose cascade was
       not established): Remove is not offered, the reason in words, and Read again. -#}
   {%- set blocked = (pv.what or {}).targets | default([]) | rejectattr('selectable') | list %}
+  {%- for h in job.held or [] if op == 'import' %}
+  <div class="notice notice-warn set-result nb-held" role="status">{{ icon('warn', 16) }}<div><strong>{{ h.address }} is held by {{ h.holder }}</strong> (NetBox device {{ h.holder_id }}, Decommissioning), a record retired before Retire freed its addresses: this import cannot give {{ h.device }} its management address while it is held.
+    <form method="post" action="{{ url_for('netbox_v2.preview') }}" hx-post="{{ url_for('netbox_v2.preview') }}" hx-target="#netbox-job" hx-swap="outerHTML">
+      <input type="hidden" name="operation" value="free"><input type="hidden" name="list" value="{{ job.list }}"><input type="hidden" name="device" value="{{ h.device }}"><input type="hidden" name="holder" value="{{ h.holder_id }}"><input type="hidden" name="address" value="{{ h.ip }}">
+      <span class="op-act"><button type="submit" class="btn btn-small" data-op="netbox-import" hx-disabled-elt="this"><span class="op-idle">Free {{ h.ip }} from {{ h.holder }}…</span><span class="op-busy">Reading {{ h.holder }}…</span></button>{{ how('netbox-import', 'free-address', compact=True, op='freeing an address') }}</span>
+    </form></div></div>
+  {%- endfor %}
   {{ preview_parts(pv, 'What will be written to NetBox') }}
   {%- if op == 'remove' and blocked %}
   <div class="notice notice-warn set-result" role="status">{{ icon('warn', 16) }}<div><strong>Remove is not offered:</strong> {{ blocked[0].why_not }}.
@@ -47,6 +58,8 @@
       {%- if pv.confirm.may and not blocked %}
       {%- if op == 'forget' %}
       <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="netbox-import" hx-disabled-elt="this"{{ gate('approve') }}><span class="op-idle">Stop tracking</span><span class="op-busy">Forgetting…</span></button>{{ how('netbox-import', 'stop-tracking', op='stopping tracking') }}</span>
+      {%- elif op == 'free' %}
+      <span class="op-act"><button type="submit" class="btn btn-danger btn-small" data-op="netbox-import" hx-disabled-elt="this"{{ gate('approve') }}><span class="op-idle">Free {{ job.address }}</span><span class="op-busy">Freeing…</span></button>{{ how('netbox-import', 'free-address', op='freeing an address') }}</span>
       {%- else %}
       <span class="op-act"><button type="submit" class="btn {{ 'btn-danger' if op == 'remove' else 'btn-primary' }} btn-small" data-op="netbox-import" hx-disabled-elt="this"{{ gate('approve') }}><span class="op-idle">{{ 'Remove' if op == 'remove' else 'Import' }}</span><span class="op-busy">{{ 'Removing…' if op == 'remove' else 'Starting the import…' }}</span></button>{{ how('netbox-import', 'remove-apply' if op == 'remove' else 'apply', op='confirming') }}</span>
       {%- endif %}
@@ -68,8 +81,16 @@
   {{ run_stepper(run) }}
   <p class="muted">Writing to NetBox. This card fills in when it ends.</p>
   {%- else %}
-  {%- set results = [job.removal] if job.removal else (job.results or {}).values() | list %}
+  {%- set results = [job.removal] if job.removal else ([job.freed] if job.freed else (job.results or {}).values() | list) %}
   {%- if job.outcome == 'failed' and not results %}<p class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<span>The import failed before it recorded a result: the app's log names why.</span></p>{% endif %}
   {%- for r in results if r %}{{ result_parts(r) }}{% endfor %}
+  {%- if op == 'free' and job.device %}
+  <form class="set-form" method="post" action="{{ url_for('netbox_v2.preview') }}" hx-post="{{ url_for('netbox_v2.preview') }}" hx-target="#netbox-job" hx-swap="outerHTML">
+    <input type="hidden" name="operation" value="import"><input type="hidden" name="list" value="{{ job.list }}"><input type="hidden" name="device" value="{{ job.device }}">
+    <div class="set-foot set-form-note">
+      <span class="op-act"><button type="submit" class="btn btn-small" data-op="netbox-import" hx-disabled-elt="this"><span class="op-idle">Preview the import of {{ job.device }} again…</span><span class="op-busy">Starting the dry run…</span></button>{{ how('netbox-import', 'one-device', compact=True, op='importing a device') }}</span>
+    </div>
+  </form>
+  {%- endif %}
   {%- endif %}
 </section>

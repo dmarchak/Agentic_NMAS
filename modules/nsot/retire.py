@@ -1109,8 +1109,49 @@ def _netbox_address_facts(list_name: str, nb_id) -> dict:
         mine = (netbox_guard.has_managed_tag(obj)
                 and netbox_guard.was_created_by_nmas(list_name, "ipam/ip-addresses", obj["id"]))
         out["delete" if mine else "unassign"].append(
-            {"id": obj["id"], "address": str(obj.get("address") or obj["id"])})
+            {"id": obj["id"], "address": str(obj.get("address") or obj["id"]),
+             "interface": str((obj.get("assigned_object") or {}).get("name") or "")})
     return out
+
+
+def free_netbox_addresses(session, base: str, device_id, addresses: dict,
+                          record_patch: dict = None, done: dict = None) -> None:
+    """THE address-freeing of a NetBox device record (C1494's, shared with C1504's Free on the
+    import's card): the record's own PATCH first (*record_patch*, with both primaries cleared
+    when it holds any address: NetBox refuses to move an address off its interface while it is
+    the device's primary), then each of *addresses*' ``delete`` deleted (Mercury's: tagged and
+    recorded as created) and each ``unassign`` unassigned, kept in NetBox. Every write through
+    the write gate's chokepoints, so the caller holds the list's writer and `for_list` (its
+    actor and authority), and each PATCH records its before. *done*, when given, gets each
+    address appended to ``deleted`` or ``unassigned`` as it lands. Raises on a write that did
+    not land, naming it; read back with `netbox_addresses_left`."""
+    from modules.netbox_client import _nb_delete, _nb_patch, last_delete_failure
+
+    held = (addresses.get("delete") or []) + (addresses.get("unassign") or [])
+    patch = dict(record_patch or {})
+    if held:
+        patch.update(primary_ip4=None, primary_ip6=None)
+    if patch:
+        _nb_patch(session, base, f"dcim/devices/{device_id}/", patch)
+    for a in addresses.get("delete") or []:
+        if not _nb_delete(session, base, "ipam/ip-addresses/", a["id"]):
+            raise RuntimeError(f"IP address {a['address']} (NetBox {a['id']}) was not "
+                               f"deleted: {last_delete_failure()}")
+        if done is not None:
+            done.setdefault("deleted", []).append(a)
+    for a in addresses.get("unassign") or []:
+        _nb_patch(session, base, f"ipam/ip-addresses/{a['id']}/",
+                  {"assigned_object_type": None, "assigned_object_id": None})
+        if done is not None:
+            done.setdefault("unassigned", []).append(a)
+
+
+def netbox_addresses_left(session, base: str, device_id) -> list:
+    """The IP addresses NetBox holds on device *device_id*'s interfaces now: the read-back of
+    `free_netbox_addresses` (none, when it landed). Raises when NetBox cannot be read."""
+    from modules.netbox_client import _nb_get
+
+    return _nb_get(session, base, "ipam/ip-addresses/", device_id=device_id) or []
 
 
 def _netbox_record_facts(list_name: str, hostname: str, nb: dict) -> dict:
@@ -2147,37 +2188,27 @@ def _retire_netbox_record(list_name: str, hostname: str, w: dict, *, actor: str,
     patch = w.get("patch")
     if not patch:
         return
-    from modules.netbox_client import (_nb_delete, _nb_get, last_delete_failure,
-                                       _nb_get_by_id, _nb_patch, _nb_ready, _status_value)
+    from modules.netbox_client import _nb_get_by_id, _nb_ready, _status_value
 
     ok, err, session, base = _nb_ready()
     if not ok:
         raise RuntimeError(f"NetBox is not reachable: {err}")
     addresses = patch.get("addresses") or {}
     held = (addresses.get("delete") or []) + (addresses.get("unassign") or [])
-    record = {"status": "decommissioning", "name": patch["name"]}
-    if held:
-        # NetBox refuses to move an address off its interface while it is the device's primary.
-        record.update(primary_ip4=None, primary_ip6=None)
     with netbox_guard.list_writer(list_name, f"retiring {hostname}", actor), \
             netbox_guard.for_list(list_name, actor=actor, authority=authority):
-        _nb_patch(session, base, f"dcim/devices/{patch['id']}/", record)
         # ITS ADDRESSES LEAVE IT (C1494): the retired record held the management address
-        # the next device of the name was given, and NetBox could not give it again.
-        for a in addresses.get("delete") or []:
-            if not _nb_delete(session, base, "ipam/ip-addresses/", a["id"]):
-                raise RuntimeError(f"IP address {a['address']} (NetBox {a['id']}) was not "
-                                   f"deleted: {last_delete_failure()}")
-        for a in addresses.get("unassign") or []:
-            _nb_patch(session, base, f"ipam/ip-addresses/{a['id']}/",
-                      {"assigned_object_type": None, "assigned_object_id": None})
+        # the next device of the name was given, and NetBox could not give it again. The
+        # record's own write (status and name) carries the primaries' clearing.
+        free_netbox_addresses(session, base, patch["id"], addresses,
+                              record_patch={"status": "decommissioning", "name": patch["name"]})
     got = _nb_get_by_id(session, base, "dcim/devices", patch["id"]) or {}
     status = _status_value(got)
     if got.get("name") != patch["name"] or status != "decommissioning":
         raise RuntimeError(f"NetBox device {patch['id']} read back as {got.get('name')!r}, "
                            f"status {status!r}: the write did not land")
     if held:
-        left = _nb_get(session, base, "ipam/ip-addresses/", device_id=patch["id"]) or []
+        left = netbox_addresses_left(session, base, patch["id"])
         if left:
             raise RuntimeError(f"NetBox device {patch['id']} still holds "
                                + ", ".join(str(o.get("address")) for o in left)

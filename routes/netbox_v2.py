@@ -12,6 +12,9 @@ A Remove card also offers Stop tracking instead… (C954): its own preview job a
 confirm, deleting nothing in NetBox and having Mercury forget what it created for the network.
 An import may be scoped to one device (C1344): the device page's NetBox tab posts its device to
 the same preview, and its card draws there.
+An import's preview that finds a device's management address held by a Decommissioning record
+offers Free <address> from <record>… (C1504): its own preview job (`free`) and the same confirm,
+freeing that record's addresses as Retire frees a record's.
 """
 
 import logging
@@ -99,18 +102,33 @@ def preview():
 
     operation = (request.form.get("operation") or "").strip()
     list_name = (request.form.get("list") or "").strip()
-    # A one-device import (C1344): the device page's NetBox tab sends its device.
-    device = (request.form.get("device") or "").strip() if operation == "import" else ""
-    if operation not in ("import", "import_all", "remove", "forget"):
+    # A one-device import (C1344): the device page's NetBox tab sends its device. Free (C1504)
+    # names the device whose import found its address held.
+    device = ((request.form.get("device") or "").strip()
+              if operation in ("import", "free") else "")
+    if operation not in ("import", "import_all", "remove", "forget", "free"):
         return _card({"state": "refused", "error": f"no operation {operation!r}: import, "
-                      "import_all, remove or forget"}, 404)
+                      "import_all, remove, forget or free"}, 404)
     if operation != "import_all":
         from modules.nsot import listref
         if not listref.exists(list_name):
             return _card({"state": "refused", "error": f"there is no network {list_name!r}"},
                          404)
+    holder, address = 0, ""
+    if operation == "free":
+        # Free <address> from <record>… on an import's preview (C1504): the record by its
+        # NetBox id, the address as the import read it. Each is one token of its shape.
+        from modules.netbox_ops import host_of
+        raw_holder = (request.form.get("holder") or "").strip()
+        address = (request.form.get("address") or "").strip()
+        if not raw_holder.isdigit() or int(raw_holder) <= 0 or not host_of(address):
+            return _card({"state": "refused", "operation": "free", "list": list_name,
+                          "error": f"Free needs a NetBox device id and an address: got "
+                                   f"{raw_holder[:20]!r} and {address[:60]!r}"}, 400)
+        holder = int(raw_holder)
     job_id = netbox_jobs.start_preview(operation, list_name, identity.request_actor(),
-                                       confirm_part(request, "approve"), device=device)
+                                       confirm_part(request, "approve"), device=device,
+                                       holder=holder, address=address)
     return _card(netbox_jobs.read(job_id))
 
 
@@ -136,6 +154,8 @@ def confirm(job_id):
             done = netbox_jobs.remove(job_id, data, identity.request_actor())
         elif current.get("operation") == "forget":
             done = netbox_jobs.forget(job_id, data, identity.request_actor())
+        elif current.get("operation") == "free":
+            done = netbox_jobs.free(job_id, data, identity.request_actor())
         else:
             done = netbox_jobs.start_import(job_id, data, identity.request_actor())
     except netbox_ops.Refused as exc:

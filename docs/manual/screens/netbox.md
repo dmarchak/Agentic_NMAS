@@ -43,6 +43,10 @@ could not be read.
   card says **Remove is not offered** and why, with **Read again**
   ([how](netbox-import#remove-preview)).
 - **Import every network…** previews one import of them all.
+- **Free <address> from <record>…** appears on a network's or a device's import preview when a
+  retired record (Decommissioning) still holds a device's management address. It previews
+  freeing that record's addresses, as Retire frees them, and is confirmed with
+  **Free <address>** ([how](netbox-import#free-address)).
 
 One device is imported from its own page: the device page's NetBox tab has **Import into
 NetBox…** for that device alone, the same preview and confirm, used to bring its record up to

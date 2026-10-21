@@ -11,7 +11,9 @@ the plan and refuses if it moved. An import then runs on a thread (`start_import
 under its progress id; a removal runs in the request (`remove`). Every write carries the
 verified person and the authority it stood on. Stop tracking (`forget`, C954) is previewed and
 confirmed the same way, bound to a hash of Mercury's created record for the network; it writes
-that record, never NetBox, so the master switch is not one of its gates.
+that record, never NetBox, so the master switch is not one of its gates. Free (`free_facts`,
+`free`, C1504) frees the IP addresses of a Decommissioning record holding a device's management
+address, previewed from that record and confirmed the same way, with Retire's own freeing code.
 """
 
 import logging
@@ -23,7 +25,7 @@ log = logging.getLogger(__name__)
 #: Pseudo-list name for the all-lists import, so a token issued for it cannot be replayed
 #: against a single named list.
 ALL_LISTS = "__all_lists__"
-OPERATIONS = ("import", "import_all", "remove", "forget")
+OPERATIONS = ("import", "import_all", "remove", "forget", "free")
 
 
 class Refused(Exception):
@@ -123,6 +125,10 @@ def authorize(data: dict, operation: str, list_name: str, recompute, actor: str,
         raise Refused({"ok": False, "stale": True, "error": err}, 409)
     try:
         current_plan = recompute()
+    except Refused:
+        # A recompute that refuses names its own comparison (C1504: the address moved off the
+        # record, the record no longer Decommissioning): said as it is, never re-worded.
+        raise
     except Exception as exc:                          # noqa: BLE001
         log.exception("netbox_ops: could not recompute the plan for '%s'", list_name)
         raise Refused({"ok": False, "error": f"Could not re-verify the plan: {exc}"}, 500) from None
@@ -172,17 +178,170 @@ def _forget_moved(list_name: str):
     return words
 
 
+def host_of(value: str) -> str:
+    """An address, with or without its prefix length, as one comparable host string (an IPv4
+    or IPv6 address in its compressed form); "" when it is not an address."""
+    import ipaddress
+
+    try:
+        return ipaddress.ip_interface(str(value or "").strip()).ip.compressed
+    except ValueError:
+        return ""
+
+
+def free_facts(list_name: str, holder_id: int, address: str) -> dict:
+    """Free's plan (C1504): every IP address NetBox holds on the Decommissioning device record
+    *holder_id*, which holds *address*, split by Mercury's delete rule as Retire splits them
+    (`retire._netbox_address_facts`: deleted when tagged ``nmas-managed`` AND recorded as
+    created for *list_name*, else unassigned and kept), and the record's primaries cleared.
+    ``{"holder": {"id", "name", "status"}, "address", "addresses", "plan"}``; the plan is
+    hashed as an import's is (its updates and deletes). Raises `Refused`, naming both operands,
+    when NetBox cannot be read, the record is not Decommissioning, or it no longer holds
+    *address*."""
+    from modules.netbox_client import _nb_read_by_id, _nb_ready, _status_value
+    from modules.nsot import retire
+
+    ok, err, session, base = _nb_ready()
+    if not ok:
+        raise Refused({"ok": False, "error": f"NetBox could not be reached: {err}"}, 502)
+    # Gone and unreadable are different facts (C130): only a 404 is "no such record".
+    state, record = _nb_read_by_id(session, base, "dcim/devices", holder_id)
+    if state == "unreadable":
+        raise Refused({"ok": False, "error": f"NetBox device {holder_id} could not be read "
+                       f"({record}): unknown is not free"}, 502)
+    if state != "ok" or not record:
+        raise Refused({"ok": False, "error": f"NetBox holds no device {holder_id}: the record "
+                       f"that held {address} is gone; import again to see who holds it now"},
+                      404)
+    name = record.get("name") or str(holder_id)
+    status = _status_value(record)
+    if status != "decommissioning":
+        raise Refused({"ok": False, "error": (
+            f"NetBox device {holder_id} ({name}) is {status or 'without a status'}, not "
+            "Decommissioning: only a retired record's addresses are freed here, and an address "
+            "a working record holds is a conflict a person resolves")}, 409)
+    try:
+        addresses = retire._netbox_address_facts(list_name, holder_id)  # noqa: SLF001 - one home
+    except Exception as exc:                          # noqa: BLE001 - said as the refusal
+        raise Refused({"ok": False, "error": f"{name}'s IP addresses could not be read ({exc}):"
+                       " unknown is not none"}, 502) from None
+    held = addresses["delete"] + addresses["unassign"]
+    want = host_of(address)
+    if not want or not any(host_of(a["address"]) == want for a in held):
+        raise Refused({"ok": False, "error": (
+            f"{address} is no longer held by {name} (NetBox device {holder_id}): the preview "
+            "read it there, and NetBox now holds "
+            + (", ".join(a["address"] for a in held) if held else "no address")
+            + " on that record. Nothing was written; import again to see who holds it now")},
+            409)
+    plan = {"updates": [{"endpoint": "dcim/devices", "id": holder_id, "name": name,
+                         "payload": {"primary_ip4": None, "primary_ip6": None}}]
+            + [{"endpoint": "ipam/ip-addresses", "id": a["id"], "name": a["address"],
+                "payload": {"assigned_object_type": None, "assigned_object_id": None},
+                "interface": a.get("interface", "")} for a in addresses["unassign"]],
+            "deletes": [{"endpoint": "ipam/ip-addresses", "id": a["id"], "name": a["address"],
+                         "interface": a.get("interface", "")} for a in addresses["delete"]]}
+    return {"holder": {"id": holder_id, "name": name, "status": status}, "address": address,
+            "addresses": addresses, "plan": plan}
+
+
+def _free_moved(holder_id: int, address: str):
+    def words(approved: str, now: str, plan: dict) -> str:
+        names = [o.get("name") for o in (plan.get("updates") or [])[1:]
+                 + (plan.get("deletes") or [])]
+        return (f"what NetBox device {holder_id} holds changed since the preview of freeing "
+                f"{address}: the preview's plan hashed {approved[:12]}, NetBox's now hashes "
+                f"{now[:12]} ({len(names)} address(es): {', '.join(names) or 'none'}): "
+                "preview again")
+    return words
+
+
+def free(list_name: str, device: str, holder_id: int, address: str, data: dict, actor: str,
+         where: str = "v2's NetBox page") -> dict:
+    """Confirm and run Free (C1504): the addresses of the Decommissioning record *holder_id*,
+    which holds *address* (the management address of *device*'s import), freed as Retire frees
+    a record's (`retire.free_netbox_addresses`, the one home), as the verified person, through
+    the write gate with this confirm as its authority. One NetBox writer per network holds from
+    the check to the read-back. The confirm (`authorize`) checks the master switch, consumes
+    the token and recomputes `free_facts`, refusing a record that moved. Then NetBox is read
+    back. ``{"ok", "list", "device", "holder", "address", "deleted", "unassigned", "left",
+    "error"}``; raises `Refused` before anything is written."""
+    from modules import netbox_guard as nbg
+    from modules.netbox_client import _nb_ready
+    from modules.nsot import retire
+
+    if not list_name:
+        raise Refused({"ok": False, "error": "list_name is required"}, 400)
+    read = {}
+
+    def recompute():
+        read["facts"] = free_facts(list_name, holder_id, address)
+        return read["facts"]["plan"]
+    try:
+        with nbg.list_writer(list_name, f"freeing {address}", actor):
+            authorize(data, "free", list_name, recompute, actor,
+                      moved=_free_moved(holder_id, address))
+            facts = read["facts"]
+            out = {"ok": False, "list": list_name, "device": device, "holder": facts["holder"],
+                   "address": address, "deleted": [], "unassigned": [], "left": [],
+                   "error": ""}
+            ok, err, session, base = _nb_ready()
+            if not ok:
+                out["error"] = f"NetBox could not be reached: {err}"
+                return out
+            authority = (f"{where}'s one-time confirmation of freeing {address} from "
+                         f"{facts['holder']['name']}, by {actor}")
+            try:
+                with nbg.for_list(list_name, actor=actor, authority=authority):
+                    retire.free_netbox_addresses(session, base, holder_id,
+                                                 facts["addresses"], done=out)
+            except Exception as exc:                  # noqa: BLE001 - said in the result
+                log.exception("netbox_ops: freeing %s from NetBox device %s failed", address,
+                              holder_id)
+                out["error"] = str(exc)
+            try:
+                out["left"] = [str(o.get("address") or o.get("id")) for o in
+                               retire.netbox_addresses_left(session, base, holder_id)]
+            except Exception as exc:                  # noqa: BLE001 - unknown, said
+                out["error"] = out["error"] or (f"the read-back of {facts['holder']['name']} "
+                                                f"failed ({exc}): whether it holds none is "
+                                                "unknown")
+                out["left"] = None
+            if out["left"]:
+                out["error"] = out["error"] or (f"{facts['holder']['name']} still holds "
+                                                + ", ".join(out["left"]) + " after its "
+                                                "addresses were deleted or unassigned: the "
+                                                "write did not land")
+            out["ok"] = not out["error"]
+            return out
+    except nbg.NetBoxBusy as exc:
+        raise Refused({"ok": False, "busy": True, "error": (
+            f"Not freed: {exc}. Nothing was written; confirm again once it finishes")},
+            409) from None
+
+
 def dry_run(operation: str, list_name: str, actor: str, progress_id: str = "",
-            device: str = "") -> dict:
+            device: str = "", holder: int = 0, address: str = "") -> dict:
     """The preview's facts: ``{"ok", "list", "device"?, "device_count"?, "plan", "cables"?,
-    ...authorization}``, the raw dry run kept here (the caller masks what it draws). *device*
-    scopes an import to one device of the list (C1344). Raises `Refused`."""
+    "held"?, ...authorization}``, the raw dry run kept here (the caller masks what it draws).
+    *device* scopes an import to one device of the list (C1344). A one-list import carries
+    ``held``: each device address a Decommissioning record holds (C1504). Free (``free``)
+    previews freeing *address* from the record *holder* (`free_facts`). Raises `Refused`."""
     from modules import op_progress
     from modules.netbox_client import (remove_list_from_netbox, sync_all_lists_to_netbox,
                                        sync_list_to_netbox)
 
     if operation not in OPERATIONS:
         raise Refused({"ok": False, "error": f"no operation {operation!r}"}, 404)
+    if operation == "free":
+        if not configured():
+            raise Refused({"ok": False, "error": "NetBox is not configured — set URL and API "
+                           "token first."}, 400)
+        from modules.netbox_guard import writes_allowed
+        facts = free_facts(list_name, holder, address)
+        return {"ok": True, "list": list_name, "device": device, **facts,
+                "writes_allowed": writes_allowed(),
+                **authorization_for("free", list_name, facts["plan"])}
     if operation == "forget":
         # Reads Mercury's own record only: NetBox is not asked, so it need not be configured.
         if not list_name:
@@ -236,6 +395,7 @@ def dry_run(operation: str, list_name: str, actor: str, progress_id: str = "",
     plan = result.get("plan", {})
     return {"ok": True, "list": name, "device": device, "device_count": len(devices),
             "plan": plan, "cables": result.get("cables"),
+            "held": list(result.get("held_by_retired") or []),
             **authorization_for("import", name, plan)}
 
 

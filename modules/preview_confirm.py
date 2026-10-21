@@ -1732,6 +1732,163 @@ def netbox_forget_preview(d: dict, confirm: dict) -> dict:
                  titles={"program": "What Mercury forgets (nothing is deleted from NetBox)"})
 
 
+def _on(o: dict, words: str = "on") -> str:
+    """The interface an address is on, in brackets after *words*; empty when not known."""
+    return f" ({words} {o['interface']})" if o.get("interface") else ""
+
+
+def _free_lines(d: dict) -> list:
+    """Free's writes (C1504), one line each, in the order they are sent: the record's primaries
+    cleared, then each delete, then each unassign, each address with the interface it is on."""
+    plan, holder = d.get("plan") or {}, d.get("holder") or {}
+    updates = plan.get("updates") or []
+    lines = [f"update dcim/devices #{holder.get('id')} {holder.get('name', '')}: clears "
+             "primary_ip4, primary_ip6"] if updates else []
+    lines += [f"delete ipam/ip-addresses #{o['id']} {o['name']}{_on(o)}: tagged nmas-managed "
+              "and recorded as created by Mercury" for o in plan.get("deletes") or []]
+    lines += [f"unassign ipam/ip-addresses #{o['id']} {o['name']}{_on(o)}: kept in NetBox, "
+              "assigned to nothing" for o in updates[1:]]
+    return lines
+
+
+def netbox_free_preview(d: dict, confirm: dict) -> dict:
+    """Free <address> from <record>… (C1504), drawn by the component (7.1): the IP addresses a
+    Decommissioning NetBox record holds, one of them the management address an import needs,
+    freed as Retire frees a record's (`retire.free_netbox_addresses`): its primaries cleared,
+    Mercury's deleted, the rest unassigned and kept. *d* is `netbox_ops.dry_run`'s ``free``."""
+    holder, plan = d.get("holder") or {}, d.get("plan") or {}
+    name, hid = holder.get("name") or "the record", holder.get("id")
+    address, device = d.get("address") or "the address", d.get("device") or ""
+    deletes, unassigns = plan.get("deletes") or [], (plan.get("updates") or [])[1:]
+    minutes = max(1, round((d.get("expires_in") or 300) / 60))
+    summary = (f"Free {address} from {name} (NetBox device {hid}, Decommissioning), a record "
+               "retired before Retire freed its addresses: clear its primary addresses, delete "
+               f"{len(deletes)} address(es) Mercury created on it and unassign {len(unassigns)}"
+               f", so {'the import of ' + device if device else 'an import'} can be given "
+               f"{address}.")
+    what_not = [
+        {"target": name, "kind": "record_kept", "lines": [],
+         "text": f"{name} itself is kept, Decommissioning, with its name and history: only its "
+                 "IP addresses leave it."},
+        {"target": name, "kind": "survives", "lines": [],
+         "text": "Where the data survives: each unassigned address stays in NetBox's IPAM, "
+                 "assigned to nothing, and its before (the interface it was on) is in Mercury's "
+                 "modification record (netbox_modified.json). Only an address Mercury created "
+                 "(tagged nmas-managed AND in its created-object record) is deleted; this "
+                 "card's record keeps each one and the interface it was on."},
+        {"target": name, "kind": "not_import", "lines": [],
+         "text": ("The import is not run: preview the import of " + device + " again after "
+                  "this, and confirm it there.") if device else
+                 "The import is not run: preview it again after this, and confirm it there."},
+        {"target": name, "kind": "others", "lines": [],
+         "text": "No other record's addresses are touched, and no working record's ever: a "
+                 "record that is not Decommissioning is refused at the confirm."},
+        {"target": name, "kind": "no_device", "lines": [],
+         "text": "No device is reached and nothing in git changes."},
+    ]
+    gates = [
+        gate("the record holding the address, read", "pass",
+             f"{name} (NetBox device {hid}) is Decommissioning and holds {address}"),
+        gate("NetBox writes permitted for this instance",
+             "pass" if d.get("writes_allowed") else "at_apply",
+             "the saved switch is on" if d.get("writes_allowed") else
+             "the saved switch is OFF: the 'turn NetBox writes on with this confirm' box below "
+             "turns it on when you confirm, and without it the confirm is refused"),
+        gate("NetBox unchanged since this preview", "at_apply",
+             f"the record is read again when you confirm: if it is no longer Decommissioning, "
+             f"no longer holds {address}, or its addresses changed, nothing is written and you "
+             "are asked to preview again"),
+        gate("no other NetBox write holds this network", "at_apply",
+             "an import or removal running for it refuses this, naming who"),
+        gate("a one-shot confirmation", "at_apply",
+             f"valid {minutes} minute(s), once, for this plan only"),
+    ]
+    target = {
+        "name": name, "state": "ready", "selectable": True,
+        "program": {"lines": _free_lines(d), "dangerous": [], "authorised": [],
+                    "authorisation_error": "", "notes": [],
+                    "caption": "What will be written to NetBox",
+                    "unit": "write(s) to NetBox",
+                    "none": "Nothing: the record holds no address."},
+        "operands": [
+            {"name": "Record", "value": f"{name} (NetBox device {hid})"},
+            {"name": "Status", "value": "Decommissioning"},
+            {"name": "Address", "value": address},
+            {"name": "Deletes", "value": str(len(deletes))},
+            {"name": "Unassigns", "value": str(len(unassigns))},
+            {"name": "Plan hash", "value": (d.get("plan_hash") or "")[:16]},
+        ],
+        "gates": gates,
+    }
+    return build(action="netbox_free", summary=summary, targets=[target], what_not=what_not,
+                 nothing_left_out="", confirm=confirm,
+                 titles={"program": "What will be written to NetBox"})
+
+
+def netbox_free_result(row: dict, record_status: dict = None) -> dict:
+    """Free (C1504), drawn by the result component (7.1) from the job's record of it
+    (`netbox_jobs.free`): each address deleted or unassigned, and what NetBox held on the
+    record when it was read back. Success only when the read-back found none."""
+    holder = row.get("holder") or {}
+    name = holder.get("name") or "the record"
+    address = row.get("address") or "the address"
+    deleted, unassigned = row.get("deleted") or [], row.get("unassigned") or []
+    left = row.get("left")
+
+    def on(o):
+        return _on(o, "was on")
+    # The result component draws the summary and what did not happen, so the summary names
+    # each address written (the card's only place for them).
+    wrote = "; ".join(filter(None, [
+        ("deleted " + ", ".join(o["address"] for o in deleted)) if deleted else "",
+        ("unassigned " + ", ".join(o["address"] for o in unassigned) + ", kept in NetBox")
+        if unassigned else ""])) or "nothing written to an address"
+    if row.get("ok"):
+        level = "success"
+        summary = (f"{address} is free: {name} read back holding no IP address ({wrote}). "
+                   "Preview the import again to give it to "
+                   + (row.get("device") or "the device") + ".")
+    else:
+        level = "partial" if (deleted or unassigned) else "failed"
+        summary = (f"{address} was not freed from {name}: {row.get('error') or 'no reason'} "
+                   f"({wrote}).")
+    did_not = [{"target": name, "kind": "record_kept", "lines": [],
+                "text": f"{name} itself was kept, Decommissioning, with its name and history."},
+               {"target": name, "kind": "not_import", "lines": [],
+                "text": "The import was not run: preview it again, and confirm it there."}]
+    if left:
+        did_not.append({"target": name, "kind": "left",
+                        "text": f"Still on {name} when NetBox was read back:", "lines": left})
+    target = {"name": name,
+              "outcome": {"success": "deployed"}.get(level, level),
+              "words": {"success": "freed", "partial": "partly freed",
+                        "failed": "not freed"}[level],
+              "sent": {"lines": ([f"deleted {o['address']}{on(o)}" for o in deleted]
+                                 + [f"unassigned {o['address']}{on(o)}" for o in unassigned]),
+                       "program_hash": "", "caption": "What was written to NetBox",
+                       "none": "No address was deleted or unassigned."},
+              "checks": {"ran": left is not None, "ok": left == [],
+                         "statements": [f"{name} read back holding "
+                                        + (", ".join(left) if left else "no IP address")]
+                         if left is not None else [],
+                         "why": "NetBox could not be read back"}}
+    rs = record_status or {"ok": True}
+    statement = (f"Recorded {row.get('at', '?')} by {row.get('actor') or 'an unrecorded actor'} "
+                 "in this card's record (the NetBox job), each address with the interface it "
+                 "was on; the record's and each unassigned address's before in Mercury's "
+                 "modification record; NetBox's changelog holds each write."
+                 if rs.get("ok") else
+                 f"THE JOB RECORD WAS NOT WRITTEN: {rs.get('error') or 'no reason'}. The writes "
+                 "happened; the modification record and NetBox's changelog hold them.")
+    return build_result(
+        action="netbox_free", level=level, summary=summary, targets=[target], did_not=did_not,
+        nothing_left_out="",
+        record={"commit": "", "tags": [], "baseline": "", "statement": statement,
+                "written": _record_written(record_status)},
+        not_watched="NetBox is read back once, here; nothing watches the record afterwards.",
+        titles={"sent": "What was written to NetBox", "checks": "What NetBox held after"})
+
+
 #: What phase 1 of onboarding creates, per completed step, in words (C86).
 _ONBOARD_STEP_WORDS = {
     "credentials": "the bootstrap credential, staged in the credential store for this device",

@@ -1139,10 +1139,14 @@ def _ensure_interface(session, base: str, device_id: int,
     return _nb_post(session, base, "dcim/interfaces/", payload)
 
 
-def _say_held_by_decommissioned(session, base: str, ip: str, device_id, hostname: str) -> list:
+def _say_held_by_decommissioned(session, base: str, ip: str, device_id, hostname: str,
+                                held: list = None) -> list:
     """Name each Decommissioning NetBox device whose interface holds *ip* (C1494), as a write
     of *hostname*'s that did not land as it should; returns the records named. One read of the
-    address, and one of each other device holding it. A read that fails is said too."""
+    address, and one of each other device holding it. A read that fails is said too. *held*,
+    when given (the sync's ``ipam_stats["held_by_retired"]``), gets one entry per holder
+    (``device``, ``ip``, ``address``, ``holder``, ``holder_id``), which the import's preview
+    offers to free (C1504)."""
     try:
         hits = _nb_get(session, base, "ipam/ip-addresses/", address=ip)
     except Exception as exc:                           # noqa: BLE001 - said, never silent
@@ -1165,11 +1169,14 @@ def _say_held_by_decommissioned(session, base: str, ip: str, device_id, hostname
             continue
         name = record.get("name") or str(other)
         named.append(name)
+        if held is not None:
+            held.append({"device": hostname, "ip": ip, "address": str(h.get("address") or ip),
+                         "holder": name, "holder_id": other})
         _write_failed(f"management address {ip}", RuntimeError(
             f"{h.get('address') or ip} is held by {name} (NetBox device {other}, "
             "Decommissioning), a record retired before retire freed its addresses (C1494); "
-            "Mercury has no action that frees it yet, so unassign it from that record in "
-            f"NetBox, then import {hostname} again"), hostname)
+            f"free it from that record with Free {ip} from {name}… on the import's preview "
+            f"(C1504), then import {hostname} again"), hostname)
     return named
 
 
@@ -2764,7 +2771,8 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
     # retired before retire unassigned its addresses keeps them, and the next device given the
     # address cannot be given it in NetBox, or holds it twice.
     if ip:
-        _say_held_by_decommissioned(session, base, ip, device_id, hostname)
+        _say_held_by_decommissioned(session, base, ip, device_id, hostname,
+                                    held=ipam_stats.setdefault("held_by_retired", []))
 
     # Set primary_ip4 from management IP.
     # The strict match during the interface loop only fires when one interface IP
@@ -3828,6 +3836,9 @@ def _sync_list_to_netbox_impl(list_name: str, devices: list[dict],
         },
         # What was deliberately not modelled, named per class and device.
         "skipped":    skipped_report(ipam_stats.get("skipped")),
+        # A device's management address a Decommissioning record holds (C1494), each with its
+        # holder, for the import's preview to offer freeing (C1504).
+        "held_by_retired": list(ipam_stats.get("held_by_retired") or []),
         "notes":      provisioning_notes + _drain_ensure_failures(),
         "timestamp":  time.strftime("%Y-%m-%d %H:%M:%S"),
         "netbox_url": f"{base}/dcim/sites/{site['id']}/",

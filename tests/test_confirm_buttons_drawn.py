@@ -1020,9 +1020,13 @@ class TestRotateDueCards(_Cards):
 
 class TestNetBoxCards(_Cards):
     from tests import test_settings_v2 as _st, test_netbox_v2 as _nv
+    from tests import test_free_held_address as _fh
     networks, nb, tracked = hosted(_st.networks), hosted(_nv.nb), hosted(_nv.tracked)
+    retired_v4 = hosted(_fh.retired_v4)
 
     CASES = {
+        # C1504: Free <address> from <record>…'s own preview, its confirm Free <address>.
+        "free": ("_netbox_job.html", "Free {{ job.address }}", r"Free 192\.0\.2\.9", "viewer"),
         "import": ("_netbox_job.html", "{{ 'Remove' if op == 'remove' else 'Import' }}",
                    r"Import", "viewer"),
         "remove": ("_netbox_job.html", "{{ 'Remove' if op == 'remove' else 'Import' }}",
@@ -1042,6 +1046,19 @@ class TestNetBoxCards(_Cards):
     def drawn_import(self, request):
         networks, job = self._import(request)
         return _text(networks["client"].get(f"/v2/netbox/job/{job}"))
+
+    def drawn_free(self, request):
+        from tests.test_free_held_address import _free_card
+        retired = request.getfixturevalue("retired_v4")
+        return _free_card(request.getfixturevalue("networks"), retired)[2]
+
+    def blocked_free(self, request, monkeypatch):
+        from tests.test_free_held_address import _free_card
+        retired = request.getfixturevalue("retired_v4")
+        as_service(monkeypatch)
+        html = _free_card(request.getfixturevalue("networks"), retired)[2]
+        assert "clears primary_ip4, primary_ip6" in html, "floor: the free's preview is drawn"
+        return html
 
     def blocked_import(self, request, monkeypatch):
         networks, job = self._import(request)
@@ -1462,10 +1479,11 @@ class TestThePopulation:
             assert why and len(why) > 20, (key, "an excuse says why")
 
     def test_netbox_jobs_one_site_is_two_controls(self):
-        """`_netbox_job.html` draws Import and Remove at one site, two previews: 54 controls
-        (52 until C1403's Release lease… joined, 53 until C1491's IP SLA frequency commit)."""
+        """`_netbox_job.html` draws Import and Remove at one site, two previews: 55 controls
+        (52 until C1403's Release lease… joined, 53 until C1491's IP SLA frequency commit, 54
+        until C1504's Free <address> on NetBox's job card)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 54, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 55, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

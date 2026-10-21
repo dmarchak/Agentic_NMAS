@@ -23,9 +23,10 @@ local copy of the canvas this record was read beside, so its region is compared 
 line's words. `redesign/NetBoxBrowser.dc.html` and `redesign/PhoneNetBox.dc.html` are the
 device page's NetBox browser (tab:netbox), not this page.
 Shots: the operator's captures above; no board shot (no board file).
-Compared 2026-10-17.
+Compared 2026-10-17; the job card's Free <address> from <record>… (C1504) compared by the
+template and its tests 2026-10-21, no capture or board shot.
 Templates compared: templates/v2/netbox.html, templates/v2/_netbox_job.html
-Templates sha256: `eb647ab6d93d4d9e9239125f71fbc135e784a497d938a1dbaf47dab81aca7fbc`
+Templates sha256: `e3f8d445492d10a6b1d8ce3c47e9c057d6df958b33f6e13bb004179bba774a57`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).
@@ -51,4 +52,5 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Remove from NetBox, a cascade not measured | the removal's preview and confirm | the deletes listed, "Remove is not offered: what NetBox's database takes with each of the 9 delete(s) must be established, and 3 answer(s) could not be…", Read again, and no Remove button (W3 capture 24; C932) | **deviation** (log: C932 (B9): Remove from NetBox is offered only when what every delete takes with it is established) |
 | Stop tracking instead… (NetboxStopTracking) | its own preview: deletes nothing in NetBox, Mercury forgets N objects it created, each named, counts by type, where the data survives; Stop tracking the one confirm | "Stop tracking instead…" under Remove's card with its line; its preview lists each object forgotten, Forgets 10 and By type, "Deletes in NetBox 0", its gates, What it does not do naming where the data survives, and Stop tracking with "How does stopping tracking work?" (W3 capture 25; not confirmed in either walk) | **same** |
 | Removals column | removals recorded per network | "none" for both networks; a network with removals links "N recorded", opening the removal record in the job slot (compared by the template and `_netbox_removals.html`; neither walk had one) | **same** |
+| Free an address a retired record holds (C1504) | not drawn: no board drew it; drawn under the operating mode | on an import's preview, a warning per device address a Decommissioning record holds ("<address> is held by <record> (NetBox device N, Decommissioning)…") with Free <address> from <record>…; its own preview in the same card, headed "Free <address> in NetBox from <record>", each write by object and id, Record, Status, Address, Deletes, Unassigns and Plan hash, its gates, and Free <address> (busy Freeing…) behind the same writes box; its result in place, then Preview the import of <device> again… (compared by the template and tests/test_free_held_address.py, no capture) | **deviation** (log: NetBox: an import's preview offers Free <address> from <record>… (C1504)) |
 | Phone width | not drawn | the cards stacked; the Networks table in its own scroll, Last import a narrow column, and the second (i) beside Remove from NetBox… cut at the screen's edge (W2 capture 10; C1043) | **deviation** (log: NetBox: at phone width the second (i) is cut at the edge (C1043)) |

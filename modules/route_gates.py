@@ -176,7 +176,7 @@ GATES = {
     "device_v2.capture_confirm": _g(A, "commits a device's confirmed capture as its golden, from the v2 device page (7.3; routes.golden.apply_captures)"),
     "onboard_v2.create": _g(A, "commits a new device's identity and intent, from v2's Add device",
                             "onboard_device"),
-    "netbox_v2.confirm": _g(A, "writes to or deletes from NetBox as previewed, or (Stop tracking, C954) has Mercury forget what it created, from v2's NetBox page"),
+    "netbox_v2.confirm": _g(A, "writes to or deletes from NetBox as previewed, or (Stop tracking, C954) has Mercury forget what it created, or (Free, C1504) frees the IP addresses of a Decommissioning record holding a device's management address, from v2's NetBox page and a device's NetBox tab"),
 
     # ---- configure: the tool's own settings, gates, inventory, records ---
     "settings_v2.group_switch": _g(K, "switches a network's settings group (inherit, its own with its values and secrets, not applicable), bound to its preview and recorded"),
@@ -278,7 +278,7 @@ GATES = {
     "restarts.planned": _g(K, "records a planned-restart window, so the restarts it covers are not reported as unexpected, and sets a Grafana silence on its devices' alerts as the caller, with the reason (B3); a window covering a restart already seen needs a correction with its reason; with `end`, ends a window early (an abandoned attempt's, C1389), recorded as the caller with the reason", operation="planned_restart"),
     "update.check": _g(N, "runs the app-pushed reader now: fetches origin and asks CI; moves nothing that runs"),
     "jobs.job_finished": _g(N, "a host job ended: runs the job-health reader now; reads systemd and the stores, moves nothing, and accepts only a declared job's unit"),
-    "netbox_v2.preview": _g(N, "starts a dry run of an import or removal, or a read of what Stop tracking would forget, on a thread; writes nothing"),
+    "netbox_v2.preview": _g(N, "starts a dry run of an import or removal, or a read of what Stop tracking would forget or Free (C1504) would free, on a thread; writes nothing"),
     "remote.verify": _g(N, "read-only checks against the remote"),
     "remote_v2.publication": _g(N, "reads what a first push would publish: counts, kinds and fingerprints, never a value; writes nothing"),
 }

@@ -71,7 +71,8 @@ the golden cannot say them:
   of the same number is never used, and the preview names the refusal. The interface and its
   addresses are still written.
 - **A retired record holding the address.** If a Decommissioning device (a retired one) still
-  holds the device's management address, the import says so, naming that record.
+  holds the device's management address, the import says so, naming that record, and its
+  preview offers **Free <address> from <record>…** ([below](#free-address)).
 
 ## Cables from LLDP {#cables}
 
@@ -119,6 +120,52 @@ It is the same import, with the same preview, confirmation and records. The diff
 - **The device's Needs attention row** ("NetBox holds less than …") clears when the import
   lands. The import wakes the reader that compares the goldens with NetBox, and it finds NetBox
   holding them.
+
+## Free an address a retired record holds {#free-address}
+
+Retire frees a device record's IP addresses when it sets the record to Decommissioning. A
+record retired before Retire did that still holds them. When the import of a device finds
+that device's management address on such a record, its preview names the record ("192.0.2.9/30
+is held by edge1-retired-21 (NetBox device 21, Decommissioning)") and offers **Free 192.0.2.9
+from edge1-retired-21…**. It works the same on the NetBox page's import and on a device page's
+NetBox tab, and for an IPv4 or an IPv6 address. The import of every network does not offer it:
+import the network or the device.
+
+**Preview.** Pressing **Free <address> from <record>…** starts its own preview, in the same
+card. It writes nothing.
+1. **Read the record.** Read: the NetBox device the import named, by its id. A record that is
+   not Decommissioning is refused, naming its status: an address a working record holds is a
+   conflict a person resolves. A record that cannot be read is refused too, which is not the
+   same as "it holds nothing".
+2. **Read its addresses.** Read: every IP address on the record's interfaces. A record that no
+   longer holds the address is refused, naming what it holds now. Each address is placed by
+   the delete rule Remove and Retire use. An address the tool created (tagged `nmas-managed`
+   AND in the created record) is deleted. Any other is unassigned: it stays in NetBox's IPAM,
+   assigned to nothing.
+3. **Bind a one-time confirmation** to a hash of the writes: the record's primary addresses
+   cleared, each delete and each unassign. It is valid for 5 minutes and usable once.
+4. **Draw the preview.** Each write by object and id, the record and its status, the address,
+   the counts, and the gates.
+
+**Confirm and apply.** **Free <address>** confirms as the verified person. A service or an
+unverified caller is refused before anything is read.
+1. **The permit box and the master switch**, as for the import.
+2. **Hold the network.** One NetBox writer per network: an import or removal running for it
+   refuses this, naming who.
+3. **The confirmation is consumed**, and the record is read again. If it is no longer
+   Decommissioning, or no longer holds the address, the refusal names both, and nothing is
+   written. If its addresses changed in any other way, the refusal names both hashes.
+4. **Write, as Retire does.** The same code as Retire's NetBox step: the record's primary
+   addresses are cleared first (NetBox will not move an address that is a device's primary),
+   then each of the tool's addresses is deleted and each other one unassigned. Each write goes
+   through the write gate with this confirmation as its authority. Recorded: each update's
+   before in the modification record; a deleted address leaves the created record. The record
+   itself is kept, Decommissioning, with its name and history.
+5. **Read back.** Read: the record's addresses. It must hold none. An address still there is
+   named, and the result is not drawn as done.
+6. **The result is recorded** in the card's job record: who confirmed it, when, and each address
+   deleted or unassigned. It is drawn in place, and read again from the same card. The card
+   then offers **Preview the import of <device> again…**: the import is never run by this.
 
 ## The import: confirm and apply {#apply}
 

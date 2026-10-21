@@ -199,6 +199,13 @@ with why. Confirm with **Import**: the plan is recomputed for this device and co
 the one you saw, and only then written ([how](netbox-import#one-device)). Removing stays on
 the NetBox page.
 
+When a retired record (Decommissioning) still holds the device's management address, the
+import's card says so, naming the record, and offers **Free <address> from <record>…**. Its
+own preview lists each address on that record: deleted if {{product}} created it, otherwise
+unassigned and kept in NetBox, with the record's primary addresses cleared. Confirm with
+**Free <address>** (busy as **Freeing…**). The card then offers **Preview the import of
+<device> again…** ([how](netbox-import#free-address)).
+
 ## Neighbours {#neighbours}
 
 The routing adjacencies the network's committed intent implies for this device, against what
