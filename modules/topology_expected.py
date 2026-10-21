@@ -21,6 +21,38 @@ log = logging.getLogger(__name__)
 STORE = "topology_expected.json"
 #: Each declaration and withdrawal, who and when: History's "Expected islands".
 LOG = "topology_expected_log.jsonl"
+#: A weak point accepted by design (C1487; the operator, 2026-10-21: the course's topology has
+#: single points of failure and only links on purpose, and a warning on the map reads as a
+#: flaw): declared like an island, keyed `spof:<device>` or `bridge:<a>~<b>` (the ends sorted),
+#: holding what it cut off when declared, so it warns again when the graph changes that.
+SPOF, BRIDGE = "spof:", "bridge:"
+
+
+def key_for(kind: str, device: str = "", a: str = "", b: str = "") -> str:
+    """The declaration's key: a device for an island, `spof:<device>`, or `bridge:<a>~<b>`."""
+    if kind == "spof":
+        return SPOF + device
+    if kind == "bridge":
+        return BRIDGE + "~".join(sorted((a, b)))
+    return device
+
+
+def keys_naming(table: dict, device: str) -> list:
+    """Every declaration in *table* that names *device*: its island, its SPOF, and each only
+    link it is an end of (Retire withdraws them all: a retired name inherits nothing)."""
+    return sorted(k for k in table or {}
+                  if k in (device, SPOF + device)
+                  or (k.startswith(BRIDGE) and device in k[len(BRIDGE):].split("~")))
+
+
+def words_for(key: str) -> str:
+    """A key as a person reads it: "edge1", "edge1 as a single point of failure", "the only link
+    core1 ↔ edge1"."""
+    if key.startswith(SPOF):
+        return f"{key[len(SPOF):]} as a single point of failure"
+    if key.startswith(BRIDGE):
+        return f"the only link {' ↔ '.join(key[len(BRIDGE):].split('~'))}"
+    return key
 
 
 def _path(list_name: str) -> str:
@@ -45,10 +77,11 @@ def read(list_name: str) -> dict:
         return {"state": "unreadable", "islands": {}, "error": f"{STORE} could not be read: {exc}"}
 
 
-def declare(list_name: str, device: str, reason: str, actor: str) -> dict:
-    """Declare *device* an expected island of *list_name*, with *reason*: ``{"ok", "error"}``.
-    An unreadable store refuses (writing would erase the declarations it holds)."""
-    return _change(list_name, device, actor, reason=reason)
+def declare(list_name: str, device: str, reason: str, actor: str, holds=None) -> dict:
+    """Declare *device* (or a weak point's key, `key_for`) expected in *list_name*, with
+    *reason*: ``{"ok", "error"}``. *holds*: what a weak point cut off when declared, kept with
+    it. An unreadable store refuses (writing would erase the declarations it holds)."""
+    return _change(list_name, device, actor, reason=reason, holds=holds)
 
 
 def withdraw(list_name: str, device: str, actor: str) -> dict:
@@ -56,7 +89,7 @@ def withdraw(list_name: str, device: str, actor: str) -> dict:
     return _change(list_name, device, actor, reason=None)
 
 
-def _change(list_name: str, device: str, actor: str, reason) -> dict:
+def _change(list_name: str, device: str, actor: str, reason, holds=None) -> dict:
     from modules import filestore
 
     device = (device or "").strip()
@@ -65,8 +98,9 @@ def _change(list_name: str, device: str, actor: str, reason) -> dict:
     if reason is not None:
         reason = " ".join((reason or "").split())
         if len(reason) < 12:
+            what = ("is apart on purpose" if device == words_for(device) else "is by design")
             return {"ok": False, "error": (
-                f"say why {device} is apart on purpose, in a few words (got {reason!r}): the "
+                f"say why {words_for(device)} {what}, in a few words (got {reason!r}): the "
                 "reason is what the map draws instead of the warning")}
     path = _path(list_name)
     with filestore.PathLock(lambda: path):
@@ -82,6 +116,8 @@ def _change(list_name: str, device: str, actor: str, reason) -> dict:
         else:
             islands[device] = {"reason": reason, "by": actor or _UNVERIFIED,
                                "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+            if holds is not None:
+                islands[device]["holds"] = sorted(holds)
         filestore.write_atomic(path, json.dumps({"islands": islands}, indent=1, sort_keys=True))
     action = "withdrew" if reason is None else "declared"
     log.info("topology_expected: %s %s %s in %s", actor, action, device, list_name)

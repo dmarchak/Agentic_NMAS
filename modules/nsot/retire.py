@@ -905,19 +905,24 @@ def _topology_facts(list_name: str, hostname: str) -> dict:
         if got["state"] == "unreadable":
             return {"refuse": (f"{got['error']}, so whether it names {hostname} cannot be "
                                "told: could not read is not nothing there")}
-    island = (ex.get("islands") or {}).get(hostname)
+    table = ex.get("islands") or {}
+    # Its island, and each weak point accepted by design that names it (C1487).
+    keys = TE.keys_naming(table, hostname)
     placed = hostname in (pos.get("positions") or {})
-    if not island and not placed:
+    if not keys and not placed:
         return {"step": "no Topology declaration or arranged place names it", "done": True}
     parts = []
-    if island:
-        parts.append(f"withdraw its expected-island declaration (\"{island.get('reason', '')}\", "
-                     f"by {island.get('by') or 'an unrecorded person'})")
+    for key in keys:
+        d = table[key]
+        what = ("expected-island declaration" if key == hostname
+                else f"acceptance of {TE.words_for(key)}")
+        parts.append(f"withdraw its {what} (\"{d.get('reason', '')}\", "
+                     f"by {d.get('by') or 'an unrecorded person'})")
     if placed:
         parts.append("remove its place on the arranged Topology map")
     return {"step": " and ".join(parts) + ", each recorded in the Topology's own log, which "
                                           "History reads",
-            "done": False, "work": {"island": bool(island), "placed": placed}}
+            "done": False, "work": {"island": hostname in keys, "keys": keys, "placed": placed}}
 
 
 def _heartbeat_installed_path() -> str:
@@ -1818,8 +1823,9 @@ def apply(list_name: str, hostname: str, *, reason: str, actor: str,
 
         try:
             t = work.get("topology") or {}
-            for got in ((TE.withdraw(list_name, hostname, actor) if t.get("island") else None),
-                        (TP.forget(list_name, hostname, actor) if t.get("placed") else None)):
+            keys = t.get("keys") or ([hostname] if t.get("island") else [])
+            for got in ([TE.withdraw(list_name, key, actor) for key in keys]
+                        + [TP.forget(list_name, hostname, actor) if t.get("placed") else None]):
                 if got is not None and not got.get("ok"):
                     raise RuntimeError(got.get("error"))
             done.append("topology")

@@ -198,6 +198,14 @@ A device whose loss splits the network (an articulation point), or a link whose 
 bridge), each with what it would cut off, among the weak points. Parallel links are never a
 bridge.
 
+A single point of failure or an only link the design intends (a course topology with one link
+to an area border, say) can be **accepted**: **Accept…** asks why, as Mark as expected… does
+for an island, needs a verified person, and is recorded on History with your name. It stays in
+the weak points, drawn **accepted** with its reason and **Withdraw**, counted apart from the
+ones to look at, and its SPOF tag leaves the map. What it cut off when accepted is kept with
+it: if that changes (a device added behind it, a link gone), it warns again and says it was
+accepted for another cut. Retiring a device withdraws every acceptance that names it.
+
 ## At phone width {#phone}
 
 Three tabs: **Attention** (first: the counts, then each group's links as a list), **Devices**

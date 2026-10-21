@@ -294,11 +294,28 @@
   {%- endfor %}
   {%- if at.groups.weak or (not at.filtered and c.weak) %}
   <details class="topo-grp" data-keep="topo-att-weak" open>
-    <summary>{{ t.group_words.weak }} ({{ c.weak }})</summary>
+    <summary>{{ t.group_words.weak }} ({{ c.weak }}{% if c.accepted %}, {{ c.accepted }} accepted{% endif %})</summary>
     {%- for w in at.groups.weak %}
     <div class="topo-ent topo-weak">
-      {%- if w.kind == 'spof' %}<span class="mono">{{ w.device }} {{ badge('SPOF', 'warn') }}</span><span class="topo-what">{{ w.words }}</span>
-      {%- elif w.kind == 'bridge' %}<span class="mono">{{ w.title }} {{ badge('only link', 'warn') }}</span><span class="topo-what">{{ w.words }}</span>
+      {%- if w.kind == 'accepted' %}<span class="mono">{{ w.device if w.was == 'spof' else w.title }} {{ badge('accepted', 'neutral') }}</span><span class="topo-what">Accepted: {{ w.expected.reason }} ({{ w.expected.by }}, {{ stamp(w.expected.at) }}). {{ w.words }}</span>
+      <form class="topo-inline" method="post" action="{{ url_for('topology_v2.expected_withdraw') }}" hx-post="{{ url_for('topology_v2.expected_withdraw') }}" hx-target="#topo" hx-swap="outerHTML"><input type="hidden" name="list" value="{{ t.list }}"><input type="hidden" name="device" value="{{ w.key }}"><span class="op-act"><button type="submit" class="btn btn-small" data-op="topology" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Withdraw</span><span class="op-busy">Withdrawing…</span></button>{{ how('topology', 'islands', compact=True, op='an accepted weak point') }}</span></form>
+      {%- elif w.kind in ('spof', 'bridge') %}<span class="mono">{% if w.kind == 'spof' %}{{ w.device }} {{ badge('SPOF', 'warn') }}{% else %}{{ w.title }} {{ badge('only link', 'warn') }}{% endif %}</span><span class="topo-what">{{ w.words }}{% if w.changed %} Accepted on {{ stamp(w.changed.at) }} when it cut off {{ w.changed.holds | join(', ') }}; it now cuts off {{ w.holds | join(', ') }}, so it warns again.{% endif %}</span>
+        {#- C1487: a weak point the design intends is accepted with why, as an island is declared
+            apart: the same form and record, keyed by the weak point. -#}
+        <span><a class="btn btn-small" data-op="topology" href="{{ url_for('topology_v2.expected_form', list=t.list, device=w.key) }}" hx-get="{{ url_for('topology_v2.expected_form', list=t.list, device=w.key) }}" hx-target="#topo" hx-swap="outerHTML">Accept…</a>{{ how('topology', 'islands', compact=True, op='an accepted weak point') }}</span>
+        {%- if op.state == 'form' and op.device == w.key %}
+        <form class="set-form topo-expect" method="post" action="{{ url_for('topology_v2.expected_declare') }}" hx-post="{{ url_for('topology_v2.expected_declare') }}" hx-target="#topo" hx-swap="outerHTML" autocomplete="off">
+          <input type="hidden" name="list" value="{{ t.list }}"><input type="hidden" name="device" value="{{ w.key }}">
+          {%- if op.refused %}<div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not accepted:</strong> {{ op.refused }}.</p></div>{% endif %}
+          <label for="topo-reason">Why it is by design</label>
+          <div><input id="topo-reason" name="reason" type="text" value="{{ op.reason }}" required placeholder="the course topology: one link to the area border"><span class="set-origin">drawn instead of the warning while what it cuts off stays the same; recorded with your name</span></div>
+          <div class="set-foot set-form-note">
+            {%- if may.may %}<span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="topology" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Accept {{ w.title }}</span><span class="op-busy">Recording…</span></button>{{ how('topology', 'islands', compact=True, op='an accepted weak point') }}</span>
+            <span class="muted small">{{ may.statement }}</span>
+            {%- else %}<span class="muted small">{{ may.statement }} Nothing can be accepted from here.</span>{% endif %}
+          </div>
+        </form>
+        {%- endif %}
       {%- else %}<span class="mono">{{ w.device }} {{ badge('island', 'danger') }}</span><span class="topo-what">Island: {{ w.why }}. {% if w.became %}Became an island: {{ t.since_text(w.since) }}.{% elif w.since %}An island {{ t.since_text(w.since) }}.{% endif %}</span>
         <span><a class="btn btn-small" data-op="topology" href="{{ url_for('topology_v2.expected_form', list=t.list, device=w.device) }}" hx-get="{{ url_for('topology_v2.expected_form', list=t.list, device=w.device) }}" hx-target="#topo" hx-swap="outerHTML">Mark as expected…</a>{{ how('topology', 'islands', compact=True, op='an expected island') }}</span>
         {%- if op.state == 'form' and op.device == w.device %}

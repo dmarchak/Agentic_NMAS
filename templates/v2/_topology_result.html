@@ -2,7 +2,11 @@
 {#- A Topology action's result (C656): drawn in the slot above the map region, which redraws
     itself through the live path; drawn inside it, the region's own redraw wiped it. -#}
 {%- set op = op or {} -%}
-{%- if op.state == 'declared' %}
+{%- if op.state == 'declared' and op.weak %}
+<div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<p><strong>Accepted by design: {{ op.words }}</strong>, recorded with your reason{% if not op.recorded %} (NOT recorded on History: {{ op.record_error }}){% endif %}. It warns again if what it cuts off changes.</p></div>
+{%- elif op.state == 'withdrawn' and op.weak %}
+<div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<p><strong>No longer accepted: {{ op.words }}</strong>. It warns again as a weak point.</p></div>
+{%- elif op.state == 'declared' %}
 <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<p><strong>{{ op.device }} is an expected island</strong>, recorded with your reason{% if not op.recorded %} (NOT recorded on History: {{ op.record_error }}){% endif %}. The map draws it as expected once the reader reads again (it was woken).</p></div>
 {%- elif op.state == 'withdrawn' %}
 <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<p><strong>{{ op.device }} is no longer declared expected</strong>: if it is an island, it warns again once the reader reads.</p></div>

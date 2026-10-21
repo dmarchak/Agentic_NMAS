@@ -77,12 +77,27 @@ def expected_declare():
     from modules import identity, topology_expected
 
     device = (request.form.get("device") or "").strip()
+    holds = None
+    if device.startswith((topology_expected.SPOF, topology_expected.BRIDGE)):
+        # C1487: a weak point accepted by design holds what it cuts off now, from the map's
+        # stored analysis, so it warns again when that changes. One the map does not draw now
+        # is refused, naming it.
+        from modules import topology_page
+        weak = topology_page.view(_list_name(), {}).get("weak") or []
+        entry = next((w for w in weak if w.get("key") == device), None)
+        if entry is None:
+            # Drawn at the top of the region: there is no weak point here to draw a form under.
+            return _region(400, op={"state": "refused", "refused": (
+                f"{topology_expected.words_for(device)} is not a weak point on the map now, "
+                "so there is nothing to accept")})
+        holds = entry["holds"]
     got = topology_expected.declare(_list_name(), device, request.form.get("reason", ""),
-                                    identity.request_actor())
+                                    identity.request_actor(), holds=holds)
     if not got["ok"]:
         return _region(400, op={"state": "form", "device": device, "refused": got["error"],
                                 "reason": request.form.get("reason", "")})
-    return _result(dict(got, state="declared", device=device))
+    return _result(dict(got, state="declared", device=device, weak=holds is not None,
+                        words=topology_expected.words_for(device)))
 
 
 @bp.route("/expected/withdraw", methods=["POST"])
@@ -94,7 +109,9 @@ def expected_withdraw():
     got = topology_expected.withdraw(_list_name(), device, identity.request_actor())
     if not got["ok"]:
         return _region(409, op={"state": "refused", "device": device, "refused": got["error"]})
-    return _result(dict(got, state="withdrawn", device=device))
+    return _result(dict(got, state="withdrawn", device=device,
+                        weak=device.startswith((topology_expected.SPOF, topology_expected.BRIDGE)),
+                        words=topology_expected.words_for(device)))
 
 
 @bp.route("/positions", methods=["POST"])

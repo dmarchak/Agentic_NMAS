@@ -1019,15 +1019,30 @@ def topology_expected(ctx):
     got = TE.history(getattr(ctx["ref"], "data_dir", ""))
     if got["error"]:
         return _out(errors=[f"the expected-island record could not be read: {got['error']}"])
-    return _out([_event(r.get("at"), "expected",
-                        f"{r.get('device', '?')} "
-                        + ("declared an expected island: " + r.get("reason", "")
-                           if r.get("action") == "declared" else "no longer an expected island"),
-                        [r.get("device", "")], who=r.get("actor", ""),
+    def said(r):
+        key = r.get("device", "?")
+        if key == TE.words_for(key):
+            return key + (" declared an expected island: " + r.get("reason", "")
+                          if r.get("action") == "declared" else " no longer an expected island")
+        # C1487: a weak point accepted by design, or no longer.
+        return (("Accepted by design: " if r.get("action") == "declared"
+                 else "No longer accepted: ") + TE.words_for(key)
+                + (f" ({r.get('reason', '')})" if r.get("action") == "declared" else ""))
+
+    def devices(key):
+        if key.startswith(TE.SPOF):
+            return [key[len(TE.SPOF):]]
+        if key.startswith(TE.BRIDGE):
+            return key[len(TE.BRIDGE):].split("~")
+        return [key]
+
+    return _out([_event(r.get("at"), "expected", said(r), devices(r.get("device", "")),
+                        who=r.get("actor", ""),
                         record=[("Device", r.get("device")), ("Action", r.get("action")),
                                 ("Reason", r.get("reason"))])
                  for r in reversed(got["rows"])
-                 if _mine(ctx, r.get("device", "")) and _recent(ctx, r.get("at"))])
+                 if any(_mine(ctx, d) for d in devices(r.get("device", "")))
+                 and _recent(ctx, r.get("at"))])
 
 
 def topology_layout(ctx):

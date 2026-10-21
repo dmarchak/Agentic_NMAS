@@ -1,0 +1,39 @@
+--- a/rcn-lab1.clab.yml
++++ b/rcn-lab1.clab.yml
+@@ -155,25 +155,26 @@
+     r6:
+       kind: cisco_c8000v
+       mgmt-ipv4: 172.20.20.16              # Lab 8, OSPF area 10 behind R4; relays for R7
++      # Option (b) (docs/HOST_TUNING.md, Phase 3 section 4): boots from its golden, written by
++      # the startup sync; the day-0 ISO holds exactly this file (NMAS_STARTUP_ONLY), never
++      # vrnetlab's bootstrap, which its intent does not hold. No stages: it DHCPs through its
++      # relay and retries (C1475).
++      startup-config: configs/r6.cfg
+       env:
+         CLAB_MGMT_PASSTHROUGH: "true"
++        NMAS_STARTUP_ONLY: "true"
+       binds:
+-        - patches/c8000v-launch-configless.py:/launch.py
+-      stages:
+-        create:
+-          wait-for:
+-            - {node: r4, stage: healthy}
++        - patches/c8000v-launch.py:/launch.py
+     r7:
+       kind: cisco_c8000v
+       mgmt-ipv4: 172.20.20.17              # Lab 8, RIPv2 behind R6; VLAN 10 for H5
++      # Option (b), as r6.
++      startup-config: configs/r7.cfg
+       env:
+         CLAB_MGMT_PASSTHROUGH: "true"
++        NMAS_STARTUP_ONLY: "true"
+       binds:
+-        - patches/c8000v-launch-configless.py:/launch.py
+-      stages:
+-        create:
+-          wait-for:
+-            - {node: r4, stage: healthy}
++        - patches/c8000v-launch.py:/launch.py
+     r8:
+       kind: cisco_c8000v
+       mgmt-ipv4: 172.20.20.18              # Lab 9, OSPF area 20 behind R2; relays for s5

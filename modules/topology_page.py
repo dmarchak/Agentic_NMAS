@@ -466,11 +466,25 @@ def _routing_only(layers: dict, on: list, nodes: dict, twoway: dict = None) -> l
 
 # ---------------------------------------------------------------------------- weak points
 
-def _weak(an: dict, phys: list) -> list:
+def _accept(entry: dict, accepted: dict) -> dict:
+    """C1487: a SPOF or only link a person accepted by design, with why, is drawn "Accepted"
+    and untagged, while what it cuts off is what it cut off when accepted; changed, it warns
+    again, saying it was accepted for another cut."""
+    decl = (accepted or {}).get(entry["key"])
+    if not decl:
+        return entry
+    if sorted(decl.get("holds") or []) == entry["holds"]:
+        return dict(entry, kind="accepted", was=entry["kind"], expected=decl)
+    return dict(entry, changed=decl)
+
+
+def _weak(an: dict, phys: list, accepted: dict = None) -> list:
     """Single points of failure, bridges and islands to look at, each in words a person acts on
     (the board's hover: "the only path between the NMAS and the network"). A device that is
     Mercury's only way into part of the network and one whose loss splits the devices are one
-    entry, saying both."""
+    entry, saying both. *accepted*: the network's declarations (`topology_expected`), a weak
+    point accepted by design drawn as such (C1487)."""
+    from modules import topology_expected as TE
     from modules.readers.topology_graph import MANAGER
 
     out = []
@@ -490,14 +504,20 @@ def _weak(an: dict, phys: list) -> list:
             rest = [label(x) for x in splits[d]]
             parts.append(f"if {d} fails, {', '.join(rest)} lose{'s' if len(rest) == 1 else ''} "
                          "the rest")
-        out.append({"kind": "spof", "device": d, "title": d,
-                    "words": "Single point of failure: " + "; and ".join(parts) + "."})
+        holds = sorted(set(splits.get(d) or []) | set((ways.get(d) or {}).get("reaches") or []))
+        out.append(_accept({"kind": "spof", "device": d, "title": d,
+                            "key": TE.key_for("spof", d), "holds": holds,
+                            "words": "Single point of failure: " + "; and ".join(parts) + "."},
+                           accepted))
     for b in an.get("bridges") or []:
         cut = [label(x) for x in b["cuts_off"]]
-        out.append({"kind": "bridge", "device": "", "a": b["a"], "b": b["b"],
-                    "title": f"{label(b['a'])} ↔ {label(b['b'])}",
-                    "words": f"The only link between them: if it fails, {', '.join(cut)} "
-                             f"lose{'s' if len(cut) == 1 else ''} the rest."})
+        out.append(_accept({"kind": "bridge", "device": "", "a": b["a"], "b": b["b"],
+                            "title": f"{label(b['a'])} ↔ {label(b['b'])}",
+                            "key": TE.key_for("bridge", a=b["a"], b=b["b"]),
+                            "holds": sorted(b["cuts_off"]),
+                            "words": f"The only link between them: if it fails, "
+                                     f"{', '.join(cut)} lose{'s' if len(cut) == 1 else ''} the "
+                                     "rest."}, accepted))
     for i in an.get("islands") or []:
         for d in i:
             st = (an.get("island_state") or {}).get(d) or {}
@@ -577,7 +597,9 @@ def view(list_name: str, values) -> dict:
     twoway = _twoway_intended(layers)
     links = [_link(l, layers, on, nodes, twoway) for l in phys] + \
         _routing_only(layers, on, nodes, twoway)
-    weak = _weak(an, phys)
+    from modules import topology_expected
+    declared = topology_expected.read(list_name)
+    weak = _weak(an, phys, declared.get("islands") or {})
     from modules import topology_positions
     arranged = topology_positions.read(list_name)
     out.update(state="ok", errors=value.get("errors") or [], present=present, on=on,
@@ -624,11 +646,12 @@ def _attention(links: list, weak: list, s: dict) -> dict:
                                  "since_seen": next((w[3] for w in top if w[2]), False),
                                  "a": l["a"], "b": l["b"]})
     for w in weak:
-        if w["kind"] == "apart":
-            groups["apart"].append(w)
-        else:
-            groups["weak"].append(w)
+        # C1487: an accepted weak point stays in the weak points' group, drawn "Accepted", and
+        # is counted apart: it is not something to look at.
+        groups["apart" if w["kind"] == "apart" else "weak"].append(w)
     counts = {k: len(v) for k, v in groups.items()}
+    counts["accepted"] = sum(1 for w in groups["weak"] if w["kind"] == "accepted")
+    counts["weak"] -= counts["accepted"]
     counts["all"] = counts["bad"] + counts["warn"] + counts["unread"] + counts["weak"]
     needle = s["f"].lower()
 

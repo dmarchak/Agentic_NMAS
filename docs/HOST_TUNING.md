@@ -386,6 +386,14 @@ qm set 100 --memory 65536 --balloon 0 --sockets 2 --cores 12 --numa 1 --hugepage
     delay every node's management link (C1475).
 
   r8 is unchanged (configless until Lab 9).
+
+  **Ready for the operator's commit (2026-10-21, the overnight run):**
+  `lab/phase3/option-b-labfile.diff`, against the lab file as committed in `33916b7` (sha256
+  `c23c5d4014d5…`, the pinning's version), touching r6 and r7 only; the result parses as YAML.
+  It applies with the launch patch's diff (`lab/phase3/c8000v-launch-startup-only.diff`) in
+  one lab-repo commit, and needs the map's change below in place before the redeploy, or the
+  startup sync writes no `configs/r6.cfg` and `configs/r7.cfg` and containerlab refuses the
+  missing files.
 - **The startup sync's map** (`data/lab_targets/Default.tsv` on `<nmas-host>`, the
   operator's):
   - r6 moves from `labs/r6/configs r6` to `labs/lab/configs default` (C1473's cause);

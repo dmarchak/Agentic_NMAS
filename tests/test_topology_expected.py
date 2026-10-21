@@ -43,6 +43,19 @@ def test_withdrawing_what_is_not_declared_is_refused(lst):
     assert not got["ok"] and "s1 is not declared expected" in got["error"]
 
 
+def test_a_weak_point_is_keyed_and_holds_what_it_cut_off(lst):
+    """C1487: an accepted SPOF or only link is a declaration keyed by the weak point, holding
+    what it cut off when accepted; Retire withdraws every declaration naming the device."""
+    assert E.key_for("spof", "r4") == "spof:r4"
+    assert E.key_for("bridge", a="r6", b="r4") == "bridge:r4~r6", "the ends sorted"
+    assert E.declare("Lab", "bridge:r4~r6", "the course topology: one link to area 10",
+                     "p@example.invalid", holds=["r7", "r6"])["ok"]
+    assert E.read("Lab")["islands"]["bridge:r4~r6"]["holds"] == ["r6", "r7"]
+    table = {"r6": {}, "spof:r6": {}, "bridge:r4~r6": {}, "bridge:r4~r60": {}, "spof:r60": {}}
+    assert E.keys_naming(table, "r6") == ["bridge:r4~r6", "r6", "spof:r6"]
+    assert E.words_for("bridge:r4~r6") == "the only link r4 ↔ r6"
+
+
 def test_an_unreadable_store_refuses_a_write_and_keeps_its_bytes(lst):
     (lst / E.STORE).write_text("{not json")
     assert E.read("Lab")["state"] == "unreadable"

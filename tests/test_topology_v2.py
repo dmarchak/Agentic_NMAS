@@ -495,6 +495,55 @@ def test_marking_an_island_expected_is_a_person_s_recorded_act(web):
     assert "Weak points (1)" in att and "Withdraw" in att
 
 
+def test_a_weak_point_the_design_intends_is_accepted_with_why_and_untagged(web):
+    """C1487 (the operator, 2026-10-21): the course's topology has single points of failure on
+    purpose, and a warning on the map reads as a flaw. s3, Mercury's only path to seven devices
+    on the lab's capture, is accepted with why, as an island is declared apart: recorded, drawn
+    "Accepted" in the weak points, its SPOF tag gone from the map."""
+    assert ">SPOF</text>" in _get(web), "floor: s3 is tagged a single point of failure"
+    form = web["client"].get("/v2/topology/expected?list=Lab&device=spof:s3").get_data(
+        as_text=True)
+    assert "Why it is by design" in form and "Accept s3" in form
+    short = web["client"].post("/v2/topology/expected",
+                               data={"list": "Lab", "device": "spof:s3", "reason": "design"})
+    assert short.status_code == 400
+    assert "say why s3 as a single point of failure is by design" in short.get_data(
+        as_text=True)
+    r = web["client"].post("/v2/topology/expected", data={
+        "list": "Lab", "device": "spof:s3",
+        "reason": "the course topology: one management switch for the lab"})
+    body = r.get_data(as_text=True)
+    assert r.status_code == 200 and "Accepted by design: s3 as a single point of failure" in body
+    stored = json.loads((web["dir"] / "topology_expected.json").read_text())["islands"]
+    assert stored["spof:s3"]["holds"] == ["r1", "r2", "r3", "r4", "s1", "s2", "s4"]
+    assert stored["spof:s3"]["by"] == "test-person@example.invalid"
+    html = _get(web)
+    att = _section(html, "topo-att-h")
+    assert "Weak points (1, 1 accepted)" in att, "r6's island still warns; s3 does not"
+    assert "Accepted: the course topology: one management switch for the lab" in att
+    assert ">SPOF</text>" not in html, "an accepted weak point is untagged on the map"
+
+
+def test_an_accepted_weak_point_warns_again_when_what_it_cuts_off_changes(web):
+    (web["dir"] / "topology_expected.json").write_text(json.dumps({"islands": {"spof:s3": {
+        "reason": "the course topology: one management switch", "by": "p@example.invalid",
+        "at": "2026-10-21T07:00:00Z", "holds": ["r1", "r2"]}}}))
+    html = _get(web)
+    att = _section(html, "topo-att-h")
+    assert ">SPOF</text>" in html and "Weak points (2)" in att
+    assert ("when it cut off r1, r2; it now cuts off r1, r2, r3, r4, s1, s2, s4, so it warns "
+            "again") in att
+
+
+def test_accepting_what_is_not_a_weak_point_is_refused_naming_it(web):
+    r = web["client"].post("/v2/topology/expected", data={
+        "list": "Lab", "device": "spof:r1", "reason": "the course topology says so"})
+    assert r.status_code == 400
+    assert "r1 as a single point of failure is not a weak point on the map now" in \
+        r.get_data(as_text=True)
+    assert not (web["dir"] / "topology_expected.json").exists()
+
+
 def test_a_refusal_declares_no_change_and_a_success_does(web):
     """C656: a refused write wrote nothing, so its answer declares no invalidation (its keys made
     the page redraw the region showing the refusal's reason, wiping it); a declared island
