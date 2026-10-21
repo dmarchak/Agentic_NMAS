@@ -745,6 +745,17 @@ def _ensure_prefix_role(session, base: str, name: str) -> dict:
     return _nb_post(session, base, "ipam/roles/", {"name": name, "slug": slug})
 
 
+def _is_host_network(prefix: str) -> bool:
+    """True for an IPv4 /32 or an IPv6 /128: an interface address of that length (a loopback)
+    is an address inside some pool, never a prefix of its own (C1516: the import made one per
+    loopback, 22 in this lab's NetBox). Its address is still written; the pool is a person's."""
+    try:
+        net = ipaddress.ip_network(prefix, strict=False)
+    except ValueError:
+        return False
+    return net.prefixlen == net.max_prefixlen
+
+
 def _infer_prefix_role_name(iface_name: str, prefix: str) -> Optional[str]:
     """Heuristic prefix role from the interface it was seen on and its size —
     matches NetBox best practice of differentiating prefix function (loopback,
@@ -2231,6 +2242,25 @@ def _existing_device(session, base: str, hostname: str, site_id, serial: str,
     return _nb_first(session, base, "dcim/devices/", name=hostname, site_id=site_id)
 
 
+def _recorded_record(session, base: str, hostname: str, recorded_id) -> Optional[dict]:
+    """The NetBox record *hostname*'s onboarding recorded in its manifest (C1009), when it still
+    exists, still carries this name and is not Decommissioning: a record a person placed in
+    another site than the network's (Lab 8's branch) is found, where matching by name within
+    the network's site would miss it and make a second. Otherwise None, said, and the import
+    matches as before; a retired record (renamed and Decommissioning) is never taken."""
+    if recorded_id in (None, ""):
+        return None
+    held = _nb_get(session, base, "dcim/devices/", id=recorded_id) or []
+    rec = held[0] if held else None
+    if rec and rec.get("name") == hostname and _status_value(rec) != "decommissioning":
+        return rec
+    log.warning("netbox: %s's recorded NetBox record %s %s; matched by serial or by name in "
+                "the network's site", hostname, recorded_id,
+                "no longer exists" if rec is None else
+                f"is {rec.get('name')!r}, {_status_value(rec) or 'no status'}")
+    return None
+
+
 def _record_by_id(session, base: str, hostname: str, netbox_id) -> dict:
     """The NetBox record a caller named by id (C676: onboarding's Planned record). It must
     still exist and still carry this name; otherwise nothing is written, both named."""
@@ -2259,7 +2289,8 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
                    status: str = "active",
                    mgmt_prefix_len: int = 0,
                    netbox_id: Optional[int] = None,
-                   dialect: str = "") -> dict:
+                   dialect: str = "",
+                   recorded_netbox_id: Optional[int] = None) -> dict:
     """Create or update a device in NetBox with full DCIM + IPAM data.
 
     Syncs: device record, platform, interfaces (with MAC/MTU/speed/state),
@@ -2311,7 +2342,8 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
     if netbox_id:
         existing = _record_by_id(session, base, hostname, netbox_id)
     else:
-        existing = _existing_device(session, base, hostname, site_id, serial)
+        existing = (_recorded_record(session, base, hostname, recorded_netbox_id)
+                    or _existing_device(session, base, hostname, site_id, serial))
 
     # NO `Synced: <timestamp>`. Same reasoning as `ndm_sync` in
     # _build_config_context: it made `comments` differ on every sync by
@@ -2609,16 +2641,18 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
 
             # Primary IPv4
             if intf.get("cidr"):
-                role_id_v4 = _prefix_role_id(_infer_prefix_role_name(intf["name"], intf["prefix"]))
-                _ensure_prefix(
-                    session, base,
-                    prefix=intf["prefix"],
-                    description=f"Seen on {hostname} {intf['name']}",
-                    site_id=site_id,
-                    vrf_id=vrf_id,
-                    role_id=role_id_v4,
-                )
-                ipam_stats["prefixes_synced"] = ipam_stats.get("prefixes_synced", 0) + 1
+                if not _is_host_network(intf["prefix"]):
+                    role_id_v4 = _prefix_role_id(_infer_prefix_role_name(intf["name"],
+                                                                         intf["prefix"]))
+                    _ensure_prefix(
+                        session, base,
+                        prefix=intf["prefix"],
+                        description=f"Seen on {hostname} {intf['name']}",
+                        site_id=site_id,
+                        vrf_id=vrf_id,
+                        role_id=role_id_v4,
+                    )
+                    ipam_stats["prefixes_synced"] = ipam_stats.get("prefixes_synced", 0) + 1
 
                 nb_ip = _ensure_ip_address(
                     session, base,
@@ -2636,10 +2670,13 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
             for sec_cidr in intf.get("secondary_ips", []):
                 try:
                     sec_prefix = str(ipaddress.ip_interface(sec_cidr).network)
-                    role_id_sec = _prefix_role_id(_infer_prefix_role_name(intf["name"], sec_prefix))
-                    _ensure_prefix(session, base, prefix=sec_prefix,
-                                   description=f"Seen on {hostname} {intf['name']} (secondary)",
-                                   site_id=site_id, vrf_id=vrf_id, role_id=role_id_sec)
+                    if not _is_host_network(sec_prefix):
+                        role_id_sec = _prefix_role_id(_infer_prefix_role_name(intf["name"],
+                                                                              sec_prefix))
+                        _ensure_prefix(session, base, prefix=sec_prefix,
+                                       description=f"Seen on {hostname} {intf['name']} "
+                                                   "(secondary)",
+                                       site_id=site_id, vrf_id=vrf_id, role_id=role_id_sec)
                     _ensure_ip_address(session, base, address_cidr=sec_cidr,
                                        interface_id=nb_intf["id"],
                                        description=f"{hostname} {intf['name']} secondary",
@@ -2654,10 +2691,12 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
             for v6_cidr in intf.get("ipv6_addresses", []):
                 try:
                     v6_net = str(ipaddress.ip_interface(v6_cidr).network)
-                    role_id_v6 = _prefix_role_id(_infer_prefix_role_name(intf["name"], v6_net))
-                    _ensure_prefix(session, base, prefix=v6_net,
-                                   description=f"Seen on {hostname} {intf['name']} (IPv6)",
-                                   site_id=site_id, vrf_id=vrf_id, role_id=role_id_v6)
+                    if not _is_host_network(v6_net):
+                        role_id_v6 = _prefix_role_id(_infer_prefix_role_name(intf["name"],
+                                                                             v6_net))
+                        _ensure_prefix(session, base, prefix=v6_net,
+                                       description=f"Seen on {hostname} {intf['name']} (IPv6)",
+                                       site_id=site_id, vrf_id=vrf_id, role_id=role_id_v6)
                     nb_ip6 = _ensure_ip_address(session, base, address_cidr=v6_cidr,
                                        interface_id=nb_intf["id"],
                                        description=f"{hostname} {intf['name']} IPv6",
@@ -3387,14 +3426,15 @@ def _scan_device_from_golden(dev: dict, list_name: str = "", manifest: dict = No
     if facts.get("platform") == "IOS" and FACT_WORDS.get(dialect):   # "IOS": the text said none
         facts["platform"] = FACT_WORDS[dialect]
     interfaces      = _parse_all_interfaces_from_config(golden)
+    from modules.nsot import leased_address
+    if manifest is None:
+        manifest, why = _committed_manifest(list_name)
+        if why:
+            log.warning("netbox: %s: %s; no leased address placed, no recorded record used",
+                        hostname, why)
+    entry = leased_address.entries_by_name(manifest).get(hostname.lower()) or {}
     if any(i.get("dhcp") for i in interfaces):
-        from modules.nsot import leased_address
-        if manifest is None:
-            manifest, why = _committed_manifest(list_name)
-            if why:
-                log.warning("netbox: %s: %s; no leased address placed", hostname, why)
-        _lease_onto_interface(interfaces, leased_address.entries_by_name(manifest)
-                              .get(hostname.lower()) or {})
+        _lease_onto_interface(interfaces, entry)
     vrfs            = _parse_vrfs_from_config(golden)
     vlans           = _parse_vlans_from_config(golden)
     static_routes   = _parse_static_routes_from_config(golden)
@@ -3414,6 +3454,9 @@ def _scan_device_from_golden(dev: dict, list_name: str = "", manifest: dict = No
         # The NetBox record this device IS, when the caller knows it (onboarding from a
         # Planned record, C676): updated by its id, never matched by name and site.
         "netbox_id":       dev.get("netbox_id"),
+        # The record its onboarding recorded in the manifest (C1009): found by that id in any
+        # site, where name within the network's site would miss one placed elsewhere.
+        "recorded_netbox_id": entry.get("netbox_id"),
         "hostname":        hostname,
         "app_role":        app_role,
         "facts":           facts,
@@ -3786,6 +3829,7 @@ def _sync_list_to_netbox_impl(list_name: str, devices: list[dict],
                     mgmt_prefix_len=result.get("mgmt_prefix_len") or 0,
                     netbox_id=result.get("netbox_id"),
                     dialect=result.get("dialect") or "",
+                    recorded_netbox_id=result.get("recorded_netbox_id"),
                 )
                 if outcome["action"] == "created":
                     created += 1

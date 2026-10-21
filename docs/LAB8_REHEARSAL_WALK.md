@@ -153,10 +153,10 @@ recommended option taken under the Phase 7 operating mode; docs/STANDING_APPROVA
 
 **P1 [AGENT]. Mercury on the host carries every fix that landed for Friday**, deployed by
 `nmas-deploy --wait` (CI green) before the sitting, never during it. The host runs f14bd314
-(read 2026-10-21 ~16:2x UTC); ed58d33e (C1506) deploys at 17:08 UTC; C1009's fix (D9) is the one
-more that must land.
-- **Expected:** "deployed <sha>" with CI's pass named, the sha carrying C1009's fix; job
-  health's not-ok rows as before, none new.
+(read 2026-10-21 ~16:2x UTC); ed58d33e (C1506) deploys at 17:08 UTC; the commit carrying C1009's
+fix (D9) and C1516's (no host prefix per loopback) is the one more that must land.
+- **Expected:** "deployed <sha>" with CI's pass named, the sha carrying C1009's and C1516's
+  fixes; job health's not-ok rows as before, none new.
 
 **P2 [AGENT]. The host is not stalling.**
 - Read-only, through `scripts/nmas-host`: `lab/pinning/check-pinning.sh` on `<lab-host>`, then the
@@ -171,9 +171,23 @@ which free the names: they are walk step b6.
 1. Organization › Sites › Add: `Branch`, region `Default`, status Active.
 2. IPAM › VLAN Groups › Add: `Branch`, scope type `dcim.site`, scope `Branch`. Then IPAM › VLANs
    › Add: VID 10, name `H5 LAN`, group `Branch`, status Active.
-3. IPAM › Prefixes: 10.255.4.4/30 (R6–R7) and 10.70.10.0/24 (VLAN 10) scoped to site `Branch`.
-   10.255.4.0/30 (R4–R6) joins the two sites and stays where it is.
-- **Expected:** the site, its VLAN group holding one VLAN 10, and the two prefixes scoped to it.
+3. IPAM › Prefixes, all in **VRF `Default`** (RD `ndm:default`, the network's VRF; the import
+   finds a prefix by prefix and VRF, so one in another VRF gets a duplicate):
+   - 10.255.4.4/30 (R6–R7, id 62): rescoped to `Branch` (done, the operator, 2026-10-21);
+   - 2001:db8:2:67::/64 (R6–R7, id 63, scoped to Default): rescope to `Branch`;
+   - 10.70.10.0/24 (VLAN 10): added with site `Branch` and VLAN `VLAN10` (Branch VLANs) (done,
+     the operator, 2026-10-21);
+   - 2001:db8:70:10::/64 (VLAN 10, not in NetBox, read ~16:58 UTC): add with site `Branch`.
+   None of it moves anything Mercury reads (the import never rescopes a scoped prefix; no reader
+   reads a prefix's site). 10.255.4.0/30 and 2001:db8:2:46::/64 (R4–R6, ids 59 and 60) join the
+   two sites and stay where they are.
+4. **The loopback pools (C1516), after C1516's fix is deployed:** IPAM › Prefixes › Add:
+   10.255.1.0/24 and 2001:db8:1::/64, role Loopback, VRF Default (where the loopback addresses
+   sit). Then delete the 22 host prefixes "Seen on <device> Loopback0" (a /32 and a /128 for each
+   of r1 to r7 and s1 to s4; Mercury cannot remove them, C1516). The three static-route host
+   prefixes stay.
+- **Expected:** the site, its VLAN group holding one VLAN 10, and the two prefixes scoped to it;
+  the two loopback pools, and no "Seen on … Loopback0" host prefix.
 - **Before Friday, once, [AGENT]:** Mercury's own read of the Branch site's VLAN groups
   (`_site_vlan`'s query, read-only on the host) finds VLAN 10, exactly one.
 
@@ -605,7 +619,8 @@ whole network.
   2001:db8:70:10::1/64, 802.1Q tagged with VLAN 10 from the Branch site's VLAN group (P3). A
   refusal naming the site's groups is a stop: read P3's VLAN group first.
 - **Prefixes it creates** are scoped to Default, the network's site (C1515); P3 scoped the two
-  branch prefixes by hand.
+  branch prefixes by hand. **No loopback becomes a prefix** (C1516): 10.255.1.16/32,
+  10.255.1.17/32 and their IPv6 /128s are addresses on Loopback0, inside P3's loopback pools.
 
 - **Cables (built):** R4 Gi5 – R6 Gi2 and R6 Gi3 – R7 Gi2. A cable from R7 Gi3 to H5, if
   wanted, is LABOUR in NetBox (M22).
@@ -693,7 +708,7 @@ before Saturday.
 ## 4. Placeholders to fill (`[READ: …]`)
 
 **Open, read on the day:**
-1. Settings › Installation: the running commit carries C1009's fix (P1, D9).
+1. Settings › Installation: the running commit carries C1009's and C1516's fixes (P1, D9).
 2. Credentials: the newest break-glass export's time against R6's and R7's last rotation (P6).
 3. Add device's review: its exact words for an existing subnet (c1).
 4. Needs attention after c2: whether r4's adjacency drops to R6 are raised as rows (c2, h3).
