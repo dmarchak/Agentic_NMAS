@@ -1,0 +1,16 @@
+{
+  "summary": "r7: drop AutoInstall's serial-form client-id from Gi2's unmodelled lines. It is the device's own (C1479, deployed f14bd314): the capture side now drops it, and intent still holding it made every plan for r7 send it again",
+  "steps": [
+    {
+      "path": [
+        "interfaces",
+        "GigabitEthernet2",
+        "unmodeled"
+      ],
+      "before": [
+        "ip dhcp client client-id ascii 90QP6XVJ3DT"
+      ],
+      "after": []
+    }
+  ]
+}

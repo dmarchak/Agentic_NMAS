@@ -175,7 +175,49 @@ C1498), then Phase 3 (the morning report's decision 2).
   - **Measured on all twelve, 2026-10-21:** every qemu matched a distinct thread; s1 983
     ticks/s, s2 1,001, s3 1,038, s4 1,086; every router 0.
   - A switch's PIT thread goes to its own CPU, a router's to 0 to 19.
-  - lab/REDEPLOY.md's step 5a goes once it is installed.
+  - **Installed by the operator 2026-10-21 (morning):** the timer active, its first run pinned
+    the 8 routers' kvm-pit threads to 0 to 19, all 12 PIT threads ok, every cpu-set declared;
+    lab/REDEPLOY.md's step 5a is removed. The check's remaining LOST lines are the containers'
+    non-qemu threads (launcher, shell, tini) on 0 to 23, because the containers' own cpusets are
+    empty until a redeploy applies the declared ones (or `docker update --cpuset-cpus`, below).
+- **The declared sets applied live, without a redeploy (prepared 2026-10-21 for the operator, a
+  lab-host write, theirs to run; not a restart, so within the restart rule):**
+  - **What `docker update --cpuset-cpus` does here** (Docker 27.5.1, cgroup v2, systemd driver,
+    kernel 6.8, read 14:2x UTC; documented behaviour, measured by the first command below):
+    Docker hands the change to runc, which sets the container scope's `AllowedCPUs` and writes
+    its cgroup's `cpuset.cpus` in place: no stop, no restart, the change recorded in
+    `HostConfig.CpusetCpus` so it survives a container restart. Since kernel 6.2 a task's
+    affinity set by `taskset` (its "user" mask) is kept, and a cpuset change gives it that mask
+    intersected with the new set (the set alone only if they would not overlap). The declared
+    sets equal the hand pinning exactly (s1 to s4 on 20 to 23, everyone else 0 to 19), so
+    qemu's vCPU threads stay where they are; the unpinned threads (launcher, shell, tini) move
+    into the set. The kvm-pit threads are kernel threads in the root cgroup, untouched (the
+    timer keeps them).
+  - **Order:** the switches one at a time (s3, the management path, last of them), each read
+    back; then the routers; then the hosts. Outside 08:30 to 09:10 UTC, and not inside an hour
+    being measured.
+  - **The first one, with its before and after** (s1):
+    ```
+    p=$(docker inspect -f '{{.State.Pid}}' clab-rcn-lab1-s1)
+    for t in /proc/$p/task/*; do taskset -pc ${t##*/}; done | sort -u -k6   # before
+    docker update --cpuset-cpus 20 clab-rcn-lab1-s1
+    docker inspect -f '{{.HostConfig.CpusetCpus}}' clab-rcn-lab1-s1      # 20
+    cat /sys/fs/cgroup$(cut -d: -f3 /proc/$p/cgroup)/cpuset.cpus.effective   # 20
+    for t in /proc/$p/task/*; do taskset -pc ${t##*/}; done | sort -u -k6   # after: every thread 20
+    sudo /usr/local/lib/lab-pinning/check-pinning.sh
+    ```
+  - **Then, one at a time, the check after each:**
+    ```
+    docker update --cpuset-cpus 21 clab-rcn-lab1-s2 && sudo /usr/local/lib/lab-pinning/check-pinning.sh
+    docker update --cpuset-cpus 23 clab-rcn-lab1-s4 && sudo /usr/local/lib/lab-pinning/check-pinning.sh
+    docker update --cpuset-cpus 22 clab-rcn-lab1-s3 && sudo /usr/local/lib/lab-pinning/check-pinning.sh
+    for n in r1 r2 r3 r4 r5 r6 r7 r8; do docker update --cpuset-cpus 0-19 clab-rcn-lab1-$n; done && sudo /usr/local/lib/lab-pinning/check-pinning.sh
+    for n in h1 h2 h3 h4 h5 web; do docker update --cpuset-cpus 0-19 clab-rcn-lab1-$n; done && sudo /usr/local/lib/lab-pinning/check-pinning.sh
+    ```
+    Expected at the end: PINNING HOLDS, every node "applied by the container".
+  - **Revert** (each container back to the whole VM, as before): `docker update --cpuset-cpus
+    0-23 clab-rcn-lab1-<node>`. An empty value cannot be written back, and 0-23 is what the
+    empty set meant. A full redeploy applies the lab file's declared sets either way.
 - **The check:** `lab/pinning/check-pinning.sh` is read-only, on the lab host, with its values
   in `lab/pinning/pinning.conf`. It checks four parts, one line each:
   - the timer is active and its last run succeeded;

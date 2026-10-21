@@ -65,6 +65,9 @@ KEYING = {
     # The Templates page's platform in words, keyed on the template's directory, which is
     # its dialect (`templates_repo`).
     "modules/nsot/approve_op.py":           "dialect",
+    # C1506: the old text guess's `ios` platform is corrected only for a device whose
+    # dialect (platform_for_device()) is not IOS's.
+    "modules/netbox_client.py":             "dialect",
     "scripts/netmiko_timing_probe.py":      "driver",
     "scripts/nsot_metric_diff.py":          "dialect",
 }

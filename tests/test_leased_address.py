@@ -489,6 +489,54 @@ class TestTheNetBoxImport:
         assert created and created[0]["platform"] == plat["id"]
         assert not [p for e, p in nb.posts if e == "dcim/platforms"]
 
+    def _existing(self, nb, site, role, platform, *, tagged=True, recorded=True):
+        """r4 already in NetBox with *platform*: Mercury's own record (tagged, recorded as
+        created) unless told otherwise."""
+        from modules import netbox_guard
+        tags = [{"id": 900, "slug": netbox_guard.MANAGED_TAG_SLUG,
+                 "name": netbox_guard.MANAGED_TAG_SLUG}] if tagged else []
+        dev = nb.seed("dcim/devices", {"name": "r4", "site": {"id": site["id"]},
+                                       "role": {"id": role["id"]}, "platform": platform,
+                                       "tags": tags, "serial": ""})
+        if recorded:
+            netbox_guard.record_created(LIST, "dcim/devices", dev["id"], "r4")
+        return dev
+
+    def _platform_patches(self, nb, dev):
+        return [p.get("platform") for e, i, p in nb.patches
+                if e.strip("/") == "dcim/devices" and i == dev["id"] and "platform" in p]
+
+    def test_mercurys_own_record_with_the_guessed_ios_is_corrected(self, writes_on,
+                                                                    monkeypatch):
+        """C1506 (the operator, 2026-10-21): r6 and r7 read "IOS" in NetBox, a platform Mercury
+        wrote from the old text guess. A record Mercury created, tagged and recorded, whose
+        platform is that guess, is corrected to its dialect's platform on update."""
+        nc = writes_on
+        nb, site, role, plat = _box()
+        ios = nb.seed("dcim/platforms", {"name": "IOS", "slug": "ios"})
+        dev = self._existing(nb, site, role, {"id": ios["id"], "slug": "ios"})
+        scan = _scan(monkeypatch, _dhcp(_text("r4"), R4_GI4), dict(self.DEV), _manifest(R4_LEASE))
+        _upsert(nc, nb, site, role, scan)
+        assert self._platform_patches(nb, dev) == [plat["id"]]
+
+    @pytest.mark.parametrize("case", ["a person's platform", "not tagged", "not recorded"])
+    def test_any_other_platform_or_record_is_never_touched(self, writes_on, monkeypatch, case):
+        """C557 stands for everything else: a platform a person chose, and a record Mercury
+        did not create, keep their platform on update."""
+        nc = writes_on
+        nb, site, role, plat = _box()
+        ios = nb.seed("dcim/platforms", {"name": "IOS", "slug": "ios"})
+        other = nb.seed("dcim/platforms", {"name": "Cisco IOS", "slug": "cisco-ios"})
+        if case == "a person's platform":
+            dev = self._existing(nb, site, role, {"id": other["id"], "slug": "cisco-ios"})
+        else:
+            dev = self._existing(nb, site, role, {"id": ios["id"], "slug": "ios"},
+                                 tagged=case != "not tagged",
+                                 recorded=case != "not recorded")
+        scan = _scan(monkeypatch, _dhcp(_text("r4"), R4_GI4), dict(self.DEV), _manifest(R4_LEASE))
+        _upsert(nc, nb, site, role, scan)
+        assert self._platform_patches(nb, dev) == []
+
     def test_an_unknown_dialect_keeps_the_texts_reading(self, writes_on, monkeypatch):
         """The control: a device whose inventory names no dialect reads the text as before,
         "IOS" for a text that says nothing, and NetBox is given that platform."""

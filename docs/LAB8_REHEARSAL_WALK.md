@@ -74,6 +74,13 @@ creates them (C1460).**
   host step's record).
 - **Recommendation: keep both subnets,** unless C1460 has been walked once on a throwaway link
   before Friday. Friday is a rehearsal of Saturday, not the first run of a path.
+- **DECIDED (the operator, 2026-10-21 morning): walk C1460 on R7 on Friday.** C1460 part 1 is
+  deployed (on main since c05330b0). Subnet 257 (R7's link) is removed first, after R7's Retire
+  (DHCP › Subnets › its **Remove…**), and R7's Add device creates it in the same preview and
+  hash as its reservation. Subnet 256 (R6's link) is kept and reused. **If Add device's subnet
+  creation fails**, fall back to the manual path: DHCP › **Add a subnet…** for 10.255.4.4/30
+  as on 2026-10-20 (For ZTP onboarding, Route option (3) = R6's 10.255.4.5), then Add device
+  again. Saturday's recording uses C1460's path if Friday's run works, else the manual one.
 
 **D2. NetBox Planned records for R6 and R7 (docs/LAB8_LAB9_PLAN.md section 11, item 8: due
 Thursday).**
@@ -105,6 +112,9 @@ deploy (C1478).**
   uses it, and the encapsulation order), and both templates approve again cleanly. Otherwise
   leave it, and R7's Day 1 is two deploys. Both paths are written in step d2. The same seed also
   unblocks C1485's `hold_queue` lever.
+- **Measured 2026-10-21 (~08:40 UTC, the bring preview read on the host): all 10 devices render
+  the same with the shipped file. DECIDED (the operator, 2026-10-21 morning): take it and
+  re-approve the two base templates this morning.** So R7's Day 1 is one deploy on Friday.
 
 **D4. C1432's measurement on R6, just before R6's Retire.**
 - docs/LAB8_MORNING_WALK.md section 1a, step 5b (skipped on 2026-10-20) planned it there,
@@ -137,7 +147,7 @@ recording.**
 - **Recommendation:** Phase 3's option (b) after the recording, as HOST_TUNING's Phase 3 already
   allows when the stalls are gone.
 
-**D8. Topology's weak points (C1487), only if C1487 has landed.**
+**D8. Topology's weak points (C1487; landed and deployed 2026-10-21, 09:39 UTC).**
 - r4, r6 and s3 as single points of failure, and r4 ↔ r6 as the only link, are the handout's
   design. With C1487 built, each is declared "Accepted: <reason>" by a verified person: a
   DECISION each, with a reason.
@@ -310,6 +320,15 @@ R7 reset to be added again by ZTP". Read the card, then confirm by its hash.
   Decommissioning, its addresses as C1494's state says above. R7's page becomes its retired
   record. R7's window from a1 covers nothing more; it lapses at its end.
 
+**b1a [OPERATOR, DECISION]. Subnet 257 removed (D1, decided: C1460 is walked on R7).** DHCP ›
+Subnets › 10.255.4.4/30 (Kea id 257) › **Remove…**, reason "Lab 8 rehearsal: R7's link subnet,
+for Add device to create (C1460)". Confirm by hash.
+- **Before it:** R7's Retire (b1) removed its reservation and released its lease, so no
+  reservation or lease is left in the subnet. If the removal is refused naming one, read DHCP ›
+  Leases and Reservations for 10.255.4.4/30 first; do not force it.
+- **Expected:** "removed", Kea's subnets without 257, one commit of `dhcp/subnets.yml`. Subnet
+  256 (R6's link) stays.
+
 **b2 [AGENT]. The alert-rules install, removal path:**
 `bash <home>/python/Agentic_NMAS/scripts/host-steps/c1419-install-alert-rules.sh heartbeat`,
 then the same with `telemetry` (Retire's result prints each one's values) (LABOUR M11).
@@ -425,7 +444,15 @@ waits until 120 s after the last fetch (C1400) and says until when.
    - **Why here:** once R6's deploy puts the helper on Gi3, R6 relays R7's requests. Without the
      reservation, R7 takes the pool's address (10.255.4.6) with no boot file, asks for default
      files the responder refuses, and AutoInstall gives up.
+   - **C1460 (D1, decided):** the review's plan now holds the link's subnet too: 10.255.4.4/30,
+     the relay R6's Gi3 (10.255.4.5, from R6's committed intent, d1.3 above), the pool the far
+     end's 10.255.4.6, option 3 on the reservation, no DNS, recorded as created by Add device,
+     in the same hash as the reservation. Read that line before confirming. **If the review
+     refuses or the subnet's write fails:** stop, note the refusal's words for C1460, then the
+     manual fallback: DHCP › **Add a subnet…** for 10.255.4.4/30 (For ZTP onboarding, Route
+     option (3) = 10.255.4.5), and Add device again, which now reuses that subnet.
    - **Expected:**
+     - the subnet 10.255.4.4/30 created (C1460's path) with Kea's own check passing;
      - the reservation `aa:bb:cc:00:04:07 -> 10.255.4.6`, with option 3 = 10.255.4.5;
      - a pending row "r7: reserved, not leased";
      - **[AGENT]** the repository clean, and "onboarding: r7" holding both files;

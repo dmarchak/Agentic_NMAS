@@ -674,6 +674,28 @@ def _platform_for(session, base: str, name: str, dialect: str, manufacturer_id: 
     return _ensure_platform(session, base, name, manufacturer_id) if name else None
 
 
+#: The slug the import's old text guess gave every device whose capture lacked Oxidized's
+#: header ("IOS", `_ensure_platform`'s slug of it): the one platform C1506 corrects.
+_GUESSED_PLATFORM_SLUG = "ios"
+
+
+def _platform_mercury_wrote_wrong(existing: dict, platform_id: int, dialect: str) -> bool:
+    """C1506: whether an existing device record's platform is the old guess's `ios`, on a
+    record Mercury created (tagged AND recorded as created), while the device's dialect resolves
+    to another platform (*platform_id*). Only then may an update set the platform."""
+    from modules import netbox_guard as _guard
+
+    plat = (existing or {}).get("platform") or {}
+    slug = plat.get("slug") if isinstance(plat, dict) else ""
+    if slug != _GUESSED_PLATFORM_SLUG or not dialect or dialect == "cisco_ios":
+        return False
+    if (plat.get("id") if isinstance(plat, dict) else plat) == platform_id:
+        return False
+    return (_guard.has_managed_tag(existing)
+            and _guard.was_created_by_nmas(_guard.get_current_list(), "dcim/devices",
+                                           existing.get("id")))
+
+
 def _ensure_vrf(session, base: str, name: str, rd: str = "") -> dict:
     """Get-or-create an IPAM VRF."""
     existing = _nb_first(session, base, "ipam/vrfs/", name=name)
@@ -2365,6 +2387,13 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
                   if k in ("name", "serial", "comments",
                             "local_context_data", "config_template",
                             "custom_fields")}
+        # C1506 (the operator, 2026-10-21): one exception, the platform Mercury wrote wrong
+        # itself. A record Mercury created (tagged and recorded as created) whose platform is
+        # the text guess's `ios` while the inventory's dialect resolves to another platform is
+        # corrected to that one: the old guess read any capture without Oxidized's header as
+        # IOS (C1442). A platform a person chose, or any other, is never touched.
+        if platform_id and _platform_mercury_wrote_wrong(existing, platform_id, dialect):
+            update["platform"] = platform_id
 
         # `role` and `device_role` are ONE field under two names — NetBox 3.x
         # called it `device_role`, 4.x calls it `role` — and the payload sends
