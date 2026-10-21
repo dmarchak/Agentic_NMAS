@@ -266,6 +266,8 @@ interface {{ i.name }}
 {%- endfor %}
 {%- for x in i.mop or [] %} {{ x }}
 {% endfor %}
+{%- for x in i.hold_queue or [] %} hold-queue {{ x }}
+{% endfor %}
 {%- if i.shutdown %} shutdown
 {% endif %}
 {%- if i.no_shutdown %} no shutdown

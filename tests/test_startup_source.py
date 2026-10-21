@@ -283,6 +283,44 @@ class TestThePreflightCheck:
         r = SS.check("Lab", hosts=["r2"])["devices"]["r2"]
         assert r["golden_after_rotation"] is False and r["rotated_at"] == "2026-10-19T12:00:00Z"
 
+    def test_the_rotation_s_own_commit_passes_though_its_record_is_a_second_later(
+            self, lab, monkeypatch):
+        """C1472 (B3 of the one-file redeploy, 2026-10-21): s4's golden IS its rotation's commit
+        (ed5d3ca, 01:13:19) and the rotation's record says 01:13:20, so a comparison of times
+        failed it. Compared by identity, the record's commit stage naming that commit, it
+        passes; a record dated after every commit, as the time check reads it, fails it."""
+        self._ready(lab, monkeypatch, rotated_at=4102444800)
+        golden_sha = R.git(lab, "log", "-1", "--format=%H", "HEAD", "--",
+                           "golden/r2.cfg")[1].strip()
+        monkeypatch.setattr("modules.nsot.scheduled_rotation.last_rotation_commits",
+                            lambda: {"r2": golden_sha})
+        assert SS.check("Lab", hosts=["r2"])["devices"]["r2"]["golden_after_rotation"] is True
+
+    def test_a_golden_older_than_the_rotation_s_commit_fails_by_identity(self, lab, monkeypatch):
+        """The identity check's other side: the rotation committed AFTER the golden's last
+        change, so the golden's commit is neither the rotation's nor descends from it."""
+        self._ready(lab, monkeypatch, rotated_at=1)
+        assert R.git(lab, "-c", "user.email=t@example.invalid", "-c", "user.name=t", "commit",
+                     "--allow-empty", "-q", "-m", "a rotation's later commit")[0] == 0
+        later = R.git(lab, "rev-parse", "HEAD")[1].strip()
+        monkeypatch.setattr("modules.nsot.scheduled_rotation.last_rotation_commits",
+                            lambda: {"r2": later})
+        assert SS.check("Lab", hosts=["r2"])["devices"]["r2"]["golden_after_rotation"] is False
+
+    def test_the_record_s_commit_stage_names_the_sha(self, monkeypatch):
+        """`last_rotation_commits` reads the newest successful rotate row's commit stage."""
+        from modules.nsot import scheduled_rotation as S
+        rows = [{"phase": "rotate", "device": "s4", "at": "2026-10-13T01:46:40Z",
+                 "stages": [{"name": "commit", "ok": True, "reason": "1" * 40}]},
+                {"phase": "rotate", "device": "s4", "at": "2026-10-21T01:13:20Z",
+                 "stages": [{"name": "commit", "ok": True, "reason": "e" * 40}]},
+                {"phase": "rotate", "device": "r9", "at": "2026-10-21T01:00:00Z",
+                 "stages": [{"name": "commit", "ok": True, "reason": "no sha here"}]}]
+        monkeypatch.setattr("modules.nsot.credential_rotation.rotation_records_as_known",
+                            lambda: rows)
+        monkeypatch.setattr("modules.nsot.credential_rotation.rotation_succeeded", lambda r: True)
+        assert S.last_rotation_commits() == {"s4": "e" * 40}
+
     def test_a_device_the_last_drift_run_could_not_read_fails(self, lab, monkeypatch):
         self._ready(lab, monkeypatch, drift={"last_check_ts": 1760000000, "last_result": {
             "checked": 1, "errors": [{"hostname": "r2", "reason": "authentication failed"}]}})

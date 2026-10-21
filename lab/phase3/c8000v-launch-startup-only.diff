@@ -1,0 +1,18 @@
+--- a/patches/c8000v-launch.py
++++ b/patches/c8000v-launch.py
+@@ -128,6 +128,15 @@
+                 if "MIME-Version:" in startup_cfg:
+                     self.logger.info("MIME-wrapped config detected, using as-is")
+                     cfg = startup_cfg
++                elif os.environ.get("NMAS_STARTUP_ONLY", "").lower() == "true":
++                    # STARTUP-ONLY (Phase 3, option b, 2026-10-21): the node's own startup
++                    # config and nothing else. A device that came up by ZTP holds no clab-mgmt
++                    # VRF, Gi1 address or `restconf`, so vrnetlab's bootstrap would add lines its
++                    # intent does not hold. Said in every case, so a log shows which mode ran.
++                    self.logger.warning("STARTUP-ONLY: the day-0 ISO holds the startup config "
++                                        "alone (%d lines), no vrnetlab bootstrap",
++                                        len(startup_cfg.splitlines()))
++                    cfg = startup_cfg
+                 else:
+                     # Otherwise, append to bootstrap config
+                     cfg = _skip_users_defined_in_startup(

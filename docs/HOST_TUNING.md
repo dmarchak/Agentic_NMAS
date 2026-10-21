@@ -188,18 +188,179 @@ protocol timers run slow.**
 4. **s3 and s4's qemu pinned to dedicated vCPUs inside the lab VM.** A lab-host write, with the
    operator's go.
 
-## Phase 3: one planned host reboot (designed, not scheduled)
+## Phase 3: the planned window (prepared 2026-10-21 ~05:10 UTC)
 
-- BIOS system profile set to Performance (read it first in iDRAC).
-- VM 100 as `sockets 2`, `cores 12`, its guest NUMA nodes bound to host nodes 0 and 1, vCPU
-  affinity to match.
-- VM 100 at **64 GiB** (32 per node), backed by 1 GiB hugepages (the operator's choice (a),
-  2026-10-21).
-  - Inside the VM 44 GiB is available today, so 64 GiB leaves about 28 GiB of headroom.
-  - Node 0 then holds about 55 GiB: 32 for VM 100, the NMAS VM's 16, about 4 of ARC and about 3
-    for the host.
-  - Node 1 holds about 40 GiB.
-- Ballooning is already off on VM 100. The disk tuning has nothing to change: an iothread is
-  already set, and txg syncs take 9 to 24 ms.
-- Then the full redeploy with r6 and r7 booting from their goldens (option b), Save All green
-  on all 10, the pre-flight's "0 newer" and a fresh break-glass export. Then 2 hours measured.
+**Conditional (the operator, 2026-10-21):**
+- **Go or no-go** is decided after tonight's IP SLA and hold-queue measurements.
+- **If the stalls are gone,** Phase 3 moves after Saturday's recording, as an efficiency change.
+- **If they remain,** it runs as one planned window on Wednesday.
+
+**The host's real layout** (`lscpu -e` and `node*/cpulist`, read 2026-10-21):
+- **Node 0:** CPUs 0, 2, 4, …, 38 (20 threads, socket 0).
+- **Node 1:** CPUs 1, 3, 5, …, 39 (20 threads, socket 1).
+- **The hookscript** reads this at run time and never assumes it.
+
+**The repair route, before the window** (CLAUDE.md, a change to the path needs an independent
+repair route):
+- The iDRAC virtual console is opened and tested before anything changes: log in, see the
+  host's console.
+- `/etc/default/grub` is saved in step 0.
+- GRUB's menu keeps the previous kernel entry. If the host does not come up with the new
+  command line, the operator edits the entry at the GRUB menu from the iDRAC console (`e`,
+  remove the hugepage arguments, Ctrl-X), then puts the saved `grub` back and runs
+  `update-grub`.
+
+Everything here is the operator's to run on `<hypervisor>`, except where a row says the agent.
+Nothing is changed before the window.
+
+### 0. Save what will change (first, before anything else)
+
+```
+D=/root/phase3-$(date -u +%Y%m%dT%H%MZ); mkdir -p $D
+qm config 100 > $D/qm-100.conf; qm config 102 > $D/qm-102.conf
+cp /etc/pve/qemu-server/100.conf /etc/pve/qemu-server/102.conf $D/
+cp /etc/default/grub $D/grub
+sysctl kernel.numa_balancing > $D/sysctl.txt
+```
+
+The BIOS's current System Profile is read in iDRAC and written down. It cannot be read from
+the host: `racadm` is absent, and dmidecode does not show it.
+
+### 1. The BIOS system profile: Performance (the operator, in iDRAC)
+
+- **The steps:** iDRAC › Configuration › BIOS Settings › System Profile Settings › System
+  Profile = **Performance** › Apply › "At next reboot". The job runs during the host's reboot.
+- **Why:** the host runs the OS-controlled profile (the governor `performance` in
+  intel_pstate's passive mode). C6 is enabled with a 133 µs exit, and CPU 0 spends about 65% of
+  its uptime in C6.
+- **Expected:**
+  - deep C-states and C1E off, turbo held, memory and uncore at full speed;
+  - no exit latency on a vCPU wake;
+  - more power and heat.
+- **Rollback:** the profile written down in step 0, set back the same way.
+
+### 2. 1 GiB hugepages on the host's kernel command line (GRUB)
+
+- **The change, on `<hypervisor>`:** in `/etc/default/grub`, set
+  `GRUB_CMDLINE_LINUX_DEFAULT="quiet default_hugepagesz=1G hugepagesz=1G hugepages=64"`, then
+  `update-grub`.
+  - The host boots with GRUB, not `proxmox-boot-tool`, which has no `proxmox-boot-uuids`.
+  - It runs Proxmox 9.2.2.
+  - Boot-time 1 GiB pages are spread across the two nodes, 32 each.
+- **Why:** VM 100's 64 GiB backed by 1 GiB pages means far fewer TLB misses for its nested
+  guests (the C8000vs and vIOS). Cisco recommends hugepage backing for C8000v hosts.
+- **Expected:** fewer page walks. The pages are reserved at boot, so compaction (80,721 stalls
+  in 32 days) cannot touch them.
+- **Rollback:** the saved `grub`, `update-grub`, and a reboot. If the host does not boot: the
+  repair route above.
+
+### 3. VM 100: 2 sockets × 12 cores, each guest node bound to a host node, 64 GiB on hugepages
+
+```
+qm set 100 --memory 65536 --balloon 0 --sockets 2 --cores 12 --numa 1 --hugepages 1024 \
+  --numa0 cpus=0-11,hostnodes=0,memory=32768,policy=bind \
+  --numa1 cpus=12-23,hostnodes=1,memory=32768,policy=bind
+```
+
+- **Why:**
+  - Today VM 100's memory sits 18.8 GiB on node 0 and 25.3 GiB on node 1, while most of its
+    threads run on node 0, and automatic NUMA balancing keeps migrating against it.
+  - Node 1 has 1.4 GiB free.
+  - Bound, each guest node's memory is on one socket, and the guest's scheduler sees the two
+    nodes.
+- **vCPU affinity:**
+  - `qm set --affinity` pins a whole VM, not a vCPU to a node.
+  - Per-vCPU placement is a post-start hookscript, `lab/phase3/vcpu-pin-hookscript.sh`, written
+    for review. It reads, at run time:
+    - each guest node's vCPUs and its host node from the VM's own `numaN: cpus=…,hostnodes=…`
+      lines;
+    - the host node's CPU set from `/sys/devices/system/node/nodeH/cpulist`;
+    - each vCPU's thread from QEMU's monitor (`info cpus`).
+  - It pins every vCPU of a guest node to that node's whole CPU set, not one CPU each, and
+    logs what it did to the journal.
+  - It needs storage with `snippets` content, which the host has none of today.
+  - **The operator installs it:**
+    `qm set 100 --hookscript <storage>:snippets/vcpu-pin-hookscript.sh`. Revert:
+    `qm set 100 --delete hookscript`.
+- **VM 102 (NMAS) on node 0:**
+  `qm set 102 --numa 1 --numa0 cpus=0-3,hostnodes=0,memory=16384,policy=bind`. Optional; it
+  keeps it off VM 100's node 1.
+- **Fit:**
+  - Node 0: 12 + 4 = 16 of 20 threads; memory 32 (VM 100) + 16 (NMAS) + about 4 (ARC) + about
+    3 (host) = about 55 of 64 GiB.
+  - Node 1: 12 threads; memory 32 + about 4 + about 3 + the containers = about 40 GiB.
+- **Ballooning:** VM 100 is already `balloon: 0`.
+- **The disk:** the audit found nothing to change. VM 100's `scsi0` is a ZFS zvol on the NVMe
+  pool (`vmdata`, 16K volblocksize) on virtio-scsi-single with an iothread, `discard=on`,
+  `ssd=1`, the default cache (none) and aio (io_uring). txg syncs take 9 to 24 ms, and the ARC
+  hit rate is 90%.
+- **Rollback:** `qm set 100` back to the values in `$D/qm-100.conf` (`--memory 81920
+  --sockets 1 --cores 24 --delete numa0,numa1,hugepages`), the same for 102.
+
+### 4. Option (b): r6 and r7 boot from their goldens
+
+- **The lab's launch patch** (`~/labs/lab/patches/c8000v-launch.py`, in the lab's own repo)
+  gains an opt-in startup-only mode, `lab/phase3/c8000v-launch-startup-only.diff`. With
+  `NMAS_STARTUP_ONLY=true`, the day-0 ISO holds exactly the node's startup-config and not
+  vrnetlab's bootstrap.
+  - r4's golden carries that bootstrap (`vrf definition clab-mgmt`, Gi1 in the VRF, its
+    routes, `restconf`), and r6's and r7's do not. Booted with the bootstrap, they would come
+    up with lines their intent does not hold.
+  - r1 to r5 are unchanged (the variable is absent).
+  - The lab repo's commit is the operator's.
+- **The lab file** (`rcn-lab1.clab.yml`), r6 and r7 only:
+  - the bind goes from `patches/c8000v-launch-configless.py` to `patches/c8000v-launch.py`;
+  - `env` adds `NMAS_STARTUP_ONLY: "true"`, and `CLAB_MGMT_PASSTHROUGH` stays;
+  - `startup-config: configs/r6.cfg` (`configs/r7.cfg`) is added;
+  - the `stages` block is removed: they DHCP through their relays and retry, and the stages
+    delay every node's management link (C1475).
+
+  r8 is unchanged (configless until Lab 9).
+- **The startup sync's map** (`data/lab_targets/Default.tsv` on `<nmas-host>`, the
+  operator's):
+  - r6 moves from `labs/r6/configs r6` to `labs/lab/configs default` (C1473's cause);
+  - r7 is added the same way (`r7 labs/lab/configs default <user>@<lab-host> cisco_iosxe`);
+  - a `# DECLARED-UNMAPPED r8 default configless by ZTP until Lab 9` line is added.
+- **Done before the window (2026-10-21):**
+  - **Save All:** 10 of 10 saved at 05:13 UTC, `baseline/20261021T051351Z` (0fa9a2385e), the
+    first baseline holding r6 and r7. The same operation failed on s3, s4 and r7 at about
+    03:33, before the pinning.
+  - **The pre-flight** read "0 newer" for all 10. s4 failed only "golden after its last
+    rotation", C1472's false failure, fixed in the commit that carries this section.
+  - **The dry ISO generation,** on the operator's go, at 05:13 UTC:
+    - it ran in `vrnetlab/cisco_c8000v:17.06.01a` (r6's own image), with no network, removed
+      after;
+    - the stand-in was r6's golden as `nmas-config-read` masks it (250 lines);
+    - **startup-only:** the ISO's config is 250 lines, identical to the startup-config, with
+      no clab-mgmt VRF, `restconf` or clab-mgmt route;
+    - **the standard launch** (the control): 292 lines, vrnetlab's 42-line bootstrap added,
+      the clab-mgmt VRF, `restconf` and its route among them.
+
+### 5. The run sheet (outside 08:30 to 09:10 UTC)
+
+| # | Step | Who | Time |
+|---|---|---|---|
+| 0 | The iDRAC virtual console opened and tested (the repair route); step 0's saves; the layout read (`lscpu -e`, `node*/cpulist`) and written beside the hookscript's log | operator; the agent reads the layout | 10 min |
+| 1 | Save All, all 10 green, with the gauge steady (not in a stall) | operator | 10 min |
+| 2 | Pre-flight: `nmas-startup-source --check --list Default`, "0 newer" and every fact passing, for every device | agent | 2 min |
+| 3 | The startup sync with the new map: r6 and r7 written to `labs/lab/configs`, read back | agent (host) | 3 min |
+| 4 | A break-glass export | operator | 2 min |
+| 5 | The BIOS profile staged in iDRAC (at next reboot); GRUB edited, `update-grub`; `qm set` for 100 (and 102); the hookscript installed | operator | 10 min |
+| 6 | A planned-restart window declared for every device | operator | 1 min |
+| 7 | Shut down VM 100 and VM 102 (`qm shutdown`), then reboot the host. The BIOS job runs on the way | operator | 10 to 15 min (an R630's POST) |
+| 8 | Read back: the profile in iDRAC, `/proc/meminfo` HugePages_Total 64, `numastat` 32/32, VM 100's `qm config`, the hookscript's journal lines | agent | 5 min |
+| 9 | Start VM 102 (Mercury), then VM 100; the redeploy with the new lab file (lab/REDEPLOY.md) | operator | 15 to 20 min (the C8000vs boot) |
+| 10 | E checks: every device answering, the adjacency counts as at D4, r6 and r7 at their goldens (drift clean), the heartbeat and telemetry rules | agent | 15 min |
+| 11 | 2 hours measured against tonight's final numbers | agent | 2 h |
+
+**The outage:** Mercury is down about 15 to 20 minutes (host reboot to VM 102 up). The lab is
+down about 45 to 60 minutes, from the shutdown to the E checks passing.
+
+### 6. Live tonight instead?
+
+- **1 GiB hugepages:** no. They are reserved at boot, and a runtime allocation on a host with
+  80,721 compaction stalls behind it would fail or stall.
+- **NUMA binding and the 2-socket topology:** no. Both need VM 100 restarted.
+- **The BIOS profile:** no. It needs a reboot.
+- **C6 off:** live, queued after `hold_queue`, only if the switches' clocks still lag.
+- **Automatic NUMA balancing off:** live, but uncorrelated with the stalls; not queued.

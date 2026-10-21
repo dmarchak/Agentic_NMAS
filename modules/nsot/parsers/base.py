@@ -234,7 +234,7 @@ class BaseParser:
         "ip_nat": [],
         "ipv6": [], "switchport": [], "switchport_trunk_vlans": [],
         "helper_addresses": [], "dhcpv6_relay": [], "ipv6_nd": [],
-        "ospf": [], "ospfv3": [], "ripng": [], "vrrp": [], "mop": [],
+        "ospf": [], "ospfv3": [], "ripng": [], "vrrp": [], "mop": [], "hold_queue": [],
         # The routing packs' interface fields (K7, `modules/nsot/features`).
         "ospf_interface": {}, "ospfv3_interface": {}, "ripng_interface": [],
     }
@@ -676,6 +676,10 @@ class BaseParser:
             (r"^mtu\s+(\d+)",                            "mtu"),
             (r"^channel-group\s+(.+)$",                  "channel_group"),
             (r"^encapsulation\s+(.+)$",                  "encapsulation"),
+            # An interface's hold queues (`hold-queue 256 out`), one entry per direction
+            # (C1485: a management switch's uplink printed "Output queue: 0/0" and dropped
+            # 5.6% of its output).
+            (r"^hold-queue\s+(\d+\s+(?:in|out))\s*$",    "hold_queue"),
             # Interface-level NAT, distinct from the top-level
             # `ip nat inside source list ...` rule that _h_ip_nat handles.
             (r"^ip nat\s+(inside|outside)\s*$",           "ip_nat"),
@@ -686,7 +690,7 @@ class BaseParser:
                 value = match.group(1) if match.groups() else True
                 if key in ("helper_addresses", "ipv6", "switchport", "ipv6_nd",
                            "vrrp", "dhcpv6_relay", "ospf", "ospfv3", "ripng",
-                           "ip_nat"):
+                           "ip_nat", "hold_queue"):
                     entry.setdefault(key, []).append(value)
                 else:
                     entry[key] = value

@@ -163,7 +163,7 @@ def check(list_name: str, hosts=None, built=None) -> dict:
     from modules import drift_check
     from modules.nsot import listref, manifest
     from modules.nsot import repo as R
-    from modules.nsot.scheduled_rotation import last_rotations
+    from modules.nsot.scheduled_rotation import last_rotation_commits, last_rotations
 
     got = build(list_name, hosts) if built is None else built
     if not got.get("ok"):
@@ -171,6 +171,7 @@ def check(list_name: str, hosts=None, built=None) -> dict:
     ref = listref.resolve(list_name)
     base = got["baseline"]
     rotations = last_rotations()
+    rotation_commits = last_rotation_commits()
     drift = drift_check._load_state(list_name)                  # noqa: SLF001
     last = (drift or {}).get("last_result") or {}
     # A run stores the devices it could not read (`errors`) and did not check (`skipped`), each
@@ -211,8 +212,19 @@ def check(list_name: str, hosts=None, built=None) -> dict:
         row["placeholders"] = sum(1 for l in text.splitlines() if masked.search(l))
         committed_at = _git1(ref.repo_dir, "log", "-1", "--format=%ct", "HEAD", "--", rel)
         rotated = rotations.get(host)
-        row["golden_after_rotation"] = (None if not rotated or not committed_at.isdigit()
-                                        else int(committed_at) >= int(rotated[0]))
+        rot_sha = rotation_commits.get(host, "")
+        golden_sha = _git1(ref.repo_dir, "log", "-1", "--format=%H", "HEAD", "--", rel)
+        if rotated and rot_sha and golden_sha:
+            # By identity (C1472): the golden is after the rotation when its commit IS the
+            # rotation's or descends from it. The record trails its own commit by about a
+            # second, so a comparison of times failed the rotation's own golden.
+            from modules.nsot.repo import git
+            row["golden_after_rotation"] = (
+                golden_sha == rot_sha
+                or git(ref.repo_dir, "merge-base", "--is-ancestor", rot_sha, golden_sha)[0] == 0)
+        else:
+            row["golden_after_rotation"] = (None if not rotated or not committed_at.isdigit()
+                                            else int(committed_at) >= int(rotated[0]))
         row["rotated_at"] = rotated[1] if rotated else ""
         row["read_by_drift"] = bool(last.get("checked")) and host not in failed
         row["drift_at"] = drift.get("last_check_ts") if isinstance(drift, dict) else None

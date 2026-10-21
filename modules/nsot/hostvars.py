@@ -353,7 +353,7 @@ INTERFACE_DEFAULTS = {
     "ipv6": [], "ipv6_nd": [], "ospf": [], "ospfv3": [], "ripng": [],
     "vrrp": [], "vrrp_groups": [], "mop": [], "ip_nat": [], "switchport": [],
     "switchport_trunk_vlans": [], "helper_addresses": [], "dhcpv6_relay": [],
-    "unmodeled": [],
+    "hold_queue": [], "unmodeled": [],
     # The routing packs' interface fields (K7, `modules/nsot/features`).
     "ospf_interface": {}, "ospfv3_interface": {}, "ripng_interface": [],
 }

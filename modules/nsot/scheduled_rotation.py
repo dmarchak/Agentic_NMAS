@@ -289,6 +289,35 @@ def last_rotations() -> dict:
     return out
 
 
+_SHA = re.compile(r"^[0-9a-f]{40}$")
+
+
+def last_rotation_commits() -> dict:
+    """``{device: sha}``: the commit each device's last successful rotation made, read from the
+    record's own commit stage (its `reason` is the full sha), for the same row `last_rotations`
+    takes. A device whose row names no sha (a record from before the stage held one) is absent:
+    the caller then compares times. C1472: the record is written about a second after its own
+    commit, so a golden that IS the rotation's commit read as older than it by time."""
+    from modules.nsot import credential_rotation as cr
+    out, at_of = {}, {}
+    for r in cr.rotation_records_as_known():
+        if r.get("phase") != "rotate" or not cr.rotation_succeeded(r):
+            continue
+        at = _epoch(r.get("at", ""))
+        dev = r.get("device", "")
+        if at is None or at < at_of.get(dev, 0):
+            continue
+        at_of[dev] = at
+        sha = next((str(s.get("reason") or s.get("detail") or "")
+                    for s in r.get("stages") or r.get("steps") or []
+                    if isinstance(s, dict) and s.get("name") == "commit" and s.get("ok")), "")
+        if _SHA.match(sha):
+            out[dev] = sha
+        else:
+            out.pop(dev, None)
+    return out
+
+
 #: A rotation's commit subject (credential_rotation._commit): the device is its second word.
 _ROTATION_SUBJECT = re.compile(r"^credential: (?P<device>\S+) rotated ")
 
