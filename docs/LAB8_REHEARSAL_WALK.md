@@ -1,7 +1,10 @@
 # Lab 8: Friday's rehearsal walk (2026-10-23)
 
-**Status: a draft for the operator's review, written 2026-10-21. Nothing in it has run.** It is
-the rehearsal of Saturday's recording (docs/LAB8_LAB9_PLAN.md section 11, item 12): R7's
+**Status: revised 2026-10-21 (~16:3x UTC) after the operator's two reviews, against what the
+host runs (f14bd314, with ed58d33e to follow). Deployed: C1442, C1450, C1460 part 1, C1476,
+C1477, C1479, C1487, C1489, C1492, C1494, C1499, C1504 (and C1506 with ed58d33e). D3's seed is
+taken and P5 is done. Nothing in the walk itself has run.** It is the rehearsal of Saturday's
+recording (docs/LAB8_LAB9_PLAN.md section 11, item 12): R7's
 recovery-ZTP "before" test, then R6 and R7 retired and added again by ZTP, their Day 1 applied,
 H5 leased, Lab 8's checks read, NetBox brought up to date, and Needs attention left in a known
 state. Every value is from docs/LAB8_LAB9_PLAN.md section 4, docs/LAB8_MORNING_WALK.md sections
@@ -54,28 +57,11 @@ other option's difference named at the step it changes.
 
 **D1. Kea subnets 256 (R6's link) and 257 (R7's link): keep them, or remove them so Add device
 creates them (C1460).**
-- **Today:** C1460's part 1 (Add device adds its link's ZTP subnet; Retire removes one it
-  added) is built (c05330b0) and was not deployed when R7 was added on 2026-10-21 (PITCH_METRICS
-  section 1, R7's table). Part 2 (the link's NetBox prefix) and the per-subnet firewall step are
-  not built. Whether part 1 is on the host by Friday: `[READ: Settings › Installation, the
-  running commit, against c05330b0]`.
-- **If C1460 is not deployed:** subnets 256 and 257 stay as they are and are reused. Retire
-  touches no subnet; Add device writes only the reservation into the existing subnet.
-- **If C1460 is deployed and the subnets are kept:** per C1460's row, an existing matching
-  subnet is used and recorded as not Mercury's, so Retire keeps it and says so. Nothing is
-  removed or created. The run is today's, with the review's address line naming the subnet it
-  uses.
-- **If C1460 is deployed and the subnets are removed first** (DHCP › Subnets › the row's
-  **Remove…**, after each device is retired, since onboarding's reservation blocks the removal):
-  Add device creates each subnet in the same preview and hash as the reservation, which is the
-  better video (one LABOUR step fewer, M9). The cost is one more first-time path that can fail
-  live, plus the firewall host step for each new subnet (M10; the host's firewall admits by
-  default today, C1435, so TFTP still arrives, but job health's `ztp-firewall` row reads the
-  host step's record).
-- **Recommendation: keep both subnets,** unless C1460 has been walked once on a throwaway link
-  before Friday. Friday is a rehearsal of Saturday, not the first run of a path.
-- **DECIDED (the operator, 2026-10-21 morning): walk C1460 on R7 on Friday.** C1460 part 1 is
-  deployed (on main since c05330b0). Subnet 257 (R7's link) is removed first, after R7's Retire
+- C1460's part 1 (Add device adds its link's ZTP subnet; Retire removes one it added) is
+  deployed. An existing matching subnet is used and recorded as not Mercury's, so Retire keeps
+  it. Part 2 (the link's NetBox prefix) and the per-subnet firewall step are not built (M10; the
+  host's firewall admits by default today, C1435).
+- **DECIDED (the operator, 2026-10-21 morning): walk C1460 on R7 on Friday.** Subnet 257 (R7's link) is removed first, after R7's Retire
   (DHCP › Subnets › its **Remove…**), and R7's Add device creates it in the same preview and
   hash as its reservation. Subnet 256 (R6's link) is kept and reused. **If Add device's subnet
   creation fails**, fall back to the manual path: DHCP › **Add a subnet…** for 10.255.4.4/30
@@ -94,35 +80,21 @@ Thursday).**
 - **Recommendation: rehearse with Planned records on Friday.** It is the stronger
   source-of-truth story, and the operator leaned toward it. Friday is where its first real run
   belongs. If it fails, Saturday records the plain path, which ran twice.
+- **DECIDED (2026-10-21, the recommended option taken under the Phase 7 operating mode;
+  docs/STANDING_APPROVAL_LOG.md): Planned records, made in the branch's own site (D9), not in
+  Default's.**
 
-**D3. Default takes the shipped template seed before Friday (C1498), so R7's Gi3.10 can be one
-deploy (C1478).**
-- C1478 is fixed in the shipped template: `encapsulation dot1Q` now renders before every address
-  line. Default renders through its own copy, `_common.j2`, which is two shipped versions
-  behind. Until Default takes it, Default renders the old order, and R7's Day 1 stays two
-  deploys, as it ran on 2026-10-21.
-- **How:** Templates › the `_common.j2` row › **Bring in the shipped version…**. Its `measure`
-  step renders every bound device both ways and lists what each one's render gains and loses. The
-  confirm revokes the approval of every template that imports the file. No device deploys until
-  each template is approved again: Templates › **Approve…**, a DECISION each
-  (docs/manual/how-it-works/bring-template.md).
-- **Recommendation:** the agent reads the `measure` step's per-device delta first (the card is a
-  preview and writes nothing). Take the seed before Friday only if no device's render changes
-  except by the two fixes it carries (K7's packs where intent uses them, `hold_queue` where intent
-  uses it, and the encapsulation order), and both templates approve again cleanly. Otherwise
-  leave it, and R7's Day 1 is two deploys. Both paths are written in step d2. The same seed also
-  unblocks C1485's `hold_queue` lever.
-- **Measured 2026-10-21 (~08:40 UTC, the bring preview read on the host): all 10 devices render
-  the same with the shipped file. DECIDED (the operator, 2026-10-21 morning): take it and
-  re-approve the two base templates this morning.** So R7's Day 1 is one deploy on Friday.
+**D3. Default takes the shipped template seed before Friday (C1498), so R7's Gi3.10 is one
+deploy (C1478). TAKEN.**
+- The operator brought in `_common.j2` and re-approved `cisco_ios/base.j2` and
+  `cisco_iosxe/base.j2` on 2026-10-21. The render check after it: every one of the 10 devices
+  renders the same as before (r7's three lines are its intent's own serial-form client-id, the
+  operator's intent edit, C1479). `encapsulation dot1Q` now renders before every address line,
+  so R7's Day 1 is one deploy.
 
-**D4. C1432's measurement on R6, just before R6's Retire.**
-- docs/LAB8_MORNING_WALK.md section 1a, step 5b (skipped on 2026-10-20) planned it there,
-  because Retire then takes R6 away and nothing has to be removed. It is two intent edits and two
-  deploys on R6, with the capture read before and after.
-- **Recommendation: run it only if steps a and b1 finish on time;** otherwise leave it for the
-  next re-add. It measures a B finding (C1432, which blocks C1426). It is not part of what
-  Saturday records.
+**D4. C1432's measurement on R6, just before R6's Retire. DECIDED (the operator, 2026-10-21):
+skipped in the rehearsal.** It is not recorded, and it would add two deploys before R6's
+Retire. It waits for the next re-add of a device (C1432, which blocks C1426).
 
 **D5. r1's flapping OSPF adjacency to s4 (10.255.1.24): acknowledge it within its band, or leave
 it.**
@@ -147,25 +119,44 @@ recording.**
 - **Recommendation:** Phase 3's option (b) after the recording, as HOST_TUNING's Phase 3 already
   allows when the stalls are gone.
 
-**D8. Topology's weak points (C1487; landed and deployed 2026-10-21, 09:39 UTC).**
-- r4, r6 and s3 as single points of failure, and r4 ↔ r6 as the only link, are the handout's
-  design. With C1487 built, each is declared "Accepted: <reason>" by a verified person: a
-  DECISION each, with a reason.
-- **Recommendation:** accept each with the reason "the course handout's topology (Lab 8)".
-  Accept any further weak point the map names (for example r6 ↔ r7) the same way
-  `[READ: Topology › Single points of failure, after step d2]`. Without C1487 the map tags them
-  as weak points, and the video says they are the handout's design.
+**D8. Topology's weak points (C1487, deployed). DECIDED (the operator, 2026-10-21): walk step
+d4, after d2.** Each weak point the map names is accepted with the reason "the course handout's
+topology (Lab 8)", Topology read before and after.
+
+**D9. The branch (R6, R7 and H5's VLAN 10) as its own NetBox site. DECIDED (2026-10-21, the
+recommended option taken under the Phase 7 operating mode; docs/STANDING_APPROVAL_LOG.md).**
+- **The collision:** every device is in NetBox's one site, Default, and Default's only VLAN 10
+  is the core's (`VLAN10`, in no VLAN group; read 2026-10-21 ~16:1x UTC). NetBox holds no VLAN
+  group and no location. R7's Gi3.10 takes its VLAN from a VLAN group scoped to its record's
+  site (C1492), so in Default the import refuses it ("no VLAN group is scoped to the device's
+  site"), and a branch VLAN 10 added to Default would sit beside the core's.
+- **A site, not a location:** the import looks for VLAN groups scoped to a site only
+  (`netbox_client._site_vlan`); a location-scoped group would need code, and Mercury never sets
+  a device's location.
+- **What Mercury does with it, already built:** onboarding reads a Planned record by name in any
+  site (C676); Verify's NetBox step sets that record Active in place (C1421); an update never
+  moves a record's site; the import gives Gi3.10 the VLAN 10 of the record's own site's group
+  (C1492). The Default list's inventory is local, so no NetBox site filter drops a device.
+- **What Mercury cannot do (LABOUR, by hand in NetBox, before Friday, P3):** create the site,
+  its VLAN group and VLAN 10 (C1448), plan a device in it (C1447), or scope the branch's
+  prefixes to it (C1515: the import scopes every prefix it creates to the network's site).
+- **What has to land first (Mercury): C1009.** The import passes no NetBox ID for a device of a
+  local list (read 2026-10-21: none of Default's 10 devices carries one), so it matches by a
+  unique serial, else by name within Default. A branch record whose serial is shared would not
+  be found, and the import would create a second record in Default. The fix takes the ID from
+  the committed manifest, which holds r6's and r7's (22 and 23 today). Built, gated and deployed
+  before Friday (P1).
 
 ---
 
 ## 2. Before the sitting (P1 to P9)
 
 **P1 [AGENT]. Mercury on the host carries every fix that landed for Friday**, deployed by
-`nmas-deploy --wait` (CI green) before the sitting, never during it. Whatever has landed of
-C1442, C1460, C1476, C1479, C1487, C1492, C1494 and C1499 is named with the running commit.
-- **Expected:** "deployed <sha>" with CI's pass named; job health's not-ok rows as before, none
-  new. `[READ: which of C1442, C1460, C1476, C1479, C1487, C1492, C1494 have landed and are
-  deployed]`.
+`nmas-deploy --wait` (CI green) before the sitting, never during it. The host runs f14bd314
+(read 2026-10-21 ~16:2x UTC); ed58d33e (C1506) deploys at 17:08 UTC; C1009's fix (D9) is the one
+more that must land.
+- **Expected:** "deployed <sha>" with CI's pass named, the sha carrying C1009's fix; job
+  health's not-ok rows as before, none new.
 
 **P2 [AGENT]. The host is not stalling.**
 - Read-only, through `scripts/nmas-host`: `lab/pinning/check-pinning.sh` on `<lab-host>`, then the
@@ -174,20 +165,25 @@ C1442, C1460, C1476, C1479, C1487, C1492, C1494 and C1499 is named with the runn
   window's (38 failed scrapes and 2 drops in 60 minutes). Worse is a stop: a stalling host fails
   saves and Verify's reads (C1490), which is a rehearsal of the stall, not of Lab 8.
 
-**P3 [OPERATOR, DECISION]. D2's Planned records, if chosen:** R6 and R7 planned in NetBox, in
-Default's site, with role, platform and the device type the fleet's routers carry (LABOUR M22).
-- **Expected:** both records Planned, and named `r6` and `r7`. If C1494 has not landed, the
-  retired records keep their names `<name>-retired-<id>`, so the names are free.
+**P3 [OPERATOR, DECISION; LABOUR M22, C1447, C1448, C1515]. The branch's NetBox site (D9),** in
+NetBox's own screens, before the sitting. Its Planned records (step 4) wait for the Retires,
+which free the names: they are walk step b6.
+1. Organization › Sites › Add: `Branch`, region `Default`, status Active.
+2. IPAM › VLAN Groups › Add: `Branch`, scope type `dcim.site`, scope `Branch`. Then IPAM › VLANs
+   › Add: VID 10, name `H5 LAN`, group `Branch`, status Active.
+3. IPAM › Prefixes: 10.255.4.4/30 (R6–R7) and 10.70.10.0/24 (VLAN 10) scoped to site `Branch`.
+   10.255.4.0/30 (R4–R6) joins the two sites and stays where it is.
+- **Expected:** the site, its VLAN group holding one VLAN 10, and the two prefixes scoped to it.
+- **Before Friday, once, [AGENT]:** Mercury's own read of the Branch site's VLAN groups
+  (`_site_vlan`'s query, read-only on the host) finds VLAN 10, exactly one.
 
-**P4 [OPERATOR, DECISION]. D3's template seed, if chosen,** then each template approved again.
-- **Expected:** Templates › `_common.j2` reads **Current**; the IOS-XE and IOS templates
-  **approved** by the operator.
+**P4 [OPERATOR, DECISION]. D3's template seed. Done 2026-10-21:** `_common.j2` Current; both
+base templates approved again by the operator.
 
-**P5 [OPERATOR, DECISION]. s3's IP SLA sent: Monitoring › IP SLA › Retry s3** (C1499's Retry:
-"Committed, not yet on the device"), a new scoped preview and confirm for s3 alone.
-- **Expected:** the deploy verified and saved; s3 runs its probe at the policy's frequency;
-  Needs attention's "The last IP SLA send to s3: failed" gone. `[READ: C1499's Retry on the host
-  (this draft's tree does not yet hold it)]`.
+**P5 [OPERATOR, DECISION]. s3's IP SLA sent: Monitoring › IP SLA › Retry s3. Done 2026-10-21
+~16:05 UTC:** golden dc5d57fca06f, 5 lines, Verify ok; its receipt took 76 s to read before, 38 s
+to read after and 41 s to save (s3's slowness, HOST_TUNING's change 4). Needs attention's "The
+last IP SLA send to s3: failed" is gone (read ~16:20 UTC).
 
 **P6 [OPERATOR, DECISION and LABOUR M4]. A break-glass export holding R6's and R7's current
 credentials:** Credentials › the break-glass record › **Export the record…**. The operator types
@@ -210,7 +206,7 @@ documents committed on 2026-10-21.
 - DHCP › Leases: R6's 10.255.4.2, R7's 10.255.4.6 and H5's lease.
 - **Expected:** as docs/LAB8_MORNING_WALK.md section 8, check 4 (r1 OSPF 5/5, OSPFv3 3/3; r2 the
   same; r3 BGP 2/2, OSPF 6/6, OSPFv3 4/4; r4 BGP 2/2, OSPF 7/7, OSPFv3 5/5; r6 OSPF 1/1, OSPFv3
-  1/1; s3 OSPF 5/5; s4 OSPF 5/5), and today's Needs attention rows (section h) less P5's.
+  1/1; s3 OSPF 5/5; s4 OSPF 5/5), and Needs attention's rows as section h3 reads them today.
 
 **P9 [OPERATOR, LAB]. The capture on R7's uplink,** for step a: on `<lab-host>`, the command in
 docs/LAB_ONE_TOPOLOGY_PLAN.md section 4 for r7 (read-only, no container touched).
@@ -279,7 +275,7 @@ device):
 2. The credential overrides at every address the device was known by.
 3. The staged credential.
 4. Kea's reservations, the device's Kea leases (C1403), and its link's ZTP subnet ONLY when Add
-   device created it and nothing else is in it (C1460, when deployed).
+   device created it and nothing else is in it (C1460).
 5. One commit removing intent, golden and template override, with `Retired-Device:` and
    `Not-Done:` trailers.
 6. Its golden tags, archived as `retired/<device>/<identity>/<time>`.
@@ -300,25 +296,25 @@ device):
 - a Kea subnet a person added (256, 257);
 - the parent's relay in its intent;
 - the link's NetBox prefix;
-- **the retired record's IP addresses:**
-  - **If C1494 has landed:** Retire's NetBox step deletes the addresses Mercury recorded as
-    created and unassigns the rest, each with its before recorded. The retired record holds no
-    address that the new device needs.
-  - **Else:** the addresses stay assigned to `<device>-retired-<id>` (C1494: on 2026-10-21,
-    10.255.4.2/30 stayed on `r6-retired-21` Loopback0), and the new device's import cannot be
-    given them (step g).
+- **not the retired record's IP addresses:** Retire's NetBox step deletes the addresses Mercury
+  recorded as created and unassigns the rest, each with its before recorded (C1494). The retired
+  record holds no address the new device needs. One a person made and Mercury cannot free is
+  named on the import's card with its **Free <address>** action (C1504).
 
 **b1 [OPERATOR, DECISION M7, M1, M2]. R7's page › Actions › Retire…,** reason "Lab 8 rehearsal:
 R7 reset to be added again by ZTP". Read the card, then confirm by its hash.
 - **Expected card:**
   - every step listed with its work. Reservations: ZTP's for `aa:bb:cc:00:04:07` in subnet 257.
     Leases: 10.255.4.6.
-  - With C1460 deployed: the `ztp_subnet` step says subnet 257 stays (a person added it).
-  - What is generated and so dropped, and what survives.
-  - No refusal. Retire needs no SSH, and P6's export holds R7's credential.
+  - the `ztp_subnet` step says subnet 257 stays (a person added it, 2026-10-20);
+  - what is generated and so dropped, and what survives;
+  - no refusal. Retire needs no SSH, and P6's export holds R7's credential.
 - **Expected result:** "Retired"; the name `r7` free; NetBox's record `r7-retired-<id>`,
-  Decommissioning, its addresses as C1494's state says above. R7's page becomes its retired
-  record. R7's window from a1 covers nothing more; it lapses at its end.
+  Decommissioning, holding no address. R7's page becomes its retired record. R7's window from a1
+  covers nothing more; it lapses at its end.
+- **R7 stays erased:** a2's `write erase` left its startup configuration empty, so its reload at
+  c5a boots it configless. On Saturday, with no step a, this is step b1b: `write erase` on R7's
+  console after its Retire, no reload (LAB M24).
 
 **b1a [OPERATOR, DECISION]. Subnet 257 removed (D1, decided: C1460 is walked on R7).** DHCP ›
 Subnets › 10.255.4.4/30 (Kea id 257) › **Remove…**, reason "Lab 8 rehearsal: R7's link subnet,
@@ -334,22 +330,28 @@ for Add device to create (C1460)". Confirm by hash.
 then the same with `telemetry` (Retire's result prints each one's values) (LABOUR M11).
 - **Expected:** PASS for each; Grafana holds no rule naming r7.
 
-**b3 [OPERATOR and AGENT]. D4's measurement on R6, only if chosen:** docs/LAB8_MORNING_WALK.md
-section 1a, step 5b, items 1 to 5 (R6's Gi3 helper and IPv6 address and the NTP list changed
-twice, each a preview, a confirm by hash and Verify). Its item 6 is replaced by b4.
-- **Expected:** C1432's prediction read in R6's capture: both values of each present. Each line
-  is recorded in C1432.
+**b3. Skipped (D4).**
 
 **b4 [OPERATOR, DECISION M7, M1, M2]. R6's page › Actions › Retire…,** reason "Lab 8
 rehearsal: R6 reset to be added again by ZTP". Confirm by hash.
 - **Expected:**
   - as b1, for `aa:bb:cc:00:04:06`, 10.255.4.2 and subnet 256;
   - "Retired"; NetBox's record `r6-retired-<id>`.
-- From here until R6's Day 1 intent is committed (d1.3), a row may name 10.255.4.4/30's relay as
-  in no intent (D4's check on subnet 257). It is expected, and it clears at d1.3.
+- Subnet 257 was removed at b1a, so no row names its relay as in no intent.
+
+**b4a [OPERATOR, LAB M24]. On R6's console: `write erase`, confirm. No reload.** R6 keeps
+running its configuration (and so its relay and its route to R4) until c2's reload, which then
+boots it configless. R6 is retired, so no window is needed.
+- **Expected:** `[OK]`; R6's adjacencies unchanged.
 
 **b5 [AGENT]. The alert-rules install again,** heartbeat then telemetry, as b2.
 - **Expected:** PASS for each; Grafana holds no rule naming r6.
+
+**b6 [OPERATOR, DECISION; LABOUR M22, C1447]. The Planned records (D2, D9),** in NetBox's own
+screens: Devices › Add, twice: `r6` and `r7`, status **Planned**, site `Branch`, role and device
+type as the fleet's routers carry them, platform the fleet's IOS-XE routers' or none.
+- **Expected:** both Planned in `Branch`; NetBox holds no other device named `r6` or `r7` (the
+  retired records are `<name>-retired-<id>`).
 
 ### c and d. R6 and R7 added again by ZTP, each with its Day 1
 
@@ -360,34 +362,32 @@ rehearsal: R6 reset to be added again by ZTP". Confirm by hash.
   before R6's helper is live, or R7 takes the pool's address with no boot file.
 - Then R6's Day 1 is **deployed**, R7 is relayed and promoted, and R7's Day 1 follows.
 
-**Day 0 is automatic; Day 1 is one approved, verified change (two for R7 without D3); Day 2 is
-operating it** (docs/DAY1_AUTOMATION.md section 5; C1471: Day 1 is a separate step today).
+**Day 0 is automatic; Day 1 is one approved, verified change; Day 2 is operating it** (docs/DAY1_AUTOMATION.md section 5; C1471: Day 1 is a separate step today).
 
 **c1 [OPERATOR, DECISION M6, M1; LABOUR M8]. Devices › Add device… › ZTP for R6:**
 - the values: `r6`, platform IOS-XE, role router; address 10.255.4.2/30; MAC
   `aa:bb:cc:00:04:06`; management interface `GigabitEthernet2`; gateway 10.255.4.1; **Route
   option (3): The relay's own address**; no DNS;
 - then **Review the plan**, then **Create r6** (confirm by hash).
-- With D2: the review's NetBox row names the Planned record it read.
 - **Expected:**
+  - The review's NetBox row names the Planned record it read (b6): `r6`, site `Branch`.
   - The review's address line names the reservation with option 3 = 10.255.4.1, the relay's
-    own address, and D4's checks passing.
-  - With C1460 deployed, the review also says it uses subnet 256 as it stands
-    `[READ: the review's exact words for an existing subnet]`.
-  - The result names the reservation `aa:bb:cc:00:04:06 -> 10.255.4.2` (C1441's wording may still
+    own address, and DHCP's D4 checks passing.
+  - The review says it uses subnet 256 as it stands (C1460) `[READ: the review's exact words for
+    an existing subnet]`.
+  - The result names the reservation `aa:bb:cc:00:04:06 -> 10.255.4.2` (C1441's wording may
     print `-> ?`).
-  - A pending row "r6: reserved, not leased".
+  - A pending row "r6: reserved, not leased"; r6's pending page shows no earlier device's "Last
+    verify" (C1476).
 - **[AGENT] reads:** Default's repository is clean, and the commit "onboarding: r6" holds both
   `host_vars/r6.yml` and `.nsot/manifest.json`.
-- **Known wrong things that look right, until their fixes land:**
-  - r6's pending page shows the retired r6's "Last verify" (C1476, member 1);
-  - the Devices list says "awaiting DHCP · pending: not reached yet" while the page moves on
-    (C1477);
-  - the stop notice appears 15 minutes after Create, counting from Create, not boot (C1467).
+- **Known wrong thing that looks right:** the stop notice appears 15 minutes after Create,
+  counting from Create, not boot (C1467). On camera it does not appear: c2's reload follows
+  Create at once.
 
-**c2 [OPERATOR, LAB M24]. On R6's console: `write erase`, confirm; `reload`, do not save,
-confirm.** R6 is not Mercury's now (retired, and its new onboarding is pending), so no window is
-needed.
+**c2 [OPERATOR, LAB M24]. On R6's console: `reload`, do not save, confirm** (b4a erased it). R6
+is not Mercury's now (retired, and its new onboarding is pending), so no window is needed. On
+camera: the `reload` line only, about 10 s, and the console is closed before R6 boots (step i).
 - **Expected:**
   - R6 boots configless and asks through R4 Gi5's relay.
   - Whether a `write erase` and a reload give the same configless boot as a fresh disk is
@@ -410,23 +410,19 @@ waits until 120 s after the last fetch (C1400) and says until when.
   - the nine steps done, in this order: verify, capture, rotate, remove RW, profile, persist,
     golden, NetBox, promote;
   - the commit "onboarding: r6 verified and recorded in NetBox";
-  - a new NetBox ID, Active (with D2, the Planned record set to Active).
+  - the Planned record from b6 set Active in place, in `Branch`, its ID the manifest's (C1421,
+    its first run on a device).
 - The result names the next step: "Intent can't be checked yet … Next: Actions › Seed intent…".
 - On 2026-10-20, the first fetch to promotion took 9 min 21 s (PITCH_METRICS section 1).
-- **Without C1494:** the new record lacks 10.255.4.2/30, which the retired record still holds.
-  Verify still promotes R6, as on 2026-10-21, when the new r6 became NetBox 22 with primary
-  10.255.1.16/32 (C1494's row).
 
 **d1. R6's Day 1.**
 1. **[OPERATOR, DECISION M1]. R6's page › Actions › Seed intent…**, confirm.
-   - **Expected:** the card's intent document, and the template reproducing R6.
-   - **Unmodelled lines:** none if AutoInstall's MAC-form client-id was the one answered, as for
-     R6 on 2026-10-21, whose relay was already up when it booted. One line if the serial form was
-     answered (C1479, unless it has landed).
+   - **Expected:** the card's intent document, the template reproducing R6, and no unmodelled
+     line: AutoInstall's client-id, in either form, is the device's own (C1479).
 2. **[AGENT]. The complete Day 1 document,** `2026-10-23-r6-day1.yml` in the reports folder.
    - The agent reads the new seed masked (`scripts/nmas-config-read host_vars/r6.yml`).
-   - From the new seed it keeps the per-boot keys: Gi2's entry (`ipv4: dhcp` and its
-     client-id line), `unmodeled_ack`, `call_home` and the image's default lines.
+   - From the new seed it keeps the per-boot keys: Gi2's entry (`ipv4: dhcp`),
+     `unmodeled_ack`, `call_home` and the image's default lines.
    - Everything else comes from `2026-10-21-r6-day1.yml`.
    - **Expected:** the diff against 2026-10-21's document holds only those per-boot lines.
 3. **[OPERATOR, LABOUR M15]. R6's page › Intent › Edit:** replace the document with that file
@@ -452,12 +448,20 @@ waits until 120 s after the last fetch (C1400) and says until when.
      manual fallback: DHCP › **Add a subnet…** for 10.255.4.4/30 (For ZTP onboarding, Route
      option (3) = 10.255.4.5), and Add device again, which now reuses that subnet.
    - **Expected:**
+     - the review's NetBox row names the Planned record `r7` in `Branch` (b6);
      - the subnet 10.255.4.4/30 created (C1460's path) with Kea's own check passing;
      - the reservation `aa:bb:cc:00:04:07 -> 10.255.4.6`, with option 3 = 10.255.4.5;
      - a pending row "r7: reserved, not leased";
-     - **[AGENT]** the repository clean, and "onboarding: r7" holding both files;
-     - without C1476, r7's pending page shows a "Last verify" or "Last abandon" that is not
-       this onboarding's.
+     - **[AGENT]** the repository clean, and "onboarding: r7" holding both files.
+   **c5a [OPERATOR, LAB M24]. Right after Create r7: on R7's console, `reload`, do not save,
+   confirm** (answer `no` to any dialog first). R7 is pending, so no window is needed. On
+   camera: the `reload` line only, about 10 s; the console is closed before R7 boots (step i).
+   - **Why now:** a C8000v boots in about 7 minutes (8.8 minutes to a lone C8000v's first
+     answer, lab/REDEPLOY.md); R6's deploy (d1.5) takes about 3. So R7 is asking by the time
+     R6's relay goes live, with its AutoInstall fresh, instead of waiting out a3's refusals and
+     a give-up.
+   - **Expected:** R7 reloads; until R6's deploy lands, its requests reach no relay, and its
+     pending page stays `reserved_not_leased`.
 5. **[OPERATOR, DECISION M1]. R6's page › Actions › Plan a deploy…**, read, confirm by hash.
    - **Expected preview:**
      - Loopback0 created;
@@ -473,61 +477,53 @@ waits until 120 s after the last fetch (C1400) and says until when.
    - **Expected run:**
      - sent as confirmed;
      - Verify FULL: OSPF 0 → 1, OSPFv3 0 → 1;
-     - RIP and RIPng declared and not up, since R7 has no intent yet: amber, drawn "done" (C1450);
-     - saved to startup.
+     - RIP and RIPng declared and not up, since R7 has no configuration yet; saved to startup;
+     - Needs attention: "The last deploy to r6 landed, and RIP, RIPng declared by its intent
+       was not up after it", its action "Build or check r6's RIP, RIPng peer". It clears when the
+       adjacency reader sees both up after the deploy (C1450), so after d2.
 6. **[AGENT] reads after**, through Ask the device and Show commands:
    - r4 and r6, `show ip ospf neighbor`: FULL, r4 Gi5 to r6 Gi2;
    - s3, `show ip route 10.255.1.16`: O IA, no static.
 
-**c6 [AGENT, then OPERATOR if needed]. R7 arrives through R6's relay.**
-- **[AGENT]** reads r7's pending page within about 2 minutes after d1.5 verified. A configless R7
-  still asking sends a burst about every 15 s, and Mercury's part from the answered request to
-  the lease was 71 ms on 2026-10-21 (PITCH_METRICS section 1).
-- **Expected:** `leased_not_fetched`, then `fetched_not_reached`. On 2026-10-21 the lease came
-  40 ms after the request it answered, and the first fetch 40 s after the lease.
-- **If R7 is still `reserved_not_leased` after about 2 minutes, or `asked_not_served`:** it has
-  stopped asking. That is likely, since the refusals in a3 and any pool lease taken between b1
-  and c2 each send AutoInstall down its give-up path.
-  - **[OPERATOR, LAB M24]** on R7's console: answer `no` to any dialog, `reload`, confirm. No
-    window is needed: R7 is pending.
-  - **Expected:** R7 asks again within its boot, and the stages advance.
+**c6 [AGENT]. R7 arrives through R6's relay.**
+- **[AGENT]** reads r7's pending page from d1.5's Verify until R7 is answering. R7 booted at c5a,
+  so it reaches its first DHCP request about 7 minutes after it, around when R6's relay goes
+  live. A configless R7 asking sends a burst about every 15 s, and Mercury's part from the
+  answered request to the lease was 71 ms on 2026-10-21 (PITCH_METRICS section 1).
+- **Expected:** `leased_not_fetched`, then `fetched_not_reached`, then "Answering: ready to
+  Verify". On 2026-10-21 the lease came 40 ms after the request it answered, and the first fetch
+  40 s after the lease.
+- **If R7 is still `reserved_not_leased` 20 minutes after c5a** (about 2.5 times the 8.8-minute
+  boot to a first answer), **or `asked_not_served`:** it stopped asking. **[OPERATOR, LAB
+  M24]** a second `reload` on R7's console, as c5a; R7 asks again within its boot. A second
+  reload is a finding for the record (why AutoInstall gave up), and Saturday's c5a timing is
+  reread.
 
 **c7 [OPERATOR, LABOUR M14; DECISION M1]. R7's pending page › Verify… › Verify r7.**
 - **Expected:**
-  - as c4: promoted, "onboarding: r7 verified and recorded in NetBox", a new NetBox ID;
+  - as c4: promoted, "onboarding: r7 verified and recorded in NetBox", the Planned record from
+    b6 set Active in `Branch`;
   - the first fetch to promotion took 9 min 18 s on 2026-10-21 (PITCH_METRICS section 1);
   - Mercury reaches R7 over two relays' worth of routing: Mercury → s3 → OSPF → R4 → R6 → R7.
 
 **d2. R7's Day 1.**
 1. **[OPERATOR, DECISION M1]. Seed intent…**, confirm.
-   - **Expected:** if the serial-form client-id was answered, the seed flags one unmodelled line
-     (C1479, unless it has landed). R7 asked long before its relay answered on 2026-10-21, and the
-     serial form won then.
+   - **Expected:** no unmodelled line: R7's serial-form client-id is its own serial, so the
+     capture drops it (C1479).
 2. **[AGENT].** `2026-10-23-r7-day1.yml`, built as d1.2 from `2026-10-21-r7-day1.yml` and the new
-   seed's per-boot keys.
-   - **Without D3, also `2026-10-23-r7-day1-part1.yml`:** the same document with Gi3.10's
-     `ipv4`, `ipv6` and `helper_addresses` taken out. That matches 2026-10-21's second deploy
-     sending 4 lines: the interface line and those three
-     `[READ: History › r7, the intent commit before 03:12 UTC on 2026-10-21, "Show the change":
-     which Gi3.10 keys the first deploy held]`.
-3. **Which path:** `[READ: Templates › _common.j2 › "Against the shipped version"]`.
-   **Current** (D3 taken) is one deploy; **Behind** is two.
-4. **One deploy [OPERATOR, LABOUR M15, M16; DECISION M1]:**
-   - Intent › Edit, paste the complete document, acknowledge the client-id line if the editor
-     lists it, commit ("Lab 8 Day 1: R7, from its stored intent").
+   seed's per-boot keys, without the serial-form client-id line the 2026-10-21 document carried.
+3. **One deploy [OPERATOR, LABOUR M15, M16; DECISION M1]:**
+   - Intent › Edit, paste the complete document, commit ("Lab 8 Day 1: R7, from its stored
+     intent").
    - Then Plan a deploy…, and check Gi3.10's block: `encapsulation dot1Q 10` straight after
-     `description`, before `ip address`, `ip helper-address` and `ipv6 address`.
+     `description`, before `ip address`, `ip helper-address` and `ipv6 address` (D3's seed).
    - **In any other order, do not confirm:** IOS refuses an address on a LAN subinterface before
-     its encapsulation (C1478). Cancel, and take the two-deploy path.
-   - **Expected:** Verify FULL, green: RIP 0 → 1, RIPng 0 → 1, interfaces 5 of 5 up; saved.
-5. **Two deploys [OPERATOR, LABOUR M15, M16; DECISION M1 twice]:**
-   - **Part 1:** paste `…-part1.yml`, commit, plan, confirm.
-     - **Expected, as 2026-10-21's first deploy:** 31 lines; Verify green; RIP 0 → 1, RIPng
-       0 → 1; interfaces 4 of 5 up; routes 5 → 8; saved.
-   - **Part 2:** paste the complete document, commit, plan, confirm.
-     - **Expected, as the second:** 4 lines; Verify green; RIP 1/1, RIPng 1/1; interfaces 5 of
-       5 up; routes 8 → 10; saved.
-6. **[AGENT] reads after:**
+     its encapsulation (C1478). Cancel; it is a stop.
+   - **Expected:** `[READ: the preview's line count]` (2026-10-21's two deploys together sent
+     31 + 4 = 35); Verify FULL, green:
+     RIP 0 → 1, RIPng 0 → 1, interfaces 5 of 5 up; saved. r6's C1450 row clears at the
+     adjacency reader's next read.
+4. **[AGENT] reads after:**
    - r6, `show ip rip database`: 10.70.10.0/24 and 10.255.1.17/32 via 10.255.4.6;
    - r4, `show ip route 10.70.10.0`: O E2 via 10.255.4.2 on Gi5.
 
@@ -540,10 +536,18 @@ waits until 120 s after the last fetch (C1400) and says until when.
   - `nmas-telemetry-rules`;
   - the install step `telemetry`.
 - **Expected:** PASS for each; Grafana holds r6's and r7's heartbeat rules and their two
-  telemetry rules each.
-- **Without C1476's member 14:** the re-measure takes each window from the name's arrivals over
-  7 days, which include the retired device's. `[READ: the windows the re-measure proposes for r6
-  and r7, against 2026-10-21's]`.
+  telemetry rules each. The re-measure takes each window from the new device's own arrivals,
+  not the retired one's (C1476) `[READ: the windows it proposes for r6 and r7]`.
+
+**d4 [OPERATOR, DECISION each]. Topology's weak points accepted (D8; C1487).**
+- **[AGENT] before:** Topology › Single points of failure: each weak point the map names, by
+  key, after d2 `[READ: the list; expected r4, r6 and s3 as single points, and r4 ↔ r6 and
+  r6 ↔ r7 as only links]`.
+- **[OPERATOR]** for each: its **Accept…**, reason "the course handout's topology (Lab 8)",
+  confirm.
+- **[AGENT] after:** Topology again: each one in the weak group marked "Accepted: the course
+  handout's topology (Lab 8)", counted apart from the open ones; none left open; History holds
+  one row per acceptance, naming who.
 
 ### e. H5's lease on VLAN 10 through R7's relay
 
@@ -588,13 +592,20 @@ whole network.
   between managed devices (R4 Gi5 – R6 Gi2, R6 Gi3 – R7 Gi2) and each other LLDP neighbour
   reported, not made: R7 Gi3 to H5, since H5 is not managed.
 
-**What it should write, by what has landed:**
-
-| Finding | If landed | Else (as on 2026-10-21) |
-|---|---|---|
-| **C1442** (where a DHCP-leased management address goes) | 10.255.4.2/30 on r6's Gi2 and 10.255.4.6/30 on r7's Gi2; the platform as the fleet's routers carry it; Loopback0 holds only the loopback | the management address lands on Loopback0, and the platform reads "IOS"; Topology draws r4 Gi5 ↔ r6 Gi2 as "not in committed intent" and no RIP edge R6–R7 |
-| **C1494** (the retired records' addresses) | the new records take 10.255.4.2/30, 10.255.4.6/30 and the loopbacks 10.255.1.16/32 and 10.255.1.17/32 | the retired records still hold them, and the import cannot give them to the new records. The remedy today is LABOUR in NetBox's own screens (M21): delete `r6-retired-<id>` and `r7-retired-<id>`, as `r6-retired-11` was on 2026-10-20, or unassign their addresses, then import again |
-| **C1492** (a routed dot1Q subinterface) | r7's Gi3.10 as a virtual interface under Gi3, with 10.70.10.1/24 and 2001:db8:70:10::1/64, its VLAN R7's site's VLAN 10 from its VLAN group. The import refuses, naming it, when the group holds none `[READ: NetBox › R7's site › VLAN groups: the group and VLAN 10 exist, and Mercury's token can read VLAN groups (C1424)]` | POST 400 "untagged_vlan: Interface mode does not support untagged vlan"; r7 lacks Gi3.10, and the row "NetBox holds less than r7's committed configuration: 1 interface, 2 addresses" stays |
+**What it writes** (each fix deployed):
+- **The records:** r6's and r7's, found by the NetBox ID the manifest holds (C1009's fix, D9),
+  in `Branch`; no second record in Default.
+- **Management addresses (C1442):** 10.255.4.2/30 on r6's Gi2 and 10.255.4.6/30 on r7's Gi2;
+  Loopback0 holds only the loopback. The platform the fleet's IOS-XE routers carry (C1442, and
+  C1506 for a record Mercury wrote as "IOS").
+- **The retired records' addresses (C1494):** none left on them, so the new records take
+  10.255.4.2/30, 10.255.4.6/30 and the loopbacks 10.255.1.16/32 and 10.255.1.17/32. One a
+  person made is named on the card with **Free <address>** (C1504).
+- **r7's Gi3.10 (C1492):** a virtual interface under Gi3, with 10.70.10.1/24 and
+  2001:db8:70:10::1/64, 802.1Q tagged with VLAN 10 from the Branch site's VLAN group (P3). A
+  refusal naming the site's groups is a stop: read P3's VLAN group first.
+- **Prefixes it creates** are scoped to Default, the network's site (C1515); P3 scoped the two
+  branch prefixes by hand.
 
 - **Cables (built):** R4 Gi5 – R6 Gi2 and R6 Gi3 – R7 Gi2. A cable from R7 Gi3 to H5, if
   wanted, is LABOUR in NetBox (M22).
@@ -615,26 +626,29 @@ credentials. Saturday's Retire needs it, as P6 did.
 wrong, an action, and how it clears. A row that is expected to remain is one whose cause is
 known, registered and not fixed. It is never acknowledged away to make the page look clean.
 
-**Today's rows** (read on the host at 06:37 UTC, 2026-10-21):
+**Today's rows** (8, read on the host at ~16:20 UTC, 2026-10-21, after P5):
 
 | Row | At the end | Why | How it clears |
 |---|---|---|---|
-| "The last deploy to r6: done" | **remains**, as the new r6's row, unless C1450 has landed | R6's Retire cuts the old r6's receipts (C1334). But the new R6's Day 1 (d1.5) is amber again, with RIP and RIPng unmet until R7 exists (C1450) | another deploy or restore of r6 (C1450 changes this) |
-| "The last IP SLA send to s3: failed" | **gone** | P5 sent s3's probes (C1499's Retry) | s3's golden carries the committed intent |
-| "nmas-heartbeat-check is failing" | `[READ: Job health › nmas-heartbeat-check, its last run's reason]`; expected to **remain** if it is s3's jitter (C1318) | s3's heartbeat gaps were 569 to 623 s after the pinning, against a 300 s setting (HOST_TUNING, change 2) | the hourly check reads ok |
-| "r1's OSPF adjacency to 10.255.1.24 went down 10 times in the last day" | **remains** while C1485's drops continue (D5) | s4's vIOS clock runs slow under the lab VM's contention; 2 drops an hour remained after change 2 | a day with no drop, or acknowledged within its band (D5) |
-| "The network's last baseline was not earned (pipeline)" | **gone** | h1 earned one | a later decision that earns a baseline |
-| "NetBox holds less than r7's committed configuration: 1 interface, 2 addresses" | **gone** if C1492 has landed and g ran; else **remains** | Gi3.10 and its two addresses (C1492) | the import lands Gi3.10 |
+| "nmas-heartbeat-check is failing" (since 2026-10-18) | **remains** | s3 is INSEPARABLE: its heartbeat gaps (569 to 623 s after the pinning) exceed the 300 s setting (C1318; HOST_TUNING, change 2) | the hourly check reads ok |
+| "r1's OSPF adjacency to 10.255.1.23 went down 40 times in the last day" (s3) | **remains** while C1485's drops continue (D5); Friday's count `[READ]` | s3's vIOS clock runs slow under the lab VM's contention (C1485) | a day with no drop, or acknowledged within its band (D5) |
+| "r1's OSPF adjacency to 10.255.1.24 went down 13 times in the last day" (s4) | **remains**, as the row above; Friday's count `[READ]` | s4's clock, the same cause | as above |
+| "r1's OSPF adjacency to 10.255.1.13 went down 1 time in the last day" (r3, at 08:52 UTC) | **gone** a day after its drop; **present** if Friday's backup window drops it again | the nightly backup's load (C1514) | a day with no drop, or acknowledged with that cause |
+| "The last commit earned no baseline: a deploy to s3 did not cover the network" | **gone** | h1's Save All earns one | a later save that earns a baseline |
+| "9 new host keys accepted during 'lab host reboot … and lab redeploy …'" (2026-10-19) | **gone** once the operator acknowledges it (the morning plan's step 6) | the 2026-10-19 redeploy's new keys, under its declared window | acknowledged after reviewing each key in History |
+| "NetBox holds less than r7's committed configuration: 1 interface, 2 addresses, 0 cables to add" | **gone** | the old r7's row; b1 retires it, and g imports the new r7 with Gi3.10 (C1492) | the import lands Gi3.10 |
+| "2 alerts began together" (since 12:01 UTC) | **gone** unless the alerts still fire `[READ]` | two Grafana alerts with one onset | the alerts stop firing |
 
 **Rows the walk raises, which must be gone at the end:**
 - r7's "not answering" and drift rows (a3): they go with R7's Retire (b1);
-- the relayed subnet's relay "in no intent" (b4): gone at d1.3;
 - r6's and r7's pending onboarding rows, including C1467's stop notice: gone at promotion
   (c4, c7);
-- any "NetBox holds less than r6's …" or "… r7's …" row for the new records: gone after g, if
-  C1494 has landed or M21 was done;
+- r6's C1450 row, "The last deploy to r6 landed, and RIP, RIPng … was not up after it" (d1.5):
+  gone when the adjacency reader sees RIP and RIPng up after d2;
+- any "NetBox holds less than r6's …" or "… r7's …" row for the new records: gone after g;
 - heartbeat and telemetry rules missing or extra for r6 and r7, through job health: gone after
   b2, b5 and d3;
+- each weak point Topology names: Accepted at d4, so none is open;
 - the break-glass record out of date after R6's and R7's rotations: gone after h2.
 
 **Event rows, a DECISION each (M5):**
@@ -645,41 +659,59 @@ known, registered and not fixed. It is never acknowledged away to make the page 
   row. A "restarted unexpectedly" row for r7 means the window did not cover it: a stop, read
   before acknowledging.
 
-**The target:** at most rows 1, 3 and 4 of the first table, plus row 6 if C1492 has not landed.
-Each is named with its finding, so the recording can say why it is there.
+**The target:** the heartbeat check (C1318) and r1's adjacencies toward s3 and s4 (C1485),
+plus r1's toward r3 only if Friday's backup window dropped it again (C1514). Each is shown with
+its finding as a caption, so the recording can say why it is there (scene 17).
+
+### i. The rehearsal's recording, reviewed (Friday only)
+
+**i1 [OPERATOR, LAB]. Record the whole sitting** with Saturday's capture setup, from c1 to h3.
+
+**i2 [OPERATOR, with the AGENT]. List every frame that shows any of these, with its time in the
+recording:**
+- a bootstrap's contents (the file the TFTP responder serves, or its lines in a preview);
+- a one-time password, in any form;
+- a console loading a configuration (AutoInstall's file load and the lines after it);
+- an unmasked program (a deploy or Verify program, or Ask the device's answer, with a secret
+  in clear).
+
+Where they can appear, for the review to check first:
+- **c2 and c5a (the consoles):** the boot after the `reload`, where AutoInstall loads the
+  bootstrap;
+- **c3, c4, c6, c7 (the pending pages and Verify):** the served-file lines and Verify's preview;
+- **d1.3 and d2.3 (the intent editor):** secret references only, never a value;
+- **d1.5 and d2.3 (Plan a deploy):** the program, masked;
+- **f (Show commands):** any command whose answer carries configuration.
+
+**i3 [AGENT]. Afterwards, one line per frame: what showed, and how Saturday avoids it** (the
+console closed after the `reload` line, a panel left collapsed, a cut in the edit, or a
+finding where Mercury itself showed a secret). Written into docs/LAB8_VIDEO_OUTLINE.md's rules
+before Saturday.
 
 ---
 
 ## 4. Placeholders to fill (`[READ: …]`)
 
-1. Settings › Installation: the running commit, and which of C1442, C1460, C1476, C1479, C1487,
-   C1492, C1494 it carries (D1, P1).
-2. C1499's Retry on the host (P5).
-3. Credentials: the newest break-glass export's time against R6's and R7's last rotation (P6).
-4. Add device's review: its exact words for an existing subnet once C1460 is deployed (c1).
-5. Needs attention after c2: whether r4's adjacency drops to R6 are raised as rows (c2, h3).
-6. R6's Day 1 preview: its line count (d1.5).
-7. History › r7: the intent commit before 03:12 UTC on 2026-10-21, which Gi3.10 keys the first
-   deploy held (d2.2).
-8. Templates › `_common.j2`: Current or Behind (d2.3).
-9. The heartbeat re-measure's proposed windows for r6 and r7 (d3).
-10. The lab repository's `configs/host-net-lab89.sh`: whether H5 renews after its first lease (e1).
-11. R7's `traceroute 8.8.8.8 source GigabitEthernet3.10`: its hops (f, check 7).
-12. NetBox: R7's site's VLAN group and VLAN 10, and whether Mercury's token reads VLAN groups
-    (g, C1424).
-13. Job health › `nmas-heartbeat-check`: its last run's reason (h3).
-14. Topology › Single points of failure: the weak points the map names after d2 (D8).
+**Open, read on the day:**
+1. Settings › Installation: the running commit carries C1009's fix (P1, D9).
+2. Credentials: the newest break-glass export's time against R6's and R7's last rotation (P6).
+3. Add device's review: its exact words for an existing subnet (c1).
+4. Needs attention after c2: whether r4's adjacency drops to R6 are raised as rows (c2, h3).
+5. R6's Day 1 preview: its line count (d1.5); R7's (d2.3).
+6. The heartbeat re-measure's proposed windows for r6 and r7 (d3).
+7. Topology › Single points of failure: the weak points the map names after d2 (d4).
+8. The lab repository's `configs/host-net-lab89.sh`: whether H5 renews after its first lease (e1).
+9. R7's `traceroute 8.8.8.8 source GigabitEthernet3.10`: its hops (f, check 7).
+10. Needs attention at h3: r1's flap counts toward s3 and s4, and whether the 12:01 incident
+    still fires.
 
-**Filled 2026-10-21 by the overnight run (read on the host, ~09:4x UTC):**
-- **1.** The host runs `224e18e9` (deployed 09:39:47 UTC). It carries C1442, C1460's part 1
-  (c05330b0, on main since 2026-10-20), C1476's camera members (Last verify, Last abandon, the
-  heartbeat re-measure, band acknowledgements), C1487, C1492 and C1494. Not C1479. Live: r6
-  Gi2 now reads 10.255.4.2/30 and r7 Gi2 10.255.4.6/30 in committed intent (the lease), and
-  Neighbours expects OSPF between r4 Gi5 and r6 Gi2.
-- **2.** Deployed: Monitoring › IP SLA's "Committed, not yet on the device" lists s3 with
-  Retry s3 (C1499).
-- **8.** `_common.j2` is Behind (`stale`, the shipped version of 177b78ed). The bring preview
-  measured every one of the 10 devices rendering the same with the shipped file; it revokes
-  the two base templates' approvals (C1498's row).
-- **13.** `nmas-heartbeat-check` fails on INSEPARABLE s3 (64 consecutive failures by 09:39 UTC),
-  the C1318 jitter; it remains.
+**Filled 2026-10-21:**
+- **The running commit (~16:2x UTC):** f14bd314, carrying C1442, C1450, C1460 part 1, C1476,
+  C1477, C1479, C1487, C1489, C1492, C1494, C1499 and C1504; ed58d33e (C1506) deploys at
+  17:08 UTC.
+- **C1499's Retry:** deployed, and used for P5 (~16:05 UTC).
+- **`_common.j2`:** Current since the operator took the seed (D3).
+- **R7's first Gi3.10 keys:** no longer needed; R7's Day 1 is one deploy (D3).
+- **NetBox's VLAN groups (~16:1x UTC):** Mercury's token reads them (no 403); NetBox holds none
+  yet, one site (Default) and one VLAN 10 (the core's, in no group). P3 makes the Branch group.
+- **`nmas-heartbeat-check`:** fails on INSEPARABLE s3 (C1318); it remains.

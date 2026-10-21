@@ -223,14 +223,17 @@ takes the fix when it brings in the shipped template (C1498).
 | **Topology** | drawn from what the devices report (LLDP, OSPF, BGP, RIP), never from NetBox's cables | Topology |
 
 **NetBox's state now:** `[READ: NetBox › R6's and R7's records: interfaces, addresses, platform,
-cables, after the last import]`. The operator's import on 2026-10-21 failed to write one
-interface, r7's Gi3.10 (C1492). Three findings are open against what NetBox holds:
-- **C1442:** the DHCP-leased management address lands on Loopback0, not Gi2, and the platform
-  reads "IOS".
-- **C1492:** a routed dot1Q subinterface (r7's Gi3.10) cannot be written.
-- **C1494:** a retired record keeps the addresses the new device of the same name needs.
-Until they are fixed, NetBox holds less than the deployed intent for R6 and R7, and Needs
-attention says so.
+cables, after the rehearsal's import]`. The operator's import on 2026-10-21 failed to write one
+interface, r7's Gi3.10 (C1492). The three findings behind what NetBox lacked are fixed and
+deployed (2026-10-21):
+- **C1442:** a DHCP-leased management address goes on its interface (Gi2), not Loopback0, and
+  the platform is the device's own (with C1506 for a record Mercury wrote as "IOS").
+- **C1492:** a routed dot1Q subinterface is written under its parent, 802.1Q tagged with the
+  VLAN of its site's VLAN group.
+- **C1494:** Retire frees a retired record's addresses, so the new device of the same name can
+  take them.
+- **The branch is its own NetBox site, `Branch`** (R6, R7 and VLAN 10), made by hand for Lab 8
+  (C1515), so R7's VLAN 10 does not collide with the core's.
 
 **A retired name inherits nothing.** Before Lab 8, the old r6 was retired through Mercury's
 Retire:
@@ -312,12 +315,10 @@ CPU contention, so their clocks and protocol timers run slow.
 ## 8. What is not done yet (each registered)
 
 - **Day 1 is a separate step** (C1471). Lab 9 moves its approval up front (docs/DAY1_AUTOMATION.md).
-- **Add device does not create the link's Kea subnet yet on the host** (C1460): a person adds it
-  first (LABOUR).
-- **NetBox lags the deployed intent** for DHCP-managed devices and for subinterfaces (C1442,
-  C1492). A retired record keeps its addresses (C1494).
-- **A deploy verified with intent unmet** shows as "done" on an amber card, and its row clears
-  only by another deploy (C1450).
+- **Add device creates the link's Kea subnet, not its NetBox prefix** (C1460's part 2), and not
+  the per-subnet firewall step (M10).
+- **Mercury plans no device and no site in NetBox:** the Planned records, the branch's site, its
+  VLAN group and VLAN 10 are made by hand in NetBox (C1447, C1448, C1515).
 - **A managed ZTP device that boots blank** cannot be recovered without retiring it
   (docs/RECOVERY_ZTP.md, a design).
 - **ZTP is IPv4 only** (C1245).
