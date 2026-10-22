@@ -429,11 +429,13 @@ by the blocks its golden holds (`vty 0`, `vty 1` with `length 0`, `vty 2 4`) and
 |---|---|---|---|---|
 | R1 | after E, no device touched | agent | `reseed_prepare.py r6 r7` on `<nmas-host>` | for each: the text diff touches only `lines:`; "no_shutdown declared … KEPT" (r7's list includes GigabitEthernet3); the editor's validation ok. **PASS 08:3x UTC:** r6 (base blob `4184fd3c19c2`) and r7 (`82842bf2c7b8`): each diff only `exec-timeout 0 0` to `15 0` on `con 0` and `vty 0 4` split into `vty 0`, `vty 1` (with `length 0`), `vty 2 4`; `no_shutdown` before and after `['GigabitEthernet3']`, KEPT; validation ok. (The script no longer calls the editor's preview: it read the saved configuration, which the config-read hook refuses; the two diffs against the device are the editor's, at R2.) |
 | R2 | after R1 | operator (DECISION) | each device's Intent editor: paste the printed `lines:` block over the old one, review the editor's two diffs against R1's, commit | the editor's diff shows only the vty split and the console timeout; every `no_shutdown` kept; one commit per device. **r7 committed (the operator, ~08:5x UTC):** the diff only the console timeout and the vty split; the editor's deploy preview sends 1 line (`line con 0` / `exec-timeout 15 0`); its amber merge-only warning listed `exec-timeout 0 0` and `line vty 0 4`, both false alarms (C1548). r6: to be reported |
-| T1 | after R2, before R3 (E's no-go, C1547) | operator (DECISION) | r1's, r6's and r7's Intent editor: subscription `'101'`'s `update-policy periodic 1000` becomes `update-policy periodic 6000` (60 s); subscription 102 unchanged | the editor's diff that one line per device; its deploy preview adds `telemetry ietf subscription 101` / `update-policy periodic 6000` (the merge-only warning will list the old line: single-valued, replaced; C1548) |
+| T1 | after R2, before R3 (E's no-go, C1547) | operator (DECISION) | **The operator's decisions (2026-10-22 ~16:5x UTC): D1 variant A, D2 all six.** Each router's Intent editor (r7, r6, r1, r2, r3, r4): in subscription `'101'`, the line `  - filter xpath /process-cpu-ios-xe-oper:cpu-usage/cpu-utilization` becomes `  - filter xpath /process-cpu-ios-xe-oper:cpu-usage/cpu-utilization/one-minute`; subscription 102 unchanged | the editor's diff that one line per device (base blobs at the previews of 16:5x: r7 `cd9e559b0f4f`, r6 `8007b21e63e1`, r1 `d86f318f7a1e`, r2 `ad3afb0df097`, r3 `a1b0640418ea`, r4 `1981b573c578`); its deploy preview adds `filter xpath …/one-minute` under `telemetry ietf subscription 101` (r6 and r7 also `exec-timeout 15 0` under `line con 0`, the reseed's); the merge-only warning may list the old filter line (single-valued, replaced; C1548) |
+| H1 | with T1 (the operator, 2026-10-22: bundled, one measured hour instead of two) | operator (DECISION) | s3's Intent editor: under `GigabitEthernet1/1`, after `helper_addresses: []`, add `  hold_queue: ['256 out']` (base blob `241de6b4dcb1`) | its deploy preview adds `hold-queue 256 out` under `interface GigabitEthernet1/1`; deployed LAST, after the six routers' streams shrink; s3's repair route is its console (HOST_TUNING) |
 | R3 | **moved: after T1, before the first pass** (no Mercury code deploy needed: neither line is a split range) | operator (DECISION) | r7: Plan a deploy, confirm, apply | the program as the preview shows (expected: `line con 0` / `exec-timeout 15 0` and `telemetry ietf subscription 101` / `update-policy periodic 6000`, with their exits); verify reads back every line; the receipt clean (`checks.ok` true, saved); Needs attention has no r7 deploy row (C1542 clears by its rule: the device's newest receipt succeeds); r7's departure (intent-only lines) clears (C1548) |
 | R4 | with R3 | operator (DECISION) | r6: the same | as R3, without the C1542 row |
-| T2 | with R3 | operator (DECISION) | r1: Plan a deploy, confirm, apply (r1 is the core router toward s3 and s4: outside 08:30 to 09:10 UTC) | its own preview: only subscription 101's period; read back; the receipt clean |
-| E2 | after R3, R4 and T2 | agent | a new measured hour, as E (the stall script, the per-minute sampler, Proxmox, and the telemetry bytes at the collector by source) | **GO** by D6's bar: 0 OSPF drops and 0 failed scrapes; telemetry through s3 about 53 KiB/s (from ~90). Otherwise no-go, with the numbers |
+| T2 | after R4, in order r1, r2, r3, r4 (outside 08:30 to 09:10 UTC; the core routers) | operator (DECISION) | each: Plan a deploy, confirm, apply | its preview: only 101's filter line; read back; the receipt clean |
+| H2 | last, after T2 | operator (DECISION) | s3: Plan a deploy, confirm, apply | the preview: only `hold-queue 256 out` under `interface GigabitEthernet1/1`; read back (`Output queue: 0/256`); the receipt clean |
+| E2 | after H2 | agent | a new measured hour, as E (the stall script, the per-minute sampler, Proxmox, and the telemetry bytes at the collector by source) | **GO** by D6's bar: 0 OSPF drops and 0 failed scrapes, judged against the eight hours at rest (7.0 ± 3.0 drops an hour; scrapes 158 to 392, rising); telemetry through s3 a few KiB/s (from ~90). Otherwise no-go, with the numbers |
 
 - [ ] The run sheet for the recorded run: no CLI on camera, and a dry look at every deploy's
   preview before the recorded one.
@@ -590,7 +592,11 @@ C1536.
   function of the four modules (93, 333, 219, 370 mutants; 8 equivalents listed, C1552); the
   survivors killed by new tests are on section 7's list. The router profile is tested on
   synthetic text only (no real router capture).
-- **A design point for the operator (queued):** the survey reads ANY prompt seen at attach,
+- **D3 decided (the operator, 2026-10-22 ~16:5x UTC): only `#` and config prompts at attach
+  are "signed in"; `>` is recorded and the nvram check decides.** Being applied by the resumed
+  O6a agent, with the survey's tests' premise changed and its mutation re-run. **D4 decided:**
+  C1554 accepted (cables taggable for every writer).
+- **The design point as it was queued:** the survey reads ANY prompt seen at attach,
   `>` included, as signed in ("not factory-blank as found"). The operator's rule named `#`. A
   factory-blank switch whose "Press RETURN" banner printed before Mercury attached answers the
   wake CR with `Switch>`, so it would always need a reload first. Recommended: `#` and config
@@ -623,8 +629,18 @@ C1536.
   functions (C1561's 3 equivalents). Keys only: no password auth for console servers.
   Registered for O6: C1558 (one home for two rules), C1559 (hold the device around a console
   run); C1560 (a refusal's wording, O8).
-- **Next:** O6 (the operations: survey and kick-start with preview and confirm, stages, gates,
-  receipts, Needs attention aborts, with C1553, C1558, C1559), O7's offer, O8 minimal.
+- **O6a, started, NOT merged:** an agent building the operation (survey and kick-start, the
+  device hold, receipts, Needs attention, retirement's cleanup, C1553, C1558, C1559) stopped at
+  ~13:xx UTC when its sign-in expired, part-way through its controls (its last line: "Control
+  3: the verified-person check always passes"). Its worktree
+  (`.claude/worktrees/agent-abf87d34472ef02c5`, on `1ea364ce`) holds `console_ztp.py` and its
+  tests plus edits to nine modules, and MAY hold that control's deliberate break unrestored:
+  it is resumed (or re-run) before anything of it is merged, and nothing there is trusted
+  until its controls are re-run.
+- **C1562's agent stopped the same way** (its worktree `agent-a4a59990d235afc0d`, two test
+  files touched, unverified): resumed, not merged.
+- **Next:** O6a resumed, then O6b (routes, gates, invalidation, stages registered) with O7's
+  offer and O8 minimal (a board first, the manual section).
 
 **Testing the feature (the operator's audit, 2026-10-22 ~07:5x UTC):**
 - **O2a's wrapper lives in Mercury, not the lab repository:** one standard-library-only module,
@@ -709,8 +725,20 @@ Every reading below was read-only; every change is prepared for the morning queu
 - **The R630's hyperthreads:** s3's vCPU (VM 100's "CPU 22/KVM") has no affinity and ran on 13
   host CPUs in 60 s (all NUMA node 0); its hyperthread sibling was over 50% busy in 14 of the 60
   seconds (mean 32%). Steal inside the lab VM stays near 0 (it does not show sibling sharing).
-- **The quiet window (1f):** 09:08:59 to ~14:19 UTC, no operations by the agent: `[FILLED AT
-  14:2x: per hour, drops, failed scrapes, gauge steps, s3 heartbeat gaps, CPU 22]`.
+- **The quiet window (1f):** 09:08:59 to 14:19 UTC, no operations by the agent (Mercury's own
+  schedule as usual: about 74 reader and 22 drift-check sessions an hour, as in E). Per hour
+  from 09:10: OSPF dead-timer drops 9, 6, 4, 12, 8 (mean 7.8); failed scrapes 194, 174, 192,
+  292, 212 (mean 213); gauge steps below 10: 58, 67, 45, 85, 68 of 241; missed-ping events 10,
+  13, 4, 16, 5; s3 heartbeat gaps median 617 to 676 s. **E (3 drops, 158 scrapes) was the best
+  of the six hours at rest, not an outlier.** Per minute over 309 minutes: s3's CPU 22 at 96.0%
+  on average (100% at peak), the routers' CPUs 74.3%, s5's CPU 19 64.1% (flat), steal 0.03%.
+  **Extended to 16:10 (the lab still at rest; the session's sign-in lapsed ~12:00):** 14:10
+  and 15:10 read 9 and 5 drops, 332 and 392 failed scrapes, 82 and 89 gauge steps. **Eight
+  hours at rest (E and 09:10 to 16:10):** OSPF drops 3, 9, 6, 4, 12, 8, 9, 5: mean 7.0 an hour,
+  standard deviation 3.0, range 3 to 12; failed scrapes 158 to 392, mean 243, rising through
+  the afternoon (not stationary). So an E2 hour with 0 drops is more than two standard
+  deviations below today's steady state: a real change, not noise. The scrapes need the same
+  judgement against their own rising baseline.
 
 **The fixes, ranked by evidence and cost:**
 
@@ -812,8 +840,8 @@ scrapes, so fewer scrapes change the bar's denominator: say so with any E2 that 
 
 | Change | Revert |
 |---|---|
-| T1 (101's filter or period on r1, r6, r7, and r2 to r4 if done) | each router's intent back to `…/cpu-utilization` (or `periodic 1000`), then its deploy |
-| `hold-queue 256 out` on s3 Gi1/1 (if done) | the intent key removed: a removal is Mode B (a reason per line), or kept if it proves itself |
+| T1 (101's filter narrowed to `…/one-minute` on all six routers, the operator's D1 and D2) | each router's intent back to `…/cpu-utilization`, then its deploy (single-valued: the deploy replaces it) |
+| `hold-queue 256 out` on s3 Gi1/1 (bundled with T1, the operator's decision) | the intent key removed and the line removed by Mode B (a reason per line; `no hold-queue 256 out` is the measured shape to confirm), or kept if it proves itself |
 | s3's vCPU pin (if done) | `taskset -a -p -c 0-39` for VM 100's and VM 102's qemu (section 9) |
 | Drift interval or SNMP intervals (if done) | the setting back to 30 min; the prometheus.yml lines back, Prometheus reloaded |
 | The Proxmox nightly backup, disabled on 2026-10-22 | re-enabled by the operator (C1514's schedule) |
