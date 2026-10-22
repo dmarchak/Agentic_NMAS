@@ -1,5 +1,45 @@
 # End of session: where Phase 7 stands
 
+## PAUSED 2026-10-22 ~17:3x UTC (the operator off the home network; resume on "RESUME")
+
+Nothing runs while paused: no agents, gates, pushes, CI dispatches, device or host reads.
+Connection failures while paused are expected, not findings. **This note is uncommitted**
+(no gate while paused): commit it first on resume.
+
+- **main:** clean at `fca696d8`, pushed, even with origin; CI green through #1076 (the later
+  docs commits' runs not read since).
+- **O6a (the out-of-band ZTP operation)**, worktree `.claude/worktrees/agent-abf87d34472ef02c5`
+  (base `1ea364ce`, nothing committed). **No control break in place:** every set-aside file
+  cmp-matches its copy; all 14 controls re-run on the final code. Built: survey and kick-start
+  preview/apply (hash recomputed and refused naming both; a verified person; the device held),
+  C1559 (a console send needs the device held), the Needs attention source, C1553 (retire's
+  console step), C1558 (one home), D3 (`>` recorded, nvram decides). 121 tests pass.
+  **Remains:** the mutation bar (a run killed cleanly at ~560/1017; survivors found in
+  `_kickstart_phases`, `kickstart_apply`, `verified_person`, `kickstart_preview`,
+  `kickstart_program`, most killed by new tests not yet re-run); shard weights; mutation
+  results in TESTING.md; the final aimed run. **First step to resume:** `bash
+  <scratchpad>/o6mut/setup.sh bar`, then `bash <scratchpad>/o6mut/run.sh
+  <scratchpad>/o6mut/run-bar2.log` in the background (~2 to 2.5 h). Then merge by copy and gate.
+  To register on merge: the store's container rule and the wrapper's `check_name` are two
+  homes (the store keeps `edge--a`, which the wrapper refuses; C1558's class).
+- **C1562 (two nightly-only test failures)**, worktree `.claude/worktrees/agent-a4a59990d235afc0d`
+  (nothing committed). **No break in place** (four set-aside files cmp-match). Found:
+  `test_scale`'s negative count is `cProfile` on Python 3.12 counting every thread's calls
+  (threads earlier tests left alive), fixed by counting the request's own threads
+  (`count_calls`); likely C875's recurrences too. The drag test's wait was an unmeasured 40
+  polls, now two measured waits (the batch's end, 30 s; the card, 5 s). **Remains:** 20 loaded
+  runs of the drag test with the final bounds, then `tests/test_ci_shards.py`,
+  `test_scale.py`, `test_profile_apply_v2.py`, `test_profile_apply.py`, `test_large_fleets.py`.
+  **First step to resume:** `C1562_OUT= bash <scratchpad>/c1562/loaded.sh drag-final nightly
+  browser2 20 "tests/test_profile_apply_v2.py::TestClickingTheShippedPage::test_a_drag_by_the_grip_moves_in_the_page_and_the_confirm_carries_it"`.
+  Then merge by copy, update C1562 and C875, gate.
+- **The operator's queue, unchanged, nothing on a device until "RESUME":** D1 to D4 decided
+  (variant A; all six; `#`/config only; C1554 accepted); then T1 on r7, r6, r1, r2, r3, r4 and
+  H1 (s3 `hold_queue: ['256 out']`), deployed in that order with s3 last, outside 08:30 to
+  09:10 UTC; then E2 (the agent). The edits and previews: LAB9_PLAN section 7 (T1, H1, T2, H2,
+  E2). The backup's re-enable is the operator's to confirm.
+- `<scratchpad>` = the session's scratchpad on `<laptop>` (`/tmp/claude-1000/-<home>-Documents-Python-Agentic-NMAS/<session>/scratchpad`; the session names it in full).
+
 ## 2026-10-22 morning: Lab 9, where it stands (the plan: docs/LAB9_PLAN.md)
 
 - **Done tonight:** the redeploy (s5, h6, h7; r6 and r7 from their saved configurations); D4
