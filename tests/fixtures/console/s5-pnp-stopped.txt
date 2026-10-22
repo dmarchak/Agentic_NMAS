@@ -1,0 +1,4 @@
+
+*Oct 22 06:09:53.182: %PNP-6-PNP_DISCOVERY_STOPPED: PnP Discovery stopped (Config Wizard)
+Switch con0 is now available
+Press RETURN to get started.

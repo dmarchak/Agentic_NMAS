@@ -96,16 +96,65 @@ def read_back(commands: list, running: str) -> dict:
     Skipped, each with its reason: a `no` line (its effect is an absence or
     the device's default, and Mode B's removals are verified on their own);
     a line in a secret's position (the device stores it transformed, `secret
-    0` as `secret 9`); a banner (the device prints its own delimiter)."""
+    0` as `secret 9`); a banner (the device prints its own delimiter).
+
+    **Terminal lines by member (C1541).** A device prints a `line` range as it
+    pleases: a router sent `line vty 0 4` prints `line vty 0`, `line vty 1` and
+    `line vty 2 4` (2026-10-22). A line under a `line <type> <a> [<b>]` stanza is read back
+    for each member a..b, in whichever printed stanza covers that member, and is
+    held only when EVERY member holds it; the miss names the members that lack
+    it and the members no printed stanza covers. A stanza the device prints
+    exactly as the program wrote it is matched there, its miss unchanged; the
+    device printing one range over members the program sent one by one
+    (`line vty 1` against `line vty 0 4`) is the same rule. Every other section
+    is matched on its exact stanza chain, as before."""
     from modules.nsot import ifnames, platform_defaults
-    from modules.nsot.deploy import config_leaves, program_leaves
+    # One parser of a terminal-line range, deploy's (C307's rollback reads the same headers).
+    from modules.nsot.deploy import (_line_range, _pre_line_stanzas, config_leaves,
+                                     program_leaves)
     from modules.redact import redact_positional
 
     def key(chain, line):
         return (tuple(ifnames.canonicalise_line(c).strip() for c in chain),
                 " ".join(ifnames.canonicalise_line(line).split()))
 
-    held = {key(l.chain, l.line) for l in config_leaves(running or "")}
+    leaves = config_leaves(running or "")
+    held = {key(l.chain, l.line) for l in leaves}
+    # Every printed terminal-line stanza, by its range, and what each holds (the rest of
+    # the chain below the stanza, and the line). A stanza printed with nothing under it
+    # still covers its members (and holds nothing).
+    stanzas = {rng: set() for _h, rng, _c in _pre_line_stanzas(running or "")}
+    for l in leaves:
+        rng = _line_range(l.chain[0].strip()) if l.chain else None
+        if rng:
+            stanzas.setdefault(rng, set()).add(key(l.chain[1:], l.line))
+
+    def problems(chain, line) -> list:
+        """What keeps *line* under *chain* from reading back: [] when it is held."""
+        rng = _line_range(chain[0].strip()) if chain else None
+        if rng is None:
+            return [] if key(chain, line) in held else [""]
+        kind, first, last = rng
+        want = key(chain[1:], line)
+        if rng in stanzas:
+            # The device prints the stanza as the program wrote it (`line con 0`, an
+            # unsplit `line vty 0 4`): matched there, and a miss reads as it always has.
+            return [] if want in stanzas[rng] else [""]
+        lacking, uncovered = [], []
+        for member in range(first, last + 1):
+            covering = [held_here for (k, a, b), held_here in stanzas.items()
+                        if k == kind and a <= member <= b]
+            if not covering:
+                uncovered.append(str(member))
+            elif not any(want in held_here for held_here in covering):
+                lacking.append(str(member))
+        out = []
+        if lacking:
+            out.append(f"missing on {kind} {', '.join(lacking)}")
+        if uncovered:
+            out.append(f"no printed stanza covers {kind} {', '.join(uncovered)}")
+        return out
+
     missing, skipped, checked = [], [], 0
     for leaf in program_leaves(list(commands or [])):
         line = leaf.line.strip()
@@ -120,11 +169,13 @@ def read_back(commands: list, running: str) -> dict:
             skipped.append({"line": shown, "why": "a banner reads back in the device's "
                                                   "own delimiter"})
         elif platform_defaults.hidden(leaf.chain, line) and \
-                key(leaf.chain, leaf.line) not in held:
+                problems(leaf.chain, leaf.line):
             # Printed only when not at its default (C14): absent is its default, not a miss.
             skipped.append({"line": shown, "why": platform_defaults.hidden(leaf.chain, line)})
         else:
             checked += 1
-            if key(leaf.chain, leaf.line) not in held:
-                missing.append(shown)
+            found = problems(leaf.chain, leaf.line)
+            why = [p for p in found if p]
+            if found:
+                missing.append(f"{shown} ({'; '.join(why)})" if why else shown)
     return {"missing": missing, "skipped": skipped, "checked": checked}

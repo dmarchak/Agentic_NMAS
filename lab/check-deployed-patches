@@ -1,0 +1,145 @@
+#!/usr/bin/env python3
+"""Read-only, on the lab host: does the lab run the patched launcher Mercury's tests check? (C1546)
+
+LAB TOOLING. Run from the lab repository's directory (the one holding `patches/`), after the
+patched launchers are written (Lab 9's C2) and before a first pass of a run sheet:
+
+    lab/check-deployed-patches                      # the table below
+    lab/check-deployed-patches patches/vios-launch-configless.py=<sha256>
+    lab/check-deployed-patches --container patches/vios-launch-configless.py=<container>
+
+For each patched launcher in EXPECTED it compares, printing both operands every time:
+  1. the sha256 of the lab repository's file with the expected sha (the generator's output from
+     its pinned input, as tests/test_vios_configless_patch.py pins it, `GENERATED_SHA`);
+  2. for each running container in CONTAINERS: what the container binds over `/launch.py`
+     (`docker inspect`) with that file, and the sha256 of the container's own `/launch.py`
+     (`docker exec <container> sha256sum /launch.py`) with the expected sha.
+It writes nothing and changes nothing: two docker reads per container, one file read per file.
+
+Exit status: 0 when every comparison matches; 1 naming each mismatch; 2 when a file is absent
+(the lab repository's file, a container, or a container's `/launch.py`) or docker cannot be
+asked, so something could not be compared at all (any mismatch found is still named).
+"""
+
+import argparse
+import hashlib
+import json
+import os
+import subprocess
+import sys
+
+#: Each patched launcher (a path in the lab repository) and the sha256 it must have. The operator
+#: edits this table when a patch is regenerated, together with the test that pins its output.
+EXPECTED = {
+    "patches/vios-launch-configless.py":
+        "6d1f16e0e651a0582e12f43920f323b252c33638376dac4d1d7bfcefbc8d202d",
+}
+
+#: The running containers whose `/launch.py` is bound from each file, as the lab file binds them.
+#: The operator edits this list when a node joins or leaves a patched launcher.
+CONTAINERS = {
+    "patches/vios-launch-configless.py": ["clab-rcn-lab1-s5"],
+}
+
+#: One docker read: 30 s, about 2.5x a slow `docker exec` on a loaded lab host (~10 s).
+DOCKER_SECONDS = 30
+
+
+def sha256_of(path):
+    with open(path, "rb") as fh:
+        return hashlib.sha256(fh.read()).hexdigest()
+
+
+def docker(*args):
+    """``(ok, stdout, why)`` for one read-only docker command."""
+    try:
+        done = subprocess.run(["docker", *args], capture_output=True, text=True,
+                              timeout=DOCKER_SECONDS, check=False)
+    except FileNotFoundError:
+        return False, "", "docker is not on PATH"
+    except subprocess.TimeoutExpired:
+        return False, "", f"`docker {' '.join(args)}` gave no answer within {DOCKER_SECONDS} s"
+    if done.returncode != 0:
+        first = (done.stderr.strip().splitlines() or [f"exit {done.returncode}"])[0]
+        return False, done.stdout, first
+    return True, done.stdout, ""
+
+
+def _pairs(values, what):
+    out = {}
+    for value in values or []:
+        name, sep, rest = value.partition("=")
+        if not sep or not name or not rest:
+            sys.exit(f"{what} must be FILE=VALUE, got {value!r}")
+        out.setdefault(name, []).append(rest)
+    return out
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("expected", nargs="*", metavar="FILE=SHA256",
+                        help="replaces the table's expected sha for FILE")
+    parser.add_argument("--container", action="append", metavar="FILE=CONTAINER",
+                        help="replaces the default container list for FILE (repeatable)")
+    parser.add_argument("--repo", default=".", help="the lab repository (default: here)")
+    args = parser.parse_args(argv)
+
+    expected = dict(EXPECTED)
+    for name, shas in _pairs(args.expected, "an expected sha").items():
+        expected[name] = shas[-1].lower()
+    containers = {name: list(names) for name, names in CONTAINERS.items()}
+    containers.update(_pairs(args.container, "--container"))
+
+    mismatches, absent = [], []
+
+    def compare(what, got, want):
+        if got == want:
+            print(f"ok        {what}: {got} = expected {want}")
+        else:
+            print(f"MISMATCH  {what}: {got} != expected {want}")
+            mismatches.append(what)
+
+    def missing(what, why):
+        print(f"ABSENT    {what}: {why}")
+        absent.append(what)
+
+    for name, want in expected.items():
+        path = os.path.join(args.repo, name)
+        if not os.path.isfile(path):
+            missing(name, f"no such file in {os.path.abspath(args.repo)}")
+        else:
+            compare(f"{name} (sha256)", sha256_of(path), want)
+        for container in containers.get(name, []):
+            ok, out, why = docker("inspect", "--format", "{{json .Mounts}}", container)
+            if not ok:
+                missing(f"{container}", why)
+                continue
+            try:
+                mounts = json.loads(out or "null") or []
+            except ValueError:
+                missing(f"{container}", f"docker inspect's mounts did not parse: {out[:80]!r}")
+                continue
+            source = next((m.get("Source") for m in mounts
+                           if m.get("Destination") == "/launch.py"), None)
+            compare(f"{container} /launch.py bound from",
+                    os.path.realpath(source) if source else "nothing bound over /launch.py",
+                    os.path.realpath(path))
+            ok, out, why = docker("exec", container, "sha256sum", "/launch.py")
+            if not ok:
+                missing(f"{container} /launch.py", why)
+                continue
+            compare(f"{container} /launch.py (sha256)", (out.split() or [""])[0], want)
+
+    if absent:
+        print(f"could not compare: {', '.join(absent)}"
+              + (f"; mismatched: {', '.join(mismatches)}" if mismatches else ""))
+        return 2
+    if mismatches:
+        print(f"mismatched: {', '.join(mismatches)}")
+        return 1
+    print("every patched launcher matches")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

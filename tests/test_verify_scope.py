@@ -84,10 +84,12 @@ class TestTheReadBack:
         assert rb == {"missing": [], "skipped": [], "checked": 4}
 
     def test_a_line_the_device_does_not_show_is_named_under_its_section(self):
+        # r3 prints the range split (`line vty 0`, `line vty 1`, `line vty 2 4`): three of
+        # the four lines are under every member, and `length 0` only under vty 1 (C1541; this
+        # test expected all four missing until then, which was the defect).
         rb = V.read_back(VTY, R3)
-        assert rb["missing"] == ["line vty 0 4 > logging synchronous",
-                                 "line vty 0 4 > login local", "line vty 0 4 > length 0",
-                                 "line vty 0 4 > transport input all"]
+        assert rb["checked"] == 4
+        assert rb["missing"] == ["line vty 0 4 > length 0 (missing on vty 0, 2, 3, 4)"]
 
     def test_negations_secrets_and_banners_are_skipped_with_why(self):
         rb = V.read_back(["no logging console", "username ops privilege 15 secret 0 Zq7value",
@@ -137,7 +139,8 @@ class TestThePipelineRunsTheScopedVerify:
         pipeline._stage_verify(ctx)                      # no PipelineStageError: no rollback
         v = ctx.verify_result["x"]
         assert v["ok"] is False and v["issues"] == []
-        assert "line vty 0 4 > length 0" in v["read_back"]["missing"]
+        assert v["read_back"]["missing"] == [
+            "line vty 0 4 > length 0 (missing on vty 0, 2, 3, 4)"]
 
     def test_the_combined_deploy_fails_verify_on_a_line_not_read_back_so_it_rolls_back(
             self, world):
@@ -149,7 +152,8 @@ class TestThePipelineRunsTheScopedVerify:
         with pytest.raises(pipeline.PipelineStageError):
             pipeline._stage_verify(ctx)
         v = ctx.verify_result["x"]
-        assert v["ok"] is False and "line vty 0 4 > length 0" in v["read_back"]["missing"]
+        assert v["ok"] is False and v["read_back"]["missing"] == [
+            "line vty 0 4 > length 0 (missing on vty 0, 2, 3, 4)"]
         assert any(re.match(r"\d+ sent line\(s\) did not read back: .*line vty 0 4 > length 0", i)
                    for i in v["issues"]), v["issues"]
 

@@ -1,0 +1,28 @@
+
+=== 2026-10-22T06:10:25Z session ===
+
+>>> send '\r'
+????????????
+**************************************************************************
+* IOSv is strictly limited to use for evaluation, demonstration and IOS  *
+* education. IOSv is provided as-is and is not supported by Cisco's      *
+* Technical Advisory Center. Any use or disclosure, in whole or in part, *
+* of the IOSv Software or Documentation to any third party for any       *
+* purposes is expressly prohibited except as otherwise authorized by     *
+* Cisco in writing.                                                      *
+**************************************************************************
+Switch>
+>>> send 'enable\r'
+enable
+Switch#
+>>> send 'dir nvram:\r'
+dir nvram:
+Directory of nvram:/
+
+  254  -rw-           0                    <no date>  startup-config
+  255  ----           0                    <no date>  private-config
+    1  ----          31                    <no date>  udi
+    2  ----          35                    <no date>  persistent-data
+
+262144 bytes total (260044 bytes free)
+Switch#

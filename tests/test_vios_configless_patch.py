@@ -16,15 +16,24 @@ import hashlib
 import importlib.machinery
 import importlib.util
 import os
+import signal
 import sys
 import types
 
 import pytest
 
+#: What the launcher's module body takes over for the whole process (vrnetlab's: a SIGCHLD
+#: handler that reaps ANY child, SIGINT and SIGTERM handlers that exit 0).
+LAUNCHER_SIGNALS = (signal.SIGCHLD, signal.SIGINT, signal.SIGTERM)
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FIXTURE = os.path.join(ROOT, "tests", "fixtures", "launch", "vios-launch.py")
 PATCHER = os.path.join(ROOT, "docs", "bootstrap-probe", "patches", "patch-vios-configless.py")
 MEASURED_SHA = "794788bcada997dac7aac239d86d1867f165482ae30b03376463b89418c8e93d"
+#: The generator's OUTPUT from that fixture (C1546): what `--write` leaves, the launcher the lab
+#: binds over s5's `/launch.py` (`patches/vios-launch-configless.py`, recorded at C2, `183aa5d`).
+#: `lab/check-deployed-patches` compares the lab's copies with this same value.
+GENERATED_SHA = "6d1f16e0e651a0582e12f43920f323b252c33638376dac4d1d7bfcefbc8d202d"
 
 
 def _patcher():
@@ -53,6 +62,18 @@ def _calls(fn, attr):
 def test_the_fixture_is_the_script_that_was_read():
     with open(FIXTURE, "rb") as fh:
         assert hashlib.sha256(fh.read()).hexdigest() == MEASURED_SHA
+
+
+def test_the_generator_writes_the_launcher_the_lab_runs(tmp_path, capsys):
+    """C1546: the INPUT pinned alone lets the patcher change and the lab keep running the old
+    output unnoticed. `--write` on a copy of the pinned fixture writes exactly the launcher whose
+    sha the lab's check compares (C2's `6d1f16e0e651a058…`)."""
+    copy = tmp_path / "vios-launch-configless.py"
+    copy.write_bytes(open(FIXTURE, "rb").read())
+    assert _patcher().main([str(copy), "--write"]) == 0
+    capsys.readouterr()
+    assert hashlib.sha256(copy.read_bytes()).hexdigest() == GENERATED_SHA
+    assert GENERATED_SHA.startswith("6d1f16e0e651a058")
 
 
 class TestTheRealScriptBeforeThePatch:
@@ -147,7 +168,16 @@ def _load_patched(monkeypatch, tmp_path, expect):
     path.write_text(_patcher().patch(_real()), encoding="utf-8")
     loader = importlib.machinery.SourceFileLoader("launch_patched", str(path))
     mod = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
-    loader.exec_module(mod)
+    # The launcher's module body installs process-wide signal handlers. Left in place, its
+    # SIGCHLD reaper took the exit status of every later child in this pytest worker first, so
+    # `subprocess` read 0 for a child that exited 1 or 2 (found 2026-10-22, C1546's tests of
+    # lab/check-deployed-patches). They are put back the moment the module is loaded.
+    saved = {s: signal.getsignal(s) for s in LAUNCHER_SIGNALS}
+    try:
+        loader.exec_module(mod)
+    finally:
+        for s, handler in saved.items():
+            signal.signal(s, handler)
     monkeypatch.setattr(mod, "STARTUP_CONFIG_FILE", str(tmp_path / "no-startup.cfg"))
     monkeypatch.setattr(mod.os, "listdir", lambda p: ["vios_l2-test.qcow2"])
     return mod, events
@@ -165,6 +195,18 @@ def test_at_each_console_state_it_types_nothing_and_releases_the_console(monkeyp
     vm.bootstrap_spin()
     assert [e for e in events if e[0] in ("write", "scrapli", "stop", "start")] == []
     assert vm.running is True and closed == [True]
+
+
+def test_loading_the_launcher_leaves_this_process_s_signal_handlers_as_they_were(monkeypatch,
+                                                                                tmp_path):
+    """The launcher's module body takes SIGCHLD, SIGINT and SIGTERM (a floor: it does, so this
+    can fail); loading it here puts each back, so no later test's child loses its exit status
+    to vrnetlab's reaper."""
+    assert "signal.signal(signal.SIGCHLD, handle_SIGCHLD)" in _real().splitlines()
+    before = {s: signal.getsignal(s) for s in LAUNCHER_SIGNALS}
+    mod, _events = _load_patched(monkeypatch, tmp_path, (-1, None, b""))
+    assert callable(mod.handle_SIGCHLD)
+    assert {s: signal.getsignal(s) for s in LAUNCHER_SIGNALS} == before
 
 
 def test_the_quiet_watchdog_waits_instead_of_restarting(monkeypatch, tmp_path):
