@@ -37,7 +37,7 @@ The handout's diagram labels the second host H1; it is H7 here (LAB_REQUIREMENTS
 | D3 | When to run | 06:30 to 08:15 UTC | **the operator:** no fixed window; step by step as each piece is ready, never in 08:30 to 09:10 UTC. Add device and Verify are the operator's |
 | D4 | Build the `cisco_ios` bootstrap fix (section 2) before the first pass | yes (section 2) | **yes, both parts, with tests and controls; gated after run 1059 is green, deployed before the first pass** (the operator, 2026-10-22) |
 | D5 | s5's unused Gi0/0 | — | **the operator:** s5's Day 1 shuts Gi0/0 (Mercury reaches s5 on VLAN 1 through R8), its dangerous-line reason written into the Day 1 prep in advance, as for R6's Gi1. The first pass records where s5's DISCOVER actually went (P-S2) |
-| D6 | s5's CPU (section 3) | s5 on CPU 19 alone; routers and hosts on 0 to 18; switches on 19 to 23 | asked 2026-10-22 |
+| D6 | s5's CPU (section 3) | s5 on CPU 19 alone; routers and hosts on 0 to 18; switches on 19 to 23 | **yes** (the operator, 2026-10-22). After the redeploy, one measured hour with the tuning checks (OSPF drops, failed scrapes, clock rates, s5's included) before the first pass: the go or no-go and the baseline. NUMA stays deferred unless the first pass is unreliable |
 
 ## 0. Tonight's queue: C1522 and R7's heartbeat rule (done)
 
@@ -53,7 +53,7 @@ The handout's diagram labels the second host H1; it is H7 here (LAB_REQUIREMENTS
   s3 alone (INSEPARABLE, C1318).
 - Deferred unless Lab 9 needs them: B to E (C1521), the findings reconciliation, C1513.
 
-## 1. The vIOS configless launch patch and its test (done; commit pending CI)
+## 1. The vIOS configless launch patch and its test (done: `44738eff`)
 
 - [x] `docs/bootstrap-probe/patches/patch-vios-configless.py`, lab tooling only. It makes three
   anchored edits to vrnetlab's vIOS launcher (`vrnetlab/cisco_vios:L2-20180619`, sha256
@@ -73,9 +73,9 @@ The handout's diagram labels the second host H1; it is H7 here (LAB_REQUIREMENTS
 - [x] `tests/test_vios_configless_patch.py`, 17 tests against the hash-pinned real launcher,
   structurally and by RUNNING the patched `bootstrap_spin` against a stub console. Shown able to
   fail: without the console edit, 5 aimed tests fail; without the watchdog edit, 3.
-- [ ] Committed through the gate once run 1059 is green.
+- [x] Committed through the gate with step 2 as `44738eff` (2026-10-22 05:28 UTC; CI run 1060).
 
-## 2. The `cisco_ios` bootstrap fix (built; commit pending CI, then deploy)
+## 2. The `cisco_ios` bootstrap fix (built: `44738eff`; deploy is the run sheet's A1)
 
 **Built 2026-10-22 ~05:1x UTC (D4):** `bootstrap_config.manager_interface_lines`.
 - It writes `no switchport` only when the manager interface is not a `Vlan` SVI.
@@ -134,7 +134,7 @@ Read from `modules/nsot/bootstrap_config.py` (`manager_interface_lines`, `render
 - **The cost:** about 30 minutes of work and a gate of about 25 minutes. It can be built, gated
   and deployed before the first pass, which needs steps 3 to 5 first anyway.
 
-## 3. s5's CPU placement (recommended; D6 asked)
+## 3. s5's CPU placement (decided: D6)
 
 **What was read:**
 - **2026-10-21's per-CPU reading** (HOST_TUNING.md, Phase 2): the routers' and hosts' CPUs 0
@@ -173,21 +173,104 @@ switches on 19 to 23.
   `OTHERS_SET=0-18`, and `OTHERS` gains h6 and h7;
 - `check-pinning.sh` reads PINNING HOLDS after the redeploy.
 
-- [ ] The operator's decision (D6).
+- [x] The operator's decision (D6): yes.
 
-## 4. The one-file lab change and the redeploy
+## 4. The one-file lab change and the redeploy (the run sheet)
 
-- [ ] s5 configless under the patch (bound over `/launch.py`, `CLAB_MGMT_PASSTHROUGH: "true"`),
-  behind R8. Its first data port faces R8, untagged on VLAN 1. H6 and H7 sit on s5's VLAN 10.
-  The lab file already names r8 (its management address is in every node's NO_PROXY list).
-- [ ] H6's and H7's DHCP clients renew, unlike H5's in Lab 8, whose client had to be started
-  again by hand.
-- [ ] The CPU sets declared (step 3).
-- [ ] The redeploy steps, with PASS lines:
-  - Save All first, so startup comes from the goldens;
-  - the break-glass export first;
-  - a planned-restart window declared first;
-  - no `containerlab restart` or `docker restart` (C1372).
+**What was read first (2026-10-22 ~05:1x to 05:2x UTC, read-only):**
+- **The lab file is unchanged since `33916b7`** (sha256 `c23c5d40…`), and the lab repository's
+  newest commit is a startup sync (`da1c954`).
+- **R6 and R7 are still configless** in it (`patches/c8000v-launch-configless.py`, `wait-for`
+  stages). **Phase 3's option (b) was never applied**, so a redeploy as the file stands would
+  bring R6 and R7 back blank and undo Lab 8.
+- **Option (b)'s map change was never made either.** The startup sync's map
+  (`data/lab_targets/Default.tsv` on `<nmas-host>`) still has r6 in the old separate lab
+  (`labs/r6/configs r6`), and has no r7 and no r8.
+- **The file already plans s5's links in a comment** (R8 Gi3 to s5 Gi0, the hosts on s5's Gi1
+  and Gi2, with pinned MACs). The switches' kind sets `CLAB_MGMT_PASSTHROUGH: "false"` (needed
+  for the existing switches' `ip address dhcp`), so s5 overrides it.
+- **`host-net-lab89.sh` (H5, and H6 and H7 next) gets its lease with `udhcpc -n -q`,** which quits
+  once it has a lease and never renews.
+- **R8 already runs configless,** and keeps doing so: the first pass reloads it after its Add
+  device, as Lab 8 did R6.
+
+**The lab repository's changes, prepared and dry-run on the lab host (nothing written):**
+- **Option (b)**, as prepared on 2026-10-21 (HOST_TUNING.md Phase 3 section 4):
+  `lab/phase3/c8000v-launch-startup-only.diff` and `lab/phase3/option-b-labfile.diff`. R6 and R7
+  boot from their goldens, with no stages.
+- **`lab/lab9/patch-lab9.py`** (anchored, refuses a file that differs, the lab file re-parsed as
+  YAML). Its diff was read on the lab host:
+  1. the routers' and hosts' CPU set goes from 0-19 to 0-18 (D6);
+  2. R8's `wait-for` stage goes (C1475), leaving the file with no stage;
+  3. s5 becomes configless on CPU 19 under `patches/vios-launch-configless.py`, with
+     `CLAB_MGMT_PASSTHROUGH: "true"`;
+  4. H6 and H7 are added (management addresses .36 and .37);
+  5. the three links: R8 Gi3 to s5 Gi0 (CLI Gi0/1); s5 Gi1 and Gi2 to H6 and H7;
+  6. `host-net-lab89.sh` starts a client that stays (`udhcpc -b -t 0 -T 3 -A 5`) once the first
+     lease is in, so leases renew.
+- **`lab/pinning/pinning.conf`:** `SWITCHES` gains `s5:19`, `SWITCH_SET=19-23`,
+  `OTHERS_SET=0-18`, and `OTHERS` gains h6 and h7.
+
+**The window and its bound.**
+- The window covers the ten devices Mercury holds: r1 to r4, r6, r7 and s1 to s4 (r5 is
+  unmapped; r8 and s5 are not onboarded).
+- The measured redeploy was 23.8 min for nine nodes (lab/REDEPLOY.md). Thirteen network nodes
+  boot this time, all at once (no stages), so about 35 min is expected. The window is **90 min**,
+  about 2.5 times that; the time it actually takes is recorded here.
+- **Start condition:** 08:30 UTC is more than 105 min away (90 plus the 15-minute slack), or it
+  is after 09:10 UTC. The measured hour (step E) also stays outside 08:30 to 09:10.
+
+### The run sheet
+
+**A. Mercury and the NMAS host, before anything restarts**
+
+| # | Who | Step | PASS |
+|---|---|---|---|
+| A1 | agent | The bootstrap fix deployed: `nmas-deploy --wait` on `<nmas-host>` once the steps 1 and 2 commit's CI is green | it names CI's pass and the commit; Settings › About shows that sha |
+| A2 | operator | The startup sync's map, `<home>/python/Agentic_NMAS/data/lab_targets/Default.tsv` on `<nmas-host>`: r6's line becomes `r6 labs/lab/configs default <user>@<lab-host> cisco_iosxe`; add the same line for r7; add `# DECLARED-UNMAPPED r8 default configless until its ZTP in Lab 9` and the same for s5 | the agent reads it back: r6 and r7 under `labs/lab/configs default`, r8 and s5 declared |
+| A3 | operator (DECISION) | **Save All** (Devices › Actions › Save All), with nothing else running. A single failure: that device's Save alone, once, then Save All again (C1520) | "10 of 10 saved", and a new `baseline/<ts>` holding r6 and r7 |
+| A4 | agent | The startup sync that baseline starts: the lab repository's newest commit, and `configs/r6.cfg` and `configs/r7.cfg` present (if the sync ran before A2, `sudo systemctl start clab-sync.service` on `<nmas-host>` once) | a `startup from baseline/<ts>` commit naming r6 and r7; both files present, owner-only (C1453) |
+| A5 | operator | The break-glass export (Credentials › break-glass export), kept offline | the file saved; Needs attention has no "break-glass record is out of date" row |
+
+**B. The lab repository on `<lab-host>`**
+
+| # | Who | Step | PASS |
+|---|---|---|---|
+| B1 | agent | The vIOS configless launcher: `docker exec clab-rcn-lab1-s1 cat /launch.py > ~/labs/lab/patches/vios-launch-configless.py`, then `python3 patch-vios-configless.py ~/labs/lab/patches/vios-launch-configless.py --write` (the patcher copied from the deployed checkout) | the copy's sha256 before the patch is `794788bc…`; "written:"; `python3 -m py_compile` passes |
+| B2 | operator | Option (b): `git apply --check`, then `git apply`, for `c8000v-launch-startup-only.diff` and then `option-b-labfile.diff` (copied from the deployed checkout's `lab/phase3/`) | each `--check` silent with exit 0; `grep -c NMAS_STARTUP_ONLY rcn-lab1.clab.yml` reads 2 |
+| B3 | agent | Lab 9's change: `python3 patch-lab9.py ~/labs/lab`, read the diff, then `--write` | the diff matches the dry run above; "written:" for both files |
+| B4 | operator | One lab-repository commit: `git add rcn-lab1.clab.yml configs/host-net-lab89.sh patches/c8000v-launch.py patches/vios-launch-configless.py && git commit -m "lab: Lab 9 - s5, h6, h7 and their links; r6 and r7 from their goldens (option b); CPU sets 0-18 and 19-23; no stages; renewing DHCP"` | `git status --short` lists none of the four |
+
+**C. The redeploy (only when the start condition holds)**
+
+| # | Who | Step | PASS |
+|---|---|---|---|
+| C1 | agent | The window, on `<nmas-host>` as `<user>`: `nmas-planned-restart Default r1 r2 r3 r4 r6 r7 s1 s2 s3 s4 --minutes 90 --new-host-keys --why "lab redeploy: Lab 9 - s5, h6, h7; r6 and r7 from their goldens" --by <operator>` | exit 0 and its three lines ("recorded: …", "window recorded <recorded_at> …", "expecting new SSH host keys …"); `<recorded_at>` kept |
+| C2 | agent | At once, on `<lab-host>`: `cd ~/labs/lab && containerlab deploy -t rcn-lab1.clab.yml --reconfigure`. Never `restart` or `start` a node (C1372). A capture runs in s5's own namespace from its creation (UDP 67 and 68, on Gi0 and on eth0) | exit 0; 21 `clab-rcn-lab1-*` containers Up (r1 to r8, s1 to s5, h1 to h7, web) |
+| C3 | agent (sudo) | The pinning: `sudo bash install.sh` from a copy of `lab/pinning` (its `pinning.conf` as above) | "PINNING HOLDS": s5's qemu and kvm-pit thread on 19, the other switches on 20 to 23, every router and host on 0-18 |
+
+If the attempt stops before C2 runs, end the window at once (lab/REDEPLOY.md): `nmas-planned-restart Default --end <recorded_at> --why "<what stopped it>" --by <operator>`.
+
+**D. Within the window**
+
+| # | Who | Step | PASS |
+|---|---|---|---|
+| D1 | agent | The ten devices answer (the Devices page, read through Mercury); the time from C2 recorded | all ten answering; the redeploy's duration written here |
+| D2 | operator | Settings › Installation › Diagnostics › Drift checks › **Check now** for Default | History (`/v2/history?kind=hostkeys`): one "SSH host key kept under a planned window" row per device |
+| D3 | operator | Needs attention: the one "10 new host keys accepted during …" row, reviewed in History, then **Acknowledge** | no "restarted unexpectedly" or "different SSH host key" row for the ten |
+| D4 | agent | R6 and R7 at their goldens (drift clean); OSPF and RIP neighbours as before the redeploy (Show commands, read-only); H5 holds 10.70.10.x and runs a renewing `udhcpc` (`docker exec clab-rcn-lab1-h5 ps`) | drift clean for both; neighbour counts unchanged; H5's lease and its renewing client present |
+| D5 | agent | s5: its container log's `CONFIGLESS:` lines and the console at the setup dialog (P-S1's first half); its DISCOVER in C2's capture, its client hardware address and client id recorded (P-S2's first half, and **the MAC Add device must use**: VLAN 1's SVI may send from the switch's base MAC, not the pinned port's); R8 Up and configless; H6 and H7 logging "still no IPv4 lease", as expected until R8 and s5 are built | each recorded here |
+
+**E. The measured hour (D6's go or no-go, and the baseline)**
+- One hour after D1, read with the tuning's checks (HOST_TUNING.md's closing hour): OSPF
+  dead-timer drops, failed SNMP scrapes, gauge steps, and each switch's clock rate from its
+  heartbeats.
+- **s5's clock cannot be read before it is onboarded** (its heartbeat starts with Verify's
+  profile). For s5 the hour reads CPU 19's use and steal, and its clock rate is read after the
+  first pass.
+- **Go** if the hour is no worse than the tuning's confirmation hour (0 OSPF drops, 0 failed
+  scrapes); **no-go** otherwise, with the numbers, before the first pass.
+- NUMA (Phase 3's binding) stays deferred unless the first pass is unreliable (D6).
 
 ## 5. Mercury prep for R8 (on Lab 8's path)
 
