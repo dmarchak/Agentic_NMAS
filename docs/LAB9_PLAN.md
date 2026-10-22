@@ -295,6 +295,33 @@ If the attempt stops before C2 runs, end the window at once (lab/REDEPLOY.md): `
   and CI on GitHub. From 06:32 to 07:30 (Proxmox's per-minute history): the host 50 to 56% busy,
   the lab VM 80 to 85% of its vCPUs, NMAS 23 to 34% (peak 58%); steal inside the lab VM 0.02 to
   0.07% on every CPU. The go/no-go reads the same history for E's hour.
+- **RESULT: NO-GO by D6's criterion (read 08:28 to 08:40 UTC).** 07:25:02 to 08:25:02, the
+  stall script: 56 of 241 gauge steps below 10 (minimum 1), **158 failed scrapes, 3 OSPF
+  dead-timer drops** (r1 to s4 at 07:40:44, r1 to s3 at 08:12:25 and 08:13:58), 5 missed-ping
+  events (s1 three, r7 two), 0 SSH auth timeouts, s3 Gi1/1 discards in 61 of 61 minutes (max
+  20.9/s), s3 heartbeat gaps 592 to 668 s (median 665). The bar was 0 drops and 0 failed scrapes.
+  - **The sampler (61 minutes):** the routers' CPUs 0 to 18 at 74.7% on average (worst minute
+    82.4%; every one of them at 99% or more in some minute); s5's CPU 19 at 64.7% (max 69.5%;
+    its qemu 59.1% of one CPU), flat throughout, so s5 is not in the stalls; s3's CPU 22 at
+    95.9% (max 99.4%); CPUs 20, 21, 23 at 73.8, 88.1, 85.4%; steal 0.029% on average, 0.25% at
+    most. The 07:40 drop fell in s3's 98.7 to 99.2% minutes; the 08:12 and 08:13 drops in its 96
+    to 98.6% minutes.
+  - **Proxmox:** the R630 53.9% busy (max 64.6%), the lab VM 83%, NMAS 27.6% (max 42.8%). The
+    confirmation hour (10-21 20:11 to 21:11): the R630 53.2%, the lab VM 81.6%. The host was
+    no busier, so host contention does not explain it.
+  - **Mercury's polling was the same** in E (65 rip-reader and 20 drift-check sessions) as in
+    the confirmation hour (66 and 20).
+  - **The control (the same script, this morning, before the redeploy):** 02:00 to 03:00 and
+    03:30 to 04:30 read 0 gauge steps, 0 failed scrapes, 0 and 1 drops, s3 heartbeat median 546
+    and 555 s, discards max 1.4 and 2.6/s; s3's CPU 22 about 94% busy (sysstat). **So the
+    regression came with the Lab 9 redeploy**, not with the time of day or Mercury.
+  - **Where it points (C1547):** Prometheus's interface rates, 04:20 against 08:20: s3 Vlan100
+    in 79 to 104 pps, Gi1/1 out 79 to 94 pps, its discards 1.7 to 10.9/s, r1 Gi2 out 5 to 18 pps.
+    A 30-second header-only capture inside s3's container: the bulk of s3's traffic is TCP from
+    r1 to r4 and r6, r7 to the NMAS host's telemetry collector (port 57000, gRPC dial-out),
+    about 10 to 20 packets a second each way per router, which s3 (a vIOS-L2) routes in
+    software. Whether r6's and r7's streams are new since the redeploy (two streams would match
+    the rise) is not yet measured.
 - **The 16 drops before E:** 12 r1 to s3, 3 r1 to s4, 1 OSPFv3 r1 to r2's router ID, all on r1's
   Gi2. sysstat's 10-minute busy: s3's CPU 22 at 94 to 98% (94 to 95% before the redeploy), the
   routers' CPUs 0 to 18 at 73 to 82% on average (70 to 75% before, on 0 to 19; r8 takes 1.7 CPUs),
@@ -390,7 +417,7 @@ by the blocks its golden holds (`vty 0`, `vty 1` with `length 0`, `vty 2 4`) and
 
 | # | When | Who | Step | PASS |
 |---|---|---|---|---|
-| R1 | after E, no device touched | agent | `reseed_prepare.py r6 r7` on `<nmas-host>` | for each: the text diff touches only `lines:`; "no_shutdown declared … KEPT" (r7's list includes GigabitEthernet3); the preview ok; `vs_device` written here |
+| R1 | after E, no device touched | agent | `reseed_prepare.py r6 r7` on `<nmas-host>` | for each: the text diff touches only `lines:`; "no_shutdown declared … KEPT" (r7's list includes GigabitEthernet3); the editor's validation ok. **PASS 08:3x UTC:** r6 (base blob `4184fd3c19c2`) and r7 (`82842bf2c7b8`): each diff only `exec-timeout 0 0` to `15 0` on `con 0` and `vty 0 4` split into `vty 0`, `vty 1` (with `length 0`), `vty 2 4`; `no_shutdown` before and after `['GigabitEthernet3']`, KEPT; validation ok. (The script no longer calls the editor's preview: it read the saved configuration, which the config-read hook refuses; the two diffs against the device are the editor's, at R2.) |
 | R2 | after R1 | operator (DECISION) | each device's Intent editor: paste the printed `lines:` block over the old one, review the editor's two diffs against R1's, commit | the editor's diff shows only the vty split and the console timeout; every `no_shutdown` kept; one commit per device |
 | R3 | after O9's deploy, before the recording | operator (DECISION) | r7: Plan a deploy, confirm, apply | the program as R1's `vs_device` predicted (written from the actual preview after R2); verify reads back every line; the receipt clean (`checks.ok` true, saved); Needs attention has no r7 deploy row (C1542 clears by its rule: the device's newest receipt succeeds) |
 | R4 | with R3 | operator (DECISION) | r6: the same | as R3, without the C1542 row |

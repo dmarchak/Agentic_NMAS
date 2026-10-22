@@ -4,14 +4,14 @@
 from its checkout, in Mercury's interpreter: `PYTHONPATH=. python lab/lab9/reseed_prepare.py r6 r7`.
 
 For each device: the committed host_vars text (intent_edit.open_doc, the editor's own read); the
-top-level `lines:` block replaced, as text, by the blocks the device's golden holds (vty split as
-`vty 0`, `vty 1` with `length 0`, `vty 2 4`) and `exec-timeout 15 0` on `con 0`; every other
-byte kept. Seed intent cannot do this: it is offered only for absent or bootstrap-only intent,
-and it parses the golden, which never prints `no shutdown`, so it would drop each
-`no_shutdown: true`. Printed: the text diff (masked), the interfaces declaring no_shutdown before
-and after (must be equal), the editor's own preview (`vs_intent`: what the edit changes;
-`vs_device`: what a deploy would send), and the new `lines:` block to paste in the Intent
-editor."""
+top-level `lines:` block replaced, as text, by the blocks the device holds (read masked
+beforehand: vty split as `vty 0`, `vty 1` with `length 0`, `vty 2 4`) and `exec-timeout 15 0`
+on `con 0`; every other byte kept. Seed intent cannot do this: it is offered only for absent or
+bootstrap-only intent, and it parses the device's saved configuration, which never prints
+`no shutdown`, so it would drop each `no_shutdown: true`. It reads INTENT only. Printed: the
+text diff (masked), the interfaces declaring no_shutdown before and after (must be equal), and
+the new `lines:` block to paste in the Intent editor, whose own two diffs (what the edit
+changes, and what a deploy would send) the operator reviews there (R2)."""
 
 import difflib
 import sys
@@ -88,12 +88,8 @@ def main(hosts: list) -> int:
         before, after = no_shutdowns(old), no_shutdowns(new)
         print(f"no_shutdown declared: before {before}; after {after}; "
               f"{'KEPT' if before == after else 'CHANGED'}")
-        pv = intent_edit.preview(LIST, host, new)
-        print("preview ok:", pv.get("ok"), pv.get("error") or "")
-        for key in ("vs_intent", "vs_device"):
-            print(f"--- {key}:")
-            print(redact_text(str(pv.get(key)))[:2500])
-        print("unmodelled:", pv.get("unmodelled"))
+        checked = intent_edit.validate(host, new, LIST)
+        print("the editor's validation:", "ok" if checked.get("ok") else checked.get("error"))
     print("\n--- the `lines:` block to paste over the old one in the Intent editor:\n" + NEW_LINES)
     return 0
 
