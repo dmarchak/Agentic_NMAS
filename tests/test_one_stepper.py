@@ -341,6 +341,19 @@ class TestTheModel:
         assert [s["state"] for s in RS.finished(steps, "done")] == ["done"] * 3
         assert [s["state"] for s in RS.finished(steps, "partial")] == ["done", "done", "partial"]
 
+    def test_a_partial_row_marks_the_step_that_did_not_pass(self):
+        """C1541: a deploy whose verify did not pass draws its Verify step partial, never done
+        beside it; a key the row lacks falls back to the last step."""
+        from modules import run_stepper as RS
+        steps = [RS.step("a", "A", "done"), RS.step("verify", "Verify", "done"),
+                 RS.step("c", "C", "running")]
+        assert [s["state"] for s in RS.finished(steps, "partial", partial_at="verify")] == \
+            ["done", "partial", "done"]
+        assert [s["state"] for s in RS.finished(steps, "partial", partial_at="nothing")] == \
+            ["done", "done", "partial"]
+        assert [s["state"] for s in RS.finished(steps, "done", partial_at="verify")] == \
+            ["done"] * 3
+
     def test_a_wrong_state_or_group_is_refused_by_name(self):
         from modules import run_stepper as RS
         with pytest.raises(ValueError, match="not 'sent'"):

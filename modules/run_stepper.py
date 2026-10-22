@@ -84,12 +84,15 @@ def row(name: str, group: str, steps: list = None, *, device: bool = True, href:
             "elapsed_words": elapsed_words, "since": since}
 
 
-def finished(steps: list, outcome: str) -> list:
+def finished(steps: list, outcome: str, partial_at: str = "") -> list:
     """*steps* as a finished row draws them: all done for a good outcome; for a failed one, the
-    step it stopped in failed and the rest not reached."""
+    step it stopped in failed and the rest not reached. A partial one marks its last step
+    partial, or the step keyed *partial_at* when the row has one: the step that did not pass
+    (a deploy's verify, C1541), never drawn done beside it."""
     if outcome in ("done", "partial"):
-        last = len(steps) - 1
-        return [dict(s, state=("partial" if outcome == "partial" and i == last else "done"))
+        at = next((i for i, s in enumerate(steps) if partial_at and s.get("key") == partial_at),
+                  len(steps) - 1)
+        return [dict(s, state=("partial" if outcome == "partial" and i == at else "done"))
                 for i, s in enumerate(steps)]
     out, stopped = [], False
     for s in steps:

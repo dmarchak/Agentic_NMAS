@@ -36,8 +36,13 @@ Retaken 2026-10-13 for C741's fix (`test_stepper` at 1440, 1280 and 390): the co
 step's note says what it waits on with no "(last done: ...)" of its own name; a finished part
 of a step noted as it ends is said in words ("last done: original session"). Nothing the macro
 lays out moved; every region's verdict stands.
+Compared again 2026-10-22 (C1541): the model's `finished` takes `partial_at`, the key of the
+step that did not pass, so a deploy whose verify did not pass draws its Verify step partial and
+every other step done (it drew the last step partial and Verify done). The step's partial state
+and its class are the macro's own; nothing the macro lays out moved, so no region's verdict
+changed. Read from the diff, not a new shot.
 Templates compared: templates/v2/_run_stepper.html, modules/run_stepper.py, static/js/nmas_stepper.js
-Templates sha256: `23207f334328ebbd276e902e3118741cbcd97b29d3cbe61785c2523b7604f9d1`
+Templates sha256: `bc4d5c151958b8b07d58d4156584fe63df8a8c5bbf78893e7ab805eab92acd4d`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).

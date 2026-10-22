@@ -85,6 +85,11 @@ ROW_KINDS = {
     ("deploys", "unmet"): ("a deploy landed, and a protocol its intent declares was not up "
                            "after it (often a peer not built yet)",
                            "build or check the peer; read the receipt if the peer exists"),
+    # C1542: sent whole, accepted and saved, with only lines verify could not read back.
+    ("deploys", "read_back"): ("a deploy landed and was saved, and verify could not read back "
+                               "some of the lines it sent",
+                               "read those lines in the device's golden: acknowledge a line "
+                               "the device prints in another form, plan again for one absent"),
     ("baseline", "denied"): ("the last baseline was not earned", "resolve each departure, then Save All"),
     ("baseline", "unusable"): ("no stored baseline can be re-applied", "take a current baseline"),
     ("authorisations", "repeated"): ("one line is authorised again and again",
@@ -216,6 +221,10 @@ CLEARS = {
     ("deploys", "unmet"): (("resolves",), "the adjacency reader, reading after the deploy, sees "
                            "each protocol it names up on the device, or a later deploy or "
                            "restore to it finishes clean"),
+    ("deploys", "read_back"): (("resolves", "acknowledge"), "a later deploy or restore to the "
+                               "device finishes clean, or a person acknowledges this deploy "
+                               "with a reason (a line the device prints in another form); a "
+                               "later deploy that misses a line raises it again"),
     ("baseline", "denied"): (("resolves",), "a later save earns a baseline"),
     ("baseline", "unusable"): (("resolves",), "a stored baseline can be re-applied: a new one "
                                "is earned"),
@@ -308,7 +317,10 @@ ACKNOWLEDGED_HERE = frozenset({("restarts", "unplanned"), ("authorisations", "re
                                # A window's new host keys, once it has closed (C906).
                                ("host_key_windows", "window"),
                                # Within its measured band of daily drops (C589, C433's shape).
-                               ("adjacency_log", "flap")})
+                               ("adjacency_log", "flap"),
+                               # One deploy's lines verify could not read back, the device
+                               # printing them in another form (C1542): that deploy only.
+                               ("deploys", "read_back")})
 
 #: Words that say there is nothing to do: an action is a thing a person does.
 NOT_AN_ACTION = ("nothing to do", "it is information", "is what is known",
@@ -1086,7 +1098,8 @@ def deploy_source(read=None, saves=None, adjacency=None) -> dict:
     page, and a save read back SAFE after the receipt clears it; any other fault reads its
     receipt and plans again, offering Persist too when the change is also unsaved."""
     from modules.nsot import receipts
-    from modules.preview_confirm import OUTCOME_WORDS, SAVED_STARTUP_WORDS, result_level
+    from modules.preview_confirm import (OUTCOME_WORDS, SAVED_STARTUP_WORDS, read_back_missed,
+                                         result_level)
 
     started = time.time()
     try:
@@ -1147,7 +1160,48 @@ def deploy_source(read=None, saves=None, adjacency=None) -> dict:
         unmet = [str(p) for p in checks.get("intent_unmet") or []]
         unread = [str(p) for p in checks.get("unreadable") or []]
         protos = _unmet_protocols(unmet)
+        # C1542: the read-back's misses, masked, unless an issue already says them (Coverage's
+        # combined deploy puts them in its issues and rolls back over them).
+        missed = ("" if any("did not read back" in i for i in issues)
+                  else read_back_missed(checks))
+        landed = (outcome == "deployed" and not issues and not unread
+                  and not rb.get("performed") and not r.get("stage")
+                  and r.get("matches_confirmed") is not False and not receipts.is_pending(r)
+                  and not unsaved_words)
+        if landed and missed and not unmet:
+            # C1542: sent whole (the push raised nothing and the program sent is the one
+            # confirmed) and saved to startup, its golden then recorded from what the device
+            # runs after it (`save_golden` runs when verify did not fail); its one fault is
+            # lines verify could not find in the configuration it read back. A WARNING, not
+            # danger: danger is for a device that may be part-changed in a way nothing
+            # recorded (a push that stopped part-way, a rollback that did not restore). Here
+            # every line was accepted, and the question left is only whether the device
+            # prints those lines in another form (a router printing `line vty 0 4` as
+            # `line vty 0`, `1`, `2 4`: C1541) or lacks them, which the person reads in the
+            # golden. The result card draws the same deploy amber (`result_level`'s partial),
+            # so the two screens agree.
+            n = len(((checks.get("read_back") or {}).get("missing")) or [])
+            rows.append(row(
+                source="deploys", kind="read_back", key=f"{lst}:{host}", level="warning",
+                what=(f"The last {receipts.noun(r)} to {host} landed; verify could not read "
+                      f"back {n} line(s)"),
+                cause=(missed + ". The push raised nothing, the program sent matches the one "
+                       "confirmed, and it was saved to startup"),
+                action={"label": (f"Read those lines in {host}'s golden on its History tab: "
+                                  "if the device prints them in another form, acknowledge "
+                                  "this deploy with that reason; if they are absent, plan "
+                                  "the deploy again"),
+                        "href": f"/v2/device/{host}?tab=history"},
+                devices=[host], since=_ts(r.get("at")),
+                # This deploy, never a later one: a later deploy that misses again is a new
+                # row to acknowledge (acknowledgements.py).
+                event=str(r.get("completed_at") or r.get("at") or ""),
+                operands={"list": lst, "action": r.get("action"), "outcome": outcome,
+                          "sent_lines": r.get("program_lines") or 0,
+                          "not_read_back": n, "by": r.get("actor")}))
+            continue
         if (outcome == "deployed" and protos and len(protos) == len(unmet) and not issues
+                and not missed
                 and not unread and not rb.get("performed") and not r.get("stage")
                 and r.get("matches_confirmed") is not False and not receipts.is_pending(r)
                 and not unsaved_words):
@@ -1185,6 +1239,8 @@ def deploy_source(read=None, saves=None, adjacency=None) -> dict:
             f"declared by intent and not up after: {', '.join(unmet)}" if unmet else "",
             f"could not be read reliably after the change: {'; '.join(unread)}"
             if unread else "",
+            # C1542: a read-back miss is said, never dropped to "no reason".
+            missed,
             f"rollback: {rb.get('state')}" if rb.get("performed") else "",
             "the program sent does NOT match the one confirmed"
             if r.get("matches_confirmed") is False else "",
@@ -1198,6 +1254,9 @@ def deploy_source(read=None, saves=None, adjacency=None) -> dict:
         words = OUTCOME_WORDS.get(outcome, outcome.replace('_', ' ') or 'no outcome')
         if receipts.is_pending(r):
             words = ("sent" if outcome == "deployed" else words) + ", " + receipts.PENDING_WORDS
+        elif outcome == "deployed" and checks.get("ran") and checks.get("ok") is not True:
+            # The words follow what failed (C1542): it landed, and its verify did not pass.
+            words += ", and its verify did not pass"
         # The receipt is read on the device page's History tab (v2 has no Changes tab).
         read_it = "Read its receipt on the device's History tab, then plan again"
         rows.append(row(
@@ -3858,7 +3917,7 @@ def _without_acknowledged(rows: list):
 _ACK_SOURCES = {"restarts": "restart_source", "authorisations": "authorisation_source",
                 "operations": "interrupted_source", "grafana": "grafana_source",
                 "host_key_windows": "host_key_window_source",
-                "adjacency_log": "adjacency_log_source"}
+                "adjacency_log": "adjacency_log_source", "deploys": "deploy_source"}
 
 
 def acknowledge(row_id: str, event: str, why: str, *, by: str, verified: str) -> dict:

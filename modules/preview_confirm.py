@@ -925,11 +925,28 @@ def saved_startup_words(saved) -> dict:
     return {"state": saved.get("state", ""), "words": words + (f": {detail}" if detail else "")}
 
 
+def _saved_after(row: dict) -> dict:
+    """A receipt row's save, in words. "Saved to startup after verify" reads as a verify that
+    passed; a verify that did not pass without failing (a read-back miss, a protocol unmet, a
+    read not trusted) rolls nothing back and still saves (C1541), so it says that instead."""
+    saved = saved_startup_words(row.get("saved_startup"))
+    checks = row.get("checks") or {}
+    if saved["state"] == "saved" and checks.get("ran") and checks.get("ok") is not True:
+        detail = (row.get("saved_startup") or {}).get("detail") or ""
+        saved = dict(saved, words="Saved to startup, although verify did not pass: nothing "
+                                  "it found rolls the change back" + (f": {detail}" if detail
+                                                                       else ""))
+    return saved
+
+
 def verify_words(checks: dict) -> list:
     """What verify read, in words, from a receipt's checks (C1270): its scope (quick or full,
     and why), how many new lines it looked for and read back, each line not read back, and each
     it did not look for and why. Today's renderer drew these; v2's deploy cards draw them from
-    here. ``[]`` when verify did not run or recorded neither."""
+    here. ``[]`` when verify did not run or recorded neither. Each line not read back is
+    masked, as the verdict names it (C1541)."""
+    from modules.redact import redact_text
+
     checks = checks or {}
     out = []
     vs = checks.get("verify_scope") or {}
@@ -942,10 +959,65 @@ def verify_words(checks: dict) -> list:
         if looked is not None:
             out.append(f"{looked} new line(s) looked for, {max(looked - len(missing), 0)} "
                        "read back")
-        out += [f"Not read back: {line}" for line in missing]
+        out += [f"Not read back: {redact_text(str(line))}" for line in missing]
+        # A line skipped for its secret position is masked by the read-back itself
+        # (`verify_scope.read_back`).
         out += [f"Not looked for: {s.get('line', '')} ({s.get('why', 'no reason recorded')})"
                 for s in rb.get("skipped") or [] if isinstance(s, dict)]
     return out
+
+
+#: How many missed lines a sentence names before "…" (the pipeline's own issue says five).
+READ_BACK_NAMED = 5
+
+
+def read_back_missed(checks: dict) -> str:
+    """The read-back's misses as one sentence, each line MASKED as every other drawn line is:
+    "3 sent line(s) did not read back: a; b; c", the first `READ_BACK_NAMED` named and "…"
+    after them; "" when nothing was missed or the read-back did not run (C1541, C1542)."""
+    from modules.redact import redact_text
+
+    rb = (checks or {}).get("read_back")
+    missing = [redact_text(str(m)) for m in (rb.get("missing") or [])] \
+        if isinstance(rb, dict) else []
+    if not missing:
+        return ""
+    return (f"{len(missing)} sent line(s) did not read back: "
+            + "; ".join(missing[:READ_BACK_NAMED])
+            + (" …" if len(missing) > READ_BACK_NAMED else ""))
+
+
+def verify_verdict(checks: dict) -> dict:
+    """THE verify verdict a result draws, from the receipt's own decision, ``checks.ok`` (C1541:
+    a card read "passed" while the receipt recorded ``ok`` false, because a read-back miss sets
+    ``ok`` false and reaches ``issues`` only on Coverage's combined deploy). One decision, the one
+    `result_level` takes: passed only when ``ok`` is True.
+
+    ``{"ran", "ok", "words", "causes", "lines"}``: *words* "Verify passed" or "Verify did NOT
+    pass"; *causes* each finding, masked: the issues, each protocol intent declares and not up,
+    each read that could not be trusted, and the read-back's misses unless an issue already says
+    them; a verify that did not pass and recorded no cause says that, never nothing. *lines* is
+    the verdict as a card's lines: one line when there is one cause. ``ran`` False (verify did not
+    run): no verdict, ``words`` empty."""
+    from modules.redact import redact_text
+
+    checks = checks or {}
+    if not checks.get("ran"):
+        return {"ran": False, "ok": False, "words": "", "causes": [], "lines": []}
+    if checks.get("ok") is True:
+        return {"ran": True, "ok": True, "words": "Verify passed", "causes": [],
+                "lines": ["Verify passed"]}
+    issues = [redact_text(str(i)) for i in checks.get("issues") or []]
+    causes = issues + [redact_text(str(u)) for u in checks.get("intent_unmet") or []] \
+        + [redact_text(str(u)) for u in checks.get("unreadable") or []]
+    missed = read_back_missed(checks)
+    if missed and not any("did not read back" in i for i in issues):
+        causes.append(missed)
+    if not causes:
+        causes = ["its receipt records no cause for it"]
+    words = "Verify did NOT pass"
+    lines = [f"{words}: {causes[0]}"] if len(causes) == 1 else [f"{words}:"] + causes
+    return {"ran": True, "ok": False, "words": words, "causes": causes, "lines": lines}
 
 
 def operation_result(rows: list, report: dict, receipt_status: dict, action: str) -> dict:
@@ -991,7 +1063,7 @@ def operation_result(rows: list, report: dict, receipt_status: dict, action: str
             "checks": r.get("checks") or {"ran": False, "why": "no check was recorded"},
             "verify_words": verify_words(r.get("checks")),
             "rollback": r.get("rollback") or {},
-            "saved": saved_startup_words(r.get("saved_startup")),
+            "saved": _saved_after(r),
         })
         if (r.get("saved_startup") or {}).get("state") == "not_saved":
             did_not.append({"target": name, "kind": "not_saved",

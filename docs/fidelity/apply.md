@@ -37,8 +37,18 @@ the 1 rolled back"); the built one covers every device not deployed, not only a 
 so it is a deviation (below). Every other region unchanged: one paragraph added to
 `_apply_job.html` and the `how` macro imported, read from the diff and drawn by
 `tests/test_profile_apply_v2.py`'s retry test, not a new shot.
+Compared again 2026-10-22 (C1541): the result's per-device verify line is the receipt's own
+decision, `checks.ok`, through `preview_confirm.verify_verdict` (the `verify_verdict` filter):
+"Verify passed" only when it is true, else "Verify did NOT pass" in the refused style with each
+cause beneath it, masked, the read-back's misses among them ("3 sent line(s) did not read back:
+…") where no issue already says them. It read `c.ok` before, and listed issues, unmet protocols
+and unreadable reads, never a read-back miss outside Coverage's combined deploy. The same
+region, the same words when verify passed; the stepper's Verify step drawn partial when verify
+did not pass is data (`run_stepper.finished`'s `partial_at`), not this template. Every other
+region unchanged: the verify line and its causes' loop in `_apply_job.html`, read from the diff
+and drawn by `tests/test_verify_verdict_follows_receipt.py`, not a new shot.
 Templates compared: templates/v2/apply.html, templates/v2/_apply_preview.html, templates/v2/_apply_job.html
-Templates sha256: `14596a1c1126e2272e9963024de1c7bd0da098ea244a92934fd7d59c038ca362`
+Templates sha256: `079a9e82b4e4f38c476d7f85d8ea672bf255fc4b09f69b8f08981ce13716c4d1`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).

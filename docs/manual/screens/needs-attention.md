@@ -51,7 +51,11 @@ baselines, the remote's publication, unplanned device restarts (a crash file sav
 reader that finishes announces it, and the page redraws in place.
 
 The other rows, each with its own cause and action: deploys that failed or were verified and
-not saved to startup; operations interrupted while they held a device (the process ended
+not saved to startup; a deploy that landed and was saved while verify could not read back some
+of the lines it sent, a warning naming the lines (read them in the device's golden on its
+History tab: acknowledge the row with that reason when the device prints them in another
+form, or plan the deploy again when they are absent; a later deploy that misses a line raises
+it again); operations interrupted while they held a device (the process ended
 mid-run); a device's SSH host key that changed (**Re-key…** on its page), and the new keys a
 planned window kept; the records database's stores that do not match or do not answer; the
 scheduled rotation's timer, stopped on a failure; templates behind the shipped version in a
@@ -177,7 +181,8 @@ Every row says, under its cause, how it leaves the page: "Clears when …". Ther
   row's action is how you make that happen; the row leaves at the source's next read.
 - **A person acknowledges it.** For an event that cannot un-happen: an unplanned restart, the
   same line authorised again and again, an operation interrupted while it held a device, the
-  new host keys a planned window kept; and, within a measured band, a chronic alert and an
+  new host keys a planned window kept, a deploy whose verify could not read back lines the
+  device prints in another form; and, within a measured band, a chronic alert and an
   adjacency a device keeps logging down. See below.
 - **Time.** An unplanned restart stays for 7 days if nobody acknowledges it; a pending
   approval expires after 48 hours (expiring executes nothing); an adjacency logged down

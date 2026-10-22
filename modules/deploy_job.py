@@ -245,8 +245,11 @@ def run_card(st: dict, list_name: str, *, q: str = "") -> dict:
             if t.get("reason") and group != "done":
                 words += f": {t['reason']}"
             kept = by_name.get(name) or {}
+            # A partial here is its verify not passing (above): that step is the partial one,
+            # never drawn done beside it (C1541).
             steps = (RS.finished(steps_of({"trail": kept["trail"]}, kept.get("at")),
-                                 group if group in ("done", "partial") else "failed")
+                                 group if group in ("done", "partial") else "failed",
+                                 partial_at="verify")
                      if kept.get("trail") else [])
             rows.append(RS.row(name, group, steps, detail="" if group == "done" else words,
                                elapsed_words=_took(kept) if steps else ""))
@@ -272,7 +275,8 @@ def run_card(st: dict, list_name: str, *, q: str = "") -> dict:
             detail = words + (f": {s['reason']}" if s.get("reason") and group == "failed" else "")
             if s.get("trail"):
                 steps = RS.finished(steps_of({"trail": s["trail"]}, s.get("at")),
-                                    "failed" if group == "failed" else group)
+                                    "failed" if group == "failed" else group,
+                                    partial_at="verify")
             else:
                 steps = []
             rows.append(RS.row(name, group, steps, detail=detail,

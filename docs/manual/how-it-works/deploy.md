@@ -191,9 +191,14 @@ the run ends. Its stages, in the order the code declares them:
    them. A failure triggers a rollback. A protocol intent declares that the
    device was not running before and is still not up, a read that could not be trusted, or a
    new line not read back makes verify not pass, without a rollback: undoing the change cannot
-   fix those.
+   fix those. The result's verify line is the receipt's own decision: "Verify did NOT pass",
+   with each cause (a sent line not read back is named, masked: "3 sent line(s) did not read
+   back: …"), and the card's headline says the deploy was done and its verify did not pass;
+   it never reads "Verify passed" while the receipt records otherwise.
 9. `save_startup`. Read: nothing. Sent: `write memory`, on a fresh SSH session, to each device
-   whose push completed, once verify did not fail. Recorded: whether each saved. A save that
+   whose push completed, once verify did not fail. Recorded: whether each saved; the result
+   says "Saved to startup after verify" only when verify passed, and "Saved to startup,
+   although verify did not pass" when it did not without failing. A save that
    fails leaves the change running and NOT in startup (a reload would lose it): said in the
    result, never rolled back over, since the change itself passed. Needs attention keeps a
    row for it whose button opens Persist on the device's page, until a save of the device

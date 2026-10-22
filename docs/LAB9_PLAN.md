@@ -448,7 +448,12 @@ by the blocks its golden holds (`vty 0`, `vty 1` with `length 0`, `vty 2 4`) and
   coverage nightly dispatched as the BEFORE baseline, #11 (run 39744258250, 07:58Z, main at
   `9b26917b`); the AFTER run dispatched once the feature commit's CI is green, before the
   recording. The segment shows both (nightlies #8 and #9 failed; #10 passed: a failed run is
-  read before its figure is used).
+  read before its figure is used). **Read overnight:** #11 failed in its coverage harness
+  (C1549), #12 and #13 on the topology race (C1550, fixed in `9aa97c96`). So the BEFORE figure
+  is #10 (2026-10-21, green): 2,850 of 2,957 functions reached by unit tests (96.4%); branch
+  coverage per module only (the drill-down keeps no total), over the 238 modules under
+  `modules/`: unweighted mean 85.9%, median 87.6%, 191 at 80% or more. #14 dispatched on
+  `9aa97c96` (O0 to O4 in) to show the fix green.
 - **Tests that caught real defects** (each with its evidence; the segment's list):
 
   | # | What the test caught | Evidence |
@@ -460,6 +465,10 @@ by the blocks its golden holds (`vty 0`, `vty 1` with `length 0`, `vty 2 4`) and
   | 5 | A test that loaded the real vrnetlab launcher left signal handlers on for its whole worker, so a later test could read a failing child as a pass (C1551) | found by C1546's new check-script tests, which failed only when they shared a worker with it; fixed and guarded in `038c036f` |
   | 6 | The read-back's own tests had encoded the defect (C1541): they expected r3's split vty stanzas to miss all four lines | O0's fix made them wrong; corrected to the one real miss, exactly, in `038c036f` |
   | 7 | A control that passed: breaking `hold_queue_prepare`'s dash move failed no test, because the real fixture never reached that branch | a planted case added, which then failed on the break; `01691f9f` |
+  | 8 | The console session read a 7-byte chunk ending inside an output line as a `>` prompt and aborted (found building O1 against s5's REAL boot text) | the settle rule (a prompt only from the unterminated last line, once settled); `4aafd161` |
+  | 9 | Mutation survivors in O1 to O3: about 20 VERDICT survivors (the telnet cleaner's subnegotiation bounds, the aborted decision's reason, the transcript's event kinds, the wrapper's environment default…) each killed by a test naming it | `4aafd161`; the list in TESTING.md's rows for `test_console_*.py` |
+  | 10 | The console-server store's name check used `re.match` with `$`, which accepts a trailing newline (`edge-a\n`) | caught by O4's own tests; every pattern now `fullmatch`; `ade73a09` |
+  | 11 | The coverage nightly's topology test failure was a real product race: a save's answer orphaned by a map read in flight, the store and the map disagreeing silently (C1550) | an ordered-race browser test, 3 of 3 failing before the fix, 0 of 20 after; `9aa97c96` |
 
 - **The testing segment's outline (about 90 s; numbers from CI runs, filled at the recording):**
   1. *Unit testing, in overview:* the suite (13,176 test records at CI #1063; `[READ: at the

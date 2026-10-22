@@ -33,6 +33,14 @@ def one_run(steps, name, label="Progress") -> dict:
     return run_stepper.single(steps or [], name, label)
 
 
+@bp.app_template_filter("verify_verdict")
+def verify_verdict(checks) -> dict:
+    """A receipt's checks as THE verify verdict (`preview_confirm.verify_verdict`, C1541): the
+    batch card draws the receipt's own decision, the one the device card and the level take."""
+    from modules.preview_confirm import verify_verdict as verdict
+    return verdict(checks or {})
+
+
 @bp.app_template_filter("masked_parts")
 def masked_parts(text) -> list:
     """A masked line as ``[(piece, is_a_mask)]``, so each masked value is marked where the line

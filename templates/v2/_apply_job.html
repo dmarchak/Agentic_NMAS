@@ -77,8 +77,11 @@
     {%- endif %}
     {%- set c = t.checks or {} %}
     {%- if c.ran %}
-    <p>Verify {{ 'passed' if c.ok else 'did NOT pass' }}{% if c.checked_protocols %}, checking {{ c.checked_protocols | join(', ') }}{% endif %}.</p>
-    {%- for i in (c.issues or []) + (c.intent_unmet or []) + (c.unreadable or []) %}<p class="apply-refused">{{ i }}</p>{% endfor %}
+    {#- The receipt's own decision, `checks.ok`, and each cause masked (C1541:
+        preview_confirm.verify_verdict, the one the device card draws). -#}
+    {%- set v = c | verify_verdict %}
+    <p{% if not v.ok %} class="apply-refused"{% endif %}>{{ v.words }}{% if c.checked_protocols %}, checking {{ c.checked_protocols | join(', ') }}{% endif %}.</p>
+    {%- for i in v.causes %}<p class="apply-refused">{{ i }}</p>{% endfor %}
     {%- for w in t.verify_words or [] %}<p{% if w.startswith('Not read back') %} class="apply-refused"{% endif %}>{{ w }}</p>{% endfor %}
     {%- else %}
     <p class="muted">Nothing was verified: {{ c.why }}.</p>

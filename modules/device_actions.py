@@ -1058,6 +1058,13 @@ def deploy_job_card(ref, host: str, job_id: str, got) -> dict:
                       "not_attempted": "Rollback not attempted"}.get(
         rollback.get("state", ""), "Rollback state unknown")
     words = happened.get("words", outcome.replace("_", " "))
+    # C1541: the receipt's own verify decision (`checks.ok`), said first among the checks with
+    # each cause, masked: a deploy that landed and whose verify did not pass (a read-back miss,
+    # a protocol unmet, a read not trusted) never reads as "done" alone, nor as passed.
+    from modules.preview_confirm import verify_verdict
+    verdict = verify_verdict(checks)
+    if outcome == "deployed" and verdict["ran"] and not verdict["ok"]:
+        words += ", and its verify did not pass"
     # C506 phase 3: each declared move as verify found it, and verify's notes (an adjacency
     # nobody declared beside the expected ones; a declared route change), from the receipt.
     declared_lines = [
@@ -1093,6 +1100,7 @@ def deploy_job_card(ref, host: str, job_id: str, got) -> dict:
                 none=sent.get("none", ""), authorised=list(sent.get("authorised") or []),
                 checks=list(checks.get("statements") or ([checks["why"]]
                                                          if checks.get("why") else []))
+                + verdict["lines"]                           # C1541
                 + list(target.get("verify_words") or [])     # C1270
                 + declared_lines,
                 rolled_back=rolled_back, rollback_badge=rollback_badge,

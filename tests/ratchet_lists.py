@@ -178,4 +178,6 @@ NOT_RATCHETS = {
     ("tests/test_normalize_equivalence.py", "LEGACY_CONFIG_GIT"): "a legacy prefix list the test compares (fixture)",
     ("tests/test_normalize_equivalence.py", "LEGACY_PUSH"): "a legacy prefix list the test compares (fixture)",
     ("tests/test_update_when_ci_passes.py", "PENDING"): "a pending CI answer (fixture)",
+    ("tests/test_verify_verdict_follows_receipt.py", "R7_MISSING"): "a real receipt's read-back misses (fixture, C1541)",
+    ("tests/test_verify_verdict_follows_receipt.py", "R7_SKIPPED"): "a real receipt's skipped read-back lines (fixture, C1541)",
 }
