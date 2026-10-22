@@ -457,7 +457,23 @@ by the blocks its golden holds (`vty 0`, `vty 1` with `length 0`, `vty 2 4`) and
   | 2 | The publication test refusing a device's licence serial quoted in the register (C1538) | `test_nothing_personal_is_published.py::TestThePublishedFiles::test_no_term_on_the_local_denylist` refused the gate (nothing committed); the placeholder landed in `c86ca6fc`, CI #1064 green |
   | 3 | A deliberate break, showing `reseed_prepare`'s tests can fail | the block's end detection made to stop at the first nested line: `test_only_the_lines_block_changes`, `test_every_no_shutdown_is_kept`, `test_a_lines_block_last_in_the_document` failed; restored from a copy; `9b26917b`, CI #1065 |
   | 4 | Mutation survivors killed in the feature build | one line each as it happens: the mutant, its killing test, the commit |
+  | 5 | A test that loaded the real vrnetlab launcher left signal handlers on for its whole worker, so a later test could read a failing child as a pass (C1551) | found by C1546's new check-script tests, which failed only when they shared a worker with it; fixed and guarded in `038c036f` |
+  | 6 | The read-back's own tests had encoded the defect (C1541): they expected r3's split vty stanzas to miss all four lines | O0's fix made them wrong; corrected to the one real miss, exactly, in `038c036f` |
+  | 7 | A control that passed: breaking `hold_queue_prepare`'s dash move failed no test, because the real fixture never reached that branch | a planted case added, which then failed on the break; `01691f9f` |
 
+- **The testing segment's outline (about 90 s; numbers from CI runs, filled at the recording):**
+  1. *Unit testing, in overview:* the suite (13,176 test records at CI #1063; `[READ: at the
+     recording]`), four CI shards on every push, three tiers (unit, spawns a process, drives a
+     browser), and the gate that runs CI's own command before every commit.
+  2. *Code coverage:* per push, functions reached by unit tests (2,861 of 2,968, 96.4%) and lines
+     (88.4%), with a ratchet that fails CI if any module's uncovered count rises; branches in the
+     nightly. Before and after the feature (the two nightlies above).
+  3. *Mutation testing:* what it adds over coverage (does a test notice the code being wrong);
+     the feature's bar, 0 VERDICT survivors on its safety code; the 404 legacy survivors named
+     as legacy.
+  4. *Tools being used and tested, by example:* the table below, one or two rows on screen
+     (CI #1057 red, #1059 green; a deliberate break failing exactly its tests; a mutation
+     survivor and the test that killed it).
 - **Narration note:** the 404 open VERDICT survivors in 15 functions are LEGACY debt from Lab 7's
   nightly (mostly `goldens.py`'s legacy functions; `tests/mutation_debt.json`), shown as such,
   separate from the feature's bar of 0 VERDICT survivors.
@@ -554,6 +570,26 @@ C1536.
   at `Switch#` on 2026-10-22).
 - **In O3 (the kick-start's lines):** the bootstrap delivered to a console-provisioned device
   sets a finite `exec-timeout` on `line con 0` (C1544's class).
+
+**Built overnight (2026-10-22, worktree agents, gated by the agent; not deployed):**
+- **O0** (`038c036f`): verify's read-back per `line` member (C1541's first half).
+- **O2a, O1, O3** (the commit after `038c036f`): `modules/nsot/console_wrapper.py` (standard
+  library only), `console_profiles.py` with `console_profiles/cisco_ios_switch.json` and
+  `cisco_ios_router.json`, `console_session.py` (the pure state machine), `console_survey.py`
+  (blank check, the signed-in rule, the MAC, the kick-start renderer with `exec-timeout 15 0`
+  under `line con 0` always); 411 tests. **Mutation bar met:** 0 VERDICT survivors on every
+  function of the four modules (93, 333, 219, 370 mutants; 8 equivalents listed, C1552); the
+  survivors killed by new tests are on section 7's list. The router profile is tested on
+  synthetic text only (no real router capture).
+- **A design point for the operator (queued):** the survey reads ANY prompt seen at attach,
+  `>` included, as signed in ("not factory-blank as found"). The operator's rule named `#`. A
+  factory-blank switch whose "Press RETURN" banner printed before Mercury attached answers the
+  wake CR with `Switch>`, so it would always need a reload first. Recommended: `#` and config
+  prompts are signed in (as the rule says); `>` at attach is recorded in the transcript and
+  the blank check then decides on nvram. The stricter reading is merged until the operator
+  decides (it refuses more, never less).
+- **Next:** O4 (NetBox console path and the console-server store; an agent is building it), O2
+  (the two drivers), O6 (the operations), O7's offer, O8 minimal.
 
 **Testing the feature (the operator's audit, 2026-10-22 ~07:5x UTC):**
 - **O2a's wrapper lives in Mercury, not the lab repository:** one standard-library-only module,

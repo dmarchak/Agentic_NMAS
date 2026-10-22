@@ -522,4 +522,27 @@ EQUIVALENT = [
             'return (host_vars.get("secrets") or {}).get(name, )'),
            "the renderer reads the lookup with `if value:` (roundtrip.render, `_secret`), and "
            "None is as false as '': a name held nowhere falls to its own backstop either way"),
+    # ── Out-of-band ZTP, O1 to O3 (LAB9_PLAN.md section 8; the run of 2026-10-22, on demand,
+    # serial, canary killed). Every other survivor there is killed by a test naming it.
+    *_each("modules.nsot.console_profiles.check_template",
+           'if "{" in PLACEHOLDER.sub("", line) or "}" in PLACEHOLDER.sub("", line):',
+           ('if "{" in PLACEHOLDER.sub("XXXX", line) or "}" in PLACEHOLDER.sub("", line):',
+            'if "{" in PLACEHOLDER.sub("", line) or "}" in PLACEHOLDER.sub("XXXX", line):'),
+           "the placeholders are replaced only to look for a brace left over, and the stand-in "
+           "holds no brace: the same lines are refused"),
+    *_each("modules.nsot.console_profiles.canonical",
+           'return json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()',
+           ('return json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()',
+            'return json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=None).encode()',
+            'return json.dumps(data, sort_keys=True, separators=(",", ":"), ).encode()'),
+           "validate hashes only a profile it has accepted, and every string it accepts (each text "
+           "field, pattern, command and template line printable ASCII; keys known; parameter "
+           "names [a-z_]) is ASCII, so escaping non-ASCII changes no byte"),
+    *_each("modules.nsot.console_profiles.load",
+           'with open(path, encoding="utf-8") as fh:',
+           ('with open(path, encoding=None) as fh:', 'with open(path, ) as fh:',
+            'with open(path, encoding="UTF-8") as fh:'),
+           "a profile that loads is ASCII throughout (validate refuses any other character in "
+           "every string), and ASCII reads alike in UTF-8, its other spelling, and any "
+           "ASCII-compatible locale default; a non-ASCII file is refused either way"),
 ]

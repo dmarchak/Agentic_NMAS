@@ -1,0 +1,72 @@
+{
+  "name": "cisco_ios_switch",
+  "platform": "cisco_ios",
+  "version": 1,
+  "description": "Cisco IOS switch console: prompts by state, the nvram factory-blank check, and a DHCP kick-start on an access port's VLAN interface",
+  "prompts": {
+    "boot": [
+      "^\\s*Booting ",
+      "^\\s*Booted ",
+      "The highlighted entry will be executed automatically",
+      "^Cisco IOS Software",
+      "Restricted Rights Legend",
+      "bytes of non-volatile configuration memory"
+    ],
+    "setup_dialog": [
+      "Would you like to enter the initial configuration dialog\\? \\[yes/no\\]:\\s*$"
+    ],
+    "press_return": [
+      "Press RETURN to get started"
+    ],
+    "user_exec": [
+      "^\\S+>\\s*$"
+    ],
+    "priv_exec": [
+      "^\\S+#\\s*$"
+    ],
+    "config": [
+      "^\\S+\\(config[^)]*\\)#\\s*$"
+    ],
+    "login_user": [
+      "Username:\\s*$"
+    ],
+    "login_password": [
+      "Password:\\s*$"
+    ],
+    "more": [
+      "--More--"
+    ]
+  },
+  "ignore": [
+    "^\\*?[A-Z][a-z]{2}\\s+\\d{1,2}\\s+\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:\\s+[A-Z]{3,4})?:\\s*%",
+    "^%[A-Z0-9_]+-\\d-[A-Z0-9_]+:"
+  ],
+  "blank_check": {
+    "command": "dir nvram:",
+    "startup_entry": "^\\s*\\d+\\s+[-rwxd]{4}\\s+(\\d+)\\s+.*\\sstartup-config\\s*$"
+  },
+  "mac": {
+    "command": "show version",
+    "pattern": "^\\s*Base [Ee]thernet MAC [Aa]ddress\\s*:\\s*([0-9A-Fa-f]{2}(?:[:-][0-9A-Fa-f]{2}){5}|[0-9A-Fa-f]{4}\\.[0-9A-Fa-f]{4}\\.[0-9A-Fa-f]{4})\\s*$"
+  },
+  "kickstart": {
+    "params": {
+      "hostname": "hostname",
+      "interface": "interface",
+      "vlan": "vlan"
+    },
+    "lines": [
+      "configure terminal",
+      "hostname {hostname}",
+      "vlan {vlan}",
+      "interface {interface}",
+      " switchport mode access",
+      " switchport access vlan {vlan}",
+      " no shutdown",
+      "interface Vlan{vlan}",
+      " ip address dhcp",
+      " no shutdown",
+      "end"
+    ]
+  }
+}

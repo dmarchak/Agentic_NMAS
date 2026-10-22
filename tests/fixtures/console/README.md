@@ -5,6 +5,8 @@ read on 2026-10-22 and copied here unchanged apart from two replacements made wh
 read: the switch's serial number (`<serial>`) and a contact address (`<redacted>`). They are the
 console's replies in `tests/test_lab9_console_scripts.py`, which tests the two lab scripts that
 talk to a console: `lab/lab9/console-reader.py` and `lab/lab9/s5-erase-session.py` (C1545).
+They are also the real console text for out-of-band ZTP's session and survey tests
+(`tests/test_console_session.py`, `tests/test_console_survey.py`).
 
 - `s5-boot-to-release.txt`: s5's boot, from its boot loader's countdown to the hardware summary,
   from s5's container log (`docker logs`; the launcher logs the console while it holds it,
