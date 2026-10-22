@@ -144,6 +144,13 @@ systemctl show -p ActiveState,Listen nmas-ztp-responder.socket
 `BindToDevice=enp6s19` is the interface Kea listens on for the ZTP subnet
 (`interfaces-config` in `kea-dhcp4.conf`); edit it if that differs.
 
+> **NOT TRUE OF THE HOST TODAY (C1568, measured 2026-10-22):** the NMAS host's ufw admits every
+> incoming connection it does not explicitly deny (`Default: allow (incoming)`), so the rules
+> below restrict nothing: udp/69 is admitted from anywhere, and only the responder's own check
+> (a reservation it wrote) refuses a stranger. The operator's decision: default deny with
+> explicit allows, made first thing after Lab 9 is submitted. Until then, read this section as
+> the intended design, not the installed state.
+
 **The firewall rule, the second layer** (the responder's "only the reserved
 address" is the first). Only the inbound request needs it: the transfer
 leaves from a new port and the device's ACKs return on that flow, which

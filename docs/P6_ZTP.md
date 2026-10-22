@@ -488,7 +488,9 @@ What this does not measure: a helper target that answers this host and not the r
 keyed on the source), and anything else on the segment; on a /30 the segment holds the relay
 and the device only.
 
-**The firewall.** ufw admits udp/69 from the management subnet only (docs/DEPLOY_LINUX.md). The
+**The firewall.** ufw admits udp/69 from the management subnet only (docs/DEPLOY_LINUX.md;
+**not true of the host today, C1568:** its default policy admits all incoming, so these rules
+restrict nothing until the operator's default-deny change after Lab 9). The
 host step `scripts/host-steps/c1346-ztp-relayed-firewall.sh` (the operator's; not run) admits
 udp/69 on the responder's interface (its socket unit's `BindToDevice=`) from each declared
 subnet, idempotently, reads `ufw status` back, and records what it showed beside the ZTP
