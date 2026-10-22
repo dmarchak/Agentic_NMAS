@@ -613,6 +613,141 @@ until its tests are in `tests/` and green in CI (the scratchpad's cases promoted
 prompt added): s5's return to factory never reuses a console-typing script whose only test
 lives in a scratchpad.
 
+## 9. The lab's load: what it is and the fixes, ranked (overnight 2026-10-22, read-only)
+
+The operator's brief for the night: measure and prepare, change nothing on a device or host.
+Every reading below was read-only; every change is prepared for the morning queue (section 11).
+
+**What the load is (C1547):**
+- **Subscription 101 carries every process's counters.** The collector's decoded record for r1's
+  101 holds the four CPU leaves (`five_seconds`, `five_seconds_intr`, `one_minute`,
+  `five_minutes`) and the `cpu_usage_process/*` list (name, pid, run times, per process). On the
+  wire it is one ~146 KiB burst every 10 s per router, the same size on routers with 4 to 12
+  interfaces; the collector flattens the list and keeps one process per update.
+- **Only `one_minute` is read anywhere:** the device dashboard's two panels ("IOS CPU, 1-minute
+  average", "IOS CPU over time"). No Grafana alert rule (28 read), no Prometheus rule, no
+  manual page, no Mercury code reads the rest.
+- **Microbursts at s3's uplink:** two minutes at the collector, each router's 101 burst at a
+  steady phase in the 10 s period (r4 and r6 near 1.0 to 1.5 s; r2, r3, r7 near 3.3 to 4.2 s;
+  r1 drifting 5.0 to 7.8 s); up to three bursts overlapping (6 of 71 starts), the aggregate's
+  peak 434 KiB/s in 100 ms bins against an 87 KiB/s mean.
+- **s3's Gi1/1 ("NMAS via br-mgmt") has no output buffer:** `Output queue: 0/0 (size/max)`,
+  89,769 output drops since boot (about 7.8/s), 186 pps out (read through Mercury, 09:0x UTC).
+  s3's own CPU 82% (5 s), 63% (1 min), 54% (5 min): IP Input (software routing) 17.7% over 5 s,
+  IP SLA 6.8 to 9.6%, SNMP 5%.
+- **The R630's hyperthreads:** s3's vCPU (VM 100's "CPU 22/KVM") has no affinity and ran on 13
+  host CPUs in 60 s (all NUMA node 0); its hyperthread sibling was over 50% busy in 14 of the 60
+  seconds (mean 32%). Steal inside the lab VM stays near 0 (it does not show sibling sharing).
+- **The quiet window (1f):** 09:08:59 to ~14:19 UTC, no operations by the agent: `[FILLED AT
+  14:2x: per hour, drops, failed scrapes, gauge steps, s3 heartbeat gaps, CPU 22]`.
+
+**The fixes, ranked by evidence and cost:**
+
+| # | Fix | Evidence | Expected on s3 | Cost to Lab 9 | Prepared |
+|---|---|---|---|---|---|
+| 1 | **T1 variant A: subscription 101's xpath narrowed to `…/cpu-utilization/one-minute`** on r1, r6, r7 (the E2 set), optionally r2, r3, r4 | 98% of telemetry bytes are the unread per-process list; only `one_minute` is read | telemetry through s3 from ~87 KiB/s to ~45 KiB/s (three narrowed) or a few KiB/s (all six); the three narrowed routers' microbursts gone; less IP Input CPU and fewer Gi1/1 drops | none on screen: the two CPU panels keep `one_minute` every 10 s. **One unknown:** that the narrowed subscription's metric keeps its name; checked on r7 at its deploy (the panel and the series), variant B if not | `lab/lab9/t1_prepare.py`; previews: one line per router (r6 and r7 also the reseed's console line) |
+| 2 | **T1 variant B** (fallback): 101 at `periodic 6000` | the same | ~53 KiB/s (three) | the CPU panels update every 60 s | the same script |
+| 3 | **`hold-queue 256 out` on s3 Gi1/1** | output queue max 0, ~7.8 drops/s; s1 accepted 0/256 (C1485) | absorbs up to ~2 overlapping bursts; Gi1/1 drops toward 0; fewer router retransmissions | a management-path interface change on s3: its repair route is s3's console (HOST_TUNING); it does not by itself prevent OSPF dead-timer drops (those are s3's CPU, on r1's link, not Gi1/1) | `lab/lab9/hold_queue_prepare.py`; preview: one line `hold-queue 256 out` under `interface GigabitEthernet1/1` |
+| 4 | **Pin s3's vCPU to one hyperthread with its sibling kept free** (live, reversible) | sibling busy over 50% in 23% of seconds | more of s3's cycles; its clock (0.45×) the measure | a host change (the operator's); lost at VM 100's restart | the commands below |
+| 5 | Fallbacks: drift checks every 30 min to 2 h; the routers' 30 s SNMP jobs to 60 s | a drift run is 20 SSH sessions through s3 (E: 2 runs); router polling crosses s3 | fewer sessions and polls through s3 | drift found up to 2 h later (not on any recorded screen); router graphs coarser (s3 itself is already 60 s) | drafts below |
+
+**The smallest set for E2:** fix 1 on r1, r6, r7 (r6 and r7 ride R3 and R4 with the reseed's
+console line; r1 its own deploy). If E2 misses, the next steps in order: fix 1 on r2 to r4,
+then fix 3, then fix 4. If it misses narrowly on scrapes only, the count and targets go to the
+operator (their rule).
+
+**Fix 4, the pin (for the operator's approval; on `<hypervisor>` as root; live, reversible):**
+```
+P100=$(qm list | awk '$1==100 {print $6}')        # VM 100's qemu pid
+P102=$(qm list | awk '$1==102 {print $6}')        # VM 102's
+T=$(for t in /proc/$P100/task/*; do [ "$(cat $t/comm)" = "CPU 22/KVM" ] && basename $t; done)
+for t in /proc/$P100/task/*; do tid=${t##*/}; [ "$tid" = "$T" ] || taskset -p -c 0-17,19-37,39 "$tid"; done
+taskset -a -p -c 0-17,19-37,39 "$P102"
+taskset -p -c 38 "$T"                              # host CPU 38; its sibling 18 kept free
+grep Cpus_allowed_list /proc/$P100/task/$T/status  # PASS: 38
+```
+Revert: `taskset -a -p -c 0-39 "$P100"; taskset -a -p -c 0-39 "$P102"` (a VM restart also
+reverts it). Host processes outside the two VMs may still use 18 and 38.
+
+**Fix 5's drafts:** drift interval: Settings › Installation › Diagnostics › Drift checks, the
+interval to 2 h (a recorded setting); revert to 30 min. Router SNMP: `/etc/prometheus/
+prometheus.yml` on `<nmas-host>`, `cisco_8000v`'s `scrape_interval: 30s` to `60s` (and
+`ospfv3`, `bgp`), then Prometheus reloaded; revert the lines. The failed-scrape bar counts
+scrapes, so fewer scrapes change the bar's denominator: say so with any E2 that used it.
+
+## 10. Requirements matrix (the handout, docs/LAB_REQUIREMENTS.md lines 41 to 49)
+
+| Requirement | How it is met | Where it is shown (plan step) | Status | Risk |
+|---|---|---|---|---|
+| Objective 1: add R8 via the ZTP framework | DHCP through R2's relay, Mercury's gated TFTP bootstrap, Verify; Day 1 from intent written first | step 5 (R2's relay, R8's intent), step 6 (R8's first pass), the recording | prepared; waits on E2 | the lab's load (section 9) |
+| Objective 1: add the "Switch" via the ZTP framework | out-of-band ZTP: the console survey and kick-start, then DHCP through R8's relay and the same bootstrap (section 8) | section 8 (O0 to O9), s5's first pass | building (O0, O1, O2a, O3 overnight) | the feature's size; its one deploy; s5's return to factory (C1545 first) |
+| ZTP | as the two rows above | | | |
+| Monitoring | Prometheus targets added automatically at the golden commit; the device dashboard; heartbeat and telemetry rules | step 6's checks; the recording | ready | telemetry narrowed by T1 (the panels kept) |
+| Visualization | Topology (from what the devices report); Grafana dashboards | the recording | ready | none known |
+| DevOps (testing) | CI on every push (four shards), the coverage ratchet, mutation runs, the tests that caught real defects | section 7's testing segment | in progress (list started) | the coverage nightly's BEFORE run (C1549, C1550) |
+| Documentation "is appropriate" | NetBox (the record), intent in git, History, the write-up (docs/LAB9_DOCUMENTATION.md), the manual's console-ZTP section (O8) | the recording; the write-up | skeleton written | O8's manual section is in the build |
+| Video: what happens when devices are added | R8's and the Switch's onboarding, NetBox, git, Topology, monitoring | recording | planned | |
+| Video: how the framework is implemented and updated | the platform diagram; what updates when devices are added | recording | planned (Lab 8's diagram reused) | |
+| Video: overview of unit testing and code coverage | the suite's size and tiers, the ratchet, before and after the feature | section 7 | data being gathered | nightly reliability |
+| Video: examples of tools used and tested | CI red to green, the publication test, deliberate breaks, mutation kills | section 7's list | four entries; more from the build | |
+| Video: examples of the documentation | NetBox, intent, History, the write-up, the manual | recording | planned | |
+| The handout's H1 behind the Switch | built as H7 (H1 exists); the video says so once | write-up section 1 | noted | none |
+
+## 11. The ordered task list to submission (order only; O = the operator, A = the agent)
+
+1. **O** T1: the intent edits (variant A recommended) on r1, r6, r7 (r2 to r4 optional).
+2. **O** R3: r7's deploy (the reseed's console line and 101's filter). **A** checks the
+   narrowed series and the device panel for r7; variant B if the series is gone.
+3. **O** R4 (r6) and T2 (r1) deploys; outside 08:30 to 09:10 UTC (T2: r1 is the core router).
+4. **A** E2, a measured hour at rest. GO opens step 5; a miss goes to section 9's next steps.
+5. **O** R2's relay intent and deploy (Gi4); NetBox's branch-2 records (the operator's UI
+   steps); **A** prepares R8's Day 1 document and s5's.
+6. **O** R8's first pass (Add device, ZTP through R2's relay); **A** measures P-checks.
+7. **A** the feature: O0 to O8 with tests, gates, CI, mutation (0 VERDICT survivors on its bar
+   set), coverage unlowered; C1545 and C1546 land.
+8. **O** the feature's one deploy (`nmas-deploy --wait`), after R8's first pass.
+9. **O** the console server's setup: Mercury generates the key; the operator installs the
+   public key with the forced command and the allowlist on `<lab-host>` (a host change).
+10. **O** s5's return to factory (a scripted reload; C1545 green first), then s5's first pass
+    through out-of-band ZTP.
+11. **O** Save All (a baseline); **A** the AFTER coverage nightly; the testing segment's data.
+12. **A** the run sheet, shot list and narration; **O** the recording.
+13. **A** the write-up finished from evidence; **O** review, edit, submit.
+
+## 12. Risks and contingencies
+
+- **The lab cannot reach E2's bar.** The requirements do not name OSPF drops; the bar protects
+  the first pass and the recording from failures that are the lab's, not the framework's. Least
+  cost, in order: section 9's next fixes (2 to 5); then the operator's decision whether any
+  first-pass step or recorded screen depends on a failed scrape (their rule); last, Phase 3's
+  binding (HOST_TUNING section 5), which needs a hypervisor reboot and a redeploy.
+- **The console feature slips or fails in the first pass.** Honest answer: there is no
+  human-free fallback INSIDE the ZTP framework. The vIOS-L2 image never asks DHCP on its own
+  (challenge 1: PnP ran ~12 minutes with no DISCOVER), so the switch cannot ZTP without
+  something reaching its console. The fallbacks:
+  1. **Pre-staged day-0 configuration from the lab tooling** (containerlab's startup file with
+     VLAN 1's SVI on DHCP, as option (b) does for r6 and r7): no human types anything, the
+     switch then onboards by DHCP through R8's relay with Mercury's normal path, and the video
+     says the switch's day 0 came from the lab's launch, not from ZTP. It meets "no human
+     interaction"; it meets "via the ZTP framework" for everything after day 0 only.
+  2. **The minimal configuration typed on s5's console** (D2's original fallback): a human
+     step, LABOUR in MANUAL_STEPS, the video saying why. It fails "no human interaction".
+  Recommended order if the feature fails: 1, then 2.
+- **The coverage nightly fails again** (C1549, C1550): the per-push coverage job (functions,
+  lines, the ratchet) still gives the before and after figures; branches come from a passing
+  nightly or are said to be missing.
+
+## 13. Revert after submission (every lab-load change, with its revert)
+
+| Change | Revert |
+|---|---|
+| T1 (101's filter or period on r1, r6, r7, and r2 to r4 if done) | each router's intent back to `…/cpu-utilization` (or `periodic 1000`), then its deploy |
+| `hold-queue 256 out` on s3 Gi1/1 (if done) | the intent key removed: a removal is Mode B (a reason per line), or kept if it proves itself |
+| s3's vCPU pin (if done) | `taskset -a -p -c 0-39` for VM 100's and VM 102's qemu (section 9) |
+| Drift interval or SNMP intervals (if done) | the setting back to 30 min; the prometheus.yml lines back, Prometheus reloaded |
+| The Proxmox nightly backup, disabled on 2026-10-22 | re-enabled by the operator (C1514's schedule) |
+| s5 on CPU 19, r6 and r7 from their startup files (Lab 9's lab file) | the lab file's diff reverted at the next redeploy, if the operator chooses |
+
 ## Write-up: challenges (filled with evidence as each closes, not intent)
 
 The operator, 2026-10-22: the Lab 9 write-up needs a "Challenges" section, and getting s5 to
