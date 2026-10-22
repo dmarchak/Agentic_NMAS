@@ -265,7 +265,7 @@ If the attempt stops before C2 runs, end the window at once (lab/REDEPLOY.md): `
 | D1 | agent | The ten devices answer (the Devices page, read through Mercury); the time from C2 recorded | all ten answering; the redeploy's duration written here |
 | D2 | operator | Settings › Installation › Diagnostics › Drift checks › **Check now** for Default | History (`/v2/history?kind=hostkeys`): one "SSH host key kept under a planned window" row per device |
 | D3 | operator | Needs attention: the one "10 new host keys accepted during …" row, reviewed in History, then **Acknowledge** | no "restarted unexpectedly" or "different SSH host key" row for the ten |
-| D4 | agent | R6 and R7 at their goldens (drift clean); OSPF and RIP neighbours as before the redeploy (Show commands, read-only); H5 holds 10.70.10.x and runs a renewing `udhcpc` (`docker exec clab-rcn-lab1-h5 ps`) | drift clean for both; neighbour counts unchanged; H5's lease and its renewing client present |
+| D4 | agent | R6 and R7 at their goldens (drift clean); OSPF and RIP neighbours as before the redeploy (Show commands, read-only); H5 holds 10.70.10.x and runs a renewing `udhcpc` (`docker exec clab-rcn-lab1-h5 ps`) | drift clean for both; neighbour counts unchanged; H5's lease and its renewing client present. **First read: r6 and r7 drifted (image defaults, C1538) and r7's Gi1 and Gi3 were shut (C1537), so H5 had no lease.** r7's Gi3 fixed by a deploy (the operator, 07:16:53Z, golden `8fa06bb2b0ba`; the first try at 07:08 stopped at pre_snapshot, nothing sent, C1540, C1513). **PASS 07:22 UTC:** drift run of Default, 10 of 10 clean (comment lines and r1 to r4's regenerated certificates only); r7's receipt reads RIP and RIPng neighbours 1 and 1 before and after; H5 leased 10.70.10.102 at 07:16:46Z after 340 tries, its renewing `udhcpc -i eth1.10 -b -t 0 -T 3 -A 5` running, IPv6 `2001:db8:70:10:a8bb:ccff:fe00:7005/64` by SLAAC; at 07:19:11Z web answered HTTP 200 over IPv4 (8.8.8.8, 203.0.113.1) and IPv6 (2001:4860:4860::8888, 2001:db8:203::2), the gateway and the IPv6 web address 0% loss |
 | D5 | agent | s5: its container log's `CONFIGLESS:` lines and the console at the setup dialog (P-S1's first half); its DISCOVER in C2's capture, its client hardware address and client id recorded (P-S2's first half, and **the MAC Add device must use**: VLAN 1's SVI may send from the switch's base MAC, not the pinned port's); R8 Up and configless; H6 and H7 logging "still no IPv4 lease", as expected until R8 and s5 are built | each recorded here |
 
 **E. The measured hour (D6's go or no-go, and the baseline)**
@@ -278,6 +278,28 @@ If the attempt stops before C2 runs, end the window at once (lab/REDEPLOY.md): `
 - **Go** if the hour is no worse than the tuning's confirmation hour (0 OSPF drops, 0 failed
   scrapes); **no-go** otherwise, with the numbers, before the first pass.
 - NUMA (Phase 3's binding) stays deferred unless the first pass is unreliable (D6).
+- **Started 07:25:02Z, ends 08:25:02Z** (the operator moved it to after r7's fix). The read at
+  the end: the tuning's stall script (C1485's measures, as in HOST_TUNING.md) over the hour, and a
+  per-minute `/proc/stat` sampler on `<lab-host>` (`~/lab9-E-procstat.log`, 62 samples, each
+  CPU's busy and steal, and s5's qemu CPU time; s5's qemu read on CPU 19 at the start).
+- **Before E, for context (D1 to 07:25, 76 minutes, with the boot settling, the drift checks,
+  r7's two deploys and the agent's reads in it):** 103 of 304 gauge steps below 10 (minimum 1),
+  356 failed scrapes, 16 OSPF dead-timer drops (all r1's, toward s3 and s4), 14 missed-ping
+  events on 8 devices, s3 Gi1/1 discards in 74 of 75 minutes (max 21.7/s), s3 heartbeat gaps
+  509 to 716 s; SSH sign-in medians about three times their pre-redeploy values (C1513's note).
+  The confirmation hour (10-21) read 0 steps, 0 scrapes, 0 drops.
+- **E's integrity (the operator's question, 07:3x):** the lab VM (100, 24 vCPUs) and the NMAS VM
+  (102, 4 vCPUs) have no CPU affinity: both float over all 40 threads of `<hypervisor>` (2
+  sockets, 10 cores, 2 threads each), so they can share physical cores. During E the agent runs
+  nothing on either VM but the sampler (one `grep` a minute); its gate's suite runs on the laptop
+  and CI on GitHub. From 06:32 to 07:30 (Proxmox's per-minute history): the host 50 to 56% busy,
+  the lab VM 80 to 85% of its vCPUs, NMAS 23 to 34% (peak 58%); steal inside the lab VM 0.02 to
+  0.07% on every CPU. The go/no-go reads the same history for E's hour.
+- **The 16 drops before E:** 12 r1 to s3, 3 r1 to s4, 1 OSPFv3 r1 to r2's router ID, all on r1's
+  Gi2. sysstat's 10-minute busy: s3's CPU 22 at 94 to 98% (94 to 95% before the redeploy), the
+  routers' CPUs 0 to 18 at 73 to 82% on average (70 to 75% before, on 0 to 19; r8 takes 1.7 CPUs),
+  s5's CPU 19 at 64 to 67%. 10 of the 16 fell while Mercury was busy (r7's capture, plan, deploys
+  and reads, 06:57 to 07:10; a drift run, 07:21 to 07:22).
 
 ## 5. Mercury prep for R8 (on Lab 8's path)
 
