@@ -30,9 +30,11 @@ the lab file, not here.
 
 WHAT IT CHANGES, and why each is needed
 ---------------------------------------
-1. A startup file is REFUSED: a configless launch that was given a configuration is a
-   contradiction, and the node would boot as the stock script would. containerlab writes no
-   startup file for a node that names none (read 2026-10-22: r6's config folder is empty).
+1. A startup file is NAMED in the log and never applied. It was first refused, on the reading
+   that containerlab writes none for a node naming none (r6's config folder was empty), but
+   that holds for the C8000v kind only: for `cisco_vios` containerlab writes a default, and the
+   refusal stopped Lab 9's s5 at its first boot (C1534, 2026-10-22). Only apply_config reads the
+   file, and this launch never calls it.
 2. The console is left alone. At the dialog, at "Press RETURN", or at a prompt, the script
    types nothing, marks the VM running and closes its own console session, so AutoInstall runs
    uninterrupted and the operator can attach to the console (Lab 9's fallback types the minimal
@@ -52,16 +54,20 @@ MARK = "CONFIGLESS (C1349)"
 
 EDITS = (
     (
-        "a startup file refused",
+        "a startup file named, never applied",
         "        self.hostname = hostname\n"
         "        self.conn_mode = conn_mode\n"
         "        self.device_type = device_type\n",
-        "        # CONFIGLESS (C1349): this launch types no configuration, so a startup file\n"
-        "        # given to it is a contradiction: refused, never silently ignored.\n"
+        "        # CONFIGLESS (C1349): this launch types no configuration. containerlab writes a\n"
+        "        # default startup file for this kind even when the node names none (C1534: Lab 9's\n"
+        "        # s5, 2026-10-22), and only apply_config reads it, which this launch never calls.\n"
+        "        # So a startup file is NAMED in the log, never applied and never silently ignored.\n"
         "        if os.path.exists(STARTUP_CONFIG_FILE):\n"
-        "            raise Exception(f\"CONFIGLESS: refused: {STARTUP_CONFIG_FILE} exists, and this \"\n"
-        "                            \"launcher types no configuration\")\n"
-        "        self.logger.warning(\"CONFIGLESS: no startup file; the console is left to AutoInstall\")\n"
+        "            self.logger.warning(\"CONFIGLESS: %s exists (containerlab's default for this \"\n"
+        "                                \"kind); it is never applied\", STARTUP_CONFIG_FILE)\n"
+        "        else:\n"
+        "            self.logger.warning(\"CONFIGLESS: no startup file\")\n"
+        "        self.logger.warning(\"CONFIGLESS: the console is left to AutoInstall\")\n"
         "        self.hostname = hostname\n"
         "        self.conn_mode = conn_mode\n"
         "        self.device_type = device_type\n",

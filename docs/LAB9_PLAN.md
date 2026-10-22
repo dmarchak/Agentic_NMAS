@@ -219,6 +219,13 @@ switches on 19 to 23.
   about 2.5 times that; the time it actually takes is recorded here.
 - **Start condition:** 08:30 UTC is more than 105 min away (90 plus the 15-minute slack), or it
   is after 09:10 UTC. The measured hour (step E) also stays outside 08:30 to 09:10.
+- **The operator's timing (2026-10-22 ~05:3x UTC, approving the run sheet):** A and B that
+  night, with the operator up; C onward the next day when the operator is awake, since D2 and
+  D3 are the operator's inside the window and the measured hour precedes the first pass anyway.
+- **Changed by the operator at ~05:5x UTC: continuing tonight.** The lab repository is pushed
+  off-host to the NMAS host (`backups/lab.git`, `8d25fe6`; C1514's precondition met), and that
+  night's vzdump job is disabled, so 08:30 to 09:10 UTC is free that night only (re-enabled the
+  next day with C1514's schedule). No deploy after A1 until the first pass is done.
 
 ### The run sheet
 
@@ -226,28 +233,28 @@ switches on 19 to 23.
 
 | # | Who | Step | PASS |
 |---|---|---|---|
-| A1 | agent | The bootstrap fix deployed: `nmas-deploy --wait` on `<nmas-host>` once the steps 1 and 2 commit's CI is green | it names CI's pass and the commit; Settings › About shows that sha |
-| A2 | operator | The startup sync's map, `<home>/python/Agentic_NMAS/data/lab_targets/Default.tsv` on `<nmas-host>`: r6's line becomes `r6 labs/lab/configs default <user>@<lab-host> cisco_iosxe`; add the same line for r7; add `# DECLARED-UNMAPPED r8 default configless until its ZTP in Lab 9` and the same for s5 | the agent reads it back: r6 and r7 under `labs/lab/configs default`, r8 and s5 declared |
-| A3 | operator (DECISION) | **Save All** (Devices › Actions › Save All), with nothing else running. A single failure: that device's Save alone, once, then Save All again (C1520) | "10 of 10 saved", and a new `baseline/<ts>` holding r6 and r7 |
-| A4 | agent | The startup sync that baseline starts: the lab repository's newest commit, and `configs/r6.cfg` and `configs/r7.cfg` present (if the sync ran before A2, `sudo systemctl start clab-sync.service` on `<nmas-host>` once) | a `startup from baseline/<ts>` commit naming r6 and r7; both files present, owner-only (C1453) |
-| A5 | operator | The break-glass export (Credentials › break-glass export), kept offline | the file saved; Needs attention has no "break-glass record is out of date" row |
+| A1 | agent | The bootstrap fix deployed: `nmas-deploy --wait` on `<nmas-host>` once the steps 1 and 2 commit's CI is green | it names CI's pass and the commit; Settings › About shows that sha. **PASS 05:49 UTC:** the first try (05:39) refused correctly, since the operator's Save All held six devices; then "deployed 9af8c3d406 -> 9b28607432 … running 9b28607432 since 05:49:10 UTC. CI passed for 9b28607432: run #1061". `9b286074` carries `44738eff`'s fix |
+| A2 | operator | The startup sync's map, `<home>/python/Agentic_NMAS/data/lab_targets/Default.tsv` on `<nmas-host>`: r6's line becomes `r6 labs/lab/configs default <user>@<lab-host> cisco_iosxe`; add the same line for r7; add `# DECLARED-UNMAPPED r8 default configless until its ZTP in Lab 9` and the same for s5. The file is tab-separated: written with `sed` and `printf`, shown before and after with `cat -A` | **PASS 2026-10-22 05:35 UTC:** read back with tabs throughout, mode 600, the dated backup kept; the sync's own parser (`clab-targets --list Default --group`, exit 0) reads one group, `labs/lab/configs: r1 r2 r3 r4 r6 r7 s1 s2 s3 s4`, and r6 and r7 resolve to `labs/lab/configs default` |
+| A3 | operator (DECISION) | **Save All** (Devices › Actions › Save All), with nothing else running. A single failure: that device's Save alone, once, then Save All again (C1520) | "10 of 10 saved", and a new `baseline/<ts>` holding r6 and r7. **PASS (the operator):** 10 of 10, `baseline/20261022T054021Z`, every golden already matching |
+| A4 | agent | The startup sync that baseline starts: the lab repository's newest commit, and `configs/r6.cfg` and `configs/r7.cfg` present (if the sync ran before A2, `sudo systemctl start clab-sync.service` on `<nmas-host>` once) | a `startup from baseline/<ts>` commit naming r6 and r7; both files present, owner-only (C1453). **PASS:** the sync at 05:39:27 committed `9db387a` "startup from baseline/20261022T010828Z: r6 r7", both files mode 600. The run at 05:40:42 for `baseline/20261022T054021Z` found all ten unchanged ("The lab already holds baseline/20261022T054021Z; nothing to update"). It also named an unmapped file, `tw-ztp-a`, in its staging folder (it does not block; registered) |
+| A5 | operator | The break-glass export (Credentials › break-glass export), kept offline | the file saved; Needs attention has no "break-glass record is out of date" row. **PASS (the operator):** exported 05:41:16Z, downloaded intact, the record current |
 
 **B. The lab repository on `<lab-host>`**
 
 | # | Who | Step | PASS |
 |---|---|---|---|
-| B1 | agent | The vIOS configless launcher: `docker exec clab-rcn-lab1-s1 cat /launch.py > ~/labs/lab/patches/vios-launch-configless.py`, then `python3 patch-vios-configless.py ~/labs/lab/patches/vios-launch-configless.py --write` (the patcher copied from the deployed checkout) | the copy's sha256 before the patch is `794788bc…`; "written:"; `python3 -m py_compile` passes |
-| B2 | operator | Option (b): `git apply --check`, then `git apply`, for `c8000v-launch-startup-only.diff` and then `option-b-labfile.diff` (copied from the deployed checkout's `lab/phase3/`) | each `--check` silent with exit 0; `grep -c NMAS_STARTUP_ONLY rcn-lab1.clab.yml` reads 2 |
-| B3 | agent | Lab 9's change: `python3 patch-lab9.py ~/labs/lab`, read the diff, then `--write` | the diff matches the dry run above; "written:" for both files |
+| B1 | agent | The vIOS configless launcher: `docker exec clab-rcn-lab1-s1 cat /launch.py > ~/labs/lab/patches/vios-launch-configless.py`, then `python3 patch-vios-configless.py ~/labs/lab/patches/vios-launch-configless.py --write` (the patcher copied from the deployed checkout) | the copy's sha256 before the patch is `794788bc…`; "written:"; `python3 -m py_compile` passes. **PASS 05:42 UTC:** before `794788bc…`, three `CONFIGLESS (C1349)` marks, compiles, after `f654898c…`, byte-identical to the tested patcher's output from the pinned fixture |
+| B2 | operator | Option (b): `git apply --check`, then `git apply`, for `c8000v-launch-startup-only.diff` and then `option-b-labfile.diff` (copied from the deployed checkout's `lab/phase3/`) | each `--check` silent with exit 0; `grep -c 'NMAS_STARTUP_ONLY: "true"' rcn-lab1.clab.yml` reads 2 (r6's and r7's env lines; a bare `grep -c NMAS_STARTUP_ONLY` reads 3, the option (b) comment included). **PASS 2026-10-22 (the operator):** both applied; `git diff --stat` patches/c8000v-launch.py +9, rcn-lab1.clab.yml +11/-10; the three occurrences are the comment and r6's and r7's env lines |
+| B3 | agent | Lab 9's change: `python3 patch-lab9.py ~/labs/lab` (copied from the pushed commit `9b286074`: the deployed checkout may predate it), read the diff, then `--write` | the diff matches the dry run above; "written:" for both files. **PASS 05:46 UTC:** the diff was the dry run's, offset by option (b); no stage left; two `NMAS_STARTUP_ONLY: "true"` lines; the lab file parses with 22 nodes (21 containers and br-mgmt) and 24 links; s5 on CPU 19 with passthrough and the patched launcher; `host-net-lab89.sh` passes `sh -n` |
 | B4 | operator | One lab-repository commit: `git add rcn-lab1.clab.yml configs/host-net-lab89.sh patches/c8000v-launch.py patches/vios-launch-configless.py && git commit -m "lab: Lab 9 - s5, h6, h7 and their links; r6 and r7 from their goldens (option b); CPU sets 0-18 and 19-23; no stages; renewing DHCP"` | `git status --short` lists none of the four |
 
 **C. The redeploy (only when the start condition holds)**
 
 | # | Who | Step | PASS |
 |---|---|---|---|
-| C1 | agent | The window, on `<nmas-host>` as `<user>`: `nmas-planned-restart Default r1 r2 r3 r4 r6 r7 s1 s2 s3 s4 --minutes 90 --new-host-keys --why "lab redeploy: Lab 9 - s5, h6, h7; r6 and r7 from their goldens" --by <operator>` | exit 0 and its three lines ("recorded: …", "window recorded <recorded_at> …", "expecting new SSH host keys …"); `<recorded_at>` kept |
-| C2 | agent | At once, on `<lab-host>`: `cd ~/labs/lab && containerlab deploy -t rcn-lab1.clab.yml --reconfigure`. Never `restart` or `start` a node (C1372). A capture runs in s5's own namespace from its creation (UDP 67 and 68, on Gi0 and on eth0) | exit 0; 21 `clab-rcn-lab1-*` containers Up (r1 to r8, s1 to s5, h1 to h7, web) |
-| C3 | agent (sudo) | The pinning: `sudo bash install.sh` from a copy of `lab/pinning` (its `pinning.conf` as above) | "PINNING HOLDS": s5's qemu and kvm-pit thread on 19, the other switches on 20 to 23, every router and host on 0-18 |
+| C1 | agent | The window, on `<nmas-host>` as `<user>`: `nmas-planned-restart Default r1 r2 r3 r4 r6 r7 s1 s2 s3 s4 --minutes 90 --new-host-keys --why "lab redeploy: Lab 9 - s5, h6, h7; r6 and r7 from their goldens" --by <operator>` | exit 0 and its three lines ("recorded: …", "window recorded <recorded_at> …", "expecting new SSH host keys …"); `<recorded_at>` kept. **PASS 05:54:26Z** (id `f23a1123ef631268`, until 07:24:26Z plus 15 min; Grafana's alerts on the ten silenced until 07:43:26Z). The `--why` reads "r6 and r7 boot from their saved configurations", because the read-only hook refuses a host command containing "golden" |
+| C2 | agent | At once, on `<lab-host>`: `cd ~/labs/lab && containerlab deploy -t rcn-lab1.clab.yml --reconfigure`. Never `restart` or `start` a node (C1372). A capture runs in s5's own namespace from its creation (UDP 67 and 68, on Gi0 and on eth0) | exit 0; 21 `clab-rcn-lab1-*` containers Up (r1 to r8, s1 to s5, h1 to h7, web). **First run 05:54:44 (exit 0): 20 up, s5 "Exited (1)":** the patched launcher refused containerlab's default startup file for the vIOS kind (C1534, closed the same turn). The patch was corrected to name the file and never apply it, regenerated on the lab host (`6d1f16e0…`), and C2 re-run inside the same window. **PASS 05:56:59:** exit 0, 21 up; s5's log "CONFIGLESS: /config/startup-config.cfg exists (containerlab's default for this kind); it is never applied" and "the console is left to AutoInstall"; its capture running from 05:56:56 (`lab9-s5-dhcp-2.pcap` on `<lab-host>`). The corrected launcher is a lab-repository change after `8d25fe6`, for the operator's next lab commit |
+| C3 | agent (sudo) | The pinning: `sudo bash install.sh` from a copy of `lab/pinning` (its `pinning.conf` as above) | "PINNING HOLDS": s5's qemu and kvm-pit thread on 19, the other switches on 20 to 23, every router and host on 0-18. **PASS ~05:58 UTC:** PINNING HOLDS; s5's kvm-pit on 19, s1 to s4's on 20 to 23; every router and host within 0-18, applied by its container |
 
 If the attempt stops before C2 runs, end the window at once (lab/REDEPLOY.md): `nmas-planned-restart Default --end <recorded_at> --why "<what stopped it>" --by <operator>`.
 
@@ -315,6 +322,34 @@ passes its measured ceiling (the relay probe's rule).
 | P-S5 | The bootstrap applies on VLAN 1, and the default route works (`ip routing` on) | Verify's first golden; `show ip route` and `show ip interface brief` through Mercury |
 | P-S6 | Verify reaches s5 over SSH through R8 and promotes it | Verify's result |
 | P-S7 | PnP discovery does not crash it | uptime before Verify |
+
+**If s5 has stopped asking before R8's relay exists** (the operator, 2026-10-22). The order is
+the redeploy, then R2's relay, then R8's ZTP, then R8's Day 1, so s5's first-boot AutoInstall may
+give up long before anything answers it. If P-S2's capture shows s5 no longer asking, **reload
+s5 right after its Add device, off camera, like R7's c5a in Lab 8.** s5 is pending, so no
+planned-restart window is needed.
+- **Its console**, on `<lab-host>`: `docker exec -it clab-rcn-lab1-s5 telnet 127.0.0.1 5000` (the
+  patched launcher releases it).
+- **The rule:** anything typed before `reload` concerns only the boot being thrown away, so any
+  answer there is safe. Only two things can end the NEXT boot's AutoInstall: `yes` at Save
+  (it writes a startup configuration), and anything typed after the reload starts.
+- **What classic IOS shows, and what to type.** Not every screen appears, and they come in any
+  order. The exact strings are read from s5's container log at the redeploy (P-S1); a screen not
+  listed here means stop and tell the agent.
+
+  | The screen shows | Type |
+  |---|---|
+  | `Would you like to enter the initial configuration dialog? [yes/no]:` | `no`, Enter |
+  | `Would you like to terminate autoinstall? [yes]:` | Enter (it ends this boot's attempt only) |
+  | `Press RETURN to get started!` | Enter |
+  | `Switch>` (or another name, if a partial configuration landed) | `enable`, Enter. A configless switch has no enable password: a `Password:` prompt means stop |
+  | `Switch#` | `reload`, Enter |
+  | `System configuration has been modified. Save? [yes/no]:` | **`no`**, Enter. `yes` writes a startup configuration, and the switch never AutoInstalls again |
+  | `Proceed with reload? [confirm]` | Enter |
+  | the switch starts rebooting | **Ctrl+]**, then `quit` at `telnet>`. Nothing more is typed on s5's console until Verify |
+- **Then:** the agent watches the capture for the new DISCOVER and the pending page for leased
+  and fetched. If nothing arrives within 20 minutes, one second reload as above, recorded as a
+  finding (as Lab 8's c5a allowed).
 
 **If s5 cannot AutoInstall:** the operator types the minimal configuration on s5's console (a
 user, and VLAN 1's SVI on DHCP). It is onboarded by DHCP through R8's relay, with no second

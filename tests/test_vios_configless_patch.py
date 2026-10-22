@@ -89,11 +89,17 @@ class TestThePatchedScript:
         spin = _method(tree, "bootstrap_spin")
         assert not _calls(spin, "stop") and not _calls(spin, "start")
 
-    def test_a_startup_file_is_refused(self, tree):
+    def test_a_startup_file_is_named_and_nothing_reads_it(self, tree):
+        """containerlab writes a default startup file for this kind (C1534), so its presence is
+        logged by name, and the one reader of it, apply_config, is never called."""
         init = _method(tree, "__init__")
         guards = [n for n in ast.walk(init) if isinstance(n, ast.If)
                   and ast.unparse(n.test) == "os.path.exists(STARTUP_CONFIG_FILE)"]
-        assert len(guards) == 1 and isinstance(guards[0].body[0], ast.Raise)
+        assert len(guards) == 1
+        assert "STARTUP_CONFIG_FILE" in ast.unparse(guards[0].body[0])
+        callers = [f.name for f in ast.walk(tree) if isinstance(f, ast.FunctionDef)
+                   and _calls(f, "apply_config")]
+        assert callers == [], callers
 
 
 class _Logger:
@@ -172,11 +178,19 @@ def test_the_quiet_watchdog_waits_instead_of_restarting(monkeypatch, tmp_path):
     assert any("NOT restarting" in line for _level, line in vm.logger.lines)
 
 
-def test_a_startup_file_stops_the_launch(monkeypatch, tmp_path):
-    mod, _events = _load_patched(monkeypatch, tmp_path, (0, object(), b"x"))
-    (tmp_path / "no-startup.cfg").write_text("hostname s5\n", encoding="utf-8")
-    with pytest.raises(Exception, match="CONFIGLESS: refused"):
-        mod.VIOS_vm("s5", "admin", "admin", "tc")
+@pytest.mark.parametrize("ridx", [0, 1, 2])
+def test_with_containerlabs_default_startup_file_it_still_types_nothing(monkeypatch, tmp_path,
+                                                                       ridx):
+    """C1534: containerlab wrote /config/startup-config.cfg for Lab 9's s5, which names none.
+    The launch goes on, names the file, and types none of it at any console state."""
+    mod, events = _load_patched(monkeypatch, tmp_path, (ridx, object(), b"x"))
+    (tmp_path / "no-startup.cfg").write_text("hostname vios\n", encoding="utf-8")
+    vm = mod.VIOS_vm("s5", "admin", "admin", "tc")
+    vm.logger = _Logger()
+    vm.scrapli_tn = types.SimpleNamespace(close=lambda: None)
+    vm.bootstrap_spin()
+    assert [e for e in events if e[0] in ("write", "scrapli", "stop", "start")] == []
+    assert vm.running is True
 
 
 class TestThePatcherRefuses:
