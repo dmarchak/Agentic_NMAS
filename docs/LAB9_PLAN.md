@@ -588,8 +588,20 @@ C1536.
   prompts are signed in (as the rule says); `>` at attach is recorded in the transcript and
   the blank check then decides on nvram. The stricter reading is merged until the operator
   decides (it refuses more, never less).
-- **Next:** O4 (NetBox console path and the console-server store; an agent is building it), O2
-  (the two drivers), O6 (the operations), O7's offer, O8 minimal.
+- **O4** (the commit after O1 to O3): `modules/nsot/console_path.py` (read the device's console
+  path, paged and never truncated silently; create what is missing behind the write gate with
+  the authority "console path for X, confirmed by Y (plan …)"; idempotent; a dry-run plan with
+  its hash; remove only its own tagged-and-recorded cable and console port) and
+  `modules/nsot/console_servers.py` (`<data>/console_servers.json`, per console-server port:
+  driver, host (IPv4, IPv6, hostname), SSH port, container name or TCP port and jump, a
+  credential reference; locked, atomic, 0600, an unreadable store refusing writes); the shared
+  fake NetBox extended to the captured console shapes; 122 tests, 15 controls. Its tests caught
+  `re.match` with `$` accepting a container name ending in a newline (now `fullmatch`).
+  Queued for the operator: C1554 (cables taggable for every writer). Registered: C1553
+  (retirement must remove the path; O6), C1555 (the console-server device must pre-exist in
+  NetBox; O8), C1556 (UNKNOWN).
+- **Next:** O2 (the two drivers and the driver loop; an agent is building it), O6 (the
+  operations, with C1553), O7's offer, O8 minimal.
 
 **Testing the feature (the operator's audit, 2026-10-22 ~07:5x UTC):**
 - **O2a's wrapper lives in Mercury, not the lab repository:** one standard-library-only module,

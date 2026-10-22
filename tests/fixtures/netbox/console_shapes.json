@@ -1,0 +1,612 @@
+{
+ "endpoints": {
+  "dcim/cables/": {
+   "get_body": {
+    "count": 14,
+    "next": "http://netbox.example:8000/api/dcim/cables/?limit=1&offset=1",
+    "previous": null,
+    "results": [
+     {
+      "a_terminations": [
+       {
+        "object": {
+         "_occupied": true,
+         "cable": {
+          "description": "",
+          "display": "#1",
+          "id": 1,
+          "label": "",
+          "url": "http://netbox.example:8000/api/dcim/cables/1/"
+         },
+         "description": "trunk to s2 Gi0/3 - VRRP rides this",
+         "device": {
+          "description": "",
+          "display": "s1",
+          "id": 1,
+          "name": "s1",
+          "url": "http://netbox.example:8000/api/dcim/devices/1/"
+         },
+         "display": "GigabitEthernet0/3",
+         "id": 5,
+         "name": "GigabitEthernet0/3",
+         "url": "http://netbox.example:8000/api/dcim/interfaces/5/"
+        },
+        "object_id": 5,
+        "object_type": "dcim.interface"
+       }
+      ],
+      "b_terminations": [
+       {
+        "object": {
+         "_occupied": true,
+         "cable": {
+          "description": "",
+          "display": "#1",
+          "id": 1,
+          "label": "",
+          "url": "http://netbox.example:8000/api/dcim/cables/1/"
+         },
+         "description": "trunk to s1 Gi0/3 - VRRP rides this",
+         "device": {
+          "description": "",
+          "display": "s2",
+          "id": 2,
+          "name": "s2",
+          "url": "http://netbox.example:8000/api/dcim/devices/2/"
+         },
+         "display": "GigabitEthernet0/3",
+         "id": 15,
+         "name": "GigabitEthernet0/3",
+         "url": "http://netbox.example:8000/api/dcim/interfaces/15/"
+        },
+        "object_id": 15,
+        "object_type": "dcim.interface"
+       }
+      ],
+      "bundle": null,
+      "color": "",
+      "comments": "",
+      "created": "2026-08-30T02:35:13.961039Z",
+      "custom_fields": {},
+      "description": "",
+      "display": "#1",
+      "display_url": "http://netbox.example:8000/dcim/cables/1/",
+      "id": 1,
+      "label": "",
+      "last_updated": "2026-08-30T02:35:14.179106Z",
+      "length": null,
+      "length_unit": null,
+      "owner": null,
+      "profile": null,
+      "status": {
+       "label": "Connected",
+       "value": "connected"
+      },
+      "tags": [],
+      "tenant": null,
+      "type": null,
+      "url": "http://netbox.example:8000/api/dcim/cables/1/"
+     }
+    ]
+   },
+   "get_status": 200,
+   "post_fields": {
+    "a_terminations": {
+     "read_only": false,
+     "required": false,
+     "type": "field"
+    },
+    "b_terminations": {
+     "read_only": false,
+     "required": false,
+     "type": "field"
+    },
+    "bundle": {
+     "read_only": false,
+     "required": false,
+     "type": "nested object"
+    },
+    "color": {
+     "read_only": false,
+     "required": false,
+     "type": "string"
+    },
+    "comments": {
+     "read_only": false,
+     "required": false,
+     "type": "string"
+    },
+    "created": {
+     "read_only": true,
+     "required": false,
+     "type": "datetime"
+    },
+    "custom_fields": {
+     "read_only": false,
+     "required": false,
+     "type": "field"
+    },
+    "description": {
+     "read_only": false,
+     "required": false,
+     "type": "string"
+    },
+    "display": {
+     "read_only": true,
+     "required": false,
+     "type": "field"
+    },
+    "display_url": {
+     "read_only": true,
+     "required": false,
+     "type": "field"
+    },
+    "id": {
+     "read_only": true,
+     "required": false,
+     "type": "integer"
+    },
+    "label": {
+     "read_only": false,
+     "required": false,
+     "type": "string"
+    },
+    "last_updated": {
+     "read_only": true,
+     "required": false,
+     "type": "datetime"
+    },
+    "length": {
+     "read_only": false,
+     "required": false,
+     "type": "decimal"
+    },
+    "length_unit": {
+     "read_only": false,
+     "required": false,
+     "type": "field"
+    },
+    "owner": {
+     "read_only": false,
+     "required": false,
+     "type": "nested object"
+    },
+    "profile": {
+     "read_only": false,
+     "required": false,
+     "type": "field"
+    },
+    "status": {
+     "read_only": false,
+     "required": false,
+     "type": "field"
+    },
+    "tags": {
+     "read_only": false,
+     "required": false,
+     "type": "field"
+    },
+    "tenant": {
+     "read_only": false,
+     "required": false,
+     "type": "nested object"
+    },
+    "type": {
+     "read_only": false,
+     "required": false,
+     "type": "choice"
+    },
+    "url": {
+     "read_only": true,
+     "required": false,
+     "type": "field"
+    }
+   }
+  },
+  "dcim/console-port-templates/": {
+   "get_body": {
+    "count": 0,
+    "next": null,
+    "previous": null,
+    "results": []
+   },
+   "get_status": 200,
+   "post_fields": {
+    "created": {
+     "read_only": true,
+     "required": false,
+     "type": "datetime"
+    },
+    "description": {
+     "read_only": false,
+     "required": false,
+     "type": "string"
+    },
+    "device_type": {
+     "read_only": false,
+     "required": false,
+     "type": "nested object"
+    },
+    "display": {
+     "read_only": true,
+     "required": false,
+     "type": "field"
+    },
+    "id": {
+     "read_only": true,
+     "required": false,
+     "type": "integer"
+    },
+    "label": {
+     "read_only": false,
+     "required": false,
+     "type": "string"
+    },
+    "last_updated": {
+     "read_only": true,
+     "required": false,
+     "type": "datetime"
+    },
+    "module_type": {
+     "read_only": false,
+     "required": false,
+     "type": "nested object"
+    },
+    "name": {
+     "read_only": false,
+     "required": true,
+     "type": "string"
+    },
+    "type": {
+     "read_only": false,
+     "required": false,
+     "type": "field"
+    },
+    "url": {
+     "read_only": true,
+     "required": false,
+     "type": "field"
+    }
+   }
+  },
+  "dcim/console-ports/": {
+   "get_body": {
+    "count": 0,
+    "next": null,
+    "previous": null,
+    "results": []
+   },
+   "get_status": 200,
+   "post_fields": {
+    "_occupied": {
+     "read_only": true,
+     "required": false,
+     "type": "field"
+    },
+    "cable": {
+     "read_only": true,
+     "required": false,
+     "type": "nested object"
+    },
+    "cable_end": {
+     "read_only": true,
+     "required": false,
+     "type": "choice"
+    },
+    "connected_endpoints": {
+     "read_only": true,
+     "required": false,
+     "type": "field"
+    },
+    "connected_endpoints_reachable": {
+     "read_only": true,
+     "required": false,
+     "type": "field"
+    },
+    "connected_endpoints_type": {
+     "read_only": true,
+     "required": false,
+     "type": "field"
+    },
+    "created": {
+     "read_only": true,
+     "required": false,
+     "type": "datetime"
+    },
+    "custom_fields": {
+     "read_only": false,
+     "required": false,
+     "type": "field"
+    },
+    "description": {
+     "read_only": false,
+     "required": false,
+     "type": "string"
+    },
+    "device": {
+     "read_only": false,
+     "required": true,
+     "type": "nested object"
+    },
+    "display": {
+     "read_only": true,
+     "required": false,
+     "type": "field"
+    },
+    "display_url": {
+     "read_only": true,
+     "required": false,
+     "type": "field"
+    },
+    "id": {
+     "read_only": true,
+     "required": false,
+     "type": "integer"
+    },
+    "label": {
+     "read_only": false,
+     "required": false,
+     "type": "string"
+    },
+    "last_updated": {
+     "read_only": true,
+     "required": false,
+     "type": "datetime"
+    },
+    "link_peers": {
+     "read_only": true,
+     "required": false,
+     "type": "field"
+    },
+    "link_peers_type": {
+     "read_only": true,
+     "required": false,
+     "type": "field"
+    },
+    "mark_connected": {
+     "read_only": false,
+     "required": false,
+     "type": "boolean"
+    },
+    "module": {
+     "read_only": false,
+     "required": false,
+     "type": "nested object"
+    },
+    "name": {
+     "read_only": false,
+     "required": true,
+     "type": "string"
+    },
+    "owner": {
+     "read_only": false,
+     "required": false,
+     "type": "nested object"
+    },
+    "speed": {
+     "read_only": false,
+     "required": false,
+     "type": "field"
+    },
+    "tags": {
+     "read_only": false,
+     "required": false,
+     "type": "field"
+    },
+    "type": {
+     "read_only": false,
+     "required": false,
+     "type": "field"
+    },
+    "url": {
+     "read_only": true,
+     "required": false,
+     "type": "field"
+    }
+   }
+  },
+  "dcim/console-server-port-templates/": {
+   "get_body": {
+    "count": 0,
+    "next": null,
+    "previous": null,
+    "results": []
+   },
+   "get_status": 200,
+   "post_fields": {
+    "created": {
+     "read_only": true,
+     "required": false,
+     "type": "datetime"
+    },
+    "description": {
+     "read_only": false,
+     "required": false,
+     "type": "string"
+    },
+    "device_type": {
+     "read_only": false,
+     "required": false,
+     "type": "nested object"
+    },
+    "display": {
+     "read_only": true,
+     "required": false,
+     "type": "field"
+    },
+    "id": {
+     "read_only": true,
+     "required": false,
+     "type": "integer"
+    },
+    "label": {
+     "read_only": false,
+     "required": false,
+     "type": "string"
+    },
+    "last_updated": {
+     "read_only": true,
+     "required": false,
+     "type": "datetime"
+    },
+    "module_type": {
+     "read_only": false,
+     "required": false,
+     "type": "nested object"
+    },
+    "name": {
+     "read_only": false,
+     "required": true,
+     "type": "string"
+    },
+    "type": {
+     "read_only": false,
+     "required": false,
+     "type": "field"
+    },
+    "url": {
+     "read_only": true,
+     "required": false,
+     "type": "field"
+    }
+   }
+  },
+  "dcim/console-server-ports/": {
+   "get_body": {
+    "count": 0,
+    "next": null,
+    "previous": null,
+    "results": []
+   },
+   "get_status": 200,
+   "post_fields": {
+    "_occupied": {
+     "read_only": true,
+     "required": false,
+     "type": "field"
+    },
+    "cable": {
+     "read_only": true,
+     "required": false,
+     "type": "nested object"
+    },
+    "cable_end": {
+     "read_only": true,
+     "required": false,
+     "type": "choice"
+    },
+    "connected_endpoints": {
+     "read_only": true,
+     "required": false,
+     "type": "field"
+    },
+    "connected_endpoints_reachable": {
+     "read_only": true,
+     "required": false,
+     "type": "field"
+    },
+    "connected_endpoints_type": {
+     "read_only": true,
+     "required": false,
+     "type": "field"
+    },
+    "created": {
+     "read_only": true,
+     "required": false,
+     "type": "datetime"
+    },
+    "custom_fields": {
+     "read_only": false,
+     "required": false,
+     "type": "field"
+    },
+    "description": {
+     "read_only": false,
+     "required": false,
+     "type": "string"
+    },
+    "device": {
+     "read_only": false,
+     "required": true,
+     "type": "nested object"
+    },
+    "display": {
+     "read_only": true,
+     "required": false,
+     "type": "field"
+    },
+    "display_url": {
+     "read_only": true,
+     "required": false,
+     "type": "field"
+    },
+    "id": {
+     "read_only": true,
+     "required": false,
+     "type": "integer"
+    },
+    "label": {
+     "read_only": false,
+     "required": false,
+     "type": "string"
+    },
+    "last_updated": {
+     "read_only": true,
+     "required": false,
+     "type": "datetime"
+    },
+    "link_peers": {
+     "read_only": true,
+     "required": false,
+     "type": "field"
+    },
+    "link_peers_type": {
+     "read_only": true,
+     "required": false,
+     "type": "field"
+    },
+    "mark_connected": {
+     "read_only": false,
+     "required": false,
+     "type": "boolean"
+    },
+    "module": {
+     "read_only": false,
+     "required": false,
+     "type": "nested object"
+    },
+    "name": {
+     "read_only": false,
+     "required": true,
+     "type": "string"
+    },
+    "owner": {
+     "read_only": false,
+     "required": false,
+     "type": "nested object"
+    },
+    "speed": {
+     "read_only": false,
+     "required": false,
+     "type": "field"
+    },
+    "tags": {
+     "read_only": false,
+     "required": false,
+     "type": "field"
+    },
+    "type": {
+     "read_only": false,
+     "required": false,
+     "type": "field"
+    },
+    "url": {
+     "read_only": true,
+     "required": false,
+     "type": "field"
+    }
+   }
+  }
+ },
+ "netbox_version": "4.6.9"
+}

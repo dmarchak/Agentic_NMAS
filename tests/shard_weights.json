@@ -93,6 +93,8 @@
   "tests/test_console_survey.py": 1.9,
   "tests/test_confirm_buttons_drawn.py": 41.1,
   "tests/test_confirm_carries_its_hash.py": 0.5,
+  "tests/test_console_path.py": 5.3,
+  "tests/test_console_server_store.py": 5.9,
   "tests/test_controls_consult_may.py": 0.2,
   "tests/test_controls_do_something.py": 0.3,
   "tests/test_coverage_deploy.py": 44.0,

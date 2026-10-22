@@ -1166,10 +1166,14 @@ def get_current_actor() -> str:
 #: Endpoints that accept a ``tags`` field and should carry ``nmas-managed``.
 #: ``extras/tags/`` is excluded deliberately — tagging the tag endpoint would
 #: recurse through ``_ensure_tag``.
+#: The console model (O4, `modules/nsot/console_path.py`) and cables: each accepts ``tags``
+#: (NetBox 4.6.9's OPTIONS, tests/fixtures/netbox/console_shapes.json), and a console path
+#: Mercury creates is removable only when tagged AND recorded, its cable included. Tagging
+#: cables also tags the import's CDP/LLDP cables from now on (they were created untagged).
 TAGGABLE_ENDPOINTS = (
     "dcim/regions/", "dcim/sites/", "dcim/devices/", "dcim/interfaces/",
     "ipam/vrfs/", "ipam/prefixes/", "ipam/vlans/", "ipam/ip-addresses/",
-    "vpn/tunnels/",
+    "vpn/tunnels/", "dcim/console-ports/", "dcim/console-server-ports/", "dcim/cables/",
 )
 
 

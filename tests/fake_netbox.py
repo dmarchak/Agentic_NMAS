@@ -157,6 +157,61 @@ REF_PATHS = {
 
 _NEGATIVE = re.compile(r"^-\d+$")
 
+#: ── The console model (O4, docs/LAB9_PLAN.md section 8), MEASURED against the real service ──
+#: The measurement: tests/fixtures/netbox/console_shapes.json, read-only on the lab's NetBox
+#: 4.6.9 on 2026-10-22 (a GET with ``limit=1`` and the OPTIONS field list of a POST, for
+#: dcim/console-ports/, dcim/console-server-ports/, dcim/cables/ and the two template
+#: endpoints; NetBox's address replaced by netbox.example). What it measured and what it did
+#: not, per endpoint the fake answers:
+#:
+#: - **dcim/cables/**: a whole cable body (cable 1): every field below, the status a
+#:   ``{value, label}`` choice, each termination ``{object_type, object_id, object}`` with
+#:   ``object`` the terminated port's brief form (`_PORT_BRIEF_FIELDS`, its ``cable`` and
+#:   ``device`` briefs as captured). MEASURED, and tests/test_console_path.py compares the
+#:   fake's rendered cable with it key for key. ``next`` carried ``?limit=1&offset=1``: the
+#:   paging the fake answers below.
+#: - **dcim/console-ports/** and **dcim/console-server-ports/**: the field NAMES (OPTIONS,
+#:   read-only ones included) MEASURED, compared key for key the same way. The lab held no
+#:   console port (count 0), so the VALUES of the computed fields are NetBox 4.x's serializer
+#:   as written, NOT measured: ``link_peers`` and ``connected_endpoints`` each a list of the
+#:   peer's brief (the same brief a cable termination's ``object`` is, which IS measured),
+#:   ``*_type`` the peer's ``app.model``, ``cable_end`` "A"/"B" (None uncabled). The product
+#:   reads only a port's ``id``, ``name`` and ``cable`` brief and then the cable by id, all
+#:   measured shapes (modules/nsot/console_path.py).
+#: - A component's name is unique on its device (NetBox's model constraint): a second POST of
+#:   one answers 400. The status is NetBox's for a validation error; the message is not measured.
+#: - The two template endpoints answered count 0 and are not faked: the product never reads them.
+CONSOLE_ENDPOINTS = ("dcim/console-ports", "dcim/console-server-ports")
+
+#: A console port's and a console-server port's fields, as OPTIONS listed them (measured).
+CONSOLE_PORT_FIELDS = (
+    "_occupied", "cable", "cable_end", "connected_endpoints", "connected_endpoints_reachable",
+    "connected_endpoints_type", "created", "custom_fields", "description", "device", "display",
+    "display_url", "id", "label", "last_updated", "link_peers", "link_peers_type",
+    "mark_connected", "module", "name", "owner", "speed", "tags", "type", "url")
+
+#: A cable's fields, as the captured cable body held them (measured).
+CABLE_FIELDS = (
+    "a_terminations", "b_terminations", "bundle", "color", "comments", "created",
+    "custom_fields", "description", "display", "display_url", "id", "label", "last_updated",
+    "length", "length_unit", "owner", "profile", "status", "tags", "tenant", "type", "url")
+
+#: A terminated port's brief (a cable termination's ``object``), as captured (measured).
+_PORT_BRIEF_FIELDS = ("_occupied", "cable", "description", "device", "display", "id", "name",
+                      "url")
+
+#: A termination's ``object_type`` -> the store holding that kind of port.
+TERMINATION_STORES = {"dcim.interface": "dcim/interfaces",
+                      "dcim.consoleport": "dcim/console-ports",
+                      "dcim.consoleserverport": "dcim/console-server-ports"}
+
+#: A cable status's label, by value (NetBox's ``LinkStatusChoices``).
+CABLE_STATUS_LABELS = {"connected": "Connected", "planned": "Planned",
+                       "decommissioning": "Decommissioning"}
+
+_STAMP = "2026-10-22T00:00:00.000000Z"
+_NB = "http://nb.invalid"
+
 
 def _members(value) -> list:
     """The ids a filter value carries: itself, or each member of a list. Nothing for a value a
@@ -412,6 +467,12 @@ class FakeNetBox:
     # ── requests.Session surface ────────────────────────────────────────────
 
     def get(self, url, params=None, timeout=None):
+        # A `next` link carries its query in the URL (`?limit=1&offset=1`, as captured): it is
+        # read as the request's parameters, as NetBox reads it.
+        url, _, query = str(url).partition("?")
+        if query:
+            from urllib.parse import parse_qsl
+            params = dict(parse_qsl(query), **(params or {}))
         endpoint, obj_id = self._parse(url)
         refused = self._negative(obj_id, params)
         if refused is None and obj_id is None:
@@ -422,14 +483,133 @@ class FakeNetBox:
         if obj_id is not None:
             for obj in items:
                 if obj["id"] == obj_id:
-                    return FakeResponse(obj)
+                    return FakeResponse(self._rendered(endpoint, obj))
             return FakeResponse({"detail": "Not found."}, 404)
         hits = [o for o in items if self._matches(o, params, endpoint)]
         if endpoint == "dcim/interfaces":
             # NetBox renders an interface's `cable` (read-only: the cable terminating on it, or
             # null), computed from the cables held, never stored on the interface (C1344).
             hits = [dict(o, cable=self._cable_brief(o)) for o in hits]
-        return FakeResponse({"results": hits, "next": None, "count": len(hits)})
+        else:
+            hits = [self._rendered(endpoint, o) for o in hits]
+        return self._page(url, params, hits)
+
+    @staticmethod
+    def _page(url, params, hits):
+        """One page of *hits*. With ``limit`` (and ``offset``) NetBox answers that slice, the
+        whole ``count``, and a ``next`` link while more remain (measured: the captured cable
+        list's ``next`` was ``...?limit=1&offset=1``). Without a limit the fake answers every
+        hit at once, as it always has (NetBox's own default page is 50: not modelled)."""
+        try:
+            limit = int((params or {}).get("limit") or 0)
+            offset = int((params or {}).get("offset") or 0)
+        except (TypeError, ValueError):
+            limit, offset = 0, 0
+        if limit <= 0:
+            return FakeResponse({"results": hits, "next": None, "count": len(hits)})
+        page = hits[offset:offset + limit]
+        more = offset + limit < len(hits)
+        if more:
+            from urllib.parse import urlencode
+            rest = {k: v for k, v in (params or {}).items() if k not in ("limit", "offset")}
+            nxt = f"{url}?{urlencode(dict(rest, limit=limit, offset=offset + limit), doseq=True)}"
+        return FakeResponse({"results": page, "next": nxt if more else None,
+                             "previous": None, "count": len(hits)})
+
+    # ── the console model, rendered as NetBox 4.6.9 answers (CONSOLE_ENDPOINTS, above) ──
+
+    def _rendered(self, endpoint, obj):
+        """*obj* as a GET answers it: a console port or a cable in its measured shape; any
+        other object as stored."""
+        if endpoint in CONSOLE_ENDPOINTS:
+            return self._console_port(endpoint, obj)
+        if endpoint == "dcim/cables":
+            return self._cable(obj)
+        return obj
+
+    def _device_brief(self, ref):
+        ident = ref.get("id") if isinstance(ref, dict) else ref
+        dev = next((d for d in self.store.get("dcim/devices", []) if d.get("id") == ident), None)
+        if dev is None:
+            return None
+        return {"description": dev.get("description", ""), "display": dev.get("name", ""),
+                "id": dev["id"], "name": dev.get("name", ""),
+                "url": f"{_NB}/api/dcim/devices/{dev['id']}/"}
+
+    def _cable_ref(self, cable):
+        return {"description": cable.get("description", ""), "display": f"#{cable['id']}",
+                "id": cable["id"], "label": cable.get("label", ""),
+                "url": f"{_NB}/api/dcim/cables/{cable['id']}/"}
+
+    def _port_brief(self, object_type, object_id):
+        """A terminated port's brief, as a cable termination's ``object`` was captured."""
+        store = TERMINATION_STORES.get(object_type)
+        port = next((p for p in self.store.get(store or "", [])
+                     if str(p.get("id")) == str(object_id)), None)
+        if port is None:
+            return None
+        cable = self._cable_on({"object_type": object_type, "object_id": port["id"]})
+        return {"_occupied": cable is not None,
+                "cable": self._cable_ref(cable) if cable else None,
+                "description": port.get("description", ""),
+                "device": self._device_brief(port.get("device")),
+                "display": port.get("name", ""), "id": port["id"], "name": port.get("name", ""),
+                "url": f"{_NB}/api/{store}/{port['id']}/"}
+
+    def _console_port(self, endpoint, port):
+        object_type = {"dcim/console-ports": "dcim.consoleport",
+                       "dcim/console-server-ports": "dcim.consoleserverport"}[endpoint]
+        cable = self._cable_on({"object_type": object_type, "object_id": port["id"]})
+        end, peers, peer_type = None, [], None
+        if cable is not None:
+            mine = any(t.get("object_type") == object_type
+                       and str(t.get("object_id")) == str(port["id"])
+                       for t in cable.get("a_terminations") or [])
+            end = "A" if mine else "B"
+            far = cable.get("b_terminations" if mine else "a_terminations") or []
+            peers = [b for b in (self._port_brief(t.get("object_type"), t.get("object_id"))
+                                 for t in far) if b is not None]
+            peer_type = far[0].get("object_type") if far else None
+        out = {
+            "_occupied": cable is not None,
+            "cable": self._cable_ref(cable) if cable else None,
+            "cable_end": end,
+            "connected_endpoints": peers or None,
+            "connected_endpoints_reachable": True if peers else None,
+            "connected_endpoints_type": peer_type if peers else None,
+            "created": _STAMP, "custom_fields": {},
+            "description": port.get("description", ""),
+            "device": self._device_brief(port.get("device")),
+            "display": port.get("name", ""),
+            "display_url": f"{_NB}/{endpoint}/{port['id']}/",
+            "id": port["id"], "label": port.get("label", ""), "last_updated": _STAMP,
+            "link_peers": peers, "link_peers_type": peer_type,
+            "mark_connected": bool(port.get("mark_connected", False)),
+            "module": None, "name": port.get("name", ""), "owner": None,
+            "speed": None, "tags": list(port.get("tags") or []), "type": None,
+            "url": f"{_NB}/api/{endpoint}/{port['id']}/",
+        }
+        return out
+
+    def _cable(self, cable):
+        def ends(terms):
+            return [{"object": self._port_brief(t.get("object_type"), t.get("object_id")),
+                     "object_id": t.get("object_id"), "object_type": t.get("object_type")}
+                    for t in terms or []]
+
+        status = cable.get("status") or "connected"
+        if isinstance(status, str):
+            status = {"label": CABLE_STATUS_LABELS.get(status, status), "value": status}
+        out = {"bundle": None, "color": "", "comments": "", "created": _STAMP,
+               "custom_fields": {}, "description": "", "display": f"#{cable['id']}",
+               "display_url": f"{_NB}/dcim/cables/{cable['id']}/", "label": "",
+               "last_updated": _STAMP, "length": None, "length_unit": None, "owner": None,
+               "profile": None, "tags": [], "tenant": None, "type": None,
+               "url": f"{_NB}/api/dcim/cables/{cable['id']}/"}
+        out.update({k: v for k, v in cable.items() if k in CABLE_FIELDS})
+        out.update(a_terminations=ends(cable.get("a_terminations")),
+                   b_terminations=ends(cable.get("b_terminations")), status=status)
+        return out
 
     def _cable_brief(self, iface):
         held = self._cable_on({"object_type": "dcim.interface", "object_id": iface.get("id")})
@@ -448,6 +628,16 @@ class FakeNetBox:
                         return FakeResponse({"__all__": [
                             f"Duplicate termination found for {t.get('object_type')}:"
                             f"{t.get('object_id')}: cable {held['id']}"]}, 400)
+        if endpoint in CONSOLE_ENDPOINTS:
+            # A component's name is unique on its device (CONSOLE_ENDPOINTS, above).
+            dev = payload.get("device")
+            dev = dev.get("id") if isinstance(dev, dict) else dev
+            for held in self.store.get(endpoint, []):
+                mine = held.get("device")
+                mine = mine.get("id") if isinstance(mine, dict) else mine
+                if str(mine) == str(dev) and held.get("name") == payload.get("name"):
+                    return FakeResponse({"__all__": [
+                        "A port with this Device and Name already exists."]}, 400)
         self.posts.append((endpoint, dict(payload)))
         obj = dict(payload)
         obj["id"] = self._take_id()
