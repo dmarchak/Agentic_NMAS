@@ -97,8 +97,15 @@ def session(settle=0.05, quiet=1.0, timeout=10.0):
 
 
 def run(transport):
+    """The survey plan over *transport*, for a device this thread holds (C1559). Held after
+    the transport opens, so the host-key record names the transport's own owner here."""
+    from modules.nsot import device_ops
+
     with transport:
-        return T.run_plan(transport, session(), poll_s=0.02, bound_s=40.0)
+        with device_ops.hold("console-transport", "edge1", "console survey",
+                             "t@example.invalid"):
+            return T.run_plan(transport, session(), poll_s=0.02, bound_s=40.0,
+                              device=("console-transport", "edge1"))
 
 
 def lock_free(port_id=PORT_ID) -> bool:

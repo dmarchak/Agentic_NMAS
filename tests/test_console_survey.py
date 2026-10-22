@@ -98,8 +98,10 @@ def test_the_blank_check_reads_the_profiles_own_pattern():
 
 # ── The survey's verdict: the signed-in rule ──────────────────────────────────────────────
 
-@pytest.mark.parametrize("state", [P.PRIV_EXEC, P.USER_EXEC, P.CONFIG])
+@pytest.mark.parametrize("state", [P.PRIV_EXEC, P.CONFIG])
 def test_a_console_found_signed_in_is_not_factory_blank_whatever_nvram_says(state):
+    """`#` and config prompts only (the operator's decision D3, 2026-10-22; `>` was here until
+    then, under the stricter reading merged while D3 was queued)."""
     result = V.survey(state, REAL, SWITCH)
     assert result.blank is False
     assert result.found_signed_in is True
@@ -108,6 +110,23 @@ def test_a_console_found_signed_in_is_not_factory_blank_whatever_nvram_says(stat
     assert result.reasons[0] == (f"not factory-blank as found: the console was signed in at "
                                  f"{state} before any line was typed")
     assert "startup-config is 0 bytes" in result.reasons[1]
+
+
+def test_a_user_prompt_at_attach_is_recorded_and_the_blank_check_decides():
+    """D3: a factory-blank switch whose banner printed before Mercury attached answers the wake
+    with `>`. Recorded (its state and a reason saying so), never signed in; nvram decides,
+    both ways."""
+    result = V.survey(P.USER_EXEC, REAL, SWITCH)
+    assert (result.blank, result.found_signed_in, result.found_state) == (
+        True, False, P.USER_EXEC)
+    assert result.reasons == (
+        "the console was at user_exec at attach: recorded, and not by itself a sign of a "
+        "configuration (the operator's decision D3), so the blank check decides",
+        "startup-config is 0 bytes in 'dir nvram:''s output")
+    saved = REAL.replace(REAL_ENTRY, "  254  -rw-  99  <no date>  startup-config")
+    assert V.survey(P.USER_EXEC, saved, SWITCH).blank is False
+    assert V.survey(P.USER_EXEC, "garbage", SWITCH).blank is None
+    assert V.SIGNED_IN == (P.PRIV_EXEC, P.CONFIG) and V.RECORDED == (P.USER_EXEC,)
 
 
 @pytest.mark.parametrize("state", [P.PRESS_RETURN, P.SETUP_DIALOG])

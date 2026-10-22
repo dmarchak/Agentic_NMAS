@@ -69,6 +69,9 @@ OPERATION_WORDS = {
     "file": "changed by a file action",
     "probe": "probed for removal shapes (scratch config added and removed, never saved)",
     "read": "read (show commands)",
+    # Out-of-band ZTP (modules/nsot/console_ztp.py): over its console, not its address.
+    "console survey": "surveyed over its console (read-only)",
+    "console kick-start": "kick-started over its console",
 }
 
 #: An operation whose RESULT differs from its kind's usual one, in words
@@ -833,6 +836,16 @@ def may_write(ip: str) -> bool:
         return any(info["thread"] == me and (not info["holder"].get("ip")
                                              or info["holder"]["ip"] == ip)
                    for info in _held.values())
+
+
+def held_here(list_name: str, hostname: str) -> bool:
+    """Whether THIS thread holds *hostname* in *list_name*: the console driver loop asks it
+    before every byte it writes (C1559), since a console write reaches a device no session
+    write guard sees, and a device on its way in has no address to key `may_write` on."""
+    key = (_list_key(list_name), hostname)
+    with _mu:
+        mine = _held.get(key)
+        return mine is not None and mine["thread"] == threading.get_ident()
 
 
 def held_by_this_thread(ip: str):

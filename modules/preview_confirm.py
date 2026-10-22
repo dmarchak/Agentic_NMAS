@@ -3100,6 +3100,8 @@ RETIRE_GATES = (
      "every network's inventory was read: no other device has its name"),
     ("topology", "the Topology declarations and layout can be read",
      "its declaration and place, if any, are removed"),
+    ("console", "its console runs and the console path Mercury made can be read",
+     "its console port and runs, if any, are removed"),
     ("netbox_record", "Mercury's created-object record can be read",
      "its entry, if any, is marked retired"),
 )
@@ -3234,6 +3236,9 @@ RETIRE_STEP_WORDS = {"netbox_mask": "masked the credentials NetBox held in its s
                      "telemetry": "removed its Grafana telemetry rules from the generated rules "
                                   "file and named them for deletion; its host step installs "
                                   "both (C1419)",
+                     "console": "removed the console port and cable Mercury made for it, and "
+                                "moved its console survey and kick-start records aside "
+                                "(C1553); the console server's port stays",
                      "netbox_record": "set its NetBox record to Decommissioning and renamed it, "
                                       "and marked Mercury's created-object entry retired "
                                       "(C1342)",

@@ -68,6 +68,8 @@ KEYING = {
     # C1506: the old text guess's `ios` platform is corrected only for a device whose
     # dialect (platform_for_device()) is not IOS's.
     "modules/netbox_client.py":             "dialect",
+    # Out-of-band ZTP's SESSION_LINES, keyed on a console profile's `platform`: the dialect.
+    "modules/nsot/console_ztp.py":          "dialect",
     "scripts/netmiko_timing_probe.py":      "driver",
     "scripts/nsot_metric_diff.py":          "dialect",
 }

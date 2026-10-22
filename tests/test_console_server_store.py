@@ -156,7 +156,7 @@ class TestRefusals:
         (dict(RAW, tcp_port="50 00"), "tcp_port '50 00' is not a port number"),
         (dict(BRIDGE, credential_ref="hunter2 pass"), "is not a credential store key name"),
         (dict(BRIDGE, credential_ref="console-bridge\n"), "is not a credential store key name"),
-        (dict(BRIDGE, host="fe80::1%eth0\n"), "is not an address or a hostname"),
+        (dict(BRIDGE, host="fe80::1%eth0\n"), "is not an IPv4 or IPv6 address or a hostname"),
         # Key material pasted where a reference belongs (a key file's base64 body; the stage
         # guard refuses a private-key header in any staged file, so none is written here).
         (dict(BRIDGE, credential_ref="b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQ=="),
@@ -168,11 +168,11 @@ class TestRefusals:
         (dict(BRIDGE, host="[192.0.2.1]"), "only an IPv6 address is written in brackets"),
         (dict(BRIDGE, host="192.0.2.1%eth0"), "only an IPv6 address carries a zone"),
         (dict(BRIDGE, host="fe80::1%eth 0"), "is not an interface name"),
-        (dict(BRIDGE, host="cons;reboot"), "is not an address or a hostname"),
-        (dict(BRIDGE, host=" cons"), "is not an address or a hostname"),
-        (dict(BRIDGE, host="-cons.example"), "is not an address or a hostname"),
+        (dict(BRIDGE, host="cons;reboot"), "is not an IPv4 or IPv6 address or a hostname"),
+        (dict(BRIDGE, host=" cons"), "is not an IPv4 or IPv6 address or a hostname"),
+        (dict(BRIDGE, host="-cons.example"), "is not an IPv4 or IPv6 address or a hostname"),
         (dict(RAW, jump_host="jump host", ssh_port=22, credential_ref="k"),
-         "is not an address or a hostname"),
+         "is not an IPv4 or IPv6 address or a hostname"),
         ("not a mapping", "a mapping of its fields"),
     ])
     def test_a_record_out_of_shape_is_refused_naming_why(self, cs, record, words):

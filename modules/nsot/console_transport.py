@@ -64,6 +64,8 @@ SSH_PORT = 22
 
 #: One hostname label (RFC 1123).
 LABEL = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
+#: An IPv6 zone (``fe80::1%eth0``): an interface name's characters only, 15 at most.
+ZONE = re.compile(r"[A-Za-z0-9_.-]{1,15}")
 
 
 def connect_bound() -> float:
@@ -108,21 +110,45 @@ def check_tcp_port(what: str, value) -> int:
 
 def canonical_host(host) -> str:
     """*host* as connected to and keyed in the host-key record: an IPv4 or IPv6 address in
-    its canonical form (an IPv6 one unbracketed, compressed), or a hostname in lower case."""
+    its canonical form (an IPv6 one unbracketed, compressed, its zone kept), or a hostname in
+    lower case; else ConsoleRefused saying why.
+
+    THE ONE HOME of the console-server host rule (C1558): the console-server store
+    (`console_servers.host_refusal`) checks a host with this, so what the store keeps is what
+    a transport connects to. Brackets only around an IPv6 address; a zone (``%eth0``) only on
+    an IPv6 address, and only an interface name's characters (`ZONE`); no space or line break
+    anywhere (`ipaddress` would keep one in a zone)."""
     text = host if isinstance(host, str) else ""
     bare = text[1:-1] if text.startswith("[") and text.endswith("]") else text
+    addr, has_zone, zone = bare.partition("%")
     try:
-        address = ipaddress.ip_address(bare)
+        address = ipaddress.ip_address(addr)
     except ValueError:
         address = None
-    if address is not None and (bare == text or address.version == 6):
-        return str(address)
+
+    def refused(why: str = "") -> ConsoleRefused:
+        return ConsoleRefused(f"{host!r} is not an IPv4 or IPv6 address or a hostname"
+                              + (f": {why}" if why else ""))
+
+    if address is not None:
+        if bare != text and address.version != 6:
+            raise refused("only an IPv6 address is written in brackets")
+        if not has_zone:
+            return str(address)
+        if address.version != 6:
+            raise refused("only an IPv6 address carries a zone")
+        if not ZONE.fullmatch(zone):
+            raise refused(f"the IPv6 zone {zone!r} is not an interface name")
+        return f"{address}%{zone}"
+    if ":" in text or "%" in text:
+        raise refused("it is not an IPv6 address")
     name = text[:-1] if text.endswith(".") else text     # one trailing dot: fully qualified
     labels = name.split(".")
     if bare != text or len(name) > 253 or \
-            not all(LABEL.fullmatch(label) for label in labels) or \
-            all(label.isdigit() for label in labels):
-        raise ConsoleRefused(f"{host!r} is not an IPv4 or IPv6 address or a hostname")
+            not all(LABEL.fullmatch(label) for label in labels):
+        raise refused()
+    if all(label.isdigit() for label in labels):
+        raise refused("it is not an IPv4 address")
     return name.lower()
 
 
@@ -404,7 +430,8 @@ class RawTcp(_SshMixin, ConsoleTransport):
 
 @dataclass(frozen=True)
 class RunResult:
-    outcome: str           # "done", "aborted", "bound" (the run's bound passed) or "closed"
+    outcome: str           # "done", "aborted", "bound" (the run's bound passed), "closed", or
+    #                        "refused" (a send for a device this thread does not hold, C1559)
     reason: str            # masked
     state: str             # the session's state at the end
     attach_state: object   # the first prompt seen before a line was typed (the survey's input)
@@ -413,10 +440,36 @@ class RunResult:
     transcript: str        # masked
 
 
+def unheld(device) -> str:
+    """Why a console write for *device* (``(network, hostname)``) must not happen on this
+    thread, or "" when this thread holds that device (`device_ops.held_here`)."""
+    from modules.nsot import device_ops
+
+    if not (isinstance(device, tuple) and len(device) == 2 and all(device)):
+        return (f"a console write names the device it is for, as (network, hostname), and "
+                f"{device!r} was given: nothing was written")
+    if not device_ops.held_here(*device):
+        return (f"this thread does not hold {device[1]} in {device[0]}, and a console write "
+                "needs the device held by its operation (C1559): nothing was written")
+    return ""
+
+
 def run_plan(transport, session, clock=time.monotonic, *, bound_s: float,
-             poll_s: float = POLL_S, chunk: int = CHUNK) -> RunResult:
+             poll_s: float = POLL_S, chunk: int = CHUNK, device=None,
+             plan=None, seed: bytes = b"") -> RunResult:
     """Drive *session* over an open *transport* until it is done or aborted, the far end
     closes, or *bound_s* seconds pass on *clock* from the run's start.
+
+    **A send needs the device held** (C1559): every write is checked against *device*
+    (``(network, hostname)``), which THIS thread must hold (`device_ops.hold`); otherwise the
+    run ends ``refused`` with nothing written. A run that sends nothing needs no device.
+
+    *plan*: the session's next plan (`ConsoleSession.continue_with`), begun from the prompt
+    its last plan ended on; its first send is this run's, checked and written like any other.
+
+    *seed*: console text an earlier session already received (the prompt a device printed
+    before it was woken), fed to this new session first, so the decision it makes is this
+    run's, checked and written like any other.
 
     *bound_s* is the caller's, required: the operation knows its budget (a survey's few reads,
     a kick-start that waits out a boot). The session's own step bound ends a stalled step
@@ -434,9 +487,18 @@ def run_plan(transport, session, clock=time.monotonic, *, bound_s: float,
                          f"{session.settle_s}, or a settled prompt waits a whole read")
     start = clock()
     written = transport.bytes_written
-    decision = session.tick(start)
+    if plan is not None:
+        decision = session.continue_with(plan, start)
+    elif seed:
+        decision = session.feed(seed, start)
+    else:
+        decision = session.tick(start)
     while True:
         if decision.action == "send":
+            why = unheld(device)
+            if why:
+                outcome, reason = "refused", why
+                break
             try:
                 transport.write(decision.data)
             except (OSError, ConsoleClosed) as exc:

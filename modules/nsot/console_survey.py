@@ -7,10 +7,13 @@ nothing.
 - `blank_check`: the factory-blank check's output (`dir nvram:` on IOS) read for the startup
   configuration's size. Blank ONLY when the startup-config entry is present and 0 bytes; an
   absent entry, two entries, or output that does not parse is UNKNOWN, never blank.
-- `survey`: the verdict. **A console found signed in** (a `>`, `#` or config prompt at attach,
+- `survey`: the verdict. **A console found signed in** (a `#` or config prompt at attach,
   before any line was typed) **is not factory-blank as found** (the operator's rule: a device
   was left at `Switch#` on 2026-10-22): the result says `found_signed_in` and why, and is not
-  blank whatever nvram says, so the operation never proceeds silently from it.
+  blank whatever nvram says, so the operation never proceeds silently from it. **A `>` prompt
+  at attach is recorded, and the blank check decides** (the operator's decision D3,
+  2026-10-22): a factory-blank device whose "Press RETURN" banner printed before Mercury
+  attached answers the wake with `>`, so `>` alone says nothing about a configuration.
 - `base_mac`: the MAC the device will DHCP from, from the profile's named read (`show
   version`'s "Base ethernet MAC Address"); not found is None, said so.
 - `render_kickstart`: the exact lines typed, from the profile's template with only its
@@ -23,8 +26,11 @@ from dataclasses import dataclass
 
 from modules.nsot import console_profiles as P
 
-#: The states at attach that say the console was signed in, and those that say it was not.
-SIGNED_IN = (P.USER_EXEC, P.PRIV_EXEC, P.CONFIG)
+#: The states at attach that say the console was signed in (D3: a privileged or config prompt),
+#: the one RECORDED and left to the blank check (D3: a user prompt), and those that say the
+#: console was not signed in.
+SIGNED_IN = (P.PRIV_EXEC, P.CONFIG)
+RECORDED = (P.USER_EXEC,)
 NOT_SIGNED_IN = (P.PRESS_RETURN, P.SETUP_DIALOG)
 #: A login prompt at attach: the device holds a configuration that asks for one.
 LOGIN = (P.LOGIN_USER, P.LOGIN_PASSWORD)
@@ -97,6 +103,11 @@ def survey(found_state, nvram_text: str, profile) -> SurveyResult:
         blank = False
         reasons.insert(0, f"not factory-blank as found: the console asked for a login "
                           f"({found_state}) at attach")
+    elif found_state in RECORDED:
+        blank = check.blank
+        reasons.insert(0, f"the console was at {found_state} at attach: recorded, and not by "
+                          "itself a sign of a configuration (the operator's decision D3), so "
+                          "the blank check decides")
     elif found_state in NOT_SIGNED_IN:
         blank = check.blank
     else:

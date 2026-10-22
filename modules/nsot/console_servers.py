@@ -32,11 +32,9 @@ is preserved aside (`filestore.read_json_for_write`), and a read says ``unreadab
 ``absent``.
 """
 
-import ipaddress
 import json
 import logging
 import os
-import re
 import time
 
 from modules import filestore
@@ -47,16 +45,9 @@ FILE = "console_servers.json"
 DRIVERS = ("command_bridge", "raw_tcp")
 
 #: A container name is the bridge wrapper's own rule (`console_wrapper.name_refusal`, called by
-#: `container_refusal`). Every pattern here is matched WHOLE (``fullmatch``): ``$`` also matches
-#: before a trailing newline, which a ``match`` let through (the store test's ``edge-a\n``).
-#: A credential reference: a key NAME in Mercury's credential store (a profile name, or a
-#: scoped key such as ``<network>:@profile:<ref>``). No space, no quote, no newline: a pasted
-#: password or key does not fit it.
-CREDENTIAL_REF_RE = re.compile(r"^[A-Za-z0-9@][A-Za-z0-9_.:@-]{0,127}$")
-#: One label of a hostname (RFC 1123).
-_LABEL_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
-#: An IPv6 zone (``fe80::1%eth0``): an interface name's characters only.
-_ZONE_RE = re.compile(r"^[A-Za-z0-9_.-]{1,15}$")
+#: `container_refusal`; C1565). A credential reference's shape and a host's are each ONE rule
+#: with one home (C1558): the credential store's `check_ssh_key_ref` and the transport's
+#: `canonical_host`, called below.
 
 #: The fields each driver holds: (required, optional).
 FIELDS = {
@@ -86,36 +77,29 @@ def _now() -> str:
 
 def host_refusal(value) -> tuple:
     """``(canonical, "")`` for an IPv4 or IPv6 address (brackets and a zone allowed; stored
-    canonical, unbracketed) or an RFC 1123 hostname; ``("", why)`` for anything else."""
-    text = value if isinstance(value, str) else ""
-    if not text or text != text.strip():
-        return "", f"{value!r} is not an address or a hostname"
-    bare = text[1:-1] if text.startswith("[") and text.endswith("]") else text
-    if "%" in bare:
-        addr, _, zone = bare.partition("%")
-        if not _ZONE_RE.fullmatch(zone):
-            return "", f"{value!r}: the IPv6 zone {zone!r} is not an interface name"
-    else:
-        addr = bare
+    canonical, unbracketed) or an RFC 1123 hostname; ``("", why)`` for anything else.
+
+    The rule is the transport's (`console_transport.canonical_host`, its one home, C1558): the
+    store keeps exactly the host a transport connects to."""
+    from modules.nsot.console_transport import ConsoleRefused, canonical_host
+
     try:
-        ip = ipaddress.ip_address(addr)
-    except ValueError:
-        ip = None
-    if ip is not None:
-        if bare != text and ip.version != 6:
-            return "", f"{value!r}: only an IPv6 address is written in brackets"
-        if "%" in bare and ip.version != 6:
-            return "", f"{value!r}: only an IPv6 address carries a zone"
-        return (f"{ip}%{bare.partition('%')[2]}" if "%" in bare else str(ip)), ""
-    if bare != text or ":" in text or "%" in text:
-        return "", f"{value!r} is not an IPv6 address"
-    name = text[:-1] if text.endswith(".") else text
-    labels = name.split(".")
-    if len(name) > 253 or not all(_LABEL_RE.fullmatch(lab) for lab in labels):
-        return "", f"{value!r} is not an address or a hostname"
-    if all(lab.isdigit() for lab in labels):
-        return "", f"{value!r} is not an IPv4 address"
-    return name.lower(), ""
+        return canonical_host(value), ""
+    except ConsoleRefused as exc:
+        return "", str(exc)
+
+
+def credential_ref_refusal(value) -> str:
+    """Why *value* is not a credential reference, or "". The shape is the credential store's
+    (`credentials.check_ssh_key_ref`, its one home, C1558): a NAME in it, never a value."""
+    from modules import credentials
+
+    try:
+        credentials.check_ssh_key_ref(value)
+    except ValueError as exc:
+        return (f"credential_ref {value!r} is not a credential store key name (a name, never "
+                f"a value): {exc}")
+    return ""
 
 
 def container_refusal(value) -> str:
@@ -168,9 +152,7 @@ def validate(record) -> tuple:
         elif field == "container":
             why = container_refusal(value)
         else:                                            # credential_ref
-            why = "" if isinstance(value, str) and CREDENTIAL_REF_RE.fullmatch(value) else (
-                f"credential_ref {value!r} is not a credential store key name (a name, never "
-                "a value)")
+            why = credential_ref_refusal(value)
         if why:
             errors.append(why)
         else:

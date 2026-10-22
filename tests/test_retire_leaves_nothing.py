@@ -833,6 +833,133 @@ class TestNetBoxRecord:
         assert [d["id"] for d in fake.store["dcim/devices"]] == [31]
 
 
+# ----------------------------------------------------------------------------- C1553
+
+def _console_path(fake, *, ours: bool, cable_ours: bool = None):
+    """A console path on device 31 to port 5 of console server cons-1; the console port and
+    the cable recorded as Mercury's when *ours* (*cable_ours*, default the same)."""
+    from modules import netbox_guard
+    cs = fake.seed("dcim/devices", {"name": "cons-1", "status": "active"})
+    port = fake.seed("dcim/console-ports", {"device": 31, "name": "con 0"})
+    sport = fake.seed("dcim/console-server-ports", {"device": cs["id"], "name": "port 5"})
+    cable = fake.seed("dcim/cables", {
+        "a_terminations": [{"object_type": "dcim.consoleport", "object_id": port["id"]}],
+        "b_terminations": [{"object_type": "dcim.consoleserverport", "object_id": sport["id"]}],
+        "status": "connected", "label": ""})
+    tag = [{"slug": "nmas-managed", "name": "nmas-managed"}]
+    with netbox_guard.for_list("Lab", actor="op", authority="test"):
+        if ours:
+            port["tags"] = tag
+            netbox_guard.record_created("Lab", "dcim/console-ports", port["id"], "con 0")
+        if ours if cable_ours is None else cable_ours:
+            cable["tags"] = tag
+            netbox_guard.record_created("Lab", "dcim/cables", cable["id"], "")
+    return port, sport, cable
+
+
+def _console_runs(lab, device_id=31):
+    """A blank survey of edge1 and a stopped one of edge2, recorded and indexed as runs are."""
+    from modules.nsot import console_ztp as Z, reads
+    recs = []
+    for host, dev_id, blank in ((HOST, device_id, True), (OTHER, 77, False)):
+        rec = {"id": reads.new_id(), "kind": Z.KIND_SURVEY, "list": "Lab",
+               "device_id": dev_id, "device": host, "actor": "op", "outcome": "surveyed",
+               "blank": blank, "at": "2026-10-22T10:00:00Z", "port_id": 5}
+        recs.append(Z.record("Lab", rec))
+    return recs
+
+
+class TestConsolePathAndRuns:
+    """C1553: the console port and cable Mercury made for it leave NetBox, its console runs
+    move aside and leave the index; the console server's port and Mercury's record of how to
+    reach it stay (they are the console server's)."""
+
+    @pytest.fixture(autouse=True)
+    def own_data(self, tmp_path, monkeypatch):
+        """The installation's console ZTP index and console-server store, this test's own."""
+        data = tmp_path / "install-data"
+        data.mkdir()
+        monkeypatch.setattr("modules.config.DATA_DIR", str(data))
+
+    def test_the_plan_names_it_and_retirement_removes_it(self, lab, netbox, monkeypatch):
+        from modules.nsot import console_servers, console_ztp as Z
+        port, sport, cable = _console_path(netbox["fake"], ours=True)
+        assert console_servers.set_port(sport["id"], {"driver": "raw_tcp", "host": "::1",
+                                                      "tcp_port": 5000}, actor="op")["ok"]
+        mine, other = _console_runs(lab)
+        p = RT.plan("Lab", HOST, REASON)
+        what = _step(p, "console")["what"]
+        assert "remove its console port(s) 'con 0'" in what
+        assert "the console server's port and Mercury's record of how to reach it are KEPT" \
+            in what
+        assert "move its 1 console survey and kick-start record(s) aside" in what
+        _retire()
+        fake = netbox["fake"]
+        assert [o["id"] for o in fake.store["dcim/console-ports"]] == []
+        assert fake.store["dcim/cables"] == []
+        assert [o["id"] for o in fake.store["dcim/console-server-ports"]] == [sport["id"]]
+        assert console_servers.get_port(sport["id"])["state"] == "read"
+        assert [r["id"] for r in Z.runs("Lab")["runs"]] == [other["id"]]
+        assert os.path.exists(os.path.join(lab["list_dir"], Z.FOLDER, Z.RETIRED,
+                                           f"{mine['id']}.json"))
+        assert Z.latest_survey("Lab", 31)[0] is None
+        assert Z.latest_survey("Lab", 77)[0]["id"] == other["id"]
+
+    def test_a_persons_cable_on_its_port_keeps_both_and_says_so(self, lab, netbox):
+        port, _sport, cable = _console_path(netbox["fake"], ours=True, cable_ours=False)
+        p = RT.plan("Lab", HOST, REASON)
+        assert any(f"its console port 'con 0' (NetBox {port['id']}) and its cable "
+                   f"{cable['id']} are KEPT: Mercury did not create cable {cable['id']}" in n
+                   for n in p["not_doing"]), p["not_doing"]
+        assert _step(p, "console")["done"] is True
+        _retire()
+        assert [o["id"] for o in netbox["fake"].store["dcim/console-ports"]] == [port["id"]]
+
+    def test_a_persons_port_is_not_read_when_mercury_made_none(self, lab, netbox, monkeypatch):
+        """No console port in Mercury's created-object record: nothing in NetBox can be ours,
+        so it is not read, and nothing is removed."""
+        import modules.nsot.console_path as CP
+        port, _sport, _cable = _console_path(netbox["fake"], ours=False)
+        read, real = [], CP.read_console_path
+        monkeypatch.setattr(CP, "read_console_path",
+                            lambda *a, **k: read.append(a) or real(*a, **k))
+        p = RT.plan("Lab", HOST, REASON)
+        assert read == [] and _step(p, "console")["done"] is True
+        _retire()
+        assert [o["id"] for o in netbox["fake"].store["dcim/console-ports"]] == [port["id"]]
+
+    def test_writes_off_keeps_the_port_and_still_moves_the_runs(self, lab, netbox):
+        from modules.nsot import console_ztp as Z
+        _console_path(netbox["fake"], ours=True)
+        _console_runs(lab)
+        netbox["state"]["writes"] = False
+        p = RT.plan("Lab", HOST, REASON)
+        assert any("are NOT removed: NetBox writes are off" in n for n in p["not_doing"])
+        _retire()
+        assert len(netbox["fake"].store["dcim/console-ports"]) == 1
+        assert Z.latest_survey("Lab", 31)[0] is None
+
+    def test_by_name_when_netbox_is_not_configured(self, lab):
+        """No NetBox (the lab fixture's): its runs are found by its name, and moved."""
+        from modules.nsot import console_ztp as Z
+        _console_runs(lab)
+        _retire()
+        assert [r["device"] for r in Z.runs("Lab")["runs"]] == [OTHER]
+
+    def test_an_unreadable_index_refuses_the_plan(self, lab):
+        from modules.nsot import console_ztp as Z
+        os.makedirs(os.path.dirname(Z.index_path()), exist_ok=True)
+        with open(Z.index_path(), "w", encoding="utf-8") as fh:
+            fh.write("{not json")
+        p = RT.plan("Lab", HOST, REASON)
+        assert not p["ok"] and "could not be read" in p["refused_by"]["console"]
+
+    def test_none_is_a_done_step_saying_so(self, lab):
+        p = RT.plan("Lab", HOST, REASON)
+        s = _step(p, "console")
+        assert s["done"] and s["what"].startswith("no console port Mercury made")
+
+
 # ----------------------------------------------------------------------------- C1345
 
 class TestTheWordsMatchTheSteps:
@@ -896,11 +1023,17 @@ class TestANewDeviceOfTheNameInheritsNothing:
         A.write_sidecar(repo, HOST, IP, "cisco_xe", "nmas")
         TE.declare("Lab", HOST, "apart on purpose: its own segment", "op")
         TP.save("Lab", {HOST: [100, 100], OTHER: [300, 100]}, "op", moved=HOST)
+        # Its console path and console runs (C1553), in this test's own installation folder.
+        from modules.nsot import console_ztp as Z
+        (lab["tmp"] / "install-data").mkdir()
+        monkeypatch.setattr("modules.config.DATA_DIR", str(lab["tmp"] / "install-data"))
+        _console_path(netbox["fake"], ours=True)
+        _console_runs(lab)
 
         p, out = _retire()
         assert set(out["done"]) >= {"override", "staged", "reservations", "commit", "tags",
                                     "rolled_back", "approvals", "rotation_policy", "topology",
-                                    "heartbeat", "netbox_record", "row"}, out["done"]
+                                    "heartbeat", "console", "netbox_record", "row"}, out["done"]
 
         # -- a NEW edge1, onboarded at the same address
         identity, new_tag = _new_device(lab)
@@ -929,12 +1062,18 @@ class TestANewDeviceOfTheNameInheritsNothing:
         assert HOST not in TE.read("Lab")["islands"]
         assert HOST not in TP.read("Lab")["positions"]
         assert json.loads(frag.read_text()) == [] and lab["state"]["held"] == []
+        # No console survey of the old device stands for it, and no console port of the old.
+        assert Z.latest_survey("Lab", 31)[0] is None
+        assert [r for r in Z.runs("Lab")["runs"] if r["device"] == HOST] == []
+        assert Z.device_entries("Lab", HOST) == ([], "")
+        assert netbox["fake"].store["dcim/console-ports"] == []
         # NetBox: the old record kept and renamed; the new device matched by id only.
         assert onboard._device_id_from(netbox_guard.get_created("Lab"), HOST) is None
         assert not [r for r in manifest.references(repo, identity, "Lab")
                     if r["kind"] == "netbox"]
         names = sorted(d["name"] for d in netbox["fake"].store["dcim/devices"])
-        assert names == [f"{HOST}-retired-31"], names
+        # The console server stays: it is the console server's, never the device's (C1553).
+        assert names == ["cons-1", f"{HOST}-retired-31"], names
 
 
 # ----------------------------------------------------------------------------- C1476

@@ -144,6 +144,9 @@ ANNOUNCERS = {
     "in-progress": ("in_progress",),
     # modules/host_keys.py (C906): a device's key kept, refused or replaced, by any session.
     "host-keys": ("host_keys",),
+    # modules/nsot/console_ztp.py (O6a): a console survey's or kick-start's end. O6b's card
+    # adds its own key with its subscriber.
+    "console-ztp": ("device_state", "pending"),
     # modules/deploy_job.py: each device finishing, and at the end what a
     # deploy changes (the keys today's /deploy/apply declared until 7.8).
     # A restore run as a job (the v2 device page) also moves intent and approvals.

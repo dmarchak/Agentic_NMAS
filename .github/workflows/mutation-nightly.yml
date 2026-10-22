@@ -31,6 +31,13 @@ on:
           each path::qualname (e.g. modules/nsot/config_check.py::_check_device); empty for none
         required: false
         default: ""
+      cap:
+        description: >-
+          At most this many functions this run, the named ones first (digits; empty for the
+          plan's default, 20). With `functions` and a cap equal to their count, only the named
+          functions run; what does not fit waits in the record, first in line
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -171,6 +178,7 @@ jobs:
         id: plan
         env:
           ALSO_FUNCTIONS: ${{ inputs.functions }}
+          CAP: ${{ inputs.cap }}
           REACH_COMMIT: ${{ steps.reach.outputs.sha }}
           REACH_RUN: ${{ steps.reach.outputs.id }}
           REACH_DATE: ${{ steps.reach.outputs.date }}
@@ -180,6 +188,11 @@ jobs:
           set -f
           set --
           for f in $ALSO_FUNCTIONS; do set -- "$@" --also "$f"; done
+          case "$CAP" in
+            "") ;;
+            *[!0-9]*) echo "the cap '$CAP' is not a number of functions" >&2; exit 1;;
+            *) set -- "$@" --cap "$CAP";;
+          esac
           python scripts/nmas-mutation plan --state .mutation-state/state.json \
             --head "$GITHUB_SHA" --out mutation-out --summary mutation-out/summary.md --fence \
             --reach "$RUNNER_TEMP/coverage-reach" --reach-commit "$REACH_COMMIT" \

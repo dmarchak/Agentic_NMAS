@@ -1255,14 +1255,18 @@ class TestTheWorkflow:
     def test_a_dispatchs_functions_reach_the_plan_through_the_environment(self):
         """Never `${{ inputs... }}` pasted into a script (an input is text a person typed)."""
         doc = self.doc()
-        assert set(doc[True]["workflow_dispatch"]["inputs"]) == {"functions"}
+        assert set(doc[True]["workflow_dispatch"]["inputs"]) == {"functions", "cap"}
         plan = next(s for s in doc["jobs"]["mutate"]["steps"] if s.get("id") == "plan")
         assert plan["env"] == {"ALSO_FUNCTIONS": "${{ inputs.functions }}",
+                               "CAP": "${{ inputs.cap }}",
                                "REACH_COMMIT": "${{ steps.reach.outputs.sha }}",
                                "REACH_RUN": "${{ steps.reach.outputs.id }}",
                                "REACH_DATE": "${{ steps.reach.outputs.date }}",
                                "NMAS_REQUIRE_PG": "1"}
         assert "${{" not in plan["run"] and '--also "$f"' in plan["run"]
+        # The cap (Lab 9, 2026-10-22: a dispatch that runs only its named functions): digits
+        # only, refused otherwise, and handed to the plan as --cap; empty keeps the default.
+        assert '*[!0-9]*) echo "the cap' in plan["run"] and 'set -- "$@" --cap "$CAP"' in plan["run"]
 
     def test_the_plan_reads_the_newest_coverage_drilldown_from_its_run(self):
         """C796, C834: the newest successful coverage nightly's run, found through the public

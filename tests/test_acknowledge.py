@@ -98,7 +98,9 @@ class TestEveryKindSaysHowItClears:
                                      # An adjacency's logged drops, within its band (C589).
                                      ("adjacency_log", "flap"),
                                      # One deploy's lines verify could not read back (C1542).
-                                     ("deploys", "read_back")}
+                                     ("deploys", "read_back"),
+                                     # One console survey's or kick-start's run (O6a).
+                                     ("console_ztp", "not_blank"), ("console_ztp", "failed")}
         for kind in ACKNOWLEDGED_HERE:
             assert "acknowledge" in CLEARS[kind][0], kind
         # Every other kind naming acknowledge does it through its OWN control, named.

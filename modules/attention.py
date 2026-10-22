@@ -178,6 +178,16 @@ ROW_KINDS = {
     ("host_key_windows", "window"): ("a planned window kept new SSH host keys that no person "
                                      "has reviewed", "compare each new key with its device's, "
                                                      "then acknowledge"),
+    # Out-of-band ZTP (O6a, modules/nsot/console_ztp.py): a device's latest console run.
+    ("console_ztp", "not_blank"): ("a console survey or kick-start found the device not "
+                                   "factory-blank, so no kick-start types on it",
+                                   "return it to its factory state (erase its startup "
+                                   "configuration and reload it), then survey its console "
+                                   "again"),
+    ("console_ztp", "failed"): ("a console survey or kick-start stopped before its end, so what "
+                                "the console holds is not known",
+                                "read the run's transcript, check the console server and the "
+                                "device, then survey its console again"),
 }
 
 #: The ways a row leaves the page (the operator, 2026-10-02): the CONDITION RESOLVING (the
@@ -304,6 +314,14 @@ CLEARS = {
     ("host_key_windows", "window"): (("acknowledge",), "a person acknowledges it with a "
                                      "reason, after comparing the keys; each key stays in "
                                      "History with the one it replaced"),
+    ("console_ztp", "not_blank"): (("resolves", "acknowledge"), "a later console survey of the "
+                                   "device finds it factory-blank, or a later kick-start "
+                                   "completes, or a person acknowledges this run with a "
+                                   "reason; a later run that finds it so raises it again"),
+    ("console_ztp", "failed"): (("resolves", "acknowledge"), "a later console survey of the "
+                                "device completes, or a later kick-start completes, or a "
+                                "person acknowledges this run with a reason; a later run that "
+                                "stops raises it again"),
 }
 
 #: The kinds a person acknowledges HERE, with "Acknowledge…" on the row (modules/
@@ -320,7 +338,9 @@ ACKNOWLEDGED_HERE = frozenset({("restarts", "unplanned"), ("authorisations", "re
                                ("adjacency_log", "flap"),
                                # One deploy's lines verify could not read back, the device
                                # printing them in another form (C1542): that deploy only.
-                               ("deploys", "read_back")})
+                               ("deploys", "read_back"),
+                               # One console run (O6a): that run only, by its id.
+                               ("console_ztp", "not_blank"), ("console_ztp", "failed")})
 
 #: Words that say there is nothing to do: an action is a thing a person does.
 NOT_AN_ACTION = ("nothing to do", "it is information", "is what is known",
@@ -3570,6 +3590,65 @@ def host_key_window_source(found=None) -> dict:
                                   f"keys, {len(rows)} of them kept one or more"))
 
 
+def console_ztp_source(found=None) -> dict:
+    """Each device whose LATEST console run (out-of-band ZTP, modules/nsot/console_ztp.py)
+    needs a person: a survey or kick-start that found it not factory-blank, or one that stopped
+    before its end (an abort, a closed console, its bound, an unverified end). One row per
+    device, about that run (its event is the run's id), until a later run ends well or a person
+    acknowledges it. One file read (the installation's index); an index that cannot be read
+    is this source's error, itself a row."""
+    from modules.nsot import console_ztp as Z
+    from modules.redact import redact_text
+
+    started = time.time()
+    label = "Console surveys and kick-starts"
+    got = Z.read_index() if found is None else found()
+    took = int((time.time() - started) * 1000)
+    if got["state"] == "unreadable":
+        return source_result("console_ztp", label, read_at=started, took_ms=took,
+                             error=(f"the console ZTP index ({Z.INDEX}) could not be read: "
+                                    f"{got.get('error')}"))
+    rows = []
+    for key, entry in sorted(got["devices"].items()):
+        kind = Z.problem(entry)
+        if kind is None:
+            continue
+        latest = entry.get("latest") or {}
+        dev = entry.get("device") or "?"
+        run = "console survey" if latest.get("kind") == Z.KIND_SURVEY else "console kick-start"
+        said = redact_text("; ".join(latest.get("reasons") or [])
+                           or latest.get("reason") or "no reason was recorded")
+        cause = (f"The {run} of {latest.get('at', '?')} by {latest.get('actor') or 'someone'} "
+                 f"(network {entry.get('list')}, NetBox device {entry.get('device_id')}, over "
+                 f"console-server port {latest.get('port_id')}) ended "
+                 f"{latest.get('outcome', '?')}: {said}")
+        operands = {"list": entry.get("list", ""), "device_id": entry.get("device_id"),
+                    "run": latest.get("id", ""), "outcome": latest.get("outcome", ""),
+                    "port_id": latest.get("port_id")}
+        if kind == "not_blank":
+            rows.append(row(
+                source="console_ztp", kind="not_blank", key=key, level="warning",
+                event=latest.get("id"), devices=[dev], since=_ts(latest.get("at")),
+                what=f"{dev}'s {run} found it not factory-blank: no kick-start types on it",
+                cause=cause, operands=operands,
+                action={"label": (f"Return {dev} to its factory state (erase its startup "
+                                  "configuration and reload it), then survey its console "
+                                  "again")}))
+        else:
+            rows.append(row(
+                source="console_ztp", kind="failed", key=key,
+                level="danger" if latest.get("kind") == Z.KIND_KICKSTART else "warning",
+                event=latest.get("id"), devices=[dev], since=_ts(latest.get("at")),
+                what=f"{dev}'s {run} stopped before its end ({latest.get('outcome', '?')})",
+                cause=cause, operands=operands,
+                action={"label": (f"Read the run's transcript, check console-server port "
+                                  f"{latest.get('port_id')} and {dev}, then survey its console "
+                                  "again")}))
+    return source_result("console_ztp", label, read_at=started, took_ms=took, rows=rows,
+                         checked=(f"{len(got['devices'])} device(s) with a console survey or "
+                                  f"kick-start, {len(rows)} whose latest run needs a person"))
+
+
 SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding_source,
            rollback_source, deploy_source, baseline_source, authorisation_source,
            grafana_source, integrations_source, ci_source, redaction_source,
@@ -3579,7 +3658,7 @@ SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding
            interrupted_source, dashboard_roles_source, template_behind_source,
            records_source, scheduled_rotation_source, host_key_source,
            host_key_window_source, netbox_inventory_source, adjacency_log_source,
-           netbox_lag_source)
+           netbox_lag_source, console_ztp_source)
 
 
 #: What can move each source's rows: the data keys (modules/invalidation.VOCABULARY) whose
@@ -3632,6 +3711,8 @@ SOURCE_KEYS = {
     "host_key_source": ("host_keys",),
     # A window's summary written by its reader announces the same key (C906).
     "host_key_window_source": ("host_keys",),
+    # A console survey's or kick-start's end announces both (console_ztp.ANNOUNCE_KEYS).
+    "console_ztp_source": ("device_state", "pending"),
 }
 
 #: Every key that can move a row, and a person's acknowledgement.
@@ -3917,7 +3998,8 @@ def _without_acknowledged(rows: list):
 _ACK_SOURCES = {"restarts": "restart_source", "authorisations": "authorisation_source",
                 "operations": "interrupted_source", "grafana": "grafana_source",
                 "host_key_windows": "host_key_window_source",
-                "adjacency_log": "adjacency_log_source", "deploys": "deploy_source"}
+                "adjacency_log": "adjacency_log_source", "deploys": "deploy_source",
+                "console_ztp": "console_ztp_source"}
 
 
 def acknowledge(row_id: str, event: str, why: str, *, by: str, verified: str) -> dict:

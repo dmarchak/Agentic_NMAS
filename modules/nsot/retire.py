@@ -44,7 +44,9 @@ address to the next device), its template override (in the commit),
 its golden tags archived under ``retired/`` (``tags``), its rollback block archived in the
 retire commit and cleared (``rolled_back``), its approval-queue items withdrawn
 (``approvals``), its rotation-policy memberships (``rotation_policy``), its Topology
-declaration and place (``topology``), its Grafana heartbeat rule (``heartbeat``) and its
+declaration and place (``topology``), its Grafana heartbeat rule (``heartbeat``), the console
+port and cable Mercury made for it and its console survey and kick-start records (``console``,
+C1553; the console server's port stays: it is the console server's) and its
 NetBox record set to Decommissioning and renamed, its IP addresses freed (C1494: those Mercury
 created deleted, the rest unassigned and kept, each before recorded), Mercury's created-object
 entry marked retired (``netbox_record``). Readers keyed by the name (restore points, receipts, rotation
@@ -107,7 +109,7 @@ class RetireRefused(Exception):
 STEPS = ("netbox_mask", "override", "staged", "reservations", "leases", "ztp_subnet", "commit",
          "tags",
          "rolled_back", "approvals", "rotation_policy", "topology", "heartbeat", "telemetry",
-         "netbox_record", "legacy", "host_key", "row")
+         "console", "netbox_record", "legacy", "host_key", "row")
 
 #: The namespace a retired device's golden tags are archived under:
 #: ``retired/<device>/<identity>/<the tag's time>``. Never listed as a restore point.
@@ -483,6 +485,9 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
         step("telemetry", tel["step"], tel["done"])
     if tel.get("work"):
         work["telemetry"] = tel["work"]
+    # Its console path and its console runs (C1553, out-of-band ZTP), before its NetBox record
+    # is renamed: the console port and cable Mercury made, and the survey a kick-start stands on.
+    take("console", _console_facts(list_name, hostname, nb))
     # Its NetBox record and Mercury's created-object entry (C1342).
     nbr = _netbox_record_facts(list_name, hostname, nb)
     take("netbox_record", nbr)
@@ -1007,6 +1012,79 @@ def _topology_facts(list_name: str, hostname: str) -> dict:
     return {"step": " and ".join(parts) + ", each recorded in the Topology's own log, which "
                                           "History reads",
             "done": False, "work": {"island": hostname in keys, "keys": keys, "placed": placed}}
+
+
+def _console_facts(list_name: str, hostname: str, nb: dict) -> dict:
+    """Its console path in NetBox and its console runs (C1553; modules/nsot/console_ztp.py).
+
+    - Its console port, and the cable on it, each only where Mercury created it (tagged AND
+      recorded, `console_path.remove_console_path`'s own test), through that removal, with
+      NetBox writes on; a person's port or cable is kept and said.
+    - **The console server's port is KEPT, and so is its record in Mercury's console-server
+      store** (`console_servers`, keyed by that port's NetBox id): both belong to the console
+      server, not to the device, and serve the next device cabled to it.
+    - Its console survey and kick-start records move aside (``console_ztp/retired/``, kept, read
+      by no current reader) and its entries leave the console ZTP index, so no survey of the
+      retired device stands for a new device of the name."""
+    from modules import netbox_guard
+    from modules.nsot import console_path, console_ztp
+
+    nb_id = nb.get("id") if nb.get("checked") and nb.get("exists") else None
+    keys, err = console_ztp.device_entries(list_name, hostname, nb_id)
+    if err:
+        return {"refuse": f"{err}, so whether it holds {hostname}'s console runs cannot be told: "
+                          "could not read is not nothing there"}
+    files = console_ztp.device_runs(list_name, hostname, nb_id)
+    ports, not_doing = [], []
+    # Only a console port Mercury's created-object record holds can be removed, so NetBox is
+    # read only when that record holds one for this network (none: nothing here is ours).
+    recorded, why = netbox_guard.recorded_objects(list_name)
+    if why:
+        return {"refuse": (f"Mercury's created-object record could not be read ({why}), so "
+                           "whether it made a console port for this device is unknown")}
+    made_ports = any(endpoint.strip("/") == console_path.EP_PORTS
+                     for endpoint, _id, _name in recorded)
+    if nb_id is not None and made_ports:
+        path = console_path.read_console_path(nb_id)
+        if not path.get("ok"):
+            return {"refuse": (f"NetBox device {nb_id}'s console path could not be read "
+                               f"({path.get('error')}): whether Mercury made one for it is "
+                               "unknown, which is not none; preview again when NetBox answers")}
+        for part in (path.get("paths") or []) + (path.get("gaps") or []):
+            port = part["console_port"]
+            cable = (part.get("cable") or {}).get("id")
+            ours = netbox_guard.was_created_by_nmas(list_name, console_path.EP_PORTS, port["id"])
+            cable_ours = cable is None or netbox_guard.was_created_by_nmas(
+                list_name, console_path.EP_CABLES, cable)
+            if ours and cable_ours:
+                ports.append(port["name"])
+            else:
+                not_doing.append(
+                    f"its console port {port['name']!r} (NetBox {port['id']})"
+                    + (f" and its cable {cable}" if cable else "") + " are KEPT: Mercury did not "
+                    "create " + ("the port" if not ours else f"cable {cable}")
+                    + ", so Mercury never deletes it; remove it in NetBox if it is gone")
+        if ports and not nb.get("writes"):
+            not_doing.append("its console port(s) " + ", ".join(repr(n) for n in ports)
+                             + " are NOT removed: NetBox writes are off here (netbox_allow_"
+                             "writes), so they stay on the retired record")
+            ports = []
+    if not keys and not files and not ports:
+        return {"step": "no console port Mercury made and no console survey or kick-start "
+                        "names it", "done": True, "not_doing": not_doing}
+    parts = []
+    if ports:
+        parts.append("remove its console port(s) " + ", ".join(repr(n) for n in ports)
+                     + " and the cable on each, which Mercury created, through the console "
+                     "path's own removal; the console server's port and Mercury's record of "
+                     "how to reach it are KEPT (they are the console server's, and serve the "
+                     "next device)")
+    if keys or files:
+        parts.append(f"move its {len(files)} console survey and kick-start record(s) aside to "
+                     f"console_ztp/retired/ and remove its {len(keys)} console ZTP index "
+                     "entr(ies), so no survey of it stands for a new device of the name")
+    return {"step": "; ".join(parts), "done": False, "not_doing": not_doing,
+            "work": {"device_id": nb_id, "ports": ports, "keys": keys, "files": files}}
 
 
 def _heartbeat_installed_path() -> str:
@@ -1712,6 +1790,7 @@ STEP_WORDS = {"netbox_mask": "NetBox's copy masked", "override": "Overrides clea
               "rolled_back": "Rollback block archived", "approvals": "Queue items withdrawn",
               "rotation_policy": "Rotation policies updated", "topology": "Topology entries removed",
               "heartbeat": "Heartbeat rule removed", "telemetry": "Telemetry rules removed",
+              "console": "Console path and runs removed",
               "netbox_record": "NetBox record retired",
               "legacy": "Legacy file deleted", "host_key": "SSH host key forgotten",
               "row": "Inventory row deleted"}
@@ -2037,6 +2116,25 @@ def apply(list_name: str, hostname: str, *, reason: str, actor: str,
             done.append("telemetry")
         except Exception as exc:               # noqa: BLE001
             return fail("telemetry", exc)
+
+    if "console" in pending:
+        from modules.nsot import console_path, console_ztp
+
+        try:
+            c = work.get("console") or {}
+            for port in c.get("ports") or []:
+                got = console_path.remove_console_path(
+                    list_name, c["device_id"], port_name=port, actor=actor,
+                    authority=console_path.authority_for(hostname, actor, p["hash"]))
+                if not got["ok"]:
+                    raise RuntimeError(got["error"])
+            got = console_ztp.forget_device(list_name, hostname, c.get("keys") or [],
+                                            c.get("files") or [])
+            if not got["ok"]:
+                raise RuntimeError(got["error"])
+            done.append("console")
+        except Exception as exc:               # noqa: BLE001
+            return fail("console", exc)
 
     if "netbox_record" in pending:
         try:

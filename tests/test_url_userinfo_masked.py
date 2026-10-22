@@ -117,6 +117,11 @@ ENTRY_POINTS = {
     # A log line's stream, as Reveal… carries it and its record keeps it (C818).
     "modules/log_reveal.py:_masked_labels": lambda: repr(__import__(
         "modules.log_reveal", fromlist=["x"])._masked_labels({"filename": PLANTED})),
+    # Out-of-band ZTP's kick-start and survey programs, as previewed and recorded (O6a):
+    # each step's text, in a flat list and in a mapping of lists.
+    "modules/nsot/console_ztp.py:_masked_program": lambda: repr(__import__(
+        "modules.nsot.console_ztp", fromlist=["x"])._masked_program(
+            {"wake": [["idle", PLANTED]], "steps": {"one": [["priv_exec", PLANTED]]}})),
 }
 
 #: Functions whose names say mask, redact or scrub but never take free text, each with why.
@@ -145,6 +150,7 @@ NOT_FREE_TEXT = {
     "modules/nsot/retire.py:_mask_facts": "says what retire does about NetBox's credentials",
     "modules/netbox_context_mask.py:mask_one": "writes NetBox through `masked`, tested above",
     "modules/nsot/profile_apply.py:_masked_rows": "a nested helper over redact_positional",
+    "modules/nsot/console_ztp.py:mask": "the nested helper of `_masked_program`, tested above",
     "modules/redact.py:install_log_redaction": "attaches RedactingFilter, tested above",
     "modules/redact.py:redact_all_handlers": "attaches RedactingFilter to every handler",
     "routes/identity.py:_redaction_health": "reports the filter's health",

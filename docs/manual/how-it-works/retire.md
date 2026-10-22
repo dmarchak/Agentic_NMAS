@@ -4,8 +4,8 @@ Retiring takes a device out of management completely, in one recorded act, keepi
 history. It is the only way a device leaves: deleting a row would leave it half-managed and
 destroy the only stored copy of its credential. It also frees the device's name: a new device
 given the same name later inherits nothing of the old one (no restore point, receipt, block,
-queued item, policy, template, map place, heartbeat or telemetry rule, reservation or NetBox
-record).
+queued item, policy, template, map place, heartbeat or telemetry rule, reservation, console
+survey or NetBox record).
 Retiring sends nothing to the device; it changes the tool's own records, Kea's reservations
 and NetBox's record of the device.
 
@@ -160,7 +160,18 @@ finished by running it again:
     the device but Grafana still runs its rules, the delete file alone is the work. When the
     device's rules are the file's only rules, the file is not written without them (the
     generator never writes an empty population), and the preview says so.
-13. **Its NetBox record** (`netbox_record`). Read: Mercury's created-object record and the
+13. **Its console path and console runs** (`console`). Read: the device's console path in
+    NetBox, the tool's created-object record, and out-of-band ZTP's console ZTP index and
+    runs (its console surveys and kick-starts). Sent: nothing to the device; to
+    NetBox, with writes allowed, the device's console port and the cable on it deleted, each
+    only where the tool created it (tagged `nmas-managed` AND recorded as created). A port or
+    cable a person made is kept and the preview says so. The console server's port, and the
+    tool's record of how to reach it, are kept: they are the console server's, and serve the
+    next device cabled to it. Recorded: the device's console survey and kick-start records
+    moved aside to `console_ztp/retired/` (kept, read by no current reader) and its entries
+    removed from the console ZTP index, so no survey of the retired device stands for a new
+    device of the same name.
+14. **Its NetBox record** (`netbox_record`). Read: Mercury's created-object record and the
     NetBox device. Sent: nothing to the device; to NetBox, with writes allowed, the record
     set to Decommissioning and renamed `<device>-retired-<id>` through the tool's write gate,
     its before recorded, then read back. NetBox keeps a device's name unique in its site and
@@ -175,12 +186,12 @@ finished by running it again:
     never matched by name again. With NetBox writes off, the record is not changed and the
     preview says so: the name stays taken in NetBox until it is renamed there, and its
     addresses stay assigned to it.
-14. **The legacy file** (`legacy`). Read: the deprecated `golden_configs/` store and the
+15. **The legacy file** (`legacy`). Read: the deprecated `golden_configs/` store and the
     repository. Sent: nothing. Recorded: the device's legacy file deleted, only when its
     content survives in the repository (the migration's verbatim backup or an equivalent
     committed golden), and the step says where. A file whose lines exist nowhere else is
     kept and named.
-15. **The SSH host key** (`host_key`). Read: the tool's record of SSH host keys, and every
+16. **The SSH host key** (`host_key`). Read: the tool's record of SSH host keys, and every
     network's inventory and onboarding record. Sent: nothing. Recorded: the key the tool kept
     for the device's address (see [Re-key](rekey#every-session)) is forgotten: it moves into
     the record's history with when, who and why ("r5 retired by you: your reason"), and the
@@ -189,7 +200,7 @@ finished by running it again:
     When another device in any network has the same address, the key is still that device's:
     it is KEPT, and the preview says so naming both devices. Before the row, so a run that
     stops here can be run again.
-16. **The inventory row** (`row`). Read: the break-glass basis again. Sent: nothing.
+17. **The inventory row** (`row`). Read: the break-glass basis again. Sent: nothing.
     Recorded: the device's row deleted from the list's inventory. LAST, and only against a
     break-glass record holding this device's current credential, because the row is the
     only stored copy. Deleting it also tells the app's Prometheus target keeper the
