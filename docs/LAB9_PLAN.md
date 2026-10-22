@@ -380,6 +380,21 @@ LABOUR, a row in docs/MANUAL_STEPS.md and a finding.
 
 ## 7. Run sheet, shot list and the testing segment
 
+**r6 and r7: the reseed and the clearing deploys (the operator, 2026-10-22 ~07:5x UTC).** Seed
+intent cannot do it: it is offered only for absent or bootstrap-only intent, and it parses the
+golden, which never prints `no shutdown`, so it would drop the `no_shutdown: true` that fixed r7's
+Gi3. The agent prepares the documents with `lab/lab9/reseed_prepare.py` (the Intent editor's own
+read and preview; writes nothing): each committed intent with only its `lines:` block replaced
+by the blocks its golden holds (`vty 0`, `vty 1` with `length 0`, `vty 2 4`) and
+`exec-timeout 15 0` on `con 0` (C1543, C1544).
+
+| # | When | Who | Step | PASS |
+|---|---|---|---|---|
+| R1 | after E, no device touched | agent | `reseed_prepare.py r6 r7` on `<nmas-host>` | for each: the text diff touches only `lines:`; "no_shutdown declared … KEPT" (r7's list includes GigabitEthernet3); the preview ok; `vs_device` written here |
+| R2 | after R1 | operator (DECISION) | each device's Intent editor: paste the printed `lines:` block over the old one, review the editor's two diffs against R1's, commit | the editor's diff shows only the vty split and the console timeout; every `no_shutdown` kept; one commit per device |
+| R3 | after O9's deploy, before the recording | operator (DECISION) | r7: Plan a deploy, confirm, apply | the program as R1's `vs_device` predicted (written from the actual preview after R2); verify reads back every line; the receipt clean (`checks.ok` true, saved); Needs attention has no r7 deploy row (C1542 clears by its rule: the device's newest receipt succeeds) |
+| R4 | with R3 | operator (DECISION) | r6: the same | as R3, without the C1542 row |
+
 - [ ] The run sheet for the recorded run: no CLI on camera, and a dry look at every deploy's
   preview before the recorded one.
 - [ ] The shot list.
@@ -471,6 +486,17 @@ C1536.
 | O7 | Add device's offer and the fallback timer (a job) | ~300 + ~250 |
 | O8 | The interface: Add device's additions and a Console servers page (boards first), the manual's pages and diagrams | ~400 + docs |
 | O9 | Gates, CI, one deploy after R8's first pass (no deploy until then) | — |
+
+**Added by the operator (2026-10-22 ~07:5x UTC):**
+- **O0, rides O9's one deploy:** C1541's read-back fix. `verify_scope.read_back` expands a
+  `line` range into its members and matches each in whichever stanza the device prints it,
+  tested on r7's real capture. It ships whether or not r7's clearing deploy needs it (any device
+  that splits a range reads back falsely today).
+- **In O3 (the survey):** a signed-in prompt (`#`) found on the console is NOT factory-blank as
+  found. It is recorded as such, and the operation never proceeds silently from it (s5 was left
+  at `Switch#` on 2026-10-22).
+- **In O3 (the kick-start's lines):** the bootstrap delivered to a console-provisioned device
+  sets a finite `exec-timeout` on `line con 0` (C1544's class).
 
 **The operator's go, with a cut (2026-10-22 ~06:3x UTC).** The refinements above are accepted.
 - **Lab 9's scope:**
