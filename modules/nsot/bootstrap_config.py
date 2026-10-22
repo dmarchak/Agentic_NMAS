@@ -283,16 +283,15 @@ def manager_interface_lines(platform: str, *, interface: str, address: str,
             "!",
         ]
     else:
-        # UNMEASURED on a real vIOS. `cisco_ios` is in
-        # BLOCKED_PENDING_MEASUREMENT for onboarding anyway, so this shape
-        # ships refused rather than ships unproven. A vIOS-L2 may well need
-        # an SVI (s3 reaches the NMAS segment on `interface Vlan99`) rather
-        # than a routed port; that is a stage-D question and is not answered
-        # by writing the answer down here.
+        # A layer-2 platform's ports are switchports, so a routed port needs `no switchport`.
+        # An SVI is not a port: `no switchport` under `interface Vlan1` is an invalid line
+        # (C1349: a switch whose uplink also carries its hosts' VLAN is managed on an SVI).
+        # A fetched configuration with a refused line still applies the rest, but the file
+        # Mercury served would then hold a line the device never took.
         body = [
             f"interface {interface}",
             " description NMAS management - manager is on this subnet",
-            " no switchport",
+        ] + ([] if interface.startswith("Vlan") else [" no switchport"]) + [
             (" ip address dhcp" if dhcp else f" ip address {address} {mask}"),
             " no shutdown",
             "!",
@@ -301,7 +300,14 @@ def manager_interface_lines(platform: str, *, interface: str, address: str,
     if gateway:
         # Only reached when the caller says the manager is elsewhere. Kept
         # out of the interface block because it is a different kind of claim.
-        body += [f"ip route 0.0.0.0 0.0.0.0 {gateway}", "!"]
+        body += [f"ip route 0.0.0.0 0.0.0.0 {gateway}"]
+        if platform in LAYER2_PLATFORMS:
+            # A switch with `ip routing` off ignores a static route and uses its default
+            # gateway; with routing on (the vIOS-L2 image's default, read from a running
+            # switch's golden: RIP on SVIs, no `ip routing` line shown) the gateway is
+            # ignored. Both, so the manager is reachable whichever the switch runs (C1349).
+            body += [f"ip default-gateway {gateway}"]
+        body += ["!"]
     return body
 
 

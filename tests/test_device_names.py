@@ -144,7 +144,7 @@ INVENTORY = {
     "modules/netbox_context_mask.py": (1, PROVENANCE, "a measurement names the device it was taken on: r5"),
     "modules/netbox_guard.py": (1, HISTORY, "a dated incident or finding names the device it happened on: r6"),
     "modules/nsot/adopt.py": (1, PROVENANCE, "a measurement names the device it was taken on: r2"),
-    "modules/nsot/bootstrap_config.py": (4, PROVENANCE, "a measurement names the device it was taken on: r1, s1, s3"),
+    "modules/nsot/bootstrap_config.py": (3, PROVENANCE, "a measurement names the device it was taken on: r1, s1"),
     "modules/nsot/bulk_intent.py": (2, PROVENANCE, "a measurement names the device it was taken on: r2, r6"),
     "modules/nsot/config_check.py": (2, PROVENANCE, "a measurement names the device it was taken on: r2"),
     "modules/nsot/credential_rotation.py": (15, PROVENANCE, "a measurement names the device it was taken on: probe-r1a, r1, r2, s1"),

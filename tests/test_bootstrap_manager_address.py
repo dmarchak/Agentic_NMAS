@@ -83,6 +83,16 @@ class TestItCarriesEnoughToBeReached:
         body = out.split("interface GigabitEthernet0/1")[1].split("!")[0]
         assert "no switchport" in body, body
 
+    def test_a_switch_managed_on_an_svi_gets_no_switchport_line(self):
+        """Lab 9's s5 (C1349): its uplink also carries VLAN 10, so its management address is
+        VLAN 1's SVI, where `no switchport` is an invalid line. The address and `no shutdown`
+        stay (an SVI is down until told otherwise)."""
+        for name in ("Vlan1", "Vl1"):
+            out = _render("cisco_ios", manager_interface=name)
+            body = out.split("interface Vlan1")[1].split("!")[0]
+            assert "no switchport" not in body, (name, body)
+            assert f"ip address {ADDRESS} {MASK}" in body and "no shutdown" in body, (name, body)
+
 
 class TestItStaysABootstrapConfig:
     """The other half. See the module docstring: these pull against each
@@ -124,6 +134,20 @@ class TestItStaysABootstrapConfig:
         """
         out = _render(manager_gateway="10.255.0.1")
         assert "ip route 0.0.0.0 0.0.0.0 10.255.0.1" in _lines(out)
+
+    def test_a_switch_also_gets_a_default_gateway(self):
+        """A switch with `ip routing` off ignores the static route and uses its default
+        gateway (Lab 9's s5 answers Verify through R8, C1349). A router gets the route only."""
+        switch = _lines(_render("cisco_ios", manager_interface="Vlan1",
+                                manager_gateway="10.255.0.1"))
+        assert "ip route 0.0.0.0 0.0.0.0 10.255.0.1" in switch
+        assert "ip default-gateway 10.255.0.1" in switch
+        router = _lines(_render(manager_gateway="10.255.0.1"))
+        assert not [ln for ln in router if ln.startswith("ip default-gateway")], router
+
+    def test_a_switch_with_no_gateway_gets_neither(self):
+        out = _lines(_render("cisco_ios", manager_interface="Vlan1"))
+        assert not [ln for ln in out if ln.startswith(("ip route", "ip default-gateway"))], out
 
 
 class TestItRefusesRatherThanGuesses:

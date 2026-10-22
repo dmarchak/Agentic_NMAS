@@ -81,6 +81,7 @@
   "tests/test_config_check.py": 13.3,
   "tests/test_config_read.py": 0.9,
   "tests/test_configless_patch.py": 0.4,
+  "tests/test_vios_configless_patch.py": 0.7,
   "tests/test_confirm_buttons_drawn.py": 41.1,
   "tests/test_confirm_carries_its_hash.py": 0.5,
   "tests/test_controls_consult_may.py": 0.2,

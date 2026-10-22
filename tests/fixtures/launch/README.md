@@ -15,3 +15,13 @@ hand-built stand-in: a fixture that contains only the anchors a patcher
 looks for passes whether or not the real script has them.
 `tests/test_configless_patch.py` pins the hash, so a changed fixture is
 a decision rather than an accident.
+
+`vios-launch.py` is vrnetlab's own, unmodified `launch.py` for
+`vrnetlab/cisco_vios:L2-20180619` (hellt/vrnetlab, MIT licence), the image s1 to s4 run.
+Copied byte for byte from s1's running container on 2026-10-22 (`docker exec ... cat
+/launch.py`; nothing is bound over it there):
+
+    sha256 794788bcada997dac7aac239d86d1867f165482ae30b03376463b89418c8e93d
+
+`docs/bootstrap-probe/patches/patch-vios-configless.py` (C1349, Lab 9's s5) is tested against
+it by `tests/test_vios_configless_patch.py`, which pins the hash.
