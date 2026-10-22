@@ -42,6 +42,35 @@ def test_one_that_keeps_its_store_in_its_own_folder_passes(reader_stores_in_tmp)
     with open(path, "w", encoding="utf-8") as fh:
         fh.write("{}")
     assert path.startswith(str(reader_stores_in_tmp))
+
+
+LATE = []
+
+
+def test_a_writer_on_its_own_thread_still_stores_in_the_tests_folder(reader_stores_in_tmp):
+    """CI run 1057's shape: a run on request stores after the test has returned."""
+    import threading
+    import time
+
+    from modules import reader_job
+
+    def late():
+        time.sleep(0.5)
+        path = reader_job.store_path("topology-graph")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write("{}")
+
+    t = threading.Thread(target=late, name="request:topology-graph", daemon=True)
+    LATE.append(t)
+    t.start()
+
+
+def test_after_it_the_sessions_store_holds_nothing():
+    from modules import reader_job
+    for t in LATE:
+        t.join(10)
+    assert not os.path.exists(reader_job.store_path("topology-graph"))
 '''
 
 
@@ -57,4 +86,5 @@ def test_a_leaking_test_fails_naming_itself_and_the_store(tmp_path):
     assert out.returncode != 0, text
     assert ("test_writes_topology_graph_and_leaves_it left reader store(s) behind" in text
             and "topology-graph.json. They are put back" in text), text
-    assert "3 passed, 1 error" in text, text
+    assert "5 passed, 1 error" in text, text
+    assert "test_after_it_the_sessions_store_holds_nothing" not in text, text

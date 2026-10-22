@@ -626,17 +626,48 @@ READER_STORES_SHARED: dict = {}
 assert len(READER_STORES_SHARED) <= 3
 
 
+#: The threads that store a reader's value after the call that started them returns: the
+#: post-commit hooks (`remote-publication` re-reads after every commit), runs on request
+#: (`reader_job.request_run`, the update check's `app-pushed`), wakes that wait for a run in
+#: flight, and the Remote card's re-read. By the names their starters give them.
+LATE_STORE_WRITERS = ("nsot-post-commit", "nsot-hook-", "request:", "wake-after:",
+                      "remote-publication-reread")
+
+
 @pytest.fixture
 def reader_stores_in_tmp(tmp_path, monkeypatch):
     """Every reader's stored value under this test's own folder (C1522): `reader_job` reads and
     writes through `store_path`, looked up at call time, so a value the test writes, or a
     reader the code under test wakes, never reaches the session's store. A module whose tests
-    write stores, or wake readers that do, uses it (`pytestmark`)."""
-    from modules import reader_job
+    write stores, or wake readers that do, uses it (`pytestmark`).
 
+    Its teardown first joins every late store writer the test started, while the path is still
+    patched (C1522's CI run 1057: `test_update_button` left `app-pushed`, `test_ztp_onboarding`
+    and `test_dhcp_leases` left `remote-publication`, each written by a thread that ended after
+    the test, on CI's slower runners, and passed in the local gate). The bound is the
+    post-commit hooks' own exit join (`hooks._EXIT_JOIN_SECONDS`); a writer still running
+    after it fails the test naming it, rather than writing into a later test's store."""
+    import threading
+
+    from modules import reader_job
+    from modules.nsot import hooks
+
+    before = set(threading.enumerate())
     root = tmp_path / "readers"
     monkeypatch.setattr(reader_job, "store_path", lambda name: str(root / f"{name}.json"))
-    return root
+    yield root
+    import time
+
+    deadline = time.monotonic() + hooks._EXIT_JOIN_SECONDS
+    writers = [t for t in threading.enumerate()
+               if t not in before and t.name.startswith(LATE_STORE_WRITERS)]
+    for t in writers:
+        t.join(max(0.0, deadline - time.monotonic()))
+    running = [t.name for t in writers if t.is_alive()]
+    assert not running, (
+        f"still storing after {hooks._EXIT_JOIN_SECONDS} s: {', '.join(running)}; a test using "
+        "reader_stores_in_tmp waits for the writers it started before its path is put back "
+        "(C1522)")
 
 
 @pytest.fixture(autouse=True)
