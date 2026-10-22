@@ -370,6 +370,239 @@ LABOUR, a row in docs/MANUAL_STEPS.md and a finding.
 - [ ] The narration says that Day 1 approval up front is still planned (the Lab 8 video promised
   it for Lab 9).
 
+## 8. Out-of-band ZTP for legacy devices (the second exception)
+
+**The operator, 2026-10-22 ~06:2x UTC:** s5 gets no human interaction anywhere. Code solving it
+is fine, but it must be a general Mercury feature, "out-of-band ZTP for legacy devices", not an
+s5 or containerlab script. It is the second approved exception to the no-improvements rule.
+R8's first pass goes ahead without it; this is built in parallel, and s5's first pass uses it.
+Phase later (more console-server types and profiles, a full bootstrap over the console) is
+C1536.
+
+**Checked before building (read-only):**
+- **Mercury reaching s5's console. The architecture's "the lab host is a raw-TCP console server
+  via SSH jump" does NOT hold for s5.** Management passthrough redirects all traffic to s5's
+  container management address into the VM (`mirred … to device tap0`), so `172.20.20.25:5000`
+  does not answer from the lab host. qemu's console listens only inside s5's container
+  (`*:5000`). A node without passthrough (s1) does answer at `172.20.20.21:5000`: the probe
+  connected and closed, sending nothing. The lab host allows SSH TCP forwarding
+  (`allowtcpforwarding yes`, `permitopen any`).
+- **NetBox's console model: Mercury's token is refused (403)** on console ports, console-server
+  ports and their templates (C1535, B). Cables and custom fields answer.
+- **R8's Day 1 and the relay:** R8's Day 1 document is not written yet (step 5). It will hold
+  Gi3 `10.255.4.13/30` with `ip helper-address 10.255.0.10`, the /30 in OSPF area 20, and
+  Gi3.10 (VLAN 10, `10.80.10.1/24`, with its helper) for H6 and H7.
+
+**The architecture, refined (the operator's seven pieces; changes in bold):**
+1. **Source of truth: NetBox's console model** (console-server device, its port, the cable to
+   the device's console port), read and created by Mercury once C1535's grant is in.
+   **Per-port connection detail lives in Mercury's own console-server store, keyed by NetBox's
+   console-server port id,** not in a NetBox custom field: creating a custom field is NetBox
+   admin work, and the credential reference must never sit in NetBox anyway.
+2. **Transport drivers behind one interface: three, not two:**
+   - raw TCP or telnet, optionally through an SSH jump (direct-tcpip);
+   - an SSH console server addressing a port by username (`user:port`);
+   - **an SSH console server addressing a port by a per-port command whose stdin and stdout are
+     the console** (Opengear's `pmshell` works this way).
+
+   The lab host is the third, configured with `docker exec -i <container> …` bridging to
+   `127.0.0.1:5000`: configuration, not code. Console-server credentials are in Mercury's
+   credential store (the operator types them).
+3. **Platform console profiles** as versioned, approved data (prompt states, factory-blank checks,
+   kick-start templates), approved like templates. `cisco_ios` switch and router ship first.
+4. **Addressing:**
+   - **DHCP:** a read-only console survey learns the MAC and confirms the device is blank
+     BEFORE Add device, so the plan and its hash hold the MAC as they do today ("what is
+     confirmed is what is sent"). The kick-start then types the DHCP lines; the lease comes
+     through the relay; the bootstrap is fetched from Mercury's gated TFTP.
+   - **Static:** the planned address from NetBox IPAM. **The TFTP responder's gate gains a
+     pending device's planned static address,** since it serves only what a reservation names
+     today.
+
+   The one-time credential never crosses the console: it is only in the fetched bootstrap.
+5. **Trigger:** Add device offers console kick-start only when NetBox shows a console path,
+   either at once or as the automatic fallback after N minutes without the device's own DHCP.
+   The kick-start's exact lines are in the reviewed plan and its hash.
+6. **Safety:**
+   - refuse a non-blank device;
+   - abort to Needs attention on any unexpected prompt, a password prompt included;
+   - one session per console port, locked across processes;
+   - bounded timeouts;
+   - a masked transcript and receipt in History.
+7. **Tests:**
+   - the state machine against s5's real captured boot text and a router fixture;
+   - every driver against a fake console server (0 bytes written outside the plan);
+   - refuse-if-configured, the unexpected-prompt abort, masked transcripts, NetBox gating and
+     the fallback timer;
+   - the coverage ratchet holds, and CI is green before the deploy.
+
+**Build order and rough size** (code plus tests; about 3 to 4 working days with gates):
+
+| # | Piece | Size |
+|---|---|---|
+| O1 | Profiles (data, approval) and the session state machine, tested against s5's real boot text | ~500 lines + ~400 tests |
+| O2 | The three drivers, each against a fake console server (bytes written counted) | ~400 + ~300 |
+| O3 | The survey (blank check, MAC) and the kick-start's line rendering | ~250 + ~200 |
+| O4 | NetBox console path: read, and create behind a declared write authority; Mercury's console-server store; credential references | ~400 + ~300; needs C1535's grant |
+| O5 | The TFTP responder's static-mode gate | ~100 + ~150 |
+| O6 | The operations: survey and kick-start with preview and confirm, operation stages, route gates, invalidation, receipts, masked transcript, Needs attention aborts | ~600 + ~500 |
+| O7 | Add device's offer and the fallback timer (a job) | ~300 + ~250 |
+| O8 | The interface: Add device's additions and a Console servers page (boards first), the manual's pages and diagrams | ~400 + docs |
+| O9 | Gates, CI, one deploy after R8's first pass (no deploy until then) | — |
+
+**The operator's go, with a cut (2026-10-22 ~06:3x UTC).** The refinements above are accepted.
+- **Lab 9's scope:**
+  - O1;
+  - O2 with two drivers, the command bridge and raw TCP via an SSH jump;
+  - O3, O4 and O6;
+  - O7's Add device offer only;
+  - O8 minimal: a working page and a manual section, since documentation is a Lab 9
+    deliverable;
+  - O9.
+- **Deferred to C1536:** O5 (static mode), the SSH port-by-username driver, the fallback timer,
+  and O8's diagrams.
+
+**The security addition (the operator):** the lab host's console access is a DEDICATED SSH key
+with a forced command in `authorized_keys`. That command is a wrapper that only bridges stdin
+and stdout to `127.0.0.1:5000` inside a container whose name is on an allowlist, and it rejects
+anything else. Mercury's store holds only the container name per port: no free-form command is
+stored or sent. Its tests: the wrapper rejects names not on the allowlist, and any injected
+arguments.
+- **Does it replace a stored secret? No.** The private half of that key still authenticates
+  Mercury, so it stays a secret in Mercury's credential store.
+- **What it changes:** the key's whole power becomes "bridge to an allowlisted console".
+- **Recommended:** Mercury generates the key pair itself when the console server is set up. It
+  keeps the private key encrypted, shows only the public key, and the operator installs that
+  public key (`restrict,command="…" ssh-ed25519 …`). The operator then handles no secret, and
+  none crosses the console.
+
+**For s5's run:** s5 returns to factory state with no human typing. nvram's startup file is 0
+bytes now, but PnP discovery was stopped by the diagnostic session, and s5's console sits at
+`Switch#`. A reload from its own CLI, sent by the scripted session (in its planned window if
+s5 is onboarded by then; it is not today), restarts it blank, and the kick-start's own
+factory-blank check shows the 0 bytes again.
+
+## Write-up: challenges (filled with evidence as each closes, not intent)
+
+The operator, 2026-10-22: the Lab 9 write-up needs a "Challenges" section, and getting s5 to
+boot blank past containerlab's default configuration is a required entry. Each entry records
+what was seen. Excerpts carry no credentials, hashes or configurations. A fallback, when used,
+is recorded as one, with its reason.
+
+### 1. s5's configless boot (OPEN: out-of-band ZTP closes it at s5's first pass)
+
+**The story, in the operator's order (2026-10-22):** the launcher patch, then containerlab's
+default file, then PnP never asked (nvram 0 bytes, no DHCP in about 12 minutes; the diagnostic
+session was a test touch), then out-of-band ZTP as a general bridge for legacy devices
+(section 8).
+
+**PnP never asked (evidence, 2026-10-22):**
+- **nvram:** a scripted console session at 06:10:25 to 06:10:27 UTC sent RETURN, `enable` (no
+  password asked) and `dir nvram:`, nothing more. It read `startup-config 0 bytes`,
+  `private-config 0 bytes`, `udi 31 bytes`, `persistent-data 35 bytes` (262,144 total, 260,044
+  free), so the image holds no startup configuration; the earlier indication was wrong. The
+  session's planned erase was not sent.
+- **PnP was running, and the touch stopped it.** The one-way reader recorded
+  `%PNP-6-PNP_DISCOVERY_STOPPED: PnP Discovery stopped (Config Wizard)` after the session's
+  input. The switch had been in PnP discovery, not idle.
+- **No DHCP from s5 in about 12 untouched minutes** (05:58:02 to 06:10:25 UTC). Its capture held
+  912 DHCP packets that were not H6's or H7's, and none was s5's own: R8's configless AutoInstall
+  on Gi3 (`cisco-aabb.cc00.0418-Gi3`) flooding in from the R8 link, a router's emulator
+  management port (`cisco-0c00.731d.df00-Gi1`), and a router's serial client id
+  (`9S3JCNXDQQW`; s5's board id is `9MD0LDX81CK`).
+- **P-S2 broke, by the operator's fixed rule:** no DISCOVER within 10 minutes of "Press RETURN".
+  The operator's direction: no human at s5's console, so the fallback became a feature
+  (section 8).
+
+**The problem.** vrnetlab's vIOS launcher is built to configure a switch, so a blank switch
+never gets to ask for its configuration:
+- it answers the setup dialog (`no`) and presses RETURN three times at "Press RETURN to get
+  started!", and on classic IOS console input can end AutoInstall;
+- at the prompt it types its startup file through the console, then `write memory`;
+- its watchdog stops and restarts a VM that stays quiet for 300 console reads.
+
+**The change: `patches/vios-launch-configless.py`**, made from the image's stock launcher
+(sha256 `794788bc…`) by `docs/bootstrap-probe/patches/patch-vios-configless.py`. It has three
+anchored edits, refusing any launcher that differs:
+1. a startup file is NAMED in the log and never applied. It was first refused, which stopped s5
+   at the first redeploy, because containerlab writes a default startup file for the vIOS kind
+   (C1534, closed);
+2. nothing is typed at the dialog, "Press RETURN" or a prompt: the VM is marked running and the
+   console released;
+3. the watchdog never restarts the VM.
+
+Lab repository: `8d25fe6` (first version), then `183aa5d` (the C1534 correction), both pushed to
+the off-host remote.
+
+**Its test:** `tests/test_vios_configless_patch.py`, 19 tests against the hash-pinned real
+launcher. They check its structure, and RUN the patched console handling against a stub console
+that records every keystroke, with and without containerlab's default file present. Shown able
+to fail: without the console edit, 5 aimed tests fail; without the watchdog edit, 3.
+
+**The switch bootstrap fix (D4):** Mercury's `cisco_ios` bootstrap no longer writes
+`no switchport` under a VLAN SVI, and a switch given a gateway gets `ip default-gateway` beside
+the default route. It has 3 tests, each control failing exactly its test. It was in `44738eff`
+and deployed in `9b286074`.
+
+**Evidence so far (2026-10-22):**
+- **P-S1, held.** s5's launcher log, the second redeploy (05:56:56 UTC):
+  `CONFIGLESS: /config/startup-config.cfg exists (containerlab's default for this kind); it is never applied`,
+  then `CONFIGLESS: the console is left to AutoInstall`. The IOS banner and hardware lines
+  follow (`Cisco IOS Software, vios_l2 Software (vios_l2-ADVENTERPRISEK9-M), Version
+  15.2(CML_NIGHTLY_20180619)…`, `4 Gigabit Ethernet interfaces`,
+  `256K bytes of non-volatile configuration memory.`). Then at 05:58:02:
+  `CONFIGLESS: console state 1 after 0:01:05.454869 with no configuration; typing nothing, console released`.
+- **What the console showed first: "Press RETURN to get started!", never the setup dialog.**
+  The launcher logs every console chunk it does not match, and checks its prompts in order with
+  the dialog first. The log of 119 lines holds no "System Configuration Dialog", no AutoInstall
+  message, no `%SYS-5-CONFIG` and no configuration-load line, and the chunk it matched on held no
+  dialog question (pattern 0 would have won). **s1 to s4, booted from fresh overlays of the same
+  base image in the same redeploy, show the same:** each stock launcher met "Press RETURN" first
+  ("Entering user EXEC mode"), with no dialog question. On classic IOS that suggests the base
+  image already holds a startup configuration, and then AutoInstall does not start. A build that
+  skips the dialog would look the same, so this is an **indication, not a measurement**.
+- **P-S2, open: no DHCP request from s5 itself.** s5's capture (in its own namespace from
+  05:56:56) held 812 packets by 06:03, all from H6 and H7 (`udhcp 1.31.1`, `aa:bb:cc:00:80:06`
+  and `:07`). They come in on s5's host ports and are flooded out of every VLAN 1 port, the
+  management port (eth0) and the R8 link (eth1) included: the exposure D5's Gi0/0 shutdown
+  closes.
+- **A one-way console reader** (`lab/lab9/console-reader.py`) has been attached since
+  06:07:03Z, so anything s5 prints later is on record. It has no send call; a listener test on
+  the lab host received 0 bytes from it while its stdin was flooded; it runs with stdin from
+  `/dev/null`. Port 5000 had no client before it and one after. By 06:07 it had received only
+  qemu's 12 bytes of telnet negotiation.
+
+**The fallback rule, fixed by the operator (2026-10-22):** at the first pass's planned reload,
+if no DHCP DISCOVER from s5 appears within 10 minutes of "Press RETURN", s5 gets the minimal
+configuration typed on its console and is onboarded by DHCP. This entry then records that, and
+why, including an image-held startup configuration if the evidence shows one.
+
+**Still to record:**
+- [ ] P-S2: the DISCOVER (client MAC and client id), or its absence within 10 minutes of the
+  reload.
+- [ ] P-S3: Kea's lease through R8's relay.
+- [ ] P-S4: the TFTP fetch in Mercury's responder log.
+- [ ] P-S5: the bootstrap on VLAN 1, read through Mercury.
+- [ ] P-S6: Verify's result.
+- [ ] P-S7: no PnP crash (uptime).
+- [ ] The console reader's excerpt around the reload (non-sensitive lines only).
+
+### 2. R6 and R7 boot from their goldens (option b) (OPEN: evidence from D4)
+
+- [ ] D4: R6 and R7 answering after the redeploy at their goldens (drift clean), with OSPF and
+  RIP neighbours as before.
+
+### 3. H5, H6 and H7 renew their DHCP leases (OPEN: evidence from the measured hour)
+
+- [ ] A renewal seen in the measured hour (E): the renewing client running in each host, and a
+  lease renewed (Kea's lease time moving, or the client's own log).
+
+### 4. s5 alone on CPU 19 (OPEN: evidence from E)
+
+- [x] C3: "PINNING HOLDS", s5's kvm-pit thread on 19 (05:58 UTC).
+- [ ] E: CPU 19's use and steal over the measured hour, and s5's clock rate once it is onboarded
+  (its heartbeat starts with Verify's profile).
+
 ## Findings registered on the way (for after submission)
 
 - C1522's closed row records the fix forward (CI run 1057).
