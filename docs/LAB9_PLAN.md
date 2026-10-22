@@ -404,6 +404,23 @@ by the blocks its golden holds (`vty 0`, `vty 1` with `length 0`, `vty 2 4`) and
     testing, and a test that caught a real defect.
 
   This morning's CI run 1057 is a candidate: the C1522 guard caught three real leakers.
+- **Coverage before and after, branches included (the operator, 2026-10-22 ~08:0x UTC):** the
+  coverage nightly dispatched as the BEFORE baseline, #11 (run 39744258250, 07:58Z, main at
+  `9b26917b`); the AFTER run dispatched once the feature commit's CI is green, before the
+  recording. The segment shows both (nightlies #8 and #9 failed; #10 passed: a failed run is
+  read before its figure is used).
+- **Tests that caught real defects** (each with its evidence; the segment's list):
+
+  | # | What the test caught | Evidence |
+  |---|---|---|
+  | 1 | C1522's guard: tests leaving reader stores behind for later tests | CI #1057 (`c895821`) red: `test_update_button.py`, `test_ztp_onboarding.py`, `test_dhcp_leases.py`; #1058 (`2a7ed0d4`) red: `test_ztp_onboarding.py`; fixed forward in `a1af8eba`, #1059 green |
+  | 2 | The publication test refusing a device's licence serial quoted in the register (C1538) | `test_nothing_personal_is_published.py::TestThePublishedFiles::test_no_term_on_the_local_denylist` refused the gate (nothing committed); the placeholder landed in `c86ca6fc`, CI #1064 green |
+  | 3 | A deliberate break, showing `reseed_prepare`'s tests can fail | the block's end detection made to stop at the first nested line: `test_only_the_lines_block_changes`, `test_every_no_shutdown_is_kept`, `test_a_lines_block_last_in_the_document` failed; restored from a copy; `9b26917b`, CI #1065 |
+  | 4 | Mutation survivors killed in the feature build | one line each as it happens: the mutant, its killing test, the commit |
+
+- **Narration note:** the 404 open VERDICT survivors in 15 functions are LEGACY debt from Lab 7's
+  nightly (mostly `goldens.py`'s legacy functions; `tests/mutation_debt.json`), shown as such,
+  separate from the feature's bar of 0 VERDICT survivors.
 - [ ] The narration says that Day 1 approval up front is still planned (the Lab 8 video promised
   it for Lab 9).
 
@@ -550,7 +567,11 @@ arguments.
 bytes now, but PnP discovery was stopped by the diagnostic session, and s5's console sits at
 `Switch#`. A reload from its own CLI, sent by the scripted session (in its planned window if
 s5 is onboarded by then; it is not today), restarts it blank, and the kick-start's own
-factory-blank check shows the 0 bytes again.
+factory-blank check shows the 0 bytes again. **Precondition (the operator, 2026-10-22 ~08:0x
+UTC): C1545 lands first.** Neither `s5-erase-session.py` nor `console-reader.py` runs again
+until its tests are in `tests/` and green in CI (the scratchpad's cases promoted, a password
+prompt added): s5's return to factory never reuses a console-typing script whose only test
+lives in a scratchpad.
 
 ## Write-up: challenges (filled with evidence as each closes, not intent)
 
