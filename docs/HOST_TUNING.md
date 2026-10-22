@@ -173,6 +173,14 @@ the lab at rest.
   lines, its console repair route and its rollback are prepared
   (lab/intent-changes/c1485-hold-queue-s3.json; the operator's messages of 2026-10-21 ~19:0x),
   and s1's acceptance test read Output queue 0/256 with 0 drops. Use it if the stalls return.
+- **Found after, 2026-10-22 (Lab 9, C1547):** r1's telemetry dial-out was dead from about
+  05:00 UTC on 10-21 (C1523) until the Lab 9 redeploy restored it. **Every hour measured here
+  after that, changes 3 to 5, the overnight hours and the confirmation hour, ran with one
+  telemetry stream fewer through s3** (the collector's series: r1 absent 20:11 to 21:11 on
+  10-21; present 03:00 to 04:00 that morning). Each stream is about 15 KiB/s, 98% of it
+  subscription 101 (CPU). With r1's stream back, the Lab 9 measured hour read 3 OSPF drops and
+  158 failed scrapes (LAB9_PLAN step 4, E). The levers above were credited against a lighter
+  s3 than the lab normally carries.
 
 **Change 2 made persistent (the operator, 2026-10-21):**
 - **The lab file declares it:** `lab/pinning/cpuset.diff`, for the operator's commit to the lab

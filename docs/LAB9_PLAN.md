@@ -322,6 +322,16 @@ If the attempt stops before C2 runs, end the window at once (lab/REDEPLOY.md): `
     about 10 to 20 packets a second each way per router, which s3 (a vIOS-L2) routes in
     software. Whether r6's and r7's streams are new since the redeploy (two streams would match
     the rise) is not yet measured.
+  - **Option A, measured (the operator's choice, 08:4x; C1547):** the new stream is **r1's**,
+    restored by the fresh boot after its dial-out died at ~05:00 on 10-21 (C1523). The six
+    routers' subscriptions are identical (101 CPU and 102 interfaces, every 10 s, one receiver,
+    no source interface), as r1's, r6's and r7's were before the redeploy. The collector's
+    series: r1 absent in the confirmation and control hours, present in E; the other five
+    present throughout. On the wire: ~15 KiB/s per router, 98% of it subscription 101 (one
+    ~146 KiB burst every 10 s; 102's is ~3 KiB). **The smallest change under the old load:**
+    101's period to 60 s on r1, r6 and r7 (~53 KiB/s through s3, from ~90, against ~75 before
+    the redeploy): section 7's T1, R3, R4, T2, then the new hour E2. s3's own CPU in the
+    confirmation hour: no source (SNMP CPU is scraped for the routers only); its vCPU read 94%.
 - **The 16 drops before E:** 12 r1 to s3, 3 r1 to s4, 1 OSPFv3 r1 to r2's router ID, all on r1's
   Gi2. sysstat's 10-minute busy: s3's CPU 22 at 94 to 98% (94 to 95% before the redeploy), the
   routers' CPUs 0 to 18 at 73 to 82% on average (70 to 75% before, on 0 to 19; r8 takes 1.7 CPUs),
@@ -418,9 +428,12 @@ by the blocks its golden holds (`vty 0`, `vty 1` with `length 0`, `vty 2 4`) and
 | # | When | Who | Step | PASS |
 |---|---|---|---|---|
 | R1 | after E, no device touched | agent | `reseed_prepare.py r6 r7` on `<nmas-host>` | for each: the text diff touches only `lines:`; "no_shutdown declared … KEPT" (r7's list includes GigabitEthernet3); the editor's validation ok. **PASS 08:3x UTC:** r6 (base blob `4184fd3c19c2`) and r7 (`82842bf2c7b8`): each diff only `exec-timeout 0 0` to `15 0` on `con 0` and `vty 0 4` split into `vty 0`, `vty 1` (with `length 0`), `vty 2 4`; `no_shutdown` before and after `['GigabitEthernet3']`, KEPT; validation ok. (The script no longer calls the editor's preview: it read the saved configuration, which the config-read hook refuses; the two diffs against the device are the editor's, at R2.) |
-| R2 | after R1 | operator (DECISION) | each device's Intent editor: paste the printed `lines:` block over the old one, review the editor's two diffs against R1's, commit | the editor's diff shows only the vty split and the console timeout; every `no_shutdown` kept; one commit per device |
-| R3 | after O9's deploy, before the recording | operator (DECISION) | r7: Plan a deploy, confirm, apply | the program as R1's `vs_device` predicted (written from the actual preview after R2); verify reads back every line; the receipt clean (`checks.ok` true, saved); Needs attention has no r7 deploy row (C1542 clears by its rule: the device's newest receipt succeeds) |
+| R2 | after R1 | operator (DECISION) | each device's Intent editor: paste the printed `lines:` block over the old one, review the editor's two diffs against R1's, commit | the editor's diff shows only the vty split and the console timeout; every `no_shutdown` kept; one commit per device. **r7 committed (the operator, ~08:5x UTC):** the diff only the console timeout and the vty split; the editor's deploy preview sends 1 line (`line con 0` / `exec-timeout 15 0`); its amber merge-only warning listed `exec-timeout 0 0` and `line vty 0 4`, both false alarms (C1548). r6: to be reported |
+| T1 | after R2, before R3 (E's no-go, C1547) | operator (DECISION) | r1's, r6's and r7's Intent editor: subscription `'101'`'s `update-policy periodic 1000` becomes `update-policy periodic 6000` (60 s); subscription 102 unchanged | the editor's diff that one line per device; its deploy preview adds `telemetry ietf subscription 101` / `update-policy periodic 6000` (the merge-only warning will list the old line: single-valued, replaced; C1548) |
+| R3 | **moved: after T1, before the first pass** (no Mercury code deploy needed: neither line is a split range) | operator (DECISION) | r7: Plan a deploy, confirm, apply | the program as the preview shows (expected: `line con 0` / `exec-timeout 15 0` and `telemetry ietf subscription 101` / `update-policy periodic 6000`, with their exits); verify reads back every line; the receipt clean (`checks.ok` true, saved); Needs attention has no r7 deploy row (C1542 clears by its rule: the device's newest receipt succeeds); r7's departure (intent-only lines) clears (C1548) |
 | R4 | with R3 | operator (DECISION) | r6: the same | as R3, without the C1542 row |
+| T2 | with R3 | operator (DECISION) | r1: Plan a deploy, confirm, apply (r1 is the core router toward s3 and s4: outside 08:30 to 09:10 UTC) | its own preview: only subscription 101's period; read back; the receipt clean |
+| E2 | after R3, R4 and T2 | agent | a new measured hour, as E (the stall script, the per-minute sampler, Proxmox, and the telemetry bytes at the collector by source) | **GO** by D6's bar: 0 OSPF drops and 0 failed scrapes; telemetry through s3 about 53 KiB/s (from ~90). Otherwise no-go, with the numbers |
 
 - [ ] The run sheet for the recorded run: no CLI on camera, and a dry look at every deploy's
   preview before the recorded one.

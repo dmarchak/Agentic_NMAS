@@ -1,5 +1,17 @@
 # End of session: where Phase 7 stands
 
+## 2026-10-22 morning: Lab 9, where it stands (the plan: docs/LAB9_PLAN.md)
+
+- **Done tonight:** the redeploy (s5, h6, h7; r6 and r7 from their saved configurations); D4
+  (r7's Gi3 fixed by a deploy; H5 leased; drift 10 of 10 clean); R1 and r7's R2 (the reseed).
+- **E, the measured hour: NO-GO** (3 OSPF drops, 158 failed scrapes; the bar 0 and 0). The
+  regression came with the redeploy: r1's telemetry stream, dead since 10-21 ~05:00 (C1523),
+  came back, and s3 routes it in software (C1547, measured). s5 is not in it.
+- **Waiting on the operator (no device change without them):** r6's R2; T1 (subscription 101's
+  period to 60 s on r1, r6, r7); R3, R4, T2 (the deploys, outside 08:30 to 09:10 UTC); then
+  the agent's hour E2. GO there opens R8's first pass. Decision pending: none beyond those.
+- **Before s5's return to factory:** C1545 (the console scripts' tests in CI).
+
 ## 2026-10-21, overnight run 06:37 to ~14:00 UTC (00:37 to 08:00 UTC−6): the morning report
 
 The operator's brief: unattended; no device change but item 2 (s1); nothing on s3 or any
