@@ -118,6 +118,24 @@ class TestRefusals:
         assert not got["ok"] and "container" in got["error"], got
         assert not os.path.exists(cs.path())
 
+    @pytest.mark.parametrize("name,both_take", [
+        ("edge--a", False), ("a..b", False), ("edge-a --", False), ("edge-a;reboot", False),
+        ("-edge", False), ("x" * 64, False), ("edge-a", True), ("edge_a.1", True),
+        ("e" * 63, True)])
+    def test_the_store_and_the_wrapper_judge_a_name_alike(self, cs, name, both_take):
+        """One rule (C1558's class): the store keeps exactly the names the console host's
+        wrapper accepts. `edge--a` was kept by the store and refused by the wrapper."""
+        from modules.nsot import console_wrapper
+
+        try:
+            console_wrapper.check_name(name)
+            wrapper_takes = True
+        except console_wrapper.Refused:
+            wrapper_takes = False
+        store_takes = cs.set_port(54, dict(BRIDGE, container=name), actor=ACTOR)["ok"]
+        assert (wrapper_takes, store_takes) == (both_take, both_take), (name, wrapper_takes,
+                                                                        store_takes)
+
     def test_the_longest_name_the_bridge_takes_is_kept(self, cs):
         """The floor: 63 characters is a name, so the refusals above are about shape."""
         assert cs.set_port(53, dict(BRIDGE, container="e" * 63), actor=ACTOR)["ok"]

@@ -24,9 +24,10 @@ import sys
 #: One container name: what the console host's container runtime accepts, at most 63 characters.
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,62}")
 NAME_MAX = 63
-#: Sequences refused even inside a name the pattern accepts: an option marker. (A path step,
-#: `../`, needs a `/`, which NAME never accepts.)
-FORBIDDEN = ("--",)
+#: Sequences refused even inside a name the pattern accepts: an option marker, and a parent
+#: step (`..`; a path step, `../`, also needs a `/`, which NAME never accepts). The console-server
+#: store refuses by this same rule (`name_refusal`): one home (C1558's class).
+FORBIDDEN = ("--", "..")
 #: Where the console listens inside the container (qemu's serial on a TCP port).
 CONSOLE_HOST = "127.0.0.1"
 CONSOLE_PORT = "5000"
@@ -53,16 +54,27 @@ def check_name(command) -> str:
     """*command* (SSH_ORIGINAL_COMMAND) when it is exactly one container name; else Refused."""
     if command is None:
         raise Refused(f"{COMMAND_VAR} is not set: this key opens a console, never a shell")
-    if len(command) > NAME_MAX:
-        raise Refused(f"{COMMAND_VAR} is {len(command)} characters, over the {NAME_MAX} a "
-                      f"container name may have: {command[:NAME_MAX]!r}...")
-    if not NAME.fullmatch(command):
-        raise Refused(f"{COMMAND_VAR} {command!r} is not one container name (it must match "
-                      f"{NAME.pattern})")
-    for seq in FORBIDDEN:
-        if seq in command:
-            raise Refused(f"{COMMAND_VAR} {command!r} holds {seq!r}, which a name may not hold")
+    why = name_refusal(command, COMMAND_VAR)
+    if why:
+        raise Refused(why)
     return command
+
+
+def name_refusal(name, label: str = "the container name") -> str:
+    """Why *name* is not one container name, or "": THE rule, for this wrapper (*label*
+    `SSH_ORIGINAL_COMMAND`) and for Mercury's console-server store, which stores only names
+    this would accept."""
+    if not isinstance(name, str):
+        return f"{label} {name!r} is not text"
+    if len(name) > NAME_MAX:
+        return (f"{label} is {len(name)} characters, over the {NAME_MAX} a container name may "
+                f"have: {name[:NAME_MAX]!r}...")
+    if not NAME.fullmatch(name):
+        return f"{label} {name!r} is not one container name (it must match {NAME.pattern})"
+    for seq in FORBIDDEN:
+        if seq in name:
+            return f"{label} {name!r} holds {seq!r}, which a name may not hold"
+    return ""
 
 
 def read_allowlist(path: str, uid: int = None) -> list:

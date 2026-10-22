@@ -13,7 +13,8 @@ NetBox custom field, and the credential never in NetBox). Per port it holds ONLY
   canonical and unbracketed);
 - ``ssh_port``: the SSH port (the console server's for ``command_bridge``, the jump host's for
   ``raw_tcp``; only with a jump host there);
-- ``container`` (``command_bridge`` only): a name of `CONTAINER_RE`'s shape, no ``..``. **No
+- ``container`` (``command_bridge`` only): a name the bridge wrapper accepts, by its own rule
+  (`console_wrapper.name_refusal`: no ``--``, no ``..``). **No
   free-form command is ever stored**: the wrapper on the console server builds its one command
   from the name, and refuses any other;
 - ``tcp_port`` and ``jump_host`` (``raw_tcp`` only; the jump host optional);
@@ -45,11 +46,9 @@ log = logging.getLogger(__name__)
 FILE = "console_servers.json"
 DRIVERS = ("command_bridge", "raw_tcp")
 
-#: A container name the bridge wrapper accepts: a letter or digit, then letters, digits, ``_``,
-#: ``.`` and ``-``, 63 at most. ``..`` is refused besides (`container_refusal`). Every pattern
-#: here is matched WHOLE (``fullmatch``): ``$`` also matches before a trailing newline, which a
-#: ``match`` let through (tests/test_console_server_store.py's ``edge-a\n``).
-CONTAINER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$")
+#: A container name is the bridge wrapper's own rule (`console_wrapper.name_refusal`, called by
+#: `container_refusal`). Every pattern here is matched WHOLE (``fullmatch``): ``$`` also matches
+#: before a trailing newline, which a ``match`` let through (the store test's ``edge-a\n``).
 #: A credential reference: a key NAME in Mercury's credential store (a profile name, or a
 #: scoped key such as ``<network>:@profile:<ref>``). No space, no quote, no newline: a pasted
 #: password or key does not fit it.
@@ -120,16 +119,15 @@ def host_refusal(value) -> tuple:
 
 
 def container_refusal(value) -> str:
-    """Why *value* is not a container name the bridge accepts, or ""."""
-    text = value if isinstance(value, str) else ""
-    if not text:
+    """Why *value* is not a container name the bridge accepts, or "": the console host's
+    wrapper's own rule (`console_wrapper.name_refusal`), so the store never keeps a name the
+    wrapper would refuse (C1558's class: `edge--a` was kept here and refused there)."""
+    from modules.nsot.console_wrapper import name_refusal
+
+    if value in (None, ""):
         return f"the container name {value!r} is empty"
-    if ".." in text:
-        return f"the container name {text!r} holds '..'"
-    if not CONTAINER_RE.fullmatch(text):
-        return (f"the container name {text!r} is not a name (a letter or digit, then letters, "
-                "digits, '_', '.', '-'; 63 at most): no command is ever stored")
-    return ""
+    why = name_refusal(value)
+    return f"{why}: no command is ever stored" if why else ""
 
 
 def _port_number(field: str, value) -> tuple:

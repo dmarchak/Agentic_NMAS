@@ -115,6 +115,7 @@ INJECTED = [
     ("--privileged", "an option"),
     ("-it", "a short option"),
     ("node--a", "an option marker inside the name"),
+    ("node..a", "a parent step inside the name (refused by the shared rule, C1558's class)"),
     ("../node-a", "a path step"),
     ("node-a/../x", "a path step inside"),
     ("node-a\x00", "NUL"),
