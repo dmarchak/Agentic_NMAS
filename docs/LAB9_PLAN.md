@@ -498,6 +498,28 @@ C1536.
 - **In O3 (the kick-start's lines):** the bootstrap delivered to a console-provisioned device
   sets a finite `exec-timeout` on `line con 0` (C1544's class).
 
+**Testing the feature (the operator's audit, 2026-10-22 ~07:5x UTC):**
+- **O2a's wrapper lives in Mercury, not the lab repository:** one standard-library-only module,
+  `modules/nsot/console_wrapper.py`, inside the coverage scope (the `modules/nsot/` rule), so the
+  ratchet and mutation runs reach it. A host step installs it BY NAME on the console host as the
+  forced command. Its tests (`tests/test_console_wrapper.py`) run in Mercury's CI: a name not on
+  the allowlist refused; injected arguments refused (`;`, `&&`, `|`, `$(…)`, quotes, spaces,
+  newlines, `--`, `../`, an over-long or empty name, extra words in `SSH_ORIGINAL_COMMAND`); the
+  one command it builds is exactly the bridge to 127.0.0.1:5000 inside the allowlisted
+  container, checked through a fake `exec`; and an AST check that it imports only the standard
+  library (it runs where Mercury is not installed).
+- **Mutation before the deploy:** every mutant of O2a's wrapper, of O1's transitions that
+  decide whether a byte is sent, of O3's blank check (the `#` prompt included) and of the
+  kick-start's line rendering, run with `scripts/nmas-mutation` after its canary. **Threshold:
+  0 VERDICT survivors** (each killed by a test or listed in `tests/mutation_equivalent.py` with
+  its reason). The rest of O1, O2 and O6 is sampled, and the sample says what it did not run
+  (practice 6). If the budget cannot finish the zero-survivor set, the operator is told before
+  the deploy, with the unrun count.
+- **The ratchet is never lowered for the build:** every new automation function has a unit
+  test that reaches it. If a new module cannot meet that, the operator is told before the
+  deploy, never after. `nmas-coverage baseline` is run only to ADD the new modules at full
+  coverage.
+
 **The operator's go, with a cut (2026-10-22 ~06:3x UTC).** The refinements above are accepted.
 - **Lab 9's scope:**
   - O1;
