@@ -28,6 +28,23 @@ visualization, DevOps testing, documentation). The video covers:
 The topology is R8 behind R2 in OSPF area 20, and a switch (s5) behind R8 with H6 and H7 on VLAN 10.
 The handout's diagram labels the second host H1; it is H7 here (LAB_REQUIREMENTS).
 
+## Priorities reset (the operator, 2026-10-22 ~19:3x UTC): Lab 9 and another lab by Monday
+
+- **The lab is a tool for developing Mercury, not the goal.** Bar for E2: GO = 0 OSPF drops and
+  no failed scrape touching an R8 or s5 step or a recorded screen. Rising scrapes, the vCPU pin,
+  hold-queue (H1, prepared) and C1547's remainder: registered for next week, no work now.
+- **Critical path, in order:** E2's verdict → R8 RECORDED directly (no separate unrecorded pass;
+  an OBS check; Lab 8's reset steps ready) → the console feature finished (O6's bar, O7's offer,
+  O8's working page and manual section) → its single deploy → s5's unrecorded first pass → s5
+  recorded → the remaining segments → edit → write-up → submit.
+- **In parallel:** the testing, documentation and monitoring segments' content (testing may use
+  push-CI coverage and nightly #10 as BEFORE), the write-up drafted from LAB9_DOCUMENTATION.md,
+  the narration drafted.
+- **Kept:** the feature's tests and the 0-survivor bar on byte-sending and security code; no
+  human console interaction; preview and confirm.
+- **Deferred to next week (registered, no work):** C1546's remainder, C1563 (the gate's CI
+  listing), the findings reconciliation, C1562 unless its loaded runs are quick.
+
 ## Decisions
 
 | # | Decision | Recommendation | Status |

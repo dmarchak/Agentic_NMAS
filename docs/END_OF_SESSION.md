@@ -1,6 +1,49 @@
 # End of session: where Phase 7 stands
 
-## PAUSED 2026-10-22 ~17:3x UTC (the operator off the home network; resume on "RESUME")
+## PAUSED 2026-10-22 19:3x UTC (offline at 19:45Z; resume on "RESUME")
+
+**Uncommitted on main** (no time for a gate): this note, LAB9_PLAN's "Priorities reset", and
+C1564's rewording in the register. **First step on resume: gate and push them.** main otherwise
+at `9e9b8138` (C1565), pushed.
+
+- **E2 is RUNNING on the lab host, detached** (sampler pid 3185491, parent 1, 62 samples,
+  `~/lab9-E2-procstat.log`): 19:03:09 to ~20:05Z, after T1 (all six routers' subscription 101
+  narrowed; one_minute arriving for all six at 18:57Z). H1 skipped: s3 Gi1/1 discards were 0.0/s
+  over 5 min and out 46 pps (from ~9.2/s and ~190). No operations by either of us until it ends.
+  **Resume:** analyse 19:03 to 20:03Z (the stall script, the sampler, Proxmox, telemetry at the
+  collector); bar: 0 OSPF drops, no failed scrape touching an R8/s5 step or a recorded screen.
+- **O6a** (worktree `agent-abf87d34472ef02c5`): built, no break in place; remains its mutation
+  bar (a run of ~2 to 2.5 h; start only with the laptop settled), weights, rows, merge.
+  At merge, drop its test documenting the old store/wrapper split (C1565 fixed it on main).
+- **C1562** (worktree `agent-a4a59990d235afc0d`): fixed, not merged; remains 20 loaded runs
+  (deferred unless quick).
+- **The wrapper's mutation re-run** for `name_refusal` (C1565): before the feature's deploy.
+
+**The shortest ordered task list to submission (O = the operator, A = the agent):**
+1. A: E2's verdict.
+2. O and A: R8's prerequisites: R2's relay intent and deploy (A prepares, O confirms); NetBox's
+   branch-2 records (O, UI); R8's Day 1 document (A); the OBS check and Lab 8's reset steps (O).
+3. O: R8 recorded (Add device, ZTP through R2's relay, Day 1).
+4. A: the console feature: O6a's bar and merge; O6b (routes, gates, invalidation, stages); O7's
+   Add-device offer; O8 (a board, self-signed under Phase 7's mode, the page and the manual
+   section); the wrapper's mutation re-run; gates and CI.
+5. A, with O's go: the single feature deploy (`nmas-deploy --wait`).
+6. O: the console server's key installed on the lab host (the public key Mercury shows, with the
+   forced command and the allowlist: a host change).
+7. O, with a planned-restart window: s5 back to factory (the scripted reload; C1545 is green),
+   then s5's unrecorded first pass through out-of-band ZTP (A measures).
+8. O: s5 recorded.
+9. A drafts, O records: the testing, documentation and monitoring segments (recordable before
+   s5 is ready).
+10. A: the narration and the write-up drafted; O: the edit, the review, the submission.
+
+**Could slip past Monday:** step 4 (about 1 to 1.5 days of agent work plus the mutation runs,
+each 2 to 2.5 h of an unsuspended laptop); step 7 (s5's first real run of the feature, a vIOS
+console never driven before); step 3 if E2 is not GO. **Fallback if the feature slips**
+(LAB9_PLAN section 12): s5's day 0 pre-staged by the lab's launch, said as such; it meets "no
+human interaction", not "via ZTP" for day 0.
+
+## PAUSED 2026-10-22 ~17:3x UTC (superseded by the note above) (the operator off the home network; resume on "RESUME")
 
 Nothing runs while paused: no agents, gates, pushes, CI dispatches, device or host reads.
 Connection failures while paused are expected, not findings. **This note is uncommitted**
