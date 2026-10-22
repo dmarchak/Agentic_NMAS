@@ -233,7 +233,13 @@
   {%- endfor %}
 </svg>
 </div>
-<form id="topo-move" class="topo-moveform" method="post" action="{{ url_for('topology_v2.positions_save') }}{{ t.qs() }}" hx-post="{{ url_for('topology_v2.positions_save') }}{{ t.qs() }}" hx-target="#topo" hx-swap="outerHTML">
+{#- C1550: a move's save REPLACES a read of the region still in flight (hx-sync on #topo,
+    the region's own request slot). That read was asked before the save, so its answer is
+    older than the save's; let through, it replaced the region, this form with it, while the
+    save was in flight, and the save's answer landed nowhere: nothing heard it, nothing asked
+    the map again, and the map drew the device where the store no longer had it. A read asked
+    while the save is in flight waits behind it in the same slot. -#}
+<form id="topo-move" class="topo-moveform" method="post" action="{{ url_for('topology_v2.positions_save') }}{{ t.qs() }}" hx-post="{{ url_for('topology_v2.positions_save') }}{{ t.qs() }}" hx-target="#topo" hx-swap="outerHTML" hx-sync="closest #topo:replace">
   <input type="hidden" name="list" value="{{ t.list }}">
   <input type="hidden" name="moved" value="">
   <input type="hidden" name="positions" value="">

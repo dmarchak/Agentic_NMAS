@@ -320,6 +320,12 @@ class TestTheConfirm:
             # (2026-10-21: 200 polls 20 ms apart, about 4 s and never measured, ran out before r6
             # finished on CI #1043's loaded browser2 shard; the state is reached in under 1 s
             # on the laptop, so 20 s is far past 2.5 times it, and a pass ends the wait).
+            # C1550 (2026-10-22): the same ran out in coverage nightlies #8 and #9, before this
+            # bound. Measured on the laptop under the nightly's settings (the C tracer, a
+            # context per test, branches): 1.9 s alone; 2.4 to 3.0 s (15 runs, about 100 polls
+            # of the old 200) with three workers running browser2 beside it on four CPUs; and
+            # on CI the old 200 polls, about 4.4 s, were not enough. 20 s covers a CI time up
+            # to 8 s at 2.5 times; 0 of 20 failed under that load with it.
             deadline = time.time() + 20
             while time.time() < deadline:
                 _rr, frag = _get(ready, out["url"])

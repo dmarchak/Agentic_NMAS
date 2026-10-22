@@ -1027,6 +1027,80 @@ def test_a_save_answering_mid_drag_waits_for_the_next_drop_in_a_browser(web, mon
         assert len(_rows(web)) == 2, _rows(web)
 
 
+def test_a_map_read_in_flight_at_a_drop_never_orphans_its_save_in_a_browser(web, monkeypatch):
+    """C1550 (the coverage nightly, #9, #12, #13): the first save's answer asks the map again
+    (its X-NMAS-Invalidates names `topology`). Under the nightly's load that read was still in
+    flight when r1 was dropped the second time, answered after the drop, and replaced the
+    region, the move's form with it, while the second save was in flight: that save's answer
+    had nowhere to land and its afterRequest reached nothing, so nothing asked the map again,
+    and the map drew r1 where the FIRST drop left it while the store held the second. Planted
+    here by order, never by time: the read is held until the second save reaches the server,
+    and that save waits for the read to answer before its own 0.8 s. A save replaces a read of
+    the region in flight (the form's hx-sync), so its answer redraws the map, is heard, and the
+    map draws r1 where the store has it."""
+    import threading
+
+    from tests import browser
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    from modules import topology_positions
+    import routes.topology_v2 as tv
+    real_save, real_region = topology_positions.save, tv._region
+    read_asked, second, read_answered = threading.Event(), threading.Event(), threading.Event()
+    saves = []
+
+    def save(*a, **k):
+        saves.append(a)
+        if len(saves) == 2:
+            second.set()
+            # Met within milliseconds (the held read answers as soon as `second` is set); 10 s
+            # is the browser wait's own bound below.
+            read_answered.wait(10)
+        time.sleep(0.8)
+        return real_save(*a, **k)
+
+    def region(*a, **k):
+        read_asked.set()
+        second.wait(10)            # the read stays in flight until the second save is sent
+        try:
+            return real_region(*a, **k)
+        finally:
+            read_answered.set()
+    monkeypatch.setattr(topology_positions, "save", save)
+    monkeypatch.setattr(tv, "_region", region)
+    import app as A
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        _open_snapped(b, srv)
+        _pointer(b, [{"type": "pointerMove", "origin": _element(b, '[data-node="r1"] .topo-ic'),
+                      "x": 0, "y": 0},
+                     {"type": "pointerDown", "button": 0},
+                     {"type": "pointerMove", "origin": "pointer", "x": 50, "y": 0,
+                      "duration": 100},
+                     {"type": "pointerUp", "button": 0}])
+        b._call("DELETE", f"/session/{b.session}/actions")
+        b.wait_for("return window.__done.some(function (r) {"
+                   " return r.indexOf('POST /v2/topology/positions') === 0; })")
+        # The first save's answer asked the map again, and that read is in flight.
+        assert read_asked.wait(10) and not read_answered.is_set()
+        b.js("window.__r1 = document.querySelector('svg.topo-map [data-node=\"r1\"]')")
+        _pointer(b, [{"type": "pointerMove", "origin": _element(b, '[data-node="r1"] .topo-ic'),
+                      "x": 0, "y": 0},
+                     {"type": "pointerDown", "button": 0},
+                     {"type": "pointerMove", "origin": "pointer", "x": 90, "y": 60,
+                      "duration": 200}])
+        want = b.js(_WANT)
+        _pointer(b, [{"type": "pointerUp", "button": 0}])
+        b._call("DELETE", f"/session/{b.session}/actions")
+        b.wait_for("return !window.__r1.isConnected && window.__done.filter(function (r) {"
+                   " return r.indexOf('POST /v2/topology/positions') === 0; }).length === 2")
+        stored = json.loads((web["dir"] / "topology_layout.json").read_text())["positions"]
+        assert stored["r1"] == [_dot(want[0]), _dot(want[1])], (stored["r1"], want)
+        drawn = b.js("var g = document.querySelector('svg.topo-map [data-node=\"r1\"]');"
+                     "return [+g.getAttribute('data-x'), +g.getAttribute('data-y')]")
+        assert drawn == stored["r1"], (drawn, stored["r1"])
+        assert len(saves) == 2 and len(_rows(web)) == 2, _rows(web)
+
+
 def test_a_drop_far_from_the_pointer_is_refused_and_put_back_in_a_browser(web):
     """C882's second rule, client-side, where the pointer is known: a drop whose place is more
     than one grid step from where the pointer let go is refused, said above the map naming both
