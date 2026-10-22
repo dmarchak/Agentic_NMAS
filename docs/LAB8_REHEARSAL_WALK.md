@@ -399,7 +399,9 @@ type as the fleet's routers carry them, platform the fleet's IOS-XE routers' or 
   counting from Create, not boot (C1467). On camera it does not appear: c2's reload follows
   Create at once.
 
-**c2 [OPERATOR, LAB M24]. On R6's console: `reload`, do not save, confirm** (b4a erased it). R6
+**c2 [OPERATOR, LAB M24]. On R6's console: `reload`; at "System configuration has been
+modified. Save? [yes/no]:" answer `no`; then Enter at `[confirm]`** (b4a erased it). `yes`
+writes the running configuration back to startup, and R6 boots configured: ZTP never runs. R6
 is not Mercury's now (retired, and its new onboarding is pending), so no window is needed. On
 camera: the `reload` line only, about 10 s, and the console is closed before R6 boots (step i).
 - **Expected:**
@@ -467,8 +469,10 @@ waits until 120 s after the last fetch (C1400) and says until when.
      - the reservation `aa:bb:cc:00:04:07 -> 10.255.4.6`, with option 3 = 10.255.4.5;
      - a pending row "r7: reserved, not leased";
      - **[AGENT]** the repository clean, and "onboarding: r7" holding both files.
-   **c5a [OPERATOR, LAB M24]. Right after Create r7: on R7's console, `reload`, do not save,
-   confirm** (answer `no` to any dialog first). R7 is pending, so no window is needed. On
+   **c5a [OPERATOR, LAB M24]. Right after Create r7: on R7's console, `reload`; at "System
+   configuration has been modified. Save? [yes/no]:" answer `no`; then Enter at `[confirm]`**
+   (answer `no` to any other dialog first). `yes` writes the running configuration back, and R7
+   boots configured: ZTP never runs. R7 is pending, so no window is needed. On
    camera: the `reload` line only, about 10 s; the console is closed before R7 boots (step i).
    - **Why now:** a C8000v boots in about 7 minutes (8.8 minutes to a lone C8000v's first
      answer, lab/REDEPLOY.md); R6's deploy (d1.5) takes about 3. So R7 is asking by the time
@@ -630,9 +634,19 @@ whole network.
 ### h. Needs attention at the end
 
 **h1 [OPERATOR, DECISION M1]. Save All** for Default, after every device is at its intent (P5
-put s3 there).
+put s3 there). **Until C1513's narrow version is deployed (Thursday), the workaround (the
+operator, 2026-10-21, corrected by the code the same evening):** Save All runs 6 devices at a
+time and every device but s3 is reached through s3. Saving s3 alone first does NOT take it out
+of the batch: Save All plans every answering device into its "save" group
+(`save_op.plan`), and only a whole-network Save All earns the baseline. So:
+1. **Save All** with nothing else running: no deploy, no Show commands, no reads in flight (the
+   step-6 failure was the batch's own reader wakes, C1513). After 05:13 UTC's pinning it saved
+   10 of 10.
+2. Any single device that fails: its page › **Save**, alone, once.
+3. Then **Save All** once more, to earn the baseline. A second failure of the same device is a
+   stop: read its cause (C1488) before anything else.
 - **Expected:** every device captured, and `Baseline: earned` with a new `baseline/<ts>`.
-- A save failing in a stall names its device and cause (C1488). Retry it alone (C1490).
+- A save failing in a stall names its device and cause (C1488).
 
 **h2 [OPERATOR, DECISION and LABOUR M4]. A break-glass export** holding R6's and R7's new
 credentials. Saturday's Retire needs it, as P6 did.

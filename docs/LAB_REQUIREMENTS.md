@@ -13,7 +13,29 @@ until the operator signs it off.
   (b) The NSoT is updated appropriately when the new devices are added.
   (c) The documentation is appropriate.
   Video: what happens when the devices are added, how the automation framework is implemented
-  and updated, and examples of the documentation.
+  and updated, and examples of the documentation. **Length: 6 to 8 minutes** (the submission
+  format; the operator, 2026-10-21). The cut is docs/LAB8_VIDEO_OUTLINE.md (about 7:10).
+  **How the video answers it** (the operator, 2026-10-21, from the handout):
+  - **"How the GENERAL network automation framework is implemented and updated"** (the
+    prerequisites: automation code, NSoT, CI/CD): the platform diagram (Mercury, NetBox, git,
+    Kea DHCP, Mercury's TFTP responder, monitoring, the lab), the ZTP path emphasised, about 45
+    s. "Updated" is what the framework updates when devices are added: NetBox's records and
+    import, intent and golden commits in git, Kea's reservations and subnets, Prometheus's
+    scrape targets (automatic: a golden commit wakes the targets keeper), Topology; the
+    heartbeat and telemetry ALERT RULES are a follow-up step today (the walk's d3: the
+    re-measure, then the host install steps), narrated as such; plus one sentence that Mercury's own changes pass CI
+    before install. **No CI footage in Lab 8:** Actions, shards and coverage are Lab 9's
+    deliverables ii and iii.
+  - **(a) "Config automatically after connecting":** Day 0 is zero-touch (address, bootstrap,
+    Verify); Day 1 is narrated as infrastructure as code: written as code before the device
+    existed, deployed after one approval by design. Lab 9 moves that approval up front.
+  - **(b) the NSoT updated:** NetBox's Planned records taken over at Verify, then the import
+    after Day 1; intent and goldens committed in git.
+  - **(c) the documentation:** shown and named in the voice-over as NetBox (the documentation
+    of record: site, prefixes, VLAN, devices, addresses, cables), each device's intent in git
+    (its documented design) and History (every change, who, what was sent, how it was checked).
+    The Lab 8 write-up (docs/LAB8_DOCUMENTATION.md) is separate, not filmed (the operator,
+    2026-10-22: no file 12).
 - Lab 8 topology: R6 attached to R4 in OSPF area 10; RIPv2 between R6 and R7; H5 on VLAN 10
   behind R7.
 - Lab 9, Objective 1: add R8 and a "Switch" through the same ZTP framework, with the full
