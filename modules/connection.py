@@ -587,6 +587,54 @@ def read_host_key(ip: str, *, port: int = 22, owner: str = "", timeout: float = 
     return host_keys.offered(key)
 
 
+def open_pinned_transport(host: str, port: int, *, username: str, pkey, owner: str = "",
+                          timeout: float = None):
+    """An SSH transport signed in with *pkey* to a server that is NOT a device (a console
+    server, or the SSH jump host in front of one; out-of-band ZTP, docs/LAB9_PLAN.md section 8).
+
+    The server's host key is compared with Mercury's record (`host_keys.check`, C906) after
+    the key exchange and BEFORE the key is offered, in this order, by line: a first contact
+    keeps the key, a different key is refused naming both fingerprints, and nothing was sent.
+    Only public-key authentication: a console server's credential is a key Mercury generated
+    (modules/nsot/console_keys.py), never a password. A device's session never comes here: it
+    is `open_ssh`, counted against the device's vty lines; a console server has no vty budget,
+    and its one session per console port is console_transport's lock.
+
+    *host* is an address or a name, the host-key record's key; *timeout* bounds the connect,
+    the banner, the key exchange and the authentication each (default `CONNECT_TIMEOUT_S`).
+    The caller closes the transport. Nothing here logs the key."""
+    import socket
+
+    import paramiko
+
+    from modules import host_keys
+
+    owner = owner or _caller_label()
+    bound = timeout or CONNECT_TIMEOUT_S
+    sock = socket.create_connection((host, port), timeout=bound)
+    try:
+        transport = paramiko.Transport(sock)
+    except Exception:
+        sock.close()
+        raise
+    transport.banner_timeout = bound
+    transport.auth_timeout = bound
+    try:
+        transport.start_client(timeout=bound)
+        host_keys.check(host, transport.get_remote_server_key(), owner=owner, port=port)
+        transport.auth_publickey(username, pkey)
+        if not transport.is_authenticated():
+            raise paramiko.AuthenticationException(
+                f"{host} port {port} did not accept the key for {username!r}")
+    except Exception:
+        transport.close()
+        sock.close()
+        raise
+    logger.info("ssh: signed in to %s port %s as %s for %s (a console server or jump host)",
+                host, port, username, owner)
+    return transport
+
+
 class UnheldDeviceWrite(RuntimeError):
     """A write on a session whose thread does not hold the device (C101)."""
 

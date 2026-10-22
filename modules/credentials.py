@@ -25,6 +25,7 @@ as the hook for Part 2's automatic rotation.
 import json
 import logging
 import os
+import re
 import time
 
 from modules import filestore as _filestore
@@ -99,7 +100,7 @@ def _load() -> dict:
 def _key_changes(before: dict, after: dict) -> str:
     """``+added -removed ~changed`` per section, NAMES only, never a value."""
     parts = []
-    for section in ("profiles", "device_overrides", "template_secrets"):
+    for section in ("profiles", "device_overrides", "template_secrets", "ssh_keys"):
         b, a = before.get(section) or {}, after.get(section) or {}
         add = sorted(set(a) - set(b))
         rem = sorted(set(b) - set(a))
@@ -379,6 +380,8 @@ def device_credential_values() -> dict:
         for ip, override in (data.get("device_overrides") or {}).items():
             _add(decrypt_value(override.get("password", "")), "device-password")
             _add(decrypt_value(override.get("secret", "")), "enable-secret")
+        for ref, entry in (data.get("ssh_keys") or {}).items():
+            _add(decrypt_value(entry.get("private_key", "")), "ssh-private-key")
     except Exception as exc:                  # noqa: BLE001
         log.error("credentials: could not read profiles for redaction: %s", exc)
 
@@ -542,6 +545,78 @@ def migrate_template_secrets_to_list_scope(list_name: str,
                 len(moves), slug)
     return {"ok": True, "dry_run": False, "moved": moves, "skipped": skipped,
             "count": len(moves)}
+
+
+# ---------------------------------------------------------------------------
+# SSH keys Mercury holds for servers that are not devices (a console server)
+# ---------------------------------------------------------------------------
+
+#: An SSH key's reference: a NAME in this store, never a value. The console-server store's
+#: `credential_ref` holds one (docs/LAB9_PLAN.md section 8, piece 1): no space, quote or line
+#: break, so a pasted key or password does not fit it.
+SSH_KEY_REF = re.compile(r"[A-Za-z0-9@][A-Za-z0-9_.:@-]{0,127}")
+#: The user an SSH key signs in as: what OpenSSH accepts as a login name.
+SSH_USERNAME = re.compile(r"[A-Za-z_][A-Za-z0-9_.-]{0,31}")
+
+
+class SshKeyExists(ValueError):
+    """A key is already stored under the reference, and the caller did not say to replace it."""
+
+
+def check_ssh_key_ref(ref) -> str:
+    """*ref* when it is a reference's shape; else ValueError naming it and the shape."""
+    if not isinstance(ref, str) or not SSH_KEY_REF.fullmatch(ref):
+        raise ValueError(f"SSH key reference {ref!r} is not a name (it must match "
+                         f"{SSH_KEY_REF.pattern})")
+    return ref
+
+
+def set_ssh_key(ref: str, *, username: str, private_key: str, public_key: str,
+                replace: bool = False) -> dict:
+    """Store an SSH key pair under *ref*: the private half encrypted at rest (secrets_store),
+    the public half and the user in the clear. Refused when *ref* already holds a key unless
+    *replace* (a new key locks the old one's server out until it is installed there). Logs
+    the reference and the user, never a key."""
+    check_ssh_key_ref(ref)
+    if not isinstance(username, str) or not SSH_USERNAME.fullmatch(username):
+        raise ValueError(f"SSH user {username!r} is not a login name (it must match "
+                         f"{SSH_USERNAME.pattern})")
+    if not private_key or not public_key:
+        raise ValueError(f"SSH key {ref!r}: both halves are required")
+    with _lock:
+        data = _load()
+        store = data.setdefault("ssh_keys", {})
+        if ref in store and not replace:
+            raise SshKeyExists(f"SSH key {ref!r} is already stored (public key "
+                               f"{store[ref].get('public_key', '?')!r}); replacing it is a "
+                               "separate decision")
+        store[ref] = {"username": username, "private_key": encrypt_value(private_key),
+                      "public_key": public_key, "created": time.time()}
+        _save(data)
+    log.info("credentials: stored SSH key '%s' for user %s", ref, username)
+    return {"ok": True, "ref": ref}
+
+
+def get_ssh_key(ref: str):
+    """``{"username", "private_key", "public_key"}`` for *ref*, the private half DECRYPTED for
+    the one caller that signs in with it (never returned to a page or logged), or None when
+    nothing is stored under it. A private half that will not decrypt is ``""``."""
+    entry = (_load().get("ssh_keys") or {}).get(check_ssh_key_ref(ref))
+    if not entry:
+        return None
+    return {"username": entry.get("username", ""),
+            "private_key": decrypt_value(entry.get("private_key")),   # absent: ""
+            "public_key": entry.get("public_key", "")}
+
+
+def ssh_key_info(ref: str):
+    """``{"ref", "username", "public_key", "created"}`` for *ref*, or None: never the private
+    half."""
+    entry = (_load().get("ssh_keys") or {}).get(check_ssh_key_ref(ref))
+    if not entry:
+        return None
+    return {"ref": ref, "username": entry.get("username", ""),
+            "public_key": entry.get("public_key", ""), "created": entry.get("created")}
 
 
 def resolve(mgmt_ip: str, role: str = "", site: str = "",

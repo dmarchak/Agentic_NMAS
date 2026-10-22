@@ -545,4 +545,22 @@ EQUIVALENT = [
            "a profile that loads is ASCII throughout (validate refuses any other character in "
            "every string), and ASCII reads alike in UTF-8, its other spelling, and any "
            "ASCII-compatible locale default; a non-ASCII file is refused either way"),
+    # ── Out-of-band ZTP, O2 (the transports and the driver loop; the run of 2026-10-22, on
+    # demand, serial, canary killed). Every other survivor there is killed by a test naming it.
+    *_each("modules.nsot.console_transport.run_plan",
+           "decision = session.feed(data, now) if data else session.tick(now)",
+           ("decision = session.feed(data, now) if (data) or True else session.tick(now)",),
+           "an empty read fed is a tick: ConsoleSession.feed with no bytes adds no text and "
+           "decides at the same time from the same state, exactly as tick does"),
+    *_each("modules.nsot.console_transport.ConsoleTransport.close",
+           "self._opened = False", ("self._opened = None",),
+           "the flag is only ever tested for truth (`if self._opened`, `if not self._opened`), "
+           "and None is as false as False"),
+    *_each("modules.nsot.console_transport.RawTcp._disconnect",
+           "self._chan = self._ssh = self._sock = None",
+           ('self._chan = self._ssh = self._sock = ""',),
+           "the three are cleared only after their values were taken to be closed, and none is "
+           "read again before `_connect` sets them anew: `close` disconnects once (only while "
+           "open), a failed `open` once, and `read` and `write` refuse a closed transport "
+           "before asking for its pipe"),
 ]

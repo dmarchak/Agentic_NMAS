@@ -1,5 +1,5 @@
 {
- "measured": "2026-10-17, CI's suite on the laptop (3.12.3), 4 workers, --durations=0, the browser tests run with the gate's Firefox, plus 17 ms a collected test (A1 applied; 42 tests failing on address churn, their times kept); 2026-10-21, the 61 files it did not know measured the same way (CI's interpreter on the laptop, 2 workers, --durations=0, the gate's Firefox, plus 17 ms a collected test) and added; 2026-10-22, the four console files (out-of-band ZTP, O1 to O3) measured the same way and added",
+ "measured": "2026-10-17, CI's suite on the laptop (3.12.3), 4 workers, --durations=0, the browser tests run with the gate's Firefox, plus 17 ms a collected test (A1 applied; 42 tests failing on address churn, their times kept); 2026-10-21, the 61 files it did not know measured the same way (CI's interpreter on the laptop, 2 workers, --durations=0, the gate's Firefox, plus 17 ms a collected test) and added; 2026-10-22, the four console files (out-of-band ZTP, O1 to O3) measured the same way and added; 2026-10-22, the three O2 console files (transports, driver loop, key) measured the same way (2 workers) and added",
  "seconds": {
   "tests/test_a_save_that_records_nothing_says_so.py": 10.0,
   "tests/test_ack_binds_values.py": 0.1,
@@ -91,6 +91,9 @@
   "tests/test_console_profiles.py": 1.9,
   "tests/test_console_session.py": 2.1,
   "tests/test_console_survey.py": 1.9,
+  "tests/test_console_transport.py": 10.3,
+  "tests/test_console_run_plan.py": 0.4,
+  "tests/test_console_keys.py": 0.8,
   "tests/test_confirm_buttons_drawn.py": 41.1,
   "tests/test_confirm_carries_its_hash.py": 0.5,
   "tests/test_console_path.py": 5.3,

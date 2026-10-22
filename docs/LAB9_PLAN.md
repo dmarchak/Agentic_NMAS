@@ -609,8 +609,22 @@ C1536.
   Queued for the operator: C1554 (cables taggable for every writer). Registered: C1553
   (retirement must remove the path; O6), C1555 (the console-server device must pre-exist in
   NetBox; O8), C1556 (UNKNOWN).
-- **Next:** O2 (the two drivers and the driver loop; an agent is building it), O6 (the
-  operations, with C1553), O7's offer, O8 minimal.
+- **O2** (the commit after `7ae65b66`): `modules/nsot/console_transport.py` (the
+  `ConsoleTransport` interface; `CommandBridge`, an exec channel whose command is only the
+  container name, checked by the wrapper's own `check_name`; `RawTcp`, direct or through a jump
+  host's `direct-tcpip`; a per-port cross-process lock refused by name; `run_plan`, which writes
+  only the session's decided bytes) and `modules/nsot/console_keys.py` (an ed25519 pair, the
+  private half encrypted in the credential store by reference, only the public key and the
+  `restrict,command="…"` authorized_keys line returned); `connection.open_pinned_transport`
+  (the host key checked after the key exchange and before the key is offered, key auth only;
+  the C906 chokepoint kept in connection.py). 172 tests against loopback fakes (a counting raw
+  console, a paramiko SSH server and jump); every driver writes exactly the plan's 19 bytes,
+  IPv4 and IPv6, telnet negotiation never answered. Mutation: 0 VERDICT survivors over all 29
+  functions (C1561's 3 equivalents). Keys only: no password auth for console servers.
+  Registered for O6: C1558 (one home for two rules), C1559 (hold the device around a console
+  run); C1560 (a refusal's wording, O8).
+- **Next:** O6 (the operations: survey and kick-start with preview and confirm, stages, gates,
+  receipts, Needs attention aborts, with C1553, C1558, C1559), O7's offer, O8 minimal.
 
 **Testing the feature (the operator's audit, 2026-10-22 ~07:5x UTC):**
 - **O2a's wrapper lives in Mercury, not the lab repository:** one standard-library-only module,
