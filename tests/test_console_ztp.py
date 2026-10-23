@@ -193,21 +193,24 @@ class World:
                             actor=ACTOR, actor_verified=Z.VERIFIED, timings=FAST, values={},
                             **self.nb())
 
-    def kick_preview(self, params=None):
-        return Z.kickstart_preview(LIST, self.dev["id"], dict(params or PARAMS), values={},
-                                   **self.nb())
+    def kick_preview(self, params=None, values=None):
+        return Z.kickstart_preview(LIST, self.dev["id"], dict(params or PARAMS),
+                                   values={} if values is None else values, **self.nb())
 
     def kick_with_greeting(self, greeting, answers):
         """A kick-start on a console that prints *greeting* as it is reached."""
         return self.kick(answers, greeting=greeting)
 
     def kick(self, answers, *, confirmed=None, actor=ACTOR, verified=Z.VERIFIED,
-             params=None, greeting=b""):
-        p = self.kick_preview(params)
+             params=None, greeting=b"", values=None):
+        """*values*: the masking's known secrets (`redact_text`'s), the preview's and the
+        run's; none by default."""
+        values = {} if values is None else values
+        p = self.kick_preview(params, values)
         self.consoles.append((greeting, list(answers)))
         return Z.kickstart_apply(LIST, self.dev["id"],
                                  p["hash"] if confirmed is None else confirmed, actor, verified,
-                                 params=dict(params or PARAMS), timings=FAST, values={},
+                                 params=dict(params or PARAMS), timings=FAST, values=values,
                                  **self.nb())
 
     def received(self, index=0) -> bytes:

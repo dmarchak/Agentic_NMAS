@@ -125,6 +125,26 @@ def test_a_line_with_no_read_back_is_refused_naming_it(lines, words):
         K.readback_plan(lines)
 
 
+def test_an_indented_line_before_any_section_is_refused_under_no_section():
+    """The first line indented, nothing entered before it (mutation run #20: the starting
+    section taken as another's survived)."""
+    with pytest.raises(ValueError, match="no read-back is defined for 'ip address dhcp' under "
+                                         "'no section'"):
+        K.readback_plan([" ip address dhcp"])
+
+
+def test_an_indented_line_after_a_global_is_a_value_error_under_no_section():
+    """A global line leaves every section, so an indented line after it is refused as a
+    ValueError, the one exception every caller catches as a refusal (console_ztp,
+    oob_onboard), naming no section (mutation run #20: the section a global leaves set to
+    None, a crash, and to another's name, survived)."""
+    with pytest.raises(Exception) as got:                            # noqa: PT011 - its type
+        K.readback_plan(["configure terminal", "hostname s5", " exec-timeout 15 0", "end"])
+    assert got.type is ValueError, got.type
+    assert str(got.value).startswith("no read-back is defined for 'exec-timeout 15 0' under "
+                                     "'no section'"), str(got.value)
+
+
 def test_a_section_entered_twice_is_read_once_and_two_addressed_interfaces_read_no_mac():
     plan = K.readback_plan(["configure terminal", "interface Vlan1", " ip address 192.0.2.1 "
                             "255.255.255.0", "interface Gi0/2", " ip address 192.0.2.5 "
@@ -264,6 +284,19 @@ def test_a_read_that_did_not_happen_is_a_difference():
     assert [d["why"] for d in got] == [
         f"typed 'hostname s5'; {READ_GLOBAL!r} was not read",
         f"typed 'ip default-gateway 192.0.2.13'; {READ_GLOBAL!r} was not read"]
+
+
+def test_a_read_that_did_not_happen_names_typed_read_and_no_found_in_the_verdict():
+    """`readback_verdict`'s differences carry `compare_readback`'s documented shape whole, a
+    read that did not happen too (`found` None: no read shows anything); console_ztp's record
+    takes each difference's `typed` and `read` (mutation run #20: each key renamed in this
+    branch survived)."""
+    v = K.readback_verdict(PLAN, {k: v for k, v in answers().items() if k != READ_GLOBAL})
+    assert v["differs"] == [
+        {"typed": "hostname s5", "read": READ_GLOBAL, "found": None,
+         "why": f"typed 'hostname s5'; {READ_GLOBAL!r} was not read"},
+        {"typed": "ip default-gateway 192.0.2.13", "read": READ_GLOBAL, "found": None,
+         "why": f"typed 'ip default-gateway 192.0.2.13'; {READ_GLOBAL!r} was not read"}]
 
 
 def test_the_echo_is_never_read_as_the_answer():
@@ -496,6 +529,43 @@ def test_a_read_back_read_that_ends_any_way_but_done_stops_the_run():
     assert Z._readback(_Bound(), SWITCH, program, rec) is False          # noqa: SLF001
     assert rec["outcome"] == "bound" and rec["reason"] == "read-back: the run's bound passed"
     assert "readback_differs" not in rec
+
+
+class _Answers(_Bound):
+    """A console whose every read-back read ends at the prompt, answering from *config*
+    (`running`'s) as IOS prints it."""
+
+    def __init__(self, config):
+        self.config, self.last = config, ""
+
+    def then(self, steps, final, step_timeout_s=None):
+        from modules.nsot.console_transport import RunResult
+        self.last = steps[0][1].rstrip("\r\n")
+        return RunResult(outcome="done", reason="", state="privileged", attach_state=None,
+                         sent=b"", bytes_written=0, transcript="")
+
+    def output(self):
+        return read_answer(self.last, self.config, "s5#").decode()
+
+
+def test_a_missing_section_s_differences_reach_the_record_by_typed_read_and_why():
+    """console_ztp's record takes each difference's `typed`, `read` and `why`: a section the
+    read shows 0 times reaches it whole, every setting under it (mutation run #20: `read`
+    renamed in this branch survived)."""
+    from modules.nsot import console_ztp as Z
+    config = running(LINES)
+    del config["sections"]["interface Vlan1"]
+    program = Z.build_kickstart(SWITCH, PARAMS, TARGET)["program"]
+    rec = {}
+    assert Z._readback(_Answers(config), SWITCH, program, rec) is False   # noqa: SLF001
+    why = f"{READ_SVI!r} shows 'interface Vlan1' 0 times (it must show it once)"
+    assert rec["readback_differs"] == [
+        {"typed": "ip address 192.0.2.14 255.255.255.252", "read": READ_SVI,
+         "why": f"typed 'ip address 192.0.2.14 255.255.255.252'; {why}"},
+        {"typed": "ip address 192.0.2.14 255.255.255.252", "read": READ_SVI,
+         "why": f"typed 'ip address 192.0.2.14 255.255.255.252'; {why}"},
+        {"typed": "no shutdown", "read": READ_SVI, "why": f"typed 'no shutdown'; {why}"}]
+    assert rec["outcome"] == "readback_differs"
 
 
 def test_the_why_shows_the_copy_s_last_three_lines():

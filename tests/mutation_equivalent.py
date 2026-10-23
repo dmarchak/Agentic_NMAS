@@ -660,4 +660,89 @@ EQUIVALENT = [
            "None equal no line that is not empty (empty lines are skipped first), and the "
            "line compared on is a factory prompt (Press RETURN or the setup dialog), never "
            "'XXXX'"),
+    # ── Out-of-band ZTP, O6a kick-start: the read-back (run #20 of 2026-10-23, on demand, at
+    # b8bceea9; each applied again by hand at c4716675). Every other survivor there is killed
+    # by a test in tests/test_console_readback.py naming the behaviour.
+    *_each("modules.nsot.console_kickstart.compare_readback",
+           "lines = answer_lines(e.read, text)", ("lines = answer_lines(None, text)",),
+           "with the echo left in, the answer's lines gain only its first line, the read itself, "
+           "and every read a plan compares (`readback_plan`: READ_INTERFACE, READ_SECTION, "
+           "READ_GLOBAL) begins 'show running-config': an unindented line beginning 'show' is "
+           "no section header (`_same_header` wants 'interface' or 'line'), comes before every "
+           "header so ends no body, and begins no key's words (shutdown, switchport mode, "
+           "switchport access vlan, ip address, no ip address, exec-timeout, hostname, ip "
+           "default-gateway), so every found tuple, count and difference is the same"),
+    *_each("modules.nsot.console_kickstart.readback_plan",
+           'section, read = "", ""', ('section, read = "", "XXXX"',),
+           "the starting read is never used: `read` is taken only under a section an interface "
+           "or `line con 0` header set, and that same statement sets `read`; a global or `vlan` "
+           "line continues before `reads.append(read)`, and anything else raises"),
+    *_each("modules.nsot.console_kickstart.readback_plan",
+           'key = next((k for k in GLOBAL_KEYS if text.startswith(k + " ")), "")',
+           ('key = next((k for k in GLOBAL_KEYS if text.startswith(k + " ")), None)',),
+           "the default is only tested by `if not key:`, which raises the same refusal for None "
+           "as for ''; a key found is never the default"),
+    *_each("modules.nsot.console_kickstart.readback_plan",
+           'globals_.append(Expect(text, "", "", key, ((text,),)))',
+           ('globals_.append(Expect(text, None, "", key, ((text,),)))',
+            'globals_.append(Expect(text, "XXXX", "", key, ((text,),)))'),
+           "a global's read is a placeholder: every global Expect reaches the plan only through "
+           "`replace(e, read=read)` with the one global read, and before that only its `key` is "
+           "read"),
+    # ── Out-of-band ZTP, the static kick-start (C1592 to C1594; run #23 of 2026-10-23, at
+    # b8bceea9, each applied again by its text at c4716675). Every other survivor there is
+    # killed by a test in tests/test_console_ztp_static.py (`TestWhatAKickStartRecords`).
+    *_each("modules.nsot.console_ztp._kickstart_phases",
+           'program["lines"][-1][1][:-1].strip())',
+           ("None)",
+            'program["lines"][+1][1][:-1].strip())',
+            'program["lines"][-2][1][:-1].strip())',
+            'program["lines"][-1][1][:+1].strip())',
+            'program["lines"][-1][1][:-2].strip())'),
+           "this read repeats the typing session's own decision on the same text (everything "
+           "since the last send) with that session's echo, the last line typed, stripped the "
+           "same way (`ConsoleSession._send`); the session ended done, so the line it read is "
+           "the unterminated privileged prompt (the profiles' `^\\S+#\\s*$`). An echo changes "
+           "the read only if it equals that line, and none of these can: None equals no line, "
+           "and the second line ('hostname ...'), the one before the last (' exec-timeout N "
+           "0', which render_kickstart puts before `end`), 'e' and 'en' never end in '#'"),
+    *_each("modules.nsot.console_ztp._kickstart_phases",
+           "if not _readback(console, profile, program, rec) or not _copy(console, profile, "
+           "program, rec):",
+           ("if not _readback(console, None, program, rec) or not _copy(console, profile, "
+            "program, rec):",),
+           "_readback never reads its profile: it reads the console, the program and the "
+           "record, and console_kickstart's readback_plan and readback_verdict, which take "
+           "none"),
+    *_each("modules.nsot.console_ztp._kickstart_phases",
+           '_finish(rec, console, outcome="done", reason="")',
+           ('_finish(rec, console, outcome="done", reason=None)',
+            '_finish(rec, console, outcome="done", )'),
+           "_finish records `redact_text(rec.get(\"reason\") or \"\", ...)`: None becomes '' "
+           "before it is masked, and a record given no reason keeps _new_record's '' (no step "
+           "of a run that reaches done writes one), so each records the reason ''"),
+    *_each("modules.nsot.console_ztp._stopped",
+           "refused = console.session.refused if console.session is not None else None",
+           ("refused = console.session.refused if (console.session is not None) or True "
+            "else None",),
+           "_stopped is called only after `console.then` (the typing, a read-back read), "
+           "which leaves console.session set: it begins a session from the seed, or continues "
+           "the one `attach` set on a done wake, and dereferences it either way; with a "
+           "session set the guard is true both ways"),
+    *_each("modules.nsot.console_ztp.kickstart_params",
+           '**{k: target.get(k, "") for k in K.PLAN_PARAMS},',
+           ('**{k: target.get(k, None) for k in K.PLAN_PARAMS},',
+            '**{k: target.get(k, ) for k in K.PLAN_PARAMS},'),
+           "the default stands for a value the onboarding lacks, and its one reader, "
+           "`if name in declared and name not in out and value`, takes '' and None alike as "
+           "nothing to fill: the parameter is left out either way"),
+    *_each("modules.nsot.console_ztp.kickstart_params",
+           '"vlan": target.get("vlan", ""), "interface": target.get("uplink", "")}',
+           ('"vlan": target.get("vlan", None), "interface": target.get("uplink", "")}',
+            '"vlan": target.get("vlan", ), "interface": target.get("uplink", "")}',
+            '"vlan": target.get("vlan", ""), "interface": target.get("uplink", None)}',
+            '"vlan": target.get("vlan", ""), "interface": target.get("uplink", )}'),
+           "as the line above: '' and None alike are nothing to fill (`and value`), so the "
+           "vlan falls to its own default (K.DEFAULT_VLAN) and the interface is left out "
+           "either way"),
 ]

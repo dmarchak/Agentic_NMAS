@@ -35,7 +35,7 @@ from modules.nsot import onboard, ztp, ztp_relayed, ztp_responder
 from tests.console_ios import copy_answers
 from tests.test_console_session import PNP
 from tests.test_console_ztp import (ACTOR, COPY, FAST, LIST, ONBOARDING, PARAMS, PLANNED, World,
-                                    after_lines, blank_answers, kick_answers)
+                                    _recorded_as_sent, after_lines, blank_answers, kick_answers)
 from tests.test_onboard_plan import lab  # noqa: F401 - the fixture
 
 ADDRESS, MASK, GATEWAY, SERVER = "192.0.2.14", "255.255.255.252", "192.0.2.13", "192.0.2.10"
@@ -537,6 +537,115 @@ class TestTheRun:
         assert rec["outcome"] == "copy_failed"
         assert "found an unknown prompt 'Address or name of remote host []?'" in rec["reason"]
         assert world.received(1).endswith(f"{COPY}\r".encode()), "the question never answered"
+
+
+# ── What a kick-start records (run #23's survivors): the record is what the card and History
+# read later, so its shape is asserted exactly, and its masking with a planted secret ─────────
+
+#: The SVI's read-back of a device that took another mask than the one typed.
+WRONG_MASK = "255.255.255.0"
+#: The read-back's words for that difference (`console_kickstart.compare_readback`'s).
+SVI_WHY = (f"typed 'ip address {ADDRESS} {MASK}'; 'show running-config interface Vlan10' "
+           f"shows 'ip address {ADDRESS} {WRONG_MASK}' (it must show 'ip address {ADDRESS} "
+           f"{MASK}')")
+
+
+def _svi_differs(answers, lines):
+    """*answers* with the SVI's read-back showing the address under WRONG_MASK."""
+    svi = 3 + len(lines) + 1
+    answers[svi] = answers[svi].replace(f" ip address {ADDRESS} {MASK}".encode(),
+                                        f" ip address {ADDRESS} {WRONG_MASK}".encode())
+    return answers
+
+
+class TestWhatAKickStartRecords:
+    def test_a_read_back_difference_is_recorded_as_typed_read_and_why(self, world):
+        world.survey(greeting=PNP, answers=blank_answers())
+        lines = _lines()
+        rec = world.kick(_svi_differs(kick_answers(lines), lines))
+        assert rec["outcome"] == "readback_differs"
+        assert rec["readback_differs"] == [{
+            "typed": f"ip address {ADDRESS} {MASK}",
+            "read": "show running-config interface Vlan10",
+            "why": SVI_WHY}]
+        assert Z.get_run(LIST, rec["id"])["readback_differs"] == rec["readback_differs"]
+
+    def test_a_difference_with_the_mac_read_names_only_the_differences(self, world):
+        world.survey(greeting=PNP, answers=blank_answers())
+        lines = _lines()
+        rec = world.kick(_svi_differs(kick_answers(lines), lines))
+        assert rec["mac"] == "0c:00:6c:e9:80:0a"
+        assert rec["reason"] == "read-back: " + SVI_WHY
+
+    def test_the_record_says_where_the_mac_in_use_was_read(self, world):
+        world.survey(greeting=PNP, answers=blank_answers())
+        rec = world.kick(kick_answers(_lines()))
+        assert rec["mac"] == "0c:00:6c:e9:80:0a"
+        assert rec.get("mac_reason") == "the MAC in use, from 0c00.6ce9.800a"
+        assert Z.get_run(LIST, rec["id"])["mac_reason"] == rec["mac_reason"]
+
+    def test_a_kick_start_that_ended_verified_has_no_reason(self, world):
+        world.survey(greeting=PNP, answers=blank_answers())
+        rec = world.kick(kick_answers(_lines()))
+        assert rec["outcome"] == "done" and rec["reason"] == ""
+        assert Z.get_run(LIST, rec["id"])["reason"] == ""
+
+    @pytest.mark.parametrize("stop", ["unverified", "line_refused", "readback_differs"])
+    def test_a_kick_start_that_stopped_records_what_it_sent_and_saw(self, world, stop):
+        """The partial record is the evidence: what was sent, how many bytes, the console's
+        transcript and the state it was found in (`_finish` with the console)."""
+        world.survey(greeting=PNP, answers=blank_answers())
+        lines = _lines()
+        answers = kick_answers(lines)
+        if stop == "unverified":
+            answers[2 + len(lines)] = b"end\r\nSwitch#"
+            seen = "end\nSwitch#"
+        elif stop == "line_refused":
+            i = lines.index(f" ip address {ADDRESS} {MASK}")
+            answers[3 + i] = (f"{lines[i]}\r\n                   ^\r\n% Invalid input detected "
+                              "at '^' marker.\r\n\r\nedge1(config-if)#").encode()
+            seen = "% Invalid input detected"
+        else:
+            answers = _svi_differs(answers, lines)
+            seen = f"ip address {ADDRESS} {WRONG_MASK}"
+        rec = world.kick(answers)
+        assert rec["outcome"] == stop
+        assert {"sent", "bytes_written", "transcript", "attach_state"} <= set(rec), sorted(rec)
+        _recorded_as_sent(rec, world.received(1), seen, P.USER_EXEC)
+
+    def test_a_secret_in_a_read_back_difference_is_masked_in_the_record(self, world):
+        """Masking is a blocking property: a known secret's value in what was typed and in why
+        it differs from what the device shows never reaches the record (planted: the
+        address; `read` is the read-back's command, the program's own words)."""
+        world.survey(greeting=PNP, answers=blank_answers())
+        lines = _lines()
+        rec = world.kick(_svi_differs(kick_answers(lines), lines),
+                         values={ADDRESS: "planted"})
+        assert rec["outcome"] == "readback_differs"
+        (d,) = rec["readback_differs"]
+        assert set(d) == {"typed", "read", "why"}, d
+        assert d["typed"] == f"ip address <redacted:planted> {MASK}"
+        assert d["why"] == (f"typed 'ip address <redacted:planted> {MASK}'; 'show running-config "
+                            f"interface Vlan10' shows 'ip address <redacted:planted> "
+                            f"{WRONG_MASK}' (it must show 'ip address <redacted:planted> "
+                            f"{MASK}')")
+        assert ADDRESS not in rec["reason"] and "<redacted:planted>" in rec["reason"]
+        assert ADDRESS not in str(Z.get_run(LIST, rec["id"])), "the stored record"
+
+    def test_a_secret_in_a_refused_line_is_masked_in_the_record(self, world):
+        world.survey(greeting=PNP, answers=blank_answers())
+        lines = _lines()
+        answers = kick_answers(lines)
+        i = lines.index(f" ip address {ADDRESS} {MASK}")
+        answers[3 + i] = (f"{lines[i]}\r\n                   ^\r\n% Invalid input detected at "
+                          "'^' marker.\r\n\r\nedge1(config-if)#").encode()
+        rec = world.kick(answers, values={ADDRESS: "planted"})
+        assert rec["outcome"] == "line_refused"
+        assert rec["refused"] == {"line": f"ip address <redacted:planted> {MASK}",
+                                  "words": "% Invalid input detected at '^' marker.",
+                                  "before": f"ip address <redacted:planted> {MASK}"}
+        assert ADDRESS not in rec["reason"]
+        assert ADDRESS not in str(Z.get_run(LIST, rec["id"])), "the stored record"
 
 
 class TestTheCopyWaitsOutKeyGeneration:
