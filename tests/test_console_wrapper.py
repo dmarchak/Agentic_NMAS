@@ -191,6 +191,14 @@ def test_an_option_marker_inside_a_name_is_named(allowlist):
                    "which a name may not hold\n")
 
 
+def test_the_rule_names_the_container_name_when_no_label_is_given():
+    """The console-server store's refusal (`console_servers.container_refusal`) gives no
+    label: the rule's words name what they judged, the container name, as the wrapper's own
+    name `SSH_ORIGINAL_COMMAND` (mutation run #17)."""
+    assert W.name_refusal("node--a") == ("the container name 'node--a' holds '--', which a "
+                                         "name may not hold")
+
+
 def test_a_shape_refusal_happens_before_the_allowlist_is_read(tmp_path):
     """A malformed command is refused on its own: even a missing allowlist is not reached."""
     code, calls, err = run(str(tmp_path / "absent"), "node-a;id")

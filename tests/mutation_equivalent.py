@@ -602,4 +602,62 @@ EQUIVALENT = [
            "console = None", ('console = ""',),
            "survey_run never reads `console`: it is only bound again, to the `_Console` handed "
            "to `_survey_phases`"),
+    # ── Out-of-band ZTP, O6a kick-start: `_Console`, which every console run's bytes go
+    # through (run #17 of 2026-10-22, on demand, at f59ac1f1; each applied again by its text at
+    # 19338976). Every other survivor there is killed by a test in tests/test_console_ztp.py
+    # (`TestHowAConsoleIsDriven`); the kick-start functions' own are measured again after the
+    # rewrite of that path.
+    *_each("modules.nsot.console_ztp._Console._drive",
+           '"phases", state=session.state,', ('"phases", state=None,',),
+           "the between-phases bound result is read only for its outcome and reason "
+           "(`_kickstart_phases` and `_survey_phases` through `console.last`; `attach` reads "
+           "`sent` only of an `aborted` result): a record's state, sent bytes, byte count and "
+           "transcript come from the sessions and the transport (`_finish`), never from a "
+           "RunResult"),
+    *_each("modules.nsot.console_ztp._Console._drive",
+           "attach_state=session.attach_state, sent=session.sent(),",
+           ("attach_state=None, sent=session.sent(),",
+            "attach_state=session.attach_state, sent=None,"),
+           "as the line above: the bound result's attach state and sent bytes are never read "
+           "(`attach` takes the attach state from its session, and reads `sent` only of an "
+           "`aborted` result, never a `bound` one)"),
+    *_each("modules.nsot.console_ztp._Console._drive",
+           "bytes_written=0, transcript=session.transcript())",
+           ("bytes_written=None, transcript=session.transcript())",
+            "bytes_written=0, transcript=None)",
+            "bytes_written=1, transcript=session.transcript())"),
+           "as the lines above: a record's byte count is the transport's own counter "
+           "(`_Console.bytes_written`) and its transcript the sessions' (`_Console.transcript`); "
+           "the bound result's are never read"),
+    *_each("modules.nsot.console_ztp._Console.attach",
+           'first = self._new(S.Plan(steps=tuple(S.Step(state, text.encode("ascii"))',
+           ('first = self._new(S.Plan(steps=tuple(S.Step(state, text.encode("ASCII"))',),
+           "Python's codec lookup ignores case: 'ASCII' is the same codec as 'ascii'"),
+    *_each("modules.nsot.console_ztp._Console.then",
+           'plan = S.Plan(steps=tuple(S.Step(state, text.encode("ascii")) for state, text in '
+           'steps),',
+           ('plan = S.Plan(steps=tuple(S.Step(state, text.encode("ASCII")) for state, text in '
+            'steps),',),
+           "Python's codec lookup ignores case: 'ASCII' is the same codec as 'ascii'"),
+    *_each("modules.nsot.console_ztp._Console.attach",
+           'self.seed = (line + ("" if partial else "\\n")).encode("ascii", "replace")',
+           ('self.seed = (line + ("" if partial else "\\n")).encode("ascii", )',
+            'self.seed = (line + ("" if partial else "\\n")).encode("ASCII", "replace")',
+            'self.seed = (line + ("" if partial else "\\n")).encode("ascii", "XXreplaceXX")',
+            'self.seed = (line + ("" if partial else "\\n")).encode("ascii", "REPLACE")'),
+           "the line is console text through console_session.Cleaner, which yields only ASCII "
+           "(a byte over 0x7F becomes '?'), so the encoding never errs and its error handler "
+           "is never looked up; and the codec lookup ignores case"),
+    *_each("modules.nsot.console_ztp._Console.attach",
+           'state, line, partial = S.read_state(first.received_since_send(), self.profile, "")',
+           ('state, line, partial = S.read_state(first.received_since_send(), self.profile, '
+            'None)',
+            'state, line, partial = S.read_state(first.received_since_send(), self.profile, '
+            '"XXXX")'),
+           "this read repeats the wake session's own decision on the same text with that "
+           "session's echo, '' (nothing was sent: `got.sent == b\"\"`), so it reads the line "
+           "the session stopped on. An echo changes that only if it equals the line: '' and "
+           "None equal no line that is not empty (empty lines are skipped first), and the "
+           "line compared on is a factory prompt (Press RETURN or the setup dialog), never "
+           "'XXXX'"),
 ]

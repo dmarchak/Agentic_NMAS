@@ -1331,6 +1331,134 @@ class TestWhatThePreviewReads:
         assert p["hash"] == world.kick_preview()["hash"]
 
 
+class TestHowAConsoleIsDriven:
+    """`_Console`, which every console run's bytes go through (the survey's and the
+    kick-start's): where it begins, when its budget ends it, and whose clock it keeps
+    (mutation run #17's survivors in `_Console`, at f59ac1f1)."""
+
+    def _survey(self, world, **over):
+        p = world.survey_preview()
+        kw = dict(profile="cisco_ios_switch", confirmed_hash=p["hash"], actor=ACTOR,
+                  timings=FAST, values={}, **world.nb())
+        kw.update(over)
+        return Z.survey_run(LIST, world.dev["id"], **kw)
+
+    def test_a_user_prompt_printed_before_the_wake_is_not_begun_from(self, world):
+        """Only a factory prompt printed before the wake (Press RETURN or the setup dialog,
+        console_survey.NOT_SIGNED_IN) is begun from; a `>` printed first is answered with
+        nothing, not even the wake, and the record names the prompt found."""
+        world.consoles.append((b"\r\nSwitch>", blank_answers()[1:]))
+        rec = self._survey(world)
+        assert (rec["outcome"], rec["blank"]) == ("aborted", None), rec
+        assert rec["reason"] == ("expected idle (step 1 of 1), found user_exec: 'Switch>' (out "
+                                 "of the plan's order)")
+        assert world.received() == b""
+        _recorded_as_sent(rec, b"", "Switch>", P.USER_EXEC)
+
+    def test_a_press_return_printed_before_the_wake_is_re_fed_as_the_line_it_was(self, world):
+        """A Press RETURN line printed before the wake is begun from: the new session is fed
+        that line AS IT ARRIVED, terminated, so the record's transcript shows it twice, each a
+        whole line (mutation run #17, `_Console.attach` 46: the seed lost its line break)."""
+        rec = world.survey(greeting=PNP, answers=blank_answers())
+        assert rec["outcome"] == "surveyed", rec
+        lines = rec["transcript"].replace("\r", "").split("\n")
+        whole = [ln for ln in lines if ln.strip() == "Press RETURN to get started."]
+        assert len(whole) == 2, (len(whole), [ln for ln in lines if "RETURN" in ln])
+        # Each copy carries its own line break before the run's note after it: the one
+        # received before the abort, and the seed the new session answered.
+        text = rec["transcript"].replace("\r", "")
+        assert "Press RETURN to get started.\n\n>>> aborted" in text, text[:400]
+        assert "Press RETURN to get started.\n\n>>> sent" in text, text[:400]
+
+    @pytest.mark.parametrize("later", [FAST.survey_bound_s, 10 ** 6], ids=["at", "past"])
+    def test_a_run_whose_bound_ends_as_a_phase_begins_sends_nothing_and_says_so(self, world,
+                                                                                later):
+        """The run's budget ending exactly as a phase begins, or before it, ends the run
+        `bound` in its own words with nothing sent, never an error."""
+        world.consoles.append((PNP, blank_answers()))
+        ticks = iter([0.0] + [later] * 10 ** 4)
+        rec = self._survey(world, clock=lambda: next(ticks))
+        assert (rec["outcome"], rec["reason"]) == ("bound", "the run's bound passed between "
+                                                            "phases")
+        assert world.received() == b""
+        assert Z.get_run(LIST, rec["id"])["reason"] == "the run's bound passed between phases"
+
+    def test_a_run_with_under_a_second_left_still_wakes_the_console(self, world):
+        """Any time left is time to use: a phase begun 0.88 s before the bound runs (a silent
+        console is woken, then the run's own bound ends it), on a clock stepping 10 ms."""
+        import dataclasses
+        import itertools
+        world.consoles.append((b"", []))                    # a console that never answers
+        steps = itertools.count()
+        rec = self._survey(world, timings=dataclasses.replace(FAST, survey_bound_s=0.9),
+                           clock=lambda: next(steps) * 0.01)
+        assert rec["outcome"] == "bound", rec
+        assert rec["reason"].startswith("the run's bound of 0.88 s passed"), rec["reason"]
+        assert world.received() == b"\r"
+
+    def test_the_run_is_timed_on_the_clock_it_is_given(self, world):
+        """Every wait (the quiet before the wake, each settle, the bound) is measured on the
+        run's clock, the one its sessions' times are read on: a clock far from the process's
+        own runs the survey exactly as the process's does. The console prints nothing first,
+        so the wake waits out its quiet on that clock alone."""
+        import dataclasses
+        import time
+        world.consoles.append((b"", blank_answers()))
+        rec = self._survey(world, timings=dataclasses.replace(FAST, survey_bound_s=10.0),
+                           clock=lambda: time.monotonic() + 10 ** 6)
+        assert (rec["outcome"], rec["blank"]) == ("surveyed", True), rec
+        assert world.received() == SURVEY_SENDS
+
+
+class TestWhoAKickstartIsFor:
+    """The kick-start's hold, its port's lock, the NetBox it reads and what an unopenable
+    console says: what another operation's refusal, the In progress chip and the record name
+    (mutation run #17's survivors in `kickstart_apply`, at f59ac1f1; none depends on the lines
+    a kick-start types)."""
+
+    def test_the_hold_and_the_port_lock_name_the_kickstart_and_whose_it_is(self, world,
+                                                                            monkeypatch):
+        from modules.nsot import console_transport as T
+        from modules.nsot import device_ops
+        world.survey(greeting=PNP, answers=blank_answers())
+        seen, real = {}, Z._open
+
+        def opened(preview, actor):
+            transport = real(preview, actor)
+            seen["hold"] = device_ops.holder(LIST, "edge1")
+            with open(T.PortLock(world.sport["id"], "probe").path(), encoding="utf-8") as fh:
+                seen["port"] = fh.read()
+            return transport
+
+        monkeypatch.setattr(Z, "_open", opened)
+        world.kick([b"\r\nSwitch#"])
+        hold = seen["hold"]
+        assert (hold["operation"], hold["actor"], hold["detail"]) == (
+            Z.OP_KICKSTART, ACTOR, f"console-server port {world.sport['id']}")
+        assert seen["port"] == f"{ACTOR}'s console run on edge1 (pid {os.getpid()})"
+
+    def test_a_console_that_cannot_be_opened_names_what_refused_it(self, world):
+        world.survey(greeting=PNP, answers=blank_answers())
+        p = world.kick_preview()
+        world.server.close()
+        rec = Z.kickstart_apply(LIST, world.dev["id"], p["hash"], ACTOR, Z.VERIFIED,
+                                params=dict(PARAMS), timings=FAST, values={}, **world.nb())
+        assert rec["outcome"] == "unreachable"
+        assert rec["reason"].startswith("the console could not be opened: "
+                                        "ConnectionRefusedError: "), rec["reason"]
+
+    def test_the_netbox_base_a_kickstart_reads_is_the_callers(self, world):
+        world.survey(greeting=PNP, answers=blank_answers())
+        nb = _Reading(world.fake)
+        p = Z.kickstart_preview(LIST, world.dev["id"], dict(PARAMS), session=nb, base=BASE,
+                                values={})
+        world.consoles.append((b"", [b"\r\nSwitch#"]))
+        nb.seen.clear()
+        Z.kickstart_apply(LIST, world.dev["id"], p["hash"], ACTOR, Z.VERIFIED,
+                          params=dict(PARAMS), timings=FAST, values={}, session=nb, base=BASE)
+        assert nb.seen and all(u.startswith(BASE + "/api/") for u in nb.seen), nb.seen
+
+
 # ── The declarations O6b registers ────────────────────────────────────────────────────────
 
 def test_every_stage_reference_resolves_or_says_why():
