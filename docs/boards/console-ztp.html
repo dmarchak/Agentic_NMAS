@@ -6,7 +6,8 @@
 <title>Out-of-band ZTP board</title>
 <!-- Board for out-of-band ZTP's interface (docs/LAB9_PLAN.md section 8, O6b, O7 and O8 minimal):
      A, Settings › Installation › Console servers; B, Add device's offer; C, the console survey's
-     preview; D, the survey's result; E, the kick-start's preview and result. Drawn by the agent
+     preview; D, the survey's result; E, the kick-start's preview and result; F (2026-10-22), a
+     pending device's page with the console card and a run's stepper. Drawn by the agent
      under the Phase 7 operating mode, which counts it as signed off (one line in
      docs/STANDING_APPROVAL_LOG.md). Self-contained: no external fonts or scripts. Example names
      (edge1, cons-1) and 192.0.2.x / 2001:db8:: addresses only. -->
@@ -44,13 +45,16 @@ pre{margin:0;background:var(--surface-2);border:1px solid var(--line-2);border-r
 .form input,.form select{font:inherit;font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:6px}
 .callout{font-size:12px;color:#5b3d00;background:#FFF6D6;border:1px dashed #C9A23A;border-radius:6px;padding:6px 10px}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+.steps{display:flex;gap:0;list-style:none;margin:0;padding:0;font-size:12.5px}.steps li{flex:1;padding:6px 8px;border-top:3px solid var(--line);color:var(--ink-3)}
+.steps li.done{border-color:var(--ok);color:var(--ink)}.steps li.run{border-color:var(--accent);color:var(--ink);font-weight:600}.steps .t{display:block;font-weight:400;color:var(--ink-3);font-size:11.5px}
+.facts{display:grid;grid-template-columns:150px 1fr;gap:4px 12px;font-size:13px}
 </style>
 </head>
 <body>
 
 <div class="boardhead">
 <h1>Out-of-band ZTP: board for sign-off (O6b, O7 and O8 minimal)</h1>
-<div>Five artboards at 1440 wide. Yellow dashed notes are annotations, not part of the screen. Every other link and control is one the built screens have. No diagram is drawn for the manual's section (deferred with the feature's later phase, C1536).</div>
+<div>Six artboards at 1440 wide (F added 2026-10-22: the pending page's console card and the run's stepper, C1575 and C1579). Yellow dashed notes are annotations, not part of the screen. Every other link and control is one the built screens have. No diagram is drawn for the manual's section (deferred with the feature's later phase, C1536).</div>
 </div>
 
 <!-- ============================================================ A -->
@@ -128,7 +132,7 @@ priv_exec: disable⏎</pre>
 <div class="part"><h3>What will not happen</h3><div class="small"><p>No configuration line is typed and nothing is saved …</p><p>A console found signed in, or asking for a login, is recorded as not factory-blank as found, and nothing more is sent to it.</p></div></div>
 <p class="small muted">Bound to 9f2c41e07a1b: if the console path, the port's record or the profile move before you confirm, nothing is sent. edge1 and its console-server port are held while it runs.</p>
 <p><a class="btn primary" href="#">Survey edge1's console</a><span class="how">i</span></p>
-<div class="callout">Refused, the Checks part lists each gate in red (no record for the port, with a link to Settings › Installation › Console servers; two console paths; an unknown profile …) and no confirm is drawn. Running: "Surveying edge1 over its console, holding it …", busy, redrawn when the run ends (no polling).</div>
+<div class="callout">Refused, the Checks part lists each gate in red (no record for the port, with a link to Settings › Installation › Console servers; two console paths; an unknown profile …) and no confirm is drawn. Running: THE stepper from the confirm's own answer, each step filled as the run begins it, redrawn when the run ends (no polling): see F (C1579).</div>
 </div>
 </main></div>
 
@@ -180,6 +184,34 @@ end</pre></div>
 <div class="part"><h3>What happened</h3><div><p class="small">Typed and verified: it ended at 'edge1#', naming the hostname typed.</p><p class="small muted">The blank check again: startup-config is 0 bytes</p><p class="small">▸ The lines sent · ▸ What was sent (masked) · ▸ The console's transcript (masked)</p></div></div>
 <div class="part"><h3>Next</h3><p class="small">edge1 now asks DHCP on its management interface and fetches its bootstrap like any ZTP device: its pending page follows it, and Verify reaches it.</p></div>
 <div class="part"><h3>Recorded</h3><p class="small">By operator (verified: access), just now, in 31.0 s, in example-net, run …, on survey …. On History.</p></div>
+</div>
+</div>
+</main></div>
+
+<!-- ============================================================ F -->
+<div class="artlabel"><strong>F · A pending device's page: the console card, and its run's stepper</strong> (C1575 and C1579, 2026-10-22). Once Add device's card is closed, the pending page is the way back: its Onboarding card at rest offers the console card when a survey is recorded (no NetBox read), at the kick-start when the survey found the device blank, at the survey again when not. With none recorded and a NetBox record from its onboarding, the page asks NetBox for its console path as it draws and offers the survey; with no path it draws nothing. The card opens in the Console part's place, exactly as C to E draw it.</div>
+<div class="art">
+<nav class="side"><div class="brand">Mercury</div><a href="#">Needs attention</a><a href="#" class="on">Devices</a><a href="#">History</a></nav>
+<main>
+<p class="small muted">Devices / edge1</p>
+<h1 class="page mono">edge1 <span class="how">i</span> <span class="chip">Pending onboarding: pending</span></h1>
+<p class="small muted">Onboarded 4 min ago · network example-net · not reached yet, so it is in no inventory and nothing polls, backs up or checks it</p>
+<div class="callout">The facts and "edge1 onboarding progress" (board M's five steps) as the pending page draws them today, unchanged.</div>
+<div class="two">
+<div class="card">
+<div class="head"><h2 class="grow">Onboarding</h2></div>
+<p><a class="btn primary" href="#">Verify…</a><span class="how">i</span> <a class="btn" href="#">Get the bootstrap config…</a><span class="how">i</span> <a class="btn" href="#">Abandon…</a><span class="how">i</span></p>
+<h3>Console</h3>
+<p class="small">edge1's console survey of 6 min ago by operator is recorded (factory-blank). Kick-start it: the lines make it ask for its reservation and fetch its bootstrap.</p>
+<p><a class="btn primary" href="#">Kick-start edge1 through the console…</a><span class="how">i</span></p>
+<div class="callout">Not blank or unknown: "A kick-start types only on a device its survey found factory-blank: survey it again once it is." with Survey edge1's console again…. No survey recorded, NetBox showing a path: "No survey of its console is recorded: survey it …" with Survey edge1's console…. Cancel and Close on Verify and Abandon draw this part again.</div>
+</div>
+<div class="card">
+<div class="head"><h2 class="grow">Console kick-start of edge1 <span class="chip warn">running</span></h2><span class="how">i</span></div>
+<div class="part"><h3>Where it is</h3><div>
+<ol class="steps"><li class="done">Preview</li><li class="done">Confirm</li><li class="done">Hold<span class="t">1 s</span></li><li class="done">Wake<span class="t">2 s</span></li><li class="run">Blank check again<span class="t">4 s · waits on the blank check again, holding the device</span></li><li>Type the lines</li><li>Verify</li><li>Record</li></ol>
+<p class="small muted">Kick-starting edge1 over its console, holding it and its console-server port until it ends. This page can close: the run's record keeps the result, on History. Run 20261022T….</p></div></div>
+<div class="callout">The confirm's own answer draws this at once: Preview and Confirm done, Hold running from the confirm, every other step not yet run. Each step the run begins fills it (`device_progress`); its record replaces it with the result (D, E). The survey's steps: Hold, Wake, Read, Release, Verify, Record.</div>
 </div>
 </div>
 </main></div>

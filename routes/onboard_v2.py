@@ -155,9 +155,12 @@ def _pending(name: str, code: int = 200, **ctx):
 
 @bp.route("/<name>/actions", methods=["GET"])
 def actions(name):
-    """The actions at rest (Cancel)."""
-    return _strict(render_template("v2/_onboard_pending.html", name=name,
-                                   list_name=(request.args.get("list_name") or "").strip()))
+    """The actions at rest (Cancel), with the console card's offer when it has one (C1575)."""
+    from routes.console_ztp_v2 import pending_console
+
+    list_name = (request.args.get("list_name") or "").strip()
+    return _strict(render_template("v2/_onboard_pending.html", name=name, list_name=list_name,
+                                   console=pending_console(list_name, name)))
 
 
 @bp.route("/<name>/verify/preview", methods=["POST"])

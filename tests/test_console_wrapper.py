@@ -54,7 +54,8 @@ def run(allowlist_path, command, uid=None, argv=None):
 
 def test_an_allowlisted_name_execs_exactly_the_bridge(allowlist):
     code, calls, err = run(allowlist, "node-a")
-    assert calls == [("docker", ["docker", "exec", "-i", "node-a", "nc", "127.0.0.1", "5000"])]
+    assert calls == [("docker", ["docker", "exec", "-i", "node-a", "socat", "-",
+                                 "TCP:127.0.0.1:5000"])]
     assert (code, err) == (0, "")
 
 
@@ -65,7 +66,7 @@ def test_a_name_indented_in_the_file_is_still_that_name(allowlist):
 
 
 def test_bridge_argv_is_the_fixed_command_with_only_the_name_varying():
-    assert W.bridge_argv("x") == ["docker", "exec", "-i", "x", "nc", "127.0.0.1", "5000"]
+    assert W.bridge_argv("x") == ["docker", "exec", "-i", "x", "socat", "-", "TCP:127.0.0.1:5000"]
     assert W.bridge_argv("y")[:3] + W.bridge_argv("y")[4:] == \
         W.bridge_argv("x")[:3] + W.bridge_argv("x")[4:]
 
@@ -372,5 +373,26 @@ def test_it_runs_as_a_script_alone_and_refuses(tmp_path):
                        capture_output=True, text=True, timeout=30)
     assert r.returncode == 2
     assert r.stdout == ""
+    assert r.stderr == (f"nmas-console-bridge: refused: 'node-z' is not on the allowlist {path} "
+                        "(1 names)\n")
+
+
+def test_installed_by_name_it_runs_as_the_program_itself(tmp_path):
+    """sshd runs the forced command as an EXECUTABLE (`command="<path> <allowlist>"`), never
+    through `python3`: the file installed by name must carry its interpreter line, or the
+    shell runs the Python source as shell (C1585). A copy made executable, run by path alone,
+    refuses as the module does."""
+    with open(SOURCE, encoding="utf-8") as fh:
+        assert fh.readline() == "#!/usr/bin/env python3\n"
+    program = tmp_path / "nmas-console-bridge"
+    program.write_bytes(open(SOURCE, "rb").read())
+    program.chmod(0o755)
+    path = tmp_path / "list"
+    path.write_text("node-a\n")
+    env = {"PATH": os.path.dirname(sys.executable) + os.pathsep + os.environ.get("PATH", ""),
+           "SSH_ORIGINAL_COMMAND": "node-z"}
+    r = subprocess.run([str(program), str(path)], env=env, cwd=str(tmp_path),
+                       capture_output=True, text=True, timeout=30)
+    assert (r.returncode, r.stdout) == (2, ""), r.stderr
     assert r.stderr == (f"nmas-console-bridge: refused: 'node-z' is not on the allowlist {path} "
                         "(1 names)\n")

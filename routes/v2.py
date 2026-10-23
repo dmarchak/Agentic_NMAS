@@ -26,11 +26,12 @@ log = logging.getLogger(__name__)
 bp = Blueprint("v2", __name__, url_prefix="/v2")
 
 @bp.app_template_filter("one_run")
-def one_run(steps, name, label="Progress") -> dict:
+def one_run(steps, name, label="Progress", device=True) -> dict:
     """A one-device operation's steps (`device_actions.job_steps`) as THE stepper's card
-    (`run_stepper.single`), for `run_stepper(c.steps | one_run(c.host, 'Deploy progress'))`."""
+    (`run_stepper.single`), for `run_stepper(c.steps | one_run(c.host, 'Deploy progress'))`;
+    *device* False for a device with no page to link to yet."""
     from modules import run_stepper
-    return run_stepper.single(steps or [], name, label)
+    return run_stepper.single(steps or [], name, label, device=bool(device))
 
 
 @bp.app_template_filter("verify_verdict")

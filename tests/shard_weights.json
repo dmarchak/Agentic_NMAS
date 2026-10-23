@@ -565,6 +565,7 @@
   "tests/test_store_integrity_c158_c160.py": 0.5,
   "tests/test_store_outlives_sessions.py": 1.5,
   "tests/test_subinterface_order.py": 0.2,
+  "tests/test_switchport_order.py": 0.2,
   "tests/test_suite_bound.py": 25.3,
   "tests/test_swap_targets_resolve.py": 3.3,
   "tests/test_swaps_in_a_browser.py": 51.7,

@@ -2,13 +2,26 @@
 {#- O7, board B of docs/boards/console-ztp.html: out-of-band ZTP's offer in Add device's review,
     asked for as the review draws (routes/console_ztp_v2.offer_view): "Kick-start through the
     console…" only when NetBox shows the device's console path, its absence said when not. The
-    card it opens takes this block's place. -#}
+    card it opens takes this block's place.
+    `pending` (C1575, board F): the same read on a pending device's page with no survey
+    recorded: "Survey <device>'s console…" when NetBox shows a path; nothing when it shows none
+    or holds no Planned record (the device is onboarded another way, and a line saying so on
+    every such page would be noise); an unreadable NetBox said. -#}
+{%- if pending and console.state in ('no_path', 'no_record') %}
+<div class="ob-console" id="ob-console" hidden data-console-absent="{{ console.state }}"></div>
+{%- else %}
 <div class="ob-console" id="ob-console">
   <h3 class="set-label">Console</h3>
   {%- if console.state == 'path' %}
-  <p class="small">NetBox shows {{ console.hostname }}'s console path (NetBox device {{ console.device_id }}): {% for p in console.paths %}<span class="mono">{{ p.console_port.name }}</span> to {{ p.server.name }} <span class="mono">{{ p.server_port.name }}</span>, cable {{ p.cable.id }}{% if p.cable.status %} ({{ p.cable.status }}){% endif %}{{ '; ' if not loop.last }}{% endfor %}. Out-of-band ZTP surveys its console first (read-only: is it factory-blank, and its MAC), so the plan can hold the MAC; after Create it kick-starts it, typing the lines that make it ask for its reservation and fetch its bootstrap.</p>
-  <div id="console-ztp-card"><span class="op-act"><button type="button" class="btn btn-small" data-op="onboard" hx-get="{{ url_for('console_ztp_v2.card_view', device_id=console.device_id, list_name=console.list_name, step='survey', hostname=console.hostname, profile=console.profile, add='1') }}" hx-target="#console-ztp-card" hx-swap="outerHTML">Kick-start through the console…</button>{{ how('onboard', 'out-of-band-ztp', compact=True, op='out-of-band ZTP') }}</span></div>
+  <p class="small">NetBox shows {{ console.hostname }}'s console path (NetBox device {{ console.device_id }}): {% for p in console.paths %}<span class="mono">{{ p.console_port.name }}</span> to {{ p.server.name }} <span class="mono">{{ p.server_port.name }}</span>, cable {{ p.cable.id }}{% if p.cable.status %} ({{ p.cable.status }}){% endif %}{{ '; ' if not loop.last }}{% endfor %}.
+    {%- if pending %} No survey of its console is recorded: survey it (read-only: is it factory-blank, and its MAC), then kick-start it, typing the lines that make it ask for its reservation and fetch its bootstrap.
+    {%- else %} Out-of-band ZTP surveys its console first (read-only: is it factory-blank, and its MAC), so the plan can hold the MAC; after Create it kick-starts it, typing the lines that make it ask for its reservation and fetch its bootstrap.{% endif %}</p>
+  <div id="console-ztp-card"><span class="op-act">
+    {%- if pending %}<button type="button" class="btn btn-small" data-op="onboard" hx-get="{{ url_for('console_ztp_v2.card_view', device_id=console.device_id, list_name=console.list_name, step='survey', hostname=console.hostname, profile=console.profile, list=console.list_name) }}" hx-target="#console-ztp-card" hx-swap="outerHTML">Survey {{ console.hostname }}'s console…</button>{{ how('onboard', 'console-survey', compact=True, op='the console survey') }}
+    {%- else %}<button type="button" class="btn btn-small" data-op="onboard" hx-get="{{ url_for('console_ztp_v2.card_view', device_id=console.device_id, list_name=console.list_name, step='survey', hostname=console.hostname, profile=console.profile, add='1') }}" hx-target="#console-ztp-card" hx-swap="outerHTML">Kick-start through the console…</button>{{ how('onboard', 'out-of-band-ztp', compact=True, op='out-of-band ZTP') }}
+    {%- endif %}</span></div>
   {%- else %}
-  <p class="muted small" data-console-absent="{{ console.state }}">No console kick-start: {{ console.why }}.</p>
+  <p class="muted small" data-console-absent="{{ console.state }}">No console {{ 'survey' if pending else 'kick-start' }}: {{ console.why }}.</p>
   {%- endif %}
 </div>
+{%- endif %}

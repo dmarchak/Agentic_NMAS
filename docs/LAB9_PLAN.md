@@ -974,6 +974,25 @@ if no DHCP DISCOVER from s5 appears within 10 minutes of "Press RETURN", s5 gets
 configuration typed on its console and is onboarded by DHCP. This entry then records that, and
 why, including an image-held startup configuration if the evidence shows one.
 
+**Found by the early first pass, invisible to mutation testing (2026-10-23, preparing s5's
+unrecorded out-of-band pass; the operator: "add both to challenge 1").** Reading the console
+bridge against s5's REAL container, before any byte was sent, turned up two defects that would
+have killed every console session at its first byte, and the run sheet's review a third:
+- **No `nc` in the node's container (C1584).** The bridge's one command was `docker exec -i
+  <container> nc 127.0.0.1 5000`; s5's container holds `socat` and `telnet` and no `nc`. Now
+  `socat - TCP:127.0.0.1:5000`. Its tests checked the argv against a fake `exec`, so they could
+  not know what the container holds: a fixture's premise, not the world's.
+- **No interpreter line on the wrapper (C1585).** Installed by name as the SSH forced command,
+  which sshd runs as an executable, the file would have been run by the shell. Its tests ran it
+  through `sys.executable`. Now `#!/usr/bin/env python3`, and a test runs a copy by path alone.
+- **The switchport order (C1586, the operator's review of the run sheet).** The shipped template
+  rendered `switchport mode trunk` before `switchport trunk encapsulation dot1q`, which a vIOS-L2
+  refuses: s5's Day 1 trunk to R8 would have failed. Now in the order IOS prints; s1 to s4's
+  committed intents preview unchanged (0 lines sent, 0 departures, before and after).
+Mutation testing proves the tests notice a changed line; none of these was a changed line. Each
+was a premise about the world the tests could not see: the reason the operator ran the first
+pass early.
+
 **Still to record:**
 - [ ] P-S2: the DISCOVER (client MAC and client id), or its absence within 10 minutes of the
   reload.

@@ -545,7 +545,7 @@ def measure() -> dict:
         IP.as_a_verified_person(mp)
         with tempfile.TemporaryDirectory(prefix="nmas-v2-context-") as tmp:
             with contextlib.contextmanager(lab_setup)(pathlib.Path(tmp), mp) as lab:
-                IP._commit_intent(lab["repo"], "r3")
+                IP.seed(lab, mp, tmp)
                 client = RecordingClient(lab["client"], recorder)
                 template_rendered.connect(recorder, A.app)
                 try:

@@ -31,8 +31,22 @@ operator's walk W4 (2026-10-17, steps 40 to 42) captured the page of the device 
 its Verify preview and its result (screenshots 60 and 61), read beside the shots: the same
 regions.
 Compared 2026-10-18.
-Templates compared: templates/v2/pending.html, templates/v2/_pending_progress.html, templates/v2/_onboard_pending.html, templates/v2/_pending_gone.html
-Templates sha256: `e0c0a076701181fe43bcc5750f4045f11d1661b3c5b1e5411b11dadd61dac113`
+Templates compared: templates/v2/pending.html, templates/v2/_pending_progress.html, templates/v2/_onboard_pending.html, templates/v2/_pending_gone.html, templates/v2/_console_kick.html
+Templates sha256: `702f668378018840d45c2eac6d39ae30b2a7fc33ea43bb963fef63b4149996ac`
+
+Compared again 2026-10-22 (C1575, board F of `docs/boards/console-ztp.html`): the Onboarding
+card at rest gains a Console part under its three actions, out-of-band ZTP's way back once Add
+device's card is closed. A device whose console survey is recorded is offered the console card
+(`templates/v2/_console_kick.html`, the macro Create's result in Add device draws too): "Kick-start
+<device> through the console…" when the survey found it factory-blank, "Survey <device>'s console
+again…" when not; with no survey recorded and a NetBox record from its onboarding, the part is
+asked for as the page draws (`_console_offer.html` with `pending=1`): "Survey <device>'s
+console…" when NetBox shows a console path, nothing when it shows none, an unreadable NetBox
+said. The card opens in the part's place, as boards C to E draw it. OnboardPanel and board M
+draw no console, so it is a deviation (below). Compared by the template beside board F, and by
+tests/test_console_ztp_v2.py's `TestThePendingPage` and the interface walk's pending page
+(tests/interface_pages.py, `PENDING`), not a new shot: one part added under the actions; every
+other region unchanged, and `_console_kick.html` joins the templates compared.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).
@@ -52,6 +66,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Waiting's sub-states | each from Kea and the responder: reservation missing, reserved no lease, asked not served, leased not fetched, fetched not reached | the stage badge and its words in the facts and on the Waiting line | **same** |
 | Verify's preview | not drawn on OnboardPanel (the sign-off: preview, confirm by fingerprint, in place) | in place of the actions: the summary, What will be sent, the operands, the checks now and at confirm, Verify <device> with its (i) and the confirm's statement; Cancel | **same** |
 | Verify's result | board M: "Verified …", then "Next, its intent." with Deploy its intent…, or where to write it | phase two's nine steps on the one stepper (the failed one red, the rest not reached), the outcome notice, Open <device>'s page; the next step for a first-boot intent is Actions › Seed intent… (compared by the template and `tests/test_onboard_v2.py`) | **deviation** (log: C1188: Verify's result on the pending page, a first-boot intent) |
+| Console (C1575) | not drawn: OnboardPanel and board M have no console; board F of `docs/boards/console-ztp.html` draws it | under the three actions at rest: the recorded survey's offer (the kick-start when it found the device blank, the survey again when not), or, with none, NetBox's console path asked for as the page draws (the survey offered, nothing when no path); the card opens in its place | **deviation** (log: Pending: the Onboarding card's Console part, compared with its boards) |
 | Abandon… | "What does abandon remove?" beside it | the dry run in place: each step "will run" or "would fail", Abandon <device> (danger) bound to it, its (i) and the confirm's statement | **same** |
 | No longer pending | not drawn | the progress card, re-read on `pending`, says "<device> is no longer pending" with a link to its page (compared by the template and `tests/test_onboarding_progress.py`) | **deviation** (log: C1193: board M's pending page, its progress card) |
 | Phone width | no phone board | at 390 the facts wrap, the stepper turns to a list, the actions wrap; nothing past the screen | **same** |

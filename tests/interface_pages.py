@@ -19,9 +19,13 @@ before (with no device the index's per-device loop renders nothing). Today's dev
 at 7.8 (2026-10-17, P7-22); the index is the one left. A page whose route is gone contributes nothing, and so does one that redirects
 into v2 (`/` at cutover); any other answer is a failure, never a page quietly left out.
 
+A pending device's page is reached by no link (a pending device is in no inventory), so the
+walk starts at one too (`seed`, C1575, 2026-10-22): a device pending onboarding by out-of-band
+ZTP with its console survey recorded, whose page draws the console card.
+
 What it cannot see, stated: a v2 page reached only by a form or a script (a batch's Apply,
-Re-apply, Bulk intent, a pending or retired device's page), whose own references are in its
-template's `url_for` and the shared scripts every page loads; and a link built by a script.
+Re-apply, Bulk intent, a retired device's page), whose own references are in its template's
+`url_for` and the shared scripts every page loads; and a link built by a script.
 """
 
 import contextlib
@@ -32,8 +36,12 @@ from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from tests.js_source import loaded_scripts
 
-#: Where the walk starts: Needs attention, and a device page in each golden state.
-START = ("/v2/", "/v2/device/r3", "/v2/device/r9")
+#: The device the walk holds pending onboarding by out-of-band ZTP, its console surveyed
+#: (`seed`), so a pending page and its console card are in the population (C1575).
+PENDING = "edge9"
+#: Where the walk starts: Needs attention, a device page in each golden state, and a pending
+#: device's page (no link reaches it: a pending device is in no inventory).
+START = ("/v2/", "/v2/device/r3", "/v2/device/r9", f"/v2/device/{PENDING}")
 #: The query parameters that make a different page (a device or settings tab, the intent
 #: editor open); any other parameter is a filter over the same page.
 PAGE_PARAMS = ("tab", "edit")
@@ -136,6 +144,64 @@ def _commit_intent(repo: str, host: str) -> None:
     assert out["ok"], out
 
 
+def _pending_surveyed(repo: str, mp, folder: str) -> None:
+    """`PENDING`, onboarded and not yet reached, its console surveyed and found blank (C1575):
+    recorded as Create records it (`manifest.upsert_device(pending=True)`, with the NetBox id
+    onboarding keeps, committed as onboarding commits its manifest), and its survey in the
+    console ZTP index, written by the product's own `_update_index` from a record as
+    `survey_run` writes one: the shipped profile, and the verdict and MAC the product's own
+    `verify_survey` reads from s5's captured console text (tests/fixtures/console): blank, its
+    MAC unknown. The index is the walk's own file in *folder*, never the store's.
+
+    Its address source is static, not ZTP: a ZTP device's page carries its stage's `fetch`,
+    `lease` and `reservation`, which no template draws by name (C1219, measured 2026-10-22 by
+    this device as ZTP), and the console card does not depend on it."""
+    import os
+
+    from modules.nsot import console_profiles as P
+    from modules.nsot import console_ztp as Z
+    from modules.nsot import manifest
+    from modules.nsot.repo import save_manifest
+    from tests.conftest import TEST_PERSON
+    from tests.test_console_ztp import _hardware_summary, _real
+
+    mp.setattr(Z, "index_path", lambda: os.path.join(folder, Z.INDEX))
+    manifest.upsert_device(repo, manifest.identity_for(device_uid="walk-pending-edge9"),
+                           PENDING, pending=True, address_source="static",
+                           mgmt_ip="192.0.2.59", netbox_id=4101, platform="cisco_ios",
+                           role="switch")
+    kept = save_manifest("Lab", f"onboard: {PENDING} created", actor=TEST_PERSON,
+                         source="onboard", devices=[PENDING])
+    assert kept["ok"] and kept["commit"], kept
+    prof = P.load("cisco_ios_switch")
+    # A console path as `console_path.read_console_path` reads one: each part its id and name.
+    path = {"console_port": {"id": 7, "name": "con 0"},
+            "cable": {"id": 9, "label": "", "status": "connected"},
+            "server_port": {"id": 5, "name": "port 5"}, "server": {"id": 2, "name": "cons-1"}}
+    rec = Z._new_record(Z.KIND_SURVEY, {
+        "list_name": "Lab", "device_id": 4101, "device": PENDING, "hash": "",
+        "profile": {"name": prof.name, "version": prof.version, "sha256": prof.sha256},
+        "path": path, "port_id": 5, "transport": ""}, TEST_PERSON, Z.VERIFIED, "")
+    _wake, _enable, nvram = _real()
+    v = Z.verify_survey("press_return", _hardware_summary().decode("ascii", "replace"),
+                        nvram.decode("ascii", "replace"), prof)
+    Z._finish(rec, None, outcome="surveyed", blank=v["result"].blank,
+              found_signed_in=v["result"].found_signed_in, reasons=list(v["result"].reasons),
+              startup_config_bytes=v["result"].startup_config_bytes, mac=v["mac"].value,
+              mac_reason=v["mac"].reason)
+    # s5's captured text: factory-blank (startup-config 0 bytes); its MAC unknown, as on s5.
+    assert rec["blank"] is True, rec
+    assert Z._update_index(rec) == ""
+
+
+def seed(lab: dict, mp, folder: str) -> None:
+    """What the walk's lab holds beyond test_device_v2's: r3's committed intent, and the
+    pending device `PENDING` with its console survey. tests/v2_context.py's measure seeds the
+    same, from the same starts."""
+    _commit_intent(lab["repo"], "r3")
+    _pending_surveyed(lab["repo"], mp, folder)
+
+
 def pages() -> dict:
     """``{"v2": {url: html}, "todays": {url: html}}``, each page's HTML as served (its
     scripts are `scripts()`).
@@ -156,7 +222,7 @@ def pages() -> dict:
             import pathlib
 
             with contextlib.contextmanager(lab_setup)(pathlib.Path(tmp), mp) as lab:
-                _commit_intent(lab["repo"], "r3")
+                seed(lab, mp, tmp)
                 v2 = _walk(lab["client"])
                 todays = _todays(A, mp, lab["client"])
     finally:

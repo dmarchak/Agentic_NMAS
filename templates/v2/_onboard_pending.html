@@ -1,11 +1,13 @@
 {%- from "v2/_macros.html" import icon, badge, how -%}
 {%- from "v2/_preview_parts.html" import preview_parts, result_parts -%}
 {%- from "v2/_run_stepper.html" import run_stepper -%}
+{%- from "v2/_console_kick.html" import kick_offer -%}
 {#- A pending device's actions (cutover blocker 3, drawn under the Phase 7 mode,
     docs/STANDING_APPROVAL_LOG.md): Verify… (its preview, then the confirm bound to it), Get the
     bootstrap config… (a reveal in place), Abandon… (its dry run, then the confirm bound to it),
-    and each one's result in place. From routes/onboard_v2, each action the core today's banner
-    calls. -#}
+    and each one's result in place; at rest, out-of-band ZTP's console card when the device has
+    one (`console`, routes/console_ztp_v2.pending_console; C1575). From routes/onboard_v2, each
+    action the core today's banner calls. -#}
 {%- set base = {'name': name} -%}
 <section class="card" id="pending-actions" aria-labelledby="h-pending-actions">
   <div class="card-head"><h2 id="h-pending-actions">{{ {'verify': 'Verify', 'verified': 'Verify', 'abandon': 'Abandon', 'abandoned': 'Abandon', 'bootstrap': 'Bootstrap config'}.get(mode, 'Onboarding') }}</h2>
@@ -77,5 +79,14 @@
       <span class="op-act"><button type="submit" class="btn" data-op="onboard" hx-disabled-elt="this" title="Its preview removes nothing"><span class="op-idle">Abandon…</span><span class="op-busy">Checking…</span></button>{{ how('onboard', 'between-the-phases-the-device-boots', compact=True, op='Abandon') }}</span>
     </form>
   </div>
+  {#- C1575 (board F of docs/boards/console-ztp.html): out-of-band ZTP's card, the way back once
+      Add device's is closed. A recorded survey offers it at once (no NetBox read); without one,
+      a NetBox record onboarding recorded has its console path asked for as the page draws. -#}
+  {%- if console and console.kick %}
+  {{ kick_offer(console.kick) }}
+  {%- elif console and console.netbox_id %}
+  <div class="ob-console" id="ob-console" aria-busy="true" hx-get="{{ url_for('console_ztp_v2.offer_view', list_name=console.list_name, netbox_id=console.netbox_id, hostname=console.hostname, platform=console.platform, role=console.role, pending='1', list=console.list_name) }}" hx-trigger="load" hx-swap="outerHTML">
+    <h3 class="set-label">Console</h3><p class="muted small">Reading NetBox's console path…</p></div>
+  {%- endif %}
   {%- endif %}
 </section>

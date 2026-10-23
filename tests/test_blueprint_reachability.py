@@ -29,10 +29,9 @@ from tests import interface_pages
 #: tolerated for now. **Entries must leave as they are built**, exactly like
 #: `KNOWN_DEAD` in `test_no_unreachable_ui.py` — an allowlist that only grows
 #: is a place findings go to be forgotten.
-KNOWN_UNREACHABLE = {
-    "console_ztp_v2": "reached only from Add device's review, a POST answer the page walk does "
-                      "not render; leaves when the pending page carries the console card (C1575)",
-}
+#: Empty since 2026-10-22: `console_ztp_v2` left when the pending page carried the console card
+#: and the walk began rendering a pending page (C1575).
+KNOWN_UNREACHABLE: dict = {}
 
 #: Route modules that exist to serve the GUI. A blueprint serving only the AI
 #: agent or an external caller is out of scope; naming them here keeps the

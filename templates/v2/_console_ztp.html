@@ -1,4 +1,5 @@
 {%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{%- from "v2/_run_stepper.html" import run_stepper -%}
 {#- Out-of-band ZTP's card (O6b and O7; the board docs/boards/console-ztp.html, boards B to E,
     drawn under the Phase 7 mode and logged in docs/STANDING_APPROVAL_LOG.md): the console
     survey and the console kick-start of a device being onboarded, keyed by its network and its
@@ -26,7 +27,7 @@
   {%- endif -%}
 {%- endif %}
 <section class="op-card{% if c.state == 'result' %} op-{{ level }}{% elif c.state in ('failed', 'lost') %} op-warn{% endif %}" id="console-ztp-card" aria-labelledby="console-ztp-title"
-  {%- if c.state == 'running' %} aria-busy="true" hx-get="{{ url_for('console_ztp_v2.card_view', device_id=c.device_id, list_name=c.list_name, step=c.step, run=c.run, job=c.job, hostname=c.hostname, add='1' if c.add else '') }}" hx-trigger="nmas:console_ztp from:body" hx-swap="outerHTML"{% endif %}>
+  {%- if c.state == 'running' %} aria-busy="true" hx-get="{{ url_for('console_ztp_v2.card_view', device_id=c.device_id, list_name=c.list_name, step=c.step, run=c.run, job=c.job, hostname=c.hostname, add='1' if c.add else '') }}" hx-trigger="nmas:console_ztp from:body, nmas:device_progress from:body" hx-swap="outerHTML"{% endif %}>
   <div class="op-hd"><h2 id="console-ztp-title">{{ 'Console survey of ' if survey else 'Console kick-start of ' }}{{ who }}
     {%- if c.state == 'result' %} {{ badge(chip, level) }}{% elif c.state == 'running' %} {{ badge('running', 'warn') }}{% elif c.state in ('failed', 'lost') %} {{ badge('not finished', 'warn') }}{% endif %}</h2>
     <div class="op-hd-actions">{{ how('onboard', section) }}</div></div>
@@ -112,9 +113,11 @@
   </form>
 
   {%- elif c.state == 'running' %}
-  <div class="op-part"><h3>Running</h3><div>
-    <p>{{ 'Surveying' if survey else 'Kick-starting' }} {{ who }} over its console, holding it and its console-server port. This card updates when it ends.</p>
-    <p class="faint small">Run <span class="mono">{{ c.run }}</span>; the steps, in order: {{ 'the wake, to the privileged prompt, the pager off, the MAC read and the blank check, then back to the user prompt' if survey else 'the wake, the blank check again, then the lines' }}.</p></div></div>
+  {#- C1579: THE stepper from the confirm's own answer, every run step not yet run, each filled
+      as the run notes it begins (`device_progress`); the record replaces it (`console_ztp`). -#}
+  <div class="op-part"><h3>Where it is</h3><div>
+    {{ run_stepper(c.steps | one_run(who, ('Survey' if survey else 'Kick-start') ~ ' progress', False)) }}
+    <p class="op-wait">{{ 'Surveying' if survey else 'Kick-starting' }} {{ who }} over its console, holding it and its console-server port until it ends. This page can close: the run's record keeps the result, on History. Run <span class="mono">{{ c.run }}</span>.</p></div></div>
 
   {%- elif c.state == 'result' %}
   <div class="op-part"><h3>What happened</h3><div>

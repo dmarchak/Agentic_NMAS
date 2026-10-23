@@ -659,12 +659,41 @@ class TestKickstartRun:
         monkeypatch.setattr(device_ops, "note", lambda step, *a, **k: (
             noted.append(step), real(step, *a, **k)))
         world.survey(greeting=PNP, answers=blank_answers())
+        # C1579: the verdict and the record are noted too, so THE stepper fills to the end.
         assert noted == ["opening the console", "waking the console", "survey: prelude",
-                         "survey: mac", "survey: blank", "survey: release"]
+                         "survey: mac", "survey: blank", "survey: release", "survey: verify",
+                         "survey: record"]
         noted.clear()
         world.kick(kick_answers(_lines()))
         assert noted == ["opening the console", "waking the console", "kick-start: recheck",
-                         "kick-start: typing"]
+                         "kick-start: typing", "kick-start: verify", "kick-start: record"]
+
+    def test_the_final_record_is_written_before_the_hold_ends(self, world, monkeypatch):
+        """C1579: the card reads a running run's steps from the hold and its result from the
+        record; written after the release, a redraw between the two drew the first step
+        running again on a run that had finished."""
+        from modules.nsot import device_ops
+        at_release, real = [], device_ops.release
+
+        def release(list_name, hostname):
+            at_release.append([r["outcome"] for r in Z.runs(LIST)["runs"]])
+            return real(list_name, hostname)
+
+        monkeypatch.setattr(device_ops, "release", release)
+        world.survey(greeting=PNP, answers=blank_answers())
+        world.kick(kick_answers(_lines()))
+        assert at_release == [["surveyed"], ["done", "surveyed"]], at_release
+
+    def test_a_run_that_stops_early_never_notes_its_record(self, world, monkeypatch):
+        """C1579: the record is noted as begun only by a run that reached its verdict, so the
+        steps a stopped run never ran are never drawn done (`device_actions.stepper`)."""
+        from modules.nsot import device_ops
+        noted, real = [], device_ops.note
+        monkeypatch.setattr(device_ops, "note", lambda step, *a, **k: (
+            noted.append(step), real(step, *a, **k)))
+        rec = world.survey(answers=[b"\r\nSwitch#"])
+        assert rec["outcome"] == "stopped"
+        assert noted == ["opening the console", "waking the console"]
 
     def test_an_end_prompt_not_naming_the_hostname_is_unverified(self, world):
         world.survey(greeting=PNP, answers=blank_answers())

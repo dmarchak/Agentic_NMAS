@@ -1,0 +1,20 @@
+{%- from "v2/_macros.html" import how, stamp -%}
+{#- Out-of-band ZTP after Create (O7 and C1575; boards C and F of docs/boards/console-ztp.html,
+    drawn under the Phase 7 mode and logged in docs/STANDING_APPROVAL_LOG.md): a device whose
+    console survey is recorded (`console_ztp_v2.surveyed_offer`) is offered its card, on Create's
+    result in Add device and on its pending page, so closing one never loses the way back. A
+    survey that found it factory-blank opens the card at the kick-start; one that did not, at the
+    survey again (a kick-start types only on a device its survey found blank). The card takes
+    `#console-ztp-card`'s place. -#}
+{%- macro kick_offer(kick) -%}
+{%- set blank = kick.survey.blank is sameas true -%}
+<div class="ob-console" id="ob-console">
+  <h3 class="set-label">Console</h3>
+  <p class="small">{{ kick.hostname }}'s console survey of {{ stamp(kick.survey.at) }} by {{ kick.survey.by or 'someone' }} is recorded ({% if blank %}factory-blank{% elif kick.survey.blank is sameas false %}not factory-blank{% else %}blank unknown{% endif %}).
+    {%- if blank %} Kick-start it: the lines make it ask for its reservation and fetch its bootstrap.{% else %} A kick-start types only on a device its survey found factory-blank: survey it again once it is.{% endif %}</p>
+  <div id="console-ztp-card"><span class="op-act">
+    {%- if blank %}<button type="button" class="btn btn-small btn-primary" data-op="onboard" hx-get="{{ url_for('console_ztp_v2.card_view', device_id=kick.device_id, list_name=kick.list_name, step='kickstart', hostname=kick.hostname, list=kick.list_name) }}" hx-target="#console-ztp-card" hx-swap="outerHTML">Kick-start {{ kick.hostname }} through the console…</button>{{ how('onboard', 'console-kick-start', compact=True, op='the console kick-start') }}
+    {%- else %}<button type="button" class="btn btn-small" data-op="onboard" hx-get="{{ url_for('console_ztp_v2.card_view', device_id=kick.device_id, list_name=kick.list_name, step='survey', hostname=kick.hostname, profile=(kick.survey.profile or {}).name or '', list=kick.list_name) }}" hx-target="#console-ztp-card" hx-swap="outerHTML">Survey {{ kick.hostname }}'s console again…</button>{{ how('onboard', 'console-survey', compact=True, op='the console survey') }}
+    {%- endif %}</span></div>
+</div>
+{%- endmacro -%}

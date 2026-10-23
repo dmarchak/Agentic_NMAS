@@ -5,12 +5,14 @@ under the Phase 7 mode and logged in docs/STANDING_APPROVAL_LOG.md).
 A device being onboarded has no device page yet (it is a Planned record in NetBox, and Create
 has not run), so its console card is drawn in place inside Add device (O7, the review's
 "Kick-start through the console…"), keyed by the network and the device's NetBox id, the id
-`console_path.read_console_path` reads its console path by. One card, in the state its query
-names:
+`console_path.read_console_path` reads its console path by; after Create, the same card is
+offered on Create's result and on the device's pending page (`pending_console`, C1575, board F),
+so closing Add device never loses it. One card, in the state its query names:
 
 - the survey: ``choose`` (the profile), ``confirm`` (its preview: the console path, the port's
   record, the transport, the profile and its hash, the program by state, what it does not do,
-  and the confirm bound to the hash), ``running`` (a job, listening for ``console_ztp``) and
+  and the confirm bound to the hash), ``running`` (a job: THE stepper from the confirm's own answer, filled on each
+  ``device_progress``, its record read on ``console_ztp``; C1579) and
   ``result`` (blank, not blank or unknown with its reasons, the MAC, the masked transcript);
 - the kick-start: the same four, its preview the EXACT lines it types and the survey it stands
   on, its confirm a verified person's.
@@ -90,13 +92,17 @@ def offer(list_name: str, netbox_id, hostname: str, platform: str = "", role: st
 @bp.route("/offer", methods=["GET"])
 def offer_view():
     """The offer, drawn in Add device's review as it loads (one NetBox read, the console path):
-    "Kick-start through the console…" when NetBox shows one, its absence said when not."""
+    "Kick-start through the console…" when NetBox shows one, its absence said when not. With
+    ``pending=1``, on a pending device's page with no survey recorded (C1575): "Survey its
+    console…" when NetBox shows a path, nothing when it shows none (the device is onboarded
+    another way), and an unreadable NetBox said."""
     args = request.args
     nb = (args.get("netbox_id") or "").strip()
-    return _strict(render_template("v2/_console_offer.html", console=offer(
-        (args.get("list_name") or "").strip(), int(nb) if nb.isdigit() else None,
-        (args.get("hostname") or "").strip(), (args.get("platform") or "").strip(),
-        (args.get("role") or "").strip())))
+    console = offer((args.get("list_name") or "").strip(), int(nb) if nb.isdigit() else None,
+                    (args.get("hostname") or "").strip(), (args.get("platform") or "").strip(),
+                    (args.get("role") or "").strip())
+    return _strict(render_template("v2/_console_offer.html", console=console,
+                                   pending=args.get("pending") == "1"))
 
 
 def surveyed_offer(list_name: str, hostname: str):
@@ -113,8 +119,41 @@ def surveyed_offer(list_name: str, hostname: str):
     if len(hits) != 1:
         return None
     entry = hits[0]
-    return {"device_id": entry.get("device_id"), "survey": entry["survey"],
-            "list_name": list_name, "hostname": entry.get("device") or hostname}
+    survey = entry["survey"]
+    # What the offer draws of the survey (`_console_kick.html`), and nothing it does not. `by`
+    # is who ran the recorded survey, a stored record's field (never this request's actor).
+    return {"device_id": entry.get("device_id"), "list_name": list_name,
+            "hostname": entry.get("device") or hostname,
+            "survey": {"at": survey.get("at"),
+                       "by": survey["actor"] if "actor" in survey else "",
+                       "blank": survey.get("blank"),
+                       "profile": {"name": (survey.get("profile") or {}).get("name")}}}
+
+
+def pending_console(list_name: str, hostname: str) -> dict:
+    """A pending device's console part (C1575: once Add device's card is closed, its page is
+    the way back): ``{"kick", "netbox_id", "platform", "role", "list_name", "hostname"}``.
+    *kick* is `surveyed_offer` (the card at the kick-start, or at the survey again when the
+    recorded survey did not find it blank); without one, *netbox_id* is the NetBox record its
+    onboarding recorded, whose console path the page asks for as it draws (`offer_view`,
+    ``pending=1``), so the page itself never waits on NetBox. Reads the installation's index
+    and the network's manifest; creates nothing."""
+    from modules.nsot import listref, manifest
+
+    out = {"kick": surveyed_offer(list_name, hostname), "netbox_id": None, "platform": "",
+           "role": "", "list_name": list_name, "hostname": hostname}
+    if out["kick"] is not None or not list_name or not listref.exists(list_name):
+        return out
+    try:
+        entry = manifest.find_by_name(listref.resolve(list_name).repo_dir, hostname)[1] or {}
+    except Exception:                      # noqa: BLE001 - a read; the page draws no offer
+        log.warning("console ZTP: %s's manifest could not be read for %s", list_name, hostname,
+                    exc_info=True)
+        entry = {}
+    nb = entry.get("netbox_id")
+    out.update(netbox_id=nb if isinstance(nb, int) and nb > 0 else None,
+               platform=entry.get("platform") or "", role=entry.get("role") or "")
+    return out
 
 
 # ── the card ───────────────────────────────────────────────────────────────────────────────
@@ -177,10 +216,35 @@ def _declared(profile_name: str) -> list:
     return [{"name": n, "shape": s} for n, s in params.items() if n != "hostname"]
 
 
+def run_steps(kind: str, list_name: str, device: str, *, now=None) -> list:
+    """A run's rows for THE stepper (C1579; the deploy's pattern: drawn at the confirm and
+    filled by each `device_progress` announcement): the preview and the confirm done, then the
+    run's declared steps (`console_ztp.run_stepper_steps`) read from *device*'s hold, noted as
+    each begins (`device_actions.stepper`, *starts*). Until the job takes the hold, the first
+    is running from now and the rest have not run; a hold by another operation is not this
+    run's progress. In THE stepper's own step shape (`run_stepper.from_stepper`: what it waits
+    on already its note), so the card carries only what it draws."""
+    from modules import device_actions, run_stepper
+    from modules.nsot import console_ztp as Z
+    from modules.nsot import device_ops
+
+    try:
+        holder = (device_ops.holder(list_name, device) or {}) if device else {}
+    except device_ops.HoldsUnreadable:
+        holder = {}
+    op = Z.OP_SURVEY if kind == Z.KIND_SURVEY else Z.OP_KICKSTART
+    progress = holder.get("progress") if holder.get("operation") == op else None
+    before = [{"key": key, "words": Z.STEP_LABELS[key], "state": "done"}
+              for key in Z.BEFORE_RUN]
+    return run_stepper.from_stepper(before + device_actions.stepper(
+        Z.run_stepper_steps(kind), progress, now=now, starts=True))
+
+
 def card(list_name: str, device_id: int, args) -> dict:
     """The card's context from its query: ``step``, ``state``, ``profile``, ``profiles``,
     ``params`` (typed kick-start fields), ``run``, ``job``, ``rec`` (a run's record), ``error``,
-    ``survey`` (the latest survey, for the kick-start), ``add`` (drawn inside Add device)."""
+    ``survey`` (the latest survey, for the kick-start), ``add`` (drawn inside Add device),
+    ``steps`` (a running run's stepper rows, `run_steps`)."""
     from modules.nsot import capture_job
     from modules.nsot import console_ztp as Z
 
@@ -190,7 +254,7 @@ def card(list_name: str, device_id: int, args) -> dict:
          "hostname": (args.get("hostname") or "").strip(), "add": args.get("add") == "1",
          "run": (args.get("run") or "").strip(), "job": (args.get("job") or "").strip(),
          "rec": None, "error": "", "job_error": "", "pv": None, "survey": None, "params": {},
-         "declared": []}
+         "declared": [], "steps": []}
     if step == "kickstart":
         c["survey"], why = Z.latest_survey(list_name, device_id)
         c["profile"] = ((c["survey"] or {}).get("profile") or {}).get("name") or c["profile"]
@@ -213,7 +277,8 @@ def card(list_name: str, device_id: int, args) -> dict:
         if rec is not None and rec.get("outcome") != "running":
             c.update(state="result", rec=rec)
         elif job is not None and job["state"] == "running":
-            c.update(state="running", rec=rec)
+            c.update(state="running", rec=rec, steps=run_steps(
+                step, list_name, (rec or {}).get("device") or c["hostname"]))
         elif job is not None and job["state"] == "failed":
             c.update(state="failed", rec=rec, job_error=job.get("error") or "the run failed")
         elif rec is not None:
@@ -325,7 +390,9 @@ def _start(device_id: int, kind: str, confirmed: str):
                             announcer=Z.ANNOUNCER)
     log.info("console %s of %s (NetBox device %s) in %s started by %s: job %s, run %s", what,
              device, device_id, list_name, actor, job, run_id)
-    return _draw(dict(c, state="running", run=run_id, job=job, hostname=device, pv=pv))
+    # The stepper at once (C1579): every run step not yet run, the first running from now.
+    return _draw(dict(c, state="running", run=run_id, job=job, hostname=device, pv=pv,
+                      step=kind, steps=run_steps(kind, list_name, device)))
 
 
 @bp.route("/<int:device_id>/survey", methods=["POST"])

@@ -591,18 +591,52 @@ def _old_library(tmp_path):
     return str(root)
 
 
+_SET_BEFORE_MODE = (" switchport access vlan ", " switchport trunk allowed vlan ",
+                    " switchport trunk encapsulation ")
+
+
+def _c1586(text: str) -> str:
+    """*text* with C1586's one deliberate change applied: in each interface, a `switchport mode`
+    line moved to after that interface's access VLAN, trunk allowed VLANs and trunk
+    encapsulation (the order IOS prints; the old library wrote the mode first). Nothing else."""
+    lines, out, block = text.split("\n"), [], []
+
+    def flush():
+        mode = [ln for ln in block if ln.startswith(" switchport mode ")]
+        rest = [ln for ln in block if not ln.startswith(" switchport mode ")]
+        last = max((n for n, ln in enumerate(rest) if ln.startswith(_SET_BEFORE_MODE)),
+                   default=None)
+        if mode and last is not None:
+            rest[last + 1:last + 1] = mode
+            out.extend(rest)
+        else:
+            out.extend(block)
+        block.clear()
+
+    for ln in lines:
+        if ln.startswith(" "):
+            block.append(ln)
+        else:
+            flush()
+            out.append(ln)
+    flush()
+    return "\n".join(out)
+
+
 @pytest.mark.parametrize("name, platform", [("r2", "cisco_iosxe"), ("s1", "cisco_ios")])
 def test_intent_from_before_the_packs_renders_byte_for_byte_as_it_did(tmp_path, name, platform):
     """The host's committed r2 and s1 (raw `settings`/`networks`/`raw` only), through today's
-    shipped templates and through the templates from before the packs: the same bytes. The
-    old library is the independent path: no pack macro is in it."""
+    shipped templates and through the templates from before the packs: the same bytes, but for
+    C1586's one deliberate change (a switchport's mode after its VLANs and encapsulation),
+    applied to the old render by `_c1586`. The old library is the independent path: no pack
+    macro is in it."""
     with open(os.path.join(FIX, "committed", f"{name}.yml"), encoding="utf-8") as fh:
         intent = yaml.safe_load(fh)
     assert not features.structured(intent), "the committed fixture holds lines only"
     now = roundtrip.render(intent, platform, secret_lookup=_secret)
     then = roundtrip.render(intent, platform, secret_lookup=_secret,
                             template_root=_old_library(tmp_path))
-    assert now == then
+    assert now == _c1586(then)
     assert "router ospf 1" in now or "router rip" in now
 
 

@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """The console host's SSH forced command: bridge one allowlisted console, refuse anything else.
 
 docs/LAB9_PLAN.md section 8, "The security addition": the console host gives Mercury a DEDICATED
@@ -31,9 +32,10 @@ FORBIDDEN = ("--", "..")
 #: Where the console listens inside the container (qemu's serial on a TCP port).
 CONSOLE_HOST = "127.0.0.1"
 CONSOLE_PORT = "5000"
-#: The one program run: its stdin and stdout become the console.
+#: The one program run: its stdin and stdout become the console. `socat`, not `nc`: a node
+#: container may hold socat and telnet and no nc, measured before this was relied on (C1584).
 BRIDGE_HEAD = ("docker", "exec", "-i")
-BRIDGE_TAIL = ("nc", CONSOLE_HOST, CONSOLE_PORT)
+BRIDGE_TAIL = ("socat", "-", f"TCP:{CONSOLE_HOST}:{CONSOLE_PORT}")
 #: The forced command's environment variable, set by sshd to what the client asked to run.
 COMMAND_VAR = "SSH_ORIGINAL_COMMAND"
 PROGRAM = "nmas-console-bridge"

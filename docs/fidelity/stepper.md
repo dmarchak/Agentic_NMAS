@@ -41,8 +41,14 @@ step that did not pass, so a deploy whose verify did not pass draws its Verify s
 every other step done (it drew the last step partial and Verify done). The step's partial state
 and its class are the macro's own; nothing the macro lays out moved, so no region's verdict
 changed. Read from the diff, not a new shot.
+Compared again 2026-10-22 (C1579, the console survey and kick-start): the model's `single` takes
+`device`, False for a row whose device has no page to link to yet (a survey before Create), and
+`from_stepper` keeps the note of a step already in the card's shape (a route that hands its
+template only what it draws). The row's name is drawn unlinked, as a non-device row's already
+is; nothing the macro lays out moved, so no region's verdict changed. Read from the diff, not a
+new shot.
 Templates compared: templates/v2/_run_stepper.html, modules/run_stepper.py, static/js/nmas_stepper.js
-Templates sha256: `bc4d5c151958b8b07d58d4156584fe63df8a8c5bbf78893e7ab805eab92acd4d`
+Templates sha256: `8b51e27c3aaee9e3d0ac8931411e3d0d3fd42364e585fa3944ebd28bf85fa5e9`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).

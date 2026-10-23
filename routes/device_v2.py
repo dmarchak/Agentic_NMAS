@@ -313,7 +313,10 @@ def device(name):
             pending = None
         if pending:
             ref, p = pending
+            from routes.console_ztp_v2 import pending_console
+
             return _strict(render_template("v2/pending.html", p=p, list_name=ref.name, who=_who(),
+                                           console=pending_console(ref.name, p.get("name", "")),
                                            **_pending_facts(ref, p)))
         # A device that LEFT shows its retired record (C185; board 12), never a bare 404.
         retired = _retired(name)

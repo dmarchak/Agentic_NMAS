@@ -110,6 +110,33 @@ KICKSTART_STEPS = (
     ("verify", "It ends at the privileged prompt, naming the hostname typed"),
     ("record", "The record, the lines sent and the masked transcript"),
 )
+#: THE stepper's steps for a run (C1579: drawn at the confirm, every step not yet run, and
+#: filled as each begins, `device_actions.stepper` with *starts*): the steps above after the
+#: preview and the confirm (both done before the job starts), each ``(key, label, waits,
+#: names)``, its waits the step's own words above and its names the progress notes
+#: (`device_ops.note`) the run makes as the step BEGINS. One table per operation, read by the
+#: card (routes/console_ztp_v2.run_steps); tests/test_console_ztp_v2.py holds every name to a
+#: note the code makes.
+BEFORE_RUN = ("preview", "confirm")
+STEP_LABELS = {"preview": "Preview", "confirm": "Confirm", "hold": "Hold", "wake": "Wake",
+               "reads": "Read", "release": "Release", "recheck": "Blank check again",
+               "type": "Type the lines", "verify": "Verify", "record": "Record"}
+STEP_NOTES = {
+    KIND_SURVEY: {"hold": ("opening the console",), "wake": ("waking the console",),
+                  "reads": ("survey: prelude", "survey: mac", "survey: blank"),
+                  "release": ("survey: release",), "verify": ("survey: verify",),
+                  "record": ("survey: record",)},
+    KIND_KICKSTART: {"hold": ("opening the console",), "wake": ("waking the console",),
+                     "recheck": ("kick-start: recheck",), "type": ("kick-start: typing",),
+                     "verify": ("kick-start: verify",), "record": ("kick-start: record",)},
+}
+
+
+def run_stepper_steps(kind: str) -> tuple:
+    """*kind*'s run steps for THE stepper: ``((key, label, waits, names), ...)``."""
+    steps = SURVEY_STEPS if kind == KIND_SURVEY else KICKSTART_STEPS
+    return tuple((key, STEP_LABELS[key], words[0].lower() + words[1:], STEP_NOTES[kind][key])
+                 for key, words in steps if key not in BEFORE_RUN)
 #: The session lines a platform's console needs that are not the profile's reads or its
 #: kick-start: the privileged prompt, the pager off for this session, the setup dialog
 #: declined. None is saved, and none is a configuration line. A profile for a platform not here
@@ -718,9 +745,11 @@ def survey_run(list_name: str, device_id, *, profile: str, confirmed_hash: str, 
                     _survey_phases(console, prof, program, rec)
                 finally:
                     transport.close()
+            # The final record before the hold ends (C1579): the card reads a running run's
+            # steps from the hold and its result from the record, so neither is ever missing.
+            record(list_name, rec)
     except device_ops.DeviceBusy as exc:
         raise Refused(f"{exc}. Nothing was sent.") from None
-    record(list_name, rec)
     _announce()
     log.info("console survey: %s/%s by %s: %s (blank %s)", list_name, p["device"], actor,
              rec["outcome"], rec.get("blank"))
@@ -766,11 +795,16 @@ def _survey_phases(console, profile, program, rec) -> None:
     if got.outcome != "done":
         reasons.append(f"the console was not left at the user prompt ({got.reason}): a "
                        "kick-start's wake will find it signed in and refuse until it is")
+    device_ops.note("survey: verify")
     _finish(rec, console, outcome="surveyed" if got.outcome == "done" else got.outcome,
             blank=v["result"].blank, found_signed_in=v["result"].found_signed_in,
             reasons=reasons, startup_config_bytes=v["result"].startup_config_bytes,
             mac=v["mac"].value, mac_reason=v["mac"].reason,
             reason="" if got.outcome == "done" else f"release: {got.reason}")
+    # Only a run that reached its verdict notes its record as begun: a run that stopped early
+    # leaves the step it stopped in running until its record replaces the stepper, so the steps
+    # it never ran are never drawn done.
+    device_ops.note("survey: record")
 
 
 # ── the kick-start ───────────────────────────────────────────────────────────────────────
@@ -944,9 +978,9 @@ def kickstart_apply(list_name: str, device_id, confirmed_hash: str, actor: str,
                     _kickstart_phases(console, prof, program, params, rec)
                 finally:
                     transport.close()
+            record(list_name, rec)                 # before the hold ends, as the survey's
     except device_ops.DeviceBusy as exc:
         raise Refused(f"{exc}. Nothing was sent.") from None
-    record(list_name, rec)
     _announce()
     log.info("console kick-start: %s/%s by %s: %s", list_name, p["device"], actor,
              rec["outcome"])
@@ -986,11 +1020,13 @@ def _kickstart_phases(console, profile, program, params, rec) -> None:
     if got.outcome != "done":
         _finish(rec, console, outcome=got.outcome, reason=f"typing: {got.reason}")
         return
+    device_ops.note("kick-start: verify")
     _state, prompt, _partial = S.read_state(console.output(), profile,
                                             program["lines"][-1][1][:-1].strip())
     v = verify_kickstart(prompt, params, profile)
     _finish(rec, console, outcome="done" if v["ok"] else "unverified", verify=v,
             reason="" if v["ok"] else v["why"])
+    device_ops.note("kick-start: record")        # as the survey's: only a run that verified
 
 
 # ── retirement (C1553) ───────────────────────────────────────────────────────────────────

@@ -255,7 +255,8 @@ class TestTheSurvey:
                               "hostname": "edge1", "add": "1", "hash": pv["hash"]})
         html = _text(r)
         assert r.status_code == 200, html
-        assert 'hx-trigger="nmas:console_ztp from:body"' in html and 'aria-busy="true"' in html
+        assert 'hx-trigger="nmas:console_ztp from:body, nmas:device_progress from:body"' \
+            in html and 'aria-busy="true"' in html
         run = re.search(r"run=([0-9]{8}T[0-9]{12}Z-[0-9a-f]{32})", html).group(1)
         job = re.search(r"job=([0-9a-f]{32})", html).group(1)
         assert _wait(job)["state"] == "done"
@@ -280,6 +281,183 @@ class TestTheSurvey:
         monkeypatch.setattr(capture_job, "get", lambda job: None)
         html = _text(client.get(_url(world, f"?list_name={LIST}&run={run}&job={'b' * 32}")))
         assert "This server has no record of the run's job" in html
+
+
+class TestThePendingPage:
+    """C1575: once Add device's card is closed, the pending device's page is the way back. Its
+    actions at rest (the page's own `#pending-actions`, re-drawn by Cancel and Close) offer the
+    card when a survey is recorded (no NetBox read), at the kick-start when it found the device
+    blank and at the survey again when not; with none recorded, a NetBox record onboarding
+    recorded has its console path asked for as the page draws, offering the survey."""
+
+    @pytest.fixture
+    def pending(self, world, tmp_path, monkeypatch):
+        from modules.nsot import listref, manifest
+        repo = tmp_path / "repo"
+        (repo / ".nsot").mkdir(parents=True)
+        monkeypatch.setattr(listref, "resolve",
+                            lambda name: types.SimpleNamespace(repo_dir=str(repo)))
+
+        def onboard(netbox_id=None):
+            manifest.upsert_device(str(repo), manifest.identity_for(device_uid="uid-edge1"),
+                                   "edge1", pending=True, address_source="ztp",
+                                   netbox_id=netbox_id, platform="cisco_ios", role="switch")
+        return onboard
+
+    def _actions(self, client) -> str:
+        return _text(client.get(f"/v2/onboard/edge1/actions?list_name={LIST}"))
+
+    def test_a_recorded_blank_survey_offers_the_kick_start_and_opens_the_card(
+            self, world, client, pending, monkeypatch):
+        from routes import console_ztp_v2 as R
+        pending(netbox_id=world.dev["id"])
+        world.survey(greeting=PNP, answers=blank_answers())
+        read = []
+        monkeypatch.setattr("modules.nsot.console_path.read_console_path",
+                            lambda *a, **k: read.append(a) or {})
+        html = self._actions(client)
+        assert "Kick-start edge1 through the console…" in html and read == []
+        url = re.search(r'hx-get="(/v2/onboard/console/\d+\?[^"]*step=kickstart[^"]*)"', html)
+        assert url, "the card at the kick-start"
+        monkeypatch.setattr(R, "_onboarded", lambda l, h: "")
+        card = _text(client.get(url.group(1).replace("&amp;", "&")))
+        assert 'id="console-ztp-card"' in card and "Preview the kick-start" in card
+
+    def test_a_survey_that_found_it_configured_offers_the_survey_again(self, world, client,
+                                                                        pending):
+        pending(netbox_id=world.dev["id"])
+        world.survey(answers=[b"\r\nSwitch#"])
+        html = self._actions(client)
+        assert "Survey edge1's console again…" in html
+        assert "Kick-start edge1" not in html
+        assert re.search(r'hx-get="/v2/onboard/console/\d+\?[^"]*step=survey[^"]*'
+                         r'profile=cisco_ios_switch', html)
+
+    def test_no_survey_asks_netbox_for_the_path_as_the_page_draws(self, world, client, pending):
+        pending(netbox_id=world.dev["id"])
+        html = self._actions(client)
+        lazy = re.search(r'id="ob-console" aria-busy="true" hx-get="([^"]+)" hx-trigger="load"',
+                         html)
+        assert lazy and "pending=1" in lazy.group(1), "the path is asked for, never waited on"
+        got = _text(client.get(lazy.group(1).replace("&amp;", "&")))
+        assert "Survey edge1's console…" in got and "No survey of its console" in got
+        assert "add=1" not in got, "not inside Add device: no plan to put the MAC in"
+        world.fake.store["dcim/cables"] = []
+        world.port["cable"] = None
+        got = _text(client.get(lazy.group(1).replace("&amp;", "&")))
+        assert 'hidden data-console-absent="no_path"' in got and "No console" not in got
+
+    def test_no_survey_and_no_netbox_record_draws_nothing(self, world, client, pending):
+        pending()
+        html = self._actions(client)
+        assert 'id="ob-console"' not in html and 'id="pending-actions"' in html
+
+
+def _steps(html: str) -> list:
+    """THE stepper's steps as drawn: ``[(key, state), ...]`` in order."""
+    return [(k, s) for s, k in re.findall(
+        r'<li class="run-step run-step-(\w+)" data-step="(\w+)"', html)]
+
+
+class TestTheStepperFromTheConfirm:
+    """C1579 (Lab 9's R8 recording: Verify and the NetBox import drew their stepper only near
+    the end): the confirm's own answer draws THE stepper, the preview and the confirm done and
+    every step of the run not yet done, and each step the run begins fills it, announced as
+    `device_progress`, which the running card listens for (the deploy's pattern)."""
+
+    def test_every_declared_name_is_a_note_the_code_makes(self):
+        import ast
+        tree = ast.parse(open(Z.__file__, encoding="utf-8").read())
+        consts, prefixes = set(), set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and getattr(node.func, "attr", "") == "note" \
+                    and node.args:
+                arg = node.args[0]
+                if isinstance(arg, ast.Constant):
+                    consts.add(arg.value)
+                elif isinstance(arg, ast.JoinedStr):
+                    prefixes.add(arg.values[0].value)
+        assert len(consts) >= 9 and prefixes == {"survey: "}, (consts, prefixes)
+        declared = {n for kind in (Z.KIND_SURVEY, Z.KIND_KICKSTART)
+                    for s in Z.run_stepper_steps(kind) for n in s[3]}
+        for name in declared:
+            assert name in consts or any(name.startswith(p) for p in prefixes), name
+        assert consts <= declared, consts - declared
+        for kind, steps in ((Z.KIND_SURVEY, Z.SURVEY_STEPS), (Z.KIND_KICKSTART,
+                                                                Z.KICKSTART_STEPS)):
+            assert [s[0] for s in Z.run_stepper_steps(kind)] == \
+                [k for k, _w in steps if k not in Z.BEFORE_RUN]
+
+    def test_the_confirm_draws_it_at_once_and_each_step_fills_it(self, world, client, person,
+                                                                monkeypatch):
+        import threading
+
+        from modules import invalidation
+        from modules.nsot import device_ops
+
+        # The job is held as it begins the hold, and again as it begins the MAC read.
+        gates = {"opening the console": threading.Event(), "survey: mac": threading.Event()}
+        reached = {k: threading.Event() for k in gates}
+        real_note, said = device_ops.note, []
+
+        def note(step, device=None):
+            real_note(step, device)
+            if step in gates:
+                reached[step].set()
+                assert gates[step].wait(30)
+
+        monkeypatch.setattr(device_ops, "note", note)
+        monkeypatch.setattr(invalidation, "announce",
+                            lambda keys, who, ok: said.append(tuple(keys)))
+        world.consoles.append((PNP, blank_answers()))
+        pv = Z.survey_preview(LIST, world.dev["id"], profile="cisco_ios_switch")
+        try:
+            r = client.post(_url(world, "/survey"),
+                            data={"list_name": LIST, "step": "survey", "hostname": "edge1",
+                                  "profile": "cisco_ios_switch", "add": "1",
+                                  "hash": pv["hash"]})
+            html = _text(r)
+            assert r.status_code == 200, html
+            assert "data-run-stepper" in html, "the confirm's answer draws THE stepper"
+            assert _steps(html) == [("preview", "done"), ("confirm", "done"),
+                                    ("hold", "running"), ("wake", "waiting"),
+                                    ("reads", "waiting"), ("release", "waiting"),
+                                    ("verify", "waiting"), ("record", "waiting")]
+            assert "nmas:device_progress from:body" in html, "it fills as each step begins"
+            assert 'href="/v2/device/edge1"' not in html, "no page yet to link to"
+            run = re.search(r"run=([0-9]{8}T[0-9]{12}Z-[0-9a-f]{32})", html).group(1)
+            job = re.search(r"job=([0-9a-f]{32})", html).group(1)
+            card = _url(world, f"?list_name={LIST}&step=survey&run={run}&job={job}"
+                               "&hostname=edge1&add=1")
+            assert reached["opening the console"].wait(30)
+            assert _steps(_text(client.get(card)))[2] == ("hold", "running")
+            gates["opening the console"].set()
+            assert reached["survey: mac"].wait(30)
+            assert said.count(("device_progress",)) >= 4, said
+            got = _steps(_text(client.get(card)))
+            assert got == [("preview", "done"), ("confirm", "done"), ("hold", "done"),
+                           ("wake", "done"), ("reads", "running"), ("release", "waiting"),
+                           ("verify", "waiting"), ("record", "waiting")], got
+        finally:
+            for gate in gates.values():
+                gate.set()
+        assert _wait(job)["state"] == "done"
+        html = _text(client.get(card))
+        assert "factory-blank" in html and "data-run-stepper" not in html, "its record, drawn"
+
+    def test_a_hold_by_another_operation_is_not_this_run_s_progress(self):
+        from modules.nsot import device_ops
+        from routes import console_ztp_v2 as R
+        device_ops.acquire(LIST, "edge1", "deploy", PERSON)
+        try:
+            device_ops.note("waking the console")
+            rows = R.run_steps(Z.KIND_KICKSTART, LIST, "edge1")
+        finally:
+            device_ops.release(LIST, "edge1")
+        assert [(r["key"], r["state"]) for r in rows] == [
+            ("preview", "done"), ("confirm", "done"), ("hold", "running"), ("wake", "waiting"),
+            ("recheck", "waiting"), ("type", "waiting"), ("verify", "waiting"),
+            ("record", "waiting")]
 
 
 class TestHistory:

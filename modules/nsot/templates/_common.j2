@@ -215,13 +215,16 @@ interface {{ i.name }}
 {% endif %}
 {%- if i.no_switchport %} no switchport
 {% endif %}
-{%- if i.switchport_mode %} switchport mode {{ i.switchport_mode }}
-{% endif %}
+{#- The switchport lines in the order IOS prints them, and so the order a deploy sends them
+    (C1586): an access VLAN and the trunk's allowed VLANs and encapsulation BEFORE the mode,
+    since a switch whose trunk encapsulation is still "auto" refuses `switchport mode trunk`. -#}
 {%- if i.switchport_access_vlan %} switchport access vlan {{ i.switchport_access_vlan }}
 {% endif %}
 {%- for x in i.switchport_trunk_vlans or [] %} switchport trunk allowed vlan {{ x }}
 {% endfor %}
 {%- if i.switchport_trunk_encapsulation %} switchport trunk encapsulation {{ i.switchport_trunk_encapsulation }}
+{% endif %}
+{%- if i.switchport_mode %} switchport mode {{ i.switchport_mode }}
 {% endif %}
 {%- for x in i.switchport or [] %} switchport {{ x }}
 {% endfor %}

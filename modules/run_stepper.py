@@ -57,10 +57,11 @@ def _for_count(words: str, n: int) -> str:
 
 def from_stepper(rows: list) -> list:
     """`device_actions.stepper`'s rows as this card's steps (its running step's note is what
-    it waits on, and the last thing it did)."""
+    it waits on, and the last thing it did). A row already in this card's shape (a `note` and
+    no `waits`: a route that hands its template only what it draws, C1579) keeps its note."""
     out = []
     for s in rows or []:
-        note = ""
+        note = "" if "waits" in s else (s.get("note") or "")
         if s.get("state") == "running":
             note = f"waits on {s['waits']}" if s.get("waits") else ""
             if s.get("last"):
@@ -134,15 +135,18 @@ def at_step(name: str, label: str, steps: tuple, current: int, *, elapsed_s=None
                 key=label.lower().replace(" ", "-"))
 
 
-def single(steps: list, name: str, label: str) -> dict:
+def single(steps: list, name: str, label: str, *, device: bool = True) -> dict:
     """A one-device operation's card: its one row from `device_actions.stepper`'s rows (a
     deploy, a restore, a reload, a rotation, an adoption, holding the device). The row runs
-    while any step runs, is done once every step is, and waits before the first begins."""
+    while any step runs, is done once every step is, and waits before the first begins.
+    *device*: False for a device with no page to link to yet (a console survey before Create,
+    C1579)."""
     mine = from_stepper(steps)
     states = {s["state"] for s in mine}
     group = ("running" if "running" in states else "failed" if "failed" in states
              else "done" if mine and states == {"done"} else "waiting")
-    return card([row(name, group, mine)], label=label, key=label.lower().replace(" ", "-"))
+    return card([row(name, group, mine, device=device)], label=label,
+                key=label.lower().replace(" ", "-"))
 
 
 def card(rows: list, *, label: str, final: dict = None, q: str = "", search: tuple = None,

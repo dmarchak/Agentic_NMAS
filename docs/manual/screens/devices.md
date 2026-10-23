@@ -133,7 +133,9 @@ will make, and what it does not do; **Change the fields** goes back to the form.
 that moved, if it is not the plan you reviewed; it needs a verified person. The result says
 the device is PENDING (created, never reached), and **Open <device>'s page** goes to its
 pending page, where Verify, the bootstrap configuration and Abandon are; **Add another**
-opens an empty form. See [Onboard a device](onboard).
+opens an empty form. A device whose console survey is recorded is offered its console card on
+the result too, and on its pending page after (see [Out-of-band ZTP: through the
+console](onboard#out-of-band-ztp)). See [Onboard a device](onboard).
 
 ## Adopt a device {#adopt}
 
@@ -154,7 +156,8 @@ it, in order: **Seed <device>'s intent…** (the fidelity and one commit as its 
 ## A pending device's page {#pending}
 
 A device created and not yet reached has no tabs: its page shows its onboarding state, its
-address and how it gets it, and three actions, each answered in place.
+address and how it gets it, and three actions (and, for a device onboarded through its
+console, the console card), each answered in place.
 
 **<device> onboarding progress**, with a ZTP, DHCP or static badge, says when to press Verify.
 Its five steps (identity, first-boot config, confirmed, waiting for it, arrival) are on the one
@@ -182,3 +185,11 @@ Abandon) is that device's, never this one's, and stays in History.
 - **Abandon…** shows what abandoning would remove, step by step, removing nothing; **Abandon**
   confirms it, and is refused, removing nothing, if what it would remove moved since you
   looked.
+- **Console**, under the three, for a device onboarded through its console (out-of-band ZTP):
+  when its console survey is recorded, **Kick-start <device> through the console…** (the survey
+  found it factory-blank) or **Survey <device>'s console again…** (it did not) opens the console
+  card in place, the same card Add device opens; with no survey recorded, the page asks NetBox
+  for the device's console path as it draws and offers **Survey <device>'s console…** when it
+  has one, and draws nothing when it has none. A survey or kick-start draws its steps on the one
+  stepper from the moment you confirm, each filled as it runs. See [Out-of-band ZTP: through
+  the console](onboard#out-of-band-ztp).
