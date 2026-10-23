@@ -28,7 +28,13 @@ They are also the real console text for out-of-band ZTP's session and survey tes
   (`%LINEPROTO-5-UPDOWN`, `%LINK-3-UPDOWN`) and no new prompt: the take that stopped
   (`tests/test_console_syslog_after_prompt.py`).
 
+- `s5-kickstart-take-copy-echo.txt` (2026-10-23): the retry take on deploy 2c (run
+  20261023T220926977356Z), its transcript as Mercury stored it (masked at rest), with the same two
+  edits. Every line accepted and read back; then the copy, echoed only up to its source URL, the
+  last answer unterminated: the take that stopped (`tests/test_console_copy_echo.py`).
+
     sha256 4306ba009d8a00b67c090f86dc2704796d788b39d8e7b0464f65061abf97dd02  s5-boot-to-release.txt
     sha256 2e76f07e3e98edfffd6a560bb8ccd67133f649822c46d8290f224f0c996414cc  s5-pnp-stopped.txt
     sha256 c600487a80e452c73cb3b211ba78faa865dfb9231d01aa5e288f19e86bb1e2b0  s5-session-enable-dir-nvram.txt
     sha256 6528a4c620a3adf0f27fa9076bbe06d569f3bfe6a8767c0589bf551382b99958  s5-kickstart-take-syslog.txt
+    sha256 4829612ca358c1f5bd870382a5b5d448bf87ee81cb1cef483c12ca2bc5eecae6  s5-kickstart-take-copy-echo.txt

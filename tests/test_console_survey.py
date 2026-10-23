@@ -219,6 +219,7 @@ def test_the_switch_kickstart_is_exactly_its_template_with_the_finite_console_ti
         " ip address 192.0.2.14 255.255.255.252",
         " no shutdown",
         "ip default-gateway 192.0.2.13",
+        "ip route 0.0.0.0 0.0.0.0 192.0.2.13",
         "line con 0",
         " exec-timeout 15 0",
         "end",

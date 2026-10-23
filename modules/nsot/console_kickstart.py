@@ -39,7 +39,8 @@ acceptable sets; anything else is a difference naming what was typed and what wa
 - ``switchport access vlan N``: exactly that line; for VLAN 1, IOS's default, that line or none
   (IOS leaves a default out, which is documented and not yet measured on this image);
 - ``exec-timeout M S`` under ``line con 0``: exactly that line;
-- ``hostname X`` and ``ip default-gateway G``: exactly that line in the global read;
+- ``hostname X``, ``ip default-gateway G`` and ``ip route 0.0.0.0 0.0.0.0 G``: exactly that line
+  in the global read (for ``ip route``, the only ``ip route`` line);
 - the section's header (``interface Vlan1``, ``interface GigabitEthernet0/1``, ``line con 0``)
   must be in its read exactly once (an interface compared by its canonical name, since IOS
   prints the long form of an abbreviation typed);
@@ -103,8 +104,11 @@ NOT_READ_BACK = {
     "vlan": ("a VLAN lives in the VLAN database, not the running configuration: the access "
              "port's switchport access vlan and the VLAN interface's read carry it"),
 }
-#: The global settings a kick-start may type, each read back by the one global read.
-GLOBAL_KEYS = ("hostname", "ip default-gateway")
+#: The global settings a kick-start may type, each read back by the one global read. ``ip route``
+#: is the switch's way back while it routes (a blank vIOS-L2 does, which ignores its default
+#: gateway: measured on a blank lab switch, 2026-10-23, C1606); any other static route read is a
+#: difference.
+GLOBAL_KEYS = ("hostname", "ip default-gateway", "ip route")
 
 #: The copy (C1594): the line typed, IOS's question it answers, and its success line.
 COPY_LINE = "copy tftp://{server}/{file} running-config"

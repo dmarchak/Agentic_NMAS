@@ -1,6 +1,7 @@
 """Out-of-band onboarding in one decision: Add device's **Out-of-band (console)** source, its
 one review and its one background run (the operator's approved design of 2026-10-23, with his
-changes: no Kea object at all, a switch's way back by ``ip default-gateway`` only, the copy
+changes: no Kea object at all, a switch's way back by ``ip default-gateway`` (and, since a
+blank vIOS-L2 was measured routing, ``ip route 0.0.0.0 0.0.0.0`` too: C1606), the copy
 allowing for the key generation, the run's last device step honouring Verify's key settle).
 
 **Eligible** (`eligibility`) only when NetBox holds a console path for the device's Planned

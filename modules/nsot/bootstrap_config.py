@@ -300,9 +300,9 @@ def manager_interface_lines(platform: str, *, interface: str, address: str,
     if gateway:
         # Only reached when the caller says the manager is elsewhere. Kept
         # out of the interface block because it is a different kind of claim.
-        # *gateway_route* False (out-of-band ZTP's static switch, the operator 2026-10-23): a
-        # layer-2 switch with routing off reaches the manager by its default gateway alone, the
-        # line the console kick-start typed and read back; no static route is rendered.
+        # *gateway_route* False (a record from out-of-band ZTP's static switch made before
+        # C1606, 2026-10-23): the default gateway alone, as that record was rendered; a blank
+        # vIOS-L2 routes, so every new record carries both (`onboard.gateway_route`).
         if gateway_route or platform not in LAYER2_PLATFORMS:
             body += [f"ip route 0.0.0.0 0.0.0.0 {gateway}"]
         if platform in LAYER2_PLATFORMS:

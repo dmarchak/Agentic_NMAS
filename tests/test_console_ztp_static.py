@@ -5,11 +5,12 @@ the address source ``ztp_console`` from the plan to the kick-start, and the resp
   (no subnet, no reservation, no MAC asked); the gateway the relay's own address and the config
   server the relay's helper target that is this host's (`ztp_relayed.console_plan`, from
   committed intent); IPv6 refused by name (C1245);
-- the bootstrap: static on the management SVI, ``ip default-gateway`` and NO
-  ``ip route 0.0.0.0 0.0.0.0`` on the switch (a router keeps its route; the static source
-  unchanged), and its re-render byte-identical;
-- the pending intent: the bootstrap block static, its server, the default gateway in the
-  parsers' key;
+- the bootstrap: static on the management SVI, ``ip default-gateway`` AND
+  ``ip route 0.0.0.0 0.0.0.0`` on the switch (a blank vIOS-L2 routes, so it ignores its default
+  gateway: measured on s5, 2026-10-23, C1606; the operator's choice, both lines), and its
+  re-render byte-identical;
+- the pending intent: the bootstrap block static, its server, the default gateway and the
+  route in the parsers' keys;
 - the kick-start's parameters derived from that onboarding, the preview's refusals, and the
   run over the fake console (tests/console_fakes.py, s5's real text): it types the static
   lines, stops at a refusal (C1593's own), reads back and compares, records the MAC in use,
@@ -79,7 +80,7 @@ class TestThePlan:
         assert f"copies s5.cfg from the responder at {SERVER}" in claim
         assert "reasons it cannot be onboarded" not in claim
 
-    def test_the_bootstrap_is_static_with_its_default_gateway_and_no_route(self, lab):
+    def test_the_bootstrap_is_static_with_its_default_gateway_and_its_route(self, lab):
         config = _plan().bootstrap_config
         lines = config.splitlines()
         i = lines.index("interface Vlan1")
@@ -87,7 +88,8 @@ class TestThePlan:
                                   " description NMAS management - manager is on this subnet",
                                   f" ip address {ADDRESS} {MASK}", " no shutdown"]
         assert f"ip default-gateway {GATEWAY}" in lines
-        assert not any(l.startswith("ip route") for l in lines)
+        assert [l for l in lines if l.startswith("ip route")] == [
+            f"ip route 0.0.0.0 0.0.0.0 {GATEWAY}"]
         assert "ip address dhcp" not in config.replace(" ip address dhcp\n negotiation", "")
         assert " no switchport" not in lines[i:i + 4]
         assert "crypto key generate rsa modulus 2048" in lines, "nothing else makes its key"
@@ -95,13 +97,14 @@ class TestThePlan:
     @pytest.mark.parametrize("over", [dict(role="router"),
                                       dict(address_source="static")])
     def test_a_router_and_the_static_source_keep_their_route(self, lab, over):
-        """Controls: only the out-of-band switch drops C1349's route."""
+        """Controls: a router and the static source carry C1349's route, as the out-of-band
+        switch now does too (C1606)."""
         lines = _plan(**over).bootstrap_config.splitlines()
         assert f"ip route 0.0.0.0 0.0.0.0 {GATEWAY}" in lines
         assert f"ip default-gateway {GATEWAY}" in lines
 
     @pytest.mark.parametrize("source,role,route", [
-        ("ztp_console", "switch", False), ("ztp_console", " Switch ", False),
+        ("ztp_console", "switch", True), ("ztp_console", " Switch ", True),
         ("ztp_console", "router", True), ("ztp_console", "", True), ("ztp", "switch", True),
         ("static", "switch", True), ("dhcp", "switch", True)])
     def test_which_bootstrap_routes_its_gateway(self, source, role, route):
@@ -218,25 +221,45 @@ class TestTheIntent:
         doc = hostvars.read_committed(repo, "s5")
         boot = doc["bootstrap"]
         assert (boot["source"], boot["address"], boot["mask"], boot["gateway"],
-                boot["interface"], boot["server"], boot["gateway_route"]) == (
-            "ztp_console", ADDRESS, MASK, GATEWAY, "Vlan1", SERVER, False)
+                boot["interface"], boot["server"]) == (
+            "ztp_console", ADDRESS, MASK, GATEWAY, "Vlan1", SERVER)
+        assert "gateway_route" not in boot, "a record without it routes (C1606)"
         assert doc["default_gateway"] == GATEWAY
+        assert doc["static_routes"] == [{"family": "ipv4", "spec": f"0.0.0.0 0.0.0.0 {GATEWAY}"}]
         entry = manifest.find_by_name(repo, "s5")[1]
         assert entry["address_source"] == "ztp_console" and entry["mgmt_ip"] == ADDRESS
         assert "reserved_address" not in entry and "mgmt_mac" not in entry
 
-    def test_the_committed_intent_renders_its_default_gateway_and_no_route(self, lab,
-                                                                          monkeypatch):
+    @pytest.mark.parametrize("given,want", [
+        ([{"family": "ipv4", "spec": "198.51.100.0 255.255.255.0 " + GATEWAY}],
+         [{"family": "ipv4", "spec": "198.51.100.0 255.255.255.0 " + GATEWAY},
+          {"family": "ipv4", "spec": f"0.0.0.0 0.0.0.0 {GATEWAY}"}]),
+        ([{"family": "ipv4", "spec": f"0.0.0.0 0.0.0.0 {GATEWAY}"}],
+         [{"family": "ipv4", "spec": f"0.0.0.0 0.0.0.0 {GATEWAY}"}]),
+    ], ids=["kept-and-added", "not-twice"])
+    def test_the_route_joins_the_intent_s_own_routes_once(self, lab, monkeypatch, given, want):
+        """The route is added to the routes the plan's intent already holds, never in place of
+        them and never twice."""
+        from modules.config import get_list_data_dir
+        from modules.nsot import hostvars
+        monkeypatch.setattr("modules.config.list_data_path", get_list_data_dir)
+        onboard.commit_step(_plan(host_vars={"static_routes": given}), actor="t@example.com")
+        doc = hostvars.read_committed(os.path.join(get_list_data_dir("probe"), "config_repo"),
+                                      "s5")
+        assert doc["static_routes"] == want
+
+    def test_the_committed_intent_renders_its_default_gateway_and_its_route(self, lab,
+                                                                           monkeypatch):
         """The intent says what the device will run: its committed gateway and routes, laid on a
         real vIOS-L2 switch's parsed intent (tests/fixtures/configs/fleet/s1.cfg, which has no
         gateway and no static route; a bootstrap intent alone is not a renderable document,
         `hostvars.complete_schema`), render through the shipped template as
-        ``ip default-gateway <relay>`` and no ``ip route``."""
+        ``ip default-gateway <relay>`` and ``ip route 0.0.0.0 0.0.0.0 <relay>``, once each, the
+        two lines the kick-start typed (C1606)."""
         from modules.nsot import hostvars, roundtrip
         from modules.nsot.parsers import get_parser
         _plan_, repo = self._create(lab, monkeypatch)
         doc = hostvars.read_committed(repo, "s5")
-        assert not [r for r in doc.get("static_routes") or [] if "0.0.0.0" in r.get("spec", "")]
         with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "configs",
                                "fleet", "s1.cfg"), encoding="utf-8") as fh:
             base = get_parser("cisco_ios").parse(fh.read())
@@ -245,7 +268,8 @@ class TestTheIntent:
                                       static_routes=list(doc.get("static_routes") or [])),
                                  "cisco_ios").splitlines()
         assert lines.count(f"ip default-gateway {GATEWAY}") == 1, lines
-        assert not [ln for ln in lines if ln.startswith("ip route")], lines
+        assert [ln for ln in lines if ln.startswith("ip route")] == [
+            f"ip route 0.0.0.0 0.0.0.0 {GATEWAY}"], lines
 
     def test_the_re_render_is_the_plan_s_byte_for_byte(self, lab, monkeypatch):
         plan, repo = self._create(lab, monkeypatch)
@@ -254,7 +278,7 @@ class TestTheIntent:
         out = onboard.bootstrap_artifact(repo, "s5")
         assert out["ok"], out["reason"]
         assert out["config"] == plan.bootstrap_config
-        assert "ip route" not in out["config"]
+        assert out["config"].count("\nip route ") == 1
 
     def test_the_kick_start_reads_this_onboarding(self, lab, monkeypatch):
         _plan_, repo = self._create(lab, monkeypatch)

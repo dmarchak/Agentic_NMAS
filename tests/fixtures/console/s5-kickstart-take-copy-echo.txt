@@ -1,0 +1,147 @@
+>>> send '\r'
+
+**************************************************************************
+* IOSv is strictly limited to use for evaluation, demonstration and IOS  *
+* education. IOSv is provided as-is and is not supported by Cisco's      *
+* Technical Advisory Center. Any use or disclosure, in whole or in part, *
+* of the IOSv Software or Documentation to any third party for any       *
+* purposes is expressly prohibited except as otherwise authorized by     *
+* Cisco in writing.                                                      *
+**************************************************************************
+Switch>
+>>> send 'enable\r'
+enable
+Switch#
+>>> send 'terminal length 0\r'
+terminal length 0
+Switch#
+>>> send 'dir nvram:\r'
+dir nvram:
+Directory of nvram:/
+
+  254  -rw-           0                    <no date>  startup-config
+  255  ----           0                    <no date>  private-config
+    1  ----          31                    <no date>  udi
+    2  ----          35                    <no date>  persistent-data
+
+262144 bytes total (260044 bytes free)
+Switch#
+>>> send 'dir nvram:\r'
+dir nvram:
+Directory of nvram:/
+
+  254  -rw-           0                    <no date>  startup-config
+  255  ----           0                    <no date>  private-config
+    1  ----          31                    <no date>  udi
+    2  ----          35                    <no date>  persistent-data
+
+262144 bytes total (260044 bytes free)
+Switch#
+>>> send 'configure terminal\r'
+configure terminal
+Enter configuration commands, one per line.  End with CNTL/Z.
+Switch(config)#
+>>> send 'hostname s5\r'
+hostname s5
+s5(config)#
+>>> send 'vlan 1\r'
+vlan 1
+s5(config-vlan)#
+>>> send 'interface GigabitEthernet0/1\r'
+interface GigabitEthernet0/1
+s5(config-if)#
+>>> send ' switchport mode access\r'
+ switchport mode access
+s5(config-if)#
+>>> send ' switchport access vlan 1\r'
+ switchport access vlan 1
+s5(config-if)#
+>>> send ' no shutdown\r'
+ no shutdown
+s5(config-if)#
+>>> send 'interface Vlan1\r'
+interface Vlan1
+s5(config-if)#
+>>> send ' ip address 10.255.4.14 255.255.255.252\r'
+ ip address 10.255.4.14 255.255.255.252
+s5(config-if)#
+>>> send ' no shutdown\r'
+ no shutdown
+s5(config-if)#
+*Oct 23 22:03:59.958: %
+>>> send 'ip default-gateway 10.255.4.13\r'
+LINEPROTO-5-UPDOWN: Line protocol on Interface Vlan1, changed state to downip default-gateway 10.255.4.13
+s5(config)#
+>>> send 'line con 0\r'
+line con 0
+s5(config-line)#
+>>> send ' exec-timeout 15 0\r'
+ exec-timeout 15 0
+s5(config-line)#
+>>> send 'end\r'
+end
+s5#
+>>> send 'show running-config interface GigabitEthernet0/1\r'
+show running-config interface GigabitEthernet0/1
+Building configuration...
+
+*Oct 23 22:04:03.379: %LINK-3-UPDOWN: Interface Vlan1, changed state to up
+Current configuration : 78 bytes
+!
+interface GigabitEthernet0/1
+ switchport mode access
+ negotiation auto
+end
+
+s5#
+*Oct 23 22:04:04.083: %
+>>> send 'show running-config interface Vlan1\r'
+SYS-5-CONFIG_I: Configured from console by console
+*Oct 23 22:04:04.379: %LINEPROTO-5-UPDOWN: Line protocol on Interface Vlan1, changed state to upshow running-config interface Vlan1
+Building configuration...
+
+Current configuration : 63 bytes
+!
+interface Vlan1
+ ip address 10.255.4.14 255.255.255.252
+end
+
+s5#
+>>> send 'show running-config | section line con 0\r'
+show running-config | section line con 0
+line con 0
+ exec-timeout 15 0
+s5#
+>>> send 'show running-config | include ^hostname|^ip default-gateway\r'
+show running-config | include ^hostname|^ip default-gateway
+hostname s5
+ip default-gateway 10.255.4.13
+s5#
+>>> send 'show interfaces Vlan1\r'
+show interfaces Vlan1
+Vlan1 is up, line protocol is up 
+  Hardware is Ethernet SVI, address is 0c00.0875.8001 (bia 0c00.0875.8001)
+  Internet address is 10.255.4.14/30
+  MTU 1500 bytes, BW 1000000 Kbit/sec, DLY 10 usec, 
+     reliability 255/255, txload 1/255, rxload 1/255
+  Encapsulation ARPA, loopback not set
+  Keepalive not supported 
+  ARP type: ARPA, ARP Timeout 04:00:00
+  Last input 00:00:01, output never, output hang never
+  Last clearing of "show interface" counters never
+  Input queue: 0/75/0/0 (size/max/drops/flushes); Total output drops: 0
+  Queueing strategy: fifo
+  Output queue: 0/40 (size/max)
+  5 minute input rate 0 bits/sec, 0 packets/sec
+  5 minute output rate 0 bits/sec, 0 packets/sec
+     10 packets input, 2616 bytes, 0 no buffer
+     Received 0 broadcasts (0 IP multicasts)
+     0 runts, 0 giants, 0 throttles 
+     0 input errors, 0 CRC, 0 frame, 0 overrun, 0 ignored
+     2 packets output, 120 bytes, 0 underruns
+     0 output errors, 0 interface resets
+     0 unknown protocol drops
+     0 output buffer failures, 0 output buffers swapped out
+s5#
+>>> send 'copy tftp://10.255.0.10/s5.cfg running-config\r'
+copy tftp://10.255.0.10/s5.cfg
