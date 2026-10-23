@@ -1266,8 +1266,12 @@ class TestTheWorkflow:
         steps = doc["jobs"]["mutate"]["steps"]
         restore = next(s for s in steps if str(s.get("uses", "")).startswith("actions/cache/restore"))
         save = next(s for s in steps if str(s.get("uses", "")).startswith("actions/cache/save"))
-        prefix = restore["with"]["restore-keys"]
-        assert prefix == "mutation-state-"
+        # A labelled run restores its own group's record first (it continues what its budget
+        # left over), then the nights'; an unlabelled one only the nights'.
+        keys = restore["with"]["restore-keys"].splitlines()
+        assert keys == ["${{ inputs.label && format('mutation-group-{0}-', inputs.label) || "
+                        "'mutation-state-' }}", "mutation-state-"], keys
+        prefix = keys[-1]
         key = save["with"]["key"]
         labelled, night = re.fullmatch(
             r"\$\{\{ inputs\.label && format\('([^']*)', inputs\.label, github\.run_id\) \|\| "

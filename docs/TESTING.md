@@ -394,6 +394,8 @@ nothing scores 100% coverage and 0% here. Each night:
   the plan step) gives the run its own concurrency group, `mutation-nightly-<label>`, beside
   the night and other labels, and saves its record under `mutation-group-<label>-<run>`,
   outside the `mutation-state-` prefix a night restores: its verdict stands in its run alone.
+  A labelled run restores its own group's newest record first, then the nights', so a function
+  its budget cut short continues on the next run of the same label (2026-10-23, run #34).
   Dispatched with `functions` and a `cap` equal to their count, it runs only those.
   [tests/test_nmas_mutation.py, `TestTheWorkflow`]
 - **The cap** (C834): at most `NIGHT_CAP` functions a night (`plan --cap`), the oldest

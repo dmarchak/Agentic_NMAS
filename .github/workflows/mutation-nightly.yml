@@ -140,12 +140,17 @@ jobs:
       - name: Allow a network namespace for the tests (this VM only)
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
+      # A labelled run takes its own group's newest record first (so a function the budget cut
+      # short continues where it stopped: run #34, 2026-10-23, left 152 of `_phases`' 448), then
+      # the nights' record.
       - name: The last night's record (the commit it covered, and what it left over)
         uses: actions/cache/restore@v4
         with:
           path: .mutation-state
           key: mutation-state-${{ github.run_id }}
-          restore-keys: mutation-state-
+          restore-keys: |
+            ${{ inputs.label && format('mutation-group-{0}-', inputs.label) || 'mutation-state-' }}
+            mutation-state-
 
       # The tests that reach each function, MEASURED (C796, C834; the operator, 2026-10-15): the
       # newest successful coverage nightly's drill-down (each function's tests from its per-test

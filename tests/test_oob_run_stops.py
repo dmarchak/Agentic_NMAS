@@ -130,6 +130,21 @@ class TestAPhaseThatDidNotEnd:
             "'Password:'")
 
 
+class TestAStopWithNoConsole:
+    def test_a_stop_recorded_with_no_console_is_still_masked_by_position(self):
+        """A stop can be recorded before any console exists (the run's own record helper takes
+        none): its comparison is masked by position alone, never read from a console that is
+        not there (mutation run #34 at 85095f8f: `console is not None or True`). Position
+        masks a configuration line that begins a line (C1629: one quoted mid-sentence is not)."""
+        rec = {"id": "r1", "outcome": "running"}
+        O._finish_stop(rec, None, "unexpected",                      # noqa: SLF001
+                       "the console printed:\nenable secret 5 $1$abcd$EFGHijklMNOPqrst", None)
+        assert rec["outcome"] == O.OUTCOME["unexpected"]
+        assert rec["stop"]["sent"] == [] and rec["stop"]["undo_ran"] is False
+        assert "$1$abcd$EFGHijklMNOPqrst" not in json.dumps(rec), rec["stop"]["compared"]
+        assert rec["stop"]["compared"].startswith("the console printed:\nenable secret 5 ")
+
+
 class TestSecretsInTheStop:
     def test_a_secret_the_device_prints_in_a_refusal_is_masked_in_the_record(self, world):
         line = f"ip address {ADDRESS} {MASK}"
