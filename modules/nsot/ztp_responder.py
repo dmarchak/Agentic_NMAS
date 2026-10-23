@@ -144,11 +144,13 @@ def _fragment_entries() -> list:
 
 
 def _pending_ztp_devices() -> list:
-    """``[(list_name, repo, entry)]`` for every pending `ztp` device in every
-    list, read from each list's manifest NOW. Never creates a list directory."""
+    """``[(list_name, repo, entry)]`` for every pending ZTP device in every
+    list (`ztp.ZTP_SOURCES`: ``ztp``, and out-of-band ZTP's static ``ztp_console``, whose
+    console kick-start copies the bootstrap from here, C1594), read from each list's manifest
+    NOW. Never creates a list directory."""
     from modules.config import LISTS_DIR
     from modules.device import get_device_lists
-    from modules.nsot import manifest
+    from modules.nsot import manifest, ztp
 
     out = []
     for item in get_device_lists():
@@ -156,7 +158,7 @@ def _pending_ztp_devices() -> list:
         if not os.path.isdir(repo):
             continue
         for entry in manifest.pending_devices(repo):
-            if entry.get("address_source") == "ztp":
+            if entry.get("address_source") in ztp.ZTP_SOURCES:
                 out.append((item["name"], repo, entry))
     return out
 
@@ -167,10 +169,74 @@ def _artifact(repo: str, hostname: str) -> dict:
     return bootstrap_artifact(repo, hostname)
 
 
+def _holder(list_name: str, hostname: str):
+    from modules.nsot import device_ops
+
+    return device_ops.holder(list_name, hostname)
+
+
+def console_gate(peer: str, filename: str, *, pending=_pending_ztp_devices,
+                 holder=_holder) -> dict:
+    """OUT-OF-BAND ZTP's static path (C1592, C1594; the operator, 2026-10-23, O5 narrowed): may
+    *peer* have the bootstrap *filename* names? ``{"serve", "device", "list", "repo",
+    "reason"}``, *reason* naming what was compared, with both sides, when not.
+
+    Served ONLY when all hold, each read now: *peer* is IPv4 (C1245: IPv6 refused by name); it
+    is the planned STATIC address (the manifest's ``mgmt_ip``, Create's) of exactly one PENDING
+    device whose address source is ``ztp_console``; *filename* is that device's bootstrap
+    (`ztp.boot_file`); and that device is HELD, across processes (`device_ops.holder`), by one
+    of `console_ztp.FETCH_OPERATIONS` (its console run, whose copy is asking). No Kea is read:
+    the static path writes no reservation. *device* is set once a device is planned at *peer*,
+    so a refusal of that device is told from "nobody is planned here"."""
+    from modules.nsot import console_ztp, device_ops, ztp
+
+    out = {"serve": False, "device": "", "list": "", "repo": "", "reason": ""}
+    if ":" in str(peer):
+        out["reason"] = (f"{peer} is an IPv6 address: out-of-band ZTP serves IPv4 (DHCPv4) "
+                         "addresses only (C1245)")
+        return out
+    try:
+        devices = [(ln, repo, e) for ln, repo, e in pending()
+                   if e.get("address_source") == ztp.ZTP_CONSOLE
+                   and str(e.get("mgmt_ip") or "").strip() == peer]
+    except Exception as exc:                      # noqa: BLE001
+        out["reason"] = f"the manifests could not be read: {exc}"
+        return out
+    if len(devices) != 1:
+        out["reason"] = (f"no pending out-of-band (console) device is planned at {peer}"
+                         if not devices else
+                         f"{len(devices)} pending out-of-band devices are planned at {peer}")
+        return out
+    list_name, repo, entry = devices[0]
+    name = entry.get("name", "")
+    out.update(device=name, list=list_name, repo=repo)
+    want = ztp.boot_file(name)
+    if filename != want:
+        out["reason"] = f"{peer} asked for {filename!r}; {name}'s bootstrap is {want!r}"
+        return out
+    try:
+        held = holder(list_name, name)
+    except device_ops.HoldsUnreadable as exc:
+        out["reason"] = f"whether {name} is held could not be read: {exc}"
+        return out
+    allowed = console_ztp.FETCH_OPERATIONS
+    if not held:
+        out["reason"] = (f"{name} is not held: its bootstrap is served to {peer} only while "
+                         f"its console run holds it ({', '.join(allowed)})")
+        return out
+    if held.get("operation") not in allowed:
+        out["reason"] = (f"{name} is held by {held.get('operation')!r}, not by its console run "
+                         f"({', '.join(allowed)}): its bootstrap is not served")
+        return out
+    out["serve"] = True
+    return out
+
+
 def decide(peer: str, filename: str, *, fragment=_fragment_entries,
-           pending=_pending_ztp_devices, artifact=_artifact) -> dict:
+           pending=_pending_ztp_devices, artifact=_artifact, holder=_holder) -> dict:
     """``{"serve", "config", "device", "list", "reason"}``. Every input is
-    read at call time; nothing is remembered between requests."""
+    read at call time; nothing is remembered between requests. An address with no reservation
+    the tool wrote is served only through out-of-band ZTP's gate (`console_gate`)."""
     out = {"serve": False, "config": b"", "device": "", "list": "", "reason": ""}
     if ":" in str(peer):
         # docs/IPV6_PARITY.md, the standing rule: a capability that cannot serve IPv6 says so
@@ -185,6 +251,20 @@ def decide(peer: str, filename: str, *, fragment=_fragment_entries,
         return out
     unread = [e["_unread"] for e in entries if isinstance(e, dict) and e.get("_unread")]
     mine = [e for e in entries if isinstance(e, dict) and e.get("ip-address") == peer]
+    if not mine:
+        gate = console_gate(peer, filename, pending=pending, holder=holder)
+        if gate["device"]:
+            out["device"], out["list"] = gate["device"], gate["list"]
+            if not gate["serve"]:
+                out["reason"] = gate["reason"]
+                return out
+            rendered = artifact(gate["repo"], gate["device"])
+            if not rendered.get("ok"):
+                out["reason"] = f"the config could not be rendered: {rendered.get('reason')}"
+                return out
+            out["config"] = rendered["config"].encode("ascii")
+            out["serve"] = True
+            return out
     if len(mine) != 1:
         out["reason"] = (f"{peer} holds no reservation the tool wrote"
                          if not mine else f"{peer} is reserved {len(mine)} times")

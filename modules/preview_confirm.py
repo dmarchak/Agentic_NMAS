@@ -1168,9 +1168,11 @@ def onboard_preview(plan: dict, bootstrap_config: str, confirm: dict) -> dict:
     host = plan.get("hostname") or "(no name)"
     reasons = list(plan.get("blocking_reasons") or [])
     notes = list(plan.get("advisories") or [])
+    from modules.nsot.ztp import ZTP_SOURCES
+
     source = plan.get("address_source") or "static"
     iface = plan.get("manager_interface") or "(no interface)"
-    if source in ("dhcp", "ztp"):
+    if source in ("dhcp",) + ZTP_SOURCES:
         address = f"{plan.get('address_claim') or source.upper()} on {iface}"
     elif plan.get("mgmt_mask"):
         address = f"{plan.get('mgmt_ip')} {plan.get('mgmt_mask')} on {iface}"
@@ -1184,6 +1186,7 @@ def onboard_preview(plan: dict, bootstrap_config: str, confirm: dict) -> dict:
     else:
         summary = (f"Create {host} in {plan.get('list') or 'its list'}: its one-time credential, "
                    f"its identity and intent in one commit"
+                   # Only `ztp` writes one: the out-of-band static path touches no Kea.
                    + (", its Kea reservation" if source == "ztp" else "")
                    + ", and the startup config it will boot. Nothing reaches a device.")
     # Refusals FIRST, then the notes: an advisory must never push a refusal
@@ -2001,12 +2004,17 @@ def onboard_create_result(run: dict, plan) -> dict:
             if (kept or {}).get("commit"):
                 words += f", recorded in {kea_owner}'s repository ({kept['commit'][:12]})"
         lines.append(f"{step}: {words}")
+    from modules.nsot.ztp import ZTP_CONSOLE
+
     if run.get("ok"):
         level = "partial"
         outcome, words = "pending", "created, and PENDING: not reached, not onboarded"
         summary = (f"{host} is created and PENDING, not onboarded: nothing has reached it. "
-                   f"Next: boot it with its bootstrap config"
-                   + (" (it fetches its config over ZTP)" if source == "ztp" else "")
+                   + ("Next: kick-start it through its console (the kick-start types its "
+                      "static address, reads it back and copies its bootstrap)"
+                      if source == ZTP_CONSOLE else
+                      "Next: boot it with its bootstrap config"
+                      + (" (it fetches its config over ZTP)" if source == "ztp" else ""))
                    + ", then press Verify on its pending row. Verify is phase 2, and "
                      "only a device the tool has REACHED is onboarded.")
     else:

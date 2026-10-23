@@ -78,8 +78,10 @@ def test_the_profiles_properties_read_its_data():
     prof = P.load("cisco_ios_switch")
     assert prof.blank_command == "dir nvram:"
     assert prof.mac_command == "show version"
+    # C1592: the switch types the plan's static address, mask and gateway.
     assert prof.kickstart_params == {"hostname": "hostname", "interface": "interface",
-                                     "vlan": "vlan"}
+                                     "vlan": "vlan", "address": "ipv4_address",
+                                     "mask": "ipv4_mask", "gateway": "ipv4_address"}
     assert prof.kickstart_lines[0] == "configure terminal"
     assert prof.kickstart_lines[-1] == "end"
     prof.kickstart_params["x"] = "vlan"
@@ -265,7 +267,7 @@ def test_a_param_shape_that_is_not_known_is_refused():
     data = shipped_data()
     data["kickstart"]["params"]["vlan"] = "number"
     refused(data, "kickstart.params.vlan shape 'number' is not one of ['interface', 'vlan', "
-                  "'hostname']")
+                  "'hostname', 'ipv4_address', 'ipv4_mask']")
 
 
 @pytest.mark.parametrize("line,word", [
@@ -297,7 +299,7 @@ def test_an_undeclared_placeholder_is_refused():
     data = shipped_data()
     data["kickstart"]["lines"].insert(1, "ip domain name {domain}")
     refused(data, "kickstart.lines[1] 'ip domain name {domain}' names {domain}, not a declared "
-                  "parameter (['hostname', 'interface', 'vlan'])")
+                  "parameter (['address', 'gateway', 'hostname', 'interface', 'mask', 'vlan'])")
 
 
 @pytest.mark.parametrize("line", ["hostname {hostname", "hostname }x", "hostname {Host}",

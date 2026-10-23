@@ -192,28 +192,37 @@ def _onboarded(list_name: str, hostname: str) -> str:
     return ""
 
 
+def _never_asked() -> tuple:
+    """The kick-start's parameters no form field asks for: the hostname (the device's NetBox
+    name) and the static address, mask and gateway (its out-of-band onboarding's plan, C1592:
+    `console_kickstart.PLAN_PARAMS`)."""
+    from modules.nsot.console_kickstart import PLAN_PARAMS
+    return ("hostname",) + PLAN_PARAMS
+
+
 def _kick_params(profile_name: str, form) -> dict:
     """The kick-start's parameters the form sends: one field per parameter the profile declares
-    (`PARAM_FIELD` + its name), the hostname excepted (it is the device's NetBox name)."""
+    (`PARAM_FIELD` + its name), those Mercury derives excepted (`_never_asked`)."""
     from modules.nsot import console_profiles as P
 
     try:
         declared = P.load(profile_name).kickstart_params if profile_name else {}
     except P.ProfileError:
         declared = {}
-    return {n: (form.get(PARAM_FIELD + n) or "").strip() for n in declared if n != "hostname"}
+    return {n: (form.get(PARAM_FIELD + n) or "").strip() for n in declared
+            if n not in _never_asked()}
 
 
 def _declared(profile_name: str) -> list:
     """The parameters the kick-start's form asks for, in the profile's order: ``[{name,
-    shape}]`` (the hostname left out: NetBox's name)."""
+    shape}]`` (those Mercury derives left out, `_never_asked`)."""
     from modules.nsot import console_profiles as P
 
     try:
         params = P.load(profile_name).kickstart_params if profile_name else {}
     except P.ProfileError:
         return []
-    return [{"name": n, "shape": s} for n, s in params.items() if n != "hostname"]
+    return [{"name": n, "shape": s} for n, s in params.items() if n not in _never_asked()]
 
 
 def run_steps(kind: str, list_name: str, device: str, *, now=None) -> list:

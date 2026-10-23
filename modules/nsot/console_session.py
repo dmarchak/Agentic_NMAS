@@ -14,7 +14,11 @@ the state found, and aborted is terminal:
 - a login prompt (`Username:`, `Password:`) or a pager (`--More--`), whatever the plan;
 - another prompt than the plan's next (a state out of the plan's order);
 - an unrecognised prompt (a partial line no pattern names) still there after the quiet period;
-- no expected state within the step's bound (`step_timeout_s`, from the start or the last send).
+- no expected state within the step's bound (`step_timeout_s`, from the start or the last send);
+- an IOS REFUSAL (`refusal`: a `%` line the profile does not name a message) anywhere in what
+  the console printed since the last send, found wherever the session would act (send its next
+  step, or end): nothing is typed and nothing ends "done" past a line the device refused
+  (C1593), and `refused` names the line and IOS's words.
 
 **What decides the state** is the newest line received SINCE the last send (so the prompt a
 step answered never answers the next step too), skipping blank lines, the echo of what was sent,
@@ -52,7 +56,8 @@ ABORTED = "aborted"
 #: crosses the console, and a pager waits for a key no plan sends.
 ALWAYS_ABORT = (P.LOGIN_USER, P.LOGIN_PASSWORD, P.MORE)
 #: States a plan's step may send in.
-SENDABLE = (IDLE, P.SETUP_DIALOG, P.PRESS_RETURN, P.USER_EXEC, P.PRIV_EXEC, P.CONFIG)
+SENDABLE = (IDLE, P.SETUP_DIALOG, P.PRESS_RETURN, P.USER_EXEC, P.PRIV_EXEC, P.CONFIG,
+            P.COPY_DESTINATION)
 #: States a plan may end in.
 FINAL = (P.SETUP_DIALOG, P.PRESS_RETURN, P.USER_EXEC, P.PRIV_EXEC, P.CONFIG)
 #: The prompts found at attach that say what the console was left at.
@@ -179,6 +184,42 @@ def ignored(line: str, profile) -> bool:
     return any(p.search(line) for p in profile.ignore)
 
 
+def refusal(line: str, profile) -> str:
+    """IOS's words when *line* is a refusal, else "" (C1593).
+
+    **A refusal is a line whose first character, after its indent, is ``%``, and that the
+    profile does not name as a message.** IOS answers a line it will not take with a ``%`` line
+    of its own: ``% Invalid input detected at '^' marker.``, ``% Incomplete command.``,
+    ``% Ambiguous command: "..."``, ``% Unknown command or computer name, ...``, and its file
+    errors ``%Error opening tftp://...``; every other ``%`` line (``% Bad IP address ...``,
+    ``%Warning: ...``) is one too, since refusing by resemblance is safe. The messages are the
+    profile's ``ignore`` lines, its one home for them: a syslog message
+    (``%LINK-3-UPDOWN: ...``, ``%SYS-5-CONFIG_I: ...``: ``%`` then the facility in capitals, a
+    severity digit and a mnemonic, then a colon, no space after the ``%``), a timestamped one
+    (which does not begin with ``%``), and the informational lines a fetched bootstrap prints
+    (``% The key modulus size is 2048 bits``, ``% Generating 2048 bit RSA keys, ...``).
+    `console_profiles.validate` refuses an ``ignore`` pattern that matches a refusal."""
+    text = line.strip()
+    if not text.startswith("%") or ignored(text, profile):
+        return ""
+    return text
+
+
+def refused_in(text: str, profile) -> tuple:
+    """``(line, before)``: the FIRST refusal among *text*'s lines and the line before it that is
+    neither blank nor IOS's caret line (what was refused, where IOS printed it), or
+    ``("", "")``."""
+    before = ""
+    for raw in text.split("\n"):
+        words = refusal(raw, profile)
+        if words:
+            return words, before
+        stripped = raw.strip()
+        if stripped and stripped != "^":
+            before = stripped
+    return "", ""
+
+
 def read_state(text: str, profile, echo: str) -> tuple:
     """`(state, line, partial)` for *text* received since the last send: the newest line that
     decides (not blank, not the echo of *echo*, not an ignored line), the state it reads as,
@@ -208,6 +249,7 @@ class ConsoleSession:
     values: dict = None            # redact_text's known values (None: the installation's)
     state: str = WAITING
     attach_state: str = None       # the first prompt seen before any line was typed
+    refused: dict = None           # {"line", "words", "before"}: the refusal that stopped it
     _cleaner: Cleaner = field(default_factory=Cleaner)
     _text: str = ""
     _mark: int = 0                 # where the text since the last send begins
@@ -288,11 +330,14 @@ class ConsoleSession:
         if self._index < len(self.plan.steps):
             step = self.plan.steps[self._index]
             if found == step.expect:
-                return self._send(step, now)
+                return self._refused() or self._send(step, now)
             if found in FINAL:
                 return self._abort(f"expected {self.expected()}, found {found}: {line!r} (out "
                                    "of the plan's order)")
         elif found in self.plan.final:
+            stop = self._refused()
+            if stop is not None:
+                return stop
             self.state = DONE
             self._reason = f"ended in {found}"
             return Decision(DONE, "done", reason=self._reason)
@@ -302,6 +347,20 @@ class ConsoleSession:
             return self._abort(f"expected {self.expected()} within {self.step_timeout_s:g} s, "
                                f"found {found}" + (f": {line!r}" if line else ""))
         return Decision(found, "wait")
+
+    def _refused(self):
+        """The abort when the console refused what was sent last (C1593), else None. Asked
+        wherever the session would act on a prompt (send the next step, or end), so nothing is
+        typed and nothing ends "done" after a refusal; the text since the last send is read
+        whole, every line of it, so a refusal followed by more output is still found."""
+        words, before = refused_in(self._text[self._mark:], self.profile)
+        if not words:
+            return None
+        self.refused = {"line": self._echo, "words": words, "before": before}
+        what = (f"{self._echo!r} was refused" if self._echo
+                else "the console answered the last send with a refusal")
+        return self._abort(f"{what}: {words!r}"
+                           + (f" (after {before!r})" if before and before != self._echo else ""))
 
     def _send(self, step: Step, now: float) -> Decision:
         self._index += 1

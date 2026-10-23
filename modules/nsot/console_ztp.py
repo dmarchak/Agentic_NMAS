@@ -22,7 +22,11 @@ O6b's and O8's, and call these.
    ONLY what the session state machine decides and refuses any byte for a device this thread
    does not hold (C1559);
 4. ``verify``: the session reached the program's end prompt with no abort; a kick-start's end
-   prompt names the hostname it typed (`verify_kickstart`);
+   prompt names the hostname it typed (`verify_kickstart`), no line it typed was refused (the
+   session stops at the first refusal, `console_session.refusal`, C1593), the running
+   configuration read back shows every line it typed (`console_kickstart.readback_verdict`,
+   which also reads the MAC in use), and its copy of the bootstrap is verified
+   (`console_kickstart.verify_copy`, C1594);
 5. ``record``: one record per run (`record`), masked, in the network's data folder, and the
    device's latest runs in the installation's index (`INDEX`), which Needs attention reads.
    Rollback does not apply: a kick-start saves nothing (no ``write memory``), so a reload
@@ -45,7 +49,10 @@ O6b's and O8's, and call these.
   finds ``#`` knows someone signed in since;
 - the kick-start's RECHECK (the blank check again, at the prompt, holding the device: a device
   configured since its survey is refused with nothing typed) and then the profile's lines
-  exactly as `console_survey.render_kickstart` renders them.
+  exactly as `console_survey.render_kickstart` renders them (`build_kickstart`, the one
+  builder; a switch's are STATIC from its out-of-band onboarding's plan, C1592), the READ-BACK
+  of what they set, and, for the static path, the COPY of the device's bootstrap from the
+  responder, which serves it only while this run holds the device (`FETCH_OPERATIONS`).
 
 When the console prints a prompt BEFORE the wake (a device that has just booted), nothing is
 woken: the session is begun again from that prompt (`_Console.attach`), so the survey's
@@ -68,6 +75,11 @@ KIND_KICKSTART = "kickstart"
 #: The operations' names on the device hold (`device_ops.OPERATION_WORDS` words them).
 OP_SURVEY = "console survey"
 OP_KICKSTART = "console kick-start"
+#: The operations whose hold on a device lets the TFTP responder serve that device's bootstrap
+#: to its planned static address (`ztp_responder.console_gate`; out-of-band ZTP's static path,
+#: the operator 2026-10-23): the run whose copy asks for it. A one-decision run that holds the
+#: device under another name joins here.
+FETCH_OPERATIONS = (OP_KICKSTART,)
 #: The only verification a kick-start accepts: the access assertion's
 #: (`identity.actor_verification`), a person's.
 VERIFIED = "access"
@@ -106,8 +118,13 @@ KICKSTART_STEPS = (
     ("wake", "One carriage return; a console found signed in since its survey is refused"),
     ("recheck", "The blank check again, holding the device: a saved configuration types "
                 "nothing"),
-    ("type", "The kick-start's lines, each in the state it is typed in"),
+    ("type", "The kick-start's lines, each in the state it is typed in; any line the device "
+             "refuses stops the run there"),
     ("verify", "It ends at the privileged prompt, naming the hostname typed"),
+    ("readback", "The running configuration read back and compared, line by line, with what "
+                 "was typed"),
+    ("copy", "The device's bootstrap copied from the responder into its running "
+             "configuration, the transfer verified"),
     ("record", "The record, the lines sent and the masked transcript"),
 )
 #: THE stepper's steps for a run (C1579: drawn at the confirm, every step not yet run, and
@@ -120,7 +137,8 @@ KICKSTART_STEPS = (
 BEFORE_RUN = ("preview", "confirm")
 STEP_LABELS = {"preview": "Preview", "confirm": "Confirm", "hold": "Hold", "wake": "Wake",
                "reads": "Read", "release": "Release", "recheck": "Blank check again",
-               "type": "Type the lines", "verify": "Verify", "record": "Record"}
+               "type": "Type the lines", "verify": "Verify", "readback": "Read back",
+               "copy": "Fetch the bootstrap", "record": "Record"}
 STEP_NOTES = {
     KIND_SURVEY: {"hold": ("opening the console",), "wake": ("waking the console",),
                   "reads": ("survey: prelude", "survey: mac", "survey: blank"),
@@ -128,7 +146,9 @@ STEP_NOTES = {
                   "record": ("survey: record",)},
     KIND_KICKSTART: {"hold": ("opening the console",), "wake": ("waking the console",),
                      "recheck": ("kick-start: recheck",), "type": ("kick-start: typing",),
-                     "verify": ("kick-start: verify",), "record": ("kick-start: record",)},
+                     "verify": ("kick-start: verify",),
+                     "readback": ("kick-start: read-back",), "copy": ("kick-start: copy",),
+                     "record": ("kick-start: record",)},
 }
 
 
@@ -161,6 +181,14 @@ class Timings:
     poll_s: float = 0.2
     survey_bound_s: float = 600.0
     kickstart_bound_s: float = 1200.0
+    #: The copy's own step bound (C1594): from its RETURN to the prompt after the bootstrap is
+    #: applied. The bootstrap generates the SSH key during the copy, and IOS prints nothing
+    #: while it does (its "% Generating ..." line is a message, the profile's): MEASURED 39.5 s
+    #: for the key on a vIOS-L2 in a console replay of this generator's own render (C712,
+    #: stage D, 2026-10-12; `onboard.BLOCKED_PENDING_MEASUREMENT`'s note), so about 2.5 times
+    #: that, 100 s, plus the transfer and the rest of the file applied (unmeasured; the first
+    #: copy on a vIOS-L2 is the measurement): 150 s. A silence shorter than this is never a failure.
+    copy_timeout_s: float = 150.0
 
 
 DEFAULT_TIMINGS = Timings()
@@ -338,23 +366,53 @@ def survey_program(profile) -> dict:
             "stops": "any other state the wake finds: nothing more is sent"}
 
 
-def kickstart_program(profile, kick_lines) -> dict:
+def kickstart_program(profile, kick_lines, copy: str = "") -> dict:
     """The kick-start's whole program, by state: the wake, the prelude, the blank check again,
     then *kick_lines* (`console_survey.render_kickstart`'s, exactly), ending at the privileged
-    prompt."""
+    prompt; then the read-back of what they set (`console_kickstart.readback_plan`), and, when
+    the onboarding gives one, the *copy* that fetches the bootstrap (C1594)."""
+    from modules.nsot import console_kickstart as K
     from modules.nsot import console_profiles as P
     from modules.nsot import console_session as S
 
     lines = SESSION_LINES[profile.platform]
-    return {"wake": [_step(S.IDLE, "")],
-            "prelude": _preludes(lines),
-            "recheck": [_step(P.PRIV_EXEC, profile.blank_command)],
-            "lines": ([_step(P.PRIV_EXEC, kick_lines[0])]
-                      + [_step(P.CONFIG, line) for line in kick_lines[1:]]),
-            "ends": P.PRIV_EXEC,
-            "stops": "a privileged, config or login prompt at the wake (signed in since its "
-                     "survey left it at the user prompt), or a saved startup configuration at "
-                     "the recheck: nothing of the kick-start is typed"}
+    back = K.readback_plan(kick_lines)
+    out = {"wake": [_step(S.IDLE, "")],
+           "prelude": _preludes(lines),
+           "recheck": [_step(P.PRIV_EXEC, profile.blank_command)],
+           "lines": ([_step(P.PRIV_EXEC, kick_lines[0])]
+                     + [_step(P.CONFIG, line) for line in kick_lines[1:]]),
+           "readback": [_step(P.PRIV_EXEC, read) for read in back["reads"]],
+           "copy": [_step(state, text) for state, text in K.copy_steps(copy)] if copy else [],
+           "ends": P.PRIV_EXEC,
+           "stops": "a privileged, config or login prompt at the wake (signed in since its "
+                    "survey left it at the user prompt), or a saved startup configuration at "
+                    "the recheck: nothing of the kick-start is typed; any line the device "
+                    "refuses (a % answer that is not a message): nothing more is typed; a "
+                    "read-back that differs from what was typed, or any question but the "
+                    "copy's destination: the copy is not sent"}
+    return out
+
+
+def build_kickstart(profile, params: dict, onboarding: dict = None) -> dict:
+    """THE kick-start's builder, for every caller (this module's preview and run, and a
+    one-decision run's): ``{"lines", "copy", "readback", "program"}``, *params* complete (as
+    `kickstart_params` fills them). *lines* are `console_survey.render_kickstart`'s exactly;
+    *copy* is `console_kickstart.copy_line` for a profile that types the static address (C1592)
+    with a read *onboarding* (``state`` ``read``, its ``server`` and ``boot_file``), else "";
+    *readback* `console_kickstart.readback_plan`'s; *program* `kickstart_program`'s, by state.
+    ValueError naming what is wrong (a parameter off its shape, a line with no read-back, a
+    server or boot file that cannot be copied from)."""
+    from modules.nsot import console_kickstart as K
+    from modules.nsot import console_survey as V
+
+    lines = V.render_kickstart(profile, params)
+    target = onboarding or {}
+    copy = ""
+    if "address" in profile.kickstart_params and target.get("state") == "read":
+        copy = K.copy_line(target.get("server"), target.get("boot_file"))
+    return {"lines": lines, "copy": copy, "readback": K.readback_plan(lines),
+            "program": kickstart_program(profile, lines, copy)}
 
 
 def _masked_program(program: dict, values=None) -> dict:
@@ -642,9 +700,10 @@ class _Console:
                 return self.attach_state
         return None
 
-    def then(self, steps, final):
+    def then(self, steps, final, step_timeout_s: float = None):
         """Run *steps* (``[[state, text], ...]``) from where the console is, ending in one of
-        *final*. The result (`last`)."""
+        *final*, each step bounded by the timings' step bound or *step_timeout_s* (the copy's,
+        which waits out key generation). The result (`last`)."""
         from modules.nsot import console_session as S
 
         plan = S.Plan(steps=tuple(S.Step(state, text.encode("ascii")) for state, text in steps),
@@ -652,7 +711,9 @@ class _Console:
         if self.seed is not None:
             seed, self.seed = self.seed, None
             self.session = self._new(plan)
+            self.session.step_timeout_s = step_timeout_s or self.timings.step_timeout_s
             return self._drive(self.session, seed=seed)
+        self.session.step_timeout_s = step_timeout_s or self.timings.step_timeout_s
         return self._drive(self.session, plan=plan)
 
     def output(self) -> str:
@@ -821,25 +882,60 @@ def latest_survey(list_name: str, device_id):
     return survey, ""
 
 
-def kickstart_params(profile, params, device: str) -> dict:
-    """*params* with the ones Mercury knows filled in: a profile's ``hostname`` is the device's
-    NetBox name (*device*) when none was given, so a person never types what NetBox holds and
-    the kick-start's verify compares the prompt with the name the device is onboarded as. A
-    hostname that was given is kept as given, and judged by the renderer."""
-    out = dict(params or {})
-    if profile is not None and "hostname" in profile.kickstart_params \
-            and "hostname" not in out and device:
-        out["hostname"] = device
+def kickstart_params(profile, params, device: str, onboarding: dict = None) -> dict:
+    """*params* with the ones Mercury knows filled in, each only where the profile declares it
+    and none was given (an empty value is none given, as a form sends it): ``hostname`` is the
+    device's NetBox name (*device*), so a person never types what NetBox holds and the
+    kick-start's verify compares the prompt with the name the device is onboarded as; and from
+    the device's out-of-band *onboarding* (`console_kickstart.onboarding_target`, C1592) the
+    static ``address``, ``mask`` and ``gateway`` (the plan's), the ``vlan`` (its management
+    interface's; 1, IOS's default, when the plan names none) and the ``interface`` (the uplink
+    NetBox cables to the relay, when it does). A value that was given is kept as given, and
+    judged by the renderer; a given address, mask or gateway that is not the plan's is refused
+    by the preview, both named."""
+    from modules.nsot import console_kickstart as K
+
+    out = {k: v for k, v in dict(params or {}).items() if v not in ("", None)}
+    if profile is None:
+        return out
+    declared = profile.kickstart_params
+    target = onboarding if (onboarding or {}).get("state") == "read" else {}
+    known = {"hostname": device,
+             **{k: target.get(k, "") for k in K.PLAN_PARAMS},
+             "vlan": target.get("vlan", ""), "interface": target.get("uplink", "")}
+    for name, value in known.items():
+        if name in declared and name not in out and value:
+            out[name] = value
+    if "vlan" in declared and "vlan" not in out:
+        out["vlan"] = K.DEFAULT_VLAN
     return out
 
 
+def _onboarding(list_name: str, device: str, device_id, session, base: str) -> dict:
+    """The device's out-of-band onboarding, as `console_kickstart.onboarding_target` reads it
+    (NetBox's session the preview's own, for the uplink)."""
+    from modules.nsot import console_kickstart as K
+    from modules.nsot import console_path
+
+    if not device:
+        return K._absent("no device was read")                     # noqa: SLF001
+    session, base, _err = console_path._ready(session, base)       # noqa: SLF001
+    return K.onboarding_target(list_name, device, device_id=device_id, session=session,
+                               base=base)
+
+
 def kickstart_preview(list_name: str, device_id, params: dict, *, session=None,
-                      base: str = "", values=None) -> dict:
+                      base: str = "", values=None, onboarding: dict = None) -> dict:
     """The kick-start: the EXACT lines it types (`console_survey.render_kickstart` for the
-    profile its survey used, masked as previews are), the survey it stands on (refused unless
-    that survey found the device factory-blank, named by its time), the transport, and the
-    hash over the lines, the profile's hash, the console path, the port and the survey's id."""
-    from modules.nsot import console_survey as V
+    profile its survey used, masked as previews are), what it reads back and the copy that
+    fetches the bootstrap (`console_kickstart`), the survey it stands on (refused unless that
+    survey found the device factory-blank, named by its time), the transport, and the hash over
+    the whole program, the profile's hash, the console path, the port and the survey's id.
+
+    *onboarding*: what the device's out-of-band onboarding gives (address, mask, gateway, vlan,
+    server, boot file, uplink: `console_kickstart.onboarding_target`'s shape), from the caller's
+    own plan (Add device's one-decision run); None reads the device's pending onboarding."""
+    from modules.nsot import console_kickstart as K
 
     survey, why = latest_survey(list_name, device_id)
     profile_name = ((survey or {}).get("profile") or {}).get("name")
@@ -870,27 +966,59 @@ def kickstart_preview(list_name: str, device_id, params: dict, *, session=None,
                 f"{when} was over console-server port "
                 f"{(spath.get('server_port') or {}).get('id')}, and the device's console path "
                 f"is port {out['path']['server_port']['id']} now: survey again"))
-    params = kickstart_params(prof, params, out["device"])
+    target = onboarding if onboarding is not None else _onboarding(
+        list_name, out["device"], device_id, session, base)
+    out["onboarding"] = {k: target.get(k, "") for k in ("state", "why", "address", "mask",
+                                                         "gateway", "vlan", "server",
+                                                         "boot_file", "uplink", "uplink_why")}
+    static = prof is not None and "address" in prof.kickstart_params
+    if target.get("state") == "refused":
+        out["refused_by"].setdefault("onboarding", target.get("why") or "refused")
+    elif static and target.get("state") != "read":
+        out["refused_by"].setdefault("onboarding", (
+            f"profile {prof.name} types the plan's static address (C1592), and "
+            f"{target.get('why') or 'no out-of-band onboarding was read'}: create the device "
+            "with the out-of-band (console) address source first, so its plan gives the "
+            "address, mask, gateway and config server"))
+    elif prof is not None and not static and target.get("state") == "read":
+        out["refused_by"].setdefault("profile", (
+            f"profile {prof.name} types no static address, and {out['device']}'s onboarding "
+            "is out-of-band with a static one (C1592): choose a profile that types it"))
+    given = {k: v for k, v in dict(params or {}).items() if v not in ("", None)}
+    params = kickstart_params(prof, params, out["device"], target)
     out["params"] = params
-    lines = ()
+    for name in K.PLAN_PARAMS:
+        if name in given and target.get("state") == "read" and str(given[name]) != target[name]:
+            out["refused_by"].setdefault("params", (
+                f"parameter {name} {given[name]!r} is not the plan's {target[name]!r}: the plan "
+                "is the one source of the static address"))
+    lines, program, copy = (), None, ""
+    back = {"reads": (), "not_read": ()}
     if prof is not None:
         try:
-            lines = V.render_kickstart(prof, params)
+            built = build_kickstart(prof, params, target)
+            lines, program, copy, back = (built["lines"], built["program"], built["copy"],
+                                          built["readback"])
         except ValueError as exc:
             out["refused_by"].setdefault("params", str(exc))
     from modules.redact import redact_text
 
     out["lines"] = [redact_text(line, values) for line in lines]
-    program = kickstart_program(prof, lines) if (prof is not None and lines) else None
+    out["readback"] = {"reads": list(back["reads"]),
+                       "not_read": [list(x) for x in back["not_read"]]}
+    out["copy"] = redact_text(copy, values) if copy else ""
     out["program"] = _masked_program(program, values) if program else None
     out["refusals"] = list(out["refused_by"].values())
     out["ok"] = not out["refused_by"]
     out["not_doing"] = [
         "nothing is saved (no write memory): a reload returns the device to its factory "
         "state, which is the way back, since lines typed on a console cannot be taken back",
-        "no credential crosses the console: the device fetches its bootstrap, which holds it",
+        "no credential crosses the console: the device's bootstrap, which holds it, is copied "
+        "from the responder",
         "a device found configured at the recheck (a saved startup configuration) is refused "
         "with nothing of the kick-start typed",
+        "a line the device refuses stops the run: nothing after it is typed, and the copy is "
+        "not sent",
     ]
     out["hash"] = _digest({"kind": KIND_KICKSTART, "list": list_name, "device_id": device_id,
                            "device": out["device"], "lines": list(lines),
@@ -931,11 +1059,11 @@ def verify_kickstart(final_prompt: str, params: dict, profile) -> dict:
 def kickstart_apply(list_name: str, device_id, confirmed_hash: str, actor: str,
                     actor_verified: str, *, params: dict, timings: Timings = DEFAULT_TIMINGS,
                     clock=time.monotonic, session=None, base: str = "", values=None,
-                    run_id: str = "") -> dict:
+                    run_id: str = "", onboarding: dict = None) -> dict:
     """Type the confirmed kick-start, holding the device and its console port: the record,
     written. Raises `Refused` with nothing sent: an actor who is not a verified person, a
     preview that refuses, a hash that moved (both named), or the device held by another
-    operation (named)."""
+    operation (named). *onboarding* as `kickstart_preview`'s."""
     from modules.nsot import console_transport as T
     from modules.nsot import device_ops
 
@@ -943,7 +1071,7 @@ def kickstart_apply(list_name: str, device_id, confirmed_hash: str, actor: str,
     if why:
         raise Refused(why + ". Nothing was sent.")
     p = kickstart_preview(list_name, device_id, params, session=session, base=base,
-                          values=values)
+                          values=values, onboarding=onboarding)
     if not p["ok"]:
         raise Refused("; ".join(p["refusals"]) + ". Nothing was sent.")
     if confirmed_hash != p["hash"]:
@@ -951,14 +1079,13 @@ def kickstart_apply(list_name: str, device_id, confirmed_hash: str, actor: str,
                       f"({confirmed_hash} -> {p['hash']}): its lines, profile, console path, "
                       "port or survey moved. Nothing was sent; preview again.")
     from modules.nsot import console_profiles as P
-    from modules.nsot import console_survey as V
 
     prof = P.load(p["profile"]["name"])
     params = p["params"]
-    lines = V.render_kickstart(prof, params)
-    program = kickstart_program(prof, lines)
+    program = build_kickstart(prof, params, p["onboarding"])["program"]
     rec = _new_record(KIND_KICKSTART, p, actor, actor_verified, run_id)
-    rec.update(survey_id=p["survey"]["id"], lines=list(p["lines"]))
+    rec.update(survey_id=p["survey"]["id"], lines=list(p["lines"]), copy=p["copy"],
+               readback=p["readback"])
     console = None
     try:
         with device_ops.hold(list_name, p["device"], OP_KICKSTART, actor,
@@ -1018,15 +1145,90 @@ def _kickstart_phases(console, profile, program, params, rec) -> None:
     device_ops.note("kick-start: typing")
     got = console.then(program["lines"], (program["ends"],))
     if got.outcome != "done":
-        _finish(rec, console, outcome=got.outcome, reason=f"typing: {got.reason}")
+        _stopped(rec, console, "typing", got)
         return
     device_ops.note("kick-start: verify")
     _state, prompt, _partial = S.read_state(console.output(), profile,
                                             program["lines"][-1][1][:-1].strip())
     v = verify_kickstart(prompt, params, profile)
-    _finish(rec, console, outcome="done" if v["ok"] else "unverified", verify=v,
-            reason="" if v["ok"] else v["why"])
+    rec["verify"] = v
+    if not v["ok"]:
+        _finish(rec, console, outcome="unverified", reason=v["why"])
+        return
+    if not _readback(console, profile, program, rec) or not _copy(console, profile, program, rec):
+        return
+    _finish(rec, console, outcome="done", reason="")
     device_ops.note("kick-start: record")        # as the survey's: only a run that verified
+
+
+def _stopped(rec: dict, console, phase: str, got) -> None:
+    """A phase that did not end: a line the device refused (C1593: ``line_refused``, with what
+    was refused and IOS's words), or however else the session ended."""
+    refused = console.session.refused if console.session is not None else None
+    if refused:
+        from modules.redact import redact_text
+        rec["refused"] = {k: redact_text(str(v), console.values) for k, v in refused.items()}
+        _finish(rec, console, outcome="line_refused", reason=f"{phase}: {got.reason}")
+        return
+    _finish(rec, console, outcome=got.outcome, reason=f"{phase}: {got.reason}")
+
+
+def _readback(console, profile, program, rec) -> bool:
+    """The read-back (C1593): each read on its own, then every difference between what was
+    typed and what the running configuration shows (`console_kickstart.compare_readback`).
+    False, the record finished, when a read did not end or anything differs."""
+    from modules.nsot import console_kickstart as K
+    from modules.nsot import device_ops
+
+    device_ops.note("kick-start: read-back")
+    answers = {}
+    for step in program["readback"]:
+        got = console.then([step], (program["ends"],))
+        if got.outcome != "done":
+            _stopped(rec, console, "read-back", got)
+            return False
+        answers[step[1][:-1]] = console.output()
+    lines = [text[:-1] for _state, text in program["lines"]]
+    v = K.readback_verdict(K.readback_plan(lines), answers)
+    from modules.redact import redact_text
+    rec["readback_differs"] = [{"typed": redact_text(d["typed"], console.values),
+                                "read": d["read"],
+                                "why": redact_text(d["why"], console.values)}
+                               for d in v["differs"]]
+    rec["mac"], rec["mac_reason"] = v["mac"], v["mac_why"]
+    if not v["ok"]:
+        _finish(rec, console, outcome="readback_differs",
+                reason="read-back: " + "; ".join([d["why"] for d in v["differs"]]
+                                                 + ([] if v["mac"] else [v["mac_why"]])))
+        return False
+    return True
+
+
+def _copy(console, profile, program, rec) -> bool:
+    """The copy (C1594), when the program has one: sent only after a read-back with no
+    difference; IOS's destination question answered with RETURN; then `verify_copy`. False,
+    the record finished, when it did not fetch the bootstrap."""
+    from modules.nsot import console_kickstart as K
+    from modules.nsot import device_ops
+
+    if not program["copy"]:
+        return True
+    device_ops.note("kick-start: copy")
+    got = console.then(program["copy"], (program["ends"],),
+                       step_timeout_s=console.timings.copy_timeout_s)
+    v = K.verify_copy(console.output(), profile)
+    from modules.redact import redact_text
+    rec["copied"] = {"ok": v["ok"], "bytes": v["bytes"],
+                     "refused": redact_text(v["refused"], console.values),
+                     "why": redact_text(v["why"], console.values)}
+    if got.outcome == "done" and v["ok"]:
+        return True
+    refused = console.session.refused if console.session is not None else None
+    if refused:
+        rec["refused"] = {k: redact_text(str(v_), console.values) for k, v_ in refused.items()}
+    _finish(rec, console, outcome="copy_failed",
+            reason="copy: " + ("" if got.outcome == "done" else f"{got.reason}; ") + v["why"])
+    return False
 
 
 # ── retirement (C1553) ───────────────────────────────────────────────────────────────────

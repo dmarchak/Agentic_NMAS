@@ -35,6 +35,7 @@ import pytest
 from modules.nsot import console_profiles as P
 from modules.nsot import console_ztp as Z
 from tests.console_fakes import Console, RawServer
+from tests.console_ios import copy_answers, readback_answers
 from tests.fake_netbox import FakeNetBox
 from tests.test_console_session import PNP, session_fixture
 
@@ -44,6 +45,16 @@ ACTOR = "p@example.invalid"
 FAST = Z.Timings(settle_s=0.05, quiet_s=0.3, step_timeout_s=3.0, poll_s=0.02,
                  survey_bound_s=20.0, kickstart_bound_s=20.0)
 PARAMS = {"hostname": "edge1", "interface": "GigabitEthernet0/1", "vlan": 10}
+#: C1592 to C1594 (2026-10-23): the switch's kick-start types its out-of-band onboarding's
+#: static address, mask and gateway, reads back what it typed and copies its bootstrap from
+#: the plan's config server; the device's pending onboarding, as the kick-start reads it
+#: (`console_ztp._onboarding`, stood in for by World: tests/test_console_ztp_static.py reads a
+#: real one).
+ONBOARDING = {"state": "read", "why": "", "address": "192.0.2.14", "mask": "255.255.255.252",
+              "gateway": "192.0.2.13", "vlan": "10", "server": "192.0.2.10",
+              "boot_file": "edge1.cfg", "uplink": "", "uplink_why": ""}
+PLANNED = {k: ONBOARDING[k] for k in ("address", "mask", "gateway")}
+COPY = "copy tftp://192.0.2.10/edge1.cfg running-config"
 FAMILIES = pytest.mark.parametrize("family", [socket.AF_INET, socket.AF_INET6],
                                    ids=["ipv4", "ipv6"])
 
@@ -109,7 +120,18 @@ def kick_answers(lines, recheck=None, cut=None):
         else:
             prompt = f"{name}(config)#"
         out.append(_echo(line, prompt))
+    if cut is None:
+        # C1593 and C1594: the read-back of a device that took every line, then the copy.
+        out += readback_answers(lines, f"{name}#") + copy_answers(COPY, f"{name}#")
     return out
+
+
+def after_lines(lines) -> bytes:
+    """What a kick-start sends after its lines (C1593, C1594): each read-back, the copy and the
+    RETURN answering its destination question."""
+    from modules.nsot import console_kickstart as K
+    return b"".join(f"{r}\r".encode() for r in K.readback_plan(lines)["reads"]) + \
+        f"{COPY}\r\r".encode()
 
 
 class World:
@@ -128,6 +150,7 @@ class World:
         monkeypatch.setattr(netbox_guard, "_MODIFIED_FILE", str(tmp_path / "modified.json"))
         monkeypatch.setattr(nbc, "_managed_tag_ids", {})
         monkeypatch.setattr(netbox_guard, "writes_allowed", lambda: True)
+        monkeypatch.setattr(Z, "_onboarding", lambda *a, **k: dict(ONBOARDING))
         self.fake = fake = FakeNetBox()
         self.dev = fake.seed("dcim/devices", {"name": "edge1", "status": "planned"})
         self.cs = fake.seed("dcim/devices", {"name": "cons-1", "status": "active"})
@@ -207,7 +230,7 @@ def world6(tmp_path, monkeypatch):
 
 def _lines():
     from modules.nsot import console_survey as V
-    return V.render_kickstart(P.load("cisco_ios_switch"), PARAMS)
+    return V.render_kickstart(P.load("cisco_ios_switch"), dict(PARAMS, **PLANNED))
 
 
 def _recorded_as_sent(rec, sent: bytes, seen: str, attach):
@@ -612,7 +635,8 @@ class TestKickstartRun:
             assert p["lines"] == list(lines)
             rec = w.kick(kick_answers(lines))
             assert (rec["outcome"], rec["verify"]["ok"]) == ("done", True), rec
-            program = b"\renable\rdir nvram:\r" + b"".join(f"{l}\r".encode() for l in lines)
+            program = (b"\renable\rdir nvram:\r" + b"".join(f"{l}\r".encode() for l in lines)
+                       + after_lines(lines))
             assert w.received(1) == program
             assert rec["bytes_written"] == len(program)
             assert rec["hash"] == p["hash"] and rec["survey_id"] == survey["id"]
@@ -667,7 +691,8 @@ class TestKickstartRun:
         noted.clear()
         world.kick(kick_answers(_lines()))
         assert noted == ["opening the console", "waking the console", "kick-start: recheck",
-                         "kick-start: typing", "kick-start: verify", "kick-start: record"]
+                         "kick-start: typing", "kick-start: verify", "kick-start: read-back",
+                         "kick-start: copy", "kick-start: record"]
 
     def test_the_final_record_is_written_before_the_hold_ends(self, world, monkeypatch):
         """C1579: the card reads a running run's steps from the hold and its result from the
@@ -698,8 +723,9 @@ class TestKickstartRun:
 
     def test_an_end_prompt_not_naming_the_hostname_is_unverified(self, world):
         world.survey(greeting=PNP, answers=blank_answers())
-        answers = kick_answers(_lines())
-        answers[-1] = b"end\r\nSwitch#"
+        lines = _lines()
+        answers = kick_answers(lines)
+        answers[2 + len(lines)] = b"end\r\nSwitch#"          # `end`'s answer (C1593 reads after)
         rec = world.kick(answers)
         assert (rec["outcome"], rec["verify"]["ok"]) == ("unverified", False)
         assert rec["reason"] == ("it ended at 'Switch#', which names 'Switch', not the "
@@ -732,7 +758,8 @@ class TestKickstartRun:
         rec = world.kick_with_greeting(PNP, [_real()[0]] + rest)
         assert rec["outcome"] == "done", rec
         assert world.received(1) == (b"\renable\rdir nvram:\r"
-                                     + b"".join(f"{l}\r".encode() for l in lines))
+                                     + b"".join(f"{l}\r".encode() for l in lines)
+                                     + after_lines(lines))
 
     def test_a_console_that_cannot_be_opened_is_recorded_unreachable(self, world):
         world.survey(greeting=PNP, answers=blank_answers())
@@ -839,10 +866,20 @@ class TestKickstartRun:
             "recheck": [["priv_exec", "dir nvram:\r"]],
             "lines": [["priv_exec", lines[0] + "\r"]] + [["config", l + "\r"]
                                                           for l in lines[1:]],
+            "readback": [["priv_exec", "show running-config interface GigabitEthernet0/1\r"],
+                         ["priv_exec", "show running-config interface Vlan10\r"],
+                         ["priv_exec", "show running-config | section line con 0\r"],
+                         ["priv_exec", "show running-config | include "
+                                       "^hostname|^ip default-gateway\r"],
+                         ["priv_exec", "show interfaces Vlan10\r"]],
+            "copy": [["priv_exec", COPY + "\r"], ["copy_destination", "\r"]],
             "ends": "priv_exec",
             "stops": "a privileged, config or login prompt at the wake (signed in since its "
                      "survey left it at the user prompt), or a saved startup configuration at "
-                     "the recheck: nothing of the kick-start is typed"}
+                     "the recheck: nothing of the kick-start is typed; any line the device "
+                     "refuses (a % answer that is not a message): nothing more is typed; a "
+                     "read-back that differs from what was typed, or any question but the "
+                     "copy's destination: the copy is not sent"}
 
     def test_bad_parameters_are_refused_naming_them(self, world):
         world.survey(greeting=PNP, answers=blank_answers())

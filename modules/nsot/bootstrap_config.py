@@ -195,7 +195,7 @@ class ReservedInterface(ManagementInterfaceRefused):
 def manager_interface_lines(platform: str, *, interface: str, address: str,
                             mask: str, gateway: str = "",
                             platform_mgmt_interface: str = "",
-                            reserved: dict = None) -> list:
+                            reserved: dict = None, gateway_route: bool = True) -> list:
     """The one stanza that makes the device reachable by the manager.
 
     **Why there is no default gateway unless one is given.** The NMAS sits on
@@ -300,7 +300,11 @@ def manager_interface_lines(platform: str, *, interface: str, address: str,
     if gateway:
         # Only reached when the caller says the manager is elsewhere. Kept
         # out of the interface block because it is a different kind of claim.
-        body += [f"ip route 0.0.0.0 0.0.0.0 {gateway}"]
+        # *gateway_route* False (out-of-band ZTP's static switch, the operator 2026-10-23): a
+        # layer-2 switch with routing off reaches the manager by its default gateway alone, the
+        # line the console kick-start typed and read back; no static route is rendered.
+        if gateway_route or platform not in LAYER2_PLATFORMS:
+            body += [f"ip route 0.0.0.0 0.0.0.0 {gateway}"]
         if platform in LAYER2_PLATFORMS:
             # A switch with `ip routing` off ignores a static route and uses its default
             # gateway; with routing on (the vIOS-L2 image's default, read from a running
@@ -365,7 +369,8 @@ def render_bootstrap(platform: str, *, hostname: str, username: str,
                      manager_interface: str = "", manager_address: str = "",
                      manager_mask: str = "", manager_gateway: str = "",
                      generate_ssh_key: bool = False,
-                     injects_user: bool = None, environment=None) -> str:
+                     injects_user: bool = None, environment=None,
+                     gateway_route: bool = True) -> str:
     """The minimal management-plane config for a device joining the network.
 
     *environment*: what the device's environment owns, read from NetBox
@@ -415,7 +420,8 @@ def render_bootstrap(platform: str, *, hostname: str, username: str,
         manager_lines = manager_interface_lines(
             platform, interface=manager_interface, address=manager_address,
             mask=manager_mask, gateway=manager_gateway,
-            platform_mgmt_interface=own_mgmt, reserved=env.reserved)
+            platform_mgmt_interface=own_mgmt, reserved=env.reserved,
+            gateway_route=gateway_route)
 
     lines = []
     if platform == "cisco_iosxe":

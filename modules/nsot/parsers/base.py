@@ -108,6 +108,7 @@ class BaseParser:
             (re.compile(r"^event manager applet\s+(\S+)\s*$"), self._h_eem_applet),
             (re.compile(r"^ntp server\s+(.*)$"),             self._h_ntp),
             (re.compile(r"^ip route\s+(.*)$"),               self._h_static_route),
+            (re.compile(r"^ip default-gateway\s+(\S+)\s*$"), self._h_default_gateway),
             (re.compile(r"^ipv6 route\s+(.*)$"),             self._h_static_route_v6),
             (re.compile(r"^ip access-list\s+(\S+)\s+(\S+)"), self._h_acl),
             (re.compile(r"^line\s+(.*)$"),                   self._h_line),
@@ -572,6 +573,16 @@ class BaseParser:
 
     def _h_static_route(self, block, out, m):
         out["static_routes"].append({"family": "ipv4", "spec": m.group(1).strip()})
+
+    def _h_default_gateway(self, block, out, m):
+        """``ip default-gateway <address>``: the gateway a switch with routing off uses (the
+        out-of-band static path types it, C1592), as ``default_gateway``; the template renders
+        it back as exactly that line. IPv4 only, as IOS's command is (an IPv6 default is an
+        ``ipv6 route ::/0``, a static route). Present only when the config holds one, so no
+        intent written before it gains a key; a second one (IOS keeps one) stays unmodeled."""
+        if "default_gateway" in out or block.children:
+            return False
+        out["default_gateway"] = m.group(1)
 
     def _h_static_route_v6(self, block, out, m):
         rest = m.group(1).strip()

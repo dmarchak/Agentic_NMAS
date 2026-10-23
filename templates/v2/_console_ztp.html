@@ -101,6 +101,16 @@
     <p>Exactly these, in this order, after the wake, the prelude and the blank check again:</p>
     <pre class="ask-pre">{% for line in p.lines %}{{ line }}
 {% endfor %}</pre>
+    {%- if p.readback and p.readback.reads %}
+    <p>Then it reads back what they set, each answer compared with the lines above (any line the device refuses stops it before this):</p>
+    <pre class="ask-pre">{% for rd in p.readback.reads %}{{ rd }}
+{% endfor %}</pre>
+    {%- for line, why in p.readback.not_read %}<p class="faint small">Not read back: <span class="mono">{{ line }}</span>: {{ why }}.</p>{% endfor %}
+    {%- endif %}
+    {%- if p.copy %}
+    <p>Then, only after a read-back with no difference, it copies its bootstrap: <span class="mono">{{ p.copy }}</span>{% if p.onboarding %} (its out-of-band plan: {{ p.onboarding.address }} {{ p.onboarding.mask }} on Vlan{{ p.onboarding.vlan or '1' }}, gateway {{ p.onboarding.gateway }}, its file {{ p.onboarding.boot_file }} from the config server {{ p.onboarding.server }}; the uplink {{ p.onboarding.uplink or 'as given' }}: {{ p.onboarding.uplink_why or 'given' }}){% endif %}.</p>
+    {%- endif %}
+    {%- if p.onboarding and p.onboarding.state != 'read' and p.onboarding.why %}<p class="faint small">No out-of-band plan was read: {{ p.onboarding.why }}.</p>{% endif %}
     <p class="faint small">It ends at the {{ p.program.ends }} prompt, naming the hostname typed. Otherwise: {{ p.program.stops }}.</p></div></div>
   {%- endif %}
   <div class="op-part"><h3>What will not happen</h3><div>
@@ -136,6 +146,10 @@
     {%- if r.recheck %}<p class="muted">The blank check again: {{ r.recheck.reason }}</p>{% endif %}
     {%- if r.lines %}<h4>The lines sent</h4><pre class="ask-pre">{% for line in r.lines %}{{ line }}
 {% endfor %}</pre>{% endif %}
+    {%- if r.refused %}<p class="muted">Refused by the device: <span class="mono">{{ r.refused.line }}</span>: {{ r.refused.words }}</p>{% endif %}
+    {%- if r.readback and r.readback.reads %}<p class="muted">Read back: {{ r.readback.reads | join('; ') }}.</p>{% endif %}
+    {%- if r.readback_differs %}<h4>What the read-back shows differently</h4><p>{{ r.readback_differs | map(attribute='why') | join('; ') }}</p>{% endif %}
+    {%- if r.copy %}<p class="muted">The copy: <span class="mono">{{ r.copy }}</span>{% if r.copied %}: {{ r.copied.why }}{% endif %}.</p>{% endif %}
     {%- endif %}
     {%- if r.sent %}<details data-keep="console-sent"><summary>What was sent (masked)</summary><pre class="ask-pre">{{ r.sent | replace('\r', '⏎\n') }}</pre></details>{% endif %}
     {%- if r.transcript %}<details data-keep="console-transcript"><summary>The console's transcript (masked)</summary><pre class="ask-pre">{{ r.transcript }}</pre></details>{% endif %}</div></div>
@@ -149,6 +163,8 @@
     {%- elif survey %}
     <p>{% if r.blank is sameas false %}A kick-start types only on a device its survey found factory-blank. Return {{ who }} to its factory state (its startup configuration erased, then reloaded), then survey it again.{% else %}Read the transcript, check the console-server port and the device, then survey it again.{% endif %}</p>
     <p>{{ again('survey', 'Survey again…') }}</p>
+    {%- elif r.outcome == 'done' and r.copied %}
+    <p>{{ who }} took every line typed (read back from its running configuration{% if r.mac %}; its MAC in use is <span class="mono">{{ r.mac }}</span>{% endif %}) and its bootstrap was copied into it ({{ r.copied.bytes }} bytes): Verify reaches it at its static address. Nothing was saved on it: a reload returns it to its factory state.</p>
     {%- elif r.outcome == 'done' %}
     <p>{{ who }} now asks DHCP on its management interface and fetches its bootstrap like any ZTP device: its pending page follows it, and Verify reaches it. Nothing was saved on it: a reload returns it to its factory state.</p>
     {%- else %}

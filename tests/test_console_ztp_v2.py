@@ -27,7 +27,8 @@ import pytest
 from modules.nsot import console_profiles as P
 from modules.nsot import console_ztp as Z
 from tests.test_console_session import PNP
-from tests.test_console_ztp import FAST, LIST, World, blank_answers, kick_answers
+from tests.test_console_ztp import (FAST, LIST, PLANNED, World, after_lines, blank_answers,
+                                    kick_answers)
 
 PERSON = "operator@example.invalid"
 
@@ -457,7 +458,7 @@ class TestTheStepperFromTheConfirm:
         assert [(r["key"], r["state"]) for r in rows] == [
             ("preview", "done"), ("confirm", "done"), ("hold", "running"), ("wake", "waiting"),
             ("recheck", "waiting"), ("type", "waiting"), ("verify", "waiting"),
-            ("record", "waiting")]
+            ("readback", "waiting"), ("copy", "waiting"), ("record", "waiting")]
 
 
 class TestHistory:
@@ -534,7 +535,7 @@ class TestTheKickstart:
         html = _text(r)
         lines = V.render_kickstart(P.load("cisco_ios_switch"),
                                    {"hostname": "edge1", "interface": "GigabitEthernet0/1",
-                                    "vlan": "10"})
+                                    "vlan": "10", **PLANNED})
         assert r.status_code == 200, html
         assert "<pre class=\"ask-pre\">" + "\n".join(lines) + "\n</pre>" in html
         assert " exec-timeout 15 0" in lines and "hostname edge1" in lines
@@ -561,7 +562,8 @@ class TestTheKickstart:
         self._surveyed(world, monkeypatch)
         params = {"interface": "GigabitEthernet0/1", "vlan": "10"}
         pv = Z.kickstart_preview(LIST, world.dev["id"], params)
-        lines = V.render_kickstart(P.load("cisco_ios_switch"), dict(params, hostname="edge1"))
+        lines = V.render_kickstart(P.load("cisco_ios_switch"),
+                                   dict(params, hostname="edge1", **PLANNED))
         world.consoles.append((b"", kick_answers(lines)))
         r = client.post(_url(world, "/kickstart"),
                         data={"list_name": LIST, "step": "kickstart", "hash": pv["hash"],
@@ -572,7 +574,8 @@ class TestTheKickstart:
         run = re.search(r"run=([0-9]{8}T[0-9]{12}Z-[0-9a-f]{32})", html).group(1)
         job = re.search(r"job=([0-9a-f]{32})", html).group(1)
         assert _wait(job)["state"] == "done"
-        program = b"\renable\rdir nvram:\r" + b"".join(f"{l}\r".encode() for l in lines)
+        program = (b"\renable\rdir nvram:\r" + b"".join(f"{l}\r".encode() for l in lines)
+                   + after_lines(lines))
         assert world.received(1) == program
         html = _text(client.get(_url(world, f"?list_name={LIST}&step=kickstart&run={run}"
                                             f"&job={job}")))

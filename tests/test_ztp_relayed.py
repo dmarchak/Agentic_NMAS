@@ -903,7 +903,9 @@ class TestThePlanAddsTheLinkSubnet:
         p = self._check(kea_files, monkeypatch)
         assert p["ok"], p["reasons"]
         add = p["subnet_to_add"]
-        assert add["prefix"] == LINK and add["pool"] == f"{LINK_DEVICE} - {LINK_DEVICE}"
+        # C1600: no pool; the device's reservation is the subnet's only address (a pool of the
+        # device's own address leased it to a host once the reservation was removed).
+        assert add["prefix"] == LINK and add["pool"] == "" and "pool" not in add["values"]
         assert add["created_by"] == {"device": "r7", "list": "Lab"} and add["hash"]
         assert p["relayed"] and p["relay"]["address"] == LINK_RELAY and p["server"] == SERVER
         assert p["subnet_id"] == add["id"]
@@ -922,10 +924,10 @@ class TestCreateAddsTheSubnetThenTheReservation:
     """The reserve step: the subnet the plan states first, through the one writer bound by its
     hash; then the reservation; a reservation that fails takes the subnet out again."""
 
-    ADD = {"prefix": LINK, "pool": f"{LINK_DEVICE} - {LINK_DEVICE}", "id": 41,
+    # C1600: what `ztp._link_subnet` plans, no pool (the reservation the only address).
+    ADD = {"prefix": LINK, "pool": "", "id": 41,
            "relay": f"relay-b GigabitEthernet3 ({LINK_RELAY})",
-           "values": {"op": "add", "family": "IPv4", "prefix": LINK,
-                      "pool": f"{LINK_DEVICE} - {LINK_DEVICE}", "ztp": "1"},
+           "values": {"op": "add", "family": "IPv4", "prefix": LINK, "ztp": "1"},
            "hash": "h-preview", "created_by": {"device": "r7", "list": "Lab"}}
     CHECK = {"ok": True, "reasons": [], "server": SERVER, "subnet_id": 41, "dns": {},
              "relayed": True, "relay": {"device": "relay-b", "iface": "GigabitEthernet3",

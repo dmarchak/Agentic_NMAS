@@ -1092,7 +1092,7 @@ def _console_ztp(client, lab, _mp):
     from modules.nsot import console_profiles as P
     from tests.console_fakes import Console, RawServer
     from tests.test_console_session import PNP
-    from tests.test_console_ztp import FAST, blank_answers, kick_answers
+    from tests.test_console_ztp import FAST, ONBOARDING, PLANNED, blank_answers, kick_answers
 
     mp = pytest.MonkeyPatch()
     consoles = []
@@ -1100,6 +1100,8 @@ def _console_ztp(client, lab, _mp):
     try:
         _fake, dev, sport, _spare = _console_netbox(mp)
         mp.setattr(Z, "DEFAULT_TIMINGS", FAST)
+        # C1592: the switch's kick-start types its out-of-band onboarding's static address.
+        mp.setattr(Z, "_onboarding", lambda *a, **k: dict(ONBOARDING))
         # The lab points `get_list_data_dir` (where a run's record is written) at its folder
         # and leaves `list_data_path` (where it is read) on the store; one folder here, as on
         # an installation, where the two are the same path.
@@ -1144,7 +1146,7 @@ def _console_ztp(client, lab, _mp):
         assert digest, pv.status_code
         lines = V.render_kickstart(P.load("cisco_ios_switch"),
                                    {"hostname": "edge1", "interface": "GigabitEthernet0/1",
-                                    "vlan": "10"})
+                                    "vlan": "10", **PLANNED})
         consoles.append((b"", kick_answers(lines)))
         run = client.post(f"{base}/kickstart", data=dict(kick, hash=digest.group(1)))
         html = run.get_data(as_text=True)

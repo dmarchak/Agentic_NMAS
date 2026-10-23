@@ -47,6 +47,19 @@ BLOCKED_PENDING_MEASUREMENT = {}
 _NAME = re.compile(r"^[A-Za-z][A-Za-z0-9._-]{0,62}$")
 
 
+def _ztp_sources() -> tuple:
+    """The address sources whose device fetches a bootstrap Mercury reserves and serves (their
+    one home: `ztp.ZTP_SOURCES`): ``ztp`` and out-of-band ZTP's static ``ztp_console``."""
+    from modules.nsot.ztp import ZTP_SOURCES
+    return ZTP_SOURCES
+
+
+def _ztp_console() -> str:
+    """Out-of-band ZTP's static address source (`ztp.ZTP_CONSOLE`, C1592)."""
+    from modules.nsot.ztp import ZTP_CONSOLE
+    return ZTP_CONSOLE
+
+
 @dataclass(frozen=True)
 class OnboardPlan:
     """Everything the wizard would create, and every reason it may not.
@@ -241,7 +254,25 @@ class OnboardPlan:
                            "list's manifest")
         reasons.extend(self.netbox_problems)
 
-        if self.address_source == "ztp":
+        if self.address_source == _ztp_console():
+            # OUT-OF-BAND (CONSOLE), STATIC (C1592; the operator, 2026-10-23): no Kea at all.
+            # The console kick-start types the address, mask and gateway, and copies the
+            # bootstrap from the config server the plan derives (`ztp_reasons` says why not).
+            if not self.mgmt_ip:
+                reasons.append("no management address: an out-of-band (console) onboarding "
+                               "types the planned STATIC address (C1592)")
+            if not self.mgmt_mask:
+                reasons.append(
+                    f"no network mask for {self.mgmt_ip or 'the address'}: an out-of-band "
+                    "(console) onboarding types the STATIC address and mask (C1592), and a "
+                    "/24 assumption is how a tool works in exactly one lab")
+            if not self.manager_gateway:
+                reasons.append(
+                    "no gateway: an out-of-band (console) onboarding types `ip default-gateway` "
+                    "with the static address (C1592), so the gateway (the relay's own address "
+                    "on the device's link) is part of the plan")
+            reasons.extend(self.ztp_reasons)
+        elif self.address_source == "ztp":
             # P.6. The tool WRITES this reservation, so the MAC and the
             # address are the operator's to state, and every reason the write
             # would refuse is found here, before anything is created.
@@ -282,7 +313,7 @@ class OnboardPlan:
                       "precondition and a met one look the same afterwards")
         elif self.address_source != "static":
             reasons.append(f"address source {self.address_source!r} is not one "
-                           "of static, dhcp or ztp")
+                           f"of static, dhcp, ztp or {_ztp_console()}")
         elif not self.mgmt_ip:
             reasons.append("no management address — the device would be "
                            "created and unreachable")
@@ -294,7 +325,7 @@ class OnboardPlan:
         # operator is told which half is missing. The first interface may be
         # one the device's environment owns, and a management address landing
         # there is the failure 4C.8 exists to prevent.
-        if (self.mgmt_ip or self.address_source in ("dhcp", "ztp")) \
+        if (self.mgmt_ip or self.address_source in ("dhcp",) + _ztp_sources()) \
                 and not self.manager_interface:
             reasons.append(
                 "no interface chosen for the management address — it cannot "
@@ -481,6 +512,18 @@ class OnboardPlan:
     @property
     def address_claim(self) -> str:
         """The address line for the review screen, as a **checkable** claim."""
+        if self.address_source == _ztp_console():
+            iface = self.manager_interface or "(no interface)"
+            return (f"Out-of-band (console), STATIC: {self.mgmt_ip or '(no address)'} "
+                    f"{self.mgmt_mask or '(no mask)'} on {iface}, default gateway "
+                    f"{self.manager_gateway or '(none)'}"
+                    + (f" (the relay {self.ztp_relay})" if self.ztp_relay else "")
+                    + ". No Kea subnet or reservation: the console kick-start types the "
+                    f"address and copies {self.hostname}.cfg from the responder at "
+                    f"{self.ztp_server or '(no server)'}, which serves it to that address "
+                    "only while the kick-start holds the device; the device never asks DHCP"
+                    + (" (the reasons it cannot be onboarded yet are above)"
+                       if self.ztp_reasons or not self.ztp_server else ""))
         if self.address_source == "ztp":
             if self.ztp_reasons or not self.ztp_server:
                 return (f"ZTP: a Kea reservation {self.mgmt_mac or '(no MAC)'} → "
@@ -489,8 +532,9 @@ class OnboardPlan:
             if self.ztp_relay:
                 add = self.ztp_subnet_add or {}
                 adds = (f"ADDS Kea subnet {add.get('id')} ({add.get('prefix')}) for the "
-                        f"device's link, relayed by {add.get('relay')}, its pool "
-                        f"{add.get('pool')}, declared for ZTP with no gateway or DNS option (the "
+                        f"device's link, relayed by {add.get('relay')}, with no pool (its "
+                        "reservation its only address, C1600), declared for ZTP with no "
+                        "gateway or DNS option (the "
                         "link derived from committed intent; Retire removes it with this device "
                         "once nothing else is in it), then " if add else "")
                 return (f"ZTP behind the relay {self.ztp_relay}: this onboarding {adds}WRITES "
@@ -669,6 +713,29 @@ def _ztp_check(mac: str, address: str, kea, check=None, list_name: str = "",
                 "server": "", "subnet_id": None, "dns": {}}
 
 
+def gateway_route(source: str, role: str) -> bool:
+    """Whether a bootstrap with a gateway also routes ``0.0.0.0/0`` to it (C1349's
+    ``ip route``), or carries ``ip default-gateway`` alone: alone on the out-of-band STATIC
+    path's switch (the operator, 2026-10-23: a layer-2 switch uses its default gateway, and
+    tonight's preview rendered both). Recorded with the bootstrap parameters, so a re-render
+    is the same."""
+    return not (source == _ztp_console() and (role or "").strip().lower() == "switch")
+
+
+def _console_check(address: str, gateway: str, check=None) -> dict:
+    """`ztp_relayed.console_plan()` for an out-of-band (console) plan, **never raising**: an
+    exception is a reason, and a check that did not run has not passed. *check* stands in for it
+    (a test's)."""
+    try:
+        if check is None:
+            from modules.nsot.ztp_relayed import console_plan as check
+        return check(address, gateway)
+    except Exception as exc:                   # noqa: BLE001
+        log.warning("onboard: the out-of-band check failed for %s: %s", address, exc)
+        return {"relay": {}, "server": "", "reasons": [
+            f"the out-of-band check could not run: {type(exc).__name__}: {exc}"]}
+
+
 #: The ZTP card's option-3 choice (C1346, D4 restated 2026-10-19): "" offers no option 3 (D4 as
 #: decided, the default until the relayed proof measures that AutoInstall needs it); "relay"
 #: offers the relay's own address, on a relayed ZTP subnet only.
@@ -769,7 +836,7 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
                manager_gateway: str = "", address_source: str = "static",
                mgmt_mac: str = "", kea=None, ztp_check=None,
                role: str = "", platform_slug: str = "",
-               ztp_router: str = "") -> OnboardPlan:
+               ztp_router: str = "", console_check=None) -> OnboardPlan:
     """The only constructor. Always validates; never writes anything.
 
     *secret* is the one-time bootstrap credential (4C.2). It reaches the
@@ -810,6 +877,10 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
     # address the operator typed is the one the tool will RESERVE, and it is
     # carried as the reservation, while `mgmt_ip` stays empty until phase 2
     # discovers the lease. The device gets it from Kea like a DHCP device.
+    #
+    # AN OUT-OF-BAND (CONSOLE) PLAN KEEPS ITS ADDRESS (C1592): the console kick-start types it
+    # statically, so it IS the address Verify reaches. It reserves nothing: the static path
+    # touches no Kea (the operator, 2026-10-23).
     requested = mgmt_ip if address_source == "ztp" else ""
     if address_source in ("dhcp", "ztp"):
         mgmt_ip, mgmt_mask = "", ""
@@ -834,6 +905,12 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
         reservation = _reservation(mgmt_mac, kea)
     ztp = {"ok": False, "reasons": [], "server": "", "subnet_id": None, "dns": {}}
     relayed = {"relay": "", "router": "", "reasons": []}
+    if address_source == _ztp_console():
+        console = _console_check(mgmt_ip, manager_gateway, console_check)
+        ztp = dict(ztp, server=console["server"], reasons=list(console["reasons"]))
+        relay = console["relay"]
+        relayed["relay"] = (f"{relay.get('device')} {relay.get('iface')} ({relay['address']})"
+                            if relay.get("address") else "")
     if address_source == "ztp":
         ztp = _ztp_check(mgmt_mac, requested, kea, ztp_check, list_name, hostname=hostname)
         relayed = ztp_relayed_choice(ztp, ztp_router, manager_gateway)
@@ -858,16 +935,19 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
     config, unsendable, render_error = _render(
         platform, hostname, secret, domain,
         mgmt_interface, manager_interface=manager_interface,
+        # An out-of-band (console) plan renders STATIC (C1592): vIOS-L2 refuses `ip address
+        # dhcp` on an SVI, and the copied bootstrap must hold what the kick-start typed.
         manager_address=("dhcp" if address_source in ("dhcp", "ztp") else mgmt_ip),
         manager_mask=("dhcp" if address_source in ("dhcp", "ztp") else mgmt_mask),
         manager_gateway=manager_gateway,
         # A ZTP device boots with no day-0 config from anywhere else, so
         # nothing else generates its SSH key (M4). The re-render in
         # `bootstrap_artifact` applies the same rule, so they stay identical.
-        generate_ssh_key=(address_source == "ztp"),
+        generate_ssh_key=(address_source in _ztp_sources()),
         # Nothing injects a user ahead of a ZTP device's config (C52).
-        injects_user=(False if address_source == "ztp" else None),
-        environment=environment)
+        injects_user=(False if address_source in _ztp_sources() else None),
+        environment=environment,
+        gateway_route=gateway_route(address_source, role))
     if environment_error:
         config, render_error = "", ("the device's environment could not be read from "
                                     "NetBox: " + environment_error)
@@ -1027,7 +1107,7 @@ def _render(platform: str, hostname: str, secret: str, domain: str,
             mgmt_interface: str, *, manager_interface: str = "",
             manager_address: str = "", manager_mask: str = "",
             manager_gateway: str = "", generate_ssh_key: bool = False,
-            injects_user: bool = None, environment=None):
+            injects_user: bool = None, environment=None, gateway_route: bool = True):
     """``(config, unsendable)``. A render that cannot be sent is a refusal.
 
     **The ASCII guard is the generator's own**, not a second copy here.
@@ -1060,7 +1140,8 @@ def _render(platform: str, hostname: str, secret: str, domain: str,
                                   manager_gateway=manager_gateway,
                                   generate_ssh_key=generate_ssh_key,
                                   injects_user=injects_user,
-                                  environment=environment)
+                                  environment=environment,
+                                  gateway_route=gateway_route)
     except UnsendableCommand as exc:
         # The ONE failure that belongs in `unsendable`, keyed on the type
         # rather than on "the render raised". `assert_sendable` names the
@@ -1829,9 +1910,20 @@ def commit_step(plan, *, actor: str) -> str:
         "platform_mgmt_interface": plan.platform_mgmt_interface,
         "environment": plan.environment,
     }
+    extra = {}
+    if not gateway_route(plan.address_source, plan.role):
+        bootstrap_intent["gateway_route"] = False
+    if plan.address_source == _ztp_console():
+        # OUT-OF-BAND (CONSOLE), STATIC (C1592): `address`, `mask` and `gateway` above are the
+        # plan's static ones (never `dhcp`), and two more facts the console kick-start reads
+        # from here: the config server its copy fetches from (the plan's, D3's derived one,
+        # in the plan's hash), and the default gateway in the parsers' own key (the template
+        # renders it as `ip default-gateway`), so this intent says what the device will run.
+        bootstrap_intent["server"] = plan.ztp_server
+        extra["default_gateway"] = plan.manager_gateway
     hostvars.write_committed(repo, dict(plan.host_vars or {},
                                         hostname=plan.hostname,
-                                        bootstrap=bootstrap_intent))
+                                        bootstrap=bootstrap_intent, **extra))
     # The pending entry written above is this commit's too (C1468): staged with the intent, so
     # Create leaves the repository clean. Left out, it rode into whichever commit came next
     # (the device's own rotation at Verify, Lab 8 2026-10-20) or, when that was Retire,
@@ -3267,8 +3359,9 @@ def bootstrap_artifact(repo: str, hostname: str) -> dict:
             manager_mask=("dhcp" if source in ("dhcp", "ztp")
                           else params.get("mask", "")),
             manager_gateway=params.get("gateway", ""),
-            generate_ssh_key=(source == "ztp"),
-            injects_user=(False if source == "ztp" else None))
+            generate_ssh_key=(source in _ztp_sources()),
+            injects_user=(False if source in _ztp_sources() else None),
+            gateway_route=params.get("gateway_route", True) is not False)
     except Exception as exc:                   # noqa: BLE001
         log.error("onboard: could not re-render bootstrap for %r: %s",
                   hostname, exc)

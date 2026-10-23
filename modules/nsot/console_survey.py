@@ -41,6 +41,11 @@ SHAPES = {
                             r"(?:\.[0-9]{1,5})?"),
     "vlan": re.compile(r"[1-9][0-9]{0,3}"),
     "hostname": re.compile(r"[A-Za-z](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"),
+    # The static path (C1592): a dotted-quad IPv4 address and mask, then judged as an address
+    # (`_address_problem`). Out-of-band ZTP is IPv4 only (C1245): an IPv6 value is refused by
+    # name before its shape is.
+    "ipv4_address": re.compile(r"[0-9]{1,3}(?:\.[0-9]{1,3}){3}"),
+    "ipv4_mask": re.compile(r"[0-9]{1,3}(?:\.[0-9]{1,3}){3}"),
 }
 VLAN_MAX = 4094
 #: The console's exec-timeout in minutes: the operator's default, and IOS's range (0 is never).
@@ -133,14 +138,41 @@ def base_mac(text: str, profile) -> Found:
     return Found(None, f"no base MAC in {profile.mac_command!r}'s output: the MAC is unknown")
 
 
+def _address_problem(shape: str, text: str) -> str:
+    """Why a dotted-quad *text* is not an IPv4 address a device takes (``ipv4_address``) or a
+    contiguous network mask (``ipv4_mask``), or ""."""
+    import ipaddress
+
+    try:
+        value = ipaddress.IPv4Address(text)
+    except ValueError as exc:
+        return f"is not an IPv4 address ({exc})"
+    if shape == "ipv4_mask":
+        bits = int(value)
+        inverse = ~bits & 0xFFFFFFFF
+        if bits == 0 or inverse & (inverse + 1):
+            return "is not a network mask (its one bits must run unbroken from the left)"
+        return ""
+    if value.is_unspecified or value.is_loopback or value.is_multicast or value.is_reserved:
+        return "is not an address a device's interface takes"
+    return ""
+
+
 def check_param(name: str, shape: str, value) -> str:
     """*value* as typed, when it has *shape*; else ValueError naming the parameter."""
     text = str(value) if isinstance(value, int) and not isinstance(value, bool) else value
+    if shape in ("ipv4_address", "ipv4_mask") and isinstance(text, str) and ":" in text:
+        raise ValueError(f"parameter {name} {value!r} is IPv6: out-of-band ZTP reserves and "
+                         "serves IPv4 (DHCPv4) addresses only (C1245)")
     if not isinstance(text, str) or not SHAPES[shape].fullmatch(text):
         raise ValueError(f"parameter {name} {value!r} is not a valid {shape} (it must match "
                          f"{SHAPES[shape].pattern})")
     if shape == "vlan" and int(text) > VLAN_MAX:
         raise ValueError(f"parameter {name} {value!r} is over VLAN {VLAN_MAX}")
+    if shape in ("ipv4_address", "ipv4_mask"):
+        why = _address_problem(shape, text)
+        if why:
+            raise ValueError(f"parameter {name} {value!r} {why}")
     return text
 
 

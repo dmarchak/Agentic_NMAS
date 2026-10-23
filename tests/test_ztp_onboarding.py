@@ -98,7 +98,9 @@ class TestThePlan:
 
     def test_an_unknown_source_is_refused(self, tmp_path, monkeypatch):
         plan = _plan(tmp_path, monkeypatch, address_source="bootp")
-        assert any("not one of static, dhcp or ztp" in r for r in plan.blocking_reasons)
+        # C1592: out-of-band ZTP's static source is the fourth.
+        assert any("not one of static, dhcp, ztp or ztp_console" in r
+                   for r in plan.blocking_reasons)
 
     def test_an_interface_is_still_chosen_never_defaulted(self, tmp_path, monkeypatch):
         plan = _plan(tmp_path, monkeypatch, manager_interface="")

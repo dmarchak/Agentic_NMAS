@@ -73,6 +73,22 @@ FILE_OPTION = "boot-file-name"
 #: Option 3, only ever the relay's own address on a relayed ZTP subnet (C1346, D4 restated).
 ROUTER_OPTION = "routers"
 
+#: The address sources whose device fetches a bootstrap Mercury serves (P.6): ``ztp``, which
+#: asks DHCP for its Kea reservation and fetches by AutoInstall, and ``ztp_console``,
+#: OUT-OF-BAND ZTP's static path (C1592, the operator's decision of 2026-10-23): the console
+#: kick-start types the plan's STATIC address and copies the bootstrap itself (C1594). The
+#: static path touches no Kea (no subnet, no reservation): the responder serves its bootstrap to
+#: the planned static address only while the device's console run holds it
+#: (`ztp_responder.console_gate`). Both are rendered with the SSH key and no injected account.
+ZTP_CONSOLE = "ztp_console"
+ZTP_SOURCES = ("ztp", ZTP_CONSOLE)
+
+
+def boot_file(hostname: str) -> str:
+    """The bootstrap's file name a reservation names (option 67) and the responder serves: the
+    one home of that name, read by the reservation and by the console kick-start's copy."""
+    return f"{hostname}.cfg"
+
 #: D4's second condition asks with a name nothing should resolve (RFC 6761),
 #: so the probe itself cannot make anything reach for the internet.
 DNS_PROBE_NAME = "nmas-ztp-probe.invalid"
@@ -298,11 +314,16 @@ def _link_subnet(address: str, dhcp4: dict, *, kea, list_name: str, hostname: st
                  relayed: dict) -> dict:
     """C1460: when no Kea subnet holds *address*, the relayed ZTP subnet Add device would ADD
     for the device's link, derived from committed intent (`ztp_relayed.link_for_address`) and
-    planned by the one subnet writer (`dhcp_subnets.plan`, its pool the device's own address,
-    declared for ZTP, recording the onboarding that adds it). ``{"add", "candidate"}``: *add* is
-    what the plan carries and its preview states (prefix, pool, relay, id, the writer's values
-    and hash); *candidate* is Kea's configuration with that subnet in it, so every D4 check
-    reads what would be written. Refused, naming why, as the derivation or the writer refuses."""
+    planned by the one subnet writer (`dhcp_subnets.plan`, declared for ZTP, recording the
+    onboarding that adds it). ``{"add", "candidate"}``: *add* is what the plan carries and its
+    preview states (prefix, relay, id, the writer's values and hash); *candidate* is Kea's
+    configuration with that subnet in it, so every D4 check reads what would be written.
+    Refused, naming why, as the derivation or the writer refuses.
+
+    **No pool (C1600): the device's reservation is the subnet's only address.** The pool was
+    the device's own address, so once the reservation was removed (Abandon, Retire) Kea leased
+    that address to whatever asked on the link next. A subnet with reservations and no pool
+    answers only the clients reserved in it; ``pool`` is ``""`` here, said by the preview."""
     import copy
 
     from modules import dhcp_subnets
@@ -310,8 +331,7 @@ def _link_subnet(address: str, dhcp4: dict, *, kea, list_name: str, hostname: st
 
     facts = (relayed or {}).get("facts") or ztp_relayed.intent_everywhere()
     link = ztp_relayed.link_for_address(address, facts)
-    values = {"op": "add", "family": "IPv4", "prefix": link["prefix"],
-              "pool": f"{address} - {address}", "ztp": "1"}
+    values = {"op": "add", "family": "IPv4", "prefix": link["prefix"], "ztp": "1"}
     made = {"device": hostname, "list": list_name}
     p = dhcp_subnets.plan(list_name, values, kea=kea, intent=facts, created_by=made)
     if not p.get("ok"):
@@ -320,7 +340,7 @@ def _link_subnet(address: str, dhcp4: dict, *, kea, list_name: str, hostname: st
     relay = link["relay"]
     candidate = copy.deepcopy(dhcp4)
     candidate.setdefault("subnet4", []).append(dict(p["after"], reservations=[]))
-    return {"add": {"prefix": link["prefix"], "pool": values["pool"], "id": p["id"],
+    return {"add": {"prefix": link["prefix"], "pool": "", "id": p["id"],
                     "relay": f"{relay['device']} {relay['iface']} ({relay['address']})",
                     "values": values, "hash": p["hash"], "created_by": made},
             "candidate": candidate}
@@ -628,7 +648,7 @@ def reservation_entry(mac: str, address: str, hostname: str, server: str,
     option 3, when the onboarding chose to offer it; empty (no option 3, D4 as decided) by
     default. The writer refuses any other value, naming both."""
     opts = [{"name": SERVER_OPTION, "data": server, "always-send": True},
-            {"name": FILE_OPTION, "data": f"{hostname}.cfg", "always-send": True}]
+            {"name": FILE_OPTION, "data": boot_file(hostname), "always-send": True}]
     if router:
         opts.append({"name": ROUTER_OPTION, "data": router, "always-send": True})
     return {"hw-address": _mac(mac), "ip-address": address, "hostname": hostname,

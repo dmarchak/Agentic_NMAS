@@ -507,9 +507,12 @@ def _plan_add(list_name, s, p, kea, file_text, intent, D) -> None:
                               f"({other.get('subnet')})")
         except ValueError:
             continue
-    if not s["pool"]:
+    for_ztp = s.get("ztp") == "1"
+    if not s["pool"] and not for_ztp:
+        # A subnet declared for ZTP may have none (C1600): it answers only the clients reserved
+        # in it, so an address whose reservation is removed is never leased to anyone else.
         raise Refused("a new subnet needs its pool: first - last")
-    entries = ((intent or {}).get(family) or {}).get(prefix.lower() if family == "IPv6"
+    entries =((intent or {}).get(family) or {}).get(prefix.lower() if family == "IPv6"
                                                        else prefix) or []
     used = {x.get("id") for x in subnets} | {x.get("id") for x in config.get(FILES[family][0])
                                              or []}
@@ -525,7 +528,6 @@ def _plan_add(list_name, s, p, kea, file_text, intent, D) -> None:
     relay = sorted({e.get("address") for e in entries if e.get("address")})
     if relay:
         after["relay"] = {"ip-addresses": relay}
-    for_ztp = s.get("ztp") == "1"
     if for_ztp:
         _declare_for_ztp(p, s, after, family, prefix, entries)
     elif family == "IPv4" and not s["gateway"]:

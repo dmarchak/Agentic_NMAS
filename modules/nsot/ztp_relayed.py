@@ -308,6 +308,46 @@ def server_for(relay: dict, dhcp4: dict, addrs=None) -> str:
     return hits[0]
 
 
+def console_plan(address: str, gateway: str, *, facts=None, addrs=None) -> dict:
+    """OUT-OF-BAND ZTP's static path (C1592; the operator, 2026-10-23): the device's link, its
+    relay and the config server its console kick-start copies from, derived from committed
+    intent and this host's own addresses, and NEVER from Kea (the static path writes no subnet
+    and no reservation). ``{"relay": {...} or {}, "server", "reasons": [...]}``, each reason
+    naming what it compared:
+
+    - the link: the one interface in committed intent on a prefix holding *address*
+      (`link_for_address`, its refusals);
+    - the *gateway* typed as ``ip default-gateway`` must be the relay's own address there;
+    - the server: the ONE of the relay's helper targets (committed intent) that is one of this
+      host's own IPv4 addresses, where the responder answers. IPv4 only (C1245)."""
+    out = {"relay": {}, "server": "", "reasons": []}
+    try:
+        ipv4_only(address, "the address")
+        relay = link_for_address(address, facts if facts is not None
+                                 else intent_everywhere())["relay"]
+    except Refused as exc:
+        out["reasons"].append(str(exc))
+        return out
+    out["relay"] = relay
+    given = str(gateway or "").strip()
+    if given != relay["address"]:
+        out["reasons"].append(
+            f"the gateway {given or '(none)'} is not the relay's own address {relay['address']} "
+            f"({relay['device']} {relay['iface']}): the relay is the device's one neighbour "
+            "toward this host")
+    mine = sorted({a for found in _host_addrs(addrs).values() for a in found})
+    hits = sorted(set(relay["relays"]) & set(mine))
+    if len(hits) != 1:
+        out["reasons"].append(
+            f"expected exactly one of {relay['device']} {relay['iface']}'s helper targets "
+            f"{relay['relays']} (committed intent) to be an address of this host {mine}, found "
+            f"{len(hits)}" + (f": {hits}" if hits else ": the console kick-start's copy would "
+                              "reach no responder"))
+    else:
+        out["server"] = hits[0]
+    return out
+
+
 def host_in(prefix: str, addrs=None) -> list:
     """This host's addresses inside *prefix* (a relayed subnet has none)."""
     net = ipaddress.ip_network(prefix, strict=False)

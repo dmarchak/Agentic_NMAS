@@ -397,6 +397,8 @@ interface {{ i.name }}
 {%- macro routes_and_acls(v) -%}
 {% for r in v.static_routes %}{{ 'ip' if r.family == 'ipv4' else 'ipv6' }} route {{ r.spec }}
 {% endfor %}
+{%- if v.get('default_gateway') %}ip default-gateway {{ v.get('default_gateway') }}
+{% endif %}
 {%- for a in v.acls %}ip access-list {{ a.type }} {{ a.name }}
 {% for e in a.entries %} {{ e }}
 {% endfor %}

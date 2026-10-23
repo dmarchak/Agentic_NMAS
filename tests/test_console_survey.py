@@ -200,7 +200,10 @@ def test_normal_mac_writes_lower_case_colon_pairs():
 
 # ── The kick-start's lines ────────────────────────────────────────────────────────────────
 
-SWITCH_PARAMS = {"hostname": "sw-new1", "interface": "GigabitEthernet0/0", "vlan": 10}
+#: C1592 (2026-10-23): vIOS-L2 refuses `ip address dhcp` on an SVI, so the switch profile types
+#: the plan's static address, mask and default gateway (tests/test_console_ztp_static.py).
+SWITCH_PARAMS = {"hostname": "sw-new1", "interface": "GigabitEthernet0/0", "vlan": 10,
+                 "address": "192.0.2.14", "mask": "255.255.255.252", "gateway": "192.0.2.13"}
 
 
 def test_the_switch_kickstart_is_exactly_its_template_with_the_finite_console_timeout():
@@ -213,8 +216,9 @@ def test_the_switch_kickstart_is_exactly_its_template_with_the_finite_console_ti
         " switchport access vlan 10",
         " no shutdown",
         "interface Vlan10",
-        " ip address dhcp",
+        " ip address 192.0.2.14 255.255.255.252",
         " no shutdown",
+        "ip default-gateway 192.0.2.13",
         "line con 0",
         " exec-timeout 15 0",
         "end",
@@ -259,7 +263,7 @@ def test_an_undeclared_parameter_is_refused():
 def test_a_missing_parameter_is_refused():
     with pytest.raises(ValueError, match=re.escape("parameter(s) ['vlan'] are declared by "
                                                    "profile cisco_ios_switch and not given")):
-        V.render_kickstart(SWITCH, {"hostname": "s", "interface": "Gi0/0"})
+        V.render_kickstart(SWITCH, {k: v for k, v in SWITCH_PARAMS.items() if k != "vlan"})
 
 
 def test_no_parameters_at_all_are_refused_as_missing():

@@ -34,14 +34,28 @@ CONFIG = "config"
 LOGIN_USER = "login_user"
 LOGIN_PASSWORD = "login_password"
 MORE = "more"
+#: IOS's one question a kick-start's copy answers, ``Destination filename [running-config]?``
+#: (C1594), with RETURN. Any other question is a partial line no pattern names, which stops the
+#: session once it has been quiet (console_session's unknown prompt).
+COPY_DESTINATION = "copy_destination"
 #: The order a line is classified in, first match wins: a config prompt (`Switch(config)#`) also
 #: matches the privileged prompt's pattern, and a pager or a login prompt must never read as
 #: anything else.
-PROMPT_STATES = (MORE, LOGIN_PASSWORD, LOGIN_USER, SETUP_DIALOG, PRESS_RETURN, CONFIG, PRIV_EXEC,
-                 USER_EXEC, BOOT)
+PROMPT_STATES = (MORE, LOGIN_PASSWORD, LOGIN_USER, SETUP_DIALOG, PRESS_RETURN, COPY_DESTINATION,
+                 CONFIG, PRIV_EXEC, USER_EXEC, BOOT)
 
 #: The parameter shapes a kick-start template may declare (console_survey.SHAPES checks them).
-PARAM_SHAPES = ("interface", "vlan", "hostname")
+#: ``ipv4_address`` and ``ipv4_mask`` carry the static path's address, mask and gateway (C1592):
+#: out-of-band ZTP is IPv4 only (C1245), and an IPv6 value is refused by name.
+PARAM_SHAPES = ("interface", "vlan", "hostname", "ipv4_address", "ipv4_mask")
+#: IOS's refusals, one per form (console_session.refusal): no profile's ``ignore`` pattern may
+#: match one, or a refused line would read as a message and the kick-start would type on past
+#: it (C1593).
+REFUSAL_EXAMPLES = ("% Invalid input detected at '^' marker.", "% Incomplete command.",
+                    "% Ambiguous command:  \"sh\"",
+                    "% Unknown command or computer name, or unable to find computer address",
+                    "%Error opening tftp://server/device.cfg (Timed out)",
+                    "% Bad IP address or host name", "%Warning: an unmeasured warning")
 #: A template's placeholder: `{name}`, a declared parameter's name.
 PLACEHOLDER = re.compile(r"\{([a-z_]+)\}")
 #: Words no kick-start line may hold: the credential never crosses the console.
@@ -185,6 +199,11 @@ def validate(data, expected_name: str = None) -> Profile:
     _keys(data["prompts"], PROMPT_STATES, "prompts")
     prompts = {s: _patterns(data["prompts"][s], f"prompts.{s}") for s in PROMPT_STATES}
     ignore = _patterns(data["ignore"], "ignore", empty_ok=True)
+    for i, pattern in enumerate(ignore):
+        hidden = [r for r in REFUSAL_EXAMPLES if pattern.search(r)]
+        if hidden:
+            raise ProfileError(f"ignore[{i}] {pattern.pattern!r} matches IOS's refusal "
+                               f"{hidden[0]!r}: a refused line would read as a message (C1593)")
     _keys(data["blank_check"], BLANK_KEYS, "blank_check")
     _read_command(data["blank_check"]["command"], "blank_check.command")
     startup = _pattern(data["blank_check"]["startup_entry"], "blank_check.startup_entry", 1)
