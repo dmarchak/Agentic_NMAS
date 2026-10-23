@@ -210,6 +210,19 @@ class TestAbsentNeverMatches:
                                            "served to no device")
         assert calls == []
 
+    def test_a_mac_matches_its_reservation_whatever_the_case_of_either_side(self):
+        """Kea and the manifest may write the same MAC in different case (Kea keeps what it was
+        given; the manifest keeps what onboarding read): the match is the MAC, not its letters,
+        on both sides (mutation run #32 at 85095f8f: every survivor of the case-folding)."""
+        upper = MAC.upper()
+        for reserved, recorded in ((upper, MAC), (MAC, upper)):
+            calls = []
+            got = _decide(calls=calls, fragment=lambda r=reserved: [_reservation(mac=r)],
+                          pending=lambda m=recorded: _pending(mac=m))
+            assert got == {"serve": True, "config": CONFIG.encode("ascii"),
+                           "device": "bp-ztp-a", "list": "Lab", "reason": ""}, (reserved, recorded)
+            assert calls == [("/repo", "bp-ztp-a")]
+
     def test_a_reserved_device_with_no_name_is_rendered_for_no_one(self):
         calls = []
         got = _decide(calls=calls, pending=lambda: _pending(name=""))

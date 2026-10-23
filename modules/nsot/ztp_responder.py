@@ -175,12 +175,18 @@ def _holder(list_name: str, hostname: str):
     return device_ops.holder(list_name, hostname)
 
 
-def _present(value, lower: bool = False):
+def _present(value):
     """*value* as stripped text, or None when it is absent or blank: an absent value never
     equals anything, not even another absent one (the operator, 2026-10-23, after mutation run
     #31 found a reservation with no MAC matching a pending entry with none)."""
-    text = str(value or "").strip()
-    return (text.lower() if lower else text) or None
+    return str(value or "").strip() or None
+
+
+def _mac(value):
+    """A MAC as `_present` reads it, case-folded (Kea and the manifest may write one MAC in
+    different case); None when absent."""
+    text = _present(value)
+    return text.lower() if text else None
 
 
 def console_gate(peer: str, filename: str, *, pending=_pending_ztp_devices,
@@ -295,7 +301,7 @@ def decide(peer: str, filename: str, *, fragment=_fragment_entries,
         out["reason"] = (f"{peer} asked for {filename!r}; its reservation names "
                          f"{named!r}")
         return out
-    mac = _present(reservation.get("hw-address"), lower=True)
+    mac = _mac(reservation.get("hw-address"))
     if mac is None:
         # Mutation run #31: a reservation with no MAC matched a pending entry with none
         # recorded (absent equal to absent); a reserved address is served only to its MAC.
@@ -304,7 +310,7 @@ def decide(peer: str, filename: str, *, fragment=_fragment_entries,
     try:
         devices = [(ln, repo, e) for ln, repo, e in pending()
                    if _present(e.get("reserved_address")) == peer
-                   and _present(e.get("mgmt_mac"), lower=True) == mac]
+                   and _mac(e.get("mgmt_mac")) == mac]
     except Exception as exc:                      # noqa: BLE001
         out["reason"] = f"the manifests could not be read: {exc}"
         return out
