@@ -121,6 +121,7 @@ RATCHETS = (
     # ── Floors: they never fall (a population a scan must keep finding) ─────────────────────
     ("tests/test_concepts_are_taught.py", "MIN_WORDS", "floor"),
     ("tests/test_confirm_buttons_drawn.py", "FLOOR", "floor"),
+    ("tests/test_console_records_at_rest.py", "FLOOR", "floor"),
     ("tests/test_oxidized_settings_inert.py", "FLOOR", "floor"),
     ("tests/test_probe_topologies.py", "MIN_TOPOLOGIES", "floor"),
     ("tests/test_probe_topologies.py", "MIN_C8000V_NODES", "floor"),

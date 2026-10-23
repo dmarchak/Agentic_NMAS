@@ -999,8 +999,13 @@ def _phases(console, rec: dict, ctx: dict, wall) -> bool:
             raise _Stop("read_back", f"the read-back {cmd!r} was refused: {said!r}")
         answers[cmd] = out
     rb = oob_steps.readback_verdict(ctx["rb_plan"], answers)
-    rec["read_back"] = {"ok": rb["ok"], "differs": [d_["why"] for d_ in rb["differs"]],
-                        "mac_why": rb["mac_why"]}
+    from modules.redact import redact_text
+    # A difference quotes what the device showed, and the copy's verdict what it printed:
+    # masked at rest, as the kick-start's are (console_ztp `_readback`, `_copy`).
+    rec["read_back"] = {"ok": rb["ok"],
+                        "differs": [redact_text(d_["why"], console.values)
+                                    for d_ in rb["differs"]],
+                        "mac_why": redact_text(rb["mac_why"], console.values)}
     if not rb["ok"]:
         raise _Stop("read_back", "; ".join(d_["why"] for d_ in rb["differs"])
                     or f"the MAC in use could not be read: {rb['mac_why']}")
@@ -1013,7 +1018,8 @@ def _phases(console, rec: dict, ctx: dict, wall) -> bool:
                                       ctx["timings"].copy_timeout_s
                                       or oob_steps.copy_timeout_s())
     verdict = oob_steps.verify_copy(console.output(), prof)
-    rec["copy"] = dict(verdict)
+    rec["copy"] = {k: redact_text(v, console.values) if isinstance(v, str) else v
+                   for k, v in verdict.items()}
     if got.outcome != "done" or not verdict["ok"]:
         raise _Stop("copy", f"{p['copy']!r}: {verdict['why']} (needs one [OK - N bytes], N "
                             "over 0, and no refusal)"

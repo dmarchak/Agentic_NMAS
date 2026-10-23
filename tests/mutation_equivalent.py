@@ -822,4 +822,41 @@ EQUIVALENT = [
            "it); FINAL's states outside the prelude are PRIV_EXEC and CONFIG, which are "
            "console_survey.SIGNED_IN and stop as `signed_in` first, and a None wake past the "
            "first check was found in SIGNED_IN or LOGIN and stops as `signed_in` or `login`"),
+    # ── The ZTP responder's decision (run #31 of 2026-10-23, at 9d9e6b40; each applied again
+    # by hand at 181d7823). Every other survivor of `decide`, `console_gate` and
+    # `_pending_ztp_devices` is killed by a test in tests/test_ztp_responder_decides.py.
+    *_each("modules.nsot.ztp_responder.console_gate",
+           'name = entry.get("name", "")',
+           ('name = entry.get("name", None)', 'name = entry.get("name", )',
+            'name = entry.get("name", "XXXX")'),
+           "the default is never read: the entries are manifest.pending_devices' rows (through "
+           "_pending_ztp_devices, the one `pending` in production), and every row sets `name`"),
+    *_each("modules.nsot.ztp_responder.decide",
+           'out["device"], out["list"] = entry.get("name", ""), list_name',
+           ('out["device"], out["list"] = entry.get("name", None), list_name',
+            'out["device"], out["list"] = entry.get("name", ), list_name',
+            'out["device"], out["list"] = entry.get("name", "XXXX"), list_name'),
+           "the default is never read: the entries are manifest.pending_devices' rows (through "
+           "_pending_ztp_devices, the one `pending` in production), and every row sets `name`"),
+    *_each("modules.nsot.ztp_responder.decide",
+           'out["config"] = rendered["config"].encode("ascii")',
+           ('out["config"] = rendered["config"].encode("ASCII")',),
+           "Python's codec lookup ignores the name's case: one codec, the same bytes, the same "
+           "error on a character outside ASCII"),
+    # ── Out-of-band ZTP, the static kick-start's copy (C1594; run #30 of 2026-10-23, at
+    # 9d9e6b40, each applied again by hand at 9c56f23b). Every other survivor there is killed
+    # by a test in tests/test_console_copy_records.py naming the behaviour.
+    *_each("modules.nsot.console_kickstart.copy_line",
+           'text = str(server or "").strip()',
+           ('text = str(server or "XXXX").strip()',),
+           "a falsy server's stand-in has no colon and is no IPv4 address either way, so both "
+           "reach the same refusal, which names the server as given (`server!r`), not the text"),
+    *_each("modules.nsot.console_ztp._copy",
+           "refused = console.session.refused if console.session is not None else None",
+           ("refused = console.session.refused if (console.session is not None) or True "
+            "else None",),
+           "_copy reads the session only after its own `console.then` (the copy), which leaves "
+           "console.session set (it begins a session from the seed, or continues the one "
+           "`attach` set on a done wake, dereferencing it either way): with a session set the "
+           "guard is true both ways (as console_ztp._stopped's)"),
 ]

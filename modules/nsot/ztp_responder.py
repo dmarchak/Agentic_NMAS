@@ -175,6 +175,14 @@ def _holder(list_name: str, hostname: str):
     return device_ops.holder(list_name, hostname)
 
 
+def _present(value, lower: bool = False):
+    """*value* as stripped text, or None when it is absent or blank: an absent value never
+    equals anything, not even another absent one (the operator, 2026-10-23, after mutation run
+    #31 found a reservation with no MAC matching a pending entry with none)."""
+    text = str(value or "").strip()
+    return (text.lower() if lower else text) or None
+
+
 def console_gate(peer: str, filename: str, *, pending=_pending_ztp_devices,
                  holder=_holder) -> dict:
     """OUT-OF-BAND ZTP's static path (C1592, C1594; the operator, 2026-10-23, O5 narrowed): may
@@ -198,7 +206,7 @@ def console_gate(peer: str, filename: str, *, pending=_pending_ztp_devices,
     try:
         devices = [(ln, repo, e) for ln, repo, e in pending()
                    if e.get("address_source") == ztp.ZTP_CONSOLE
-                   and str(e.get("mgmt_ip") or "").strip() == peer]
+                   and _present(e.get("mgmt_ip")) == peer]
     except Exception as exc:                      # noqa: BLE001
         out["reason"] = f"the manifests could not be read: {exc}"
         return out
@@ -209,6 +217,11 @@ def console_gate(peer: str, filename: str, *, pending=_pending_ztp_devices,
         return out
     list_name, repo, entry = devices[0]
     name = entry.get("name", "")
+    if not _present(name):
+        out.update(list=list_name, repo=repo)
+        out["reason"] = (f"the pending out-of-band device planned at {peer} has no name: no "
+                         "bootstrap is served")
+        return out
     out.update(device=name, list=list_name, repo=repo)
     want = ztp.boot_file(name)
     if filename != want:
@@ -250,7 +263,7 @@ def decide(peer: str, filename: str, *, fragment=_fragment_entries,
         out["reason"] = f"the tool's reservations could not be read: {exc}"
         return out
     unread = [e["_unread"] for e in entries if isinstance(e, dict) and e.get("_unread")]
-    mine = [e for e in entries if isinstance(e, dict) and e.get("ip-address") == peer]
+    mine = [e for e in entries if isinstance(e, dict) and _present(e.get("ip-address")) == peer]
     if not mine:
         gate = console_gate(peer, filename, pending=pending, holder=holder)
         if gate["device"]:
@@ -275,15 +288,23 @@ def decide(peer: str, filename: str, *, fragment=_fragment_entries,
     reservation = mine[0]
     named = next((o.get("data") for o in reservation.get("option-data") or []
                   if o.get("name") == "boot-file-name"), None)
+    if _present(named) is None:
+        out["reason"] = f"{peer}'s reservation names no boot file, so it is served to no device"
+        return out
     if filename != named:
         out["reason"] = (f"{peer} asked for {filename!r}; its reservation names "
                          f"{named!r}")
         return out
-    mac = (reservation.get("hw-address") or "").lower()
+    mac = _present(reservation.get("hw-address"), lower=True)
+    if mac is None:
+        # Mutation run #31: a reservation with no MAC matched a pending entry with none
+        # recorded (absent equal to absent); a reserved address is served only to its MAC.
+        out["reason"] = f"{peer}'s reservation names no hw-address, so it is served to no device"
+        return out
     try:
         devices = [(ln, repo, e) for ln, repo, e in pending()
-                   if e.get("reserved_address") == peer
-                   and (e.get("mgmt_mac") or "").lower() == mac]
+                   if _present(e.get("reserved_address")) == peer
+                   and _present(e.get("mgmt_mac"), lower=True) == mac]
     except Exception as exc:                      # noqa: BLE001
         out["reason"] = f"the manifests could not be read: {exc}"
         return out
@@ -295,6 +316,10 @@ def decide(peer: str, filename: str, *, fragment=_fragment_entries,
         return out
     list_name, repo, entry = devices[0]
     out["device"], out["list"] = entry.get("name", ""), list_name
+    if not _present(out["device"]):
+        out["reason"] = (f"the pending ZTP device holding {mac} -> {peer} has no name: no "
+                         "bootstrap is served")
+        return out
     served = reservation.get("_networks")
     if served is not None and list_name not in served:
         # C1252: a reservation is served to the network whose Kea owns its fragment, never
