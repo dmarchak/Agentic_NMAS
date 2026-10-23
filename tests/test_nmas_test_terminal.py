@@ -119,6 +119,11 @@ def test_ctrl_c_reaches_the_run(tmp_path):
         started = str(planted) + ".started"
         rc, out = _read_until(fd, pid, time.time() + 60, want=lambda: os.path.exists(started))
         assert rc is None and os.path.exists(started), f"the planted test never started:\n{out}"
+        # Into the planted test's sleep, not the instant between its marker and the sleep: CI
+        # #1090 (2026-10-23) sent it there and pytest's capture raised "was already stopped"
+        # before printing KeyboardInterrupt (C1599). The marker is the test's first line, so
+        # half a second puts the interrupt inside the 60 s sleep on any runner.
+        time.sleep(0.5)
         os.write(fd, b"\x03")                                    # Ctrl+C, as the terminal sends it
         rc, more = _read_until(fd, pid, time.time() + 20)
         assert rc is not None, f"Ctrl+C did not end the run within 20 s:\n{out}{more}"
