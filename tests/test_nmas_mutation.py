@@ -9,6 +9,7 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -1252,13 +1253,37 @@ class TestTheWorkflow:
         assert set(on) == {"workflow_dispatch"}
         assert "WEEKLY" in self.text() and "08:30 to 09:10 UTC" in self.text()
 
+    def test_a_labelled_dispatch_runs_beside_the_others_and_keeps_its_record_apart(self):
+        """Lab 9, 2026-10-23 (the operator): the blocking function groups are measured in
+        parallel. Unlabelled, one night at a time, its record under the nights' prefix; a label
+        is its own concurrency group, and its record is saved outside that prefix, so it never
+        becomes the record a night restores. A label is refused unless lowercase letters,
+        digits and hyphens (it names a group and a cache key)."""
+        doc = self.doc()
+        assert doc["concurrency"] == {
+            "group": "mutation-nightly${{ inputs.label && format('-{0}', inputs.label) || '' }}",
+            "cancel-in-progress": False}
+        steps = doc["jobs"]["mutate"]["steps"]
+        restore = next(s for s in steps if str(s.get("uses", "")).startswith("actions/cache/restore"))
+        save = next(s for s in steps if str(s.get("uses", "")).startswith("actions/cache/save"))
+        prefix = restore["with"]["restore-keys"]
+        assert prefix == "mutation-state-"
+        key = save["with"]["key"]
+        labelled, night = re.fullmatch(
+            r"\$\{\{ inputs\.label && format\('([^']*)', inputs\.label, github\.run_id\) \|\| "
+            r"format\('([^']*)', github\.run_id\) \}\}", key).groups()
+        assert night.startswith(prefix) and not labelled.startswith(prefix), (labelled, night)
+        plan = next(s for s in steps if s.get("id") == "plan")["run"]
+        assert '*[!a-z0-9-]*) echo "the label' in plan
+
     def test_a_dispatchs_functions_reach_the_plan_through_the_environment(self):
         """Never `${{ inputs... }}` pasted into a script (an input is text a person typed)."""
         doc = self.doc()
-        assert set(doc[True]["workflow_dispatch"]["inputs"]) == {"functions", "cap"}
+        assert set(doc[True]["workflow_dispatch"]["inputs"]) == {"functions", "cap", "label"}
         plan = next(s for s in doc["jobs"]["mutate"]["steps"] if s.get("id") == "plan")
         assert plan["env"] == {"ALSO_FUNCTIONS": "${{ inputs.functions }}",
                                "CAP": "${{ inputs.cap }}",
+                               "LABEL": "${{ inputs.label }}",
                                "REACH_COMMIT": "${{ steps.reach.outputs.sha }}",
                                "REACH_RUN": "${{ steps.reach.outputs.id }}",
                                "REACH_DATE": "${{ steps.reach.outputs.date }}",

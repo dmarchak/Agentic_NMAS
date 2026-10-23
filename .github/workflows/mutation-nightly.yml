@@ -38,12 +38,23 @@ on:
           functions run; what does not fit waits in the record, first in line
         required: false
         default: ""
+      label:
+        description: >-
+          A name for a group of functions run beside other groups (lowercase letters, digits
+          and hyphens; empty for the one-at-a-time night). A labelled run has its own
+          concurrency group and keeps its record apart from the nights' own: its verdict stands
+          in its run alone
+        required: false
+        default: ""
 
 permissions:
   contents: read
 
+# One night at a time, holding the record; a labelled dispatch (Lab 9, 2026-10-23: the
+# blocking function groups measured in parallel, the operator) runs in a group of its own
+# label, beside the others and the night.
 concurrency:
-  group: mutation-nightly
+  group: mutation-nightly${{ inputs.label && format('-{0}', inputs.label) || '' }}
   cancel-in-progress: false
 
 env:
@@ -179,6 +190,7 @@ jobs:
         env:
           ALSO_FUNCTIONS: ${{ inputs.functions }}
           CAP: ${{ inputs.cap }}
+          LABEL: ${{ inputs.label }}
           REACH_COMMIT: ${{ steps.reach.outputs.sha }}
           REACH_RUN: ${{ steps.reach.outputs.id }}
           REACH_DATE: ${{ steps.reach.outputs.date }}
@@ -192,6 +204,10 @@ jobs:
             "") ;;
             *[!0-9]*) echo "the cap '$CAP' is not a number of functions" >&2; exit 1;;
             *) set -- "$@" --cap "$CAP";;
+          esac
+          case "$LABEL" in
+            "") ;;
+            *[!a-z0-9-]*) echo "the label '$LABEL' is not lowercase letters, digits and hyphens" >&2; exit 1;;
           esac
           python scripts/nmas-mutation plan --state .mutation-state/state.json \
             --head "$GITHUB_SHA" --out mutation-out --summary mutation-out/summary.md --fence \
@@ -257,13 +273,15 @@ jobs:
           exit $code
 
       # Kept after every night whose results stand, open survivors and all: the report writes the
-      # record only then (a broken measurement or run leaves the restored one as it was).
+      # record only then (a broken measurement or run leaves the restored one as it was). A
+      # labelled run's is kept under a key outside the nights' prefix, so runs side by side never
+      # overwrite the record a night restores.
       - name: Keep the record for the next night
         if: always() && hashFiles('.mutation-state/state.json') != ''
         uses: actions/cache/save@v4
         with:
           path: .mutation-state
-          key: mutation-state-${{ github.run_id }}
+          key: ${{ inputs.label && format('mutation-group-{0}-{1}', inputs.label, github.run_id) || format('mutation-state-{0}', github.run_id) }}
 
       - name: Keep the full report
         if: always() && steps.plan.outputs.work == 'yes'

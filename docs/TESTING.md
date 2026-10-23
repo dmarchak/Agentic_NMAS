@@ -389,6 +389,13 @@ nothing scores 100% coverage and 0% here. Each night:
   than it started joins every function, as before, and is named in the summary. The canary's
   `in_child` gets `test_in_child` only through this measurement, so a measurement that
   misattributes kills the canary's verdict, not the night's.
+- **A labelled dispatch** (Lab 9, 2026-10-23, the operator: groups of functions measured in
+  parallel): the `label` input (lowercase letters, digits, hyphens; anything else refused by
+  the plan step) gives the run its own concurrency group, `mutation-nightly-<label>`, beside
+  the night and other labels, and saves its record under `mutation-group-<label>-<run>`,
+  outside the `mutation-state-` prefix a night restores: its verdict stands in its run alone.
+  Dispatched with `functions` and a `cap` equal to their count, it runs only those.
+  [tests/test_nmas_mutation.py, `TestTheWorkflow`]
 - **The cap** (C834): at most `NIGHT_CAP` functions a night (`plan --cap`), the oldest
   unfinished first: a function a person named tonight, then by when each entered the record
   (`since`, the head commit of the night it entered; a record from before the field is older
