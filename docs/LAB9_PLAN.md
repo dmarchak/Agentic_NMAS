@@ -56,6 +56,16 @@ The handout's diagram labels the second host H1; it is H7 here (LAB_REQUIREMENTS
 | D5 | s5's unused Gi0/0 | — | **the operator:** s5's Day 1 shuts Gi0/0 (Mercury reaches s5 on VLAN 1 through R8), its dangerous-line reason written into the Day 1 prep in advance, as for R6's Gi1. The first pass records where s5's DISCOVER actually went (P-S2) |
 | D6 | s5's CPU (section 3) | s5 on CPU 19 alone; routers and hosts on 0 to 18; switches on 19 to 23 | **yes** (the operator, 2026-10-22). After the redeploy, one measured hour with the tuning checks (OSPF drops, failed scrapes, clock rates, s5's included) before the first pass: the go or no-go and the baseline. NUMA stays deferred unless the first pass is unreliable |
 
+## Overnight decisions (2026-10-23 into 10-24; the operator's overnight rules, for review)
+
+Each decision the agent took alone under the operator's overnight rules (equivalents only of the
+named kinds; in security code, absent or unexpected input refused with a test, never "cannot
+happen today"; deploy 2 only when every condition holds), with its reason.
+
+| # | When (UTC) | Decision | Reason |
+|---|---|---|---|
+| N1 | 10:1x | Conflict markers: none in the working tree, the index, or any commit since `271ccb7a` (searched with `git grep`, the middle marker anchored to a whole line); the stage guard now refuses a staged marker line, and `tests/test_no_conflict_markers.py` scans every tracked file in CI | the `>>>>>>> theirs` the operator saw was in a diff printed mid-merge (TESTING.md, beside the copy row) and was resolved before staging; the check makes the next one a refusal, not a sighting |
+
 ## 0. Tonight's queue: C1522 and R7's heartbeat rule (done)
 
 - [x] **Push C1522:** `c895821c`, 04:44 UTC. Its CI run 1057 went red: the new module guard

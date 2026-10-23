@@ -17,6 +17,8 @@ can refuse, so this reads the INDEX and refuses:
 - a NEW or MODIFIED file whose staged content holds a private-key block
   (BEGIN ... PRIVATE KEY) or a GitHub token (ghp_ and kin, github_pat_): a
   key pasted into an existing file is the same leak; and a NEW *.token file;
+- a NEW or MODIFIED file whose staged content holds a merge-conflict marker
+  (a line starting `<<<<<<< `, `>>>>>>> `, or exactly `=======`);
 - a NEW file outside the top-level entries HEAD already has, unless it is named
   with --allow (or NMAS_STAGE_ALLOW, space-separated): a stray is refused
   until someone says it belongs.
@@ -47,6 +49,9 @@ PRIVATE_KEY = re.compile(r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----
 #: (github_pat_). Added before the operator's Actions-read token existed (the
 #: operator, 2026-10-01: "confirm the guards would refuse it"; they did not).
 GITHUB_TOKEN = re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})\b")
+#: A merge-conflict marker left in a file: git's own three lines, each at a line's start (the
+#: operator, 2026-10-23, after a `>>>>>>> theirs` showed in a diff during a three-way merge).
+CONFLICT_MARKER = re.compile(r"^(?:<{7} |>{7} |={7}$)", re.M)
 EXIT_REFUSED, EXIT_UNREADABLE = 1, 2
 
 
@@ -114,6 +119,12 @@ def judge(repo: str, allow=()) -> dict:
             refused.append((path, "its staged content holds a private-key block"))
         if GITHUB_TOKEN.search(text):
             refused.append((path, "its staged content holds a GitHub token"))
+        marker = CONFLICT_MARKER.search(text)
+        if marker:
+            line = text.count("\n", 0, marker.start()) + 1
+            shown = text[marker.start():].split("\n", 1)[0].strip()
+            refused.append((path, f"its staged content holds a merge-conflict marker at line "
+                                  f"{line} ({shown!r})"))
     return {"new": new, "refused": refused, "staged": len(files)}
 
 

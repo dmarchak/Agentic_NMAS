@@ -95,6 +95,28 @@ class TestSecretsAreRefused:
         assert _run(repo) == 0
 
 
+class TestConflictMarkersAreRefused:
+    """A merge-conflict marker left in a staged file is refused, naming the file and line (the
+    operator, 2026-10-23). The markers are built, never written whole: a literal one in this
+    file would be refused by the guard and by tests/test_no_conflict_markers.py."""
+
+    OURS, MID, THEIRS = "<" * 7 + " ours", "=" * 7, ">" * 7 + " theirs"
+
+    @pytest.mark.parametrize("which", [0, 1, 2])
+    def test_each_marker_line_in_a_staged_file_is_refused_by_line(self, repo, which, capsys):
+        marker = (self.OURS, self.MID, self.THEIRS)[which]
+        _write(repo, "docs/a.md", f"clean\nstill clean\n{marker}\nafter\n")
+        assert _run(repo) == 1
+        assert ("docs/a.md: its staged content holds a merge-conflict marker at line 3 "
+                f"({marker!r})") in capsys.readouterr().err
+
+    def test_a_marker_shape_inside_a_line_or_a_longer_rule_is_not_one(self, repo):
+        """The control: git writes each marker at a line's start, the middle one alone; a
+        Markdown rule of eight `=` or a marker quoted inside a sentence is no marker."""
+        _write(repo, "docs/a.md", "Title\n" + "=" * 8 + f"\nsee `{self.THEIRS}` in a diff\n")
+        assert _run(repo) == 0
+
+
 class TestStraysAreRefusedUnlessNamed:
     def test_a_new_top_level_entry_is_refused(self, repo, capsys):
         _write(repo, "stray/thing.txt")
