@@ -68,6 +68,8 @@ NETWORK_FREE = {
     "settings_v2.diag_*": "the installation's diagnostics: every network's, no one's",
     "settings_v2.platforms_*": "the installation's platforms: every network's, no one's",
     "settings_v2.records_*": "the installation's records stores: every network's, no one's",
+    "console_servers_v2.*": ("the installation's console servers (Settings › Installation › "
+                             "Console servers): every network's, no one's"),
     "v2.help_page": "the manual: the same for every network",
     "v2.help_panel": "the manual, in the help panel: the same for every network",
     "v2.about": "Help > About, a page of the manual: the software, the same for every network",

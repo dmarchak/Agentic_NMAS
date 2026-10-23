@@ -1058,10 +1058,162 @@ def _ip_sla_unsent(client, _lab, _mp):
             "floor: the committed probe r3 does not run is listed with its Retry"
 
 
+def _console_netbox(mp):
+    """A NetBox holding a Planned device `edge1` cabled to a console server's port (and a
+    second port with no record), the shared fake's measured console shapes; `_nb_ready` answers
+    with it. ``(fake, device, server_port, spare_port)``."""
+    from tests.fake_netbox import FakeNetBox
+
+    fake = FakeNetBox()
+    dev = fake.seed("dcim/devices", {"name": "edge1", "status": "planned"})
+    cs = fake.seed("dcim/devices", {"name": "cons-1", "status": "active"})
+    port = fake.seed("dcim/console-ports", {"device": dev["id"], "name": "con 0"})
+    sport = fake.seed("dcim/console-server-ports", {"device": cs["id"], "name": "port 5"})
+    spare = fake.seed("dcim/console-server-ports", {"device": cs["id"], "name": "port 6"})
+    fake.seed("dcim/cables", {
+        "a_terminations": [{"object_type": "dcim.consoleport", "object_id": port["id"]}],
+        "b_terminations": [{"object_type": "dcim.consoleserverport",
+                            "object_id": sport["id"]}], "status": "connected", "label": ""})
+    mp.setattr("modules.netbox_client._nb_ready", lambda: (True, "", fake, "http://nb.invalid"))
+    return fake, dev, sport, spare
+
+
+def _console_ztp(client, lab, _mp):
+    """Out-of-band ZTP's card (O6b) and Add device's offer (O7), through the real routes and
+    the real survey and kick-start, on a fake console server answering with s5's captured
+    console text (tests/test_console_ztp.py's), at its short timings: the offer on a review,
+    the survey's preview and its refusal, its run's result, the kick-start's form, preview and
+    result, and a run no job explains. Its patches are undone before the next provider."""
+    import pytest
+
+    from modules.nsot import capture_job, console_servers
+    from modules.nsot import console_ztp as Z
+    from modules.nsot import console_survey as V
+    from modules.nsot import console_profiles as P
+    from tests.console_fakes import Console, RawServer
+    from tests.test_console_session import PNP
+    from tests.test_console_ztp import FAST, blank_answers, kick_answers
+
+    mp = pytest.MonkeyPatch()
+    consoles = []
+    server = RawServer(lambda: Console(*consoles.pop(0)))
+    try:
+        _fake, dev, sport, _spare = _console_netbox(mp)
+        mp.setattr(Z, "DEFAULT_TIMINGS", FAST)
+        # The lab points `get_list_data_dir` (where a run's record is written) at its folder
+        # and leaves `list_data_path` (where it is read) on the store; one folder here, as on
+        # an installation, where the two are the same path.
+        from modules import config
+        mp.setattr("modules.config.list_data_path", config.get_list_data_dir)
+        assert console_servers.set_port(sport["id"], {"driver": "raw_tcp", "host": server.host,
+                                                      "tcp_port": server.port},
+                                        actor="v2-context")["ok"]
+        # Add device's review asks for the offer as it draws: a device NetBox holds as Planned
+        # with its console path, and one it holds no Planned record of.
+        r = client.get(f"/v2/onboard/console/offer?list_name=Lab&netbox_id={dev['id']}"
+                       "&hostname=edge1&platform=cisco_ios&role=switch")
+        assert "Kick-start through the console…" in r.get_data(as_text=True), r.status_code
+        r = client.get("/v2/onboard/console/offer?list_name=Lab&hostname=edge1")
+        assert 'data-console-absent="no_record"' in r.get_data(as_text=True), r.status_code
+        base = f"/v2/onboard/console/{dev['id']}"
+        form = {"list_name": "Lab", "step": "survey", "hostname": "edge1", "add": "1",
+                "profile": "cisco_ios_switch"}
+        assert client.get(f"{base}?list_name=Lab&step=survey&profile=cisco_ios_switch"
+                          "&hostname=edge1&add=1").status_code == 200
+        refused = client.post(f"{base}/survey/preview", data=dict(form, profile="nope"))
+        assert refused.status_code == 409, refused.status_code
+        pv = client.post(f"{base}/survey/preview", data=form)
+        digest = re.search(r'name="hash" value="([0-9a-f]{64})"', pv.get_data(as_text=True))
+        assert digest, pv.status_code
+        consoles.append((PNP, blank_answers()))
+        run = client.post(f"{base}/survey", data=dict(form, hash=digest.group(1)))
+        html = run.get_data(as_text=True)
+        run_id = re.search(r"run=([0-9]{8}T[0-9]{12}Z-[0-9a-f]{32})", html).group(1)
+        job = re.search(r"job=([0-9a-f]{32})", html).group(1)
+        assert capture_job.wait(job, 30)
+        done = client.get(f"{base}?list_name=Lab&step=survey&run={run_id}&job={job}"
+                          "&hostname=edge1&add=1")
+        assert "factory-blank" in done.get_data(as_text=True), done.status_code
+        # The kick-start, the device taken as in the network (Create's part is onboarding's).
+        mp.setattr("routes.console_ztp_v2._onboarded", lambda l, h: "")
+        kick = {"list_name": "Lab", "step": "kickstart", "hostname": "edge1",
+                "param_interface": "GigabitEthernet0/1", "param_vlan": "10"}
+        assert client.get(f"{base}?list_name=Lab&step=kickstart").status_code == 200
+        pv = client.post(f"{base}/kickstart/preview", data=kick)
+        digest = re.search(r'name="hash" value="([0-9a-f]{64})"', pv.get_data(as_text=True))
+        assert digest, pv.status_code
+        lines = V.render_kickstart(P.load("cisco_ios_switch"),
+                                   {"hostname": "edge1", "interface": "GigabitEthernet0/1",
+                                    "vlan": "10"})
+        consoles.append((b"", kick_answers(lines)))
+        run = client.post(f"{base}/kickstart", data=dict(kick, hash=digest.group(1)))
+        html = run.get_data(as_text=True)
+        run_id = re.search(r"run=([0-9]{8}T[0-9]{12}Z-[0-9a-f]{32})", html).group(1)
+        job = re.search(r"job=([0-9a-f]{32})", html).group(1)
+        assert capture_job.wait(job, 30)
+        done = client.get(f"{base}?list_name=Lab&step=kickstart&run={run_id}&job={job}")
+        assert "typed, verified" in done.get_data(as_text=True), done.status_code
+        lost = client.get(f"{base}?list_name=Lab&run=20261022T000000000000Z-{'a' * 32}")
+        assert lost.status_code == 200
+    finally:
+        mp.undo()
+        server.close()
+
+
+def _console_servers(client, _lab, _mp):
+    """Settings › Installation › Console servers (O8) with a port record, a NetBox port with
+    none, a key, a held host key and the store's log: the tab, each card, each change and its
+    answer, and a re-key's preview and confirm (C1560; the key read is replaced, the keys real,
+    generated here). Its patches are undone before the next provider."""
+    import paramiko
+    import pytest
+
+    from modules import host_keys
+    from modules.nsot import console_keys, console_servers
+
+    mp = pytest.MonkeyPatch()
+    try:
+        _fake, _dev, sport, spare = _console_netbox(mp)
+        console_keys.generate("ctx-console", username="mercury",
+                              wrapper_path=console_keys.WRAPPER_PATH,
+                              allowlist_path=console_keys.ALLOWLIST_PATH, replace=True)
+        assert console_servers.set_port(sport["id"], {
+            "driver": "command_bridge", "host": "192.0.2.60", "ssh_port": 22,
+            "container": "edge-a", "credential_ref": "ctx-console"}, actor="v2-context")["ok"]
+        held, now = (paramiko.RSAKey.generate(1024) for _ in range(2))
+        host_keys.check("192.0.2.60", held, owner="v2-context")
+        mp.setattr("modules.connection.read_host_key",
+                   lambda host, **kw: host_keys.offered(now))
+        tab = "/v2/settings/installation/console-servers"
+        for url in ("/v2/settings/installation?tab=console", tab, f"{tab}/port/form",
+                    f"{tab}/port/form?port={sport['id']}",
+                    f"{tab}/port/{sport['id']}/remove/form", f"{tab}/key/form"):
+            assert client.get(url).status_code == 200, url
+        saved = client.post(f"{tab}/port", data={"port_id": str(spare["id"]),
+                                                 "driver": "raw_tcp", "host": "2001:db8::61",
+                                                 "tcp_port": "5000"})
+        assert saved.status_code == 200, saved.status_code
+        assert client.post(f"{tab}/port", data={"port_id": str(spare["id"]),
+                                                "driver": "raw_tcp"}).status_code == 409
+        assert client.post(f"{tab}/key", data={
+            "ref": "ctx-console-2", "username": "mercury",
+            "wrapper_path": console_keys.WRAPPER_PATH,
+            "allowlist_path": console_keys.ALLOWLIST_PATH}).status_code in (200, 409)
+        assert client.post(f"{tab}/port/{spare['id']}/rekey/preview").status_code == 409
+        pv = client.post(f"{tab}/port/{sport['id']}/rekey/preview")
+        digest = re.search(r'name="hash" value="([0-9a-f]{16})"', pv.get_data(as_text=True))
+        assert digest, pv.status_code
+        assert client.post(f"{tab}/port/{sport['id']}/rekey",
+                           data={"hash": digest.group(1)}).status_code == 200
+        assert client.post(f"{tab}/port/{spare['id']}/remove").status_code == 200
+    finally:
+        mp.undo()
+
+
 #: What no followed GET reaches, each on the lab's own state: a POST's card, a script's GET,
 #: a state the lab's walk does not hold. In order: `_deploy` changes r3, so it is last.
 PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _drift,
                    _in_progress, _pending, _netbox_source, _netbox_lag, _silenced_alert,
                    _save_no_golden, _profile_versions,
                    _no_change_window, _update_owed, _lease_release, _ip_sla_retunes, _ip_sla_unsent,
-                   _deploy]
+                   _console_ztp, _console_servers, _deploy]

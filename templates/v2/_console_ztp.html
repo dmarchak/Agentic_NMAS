@@ -1,0 +1,163 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{#- Out-of-band ZTP's card (O6b and O7; the board docs/boards/console-ztp.html, boards B to E,
+    drawn under the Phase 7 mode and logged in docs/STANDING_APPROVAL_LOG.md): the console
+    survey and the console kick-start of a device being onboarded, keyed by its network and its
+    NetBox id, drawn in place inside Add device. From routes/console_ztp_v2.card, in the state
+    its query names: choose, confirm, running, result, failed, lost. -#}
+{%- set p = c.pv or {} -%}
+{%- set survey = c.step == 'survey' -%}
+{%- set who = c.hostname or ('NetBox device ' ~ c.device_id) -%}
+{%- set what = 'console survey' if survey else 'console kick-start' -%}
+{%- set section = 'console-survey' if survey else 'console-kick-start' -%}
+{%- set r = c.rec or {} -%}
+{%- macro hidden() -%}
+<input type="hidden" name="list_name" value="{{ c.list_name }}"><input type="hidden" name="step" value="{{ c.step }}"><input type="hidden" name="hostname" value="{{ c.hostname }}"><input type="hidden" name="add" value="{{ '1' if c.add else '' }}">
+{%- endmacro -%}
+{%- macro again(step, words) -%}
+<span class="op-act"><button type="button" class="btn" data-op="onboard" hx-get="{{ url_for('console_ztp_v2.card_view', device_id=c.device_id, list_name=c.list_name, step=step, hostname=c.hostname, profile=c.profile, add='1' if c.add else '') }}" hx-target="#console-ztp-card" hx-swap="outerHTML">{{ words }}</button>{{ how('onboard', 'console-survey' if step == 'survey' else 'console-kick-start', compact=True, op='the ' ~ ('console survey' if step == 'survey' else 'console kick-start')) }}</span>
+{%- endmacro -%}
+{%- if c.state == 'result' -%}
+  {%- if survey -%}
+    {%- set level = {True: 'ok', False: 'warn'}.get(r.blank, 'danger') -%}
+    {%- set chip = {True: 'factory-blank', False: 'not factory-blank'}.get(r.blank, 'blank unknown') -%}
+  {%- else -%}
+    {%- set level = 'ok' if r.outcome == 'done' else ('warn' if r.outcome in ('not_blank', 'refused_state', 'unverified') else 'danger') -%}
+    {%- set chip = {'done': 'typed, verified', 'unverified': 'typed, not verified', 'not_blank': 'not blank: nothing typed', 'refused_state': 'found signed in: nothing typed', 'unreachable': 'console unreachable'}.get(r.outcome, 'stopped: ' ~ r.outcome) -%}
+  {%- endif -%}
+{%- endif %}
+<section class="op-card{% if c.state == 'result' %} op-{{ level }}{% elif c.state in ('failed', 'lost') %} op-warn{% endif %}" id="console-ztp-card" aria-labelledby="console-ztp-title"
+  {%- if c.state == 'running' %} aria-busy="true" hx-get="{{ url_for('console_ztp_v2.card_view', device_id=c.device_id, list_name=c.list_name, step=c.step, run=c.run, job=c.job, hostname=c.hostname, add='1' if c.add else '') }}" hx-trigger="nmas:console_ztp from:body" hx-swap="outerHTML"{% endif %}>
+  <div class="op-hd"><h2 id="console-ztp-title">{{ 'Console survey of ' if survey else 'Console kick-start of ' }}{{ who }}
+    {%- if c.state == 'result' %} {{ badge(chip, level) }}{% elif c.state == 'running' %} {{ badge('running', 'warn') }}{% elif c.state in ('failed', 'lost') %} {{ badge('not finished', 'warn') }}{% endif %}</h2>
+    <div class="op-hd-actions">{{ how('onboard', section) }}</div></div>
+  {%- if c.error %}<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Refused:</strong> {{ c.error }}</p></div>{% endif %}
+
+  {%- if c.state in ('choose', 'confirm') and p %}
+  <div class="op-part"><h3>Through</h3><div>
+    {%- if p.path %}
+    <dl class="op-ops">
+      <dt>Console port</dt><dd class="mono">{{ p.path.console_port.name }} (NetBox {{ p.path.console_port.id }})</dd>
+      <dt>Cable</dt><dd class="mono">{{ p.path.cable.id }}{% if p.path.cable.label %} {{ p.path.cable.label }}{% endif %}{% if p.path.cable.status %} · {{ p.path.cable.status }}{% endif %}</dd>
+      <dt>Console server</dt><dd class="mono">{{ p.path.server.name }} {{ p.path.server_port.name }} (port {{ p.port_id }})</dd>
+      {%- if p.transport %}<dt>Reached by</dt><dd class="mono">{{ p.transport }}</dd>{% endif %}
+      {%- if p.port %}<dt>Driver</dt><dd class="mono">{{ p.port.driver }} to {{ p.port.host }}{% if p.port.container %}, container {{ p.port.container }}{% elif p.port.tcp_port %}, TCP {{ p.port.tcp_port }}{% endif %}{% if p.port.credential_ref %}, key {{ p.port.credential_ref }}{% endif %}</dd>{% endif %}
+      {%- if p.profile %}<dt>Profile</dt><dd class="mono">{{ p.profile.name }} v{{ p.profile.version }} · {{ p.profile.sha256[:12] }}</dd>{% endif %}
+    </dl>
+    {%- else %}<p class="muted">No console path was read: see the checks below.</p>{% endif %}</div></div>
+  {%- if p.refused_by %}
+  <div class="op-part"><h3>Checks ({{ p.refusals | length }} refused)</h3><div>
+    <ul class="op-gates">
+      {%- for key, why in p.refused_by.items() %}
+      <li>{{ badge('fail', 'danger') }}<span><strong>{{ {'list': 'The network', 'profile': 'The console profile', 'device': 'The device', 'netbox': 'NetBox', 'path': 'The console path', 'port': "The console-server port's record", 'transport': 'The transport', 'survey': 'The survey it stands on', 'params': 'The parameters'}.get(key, key) }}:</strong> {{ why }}</span></li>
+      {%- endfor %}
+    </ul>
+    {%- if p.refused_by.port %}<p class="small">Console-server ports are set up on <a href="{{ url_for('settings_v2.installation', tab='console') }}">Settings › Installation › Console servers</a>.</p>{% endif %}</div></div>
+  {%- endif %}
+  {%- endif %}
+
+  {%- if c.state == 'choose' %}
+  <form class="op-form" hx-post="{{ url_for('console_ztp_v2.survey_preview', device_id=c.device_id, list_name=c.list_name) if survey else url_for('console_ztp_v2.kickstart_preview', device_id=c.device_id, list_name=c.list_name) }}" hx-target="#console-ztp-card" hx-swap="outerHTML">
+    {{ hidden() }}
+    {%- if survey %}
+    <div class="op-part"><h3>Profile</h3><div>
+      <label class="sc-f">Console profile (what its prompts look like, its factory-blank check and its MAC read)<select name="profile" required>
+        <option value="">Choose…</option>
+        {%- for pr in c.profiles %}<option value="{{ pr.name }}"{% if pr.name == c.profile %} selected{% endif %}{% if pr.why %} disabled{% endif %}>{{ pr.name }}{% if pr.version %} v{{ pr.version }}{% endif %}{% if pr.why %} (unreadable: {{ pr.why }}){% endif %}</option>{% endfor %}
+      </select></label>
+      {%- for pr in c.profiles if pr.name == c.profile and pr.description %}<p class="faint small">{{ pr.description }}</p>{% endfor %}
+      <p class="faint small">Chosen for you from the device's platform and role when one fits; a shipped, versioned profile, its hash in the preview.</p></div></div>
+    <div class="op-ft"><p class="op-note">Reads NetBox's console path and the console-server port's record; contacts no console and writes nothing.</p>
+      <span class="op-act"><button type="submit" class="btn btn-primary" data-op="onboard" hx-disabled-elt="this"><span class="op-idle">Preview the survey</span><span class="op-busy">Reading NetBox…</span></button>{{ how('onboard', 'console-survey', compact=True, op='the console survey') }}</span></div>
+    {%- else %}
+    <div class="op-part"><h3>Stands on</h3><div>
+      {%- if c.survey %}<p>The survey of {{ stamp(c.survey.at) }} by {{ c.survey.actor or 'someone' }}: {% if c.survey.blank is sameas true %}factory-blank{% elif c.survey.blank is sameas false %}not factory-blank{% else %}blank unknown{% endif %}{% if c.survey.mac %}, MAC <span class="mono">{{ c.survey.mac }}</span>{% endif %}; profile <span class="mono">{{ c.profile }}</span>.</p>
+      {%- else %}<p class="muted">No survey of this device is recorded.</p>{% endif %}</div></div>
+    <div class="op-part"><h3>Lines</h3><div>
+      <p>The hostname is {{ c.hostname or "the device's NetBox name" }}, NetBox's name for it.</p>
+      {%- for d in c.declared %}
+      <label class="sc-f">{{ d.name | capitalize }} ({{ d.shape }}: {{ 'the access port it reaches the relay on' if d.name == 'interface' else ('the VLAN its management interface is on' if d.name == 'vlan' else 'as the profile declares') }})<input type="text" name="param_{{ d.name }}" value="{{ c.params.get(d.name, '') }}" autocomplete="off" required></label>
+      {%- else %}<p class="muted">The profile asks for nothing more.</p>
+      {%- endfor %}</div></div>
+    <div class="op-ft"><p class="op-note">Renders the exact lines and their hash; contacts no console and writes nothing.</p>
+      <span class="op-act"><button type="submit" class="btn btn-primary" data-op="onboard" hx-disabled-elt="this"><span class="op-idle">Preview the kick-start</span><span class="op-busy">Rendering the lines…</span></button>{{ how('onboard', 'console-kick-start', compact=True, op='the console kick-start') }}</span></div>
+    {%- endif %}
+  </form>
+
+  {%- elif c.state == 'confirm' %}
+  {%- if survey %}
+  <div class="op-part"><h3>What it types</h3><div>
+    <p>Only these, each in the state the console is in when it is sent, and nothing more:</p>
+    <ul class="op-list mono">
+      {%- for s, line in p.program.wake %}<li>{{ s }}: {{ line | replace('\r', '⏎') }}</li>{% endfor %}
+      {%- for found, steps in p.program.prelude.items() %}<li>found at {{ found }}: {% for s, line in steps %}{{ line | replace('\r', '⏎') }}{{ ', ' if not loop.last }}{% endfor %}</li>{% endfor %}
+      {%- for s, line in p.program.reads %}<li>{{ s }}: {{ line | replace('\r', '⏎') }}</li>{% endfor %}
+      {%- for s, line in p.program.release %}<li>{{ s }}: {{ line | replace('\r', '⏎') }}</li>{% endfor %}
+    </ul>
+    <p class="faint small">It ends at the {{ p.program.ends }} prompt. Otherwise: {{ p.program.stops }}.</p></div></div>
+  {%- else %}
+  <div class="op-part"><h3>Stands on</h3><div><p>{{ p.survey_words }}{% if p.survey and p.survey.mac %}, which read MAC <span class="mono">{{ p.survey.mac }}</span>{% endif %}.</p></div></div>
+  <div class="op-part"><h3>The lines</h3><div>
+    <p>Exactly these, in this order, after the wake, the prelude and the blank check again:</p>
+    <pre class="ask-pre">{% for line in p.lines %}{{ line }}
+{% endfor %}</pre>
+    <p class="faint small">It ends at the {{ p.program.ends }} prompt, naming the hostname typed. Otherwise: {{ p.program.stops }}.</p></div></div>
+  {%- endif %}
+  <div class="op-part"><h3>What will not happen</h3><div>
+    {%- for n in p.not_doing %}<p>{{ n[0] | upper }}{{ n[1:] }}.</p>{% endfor %}</div></div>
+  <form class="op-form" hx-post="{{ url_for('console_ztp_v2.survey_confirm', device_id=c.device_id, list_name=c.list_name) if survey else url_for('console_ztp_v2.kickstart_confirm', device_id=c.device_id, list_name=c.list_name) }}" hx-target="#console-ztp-card" hx-swap="outerHTML">
+    {{ hidden() }}<input type="hidden" name="profile" value="{{ c.profile }}"><input type="hidden" name="hash" value="{{ p.hash }}">
+    {%- for d in c.declared %}<input type="hidden" name="param_{{ d.name }}" value="{{ (p.params or {}).get(d.name, '') }}">{% endfor %}
+    <div class="op-ft"><p class="op-note">Bound to {{ p.hash[:12] }}: if the console path, the port's record, the profile{% if not survey %}, the survey or the lines{% endif %} move before you confirm, nothing is sent. {{ p.device or who }} and its console-server port are held while it runs.{% if not survey %} A verified person confirms.{% endif %}</p>
+      <span class="op-act"><button type="submit" class="btn btn-primary" data-op="onboard" hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">{{ ('Survey ' ~ (p.device or who) ~ "'s console") if survey else ('Kick-start ' ~ (p.device or who)) }}</span><span class="op-busy">Starting…</span></button>{{ how('onboard', section, compact=True, op='the ' ~ what) }}</span></div>
+  </form>
+
+  {%- elif c.state == 'running' %}
+  <div class="op-part"><h3>Running</h3><div>
+    <p>{{ 'Surveying' if survey else 'Kick-starting' }} {{ who }} over its console, holding it and its console-server port. This card updates when it ends.</p>
+    <p class="faint small">Run <span class="mono">{{ c.run }}</span>; the steps, in order: {{ 'the wake, to the privileged prompt, the pager off, the MAC read and the blank check, then back to the user prompt' if survey else 'the wake, the blank check again, then the lines' }}.</p></div></div>
+
+  {%- elif c.state == 'result' %}
+  <div class="op-part"><h3>What happened</h3><div>
+    {%- if survey %}
+    <p>{% if r.blank is sameas true %}Factory-blank{% elif r.blank is sameas false %}Not factory-blank{% else %}Whether it is blank is not known{% endif %}{% if r.attach_state %}: the console was found at {{ r.attach_state }}{% endif %}{% if r.outcome not in ('surveyed', 'stopped') %} ({{ r.outcome }}){% endif %}.</p>
+    {%- for why in r.reasons or [] %}<p class="muted">{{ why }}</p>{% endfor %}
+    {%- if r.reason and r.reason not in (r.reasons or []) %}<p class="muted">{{ r.reason }}</p>{% endif %}
+    <dl class="op-ops">
+      <dt>MAC</dt><dd class="mono">{{ r.mac or ('unknown: ' ~ (r.mac_reason or 'not read')) }}</dd>
+      {%- if r.startup_config_bytes is not none %}<dt>Startup configuration</dt><dd class="mono">{{ r.startup_config_bytes }} bytes</dd>{% endif %}
+      <dt>Bytes written</dt><dd class="mono">{{ r.bytes_written or 0 }}</dd>
+    </dl>
+    {%- if r.found_signed_in %}<p class="muted">It was signed in when the survey found it: a kick-start never types past a sign-in.</p>{% endif %}
+    {%- else %}
+    <p>{% if r.outcome == 'done' and (r.verify or {}).ok %}Typed and verified: {{ (r.verify or {}).why }}.{% elif r.outcome == 'unverified' %}Typed; not verified: {{ (r.verify or {}).why }}.{% else %}{{ r.reason or r.outcome }}{% endif %}</p>
+    {%- if r.recheck %}<p class="muted">The blank check again: {{ r.recheck.reason }}</p>{% endif %}
+    {%- if r.lines %}<h4>The lines sent</h4><pre class="ask-pre">{% for line in r.lines %}{{ line }}
+{% endfor %}</pre>{% endif %}
+    {%- endif %}
+    {%- if r.sent %}<details data-keep="console-sent"><summary>What was sent (masked)</summary><pre class="ask-pre">{{ r.sent | replace('\r', '⏎\n') }}</pre></details>{% endif %}
+    {%- if r.transcript %}<details data-keep="console-transcript"><summary>The console's transcript (masked)</summary><pre class="ask-pre">{{ r.transcript }}</pre></details>{% endif %}</div></div>
+  <div class="op-part"><h3>Next</h3><div>
+    {%- if survey and r.blank is sameas true and r.outcome == 'surveyed' %}
+    <p>It is blank. Use its MAC in the plan, Create the device, then kick-start it here: the kick-start makes it ask DHCP for the reservation Create writes, and fetch the bootstrap Create stages.</p>
+    {%- if c.add and r.mac %}
+    <p><span class="op-act"><button type="button" class="btn btn-primary" data-op="onboard" hx-post="{{ url_for('onboard_v2.preview') }}" hx-include="#ob-create" hx-vals='{{ {"mgmt_mac": r.mac} | tojson }}' hx-target="#onboard-add" hx-swap="outerHTML" hx-disabled-elt="this"><span class="op-idle">Use {{ r.mac }} in the plan</span><span class="op-busy">Planning again…</span></button>{{ how('onboard', 'console-survey', compact=True, op='the console survey') }}</span></p>
+    {%- endif %}
+    <p>{{ again('kickstart', 'Kick-start ' ~ who ~ '…') }}</p>
+    {%- elif survey %}
+    <p>{% if r.blank is sameas false %}A kick-start types only on a device its survey found factory-blank. Return {{ who }} to its factory state (its startup configuration erased, then reloaded), then survey it again.{% else %}Read the transcript, check the console-server port and the device, then survey it again.{% endif %}</p>
+    <p>{{ again('survey', 'Survey again…') }}</p>
+    {%- elif r.outcome == 'done' %}
+    <p>{{ who }} now asks DHCP on its management interface and fetches its bootstrap like any ZTP device: its pending page follows it, and Verify reaches it. Nothing was saved on it: a reload returns it to its factory state.</p>
+    {%- else %}
+    <p>Read the transcript. Lines typed on a console cannot be taken back, and nothing was saved: a reload returns {{ who }} to its factory state, then survey it again.</p>
+    <p>{{ again('survey', 'Survey again…') }}</p>
+    {%- endif %}</div></div>
+  <div class="op-part"><h3>Recorded</h3><div><p>By {{ r.actor or 'someone' }} (verified: {{ r.actor_verified or 'none' }}), {{ stamp(r.at) }}{% if r.finished_at and r.started_at %}, in {{ (r.finished_at - r.started_at) | round(1) }} s{% endif %}, in {{ r.list }}, run <span class="mono">{{ r.id }}</span>{% if r.survey_id %}, on survey <span class="mono">{{ r.survey_id }}</span>{% endif %}. On History (Console surveys and kick-starts){% if r.index_error %}; the Needs attention index was not updated: {{ r.index_error }}{% endif %}.</p></div></div>
+
+  {%- else %}
+  <div class="op-part"><h3>What happened</h3><div>
+    {%- if c.state == 'failed' %}<p>The run ended before its record did: {{ c.job_error }}</p>
+    {%- else %}<p>This server has no record of the run's job (it may have restarted){% if r.outcome %}, and the record says {{ r.outcome }}{% endif %}: whether anything was typed is in the record's transcript{% if r.id %}, run <span class="mono">{{ r.id }}</span>{% endif %}.</p>{% endif %}
+    <p>{{ again(c.step, 'Preview it again…') }}</p></div></div>
+  {%- endif %}
+</section>

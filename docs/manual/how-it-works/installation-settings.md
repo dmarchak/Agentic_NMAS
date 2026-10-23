@@ -136,6 +136,29 @@ Each value is **defaulted** (nobody decided), **recorded** (agreed, equal to the
 3. `record`: who, when and the names of the settings are appended to the installation's
    settings record; the gate then reads "recorded by" that person, on that day.
 
+## Console servers: a port's record {#console-servers}
+
+Out-of-band ZTP reaches a device's console through a console server ([Out-of-band ZTP](onboard#out-of-band-ztp)). NetBox says WHICH console-server port a device's console is cabled to; the **Console servers** tab says HOW Mercury reaches that port, one record per port, keyed by the port's NetBox id: its driver (**Command bridge**, an SSH console server whose forced command bridges one console chosen by a container name, or **Raw TCP**, a console port reached directly or through an SSH jump host), the host (an IPv4 or IPv6 address, or a hostname), the container name or the TCP port, the jump host and SSH port, and the NAME of a key in the credential store, never a key and never a command. The tab lists every record with its NetBox port (or says NetBox could not be read), the SSH host key held for it, and NetBox's console-server ports with no record yet, each with **Set up…**. A console server's own device and port are made in NetBox first.
+
+**Save the record** (Add a port record…, Set up… or Edit…), as you:
+
+1. `check`: every field is checked against the driver's: a field the driver does not hold (a container on a raw TCP port, say), a missing one, a host that is no address or hostname, a port outside 1 to 65535, a key name that is not a name, or a container name the console host's bridge would refuse, is refused, every one named, and nothing is written.
+2. `write`: the record replaces the port's, under the store's lock, atomically and owner-only; a store that cannot be read refuses every write and is kept as it is.
+3. `record`: the write is logged in the store with who and when; the tab's Changes card draws the last ten.
+
+**Remove…** says what stays (NetBox's port and cables, and the key) and that a device whose console path ends there cannot be surveyed until a record is set again; **Remove port <id>'s record** forgets it, logged the same way. Nothing here contacts a console server or a device.
+
+## Console servers: a key {#console-server-keys}
+
+Each console server signs Mercury in with a dedicated key that Mercury makes, so no person handles a secret and none crosses the console. **Generate a key…** asks for the key's name, the user on the console host, and the paths of the bridge wrapper and its allowlist on that host (the host step's paths, filled in). **Generate the key**, as you:
+
+1. `check`: the name, the user and both paths are checked before a key is made; a name that already holds a key is refused unless you tick **Replace** (the console host then refuses the old key once the new line is installed).
+2. `generate`: a new ed25519 key pair is made here.
+3. `store`: the private half is stored encrypted in the credential store under the name. It is shown nowhere, now or later.
+4. `show`: only the public key, its fingerprint, and the exact `authorized_keys` line, `restrict,command="<wrapper> <allowlist>" ssh-ed25519 …`, which you install for that user on the console host: the key can then do one thing, run the bridge, which opens only a console on its allowlist.
+
+Name the key as a port record's Key. A refused console server's SSH host key is re-keyed on the same tab ([Re-key](rekey#console-server)).
+
 ## Diagnostics: redaction {#redaction}
 
 Every line Mercury logs is masked as it is written, by a filter on every log handler. The

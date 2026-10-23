@@ -92,6 +92,8 @@
   "tests/test_console_session.py": 2.1,
   "tests/test_console_survey.py": 1.9,
   "tests/test_console_ztp.py": 31.5,
+  "tests/test_console_ztp_v2.py": 6.3,
+  "tests/test_console_servers_v2.py": 1.7,
   "tests/test_console_transport.py": 10.3,
   "tests/test_console_run_plan.py": 0.4,
   "tests/test_console_keys.py": 0.8,

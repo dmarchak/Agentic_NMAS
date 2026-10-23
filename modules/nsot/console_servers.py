@@ -56,6 +56,13 @@ FIELDS = {
 }
 #: Written by the store, never taken from a caller.
 STAMPS = ("by", "at")
+#: A port record's save, in order (`set_port`; the manual names each, `modules/manual.OPERATIONS`):
+#: every field checked against its driver's, the record replaced under the store's lock, and the
+#: write logged with who and when.
+SAVE_STEPS = (("check", "Every field checked against the driver's: a stored command, an unknown "
+                        "field or a name the bridge refuses is refused, naming it"),
+              ("write", "The record replaced under the store's lock, atomically, owner-only"),
+              ("record", "The write logged in the store with who and when"))
 #: The bounded log of writes kept in the store.
 LOG_MAX = 500
 

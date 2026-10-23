@@ -3711,8 +3711,8 @@ SOURCE_KEYS = {
     "host_key_source": ("host_keys",),
     # A window's summary written by its reader announces the same key (C906).
     "host_key_window_source": ("host_keys",),
-    # A console survey's or kick-start's end announces both (console_ztp.ANNOUNCE_KEYS).
-    "console_ztp_source": ("device_state", "pending"),
+    # A console survey's or kick-start's end announces these (console_ztp.ANNOUNCE_KEYS).
+    "console_ztp_source": ("device_state", "pending", "console_ztp"),
 }
 
 #: Every key that can move a row, and a person's acknowledgement.

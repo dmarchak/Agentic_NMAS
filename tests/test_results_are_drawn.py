@@ -258,6 +258,21 @@ PAGE_RECORD = {
                           "v2.history_page"),
     "onboard_v2.abandon": ("templates/v2/_onboard_pending.html",
                            ("result_parts(done.result)", "Back to Devices"), "v2.history_page"),
+    # Out-of-band ZTP (O6b): a console survey's and kick-start's result in place on its card,
+    # read from the run's record (what was found, the MAC, the lines sent, the masked
+    # transcript), and the run read again on the network's History (Console surveys and
+    # kick-starts).
+    "console_ztp_v2.survey_confirm": ("templates/v2/_console_ztp.html",
+                                      ('id="console-ztp-card"', "r.reasons", "r.transcript"),
+                                      "v2.history_page"),
+    "console_ztp_v2.kickstart_confirm": ("templates/v2/_console_ztp.html",
+                                         ('id="console-ztp-card"', "r.lines", "r.verify"),
+                                         "v2.history_page"),
+    # C1560: a console server's re-key, its result in place on the Console servers tab; the
+    # key kept, and the one it replaced, read on History (SSH host keys).
+    "console_servers_v2.rekey_confirm": ("templates/v2/_console_server_op.html",
+                                         ("c.mode == 'rekey_done'", "c.detail"),
+                                         "v2.history_page"),
     "remote_v2.connect": ("templates/v2/_remote_setup.html", ("Connected:", "r.owner_repo"),
                           "remote_v2.card"),
     "remote_v2.write_probe": ("templates/v2/_remote_setup.html",

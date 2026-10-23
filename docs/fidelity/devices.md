@@ -26,7 +26,17 @@ Shots: board A at 1440 and 1280, the first board at 1440, its phone board at 390
 (`devices-selected-page-*`), each phone shot also as its first screen.
 Compared 2026-10-16.
 Templates compared: templates/v2/devices.html, templates/v2/_devices.html, templates/v2/_onboard_add.html
-Templates sha256: `95b50310531aa06d18151d288295ba3307e21d3a7ab00b7b8ac887e141cd3ba9`
+Templates sha256: `fa54aa433ebab66e321ee468f070c8ace95039c5ec6bc0d3a9e2e1110b88d531`
+
+Compared again 2026-10-22 (O7 of out-of-band ZTP, board B of `docs/boards/console-ztp.html`):
+Add device's review gains a Console part under Create, a fragment it asks for as it draws
+(`templates/v2/_console_offer.html`: "Kick-start through the console…" when NetBox shows the
+device's console path, its absence said with why when not), and Create's result gains the
+kick-start's offer for a device whose console survey is recorded; the Create form carries an id
+the survey's "Use <MAC> in the plan" includes. Board E draws no console, so it is a deviation
+(below). Compared by the template and tests/test_console_ztp_v2.py's `TestTheOffer`, not a new
+shot: one part added under the review's foot and one under the result's; every other region
+unchanged.
 
 Compared again 2026-10-21 (C1477, the overnight run): a pending row's Intent chip reads where
 its onboarding has got to, from the onboarding-progress reader's stored value as the device's
@@ -136,3 +146,4 @@ board.
 | Plan and Create | the plan's line under the rows ("Plan 0b3e7c21: 1 device can be created; …") and Preview r8's first-boot config, then Create | Review the plan ("A review creates nothing."), then the review in place: the summary (behind a relay its Management IP line, "ZTP behind the relay … offering option 3 (routers) …, the relay's own address …", or "with no option 3"), the configuration folded, the checks, What it does not do, Create <device> and Change the fields | **deviation** (log: Board E as built) |
 | Refusals | under the field: a serial five devices report, an address another device holds | the review's reasons together above the plan; behind a relay, a gateway that is not the relay's own address, or "The relay's own address" chosen on a subnet this host is on, is one of them | **deviation** (log: Board E as built) |
 | Phone | not drawn (no phone board) | at 390 each label above its field in one column, Route option (3) and its message whole (`onboard-add-relay-page-390`) | **deviation** (log: Board E as built) |
+| Console (O7) | not drawn: board E has no console | the review's Console part, read as it draws: "Kick-start through the console…" when NetBox shows the device's console path, "No console kick-start: <why>" when not; Create's result offers "Kick-start <device> through the console…" once its survey is recorded (board B of `docs/boards/console-ztp.html`) | **deviation** (log: Add device: the review's Console part, compared with board E) |

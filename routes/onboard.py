@@ -389,7 +389,17 @@ def plan_of(data) -> tuple:
         # carries only the placeholder secret, by construction.
         "preview": _onboard_preview(built.summary, built.bootstrap_config),
         "shown": shown, "fingerprint": plan_fingerprint(shown),
+        # The Planned NetBox record's id, the id a console path is read by (out-of-band ZTP's
+        # offer, routes/console_ztp_v2.offer); None for a name NetBox does not hold Planned.
+        "netbox_id": _planned_id(built),
     }, 200
+
+
+def _planned_id(built):
+    """The id of the Planned NetBox record a plan read (`OnboardPlan.netbox_record`), or None:
+    a plan stand-in that carries no record (the review's tests) has none to offer."""
+    rec = getattr(built, "netbox_record", None) or {}
+    return rec.get("id") if rec.get("status") == "planned" else None
 
 
 def _onboard_preview(summary: dict, bootstrap_config: str) -> dict:

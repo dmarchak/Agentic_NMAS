@@ -103,13 +103,55 @@ Built, and not yet proven on a device (registered as C1346: a relayed AutoInstal
 4. **Gateway** must be the relay's own address on the device's subnet: the device's configuration needs a route back to this host, and the relay is its one neighbour toward it. Blank is refused naming the relay's address ("no gateway given: … Set Gateway to the relay's own address"); another address is refused naming both. On a switch (`cisco_ios`) the bootstrap writes `ip default-gateway <gateway>` beside the default route, so the switch answers whether or not it routes, and a management interface that is a VLAN's SVI (`Vlan1`, for a switch whose uplink also carries its hosts' VLAN) gets no `no switchport` line, which an SVI refuses.
 5. **Route option (3)**, the select under Gateway, drawn whenever Address from is ZTP: **None (D4)**, the default, sends no route option, as on the directly attached subnet. **The relay's own address** sends option 3 as the relay's own address and nothing else, for an AutoInstall that needs a route to fetch its file from off its subnet; whether IOS-XE needs it is what the relayed proof measures. It is never a DNS server. Chosen for a device on a subnet this host is on, the review refuses it ("option 3 (routers) is offered only on a relayed ZTP subnet, as the relay's own address"). The choice is part of the reviewed plan: the review's address line says "offering option 3 (routers) <address>, the relay's own address" or "with no option 3", a different choice is a different plan, and the reservation and `dhcp/ztp-reservations.yml` (its `router`) both hold it. At Create the reserve step reads the relay again, and a relay whose address moved since the review is refused ("the plan offers option 3 …, and the relay's own address is now …: preview again"), writing nothing.
 6. **The checks** at the review, at Create and on Needs attention (one row per relayed subnet, `ztp-posture:subnet-<id>`): the subnet holds none of this host's addresses (one that does is not relayed, and is refused); Kea's relay address for the subnet is the relay's own address in intent; this host has a route to the device's address from the server address; no resolver or other route option reaches the reservation; and nothing answers DNS for that segment. The relay forwards a device's broadcast DNS query to each of its helper addresses, so each is asked a DNS query from this host, and the relay's committed golden must not run `ip dns server`. A helper address that answers, or a relay that runs a DNS server, fails the check; one that could not be asked, or a golden that cannot be read, is unknown, never a pass.
-7. **The firewall.** The host's firewall admits TFTP from the management subnet only. A host step admits it from each relayed ZTP subnet (`scripts/host-steps/c1346-ztp-relayed-firewall.sh`, the operator's to run) and records what the firewall showed; Needs attention's `ztp-firewall` row names a relayed subnet that record does not admit, and says when the record is absent or cannot be read.
+7. **The firewall.** The host's firewall admits TFTP from the management subnet only (**not true of the lab's host today, C1568:** its default policy admits every incoming connection, so these rules restrict nothing until the operator's default-deny change; the responder's own check, a reservation it wrote, still refuses a stranger). A host step admits it from each relayed ZTP subnet (`scripts/host-steps/c1346-ztp-relayed-firewall.sh`, the operator's to run) and records what the firewall showed; Needs attention's `ztp-firewall` row names a relayed subnet that record does not admit, and says when the record is absent or cannot be read.
 
 The responder serves a relayed device as it serves any other: the request arrives from the reserved address, routed through the relay, and is decided by the same rules. ZTP is IPv4 only, behind a relay too: an IPv6 subnet cannot be added for ZTP, and an IPv6 address is refused by name.
 
 ### ZTP on classic IOS: not built {#ztp-on-classic-ios-not-built}
 
 Not built or measured (registered as C1348 and C1349). The plan does not refuse it, and nothing in the ZTP path checks the platform, but whether a classic IOS device AutoInstalls by the option-67 file name has never been measured, so do not rely on it: onboard classic IOS with a static address or a DHCP reservation. The responder serves only the file the reservation names, so AutoInstall's default file names (such as `network-confg`, `router-confg` or `<hostname>-confg`) are never served.
+
+### Out-of-band ZTP: through the console {#out-of-band-ztp}
+
+For a device that cannot ask for its configuration by itself (an older switch that runs no AutoInstall, or one left at a prompt), the tool types, over the device's console, only the few lines that make it ask, and the rest is ZTP as above. It needs three things, each read, never typed: the device's **console path in NetBox** (its console port, a cable, and a console server's port, on a Planned record), **how Mercury reaches that console-server port** (Settings › Installation › [Console servers](settings#console-servers)), and a **console profile** for its platform (shipped, versioned data: its prompts, its factory-blank check, its MAC read and its kick-start's lines; its hash is in every preview). It is built for IOS (`cisco_ios`, a switch and a router profile) over two transports: an SSH console server whose forced command bridges one allowlisted console, and a raw TCP console, directly or through an SSH jump host. The diagram for this section is not drawn yet (registered with the rest of the feature's later phase, C1536).
+
+**Where it is offered.** On Add device's review, under **Console**: when NetBox shows the device's console path, **Kick-start through the console…** opens the card in place; when it does not, the review says why (no Planned record to read a path from, no console port or no cable, or NetBox could not be read). The card is the device's (its NetBox id), so it works before Create, when the device has no page yet.
+
+**The order.**
+
+1. **Survey** its console (below), before Create: it learns the device's MAC and whether it is factory-blank. **Use <MAC> in the plan** reviews the plan again with that MAC, so the plan and its fingerprint hold it, as for any ZTP device.
+2. **Create** it, as above: the reservation, the staged credential and the bootstrap now exist.
+3. **Kick-start** it (below), from Create's result: the device asks DHCP on its management interface for its reservation and fetches its bootstrap from the responder, and Verify follows as for any ZTP device.
+
+### The console survey {#console-survey}
+
+Read-only: it types no configuration line and saves nothing. **Preview the survey** reads NetBox's console path and the console-server port's record and contacts nothing else: it names the path, the transport, the profile and its hash, and every line it may type, in the state it is typed in. **Survey <device>'s console** confirms that preview's hash (a person: it types on a device), and runs as a job, in order:
+
+1. `preview`: the preview again, now: a path, port record, transport or profile that moved since you read it is refused, naming both hashes, with nothing sent.
+2. `confirm`: you confirmed by the hash; the run is bound to it.
+3. `hold`: the device and its console-server port are held, each across processes: another operation on either is refused by name, never queued.
+4. `wake`: one carriage return, or, when the console printed a prompt first (a device that has just booted), nothing: the session starts from that prompt.
+5. `reads`: from `Press RETURN`, the setup dialog (declined) or the user prompt (`>`), to the privileged prompt (`enable`); the pager off for this session (`terminal length 0`); the profile's MAC read (`show version`) and its blank check (`dir nvram:`).
+6. `release`: back to the user prompt (`disable`), so a kick-start that later finds the privileged prompt knows someone signed in since.
+7. `verify`: blank (no startup configuration, or one of 0 bytes), not blank (a saved configuration, or a console found signed in: a `#` or configuration prompt, or a login prompt, recorded and never typed past), or unknown (a step that did not answer), each with its reasons; and the MAC, or why it is unknown.
+8. `record`: the run's record, its masked transcript and exactly what was sent, in the network's records, the device's latest run in the index Needs attention reads, and a row on History (Console surveys and kick-starts). A survey that found it not blank, or that stopped, is a Needs attention row until a later survey ends well or a person acknowledges it.
+
+Any prompt the profile does not expect, a password prompt included, stops the run with nothing more sent. Each run has a bound (600 s for a survey, 1200 s for a kick-start; stand-ins until a console run is measured).
+
+### The console kick-start {#console-kick-start}
+
+It types configuration lines, so it stands on a survey and asks more. **Kick-start <device>** is offered from Create's result once a survey is recorded; it is refused (nothing typed) until the device is in the network, since Create writes what it will ask for. **Preview the kick-start** renders the EXACT lines it types, from the profile its survey used: the hostname is the device's NetBox name, never typed; the profile's other parameters (a switch's access port and VLAN, a router's interface) are asked for and checked against their shape. The lines always end by setting a finite `exec-timeout` on `line con 0`, and no line carries a credential: the one-time credential is only in the bootstrap the device fetches. **Kick-start <device>** needs a verified person and confirms the preview's hash, which covers the lines, the profile, the console path, the port's record and the survey. It runs as a job:
+
+1. `preview`: recomputed now, and refused, naming both hashes, if anything moved; refused too unless its survey found the device factory-blank and ended, over the same console-server port and the same profile version.
+2. `confirm`: a verified person's confirm, bound to the hash.
+3. `hold`: the device and its console-server port, as for the survey.
+4. `wake`: a console found at the privileged, configuration or login prompt (someone signed in since its survey left it at the user prompt) is refused with nothing typed.
+5. `recheck`: the blank check again, holding the device: a saved configuration found now types nothing of the kick-start.
+6. `type`: the lines, each sent only in the prompt state it belongs to.
+7. `verify`: it ended at the privileged prompt naming the hostname it typed.
+8. `record`: as for the survey, with the lines sent; a kick-start that stopped is a Needs attention row.
+
+**Rollback does not apply, and the preview says so:** a kick-start saves nothing (no `write memory`), so a reload returns the device to its factory state; lines typed on a console cannot be taken back.
 
 ## Phase two: Verify
 

@@ -621,7 +621,10 @@ def open_pinned_transport(host: str, port: int, *, username: str, pkey, owner: s
     transport.auth_timeout = bound
     try:
         transport.start_client(timeout=bound)
-        host_keys.check(host, transport.get_remote_server_key(), owner=owner, port=port)
+        from modules.nsot.console_rekey import REMEDY
+        # C1560: the refusal says what to do for a console server, not a device's page.
+        host_keys.check(host, transport.get_remote_server_key(), owner=owner, port=port,
+                        remedy=REMEDY)
         transport.auth_publickey(username, pkey)
         if not transport.is_authenticated():
             raise paramiko.AuthenticationException(

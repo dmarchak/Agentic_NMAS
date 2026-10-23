@@ -59,7 +59,7 @@ import os
 import time
 from dataclasses import dataclass
 
-from modules.operation_stages import Stages
+from modules.operation_stages import STAGES as _OPERATION_STAGES
 
 log = logging.getLogger(__name__)
 
@@ -78,10 +78,38 @@ RETIRED = "retired"
 #: The installation's index of each device's latest survey and latest run, keyed
 #: ``<network>|<NetBox device id>``: the one file Needs attention reads.
 INDEX = "console_ztp.json"
-#: What a run announces when it ends (`invalidation.ANNOUNCERS`): what a device runs, and the
-#: pending onboardings an Add device offer reads (O7).
+#: What a run announces when it ends (`invalidation.ANNOUNCERS`): what a device runs, the
+#: pending onboardings an Add device offer reads (O7), and the run itself, which the console
+#: card (templates/v2/_console_ztp.html, O6b) listens for to read its record by id.
 ANNOUNCER = "console-ztp"
-ANNOUNCE_KEYS = ("device_state", "pending")
+ANNOUNCE_KEYS = ("device_state", "pending", "console_ztp")
+#: Each operation's steps, in order: the manual's How it works section names each
+#: (`modules/manual.OPERATIONS`), and the card's running words follow `device_ops.note`.
+SURVEY_STEPS = (
+    ("preview", "Read the console path from NetBox and the port's record; contact nothing else"),
+    ("confirm", "A person confirms the preview's hash; it is recomputed now and refused if it "
+                "moved"),
+    ("hold", "Hold the device and its console-server port, refused by name if either is held"),
+    ("wake", "One carriage return, or the prompt the console printed first"),
+    ("reads", "To the privileged prompt, the pager off, the MAC read and the blank check"),
+    ("release", "Back to the user prompt, so a later sign-in is seen"),
+    ("verify", "Blank, not blank or unknown, with its reasons, and the MAC"),
+    ("record", "The record, its masked transcript, and the device's latest run for Needs "
+               "attention"),
+)
+KICKSTART_STEPS = (
+    ("preview", "The exact lines, on the survey that found the device blank; contact nothing "
+                "but NetBox"),
+    ("confirm", "A verified person confirms the preview's hash; recomputed now, refused if it "
+                "moved"),
+    ("hold", "Hold the device and its console-server port"),
+    ("wake", "One carriage return; a console found signed in since its survey is refused"),
+    ("recheck", "The blank check again, holding the device: a saved configuration types "
+                "nothing"),
+    ("type", "The kick-start's lines, each in the state it is typed in"),
+    ("verify", "It ends at the privileged prompt, naming the hostname typed"),
+    ("record", "The record, the lines sent and the masked transcript"),
+)
 #: The session lines a platform's console needs that are not the profile's reads or its
 #: kick-start: the privileged prompt, the pager off for this session, the setup dialog
 #: declined. None is saved, and none is a configuration line. A profile for a platform not here
@@ -117,20 +145,13 @@ class Refused(ValueError):
 
 # ── the lifecycle's declaration, for the routes O6b registers ──────────────────────────────
 
-#: The stages O6b's two confirm routes declare in `operation_stages.STAGES` (keyed there on
-#: the route's endpoint, which does not exist yet): the preview route, the field the confirm
-#: reads its hash from, and the functions here. `tests/test_console_ztp.py` resolves each.
+#: The stages the two confirm routes declare, read from their one home, `operation_stages.STAGES`
+#: (keyed there on each route's endpoint, routes/console_ztp_v2.py): the preview route, the
+#: field the confirm reads its hash from, and the functions here. `tests/test_console_ztp.py`
+#: resolves each.
 STAGES = {
-    "survey": Stages(
-        "<O6b's survey preview route>", "hash", "modules.nsot.console_ztp.verify_survey",
-        "n/a: the survey types no configuration and saves nothing; the pager setting and the "
-        "privileged prompt end with the console session",
-        "modules.nsot.console_ztp.record"),
-    "kickstart": Stages(
-        "<O6b's kick-start preview route>", "hash", "modules.nsot.console_ztp.verify_kickstart",
-        "n/a: the kick-start saves nothing (no write memory), so a reload returns the device "
-        "to its factory state; the preview says so",
-        "modules.nsot.console_ztp.record"),
+    "survey": _OPERATION_STAGES["console_ztp_v2.survey_confirm"],
+    "kickstart": _OPERATION_STAGES["console_ztp_v2.kickstart_confirm"],
 }
 
 
@@ -766,6 +787,18 @@ def latest_survey(list_name: str, device_id):
     return survey, ""
 
 
+def kickstart_params(profile, params, device: str) -> dict:
+    """*params* with the ones Mercury knows filled in: a profile's ``hostname`` is the device's
+    NetBox name (*device*) when none was given, so a person never types what NetBox holds and
+    the kick-start's verify compares the prompt with the name the device is onboarded as. A
+    hostname that was given is kept as given, and judged by the renderer."""
+    out = dict(params or {})
+    if profile is not None and "hostname" in profile.kickstart_params \
+            and "hostname" not in out and device:
+        out["hostname"] = device
+    return out
+
+
 def kickstart_preview(list_name: str, device_id, params: dict, *, session=None,
                       base: str = "", values=None) -> dict:
     """The kick-start: the EXACT lines it types (`console_survey.render_kickstart` for the
@@ -803,6 +836,8 @@ def kickstart_preview(list_name: str, device_id, params: dict, *, session=None,
                 f"{when} was over console-server port "
                 f"{(spath.get('server_port') or {}).get('id')}, and the device's console path "
                 f"is port {out['path']['server_port']['id']} now: survey again"))
+    params = kickstart_params(prof, params, out["device"])
+    out["params"] = params
     lines = ()
     if prof is not None:
         try:
@@ -885,6 +920,7 @@ def kickstart_apply(list_name: str, device_id, confirmed_hash: str, actor: str,
     from modules.nsot import console_survey as V
 
     prof = P.load(p["profile"]["name"])
+    params = p["params"]
     lines = V.render_kickstart(prof, params)
     program = kickstart_program(prof, lines)
     rec = _new_record(KIND_KICKSTART, p, actor, actor_verified, run_id)

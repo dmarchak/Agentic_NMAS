@@ -114,6 +114,8 @@ def preview():
     out, status = plan_of(f)
     if not out.get("ok"):
         return _add(status, f=f, refused=out.get("error") or "the plan could not be made")
+    # Out-of-band ZTP's offer (O7) is its own fragment, asked for as the review draws
+    # (routes/console_ztp_v2.offer_view): the review never waits on NetBox's console model.
     return _add(f=f, pv=out)
 
 
@@ -134,7 +136,11 @@ def create():
         again, _s = plan_of(f)
         return _add(status, f=f, refused=out.get("error") or "not created",
                     pv=again if again.get("ok") else None)
-    return _add(status, f=f, done=out)
+    from routes.console_ztp_v2 import surveyed_offer
+
+    # After Create: the kick-start, for a device whose console survey is recorded (O7).
+    return _add(status, f=f, done=out,
+                kick=surveyed_offer(f["list_name"], f["hostname"]) if out.get("ok") else None)
 
 
 # ---------------------------------------------------------------------------

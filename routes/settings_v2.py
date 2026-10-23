@@ -69,6 +69,9 @@ def installation():
     if tab == "connections":
         from modules import records_migrate as RM
         diag = {"st": RM.view()}
+    if tab == "console":
+        from routes.console_servers_v2 import view as console_servers
+        diag = {"cs": console_servers()}
     return _page("v2/settings_installation.html", tab=tab, tabs=I.TABS, built=I.BUILT_TABS,
                  v=v, r=I.records_card() if tab == "connections" else None, cards=cards,
                  **diag)

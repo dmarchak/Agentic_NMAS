@@ -1,0 +1,80 @@
+{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{#- Board A of docs/boards/console-ztp.html (O8, drawn under the Phase 7 mode and logged in
+    docs/STANDING_APPROVAL_LOG.md): Settings › Installation › Console servers, the region. Each
+    console-server port Mercury knows how to reach (its NetBox port, driver, host, container or
+    TCP port, the key's REFERENCE, never a value, and the SSH host key held), NetBox's ports with
+    no record, the keys, and the store's last changes. Reads itself again on console_servers;
+    every card opens in #cs-op, outside it. From routes/console_servers_v2.view. -#}
+{%- set nb = cs.netbox -%}
+<div class="set-cards" id="console-servers" hx-get="{{ url_for('console_servers_v2.region') }}" hx-trigger="nmas:console_servers from:body" hx-swap="outerHTML">
+<section class="card set-card set-card-wide" aria-labelledby="h-cs-ports">
+  <div class="card-head"><h2 id="h-cs-ports">Console-server ports</h2>{{ badge('every network', 'neutral') }}
+    {{ badge(cs.rows | length ~ ' set up', 'ok' if cs.rows else 'neutral') }}
+    {%- if nb.state == 'read' %} {{ badge(nb.ports | length ~ ' in NetBox', 'neutral') }} {{ badge(cs.unset | length ~ ' with no record', 'warn' if cs.unset else 'neutral') }}{% endif %}</div>
+  <p class="muted small">How Mercury reaches each console-server port NetBox holds, keyed by the port's NetBox id. A device's console path (its console port, the cable and the console server's port) is NetBox's; the way in (the driver, the host, the key's name) is Mercury's, and the key itself is in the credential store, never here and never in NetBox.</p>
+  {%- if cs.store == 'unreadable' %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>The console-server store could not be read:</strong> {{ cs.error }}. Every write is refused until it can; the file is kept as it is.</div></div>
+  {%- endif %}
+  {%- if nb.state != 'read' %}
+  <div class="notice notice-warn set-result" role="status">{{ icon('warn', 16) }}<div><strong>NetBox's console-server ports could not be read:</strong> {{ nb.error }}. Each record below is shown by its NetBox id alone, and a new one is added by that id.</div></div>
+  {%- endif %}
+  {%- if cs.rows %}
+  <div class="dh-scroll"><table class="table set-table">
+    <thead><tr><th>NetBox port</th><th>Driver</th><th>Host</th><th>Console</th><th>Key</th><th>Host key</th><th>Changed</th><th><span class="sr">Actions</span></th></tr></thead>
+    <tbody>
+    {%- for r in cs.rows %}
+    {%- set rec = r.record %}
+    <tr id="cs-port-{{ r.id }}">
+      <td>{% if r.netbox %}{{ r.netbox.server }} <span class="mono">{{ r.netbox.name }}</span>{% elif nb.state == 'read' %}<span class="muted">not in NetBox</span>{% else %}<span class="muted">not read</span>{% endif %} <span class="faint small">id {{ r.id }}</span></td>
+      <td class="mono">{{ rec.driver }}</td>
+      <td class="mono">{{ rec.host }}{% if rec.jump_host %} <span class="faint">via {{ rec.jump_host }}</span>{% endif %}{% if rec.ssh_port %} <span class="faint">ssh {{ rec.ssh_port }}</span>{% endif %}</td>
+      <td class="mono">{% if rec.container %}container {{ rec.container }}{% elif rec.tcp_port %}TCP {{ rec.tcp_port }}{% endif %}</td>
+      <td>{% if r.key.state == 'stored' %}<span class="mono">{{ rec.credential_ref }}</span> <span class="faint small" title="{{ r.key.fingerprint }}">{{ r.key.username }}</span>{% elif r.key.state == 'absent' %}<span class="mono">{{ rec.credential_ref }}</span> {{ badge('no key stored', 'warn') }}{% else %}<span class="muted">none</span>{% endif %}</td>
+      <td>{% if r.host_key.state == 'refused' %}{{ badge('refused', 'danger', title='Answered with ' ~ r.host_key.refused ~ '; Mercury holds ' ~ r.host_key.fingerprint) }}{% elif r.host_key.state == 'held' %}<span class="mono small" title="{{ r.ssh_host }} port {{ r.ssh_port }}">{{ r.host_key.fingerprint[:19] }}…</span>{% elif r.host_key.state == 'unreadable' %}{{ badge('unreadable', 'danger', title=r.host_key.error) }}{% elif r.ssh_host %}<span class="muted small">kept on first contact</span>{% else %}<span class="muted small">no SSH</span>{% endif %}</td>
+      <td class="small">{{ rec.by }} {{ stamp(rec.at) }}</td>
+      <td class="nowrap">
+        <span class="op-act"><button type="button" class="btn btn-small" data-op="installation-settings" hx-get="{{ url_for('console_servers_v2.port_form', port=r.id) }}" hx-target="#cs-op" hx-swap="innerHTML">Edit…</button>{{ how('installation-settings', 'console-servers', compact=True, op='a port record') }}</span>
+        <span class="op-act"><button type="button" class="btn btn-small" data-op="installation-settings" hx-get="{{ url_for('console_servers_v2.port_remove_form', port_id=r.id) }}" hx-target="#cs-op" hx-swap="innerHTML">Remove…</button>{{ how('installation-settings', 'console-servers', compact=True, op='removing a port record') }}</span>
+        {%- if r.ssh_host and r.host_key.state in ('held', 'refused') %}
+        <span class="op-act"><button type="button" class="btn btn-small{{ ' btn-primary' if r.host_key.state == 'refused' }}" data-op="rekey" hx-post="{{ url_for('console_servers_v2.rekey_preview', port_id=r.id) }}" hx-target="#cs-op" hx-swap="innerHTML" hx-disabled-elt="this"><span class="op-idle">Re-key…</span><span class="op-busy">Reading its key…</span></button>{{ how('rekey', 'console-server', compact=True, op="a console server's re-key") }}</span>
+        {%- endif %}</td>
+    </tr>
+    {%- endfor %}
+    </tbody></table></div>
+  {%- else %}
+  <p class="sc-empty">No console-server port is set up yet.</p>
+  {%- endif %}
+  {%- if cs.unset %}
+  <h3 class="set-label">In NetBox, with no record</h3>
+  <ul class="op-list">
+    {%- for u in cs.unset %}
+    <li>{{ u.server }} <span class="mono">{{ u.name }}</span> <span class="faint small">id {{ u.id }}</span> <span class="op-act"><button type="button" class="btn btn-small" data-op="installation-settings" hx-get="{{ url_for('console_servers_v2.port_form', port=u.id) }}" hx-target="#cs-op" hx-swap="innerHTML">Set up…</button>{{ how('installation-settings', 'console-servers', compact=True, op='a port record') }}</span></li>
+    {%- endfor %}
+  </ul>
+  {%- endif %}
+  <div class="set-foot"><span class="op-act"><button type="button" class="btn btn-small" data-op="installation-settings" hx-get="{{ url_for('console_servers_v2.port_form') }}" hx-target="#cs-op" hx-swap="innerHTML">Add a port record…</button>{{ how('installation-settings', 'console-servers', op='a port record') }}</span>
+    <span class="muted small">A console server's own device and port are made in NetBox first.</span></div>
+</section>
+<section class="card set-card" aria-labelledby="h-cs-keys">
+  <div class="card-head"><h2 id="h-cs-keys">Keys</h2>{{ badge(cs.key_list | length ~ ' stored', 'neutral') }}</div>
+  <p class="muted small">Each console server signs Mercury in with a dedicated key Mercury makes: the private half is kept encrypted in the credential store, and only the public key is ever shown, for its <span class="mono">authorized_keys</span> line on the console host.</p>
+  {%- if cs.key_error %}<div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>The credential store could not be read:</strong> {{ cs.key_error }}.</div></div>{% endif %}
+  {%- if cs.key_list %}
+  <ul class="op-list">
+    {%- for k in cs.key_list %}
+    <li><span class="mono">{{ k.ref }}</span>: {{ k.username }}, <span class="mono small">{{ k.fingerprint }}</span>{% if k.created %} · {{ stamp(k.created) }}{% endif %}{% if not k.used %} <span class="faint small">· no port uses it yet</span>{% endif %}</li>
+    {%- endfor %}
+  </ul>
+  {%- else %}<p class="sc-empty">No console-server key is stored yet.</p>{% endif %}
+  <div class="set-foot"><span class="op-act"><button type="button" class="btn btn-small" data-op="installation-settings" hx-get="{{ url_for('console_servers_v2.key_form') }}" hx-target="#cs-op" hx-swap="innerHTML">Generate a key…</button>{{ how('installation-settings', 'console-server-keys', op="a console server's key") }}</span></div>
+</section>
+<section class="card set-card" aria-labelledby="h-cs-log">
+  <div class="card-head"><h2 id="h-cs-log">Changes</h2></div>
+  {%- if cs.changes %}
+  <ul class="op-list">
+    {%- for e in cs.changes %}<li>Port {{ e.port }} {{ e.action }}{% if e.driver %} ({{ e.driver }}){% endif %} by {{ e.by }} {{ stamp(e.at) }}</li>{% endfor %}
+  </ul>
+  {%- else %}<p class="sc-empty">No change is recorded yet.</p>{% endif %}
+  <p class="faint small">The store's own log: each record added, replaced or removed, with who and when (the last {{ cs.changes | length }} shown).</p>
+</section>
+</div>

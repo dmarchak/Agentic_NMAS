@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, how -%}
+{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
 {%- from "v2/_preview_parts.html" import preview_parts, result_parts -%}
 {#- Board E (Devices › Add device…, drawn under the Phase 7 mode, docs/STANDING_APPROVAL_LOG.md):
     the fields, then the plan's review with Create bound to it, then the result, which says the
@@ -19,10 +19,17 @@
   <ul class="mono small" data-onboard-created>{% for l in t.sent.lines %}<li>{{ l }}</li>{% endfor %}</ul>
   {%- endfor %}
   {%- if (done.result or {}).record and done.result.record.statement %}<p class="small">{{ done.result.record.statement }}</p>{% endif %}
+  {%- if kick %}
+  <div class="ob-console" id="ob-console">
+    <h3 class="set-label">Console</h3>
+    <p class="small">{{ kick.hostname }}'s console survey of {{ stamp(kick.survey.at) }} is recorded ({% if kick.survey.blank is sameas true %}factory-blank{% elif kick.survey.blank is sameas false %}not factory-blank{% else %}blank unknown{% endif %}). Kick-start it now: the lines make it ask for its reservation and fetch its bootstrap.</p>
+    <div id="console-ztp-card"><span class="op-act"><button type="button" class="btn btn-small btn-primary" data-op="onboard" hx-get="{{ url_for('console_ztp_v2.card_view', device_id=kick.device_id, list_name=kick.list_name, step='kickstart', hostname=kick.hostname) }}" hx-target="#console-ztp-card" hx-swap="outerHTML">Kick-start {{ kick.hostname }} through the console…</button>{{ how('onboard', 'console-kick-start', compact=True, op='the console kick-start') }}</span></div>
+  </div>
+  {%- endif %}
   <div class="set-foot">{% if done.ok %}<a class="btn btn-primary btn-small" href="{{ url_for('device_v2.device', name=f.hostname, list=f.list_name) }}">Open {{ f.hostname }}'s page</a> {% endif %}<a class="btn btn-small" href="{{ url_for('onboard_v2.new', list=f.list_name) }}" hx-get="{{ url_for('onboard_v2.new', list=f.list_name) }}" hx-target="#onboard-add" hx-swap="outerHTML">Add another</a></div>
   {%- elif pv %}
   {{ preview_parts(pv.preview) }}
-  <form class="set-form" method="post" action="{{ url_for('onboard_v2.create') }}"
+  <form class="set-form" id="ob-create" method="post" action="{{ url_for('onboard_v2.create') }}"
         hx-post="{{ url_for('onboard_v2.create') }}" hx-target="#onboard-add" hx-swap="outerHTML">
     {%- for k, v in f.items() if k != 'source_kind' %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
     <input type="hidden" name="shown" value="{{ pv.shown }}"><input type="hidden" name="fingerprint" value="{{ pv.fingerprint }}">
@@ -34,6 +41,12 @@
       <span class="muted small">{{ pv.preview.confirm.statement }} Create rebuilds the plan and refuses, naming what moved, if it is not this one.</span>
     </div>
   </form>
+  {#- O7 (board B of docs/boards/console-ztp.html): out-of-band ZTP's offer, its own fragment
+      read as the review draws (routes/console_ztp_v2.offer_view, templates/v2/_console_offer.html),
+      so the review never waits on NetBox's console model; NetBox device id of the Planned record
+      the plan read, none when NetBox holds none. -#}
+  <div class="ob-console" id="ob-console" aria-busy="true" hx-get="{{ url_for('console_ztp_v2.offer_view', list_name=f.list_name, netbox_id=pv.netbox_id or '', hostname=f.hostname, platform=(pv.plan or {}).platform or '', role=(pv.plan or {}).role or '') }}" hx-trigger="load" hx-swap="outerHTML">
+    <h3 class="set-label">Console</h3><p class="muted small">Reading NetBox's console path…</p></div>
   {%- else %}
   <form class="set-form ob-form" method="post" action="{{ url_for('onboard_v2.preview') }}"
         hx-post="{{ url_for('onboard_v2.preview') }}" hx-target="#onboard-add" hx-swap="outerHTML">

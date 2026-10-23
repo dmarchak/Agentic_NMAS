@@ -1,0 +1,118 @@
+{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{#- Board A of docs/boards/console-ztp.html (O8): the cards Settings › Installation › Console
+    servers opens in #cs-op, in the state its route names (routes/console_servers_v2.py): a
+    port's record (port, port_saved), its removal (remove, removed), a console server's key
+    (key, key_done: ONLY the public key and its authorized_keys line, never the private half),
+    and a console server's re-key (rekey, rekey_done; C1560). Close reopens the tab. -#}
+{%- set close_url = url_for('settings_v2.installation', tab='console') -%}
+{%- macro close(words='Close') -%}<a class="btn btn-small" href="{{ close_url }}">{{ words }}</a>{%- endmacro -%}
+<section class="card set-card set-card-wide" id="cs-op-card" aria-labelledby="h-cs-op">
+{%- if c.mode == 'port' %}
+  {%- set v = c.typed %}
+  <div class="card-head"><h2 id="h-cs-op">{{ 'Edit console-server port ' ~ c.port_id if c.editing else ('Set up console-server port ' ~ c.port_id if c.port_id else 'Add a port record') }}</h2>{{ close('Cancel') }}</div>
+  {%- if c.refused %}<div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>{{ c.refused }}</strong>. Nothing was changed.</div></div>{% endif %}
+  <form class="set-form" method="post" action="{{ url_for('console_servers_v2.port_save') }}" hx-post="{{ url_for('console_servers_v2.port_save') }}" hx-target="#cs-op" hx-swap="innerHTML">
+    <label for="f-cs-port">NetBox port</label>
+    <div>
+      {%- if c.editing or (c.port_id and c.netbox.state != 'read') %}
+      <input type="hidden" name="port_id" value="{{ c.port_id }}"><span class="mono">{{ c.port_id }}</span>{% set p = c.netbox.ports.get(c.port_id) %}{% if p %} · {{ p.server }} <span class="mono">{{ p.name }}</span>{% endif %}
+      {%- elif c.netbox.state == 'read' %}
+      <select id="f-cs-port" name="port_id" required><option value="">Choose…</option>
+        {%- for pid, p in c.netbox.ports | dictsort %}<option value="{{ pid }}"{% if pid == c.port_id %} selected{% endif %}>{{ p.server }} {{ p.name }} (id {{ pid }})</option>{% endfor %}
+      </select><span class="set-origin">a console server's port, as NetBox holds it; a record for it replaces any there</span>
+      {%- else %}
+      <input id="f-cs-port" name="port_id" type="text" inputmode="numeric" value="{{ c.port_id }}" autocomplete="off" required><span class="set-origin">NetBox could not be read ({{ c.netbox.error }}): the console-server port's NetBox id</span>
+      {%- endif %}</div>
+    <label for="f-cs-driver">Driver</label>
+    <div><select id="f-cs-driver" name="driver" required><option value="">Choose…</option>
+      {%- for d in c.drivers %}<option value="{{ d }}"{% if d == v.driver %} selected{% endif %}>{{ {'command_bridge': 'Command bridge (an SSH console server whose forced command bridges one console)', 'raw_tcp': 'Raw TCP (a console port, directly or through an SSH jump host)'}.get(d, d) }}</option>{% endfor %}
+    </select></div>
+    <label for="f-cs-host">Host</label>
+    <div><input id="f-cs-host" name="host" type="text" value="{{ v.host }}" autocomplete="off" placeholder="192.0.2.20 or 2001:db8::20" required><span class="set-origin">the console server: an IPv4 or IPv6 address, or a hostname</span></div>
+    <label for="f-cs-container">Container</label>
+    <div><input id="f-cs-container" name="container" type="text" value="{{ v.container }}" autocomplete="off"><span class="set-origin">command bridge only: the console's name on the bridge's allowlist; never a command</span></div>
+    <label for="f-cs-tcp">TCP port</label>
+    <div><input id="f-cs-tcp" name="tcp_port" type="text" inputmode="numeric" value="{{ v.tcp_port }}" autocomplete="off"><span class="set-origin">raw TCP only: the console's port on the host</span></div>
+    <label for="f-cs-jump">Jump host</label>
+    <div><input id="f-cs-jump" name="jump_host" type="text" value="{{ v.jump_host }}" autocomplete="off" placeholder="(optional)"><span class="set-origin">raw TCP only: an SSH host the console is reached through</span></div>
+    <label for="f-cs-ssh">SSH port</label>
+    <div><input id="f-cs-ssh" name="ssh_port" type="text" inputmode="numeric" value="{{ v.ssh_port }}" autocomplete="off" placeholder="22"><span class="set-origin">the console server's (command bridge), or the jump host's (raw TCP)</span></div>
+    <label for="f-cs-ref">Key</label>
+    <div><input id="f-cs-ref" name="credential_ref" type="text" value="{{ v.credential_ref }}" autocomplete="off"><span class="set-origin">the NAME a key is stored under in the credential store (Generate a key… makes one), never a key; needed wherever SSH is spoken</span></div>
+    <div class="set-foot set-form-note">
+      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="installation-settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save the record</span><span class="op-busy">Saving…</span></button>{{ how('installation-settings', 'console-servers', op='a port record') }}</span>
+      <span class="muted small">Checked by the store: a field its driver does not hold, or a name the bridge refuses, is refused, naming it. Recorded with who and when.</span></div>
+  </form>
+{%- elif c.mode == 'port_saved' %}
+  <div class="card-head"><h2 id="h-cs-op">Console-server port {{ c.port_id }} saved {{ badge('saved', 'ok') }}</h2>{{ close() }}</div>
+  <dl class="op-ops">
+    {%- for k, val in c.record | dictsort if k not in ('by', 'at') %}<dt>{{ k }}</dt><dd class="mono">{{ val }}</dd>{% endfor %}
+  </dl>
+  <p class="small">By {{ c.record.by }} {{ stamp(c.record.at) }}; in the store's log, and the table below shows it.</p>
+{%- elif c.mode == 'remove' %}
+  <div class="card-head"><h2 id="h-cs-op">Remove console-server port {{ c.port_id }}'s record</h2>{{ close('Cancel') }}</div>
+  {%- if c.state == 'read' %}
+  <p>Mercury forgets how it reaches this port (<span class="mono">{{ c.record.driver }}</span> to <span class="mono">{{ c.record.host }}</span>). <strong>What stays:</strong> NetBox's port and every cable to it, and the key in the credential store. A device whose console path ends at this port cannot be surveyed or kick-started until a record is set again.</p>
+  <form class="set-form" hx-post="{{ url_for('console_servers_v2.port_remove', port_id=c.port_id) }}" hx-target="#cs-op" hx-swap="innerHTML">
+    <div class="set-foot set-form-note"><span class="op-act"><button type="submit" class="btn btn-small btn-danger" data-op="installation-settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Remove port {{ c.port_id }}'s record</span><span class="op-busy">Removing…</span></button>{{ how('installation-settings', 'console-servers', op='removing a port record') }}</span></div>
+  </form>
+  {%- else %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Nothing to remove:</strong> {{ c.error or ('console-server port ' ~ c.port_id ~ ' has no record') }}.</div></div>
+  {%- endif %}
+{%- elif c.mode == 'removed' %}
+  <div class="card-head"><h2 id="h-cs-op">Console-server port {{ c.port_id }}'s record removed {{ badge('removed', 'ok') }}</h2>{{ close() }}</div>
+  <p>Mercury no longer reaches port {{ c.port_id }} (it was <span class="mono">{{ c.record.driver }}</span> to <span class="mono">{{ c.record.host }}</span>). NetBox's port, its cables and the key are unchanged. The removal is in the store's log.</p>
+{%- elif c.mode == 'key' %}
+  {%- set v = c.typed %}
+  <div class="card-head"><h2 id="h-cs-op">Generate a console server's key</h2>{{ close('Cancel') }}</div>
+  {%- if c.refused %}<div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>{{ c.refused }}</strong>. Nothing was stored.</div></div>{% endif %}
+  <form class="set-form" method="post" action="{{ url_for('console_servers_v2.key_generate') }}" hx-post="{{ url_for('console_servers_v2.key_generate') }}" hx-target="#cs-op" hx-swap="innerHTML">
+    <label for="f-ck-ref">Name</label>
+    <div><input id="f-ck-ref" name="ref" type="text" value="{{ v.ref }}" autocomplete="off" required><span class="set-origin">the reference a port's record names; the key is stored under it, encrypted</span></div>
+    <label for="f-ck-user">User on the console host</label>
+    <div><input id="f-ck-user" name="username" type="text" value="{{ v.username }}" autocomplete="off" required><span class="set-origin">the account whose authorized_keys gets the line</span></div>
+    <label for="f-ck-wrapper">Bridge wrapper</label>
+    <div><input id="f-ck-wrapper" name="wrapper_path" type="text" value="{{ v.wrapper_path }}" autocomplete="off" required><span class="set-origin">where the console host's host step installs it; the line forces it</span></div>
+    <label for="f-ck-allow">Allowlist</label>
+    <div><input id="f-ck-allow" name="allowlist_path" type="text" value="{{ v.allowlist_path }}" autocomplete="off" required><span class="set-origin">the containers the bridge may open, one a line</span></div>
+    {%- if c.exists %}
+    <span class="set-label">Replace</span>
+    <div><label><input type="checkbox" name="replace" value="1"> Replace the key stored under {{ v.ref }}</label><span class="set-origin">the console host refuses the old key once the new line is installed there, and Mercury signs in only with the new one</span></div>
+    {%- endif %}
+    <div class="set-foot set-form-note">
+      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="installation-settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Generate the key</span><span class="op-busy">Generating…</span></button>{{ how('installation-settings', 'console-server-keys', op="a console server's key") }}</span>
+      <span class="muted small">Only the public half is shown, now and later; the private half never leaves the credential store.</span></div>
+  </form>
+{%- elif c.mode == 'key_done' %}
+  {%- set k = c.key %}
+  <div class="card-head"><h2 id="h-cs-op">Key {{ k.ref }} generated {{ badge('stored, encrypted', 'ok') }}</h2>{{ close() }}</div>
+  <p>Install this line in <span class="mono">~{{ k.username }}/.ssh/authorized_keys</span> on the console host. It lets the key do one thing: run the bridge wrapper, which opens only a console on its allowlist.</p>
+  <pre class="ask-pre" data-authorized-keys>{{ k.authorized_keys_line }}</pre>
+  <dl class="op-ops"><dt>Public key</dt><dd class="mono">{{ k.public_key }}</dd><dt>Fingerprint</dt><dd class="mono">{{ k.fingerprint }}</dd><dt>User</dt><dd class="mono">{{ k.username }}</dd></dl>
+  <p class="muted small">The private half is stored encrypted under <span class="mono">{{ k.ref }}</span> and is shown nowhere. Name it as a port record's Key.</p>
+{%- elif c.mode == 'rekey' %}
+  {%- set p = c.p %}
+  <div class="card-head"><h2 id="h-cs-op">Re-key console-server port {{ c.port_id }}'s host{% if p.host %} ({{ p.host }} port {{ p.port }}){% endif %}</h2>{{ close('Cancel') }}</div>
+  <dl class="op-ops">
+    <dt>Held</dt><dd class="mono">{{ p.held.fingerprint or 'none' }}{% if p.held.type %} ({{ p.held.type }}, kept {{ p.held.kept_at[:10] }} by {{ p.held.kept_by }}){% endif %}</dd>
+    <dt>Presents now</dt><dd class="mono">{{ p.now.fingerprint or 'not read' }}{% if p.now.type %} ({{ p.now.type }}){% endif %}</dd>
+    {%- if p.refused_key.fingerprint %}<dt>Refused</dt><dd class="mono">{{ p.refused_key.fingerprint }} ({{ p.refused_key.count }} time{{ '' if p.refused_key.count == 1 else 's' }} since {{ p.refused_key.first_at }})</dd>{% endif %}
+  </dl>
+  <p class="small">In order, if you confirm: {{ p.steps | join(', ') }}.</p>
+  {%- if p.refused_by %}
+  <p class="small"><strong>{{ p.refusals | length }} check{{ '' if p.refusals | length == 1 else 's' }} refused:</strong></p>
+  <ul class="op-gates">{% for key, why in p.refused_by.items() %}<li>{{ badge('fail', 'danger') }}<span>{{ why }}</span></li>{% endfor %}</ul>
+  {%- endif %}
+  {%- for n in p.not_doing %}<p class="muted small">{{ n[0] | upper }}{{ n[1:] }}.</p>{% endfor %}
+  {%- if p.ok %}
+  <form class="set-form" hx-post="{{ url_for('console_servers_v2.rekey_confirm', port_id=c.port_id) }}" hx-target="#cs-op" hx-swap="innerHTML">
+    <input type="hidden" name="hash" value="{{ p.hash }}">
+    <div class="set-foot set-form-note"><span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="rekey" hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">Keep the new key for {{ p.host }}</span><span class="op-busy">Reading its key again and keeping it…</span></button>{{ how('rekey', 'console-server', op="a console server's re-key") }}</span>
+      <span class="muted small">Bound to {{ p.hash }}: if the host answers with another key, or the record moves, before you confirm, nothing is kept.</span></div>
+  </form>
+  {%- endif %}
+{%- elif c.mode == 'rekey_done' %}
+  <div class="card-head"><h2 id="h-cs-op">Re-key console-server port {{ c.port_id }}'s host {{ badge('kept' if c.ok else 'nothing kept', 'ok' if c.ok else 'warn') }}</h2>{{ close() }}</div>
+  <p>{{ c.detail[0] | upper }}{{ c.detail[1:] }}{{ '' if c.detail.endswith('.') else '.' }}{% if c.ok and c.p %} {{ c.p.host }} now holds {{ c.p.now.fingerprint }}; the old key is in the record's history, on History (SSH host keys).{% endif %}</p>
+{%- endif %}
+</section>

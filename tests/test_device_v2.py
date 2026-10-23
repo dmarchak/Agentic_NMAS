@@ -689,7 +689,15 @@ class TestTheShippedScripts:
                                                     "/v2/network/picker?next=/v2/",
                                                     "/v2/settings/scope?at=Lab",
                                                     "/v2/settings/installation?tab=access",
-                                                    "/v2/credentials?list=Lab"))
+                                                    "/v2/credentials?list=Lab",
+                                                    # O8: the Console servers tab's region
+                                                    # (console_servers).
+                                                    "/v2/settings/installation?tab=console",
+                                                    # O6b: the console card while its run
+                                                    # runs (console_ztp).
+                                                    "/v2/onboard/console/7?list_name=Lab&run="
+                                                    "20261022T000000000000Z-" + "0" * 32
+                                                    + "&job=x"))
         from modules import device_page
         from modules.nsot import rotate_op
         from routes import device_v2
@@ -731,7 +739,9 @@ class TestTheShippedScripts:
         # host key is kept, refused or re-keyed, C906).
         # +1 2026-10-16: in_progress (the top bar's In progress chip reads again when a job
         # starts, finishes or its result is opened, C537).
-        assert len(keys) == 47
+        # +2 2026-10-22: console_ztp (out-of-band ZTP's card listens for its run's end, O6b)
+        # and console_servers (Settings › Installation › Console servers redraws, O8).
+        assert len(keys) == 49
         for key in keys:
             assert f"nmas:{key} from:body" in heard, key
         src = _js("nmas_v2.js")

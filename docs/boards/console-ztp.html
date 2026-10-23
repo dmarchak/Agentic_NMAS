@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>Out-of-band ZTP board</title>
+<!-- Board for out-of-band ZTP's interface (docs/LAB9_PLAN.md section 8, O6b, O7 and O8 minimal):
+     A, Settings › Installation › Console servers; B, Add device's offer; C, the console survey's
+     preview; D, the survey's result; E, the kick-start's preview and result. Drawn by the agent
+     under the Phase 7 operating mode, which counts it as signed off (one line in
+     docs/STANDING_APPROVAL_LOG.md). Self-contained: no external fonts or scripts. Example names
+     (edge1, cons-1) and 192.0.2.x / 2001:db8:: addresses only. -->
+<style>
+:root{--ground:#F4F5F2;--surface:#FFFFFF;--surface-2:#F9FAF8;--ink:#15191E;--ink-2:#4A5260;--ink-3:#9AA3AE;--line:#DADDE2;--line-2:#EEF0EC;
+--accent:#1E5E8C;--accent-ink:#14476B;--accent-soft:#E6EFF6;--ok:#0B6B45;--ok-soft:#E7F5EE;--warn:#9A4B00;--warn-soft:#FDF1E2;
+--danger:#B42318;--danger-soft:#FDECEA;--muted-soft:#E9EBE7;--side:#14202B;--side-ink:#C9D2DB;--side-ink-2:#8FA1B2;--side-on:#22384A;
+--sans:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;--mono:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace}
+body{margin:0;background:#D9DCD6;font-family:var(--sans);color:var(--ink);font-size:14px;line-height:1.45}
+.boardhead,.artlabel{width:1440px;margin:22px auto 8px;font-size:13px;color:#333}
+.boardhead h1{font-size:18px;margin:0 0 4px}.artlabel strong{font-size:15px}
+.art{width:1440px;margin:0 auto;background:var(--ground);display:flex;box-shadow:0 2px 14px rgba(0,0,0,.18)}
+.side{width:216px;flex-shrink:0;background:var(--side);color:var(--side-ink);padding:18px 10px;display:flex;flex-direction:column;gap:2px}
+.side .brand{font-weight:600;color:#FFF;padding:4px 10px 14px;font-size:15px}.side .h{font-size:11px;letter-spacing:.08em;color:var(--side-ink-2);padding:14px 10px 4px}
+.side a{color:var(--side-ink);text-decoration:none;padding:7px 10px;border-radius:6px;display:block}.side a.on{background:var(--side-on);color:#FFF}
+main{flex:1;min-width:0;padding:24px 32px;display:flex;flex-direction:column;gap:14px}
+h1.page{margin:0;font-size:24px;font-weight:600}h2{margin:0;font-size:16px;font-weight:600}h3{margin:0;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+.mono{font-family:var(--mono);font-size:12.5px}.muted{color:var(--ink-2)}.faint{color:var(--ink-3)}.small{font-size:12.5px}
+.chip{white-space:nowrap;display:inline-block;font-size:12px;padding:1px 8px;border-radius:10px;background:var(--muted-soft);color:var(--ink-2)}
+.chip.ok{background:var(--ok-soft);color:var(--ok)}.chip.warn{background:var(--warn-soft);color:var(--warn)}.chip.bad{background:var(--danger-soft);color:var(--danger)}
+.btn{white-space:nowrap;display:inline-block;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:6px;padding:4px 10px;font:inherit;font-size:13px;text-decoration:none}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#FFF}.btn.dangerous{background:var(--danger);border-color:var(--danger);color:#FFF}
+.how{display:inline-flex;width:15px;height:15px;border-radius:50%;border:1.4px solid var(--accent);color:var(--accent);font-size:10px;font-weight:700;align-items:center;justify-content:center;vertical-align:middle;margin-left:4px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line)}.tabs a{padding:8px 12px;text-decoration:none;color:var(--ink-2)}.tabs a.on{color:var(--ink);border-bottom:2px solid var(--accent);font-weight:500}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+.card.ok{border-color:var(--ok)}.card.warn{border-color:var(--warn)}
+.head{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.head .grow{flex:1}
+table{border-collapse:collapse;width:100%;font-size:13px}th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line-2);vertical-align:top}
+thead th{font-size:12px;color:var(--ink-2);font-weight:500;background:var(--surface-2)}
+.part{display:grid;grid-template-columns:150px 1fr;gap:14px;padding:12px 0;border-top:1px solid var(--line-2)}
+.kv{display:grid;grid-template-columns:140px 1fr;gap:4px 12px;font-size:13px}
+pre{margin:0;background:var(--surface-2);border:1px solid var(--line-2);border-radius:6px;padding:8px 10px;font-family:var(--mono);font-size:12.5px;white-space:pre-wrap}
+.notice{background:var(--danger-soft);color:var(--danger);border-radius:6px;padding:8px 12px;font-size:13px}
+.form{display:grid;grid-template-columns:170px 1fr;gap:8px 14px;font-size:13px;align-items:center}
+.form input,.form select{font:inherit;font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:6px}
+.callout{font-size:12px;color:#5b3d00;background:#FFF6D6;border:1px dashed #C9A23A;border-radius:6px;padding:6px 10px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+</style>
+</head>
+<body>
+
+<div class="boardhead">
+<h1>Out-of-band ZTP: board for sign-off (O6b, O7 and O8 minimal)</h1>
+<div>Five artboards at 1440 wide. Yellow dashed notes are annotations, not part of the screen. Every other link and control is one the built screens have. No diagram is drawn for the manual's section (deferred with the feature's later phase, C1536).</div>
+</div>
+
+<!-- ============================================================ A -->
+<div class="artlabel"><strong>A · Settings › Installation › Console servers</strong>: the installation's console-server ports (how Mercury reaches each NetBox console-server port), their keys and host keys; a new tab beside Platforms and roles. Each card opens above the tab's cards; the cards below redraw themselves on any change.</div>
+<div class="art">
+<nav class="side"><div class="brand">Mercury</div><a href="#">Needs attention</a><a href="#">Devices</a><a href="#">History</a><div class="h">OBSERVE</div><a href="#">Monitoring</a><a href="#">Topology</a><a href="#">Show commands</a><a href="#">Logs</a><div class="h">SOURCE OF TRUTH</div><a href="#">Templates</a><a href="#">NetBox</a><a href="#">DHCP</a><a href="#">Credentials</a><div style="flex-grow:1"></div><a href="#">Help</a><a href="#" class="on">Settings</a></nav>
+<main>
+<h1 class="page">Settings · Installation <span class="how">i</span></h1>
+<nav class="tabs"><a href="#">Connections</a><a href="#">Access and identity</a><a href="#">Platforms and roles</a><a href="#" class="on">Console servers</a><a href="#">Diagnostics</a></nav>
+<div class="card ok">
+<div class="head"><h2 class="grow">Key cons-bridge generated <span class="chip ok">stored, encrypted</span></h2><a class="btn" href="#">Close</a></div>
+<p class="small">Install this line in <span class="mono">~mercury/.ssh/authorized_keys</span> on the console host. It lets the key do one thing: run the bridge wrapper, which opens only a console on its allowlist.</p>
+<pre>restrict,command="/usr/local/lib/nmas/nmas-console-bridge /etc/nmas/console-allowlist" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI… mercury-console</pre>
+<div class="kv"><span class="muted">Fingerprint</span><span class="mono">SHA256:3c9F…</span><span class="muted">User</span><span class="mono">mercury</span></div>
+<p class="faint small">The private half is stored encrypted under cons-bridge and is shown nowhere.</p>
+</div>
+<div class="callout">The answer of Generate a key…: only the public key and its line. Add a port record…, Edit…, Remove… and Re-key… open here the same way, each with its refusal or result in place.</div>
+<div class="card">
+<div class="head"><h2>Console-server ports</h2><span class="chip">every network</span><span class="chip ok">2 set up</span><span class="chip">3 in NetBox</span><span class="chip warn">1 with no record</span></div>
+<p class="muted small">How Mercury reaches each console-server port NetBox holds, keyed by the port's NetBox id. The key itself is in the credential store, never here and never in NetBox.</p>
+<table><thead><tr><th>NetBox port</th><th>Driver</th><th>Host</th><th>Console</th><th>Key</th><th>Host key</th><th>Changed</th><th></th></tr></thead><tbody>
+<tr><td>cons-1 <span class="mono">port 5</span> <span class="faint small">id 41</span></td><td class="mono">command_bridge</td><td class="mono">192.0.2.20 <span class="faint">ssh 22</span></td><td class="mono">container edge-a</td><td class="mono">cons-bridge <span class="faint small">mercury</span></td><td><span class="chip bad">refused</span></td><td class="small">operator · 2 h ago</td><td><a class="btn" href="#">Edit…</a><span class="how">i</span> <a class="btn" href="#">Remove…</a><span class="how">i</span> <a class="btn primary" href="#">Re-key…</a><span class="how">i</span></td></tr>
+<tr><td>cons-1 <span class="mono">port 6</span> <span class="faint small">id 42</span></td><td class="mono">raw_tcp</td><td class="mono">2001:db8::30 <span class="faint">via 192.0.2.21 ssh 22</span></td><td class="mono">TCP 5000</td><td class="mono">cons-jump <span class="chip warn">no key stored</span></td><td><span class="mono small">SHA256:a81c…</span></td><td class="small">operator · yesterday</td><td><a class="btn" href="#">Edit…</a><span class="how">i</span> <a class="btn" href="#">Remove…</a><span class="how">i</span> <a class="btn" href="#">Re-key…</a><span class="how">i</span></td></tr>
+</tbody></table>
+<h3>In NetBox, with no record</h3>
+<p class="small">cons-1 <span class="mono">port 7</span> <span class="faint">id 43</span> <a class="btn" href="#">Set up…</a><span class="how">i</span></p>
+<p><a class="btn" href="#">Add a port record…</a><span class="how">i</span> <span class="muted small">A console server's own device and port are made in NetBox first.</span></p>
+</div>
+<div class="callout">NetBox unreadable (C1535's 403): a notice above the table names the read and why; each row shows its NetBox id alone, and Add a port record… takes the id typed. A refused host key is red, and its Re-key… is the primary control (C1560: the refusal names this page).</div>
+<div class="two">
+<div class="card"><div class="head"><h2>Keys</h2><span class="chip">2 stored</span></div>
+<p class="small"><span class="mono">cons-bridge</span>: mercury, <span class="mono">SHA256:3c9F…</span> · 1 h ago</p>
+<p class="small"><span class="mono">cons-spare</span>: mercury, <span class="mono">SHA256:77d0…</span> · <span class="faint">no port uses it yet</span></p>
+<p><a class="btn" href="#">Generate a key…</a><span class="how">i</span></p></div>
+<div class="card"><div class="head"><h2>Changes</h2></div>
+<p class="small">Port 41 replaced (command_bridge) by operator · 2 h ago</p><p class="small">Port 42 added (raw_tcp) by operator · yesterday</p>
+<p class="faint small">The store's own log: the last ten.</p></div>
+</div>
+</main></div>
+
+<!-- ============================================================ B -->
+<div class="artlabel"><strong>B · Devices › Add device…, the review: the offer</strong>, read as the review draws (one NetBox read). Drawn only when NetBox shows the device's console path; its absence said when not.</div>
+<div class="art">
+<nav class="side"><div class="brand">Mercury</div><a href="#">Needs attention</a><a href="#" class="on">Devices</a><a href="#">History</a></nav>
+<main>
+<div class="card">
+<div class="head"><h2 class="grow">Add device to example-net</h2><a class="btn" href="#">Close</a></div>
+<p class="muted small">… the plan's review as today (the bootstrap configuration, the checks, What it does not do) …</p>
+<p><a class="btn primary" href="#">Create edge1</a><span class="how">i</span> <a class="btn" href="#">Change the fields</a></p>
+<h3>Console</h3>
+<p class="small">NetBox shows edge1's console path (NetBox device 812): <span class="mono">con 0</span> to cons-1 <span class="mono">port 5</span>, cable 77 (connected). Out-of-band ZTP surveys its console first (read-only: is it factory-blank, and its MAC), so the plan can hold the MAC; after Create it kick-starts it, typing the lines that make it ask for its reservation and fetch its bootstrap.</p>
+<p><a class="btn" href="#">Kick-start through the console…</a><span class="how">i</span></p>
+<div class="callout">Absent, the Console part reads, e.g.: "No console kick-start: console port 'con 0' (id 9) has no cable." or "… NetBox holds no Planned record of edge1, and a console path is read from the device's NetBox record …". The card opens in this part's place.</div>
+</div>
+</main></div>
+
+<!-- ============================================================ C -->
+<div class="artlabel"><strong>C · The console survey: the preview</strong> (read-only; contacts nothing but NetBox). The profile is chosen for you from the platform and role when one fits.</div>
+<div class="art">
+<nav class="side"><div class="brand">Mercury</div><a href="#" class="on">Devices</a></nav>
+<main>
+<div class="card">
+<div class="head"><h2 class="grow">Console survey of edge1</h2><span class="how">i</span></div>
+<div class="part"><h3>Through</h3><div class="kv"><span class="muted">Console port</span><span class="mono">con 0 (NetBox 9)</span><span class="muted">Cable</span><span class="mono">77 · connected</span><span class="muted">Console server</span><span class="mono">cons-1 port 5 (port 41)</span><span class="muted">Reached by</span><span class="mono">console-server port 41 (192.0.2.20 port 22, container edge-a)</span><span class="muted">Driver</span><span class="mono">command_bridge to 192.0.2.20, container edge-a, key cons-bridge</span><span class="muted">Profile</span><span class="mono">cisco_ios_switch v1 · 4be1a0c27e95</span></div></div>
+<div class="part"><h3>What it types</h3><div><p class="small">Only these, each in the state the console is in when it is sent, and nothing more:</p>
+<pre>idle: ⏎
+found at press_return: ⏎, enable⏎
+found at setup_dialog: no⏎, ⏎, enable⏎
+found at user_exec: enable⏎
+priv_exec: terminal length 0⏎
+priv_exec: show version⏎
+priv_exec: dir nvram:⏎
+priv_exec: disable⏎</pre>
+<p class="faint small">It ends at the user_exec prompt. Otherwise: any other state the wake finds: nothing more is sent.</p></div></div>
+<div class="part"><h3>What will not happen</h3><div class="small"><p>No configuration line is typed and nothing is saved …</p><p>A console found signed in, or asking for a login, is recorded as not factory-blank as found, and nothing more is sent to it.</p></div></div>
+<p class="small muted">Bound to 9f2c41e07a1b: if the console path, the port's record or the profile move before you confirm, nothing is sent. edge1 and its console-server port are held while it runs.</p>
+<p><a class="btn primary" href="#">Survey edge1's console</a><span class="how">i</span></p>
+<div class="callout">Refused, the Checks part lists each gate in red (no record for the port, with a link to Settings › Installation › Console servers; two console paths; an unknown profile …) and no confirm is drawn. Running: "Surveying edge1 over its console, holding it …", busy, redrawn when the run ends (no polling).</div>
+</div>
+</main></div>
+
+<!-- ============================================================ D -->
+<div class="artlabel"><strong>D · The survey's result</strong>, from the run's record: blank, not blank or unknown with its reasons, the MAC, what was sent and the masked transcript; the next step.</div>
+<div class="art">
+<nav class="side"><div class="brand">Mercury</div><a href="#" class="on">Devices</a></nav>
+<main>
+<div class="card ok">
+<div class="head"><h2 class="grow">Console survey of edge1 <span class="chip ok">factory-blank</span></h2><span class="how">i</span></div>
+<div class="part"><h3>What happened</h3><div><p>Factory-blank: the console was found at press_return.</p><p class="muted small">startup-config is 0 bytes</p>
+<div class="kv"><span class="muted">MAC</span><span class="mono">52:54:00:1a:2b:3c</span><span class="muted">Startup configuration</span><span class="mono">0 bytes</span><span class="muted">Bytes written</span><span class="mono">58</span></div>
+<p class="small">▸ What was sent (masked) · ▸ The console's transcript (masked)</p></div></div>
+<div class="part"><h3>Next</h3><div><p class="small">It is blank. Use its MAC in the plan, Create the device, then kick-start it here.</p><p><a class="btn primary" href="#">Use 52:54:00:1a:2b:3c in the plan</a><span class="how">i</span> <a class="btn" href="#">Kick-start edge1…</a><span class="how">i</span></p></div></div>
+<div class="part"><h3>Recorded</h3><p class="small">By operator (verified: access), 2 min ago, in 14.2 s, in example-net, run 20261022T…. On History (Console surveys and kick-starts).</p></div>
+<div class="callout">Not blank (amber): why, and "Return edge1 to its factory state … then survey it again" with Survey again…; it is also a Needs attention row until a later survey ends well or it is acknowledged.</div>
+</div>
+</main></div>
+
+<!-- ============================================================ E -->
+<div class="artlabel"><strong>E · The kick-start: its preview (the exact lines) and its result</strong>, offered from Create's result once a survey is recorded; refused (nothing typed) before Create.</div>
+<div class="art">
+<nav class="side"><div class="brand">Mercury</div><a href="#" class="on">Devices</a></nav>
+<main>
+<div class="two">
+<div class="card">
+<div class="head"><h2 class="grow">Console kick-start of edge1</h2><span class="how">i</span></div>
+<div class="part"><h3>Stands on</h3><p class="small">the survey of 2026-10-22T21:20:00Z by operator, which read MAC 52:54:00:1a:2b:3c.</p></div>
+<div class="part"><h3>The lines</h3><pre>configure terminal
+hostname edge1
+vlan 10
+interface GigabitEthernet0/1
+ switchport mode access
+ switchport access vlan 10
+ no shutdown
+interface Vlan10
+ ip address dhcp
+ no shutdown
+line con 0
+ exec-timeout 15 0
+end</pre></div>
+<div class="part"><h3>What will not happen</h3><p class="small">Nothing is saved (no write memory): a reload returns the device to its factory state … No credential crosses the console …</p></div>
+<p class="small muted">Bound to 1d07b3…: if the console path, the port's record, the profile, the survey or the lines move, nothing is sent. A verified person confirms.</p>
+<p><a class="btn primary" href="#">Kick-start edge1</a><span class="how">i</span></p>
+<div class="callout">Before the preview: the hostname is NetBox's name, never a field; the profile's other parameters (Interface, Vlan) are typed and checked against their shape.</div>
+</div>
+<div class="card ok">
+<div class="head"><h2 class="grow">Console kick-start of edge1 <span class="chip ok">typed, verified</span></h2><span class="how">i</span></div>
+<div class="part"><h3>What happened</h3><div><p class="small">Typed and verified: it ended at 'edge1#', naming the hostname typed.</p><p class="small muted">The blank check again: startup-config is 0 bytes</p><p class="small">▸ The lines sent · ▸ What was sent (masked) · ▸ The console's transcript (masked)</p></div></div>
+<div class="part"><h3>Next</h3><p class="small">edge1 now asks DHCP on its management interface and fetches its bootstrap like any ZTP device: its pending page follows it, and Verify reaches it.</p></div>
+<div class="part"><h3>Recorded</h3><p class="small">By operator (verified: access), just now, in 31.0 s, in example-net, run …, on survey …. On History.</p></div>
+</div>
+</div>
+</main></div>
+
+</body>
+</html>

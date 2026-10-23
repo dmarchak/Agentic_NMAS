@@ -1352,6 +1352,49 @@ def reloads(ctx):
     return _out(events)
 
 
+#: A console run's outcome, as History says it (modules/nsot/console_ztp.py's outcomes).
+CONSOLE_OUTCOMES = {"surveyed": "surveyed", "stopped": "stopped: found signed in",
+                    "done": "done, verified", "unverified": "done, not verified",
+                    "not_blank": "not blank: nothing typed", "unreachable": "console unreachable",
+                    "refused_state": "refused: found signed in", "running": "running"}
+
+
+def console_ztp(ctx):
+    """Each console survey and kick-start (out-of-band ZTP, modules/nsot/console_ztp.py) in the
+    network's own records: who, what it found or typed, how it ended, and the masked transcript
+    kept in the record. A device being onboarded is in no inventory yet, so every run in the
+    network's folder is the network's (never filtered by its members); a device's History
+    keeps its own."""
+    from modules.nsot import console_ztp as Z
+    got = Z.runs(ctx["ref"].name, limit=max(ctx["limit"], 1))
+    errors = ([f"{len(got['unreadable'])} console run record(s) could not be read: "
+               f"{', '.join(got['unreadable'][:5])}"] if got["unreadable"] else [])
+    events = []
+    for r in got["runs"]:
+        host = r.get("device", "")
+        if (ctx["device"] and host != ctx["device"]) or not _recent(ctx, r.get("started_at")):
+            continue
+        survey = r.get("kind") == Z.KIND_SURVEY
+        outcome = CONSOLE_OUTCOMES.get(r.get("outcome", ""), r.get("outcome", ""))
+        if survey:
+            blank = {True: "factory-blank", False: "not factory-blank"}.get(r.get("blank"),
+                                                                           "blank unknown")
+            what = f"Console survey: {blank}"
+        else:
+            what = f"Console kick-start: {outcome}"
+        good = r.get("outcome") in ("surveyed", "done") and (not survey or r.get("blank") is True)
+        events.append(_event(r.get("started_at"), "console", what, [host],
+                             who=r.get("actor", ""), detail=r.get("reason", ""),
+                             outcome=outcome, marks=[] if good else ["stopped"],
+                             record=[("Run", r.get("id")), ("Outcome", outcome),
+                                     ("Reasons", "; ".join(r.get("reasons") or [])),
+                                     ("MAC", r.get("mac")),
+                                     ("Console-server port", r.get("port_id")),
+                                     ("Lines sent", "\n".join(r.get("lines") or [])),
+                                     ("Transcript (masked)", r.get("transcript"))]))
+    return _out(events, errors)
+
+
 def _host_key_window_summaries(ctx, hk) -> tuple:
     """``(events, errors)``: each closed window's ONE summary of the keys it kept
     (`host_keys.close_windows`), for this list, when it closed: the devices are those whose
@@ -1519,7 +1562,7 @@ SOURCES = {
     "onboarding": onboarding, "acknowledgements": acknowledgements, "breakglass": breakglass,
     "interrupted": interrupted, "approvals": approvals,
     "updates": updates, "show_commands": show_commands, "privileged": privileged,
-    "reloads": reloads, "credential_profiles": credential_profiles,
+    "reloads": reloads, "console_ztp": console_ztp, "credential_profiles": credential_profiles,
     "topology_expected": topology_expected, "topology_layout": topology_layout,
     "saved_views": saved_views, "reveals": reveals, "host_keys": host_keys,
     "netbox": netbox, "grafana_writes": grafana_writes, "heartbeat_windows": heartbeat_windows,
@@ -1536,6 +1579,7 @@ KIND_GROUPS = (
                               ("persists", "Persists", ("persist",)),
                               ("privileged", "Privileged commands (Tier 2)", ("privileged",)),
                               ("reloads", "Reloads", ("reload",)),
+                              ("console", "Console surveys and kick-starts", ("console",)),
                               ("onboarding", "Onboarding and adopt", ("onboarding",)),
                               ("interrupted", "Cut off mid-run", ("interrupted",)),
                               ("retries", "Retries authorised", ("retry",)))),

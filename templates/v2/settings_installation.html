@@ -24,6 +24,13 @@
 {% include "v2/_install_access.html" %}
 {%- elif tab == 'platforms' %}
 {% include "v2/_install_platforms.html" %}
+{%- elif tab == 'console' %}
+{#- Board A of docs/boards/console-ztp.html (O8): each card opens in #cs-op, outside the
+    region, so the region's redraw after a change never takes the answer away. -#}
+<div>
+<div id="cs-op"></div>
+{% include "v2/_console_servers.html" %}
+</div>
 {%- else %}
 {#- C664 (the operator, 2026-10-11): Connections fills its rows (the records database beside
     NetBox, Proxmox, Commit author and Server, three across where they fit) and the record

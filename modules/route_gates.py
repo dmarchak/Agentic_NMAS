@@ -122,6 +122,10 @@ GATES = {
     "device_v2.rekey_confirm": _g(C, "keeps the SSH host key a device answers with now in place of the one Mercury holds (C906): every later session signs in to whatever presents it, so a person confirms it, bound to both keys"),
     "privileged_v2.confirm": _g(C, "sends one Tier 2 command (Run a privileged command…, NSOT_TIER2_PRIVILEGED) to a device, holding it, bound to the previewed plan and a stated reason; verified and recorded"),
     "update.apply": _g(C, "requests the Update: the root-owned updater moves the app to a CI-passed commit and restarts it"),
+    # Out-of-band ZTP (O6b, routes/console_ztp_v2.py; docs/LAB9_PLAN.md section 8).
+    "console_ztp_v2.survey_confirm": _g(C, "types on a device's console (the wake, the prelude to the privileged prompt, the pager off for the session and two reads), holding the device and its console-server port, bound to the previewed program's hash; records the run and its masked transcript", "console_survey"),
+    "console_ztp_v2.kickstart_confirm": _g(C, "types the kick-start's configuration lines on a factory-blank device's console, holding the device and its console-server port, bound to the previewed lines' hash, as a verified person; records the run and its masked transcript", "console_kickstart"),
+    "console_servers_v2.rekey_confirm": _g(C, "keeps the SSH host key a console server answers with now in place of the one Mercury holds (C1560): every later console session signs in to whatever presents it, so a person confirms it, bound to both keys"),
 
     # ---- approve: a decision a later device change acts on ---------------
     # Today's template editor (templates.approve, templates.write_template, templates.validate)
@@ -191,7 +195,11 @@ GATES = {
     "settings_v2.network_create": _g(K, "creates a network as previewed (its folder derived from its name), recorded (board I's pattern)"),
     "settings_v2.network_delete": _g(K, "deletes a network as previewed, its name typed: its folder moved aside, never erased, recorded"),
     "network_v2.choose": _g(K, "records the verified person's own network choice (board N): what their pages show, never anyone else's"),
-    "settings_v2.install_save": _g(K, "saves an Installation card's settings (NetBox connection, Proxmox, Commit author, Server) for every network, recorded (board F3)"),
+    # Settings › Installation › Console servers (O8, routes/console_servers_v2.py).
+    "console_servers_v2.port_save": _g(K, "adds or replaces how Mercury reaches one console-server port (driver, host, container or TCP port, a credential REFERENCE; modules/nsot/console_servers.py), recorded with who"),
+    "console_servers_v2.port_remove": _g(K, "forgets how Mercury reaches one console-server port; NetBox's port and the key stay, recorded with who"),
+    "console_servers_v2.key_generate": _g(K, "generates a console server's SSH key pair: the private half stored encrypted under its reference in the credential store, only the public key shown"),
+    "settings_v2.install_save": _g(K,"saves an Installation card's settings (NetBox connection, Proxmox, Commit author, Server) for every network, recorded (board F3)"),
     "settings_v2.install_test": _g(K, "tests an Installation card's service (NetBox, Proxmox) with its saved settings; changes nothing"),
     "settings_v2.install_replace": _g(K, "replaces an Installation card's token (a secret; Proxmox's with its id), recorded, then tests it"),
     "settings_v2.platforms_preview": _g(K, "previews a platform or role map change: every device it moves, from each NetBox list's last inventory; writes nothing (board F4)"),
@@ -258,6 +266,9 @@ GATES = {
     "onboard_v2.verify_preview": _g(N, "reads the pending device and computes what Verify would "
                                        "send; sends nothing"),
     "onboard_v2.abandon_preview": _g(N, "Abandon's dry run; removes nothing"),
+    "console_ztp_v2.survey_preview": _g(N, "reads the device's console path from NetBox and the console-server port's record, and computes the survey's program and hash; contacts no console and writes nothing"),
+    "console_ztp_v2.kickstart_preview": _g(N, "reads the device's console path, its latest survey and the port's record, and renders the kick-start's exact lines and hash; contacts no console and writes nothing"),
+    "console_servers_v2.rekey_preview": _g(N, "reads the SSH host key a console server presents now, in the key exchange only, with no credential; keeps nothing"),
     "device_v2.persist_read": _g(N, "starts Persist's preview read: the device's running and "
                                     "startup configurations, and `dir nvram:` when startup "
                                     "keeps a certificate there; sends nothing that changes it"),

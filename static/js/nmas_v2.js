@@ -79,7 +79,13 @@
               'breakglass',
               // A job started or finished, or a result was opened (C537): the top bar's In
               // progress chip reads again.
-              'in_progress'];
+              'in_progress',
+              // A console survey or kick-start ended (out-of-band ZTP, O6b): its card reads
+              // its record by id.
+              'console_ztp',
+              // A console-server port record or key saved, or a console server re-keyed (O8):
+              // Settings › Installation › Console servers reads again.
+              'console_servers'];
 
   /* PURE: the Acknowledge button's words, busy on itself. */
   function ackLabel(busy) { return busy ? 'Acknowledging…' : 'Acknowledge'; }
@@ -394,6 +400,8 @@
   function relayPosture() { relay('posture'); }
   function relayBreakglass() { relay('breakglass'); }
   function relayInProgress() { relay('in_progress'); }
+  function relayConsoleZtp() { relay('console_ztp'); }
+  function relayConsoleServers() { relay('console_servers'); }
 
   /* PURE: whether the sidebar's count may be out of date, and why, from the live channel's
      state and the moment its oldest source passes its promise (data-stale-at). '' when it
@@ -488,6 +496,8 @@
     NMAS.subscribe('posture', 'v2Posture', relayPosture);
     NMAS.subscribe('breakglass', 'v2Breakglass', relayBreakglass);
     NMAS.subscribe('in_progress', 'v2InProgress', relayInProgress);
+    NMAS.subscribe('console_ztp', 'v2ConsoleZtp', relayConsoleZtp);
+    NMAS.subscribe('console_servers', 'v2ConsoleServers', relayConsoleServers);
   }
 
   /* A form's submit button is busy on itself (C1023, the operator's B1 on walk W2). htmx

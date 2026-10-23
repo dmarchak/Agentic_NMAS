@@ -34,6 +34,17 @@ OPTIONS = "restrict"
 PATH = re.compile(r"/[A-Za-z0-9._/-]{0,255}")
 
 
+#: Generate's steps, in order (`generate`; the manual names each, `modules/manual.OPERATIONS`).
+STEPS = (("check", "The reference, the user and both paths checked before a key is made"),
+         ("generate", "A new ed25519 pair, made here"),
+         ("store", "The private half encrypted in the credential store under the reference"),
+         ("show", "Only the public key, its fingerprint and the exact authorized_keys line"))
+#: Where a console host's host step installs the bridge wrapper and its allowlist
+#: (modules/nsot/console_wrapper.py's own example line): the defaults the key's form offers.
+WRAPPER_PATH = "/usr/local/lib/nmas/nmas-console-bridge"
+ALLOWLIST_PATH = "/etc/nmas/console-allowlist"
+
+
 class ConsoleKeyUnavailable(RuntimeError):
     """No usable key under a reference; the text names the reference, never a value."""
 

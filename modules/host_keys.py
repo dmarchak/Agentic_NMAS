@@ -257,12 +257,18 @@ def held_words(rec: dict) -> str:
             f"{rec.get('kept_by') or 'an unrecorded caller'})")
 
 
-def refusal_words(ip: str, got: dict, rec: dict) -> str:
-    """The refusal, naming both operands (CLAUDE.md: a refusal names the comparison)."""
+#: What a refused device key tells the person to do: the device page's Re-key…. A host that is
+#: not a device (a console server, C1560) passes its own (`check`'s *remedy*).
+DEVICE_REMEDY = ("If the device was rebuilt or its key generated anew, re-key it on its page "
+                 "(Re-key…); otherwise something else answers at its address")
+
+
+def refusal_words(ip: str, got: dict, rec: dict, remedy: str = "") -> str:
+    """The refusal, naming both operands (CLAUDE.md: a refusal names the comparison), and what
+    to do: *remedy*, or the device page's re-key."""
     return (f"{label(ip)} answered with SSH host key {got.get('fingerprint')} "
-            f"({got.get('type')}) where Mercury holds {held_words(rec)}: nothing was sent. If "
-            "the device was rebuilt or its key generated anew, re-key it on its page "
-            "(Re-key…); otherwise something else answers at its address")
+            f"({got.get('type')}) where Mercury holds {held_words(rec)}: nothing was sent. "
+            f"{remedy or DEVICE_REMEDY}")
 
 
 # ---------------------------------------------------------------------------
@@ -396,11 +402,12 @@ def _retired(rec: dict, at: float, by: str, why: str) -> dict:
     return old
 
 
-def check(ip: str, key, *, owner: str = "", port: int = SSH_PORT) -> dict:
+def check(ip: str, key, *, owner: str = "", port: int = SSH_PORT, remedy: str = "") -> dict:
     """Compare the key *ip* presents with the one kept, before anything is sent.
     ``{"state": "kept" | "matched" | "window", "record"}``; raises `HostKeyRefused` (a
     different key, nothing sent, the refusal recorded for Needs attention) or
-    `HostKeyStoreUnreadable`."""
+    `HostKeyStoreUnreadable`. *remedy* is what the refusal tells the person to do, for a host
+    that is not a device (a console server's, C1560); a device's is its page's Re-key…."""
     got = offered(key)
     with _lock():
         # The time is taken UNDER the lock: a window's summary (`close_windows`) counts its
@@ -458,7 +465,7 @@ def check(ip: str, key, *, owner: str = "", port: int = SSH_PORT) -> dict:
                                   "first_at": prior.get("first_at") if same else _iso(now),
                                   "count": (int(prior.get("count") or 0) + 1) if same else 1}
                 _write(doc)
-                words = refusal_words(ip, got, rec)
+                words = refusal_words(ip, got, rec, remedy)
                 log.error("ssh host key refused: %s", words)
                 _announce()
                 raise HostKeyRefused(words, ip=ip, offered=got, held=rec)

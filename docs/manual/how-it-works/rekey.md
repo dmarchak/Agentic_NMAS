@@ -44,6 +44,10 @@ The apply holds the device, so no other operation runs on it meanwhile.
 3. **Verify** (`verify`). Read: the record, read back. It holds the new key, or the result says it does not.
 4. **Record** (`record`). The record keeps the old key in its history, with who replaced it, when and why (the restart evidence the preview showed). The device's [History](device-page#history-tab) draws each key kept: on first contact, re-keyed, or kept under a planned window.
 
+## A console server's key {#console-server}
+
+A console server (or the SSH jump host in front of a raw TCP console) is not a device, and it is held to the same rule: its first contact keeps its key, and a different key is refused before Mercury's key is offered, naming both, with nothing sent and no console opened. The refusal says what to do: re-key it on **Settings › Installation › Console servers**, where the port's row shows the host key held, marked **refused** when a session was refused. **Re-key…** on that row reads the key the host presents now, with no credential (the key exchange only), and shows it beside the held one; you confirm the plan's hash, which binds the console-server port, its SSH host and port, and both fingerprints. The apply runs the same four steps as above (`read`, `keep`, `verify`, `record`), holding no device: the record is replaced only if the held key is still the one the preview showed, and the old key stays in the record's history, on History's SSH host keys. A raw TCP console with no jump host speaks no SSH and has no key to re-key.
+
 ## What the re-key does not do
 
 - It sends nothing to the device and uses no credential: the key is read in the key exchange, before any sign-in.

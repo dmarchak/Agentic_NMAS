@@ -1434,6 +1434,99 @@ class TestHeartbeatCards(_Cards):
         return html
 
 
+# ── out-of-band ZTP (O6b) on test_console_ztp_v2's world, and a console server's re-key (C1560)
+
+class TestConsoleCards(_Cards):
+    from tests import test_console_servers_v2 as _cs, test_console_ztp_v2 as _cz
+    world, cs_lab = hosted(_cz.world), hosted(_cs.lab)
+
+    CASES = {
+        "survey": ("_console_ztp.html", "{{ ('Survey ' ~ (p.device or who) ~ \"'s console\") "
+                   "if survey else ('Kick-start ' ~ (p.device or who)) }}",
+                   r"Survey edge1's console", "viewer"),
+        "kickstart": ("_console_ztp.html", "{{ ('Survey ' ~ (p.device or who) ~ \"'s console\") "
+                      "if survey else ('Kick-start ' ~ (p.device or who)) }}",
+                      r"Kick-start edge1", "viewer"),
+        "rekey_console": ("_console_server_op.html", "Keep the new key for {{ p.host }}",
+                          r"Keep the new key for 127\.0\.0\.1", "data: the host answers with "
+                                                                 "the key Mercury holds"),
+    }
+
+    @staticmethod
+    def _client():
+        import app as A
+        return A.app.test_client()
+
+    def _survey(self, request):
+        w = request.getfixturevalue("world")
+        html = _text(self._client().post(
+            f"/v2/onboard/console/{w.dev['id']}/survey/preview",
+            data={"list_name": self._cz.LIST, "step": "survey", "profile": "cisco_ios_switch"}))
+        assert 'name="hash"' in html, "floor: the survey's confirm form is drawn"
+        return html
+
+    def drawn_survey(self, request):
+        return self._survey(request)
+
+    def blocked_survey(self, request, monkeypatch):
+        as_service(monkeypatch)
+        return self._survey(request)
+
+    def _kick(self, request, monkeypatch):
+        from tests.test_console_session import PNP
+        from tests.test_console_ztp import blank_answers
+        w = request.getfixturevalue("world")
+        w.survey(greeting=PNP, answers=blank_answers())
+        monkeypatch.setattr("routes.console_ztp_v2._onboarded", lambda l, h: "")
+        html = _text(self._client().post(
+            f"/v2/onboard/console/{w.dev['id']}/kickstart/preview",
+            data={"list_name": self._cz.LIST, "step": "kickstart",
+                  "param_interface": "GigabitEthernet0/1", "param_vlan": "10"}))
+        assert 'name="hash"' in html, "floor: the kick-start's confirm form is drawn"
+        return html
+
+    def drawn_kickstart(self, request):
+        mp = pytest.MonkeyPatch()
+        try:
+            return self._kick(request, mp)
+        finally:
+            mp.undo()
+
+    def blocked_kickstart(self, request, monkeypatch):
+        as_service(monkeypatch)
+        return self._kick(request, monkeypatch)
+
+    def _rekey(self, request, monkeypatch, same: bool):
+        import paramiko
+
+        from modules import host_keys
+        from modules.nsot import console_servers
+        lab = request.getfixturevalue("cs_lab")
+        pid = lab.ports[0]["id"]
+        assert console_servers.set_port(pid, {
+            "driver": "command_bridge", "host": "127.0.0.1", "ssh_port": 2222,
+            "container": "edge-a", "credential_ref": "console-bridge"}, actor="t")["ok"]
+        held, now = (paramiko.RSAKey.generate(1024) for _ in range(2))
+        host_keys.check("127.0.0.1", held, owner="t", port=2222)
+        presented = host_keys.offered(held if same else now)
+        monkeypatch.setattr("modules.connection.read_host_key",
+                            lambda h, port=22, owner="", timeout=None: dict(presented))
+        return _text(self._client().post(
+            f"/v2/settings/installation/console-servers/port/{pid}/rekey/preview"))
+
+    def drawn_rekey_console(self, request):
+        mp = pytest.MonkeyPatch()
+        try:
+            return self._rekey(request, mp, same=False)
+        finally:
+            mp.undo()
+
+    def blocked_rekey_console(self, request, monkeypatch):
+        html = self._rekey(request, monkeypatch, same=True)
+        assert "answers with the key Mercury holds" in html, "floor: the preview refuses"
+        return html
+
+
 # ── every site of the population has its cases ──────────────────────────────
 
 #: Sites no case above can draw from a real preview, each with why. Only shrinks (C1225:
@@ -1479,11 +1572,13 @@ class TestThePopulation:
             assert why and len(why) > 20, (key, "an excuse says why")
 
     def test_netbox_jobs_one_site_is_two_controls(self):
-        """`_netbox_job.html` draws Import and Remove at one site, two previews: 55 controls
-        (52 until C1403's Release lease… joined, 53 until C1491's IP SLA frequency commit, 54
-        until C1504's Free <address> on NetBox's job card)."""
+        """`_netbox_job.html` draws Import and Remove at one site, two previews, and
+        `_console_ztp.html` the survey's and the kick-start's at one: 58 controls (52 until
+        C1403's Release lease… joined, 53 until C1491's IP SLA frequency commit, 54 until
+        C1504's Free <address> on NetBox's job card, 55 until out-of-band ZTP's survey,
+        kick-start and a console server's re-key, 2026-10-22)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 55, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 58, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

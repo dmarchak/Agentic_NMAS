@@ -156,6 +156,21 @@ def _bodies(v):
                                   "references only, no stored value"),
         "intent_v2.reopen": (200, ("form", {"yaml": v["_intent_text"]}),
                              "the editor on the document sent"),
+        # Out-of-band ZTP (O6b): each preview reads NetBox's console path and Mercury's stores;
+        # this list's NetBox holds no such device with a console path, so each is refused,
+        # naming why, and nothing is contacted or written.
+        "console_ztp_v2.survey_preview": (409, ("form", {"list_name": LIST, "step": "survey",
+                                                         "profile": "cisco_ios_switch"}),
+                                          "no console path for the device: refused, naming the "
+                                          "check that failed, nothing contacted"),
+        "console_ztp_v2.kickstart_preview": (409, ("form", {"list_name": LIST,
+                                                            "step": "kickstart"}),
+                                             "no survey of the device is recorded: refused, "
+                                             "naming it, nothing contacted"),
+        # C1560: the console server's key is read only for a port Mercury has a record of.
+        "console_servers_v2.rekey_preview": (409, ("form", {}),
+                                             "no console-server port record: refused, naming "
+                                             "the port, no key read"),
     }
 
 

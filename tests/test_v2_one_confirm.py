@@ -136,8 +136,11 @@ def references(texts: dict, wanted: set) -> list:
             close = text.lower().find(f"</{element}>", end)
             body = text[end + 1:close] if close > 0 else ""
             own = XDATA.search(tag)
-            out.append({"path": path, "endpoint": eps[0], "element": element, "tag": tag,
-                        "body": body, "xdata": own.group(1) if own else ""})
+            # Every route the element names, each held to the pattern: a form whose hx-post
+            # chooses between two confirms names both (the console card's survey or kick-start).
+            for ep in dict.fromkeys(eps):
+                out.append({"path": path, "endpoint": ep, "element": element, "tag": tag,
+                            "body": body, "xdata": own.group(1) if own else ""})
     return out
 
 

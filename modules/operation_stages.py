@@ -56,6 +56,24 @@ STAGES = {
         "device_v2.persist", "hash", "modules.nsot.onboard.persist_on_device",
         "n/a: a save cannot be undone; the preview says it carries the running config as it is",
         "modules.nsot.persist_op.apply"),
+    # Out-of-band ZTP (O6b; modules/nsot/console_ztp.STAGES reads these two): the console
+    # survey, read-only, and the kick-start's lines on a device its survey found factory-blank.
+    "console_ztp_v2.survey_confirm": Stages(
+        "console_ztp_v2.survey_preview", "hash", "modules.nsot.console_ztp.verify_survey",
+        "n/a: the survey types no configuration and saves nothing; the pager setting and the "
+        "privileged prompt end with the console session",
+        "modules.nsot.console_ztp.record"),
+    "console_ztp_v2.kickstart_confirm": Stages(
+        "console_ztp_v2.kickstart_preview", "hash", "modules.nsot.console_ztp.verify_kickstart",
+        "n/a: the kick-start saves nothing (no write memory), so a reload returns the device "
+        "to its factory state; the preview says so",
+        "modules.nsot.console_ztp.record"),
+    # C1560: a console server's SSH host key, kept in place of the held one, from Settings ›
+    # Installation › Console servers; the device page's re-key's code, keyed by the host.
+    "console_servers_v2.rekey_confirm": Stages(
+        "console_servers_v2.rekey_preview", "hash", "modules.nsot.rekey_op.verify",
+        "n/a: nothing is sent to the console server; the old key stays in the record's "
+        "history, and a person re-keys back to it the same way", "modules.host_keys.replace"),
     # Re-key (C906): the SSH host key a device answers with now, kept in place of the held one.
     # It changes no device; its record is Mercury's trust in what answers at the address.
     "device_v2.rekey_confirm": Stages(
@@ -288,6 +306,9 @@ HISTORY = {
     "device_v2.restore_confirm": ("receipts", "golden"),
     "device_v2.persist_confirm": ("rotation",),
     "device_v2.rekey_confirm": ("host_keys",),
+    "console_servers_v2.rekey_confirm": ("host_keys",),
+    "console_ztp_v2.survey_confirm": ("console_ztp",),
+    "console_ztp_v2.kickstart_confirm": ("console_ztp",),
     "v2.save_confirm": ("rotation", "golden"),
     "device_v2.rotate_confirm": ("rotation", "golden", "intent"),
     "credential_profiles_v2.rotate_due_confirm": ("rotation", "golden", "intent"),
@@ -351,6 +372,17 @@ HISTORY = {
     "v2.credentials_check": ("breakglass",),
     "v2.credentials_drill": ("breakglass",),
     "v2.heartbeat_apply": ("heartbeat_windows",),
+    "console_servers_v2.port_save": ("n/a: changes Mercury's console-server store, never one "
+                                     "device's record; the store logs every write with who "
+                                     "and when, drawn on Settings › Installation › Console "
+                                     "servers"),
+    "console_servers_v2.port_remove": ("n/a: changes Mercury's console-server store, never "
+                                       "one device's record; the store logs the removal with "
+                                       "who and when, drawn on the Console servers tab"),
+    "console_servers_v2.key_generate": ("n/a: stores a console server's key in the credential "
+                                        "store, never one device's record; the key's user, "
+                                        "fingerprint and time are drawn on the Console "
+                                        "servers tab"),
     "settings_v2.group_switch": NOT_A_DEVICE,
     "settings_v2.mode_switch": NOT_A_DEVICE,
     "settings_v2.group_save": NOT_A_DEVICE,

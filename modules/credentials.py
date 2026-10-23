@@ -609,6 +609,11 @@ def get_ssh_key(ref: str):
             "public_key": entry.get("public_key", "")}
 
 
+def ssh_key_refs() -> list:
+    """The references SSH keys are stored under, sorted: names only, never a key."""
+    return sorted((_load().get("ssh_keys") or {}))
+
+
 def ssh_key_info(ref: str):
     """``{"ref", "username", "public_key", "created"}`` for *ref*, or None: never the private
     half."""

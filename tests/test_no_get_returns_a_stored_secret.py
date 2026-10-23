@@ -217,6 +217,9 @@ def _fill(rule, values):
     names = {"hostname": "r1", "host": "r1", "device": "r1", "ip": DEVICE["ip"],
              "filename": values["_backup_file"], "list_name": LIST, "list": LIST,
              "name": "planted-profile", "path": "cisco_ios/base.j2",
+             # An `<int:...>` id (out-of-band ZTP: a NetBox device id, a console-server port
+             # id): a number no store holds, so each route answers its refusal.
+             "device_id": "4242", "port_id": "4242",
              "rel_path": "cisco_ios/base.j2", "tool": "grafana"}
     url = rule.rule
     for arg in rule.arguments:

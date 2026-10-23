@@ -100,6 +100,9 @@ NOT_AN_OPERATION = {
                                               "now, a read",
     ("_template_edit.html", "Close"): "puts the Templates table back, a read",
     ("_reload.html", "btn"): "Cancel or Close: puts back the tab the card replaced, a read",
+    ("_console_server_op.html", "btn btn-small"): "Cancel or Close: reopens Settings › "
+                                                  "Installation › Console servers, writing "
+                                                  "nothing",
     ("_reload.html", "Its break-glass record"): "opens Credentials, where the record is, a read",
     ("_template_bindings.html", "btn"): "Cancel or Close: puts the Templates table back, a read",
     ("_logs_view.html", "Copy the link"): "copies this view's address (the question it carries), "

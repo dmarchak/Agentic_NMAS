@@ -658,6 +658,19 @@ C1536.
   files touched, unverified): resumed, not merged.
 - **Next:** O6a resumed, then O6b (routes, gates, invalidation, stages registered) with O7's
   offer and O8 minimal (a board first, the manual section).
+- **O6b, O7 and O8 minimal, built (2026-10-22 late, a worktree agent; not merged, not
+  deployed):** the board `docs/boards/console-ztp.html` (A to E, counted as signed off and
+  logged). `routes/console_ztp_v2.py`: the console card keyed by the network and the device's
+  NetBox id (the device has no page before Create), the survey's and the kick-start's preview
+  and confirm (the confirm runs the run as a job; the card listens for `console_ztp`), the
+  kick-start refused until Create ran and its hostname NetBox's. Add device's review asks for
+  the offer as it draws (`_console_offer.html`); Create's result offers the kick-start once a
+  survey is recorded. Settings › Installation › Console servers (`routes/console_servers_v2.py`):
+  port records, keys (only the public half and its authorized_keys line), and C1560's re-key.
+  History gains Console surveys and kick-starts. The manual: a section of Onboard a device
+  (no diagram: C1573), Console servers sections on the Installation and Re-key pages and the
+  Settings screen. Registered: C1573 to C1576 (C1575, B: no way back to the kick-start once
+  Add device's card is closed); C1560 closed.
 
 **Testing the feature (the operator's audit, 2026-10-22 ~07:5x UTC):**
 - **O2a's wrapper lives in Mercury, not the lab repository:** one standard-library-only module,
@@ -863,6 +876,8 @@ scrapes, so fewer scrapes change the bar's denominator: say so with any E2 that 
 | Drift interval or SNMP intervals (if done) | the setting back to 30 min; the prometheus.yml lines back, Prometheus reloaded |
 | The Proxmox nightly backup, disabled on 2026-10-22 | re-enabled by the operator (C1514's schedule) |
 | s5 on CPU 19, r6 and r7 from their startup files (Lab 9's lab file) | the lab file's diff reverted at the next redeploy, if the operator chooses |
+| The network's monitoring profile: subscription 101 narrowed to `…/one-minute` (C1571, NSoT commit `77b171ac`, the operator's confirm), so R8 inherited T1's filter | with T1's revert, if T1 is reverted: the profile's line back through the same writer, previewed and confirmed |
+| s4 heartbeat window 1005 -> 1056 s, pending the jitter investigation (written with r8's re-measure, 2026-10-22 23:55Z; the operator kept it: one missed heartbeat can leave ~1026 s) | re-measured once s4's jitter is explained (C1582); never set back by hand |
 
 ## Write-up: challenges (filled with evidence as each closes, not intent)
 

@@ -118,6 +118,11 @@ VOCABULARY = {
     "save": "a Save run from Devices (C593): finished, its result ready to read by id",
     "deploy_job": "a batch deploy run as a job (the v2 profile Apply): a device finished, or the batch, "
                   "its progress and result ready to read by id",
+    "console_ztp": "a console survey or kick-start (out-of-band ZTP, modules/nsot/console_ztp.py) "
+                   "ended: the console card reads its record by id",
+    "console_servers": "Mercury's console-server store (modules/nsot/console_servers.py) and the "
+                       "console servers' keys: Settings › Installation › Console servers reads "
+                       "again",
 }
 
 #: Announcers that are not reader jobs (C188 step 2): a background job a
@@ -144,9 +149,9 @@ ANNOUNCERS = {
     "in-progress": ("in_progress",),
     # modules/host_keys.py (C906): a device's key kept, refused or replaced, by any session.
     "host-keys": ("host_keys",),
-    # modules/nsot/console_ztp.py (O6a): a console survey's or kick-start's end. O6b's card
-    # adds its own key with its subscriber.
-    "console-ztp": ("device_state", "pending"),
+    # modules/nsot/console_ztp.py (O6a): a console survey's or kick-start's end; the console
+    # card (O6b, templates/v2/_console_ztp.html) hears its own key.
+    "console-ztp": ("device_state", "pending", "console_ztp"),
     # modules/deploy_job.py: each device finishing, and at the end what a
     # deploy changes (the keys today's /deploy/apply declared until 7.8).
     # A restore run as a job (the v2 device page) also moves intent and approvals.
@@ -284,6 +289,30 @@ DECLARED = {
     "device_v2.persist_confirm": ("device_state",),   # persist_op.apply
     # C906: the key Mercury holds for the device, read by Needs attention and History.
     "device_v2.rekey_confirm": ("host_keys",),
+    # Out-of-band ZTP (O6b, routes/console_ztp_v2.py): the console survey and kick-start.
+    "console_ztp_v2.survey_preview": Nothing("reads NetBox's console path and Mercury's stores "
+                                             "and computes the survey's program and hash; it "
+                                             "contacts no console and writes nothing"),
+    "console_ztp_v2.kickstart_preview": Nothing("reads NetBox's console path, the latest survey "
+                                                "and the stores and renders the exact lines and "
+                                                "their hash; it contacts no console and writes "
+                                                "nothing"),
+    "console_ztp_v2.survey_confirm": Nothing("starts the survey as a job and answers at once; "
+                                             "the run ANNOUNCES console_ztp, device_state and "
+                                             "pending when it ends (ANNOUNCERS console-ztp)"),
+    "console_ztp_v2.kickstart_confirm": Nothing("starts the kick-start as a job and answers at "
+                                                "once; the run ANNOUNCES console_ztp, "
+                                                "device_state and pending when it ends "
+                                                "(ANNOUNCERS console-ztp)"),
+    # Settings › Installation › Console servers (O8, routes/console_servers_v2.py).
+    "console_servers_v2.port_save": ("console_servers",),
+    "console_servers_v2.port_remove": ("console_servers",),
+    "console_servers_v2.key_generate": ("console_servers",),
+    "console_servers_v2.rekey_preview": Nothing("reads the key a console server presents now, "
+                                                "in the key exchange only, and shows it beside "
+                                                "the one held; it keeps nothing"),
+    # C1560: the key Mercury holds for a console server, read by Needs attention and History.
+    "console_servers_v2.rekey_confirm": ("host_keys", "console_servers"),
     # The Update button: a request is written now; the version moves when the
     # root-owned updater acts, and the page waits on /health for it.
     "update.apply": ("app_version",),
