@@ -233,6 +233,15 @@ def read_state(text: str, profile, echo: str) -> tuple:
             continue
         if index == last:
             return (classify(line, profile) or UNKNOWN), line, True
+        # A prompt followed by the device's own syslog and nothing else (printed after its prompt
+        # with no new prompt: a switch's `%LINK-3-UPDOWN` after its `(config-if)#` prompt, C1636)
+        # is still the prompt the device waits at. Only an ignored line after it counts: a bare
+        # line break after a prompt keeps the settle rule (only the unterminated line).
+        after = [t.strip() for t in lines[index + 1:] if t.strip()]
+        if after and all(ignored(t, profile) for t in after):
+            state = classify(line, profile)
+            if state:
+                return state, line, False
         return (classify(line, profile, LINE_STATES) or OUTPUT), line, False
     return "", "", False
 

@@ -20,6 +20,15 @@ They are also the real console text for out-of-band ZTP's session and survey tes
   telnet negotiation bytes are the `?` run after the first send. nvram's startup file is
   0 bytes here, so the session stopped before any erase.
 
+- `s5-kickstart-take-syslog.txt` (2026-10-23): the one-decision onboarding's first recorded
+  take on deploy 2 (run 20261023T203440850197Z), its transcript as Mercury stored it (masked at
+  rest), with two edits: Mercury's `>>> sent '...'` markers written as this folder's
+  `>>> send '...'`, and the run's closing `>>> aborted: ...` note dropped. After Vlan1's
+  `no shutdown` the switch printed its prompt and then three syslog lines
+  (`%LINEPROTO-5-UPDOWN`, `%LINK-3-UPDOWN`) and no new prompt: the take that stopped
+  (`tests/test_console_syslog_after_prompt.py`).
+
     sha256 4306ba009d8a00b67c090f86dc2704796d788b39d8e7b0464f65061abf97dd02  s5-boot-to-release.txt
     sha256 2e76f07e3e98edfffd6a560bb8ccd67133f649822c46d8290f224f0c996414cc  s5-pnp-stopped.txt
     sha256 c600487a80e452c73cb3b211ba78faa865dfb9231d01aa5e288f19e86bb1e2b0  s5-session-enable-dir-nvram.txt
+    sha256 6528a4c620a3adf0f27fa9076bbe06d569f3bfe6a8767c0589bf551382b99958  s5-kickstart-take-syslog.txt

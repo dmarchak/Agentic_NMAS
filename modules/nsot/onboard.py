@@ -2276,6 +2276,76 @@ def _abandon_leases(_step, entry, hostname: str, list_name: str, *, actor: str,
         _step("leases", False, f"{said}: {rel.get('error') or 'not released'}", finish)
 
 
+def _planned_record_id(repo: str, entry: dict, hostname: str) -> tuple:
+    """``(id, "")`` when this onboarding's manifest entry names the Planned NetBox record its
+    Create read (C1597, C1613), ``(None, "")`` when it names none, ``(None, why)`` when that
+    could not be read.
+
+    The entry's id alone is not the proof: Verify writes the id of a record it MADE to the same
+    field, and that record is Abandon's to remove. The proof is the entry's id equal to the
+    Planned record the committed bootstrap parameters recorded at Create
+    (`device_environment.Environment.record`: its id and status Planned)."""
+    nb_id = (entry or {}).get("netbox_id")
+    if nb_id in (None, ""):
+        return None, ""
+    from modules.nsot import hostvars
+
+    name = (entry or {}).get("name", hostname)
+    try:
+        env = ((hostvars.read_committed(repo, name) or {}).get("bootstrap") or {}) \
+            .get("environment") or {}
+    except Exception as exc:                   # noqa: BLE001 - said as a failed step
+        return None, (f"whether NetBox device {nb_id} is the Planned record {name}'s Create read "
+                      f"could not be checked: its committed bootstrap parameters could not be "
+                      f"read ({exc}); nothing in NetBox was kept or removed")
+    if env.get("netbox_status") == "planned" and env.get("netbox_id") == nb_id:
+        return nb_id, ""
+    return None, ""
+
+
+def _keep_planned_record(nb_id, name: str) -> dict:
+    """Abandon's NetBox step for a Planned record Create read: kept, never deleted, while it is
+    still Planned (Create made nothing in NetBox). Read by its id; a status Verify changed, a
+    record renamed, or a read that failed is a failed step, never a kept one. ``{"ok",
+    "detail", "how"}``."""
+    from modules.netbox_client import _nb_read_by_id, _nb_ready, _status_value
+
+    try:
+        ok, err, session, base = _nb_ready()
+        state, dev = (_nb_read_by_id(session, base, "dcim/devices", int(nb_id)) if ok
+                      else ("unreadable", err))
+    except Exception as exc:                   # noqa: BLE001 - said as a failed step
+        state, dev = "unreadable", f"{type(exc).__name__}: {exc}"
+    if state == "gone":
+        return {"ok": True, "detail": (f"nothing to keep: the Planned record {name} (id "
+                                       f"{nb_id}) is no longer in NetBox; Create made nothing "
+                                       "in NetBox")}
+    if state != "ok":
+        return {"ok": False,
+                "detail": (f"the Planned record {name} (id {nb_id}) could not be read ({dev}): "
+                           "whether it is still Planned is unknown, so nothing was kept or "
+                           "removed"),
+                "how": "run abandon again once NetBox answers"}
+    if dev.get("name") != name:
+        return {"ok": False,
+                "detail": (f"NetBox device {nb_id} is named {dev.get('name')!r}, not {name!r}: "
+                           "it is not the Planned record Create read, so nothing was kept or "
+                           "removed"),
+                "how": f"find {name}'s record in NetBox, then run abandon again"}
+    status = _status_value(dev)
+    if status != "planned":
+        label = ((dev.get("status") or {}).get("label") if isinstance(dev.get("status"), dict)
+                 else "") or status or "no status"
+        return {"ok": False,
+                "detail": (f"the Planned record {name} (id {nb_id}) is now {label}, not Planned: "
+                           "Verify changed it, so it is no longer the record Create read and "
+                           "Abandon cannot keep it as done"),
+                "how": (f"set {name}'s status back to Planned in NetBox and run abandon again, "
+                        f"or Retire {name}")}
+    return {"ok": True, "detail": (f"kept: the Planned record {name} (id {nb_id}) existed "
+                                   "before Add device; Create made nothing in NetBox")}
+
+
 def abandon_fingerprint(dry: dict) -> str:
     """What an Abandon's preview showed, as the one value its confirm sends back: each step of
     the dry run in order with its words, and whether it would finish."""
@@ -2415,6 +2485,14 @@ def _abandon_onboarding(repo: str, hostname: str, list_name: str, *,
             result["remaining"].append({"step": name, "detail": detail,
                                         "how_to_finish": how})
 
+    # THE PLANNED RECORD CREATE READ (C1597, C1613): read here, before the intent step removes
+    # the committed bootstrap parameters that recorded it. Set only when the manifest entry's id
+    # is the Planned record those parameters name; an id Verify wrote for a record it made is
+    # not one, and keeps the remover below.
+    planned_id, planned_unread = _planned_record_id(repo, entry, hostname)
+    # Reference KINDS this run keeps and says it keeps (`manifest.release`'s *retained*).
+    retained = ()
+
     # 0. THE RESERVATION (ztp only), first: see ZTP_ABANDON_STEPS. Removed from the Kea that
     #    owns this network, and the removal recorded in that owner's repository (C1243, C1235).
     ztp_device = (entry or {}).get("address_source") == "ztp"
@@ -2519,38 +2597,52 @@ def _abandon_onboarding(repo: str, hostname: str, list_name: str, *,
                   "remove the file and commit the deletion by hand")
 
     # 2. NETBOX, through the provenance gate, scoped to this device.
+    #    A Planned record Create read existed before Add device, and Create writes nothing in
+    #    NetBox: it is KEPT, with its console port and cable, and the remover is never called
+    #    (C1597), in the dry run and the real run alike.
     remover = remove_netbox
     if remover is None:
         from modules.netbox_client import remove_device_from_netbox as remover
-    try:
-        # By the id onboarding recorded (C1342): the remover never deletes by name.
-        extra = ({"netbox_id": entry["netbox_id"]}
-                 if (entry or {}).get("netbox_id") not in (None, "") else {})
-        nb = remover(list_name, hostname, dry_run=dry_run, actor=actor,
-                     authority=f"Abandon by {actor or 'unknown'}", **extra) or {}
-        if nb.get("ok"):
-            # The remover's own sentence rides along: "0 removed, 0 left
-            # alone" alone could not say WHY there was nothing (R1's
-            # probe-r1b: no device of that name in NetBox, because it never
-            # reached phase 2), and the operator could not tell it from a
-            # step that did not run. It could not have been that (every
-            # refusal and failed read is `ok: False`); now it says so.
-            _step("netbox", True,
-                  f"{len(nb.get('deleted') or [])} object(s) removed, "
-                  f"{len(nb.get('skipped') or [])} left alone"
-                  + (f": {nb['message']}" if nb.get("message") else ""))
-            result["netbox"] = nb
-            would_remove.update(("netbox", f"dcim/devices id {d.get('id')}")
-                                for d in nb.get("deleted") or []
-                                if d.get("endpoint") == "dcim/devices")
-        else:
-            _step("netbox", False, nb.get("error", "removal refused"),
-                  "resolve the reason above, then run abandon again")
-            result["netbox"] = nb
-    except Exception as exc:                   # noqa: BLE001
-        log.exception("abandon: netbox step failed for %r", hostname)
-        _step("netbox", False, str(exc), "run abandon again once NetBox is "
-                                         "reachable")
+    if planned_unread:
+        _step("netbox", False, planned_unread,
+              "repair what is named above, then run abandon again")
+    elif planned_id is not None:
+        kept = _keep_planned_record(planned_id, entry.get("name", hostname))
+        _step("netbox", kept["ok"], kept["detail"], kept.get("how", ""))
+        result["netbox"] = {"ok": kept["ok"], "kept": [planned_id] if kept["ok"] else [],
+                            "deleted": [], "skipped": []}
+        if kept["ok"]:
+            retained = ("netbox",)
+    else:
+        try:
+            # By the id onboarding recorded (C1342): the remover never deletes by name.
+            extra = ({"netbox_id": entry["netbox_id"]}
+                     if (entry or {}).get("netbox_id") not in (None, "") else {})
+            nb = remover(list_name, hostname, dry_run=dry_run, actor=actor,
+                         authority=f"Abandon by {actor or 'unknown'}", **extra) or {}
+            if nb.get("ok"):
+                # The remover's own sentence rides along: "0 removed, 0 left
+                # alone" alone could not say WHY there was nothing (R1's
+                # probe-r1b: no device of that name in NetBox, because it never
+                # reached phase 2), and the operator could not tell it from a
+                # step that did not run. It could not have been that (every
+                # refusal and failed read is `ok: False`); now it says so.
+                _step("netbox", True,
+                      f"{len(nb.get('deleted') or [])} object(s) removed, "
+                      f"{len(nb.get('skipped') or [])} left alone"
+                      + (f": {nb['message']}" if nb.get("message") else ""))
+                result["netbox"] = nb
+                would_remove.update(("netbox", f"dcim/devices id {d.get('id')}")
+                                    for d in nb.get("deleted") or []
+                                    if d.get("endpoint") == "dcim/devices")
+            else:
+                _step("netbox", False, nb.get("error", "removal refused"),
+                      "resolve the reason above, then run abandon again")
+                result["netbox"] = nb
+        except Exception as exc:               # noqa: BLE001
+            log.exception("abandon: netbox step failed for %r", hostname)
+            _step("netbox", False, str(exc), "run abandon again once NetBox is "
+                                             "reachable")
 
     # 3. CREDENTIALS. Local and reversible, so it runs after the two that
     #    are not -- a failure here never blocks the expensive steps.
@@ -2634,7 +2726,8 @@ def _abandon_onboarding(repo: str, hostname: str, list_name: str, *,
     # 4. IDENTITY, last, and it re-derives the references itself.
     if dry_run:
         outstanding = [r for r in _m.references(repo, identity, list_name)
-                       if (r["kind"], r["what"]) not in would_remove]
+                       if (r["kind"], r["what"]) not in would_remove
+                       and r["kind"] not in retained]
         _step("identity", not outstanding,
               "would release" if not outstanding
               else (f"would refuse: {len(outstanding)} reference(s) remain: "
@@ -2666,7 +2759,19 @@ def _abandon_onboarding(repo: str, hostname: str, list_name: str, *,
                            % len(result["remaining"]))
         return result
 
-    released = _m.release(repo, identity, list_name=list_name, actor=actor)
+    if (planned_id is not None or planned_unread) and not retained:
+        # A Planned record that could not be kept as Create found it (C1597): releasing the name
+        # would leave NetBox's record of it in a state no step accounted for.
+        _step("identity", False,
+              "not released: the NetBox step did not keep the Planned record as Create found "
+              "it", "finish what the netbox step names, then run abandon again")
+        result["ok"] = False
+        result["error"] = ("abandon did not finish; %d step(s) remain"
+                           % len(result["remaining"]))
+        return result
+
+    released = _m.release(repo, identity, list_name=list_name, actor=actor,
+                          retained=retained)
     if released.get("ok"):
         # The release is the manifest's last write, after the intent's commit, so it is
         # committed here, as the person who abandoned (C1468): once Create commits its pending

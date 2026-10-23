@@ -96,11 +96,23 @@ def main(argv):
         stop(f"unknown arguments {argv[4:]!r}: only --never-saved is accepted", 2)
     s = Session(argv[1], int(argv[2]), argv[3])
     s.send("\r")
-    got, text = s.wait_for([rb"[\r\n][A-Za-z0-9._-]+>\s*$", rb"[\r\n][A-Za-z0-9._-]+#\s*$"], 20)
+    got, text = s.wait_for([rb"[\r\n][A-Za-z0-9._-]+>\s*$", rb"[\r\n][A-Za-z0-9._-]+#\s*$",
+                            rb"[\r\n][A-Za-z0-9._-]+\(config[a-z-]*\)#\s*$"], 20)
     if got == "stop":
         stop(f"the console showed {text!r}")
     if got is None:
         stop("no prompt within 20 s of RETURN")
+    if got == 2:
+        # Left in configuration mode (a kick-start stopped there, 2026-10-23): `end` leaves it,
+        # changing nothing, and saves nothing.
+        print("configuration mode prompt: leaving it with end (nothing saved)")
+        s.send("end\r")
+        got, text = s.wait_for([rb"[\r\n][A-Za-z0-9._-]+#\s*$"], 20)
+        if got == "stop":
+            stop(f"end answered {text!r}")
+        if got is None:
+            stop("no privileged prompt within 20 s of end")
+        got = 1
     print(f"prompt reached: {'user EXEC (>)' if got == 0 else 'privileged (#)'}")
     if got == 0:
         s.send("enable\r")

@@ -1,0 +1,73 @@
+>>> send '\r'
+
+**************************************************************************
+* IOSv is strictly limited to use for evaluation, demonstration and IOS  *
+* education. IOSv is provided as-is and is not supported by Cisco's      *
+* Technical Advisory Center. Any use or disclosure, in whole or in part, *
+* of the IOSv Software or Documentation to any third party for any       *
+* purposes is expressly prohibited except as otherwise authorized by     *
+* Cisco in writing.                                                      *
+**************************************************************************
+Switch>
+>>> send 'enable\r'
+enable
+Switch#
+>>> send 'terminal length 0\r'
+terminal length 0
+Switch#
+>>> send 'dir nvram:\r'
+dir nvram:
+Directory of nvram:/
+
+  254  -rw-           0                    <no date>  startup-config
+  255  ----           0                    <no date>  private-config
+    1  ----          31                    <no date>  udi
+    2  ----          35                    <no date>  persistent-data
+
+262144 bytes total (260044 bytes free)
+Switch#
+>>> send 'dir nvram:\r'
+dir nvram:
+Directory of nvram:/
+
+  254  -rw-           0                    <no date>  startup-config
+  255  ----           0                    <no date>  private-config
+    1  ----          31                    <no date>  udi
+    2  ----          35                    <no date>  persistent-data
+
+262144 bytes total (260044 bytes free)
+Switch#
+>>> send 'configure terminal\r'
+configure terminal
+Enter configuration commands, one per line.  End with CNTL/Z.
+Switch(config)#
+>>> send 'hostname s5\r'
+hostname s5
+s5(config)#
+>>> send 'vlan 1\r'
+vlan 1
+s5(config-vlan)#
+>>> send 'interface GigabitEthernet0/1\r'
+interface GigabitEthernet0/1
+s5(config-if)#
+>>> send ' switchport mode access\r'
+ switchport mode access
+s5(config-if)#
+>>> send ' switchport access vlan 1\r'
+ switchport access vlan 1
+s5(config-if)#
+>>> send ' no shutdown\r'
+ no shutdown
+s5(config-if)#
+>>> send 'interface Vlan1\r'
+interface Vlan1
+s5(config-if)#
+>>> send ' ip address 10.255.4.14 255.255.255.252\r'
+ ip address 10.255.4.14 255.255.255.252
+s5(config-if)#
+>>> send ' no shutdown\r'
+ no shutdown
+s5(config-if)#
+*Oct 23 20:27:43.622: %LINEPROTO-5-UPDOWN: Line protocol on Interface Vlan1, changed state to down
+*Oct 23 20:27:46.260: %LINK-3-UPDOWN: Interface Vlan1, changed state to up
+*Oct 23 20:27:47.264: %LINEPROTO-5-UPDOWN: Line protocol on Interface Vlan1, changed state to up

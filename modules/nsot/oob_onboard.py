@@ -720,7 +720,9 @@ def _netbox_untouched(*_a, **_k) -> dict:
 
 def undo_created(list_name: str, hostname: str, actor: str) -> dict:
     """Everything Create made, removed in the reverse order, through Abandon's own steps (its
-    dry run, then the run bound to it), NetBox kept (`_netbox_untouched`). ``{"ok", "undone":
+    dry run, then the run bound to it), NetBox kept: Abandon keeps the Planned record Create
+    read and gives the name back with it retained (C1613), and `_netbox_untouched` stands for
+    the remover so nothing in NetBox is deleted on any other path. ``{"ok", "undone":
     [words], "remaining": [words]}``."""
     from modules.config import get_list_data_dir
     from modules.nsot.onboard import abandon_fingerprint, abandon_onboarding
