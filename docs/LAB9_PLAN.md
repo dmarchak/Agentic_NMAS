@@ -996,8 +996,27 @@ have killed every console session at its first byte, and the run sheet's review 
   "Base Ethernet MAC Address" from `show version`, which vIOS-L2 never prints; and a switch asks
   DHCP from an SVI whose MAC is per VLAN, while a blank switch has no SVI. Measured read-only on
   s1 and s2 (SVI MACs `…80<vlan>`, spanning tree's bridge address sharing their first four
-  bytes) and on s5 over its console (bridge `0c00.0875.c700`, so Vlan1 predicted `…8001`); the
-  first lease measures the prediction.
+  bytes) and on s5 over its console (bridge `0c00.0875.c700`, so Vlan1 predicted `…8001`).
+  Measured right on s5 after the kick-start created Vlan1 (`show interfaces Vlan1`: `0c00.0875.8001`).
+- **DHCP refused on the switch's SVI (C1592).** The kick-start's `ip address dhcp` on Vlan1 was
+  answered `% Invalid input detected at '^' marker.`, the caret under `dhcp`: this vIOS-L2 runs a
+  DHCP client on a routed port (s1's Gi0/0) but not on an SVI. The switch path becomes static
+  from NetBox's plan (Phase A).
+- **Typed on past the refusal, and called it done (C1593).** The session sent `no shutdown`,
+  `line con 0`, `exec-timeout 15 0` and `end` after the refusal and recorded outcome "done",
+  verify ok, because verify read only the end prompt. Vlan1 then sat up with "output never". A
+  real code defect, found by reading the run's own masked transcript; the fix stops on any IOS
+  refusal and reads back what was typed.
+- **Nothing triggers the fetch (C1594, the operator's question at the kick-start's preview).** IOS
+  fetches option 67's file by AutoInstall at boot with an empty configuration, never when a
+  running switch gets a lease. The kick-start now ends with a verified `copy tftp`.
+- **Abandon leaked the switch's address to a host (C1600).** Abandon removed s5's reservation
+  before its link subnet, whose pool was exactly that address; 3 s later H6, on s5's untagged
+  VLAN 1, leased 10.255.4.14 (Kea's log, 03:20:48 to 03:20:51Z), and removing the subnet left the
+  lease behind. Link subnets now carry no pool.
+- **Abandon's preview and apply disagreed (C1596, C1597).** The preview simulated deleting s5's
+  NetBox record and, through `forget_created`, really removed it from Mercury's created-object
+  record; the confirm re-planned and refused. Failed safe; registered for after Lab 9.
 Mutation testing proves the tests notice a changed line; none of these was a changed line. Each
 was a premise about the world the tests could not see: the reason the operator ran the first
 pass early.
