@@ -367,6 +367,14 @@ class OnboardPlan:
         return self.netbox_record.get("status") == "planned"
 
     @property
+    def planned_netbox_id(self):
+        """The id of the Planned record this plan read, or None (C1598): kept in the plan, so in
+        its fingerprint, and in the manifest entry Create writes, so Abandon, Retire and Verify
+        find the record by its id, never by its name (C1342)."""
+        got = self.netbox_record.get("id") if self.planned_record else None
+        return got if isinstance(got, int) and not isinstance(got, bool) and got > 0 else None
+
+    @property
     def netbox_note(self) -> str:
         """What phase 1 and phase 2 do in NetBox, for the review screen."""
         rec = self.netbox_record
@@ -613,6 +621,9 @@ class OnboardPlan:
             # three objects that had in fact been created. The `next_ts`
             # shape, on the panel whose job is to say what will happen.
             "netbox_note": self.netbox_note,
+            # C1598: the Planned record's id, in the summary so in the fingerprint Create is
+            # bound to, and written to the manifest entry by the commit step.
+            "netbox_id":      self.planned_netbox_id,
             "writes_csv":     self.writes_devices_csv,
             "inventory_note": self.inventory_note,
             "onboardable":    self.onboardable,
@@ -1864,6 +1875,8 @@ def commit_step(plan, *, actor: str) -> str:
     # `promote_device()` is the exit, and it existed before this flag did.
     manifest.upsert_device(repo, identity, plan.hostname,
                            mgmt_ip=plan.mgmt_ip, platform=plan.platform,
+                           # C1598: the Planned record the review read, by its id.
+                           netbox_id=getattr(plan, "planned_netbox_id", None),
                            pending=True,
                            address_source=plan.address_source,
                            mgmt_mac=plan.mgmt_mac,

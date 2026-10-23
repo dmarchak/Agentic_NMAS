@@ -75,11 +75,13 @@ KIND_KICKSTART = "kickstart"
 #: The operations' names on the device hold (`device_ops.OPERATION_WORDS` words them).
 OP_SURVEY = "console survey"
 OP_KICKSTART = "console kick-start"
+#: The one-decision out-of-band onboarding's hold (`oob_onboard.OP`), named here because its
+#: copy fetches through the gate below.
+OP_ONBOARD = "console onboard"
 #: The operations whose hold on a device lets the TFTP responder serve that device's bootstrap
 #: to its planned static address (`ztp_responder.console_gate`; out-of-band ZTP's static path,
-#: the operator 2026-10-23): the run whose copy asks for it. A one-decision run that holds the
-#: device under another name joins here.
-FETCH_OPERATIONS = (OP_KICKSTART,)
+#: the operator 2026-10-23): the runs whose copy asks for it.
+FETCH_OPERATIONS = (OP_KICKSTART, OP_ONBOARD)
 #: The only verification a kick-start accepts: the access assertion's
 #: (`identity.actor_verification`), a person's.
 VERIFIED = "access"

@@ -268,6 +268,12 @@ PAGE_RECORD = {
     "console_ztp_v2.kickstart_confirm": ("templates/v2/_console_ztp.html",
                                          ('id="console-ztp-card"', "r.lines", "r.verify"),
                                          "v2.history_page"),
+    # The one-decision out-of-band onboarding: its result in place on its card (what it
+    # compared, the MAC, the copy's answer, what was sent and the masked transcript), read from
+    # the run's record, and read again on History (Console surveys and kick-starts).
+    "oob_onboard_v2.confirm": ("templates/v2/_oob_onboard.html",
+                               ('id="oob-card"', "r.reason", "r.transcript"),
+                               "v2.history_page"),
     # C1560: a console server's re-key, its result in place on the Console servers tab; the
     # key kept, and the one it replaced, read on History (SSH host keys).
     "console_servers_v2.rekey_confirm": ("templates/v2/_console_server_op.html",

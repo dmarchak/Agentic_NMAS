@@ -304,6 +304,15 @@ DECLARED = {
                                                 "once; the run ANNOUNCES console_ztp, "
                                                 "device_state and pending when it ends "
                                                 "(ANNOUNCERS console-ztp)"),
+    # The one-decision out-of-band onboarding (routes/oob_onboard_v2.py).
+    "oob_onboard_v2.preview_view": Nothing("reads NetBox (the Planned record, its console path, "
+                                           "address and cable), Mercury's stores and committed "
+                                           "intent, and computes the review and its hash; it "
+                                           "contacts no device and writes nothing"),
+    "oob_onboard_v2.confirm": Nothing("starts the onboarding as a job and answers at once; the "
+                                      "run ANNOUNCES console_ztp, device_state and pending when "
+                                      "it ends (ANNOUNCERS console-ztp), and each step "
+                                      "device_progress"),
     # Settings › Installation › Console servers (O8, routes/console_servers_v2.py).
     "console_servers_v2.port_save": ("console_servers",),
     "console_servers_v2.port_remove": ("console_servers",),

@@ -49,7 +49,10 @@ RECORDS = {"topology.html": "topology.md", "history_syslog.html": "logs.md",
            "save.html": "save.md", "pending.html": "pending.md",
            "retired.html": "retired.md",
            # About, from the operator's screenshot in the P7-27 walk (2026-10-18, step 12).
-           "about.html": "about.md"}
+           "about.html": "about.md",
+           # The one-decision out-of-band onboarding's run page (board C of
+           # docs/boards/oob-onboarding.html, 2026-10-23).
+           "oob_run.html": "oob-run.md"}
 
 #: Components many screens share, each compared with its own boards (the operator, 2026-10-12:
 #: the one stepper, "add it to the board-fidelity records"): component -> its record.

@@ -68,6 +68,13 @@ STAGES = {
         "n/a: the kick-start saves nothing (no write memory), so a reload returns the device "
         "to its factory state; the preview says so",
         "modules.nsot.console_ztp.record"),
+    # The one-decision out-of-band onboarding (routes/oob_onboard_v2.py): verify is the
+    # read-back of every typed line and the copy's verdict (then SSH answering); the rollback
+    # undoes what its Create made (the device keeps what was typed, unsaved: a reload returns
+    # it to its factory state, which the review says).
+    "oob_onboard_v2.confirm": Stages(
+        "oob_onboard_v2.preview_view", "hash", "modules.nsot.oob_steps.readback_verdict",
+        "modules.nsot.oob_onboard.undo_created", "modules.nsot.console_ztp.record"),
     # C1560: a console server's SSH host key, kept in place of the held one, from Settings ›
     # Installation › Console servers; the device page's re-key's code, keyed by the host.
     "console_servers_v2.rekey_confirm": Stages(
@@ -309,6 +316,7 @@ HISTORY = {
     "console_servers_v2.rekey_confirm": ("host_keys",),
     "console_ztp_v2.survey_confirm": ("console_ztp",),
     "console_ztp_v2.kickstart_confirm": ("console_ztp",),
+    "oob_onboard_v2.confirm": ("console_ztp", "onboarding"),
     "v2.save_confirm": ("rotation", "golden"),
     "device_v2.rotate_confirm": ("rotation", "golden", "intent"),
     "credential_profiles_v2.rotate_due_confirm": ("rotation", "golden", "intent"),

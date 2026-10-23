@@ -25,8 +25,21 @@ Shots: board A at 1440 and 1280, the first board at 1440, its phone board at 390
 1440, 1280 and 390 (`devices-page-*`), and ticked with Actions open at 1440, 1280 and 390
 (`devices-selected-page-*`), each phone shot also as its first screen.
 Compared 2026-10-16.
-Templates compared: templates/v2/devices.html, templates/v2/_devices.html, templates/v2/_onboard_add.html, templates/v2/_console_kick.html
-Templates sha256: `b62dbde6ba883b8cbac7d8b82018a0f4a16905561347ec93b0185456d3e2421b`
+Templates compared: templates/v2/devices.html, templates/v2/_devices.html, templates/v2/_onboard_add.html, templates/v2/_console_kick.html, templates/v2/_oob_source.html, templates/v2/_in_progress_panel.html
+Templates sha256: `10597e1380f0255962273dbd57aef40c0c1d6ae80a1e4a554f832049821033c3`
+Hash rewritten 2026-10-23 at the Phase B merge: the run page's links name their network as `?list=` (they said `?list_name=`), and the run page's Devices link takes the page's network; no drawn text, region or control moved, every verdict stands.
+
+Compared again 2026-10-23 (the one-decision out-of-band onboarding, boards A and D of
+`docs/boards/oob-onboarding.html`): Add device's Address from is its own fragment
+(`templates/v2/_oob_source.html`, now among the templates compared), drawn again when the name
+changes, with a fourth source, **Out-of-band (console)**, enabled only when eligible and else
+disabled with its reason and fixing link; chosen, every address field leaves the form and a
+Derived line says what the review derives; Review the plan with it draws the ONE review card
+(`_oob_onboard.html`, compared in `oob-run.md`) in place of the plan's review. Devices gains an
+In progress list above Add device (`templates/v2/_in_progress_panel.html`, board D), absent
+while nothing runs; Create's result's console offer (`_console_kick.html`) gains "Open its
+newest console run's page". Compared by the templates and tests/test_oob_onboard_v2.py, not new shots;
+the rows below are added, every other region unchanged.
 
 Compared again 2026-10-22, later (C1575, board F of `docs/boards/console-ztp.html`): Create's
 result draws its console offer through one macro the pending page draws too
@@ -155,3 +168,7 @@ board.
 | Refusals | under the field: a serial five devices report, an address another device holds | the review's reasons together above the plan; behind a relay, a gateway that is not the relay's own address, or "The relay's own address" chosen on a subnet this host is on, is one of them | **deviation** (log: Board E as built) |
 | Phone | not drawn (no phone board) | at 390 each label above its field in one column, Route option (3) and its message whole (`onboard-add-relay-page-390`) | **deviation** (log: Board E as built) |
 | Console (O7) | not drawn: board E has no console | the review's Console part, read as it draws: "Kick-start through the console…" when NetBox shows the device's console path, "No console kick-start: <why>" when not; Create's result offers "Kick-start <device> through the console…" once its survey is recorded, or "Survey <device>'s console again…" when that survey did not find it blank (boards B and F of `docs/boards/console-ztp.html`) | **deviation** (log: Add device: the review's Console part, compared with board E) |
+| Address from: Out-of-band (console) (oob board A) | a fourth option, "Out-of-band (console): the tool types the planned address over its console", the line under it saying it is available, or why not with the link that fixes it | the same; drawn again when the name changes, "checked once the name is given" before one is; the NetBox link opens in a new tab | **same** |
+| Derived (oob board A) | the address, MAC, interface, gateway and route fields gone, a Derived line naming what the review derives and from where | the same, by the form's own rule (no script) | **same** |
+| The one review (oob board B) | the ONE card in place of the plan's review, no Create button | the same (`oob-run.md` compares the card) | **same** |
+| In progress (oob board D) | "In progress · 2" above the list, a row each: device · operation, the step in its stepper's words, who, since, network; Open its stepper or Open its card | the same; absent while nothing runs; unreadable holds said in red | **same** |

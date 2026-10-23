@@ -1212,10 +1212,90 @@ def _console_servers(client, _lab, _mp):
         mp.undo()
 
 
+def _oob_onboard(client, _lab, _mp):
+    """The one-decision out-of-band onboarding (routes/oob_onboard_v2.py), through the real
+    routes and a real run on a fake console answering as tests/test_oob_onboard.py's (Create,
+    its undo, the MAC's record and SSH stood in for, as there): Add device's Address from, a
+    refused review and a clean one (its program drawn), the confirm's stepper, the result, the
+    run's own page, a running card read from the hold, and Devices' In progress list with the
+    run held. Its patches are undone before the next provider."""
+    import pytest
+
+    from modules import config
+    from modules.nsot import capture_job, console_servers, device_ops
+    from modules.nsot import oob_onboard as O
+    from tests.console_fakes import Console, RawServer
+    from tests.test_oob_onboard import answers, facts, fake_plan, seed_link
+    from tests.test_oob_onboard_v2 import ADD, QUICK
+
+    mp = pytest.MonkeyPatch()
+    consoles = []
+    server = RawServer(lambda: Console(*consoles.pop(0)))
+    try:
+        fake, dev, sport, _spare = _console_netbox(mp)
+        seed_link(fake, dev)
+        from tests.oob_fake_steps import install
+        install(mp)                      # Phase A's console pieces stood in at the adapter
+        mp.setattr("modules.nsot.ztp_relayed.intent_everywhere", facts)
+        mp.setattr(O, "_plan", fake_plan)
+        mp.setattr(O, "_create", lambda *a: {"ok": True, "completed": ["commit"],
+                                             "commit": "c0ffee", "reason": ""})
+        mp.setattr(O, "undo_created", lambda *a: {"ok": True, "undone": [], "remaining": []})
+        mp.setattr(O, "_record_mac", lambda *a: "")
+        mp.setattr(O, "DEFAULT_TIMINGS", QUICK)
+        mp.setattr("modules.readers.reachability.probe", lambda a: (True, "port 22 accepted"))
+        mp.setattr("modules.config.list_data_path", config.get_list_data_dir)
+        assert console_servers.set_port(sport["id"], {"driver": "raw_tcp", "host": server.host,
+                                                      "tcp_port": server.port},
+                                        actor="v2-context")["ok"]
+        form = dict(ADD, list_name="Lab")
+        r = client.get("/v2/onboard/oob/source?list_name=Lab&hostname=edge1"
+                       "&address_source=ztp_console")
+        assert '<option value="ztp_console" selected>' in r.get_data(as_text=True)
+        refused = client.post("/v2/onboard/preview", data=dict(form, role="router"))
+        assert refused.status_code == 409, refused.status_code
+        pv = client.post("/v2/onboard/preview", data=form)
+        digest = re.search(r'name="hash" value="([0-9a-f]{64})"', pv.get_data(as_text=True))
+        assert digest, pv.status_code
+        consoles.append((b"", answers()))
+        run = client.post("/v2/onboard/oob/confirm", data=dict(
+            {k: form[k] for k in O.FORM_FIELDS + O.ASKED_FIELDS}, add="1",
+            hash=digest.group(1), reason="a new access switch"))
+        html = run.get_data(as_text=True)
+        run_id = re.search(r"run=([0-9]{8}T[0-9]{12}Z-[0-9a-f]{32})", html).group(1)
+        job = re.search(r"job=([0-9a-f]{32})", html).group(1)
+        assert capture_job.wait(job, 30)
+        done = client.get(f"/v2/onboard/oob/card?list_name=Lab&run={run_id}&job={job}"
+                          "&hostname=edge1")
+        assert "ready to Verify" in done.get_data(as_text=True), done.status_code
+        assert client.get("/v2/onboard/oob/run?list=Lab&device=edge1").status_code == 200
+        # Devices' In progress list: the run held in Lab, and a second network whose holds
+        # cannot be read (said, never drawn as nothing running).
+        real = device_ops.in_flight
+
+        def in_flight(name, now=None):
+            if name == "Unreadable":
+                raise device_ops.HoldsUnreadable("/holds/Unreadable", OSError("denied"))
+            return real(name, now)
+
+        mp.setattr("modules.integration_groups.network_names", lambda: ["Lab", "Unreadable"])
+        mp.setattr(device_ops, "in_flight", in_flight)
+        with device_ops.hold("Lab", "edge1", O.OP, "v2-context"):
+            device_ops.note("onboard: answering")
+            assert client.get(f"/v2/onboard/oob/card?list_name=Lab&run={run_id}"
+                              "&hostname=edge1").status_code == 200
+            panel = client.get("/operations/in_flight?view=panel",
+                               headers={"HX-Request": "true"}).get_data(as_text=True)
+            assert "Open its stepper" in panel and "Could not read what runs in" in panel
+    finally:
+        mp.undo()
+        server.close()
+
+
 #: What no followed GET reaches, each on the lab's own state: a POST's card, a script's GET,
 #: a state the lab's walk does not hold. In order: `_deploy` changes r3, so it is last.
 PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _drift,
                    _in_progress, _pending, _netbox_source, _netbox_lag, _silenced_alert,
                    _save_no_golden, _profile_versions,
                    _no_change_window, _update_owed, _lease_release, _ip_sla_retunes, _ip_sla_unsent,
-                   _console_ztp, _console_servers, _deploy]
+                   _console_ztp, _console_servers, _oob_onboard, _deploy]

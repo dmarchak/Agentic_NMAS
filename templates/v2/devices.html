@@ -13,6 +13,7 @@
     <a class="btn" data-op="adopt" href="{{ url_for('adopt_v2.new', list=list_name) }}" hx-get="{{ url_for('adopt_v2.new', list=list_name) }}" hx-target="#adopt-card" hx-swap="outerHTML">Adopt a device…</a>{{ how('adopt') }}
   </div>
 </div>
+<div id="ip-panel" hx-get="{{ url_for('operations.in_flight', view='panel') }}" hx-trigger="load, nmas:in_progress from:body, nmas:device_holds from:body, nmas:device_progress from:body" hx-swap="innerHTML"></div>
 <div id="onboard-add"></div>
 <div id="adopt-card"></div>
 <form class="dev-filters" hx-get="{{ url_for('v2.devices_table') }}" hx-target="#devices" hx-swap="outerHTML"

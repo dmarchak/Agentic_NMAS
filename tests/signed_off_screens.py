@@ -194,7 +194,11 @@ SIGNED_OFF = {
                                    "device collapsed with its program and checks, a device "
                                    "needing a reason sent to its own Restore, one confirm whose "
                                    "batch is drawn in place (the batch Apply's job view)"),
-    "retired.html": ("2026-10-03", "the device-actions canvas, board 12 (Retire), its last card: "
+    "oob_run.html": ("2026-10-23", "board C of docs/boards/oob-onboarding.html (a console "
+                                   "run's own page: its card live while it runs, then its "
+                                   "result), drawn and counted as signed off under the Phase 7 "
+                                   "mode (docs/STANDING_APPROVAL_LOG.md)"),
+    "retired.html": ("2026-10-03","the device-actions canvas, board 12 (Retire), its last card: "
                                    "a retired device's address shows its retired record (C185); "
                                    "NSOT_STAGE7_PLAN, the boards 8 to 12 sign-off"),
 }

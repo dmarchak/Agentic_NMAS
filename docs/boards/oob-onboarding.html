@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>Out-of-band onboarding board</title>
+<!-- Board for the one-decision out-of-band onboarding (the operator's approved design of
+     2026-10-23 with his changes): A, Add device's Address from with Out-of-band (console); B,
+     the ONE review and its ONE button; C, the run's stepper, its page and its result (C1579,
+     C1595); D, Devices' In progress list. Drawn by the agent under the Phase 7 operating mode,
+     which counts it as signed off (one line each in docs/STANDING_APPROVAL_LOG.md).
+     Self-contained: no external fonts or scripts. Example names (edge1, relay1, cons-1) and
+     192.0.2.x addresses only. -->
+<style>
+:root{--ground:#F4F5F2;--surface:#FFFFFF;--surface-2:#F9FAF8;--ink:#15191E;--ink-2:#4A5260;--ink-3:#9AA3AE;--line:#DADDE2;--line-2:#EEF0EC;
+--accent:#1E5E8C;--accent-ink:#14476B;--accent-soft:#E6EFF6;--ok:#0B6B45;--ok-soft:#E7F5EE;--warn:#9A4B00;--warn-soft:#FDF1E2;
+--danger:#B42318;--danger-soft:#FDECEA;--muted-soft:#E9EBE7;--side:#14202B;--side-ink:#C9D2DB;--side-ink-2:#8FA1B2;--side-on:#22384A;
+--sans:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;--mono:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace}
+body{margin:0;background:#D9DCD6;font-family:var(--sans);color:var(--ink);font-size:14px;line-height:1.45}
+.boardhead,.artlabel{width:1440px;margin:22px auto 8px;font-size:13px;color:#333}
+.boardhead h1{font-size:18px;margin:0 0 4px}.artlabel strong{font-size:15px}
+.art{width:1440px;margin:0 auto;background:var(--ground);display:flex;box-shadow:0 2px 14px rgba(0,0,0,.18)}
+.side{width:216px;flex-shrink:0;background:var(--side);color:var(--side-ink);padding:18px 10px;display:flex;flex-direction:column;gap:2px}
+.side .brand{font-weight:600;color:#FFF;padding:4px 10px 14px;font-size:15px}.side .h{font-size:11px;letter-spacing:.08em;color:var(--side-ink-2);padding:14px 10px 4px}
+.side a{color:var(--side-ink);text-decoration:none;padding:7px 10px;border-radius:6px;display:block}.side a.on{background:var(--side-on);color:#FFF}
+main{flex:1;min-width:0;padding:24px 32px;display:flex;flex-direction:column;gap:14px}
+h1.page{margin:0;font-size:24px;font-weight:600}h2{margin:0;font-size:16px;font-weight:600}h3{margin:0;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+.mono{font-family:var(--mono);font-size:12.5px}.muted{color:var(--ink-2)}.faint{color:var(--ink-3)}.small{font-size:12.5px}
+.chip{white-space:nowrap;display:inline-block;font-size:12px;padding:1px 8px;border-radius:10px;background:var(--muted-soft);color:var(--ink-2)}
+.chip.ok{background:var(--ok-soft);color:var(--ok)}.chip.warn{background:var(--warn-soft);color:var(--warn)}.chip.bad{background:var(--danger-soft);color:var(--danger)}
+.btn{white-space:nowrap;display:inline-block;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:6px;padding:4px 10px;font:inherit;font-size:13px;text-decoration:none}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#FFF}.btn.dangerous{background:var(--danger);border-color:var(--danger);color:#FFF}
+.how{display:inline-flex;width:15px;height:15px;border-radius:50%;border:1.4px solid var(--accent);color:var(--accent);font-size:10px;font-weight:700;align-items:center;justify-content:center;vertical-align:middle;margin-left:4px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line)}.tabs a{padding:8px 12px;text-decoration:none;color:var(--ink-2)}.tabs a.on{color:var(--ink);border-bottom:2px solid var(--accent);font-weight:500}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+.card.ok{border-color:var(--ok)}.card.warn{border-color:var(--warn)}
+.head{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.head .grow{flex:1}
+table{border-collapse:collapse;width:100%;font-size:13px}th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line-2);vertical-align:top}
+thead th{font-size:12px;color:var(--ink-2);font-weight:500;background:var(--surface-2)}
+.part{display:grid;grid-template-columns:150px 1fr;gap:14px;padding:12px 0;border-top:1px solid var(--line-2)}
+.kv{display:grid;grid-template-columns:140px 1fr;gap:4px 12px;font-size:13px}
+pre{margin:0;background:var(--surface-2);border:1px solid var(--line-2);border-radius:6px;padding:8px 10px;font-family:var(--mono);font-size:12.5px;white-space:pre-wrap}
+.notice{background:var(--danger-soft);color:var(--danger);border-radius:6px;padding:8px 12px;font-size:13px}
+.form{display:grid;grid-template-columns:170px 1fr;gap:8px 14px;font-size:13px;align-items:center}
+.form input,.form select{font:inherit;font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:6px}
+.callout{font-size:12px;color:#5b3d00;background:#FFF6D6;border:1px dashed #C9A23A;border-radius:6px;padding:6px 10px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+.steps{display:flex;gap:0;list-style:none;margin:0;padding:0;font-size:12.5px}.steps li{flex:1;padding:6px 8px;border-top:3px solid var(--line);color:var(--ink-3)}
+.steps li.done{border-color:var(--ok);color:var(--ink)}.steps li.run{border-color:var(--accent);color:var(--ink);font-weight:600}.steps .t{display:block;font-weight:400;color:var(--ink-3);font-size:11.5px}
+.facts{display:grid;grid-template-columns:150px 1fr;gap:4px 12px;font-size:13px}
+</style>
+</head>
+<body>
+
+<div class="boardhead">
+<h1>Out-of-band onboarding in one decision: board for sign-off</h1>
+<div>Four artboards at 1440 wide (the operator's approved design of 2026-10-23, with his changes: no Kea object at all; a switch's way back by <span class="mono">ip default-gateway</span> only; the copy allowing for the key generation; Answering honouring Verify's 120 s key settle, shown). A, Add device's Address from with Out-of-band (console); B, the ONE review and its ONE button; C, the run: THE stepper from the confirm, its page, the result; D, Devices' In progress list. Yellow dashed notes are annotations. Every other link and control is one the built screens have.</div>
+</div>
+
+<!-- ============================================================ A -->
+<div class="artlabel"><strong>A · Devices › Add device…, Address from</strong>: Out-of-band (console) beside Static, DHCP and ZTP (DHCP), enabled only when NetBox holds the Planned record's console path AND Mercury holds its console-server port's record. Selecting it removes the address, MAC, interface, gateway and route fields: each is derived at the review.</div>
+<div class="art">
+<nav class="side"><div class="brand">Mercury</div><a href="#">Needs attention</a><a href="#" class="on">Devices</a><a href="#">History</a></nav>
+<main>
+<div class="card">
+<div class="head"><h2 class="grow">Add device to example-net</h2><a class="btn" href="#">Close</a></div>
+<div class="form">
+<span class="muted">Network</span><span>example-net</span>
+<span class="muted">Name</span><span><input value="edge1"></span>
+<span class="muted">Platform</span><span><select><option>cisco_ios</option></select></span>
+<span class="muted">Role</span><span><select><option>switch</option></select></span>
+<span class="muted">Address from</span><span><select><option>Out-of-band (console): the tool types the planned address over its console</option></select><br><span class="faint small">Out-of-band (console) is available: NetBox shows edge1's console path, and Mercury knows how to reach its console-server port.</span></span>
+<span class="muted">Derived</span><span>Address, mask, management interface, VLAN, uplink and gateway <span class="faint small">derived at the review from NetBox's Planned record (its address, its cable) and committed intent (the relay); the review asks only for what cannot be derived. The MAC is read from the device, after the kick-start.</span></span>
+<span class="muted">Platform management port</span><span><input placeholder="(optional)"></span>
+<span class="muted">Domain</span><span><input value="example.net"></span>
+</div>
+<p><a class="btn" href="#">Review the plan</a><span class="how">i</span> <span class="muted small">A review creates nothing.</span></p>
+<div class="callout">Disabled, the option reads "(disabled)" and the line under it names why, with the link that fixes it: "Out-of-band (console) is not available: No console path in NetBox for edge1: console port 'con 0' has no cable. <u>Open edge1 in NetBox</u>" (a new tab), or "… cons-1's port port 5 (NetBox 41) has no record in Mercury … <u>Open Console servers</u>". Before a name is given: "Out-of-band (console) is checked once the name is given". Drawn again when the name changes; the form never waits on NetBox.</div>
+</div>
+</main></div>
+
+<!-- ============================================================ B -->
+<div class="artlabel"><strong>B · The ONE review</strong>, in Add device's place of the plan's review (no Create button: the run creates). Reads NetBox and committed intent; touches no device.</div>
+<div class="art">
+<nav class="side"><div class="brand">Mercury</div><a href="#" class="on">Devices</a></nav>
+<main>
+<div class="card">
+<div class="head"><h2 class="grow">Out-of-band onboarding of edge1 <span class="chip ok">ready to confirm</span></h2><span class="how">i</span></div>
+<div class="part"><h3>Device</h3><div class="kv"><span class="muted">Device</span><span class="mono">edge1 · Planned in NetBox (id 28), kept in the plan and the manifest</span><span class="muted">Role, platform</span><span class="mono">switch · cisco_ios</span><span class="muted">Console profile</span><span class="mono">cisco_ios_switch v1 sha256 9c1e7a…(all 64)</span></div></div>
+<div class="part"><h3>Console</h3><div class="kv"><span class="muted">Path</span><span class="mono">con 0 → cable 17 → cons-1 port 5 (port 41)</span><span class="muted">Reached by</span><span class="mono">command bridge to 192.0.2.20:22, container edge-a</span><span class="muted">Host key</span><span>ssh-ed25519 <span class="mono">SHA256:YdT9QQPLZ6e6h7X/HyPEFfOjoBxgAIS5jVa+lpFbujE</span> <span class="faint small">kept 2026-10-23</span></span></div></div>
+<div class="part"><h3>Address (static)</h3><div class="kv"><span class="muted">Address</span><span><span class="mono">192.0.2.14 255.255.255.252</span><br><span class="faint small">NetBox IPAM, the one address assigned to it (192.0.2.14/30, id 51)</span></span><span class="muted">Interface, VLAN</span><span class="mono">Vlan1 · VLAN 1</span><span class="muted">Uplink</span><span><span class="mono">GigabitEthernet0/1</span><br><span class="faint small">NetBox: cable 18 to relay1 GigabitEthernet3</span></span><span class="muted">Default gateway</span><span><span class="mono">192.0.2.13</span><br><span class="faint small">committed intent: relay1 GigabitEthernet3's own address on 192.0.2.12/30</span></span><span class="muted">MAC</span><span>read from the device, after the kick-start (<span class="mono">show interfaces Vlan1</span>), and recorded</span><span class="muted">Bootstrap from</span><span class="mono">192.0.2.10 · edge1.cfg</span></div></div>
+<div class="part"><h3>Creates, in order</h3><ol class="small"><li>the static bootstrap for edge1 (its one-time credential minted at Create, never on the console), served only by the responder's narrowed gate</li><li>its pending intent, static: 192.0.2.14 255.255.255.252 on Vlan1, default gateway 192.0.2.13</li><li>its manifest entry, pending, with NetBox id 28</li><li>no Kea subnet, reservation or MAC rule; nothing in NetBox until Verify</li></ol></div>
+<div class="part"><h3>Console program</h3><pre>wake (idle): ⏎
+found at press_return: ⏎, enable⏎ · found at setup_dialog: no⏎, ⏎, enable⏎ · found at user_exec: enable⏎
+read: terminal length 0⏎ · read: dir nvram:⏎ · blank check again: dir nvram:⏎
+configure terminal⏎ hostname edge1⏎ vlan 1⏎ interface GigabitEthernet0/1⏎  switchport mode access⏎
+ switchport access vlan 1⏎  no shutdown⏎ interface Vlan1⏎  ip address 192.0.2.14 255.255.255.252⏎
+ no shutdown⏎ ip default-gateway 192.0.2.13⏎ line con 0⏎  exec-timeout 15 0⏎ end⏎
+read back: show running-config interface GigabitEthernet0/1⏎ … show interfaces Vlan1⏎
+copy (priv_exec): copy tftp://192.0.2.10/edge1.cfg running-config⏎</pre></div>
+<div class="part"><h3>It stops when</h3><p class="small">busy · console unreachable · signed in · login asked · not blank · an unexpected prompt · Create refuses · a line refused · read-back differs or no MAC · the copy fails · SSH does not answer. Each names what it compared, both values, what was sent and what was undone.</p></div>
+<div class="part"><h3>Will not</h3><p class="small">save (no write memory) · send a credential over the console · write any Kea object or change NetBox · touch any other device</p></div>
+<div class="form"><span class="muted">Reason</span><span><input placeholder="onboard a new access switch"></span></div>
+<p><a class="btn primary" href="#">Onboard edge1 through its console</a><span class="how">i</span> <a class="btn" href="#">Change the fields</a> <span class="muted small">Bound to 3f0c9a…: if anything above moves before you confirm, nothing is sent. A verified person confirms.</span></p>
+<div class="callout">Refused, the card leads with its checks (each named, both values) and draws no confirm. NetBox showing no cable to the relay asks for the uplink in the card: "Uplink: the port on edge1 that reaches the relay (relay1 GigabitEthernet3)" with <u>Review again</u>.</div>
+</div>
+</main></div>
+
+<!-- ============================================================ C -->
+<div class="artlabel"><strong>C · The run</strong>: THE stepper drawn by the confirm's own answer (Preview and Confirm done, Hold running from now, the rest not yet run), filled on each step; the same card on the run's own page (opened by the device's name); then the result.</div>
+<div class="art">
+<nav class="side"><div class="brand">Mercury</div><a href="#" class="on">Devices</a></nav>
+<main>
+<p class="small"><a href="#">Devices</a> / edge1</p>
+<h1 class="page mono">edge1 <span class="chip">console run</span></h1>
+<div class="card">
+<div class="head"><h2 class="grow">Out-of-band onboarding of edge1 <span class="chip warn">running</span></h2><span class="how">i</span></div>
+<ul class="steps"><li class="done">Preview</li><li class="done">Confirm</li><li class="done">Hold<span class="t">0 s</span></li><li class="done">Wake<span class="t">2 s</span></li><li class="done">Blank check<span class="t">3 s</span></li><li class="done">Create<span class="t">4 s</span></li><li class="done">Kick-start<span class="t">31 s</span></li><li class="done">Read back<span class="t">9 s</span></li><li class="done">Copy the bootstrap<span class="t">58 s</span></li><li class="done">Release</li><li class="run">Answering<span class="t">waiting for edge1's SSH key to settle, until 14:32:07 UTC</span></li><li>Record</li></ul>
+<div class="callout" style="background:#F9FAF8;color:#15191E;border-style:solid;border-color:#EEF0EC"><strong>Safe to leave this page: the run continues.</strong> It holds edge1 and its console-server port until it ends, and keeps its record on History. <a class="btn" href="#">Open edge1's page – the run continues</a></div>
+<div class="callout">Before Create has run the link reads "Open this run's page – the run continues". A survey's and a kick-start's running cards say the same, prominent (C1595).</div>
+</div>
+<div class="card ok"><div class="head"><h2 class="grow">Out-of-band onboarding of edge1 <span class="chip ok">onboarded, answering: ready to Verify</span></h2></div>
+<p>edge1 answers at 192.0.2.14: ready to Verify</p>
+<div class="kv"><span class="muted">MAC in use</span><span class="mono">0c:00:08:75:80:01</span><span class="muted">Copy</span><span class="mono">the copy printed '[OK - 2048 bytes]'</span></div>
+<p><a class="btn primary" href="#">Open edge1's page to Verify</a></p>
+<div class="callout">A stop is drawn the same way, its chip red ("a line was refused: undone"), its words the comparison and both values, what was sent and what was undone; Next offers "Add edge1 again…". Not answering keeps the pending device: "Open edge1's page" (Verify or Abandon).</div></div>
+</main></div>
+
+<!-- ============================================================ D -->
+<div class="artlabel"><strong>D · Devices, In progress</strong>: the top bar's In progress read drawn as a short list above Devices while anything runs (absent otherwise), each row opening its live stepper; redrawn on each announcement, never polled. The chip's list opens the same rows.</div>
+<div class="art">
+<nav class="side"><div class="brand">Mercury</div><a href="#" class="on">Devices</a></nav>
+<main>
+<h1 class="page">Devices · 9</h1>
+<div class="card"><div class="head"><h2 class="grow">In progress · 2</h2><span class="how">i</span></div>
+<table><tbody>
+<tr><td><strong>edge1</strong> · Out-of-band onboarding<br><span class="faint small">Copy the bootstrap: the bootstrap copied from Mercury's TFTP responder … · step 7 of 10 · you · since 14:29 UTC · example-net</span></td><td><a class="btn" href="#">Open its stepper</a></td></tr>
+<tr><td><strong>r2</strong> · Deploy<br><span class="faint small">Verify: reading the device after the change · step 5 of 9 · operator · since 14:27 UTC · example-net</span></td><td><a class="btn" href="#">Open its card</a></td></tr>
+</tbody></table></div>
+<div class="callout">Unreadable holds are said in red ("Could not read what runs in example-net: …"), never drawn as nothing running.</div>
+<p class="muted small">… the device list as today …</p>
+</main></div>
+
+</body>
+</html>

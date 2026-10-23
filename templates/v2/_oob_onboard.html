@@ -1,0 +1,164 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{%- from "v2/_run_stepper.html" import run_stepper -%}
+{#- The one-decision out-of-band onboarding's card (boards B and C of
+    docs/boards/oob-onboarding.html, counted as signed off 2026-10-23 under the Phase 7 mode):
+    ONE review (every field derived and where from, the console path with the server's full
+    host-key fingerprint, what the run creates, the exact console program, the stops, what it
+    will not do) and ONE button bound to its hash; then THE stepper from the confirm's own
+    answer (C1579), filled on each `device_progress`, its record on `console_ztp`; then the
+    result. From routes/oob_onboard_v2 (`review_ctx`, `card`), in the state it names: review,
+    running, result, failed, lost. -#}
+{%- set p = c.pv or {} -%}
+{%- set d = p.derived or {} -%}
+{%- set r = c.rec or {} -%}
+{%- set who = c.hostname or 'the device' -%}
+{%- set fields = c.fields or {} -%}
+{%- macro hidden(with_asked=True) -%}
+{%- for k in ('list_name', 'hostname', 'platform', 'role', 'domain', 'mgmt_interface') %}<input type="hidden" name="{{ k }}" value="{{ fields.get(k, '') }}">{% endfor %}<input type="hidden" name="add" value="{{ '1' if c.add else '' }}">
+{%- if with_asked %}<input type="hidden" name="uplink" value="{{ fields.get('uplink', '') }}">{% endif %}
+{%- endmacro -%}
+{%- if c.state == 'result' -%}
+  {%- set level = 'ok' if r.outcome == 'done' else ('warn' if r.outcome in ('not_blank', 'signed_in', 'login', 'not_answering', 'busy') else 'danger') -%}
+  {%- set chip = {'done': 'onboarded, answering: ready to Verify', 'not_blank': 'not blank: nothing typed', 'signed_in': 'found signed in: nothing typed', 'login': 'asked for a login: nothing typed', 'not_answering': 'copied, not answering yet', 'busy': 'held by another operation', 'unreachable': 'console unreachable', 'refused_line': 'a line was refused: undone', 'read_back': 'read-back differs: undone', 'copy_failed': 'copy failed: undone', 'create_failed': 'Create failed: undone', 'unexpected': 'stopped: unexpected prompt'}.get(r.outcome, 'stopped: ' ~ r.outcome) -%}
+{%- endif %}
+<section class="op-card{% if c.state == 'result' %} op-{{ level }}{% elif c.state in ('failed', 'lost') %} op-warn{% endif %}" id="oob-card" aria-labelledby="oob-title"
+  {%- if c.state == 'running' %} aria-busy="true" hx-get="{{ url_for('oob_onboard_v2.card_view', list_name=c.list_name, run=c.run, job=c.job, hostname=c.hostname, add='1' if c.add else '') }}" hx-trigger="nmas:console_ztp from:body, nmas:device_progress from:body" hx-swap="outerHTML"{% endif %}>
+  <div class="op-hd"><h2 id="oob-title">Out-of-band onboarding of {{ who }}
+    {%- if c.state == 'result' %} {{ badge(chip, level) }}{% elif c.state == 'running' %} {{ badge('running', 'warn') }}{% elif c.state in ('failed', 'lost') %} {{ badge('not finished', 'warn') }}{% elif p.ok %} {{ badge('ready to confirm', 'ok') }}{% else %} {{ badge('refused', 'danger') }}{% endif %}</h2>
+    <div class="op-hd-actions">{{ how('onboard', 'out-of-band-onboarding') }}</div></div>
+  {%- if c.error %}<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Refused:</strong> {{ c.error }}</p></div>{% endif %}
+
+  {%- if c.state == 'review' %}
+  {%- if p.refused_by %}
+  <div class="op-part"><h3>Checks ({{ p.refused_by | length }} refused)</h3><div>
+    <ul class="op-gates">
+      {%- for key, why in p.refused_by.items() %}
+      <li>{{ badge('fail', 'danger') }}<span><strong>{{ {'netbox': 'NetBox', 'device': 'The Planned record', 'address': 'The planned address', 'relay': 'The relay', 'uplink': 'The uplink', 'responder': 'The config server', 'list': 'The network', 'profile': 'The console profile', 'path': 'The console path', 'port': "The console-server port's record", 'transport': 'The transport', 'program': 'The console program', 'plan': "Create's plan", 'role': 'The role', 'review': 'The review'}.get(key, key) }}:</strong> {{ why }}</span></li>
+      {%- endfor %}
+    </ul>
+    {%- if p.refused_by.port %}<p class="small">Console-server ports are set up on <a href="{{ url_for('settings_v2.installation', tab='console') }}">Settings › Installation › Console servers</a>.</p>{% endif %}</div></div>
+  {%- endif %}
+  {%- if 'uplink' in (d.asked or []) %}
+  <form class="op-form" hx-post="{{ url_for('oob_onboard_v2.preview_view') }}" hx-target="#oob-card" hx-swap="outerHTML">
+    {{ hidden(False) }}
+    <div class="op-part"><h3>Asked</h3><div>
+      <p class="muted small">{{ (d.why or {}).get('uplink', '') }}</p>
+      <label class="sc-f">Uplink: the port on {{ who }} that reaches the relay{% if d.relay %} ({{ d.relay.device }} {{ d.relay.iface }}){% endif %}<input type="text" name="uplink" value="{{ fields.get('uplink', '') }}" autocomplete="off" placeholder="GigabitEthernet0/1"></label></div></div>
+    <div class="op-ft"><p class="op-note">Reviews again with it; contacts no device and writes nothing.</p>
+      <span class="op-act"><button type="submit" class="btn" data-op="onboard" hx-disabled-elt="this"><span class="op-idle">Review again</span><span class="op-busy">Reading NetBox…</span></button>{{ how('onboard', 'out-of-band-onboarding', compact=True, op='the out-of-band onboarding') }}</span></div>
+  </form>
+  {%- endif %}
+
+  <div class="op-part"><h3>Device</h3><div>
+    <dl class="op-ops">
+      <dt>Device</dt><dd class="mono">{{ who }}{% if p.device_id %} · Planned in NetBox (id {{ p.device_id }}), kept in the plan and the manifest{% endif %}</dd>
+      <dt>Role, platform</dt><dd class="mono">{{ p.role or 'none' }} · {{ p.platform or 'none' }}</dd>
+      {%- if p.profile %}<dt>Console profile</dt><dd><span class="mono">{{ p.profile.name }} v{{ p.profile.version }}</span> <span class="fp">sha256 {{ p.profile.sha256 }}</span></dd>{% endif %}
+    </dl></div></div>
+
+  {%- if p.path %}
+  <div class="op-part"><h3>Console</h3><div>
+    <dl class="op-ops">
+      <dt>Path</dt><dd class="mono">{{ p.path.console_port.name }} → cable {{ p.path.cable.id }} → {{ p.path.server.name }} {{ p.path.server_port.name }} (port {{ p.port_id }})</dd>
+      {%- if p.transport %}<dt>Reached by</dt><dd class="mono">{{ p.transport }}</dd>{% endif %}
+      {%- if p.port %}<dt>Driver</dt><dd class="mono">{{ p.port.driver }} to {{ p.port.host }}{% if p.port.jump_host %} via {{ p.port.jump_host }}{% endif %}{% if p.port.ssh_port %}:{{ p.port.ssh_port }}{% endif %}{% if p.port.container %}, container {{ p.port.container }}{% elif p.port.tcp_port %}, TCP {{ p.port.tcp_port }}{% endif %}{% if p.port.credential_ref %}, key {{ p.port.credential_ref }}{% endif %}</dd>{% endif %}
+      {%- set hk = p.host_key or {} %}
+      <dt>Host key</dt><dd>{% if hk.state == 'held' %}{{ hk.type }} <span class="fp" data-fingerprint>{{ hk.fingerprint }}</span>{% if hk.kept_at %} <span class="faint small">kept {{ hk.kept_at[:10] }}</span>{% endif %}{% elif hk.state == 'none' %}<span class="muted">none held: the first contact keeps the key {{ hk.host }} presents, and the record names it</span>{% elif hk.state == 'unreadable' %}{{ badge('unreadable', 'danger') }} {{ hk.error }}{% else %}<span class="muted">this driver speaks no SSH</span>{% endif %}</dd>
+    </dl></div></div>
+  {%- endif %}
+
+  {%- if d.address %}
+  <div class="op-part"><h3>Address (static)</h3><div>
+    <dl class="op-ops">
+      <dt>Address</dt><dd><span class="mono">{{ d.address }} {{ d.mask }}</span><span class="oob-from">{{ (d['from'] or {}).get('address', '') }}</span></dd>
+      <dt>Interface, VLAN</dt><dd><span class="mono">{{ d.interface or 'not derived' }} · VLAN {{ d.vlan }}</span><span class="oob-from">{{ (d['from'] or {}).get('interface', '') }}; VLAN {{ (d['from'] or {}).get('vlan', '') }}</span></dd>
+      <dt>Uplink</dt><dd><span class="mono">{{ d.uplink or 'not known' }}</span><span class="oob-from">{{ (d['from'] or {}).get('uplink', '') }}</span></dd>
+      <dt>Default gateway</dt><dd><span class="mono">{{ d.gateway or 'not derived' }}</span><span class="oob-from">{{ (d['from'] or {}).get('gateway', '') }}</span></dd>
+      <dt>MAC</dt><dd>read from the device, after the kick-start (<span class="mono">show interfaces {{ d.interface or 'its interface' }}</span>), and recorded</dd>
+      {%- if d.server %}<dt>Bootstrap from</dt><dd><span class="mono">{{ d.server }} · {{ d.filename }}</span>{% if p.gate %}<span class="oob-from">{{ p.gate }}</span>{% endif %}</dd>{% endif %}
+    </dl></div></div>
+  {%- endif %}
+
+  {%- if p.creates %}
+  <div class="op-part"><h3>What the run creates, in order</h3><div>
+    <ol class="op-list">{% for w in p.creates %}<li>{{ w }}</li>{% endfor %}</ol>
+    {%- if p.plan %}<p class="faint small">Create's plan <span class="mono">{{ p.plan.fingerprint[:12] }}</span>, rebuilt under the hold and refused if it moved; undone in full on any stop after it.</p>{% endif %}</div></div>
+  {%- endif %}
+
+  {%- if p.program %}
+  <div class="op-part"><h3>The console program</h3><div>
+    <p>Every byte it may send, in the state it is sent in (⏎ is RETURN):</p>
+    <pre class="ask-pre" data-oob-program>{% for s, line in p.program.wake %}wake ({{ s }}): {{ line | replace('\r', '⏎') }}
+{% endfor %}{% for found, steps in p.program.prelude.items() %}found at {{ found }}: {% for s, line in steps %}{{ line | replace('\r', '⏎') }}{{ ', ' if not loop.last }}{% endfor %}
+{% endfor %}{% for s, line in p.program.reads %}read: {{ line | replace('\r', '⏎') }}
+{% endfor %}{% for s, line in p.program.recheck %}blank check again: {{ line | replace('\r', '⏎') }}
+{% endfor %}{% for s, line in p.program.lines %}{{ line | replace('\r', '⏎') }}
+{% endfor %}{% for s, line in p.program.read_back %}read back: {{ line | replace('\r', '⏎') }}
+{% endfor %}{% for s, line in p.program['copy'] %}copy ({{ s }}): {{ line | replace('\r', '⏎') }}
+{% endfor %}</pre>
+    {%- for line, why in p.not_read or [] %}<p class="faint small"><span class="mono">{{ line }}</span> is not read back: {{ why }}.</p>{% endfor %}</div></div>
+  {%- endif %}
+
+  <div class="op-part"><h3>It stops when</h3><div>
+    <ul class="op-list">{% for w in p.stops or [] %}<li>{{ w }}</li>{% endfor %}</ul>
+    <p class="faint small">Each stop names what it compared, both values, what was sent and what was undone.</p></div></div>
+  <div class="op-part"><h3>What it will not do</h3><div>
+    {%- for n in p.not_doing or [] %}<p>{{ n[0] | upper }}{{ n[1:] }}.</p>{% endfor %}</div></div>
+
+  <form class="op-form" hx-post="{{ url_for('oob_onboard_v2.confirm') }}" hx-target="#oob-card" hx-swap="outerHTML">
+    {{ hidden() }}<input type="hidden" name="hash" value="{{ p.hash }}">
+    {%- if c.add %}<input type="hidden" name="address_source" value="ztp_console">{% endif %}
+    {%- if p.ok %}
+    <label class="sc-f">Reason (recorded with the run)<input type="text" name="reason" value="" autocomplete="off" placeholder="onboard a new access switch"></label>
+    {%- endif %}
+    <div class="op-ft"><p class="op-note">{% if p.ok %}Bound to <span class="mono">{{ p.hash[:12] }}</span>: if anything above moves before you confirm, nothing is sent. A verified person confirms; {{ who }} and its console-server port are held until it ends.{% else %}Nothing can be confirmed until every check passes.{% endif %}</p>
+      {%- if p.ok %}
+      <span class="op-act"><button type="submit" class="btn btn-primary" data-op="onboard" hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">Onboard {{ who }} through its console</span><span class="op-busy">Starting…</span></button>{{ how('onboard', 'out-of-band-onboarding', compact=True, op='the out-of-band onboarding') }}</span>
+      {%- endif %}
+      {%- if c.add %}
+      <button type="submit" class="btn btn-small" name="edit" value="1" formaction="{{ url_for('onboard_v2.preview') }}" hx-post="{{ url_for('onboard_v2.preview') }}" hx-target="#onboard-add" hx-swap="outerHTML" hx-disabled-elt="this"><span class="op-idle">Change the fields</span><span class="op-busy">Opening the fields…</span></button>
+      {%- endif %}</div>
+  </form>
+
+  {%- elif c.state == 'running' %}
+  {#- C1579: THE stepper from the confirm's own answer; C1595: leaving is safe, and said. -#}
+  <div class="op-part"><h3>Where it is</h3><div>
+    {{ run_stepper(c.steps | one_run(who, 'Onboarding progress', False)) }}
+    <div class="oob-leave" role="status"><strong>Safe to leave this page: the run continues.</strong>
+      <span>It holds {{ who }} and its console-server port until it ends, and keeps its record on History.</span>
+      {%- if (r.created or {}).get('ok') %}<a class="btn btn-small" href="{{ url_for('device_v2.device', name=who, list=c.list_name) }}">Open {{ who }}'s page – the run continues</a>
+      {%- else %}<a class="btn btn-small" href="{{ url_for('oob_onboard_v2.run_page', list=c.list_name, device=who) }}">Open this run's page – the run continues</a>{% endif %}</div>
+    <p class="faint small">Run <span class="mono">{{ c.run }}</span>.</p></div></div>
+
+  {%- elif c.state == 'result' %}
+  <div class="op-part"><h3>What happened</h3><div>
+    <p>{{ r.reason or r.outcome }}</p>
+    <dl class="op-ops">
+      <dt>Address</dt><dd class="mono">{{ r.address }} {{ r.mask }} on {{ r.interface }}, default gateway {{ r.gateway }}</dd>
+      <dt>MAC in use</dt><dd class="mono">{{ r.mac or 'not read' }}{% if r.mac_record_error %} <span class="badge badge-warn">not recorded: {{ r.mac_record_error }}</span>{% endif %}</dd>
+      {%- if r['copy'] %}<dt>Copy</dt><dd class="mono">{{ r['copy'].why }}</dd>{% endif %}
+      {%- if r.answering %}<dt>Answering</dt><dd>{{ r.answering.claim }} ({{ r.answering.tries }} tr{{ 'y' if r.answering.tries == 1 else 'ies' }})</dd>{% endif %}
+      <dt>Bytes written</dt><dd class="mono">{{ r.bytes_written or 0 }}</dd>
+    </dl>
+    {%- if r.sent %}<details data-keep="oob-sent"><summary>What was sent (masked)</summary><pre class="ask-pre">{{ r.sent | replace('\r', '⏎\n') }}</pre></details>{% endif %}
+    {%- if r.transcript %}<details data-keep="oob-transcript"><summary>The console's transcript (masked)</summary><pre class="ask-pre">{{ r.transcript }}</pre></details>{% endif %}</div></div>
+  <div class="op-part"><h3>Next</h3><div>
+    {%- if r.outcome == 'done' %}
+    <p>{{ who }} answers SSH at its static address: Verify reaches it, rotates its credential and records it in NetBox. Nothing is saved on it until Verify's persist step.</p>
+    <p><a class="btn btn-primary btn-small" href="{{ url_for('device_v2.device', name=who, list=c.list_name) }}">Open {{ who }}'s page to Verify</a></p>
+    {%- elif r.outcome == 'not_answering' %}
+    <p>Its bootstrap was copied and its pending onboarding kept: its page shows whether it answers, and offers Verify when it does, or Abandon.</p>
+    <p><a class="btn btn-small" href="{{ url_for('device_v2.device', name=who, list=c.list_name) }}">Open {{ who }}'s page</a></p>
+    {%- else %}
+    <p>Read what it compared above. Nothing was saved on {{ who }}: a reload returns it to its factory state. Then review it again.</p>
+    <p><a class="btn btn-small" data-op="onboard" href="{{ url_for('onboard_v2.new', list=c.list_name, hostname=who) }}">Add {{ who }} again…</a>{{ how('onboard', 'out-of-band-onboarding', compact=True, op='the out-of-band onboarding') }}</p>
+    {%- endif %}</div></div>
+  <div class="op-part"><h3>Recorded</h3><div><p>By {{ r.actor or 'someone' }} (verified: {{ r.actor_verified or 'none' }}){% if r.reason_given %}, &ldquo;{{ r.reason_given }}&rdquo;{% endif %}, {{ stamp(r.at) }}{% if r.finished_at and r.started_at %}, in {{ (r.finished_at - r.started_at) | round(1) }} s{% endif %}, in {{ r.list }}, run <span class="mono">{{ r.id }}</span>. On History (Console surveys and kick-starts){% if r.index_error %}; the Needs attention index was not updated: {{ r.index_error }}{% endif %}.</p></div></div>
+
+  {%- else %}
+  <div class="op-part"><h3>What happened</h3><div>
+    {%- if c.state == 'failed' %}<p>The run ended before its record did: {{ c.job_error }}</p>
+    {%- else %}<p>This server has no record of the run's job and nothing holds {{ who }} for it{% if r.outcome %}; the record says {{ r.outcome }}{% endif %}: what was typed is in the record's transcript{% if r.id %}, run <span class="mono">{{ r.id }}</span>{% endif %}.</p>{% endif %}
+    <p><a class="btn btn-small" data-op="onboard" href="{{ url_for('onboard_v2.new', list=c.list_name, hostname=who) }}">Add {{ who }} again…</a>{{ how('onboard', 'out-of-band-onboarding', compact=True, op='the out-of-band onboarding') }}</p></div></div>
+  {%- endif %}
+</section>

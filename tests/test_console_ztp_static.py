@@ -616,14 +616,26 @@ class TestTheGate:
         got = _gate(operation=None)
         assert got["serve"] is False and got["device"] == "s5"
         assert got["reason"] == (f"s5 is not held: its bootstrap is served to {ADDRESS} only "
-                                 "while its console run holds it (console kick-start)")
+                                 "while its console run holds it (console kick-start, console "
+                                 "onboard)")
 
     @pytest.mark.parametrize("operation", ["deploy", "console survey", "onboard (create)", "?"])
     def test_held_by_another_operation_is_refused(self, operation):
         got = _gate(operation=operation)
         assert got["serve"] is False
         assert got["reason"] == (f"s5 is held by {operation!r}, not by its console run "
-                                 "(console kick-start): its bootstrap is not served")
+                                 "(console kick-start, console onboard): its bootstrap is not "
+                                 "served")
+
+    def test_the_one_decision_onboarding_s_hold_is_served(self):
+        """The one-decision out-of-band onboarding holds the device under its own name and its
+        copy fetches through this gate: that hold serves the bootstrap, and the name the run
+        holds under is the one the gate allows (Phase A and B merged, 2026-10-23: the run's
+        copy was refused until the gate named it)."""
+        from modules.nsot import oob_onboard
+
+        assert oob_onboard.OP == "console onboard"
+        assert _gate(operation=oob_onboard.OP)["serve"] is True
 
     def test_a_different_address_is_refused(self):
         got = _gate(peer="192.0.2.15")
@@ -697,8 +709,10 @@ class TestTheGate:
             assert got["serve"] is False and got["device"] == "s5", (list_name, name, got)
             assert got["reason"].startswith("s5 is not held: "), got
 
-    def test_the_fetching_operations_are_the_kick_start_alone(self):
-        assert Z.FETCH_OPERATIONS == ("console kick-start",) == (Z.OP_KICKSTART,)
+    def test_the_fetching_operations_are_the_kick_start_and_the_one_decision_run(self):
+        """Exactly the two runs whose copy fetches the bootstrap; no other hold serves it."""
+        assert Z.FETCH_OPERATIONS == ("console kick-start", "console onboard") == \
+            (Z.OP_KICKSTART, Z.OP_ONBOARD)
 
 
 class TestTheResponderDecides:

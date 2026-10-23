@@ -36,7 +36,9 @@
     <div class="ip-row">
       <span class="ip-what"><strong>{{ r.device }}</strong> · {{ r.name }}{% if r.stalled %} {{ badge('no progress: may be stuck', 'danger') }}{% endif %}
         <small>{{ r.step }} · {{ r.who }}{% if r.since %} · since {{ r.since }}{% endif %}{% if r.list %} · {{ r.list }}{% endif %}</small></span>
-      {%- if r.page %}
+      {%- if r.run %}
+      <a class="btn btn-small" href="{{ url_for('oob_onboard_v2.run_page', list=r.list, device=r.device) }}">Open its stepper</a>
+      {%- elif r.page %}
       <a class="btn btn-small" href="{{ url_for('device_v2.device', name=r.device, list=r.list) }}">{{ 'Open its card' if r.card else 'Open ' ~ r.device }}</a>
       {%- endif %}
     </div>

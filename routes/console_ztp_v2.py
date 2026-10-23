@@ -44,22 +44,12 @@ PARAM_FIELD = "param_"
 # ── the offer (O7): drawn by Add device's review ───────────────────────────────────────────
 
 def profile_for(platform: str, role: str) -> str:
-    """The shipped console profile for a device of *platform* (a dialect) and *role*: the one
-    whose platform is the device's and whose name ends with its role; else the platform's only
-    one; else ``""`` (the card then asks)."""
-    from modules.nsot import console_profiles as P
+    """The shipped console profile for a device of *platform* (a dialect) and *role*, or ``""``
+    (the card then asks): `oob_onboard.profile_for`, its one home, which the one-decision
+    out-of-band onboarding reads too."""
+    from modules.nsot.oob_onboard import profile_for as one_home
 
-    fits = []
-    for name in P.shipped():
-        try:
-            if P.load(name).platform == platform:
-                fits.append(name)
-        except P.ProfileError:
-            continue
-    by_role = [n for n in fits if role and n.endswith("_" + role)]
-    if len(by_role) == 1:
-        return by_role[0]
-    return fits[0] if len(fits) == 1 else ""
+    return one_home(platform, role)
 
 
 def offer(list_name: str, netbox_id, hostname: str, platform: str = "", role: str = "") -> dict:

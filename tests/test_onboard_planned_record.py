@@ -160,6 +160,39 @@ class TestAPlannedRecordIsOnboarded:
         assert args["platform_slug"] == "ios"
 
 
+class TestCreateKeepsThePlannedId:
+    """C1598 (s5's first pass, 2026-10-23: its manifest entry read ``netbox_id: null`` although
+    the review read the Planned s5, so every later step found the record by NAME, the path
+    C1342 exists to avoid): the plan keeps the Planned record's id, in its summary (so in the
+    fingerprint Create is bound to) and in the manifest entry Create commits."""
+
+    def test_the_plan_carries_the_planned_id_and_none_for_another_status(self, lab, held):
+        held(_record())
+        assert _plan(platform_slug="ios").summary["netbox_id"] == 12
+        held(_record(status="active", status_label="Active"))
+        assert _plan(platform_slug="ios").summary["netbox_id"] is None
+        held({})
+        assert _plan(platform_slug="ios").planned_netbox_id is None
+
+    def test_the_id_is_in_what_create_is_bound_to(self, lab, held):
+        from modules.nsot.onboard import plan_fingerprint, plan_shown
+        held(_record())
+        one = plan_fingerprint(plan_shown(_plan(platform_slug="ios")))
+        held(_record(id=13, url=f"{BASE}/dcim/devices/13/"))
+        assert plan_fingerprint(plan_shown(_plan(platform_slug="ios"))) != one
+
+    def test_create_commits_the_id_on_the_manifest_entry(self, lab, held):
+        import json
+
+        from modules.nsot import repo as R
+        from modules.nsot.onboard import commit_step
+        held(_record())
+        sha = commit_step(_plan(platform_slug="ios"), actor="t@example.com")
+        head = json.loads(R.git(lab["repo"], "show", f"{sha}:.nsot/manifest.json")[1])
+        entry = next(e for e in head["devices"].values() if e.get("name") == "r6")
+        assert entry["netbox_id"] == 12
+
+
 # --- phase 2 ---------------------------------------------------------------------------------
 
 class TestPhaseTwoUpdatesThatRecord:

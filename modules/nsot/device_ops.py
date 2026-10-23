@@ -72,6 +72,8 @@ OPERATION_WORDS = {
     # Out-of-band ZTP (modules/nsot/console_ztp.py): over its console, not its address.
     "console survey": "surveyed over its console (read-only)",
     "console kick-start": "kick-started over its console",
+    # The one-decision out-of-band onboarding (modules/nsot/oob_onboard.py: `OP`).
+    "console onboard": "onboarded over its console",
 }
 
 #: An operation whose RESULT differs from its kind's usual one, in words

@@ -1527,6 +1527,31 @@ class TestConsoleCards(_Cards):
         return html
 
 
+class TestOobOnboardCard(_Cards):
+    """The one-decision out-of-band onboarding's ONE button, on test_oob_onboard_v2's world."""
+    from tests import test_oob_onboard_v2 as _ov
+    world = hosted(_ov.world)
+
+    CASES = {
+        "oob": ("_oob_onboard.html", "Onboard {{ who }} through its console",
+                r"Onboard edge1 through its console", "viewer"),
+    }
+
+    def _review(self, request):
+        import app as A
+        request.getfixturevalue("world")
+        html = _text(A.app.test_client().post("/v2/onboard/preview", data=self._ov.ADD))
+        assert 'name="hash"' in html, "floor: the review's confirm form is drawn"
+        return html
+
+    def drawn_oob(self, request):
+        return self._review(request)
+
+    def blocked_oob(self, request, monkeypatch):
+        as_service(monkeypatch)
+        return self._review(request)
+
+
 # ── every site of the population has its cases ──────────────────────────────
 
 #: Sites no case above can draw from a real preview, each with why. Only shrinks (C1225:
@@ -1576,9 +1601,10 @@ class TestThePopulation:
         `_console_ztp.html` the survey's and the kick-start's at one: 58 controls (52 until
         C1403's Release lease… joined, 53 until C1491's IP SLA frequency commit, 54 until
         C1504's Free <address> on NetBox's job card, 55 until out-of-band ZTP's survey,
-        kick-start and a console server's re-key, 2026-10-22)."""
+        kick-start and a console server's re-key, 2026-10-22; 58 until the one-decision
+        out-of-band onboarding's button, 2026-10-23)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 58, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 59, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

@@ -98,6 +98,8 @@
   "tests/test_console_ztp_static.py": 21.0,
   "tests/test_parser_default_gateway.py": 2.0,
   "tests/test_link_subnet_no_pool.py": 2.0,
+  "tests/test_oob_onboard.py": 30.0,
+  "tests/test_oob_onboard_v2.py": 8.0,
   "tests/test_console_servers_v2.py": 1.7,
   "tests/test_console_transport.py": 10.3,
   "tests/test_console_run_plan.py": 0.4,

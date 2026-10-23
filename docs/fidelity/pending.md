@@ -32,7 +32,13 @@ its Verify preview and its result (screenshots 60 and 61), read beside the shots
 regions.
 Compared 2026-10-18.
 Templates compared: templates/v2/pending.html, templates/v2/_pending_progress.html, templates/v2/_onboard_pending.html, templates/v2/_pending_gone.html, templates/v2/_console_kick.html
-Templates sha256: `702f668378018840d45c2eac6d39ae30b2a7fc33ea43bb963fef63b4149996ac`
+Templates sha256: `2e89efad4dc8a2b675e8b1386fa63d62c715257139874a763f13f98af1a84a74`
+Hash rewritten 2026-10-23 at the Phase B merge: the run page's links name their network as `?list=` (they said `?list_name=`), and the run page's Devices link takes the page's network; no drawn text, region or control moved, every verdict stands.
+
+Compared again 2026-10-23 (board C of `docs/boards/oob-onboarding.html`): the console offer
+(`_console_kick.html`) gains one link under its button, "Open its newest console run's page"
+(the run's own page, a read). Compared by the template, not a new shot; the Console row's
+verdict stands.
 
 Compared again 2026-10-22 (C1575, board F of `docs/boards/console-ztp.html`): the Onboarding
 card at rest gains a Console part under its three actions, out-of-band ZTP's way back once Add

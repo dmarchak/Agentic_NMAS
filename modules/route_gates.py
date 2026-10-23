@@ -125,6 +125,7 @@ GATES = {
     # Out-of-band ZTP (O6b, routes/console_ztp_v2.py; docs/LAB9_PLAN.md section 8).
     "console_ztp_v2.survey_confirm": _g(C, "types on a device's console (the wake, the prelude to the privileged prompt, the pager off for the session and two reads), holding the device and its console-server port, bound to the previewed program's hash; records the run and its masked transcript", "console_survey"),
     "console_ztp_v2.kickstart_confirm": _g(C, "types the kick-start's configuration lines on a factory-blank device's console, holding the device and its console-server port, bound to the previewed lines' hash, as a verified person; records the run and its masked transcript", "console_kickstart"),
+    "oob_onboard_v2.confirm": _g(C, "onboards a Planned device over its console in one run: holds the device and its console-server port, creates its static bootstrap and pending intent, types the static kick-start's lines, reads them back, copies the bootstrap from the responder and waits for SSH, bound to the review's hash, as a verified person with a reason; undoes what it created on a stop and records the run", "console_onboard"),
     "console_servers_v2.rekey_confirm": _g(C, "keeps the SSH host key a console server answers with now in place of the one Mercury holds (C1560): every later console session signs in to whatever presents it, so a person confirms it, bound to both keys"),
 
     # ---- approve: a decision a later device change acts on ---------------
@@ -268,6 +269,7 @@ GATES = {
     "onboard_v2.abandon_preview": _g(N, "Abandon's dry run; removes nothing"),
     "console_ztp_v2.survey_preview": _g(N, "reads the device's console path from NetBox and the console-server port's record, and computes the survey's program and hash; contacts no console and writes nothing"),
     "console_ztp_v2.kickstart_preview": _g(N, "reads the device's console path, its latest survey and the port's record, and renders the kick-start's exact lines and hash; contacts no console and writes nothing"),
+    "oob_onboard_v2.preview_view": _g(N, "reads NetBox's Planned record, its console path, planned address and cable, Mercury's port record and committed intent, and computes the out-of-band onboarding's review and hash; contacts no device and writes nothing"),
     "console_servers_v2.rekey_preview": _g(N, "reads the SSH host key a console server presents now, in the key exchange only, with no credential; keeps nothing"),
     "device_v2.persist_read": _g(N, "starts Persist's preview read: the device's running and "
                                     "startup configurations, and `dir nvram:` when startup "

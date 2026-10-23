@@ -127,7 +127,11 @@
       as the run notes it begins (`device_progress`); the record replaces it (`console_ztp`). -#}
   <div class="op-part"><h3>Where it is</h3><div>
     {{ run_stepper(c.steps | one_run(who, ('Survey' if survey else 'Kick-start') ~ ' progress', False)) }}
-    <p class="op-wait">{{ 'Surveying' if survey else 'Kick-starting' }} {{ who }} over its console, holding it and its console-server port until it ends. This page can close: the run's record keeps the result, on History. Run <span class="mono">{{ c.run }}</span>.</p></div></div>
+    {#- C1595: leaving is safe, and said where it is read, never in small print. -#}
+    <div class="oob-leave" role="status"><strong>Safe to leave this page: the run continues.</strong>
+      <span>{{ 'Surveying' if survey else 'Kick-starting' }} {{ who }} over its console, holding it and its console-server port until it ends; its record keeps the result, on History.</span>
+      <a class="btn btn-small" href="{{ url_for('oob_onboard_v2.run_page', list=c.list_name, device=who) }}">Open this run's page – the run continues</a></div>
+    <p class="faint small">Run <span class="mono">{{ c.run }}</span>.</p></div></div>
 
   {%- elif c.state == 'result' %}
   <div class="op-part"><h3>What happened</h3><div>

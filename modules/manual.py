@@ -199,6 +199,7 @@ OPERATIONS = {
     # onboarding's page; a console-server port's record and key, and its re-key.
     "console-survey": ("modules.nsot.console_ztp", "SURVEY_STEPS"),
     "console-kickstart": ("modules.nsot.console_ztp", "KICKSTART_STEPS"),
+    "oob-onboard": ("modules.nsot.oob_onboard", "STEPS"),
     "console-server-port": ("modules.nsot.console_servers", "SAVE_STEPS"),
     "console-server-key": ("modules.nsot.console_keys", "STEPS"),
     "console-server-rekey": ("modules.nsot.console_rekey", "STEPS"),
@@ -222,6 +223,7 @@ OPERATION_PAGE = {"onboard-phase-two": "onboard", "onboard-ztp": "onboard",
                   "template-bindings": "edit-template",
                   "template-coverage": "templates",
                   "console-survey": "onboard", "console-kickstart": "onboard",
+                  "oob-onboard": "onboard",
                   "console-server-port": "installation-settings",
                   "console-server-key": "installation-settings",
                   "console-server-rekey": "rekey"}

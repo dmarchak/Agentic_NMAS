@@ -137,7 +137,21 @@ OPERATION_NAMES = {
     # A scoped batch's operation is its scope's noun (`receipts.SCOPES`, C364).
     "monitoring profile apply": "Monitoring profile apply", "IP SLA send": "IP SLA send",
     "monitoring templates deploy": "Monitoring templates deploy",
+    # Out-of-band: the console survey and kick-start, and the one-decision onboarding.
+    "console survey": "Console survey", "console kick-start": "Console kick-start",
+    "console onboard": "Out-of-band onboarding",
 }
+
+#: A console run's hold -> its run's declared stepper steps (each run's own table). A console
+#: run's device may have no page yet (it is being onboarded), so its row opens the run's own
+#: page (`oob_onboard_v2.run_page`), which draws its live stepper.
+def _console_steps(op: str) -> tuple:
+    from modules.nsot import console_ztp as Z
+    from modules.nsot import oob_onboard as O
+
+    return {Z.OP_SURVEY: lambda: Z.run_stepper_steps(Z.KIND_SURVEY),
+            Z.OP_KICKSTART: lambda: Z.run_stepper_steps(Z.KIND_KICKSTART),
+            O.OP: O.run_stepper_steps}.get(op, tuple)()
 
 #: A hold's operation -> the device-page card whose stepper draws its steps.
 STEPPED = ("rotate", "deploy", "restore", "reload")
@@ -157,6 +171,13 @@ def _step(row: dict) -> str:
     draws one (`device_actions.job_steps`: "Persist: … · step 6 of 6"), else the hold's own
     words for its last progress."""
     op = row.get("operation", "")
+    console = _console_steps(op)
+    if console:
+        # The step its last note began (`STEP_NOTES`), in its own stepper's words.
+        for i, (_key, words, waits, names) in enumerate(console):
+            if row.get("step") in names:
+                return f"{words}: {waits} · step {i + 1} of {len(console)}"
+        return f"{console[0][1]}: {console[0][2]} · step 1 of {len(console)}"
     if op in STEPPED and row.get("list"):
         from modules import device_actions
         try:
@@ -181,7 +202,10 @@ def running_row(row: dict, viewer: str) -> dict:
                                             row.get("operation") or "An operation"),
                 "step": _step(row), "who": _who(row.get("actor", ""), viewer),
                 "since": _clock(row.get("started", "")), "card": bool(row.get("job")),
-                "page": True, "stalled": bool(row.get("stalled"))}
+                "page": True, "stalled": bool(row.get("stalled")),
+                # A console run opens its own page, its live stepper (its device may have no
+                # page yet); every other hold, its device's page, which reopens its card.
+                "run": bool(_console_steps(row.get("operation", "")))}
     return {"device": row.get("device", ""), "list": "",
             "name": (row.get("operation") or "an operation")[:1].upper()
                     + (row.get("operation") or "an operation")[1:],

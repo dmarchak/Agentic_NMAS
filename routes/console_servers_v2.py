@@ -77,7 +77,9 @@ def _held(host: str) -> dict:
     if not rec:
         return {"state": "none", "fingerprint": "", "refused": "", "error": ""}
     refused = (rec.get("refused") or {}).get("fingerprint", "")
-    return {"state": "refused" if refused else "held",
+    # C1591: the whole fingerprint and its key type, the values a person compares with the
+    # server's own (a truncated hash is not verification).
+    return {"state": "refused" if refused else "held", "type": rec.get("type", ""),
             "fingerprint": rec.get("fingerprint", ""), "refused": refused, "error": ""}
 
 

@@ -16,5 +16,7 @@
     {%- if blank %}<button type="button" class="btn btn-small btn-primary" data-op="onboard" hx-get="{{ url_for('console_ztp_v2.card_view', device_id=kick.device_id, list_name=kick.list_name, step='kickstart', hostname=kick.hostname, list=kick.list_name) }}" hx-target="#console-ztp-card" hx-swap="outerHTML">Kick-start {{ kick.hostname }} through the console…</button>{{ how('onboard', 'console-kick-start', compact=True, op='the console kick-start') }}
     {%- else %}<button type="button" class="btn btn-small" data-op="onboard" hx-get="{{ url_for('console_ztp_v2.card_view', device_id=kick.device_id, list_name=kick.list_name, step='survey', hostname=kick.hostname, profile=(kick.survey.profile or {}).name or '', list=kick.list_name) }}" hx-target="#console-ztp-card" hx-swap="outerHTML">Survey {{ kick.hostname }}'s console again…</button>{{ how('onboard', 'console-survey', compact=True, op='the console survey') }}
     {%- endif %}</span></div>
+  {#- The survey's run, on its own page (board C of docs/boards/oob-onboarding.html). -#}
+  <p class="small"><a href="{{ url_for('oob_onboard_v2.run_page', list=kick.list_name, device=kick.hostname) }}">Open its newest console run's page</a></p>
 </div>
 {%- endmacro -%}

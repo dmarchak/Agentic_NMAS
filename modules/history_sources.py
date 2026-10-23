@@ -1356,7 +1356,15 @@ def reloads(ctx):
 CONSOLE_OUTCOMES = {"surveyed": "surveyed", "stopped": "stopped: found signed in",
                     "done": "done, verified", "unverified": "done, not verified",
                     "not_blank": "not blank: nothing typed", "unreachable": "console unreachable",
-                    "refused_state": "refused: found signed in", "running": "running"}
+                    "refused_state": "refused: found signed in", "running": "running",
+                    # The one-decision out-of-band onboarding's (modules/nsot/oob_onboard.py).
+                    "signed_in": "found signed in: nothing typed",
+                    "login": "asked for a login: nothing typed",
+                    "unexpected": "stopped: an unexpected prompt",
+                    "create_failed": "Create failed: undone",
+                    "refused_line": "a line was refused: undone",
+                    "read_back": "read-back differs: undone", "copy_failed": "copy failed: undone",
+                    "not_answering": "copied, not answering", "busy": "held by another operation"}
 
 
 def console_ztp(ctx):
@@ -1380,6 +1388,8 @@ def console_ztp(ctx):
             blank = {True: "factory-blank", False: "not factory-blank"}.get(r.get("blank"),
                                                                            "blank unknown")
             what = f"Console survey: {blank}"
+        elif r.get("kind") == "onboard":          # oob_onboard.KIND
+            what = f"Out-of-band onboarding: {outcome}"
         else:
             what = f"Console kick-start: {outcome}"
         good = r.get("outcome") in ("surveyed", "done") and (not survey or r.get("blank") is True)

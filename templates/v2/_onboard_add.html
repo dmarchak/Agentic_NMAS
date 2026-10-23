@@ -1,6 +1,7 @@
 {%- from "v2/_macros.html" import icon, badge, how, stamp -%}
 {%- from "v2/_preview_parts.html" import preview_parts, result_parts -%}
 {%- from "v2/_console_kick.html" import kick_offer -%}
+{%- from "v2/_oob_source.html" import source_options, source_why -%}
 {#- Board E (Devices › Add device…, drawn under the Phase 7 mode, docs/STANDING_APPROVAL_LOG.md):
     the fields, then the plan's review with Create bound to it, then the result, which says the
     device is PENDING and opens its page. Opened in place above the list; from routes/onboard_v2. -#}
@@ -22,6 +23,11 @@
   {%- if (done.result or {}).record and done.result.record.statement %}<p class="small">{{ done.result.record.statement }}</p>{% endif %}
   {%- if kick %}{{ kick_offer(kick) }}{% endif %}
   <div class="set-foot">{% if done.ok %}<a class="btn btn-primary btn-small" href="{{ url_for('device_v2.device', name=f.hostname, list=f.list_name) }}">Open {{ f.hostname }}'s page</a> {% endif %}<a class="btn btn-small" href="{{ url_for('onboard_v2.new', list=f.list_name) }}" hx-get="{{ url_for('onboard_v2.new', list=f.list_name) }}" hx-target="#onboard-add" hx-swap="outerHTML">Add another</a></div>
+  {%- elif oob %}
+  {#- The one-decision out-of-band onboarding's ONE review card (board B of
+      docs/boards/oob-onboarding.html), drawn in place of the plan's review. -#}
+  {%- set c = oob %}
+  {% include "v2/_oob_onboard.html" %}
   {%- elif pv %}
   {{ preview_parts(pv.preview) }}
   <form class="set-form" id="ob-create" method="post" action="{{ url_for('onboard_v2.create') }}"
@@ -61,19 +67,22 @@
       {%- for r in ('router', 'switch', 'firewall') %}<option value="{{ r }}"{% if r == f.role %} selected{% endif %}>{{ r }}</option>{% endfor %}
     </select><span class="set-origin">asked, never guessed from the platform: it becomes the monitoring role label, the topology icon and the NetBox role</span></div>
     <label for="f-ob-source">Address from</label>
-    <div><select id="f-ob-source" name="address_source">
-      {%- for v, words in (('static', 'Static (in the config)'), ('dhcp', 'DHCP (a Kea reservation someone made)'), ('ztp', 'ZTP (the tool reserves it and serves the config)')) %}<option value="{{ v }}"{% if v == (f.address_source or 'static') %} selected{% endif %}>{{ words }}</option>{% endfor %}
-    </select></div>
+    {#- Board A of docs/boards/oob-onboarding.html: Out-of-band (console) beside the three, its
+        availability asked as the name is given (routes/oob_onboard_v2.source_view). -#}
+    {%- set s = {"oob": {}, "chosen": f.address_source or 'static', "hostname": f.hostname} %}
+    <div><select id="f-ob-source" name="address_source" aria-describedby="ob-oob-why" hx-get="{{ url_for('oob_onboard_v2.source_view') }}" hx-trigger="change from:#f-ob-hostname{% if f.hostname %}, load{% endif %}" hx-include="closest form" hx-swap="innerHTML">{{ source_options(s) }}</select>{{ source_why(s) }}</div>
+    <span class="set-label ob-oob">Derived</span>
+    <div class="ob-oob"><span>Address, mask, management interface, VLAN, uplink and gateway</span><span class="set-origin">derived at the review from NetBox's Planned record (its address, its cable) and committed intent (the relay); the review asks only for what cannot be derived. The MAC is read from the device, after the kick-start.</span></div>
     <label class="ob-addr" for="f-ob-ip">Management address</label>
     <div class="ob-addr"><input id="f-ob-ip" name="mgmt_ip" type="text" value="{{ f.mgmt_ip }}" autocomplete="off" placeholder="192.0.2.10"><span class="set-origin">for ZTP, the address the tool reserves</span></div>
     <label class="ob-addr" for="f-ob-mask">Mask</label>
     <div class="ob-addr"><input id="f-ob-mask" name="mgmt_mask" type="text" value="{{ f.mgmt_mask }}" autocomplete="off" placeholder="255.255.255.0"></div>
     <label class="ob-mac" for="f-ob-mac">MAC address</label>
     <div class="ob-mac"><input id="f-ob-mac" name="mgmt_mac" type="text" value="{{ f.mgmt_mac }}" autocomplete="off" placeholder="aa:bb:cc:00:02:40"><span class="set-origin">DHCP: must match a host reservation in Kea (a dynamic lease is refused). ZTP: the tool writes the reservation for it, so it must be known before the device first boots</span></div>
-    <label for="f-ob-intf">Management interface</label>
-    <div><input id="f-ob-intf" name="manager_interface" type="text" value="{{ f.manager_interface }}" autocomplete="off" placeholder="GigabitEthernet2"><span class="set-origin">where the address goes; spelling is checked, the port is not (the device does not exist yet)</span></div>
-    <label for="f-ob-gw">Gateway</label>
-    <div><input id="f-ob-gw" name="manager_gateway" type="text" value="{{ f.manager_gateway }}" autocomplete="off" placeholder="(optional)"><span class="set-origin">blank when this host is on the device's subnet; behind a relay, the relay's own address</span></div>
+    <label class="ob-derived" for="f-ob-intf">Management interface</label>
+    <div class="ob-derived"><input id="f-ob-intf" name="manager_interface" type="text" value="{{ f.manager_interface }}" autocomplete="off" placeholder="GigabitEthernet2"><span class="set-origin">where the address goes; spelling is checked, the port is not (the device does not exist yet)</span></div>
+    <label class="ob-derived" for="f-ob-gw">Gateway</label>
+    <div class="ob-derived"><input id="f-ob-gw" name="manager_gateway" type="text" value="{{ f.manager_gateway }}" autocomplete="off" placeholder="(optional)"><span class="set-origin">blank when this host is on the device's subnet; behind a relay, the relay's own address</span></div>
     {#- C1346, D4 restated: option 3 on a relayed ZTP subnet, the relay's own address and nothing else; none by default. #}
     <label class="ob-ztp" for="f-ob-router">Route option (3)</label>
     <div class="ob-ztp"><select id="f-ob-router" name="ztp_router">

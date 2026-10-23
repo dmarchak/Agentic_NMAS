@@ -1,0 +1,29 @@
+{%- extends "v2/base.html" -%}
+{%- from "v2/_macros.html" import icon, badge, how, info -%}
+{%- set active_nav = 'devices' -%}
+{#- A console run's own page (board C of docs/boards/oob-onboarding.html, counted as signed off
+    2026-10-23 under the Phase 7 mode): a device's newest console run, opened by its name from
+    the In progress list and from the running card, its card live while it runs. A device being
+    onboarded may have no page yet; this page is the run's. From
+    routes/oob_onboard_v2.run_page. -#}
+{% block title %}{{ device or 'Console run' }} (console run) · {{ brand.short }}{% endblock %}
+{% block main %}
+<nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('v2.devices', list=list_name) }}">Devices</a><span aria-hidden="true">/</span><span>{{ device or 'a console run' }}</span></nav>
+<div class="page-head">
+  <div class="page-title">
+    <div class="title-row"><h1 class="mono">{{ device or 'No device named' }} {{ info('onboard', 'out-of-band-onboarding') }}</h1> {{ badge('console run', 'muted') }}</div>
+    <p class="sub">{% if has_run %}Its newest console run in {{ run_list }}: this page can close, the run continues on the server and keeps its record on History.{% else %}No console run of {{ device or 'this device' }} is recorded in {{ run_list or 'this network' }}.{% endif %}</p>
+  </div>
+  <div class="page-actions">{{ how('onboard', 'out-of-band-onboarding', op='the out-of-band onboarding') }}</div>
+</div>
+{%- if error %}<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Couldn't load:</strong> the console runs could not be read: {{ error }}.</p></div>{% endif %}
+{%- if c %}
+{% include "v2/_oob_onboard.html" %}
+{%- elif zc %}
+{%- set c = zc %}
+{% include "v2/_console_ztp.html" %}
+{%- elif not error %}
+<section class="card"><p>Nothing to show: {{ device or 'no device' }} has no console run in {{ run_list or 'no network' }}. A run is started from Devices › Add device… (Out-of-band (console)).</p>
+  <p><a class="btn" href="{{ url_for('v2.devices', list=list_name) }}">Open Devices</a></p></section>
+{%- endif %}
+{% endblock %}

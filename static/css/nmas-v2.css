@@ -1502,6 +1502,24 @@ button[data-refused]::after { content: " (" attr(data-refused) ")"; font-weight:
 /* C1346: the route option (3) is ZTP's alone, behind a relay. */
 .ob-form:has(#f-ob-source option[value="static"]:checked) .ob-ztp,
 .ob-form:has(#f-ob-source option[value="dhcp"]:checked) .ob-ztp { display: none; }
+/* Out-of-band (console), the one-decision onboarding (board A of docs/boards/oob-onboarding.html):
+   every address field is derived at the review, so none is drawn; its note says so. */
+.ob-form .ob-oob { display: none; }
+.ob-form:has(#f-ob-source option[value="ztp_console"]:checked) .ob-oob { display: block; }
+.ob-form:has(#f-ob-source option[value="ztp_console"]:checked) :is(.ob-addr, .ob-mac, .ob-ztp, .ob-derived) { display: none; }
+.ob-oob-why { display: block; }
+/* A host key's fingerprint, whole (C1591): monospace, wrapped anywhere, selected in one click. */
+.fp { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; user-select: all; }
+/* The one-decision onboarding's card and Devices' In progress list (boards B to D). */
+.oob-leave { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; margin: 8px 0 0;
+  padding: 10px 12px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--surface-2); }
+.oob-leave strong { font-size: 15px; }
+.oob-from { display: block; color: var(--ink-3); font-size: 12px; }
+.ip-panel .ip-list { list-style: none; margin: 0; padding: 0; }
+.ip-panel .ip-row { display: flex; gap: 10px; justify-content: space-between; align-items: center;
+  padding: 6px 0; border-top: 1px solid var(--line-2); flex-wrap: wrap; }
+.ip-panel .ip-row:first-child { border-top: 0; }
+.ip-panel .ip-what small { display: block; color: var(--ink-3); }
 .inline-form { display: inline-flex; margin: 0; }
 .set-config { margin: 6px 0 0; white-space: pre; background: var(--surface-2); border: 1px solid var(--line-2);
   border-radius: var(--r); padding: 10px 12px; line-height: 1.5; }

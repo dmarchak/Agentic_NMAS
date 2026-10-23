@@ -55,7 +55,10 @@ for you, the top bar shows nothing. Otherwise it shows the **In progress** chip:
   Opening the chip lists each one: the device, the operation, the step it is on (in its
   stepper's own words, "step 6 of 6"), who started it, and since when; one that has made no
   progress for too long carries a red "no progress: may be stuck". **Open its card** opens
-  the device's page, which shows that operation's card where it runs; an operation that holds
+  the device's page, which shows that operation's card where it runs; a console run (an
+  out-of-band onboarding, a console survey or kick-start) has **Open its stepper**, its own
+  page, since a device being onboarded may have no page yet. Devices draws the same list above
+  its device list while anything runs; an operation that holds
   no device (a NetBox preview, a Save of many devices) is listed without one. A device being
   onboarded is listed too, as **Onboarding: waiting for it**, from its Create until Verify or
   Abandon ends it, with where it has got to ("leased not fetched", "answering: ready to

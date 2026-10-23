@@ -72,7 +72,16 @@ def _chip():
         ip = {"error": f"{type(exc).__name__}: {exc}", "shown": True, "level": "danger",
               "words": "could not be read", "running": [], "finished": [], "unread": [],
               "counts": {}}
-    resp = _strict(render_template("v2/_in_progress.html", ip=ip))
+    # The same read drawn two ways: the top bar's chip, and Devices' In progress list
+    # (``view=panel``, the one-decision onboarding's board D: the running operations, each
+    # opening its live stepper).
+    if request.args.get("view") == "panel":
+        # The list draws what runs and what could not be read; the chip's outcomes are its own.
+        resp = _strict(render_template("v2/_in_progress_panel.html", ip={
+            k: ip.get(k) or ([] if k != "error" else "") for k in ("error", "running",
+                                                                   "unread")}))
+    else:
+        resp = _strict(render_template("v2/_in_progress.html", ip=ip))
     resp.headers["Cache-Control"] = "no-store"
     resp.headers["Vary"] = "HX-Request"
     return resp

@@ -1,0 +1,27 @@
+{%- from "v2/_macros.html" import icon, badge, how -%}
+{#- Devices' In progress list (board D of docs/boards/oob-onboarding.html, counted as signed off
+    2026-10-23 under the Phase 7 mode): the top bar's In progress read (`in_flight.chip`), drawn
+    on Devices as a short list of what runs now, each row opening its live stepper (a console
+    run's own page; any other hold, its device's page, which reopens its card). Absent while
+    nothing runs; a read that failed is drawn as unknown, never as nothing running (C99).
+    Redrawn on `in_progress`, `device_holds` and `device_progress`: no polling. -#}
+{%- if ip.error or ip.running or ip.unread %}
+<section class="card ip-panel" aria-labelledby="h-ip-panel">
+  <div class="card-head"><h2 id="h-ip-panel">In progress{% if ip.running %} <span class="muted">· {{ ip.running | length }}</span>{% endif %}</h2>{{ how('getting-started', 'in-progress', compact=True, op='the In progress list') }}</div>
+  {%- if ip.error %}<p class="ip-unread" role="alert">Could not ask which operations are running: {{ ip.error }}. This is not the same as none running.</p>{% endif %}
+  {%- for n, why in ip.unread %}<p class="ip-unread" role="alert">Could not read what runs in {{ n }}: {{ why }}. An operation may be running there.</p>{% endfor %}
+  <ul class="ip-list">
+    {%- for r in ip.running %}
+    <li class="ip-row">
+      <span class="ip-what"><strong>{{ r.device }}</strong> · {{ r.name }}{% if r.stalled %} {{ badge('no progress: may be stuck', 'danger') }}{% endif %}
+        <small>{{ r.step }} · {{ r.who }}{% if r.since %} · since {{ r.since }}{% endif %}{% if r.list %} · {{ r.list }}{% endif %}</small></span>
+      {%- if r.run %}
+      <a class="btn btn-small" href="{{ url_for('oob_onboard_v2.run_page', list=r.list, device=r.device) }}">Open its stepper</a>
+      {%- elif r.page %}
+      <a class="btn btn-small" href="{{ url_for('device_v2.device', name=r.device, list=r.list) }}">{{ 'Open its card' if r.card else 'Open ' ~ r.device }}</a>
+      {%- endif %}
+    </li>
+    {%- endfor %}
+  </ul>
+</section>
+{%- endif %}

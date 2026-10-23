@@ -237,6 +237,27 @@ NOT_AN_OPERATION = {
                                             "page, where a running operation's card reopens, a read",
     ("_in_progress.html", "Open the result"): "opens the device's page on the finished "
                                               "operation's result, a read",
+    # The one-decision out-of-band onboarding: a console run's row opens the run's own page
+    # (its live stepper, a read), on the chip's list and on Devices' In progress list.
+    ("_in_progress.html", "Open its stepper"): "opens a console run's own page, its live "
+                                               "stepper, a read",
+    ("_in_progress_panel.html", "Open its stepper"): "opens a console run's own page, its "
+                                                     "live stepper, a read",
+    ("_in_progress_panel.html", "btn btn-small"): "Open its card, or Open <device>: opens the "
+                                                  "device's page, where a running operation's "
+                                                  "card reopens, a read",
+    ("_console_ztp.html", "Open this run's page – the run continues"): (
+        "opens the run's own page while it runs (C1595), a read; the run goes on"),
+    ("_oob_onboard.html", "Open this run's page – the run continues"): (
+        "opens the run's own page while it runs (C1595), a read; the run goes on"),
+    ("_oob_onboard.html", "Open 's page – the run continues"): (
+        "opens the device's page once Create has made it (C1595), a read; the run goes on"),
+    ("_oob_onboard.html", "Open 's page to Verify"): (
+        "opens the onboarded device's page, where Verify is its own operation, a read"),
+    ("_oob_onboard.html", "Open 's page"): "opens the pending device's page, a read",
+    ("_oob_onboard.html", "Change the fields"): "puts back Add device's form with its fields, "
+                                                "creating nothing",
+    ("oob_run.html", "Open Devices"): "opens Devices, a read",
     ("_intent_check.html", "Write the ticked lines into the document"): (
         "rewrites the editor's document (its unmodeled_ack block); the commit beside it, which "
         "carries the link, writes it"),

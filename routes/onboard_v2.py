@@ -111,6 +111,15 @@ def preview():
     f = _form()
     if request.form.get("edit"):
         return _add(f=f)
+    from modules.nsot import oob_steps
+
+    if f["address_source"] == oob_steps.address_source():
+        # Out-of-band (console): ONE review card in place of the plan's review (board B of
+        # docs/boards/oob-onboarding.html): every field derived, one confirm.
+        from routes.oob_onboard_v2 import review_ctx
+
+        c, code = review_ctx(f, add=True)
+        return _add(code, f=f, oob=c)
     out, status = plan_of(f)
     if not out.get("ok"):
         return _add(status, f=f, refused=out.get("error") or "the plan could not be made")

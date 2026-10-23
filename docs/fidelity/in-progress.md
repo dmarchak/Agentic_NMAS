@@ -21,8 +21,15 @@ below, not from new shots: the top bar's network label is now its own element
 **deleted** in the warning colour once the page's network is deleted), and the picker's request
 also sends the network the label names. No region of the chip, its list or the bar's layout
 moves, so every verdict below stands; the picker at phone width (B5) is still unchanged.
+Compared again 2026-10-23 (the one-decision out-of-band onboarding, board D of
+`docs/boards/oob-onboarding.html`), by reading `_in_progress.html`'s change against the regions
+below and tests/test_oob_onboard_v2.py, not from new shots: a console run's row (an out-of-band
+onboarding, a console survey or kick-start) opens the run's own page, "Open its stepper", since
+a device being onboarded has no page until its Create; its step is its run's stepper's own
+words. Every other row and region is unchanged.
 Templates compared: templates/v2/_in_progress.html, templates/v2/base.html
-Templates sha256: `159d6c7695fea332a950e714239459271f4795d689d801dc1d8a1dd7b805a088`
+Templates sha256: `74615330f87f0bdd7d07074df9bd2036f32e2534e3a368d15244858ce170d331`
+Hash rewritten 2026-10-23 at the Phase B merge: the run page's links name their network as `?list=` (they said `?list_name=`), and the run page's Devices link takes the page's network; no drawn text, region or control moved, every verdict stands.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).
@@ -33,6 +40,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | The chip while operations run (A2, B2) | a blue pill with a dot, "2 running"; at phone width the dot and the count | the same, the count of rows below it; its words in its label and on hover at phone width | **same** |
 | Running now (A2, B2) | "Running now · 2", a row each: device · operation, the step in the stepper's own words ("step 6 of 6"), who ("you"), since when | the same: one row per operation (C217, the job's own row folded into its device's), the step from the card's stepper where it has one, else the hold's own words; its network after the time; "no progress: may be stuck" when the hold has not moved for ten minutes | **same** |
 | Open its card (A2, B2) | on every row, opening its card where it runs | on every device's row: it opens the device's page, which reopens the card (board C); a device held by an operation no card reopens says "Open <device>" | **same** |
+| A console run's row (oob board D) | not drawn on canvas v66; board D: "Open its stepper" | "Open its stepper", opening the run's own page; its step in its run's stepper's words ("Copy the bootstrap: … · step 7 of 10") | **deviation** (log: A console run's In progress row opens the run's page) |
 | An operation that holds no device (not drawn) | every row has its card | a NetBox preview or a Save of many devices is listed with its words and no button | **deviation** (log: C537: an operation that holds no device is listed without a button) |
 | Finished, not opened yet (A2, A3, B3) | "Finished, not opened yet · N"; with none, "An operation that finishes while you are elsewhere stays here, with its outcome, until you open it." | the same words | **same** |
 | A finished row (A3, B3) | its outcome chip ("rolled back", "persisted"), device · operation, what happened at when · who, Open the result | its outcome in its card's own words and colour ("rotated and persisted"), device · operation, done or failed at when · who · network, Open the result opening the device's page on the result | **same** |

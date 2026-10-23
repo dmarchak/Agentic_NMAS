@@ -101,6 +101,17 @@ The Actions menu:
 
 The rows ticked are kept when the list redraws.
 
+## In progress {#in-progress}
+
+While anything runs, **In progress** sits above the list: the same read as the top bar's In
+progress chip, as a short list. Each row names the device, the operation, the step it is on (in
+its stepper's words), who started it and since when, and opens its live stepper: **Open its
+stepper** for a console run (an out-of-band onboarding, a survey or a kick-start: the run's own
+page, since a device being onboarded may have no page yet), **Open its card** or **Open
+<device>** for any other operation (the device's page). It redraws as operations step and end,
+never by polling, and is absent while nothing runs; holds that cannot be read are said, never
+drawn as nothing running. See [What is running now](getting-started#in-progress).
+
 ## Add device {#add-device}
 
 **Add device…** opens a card above the list for a NEW device in this network (the top bar's
@@ -120,6 +131,14 @@ configuration from off its subnet; it is never a DNS server. Chosen for a device
 host is on, the review refuses it. The review says which was chosen ("offering option 3
 (routers) …" or "with no option 3"), and the reservation and its record keep it. See [ZTP behind
 a relay](onboard#ztp-behind-a-relay).
+
+**Out-of-band (console)** is the fourth source: for a Planned device whose console path NetBox
+holds and whose console-server port Mercury has a record for (else it is disabled, its reason
+and the link that fixes it under it). Chosen, every address field leaves the form: **Review the
+plan** draws ONE review with everything derived and the exact console program, and one button,
+**Onboard <device> through its console**, whose run creates the device, types its static
+address, copies its bootstrap and waits until it answers SSH. See [Out-of-band onboarding: one
+decision](onboard#out-of-band-onboarding).
 
 **Discovered** opens the devices asking for an address on the ZTP segment that the tool does
 not know, each with **Pick…**, which opens this card with the MAC it asked with: see

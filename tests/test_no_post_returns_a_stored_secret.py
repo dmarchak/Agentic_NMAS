@@ -167,6 +167,13 @@ def _bodies(v):
                                                             "step": "kickstart"}),
                                              "no survey of the device is recorded: refused, "
                                              "naming it, nothing contacted"),
+        # The one-decision out-of-band onboarding's review: this list's NetBox holds no Planned
+        # record of the name, so it is refused, naming why; nothing contacted or written.
+        "oob_onboard_v2.preview_view": (409, ("form", {"list_name": LIST, "hostname": "r1",
+                                                       "platform": "cisco_ios",
+                                                       "role": "switch"}),
+                                        "no Planned record of the name: refused, naming the "
+                                        "check that failed, nothing contacted"),
         # C1560: the console server's key is read only for a port Mercury has a record of.
         "console_servers_v2.rekey_preview": (409, ("form", {}),
                                              "no console-server port record: refused, naming "

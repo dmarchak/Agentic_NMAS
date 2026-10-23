@@ -1,0 +1,22 @@
+{#- Add device › Address from (board A of docs/boards/oob-onboarding.html, counted as signed off
+    2026-10-23 under the Phase 7 mode): the four sources, **Out-of-band (console)** enabled only
+    when NetBox holds the Planned record's console path AND Mercury holds its console-server
+    port's record (`oob_onboard.eligibility`), else disabled with the reason and the link that
+    fixes it. Two macros: the options (inside Add device's select) and the line under it. The
+    select asks for them again when the name changes (routes/oob_onboard_v2.source_view: the
+    options, and the line out of band), so the form never waits on NetBox. From `s`: `oob`,
+    `chosen`, `hostname`. -#}
+{%- macro source_options(s) -%}
+{%- set o = s.oob or {} -%}
+  {%- for v, words in (('static', 'Static (in the config)'), ('dhcp', 'DHCP (a Kea reservation someone made)'), ('ztp', 'ZTP (the tool reserves it and serves the config)')) %}<option value="{{ v }}"{% if v == s.chosen %} selected{% endif %}>{{ words }}</option>{% endfor %}
+  <option value="ztp_console"{% if o.state != 'ok' %} disabled{% elif s.chosen == 'ztp_console' %} selected{% endif %}>Out-of-band (console): the tool types the planned address over its console</option>
+{%- endmacro -%}
+{%- macro source_why(s, oob=False) -%}
+{%- set o = s.oob or {} -%}
+<span class="set-origin ob-oob-why" id="ob-oob-why"{% if oob %} hx-swap-oob="true"{% endif %} data-oob-state="{{ o.state or 'unchecked' }}">
+  {%- if o.state == 'ok' %}Out-of-band (console) is available: NetBox shows {{ s.hostname }}'s console path, and Mercury knows how to reach its console-server port.
+  {%- elif not o.state %}Out-of-band (console) is checked once the name is given: it needs the device's console path in NetBox and its console-server port's record in Mercury.
+  {%- else %}Out-of-band (console) is not available: {{ o.why }}{{ '' if (o.why or '').endswith('.') else '.' }}{% if o.fix and o.fix.href %} <a href="{{ o.fix.href }}"{% if o.fix.where == 'netbox' %} target="_blank" rel="noopener"{% endif %}>{{ o.fix.words }}</a>{% endif %}
+  {%- endif %}</span>
+{%- endmacro -%}
+{%- if s is defined %}{{ source_options(s) }}{{ source_why(s, oob=True) }}{% endif %}

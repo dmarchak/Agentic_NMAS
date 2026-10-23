@@ -3615,7 +3615,8 @@ def console_ztp_source(found=None) -> dict:
             continue
         latest = entry.get("latest") or {}
         dev = entry.get("device") or "?"
-        run = "console survey" if latest.get("kind") == Z.KIND_SURVEY else "console kick-start"
+        run = {Z.KIND_SURVEY: "console survey", "onboard": "out-of-band onboarding"}.get(
+            latest.get("kind"), "console kick-start")
         said = redact_text("; ".join(latest.get("reasons") or [])
                            or latest.get("reason") or "no reason was recorded")
         cause = (f"The {run} of {latest.get('at', '?')} by {latest.get('actor') or 'someone'} "
@@ -3642,8 +3643,10 @@ def console_ztp_source(found=None) -> dict:
                 what=f"{dev}'s {run} stopped before its end ({latest.get('outcome', '?')})",
                 cause=cause, operands=operands,
                 action={"label": (f"Read the run's transcript, check console-server port "
-                                  f"{latest.get('port_id')} and {dev}, then survey its console "
-                                  "again")}))
+                                  f"{latest.get('port_id')} and {dev}, then "
+                                  + ("onboard it again (Devices › Add device…, Out-of-band "
+                                     "(console))" if latest.get("kind") == "onboard"
+                                     else "survey its console again"))}))
     return source_result("console_ztp", label, read_at=started, took_ms=took, rows=rows,
                          checked=(f"{len(got['devices'])} device(s) with a console survey or "
                                   f"kick-start, {len(rows)} whose latest run needs a person"))
