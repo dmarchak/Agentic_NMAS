@@ -8,8 +8,9 @@ merged on main at b8bceea9). Each function here is one call to Phase A's of the 
 
 - the static program: ``console_survey.render_kickstart(profile, params)`` on the switch
   profile whose kick-start declares ``hostname``, ``interface`` (the uplink), ``vlan``,
-  ``address``, ``mask`` and ``gateway``; a switch's way back is ``ip default-gateway`` only,
-  never ``ip route`` (the operator's change 2);
+  ``address``, ``mask`` and ``gateway``; a switch's way back is ``ip default-gateway`` AND
+  ``ip route 0.0.0.0 0.0.0.0`` (the operator's change 2 had the gateway alone; a blank vIOS-L2
+  was then measured routing, which ignores it, and the operator chose both: C1606);
 - the IOS-refusal detector: ``console_session.refused_in(text, profile) -> (words, before)``;
 - the read-back: ``console_kickstart.readback_plan(lines)`` and
   ``console_kickstart.readback_verdict(plan, answers) -> {"ok", "differs", "mac", "mac_why"}``;

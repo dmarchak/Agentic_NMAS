@@ -232,6 +232,11 @@ def read_state(text: str, profile, echo: str) -> tuple:
         if not line or line == echo or ignored(line, profile):
             continue
         if index == last:
+            # The echo of the line just sent, still arriving (a vIOS-L2 echoed a copy line up
+            # to its source URL and paused over 5 s before the rest and its question, C1638):
+            # not a prompt, so the step's own bound applies, never the unknown prompt's quiet.
+            if echo and echo.startswith(line):
+                return "", line, True
             return (classify(line, profile) or UNKNOWN), line, True
         # A prompt followed by the device's own syslog and nothing else (printed after its prompt
         # with no new prompt: a switch's `%LINK-3-UPDOWN` after its `(config-if)#` prompt, C1636)

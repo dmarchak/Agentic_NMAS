@@ -95,7 +95,9 @@ def main(argv):
     if [a for a in argv[4:] if a != "--never-saved"]:
         stop(f"unknown arguments {argv[4:]!r}: only --never-saved is accepted", 2)
     s = Session(argv[1], int(argv[2]), argv[3])
-    s.send("\r")
+    # Ctrl-U first: it erases whatever is on the command line (a kick-start stopped part-way
+    # through a line, 2026-10-23: the copy line), so the RETURN after it runs nothing.
+    s.send("\x15\r")
     got, text = s.wait_for([rb"[\r\n][A-Za-z0-9._-]+>\s*$", rb"[\r\n][A-Za-z0-9._-]+#\s*$",
                             rb"[\r\n][A-Za-z0-9._-]+\(config[a-z-]*\)#\s*$"], 20)
     if got == "stop":

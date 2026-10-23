@@ -25,7 +25,8 @@ PLAN = K.readback_plan(LINES)
 READ_UPLINK = "show running-config interface GigabitEthernet0/1"
 READ_SVI = "show running-config interface Vlan1"
 READ_CON = "show running-config | section line con 0"
-READ_GLOBAL = "show running-config | include ^hostname|^ip default-gateway"
+READ_GLOBAL = "show running-config | include ^hostname|^ip default-gateway|^ip route"
+ROUTE = "ip route 0.0.0.0 0.0.0.0 192.0.2.13"
 READ_MAC = "show interfaces Vlan1"
 
 
@@ -75,6 +76,7 @@ def test_each_typed_setting_has_its_exact_expectation():
         ("hostname s5", READ_GLOBAL, "", "hostname", (("hostname s5",),)),
         ("ip default-gateway 192.0.2.13", READ_GLOBAL, "", "ip default-gateway",
          (("ip default-gateway 192.0.2.13",),)),
+        (ROUTE, READ_GLOBAL, "", "ip route", ((ROUTE,),)),
     ]
 
 
@@ -226,11 +228,18 @@ def test_each_kind_of_uplink_difference(body, typed):
 
 
 @pytest.mark.parametrize("include,typed", [
-    (["hostname Switch", "ip default-gateway 192.0.2.13"], "hostname s5"),
-    (["ip default-gateway 192.0.2.13"], "hostname s5"),
-    (["hostname s5"], "ip default-gateway 192.0.2.13"),
-    (["hostname s5", "ip default-gateway 192.0.2.1"], "ip default-gateway 192.0.2.13"),
-    (["hostname s5", "hostname s5", "ip default-gateway 192.0.2.13"], "hostname s5"),
+    (["hostname Switch", "ip default-gateway 192.0.2.13", ROUTE], "hostname s5"),
+    (["ip default-gateway 192.0.2.13", ROUTE], "hostname s5"),
+    (["hostname s5", ROUTE], "ip default-gateway 192.0.2.13"),
+    (["hostname s5", "ip default-gateway 192.0.2.1", ROUTE], "ip default-gateway 192.0.2.13"),
+    (["hostname s5", "hostname s5", "ip default-gateway 192.0.2.13", ROUTE], "hostname s5"),
+    # The route (C1606): absent, to another next hop, or beside another static route (the read
+    # shows every `ip route` line, and only the typed one may be there).
+    (["hostname s5", "ip default-gateway 192.0.2.13"], ROUTE),
+    (["hostname s5", "ip default-gateway 192.0.2.13", "ip route 0.0.0.0 0.0.0.0 192.0.2.1"],
+     ROUTE),
+    (["hostname s5", "ip default-gateway 192.0.2.13", ROUTE, "ip route 198.51.100.0 "
+      "255.255.255.0 192.0.2.13"], ROUTE),
 ])
 def test_each_kind_of_global_difference(include, typed):
     text = f"{READ_GLOBAL}\r\n" + "".join(f"{x}\r\n" for x in include) + "s5#"
@@ -283,7 +292,8 @@ def test_a_read_that_did_not_happen_is_a_difference():
     got = K.compare_readback(PLAN, {k: v for k, v in answers().items() if k != READ_GLOBAL})
     assert [d["why"] for d in got] == [
         f"typed 'hostname s5'; {READ_GLOBAL!r} was not read",
-        f"typed 'ip default-gateway 192.0.2.13'; {READ_GLOBAL!r} was not read"]
+        f"typed 'ip default-gateway 192.0.2.13'; {READ_GLOBAL!r} was not read",
+        f"typed {ROUTE!r}; {READ_GLOBAL!r} was not read"]
 
 
 def test_a_read_that_did_not_happen_names_typed_read_and_no_found_in_the_verdict():
@@ -296,7 +306,9 @@ def test_a_read_that_did_not_happen_names_typed_read_and_no_found_in_the_verdict
         {"typed": "hostname s5", "read": READ_GLOBAL, "found": None,
          "why": f"typed 'hostname s5'; {READ_GLOBAL!r} was not read"},
         {"typed": "ip default-gateway 192.0.2.13", "read": READ_GLOBAL, "found": None,
-         "why": f"typed 'ip default-gateway 192.0.2.13'; {READ_GLOBAL!r} was not read"}]
+         "why": f"typed 'ip default-gateway 192.0.2.13'; {READ_GLOBAL!r} was not read"},
+        {"typed": ROUTE, "read": READ_GLOBAL, "found": None,
+         "why": f"typed {ROUTE!r}; {READ_GLOBAL!r} was not read"}]
 
 
 def test_the_echo_is_never_read_as_the_answer():
@@ -309,9 +321,9 @@ def test_the_echo_is_never_read_as_the_answer():
 
 
 def test_the_last_line_is_the_prompt_and_is_never_read():
-    text = f"{READ_GLOBAL}\nhostname s5\nip default-gateway 192.0.2.13"
+    text = f"{READ_GLOBAL}\nhostname s5\nip default-gateway 192.0.2.13\n{ROUTE}"
     got = _differs(**{READ_GLOBAL.replace(" ", "_"): text})
-    assert [d["typed"] for d in got] == ["ip default-gateway 192.0.2.13"]
+    assert [d["typed"] for d in got] == [ROUTE]
 
 
 def test_a_section_s_body_ends_at_its_first_unindented_line():

@@ -525,6 +525,8 @@ by the blocks its golden holds (`vty 0`, `vty 1` with `length 0`, `vty 2 4`) and
   | 25 | **HEADLINE (security, beside 24): the ZTP responder could hand a device's bootstrap, one-time credential included, to a reservation that names no MAC (C1623).** `decide` read an absent reservation `hw-address` and an absent pending `mgmt_mac` both as `""`, so they matched: whoever asked from that reserved IPv4 address for that boot file would have received the pending device's rendered bootstrap. In deployed code since 2026-09-26 (P.6, `7416cbf9`), deploy 1 included; never reachable on this installation (Mercury writes neither state; measured read-only on the NMAS host: no reservation with a boot file lacks its MAC) | found by mutation run #31 (at `9d9e6b40`, 38 open VERDICT survivors in the responder): the survivor pass's test got `serve=True` on the code; fixed and generalised by the operator's sweep (C1624: four more absent-equals-absent comparisons, one helper, a test each, each guard shown failing its test when removed); fixed in the commit after `9c56f23b` with C1623 to C1627 |
   | 26 | **HEADLINE (security, beside 24): two more unmasked fields in the one-decision run's record (C1625)**, the read-back's differences and the copy's verdict, each quoting device text, found by the record-wide at-rest test the operator asked for after C1621 (a known secret planted in every device-printed input; every stored file of every run kind walked whole, 20 cases). The run's own tests had passed: their stand-ins for Phase A's pieces quote less of the device's text than the real ones (C1626) | `tests/test_console_records_at_rest.py`: `onboard-read_answer` failed at `$['read_back']['differs'][0]`, `onboard-copy_output` at `$['copy']['refused']`; masked as the kick-start's fields are; each masking site removed in turn fails its cases by JSON path; fixed in the commit after `9c56f23b` |
   | 27 | **Real-hardware catch #10 (C1636):** a prompt followed by the switch's own syslog was read as output, so the recorded take on deploy 2 stopped safely after Vlan1's `no shutdown` with the rest of the program unsent | the take's masked transcript (run 20261023T203440850197Z) as the fixture: `test_the_real_answers_reach_the_line_after_no_shutdown` and two `read_state` cases fail on the code at `f25d4dfd` and pass with the fix (deploy 2c); the bare-line-break control keeps the settle rule |
+  | 28 | **Real-hardware catch #11 (C1638):** the copy's echo, paused over 5 s after its source URL, was read as an unknown prompt, so the retry take on deploy 2c stopped safely before IOS's destination question | the take's masked transcript (run 20261023T220926977356Z) as the fixture: five tests in `test_console_copy_echo.py` fail with the echo rule removed and pass with it (deploy 2d), three controls hold |
+  | 29 | **Real-hardware catch #12 (C1606): our own design premise was wrong.** The static path's rule "a switch's way back is `ip default-gateway` only" assumed a layer-2 switch does not route; a blank vIOS-L2 routes IP, so it ignores its default gateway and the copy's TFTP request could never have left its /30 | measured read-only on the blank s5 (`show ip route`, 22:19 UTC: "Gateway of last resort is not set"), after the responder logged no request from the retry take's stray copy; the operator chose both lines, so the kick-start types and reads back `ip route 0.0.0.0 0.0.0.0 <relay>` as the only `ip route` line (deploy 2d); the tests that asserted "no route" corrected to the measurement |
   | 23 | The mutation tool's own defect: a run that measures nothing ends green (C1616) | runs #21 (copy verification, `b8bceea9`) and #24 (the responder gate, `c4716675`): the coverage refresh ended pytest exit 3 after 2,952 s and 1,651 s, 0 functions mutated, the job "success"; found by reading the logs before counting the runs toward deploy 2; both groups run again on a fresh coverage map (coverage nightly #17). Its exit 3 then traced (coverage nightly #21, twice in shard b): a 60 s setup here, about 180 s on the runner under the C tracer, passed the 120 s faulthandler bound, whose dump took an xdist worker down; both C-tracer runs now bound at 450 s |
 
 - **The testing segment's outline (about 90 s; numbers from CI runs, filled at the recording):**
@@ -1062,6 +1064,23 @@ have killed every console session at its first byte, and the run sheet's review 
   saved on s5. Every fake console had answered with its prompt last (C1626's shape again); the
   take's own masked transcript is now the fixture (`tests/fixtures/console/
   s5-kickstart-take-syslog.txt`). The operator kept the stopped take for this section.
+- **#11: the copy's echo, paused, read as a prompt (C1638, the retry take on deploy 2c,
+  2026-10-23, run 20261023T220926977356Z).** Every line accepted, the read-back agreed, the MAC
+  in use read (0c:00:08:75:80:01, as predicted); then the switch echoed the copy only up to its
+  source URL and paused over 5 s, and the session read that half line as an unknown prompt and
+  stopped once the 5 s quiet interval passed. IOS had taken the whole line: the reset's RETURN
+  afterwards answered its `Destination filename` question. The fix: an unterminated line the
+  echo begins with decides nothing, so the copy's own 150 s bound applies. The take's masked
+  transcript is the fixture (`tests/fixtures/console/s5-kickstart-take-copy-echo.txt`).
+- **#12: our own design premise (C1606, the same take).** The static path was designed on "a
+  switch's way back is `ip default-gateway` only": a layer-2 switch, we assumed, does not route.
+  The stray copy's TFTP request never reached the responder, and a read-only `show ip route` on
+  the blank s5 printed "Gateway of last resort is not set": a blank vIOS-L2 routes IP, so it
+  ignores its default gateway, and the copy could never have left its /30, whatever the session
+  did. The register had carried the question as UNKNOWN since Phase A; nothing had measured it.
+  The operator chose both lines; the kick-start now types and reads back
+  `ip route 0.0.0.0 0.0.0.0 <relay>` beside the default gateway. Not a defect the tests could
+  have seen: they asserted the premise.
 Mutation testing proves the tests notice a changed line; none of these was a changed line. Each
 was a premise about the world the tests could not see: the reason the operator ran the first
 pass early.

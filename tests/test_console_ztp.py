@@ -873,7 +873,7 @@ class TestKickstartRun:
                          ["priv_exec", "show running-config interface Vlan10\r"],
                          ["priv_exec", "show running-config | section line con 0\r"],
                          ["priv_exec", "show running-config | include "
-                                       "^hostname|^ip default-gateway\r"],
+                                       "^hostname|^ip default-gateway|^ip route\r"],
                          ["priv_exec", "show interfaces Vlan10\r"]],
             "copy": [["priv_exec", COPY + "\r"], ["copy_destination", "\r"]],
             "ends": "priv_exec",

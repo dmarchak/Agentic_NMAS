@@ -76,6 +76,7 @@
       " ip address {address} {mask}",
       " no shutdown",
       "ip default-gateway {gateway}",
+      "ip route 0.0.0.0 0.0.0.0 {gateway}",
       "end"
     ]
   }

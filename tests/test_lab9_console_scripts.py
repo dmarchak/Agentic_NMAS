@@ -217,6 +217,18 @@ def _transcript():
             for sent, answer in zip(parts[1::2], parts[2::2])]
 
 
+#: The erase session's first send: Ctrl-U (erase the command line), then RETURN (2026-10-23: a
+#: kick-start stopped part-way through its copy line left it pending). On an empty line Ctrl-U
+#: erases nothing, so the console answers it as it answered the transcript's bare RETURN.
+WAKE = b"\x15\r"
+
+
+def _erase_transcript():
+    """`_transcript()` with its first send the erase session's own (`WAKE`)."""
+    (_ret, banner), *rest = _transcript()
+    return [(WAKE, banner)] + rest
+
+
 def _with_startup_bytes(answer, size):
     """The real `dir nvram:` answer with the startup file's size edited (columns kept)."""
     edited = answer.replace(b"  254  -rw-           0 ", b"  254  -rw-" + f"{size:>12} ".encode())
@@ -302,7 +314,7 @@ class TestTheEraseSession:
     @pytest.mark.parametrize("host", _families())
     def test_a_zero_byte_startup_file_sends_return_enable_dir_and_nothing_else(
             self, host, session, tmp_path, capsys):
-        t = _transcript()
+        t = _erase_transcript()
         console = Console(host, t)
         transcript = tmp_path / "transcript.log"
         code = _run(session, console, transcript)
@@ -317,14 +329,14 @@ class TestTheEraseSession:
     @pytest.mark.parametrize("host", _families())
     def test_a_startup_file_over_zero_bytes_sends_the_erase_and_reload_and_nothing_else(
             self, host, session, tmp_path, capsys):
-        (ret, banner), (en, enabled), (dir_, listing) = _transcript()
+        (ret, banner), (en, enabled), (dir_, listing) = _erase_transcript()
         console = Console(host, [
             (ret, banner), (en, enabled), (dir_, _with_startup_bytes(listing, 1405)),
             (b"write erase\r", ERASE_CONFIRM), (b"\r", ERASED),
             (b"reload\r", SAVE_QUESTION), (b"no\r", PROCEED), (b"\r", RELOADING)])
         code = _run(session, console, tmp_path / "transcript.log")
         out = capsys.readouterr().out
-        assert console.received == (b"\renable\rdir nvram:\rwrite erase\r\rreload\rno\r\r"), \
+        assert console.received == (WAKE + b"enable\rdir nvram:\rwrite erase\r\rreload\rno\r\r"), \
             console.received
         assert console.unexpected == [] and console.script == [] and code == 0, (code, out)
         assert "startup file of 1405 bytes: erasing" in out and "nvram erased" in out
@@ -334,24 +346,24 @@ class TestTheEraseSession:
             self, host, session, tmp_path, capsys):
         """C1572: the REAL 0-byte `dir nvram:` answer, with --never-saved: reload, `no` at the
         save question, RETURN at the confirm; no `write erase`."""
-        (ret, banner), (en, enabled), (dir_, listing) = _transcript()
+        (ret, banner), (en, enabled), (dir_, listing) = _erase_transcript()
         console = Console(host, [(ret, banner), (en, enabled), (dir_, listing),
                                  (b"reload\r", SAVE_QUESTION), (b"no\r", PROCEED),
                                  (b"\r", RELOADING)])
         code = _run(session, console, tmp_path / "transcript.log", "--never-saved")
         out = capsys.readouterr().out
-        assert console.received == b"\renable\rdir nvram:\rreload\rno\r\r", console.received
+        assert console.received == WAKE + b"enable\rdir nvram:\rreload\rno\r\r", console.received
         assert console.unexpected == [] and console.script == [] and code == 0, (code, out)
         assert "reloading without an erase" in out and "write erase" not in out
 
     def test_never_saved_still_erases_a_startup_file_over_zero_bytes(self, session, tmp_path):
-        (ret, banner), (en, enabled), (dir_, listing) = _transcript()
+        (ret, banner), (en, enabled), (dir_, listing) = _erase_transcript()
         console = Console("127.0.0.1", [
             (ret, banner), (en, enabled), (dir_, _with_startup_bytes(listing, 1405)),
             (b"write erase\r", ERASE_CONFIRM), (b"\r", ERASED),
             (b"reload\r", SAVE_QUESTION), (b"no\r", PROCEED), (b"\r", RELOADING)])
         code = _run(session, console, tmp_path / "transcript.log", "--never-saved")
-        assert console.received == b"\renable\rdir nvram:\rwrite erase\r\rreload\rno\r\r"
+        assert console.received == WAKE + b"enable\rdir nvram:\rwrite erase\r\rreload\rno\r\r"
         assert console.unexpected == [] and code == 0
 
     def test_an_unknown_argument_is_refused_before_anything_is_sent(self, session, tmp_path,
@@ -367,38 +379,38 @@ class TestTheEraseSession:
 
     def test_a_reload_that_asks_no_save_question_is_confirmed_without_a_no(
             self, session, tmp_path):
-        (ret, banner), (en, enabled), (dir_, listing) = _transcript()
+        (ret, banner), (en, enabled), (dir_, listing) = _erase_transcript()
         console = Console("127.0.0.1", [
             (ret, banner), (en, enabled), (dir_, _with_startup_bytes(listing, 1405)),
             (b"write erase\r", ERASE_CONFIRM), (b"\r", ERASED),
             (b"reload\r", b"reload\r\nProceed with reload? [confirm]"), (b"\r", RELOADING)])
         code = _run(session, console, tmp_path / "transcript.log")
-        assert console.received == b"\renable\rdir nvram:\rwrite erase\r\rreload\r\r"
+        assert console.received == WAKE + b"enable\rdir nvram:\rwrite erase\r\rreload\r\r"
         assert console.unexpected == [] and code == 0
 
     @pytest.mark.parametrize("case, replies, sent", [
         # enable answered with a password prompt: the image's configuration sets one.
         ("Password:", lambda t: [t[0], (t[1][0], b"enable\r\nPassword: ")],
-         b"\renable\r"),
+         WAKE + b"enable\r"),
         # The console asks for a login (IOS's wording for `login local` on the line).
         ("Username:", lambda t: [(t[0][0], t[0][1].rsplit(b"Switch>", 1)[0]
                                  + b"\r\n\r\nUser Access Verification\r\n\r\nUsername: ")],
-         b"\r"),
+         WAKE),
         # `dir nvram:` paged: the listing cut after its first entry and IOS's pager prompt.
         ("--More--", lambda t: [t[0], t[1], (t[2][0], t[2][1].split(b"private-config")[0]
                                          + b"\r\n --More-- ")],
-         b"\renable\rdir nvram:\r"),
+         WAKE + b"enable\rdir nvram:\r"),
         # The setup dialog (IOS's wording) instead of a prompt.
         ("initial configuration dialog",
          lambda t: [(t[0][0], b"\r\n\r\n         --- System Configuration Dialog ---\r\n\r\n"
                               b"Would you like to enter the initial configuration dialog? "
                               b"[yes/no]: ")],
-         b"\r"),
+         WAKE),
     ])
     @pytest.mark.parametrize("host", _families())
     def test_it_stops_sending_on_a_prompt_it_must_not_answer(self, host, case, replies, sent,
                                                              session, tmp_path, capsys):
-        console = Console(host, replies(_transcript()))
+        console = Console(host, replies(_erase_transcript()))
         code = _run(session, console, tmp_path / "transcript.log")
         out = capsys.readouterr().out
         assert console.received == sent, (case, console.received)
