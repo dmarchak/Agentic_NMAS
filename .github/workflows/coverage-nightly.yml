@@ -30,9 +30,12 @@ jobs:
       matrix:
         shard: [browser1, browser2, a, b]
     runs-on: ubuntu-24.04
-    # ci.yml's bound for the per-test measurement: run #752's tests step took 587 s, the step's
-    # bound 2.5x that (NMAS_TEST_TIMEOUT 1470 s), the job's that plus the setup, rounded up.
-    timeout-minutes: 26
+    # The per-test measurement's bound (2026-10-23, nightly #17 at c4716675, cancelled by the
+    # old 26-minute bound): the tests steps took 931 s (b), 915 s (browser1), 618 s (browser2),
+    # and a passed 97% at its cancel, about 1,100 s; the step's bound 2.5x that
+    # (NMAS_TEST_TIMEOUT 2750 s), the job's that plus the setup and the upload (about 660 s,
+    # browser2's 21.3-minute job less its 618 s of tests), rounded up. Before: run #752's 587 s.
+    timeout-minutes: 58
     steps:
       - uses: actions/checkout@v4
         with:
@@ -99,7 +102,7 @@ jobs:
           COVERAGE_CORE: ctrace
           COVERAGE_FILE: .coverage.${{ matrix.shard }}
           NMAS_TEST_TIERS: ${{ github.workspace }}/tiers-${{ matrix.shard }}
-          NMAS_TEST_TIMEOUT: "1470"
+          NMAS_TEST_TIMEOUT: "2750"
           NMAS_REQUIRE_PG: "1"
         run: >
           scripts/nmas-test -q -p no:cacheprovider -n auto
