@@ -270,6 +270,14 @@ class TestAPushMeasuresByTierAndTheNightPerTest:
         keep = night["jobs"]["report"]["steps"][-1]
         assert keep["with"]["name"] == "coverage-drilldown"
 
+    def test_the_nights_per_test_bound_holds_its_slowest_setup_under_the_c_tracer(self):
+        """C1616 (2026-10-23): under the C tracer a setup measured about 180 s on the runner
+        passed pytest.ini's 120 s, and the dump inside an xdist worker took it down (C647's
+        shape). The night's bound is 2.5x that; a push's stays pytest.ini's."""
+        ci, night = self._docs()
+        assert "-o faulthandler_timeout=450" in _tests_step(night)["run"]
+        assert "faulthandler_timeout" not in _tests_step(ci)["run"]
+
     def test_the_nights_tests_stand_on_cis_setup_step_for_step(self):
         ci, night = self._docs()
         ci_steps, n_steps = ci["jobs"]["test"]["steps"], night["jobs"]["test"]["steps"]

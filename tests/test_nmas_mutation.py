@@ -1347,6 +1347,13 @@ class TestTheWorkflow:
         # nightly's four shards' test steps summed, 2,070 s on run #4, the largest of three).
         assert 2.3 * 2070 <= cli.REFRESH_TIMEOUT_S <= 2.7 * 2070
 
+    def test_the_refresh_carries_the_nights_per_test_bound(self):
+        """C1616: the refresh is the whole suite under the C tracer, as the coverage nightly;
+        at pytest.ini's 120 s a slow setup's dump took an xdist worker down and the refresh
+        ended exit 3 with no data."""
+        cli = open(os.path.join(ROOT, "scripts", "nmas-mutation"), encoding="utf-8").read()
+        assert '"-n", "auto", "-o", "faulthandler_timeout=450",' in cli
+
     def test_mutmut_runs_one_mutant_at_a_time(self):
         cli = open(os.path.join(ROOT, "scripts", "nmas-mutation"), encoding="utf-8").read()
         assert '"run", "--max-children", "1"' in cli

@@ -97,6 +97,11 @@ jobs:
         run: mkdir -p "tiers-${{ matrix.shard }}"
 
       # A context per test, with branches: the C tracer, the measurement a push no longer takes.
+      # The per-test bound (pytest.ini's faulthandler_timeout, 120 s) is 450 s here (C1616,
+      # 2026-10-23): under the C tracer test_source_index's population setup measured 60 s on
+      # the laptop and about 180 s on the runner (shard b about 3x slower in this mode), so a
+      # dump fired inside an xdist worker and took it down (C647's shape), its coverage file
+      # half-written; 450 s is 2.5x the runner's 180 s.
       - name: Tests (R1, R4), confined to loopback, measured per test
         env:
           COVERAGE_CORE: ctrace
@@ -105,7 +110,7 @@ jobs:
           NMAS_TEST_TIMEOUT: "2750"
           NMAS_REQUIRE_PG: "1"
         run: >
-          scripts/nmas-test -q -p no:cacheprovider -n auto
+          scripts/nmas-test -q -p no:cacheprovider -n auto -o faulthandler_timeout=450
           --cov=modules --cov=routes --cov=app --cov-report=
           --cov-context=test --cov-branch
           $(python scripts/nmas-shards ${{ matrix.shard }})

@@ -231,8 +231,11 @@ def _refresh(stale: list, out: str, head: str) -> dict:
     for name in ("MUTANT_UNDER_TEST", "NMAS_COVERAGE_TIERS", "COVERAGE_PROCESS_START",
                  "NMAS_CHILD_COVERAGE"):
         env.pop(name, None)
+    # The per-test bound is the coverage nightly's, 450 s (C1616): under the C tracer a slow
+    # setup passes pytest.ini's 120 s, and the dump inside an xdist worker takes it down.
     cmd = [os.path.join(M.ROOT, "scripts", "nmas-test"), "-q", "-rfE", "-p", "no:cacheprovider",
-           "-n", "auto", *[f"--cov={p[:-3].replace('/', '.')}" for p in paths],
+           "-n", "auto", "-o", "faulthandler_timeout=450",
+           *[f"--cov={p[:-3].replace('/', '.')}" for p in paths],
            "--cov-report=", "--cov-context=test"]
     print(f"nmas-mutation: refreshing the coverage map of {len(stale)} stale function(s) in "
           f"{len(paths)} module(s): the whole suite, per test", flush=True)
