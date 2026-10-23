@@ -1352,7 +1352,9 @@ def plan(state: dict, head: str, root: str = ROOT, also: list = (), debt: dict =
     the record holds under another name, is kept with those results renamed (`carried`); one
     the record finished, or the *debt* list holds, is not mutated again (`skipped_moved`).
     *also*: functions (`path::qualname`) a person names to mutate whole tonight, changed or
-    not. The scope is *root*'s tests/coverage_scope.py, the coverage tool's. *cap*: at most
+    not; one the record holds unfinished at its very text runs only its unchecked and open
+    mutants, its results kept (a function larger than one budget then finishes across runs).
+    The scope is *root*'s tests/coverage_scope.py, the coverage tool's. *cap*: at most
     that many functions tonight, the oldest unfinished first (`since`); the rest are
     `deferred`, carried by the record as they were (one not started as `whole`)."""
     scope = _load("coverage_scope", os.path.join(root, "tests", "coverage_scope.py"))
@@ -1427,9 +1429,15 @@ def plan(state: dict, head: str, root: str = ROOT, also: list = (), debt: dict =
         f = tuple(k.split("::", 1))
         if not function_hash(read(f[0]), f[1]):
             raise ValueError(f"{k}: no counted function of that name at {head[:9]}")
+        named.append(f)
+        if k in kept and k not in carried:
+            # Named, and held by the record unfinished at this very text (a budget cut it
+            # short): its results stand and only its unchecked and open mutants run, first in
+            # line. Run whole, a function larger than one budget could never finish (runs #34
+            # and #36, 2026-10-23: `_phases`, 448 mutants, stopped at the same mutant twice).
+            continue
         if f not in fresh:
             fresh.append(f)
-        named.append(f)
         kept.pop(k, None)
         names.pop(k, None)
         carried.pop(k, None)

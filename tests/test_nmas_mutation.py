@@ -297,6 +297,25 @@ class TestTheCap:
         p = M.plan(state, head, root=root, cap=1, also=["modules/more.py::d"])
         assert p["planned"] == [("modules/more.py", "d")]
 
+    def test_a_named_function_the_record_holds_unfinished_continues_not_restarts(self,
+                                                                                 history):
+        """A function the record holds at this very text with mutants left (a budget cut it
+        short), named tonight, goes first and runs only its unchecked mutants, its results
+        kept: run whole, one larger than a budget never finishes (runs #34 and #36,
+        2026-10-23). A named function the record does not hold is still mutated whole."""
+        root, _head = history
+        state, head = self._three(root)
+        state["functions"]["modules/more.py::b"]["results"] = {
+            "modules.more.x_b__mutmut_1": "killed", "modules.more.x_b__mutmut_2": "not checked"}
+        p = M.plan(state, head, root=root, cap=1, also=["modules/more.py::b"])
+        assert p["planned"] == [("modules/more.py", "b")]
+        assert p["names"]["modules/more.py::b"] == ["modules.more.x_b__mutmut_2"]
+        assert M.patterns(p) == ["modules.more.x_b__mutmut_2"]
+        assert p["kept"]["modules/more.py::b"]["results"]["modules.more.x_b__mutmut_1"] == \
+            "killed"
+        whole = M.plan(state, head, root=root, cap=1, also=["modules/more.py::d"])
+        assert M.patterns(whole) == ["modules.more.x_d__mutmut_*"]
+
     def test_a_record_from_before_the_cap_still_loads_and_is_the_oldest(self, history):
         """Earlier nights' records hold no `since` and no `whole`: they load as they are, their
         functions first in line, their results kept."""

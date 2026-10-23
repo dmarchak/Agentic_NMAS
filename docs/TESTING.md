@@ -395,7 +395,10 @@ nothing scores 100% coverage and 0% here. Each night:
   the night and other labels, and saves its record under `mutation-group-<label>-<run>`,
   outside the `mutation-state-` prefix a night restores: its verdict stands in its run alone.
   A labelled run restores its own group's newest record first, then the nights', so a function
-  its budget cut short continues on the next run of the same label (2026-10-23, run #34).
+  its budget cut short continues on the next run of the same label (2026-10-23, run #34). A
+  NAMED function the record holds unfinished at its very text runs only its unchecked and open
+  mutants, its results kept (runs #34 and #36 had re-run `_phases` whole, 448 mutants, and
+  stopped at the same mutant twice); one the record does not hold is still mutated whole.
   Dispatched with `functions` and a `cap` equal to their count, it runs only those.
   [tests/test_nmas_mutation.py, `TestTheWorkflow`]
 - **The cap** (C834): at most `NIGHT_CAP` functions a night (`plan --cap`), the oldest
