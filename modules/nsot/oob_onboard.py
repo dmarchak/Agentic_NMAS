@@ -872,8 +872,12 @@ def run(list_name: str, fields: dict, *, confirmed_hash: str, actor: str, actor_
 
 def _finish_stop(rec: dict, console, rule: str, compared: str, undo) -> None:
     from modules.nsot import console_ztp as Z
+    from modules.redact import redact_text
 
     sent = _sent_lines(console)
+    # The comparison can carry what the device printed (a refusal's words): masked at rest, as
+    # the reason and the sent lines are.
+    compared = redact_text(compared, console.values if console is not None else None)
     rec["stop"] = {"rule": rule, "compared": compared, "sent": sent,
                    "undone": (undo or {}).get("undone", []),
                    "remaining": (undo or {}).get("remaining", []),

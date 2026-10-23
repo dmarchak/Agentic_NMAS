@@ -745,4 +745,81 @@ EQUIVALENT = [
            "as the line above: '' and None alike are nothing to fill (`and value`), so the "
            "vlan falls to its own default (K.DEFAULT_VLAN) and the interface is left out "
            "either way"),
+    # ── The one-decision out-of-band onboarding, part C: its stops (`_finish_stop`, `_then`,
+    # `_console_phases`; run #25 of 2026-10-23, on demand, at c4716675). Every other survivor
+    # there is killed by a test in tests/test_oob_run_stops.py naming the behaviour.
+    *_each("modules.nsot.oob_onboard._then",
+           "refused = console.session.refused if console.session is not None else None",
+           ("refused = console.session.refused if (console.session is not None) or True "
+            "else None",),
+           "_then reads the session only after `console.then`, which leaves console.session "
+           "set (it begins a session from the seed, or continues the one `attach` set on a "
+           "done wake, dereferencing it either way): with a session set the guard is true "
+           "both ways (as console_ztp._stopped's)"),
+    *_each("modules.nsot.oob_onboard._then",
+           "raise _Stop(\"unexpected\", f\"expected {' or '.join(final)} after {what}; the "
+           "session \"",
+           ("raise _Stop(\"unexpected\", f\"expected {'XX or XX'.join(final)} after {what}; "
+            "the session \"",
+            "raise _Stop(\"unexpected\", f\"expected {' OR '.join(final)} after {what}; the "
+            "session \""),
+           "every caller (the prelude and blank check, the blank check again, each read-back) "
+           "passes one final state, (P.PRIV_EXEC,), and a join of one item prints no "
+           "separator: the words are the same"),
+    # ── Out-of-band onboarding in one decision, the run's steps, part A (run #25 of
+    # 2026-10-23, on demand, at c4716675; each applied again by hand at 9d9e6b40). Every other
+    # survivor of this half is killed by a test in tests/test_oob_run_phases_a.py naming the
+    # behaviour.
+    *_each("modules.nsot.oob_onboard._phases",
+           'line = text.rstrip("\\r")',
+           ('line = text.rstrip(None)', 'line = text.lstrip("\\r")'),
+           "`line` is read only as `line.strip()`, and each text is a typed line and its CR "
+           "(`_program`): stripped whole, the line is the same whichever end lost the CR first "
+           "and whatever whitespace went with it"),
+    *_each("modules.nsot.oob_onboard._phases",
+           'cmd = text.rstrip("\\r")',
+           ('cmd = text.rstrip(None)', 'cmd = text.rstrip("XX\\rXX")'),
+           "each text is a read-back read and its CR (`_program`), and no read ends in "
+           "whitespace or 'X' (console_kickstart's READ_INTERFACE and READ_MAC end in an "
+           "interface name, which console_survey.SHAPES ends in a digit; READ_SECTION in 'line "
+           "con 0'; READ_GLOBAL in a GLOBAL_KEYS key), so only the CR is stripped either way"),
+    *_each("modules.nsot.oob_onboard._phases",
+           "said, _before = oob_steps.refused_in(out, prof)",
+           ("said, _before = oob_steps.refused_in(None, prof)",),
+           "unreachable as a stop: `_then` returned `out` only from a session that ended done, "
+           "and a session ends done only past `ConsoleSession._refused` on that same text "
+           "(everything since the last send) with that same profile and the same detector "
+           "(console_session.refused_in, which the adapter calls), so this read never finds a "
+           "refusal: the read-back's refusal is `_then`'s `refused_as` stop "
+           "(tests/test_oob_onboard.py, test_a_refused_read_back_stops_and_undoes)"),
+    *_each("modules.nsot.oob_onboard._phases",
+           'raise _Stop("read_back", f"the read-back {cmd!r} was refused: {said!r}")',
+           ('raise _Stop(None, f"the read-back {cmd!r} was refused: {said!r}")',
+            'raise _Stop("read_back", None)',
+            'raise _Stop(f"the read-back {cmd!r} was refused: {said!r}")',
+            'raise _Stop("read_back", )',
+            'raise _Stop("XXread_backXX", f"the read-back {cmd!r} was refused: {said!r}")',
+            'raise _Stop("READ_BACK", f"the read-back {cmd!r} was refused: {said!r}")'),
+           "never raised, as the line above: `said` is always empty here, since the session "
+           "that ended done had already asked the same detector of the same text and profile"),
+    # ── Out-of-band onboarding, the one-decision run's steps, part B (run #25 of 2026-10-23,
+    # at c4716675; each applied again by hand at 9d9e6b40). Every other survivor of this part
+    # is killed by a test in tests/test_oob_run_phases_b.py naming the behaviour.
+    *_each("modules.nsot.oob_onboard._phases",
+           'raise _Stop("unexpected", f"expected the setup dialog, Press RETURN or the user '
+           'prompt "',
+           ('raise _Stop(None, f"expected the setup dialog, Press RETURN or the user prompt "',
+            'raise _Stop("unexpected", None)',
+            'raise _Stop(f"expected the setup dialog, Press RETURN or the user prompt "',
+            'raise _Stop("unexpected", )',
+            'raise _Stop("XXunexpectedXX", f"expected the setup dialog, Press RETURN or the '
+            'user prompt "',
+            'raise _Stop("UNEXPECTED", f"expected the setup dialog, Press RETURN or the user '
+            'prompt "'),
+           "the statement is unreachable: `_Console.attach` returns None or a state in "
+           "console_session.FINAL, and on a done wake the state it returns is its attach state "
+           "(the first prompt seen, and FINAL's first ends the wake; any other prompt aborts "
+           "it); FINAL's states outside the prelude are PRIV_EXEC and CONFIG, which are "
+           "console_survey.SIGNED_IN and stop as `signed_in` first, and a None wake past the "
+           "first check was found in SIGNED_IN or LOGIN and stops as `signed_in` or `login`"),
 ]
