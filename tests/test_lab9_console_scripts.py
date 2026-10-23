@@ -405,3 +405,120 @@ class TestTheEraseSession:
         assert console.unexpected == [] and code == 2, (case, code, out)
         # It stopped on the word itself, at once, never on a wait that ran out later.
         assert "STOPPED, nothing more sent" in out and repr(case) in out, out
+
+
+# ── The SVI MAC read (console-show-mac.py) ────────────────────────────────────────────────
+
+SHOW_MAC = os.path.join(ROOT, "lab", "lab9", "console-show-mac.py")
+
+
+def _svi_text():
+    """s1's REAL `show interfaces Vlan10` (Mercury's Show commands, 2026-10-23), as IOS sends it."""
+    return _fixture("vios_l2_show_interfaces_vlan10.txt").replace(b"\n", b"\r\n")
+
+
+@pytest.fixture
+def show_mac(monkeypatch):
+    mod = _load(SHOW_MAC, "console_show_mac")
+    monkeypatch.setattr(mod, "time", types.SimpleNamespace(
+        sleep=lambda s: None, monotonic=time.monotonic, strftime=time.strftime,
+        gmtime=time.gmtime))
+    return mod
+
+
+def _show(mod, console, transcript, *extra):
+    argv = ["console-show-mac.py", console.listener.srv.getsockname()[0], str(console.port),
+            str(transcript), *extra]
+    try:
+        code = mod.main(argv)
+    except SystemExit as exc:
+        code = exc.code
+    console.finish()
+    return code
+
+
+class TestTheSviMacRead:
+    @pytest.mark.parametrize("host", _families())
+    def test_it_reads_the_svi_mac_and_sends_only_its_three_inputs(self, host, show_mac,
+                                                                  tmp_path, capsys):
+        console = Console(host, [
+            (b"\r", b"\r\nSwitch>"),
+            (b"terminal length 0\r", b"terminal length 0\r\nSwitch>"),
+            (b"show interfaces Vlan10\r", b"show interfaces Vlan10\r\n" + _svi_text()
+             + b"\r\nSwitch>")])
+        code = _show(show_mac, console, tmp_path / "t.log", "Vlan10")
+        out = capsys.readouterr().out
+        assert console.received == b"\rterminal length 0\rshow interfaces Vlan10\r"
+        assert console.unexpected == [] and code == 0, (code, out)
+        assert "Vlan10 MAC: 0c00.6ce9.800a" in out
+        assert "state: Vlan10 is up, line protocol is up" in out
+        # Nothing else the console showed is printed (its address line stays in the transcript).
+        assert "10.10.10.2" not in out
+        assert stat.S_IMODE(os.stat(tmp_path / "t.log").st_mode) == 0o600
+
+    def test_no_address_line_says_the_mac_is_unknown(self, show_mac, tmp_path, capsys):
+        console = Console("127.0.0.1", [
+            (b"\r", b"\r\nSwitch>"), (b"terminal length 0\r", b"terminal length 0\r\nSwitch>"),
+            (b"show interfaces Vlan1\r", b"show interfaces Vlan1\r\n                       ^\r\n"
+                                         b"% Invalid input detected at '^' marker.\r\nSwitch>")])
+        code = _show(show_mac, console, tmp_path / "t.log")
+        assert code == 3 and "the MAC is unknown" in capsys.readouterr().out
+
+    @pytest.mark.parametrize("reply, word", [
+        (b"\r\n\r\nUser Access Verification\r\n\r\nUsername: ", "Username:"),
+        (b"\r\nWould you like to enter the initial configuration dialog? [yes/no]: ",
+         "initial configuration dialog")])
+    def test_it_stops_on_a_prompt_it_must_not_answer(self, show_mac, tmp_path, capsys, reply,
+                                                     word):
+        console = Console("127.0.0.1", [(b"\r", reply)])
+        code = _show(show_mac, console, tmp_path / "t.log")
+        out = capsys.readouterr().out
+        assert (code, console.received) == (2, b"\r"), (code, console.received)
+        assert "STOPPED, nothing more sent" in out and repr(word) in out
+
+    def test_a_paged_answer_stops_at_the_pager(self, show_mac, tmp_path, capsys):
+        console = Console("127.0.0.1", [
+            (b"\r", b"\r\nSwitch>"), (b"terminal length 0\r", b"terminal length 0\r\nSwitch>"),
+            (b"show interfaces Vlan1\r", _svi_text().split(b"  MTU")[0] + b"\r\n --More-- ")])
+        code = _show(show_mac, console, tmp_path / "t.log")
+        assert (code, console.received) == (2, b"\rterminal length 0\rshow interfaces Vlan1\r")
+
+    @pytest.mark.parametrize("host", _families())
+    def test_stp_reads_the_bridge_address_and_says_its_prediction_is_one(self, host, show_mac,
+                                                                         tmp_path, capsys):
+        """s1's REAL `show spanning-tree vlan 1`: its bridge 0c00.6ce9.b700, whose first four
+        bytes are its SVIs' (Vlan10 0c00.6ce9.800a, measured), so Vlan1 is predicted ....8001."""
+        stp = _fixture("vios_l2_show_spanning_tree_vlan1.txt").replace(b"\n", b"\r\n")
+        console = Console(host, [
+            (b"\r", b"\r\nSwitch>"), (b"terminal length 0\r", b"terminal length 0\r\nSwitch>"),
+            (b"show spanning-tree vlan 1\r", b"show spanning-tree vlan 1\r\n" + stp
+             + b"\r\nSwitch>")])
+        code = _show(show_mac, console, tmp_path / "t.log", "--stp")
+        out = capsys.readouterr().out
+        assert console.received == b"\rterminal length 0\rshow spanning-tree vlan 1\r"
+        assert console.unexpected == [] and code == 0, (code, out)
+        assert "bridge address: 0c00.6ce9.b700" in out
+        assert "0c00.6ce9.8001" in out and "not on this one" in out
+
+    def test_stp_reads_this_bridge_not_the_root(self, show_mac, tmp_path, capsys):
+        """A planted case (a minimal edit of the real output): another switch is the root, as on
+        s2's VLAN 10, so the Root ID's address differs and only the Bridge ID's is this switch."""
+        stp = _fixture("vios_l2_show_spanning_tree_vlan1.txt").replace(b"\n", b"\r\n")
+        stp = stp.replace(b"0c00.6ce9.b700", b"0c00.6f31.0c00", 1)      # the root's line only
+        assert stp.count(b"0c00.6ce9.b700") == 1
+        console = Console("127.0.0.1", [
+            (b"\r", b"\r\nSwitch>"), (b"terminal length 0\r", b"terminal length 0\r\nSwitch>"),
+            (b"show spanning-tree vlan 1\r", b"show spanning-tree vlan 1\r\n" + stp
+             + b"\r\nSwitch>")])
+        assert _show(show_mac, console, tmp_path / "t.log", "--stp") == 0
+        out = capsys.readouterr().out
+        assert "bridge address: 0c00.6ce9.b700" in out and "0c00.6ce9.8001" in out, out
+
+    def test_a_malformed_interface_is_refused_before_a_connection(self, show_mac, tmp_path,
+                                                                  monkeypatch):
+        opened = []
+        monkeypatch.setattr(show_mac, "Session", lambda *a: opened.append(a))
+        with pytest.raises(SystemExit) as exc:
+            show_mac.main(["console-show-mac.py", "192.0.2.1", "5000", str(tmp_path / "t"),
+                           "Vlan1; reload"])
+        assert (exc.value.code, opened) == (2, [])

@@ -992,6 +992,12 @@ have killed every console session at its first byte, and the run sheet's review 
   rendered `switchport mode trunk` before `switchport trunk encapsulation dot1q`, which a vIOS-L2
   refuses: s5's Day 1 trunk to R8 would have failed. Now in the order IOS prints; s1 to s4's
   committed intents preview unchanged (0 lines sent, 0 departures, before and after).
+- **The MAC the survey reads (C1590, s5's survey itself, 2026-10-23).** The switch profile read
+  "Base Ethernet MAC Address" from `show version`, which vIOS-L2 never prints; and a switch asks
+  DHCP from an SVI whose MAC is per VLAN, while a blank switch has no SVI. Measured read-only on
+  s1 and s2 (SVI MACs `…80<vlan>`, spanning tree's bridge address sharing their first four
+  bytes) and on s5 over its console (bridge `0c00.0875.c700`, so Vlan1 predicted `…8001`); the
+  first lease measures the prediction.
 Mutation testing proves the tests notice a changed line; none of these was a changed line. Each
 was a premise about the world the tests could not see: the reason the operator ran the first
 pass early.
