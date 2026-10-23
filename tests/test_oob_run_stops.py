@@ -145,6 +145,19 @@ class TestAStopWithNoConsole:
         assert rec["stop"]["compared"].startswith("the console printed:\nenable secret 5 ")
 
 
+class TestTheMacReasonIsMaskedToo:
+    def test_a_secret_held_as_the_mac_s_text_is_masked_in_the_read_back_s_reason(self, world):
+        """The read-back's MAC reason quotes the device's `address is <mac>` text: every value
+        the installation holds is masked in every field the record keeps, this one included,
+        whatever the value looks like (mutation run #38 at 8747948e: `mac_why`'s masking
+        dropped). Held in memory and on disk alike."""
+        from tests.test_oob_onboard import MAC_TEXT
+
+        rec = run_with(world, answers(), values={MAC_TEXT: "device mac"})
+        assert rec["read_back"]["mac_why"] == "the MAC in use, from <redacted:device mac>", \
+            rec["read_back"]
+
+
 class TestSecretsInTheStop:
     def test_a_secret_the_device_prints_in_a_refusal_is_masked_in_the_record(self, world):
         line = f"ip address {ADDRESS} {MASK}"
