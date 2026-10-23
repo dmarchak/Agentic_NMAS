@@ -14,10 +14,17 @@ It STOPS, sending nothing more, on: "Username:" or "Password:" anywhere; the set
 question; "--More--"; a prompt it does not recognise; a reply not arriving in time; nvram holding
 no startup file, or one of size 0.
 
+**`--never-saved` (C1572, 2026-10-23):** for a device that never saved (s5 after an out-of-band
+first pass stopped before Verify; its startup file was measured 0 bytes on 2026-10-22), nvram with
+no startup file, or one of size 0, is reloaded WITHOUT an erase: RETURN, "enable" (only at ">"),
+"dir nvram:", "reload", "no" (only at the save question), RETURN. A startup file over 0 bytes is
+still erased first. Every stop above holds; an argument other than this flag is refused before
+anything is sent.
+
 It prints only its own step lines and, from "dir nvram:", the size and name of each entry: never
 a configuration's contents. The raw transcript is written to a root-only file for the record.
 
-    python3 s5-erase-session.py <host> <port> <transcript file>
+    python3 s5-erase-session.py <host> <port> <transcript file> [--never-saved]
 """
 
 import os
@@ -84,6 +91,9 @@ def stop(why, code=2):
 
 
 def main(argv):
+    never_saved = "--never-saved" in argv[4:]
+    if [a for a in argv[4:] if a != "--never-saved"]:
+        stop(f"unknown arguments {argv[4:]!r}: only --never-saved is accepted", 2)
     s = Session(argv[1], int(argv[2]), argv[3])
     s.send("\r")
     got, text = s.wait_for([rb"[\r\n][A-Za-z0-9._-]+>\s*$", rb"[\r\n][A-Za-z0-9._-]+#\s*$"], 20)
@@ -113,10 +123,13 @@ def main(argv):
     if total:
         print(f"nvram: {total.group(1).decode()} bytes total, {total.group(2).decode()} free")
     startup = [int(size) for size, name in entries if re.fullmatch(rb"startup.config", name)]
-    if not startup:
-        stop("nvram holds no startup file: the indication was wrong", 3)
-    if startup[0] == 0:
-        stop("nvram's startup file is 0 bytes: the indication was wrong", 3)
+    if not startup or startup[0] == 0:
+        if not never_saved:
+            stop("nvram holds no startup file: the indication was wrong" if not startup else
+                 "nvram's startup file is 0 bytes: the indication was wrong", 3)
+        # C1572: a device that never saved boots configless from a reload alone; nothing to erase.
+        print("nvram holds no startup configuration (never saved): reloading without an erase")
+        return reload(s)
     print(f"the image's nvram holds a startup file of {startup[0]} bytes: erasing")
     s.send("write erase\r")
     got, text = s.wait_for([rb"\[confirm\]"], 20)
@@ -130,6 +143,11 @@ def main(argv):
     if got != 0:
         stop("no prompt after the erase")
     print("nvram erased")
+    return reload(s)
+
+
+def reload(s):
+    """`reload`, `no` only at the save question, RETURN at the reload confirm; nothing else."""
     s.send("reload\r")
     got, text = s.wait_for([rb"Save\? \[yes/no\]:", rb"Proceed with reload\? \[confirm\]"], 30)
     if got == 0:

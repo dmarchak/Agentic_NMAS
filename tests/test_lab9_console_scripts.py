@@ -281,9 +281,9 @@ def session(monkeypatch):
     return mod
 
 
-def _run(session, console, transcript):
+def _run(session, console, transcript, *extra):
     argv = ["s5-erase-session.py", console.listener.srv.getsockname()[0], str(console.port),
-            str(transcript)]
+            str(transcript), *extra]
     try:
         code = session.main(argv)
     except SystemExit as exc:
@@ -328,6 +328,42 @@ class TestTheEraseSession:
             console.received
         assert console.unexpected == [] and console.script == [] and code == 0, (code, out)
         assert "startup file of 1405 bytes: erasing" in out and "nvram erased" in out
+
+    @pytest.mark.parametrize("host", _families())
+    def test_never_saved_reloads_a_zero_byte_startup_without_an_erase(
+            self, host, session, tmp_path, capsys):
+        """C1572: the REAL 0-byte `dir nvram:` answer, with --never-saved: reload, `no` at the
+        save question, RETURN at the confirm; no `write erase`."""
+        (ret, banner), (en, enabled), (dir_, listing) = _transcript()
+        console = Console(host, [(ret, banner), (en, enabled), (dir_, listing),
+                                 (b"reload\r", SAVE_QUESTION), (b"no\r", PROCEED),
+                                 (b"\r", RELOADING)])
+        code = _run(session, console, tmp_path / "transcript.log", "--never-saved")
+        out = capsys.readouterr().out
+        assert console.received == b"\renable\rdir nvram:\rreload\rno\r\r", console.received
+        assert console.unexpected == [] and console.script == [] and code == 0, (code, out)
+        assert "reloading without an erase" in out and "write erase" not in out
+
+    def test_never_saved_still_erases_a_startup_file_over_zero_bytes(self, session, tmp_path):
+        (ret, banner), (en, enabled), (dir_, listing) = _transcript()
+        console = Console("127.0.0.1", [
+            (ret, banner), (en, enabled), (dir_, _with_startup_bytes(listing, 1405)),
+            (b"write erase\r", ERASE_CONFIRM), (b"\r", ERASED),
+            (b"reload\r", SAVE_QUESTION), (b"no\r", PROCEED), (b"\r", RELOADING)])
+        code = _run(session, console, tmp_path / "transcript.log", "--never-saved")
+        assert console.received == b"\renable\rdir nvram:\rwrite erase\r\rreload\rno\r\r"
+        assert console.unexpected == [] and code == 0
+
+    def test_an_unknown_argument_is_refused_before_anything_is_sent(self, session, tmp_path,
+                                                                     capsys, monkeypatch):
+        """Refused before a connection is even opened, so no byte can reach the console."""
+        opened = []
+        monkeypatch.setattr(session, "Session", lambda *a: opened.append(a))
+        with pytest.raises(SystemExit) as exc:
+            session.main(["s5-erase-session.py", "192.0.2.1", "5000",
+                          str(tmp_path / "transcript.log"), "--erase-anyway"])
+        assert (exc.value.code, opened) == (2, []), (exc.value.code, opened)
+        assert "unknown arguments" in capsys.readouterr().out
 
     def test_a_reload_that_asks_no_save_question_is_confirmed_without_a_no(
             self, session, tmp_path):
