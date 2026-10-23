@@ -25,6 +25,7 @@ written in the captured session's shape: the echo, a line break, the next prompt
 - the one home for the host and credential-reference rules (C1558).
 """
 
+import json
 import os
 import socket
 import threading
@@ -977,6 +978,357 @@ class TestNeedsAttention:
     ])
     def test_what_a_latest_run_leaves(self, latest, kind):
         assert Z.problem({"latest": latest}) == kind
+
+
+# ── What each step hands on (the mutation run of 2026-10-22, #16) ──────────────────────────
+#
+# The run found these unchecked: what reaches the transport from the port's record, what the
+# device hold and the port lock name, what each way a survey ends records, what the preview
+# reads and shows, and the masking of a previewed program. Each test names the behaviour.
+
+KEY_REF = "console-lab"
+KEY_USER = "mercury"
+
+
+@pytest.fixture(scope="module")
+def host_key():
+    """The console server's (or jump host's) RSA host key, generated for this run."""
+    import paramiko
+    return paramiko.RSAKey.generate(2048)
+
+
+def _client_key(monkeypatch, tmp_path) -> dict:
+    """The key Mercury holds for the console server or the jump host, stored under KEY_REF in
+    this test's credential store (as test_console_transport.py stores it)."""
+    from modules.nsot import console_keys
+    monkeypatch.setattr("modules.credentials._FILE",
+                        str(tmp_path / "data" / "credential_profiles.json"))
+    return console_keys.generate(KEY_REF, username=KEY_USER,
+                                 wrapper_path="/usr/local/bin/bridge",
+                                 allowlist_path="/etc/nmas/allow")
+
+
+class _Reading:
+    """A NetBox session over the fake that records each URL it is asked for, and answers
+    HTTP 500 for any URL holding *failing* (NetBox up, that read failing)."""
+
+    def __init__(self, fake, failing: str = ""):
+        self.fake, self.failing, self.seen = fake, failing, []
+
+    def get(self, url, *a, **k):
+        from tests.fake_netbox import FakeResponse
+        self.seen.append(str(url))
+        if self.failing and self.failing in str(url):
+            return FakeResponse({"detail": "server error"}, status_code=500)
+        return self.fake.get(url, *a, **k)
+
+
+class TestTheRecordReachesTheTransport:
+    """Every field of the port's record reaches what is opened: the jump host, its SSH port and
+    the key under the record's reference (raw TCP), the console server's SSH port, key and
+    container (the bridge), and whose run the session is (the host-key record names it)."""
+
+    @FAMILIES
+    def test_a_survey_through_a_jump_host_reaches_the_console_through_it(
+            self, tmp_path, monkeypatch, family, host_key):
+        from modules import host_keys as HK
+        from tests.console_fakes import SshServer
+        w = World(tmp_path, monkeypatch, family)
+        key = _client_key(monkeypatch, tmp_path)
+        jump = SshServer(host_key, user=KEY_USER, client_public=key["public_key"], family=family)
+        try:
+            w.set_port(jump_host=jump.host, ssh_port=jump.port, credential_ref=KEY_REF)
+            assert w.survey_preview()["transport"] == (
+                f"console-server port {w.sport['id']} ({w.server.host} port {w.server.port} "
+                f"via {jump.host} port {jump.port})")
+            rec = w.survey(greeting=PNP, answers=blank_answers())
+            assert rec["outcome"] == "surveyed", rec
+            assert jump.destinations == [(w.server.host, w.server.port)]
+            assert jump.auth == [(KEY_USER, "ssh-ed25519", key["public_key"].split()[1])]
+            assert w.received() == SURVEY_SENDS
+            assert HK.held(jump.host)["kept_by"] == (
+                f"{ACTOR} (console survey; {ACTOR}'s console run on edge1)")
+        finally:
+            jump.close()
+            w.server.close()
+
+    def test_a_survey_over_a_command_bridge_runs_its_container_with_the_records_key(
+            self, world, tmp_path, monkeypatch, host_key):
+        from modules import host_keys as HK
+        from tests.console_fakes import SshServer
+        key = _client_key(monkeypatch, tmp_path)
+        bridge = SshServer(host_key, user=KEY_USER, client_public=key["public_key"],
+                           allow=("edge-a",), make=world._next)
+        try:
+            world.set_port(driver="command_bridge", host=bridge.host, tcp_port=None,
+                           ssh_port=bridge.port, container="edge-a", credential_ref=KEY_REF)
+            rec = world.survey(greeting=PNP, answers=blank_answers())
+            assert rec["outcome"] == "surveyed", rec
+            assert bridge.commands == [b"edge-a"]
+            assert bridge.auth == [(KEY_USER, "ssh-ed25519", key["public_key"].split()[1])]
+            assert bridge.finished().received == SURVEY_SENDS
+            assert HK.held(bridge.host)["kept_by"] == (
+                f"{ACTOR} (console survey; {ACTOR}'s console run on edge1)")
+        finally:
+            bridge.close()
+
+    def test_a_transport_built_for_no_one_holds_its_port_as_an_unnamed_caller(self, world):
+        """A preview's transport is built naming no one; opened, it holds the port in the
+        transport's own words for that, which a second session's refusal repeats."""
+        from modules.nsot import console_transport as T
+        record = {"driver": "raw_tcp", "host": world.server.host,
+                  "tcp_port": world.server.port}
+        world.consoles.append((b"", []))
+        first = Z.build_transport(record, world.sport["id"]).open()
+        try:
+            with pytest.raises(T.PortBusy) as exc:
+                Z.build_transport(record, world.sport["id"], owner="a second run").open()
+            assert str(exc.value) == (
+                f"console-server port {world.sport['id']} is held by an unnamed caller (pid "
+                f"{os.getpid()}), so a second run was refused (one session per console port; "
+                "never queued)")
+        finally:
+            first.close()
+
+
+class TestWhatASurveyRecords:
+    """Each way a survey ends records its outcome, why, what was sent and what the console
+    showed, and the hold and the port lock name the operation and whose it is."""
+
+    def test_a_finished_survey_has_no_reason_and_only_its_verdicts_reasons(self, world):
+        rec = world.survey(greeting=PNP, answers=blank_answers())
+        assert (rec["outcome"], rec["reason"]) == ("surveyed", "")
+        assert rec["reasons"] == ["startup-config is 0 bytes in 'dir nvram:''s output"]
+
+    def test_a_release_that_does_not_end_says_so_in_its_reasons(self, world):
+        answers = blank_answers()
+        answers[-1] = b"disable\r\nPassword: "
+        rec = world.survey(greeting=PNP, answers=answers)
+        assert rec["outcome"] == "aborted" and rec["reason"].startswith("release: ")
+        why = rec["reason"][len("release: "):]
+        assert rec["reasons"] == [
+            "startup-config is 0 bytes in 'dir nvram:''s output",
+            f"the console was not left at the user prompt ({why}): a kick-start's wake will "
+            "find it signed in and refuse until it is"]
+
+    def test_a_console_found_signed_in_records_what_was_sent_and_why_it_stopped(self, world):
+        rec = world.survey(answers=[b"\r\nSwitch#"])
+        assert rec["outcome"] == "stopped"
+        assert rec["reason"] == "the console was found at priv_exec: nothing more was sent"
+        assert "mac" in rec and rec["mac"] is None, "unknown is a field, never an absence"
+        _recorded_as_sent(rec, b"\r", "Switch#", P.PRIV_EXEC)
+
+    def test_a_wake_that_ends_another_way_records_the_runs_own_reason(self, world):
+        """A console that answers the wake with nothing was found in no state: the run's own
+        outcome and words, never "found at" (nothing was found), and blank unknown."""
+        rec = world.survey(answers=[])
+        assert (rec["outcome"], rec["blank"], rec["attach_state"]) == ("aborted", None, None)
+        assert rec["reason"] == ("expected one of setup_dialog, press_return, user_exec, "
+                                 "priv_exec, config (the plan's end) within 3 s, found idle")
+        assert world.received() == b"\r"
+
+    def test_a_survey_stopped_in_a_phase_records_why_what_it_sent_and_no_mac(self, world):
+        wake, _enable, _nvram = _real()
+        rec = world.survey(greeting=PNP, answers=[wake, b"enable\r\nPassword: "])
+        assert rec["outcome"] == "aborted" and rec["blank"] is None
+        assert rec["found_signed_in"] is False
+        assert rec["reason"] == ("expected priv_exec (step 3 of 3), found login_password: "
+                                 "'Password:'")
+        assert rec["reasons"] == [f"the survey stopped in its prelude phase ({rec['reason']}), "
+                                  "so blank is unknown"]
+        assert "mac" in rec and rec["mac"] is None, "unknown is a field, never an absence"
+        _recorded_as_sent(rec, b"\renable\r", "Password:", P.PRESS_RETURN)
+
+    def test_the_hold_and_the_port_lock_name_the_survey_and_whose_it_is(self, world,
+                                                                         monkeypatch):
+        """What another operation's refusal and the In progress chip name (the hold), and what
+        a second console session's refusal names (the port's lock record), while it runs."""
+        from modules.nsot import console_transport as T
+        from modules.nsot import device_ops
+        seen, real = {}, device_ops.note
+
+        def note(step, *a, **k):
+            if step == "waking the console":
+                seen["hold"] = device_ops.holder(LIST, "edge1")
+                with open(T.PortLock(world.sport["id"], "probe").path(),
+                          encoding="utf-8") as fh:
+                    seen["port"] = fh.read()
+            return real(step, *a, **k)
+
+        monkeypatch.setattr(device_ops, "note", note)
+        world.survey(greeting=PNP, answers=blank_answers())
+        hold = seen["hold"]
+        assert (hold["operation"], hold["actor"], hold["detail"]) == (
+            Z.OP_SURVEY, ACTOR, f"console-server port {world.sport['id']}")
+        assert seen["port"] == f"{ACTOR}'s console run on edge1 (pid {os.getpid()})"
+
+    def test_the_run_id_and_how_the_actor_was_verified_are_the_callers(self, world):
+        from modules.nsot import reads
+        run_id = reads.new_id()
+        p = world.survey_preview()
+
+        def run(**over):
+            world.consoles.append((b"", [b"\r\nSwitch#"]))
+            return Z.survey_run(LIST, world.dev["id"], profile="cisco_ios_switch",
+                                confirmed_hash=p["hash"], actor=ACTOR, timings=FAST,
+                                values={}, **world.nb(), **over)
+
+        rec = run(actor_verified=Z.VERIFIED, run_id=run_id)
+        assert (rec["id"], rec["actor_verified"]) == (run_id, Z.VERIFIED)
+        assert Z.get_run(LIST, run_id)["actor_verified"] == Z.VERIFIED
+        rec = run()
+        assert rec["actor_verified"] == "" and rec["id"] != run_id
+
+    @pytest.mark.parametrize("actor", ["", None, " \t"])
+    def test_no_actor_is_refused_with_nothing_sent(self, world, actor):
+        with pytest.raises(Z.Refused) as exc:
+            Z.survey_run(LIST, world.dev["id"], profile="cisco_ios_switch", confirmed_hash="x",
+                         actor=actor, timings=FAST, values={}, **world.nb())
+        assert str(exc.value) == ("a survey names who ran it, and no actor was given. Nothing "
+                                  "was sent.")
+        assert world.server.accepted == 0
+
+    def test_the_netbox_a_survey_reads_is_the_callers(self, world):
+        """Through the session and base it is given (no base: the session's own)."""
+        for base, prefix in (("", "/api/"), (BASE, BASE + "/api/")):
+            nb = _Reading(world.fake)
+            p = Z.survey_preview(LIST, world.dev["id"], profile="cisco_ios_switch",
+                                 session=nb, base=base, values={})
+            world.consoles.append((b"", [b"\r\nSwitch#"]))
+            nb.seen.clear()
+            kw = {"base": base} if base else {}
+            rec = Z.survey_run(LIST, world.dev["id"], profile="cisco_ios_switch",
+                               confirmed_hash=p["hash"], actor=ACTOR, timings=FAST, values={},
+                               session=nb, **kw)
+            assert rec["outcome"] == "stopped", rec
+            assert nb.seen and all(u.startswith(prefix) for u in nb.seen), nb.seen
+
+    def test_a_console_that_cannot_be_opened_names_what_refused_it(self, world):
+        p = world.survey_preview()
+        world.server.close()
+        rec = Z.survey_run(LIST, world.dev["id"], profile="cisco_ios_switch",
+                           confirmed_hash=p["hash"], actor=ACTOR, timings=FAST, values={},
+                           **world.nb())
+        assert rec["reason"].startswith("the console could not be opened: "
+                                        "ConnectionRefusedError: "), rec["reason"]
+
+    def test_the_values_given_mask_what_the_console_printed(self, world):
+        """A value the caller holds as a secret, printed by the console, is masked in the
+        transcript the record keeps (the values reach the session, not the store's)."""
+        answers = blank_answers()
+        answers[3] = b"show version\r\nProcessor board ID 9SECRET0VALUE1\r\nSwitch#"
+        world.consoles.append((PNP, answers))
+        values = {"9SECRET0VALUE1": "a test value"}
+        p = Z.survey_preview(LIST, world.dev["id"], profile="cisco_ios_switch", values=values,
+                             **world.nb())
+        rec = Z.survey_run(LIST, world.dev["id"], profile="cisco_ios_switch",
+                           confirmed_hash=p["hash"], actor=ACTOR, timings=FAST, values=values,
+                           **world.nb())
+        assert rec["outcome"] == "surveyed", rec
+        assert "Processor board ID <redacted:a test value>" in rec["transcript"]
+        assert "9SECRET0VALUE1" not in json.dumps(Z.get_run(LIST, rec["id"]))
+
+
+class TestWhatThePreviewReads:
+    """What the preview reads from NetBox and the store, shows, and hashes."""
+
+    def test_the_port_is_shown_and_hashed_as_how_it_is_reached_not_who_saved_it(self, world):
+        from modules.nsot import console_servers
+        p = world.survey_preview()
+        assert p["port"] == {"driver": "raw_tcp", "host": world.server.host,
+                             "tcp_port": world.server.port}
+        got = console_servers.set_port(world.sport["id"], dict(p["port"]),
+                                       actor="other@example.invalid")
+        assert got["ok"], got
+        assert console_servers.get_port(world.sport["id"])["record"]["by"] == \
+            "other@example.invalid"
+        assert world.survey_preview()["hash"] == p["hash"], "saved again, reached the same"
+
+    def test_a_refused_preview_names_no_device_it_did_not_read(self, world):
+        p = Z.survey_preview(LIST, 0, profile="cisco_ios_switch", values={}, **world.nb())
+        assert p["refused_by"] == {"device": "a NetBox device id is a positive number, not 0"}
+        assert p["device"] == ""
+
+    def test_a_device_netbox_did_not_give_is_said_with_netboxs_answer(self, world):
+        gone = Z.survey_preview(LIST, 999, profile="cisco_ios_switch", values={},
+                                **world.nb())
+        assert gone["refused_by"]["device"] == "dcim/devices/999/ is gone"
+        nb = _Reading(world.fake, failing="/dcim/devices/")
+        p = Z.survey_preview(LIST, world.dev["id"], profile="cisco_ios_switch", values={},
+                             session=nb, base=BASE)
+        assert p["refused_by"]["device"] == (f"dcim/devices/{world.dev['id']}/ is unreadable: "
+                                             "NetBox answered HTTP 500")
+
+    def test_a_console_path_netbox_could_not_read_names_that_read(self, world):
+        nb = _Reading(world.fake, failing="/dcim/console-ports/")
+        p = Z.survey_preview(LIST, world.dev["id"], profile="cisco_ios_switch", values={},
+                             session=nb, base=BASE)
+        assert p["refused_by"]["path"] == (f"dcim/console-ports/?device_id={world.dev['id']} "
+                                           "answered HTTP 500")
+
+    def _manifest(self, list_name, netbox_id):
+        from modules.config import list_data_path
+        from modules.nsot import manifest
+        repo = os.path.join(list_data_path(list_name), "config_repo")
+        os.makedirs(os.path.join(repo, ".nsot"), exist_ok=True)
+        manifest.upsert_device(repo, manifest.new_device_uid(), "edge1", netbox_id=netbox_id)
+
+    @pytest.mark.parametrize("held", ["this", ""])
+    def test_the_name_held_by_this_device_or_by_none_yet_is_not_refused(self, world, held):
+        self._manifest(LIST, world.dev["id"] if held == "this" else "")
+        p = world.survey_preview()
+        assert p["ok"] and p["refused_by"] == {}, p["refused_by"]
+
+    def test_another_device_holding_the_name_is_refused_naming_both(self, world):
+        self._manifest(LIST, 4242)
+        p = world.survey_preview()
+        assert p["refused_by"] == {"device": (
+            f"edge1 in {LIST} is NetBox device 4242, not {world.dev['id']}: another device "
+            "holds this name in the network")}
+
+    def test_a_network_that_does_not_exist_is_refused_alone(self, world):
+        """Its folder, left behind, is never read as the network's: one refusal, the network."""
+        self._manifest("elsewhere", 4242)
+        p = Z.survey_preview("elsewhere", world.dev["id"], profile="cisco_ios_switch",
+                             values={}, **world.nb())
+        assert p["refused_by"] == {"list": "no network named 'elsewhere'"}
+
+    def test_a_kickstart_on_a_profile_with_no_session_lines_is_refused_not_broken(
+            self, world, monkeypatch):
+        """The survey's profile is refused for its platform: no profile, so no lines, no
+        program and no hash; a refusal naming it, never an error."""
+        world.survey(greeting=PNP, answers=blank_answers())
+        monkeypatch.setattr(Z, "SESSION_LINES", {"cisco_xe": {}})
+        p = world.kick_preview()
+        assert not p["ok"] and p["hash"] == "" and p["profile"] is None
+        assert p["refused_by"]["profile"] == ("profile cisco_ios_switch's platform 'cisco_ios' "
+                                              "has no session lines here (['cisco_xe'])")
+        assert (p["lines"], p["program"]) == ([], None)
+
+    def test_the_preview_draws_the_whole_survey_program_by_state(self, world):
+        enable = ["user_exec", "enable\r"]
+        assert world.survey_preview()["program"] == {
+            "wake": [["idle", "\r"]],
+            "prelude": {"press_return": [["press_return", "\r"], enable],
+                        "setup_dialog": [["setup_dialog", "no\r"], ["press_return", "\r"],
+                                         enable],
+                        "user_exec": [enable]},
+            "reads": [["priv_exec", "terminal length 0\r"], ["priv_exec", "show version\r"],
+                      ["priv_exec", "dir nvram:\r"]],
+            "release": [["priv_exec", "disable\r"]],
+            "ends": "user_exec",
+            "stops": "any other state the wake finds: nothing more is sent"}
+
+    def test_a_value_held_as_a_secret_is_masked_in_the_previewed_program(self, world):
+        """No pattern masks an interface name; the value the caller holds does, in every
+        state's steps (the hash is over what is sent, unmasked)."""
+        world.survey(greeting=PNP, answers=blank_answers())
+        p = Z.kickstart_preview(LIST, world.dev["id"], dict(PARAMS),
+                                values={"GigabitEthernet0/1": "a test value"}, **world.nb())
+        assert p["ok"], p["refusals"]
+        assert ["config", "interface <redacted:a test value>\r"] in p["program"]["lines"]
+        assert "GigabitEthernet0/1" not in json.dumps(p["program"])
+        assert p["hash"] == world.kick_preview()["hash"]
 
 
 # ── The declarations O6b registers ────────────────────────────────────────────────────────

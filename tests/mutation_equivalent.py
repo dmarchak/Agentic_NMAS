@@ -563,4 +563,43 @@ EQUIVALENT = [
            "read again before `_connect` sets them anew: `close` disconnects once (only while "
            "open), a failed `open` once, and `read` and `write` refuse a closed transport "
            "before asking for its pipe"),
+    # ── Out-of-band ZTP, O6a (the console survey; run #16 of 2026-10-22, on demand, at
+    # 6dc78592). Every other survivor there is killed by a test in tests/test_console_ztp.py
+    # naming the behaviour, or is listed open in the register.
+    *_each("modules.nsot.console_ztp._target",
+           'def _target(list_name: str, device_id, profile_name: str, *, session=None, base: str = "",',
+           ('def _target(list_name: str, device_id, profile_name: str, *, session=None, base: str = "XXXX",',),
+           "the default is never used: both callers (survey_preview, kickstart_preview) pass "
+           "their own base, always"),
+    *_each("modules.nsot.console_ztp._target",
+           '"transport": None, "profile": None}',
+           ('"transport": None, "XXprofileXX": None}', '"transport": None, "PROFILE": None}'),
+           'out["profile"] is assigned on every path before the first return (it follows the '
+           "profile's own checks), and every reader takes the dict by key: a key named "
+           "otherwise beside it is never read"),
+    *_each("modules.nsot.console_ztp._target",
+           'refuse("path", path.get("error") or path.get("why") or "no console path")',
+           ('refuse("path", path.get("error") or path.get("why") or "XXno console pathXX")',
+            'refuse("path", path.get("error") or path.get("why") or "NO CONSOLE PATH")'),
+           "the stand-in is unreachable: console_path.read_console_path returns `path`, or "
+           "`no_path` with its why (the empty port query's words, or each gap's, and a device "
+           "with ports and no path has at least one gap), or `unreadable` with its error, "
+           "every one of them non-empty"),
+    *_each("modules.nsot.console_ztp._survey_phases",
+           'verdict = V.survey(console.attach_state, "", profile)',
+           ('verdict = V.survey(console.attach_state, None, profile)',
+            'verdict = V.survey(console.attach_state, "XXXX", profile)'),
+           "on this path nothing was read: console_survey.blank_check reads '' and None alike "
+           "(`text.splitlines() if text else []`), and 'XXXX' holds no startup-config entry, "
+           "so each gives the same unknown check, the same reason and the same verdict"),
+    *_each("modules.nsot.console_ztp.survey_run",
+           "values=values)", ("values=None)", ")"),
+           "the values given to survey_preview reach only its masked program (`_masked_program`), "
+           "which survey_run never reads: it takes the refusals, hash, device, port, path, "
+           "profile and transport, and masks its own record with the values through `_Console` "
+           "and `_finish`"),
+    *_each("modules.nsot.console_ztp.survey_run",
+           "console = None", ('console = ""',),
+           "survey_run never reads `console`: it is only bound again, to the `_Console` handed "
+           "to `_survey_phases`"),
 ]
