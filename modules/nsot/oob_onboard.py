@@ -935,6 +935,10 @@ def _phases(console, rec: dict, ctx: dict, wall) -> bool:
                                      "dialog, Press RETURN or the user prompt)")
         if found in V.LOGIN:
             raise _Stop("login", f"the console asked for a login ({found})")
+        # A deliberate backup stop, unreachable today by design: `attach` returns None or a
+        # FINAL state, and every state that reaches here stops above as signed_in or login. It
+        # stays so that a change to `attach` or those sets still refuses, never types on. Not
+        # dead code (run #25's equivalents, C1622; the operator, 2026-10-23).
         raise _Stop("unexpected", f"expected the setup dialog, Press RETURN or the user prompt "
                                   f"after the wake; the console was at {found}")
     device_ops.note("onboard: blank")
@@ -986,6 +990,10 @@ def _phases(console, rec: dict, ctx: dict, wall) -> bool:
         out = _then(console, [[P.PRIV_EXEC, text]], (P.PRIV_EXEC,), repr(cmd),
                     refused_as=("read_back", lambda r, cmd=cmd: f"the read-back {cmd!r} was "
                                                                 f"refused: {r['words']!r}"))
+        # A deliberate backup stop, unreachable today by design: `_then` returns only a session
+        # that ended done, which the session's own refusal check (C1593) has already passed on
+        # this text with this profile. It stays so that a change there still stops the
+        # read-back. Not dead code (run #25's equivalents, C1622; the operator, 2026-10-23).
         said, _before = oob_steps.refused_in(out, prof)
         if said:
             raise _Stop("read_back", f"the read-back {cmd!r} was refused: {said!r}")
