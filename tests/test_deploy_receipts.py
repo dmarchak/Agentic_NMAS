@@ -126,6 +126,14 @@ class TestARunThatStoppedBeforeTheSendSentNothing:
             "netbox_query", "template_render", "ci_gate", "pre_snapshot", "config_diff")
         assert set(receipts.stages_before_send()) < set(STAGE_NAMES)
 
+    def test_every_stage_before_the_send_has_words_to_name_it(self):
+        """`_nothing_sent` names the stage by its words with no fallback, so each stage before
+        the send must have them."""
+        from modules.pipeline import STAGE_WORDS
+        assert set(receipts.stages_before_send()) <= set(STAGE_WORDS)
+        assert all(isinstance(STAGE_WORDS[s][0], str) and STAGE_WORDS[s][0]
+                   for s in receipts.stages_before_send())
+
     def test_the_result_says_where_it_stopped_and_why_and_counts_no_line(self):
         from modules.preview_confirm import operation_result
         from tests.payload_render import render_operation_result_v2
@@ -143,6 +151,7 @@ class TestARunThatStoppedBeforeTheSendSentNothing:
         assert _nothing_sent({"stage": "config_diff", "reason": ""}) == (
             "Nothing was sent: it stopped at Compare")
         assert _nothing_sent({"stage": "", "reason": ""}) == "Nothing was sent."
+        assert _nothing_sent({"reason": ""}) == "Nothing was sent."
         assert _nothing_sent({"stage": "removal", "reason": "a unit moved"}) == "a unit moved"
 
 

@@ -1026,9 +1026,11 @@ def _nothing_sent(row: dict) -> str:
     from modules.nsot.receipts import stages_before_send
     from modules.pipeline import STAGE_WORDS
 
-    stage, reason = row.get("stage", ""), row.get("reason") or ""
+    # No defaults for the stage or its words: no default is a stage, and every stage has words
+    # (`pipeline.STEPS` reads each at import), so either would be a branch nothing can reach.
+    stage, reason = row.get("stage"), row.get("reason") or ""
     if stage in stages_before_send():
-        label = STAGE_WORDS.get(stage, (stage,))[0]
+        label = STAGE_WORDS[stage][0]
         return f"Nothing was sent: it stopped at {label}" + (f", {reason}" if reason else "")
     return reason or "Nothing was sent."
 

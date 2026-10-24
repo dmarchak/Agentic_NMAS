@@ -291,6 +291,15 @@ class TestVerifyJudgesTheVlanRead:
         assert v["unreadable"] == ["new lines: vlan 10 > name VLAN10: `show vlan id 10`: it was "
                                    "not read (OSError: the session closed)"]
 
+    def test_an_answer_not_understood_with_no_read_error_names_only_the_parse(self, world):
+        """A read that answered (so no read error is recorded) with text that is not a VLAN
+        table: the line names the parse's reason and nothing after it."""
+        v = self._verify(world, {"10": "% Invalid input detected at '^' marker.\n"})
+        assert v["read_back"]["missing"] == [] and v["ok"] is False
+        assert v["unreadable"] == ["new lines: vlan 10 > name VLAN10: `show vlan id 10`: the "
+                                   "answer has no VLAN table (\"% Invalid input detected at "
+                                   "'^' marker.\")"]
+
     def test_a_vlan_under_another_name_does_not_pass(self, world):
         v = self._verify(world, {"10": capture(TRANSPARENT, "show_vlan_id_10")})
         assert v["ok"] is False and v["unreadable"] == []
