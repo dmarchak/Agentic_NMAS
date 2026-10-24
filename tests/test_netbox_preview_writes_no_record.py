@@ -13,6 +13,7 @@ driven outside one too, the control that the instrument sees its write. The remo
 through a fake NetBox, as Abandon's preview drives it.
 """
 
+import json
 import os
 
 import pytest
@@ -75,6 +76,52 @@ def test_the_same_writer_outside_one_writes_its_record(stores, name):
     before = _snapshot(stores)
     WRITERS[name]()
     assert _snapshot(stores) != before, f"{name} wrote nothing outside a dry run"
+
+
+class TestTheWriterSaysWhetherItWrote:
+    """The writer's answer is what its callers act on (`record_adopted` refuses on False,
+    `record_modified` logs it): True when written, or when a dry run writes nothing by design;
+    False when the store refused, from either store. Mutation run #44's survivors (C1596)."""
+
+    def test_a_dry_run_answers_written_so_its_callers_carry_on(self, stores):
+        before = _snapshot(stores)
+        with guard.dry_run():
+            assert guard._write_json_atomic(stores[0], {"x": 1}) is True
+            got = guard.record_adopted(LIST, "kept-device", [("dcim/devices", 7, "d")],
+                                       actor="t@example.com", reason="r", authority="a")
+        assert got["ok"] is True, got
+        assert _snapshot(stores) == before
+
+    def test_the_file_written_is_the_indented_json_people_read(self, stores, tmp_path):
+        """A backup's diff of the record reads one key a line (indent 2), the shape every
+        record on disk has."""
+        path = str(tmp_path / "doc.json")
+        assert guard._write_json_atomic(path, {"b": [1, 2], "a": {"c": "d"}}) is True
+        with open(path, encoding="utf-8") as fh:
+            assert fh.read() == json.dumps({"b": [1, 2], "a": {"c": "d"}}, indent=2)
+
+    def test_a_file_the_store_refuses_answers_false(self, stores, tmp_path, monkeypatch):
+        def refuse(path, text):
+            raise OSError(28, "No space left on device")
+
+        monkeypatch.setattr(guard._filestore, "write_atomic", refuse)
+        assert guard._write_json_atomic(str(tmp_path / "doc.json"), {"a": 1}) is False
+
+    def test_a_database_store_that_refuses_answers_false_and_one_that_takes_it_true(
+            self, stores, monkeypatch):
+        from modules import records_docs
+        saved = []
+        monkeypatch.setattr(guard, "_db_store", lambda path: "netbox_created")
+        monkeypatch.setattr(records_docs, "save", lambda store, key, data: saved.append(
+            (store, key, data)))
+        assert guard._write_json_atomic(stores[0], {"a": 1}) is True
+        assert saved == [("netbox_created", "", {"a": 1})]
+
+        def refuse(store, key, data):
+            raise RuntimeError("the records database is read-only")
+
+        monkeypatch.setattr(records_docs, "save", refuse)
+        assert guard._write_json_atomic(stores[0], {"a": 1}) is False
 
 
 @pytest.fixture

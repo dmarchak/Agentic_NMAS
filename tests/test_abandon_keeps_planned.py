@@ -256,6 +256,12 @@ class TestARecordVerifyChangedIsNotKeptAsDone:
         assert manifest.find_by_name(world.repo, "s5")[0] and world.removals == []
 
 
+#: The step's words when this onboarding recorded no NetBox id (C1597), whole.
+NOTHING_MADE = ("nothing removed: this onboarding recorded no NetBox record (Verify's NetBox "
+                "step, the only creator before promotion, did not run), so it made nothing in "
+                "NetBox")
+
+
 class TestOtherOnboardingsKeepTheRemover:
     """An onboarding that recorded no NetBox id keeps whatever NetBox holds; one whose id
     Verify wrote goes through the remover."""
@@ -272,12 +278,11 @@ class TestOtherOnboardingsKeepTheRemover:
         assert netbox_guard.was_created_by_nmas(LIST, "dcim/devices", world.dev["id"]), "floor"
         dry, out = world.abandon()
         assert world.removals == [], "the remover was called"
-        want = (f"kept: NetBox device s5 (id {world.dev['id']}), not this onboarding's")
         for got in (dry, out):
             step = _step(got, "netbox")
-            assert step["ok"] is True and step["detail"].endswith(want), step
-            assert step["detail"].startswith("nothing removed: this onboarding recorded no "
-                                             "NetBox record"), step
+            assert step == {"step": "netbox", "ok": True, "detail": NOTHING_MADE + (
+                f"; kept: NetBox device s5 (id {world.dev['id']}), not this onboarding's")}, step
+            assert got["netbox"]["kept"] == [world.dev["id"]], got["netbox"]
         assert out["released"] == "s5" and manifest.find_by_name(world.repo, "s5") == (
             None, None), out
         assert netbox_guard.was_created_by_nmas(LIST, "dcim/devices", world.dev["id"])
@@ -292,8 +297,27 @@ class TestOtherOnboardingsKeepTheRemover:
         _dry, out = world.abandon()
         assert world.removals == []
         step = _step(out, "netbox")
-        assert step["ok"] is True and step["detail"].endswith(
-            "; NetBox holds no device named s5"), step
+        assert step == {"step": "netbox", "ok": True,
+                        "detail": NOTHING_MADE + "; NetBox holds no device named s5"}, step
+        assert out["netbox"]["kept"] == []
+
+    def test_the_record_is_read_from_netbox_s_own_address_by_its_exact_name(self, world,
+                                                                           monkeypatch):
+        """The read goes to the configured NetBox, its device list asked by exact name."""
+        import modules.netbox_client as nbc
+        monkeypatch.setattr(onboard, "_name_in_netbox", lambda hostname: (False, True))
+        monkeypatch.setattr(DE, "read", lambda hostname, **k: DE.NONE)
+        world.create(planned=False)
+        asked = []
+
+        class _Session:
+            def get(self, url, params=None, timeout=None):
+                asked.append((url, dict(params or {})))
+                return world.fake.get(url, params=params, timeout=timeout)
+
+        monkeypatch.setattr(nbc, "_nb_ready", lambda: (True, "", _Session(), BASE))
+        world.abandon()
+        assert (f"{BASE}/api/dcim/devices/", {"name": "s5"}) in asked, asked
 
     def test_an_entry_with_no_netbox_id_and_netbox_unreadable_removes_nothing(self, world,
                                                                              monkeypatch):
