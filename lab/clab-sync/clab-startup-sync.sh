@@ -84,7 +84,9 @@
 #   the next deploy. This cost a full rebuild on 2026-08-30 - all SVIs and
 #   every routed port on r1-r4 came up shut, so only s3 was reachable.
 #   The sanitiser therefore re-injects "no shutdown" into any interface block
-#   that carries an address and does not explicitly say shutdown.
+#   that carries an address and does not explicitly say shutdown, and on a
+#   router into every block that does not (C1537, 2026-10-24: r7's VLAN trunk
+#   parent, with no address of its own, came up shut on a startup-only boot).
 #
 # WHAT THE SANITISER REMOVES, AND WHY (the rules in sanitise() below)
 #   Every line it removes is REPORTED on stderr, by rule and device, as
@@ -364,6 +366,9 @@ awk -v kind="$1" -v dev="${2:-?}" '
   function drop(rule) {
       if ($0 !~ /^[ \t]*!?[ \t]*$/) printf "REMOVED %s %s: %s\n", dev, rule, $0 > "/dev/stderr"
   }
+  # Whether the interface block just ended comes up: not explicitly shut, and
+  # addressed, or any block on a router but a Null interface (C1537).
+  function up() { return !hadshut && (hadaddr || (kind == "router" && !isnull)) }
   # The interfaces this sanitiser removes, ONE set for the block rule and the
   # source-interface rule below: the router management interface vrnetlab
   # makes and owns (its bootstrap writes it; a second copy fights it).
@@ -376,7 +381,7 @@ awk -v kind="$1" -v dev="${2:-?}" '
   # block immediately after an interface would otherwise lose the injection.
   # NOTE: no apostrophes anywhere in this awk program - it is inside a
   # single-quoted shell string and one quote truncates the whole thing.
-  !/^[ \t]/ && inif { if (hadaddr && !hadshut) { print " no shutdown"; b=0 } inif=0 }
+  !/^[ \t]/ && inif { if (up()) { print " no shutdown"; b=0 } inif=0 }
 
   # ---- a metadata header, and every "! comment" line ----------------------
   /^![ \t]/ { drop("comment"); next }
@@ -402,9 +407,13 @@ awk -v kind="$1" -v dev="${2:-?}" '
   # ---- interface blocks ----------------------------------------------------
   # A running-config shows "shutdown" but never "no shutdown", so an
   # interface that was up loses that fact when harvested. Re-inject it for
-  # any block that carries an address and was not explicitly shut.
-  # Addressless blocks (switchports) are left alone - they default to up.
-  /^interface / { inif=1; hadshut=0; hadaddr=0; b=0; print; next }
+  # any block that carries an address and was not explicitly shut, and on a
+  # router for every block not explicitly shut (C1537: a trunk parent such as
+  # a router port carrying only subinterfaces has no address of its own, and
+  # a startup-only boot left it shut, so its subinterfaces were down). A Null
+  # interface takes no shutdown either way. Addressless blocks on a switch
+  # (switchports) are left alone - they default to up.
+  /^interface / { inif=1; hadshut=0; hadaddr=0; isnull=($2 ~ /^Null/); b=0; print; next }
   inif && /^[ \t]/ {
       if ($0 ~ /^[ \t]+(ip|ipv6) address/) hadaddr=1
       if ($0 ~ /^[ \t]+shutdown[ \t]*$/)   hadshut=1
@@ -440,7 +449,7 @@ awk -v kind="$1" -v dev="${2:-?}" '
         { b=0; print }
 
   # ---- file ended mid-interface --------------------------------------------
-  END { if (inif && hadaddr && !hadshut) print " no shutdown" }
+  END { if (inif && up()) print " no shutdown" }
 '
 }
 

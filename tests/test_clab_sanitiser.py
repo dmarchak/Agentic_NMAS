@@ -161,3 +161,66 @@ class TestTheRemovedReportIsInProportion:
     def test_anything_else_on_the_render_s_stderr_is_passed_on(self, tmp_path):
         _out, err, kept = _report_removed(tmp_path, self.RUN, "awk: a warning\n")
         assert "awk: a warning" in err and "awk" not in kept.read_text()
+
+
+def _block(text, name):
+    """The lines of interface *name*'s block in a rendered startup file."""
+    lines = text.splitlines()
+    i = lines.index(f"interface {name}")
+    out = []
+    for ln in lines[i + 1:]:
+        if not ln.startswith(" "):
+            break
+        out.append(ln)
+    return out
+
+
+class TestAnInterfaceThatWasUpComesUp:
+    """C1537 (Lab 9, 2026-10-22): a golden never says `no shutdown`, and the sanitiser put it
+    back only where a block carried an address, so r7's Gi3, a router port carrying only its
+    VLAN 10 subinterface, came up shut on a startup-only boot and H5 got no lease. On a router
+    every block the golden does not show as shut now gets `no shutdown`; a Null interface and a
+    switch's addressless switchports do not.
+
+    r2's real config, with one edit before its Loopback0: a trunk parent and its subinterface
+    (r7's shape), a shut port, and Null0."""
+
+    EXTRA = ("interface GigabitEthernet4\n no ip address\n!\n"
+             "interface GigabitEthernet4.10\n encapsulation dot1Q 10\n"
+             " ip address 192.0.2.1 255.255.255.0\n!\n"
+             "interface GigabitEthernet5\n no ip address\n shutdown\n!\n"
+             "interface Null0\n no ip unreachables\n!\n")
+
+    def _r2(self):
+        text = _golden("r2")
+        assert "\ninterface Loopback0\n" in text, "floor"
+        out, _report = _render_reporting("r2", text.replace(
+            "\ninterface Loopback0\n", "\n" + self.EXTRA + "interface Loopback0\n", 1))
+        return out
+
+    def test_a_router_port_with_no_address_of_its_own_comes_up(self):
+        out = self._r2()
+        assert _block(out, "GigabitEthernet4") == [" no ip address", " no shutdown"], out
+        assert _block(out, "GigabitEthernet4.10")[-1] == " no shutdown"
+
+    def test_a_shut_port_stays_shut_and_null0_takes_neither(self):
+        out = self._r2()
+        assert _block(out, "GigabitEthernet5") == [" no ip address", " shutdown"]
+        assert _block(out, "Null0") == [" no ip unreachables"]
+
+    def test_every_router_block_the_golden_does_not_shut_comes_up(self):
+        out = self._r2()
+        names = [ln.split()[1] for ln in out.splitlines() if ln.startswith("interface ")]
+        assert len(names) >= 6, names
+        for name in names:
+            block = _block(out, name)
+            if name.startswith("Null") or " shutdown" in block:
+                continue
+            assert block[-1] == " no shutdown", (name, block)
+
+    def test_a_switch_s_addressless_switchport_is_left_as_it_was(self):
+        out, _report = _render_reporting("s1", _golden("s1"))
+        golden = _golden("s1").splitlines()
+        i = golden.index("interface GigabitEthernet0/1")
+        assert not golden[i + 1].strip().startswith("ip address"), "floor: a switchport"
+        assert " no shutdown" not in _block(out, "GigabitEthernet0/1"), out
