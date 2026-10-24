@@ -155,8 +155,8 @@ the run ends. Its stages, in the order the code declares them:
    the time the push ended, for the BGP watch. Nothing is negated except a re-created IP SLA
    operation's delete and a removal you chose.
 7. `post_snapshot`. Read: the push's session is closed and a NEW one opened; the same facts as
-   `pre_snapshot`, and `show running-config`. Sent: nothing. Recorded: nothing yet; verify and
-   `save_golden` use it.
+   `pre_snapshot`, `show running-config`, and `show vlan id <N>` for each VLAN the program
+   configures. Sent: nothing. Recorded: nothing yet; verify and `save_golden` use it.
 8. `verify`. Read: the two snapshots, and the device again while it waits. Sent: nothing.
    Recorded: what it compared, for the receipt (how the interfaces were compared, by name or
    counted; the settle an unexpected loss was given; whether verify failed at once), said in
@@ -187,7 +187,10 @@ the run ends. Its stages, in the order the code declares them:
    (terminal lines, logging, SNMP, NTP, banners, users, and the management sources,
    `ip tftp|ssh source-interface`), which no session depends on. Every
    new line is read back from the configuration read after the push, whatever the program
-   touches. Removals must read back gone, and re-created IP SLA operations as intent defines
+   touches; a `vlan <N>` line and the `name` under it are read where a switch keeps them,
+   `show vlan id <N>` (one read per VLAN after the push: a switch in VTP server or client mode
+   prints no VLAN in its configuration), and must show the VLAN, named as sent. Removals must
+   read back gone, and re-created IP SLA operations as intent defines
    them. A failure triggers a rollback. A protocol intent declares that the
    device was not running before and is still not up, a read that could not be trusted, or a
    new line not read back makes verify not pass, without a rollback: undoing the change cannot

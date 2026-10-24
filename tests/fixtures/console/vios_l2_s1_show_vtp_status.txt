@@ -1,0 +1,16 @@
+VTP Version capable             : 1 to 3
+VTP version running             : 1
+VTP Domain Name                 : 
+VTP Pruning Mode                : Disabled
+VTP Traps Generation            : Disabled
+Device ID                       : 0c00.6ce9.8000
+Configuration last modified by 0.0.0.0 at 0-0-00 00:00:00
+
+Feature VLAN:
+--------------
+VTP Operating Mode                : Transparent
+Maximum VLANs supported locally   : 1005
+Number of existing VLANs          : 8
+Configuration Revision            : 0
+MD5 digest                        : 0x11 0x2F 0x8B 0x9D 0xD7 0x8E 0xBF 0xF7 
+                                    0x06 0x19 0x5A 0xCF 0xF1 0x9A 0x4C 0x71 

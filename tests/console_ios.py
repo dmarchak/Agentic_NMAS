@@ -29,7 +29,7 @@ def _crlf(lines) -> str:
 def running(lines) -> dict:
     """The running configuration a device that took every one of *lines* holds, as IOS prints
     it: ``{"hostname", "globals": [line], "sections": {header: [body line]}}``."""
-    out = {"hostname": "", "globals": [], "sections": {}}
+    out = {"hostname": "", "globals": [], "sections": {}, "vlans": ["1"]}
     header = ""
     for raw in lines:
         text = raw.strip()
@@ -44,7 +44,12 @@ def running(lines) -> dict:
             elif text.startswith("hostname "):
                 out["hostname"] = text.split()[1]
                 out["globals"].append(text)
-            elif not text.startswith("vlan "):
+            elif text.startswith("vlan "):
+                # Kept in the VLAN database, never printed in the running configuration (a
+                # switch in VTP server mode, C1646): `show vlan id` reads it.
+                if text.split()[1] not in out["vlans"]:
+                    out["vlans"].append(text.split()[1])
+            else:
                 out["globals"].append(text)
             continue
         body = out["sections"].setdefault(header, [])
@@ -72,9 +77,36 @@ def show_interface(name: str, mac: str = FIXTURE_MAC) -> str:
     return text.replace("Vlan10", name).replace(FIXTURE_MAC, mac)
 
 
+#: A VTP-server switch's real `show vlan id` answers (tests/fixtures/console/, README.md there,
+#: 2026-10-24, C1646): VLAN 1 and VLAN 10 as the switch keeps them, and the VLAN it lacks.
+FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "console")
+SHOW_VLAN = {"1": "vios_l2_s5_show_vlan_id_1.txt", "10": "vios_l2_s5_show_vlan_id_10.txt"}
+SHOW_VLAN_ABSENT = "vios_l2_s5_show_vlan_id_999.txt"
+
+
+def show_vlan(vlan: str, present: bool = True) -> str:
+    """The real `show vlan id` answer for *vlan*: the capture of VLAN 1 or 10; any other VLAN
+    present is VLAN 10's capture with its id (and IOS's default name, ``VLAN<4 digits>``) put in
+    the row; one absent is the not-found capture's line, its id substituted."""
+    if not present:
+        with open(os.path.join(FIXTURES, SHOW_VLAN_ABSENT), encoding="ascii") as fh:
+            return fh.read().replace("999", vlan)
+    with open(os.path.join(FIXTURES, SHOW_VLAN.get(vlan, SHOW_VLAN["10"])),
+              encoding="ascii") as fh:
+        text = fh.read()
+    if vlan not in SHOW_VLAN:
+        text = text.replace("10   VLAN10  ", f"{vlan:<4} VLAN{int(vlan):04d}")
+        text = text.replace("10   enet  100010", f"{vlan:<4} enet  {100000 + int(vlan)}")
+    return text
+
+
 def read_answer(command: str, config: dict, prompt: str) -> bytes:
     """IOS's answer to one read-back *command* on *config* (`running`'s), echo to *prompt*."""
-    if command.startswith("show interfaces "):
+    if command.startswith("show vlan id "):
+        vlan = command.split()[-1]
+        text = show_vlan(vlan, vlan in config.get("vlans", ["1"])).split("\n")
+        text = text[:-1] if text and text[-1] == "" else text
+    elif command.startswith("show interfaces "):
         text = show_interface(command.split()[-1], config.get("mac", FIXTURE_MAC)).splitlines()
     elif command.startswith("show running-config interface "):
         header = "interface " + command.split()[-1]
@@ -89,6 +121,14 @@ def read_answer(command: str, config: dict, prompt: str) -> bytes:
         text = [g for g in config["globals"]
                 if any(g.startswith(k.lstrip("^") + " ") for k in keys)]
     return f"{command}\r\n{_crlf(text)}{prompt}".encode()
+
+
+def read_index(answers: list, command: str) -> int:
+    """Where in a run's *answers* the ONE answer to read-back *command* is (by its echo), so a
+    test replaces a read by what it is, not by its position among the reads."""
+    at = [i for i, a in enumerate(answers) if a.startswith(f"{command}\r\n".encode())]
+    assert len(at) == 1, (command, at)
+    return at[0]
 
 
 def readback_answers(lines, prompt: str, config: dict = None) -> list:

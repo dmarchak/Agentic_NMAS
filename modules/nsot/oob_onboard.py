@@ -79,8 +79,9 @@ STEPS = (
                "NetBox id, in one commit; undone in full on any later failure"),
     ("kickstart", "The blank check again, then each line, each answer read: any IOS refusal "
                   "stops it, naming the line"),
-    ("readback", "Each typed line read back from the running configuration, and the MAC its "
-                 "management interface uses, recorded in the manifest"),
+    ("readback", "Each typed line read back from the running configuration (the VLAN from the "
+                 "VLAN database), and the MAC its management interface uses, recorded in the "
+                 "manifest"),
     ("copy", "The bootstrap copied from Mercury's TFTP responder into the running "
              "configuration; success only on [OK - N bytes] with N over 0"),
     ("release", "The console closed and its console-server port freed"),

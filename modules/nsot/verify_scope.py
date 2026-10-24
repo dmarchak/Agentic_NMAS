@@ -89,9 +89,45 @@ def classify(commands: list) -> dict:
                     "waited out, because no line here can affect a session")}
 
 
-def read_back(commands: list, running: str) -> dict:
+def vlan_reads(commands: list) -> list:
+    """The VLANs whose ``vlan <N>`` lines (bare, or heading a ``name``) *read_back* reads
+    where the device keeps them (C1646): each id once, in the program's order."""
+    from modules.nsot.deploy import program_leaves
+
+    out = []
+    for leaf in program_leaves(list(commands or [])):
+        vlan = _vlan_judged(leaf)
+        if vlan and vlan not in out:
+            out.append(vlan)
+    return out
+
+
+def _vlan_judged(leaf):
+    """The VLAN id whose ``show vlan id`` read judges *leaf*, or None: a bare ``vlan <N>``
+    (the VLAN exists) and the ``name`` under one (its name). Any other line under a ``vlan``
+    stanza is read from the running configuration as before."""
+    from modules.nsot.vlan_read import vlan_of
+
+    line = leaf.line.strip()
+    if not leaf.chain:
+        return vlan_of(line)
+    if len(leaf.chain) == 1 and line.split()[:1] == ["name"] and len(line.split()) == 2:
+        return vlan_of(leaf.chain[0].strip())
+    return None
+
+
+def read_back(commands: list, running: str, vlans: dict = None) -> dict:
     """Each new line of a program, quick or full (C732), looked for in *running*
-    under its section. ``{"missing": [...], "skipped": [{line, why}], "checked": n}``.
+    under its section. ``{"missing": [...], "skipped": [{line, why}], "checked": n,
+    "unread": [{line, vlan, why}]}``.
+
+    **A VLAN where the device keeps it (C1646).** A switch in VTP server or client mode keeps
+    its VLANs in the VLAN database and does not print them in its running configuration, so a
+    bare ``vlan <N>`` and the ``name`` under one are judged by *vlans*, ``{id: the answer to
+    `show vlan id <id>`}`` (`vlan_reads` names the ids, `vlan_read.parse` reads each): the VLAN
+    must be in the database, and named as the program names it. A VLAN the read shows absent,
+    or under another name, is missing, naming what the read showed; a read not made or not
+    understood is ``unread``, which neither passes nor fails.
 
     Skipped, each with its reason: a `no` line (its effect is an absence or
     the device's default, and Mode B's removals are verified on their own);
@@ -155,11 +191,31 @@ def read_back(commands: list, running: str) -> dict:
             out.append(f"no printed stanza covers {kind} {', '.join(uncovered)}")
         return out
 
-    missing, skipped, checked = [], [], 0
+    from modules.nsot.vlan_read import command as vlan_command
+    from modules.nsot.vlan_read import parse as vlan_parse
+
+    missing, skipped, checked, unread = [], [], 0, []
+    vlans = vlans or {}
     for leaf in program_leaves(list(commands or [])):
         line = leaf.line.strip()
         top = (leaf.chain[0] if leaf.chain else line).strip()
         shown = " > ".join(list(leaf.chain) + [line])
+        vlan = None if line.startswith("no ") else _vlan_judged(leaf)
+        if vlan:
+            read = vlan_command(vlan)
+            got = vlan_parse(vlan, vlans[vlan]) if vlan in vlans else \
+                {"state": "unreadable", "why": "it was not read"}
+            if got["state"] == "unreadable":
+                unread.append({"line": shown, "vlan": vlan, "why": f"`{read}`: {got['why']}"})
+                continue
+            checked += 1
+            want = line.split()[1] if leaf.chain else ""
+            if got["state"] == "absent":
+                missing.append(f"{shown} (`{read}`: {got['why']})")
+            elif want and got["name"] != want:
+                missing.append(f"{shown} (`{read}` names VLAN {vlan} {got['name']!r}, the "
+                               f"program {want!r})")
+            continue
         if line.startswith("no "):
             skipped.append({"line": shown, "why": "a `no` line reads back as an absence"})
         elif redact_positional(line) != line:
@@ -178,4 +234,4 @@ def read_back(commands: list, running: str) -> dict:
             why = [p for p in found if p]
             if found:
                 missing.append(f"{shown} ({'; '.join(why)})" if why else shown)
-    return {"missing": missing, "skipped": skipped, "checked": checked}
+    return {"missing": missing, "skipped": skipped, "checked": checked, "unread": unread}

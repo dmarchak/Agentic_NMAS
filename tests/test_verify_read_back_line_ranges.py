@@ -110,7 +110,9 @@ class TestUnchangedBehaviour:
 
     def test_line_con_0_held_reads_back(self):
         rb = V.read_back(["line con 0", " logging synchronous", "exit"], self.CON)
-        assert rb == {"missing": [], "skipped": [], "checked": 1}
+        # `unread` (C1646): the VLAN reads not made or not understood; a program with no VLAN
+        # has none.
+        assert rb == {"missing": [], "skipped": [], "checked": 1, "unread": []}
 
     def test_line_con_0_not_held_misses_as_it_always_has(self):
         rb = V.read_back(["line con 0", " exec-timeout 5 0", "exit"], self.CON)

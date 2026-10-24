@@ -869,7 +869,8 @@ class TestKickstartRun:
             "recheck": [["priv_exec", "dir nvram:\r"]],
             "lines": [["priv_exec", lines[0] + "\r"]] + [["config", l + "\r"]
                                                           for l in lines[1:]],
-            "readback": [["priv_exec", "show running-config interface GigabitEthernet0/1\r"],
+            "readback": [["priv_exec", "show vlan id 10\r"],              # C1646: first
+                         ["priv_exec", "show running-config interface GigabitEthernet0/1\r"],
                          ["priv_exec", "show running-config interface Vlan10\r"],
                          ["priv_exec", "show running-config | section line con 0\r"],
                          ["priv_exec", "show running-config | include "

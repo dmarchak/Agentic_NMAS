@@ -33,7 +33,7 @@ from modules.nsot import console_session as S
 from modules.nsot import console_survey as V
 from modules.nsot import console_ztp as Z
 from modules.nsot import onboard, ztp, ztp_relayed, ztp_responder
-from tests.console_ios import copy_answers
+from tests.console_ios import copy_answers, read_index
 from tests.test_console_session import PNP
 from tests.test_console_ztp import (ACTOR, COPY, FAST, LIST, ONBOARDING, PARAMS, PLANNED, World,
                                     _recorded_as_sent, after_lines, blank_answers, kick_answers)
@@ -368,7 +368,10 @@ class TestThePreview:
         p = world.kick_preview()
         assert p["ok"], p["refusals"]
         assert p["copy"] == COPY and p["readback"]["reads"][-1] == "show interfaces Vlan10"
-        assert p["readback"]["not_read"] == [["vlan 10", K.NOT_READ_BACK["vlan"]]]
+        # C1646: the VLAN typed is read from the VLAN database, first, so nothing is unread and
+        # the preview carries no "not read back" list.
+        assert p["readback"]["reads"][0] == "show vlan id 10"
+        assert "not_read" not in p["readback"]
         assert p["onboarding"]["server"] == SERVER
 
     def test_the_hash_binds_the_copy(self, world, monkeypatch):
@@ -501,7 +504,7 @@ class TestTheRun:
         world.survey(greeting=PNP, answers=blank_answers())
         lines = _lines()
         answers = kick_answers(lines)
-        svi = 3 + len(lines) + 1
+        svi = read_index(answers, "show running-config interface Vlan10")
         answers[svi] = answers[svi].replace(f" ip address {ADDRESS} {MASK}".encode(),
                                             b" ip address dhcp")
         rec = world.kick(answers)
@@ -516,7 +519,8 @@ class TestTheRun:
         world.survey(greeting=PNP, answers=blank_answers())
         lines = _lines()
         answers = kick_answers(lines)
-        answers[3 + len(lines) + 4] = b"show interfaces Vlan10\r\nnothing here\r\nedge1#"
+        answers[read_index(answers, "show interfaces Vlan10")] = \
+            b"show interfaces Vlan10\r\nnothing here\r\nedge1#"
         rec = world.kick(answers)
         assert rec["outcome"] == "readback_differs" and rec["mac"] is None
         assert "so the MAC in use is not known" in rec["reason"]
@@ -576,7 +580,7 @@ SVI_WHY = (f"typed 'ip address {ADDRESS} {MASK}'; 'show running-config interface
 
 def _svi_differs(answers, lines):
     """*answers* with the SVI's read-back showing the address under WRONG_MASK."""
-    svi = 3 + len(lines) + 1
+    svi = read_index(answers, "show running-config interface Vlan10")
     answers[svi] = answers[svi].replace(f" ip address {ADDRESS} {MASK}".encode(),
                                         f" ip address {ADDRESS} {WRONG_MASK}".encode())
     return answers

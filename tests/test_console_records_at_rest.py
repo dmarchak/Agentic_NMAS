@@ -37,6 +37,7 @@ import pytest
 
 from modules.nsot import console_ztp as Z
 from modules.nsot import oob_onboard as O
+from tests.console_ios import read_index
 from tests.test_console_session import PNP
 from tests.test_console_ztp import (ACTOR, FAST as ZFAST, LIST, World, _hardware_summary,
                                     _lines as kick_lines, _real, blank_answers, kick_answers)
@@ -241,7 +242,8 @@ def survey_read(w):
 
 
 # The kick-start: kick_answers(lines) answers the wake, enable, the recheck (dir nvram:), each
-# line (index 3 + i), each read-back (3 + len(lines) + k) and the copy (its last two).
+# line (index 3 + i), each read-back (found by its command, `read_index`) and the copy (its
+# last two).
 
 def _svi(lines) -> int:
     return lines.index(f" ip address {ADDRESS} {MASK}")
@@ -294,7 +296,7 @@ def kick_blank(w):
 def kick_read(w):
     lines = kick_lines()
     got = kick_answers(lines)
-    at = 3 + len(lines) + 1                       # the SVI's read-back
+    at = read_index(got, "show running-config interface Vlan10")   # the SVI's read-back
     want = f" ip address {ADDRESS} {MASK}".encode()
     assert want in got[at], got[at]
     got[at] = got[at].replace(want, f" ip address {SECRET} {MASK}".encode())

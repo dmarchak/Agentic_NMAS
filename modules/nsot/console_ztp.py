@@ -1006,8 +1006,9 @@ def kickstart_preview(list_name: str, device_id, params: dict, *, session=None,
     from modules.redact import redact_text
 
     out["lines"] = [redact_text(line, values) for line in lines]
-    out["readback"] = {"reads": list(back["reads"]),
-                       "not_read": [list(x) for x in back["not_read"]]}
+    # Every line the kick-start types is read back (C1646: a VLAN by `show vlan id`), so the
+    # preview carries no "not read back" list.
+    out["readback"] = {"reads": list(back["reads"])}
     out["copy"] = redact_text(copy, values) if copy else ""
     out["program"] = _masked_program(program, values) if program else None
     out["refusals"] = list(out["refused_by"].values())

@@ -38,3 +38,21 @@ They are also the real console text for out-of-band ZTP's session and survey tes
     sha256 c600487a80e452c73cb3b211ba78faa865dfb9231d01aa5e288f19e86bb1e2b0  s5-session-enable-dir-nvram.txt
     sha256 6528a4c620a3adf0f27fa9076bbe06d569f3bfe6a8767c0589bf551382b99958  s5-kickstart-take-syslog.txt
     sha256 4829612ca358c1f5bd870382a5b5d448bf87ee81cb1cef483c12ca2bc5eecae6  s5-kickstart-take-copy-echo.txt
+
+- `vios_l2_<switch>_show_vlan_id_<N>.txt` and `vios_l2_<switch>_show_vtp_status.txt`
+  (2026-10-24 ~06:00 UTC, C1646): two lab vIOS-L2 switches' answers to `show vlan id 10`,
+  `show vlan id 1`, `show vlan id 999` (a VLAN neither has) and `show vtp status`, read through
+  Mercury's recorded Show commands path (read-only), each answer as recorded, split one per
+  file. s5 is in VTP server mode (VLAN 10 named `VLAN10`, kept in the VLAN database and not in
+  its running configuration), s1 transparent (VLAN 10 named `VLAN0010`). One edit: s5's
+  management address in `show vtp status` replaced by `192.0.2.14`. The VLAN read where the
+  device keeps it (`modules/nsot/vlan_read.py`; tests/test_vlan_read.py).
+
+    sha256 7089b0f6087b7ea59f1786187fbdbc8b0a2bac7fe8300f2dc5399065c45afb99  vios_l2_s1_show_vlan_id_10.txt
+    sha256 d487ff68e3d02bfa706225dd0e8a4a03c6c1b0d04043493511474687883a4691  vios_l2_s1_show_vlan_id_1.txt
+    sha256 2ac34dc0ef2355625266f9f4e795b2a9bc5593e4f1f59caeaee4c0eb0e4a179a  vios_l2_s1_show_vlan_id_999.txt
+    sha256 b836cdaf89c3b99afd1aac69e5d6568cc1e0861dd08d0720c9c4c725bb5111c3  vios_l2_s1_show_vtp_status.txt
+    sha256 3bd74edaaeaaeaecf848feb5fee0c5b13c7be22161c544c62261ed1e60dc78e7  vios_l2_s5_show_vlan_id_10.txt
+    sha256 831692ca602b3ddd628c219c981d06d8ddd94baad02520a050dedabe3128d8e9  vios_l2_s5_show_vlan_id_1.txt
+    sha256 2ac34dc0ef2355625266f9f4e795b2a9bc5593e4f1f59caeaee4c0eb0e4a179a  vios_l2_s5_show_vlan_id_999.txt
+    sha256 8af18599cfef71f20141daac6e85cd5614bfe1ff0b2c36d5da4153aec7151452  vios_l2_s5_show_vtp_status.txt

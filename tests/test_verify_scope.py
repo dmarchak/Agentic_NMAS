@@ -81,7 +81,7 @@ class TestTheClassification:
 class TestTheReadBack:
     def test_every_new_vty_line_reads_back_from_the_merged_config(self):
         rb = V.read_back(VTY, MERGED)
-        assert rb == {"missing": [], "skipped": [], "checked": 4}
+        assert rb == {"missing": [], "skipped": [], "checked": 4, "unread": []}
 
     def test_a_line_the_device_does_not_show_is_named_under_its_section(self):
         # r3 prints the range split (`line vty 0`, `line vty 1`, `line vty 2 4`): three of
@@ -109,7 +109,7 @@ class TestThePipelineRunsTheScopedVerify:
         v = ctx.verify_result["x"]
         assert clock.slept == [] and v["bgp_watch"] is None
         assert v["verify_scope"]["scope"] == "quick" and v["ok"] is True
-        assert v["read_back"] == {"missing": [], "skipped": [], "checked": 4}
+        assert v["read_back"] == {"missing": [], "skipped": [], "checked": 4, "unread": []}
 
     def test_a_full_program_still_watches_bgp_to_its_hold_time(self, world):
         ctx, clock = world(_summary(), config=MERGED)

@@ -44,9 +44,9 @@ acceptable sets; anything else is a difference naming what was typed and what wa
 - the section's header (``interface Vlan1``, ``interface GigabitEthernet0/1``, ``line con 0``)
   must be in its read exactly once (an interface compared by its canonical name, since IOS
   prints the long form of an abbreviation typed);
-- ``vlan N`` is NOT read back, and the preview says so: a VLAN lives in the VLAN database, not
-  the running configuration, and the access port's ``switchport access vlan`` and the VLAN
-  interface's read carry it;
+- ``vlan N`` is read where the switch keeps it, ``show vlan id N`` (C1646: in VTP server or
+  client mode a VLAN lives in the VLAN database, not the running configuration), and the VLAN
+  must be there (`vlan_read.parse`);
 - any other line has no read-back defined and is REFUSED at the preview: the kick-start types
   only what it can read back.
 
@@ -72,6 +72,7 @@ from dataclasses import dataclass, replace
 
 from modules.nsot import console_profiles as P
 from modules.nsot import console_session as S
+from modules.nsot import vlan_read
 
 log = logging.getLogger(__name__)
 
@@ -99,11 +100,9 @@ HARDWARE = re.compile(r"\s*Hardware is .*, address is ([0-9A-Fa-f]{4}\.[0-9A-Fa-
                        r"[0-9A-Fa-f]{4})\b")             # matched from a line's start
 #: The console line, the one ``line`` section a kick-start configures.
 CONSOLE_LINE = "line con 0"
-#: Typed lines that are not read back, each with why (said by the preview).
-NOT_READ_BACK = {
-    "vlan": ("a VLAN lives in the VLAN database, not the running configuration: the access "
-             "port's switchport access vlan and the VLAN interface's read carry it"),
-}
+#: Typed lines that are not read back, each with why (said by the preview). None since C1646:
+#: ``vlan N`` is read from the VLAN database (`vlan_read`).
+NOT_READ_BACK = {}
 #: The global settings a kick-start may type, each read back by the one global read. ``ip route``
 #: is the switch's way back while it routes (a blank vIOS-L2 does, which ignores its default
 #: gateway: measured on a blank lab switch, 2026-10-23, C1606); any other static route read is a
@@ -124,6 +123,7 @@ class Expect:
     section: str           # the header of the section holding it ("": the global read)
     key: str               # the words naming the setting in a read line
     want: tuple            # the acceptable tuples of read lines carrying the key
+    kind: str = "lines"    # "lines": judged by the key's lines; "vlan": by `vlan_read.parse`
 
 
 # ── the read-back (C1593) ─────────────────────────────────────────────────────────────────
@@ -174,7 +174,12 @@ def readback_plan(lines) -> dict:
         elif text == CONSOLE_LINE:
             section, read = text, READ_SECTION.format(header=text)
         elif words[0] == "vlan" and len(words) == 2:
-            not_read.append((text, NOT_READ_BACK["vlan"]))
+            # Read from the VLAN database (C1646); a VLAN id of the wrong shape is refused
+            # here, before any read is built.
+            read = vlan_read.command(words[1])
+            expect.append(Expect(text, read, "", "vlan", ((text,),), kind="vlan"))
+            if read not in reads:
+                reads.append(read)
             section = "vlan"
             continue
         else:
@@ -287,6 +292,15 @@ def compare_readback(plan: dict, answers: dict) -> list:
                         "why": f"typed {e.typed!r}; {e.read!r} was not read"})
             continue
         lines = answer_lines(e.read, text)
+        if e.kind == "vlan":
+            vlan = e.typed.split()[1]
+            got = vlan_read.parse(vlan, "\n".join(lines))
+            if got["state"] != "present":
+                out.append({"typed": e.typed, "read": e.read,
+                            "found": (got["row"],) if got["state"] == "absent" else None,
+                            "why": f"typed {e.typed!r}; {e.read!r} shows {got['why']} (it must "
+                                   f"show VLAN {vlan} in the VLAN database)"})
+            continue
         if e.section:
             scope, count = section_body(lines, e.section)
             if scope is None:

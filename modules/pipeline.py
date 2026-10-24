@@ -1060,6 +1060,26 @@ def _canary_sanity_check(canary_dev: dict, ctx: PipelineContext) -> None:
 # Stage 7 — Post-change snapshot
 # ---------------------------------------------------------------------------
 
+def _read_vlans(ctx: PipelineContext, dev: dict, snap: dict) -> None:
+    """``snap["vlans"]``: ``{id: the answer to `show vlan id <id>`}`` for each VLAN the
+    device's program configures (`verify_scope.vlan_reads`), and ``snap["vlan_errors"]``:
+    ``{id: why}`` for a read that raised. A program with no VLAN reads nothing."""
+    from modules.commands import run_device_command
+    from modules.connection import get_persistent_connection
+    from modules.nsot import verify_scope, vlan_read
+
+    snap["vlans"], snap["vlan_errors"] = {}, {}
+    for vlan in verify_scope.vlan_reads((ctx.rendered_commands or {}).get(dev["ip"]) or []):
+        try:
+            # Asked of the pool each time: a read that failed spent its session (C272).
+            conn = get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)
+            snap["vlans"][vlan] = run_device_command(conn, vlan_read.command(vlan))
+        except Exception as exc:                    # noqa: BLE001
+            log.warning("pipeline[7/post_snapshot]: %s VLAN %s read failed: %s",
+                        dev.get("hostname", dev["ip"]), vlan, exc)
+            snap["vlan_errors"][vlan] = f"{type(exc).__name__}: {exc}"
+
+
 def _stage_post_snapshot(ctx: PipelineContext) -> None:
     """Capture the same operational metrics as Stage 4, now AFTER deploy,
     on a NEW session (C272): the push's session is where the prompt read as
@@ -1093,6 +1113,11 @@ def _stage_post_snapshot(ctx: PipelineContext) -> None:
                 snap["running_config"] = ""
                 # Verify says it could not read it (C272), never "not removed".
                 snap["running_config_error"] = f"{type(cfg_exc).__name__}: {cfg_exc}"
+
+            # C1646: each VLAN the program configures, read where the device keeps it (a
+            # switch in VTP server or client mode prints none in its running configuration).
+            # A read that fails is named; verify then neither passes nor fails that line.
+            _read_vlans(ctx, dev, snap)
 
             ctx.post_snapshots[ip] = snap
             log.info("pipeline[7/post_snapshot]: %s OK", hostname)
@@ -1738,7 +1763,12 @@ def _stage_verify(ctx: PipelineContext) -> None:
             cant_read.append("new lines: `show running-config`: "
                              + (post.get("running_config_error") or "nothing was read"))
         else:
-            read_back = verify_scope.read_back(sent, post_cfg)
+            read_back = verify_scope.read_back(sent, post_cfg, post.get("vlans") or {})
+            # A VLAN read not made or not understood (C1646): neither a pass nor a miss.
+            errors = post.get("vlan_errors") or {}
+            for u in read_back.get("unread") or []:
+                cant_read.append(f"new lines: {u['line']}: {u['why']}"
+                                 + (f" ({errors[u['vlan']]})" if u["vlan"] in errors else ""))
             if ctx.read_back_all and read_back.get("missing"):
                 # One program, rolled back as one (A2): a template that did not land is a
                 # verify failure, never a device left with part of its templates.

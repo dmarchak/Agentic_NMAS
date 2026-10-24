@@ -53,6 +53,9 @@ SCANNED = {
                       "a `dir` on that device's one session (Reload's preview, P.14)"),
     ("modules/pipeline.py", "_stage_pre_snapshot"): ("sequential", _ONE_RUN),
     ("modules/pipeline.py", "_stage_post_snapshot"): ("sequential", _ONE_RUN),
+    ("modules/pipeline.py", "_read_vlans"): (
+        "one_device", "the VLANs ONE device's program configures, each a `show vlan id` on "
+                      "that device's post-change session (C1646)"),
     ("modules/pipeline.py", "_capture_failure_state"): ("sequential", _ONE_RUN),
     ("modules/pipeline.py", "_stage_rollback"): ("sequential", _ONE_RUN),
     ("modules/nsot/credential_rotation.py", "push_rotation"): (

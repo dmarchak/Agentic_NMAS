@@ -1,0 +1,17 @@
+VTP Version capable             : 1 to 3
+VTP version running             : 1
+VTP Domain Name                 : 
+VTP Pruning Mode                : Disabled
+VTP Traps Generation            : Disabled
+Device ID                       : 0c00.0875.8000
+Configuration last modified by 192.0.2.14 at 10-24-26 00:38:35
+Local updater ID is 192.0.2.14 on interface Vl1 (lowest numbered VLAN interface found)
+
+Feature VLAN:
+--------------
+VTP Operating Mode                : Server
+Maximum VLANs supported locally   : 1005
+Number of existing VLANs          : 6
+Configuration Revision            : 1
+MD5 digest                        : 0x9B 0x61 0x6C 0x5F 0x61 0x8D 0x5F 0xA3 
+                                    0x0A 0xE2 0x7A 0x43 0xC0 0x4F 0x5D 0x48 

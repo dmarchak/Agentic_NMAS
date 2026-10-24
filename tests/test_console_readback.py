@@ -28,6 +28,8 @@ READ_CON = "show running-config | section line con 0"
 READ_GLOBAL = "show running-config | include ^hostname|^ip default-gateway|^ip route"
 ROUTE = "ip route 0.0.0.0 0.0.0.0 192.0.2.13"
 READ_MAC = "show interfaces Vlan1"
+#: The VLAN typed, read where the switch keeps it (C1646): first, as the line is typed first.
+READ_VLAN = "show vlan id 1"
 
 
 def answers(config=None, **over) -> dict:
@@ -48,9 +50,11 @@ def with_lines(header: str, body: list, config=None) -> dict:
 # ── The plan ──────────────────────────────────────────────────────────────────────────────
 
 def test_the_switch_reads_each_section_typed_then_the_globals_then_the_mac():
-    assert PLAN["reads"] == (READ_UPLINK, READ_SVI, READ_CON, READ_GLOBAL, READ_MAC)
+    """C1646: the VLAN typed is read too, from the VLAN database, so no typed line goes
+    unread (it was "not read back" while the read was `show running-config`)."""
+    assert PLAN["reads"] == (READ_VLAN, READ_UPLINK, READ_SVI, READ_CON, READ_GLOBAL, READ_MAC)
     assert PLAN["mac_read"] == READ_MAC
-    assert PLAN["not_read"] == (("vlan 1", K.NOT_READ_BACK["vlan"]),)
+    assert PLAN["not_read"] == ()
 
 
 def test_every_read_is_a_read():
@@ -62,7 +66,9 @@ def test_every_read_is_a_read():
 def test_each_typed_setting_has_its_exact_expectation():
     got = [(e.typed, e.read, e.section, e.key, e.want) for e in PLAN["expect"]]
     up, svi, con = "interface GigabitEthernet0/1", "interface Vlan1", "line con 0"
+    assert [e.kind for e in PLAN["expect"]] == ["vlan"] + ["lines"] * 10
     assert got == [
+        ("vlan 1", READ_VLAN, "", "vlan", (("vlan 1",),)),
         ("switchport mode access", READ_UPLINK, up, "switchport mode",
          (("switchport mode access",),)),
         ("switchport access vlan 1", READ_UPLINK, up, "switchport access vlan",
@@ -348,6 +354,48 @@ def test_a_section_s_body_ends_at_its_first_unindented_line():
 ])
 def test_a_header_is_its_section_by_canonical_name(line, header, same):
     assert K._same_header(line, header) is same                    # noqa: SLF001
+
+
+# ── The VLAN, read where the switch keeps it (C1646) ──────────────────────────────────────
+
+def test_a_vlan_the_switch_keeps_only_in_its_database_matches():
+    """A VTP-server switch prints no `vlan` line in its running configuration (the fake's
+    `running` prints none); the VLAN's own read shows it, so the read-back matches."""
+    config = running(LINES)
+    assert not any(g.startswith("vlan") for g in config["globals"]), "floor"
+    assert "VLAN Name" in answers(config)[READ_VLAN], "floor: the real capture answers"
+    assert K.compare_readback(PLAN, answers(config)) == []
+
+
+def test_a_vlan_absent_from_the_database_is_a_difference_naming_ios_s_line():
+    config = dict(running(LINES), vlans=[])
+    got = K.compare_readback(PLAN, answers(config))
+    assert got == [{"typed": "vlan 1", "read": READ_VLAN,
+                    "found": ("VLAN id 1 not found in current VLAN database",),
+                    "why": "typed 'vlan 1'; 'show vlan id 1' shows VLAN 1 is not in the "
+                           "device's VLAN database (it must show VLAN 1 in the VLAN database)"}]
+
+
+@pytest.mark.parametrize("answer,why", [
+    ("show vlan id 1\r\n                 ^\r\n% Invalid input detected at '^' marker.\r\ns5#",
+     "the answer has no VLAN table ('^')"),
+    ("show vlan id 1\r\ns5#", "the answer is empty"),
+], ids=["refused", "empty"])
+def test_an_unreadable_vlan_read_is_a_difference_with_nothing_found(answer, why):
+    got = K.compare_readback(PLAN, answers(show_vlan_id_1=answer))
+    assert [(d["typed"], d["found"]) for d in got] == [("vlan 1", None)], got
+    assert why in got[0]["why"], got[0]["why"]
+
+
+@pytest.mark.parametrize("vlan", ["0", "4095", "01", "abc", "10,20", "-1"])
+def test_a_vlan_id_of_the_wrong_shape_is_refused_before_any_read_is_built(vlan):
+    with pytest.raises(ValueError, match="is not an integer from 1 to 4094"):
+        K.readback_plan(["configure terminal", f"vlan {vlan}", "end"])
+
+
+def test_the_highest_vlan_is_read():
+    plan = K.readback_plan(["configure terminal", "vlan 4094", "end"])
+    assert plan["reads"] == ("show vlan id 4094",)
 
 
 # ── The MAC in use ────────────────────────────────────────────────────────────────────────
