@@ -28,7 +28,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [browser1, browser2, a, b]
+        shard: [browser1, browser2, browser3, a, b]
     runs-on: ubuntu-24.04
     # The per-test measurement's bound (2026-10-23, nightly #17 at c4716675, cancelled by the
     # old 26-minute bound): the tests steps took 931 s (b), 915 s (browser1), 618 s (browser2),

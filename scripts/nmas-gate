@@ -59,10 +59,10 @@ CI_WORKERS = 4
 #: from ca52963 to 64d4377 they ran only in a separate clean process here, and CI was red for
 #: five commits on a failure no local run could meet (a Socket.IO test client earlier in the
 #: same worker, 2026-10-03).
-#: CI runs it as four jobs at once (2026-10-03; four since C614), each its shard of the files
-#: (`scripts/nmas-shards`): the gate runs the SAME four commands, at once, each with CI's
+#: CI runs it as five jobs at once (2026-10-03; four since C614, five since 2026-10-24, C1637),
+#: each its shard of the files (`scripts/nmas-shards`): the gate runs the SAME commands, at once, each with CI's
 #: workers, so each job's company in a worker is the one CI's has (C349).
-SHARDS = ("browser1", "browser2", "a", "b")
+SHARDS = ("browser1", "browser2", "browser3", "a", "b")
 #: Each shard measures by tier into its own data file and records its tiers in one folder, as
 #: CI's tests step does (NMAS_COVERAGE_TIERS=1, C773), so step 4b can run CI's ratchet.
 SUITE = ("{py} -c 0 && PYTHON={py} COVERAGE_CORE=sysmon NMAS_COVERAGE_TIERS=1 "
@@ -71,10 +71,10 @@ SUITE = ("{py} -c 0 && PYTHON={py} COVERAGE_CORE=sysmon NMAS_COVERAGE_TIERS=1 "
          "scripts/nmas-test -q -p no:cacheprovider -n {n} --cov=modules --cov=routes "
          "--cov=app --cov-report= --junitxml={cov}/junit-{shard}.xml -rEfs "
          "$({py} scripts/nmas-shards {shard})")
-#: The four shards run at once, two of them starting a headless browser: each shard's `-n` is
+#: The five shards run at once, three of them starting a headless browser: each shard's `-n` is
 #: the memory rule's (scripts/nmas-workers, the operator 2026-10-19), never more than CI's
 #: CI_WORKERS, measured before step 4 and said.
-BROWSER_SHARDS = 2
+BROWSER_SHARDS = 3
 #: Each shard's bound at CI_WORKERS workers: 2.5x the slowest shard measured at -n 4 (about
 #: 5 min, docs/TESTING.md). A shard's time goes as 1/n, so its bound does too
 #: (`suite_bound`): 740 s at -n 4, 2960 s at -n 1.

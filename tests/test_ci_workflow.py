@@ -224,7 +224,7 @@ def test_the_coverage_job_reports_line_coverage_over_the_four_shards_combined():
     steps = doc["jobs"]["coverage"]["steps"]
     names = [s.get("name", "") for s in steps]
     combine = names.index("Combine them")
-    total = names.index("Line coverage, every test, the four shards combined")
+    total = names.index("Line coverage, every test, every shard combined")
     assert combine < total < names.index("The report and the ratchet")
     run = steps[total]["run"]
     assert "--data-file=.coverage " in run and "--format=total" in run

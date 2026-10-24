@@ -2125,6 +2125,1730 @@
      "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
     }
    ]
+  },
+  "modules.pipeline._stage_post_snapshot": {
+   "path": "modules/pipeline.py",
+   "qualname": "_stage_post_snapshot",
+   "hash": "bcd6648db63c28078a01b66b8a252417d1722f6c5ca32b484ad703f6f4516c9d",
+   "survivors": [
+    {
+     "was": "+ \"\\n\".join(errors)",
+     "now": "+ \"XX\\nXX\".join(errors)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "conn = get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)",
+     "now": "conn = get_persistent_connection(None, ctx.connections_pool, ctx.pool_lock)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "conn = get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)",
+     "now": "conn = get_persistent_connection(dev, ctx.connections_pool, None)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)  # reachable, or raise",
+     "now": "get_persistent_connection(None, ctx.connections_pool, ctx.pool_lock)  # reachable, or raise",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)  # reachable, or raise",
+     "now": "get_persistent_connection(dev, ctx.connections_pool, None)  # reachable, or raise",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "hostname = dev.get(\"hostname\", ip)",
+     "now": "hostname = dev.get(\"hostname\", )",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "hostname = dev.get(\"hostname\", ip)",
+     "now": "hostname = dev.get(\"hostname\", None)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "snap = _capture_operational_snapshot(_session_for(ctx, dev), ip, hostname)",
+     "now": "snap = _capture_operational_snapshot(_session_for(ctx, None), ip, hostname)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "snap = _capture_operational_snapshot(_session_for(ctx, dev), ip, hostname)",
+     "now": "snap = _capture_operational_snapshot(_session_for(ctx, dev), None, hostname)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "snap = _capture_operational_snapshot(_session_for(ctx, dev), ip, hostname)",
+     "now": "snap = _capture_operational_snapshot(_session_for(ctx, dev), ip, None)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "snap[\"running_config\"] = \"\"",
+     "now": "snap[\"RUNNING_CONFIG\"] = \"\"",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "snap[\"running_config\"] = \"\"",
+     "now": "snap[\"XXrunning_configXX\"] = \"\"",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "snap[\"running_config\"] = \"\"",
+     "now": "snap[\"running_config\"] = \"XXXX\"",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "snap[\"running_config\"] = \"\"",
+     "now": "snap[\"running_config\"] = None",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "snap[\"running_config_error\"] = f\"{type(cfg_exc).__name__}: {cfg_exc}\"",
+     "now": "snap[\"RUNNING_CONFIG_ERROR\"] = f\"{type(cfg_exc).__name__}: {cfg_exc}\"",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "snap[\"running_config_error\"] = f\"{type(cfg_exc).__name__}: {cfg_exc}\"",
+     "now": "snap[\"XXrunning_config_errorXX\"] = f\"{type(cfg_exc).__name__}: {cfg_exc}\"",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "snap[\"running_config_error\"] = f\"{type(cfg_exc).__name__}: {cfg_exc}\"",
+     "now": "snap[\"running_config_error\"] = None",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "snap[\"running_config_error\"] = f\"{type(cfg_exc).__name__}: {cfg_exc}\"",
+     "now": "snap[\"running_config_error\"] = f\"{type(None).__name__}: {cfg_exc}\"",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    }
+   ]
+  },
+  "modules.pipeline._stage_verify": {
+   "path": "modules/pipeline.py",
+   "qualname": "_stage_verify",
+   "hash": "2273a25432a0ca2b18cb4b9123a2631165011abc911d445195f9a43760f6f13e",
+   "survivors": [
+    {
+     "was": "\" settle); verify failed at once, without waiting out the routing \"",
+     "now": "\" SETTLE); VERIFY FAILED AT ONCE, WITHOUT WAITING OUT THE ROUTING \"",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\" settle); verify failed at once, without waiting out the routing \"",
+     "now": "\"XX settle); verify failed at once, without waiting out the routing XX\"",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"basis\": \"the installation's default, inherited by this \"",
+     "now": "\"BASIS\": \"the installation's default, inherited by this \"",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"basis\": \"the installation's default, inherited by this \"",
+     "now": "\"XXbasisXX\": \"the installation's default, inherited by this \"",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"elapsed\": waited[\"elapsed\"],",
+     "now": "\"ELAPSED\": waited[\"elapsed\"],",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"elapsed\": waited[\"elapsed\"],",
+     "now": "\"XXelapsedXX\": waited[\"elapsed\"],",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"expected_effects\": expected,",
+     "now": "\"EXPECTED_EFFECTS\": expected,",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"expected_effects\": expected,",
+     "now": "\"XXexpected_effectsXX\": expected,",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"interfaces_up\":    post_up,",
+     "now": "\"INTERFACES_UP\":    post_up,",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"interfaces_up\":    post_up,",
+     "now": "\"XXinterfaces_upXX\":    post_up,",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"interfaces_up\":    pre_up,",
+     "now": "\"INTERFACES_UP\":    pre_up,",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"interfaces_up\":    pre_up,",
+     "now": "\"XXinterfaces_upXX\":    pre_up,",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routes\":           post_routes,",
+     "now": "\"ROUTES\":           post_routes,",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routes\":           post_routes,",
+     "now": "\"XXroutesXX\":           post_routes,",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routes\":           pre_routes,",
+     "now": "\"ROUTES\":           pre_routes,",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routes\":           pre_routes,",
+     "now": "\"XXroutesXX\":           pre_routes,",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routing_neighbors\": post_nbr.get(\"count\", -1),",
+     "now": "\"ROUTING_NEIGHBORS\": post_nbr.get(\"count\", -1),",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routing_neighbors\": post_nbr.get(\"count\", -1),",
+     "now": "\"XXrouting_neighborsXX\": post_nbr.get(\"count\", -1),",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routing_neighbors\": post_nbr.get(\"count\", -1),",
+     "now": "\"routing_neighbors\": post_nbr.get(\"COUNT\", -1),",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routing_neighbors\": post_nbr.get(\"count\", -1),",
+     "now": "\"routing_neighbors\": post_nbr.get(\"XXcountXX\", -1),",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routing_neighbors\": post_nbr.get(\"count\", -1),",
+     "now": "\"routing_neighbors\": post_nbr.get(\"count\", ),",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routing_neighbors\": post_nbr.get(\"count\", -1),",
+     "now": "\"routing_neighbors\": post_nbr.get(\"count\", +1),",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routing_neighbors\": post_nbr.get(\"count\", -1),",
+     "now": "\"routing_neighbors\": post_nbr.get(\"count\", -2),",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routing_neighbors\": post_nbr.get(\"count\", -1),",
+     "now": "\"routing_neighbors\": post_nbr.get(\"count\", None),",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routing_neighbors\": post_nbr.get(\"count\", -1),",
+     "now": "\"routing_neighbors\": post_nbr.get(-1),",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routing_neighbors\": post_nbr.get(\"count\", -1),",
+     "now": "\"routing_neighbors\": post_nbr.get(None, -1),",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routing_neighbors\": pre_nbr.get(\"count\", -1),",
+     "now": "\"ROUTING_NEIGHBORS\": pre_nbr.get(\"count\", -1),",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routing_neighbors\": pre_nbr.get(\"count\", -1),",
+     "now": "\"XXrouting_neighborsXX\": pre_nbr.get(\"count\", -1),",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routing_neighbors\": pre_nbr.get(\"count\", -1),",
+     "now": "\"routing_neighbors\": pre_nbr.get(\"COUNT\", -1),",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routing_neighbors\": pre_nbr.get(\"count\", -1),",
+     "now": "\"routing_neighbors\": pre_nbr.get(\"XXcountXX\", -1),",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routing_neighbors\": pre_nbr.get(\"count\", -1),",
+     "now": "\"routing_neighbors\": pre_nbr.get(\"count\", ),",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routing_neighbors\": pre_nbr.get(\"count\", -1),",
+     "now": "\"routing_neighbors\": pre_nbr.get(\"count\", +1),",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routing_neighbors\": pre_nbr.get(\"count\", -1),",
+     "now": "\"routing_neighbors\": pre_nbr.get(\"count\", -2),",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routing_neighbors\": pre_nbr.get(\"count\", -1),",
+     "now": "\"routing_neighbors\": pre_nbr.get(\"count\", None),",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routing_neighbors\": pre_nbr.get(\"count\", -1),",
+     "now": "\"routing_neighbors\": pre_nbr.get(-1),",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routing_neighbors\": pre_nbr.get(\"count\", -1),",
+     "now": "\"routing_neighbors\": pre_nbr.get(None, -1),",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routing_protocol\": post_nbr.get(\"protocol\", \"unknown\"),",
+     "now": "\"routing_protocol\": post_nbr.get(\"protocol\", \"UNKNOWN\"),",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routing_protocol\": post_nbr.get(\"protocol\", \"unknown\"),",
+     "now": "\"routing_protocol\": post_nbr.get(\"protocol\", \"XXunknownXX\"),",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routing_protocol\": post_nbr.get(\"protocol\", \"unknown\"),",
+     "now": "\"routing_protocol\": post_nbr.get(\"protocol\", ),",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routing_protocol\": post_nbr.get(\"protocol\", \"unknown\"),",
+     "now": "\"routing_protocol\": post_nbr.get(\"protocol\", None),",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routing_protocol\": pre_nbr.get(\"protocol\", \"unknown\"),",
+     "now": "\"routing_protocol\": pre_nbr.get(\"protocol\", \"UNKNOWN\"),",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routing_protocol\": pre_nbr.get(\"protocol\", \"unknown\"),",
+     "now": "\"routing_protocol\": pre_nbr.get(\"protocol\", \"XXunknownXX\"),",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routing_protocol\": pre_nbr.get(\"protocol\", \"unknown\"),",
+     "now": "\"routing_protocol\": pre_nbr.get(\"protocol\", ),",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routing_protocol\": pre_nbr.get(\"protocol\", \"unknown\"),",
+     "now": "\"routing_protocol\": pre_nbr.get(\"protocol\", None),",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routing_protocols\": post_counts,",
+     "now": "\"ROUTING_PROTOCOLS\": post_counts,",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"routing_protocols\": post_counts,",
+     "now": "\"XXrouting_protocolsXX\": post_counts,",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"state\": _SKIPPED, \"protocol\": \"none\",",
+     "now": "\"state\": _SKIPPED, \"PROTOCOL\": \"none\",",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"state\": _SKIPPED, \"protocol\": \"none\",",
+     "now": "\"state\": _SKIPPED, \"XXprotocolXX\": \"none\",",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"state\": _SKIPPED, \"protocol\": \"none\",",
+     "now": "\"state\": _SKIPPED, \"protocol\": \"NONE\",",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"state\": _SKIPPED, \"protocol\": \"none\",",
+     "now": "\"state\": _SKIPPED, \"protocol\": \"XXnoneXX\",",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"verify_scope\": {\"scope\": scope[\"scope\"], \"why\": scope[\"why\"]},",
+     "now": "\"verify_scope\": {\"scope\": scope[\"scope\"], \"WHY\": scope[\"why\"]},",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"verify_scope\": {\"scope\": scope[\"scope\"], \"why\": scope[\"why\"]},",
+     "now": "\"verify_scope\": {\"scope\": scope[\"scope\"], \"XXwhyXX\": scope[\"why\"]},",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"window\": waited[\"window\"][\"timeout\"]})",
+     "now": "\"WINDOW\": waited[\"window\"][\"timeout\"]})",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "\"window\": waited[\"window\"][\"timeout\"]})",
+     "now": "\"XXwindowXX\": waited[\"window\"][\"timeout\"]})",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "(d.get(\"hostname\", ip) for d in ctx.selected_devices if d[\"ip\"] == ip), ip",
+     "now": "(d.get(\"HOSTNAME\", ip) for d in ctx.selected_devices if d[\"ip\"] == ip), ip",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "(d.get(\"hostname\", ip) for d in ctx.selected_devices if d[\"ip\"] == ip), ip",
+     "now": "(d.get(\"XXhostnameXX\", ip) for d in ctx.selected_devices if d[\"ip\"] == ip), ip",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "(d.get(\"hostname\", ip) for d in ctx.selected_devices if d[\"ip\"] == ip), ip",
+     "now": "(d.get(\"hostname\", ) for d in ctx.selected_devices if d[\"ip\"] == ip), ip",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "(d.get(\"hostname\", ip) for d in ctx.selected_devices if d[\"ip\"] == ip), ip",
+     "now": "(d.get(\"hostname\", None) for d in ctx.selected_devices if d[\"ip\"] == ip), ip",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "(d.get(\"hostname\", ip) for d in ctx.selected_devices if d[\"ip\"] == ip), ip",
+     "now": "(d.get(\"hostname\", ip) for d in ctx.selected_devices if d[\"ip\"] != ip), ip",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "(d.get(\"hostname\", ip) for d in ctx.selected_devices if d[\"ip\"] == ip), ip",
+     "now": "(d.get(\"hostname\", ip) for d in ctx.selected_devices if d[\"ip\"] == ip), )",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "(d.get(\"hostname\", ip) for d in ctx.selected_devices if d[\"ip\"] == ip), ip",
+     "now": "(d.get(\"hostname\", ip) for d in ctx.selected_devices if d[\"ip\"] == ip), None",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "(d.get(\"hostname\", ip) for d in ctx.selected_devices if d[\"ip\"] == ip), ip",
+     "now": "(d.get(None, ip) for d in ctx.selected_devices if d[\"ip\"] == ip), ip",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "(d.get(\"hostname\", ip) for d in ctx.selected_devices if d[\"ip\"] == ip), ip",
+     "now": "(d.get(ip) for d in ctx.selected_devices if d[\"ip\"] == ip), ip",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "+ \"; \".join(read_back[\"missing\"][:5])",
+     "now": "+ \"; \".join(read_back[\"missing\"][:6])",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "+ \"\\n\".join(failures)",
+     "now": "+ \"XX\\nXX\".join(failures)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "+ (\" \u2026\" if len(read_back[\"missing\"]) > 5 else \"\"))",
+     "now": "+ (\" \u2026\" if (len(read_back[\"missing\"]) > 5) and False else \"\"))",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "+ (\" \u2026\" if len(read_back[\"missing\"]) > 5 else \"\"))",
+     "now": "+ (\" \u2026\" if (len(read_back[\"missing\"]) > 5) or True else \"\"))",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "+ (\" \u2026\" if len(read_back[\"missing\"]) > 5 else \"\"))",
+     "now": "+ (\" \u2026\" if len(read_back[\"missing\"]) > 5 else \"XXXX\"))",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "+ (\" \u2026\" if len(read_back[\"missing\"]) > 5 else \"\"))",
+     "now": "+ (\" \u2026\" if len(read_back[\"missing\"]) > 6 else \"\"))",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "+ (\" \u2026\" if len(read_back[\"missing\"]) > 5 else \"\"))",
+     "now": "+ (\" \u2026\" if len(read_back[\"missing\"]) >= 5 else \"\"))",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "+ (post.get(\"running_config_error\") or \"nothing was read\"))",
+     "now": "+ (post.get(\"RUNNING_CONFIG_ERROR\") or \"nothing was read\"))",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "+ (post.get(\"running_config_error\") or \"nothing was read\"))",
+     "now": "+ (post.get(\"XXrunning_config_errorXX\") or \"nothing was read\"))",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "+ (post.get(\"running_config_error\") or \"nothing was read\"))",
+     "now": "+ (post.get(\"running_config_error\") and \"nothing was read\"))",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "+ (post.get(\"running_config_error\") or \"nothing was read\"))",
+     "now": "+ (post.get(None) or \"nothing was read\"))",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "+ post[\"running_config_error\"])",
+     "now": "+ post[\"RUNNING_CONFIG_ERROR\"])",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "+ post[\"running_config_error\"])",
+     "now": "+ post[\"XXrunning_config_errorXX\"])",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "baseline = (max(0, pre_counts[\"bgp\"] - expected_gone.get(\"bgp\", 0))",
+     "now": "baseline = (max(0, pre_counts[\"bgp\"] - expected_gone.get(\"bgp\", ))",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "baseline = (max(0, pre_counts[\"bgp\"] - expected_gone.get(\"bgp\", 0))",
+     "now": "baseline = (max(0, pre_counts[\"bgp\"] - expected_gone.get(\"bgp\", 1))",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "baseline = (max(0, pre_counts[\"bgp\"] - expected_gone.get(\"bgp\", 0))",
+     "now": "baseline = (max(0, pre_counts[\"bgp\"] - expected_gone.get(\"bgp\", None))",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "baseline = (max(0, pre_counts[\"bgp\"] - expected_gone.get(\"bgp\", 0))",
+     "now": "baseline = (max(1, pre_counts[\"bgp\"] - expected_gone.get(\"bgp\", 0))",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "bgp_failed = any(i.startswith(\"bgp \") for i in issues) or any(",
+     "now": "bgp_failed = None",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "bgp_failed = any(i.startswith(\"bgp \") for i in issues) or any(",
+     "now": "bgp_failed = any(i.startswith(\"BGP \") for i in issues) or any(",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "bgp_failed = any(i.startswith(\"bgp \") for i in issues) or any(",
+     "now": "bgp_failed = any(i.startswith(\"XXbgp XX\") for i in issues) or any(",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "bgp_failed = any(i.startswith(\"bgp \") for i in issues) or any(",
+     "now": "bgp_failed = any(i.startswith(\"bgp \") for i in issues) and any(",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "cant_read.append(\"IP SLA against intent: `show running-config`: \"",
+     "now": "cant_read.append(\"IP SLA against intent: `show running-config`: \" - (post.get(\"running_config_error\") or \"nothing was read\"))",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "cant_read.append(\"IP SLA against intent: `show running-config`: \"",
+     "now": "cant_read.append(None)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "cant_read.append(\"new lines: `show running-config`: \"",
+     "now": "cant_read.append(\"new lines: `show running-config`: \" - (post.get(\"running_config_error\") or \"nothing was read\"))",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "cant_read.append(\"new lines: `show running-config`: \"",
+     "now": "cant_read.append(None)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "cant_read.append(\"re-created IP SLA operations: `show running-config`: \"",
+     "now": "cant_read.append(\"re-created IP SLA operations: `show running-config`: \" - post[\"running_config_error\"])",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "cant_read.append(\"re-created IP SLA operations: `show running-config`: \"",
+     "now": "cant_read.append(None)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "cant_read.append(\"removals: `show running-config`: \"",
+     "now": "cant_read.append(\"removals: `show running-config`: \" - post[\"running_config_error\"])",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "cant_read.append(\"removals: `show running-config`: \"",
+     "now": "cant_read.append(None)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "cant_read.append(f\"routes: `show ip route summary`: {post['routes']['error']}\")",
+     "now": "cant_read.append(None)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "cant_read.append(f\"routes: `show ip route summary`: {post['routes']['error']}\")",
+     "now": "cant_read.append(f\"routes: `show ip route summary`: {post['ROUTES']['error']}\")",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "cant_read.append(f\"routes: `show ip route summary`: {post['routes']['error']}\")",
+     "now": "cant_read.append(f\"routes: `show ip route summary`: {post['XXroutesXX']['error']}\")",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "cant_read.append(f\"routes: `show ip route summary`: {post['routes']['error']}\")",
+     "now": "cant_read.append(f\"routes: `show ip route summary`: {post['routes']['ERROR']}\")",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "cant_read.append(f\"routes: `show ip route summary`: {post['routes']['error']}\")",
+     "now": "cant_read.append(f\"routes: `show ip route summary`: {post['routes']['XXerrorXX']}\")",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "cant_read.append(f\"{proto}: {settled['unreadable']}\")",
+     "now": "cant_read.append(None)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "cant_read.append(f\"{proto}: {settled['unreadable']}\")",
+     "now": "cant_read.append(f\"{proto}: {settled['UNREADABLE']}\")",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "cant_read.append(f\"{proto}: {settled['unreadable']}\")",
+     "now": "cant_read.append(f\"{proto}: {settled['XXunreadableXX']}\")",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "cant_read.append(watch[\"unreadable\"])",
+     "now": "cant_read.append(None)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "cant_read.append(watch[\"unreadable\"])",
+     "now": "cant_read.append(watch[\"UNREADABLE\"])",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "cant_read.append(watch[\"unreadable\"])",
+     "now": "cant_read.append(watch[\"XXunreadableXX\"])",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "check=\"interfaces\")",
+     "now": ")",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "check=\"interfaces\")",
+     "now": "check=\"INTERFACES\")",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "check=\"interfaces\")",
+     "now": "check=\"XXinterfacesXX\")",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "check=\"interfaces\")",
+     "now": "check=None)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "continue",
+     "now": "break",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, hostname, pre_proto, pre_count)",
+     "now": "ctx, ip, None, pre_proto, pre_count)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, hostname, proto, pre_counts.get(proto, 0), need=1)",
+     "now": "ctx, ip, None, proto, pre_counts.get(proto, 0), need=1)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, hostname, proto, pre_counts.get(proto, 0), need=1)",
+     "now": "ctx, ip, hostname, proto, None, need=1)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, hostname, proto, pre_counts.get(proto, 0), need=1)",
+     "now": "ctx, ip, hostname, proto, pre_counts.get(0), need=1)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, hostname, proto, pre_counts.get(proto, 0), need=1)",
+     "now": "ctx, ip, hostname, proto, pre_counts.get(None, 0), need=1)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, hostname, proto, pre_counts.get(proto, 0), need=1)",
+     "now": "ctx, ip, hostname, proto, pre_counts.get(proto, ), need=1)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, hostname, proto, pre_counts.get(proto, 0), need=1)",
+     "now": "ctx, ip, hostname, proto, pre_counts.get(proto, 0), )",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, hostname, proto, pre_counts.get(proto, 0), need=1)",
+     "now": "ctx, ip, hostname, proto, pre_counts.get(proto, 0), need=2)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, hostname, proto, pre_counts.get(proto, 0), need=1)",
+     "now": "ctx, ip, hostname, proto, pre_counts.get(proto, 0), need=None)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, hostname, proto, pre_counts.get(proto, 0), need=1)",
+     "now": "ctx, ip, hostname, proto, pre_counts.get(proto, 1), need=1)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, hostname, proto, pre_counts.get(proto, 0), need=1)",
+     "now": "ctx, ip, hostname, proto, pre_counts.get(proto, None), need=1)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)[\"lost_unexpected\"])",
+     "now": "ctx, ip, None)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)[\"lost_unexpected\"])",
+     "now": "ctx, ip, lambda s: None)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)[\"lost_unexpected\"])",
+     "now": "ctx, ip, lambda s: _fx.judge(expected, pre_states, s)[\"lost_unexpected\"])",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)[\"lost_unexpected\"])",
+     "now": "ctx, ip, lambda s: not _fx.judge(None, pre_states, s)[\"lost_unexpected\"])",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)[\"lost_unexpected\"])",
+     "now": "ctx, ip, lambda s: not _fx.judge(expected, None, s)[\"lost_unexpected\"])",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)[\"lost_unexpected\"])",
+     "now": "ctx, ip, lambda s: not _fx.judge(expected, pre_states, )[\"lost_unexpected\"])",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)[\"lost_unexpected\"])",
+     "now": "ctx, ip, lambda s: not _fx.judge(expected, pre_states, None)[\"lost_unexpected\"])",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)[\"lost_unexpected\"])",
+     "now": "ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)[\"LOST_UNEXPECTED\"])",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)[\"lost_unexpected\"])",
+     "now": "ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)[\"XXlost_unexpectedXX\"])",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)[\"lost_unexpected\"])",
+     "now": "ctx, ip, lambda s: not _fx.judge(expected, s)[\"lost_unexpected\"])",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)[\"lost_unexpected\"])",
+     "now": "ctx, ip, lambda s: not _fx.judge(pre_states, s)[\"lost_unexpected\"])",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)[\"not_up\"],",
+     "now": "ctx, None, lambda s: not _fx.judge(expected, pre_states, s)[\"not_up\"],",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)[\"not_up\"],",
+     "now": "ctx, ip, None,",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)[\"not_up\"],",
+     "now": "ctx, ip, lambda s: None,",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)[\"not_up\"],",
+     "now": "ctx, ip, lambda s: _fx.judge(expected, pre_states, s)[\"not_up\"],",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)[\"not_up\"],",
+     "now": "ctx, ip, lambda s: not _fx.judge(None, pre_states, s)[\"not_up\"],",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)[\"not_up\"],",
+     "now": "ctx, ip, lambda s: not _fx.judge(expected, None, s)[\"not_up\"],",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)[\"not_up\"],",
+     "now": "ctx, ip, lambda s: not _fx.judge(expected, pre_states, )[\"not_up\"],",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)[\"not_up\"],",
+     "now": "ctx, ip, lambda s: not _fx.judge(expected, pre_states, None)[\"not_up\"],",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)[\"not_up\"],",
+     "now": "ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)[\"NOT_UP\"],",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)[\"not_up\"],",
+     "now": "ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)[\"XXnot_upXX\"],",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)[\"not_up\"],",
+     "now": "ctx, ip, lambda s: not _fx.judge(expected, s)[\"not_up\"],",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)[\"not_up\"],",
+     "now": "ctx, ip, lambda s: not _fx.judge(pre_states, s)[\"not_up\"],",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "elif pre_up >= 0 and post_up >= 0:",
+     "now": "elif pre_up > 0 and post_up >= 0:",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "elif pre_up >= 0 and post_up >= 0:",
+     "now": "elif pre_up >= 0 and post_up > 0:",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "elif pre_up >= 0 and post_up >= 0:",
+     "now": "elif pre_up >= 0 and post_up >= 1:",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "elif pre_up >= 0 and post_up >= 0:",
+     "now": "elif pre_up >= 1 and post_up >= 0:",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "elif retention < _ROUTE_RETENTION_MIN:",
+     "now": "elif retention <= _ROUTE_RETENTION_MIN:",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "f\"(still converging after {settled['elapsed']:.0f}s)\")",
+     "now": "f\"(still converging after {settled['ELAPSED']:.0f}s)\")",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "f\"(still converging after {settled['elapsed']:.0f}s)\")",
+     "now": "f\"(still converging after {settled['XXelapsedXX']:.0f}s)\")",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "f\"after {settled['elapsed']:.0f}s)\")",
+     "now": "f\"after {settled['ELAPSED']:.0f}s)\")",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "f\"after {settled['elapsed']:.0f}s)\")",
+     "now": "f\"after {settled['XXelapsedXX']:.0f}s)\")",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "f\"before, and is still coming up after {settled['elapsed']:.0f}s\")",
+     "now": "f\"before, and is still coming up after {settled['ELAPSED']:.0f}s\")",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "f\"before, and is still coming up after {settled['elapsed']:.0f}s\")",
+     "now": "f\"before, and is still coming up after {settled['XXelapsedXX']:.0f}s\")",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "f\"expected {u['expected']}, found {u['found'] or 'nothing'}\")",
+     "now": "f\"expected {u['expected']}, found {u['found'] or 'NOTHING'}\")",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "f\"expected {u['expected']}, found {u['found'] or 'nothing'}\")",
+     "now": "f\"expected {u['expected']}, found {u['found'] or 'XXnothingXX'}\")",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "f\"{hostname}: routes {pre_routes} \u2192 {post_routes} (still rising \"",
+     "now": "None)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "f\"{hostname}: {pre_proto} {pre_count} \u2192 {settled['count']} \"",
+     "now": "None)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "f\"{hostname}: {pre_proto} {pre_count} \u2192 {settled['count']} \"",
+     "now": "f\"{hostname}: {pre_proto} {pre_count} \u2192 {settled['COUNT']} \"",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "f\"{hostname}: {pre_proto} {pre_count} \u2192 {settled['count']} \"",
+     "now": "f\"{hostname}: {pre_proto} {pre_count} \u2192 {settled['XXcountXX']} \"",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "f\"{hostname}: {proto} is declared by intent, was not running \"",
+     "now": "None)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "f\"{pre_proto} neighbor table unreadable after deploy \"",
+     "now": "None",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "for mv in ([] if hard else [d for d in declared_fx if d.get(\"kind\") == \"moves\"]):",
+     "now": "for mv in ([] if (hard) and False else [d for d in declared_fx if d.get(\"kind\") == \"moves\"]):",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "for pre_proto, pre_count in ([] if hard else sorted(pre_counts.items())):",
+     "now": "for pre_proto, pre_count in ([] if (hard) and False else sorted(pre_counts.items())):",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "for proto in (\"ospf\", \"ospfv3\"):",
+     "now": "for proto in (\"ospf\", \"OSPFV3\"):",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "for proto in (\"ospf\", \"ospfv3\"):",
+     "now": "for proto in (\"ospf\", \"XXospfv3XX\"):",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "for proto in ([] if hard else from_intent):",
+     "now": "for proto in ([] if (hard) and False else from_intent):",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "hostname = next(",
+     "now": "hostname = None",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if (d[\"proto\"], d.get(\"rid\") or d.get(\"address\")) not in known]",
+     "now": "if (d[\"proto\"], d.get(\"RID\") or d.get(\"address\")) not in known]",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if (d[\"proto\"], d.get(\"rid\") or d.get(\"address\")) not in known]",
+     "now": "if (d[\"proto\"], d.get(\"XXridXX\") or d.get(\"address\")) not in known]",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if (d[\"proto\"], d.get(\"rid\") or d.get(\"address\")) not in known]",
+     "now": "if (d[\"proto\"], d.get(\"rid\") and d.get(\"address\")) not in known]",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if (d[\"proto\"], d.get(\"rid\") or d.get(\"address\")) not in known]",
+     "now": "if (d[\"proto\"], d.get(\"rid\") or d.get(\"ADDRESS\")) not in known]",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if (d[\"proto\"], d.get(\"rid\") or d.get(\"address\")) not in known]",
+     "now": "if (d[\"proto\"], d.get(\"rid\") or d.get(\"XXaddressXX\")) not in known]",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if (d[\"proto\"], d.get(\"rid\") or d.get(\"address\")) not in known]",
+     "now": "if (d[\"proto\"], d.get(\"rid\") or d.get(None)) not in known]",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if (d[\"proto\"], d.get(\"rid\") or d.get(\"address\")) not in known]",
+     "now": "if (d[\"proto\"], d.get(None) or d.get(\"address\")) not in known]",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if d.get(\"kind\") == \"routes\"), \"\")",
+     "now": "if d.get(\"kind\") == \"routes\"), None)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if named.get(\"not_down\") and not hard:",
+     "now": "if named.get(\"NOT_DOWN\") and not hard:",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if named.get(\"not_down\") and not hard:",
+     "now": "if named.get(\"XXnot_downXX\") and not hard:",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if named.get(\"not_down\") and not hard:",
+     "now": "if named.get(\"not_down\") and hard:",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if named.get(\"not_down\") and not hard:",
+     "now": "if named.get(None) and not hard:",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if named[\"not_up\"] and not hard:",
+     "now": "if named[\"not_up\"] or not hard:",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if new_ids and pre_counts.get(proto) is not None:",
+     "now": "if new_ids or pre_counts.get(proto) is not None:",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if not _skip_route and pre_routes > 0 and (post.get(\"routes\") or {}).get(\"error\"):",
+     "now": "if _skip_route and pre_routes > 0 and (post.get(\"routes\") or {}).get(\"error\"):",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if not _skip_route and pre_routes > 0 and (post.get(\"routes\") or {}).get(\"error\"):",
+     "now": "if not _skip_route and pre_routes > 0 and (post.get(\"ROUTES\") or {}).get(\"error\"):",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if not _skip_route and pre_routes > 0 and (post.get(\"routes\") or {}).get(\"error\"):",
+     "now": "if not _skip_route and pre_routes > 0 and (post.get(\"XXroutesXX\") or {}).get(\"error\"):",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if not _skip_route and pre_routes > 0 and (post.get(\"routes\") or {}).get(\"error\"):",
+     "now": "if not _skip_route and pre_routes > 0 and (post.get(\"routes\") and {}).get(\"error\"):",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if not _skip_route and pre_routes > 0 and (post.get(\"routes\") or {}).get(\"error\"):",
+     "now": "if not _skip_route and pre_routes > 0 and (post.get(\"routes\") or {}).get(\"ERROR\"):",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if not _skip_route and pre_routes > 0 and (post.get(\"routes\") or {}).get(\"error\"):",
+     "now": "if not _skip_route and pre_routes > 0 and (post.get(\"routes\") or {}).get(\"XXerrorXX\"):",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if not _skip_route and pre_routes > 0 and (post.get(\"routes\") or {}).get(\"error\"):",
+     "now": "if not _skip_route and pre_routes > 0 and (post.get(\"routes\") or {}).get(None):",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if not _skip_route and pre_routes > 0 and (post.get(\"routes\") or {}).get(\"error\"):",
+     "now": "if not _skip_route and pre_routes > 0 and (post.get(None) or {}).get(\"error\"):",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if not _skip_route and pre_routes > 0 and (post.get(\"routes\") or {}).get(\"error\"):",
+     "now": "if not _skip_route and pre_routes > 1 and (post.get(\"routes\") or {}).get(\"error\"):",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if not _skip_route and pre_routes > 0 and (post.get(\"routes\") or {}).get(\"error\"):",
+     "now": "if not _skip_route and pre_routes >= 0 and (post.get(\"routes\") or {}).get(\"error\"):",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if not _skip_route and pre_routes > 0 and post_routes >= 0:",
+     "now": "if not _skip_route and pre_routes > 0 and post_routes > 0:",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if not _skip_route and pre_routes > 0 and post_routes >= 0:",
+     "now": "if not _skip_route and pre_routes > 0 and post_routes >= 1:",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if not _skip_route and pre_routes > 0 and post_routes >= 0:",
+     "now": "if not _skip_route and pre_routes > 1 and post_routes >= 0:",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if not _skip_route and pre_routes > 0 and post_routes >= 0:",
+     "now": "if not _skip_route and pre_routes >= 0 and post_routes >= 0:",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if not post_cfg and post.get(\"running_config_error\"):",
+     "now": "if not post_cfg and post.get(\"RUNNING_CONFIG_ERROR\"):",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if not post_cfg and post.get(\"running_config_error\"):",
+     "now": "if not post_cfg and post.get(\"XXrunning_config_errorXX\"):",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if not post_cfg and post.get(\"running_config_error\"):",
+     "now": "if not post_cfg and post.get(None):",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if not post_cfg and post.get(\"running_config_error\"):",
+     "now": "if post_cfg and post.get(\"running_config_error\"):",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if pre_counts.get(\"bgp\") else (1 if \"bgp\" in from_intent else 0))",
+     "now": "if (pre_counts.get(\"bgp\")) or True else (1 if \"bgp\" in from_intent else 0))",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if pre_counts.get(\"bgp\") else (1 if \"bgp\" in from_intent else 0))",
+     "now": "if pre_counts.get(\"bgp\") else (1 if \"BGP\" in from_intent else 0))",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if pre_counts.get(\"bgp\") else (1 if \"bgp\" in from_intent else 0))",
+     "now": "if pre_counts.get(\"bgp\") else (1 if \"XXbgpXX\" in from_intent else 0))",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if pre_counts.get(\"bgp\") else (1 if \"bgp\" in from_intent else 0))",
+     "now": "if pre_counts.get(\"bgp\") else (1 if \"bgp\" in from_intent else 1))",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if pre_counts.get(\"bgp\") else (1 if \"bgp\" in from_intent else 0))",
+     "now": "if pre_counts.get(\"bgp\") else (1 if \"bgp\" not in from_intent else 0))",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if pre_counts.get(\"bgp\") else (1 if \"bgp\" in from_intent else 0))",
+     "now": "if pre_counts.get(\"bgp\") else (1 if (\"bgp\" in from_intent) and False else 0))",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if pre_counts.get(\"bgp\") else (1 if \"bgp\" in from_intent else 0))",
+     "now": "if pre_counts.get(\"bgp\") else (1 if (\"bgp\" in from_intent) or True else 0))",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if pre_counts.get(\"bgp\") else (1 if \"bgp\" in from_intent else 0))",
+     "now": "if pre_counts.get(\"bgp\") else (2 if \"bgp\" in from_intent else 0))",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if pre_proto == primary or \"neighbors\" not in record:",
+     "now": "if pre_proto != primary or \"neighbors\" not in record:",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if pre_proto == primary or \"neighbors\" not in record:",
+     "now": "if pre_proto == primary and \"neighbors\" not in record:",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if pre_proto == primary or \"neighbors\" not in record:",
+     "now": "if pre_proto == primary or \"NEIGHBORS\" not in record:",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if pre_proto == primary or \"neighbors\" not in record:",
+     "now": "if pre_proto == primary or \"XXneighborsXX\" not in record:",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if pre_proto == primary or \"neighbors\" not in record:",
+     "now": "if pre_proto == primary or \"neighbors\" in record:",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if pre_states and post_states:",
+     "now": "if pre_states or post_states:",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if pre_up >= 0 and (post.get(\"interfaces\") or {}).get(\"error\"):",
+     "now": "if pre_up > 0 and (post.get(\"interfaces\") or {}).get(\"error\"):",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if pre_up >= 0 and (post.get(\"interfaces\") or {}).get(\"error\"):",
+     "now": "if pre_up >= 1 and (post.get(\"interfaces\") or {}).get(\"error\"):",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if retention < _ROUTE_RETENTION_MIN and routes_declared:",
+     "now": "if retention <= _ROUTE_RETENTION_MIN and routes_declared:",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if watch.get(\"unreadable\"):",
+     "now": "if watch.get(\"UNREADABLE\"):",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if watch.get(\"unreadable\"):",
+     "now": "if watch.get(\"XXunreadableXX\"):",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "if watch.get(\"unreadable\"):",
+     "now": "if watch.get(None):",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "issues.append(\"The change shuts \" + \", \".join(named[\"not_down\"])",
+     "now": "issues.append(\"The change shuts \" + \", \".join(None)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "issues.append(\"The change shuts \" + \", \".join(named[\"not_down\"])",
+     "now": "issues.append(\"The change shuts \" + \", \".join(named[\"NOT_DOWN\"])",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "issues.append(\"The change shuts \" + \", \".join(named[\"not_down\"])",
+     "now": "issues.append(\"The change shuts \" + \", \".join(named[\"XXnot_downXX\"])",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "issues.append(\"The change shuts \" + \", \".join(named[\"not_down\"])",
+     "now": "issues.append(\"The change shuts \" + \", \".join(named[\"not_down\"]) - \", and it is still up\")",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "issues.append(\"The change shuts \" + \", \".join(named[\"not_down\"])",
+     "now": "issues.append(\"The change shuts \" - \", \".join(named[\"not_down\"])",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "issues.append(\"The change shuts \" + \", \".join(named[\"not_down\"])",
+     "now": "issues.append(None)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "issues.append(f\"IP SLA: the device shows `{line}`, which its intent does \"",
+     "now": "issues.append(None)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "known = {(d.get(\"proto\"), d.get(\"rid\") or d.get(\"address\")) for d in adj_drops}",
+     "now": "known = {(d.get(\"PROTO\"), d.get(\"rid\") or d.get(\"address\")) for d in adj_drops}",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "known = {(d.get(\"proto\"), d.get(\"rid\") or d.get(\"address\")) for d in adj_drops}",
+     "now": "known = {(d.get(\"XXprotoXX\"), d.get(\"rid\") or d.get(\"address\")) for d in adj_drops}",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "known = {(d.get(\"proto\"), d.get(\"rid\") or d.get(\"address\")) for d in adj_drops}",
+     "now": "known = {(d.get(\"proto\"), d.get(\"RID\") or d.get(\"address\")) for d in adj_drops}",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "known = {(d.get(\"proto\"), d.get(\"rid\") or d.get(\"address\")) for d in adj_drops}",
+     "now": "known = {(d.get(\"proto\"), d.get(\"XXridXX\") or d.get(\"address\")) for d in adj_drops}",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "known = {(d.get(\"proto\"), d.get(\"rid\") or d.get(\"address\")) for d in adj_drops}",
+     "now": "known = {(d.get(\"proto\"), d.get(\"rid\") and d.get(\"address\")) for d in adj_drops}",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "known = {(d.get(\"proto\"), d.get(\"rid\") or d.get(\"address\")) for d in adj_drops}",
+     "now": "known = {(d.get(\"proto\"), d.get(\"rid\") or d.get(\"ADDRESS\")) for d in adj_drops}",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "known = {(d.get(\"proto\"), d.get(\"rid\") or d.get(\"address\")) for d in adj_drops}",
+     "now": "known = {(d.get(\"proto\"), d.get(\"rid\") or d.get(\"XXaddressXX\")) for d in adj_drops}",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "known = {(d.get(\"proto\"), d.get(\"rid\") or d.get(\"address\")) for d in adj_drops}",
+     "now": "known = {(d.get(\"proto\"), d.get(\"rid\") or d.get(None)) for d in adj_drops}",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "known = {(d.get(\"proto\"), d.get(\"rid\") or d.get(\"address\")) for d in adj_drops}",
+     "now": "known = {(d.get(\"proto\"), d.get(None) or d.get(\"address\")) for d in adj_drops}",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "known = {(d.get(\"proto\"), d.get(\"rid\") or d.get(\"address\")) for d in adj_drops}",
+     "now": "known = {(d.get(None), d.get(\"rid\") or d.get(\"address\")) for d in adj_drops}",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "moved_ids = {d.get(\"rid\") for d in declared_fx if d.get(\"kind\") == \"moves\"}",
+     "now": "moved_ids = {d.get(\"RID\") for d in declared_fx if d.get(\"kind\") == \"moves\"}",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "moved_ids = {d.get(\"rid\") for d in declared_fx if d.get(\"kind\") == \"moves\"}",
+     "now": "moved_ids = {d.get(\"XXridXX\") for d in declared_fx if d.get(\"kind\") == \"moves\"}",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "moved_ids = {d.get(\"rid\") for d in declared_fx if d.get(\"kind\") == \"moves\"}",
+     "now": "moved_ids = {d.get(\"rid\") for d in declared_fx if d.get(\"KIND\") == \"moves\"}",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "moved_ids = {d.get(\"rid\") for d in declared_fx if d.get(\"kind\") == \"moves\"}",
+     "now": "moved_ids = {d.get(\"rid\") for d in declared_fx if d.get(\"XXkindXX\") == \"moves\"}",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "moved_ids = {d.get(\"rid\") for d in declared_fx if d.get(\"kind\") == \"moves\"}",
+     "now": "moved_ids = {d.get(\"rid\") for d in declared_fx if d.get(\"kind\") != \"moves\"}",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "moved_ids = {d.get(\"rid\") for d in declared_fx if d.get(\"kind\") == \"moves\"}",
+     "now": "moved_ids = {d.get(\"rid\") for d in declared_fx if d.get(\"kind\") == \"MOVES\"}",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "moved_ids = {d.get(\"rid\") for d in declared_fx if d.get(\"kind\") == \"moves\"}",
+     "now": "moved_ids = {d.get(\"rid\") for d in declared_fx if d.get(\"kind\") == \"XXmovesXX\"}",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "moved_ids = {d.get(\"rid\") for d in declared_fx if d.get(\"kind\") == \"moves\"}",
+     "now": "moved_ids = {d.get(\"rid\") for d in declared_fx if d.get(None) == \"moves\"}",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "moved_ids = {d.get(\"rid\") for d in declared_fx if d.get(\"kind\") == \"moves\"}",
+     "now": "moved_ids = {d.get(None) for d in declared_fx if d.get(\"kind\") == \"moves\"}",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "moves_checked.append({\"move\": _fx.words(mv), \"state\": judged[\"state\"],",
+     "now": "moves_checked.append({\"MOVE\": _fx.words(mv), \"state\": judged[\"state\"],",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "moves_checked.append({\"move\": _fx.words(mv), \"state\": judged[\"state\"],",
+     "now": "moves_checked.append({\"XXmoveXX\": _fx.words(mv), \"state\": judged[\"state\"],",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "named = dict(named, not_up=_fx.judge(expected, pre_states,",
+     "now": "named = dict(named, )",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "named = dict(named, not_up=_fx.judge(expected, pre_states,",
+     "now": "named = dict(not_up=_fx.judge(expected, pre_states,",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "notes.append(f\"{'OSPFv3' if proto == 'ospfv3' else 'OSPF'}: an adjacency nobody declared \"",
+     "now": "notes.append(f\"{'OSPFV3' if proto == 'ospfv3' else 'OSPF'}: an adjacency nobody declared \"",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "notes.append(f\"{'OSPFv3' if proto == 'ospfv3' else 'OSPF'}: an adjacency nobody declared \"",
+     "now": "notes.append(f\"{'OSPFv3' if (proto == 'ospfv3') and False else 'OSPF'}: an adjacency nobody declared \"",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "notes.append(f\"{'OSPFv3' if proto == 'ospfv3' else 'OSPF'}: an adjacency nobody declared \"",
+     "now": "notes.append(f\"{'OSPFv3' if (proto == 'ospfv3') or True else 'OSPF'}: an adjacency nobody declared \"",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "notes.append(f\"{'OSPFv3' if proto == 'ospfv3' else 'OSPF'}: an adjacency nobody declared \"",
+     "now": "notes.append(f\"{'OSPFv3' if proto != 'ospfv3' else 'OSPF'}: an adjacency nobody declared \"",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "notes.append(f\"{'OSPFv3' if proto == 'ospfv3' else 'OSPF'}: an adjacency nobody declared \"",
+     "now": "notes.append(f\"{'OSPFv3' if proto == 'OSPFV3' else 'OSPF'}: an adjacency nobody declared \"",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "notes.append(f\"{'OSPFv3' if proto == 'ospfv3' else 'OSPF'}: an adjacency nobody declared \"",
+     "now": "notes.append(f\"{'OSPFv3' if proto == 'XXospfv3XX' else 'OSPF'}: an adjacency nobody declared \"",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "notes.append(f\"{'OSPFv3' if proto == 'ospfv3' else 'OSPF'}: an adjacency nobody declared \"",
+     "now": "notes.append(f\"{'OSPFv3' if proto == 'ospfv3' else 'XXOSPFXX'}: an adjacency nobody declared \"",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "notes.append(f\"{'OSPFv3' if proto == 'ospfv3' else 'OSPF'}: an adjacency nobody declared \"",
+     "now": "notes.append(f\"{'OSPFv3' if proto == 'ospfv3' else 'ospf'}: an adjacency nobody declared \"",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "notes.append(f\"{'OSPFv3' if proto == 'ospfv3' else 'OSPF'}: an adjacency nobody declared \"",
+     "now": "notes.append(f\"{'XXOSPFv3XX' if proto == 'ospfv3' else 'OSPF'}: an adjacency nobody declared \"",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "notes.append(f\"{'OSPFv3' if proto == 'ospfv3' else 'OSPF'}: an adjacency nobody declared \"",
+     "now": "notes.append(f\"{'ospfv3' if proto == 'ospfv3' else 'OSPF'}: an adjacency nobody declared \"",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "or ctx.params.get(\"skip_route_check\", False)",
+     "now": "or ctx.params.get(\"skip_route_check\", )",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "or ctx.params.get(\"skip_route_check\", False)",
+     "now": "or ctx.params.get(\"skip_route_check\", None)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "post     = ctx.post_snapshots.get(ip, {})",
+     "now": "post     = ctx.post_snapshots.get(ip, )",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "post     = ctx.post_snapshots.get(ip, {})",
+     "now": "post     = ctx.post_snapshots.get(ip, None)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "post_cfg = post.get(\"running_config\") or \"\"",
+     "now": "post_cfg = post.get(\"running_config\") or \"XXXX\"",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "post_count = post_counts.get(pre_proto, -1)",
+     "now": "post_count = post_counts.get(pre_proto, +1)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "post_count = post_counts.get(pre_proto, -1)",
+     "now": "post_count = post_counts.get(pre_proto, -2)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "post_routes = post.get(\"routes\", {}).get(\"total_count\", -1)",
+     "now": "post_routes = post.get(\"routes\", {}).get(\"total_count\", )",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "post_routes = post.get(\"routes\", {}).get(\"total_count\", -1)",
+     "now": "post_routes = post.get(\"routes\", {}).get(\"total_count\", +1)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "post_routes = post.get(\"routes\", {}).get(\"total_count\", -1)",
+     "now": "post_routes = post.get(\"routes\", {}).get(\"total_count\", -2)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "post_routes = post.get(\"routes\", {}).get(\"total_count\", -1)",
+     "now": "post_routes = post.get(\"routes\", {}).get(\"total_count\", None)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "post_routes = settled[\"count\"] if settled[\"count\"] >= 0 else post_routes",
+     "now": "post_routes = settled[\"count\"] if (settled[\"count\"] >= 0) and False else post_routes",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "post_routes = settled[\"count\"] if settled[\"count\"] >= 0 else post_routes",
+     "now": "post_routes = settled[\"count\"] if (settled[\"count\"] >= 0) or True else post_routes",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "post_routes = settled[\"count\"] if settled[\"count\"] >= 0 else post_routes",
+     "now": "post_routes = settled[\"count\"] if settled[\"count\"] > 0 else post_routes",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "post_routes = settled[\"count\"] if settled[\"count\"] >= 0 else post_routes",
+     "now": "post_routes = settled[\"count\"] if settled[\"count\"] >= 1 else post_routes",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "post_up = post.get(\"interfaces\", {}).get(\"up_count\", -1)",
+     "now": "post_up = post.get(\"interfaces\", {}).get(\"up_count\", )",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "post_up = post.get(\"interfaces\", {}).get(\"up_count\", -1)",
+     "now": "post_up = post.get(\"interfaces\", {}).get(\"up_count\", +1)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "post_up = post.get(\"interfaces\", {}).get(\"up_count\", -1)",
+     "now": "post_up = post.get(\"interfaces\", {}).get(\"up_count\", -2)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "post_up = post.get(\"interfaces\", {}).get(\"up_count\", -1)",
+     "now": "post_up = post.get(\"interfaces\", {}).get(\"up_count\", None)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "pre      = ctx.pre_snapshots.get(ip,  {})",
+     "now": "pre      = ctx.pre_snapshots.get(ip,  )",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "pre      = ctx.pre_snapshots.get(ip,  {})",
+     "now": "pre      = ctx.pre_snapshots.get(ip,  None)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "pre_count = pre_count - expected_gone.get(pre_proto, 0)",
+     "now": "pre_count = pre_count - expected_gone.get(pre_proto, )",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "pre_count = pre_count - expected_gone.get(pre_proto, 0)",
+     "now": "pre_count = pre_count - expected_gone.get(pre_proto, 1)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "pre_count = pre_count - expected_gone.get(pre_proto, 0)",
+     "now": "pre_count = pre_count - expected_gone.get(pre_proto, None)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "pre_routes  = pre.get(\"routes\",  {}).get(\"total_count\", -1)",
+     "now": "pre_routes  = pre.get(\"routes\",  {}).get(\"total_count\", +1)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "pre_routes  = pre.get(\"routes\",  {}).get(\"total_count\", -1)",
+     "now": "pre_routes  = pre.get(\"routes\",  {}).get(\"total_count\", -2)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "pre_up  = pre.get(\"interfaces\",  {}).get(\"up_count\",  -1)",
+     "now": "pre_up  = pre.get(\"interfaces\",  {}).get(\"up_count\",  +1)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "pre_up  = pre.get(\"interfaces\",  {}).get(\"up_count\",  -1)",
+     "now": "pre_up  = pre.get(\"interfaces\",  {}).get(\"up_count\",  -2)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "primary = pre_nbr.get(\"protocol\", \"unknown\")",
+     "now": "primary = None",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "primary = pre_nbr.get(\"protocol\", \"unknown\")",
+     "now": "primary = pre_nbr.get(\"PROTOCOL\", \"unknown\")",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "primary = pre_nbr.get(\"protocol\", \"unknown\")",
+     "now": "primary = pre_nbr.get(\"XXprotocolXX\", \"unknown\")",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "primary = pre_nbr.get(\"protocol\", \"unknown\")",
+     "now": "primary = pre_nbr.get(\"protocol\", \"UNKNOWN\")",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "primary = pre_nbr.get(\"protocol\", \"unknown\")",
+     "now": "primary = pre_nbr.get(\"protocol\", \"XXunknownXX\")",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "primary = pre_nbr.get(\"protocol\", \"unknown\")",
+     "now": "primary = pre_nbr.get(\"protocol\", )",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "primary = pre_nbr.get(\"protocol\", \"unknown\")",
+     "now": "primary = pre_nbr.get(\"protocol\", None)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "primary = pre_nbr.get(\"protocol\", \"unknown\")",
+     "now": "primary = pre_nbr.get(\"unknown\")",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "primary = pre_nbr.get(\"protocol\", \"unknown\")",
+     "now": "primary = pre_nbr.get(None, \"unknown\")",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "read_back = None",
+     "now": "read_back = \"\"",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "record.setdefault(\"neighbors_by_protocol\", {})[pre_proto] = settled",
+     "now": "record.setdefault(\"NEIGHBORS_BY_PROTOCOL\", {})[pre_proto] = settled",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "record.setdefault(\"neighbors_by_protocol\", {})[pre_proto] = settled",
+     "now": "record.setdefault(\"XXneighbors_by_protocolXX\", {})[pre_proto] = settled",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "record.setdefault(\"neighbors_by_protocol\", {})[pre_proto] = settled",
+     "now": "record.setdefault(\"neighbors_by_protocol\", {})[pre_proto] = None",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "record.setdefault(\"neighbors_by_protocol\", {})[pre_proto] = settled",
+     "now": "record.setdefault(None, {})[pre_proto] = settled",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "record.setdefault(\"neighbors_by_protocol\", {})[proto] = settled",
+     "now": "record.setdefault(\"NEIGHBORS_BY_PROTOCOL\", {})[proto] = settled",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "record.setdefault(\"neighbors_by_protocol\", {})[proto] = settled",
+     "now": "record.setdefault(\"XXneighbors_by_protocolXX\", {})[proto] = settled",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "record.setdefault(\"neighbors_by_protocol\", {})[proto] = settled",
+     "now": "record.setdefault(\"neighbors_by_protocol\", {})[proto] = None",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "record.setdefault(\"neighbors_by_protocol\", {})[proto] = settled",
+     "now": "record.setdefault(None, {})[proto] = settled",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "record[\"adjacencies_expected_down\"] = adj_drops",
+     "now": "record[\"ADJACENCIES_EXPECTED_DOWN\"] = adj_drops",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "record[\"adjacencies_expected_down\"] = adj_drops",
+     "now": "record[\"XXadjacencies_expected_downXX\"] = adj_drops",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "record[\"adjacencies_expected_down\"] = adj_drops",
+     "now": "record[\"adjacencies_expected_down\"] = None",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "record[\"checked_protocols\"] = checked",
+     "now": "record[\"CHECKED_PROTOCOLS\"] = checked",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "record[\"checked_protocols\"] = checked",
+     "now": "record[\"XXchecked_protocolsXX\"] = checked",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "record[\"checked_protocols\"] = checked",
+     "now": "record[\"checked_protocols\"] = None",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "record[\"neighbors\"] = settled",
+     "now": "record[\"NEIGHBORS\"] = settled",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "record[\"neighbors\"] = settled",
+     "now": "record[\"XXneighborsXX\"] = settled",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "record[\"neighbors\"] = settled",
+     "now": "record[\"neighbors\"] = None",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "retention = post_routes / pre_routes",
+     "now": "retention = post_routes * pre_routes",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "routes_declared = next((d.get(\"reason\", \"\") for d in declared_fx",
+     "now": "routes_declared = next((d.get(\"reason\", \"XXXX\") for d in declared_fx",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "routes_declared = next((d.get(\"reason\", \"\") for d in declared_fx",
+     "now": "routes_declared = next((d.get(\"reason\", ) for d in declared_fx",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "routes_declared = next((d.get(\"reason\", \"\") for d in declared_fx",
+     "now": "routes_declared = next((d.get(\"reason\", None) for d in declared_fx",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "settled = _await_route_retention(ctx, ip, pre_routes)",
+     "now": "settled = _await_route_retention(ctx, ip, None)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "u.startswith(\"bgp \") for u in unmet)",
+     "now": "u.startswith(\"BGP \") for u in unmet)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "u.startswith(\"bgp \") for u in unmet)",
+     "now": "u.startswith(\"XXbgp XX\") for u in unmet)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "waited = _await_move(ctx, ip, mv, post_nbr, pre_nbr)",
+     "now": "waited = _await_move(ctx, None, mv, post_nbr, pre_nbr)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "waited = _await_move(ctx, ip, mv, post_nbr, pre_nbr)",
+     "now": "waited = _await_move(ctx, ip, mv, None, pre_nbr)",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    },
+    {
+     "was": "watch = _watch_bgp_hold(ctx, ip, baseline, post.get(\"running_config\") or \"\")",
+     "now": "watch = _watch_bgp_hold(ctx, ip, baseline, post.get(\"running_config\") or \"XXXX\")",
+     "reason": "pre-existing, exposed by whole-function mutation 2026-10-24 (run #45, 34d33ed8; the kill campaign, verify first: C1652)"
+    }
+   ]
   }
  }
 }

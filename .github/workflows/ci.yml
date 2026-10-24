@@ -35,16 +35,17 @@ concurrency:
 
 jobs:
   test:
-    # Four jobs at once (the operator, 2026-10-03: a run took 6.5 to 9 minutes, 93% of it the
-    # tests; four since C614: the browser files weighed 40% of the suite): two share the
-    # browser tests' files, then all four share the rest, each about a quarter of the measured
-    # work (scripts/nmas-shards, tests/shard_weights.json). The gate runs the same four
+    # Five jobs at once (the operator, 2026-10-03: a run took 6.5 to 9 minutes, 93% of it the
+    # tests; four since C614: the browser files weighed 40% of the suite; five since
+    # 2026-10-24, a trial kept only if the median to verdict falls by a minute, C1637): three
+    # share the browser tests' files, then all five share the rest, each about a fifth of the
+    # measured work (scripts/nmas-shards, tests/shard_weights.json). The gate runs the same
     # commands (C349). Each job reports its own coverage; none gates on it.
     name: test (${{ matrix.shard }})
     strategy:
       fail-fast: false
       matrix:
-        shard: [browser1, browser2, a, b]
+        shard: [browser1, browser2, browser3, a, b]
     runs-on: ubuntu-24.04
     # From a measurement, not a round number (the operator, 2026-09-28), and
     # RE-DERIVED when it moves (2026-10-01): the tests step grew from 207 s
@@ -288,7 +289,7 @@ jobs:
           echo "checking $RANGE"
           python scripts/nmas-test-weakening-check --range "$RANGE"
 
-  # Lab 7 (2026-10-14): the four shards' per-test measurements combined, and the coverage tool
+  # Lab 7 (2026-10-14): every shard's per-test measurements combined, and the coverage tool
   # run over them (scripts/nmas-coverage; docs/TESTING.md, "The coverage tool"): the function
   # report in the job summary, the HTML report as an artifact, and the ratchet against
   # tests/coverage_baseline.json as the job's verdict.
@@ -314,7 +315,7 @@ jobs:
         timeout-minutes: 2
         run: scripts/nmas-retry python -m pip install --no-deps -r requirements-ci.txt
 
-      - name: The four shards' measurements
+      - name: Each shard's measurement
         uses: actions/download-artifact@v4
         with:
           pattern: coverage-*
@@ -331,13 +332,13 @@ jobs:
           done
           echo "tier records: $(cat tiers/*.jsonl | wc -l)"
 
-      # One figure over the four shards COMBINED (never one shard's): every test, every tier.
-      - name: Line coverage, every test, the four shards combined
+      # One figure over every shard COMBINED (never one shard's): every test, every tier.
+      - name: Line coverage, every test, every shard combined
         run: |
           total=$(python -m coverage report --data-file=.coverage --precision=1 \
             --include='modules/*,routes/*,app.py' --format=total)
-          echo "Line coverage over modules/, routes/ and app.py, every test, the four shards combined: ${total}%"
-          printf '**Line coverage, every test, the four shards combined: %s%%** (modules/, routes/, app.py)\n\n' \
+          echo "Line coverage over modules/, routes/ and app.py, every test, every shard combined: ${total}%"
+          printf '**Line coverage, every test, every shard combined: %s%%** (modules/, routes/, app.py)\n\n' \
             "$total" >> "$GITHUB_STEP_SUMMARY"
 
       # C773: the per-test drill-down and branch figures are the nightly coverage run's; the

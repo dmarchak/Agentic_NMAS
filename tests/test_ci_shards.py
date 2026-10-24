@@ -42,7 +42,7 @@ def test_every_browser_file_is_in_a_browser_job_and_both_hold_some():
     assert len(users) >= 8
     got = m.assign()
     assert set(users) <= {f for s in m.BROWSER_SHARDS for f in got[s]}
-    assert all(set(users) & set(got[s]) for s in m.BROWSER_SHARDS), "both browser jobs"
+    assert all(set(users) & set(got[s]) for s in m.BROWSER_SHARDS), "every browser job"
 
 
 def test_the_jobs_share_the_work_and_the_weights_are_current():
