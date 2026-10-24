@@ -101,6 +101,51 @@ class TestARow:
         assert row["second_reading"]["state"] == "not_built"
 
 
+class TestARunThatStoppedBeforeTheSendSentNothing:
+    """C1540 (Lab 9, 2026-10-22): r7's deploy failed at pre_snapshot ("Authentication to device
+    failed") with its program in hand, and its receipt read "It received 8 line(s)" though
+    nothing landed. A run that stopped at a stage before the send sent nothing, and says where
+    it stopped and why; one that stopped at the send or after it sent its program."""
+
+    def _failed(self, stage, reason="Authentication to device failed"):
+        return _sent(outcome="failed", stage=stage, reason=reason, verify=None)
+
+    @pytest.mark.parametrize("stage", receipts.stages_before_send())
+    def test_a_stop_before_the_send_is_not_sent(self, stage):
+        (row,) = _rows([self._failed(stage)])
+        assert row["sent"] is False and row["program_lines"] == len(PROGRAM), row
+
+    @pytest.mark.parametrize("stage", ["deploy", "post_snapshot", "verify"])
+    def test_a_stop_at_the_send_or_after_it_was_sent(self, stage):
+        (row,) = _rows([self._failed(stage)])
+        assert row["sent"] is True
+
+    def test_the_stages_before_the_send_are_the_pipeline_s_up_to_deploy(self):
+        from modules.pipeline import STAGE_NAMES
+        assert receipts.stages_before_send() == (
+            "netbox_query", "template_render", "ci_gate", "pre_snapshot", "config_diff")
+        assert set(receipts.stages_before_send()) < set(STAGE_NAMES)
+
+    def test_the_result_says_where_it_stopped_and_why_and_counts_no_line(self):
+        from modules.preview_confirm import operation_result
+        from tests.payload_render import render_operation_result_v2
+
+        rows = _rows([self._failed("pre_snapshot")])
+        out = operation_result(rows, {"results": []}, {"ok": True, "path": "x"}, "deploy")
+        (target,) = out["targets"]
+        assert target["sent"]["lines"] == [] and target["sent"]["none"] == (
+            "Nothing was sent: it stopped at Read before, Authentication to device failed")
+        html = render_operation_result_v2(out)
+        assert "It received" not in html and "it stopped at Read before" in html, html
+
+    def test_a_stop_before_the_send_with_no_reason_still_says_where(self):
+        from modules.preview_confirm import _nothing_sent
+        assert _nothing_sent({"stage": "config_diff", "reason": ""}) == (
+            "Nothing was sent: it stopped at Compare")
+        assert _nothing_sent({"stage": "", "reason": ""}) == "Nothing was sent."
+        assert _nothing_sent({"stage": "removal", "reason": "a unit moved"}) == "a unit moved"
+
+
 class TestTheFile:
     def test_append_only_0600_and_newest_first(self):
         receipts.write("Default", _rows([_sent()]))

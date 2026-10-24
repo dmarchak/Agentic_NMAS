@@ -215,6 +215,13 @@ def _saved_startup(result: dict) -> dict:
     return {"state": "not_run", "detail": why}
 
 
+def stages_before_send() -> tuple:
+    """The pipeline's stages that run before the program is sent (`pipeline.STAGE_NAMES` up to
+    `deploy`): a run that stopped at one sent nothing (C1540)."""
+    from modules.pipeline import STAGE_NAMES
+    return tuple(STAGE_NAMES[:STAGE_NAMES.index("deploy")])
+
+
 def rows_for(report: dict, *, list_name: str, action: str, actor: str,
              actor_kind: str, confirmations: dict = None,
              command_hashes: dict = None, source_ref: str = "", scope: str = "") -> list:
@@ -248,7 +255,11 @@ def rows_for(report: dict, *, list_name: str, action: str, actor: str,
             "outcome": result.get("outcome", ""),
             "stage": result.get("stage", ""),
             "reason": redact_text(result.get("reason", "") or ""),
-            "sent": bool(commands) and result.get("outcome") != "refused",
+            # C1540: a run that stopped at a stage before the send sent nothing, its program
+            # in hand or not (a router's failed at pre_snapshot read "It received 8 line(s)",
+            # Lab 9).
+            "sent": (bool(commands) and result.get("outcome") != "refused"
+                     and result.get("stage", "") not in stages_before_send()),
             "program": [redact_text(c) for c in commands],
             "program_lines": len(commands),
             "program_hash": program_hash,

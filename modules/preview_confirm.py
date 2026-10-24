@@ -1020,6 +1020,19 @@ def verify_verdict(checks: dict) -> dict:
     return {"ran": True, "ok": False, "words": words, "causes": causes, "lines": lines}
 
 
+def _nothing_sent(row: dict) -> str:
+    """A receipt row that sent nothing, in words (C1540): where it stopped and why, when it
+    stopped at a stage before the send; else its reason, or that nothing was sent."""
+    from modules.nsot.receipts import stages_before_send
+    from modules.pipeline import STAGE_WORDS
+
+    stage, reason = row.get("stage", ""), row.get("reason") or ""
+    if stage in stages_before_send():
+        label = STAGE_WORDS.get(stage, (stage,))[0]
+        return f"Nothing was sent: it stopped at {label}" + (f", {reason}" if reason else "")
+    return reason or "Nothing was sent."
+
+
 def operation_result(rows: list, report: dict, receipt_status: dict, action: str) -> dict:
     """A deploy's or restore's result, built FROM THE RECEIPT ROWS the apply
     has just written, so the screen and the record are one computation.
@@ -1054,7 +1067,7 @@ def operation_result(rows: list, report: dict, receipt_status: dict, action: str
                                      else "DOES NOT MATCH the program you confirmed"
                                      if matches is False
                                      else "no confirmed program to compare with"),
-                     "none": "" if sent else (r.get("reason") or "Nothing was sent."),
+                     "none": "" if sent else _nothing_sent(r),
                      # Each authorised line with the person's stated reason
                      # (C140), read back from the receipt: the deliberate
                      # exception and why, where it can be read afterwards.
