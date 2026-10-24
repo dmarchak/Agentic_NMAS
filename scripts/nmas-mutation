@@ -209,6 +209,18 @@ def _measure_children(population, paths, functions, out) -> dict:
 #: bound is about 2.5 times the largest. Past it the refresh measured nothing usable, and its
 #: stale functions wait (defer). The workflow's job bound carries it.
 REFRESH_TIMEOUT_S = 5200
+#: How much of a failed refresh's own output its summary carries (C1577): the last lines that
+#: say something (pytest's INTERNALERROR and its summary line come last), each cut to a width.
+REFRESH_TAIL_LINES = 8
+REFRESH_TAIL_WIDTH = 200
+
+
+def refresh_tail(text: str) -> list:
+    """The last REFRESH_TAIL_LINES non-blank lines of *text*, each at most REFRESH_TAIL_WIDTH
+    characters. Unmasked: the refresh runs the suite on CI's runner, which holds no
+    installation's secrets, and a test's own planted values are the repository's."""
+    lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
+    return [ln[:REFRESH_TAIL_WIDTH] for ln in lines[-REFRESH_TAIL_LINES:]]
 
 
 def _refresh(stale: list, out: str, head: str, files=None) -> dict:
@@ -275,10 +287,14 @@ def _refresh(stale: list, out: str, head: str, files=None) -> dict:
            "failed": [], "rerun": [], "why": "", "reach": None,
            "files": None if files is None else len(files)}
     if code not in (0, 1) or not os.path.exists(data):
+        # Its own last lines ride along (C1577): run #21's and #24's exit 3 said nothing of
+        # what broke, and their logs were not kept.
+        tail = refresh_tail(text)
         res["why"] = (f"the refresh ended with exit {code} (0 passed, 1 tests failed; 124 or 137 "
                       f"its {REFRESH_TIMEOUT_S} s bound) and left "
                       + ("its data" if os.path.exists(data) else "no data")
-                      + ", so it measured nothing usable")
+                      + ", so it measured nothing usable"
+                      + (f"; its last lines: {' | '.join(tail)}" if tail else ""))
         return res
     if code == 1:
         # A test that failed may have stopped before it reached a stale function. Each is run

@@ -728,6 +728,21 @@ class TestAStaleMap:
             fh.write("#!/bin/sh\nexit 2\n")
         got = cli._refresh([self.K], str(tmp_path / "broken"), b)
         assert got["reach"] is None and "exit 2" in got["why"] and "no data" in got["why"]
+        # C1577: a refresh that measured nothing says what broke, its own last lines.
+        with open(os.path.join(root, "scripts", "nmas-test"), "w", encoding="utf-8") as fh:
+            fh.write("#!/bin/sh\necho 'collected 9 items'\necho\n"
+                     "echo 'INTERNALERROR> KeyError: <WorkerController gw2>'\nexit 3\n")
+        got = cli._refresh([self.K], str(tmp_path / "internal"), b)
+        assert got["why"].endswith("; its last lines: collected 9 items | INTERNALERROR> "
+                                   "KeyError: <WorkerController gw2>"), got["why"]
+
+    def test_a_failed_refresh_s_tail_is_its_last_lines_each_cut_to_a_width(self):
+        cli = _cli()
+        text = "\n".join(f"line {i}" for i in range(20)) + "\n\n" + "x" * 500 + "\n"
+        got = cli.refresh_tail(text)
+        assert len(got) == cli.REFRESH_TAIL_LINES and got[-1] == "x" * cli.REFRESH_TAIL_WIDTH
+        assert got[0] == f"line {20 - cli.REFRESH_TAIL_LINES + 1}", got
+        assert cli.refresh_tail("") == [] and cli.refresh_tail(None) == []
 
     def test_a_refreshed_function_takes_its_importing_files_child_starters_and_only_real_ids(
             self):
