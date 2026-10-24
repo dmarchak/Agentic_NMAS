@@ -259,7 +259,7 @@ def rows_for(report: dict, *, list_name: str, action: str, actor: str,
             # in hand or not (a router's failed at pre_snapshot read "It received 8 line(s)",
             # Lab 9).
             "sent": (bool(commands) and result.get("outcome") != "refused"
-                     and result.get("stage", "") not in stages_before_send()),
+                     and result.get("stage") not in stages_before_send()),
             "program": [redact_text(c) for c in commands],
             "program_lines": len(commands),
             "program_hash": program_hash,

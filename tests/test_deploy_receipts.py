@@ -95,6 +95,20 @@ class TestARow:
         rows = _rows([_sent(), {"device": "s4", "outcome": "refused", "reason": "x"}])
         assert [(r["device"], r["sent"]) for r in rows] == [("r3", True), ("s4", False)]
 
+    def test_a_refused_device_carrying_its_program_was_not_sent(self):
+        """Refused means nothing was sent, whatever the result carries: a refusal that kept
+        the program it refused (and no stage) is never counted as sent."""
+        (row,) = _rows([_sent(device="s4", outcome="refused", reason="x")])
+        assert row["program_lines"] == len(PROGRAM) and row["sent"] is False, row
+
+    def test_a_result_with_no_stage_that_sent_is_sent(self):
+        """A result that names no stage at all (not even an empty one) and carries its
+        program was sent."""
+        result = _sent()
+        del result["stage"]
+        (row,) = _rows([result])
+        assert row["sent"] is True, row
+
     def test_what_is_not_built_says_so(self):
         row = _rows([_sent()])[0]
         assert row["follow_up"]["state"] == "not_run"
