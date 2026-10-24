@@ -1003,6 +1003,17 @@ and deployed in `9b286074`.
   and `:07`). They come in on s5's host ports and are flooded out of every VLAN 1 port, the
   management port (eth0) and the R8 link (eth1) included: the exposure D5's Gi0/0 shutdown
   closes.
+- **The exposure, measured (2026-10-24, L9-24, C1647): R8's VLAN 10 router advertisement leaked
+  through s5's Gi0/0 onto the container management network before Day 1 shut it.** Every
+  container there that accepts RAs had taken an address and an on-link route for
+  2001:db8:80:10::/64 on its eth0, valid for about 30 days: the web node, H5, H6 and H7. The web
+  node then sent its replies to VLAN 10's hosts out eth0, so H6 and H7 reached
+  `[2001:db8:203::2]` and got no answer (`curl` exit 28; traceroute R8, R2, then two hops to
+  2001:db8:51:1::2), while H5, on 2001:db8:70:10::/64, curled it. The eth0 advertisements were
+  about 9 minutes older than the eth1 ones: none arrived after Day 1's `shutdown` on Gi0/0. With
+  the leaked address and route removed from the four containers' eth0 (the operator's go, read
+  back), H6 and H7 curl it over IPv6. This is why Gi0/0 is shut: under passthrough it is a port
+  on the lab's management network.
 - **A one-way console reader** (`lab/lab9/console-reader.py`) has been attached since
   06:07:03Z, so anything s5 prints later is on record. It has no send call; a listener test on
   the lab host received 0 bytes from it while its stdin was flooded; it runs with stdin from
