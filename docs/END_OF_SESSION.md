@@ -1,5 +1,32 @@
 # End of session: where Phase 7 stands
 
+## THE OVERNIGHT RUN, 2026-10-23 ~23:0x to 2026-10-24 ~10:0x UTC (the operator asleep)
+
+The operator's brief: CI speed, then the mutation workflow, then the register's triage and
+fixes; no new features; no deploy, host step or lab change. The full report is the operator's
+`2026-10-24-overnight-report.md` (the laptop's reports folder).
+
+- **main at the end:** this note's commit; nothing deployed. Every commit went through the gate
+  and was pushed. CI was red once: #1122, test_scale's C875 recurrence, on order, not code;
+  #1123 passed.
+- **CI:** median to verdict 17.5 to 11.2 min (#1098 to #1112 against #1113 to #1125), p90 21.8
+  to 11.5. The ~10 min target is not met; the shard rebalance levelled the summed seconds, not
+  the wall. A fifth shard or wall-based weights is the operator's call (C1637).
+- **Mutation:** C1616 fixed and proven (run #42 red); C1640's scoped refresh is live but not
+  a reliable saving (#45 1,347 s, #51 2,423 s). Runs at 0 open VERDICT: #43 (`commit_step`),
+  #47 (C1596), #51 (C1415). Run #45 (C1646) left 357 legacy survivors in `_stage_verify` and
+  `_stage_post_snapshot`, which is the operator's call. Runs #49 (O6a's functions, for C1553,
+  C1558, C1559) and #50 (C1540) were still running at the end; read their verdicts first.
+- **The register:** 740 open at 07:5x UTC (A 4, B 71, UNKNOWN 73, C 592); ten rows closed with
+  evidence; C1644, C1596, C1597, C1646, C1629, C1537, C1643, C1642, C1577, C1415 and C1540 in
+  code, each open until walked; five design notes in docs/designs/.
+- **Waiting on the operator:**
+  - C1647's lab-repository patch (in the reports folder);
+  - the equivalents taken tonight (STANDING_APPROVAL_LOG);
+  - s5's lost created-object record (C1596);
+  - C1629's count-only scan of stored records;
+  - the deploy itself, read beside the report's notes on C1415, C1537 and C1646.
+
 ## PAUSED 2026-10-22 19:3x UTC (offline at 19:45Z; resume on "RESUME")
 
 **Uncommitted on main** (no time for a gate): this note, LAB9_PLAN's "Priorities reset", and
