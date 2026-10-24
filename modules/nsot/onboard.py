@@ -731,7 +731,9 @@ def gateway_route(source: str, role: str) -> bool:
     blank vIOS-L2 was measured routing (2026-10-23, C1606: "Gateway of last resort is not
     set"), which ignores its default gateway; the operator then chose both lines, C1349's
     switch rule, whatever the switch runs. Recorded with the bootstrap parameters, so a
-    re-render is the same: a record made before carries ``False`` and re-renders as it was."""
+    re-render is the same: a record made before carries ``False`` and re-renders as it was.
+    `commit_step` records no ``True`` (its absence routes) and routes the out-of-band intent
+    unconditionally (C1644): an answer of ``False`` again needs both back."""
     del source, role
     return True
 
@@ -1926,9 +1928,9 @@ def commit_step(plan, *, actor: str) -> str:
         "platform_mgmt_interface": plan.platform_mgmt_interface,
         "environment": plan.environment,
     }
+    # No `gateway_route` key: every new bootstrap routes (`gateway_route` always does, C1606), and
+    # a record without the key re-renders routing; only a record made before carries `False`.
     extra = {}
-    if not gateway_route(plan.address_source, plan.role):
-        bootstrap_intent["gateway_route"] = False
     if plan.address_source == _ztp_console():
         # OUT-OF-BAND (CONSOLE), STATIC (C1592): `address`, `mask` and `gateway` above are the
         # plan's static ones (never `dhcp`), and two more facts the console kick-start reads
@@ -1936,13 +1938,12 @@ def commit_step(plan, *, actor: str) -> str:
         # in the plan's hash), and the default gateway in the parsers' own key (the template
         # renders it as `ip default-gateway`), so this intent says what the device will run;
         # with the route the kick-start typed beside it (a blank vIOS-L2 routes, C1606), in the
-        # parsers' shape, when the bootstrap carries it.
+        # parsers' shape.
         bootstrap_intent["server"] = plan.ztp_server
         extra["default_gateway"] = plan.manager_gateway
-        if gateway_route(plan.address_source, plan.role):
-            route = {"family": "ipv4", "spec": f"0.0.0.0 0.0.0.0 {plan.manager_gateway}"}
-            routes = list((plan.host_vars or {}).get("static_routes") or [])
-            extra["static_routes"] = routes + ([route] if route not in routes else [])
+        route = {"family": "ipv4", "spec": f"0.0.0.0 0.0.0.0 {plan.manager_gateway}"}
+        routes = list((plan.host_vars or {}).get("static_routes") or [])
+        extra["static_routes"] = routes + ([route] if route not in routes else [])
     hostvars.write_committed(repo, dict(plan.host_vars or {},
                                         hostname=plan.hostname,
                                         bootstrap=bootstrap_intent, **extra))

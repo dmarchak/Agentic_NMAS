@@ -859,4 +859,19 @@ EQUIVALENT = [
            "console.session set (it begins a session from the seed, or continues the one "
            "`attach` set on a done wake, dereferencing it either way): with a session set the "
            "guard is true both ways (as console_ztp._stopped's)"),
+    # ── Create's one commit (C1644; run #41 of 2026-10-24 at 9913cb2f, each applied again by
+    # hand after the dead `gateway_route` branch went). Every other survivor there is killed
+    # by a test in tests/test_onboard_commit_step.py naming the field it pins.
+    *_each("modules.nsot.onboard.commit_step",
+           'identity = adopt_identity(repo, GoldenItem(plan.hostname, "", plan.mgmt_ip))',
+           ('identity = adopt_identity(None, GoldenItem(plan.hostname, "", plan.mgmt_ip))',),
+           "repo.adopt_identity never reads its repository: it mints from the item's NetBox id "
+           "and device uid alone (`item.identity or new_device_uid()`), and logs"),
+    *_each("modules.nsot.onboard.commit_step",
+           'identity = adopt_identity(repo, GoldenItem(plan.hostname, "", plan.mgmt_ip))',
+           ('identity = adopt_identity(repo, GoldenItem(plan.hostname, None, plan.mgmt_ip))',
+            'identity = adopt_identity(repo, GoldenItem(plan.hostname, "XXXX", plan.mgmt_ip))'),
+           "the item's config text is never read by repo.adopt_identity (only its NetBox id, "
+           "device uid, hostname and address: the last two for its log line), and the item "
+           "goes nowhere else"),
 ]
