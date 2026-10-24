@@ -902,4 +902,32 @@ EQUIVALENT = [
            ('words = str(line or "XXXX").split()',),
            "a falsy line's stand-in is one word, so it is not `vlan <N>` either way and the "
            "answer is None"),
+    # ── Verify's read-back (C1415; run #48 of 2026-10-24 at 7b161dcf, each applied again by
+    # hand). Every other survivor there is killed by tests/test_verify_scope.py's
+    # `TestTheReadBackRecordsEachLineWhole`, and three went with a redundant guard.
+    *_each("modules.nsot.verify_scope.read_back",
+           'leaves = config_leaves(running or "")',
+           ('leaves = config_leaves(running or "XXXX")',),
+           "an empty running configuration's stand-in is one top-level word no program line "
+           "is: nothing it adds is ever looked for"),
+    *_each("modules.nsot.verify_scope.read_back",
+           'stanzas = {rng: set() for _h, rng, _c in _pre_line_stanzas(running or "")}',
+           ('stanzas = {rng: set() for _h, rng, _c in _pre_line_stanzas(running or "XXXX")}',),
+           "an empty running configuration's stand-in holds no `line` stanza, so it adds none"),
+    *_each("modules.nsot.verify_scope.read_back",
+           "stanzas.setdefault(rng, set()).add(key(l.chain[1:], l.line))",
+           ("stanzas.setdefault(rng, None).add(key(l.chain[1:], l.line))",
+            "stanzas.setdefault(rng, ).add(key(l.chain[1:], l.line))"),
+           "every leaf's stanza is already a key (`_pre_line_stanzas` lists every printed "
+           "`line` stanza, from the same text), so the default is never taken"),
+    *_each("modules.nsot.verify_scope.read_back",
+           "stanzas.setdefault(rng, set()).add(key(l.chain[1:], l.line))",
+           ("stanzas.setdefault(rng, set()).add(key(l.chain[2:], l.line))",),
+           "IOS's terminal-line stanzas hold no stanza of their own, so a leaf's chain below the "
+           "stanza is empty either way"),
+    *_each("modules.nsot.verify_scope.read_back",
+           "want = key(chain[1:], line)",
+           ("want = key(chain[2:], line)",),
+           "a program's line under a `line` stanza has no deeper parent (IOS nests nothing "
+           "there), so the chain below the stanza is empty either way"),
 ]

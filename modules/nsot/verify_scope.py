@@ -224,7 +224,9 @@ def read_back(commands: list, running: str, vlans: dict = None) -> dict:
         line = leaf.line.strip()
         top = (leaf.chain[0] if leaf.chain else line).strip()
         shown = " > ".join(list(leaf.chain) + [line])
-        vlan = None if line.startswith("no ") else _vlan_judged(leaf)
+        # A `no` line is never one `_vlan_judged` judges (`no vlan 10` is not one VLAN's line,
+        # `no name` not a `name`), so a negation reaches the rules below.
+        vlan = _vlan_judged(leaf)
         if vlan:
             read = vlan_command(vlan)
             got = vlan_parse(vlan, vlans[vlan]) if vlan in vlans else \

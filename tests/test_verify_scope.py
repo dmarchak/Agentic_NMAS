@@ -109,6 +109,49 @@ def _r2():
         return fh.read()
 
 
+class TestTheReadBackRecordsEachLineWhole:
+    """Mutation run #48's survivors in `read_back` (C1415's run, at 7b161dcf): each skipped
+    record whole, the lines after a VLAN still read, the count, a printed terminal-line stanza
+    with nothing under it, and a range's own members only."""
+
+    def test_each_skipped_line_is_recorded_with_its_line_and_its_reason(self):
+        from modules.redact import redact_positional
+        from tests.test_verify_read_back_line_ranges import R7_LINES
+        secret = "username ops privilege 15 secret 0 Zq7value"
+        rb = V.read_back(["line vty 0 4", " no exec-timeout", "exit", "vlan 10", " no name",
+                          "exit", secret, "banner motd ^Cx^C"], R7_LINES, {})
+        assert rb["skipped"] == [
+            {"line": "line vty 0 4 > no exec-timeout",
+             "why": "a `no` line under a terminal-line range is not read back"},
+            {"line": "vlan 10 > no name",
+             "why": "a `no` line under a VLAN is the VLAN database's, not read back"},
+            {"line": redact_positional(secret), "why": "a secret the device stores in another form"},
+            {"line": "banner motd ^Cx^C",
+             "why": "a banner reads back in the device's own delimiter"}], rb["skipped"]
+        assert "Zq7value" not in str(rb)
+
+    def test_the_lines_after_a_vlan_are_still_read_and_each_is_counted(self):
+        from tests.test_vlan_read import SERVER, capture
+        rb = V.read_back(["vlan 10", " name VLAN10", "exit", "vlan 1", " name default", "exit",
+                          "vlan 20", "exit", "logging host 192.0.2.99"], _r2(),
+                         {"10": capture(SERVER, "show_vlan_id_10"),
+                          "1": capture(SERVER, "show_vlan_id_1")})
+        assert [u["line"] for u in rb["unread"]] == ["vlan 20"], rb
+        assert rb["missing"] == ["logging host 192.0.2.99"], rb
+        # Two names judged by the VLAN database, then the logging line.
+        assert rb["checked"] == 3, rb
+
+    def test_a_terminal_line_stanza_printed_with_nothing_under_it_is_its_own_stanza(self):
+        from tests.test_verify_read_back_line_ranges import R7_LINES
+        rb = V.read_back(["line vty 5 15", " login local", "exit"], R7_LINES + "line vty 5 15\n")
+        assert rb["missing"] == ["line vty 5 15 > login local"], rb
+
+    def test_a_range_is_read_for_its_own_members_only(self):
+        from tests.test_verify_read_back_line_ranges import R7_LINES
+        rb = V.read_back(["line vty 2 3", " length 0", "exit"], R7_LINES)
+        assert rb["missing"] == ["line vty 2 3 > length 0 (missing on vty 2, 3)"], rb
+
+
 class TestANegationIsReadAsTheAbsenceItClaims:
     """C1415 (2026-10-20): verify skipped every `no` line, so a ` no shutdown` that left an
     interface printing ` shutdown`, or a Mode B removal whose route stayed, verified with
