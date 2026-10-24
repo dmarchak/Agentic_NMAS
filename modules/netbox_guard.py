@@ -402,6 +402,13 @@ def _write_json_atomic(path: str, data: dict) -> bool:
     changed nothing"*. That is how `user_settings.json` erased itself: a
     partial read returned ``{}``, the next write persisted it.
     """
+    # A PREVIEW WRITES NOTHING (C1596): every write of the created, modified and adopted
+    # records comes here, so one rule covers every caller. A dry run's delete "succeeds" and its
+    # caller forgets the object; that forgetting, written, disowned an object the preview only
+    # simulated removing (Abandon's preview of a Planned record, Lab 9, 2026-10-23).
+    if is_dry_run():
+        log.debug("netbox_guard: a dry run, so %s is not written", os.path.basename(path))
+        return True
     # A temp file PER WRITE (C158): the shared ``<path>.tmp`` let two writers
     # land two documents in one inode (C20's corruption). mkstemp creates it
     # 0600, and the replace carries that mode.

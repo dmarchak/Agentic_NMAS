@@ -43,15 +43,23 @@ def repo(tmp_path, monkeypatch):
     return repo_dir
 
 
-def _onboard(repo, name="bp1", ip="203.0.113.31"):
-    """A device in the manifest with intent committed — phase 1's output."""
+#: The NetBox id Verify's NetBox step records on the entry when it makes the device's record:
+#: an onboarding that recorded none made nothing in NetBox, and Abandon never calls the remover
+#: for it (C1597), so a test of the remover's answer onboards with one.
+VERIFIED_NB_ID = 41
+
+
+def _onboard(repo, name="bp1", ip="203.0.113.31", netbox_id=None):
+    """A device in the manifest with intent committed — phase 1's output (and, with
+    *netbox_id*, the id Verify's NetBox step recorded)."""
     from modules.nsot import manifest as _m
     from modules.nsot import repo as _repo
     from modules.nsot.repo import GoldenItem, adopt_identity
 
     # The real path: mint, then RECORD. `adopt_identity` persists nothing.
     identity = adopt_identity(repo, GoldenItem(name, "", ip))
-    _m.upsert_device(repo, identity, name, mgmt_ip=ip, platform="cisco_iosxe")
+    _m.upsert_device(repo, identity, name, mgmt_ip=ip, platform="cisco_iosxe",
+                     **({"netbox_id": netbox_id} if netbox_id is not None else {}))
     with open(os.path.join(repo, "host_vars", f"{name}.yml"), "w") as fh:
         fh.write(f"hostname: {name}\n")
     _repo.git(repo, "add", "-A")
@@ -185,7 +193,7 @@ class TestAPartialAbandonNeverReportsSuccess:
     def test_a_refused_netbox_step_fails_the_run(self, repo):
         from modules.nsot.onboard import abandon_onboarding
 
-        _onboard(repo)
+        _onboard(repo, netbox_id=VERIFIED_NB_ID)
         out = abandon_onboarding(
             repo, "bp1", "probe",
             remove_netbox=lambda lst, host, dry_run=False, **k: {
@@ -204,7 +212,7 @@ class TestAPartialAbandonNeverReportsSuccess:
         from modules.nsot import manifest as _m
         from modules.nsot.onboard import abandon_onboarding
 
-        identity = _onboard(repo)
+        identity = _onboard(repo, netbox_id=VERIFIED_NB_ID)
         # NetBox refuses AND the created record still names the device, so
         # release must find it.
         from modules import netbox_guard
@@ -231,7 +239,7 @@ class TestAPartialAbandonNeverReportsSuccess:
         for the reason."""
         from modules.nsot.onboard import abandon_onboarding
 
-        _onboard(repo)
+        _onboard(repo, netbox_id=VERIFIED_NB_ID)
         out = abandon_onboarding(
             repo, "bp1", "probe",
             remove_netbox=lambda lst, host, dry_run=False, **k: {
@@ -244,7 +252,7 @@ class TestAPartialAbandonNeverReportsSuccess:
         """The floor: with no message, the counts are the detail as before."""
         from modules.nsot.onboard import abandon_onboarding
 
-        _onboard(repo)
+        _onboard(repo, netbox_id=VERIFIED_NB_ID)
         out = abandon_onboarding(
             repo, "bp1", "probe",
             remove_netbox=lambda lst, host, dry_run=False, **k: {
@@ -255,7 +263,7 @@ class TestAPartialAbandonNeverReportsSuccess:
     def test_remaining_says_how_to_finish(self, repo):
         from modules.nsot.onboard import abandon_onboarding
 
-        _onboard(repo)
+        _onboard(repo, netbox_id=VERIFIED_NB_ID)
         out = abandon_onboarding(
             repo, "bp1", "probe",
             remove_netbox=lambda lst, host, dry_run=False, **k: {
@@ -398,7 +406,7 @@ class TestThePreviewCountsWhatItsOwnStepsRemove:
     def test_its_override_and_netbox_device_are_counted_as_removed(self, repo, monkeypatch):
         import modules.credentials as creds
 
-        _onboard(repo)
+        _onboard(repo, netbox_id=self.NB_ID)
         creds.set_device_override("203.0.113.31", "admin", "s3cret", "s3cret")
         monkeypatch.setattr("modules.netbox_guard.get_created", lambda lst: {
             "dcim/devices": [{"id": self.NB_ID, "name": "bp1"}]})
@@ -426,7 +434,7 @@ class TestThePreviewCountsWhatItsOwnStepsRemove:
     def test_a_netbox_device_the_remover_leaves_still_refuses(self, repo, monkeypatch):
         """The control for NetBox: a device the remover would not delete is not
         counted as removed."""
-        _onboard(repo)
+        _onboard(repo, netbox_id=self.NB_ID)
         monkeypatch.setattr("modules.netbox_guard.get_created", lambda lst: {
             "dcim/devices": [{"id": self.NB_ID, "name": "bp1"}]})
         step = self._identity(self._dry(repo))

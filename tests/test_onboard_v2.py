@@ -403,10 +403,13 @@ class TestAbandon:
     def test_a_dry_run_that_moved_is_refused_and_removes_nothing(self, client, repo, person,
                                                                  monkeypatch):
         """Shown with NetBox holding nothing; at the confirm NetBox holds an object. The plan
-        moved, so nothing is removed and both are named."""
+        moved, so nothing is removed and both are named. The device has the NetBox id Verify
+        records, so Abandon asks the remover (C1597: an onboarding with none made nothing
+        there)."""
         from modules.nsot import manifest
+        from tests.test_onboard_abandon import VERIFIED_NB_ID
 
-        _onboard(repo)
+        _onboard(repo, netbox_id=VERIFIED_NB_ID)
         held = {"deleted": []}
         monkeypatch.setattr("modules.netbox_client.remove_device_from_netbox",
                             lambda *a, **k: {"ok": True, "deleted": list(held["deleted"]),

@@ -2313,6 +2313,29 @@ def _planned_record_id(repo: str, entry: dict, hostname: str) -> tuple:
     return None, ""
 
 
+def _nothing_created_in_netbox(name: str) -> dict:
+    """Abandon's NetBox step for an onboarding that recorded no NetBox id (C1597): it made
+    nothing in NetBox, so nothing is removed, and a device record by *name* (Mercury's or not)
+    is read, by its exact name, only to be named as kept. A read that fails is said, and
+    removes nothing either. ``{"detail", "kept": [ids]}``."""
+    from modules.netbox_client import _nb_first, _nb_ready
+
+    head = ("nothing removed: this onboarding recorded no NetBox record (Verify's NetBox step, "
+            "the only creator before promotion, did not run), so it made nothing in NetBox")
+    try:
+        ok, err, session, base = _nb_ready()
+        if not ok:
+            return {"detail": f"{head}; NetBox was not read: {err}", "kept": []}
+        found = _nb_first(session, base, "dcim/devices/", name=name)
+    except Exception as exc:                   # noqa: BLE001 - said, and nothing is removed
+        return {"detail": (f"{head}; whether NetBox holds a device named {name} could not be "
+                           f"read ({type(exc).__name__}: {exc})"), "kept": []}
+    if found is None:
+        return {"detail": f"{head}; NetBox holds no device named {name}", "kept": []}
+    return {"detail": (f"{head}; kept: NetBox device {name} (id {found.get('id')}), not this "
+                       "onboarding's"), "kept": [found.get("id")]}
+
+
 def _keep_planned_record(nb_id, name: str) -> dict:
     """Abandon's NetBox step for a Planned record Create read: kept, never deleted, while it is
     still Planned (Create made nothing in NetBox). Read by its id; a status Verify changed, a
@@ -2623,6 +2646,15 @@ def _abandon_onboarding(repo: str, hostname: str, list_name: str, *,
                             "deleted": [], "skipped": []}
         if kept["ok"]:
             retained = ("netbox",)
+    elif (entry or {}).get("netbox_id") in (None, ""):
+        # SCOPED TO THIS ONBOARDING (C1597): it recorded no NetBox id, so Verify's NetBox step,
+        # the only creator before promotion, never ran, and this onboarding made nothing there.
+        # The remover is never called: a record by the name, Mercury's or anyone's, is not this
+        # onboarding's to delete, and is named as kept.
+        kept = _nothing_created_in_netbox(entry.get("name", hostname))
+        _step("netbox", True, kept["detail"])
+        result["netbox"] = {"ok": True, "kept": kept["kept"], "deleted": [], "skipped": []}
+        retained = ("netbox",)
     else:
         try:
             # By the id onboarding recorded (C1342): the remover never deletes by name.

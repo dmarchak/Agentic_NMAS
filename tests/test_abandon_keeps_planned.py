@@ -23,8 +23,12 @@ record, and a real SSH host key kept at the device's address:
 4. the one-decision run's undo gives the name back and keeps NetBox;
 5. a Planned record Verify set Active is not kept as done: the step fails naming the status and
    how to finish, and the name is not released;
-6. controls: an entry with no NetBox id, and one whose id Verify wrote for a record it made,
-   still go through the provenance-gated remover.
+6. an entry with no NetBox id made nothing in NetBox (Verify's step never ran): the remover is
+   never called, and a record by its name, here Mercury's own, is named as kept (C1597's
+   general scoping, 2026-10-24: it replaced deploy 2b's interim rule, which sent such an entry
+   through the remover);
+7. control: an entry whose id Verify wrote for a record it made still goes through the
+   provenance-gated remover.
 
 Documentation addresses (RFC 5737) throughout."""
 
@@ -253,17 +257,61 @@ class TestARecordVerifyChangedIsNotKeptAsDone:
 
 
 class TestOtherOnboardingsKeepTheRemover:
-    """Controls: the kept branch is only for the Planned record Create read."""
+    """An onboarding that recorded no NetBox id keeps whatever NetBox holds; one whose id
+    Verify wrote goes through the remover."""
 
-    def test_an_entry_with_no_netbox_id_goes_through_the_remover(self, world, monkeypatch):
+    def test_an_entry_with_no_netbox_id_keeps_the_record_and_never_calls_the_remover(
+            self, world, monkeypatch):
+        """C1597: the Planned record by the name is Mercury's (in the created-object record)
+        but not this onboarding's, which read none and recorded no id: kept and named, the
+        step done, the name given back."""
         monkeypatch.setattr(onboard, "_name_in_netbox", lambda hostname: (False, True))
         monkeypatch.setattr(DE, "read", lambda hostname, **k: DE.NONE)
         world.create(planned=False)
         assert manifest.find_by_name(world.repo, "s5")[1].get("netbox_id") is None, "floor"
+        assert netbox_guard.was_created_by_nmas(LIST, "dcim/devices", world.dev["id"]), "floor"
+        dry, out = world.abandon()
+        assert world.removals == [], "the remover was called"
+        want = (f"kept: NetBox device s5 (id {world.dev['id']}), not this onboarding's")
+        for got in (dry, out):
+            step = _step(got, "netbox")
+            assert step["ok"] is True and step["detail"].endswith(want), step
+            assert step["detail"].startswith("nothing removed: this onboarding recorded no "
+                                             "NetBox record"), step
+        assert out["released"] == "s5" and manifest.find_by_name(world.repo, "s5") == (
+            None, None), out
+        assert netbox_guard.was_created_by_nmas(LIST, "dcim/devices", world.dev["id"])
+
+    def test_an_entry_with_no_netbox_id_and_no_record_says_netbox_holds_none(self, world,
+                                                                             monkeypatch):
+        monkeypatch.setattr(onboard, "_name_in_netbox", lambda hostname: (False, True))
+        monkeypatch.setattr(DE, "read", lambda hostname, **k: DE.NONE)
+        world.create(planned=False)
+        world.fake.store["dcim/devices"] = [o for o in world.fake.store["dcim/devices"]
+                                            if o["id"] != world.dev["id"]]
         _dry, out = world.abandon()
-        assert world.removals and all("netbox_id" not in k for _a, k in world.removals)
-        assert _step(out, "netbox") == {"step": "netbox", "ok": False,
-                                        "detail": "the remover was called"}
+        assert world.removals == []
+        step = _step(out, "netbox")
+        assert step["ok"] is True and step["detail"].endswith(
+            "; NetBox holds no device named s5"), step
+
+    def test_an_entry_with_no_netbox_id_and_netbox_unreadable_removes_nothing(self, world,
+                                                                             monkeypatch):
+        import modules.netbox_client as nbc
+        monkeypatch.setattr(onboard, "_name_in_netbox", lambda hostname: (False, True))
+        monkeypatch.setattr(DE, "read", lambda hostname, **k: DE.NONE)
+        world.create(planned=False)
+
+        def broken(*a, **k):
+            raise ConnectionError("netbox.example.test refused the connection")
+
+        monkeypatch.setattr(nbc, "_nb_first", broken)
+        _dry, out = world.abandon()
+        assert world.removals == []
+        step = _step(out, "netbox")
+        assert step["ok"] is True and step["detail"].endswith(
+            "whether NetBox holds a device named s5 could not be read (ConnectionError: "
+            "netbox.example.test refused the connection)"), step
 
     def test_an_id_verify_wrote_for_a_record_it_made_goes_through_the_remover(self, world,
                                                                               monkeypatch):
