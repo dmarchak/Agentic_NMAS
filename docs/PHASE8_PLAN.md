@@ -8,7 +8,9 @@ section 14 below is the endpoint direction after it.
 **2026-10-24 (the operator): the amendments of section 15.** Closed-loop execution leaves Phase 8
 for Phase 9, the closed loop (15.2); Anthropic is the proof of concept (15.3); Pydantic v2 strict
 is the one schema tool for AI input and output (15.4); runbooks are minimal declarative YAML
-(15.5); analysis is a button until its cost is measured (15.6); three new feature cards (15.9).
+(15.5); analysis is a button until its cost is measured (15.6); three new feature cards (15.9);
+data leaving the host in three classes, configuration off per network until an admin enables
+it (15.11).
 
 **The operator's charter, 2026-10-13.** Phase 8 starts only after Phase 7 closes. **The operator
 approves this plan, and every number in it, before any code.** **Approved 2026-10-13 with the
@@ -188,7 +190,7 @@ Each line is the card's summary. Every number is a proposal for the operator (se
 | 7 | **Natural language → intent** (8.5) | the intent editor and the network intent model's forms; AI only for the sentence → the model's structure | the sentence, the schema, the affected intent, NetBox facts, 2 or 3 examples, about 10k tokens (its measured minimum) → the intent model or the error contract | 10k in, 1.5k out, 20 s | small, then medium if the eval proves the need | 70% accepted without edit; 0 validated changes touching devices outside the request's scope | 30 days and 50 intents; 70% | below 55% after 50, or any out-of-scope change reaching confirm |
 | 8 | **A verifier draft for review** (8.1) | a person writes verifiers; the statement model makes them short | a statement and the readers' fields, about 4k tokens → a verifier draft and its planted failing case | 4k in, 800 out, 15 s | small | 60% accepted after review, each shown able to fail | 20 drafts; 60% | below 40% after 20 |
 | 9 | **Inferring higher-level intent from configs** (8.5) | `neighbours.expected` and the profile already derive some; AI proposes statements across devices | a device set's intent summarised, about 20k tokens → statements with evidence | 20k in, 2k out, 60 s | medium | 60% of proposed statements accepted | 10 runs; 60% | below 40% |
-| 10 | **Template draft for a new platform** (8.5) | today a person writes it; accepted only by round trip | a platform's captured config and the nearest template, about 30k tokens → a template draft | 30k in, 6k out, 120 s | medium or large (the eval decides) | 50% pass the round trip within two revisions | 5 platforms | below 40%, or cost per accepted template above 3× budget |
+| 10 | **Template draft for a new platform** (8.5; *2026-10-24, 15.11: requires the network's configuration class, its secret-bearing lines dropped*) | today a person writes it; accepted only by round trip | a platform's captured config and the nearest template, about 30k tokens → a template draft | 30k in, 6k out, 120 s | medium or large (the eval decides) | 50% pass the round trip within two revisions | 5 platforms | below 40%, or cost per accepted template above 3× budget |
 
 **Each card's pattern and compared fields** (11.1, 11.12; the operator, 2026-10-15). The pattern
 sets the consistency floor; the compared fields are what its N runs must agree on, never prose:
@@ -1727,6 +1729,8 @@ candidates, no card yet:**
   in house style, the register searched first.
 - **E4:** flake triage across JUnit results; documents checked against the code they cite;
   MANUAL_STEPS LABOUR rows drafted into automation proposals; manual drafts for new screens.
+- **Pseudonymised addresses and hostnames** (15.11): a reversible map held in Mercury, applied
+  before a payload leaves; a candidate, never a condition of any class.
 
 **E1 and the E candidates are AI applied to Mercury's own engineering,** not product features:
 they run in the development loop, never on an installation, so offline parity and the
@@ -1756,7 +1760,7 @@ its output is accepted only by a deterministic check.
 |---|---|
 | Problem | The Intent check says a device "differs" from its intent, and the person works out why. On s5 the cause was that a VTP-server switch keeps its VLANs in vlan.dat and never prints them (C1646, found 2026-10-24 after s5's Day 1 deploy at 00:42 UTC; C1649, measured ~17:4x UTC the same day, s3, s4 and s5). Other causes of the same symptom in the register: a regenerated self-signed certificate (C302). **Unmeasured:** how often a "differs" is not a real drift, and how long each takes to explain. |
 | Deterministic alternative | **Most classes are rules, built first:** a VLAN line on a VTP server or client switch (the switch's `show vtp status`, C1649); a difference of order only (the same lines as a set); a line the extractor does not model (its not-modelled list, `unmodeled_ack`); a certificate block (`normalize.strip_self_signed_certs`). **The AI step is only for a difference no rule classifies,** which it labels as one of those classes or "unexplained", citing the lines. |
-| Inputs | The unclassified difference's lines (masked by C1654's egress mask), the device's platform and VTP mode, the rule classes' definitions; no tools. Context: **unmeasured**. Output schema: Pydantic v2 strict, versioned. |
+| Inputs | The unclassified difference's lines (masked by C1654's egress mask; configuration lines, so the network's configuration class must be enabled, 15.11, its secret-bearing lines dropped), the device's platform and VTP mode, the rule classes' definitions; no tools. Context: **unmeasured**. Output schema: Pydantic v2 strict, versioned. |
 | Output shape | A (13.4): `{class, lines[], why}` with `class` an enum (`vtp_database`, `platform_default`, `order_only`, `unmodelled`, `unexplained`). |
 | Success metric | 80% of labels a person accepts; a difference a rule classifies never reaches the call (a rule's class always wins, shown by test). |
 | Compared fields | Translator floor (95%, 11.12) on `class` and `lines`, since a label decides how a difference is shown. |
@@ -1787,3 +1791,40 @@ before it acts." The window's silence is what a declared window already sets
 (`integrations/grafana.py::put_silence`, behind the `reload_confirm` gate; the manual's Needs
 attention page). The rule's two statements are amended to say so: NSOT_PLAN's "Alerts are never
 silenced" (Grafana's tiers) and NSOT_GUI_BRIEF section 15's question 3.
+
+### 15.11 Data leaving the host: three classes (the operator, 2026-10-24)
+
+The addendum's egress ruling, as resolved by the operator the same day: a third class,
+**configuration**, sits between what may leave and what never does.
+
+| Class | What a cloud model may receive | Default |
+|---|---|---|
+| **Allowed** | alert labels, metric series, masked log lines, intent diffs | on wherever AI is on for the network |
+| **Configuration** | configuration lines: goldens, a deploy's program, a captured configuration, the stanzas they touch | **off per network**; an admin enables it per network with a recorded reason (the hosted-only setting's pattern, 13.1 and 15.8) |
+| **Never** | credentials, host keys, NetBox secrets, even masked | no setting enables it |
+
+**The configuration class's conditions, each before any configuration line leaves:**
+1. **The stricter egress mask ships first** (C1654) and passes the planted-secret outbound test:
+   a planted secret in every input never appears in the adapter's outbound bytes.
+2. **A line carrying a secret is dropped, never masked:** any line with `secret`, `password`,
+   `key N`, `community` or a hash-shaped token is left out of the payload whole, and the
+   payload says how many lines were dropped.
+3. **The smallest slice a feature needs:** a feature sends only the lines its question needs,
+   never a whole golden by default (F2: the program and the stanzas it touches; F3: the diff
+   and its context before any full golden).
+4. **A classification marking forces AI off,** whatever the class settings say (13.1).
+
+**The features that now require the configuration class** (each is off on a network until an
+admin enables the class there, and says so beside its control):
+- **AI_ANTHROPIC_PLAN F2 "Explain"**, for a deploy preview and a failed Verify: the program and
+  the stanzas it touches. Explain on a Needs attention row stays in the allowed class unless the
+  row's evidence is configuration.
+- **AI_ANTHROPIC_PLAN F3 "Ask Mercury"**, for any question whose retrieval reaches a golden:
+  the diff and its context first, a full golden only where the question needs it.
+- **Section 6's feature 10** (template draft for a new platform): the platform's captured
+  configuration, its secret-bearing lines dropped.
+- **15.9's P2** (the "differs" explainer): the unclassified difference's lines. P1's pack stays
+  in the allowed class: it carries the Intent check's state, never its lines.
+
+**A candidate, not a condition:** pseudonymising addresses and hostnames before a payload leaves
+(a reversible map held in Mercury), listed with 15.9's candidates; nothing above waits for it.
