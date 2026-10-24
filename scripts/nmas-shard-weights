@@ -69,11 +69,13 @@ def measured(run_dirs: list) -> dict:
     return {f: statistics.median(r[f] for r in runs if f in r) for f in files}
 
 
-def loads(mod, weights: dict) -> dict:
-    """Each shard's seconds when *weights* place the files."""
+def loads(mod, weights: dict, seconds: dict = None) -> dict:
+    """Each shard's *seconds* (the placing weights themselves by default) when *weights* place
+    the files: today's placement read in the runner's seconds is the imbalance a push meets."""
+    seconds = weights if seconds is None else seconds
     mod.weights = lambda: weights
     got = mod.assign()
-    return {s: round(sum(weights.get(f, 0) for f in got[s]), 1) for s in mod.SHARDS}
+    return {s: round(sum(seconds.get(f, 0) for f in got[s]), 1) for s in mod.SHARDS}
 
 
 def merged(old: dict, new: dict, files: list) -> tuple:
@@ -105,10 +107,12 @@ def main(argv=None) -> int:
     old = doc["seconds"]
     files = mod.test_files()
     out, scaled = merged(old, new, files)
-    before, after = loads(mod, old), loads(mod, out)
-    for name, ld in (("weights today", before), ("measured", after)):
-        print(f"{name:14} " + "  ".join(f"{s} {v}" for s, v in ld.items())
-              + f"  (max/min {max(ld.values()) / min(ld.values()):.2f})")
+    # Both placements read in the runner's seconds: the imbalance today's weights leave, and
+    # what the measured ones leave.
+    before, after = loads(mod, old, out), loads(mod, out)
+    for name, ld in (("placed today", before), ("placed measured", after)):
+        print(f"{name:15} " + "  ".join(f"{s} {v}" for s, v in ld.items())
+              + f"  (max/min {max(ld.values()) / min(ld.values()):.2f}, runner seconds)")
     print(f"files measured {len(new)}, kept and scaled {scaled}, of {len(files)}")
     if a.write:
         today = datetime.datetime.now(datetime.timezone.utc).date().isoformat()

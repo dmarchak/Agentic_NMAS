@@ -98,6 +98,19 @@ def test_the_weights_tool_sums_each_file_and_takes_the_median_over_runs(tmp_path
     assert got == {"tests/test_x.py": 3.0, "tests/test_w.py": 4.0, "tests/test_z.py": 9.0}
 
 
+def test_today_s_placement_is_read_in_the_runner_s_seconds():
+    """The imbalance a push meets: the files placed by today's weights, each shard's load in
+    the runner's seconds (a placement read in its own weights is balanced by construction)."""
+    t = _weights_tool()
+    m = _shards()
+    files = m.test_files()
+    old = {f: 1.0 for f in files}
+    runner = {f: (10.0 if f == files[0] else 1.0) for f in files}
+    today = t.loads(m, old, runner)
+    assert max(today.values()) - min(today.values()) >= 9.0, today
+    assert t.loads(m, old) != today, "read in its own weights it hides the heavy file"
+
+
 def test_a_file_no_run_measured_keeps_its_weight_scaled_to_the_runner():
     """The files both know say the runner is twice the weights; a file only the weights know
     doubles, one only the runner knows is its seconds, one neither knows has none."""
@@ -115,7 +128,8 @@ def test_the_weights_tool_names_both_loads_and_refuses_an_empty_measurement(tmp_
            [(f[:-3].replace("/", "."), 1.0) for f in files])
     assert t.main([str(tmp_path / "r1")]) == 0
     said = capsys.readouterr().out
-    assert said.startswith("weights today ") and "\nmeasured " in said, said
+    assert said.startswith("placed today ") and "\nplaced measured " in said, said
+    assert said.count("runner seconds") == 2, said
     assert f"files measured {len(files)}, kept and scaled 0, of {len(files)}" in said, said
     assert t.main([str(tmp_path / "nothing")]) == 1
     assert "no JUnit test case" in capsys.readouterr().err
