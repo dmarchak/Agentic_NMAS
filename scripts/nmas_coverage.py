@@ -200,6 +200,21 @@ def _test_of(context: str) -> str:
     return nodeid if phase == "run" else ""
 
 
+def files_reaching(by_line: dict) -> list:
+    """The test files any phase of whose tests (a fixture's setup or teardown as well as the
+    run) ran a line of the module (*by_line*, `{line: [contexts]}`): the module's index the
+    nightly mutation run scopes a stale map's refresh by (scripts/nmas_mutation.py,
+    `refresh_scope`, C1640). A test reaching it only in its setup (a population fixture that
+    renders every page) is in it; a push's tier labels (`unit|run`) name no file."""
+    files = set()
+    for contexts in by_line.values():
+        for ctx in contexts:
+            nodeid = ctx.rpartition("|")[0]
+            if "::" in nodeid:
+                files.add(nodeid.split("::", 1)[0])
+    return sorted(files)
+
+
 def module_report(path: str, source: str, by_line: dict, tiers: dict, statements: set,
                   numbers: dict) -> dict:
     """One module's figures. *by_line*: `{line: [contexts]}` from the coverage data;
@@ -240,6 +255,7 @@ def module_report(path: str, source: str, by_line: dict, tiers: dict, statements
         "branch_pct_any": (round(100.0 * numbers["covered_branches"] / numbers["num_branches"], 1)
                            if numbers.get("num_branches") else None),
         "function_list": functions, "excluded": excluded,
+        "test_files": files_reaching(by_line),
     }
 
 

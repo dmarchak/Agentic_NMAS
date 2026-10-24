@@ -165,6 +165,24 @@ class TestTheTiers:
         rep = C.module_report("m.py", source, by_line, tiers, set(), {})
         assert (rep["covered_unit"], rep["covered_any"]) == (0, 1)
 
+    def test_each_module_names_its_test_files_by_any_phase(self):
+        """C1640: the index a stale map's refresh is scoped by. A test reaching the module only
+        in a fixture's setup is in it (the run-phase function lists lack it: run #41's
+        whole-suite refresh chose such a file); a push's tier labels name no file."""
+        source = IP_CONNECTIVITY
+        body = next(d for d in pydefs.definitions(source) if d.name == "ping").body_lines
+        by_line = {body[0]: ["tests/test_ip.py::test_ping|run",
+                             "tests/test_pages.py::TestAll::test_x|setup", "unit|run", "",
+                             "tests/test_down.py::test_other|teardown"]}
+        rep = C.module_report("m.py", source, by_line, {}, set(), {})
+        assert rep["test_files"] == ["tests/test_down.py", "tests/test_ip.py",
+                                     "tests/test_pages.py"]
+        ping = next(f for f in rep["function_list"] if f["name"] == "ping")
+        assert "tests/test_ip.py::test_ping" in ping["unit_tests"]
+        assert not any("test_pages" in t or "test_down" in t for t in ping["unit_tests"]), \
+            "the function lists keep the run phase alone"
+        assert C.module_report("m.py", source, {}, {}, set(), {})["test_files"] == []
+
 
 class TestWhatMakesATestSpawns:
     """The spawns tier is a test that ran OUR code in another process, whose lines coverage

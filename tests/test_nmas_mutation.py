@@ -491,10 +491,13 @@ class TestMeasuredReach:
         monkeypatch.setattr(cli, "_collected", collected)
         refreshed = []
 
-        def refresh(stale, out_, head_):
+        scopes = []
+
+        def refresh(stale, out_, head_, files=None):
             """Tonight's refresh, as `_refresh` returns it: `changed` reached by a caller's test
             in a file that imports nothing of net, `Box.fill` by none."""
             refreshed.append(list(stale))
+            scopes.append(files)
             return {"paths": ["modules/net.py"], "exit": 0, "seconds": 9, "failed": [],
                     "rerun": [], "why": "",
                     "reach": {"functions": {"modules/net.py::changed":
@@ -528,6 +531,7 @@ class TestMeasuredReach:
                          "--reach-date", "2026-10-15T08:36:09Z",
                          "--also", "modules/net.py::untouched"]) == 0
         assert refreshed == [["modules/net.py::Box.fill", "modules/net.py::changed"]]
+        assert scopes == [None], "a map without the module index: the whole suite (C1640)"
         assert selection() == ("    tests/test_net.py::TestA::test_unit_one\n"
                                "    tests/test_net_cli.py::test_script\n"
                                "    tests/test_other.py::test_caller_of_changed\n"
@@ -832,7 +836,10 @@ class TestAStaleMap:
             self, history, monkeypatch, tmp_path, rule, refresh_why):
         """(c), the fallback: deferred by the rule, or because the refresh measured nothing;
         never mutated under the stale map, carried in the record whole, named with why; the
-        next night, a map holding its text tonight, it is planned and measured."""
+        next night, a map holding its text tonight, it is planned and measured. The night is
+        green under the `defer` rule (the record holds it by design) and RED when the refresh
+        measured nothing (C1616, 2026-10-24: the measurement failed, as runs #21 and #24's
+        did, which ended green)."""
         root, head = history
         base = M.git("rev-parse", f"{head}~1", root=root).strip()
         cli = _cli()
@@ -840,7 +847,7 @@ class TestAStaleMap:
         monkeypatch.setattr(cli.M, "plan", lambda state, h, also=(), debt=None, cap=None: M.plan(
             state, h, root=root, also=also, debt=debt, cap=cap))
         monkeypatch.setattr(cli.M, "load_debt", lambda path=None: {"functions": {}})
-        monkeypatch.setattr(cli, "_refresh", lambda stale, out, h: {
+        monkeypatch.setattr(cli, "_refresh", lambda stale, out, h, files=None: {
             "paths": M.stale_paths(stale), "exit": 124, "seconds": 1, "failed": [], "rerun": [],
             "why": refresh_why, "reach": None})
         monkeypatch.setattr(cli, "_collected", lambda files: {
@@ -855,10 +862,12 @@ class TestAStaleMap:
         old_map = _drilldown(str(tmp_path / "old"), reach, TIERS)
         assert cli.main(["plan", "--state", str(state), "--head", head, "--out",
                          str(tmp_path / "o1"), "--summary", str(summary), "--reach", old_map,
-                         "--reach-commit", base, "--stale-map", rule]) == 0
+                         "--reach-commit", base, "--stale-map", rule]) == \
+            (1 if rule == "refresh" else 0)
         p = json.load(open(tmp_path / "o1" / "plan.json", encoding="utf-8"))
         assert p["planned"] == [] and set(p["deferred_stale"]) == set(reach)
         text = summary.read_text()
+        assert ("this run is red** (2 function(s)" in text) == (rule == "refresh"), text
         assert "Nothing mutated tonight: 2 function(s) wait in the record" in text
         assert "Stale map, not mutated tonight (2)" in text
         assert (refresh_why or "the stale-map rule is defer") in text
@@ -1302,11 +1311,13 @@ class TestTheWorkflow:
     def test_a_dispatchs_functions_reach_the_plan_through_the_environment(self):
         """Never `${{ inputs... }}` pasted into a script (an input is text a person typed)."""
         doc = self.doc()
-        assert set(doc[True]["workflow_dispatch"]["inputs"]) == {"functions", "cap", "label"}
+        assert set(doc[True]["workflow_dispatch"]["inputs"]) == {"functions", "cap", "label",
+                                                                   "stale_map"}
         plan = next(s for s in doc["jobs"]["mutate"]["steps"] if s.get("id") == "plan")
         assert plan["env"] == {"ALSO_FUNCTIONS": "${{ inputs.functions }}",
                                "CAP": "${{ inputs.cap }}",
                                "LABEL": "${{ inputs.label }}",
+                               "STALE_MAP": "${{ inputs.stale_map }}",
                                "REACH_COMMIT": "${{ steps.reach.outputs.sha }}",
                                "REACH_RUN": "${{ steps.reach.outputs.id }}",
                                "REACH_DATE": "${{ steps.reach.outputs.date }}",
@@ -1315,6 +1326,9 @@ class TestTheWorkflow:
         # The cap (Lab 9, 2026-10-22: a dispatch that runs only its named functions): digits
         # only, refused otherwise, and handed to the plan as --cap; empty keeps the default.
         assert '*[!0-9]*) echo "the cap' in plan["run"] and 'set -- "$@" --cap "$CAP"' in plan["run"]
+        # The stale-map rule (C1616's cheap red run): refresh or defer, refused otherwise.
+        assert 'refresh|defer) set -- "$@" --stale-map "$STALE_MAP";;' in plan["run"]
+        assert "is not refresh or defer\" >&2; exit 1;;" in plan["run"]
 
     def test_the_plan_reads_the_newest_coverage_drilldown_from_its_run(self):
         """C796, C834: the newest successful coverage nightly's run, found through the public
@@ -1401,6 +1415,10 @@ class TestTheWorkflow:
             assert "cat mutation-out/summary.md\n" in run
             assert 'cat mutation-out/summary.md >> "$GITHUB_STEP_SUMMARY"' in run
         assert report.rstrip().endswith("exit $code") and "code=$?" in report
+        # C1616: a red plan ends the step red, its summary printed first, and no work runs.
+        assert plan.rstrip().endswith('exit "$code"') and "code=$?" in plan
+        assert plan.index("code=$?") < plan.index("cat mutation-out/summary.md\n")
+        assert '[ "$code" -eq 0 ] && [ -s mutation-out/patterns.txt ]' in plan
 
     def test_mutmut_is_never_the_hosts_the_gates_or_a_pushs(self):
         for rel in ("requirements.txt", "requirements.lock", "requirements-ci.txt",
@@ -1655,7 +1673,7 @@ class TestTheFence:
         monkeypatch.setattr(cli.M, "plan", lambda state, h, also=(), debt=None, cap=None: M.plan(
             state, h, root=root, also=also, debt=debt, cap=cap))
         # No map: every planned function is refreshed (here, as measured reaching nothing).
-        monkeypatch.setattr(cli, "_refresh", lambda stale, out, head: {
+        monkeypatch.setattr(cli, "_refresh", lambda stale, out, head, files=None: {
             "paths": M.stale_paths(stale), "exit": 0, "seconds": 1, "failed": [], "rerun": [],
             "why": "", "reach": {"functions": {k: [] for k in stale}, "tiers": {},
                                  "complete": True}})
@@ -2165,3 +2183,234 @@ class TestAMovedFunctionIsSaid:
         assert "Moved, their text unchanged (1 of 2)" in text
         assert "`modules/new.py` kept (moved from `modules/old.py::kept`" in text
         assert "`modules/new.py` edited\n" in text + "\n"
+
+
+# ── C1616: a run that mutates less than it was to is red ─────────────────────────────────────
+
+OTHER = ("modules/readers/reachability.py", "other")
+OTHER_MUT = "modules.readers.reachability.x_other"
+
+
+class TestARunThatMutatesLessIsRed:
+    """C1616 (2026-10-23): runs #21 and #24 planned 4 and 3 named functions, the plan's refresh
+    measured nothing, none was mutated, and each ended green. A named run (the dispatch's
+    `functions`) is red unless every named function was mutated; any run is red when the
+    refresh of a stale map measured nothing; each function named with why."""
+
+    NAMED = ["modules/net.py::changed", "modules/net.py::untouched"]
+
+    def _plan(self, history, monkeypatch, tmp_path, rule="refresh", also=NAMED, cap=None,
+              reach=None):
+        root, head = history
+        cli = _cli()
+        monkeypatch.setattr(cli.M, "ROOT", root)
+        monkeypatch.setattr(cli.M, "plan", lambda state, h, also=(), debt=None, cap=None: M.plan(
+            state, h, root=root, also=also, debt=debt, cap=cap))
+        monkeypatch.setattr(cli.M, "load_debt", lambda path=None: {"functions": {}})
+        monkeypatch.setattr(cli, "_collected", lambda files: set())
+        # Runs #21 and #24's refresh: pytest exit 3 and no data.
+        monkeypatch.setattr(cli, "_refresh", lambda stale, out, h, files=None: {
+            "paths": M.stale_paths(stale), "exit": 3, "seconds": 2952, "failed": [], "rerun": [],
+            "why": "the refresh ended with exit 3 and left no data, so it measured nothing "
+                   "usable", "reach": reach})
+        tmp_path.mkdir(parents=True, exist_ok=True)
+        state, summary = tmp_path / "state.json", tmp_path / "summary.md"
+        state.write_text(json.dumps({"commit": head}))      # only the named functions
+        args = ["plan", "--state", str(state), "--head", head, "--out", str(tmp_path / "o"),
+                "--summary", str(summary), "--stale-map", rule]
+        for k in also:
+            args += ["--also", k]
+        if cap is not None:
+            args += ["--cap", str(cap)]
+        code = cli.main(args)
+        # A plan with work writes no summary: the report does.
+        return (code, summary.read_text() if summary.exists() else "",
+                json.loads((tmp_path / "o" / "plan.json").read_text()))
+
+    def test_a_named_run_whose_refresh_measured_nothing_is_red_naming_each(
+            self, history, monkeypatch, tmp_path, capsys):
+        code, text, p = self._plan(history, monkeypatch, tmp_path)
+        assert code == 1, "runs #21 and #24 ended green here"
+        assert p["named"] == self.NAMED and p["planned"] == []
+        assert "this run is red** (2 function(s) it was to mutate; 0 planned tonight)" in text
+        for k in self.NAMED:
+            assert f"- `{k}`: stale map, not mutated: the refresh ended with exit 3" in text
+        said = capsys.readouterr().out
+        assert "FAILED: 2 function(s) this run was to mutate were not mutated (C1616)" in said
+        assert "NOT MUTATED modules/net.py::changed: stale map" in said
+
+    def test_a_named_run_under_the_defer_rule_is_red_and_the_unnamed_night_is_not(
+            self, history, monkeypatch, tmp_path):
+        code, text, _p = self._plan(history, monkeypatch, tmp_path / "named", rule="defer")
+        assert code == 1 and "the stale-map rule is defer" in text
+        code, text, p = self._plan(history, monkeypatch, tmp_path / "night", rule="defer",
+                                   also=())
+        assert code == 0 and "this run is red" not in text and p["named"] == []
+
+    def test_a_named_function_the_cap_left_out_is_red(self, history, monkeypatch, tmp_path):
+        """Named three, capped at two: the third is not mutated, so no verdict on it."""
+        named = self.NAMED + ["modules/net.py::Box.fill"]
+        refreshed = {"functions": {k: [] for k in named}, "tiers": {}, "complete": True}
+        code, text, p = self._plan(history, monkeypatch, tmp_path, also=named, cap=2,
+                                   reach=refreshed)
+        assert len(p["planned"]) == 2 and len(p["deferred"]) == 1, p["deferred"]
+        left = next(iter(p["deferred"]))
+        assert M.not_mutated(p) == [(left, "capped: the cap of 2 left it for a later run")]
+        assert code == 0, "the plan has work: the report decides, below"
+
+    def _report(self, tmp_path, monkeypatch, planned, named, results, mutmut_exit):
+        cli = TestTheDebt._cli("nmas_mutation_cli_c1616")
+        out = tmp_path / "out"
+        out.mkdir(parents=True)
+        (out / "plan.json").write_text(json.dumps({
+            "base": "a" * 40, "head": "b" * 40, "planned": [list(f) for f in planned],
+            "kept": {}, "hashes": {M.key(f): "h1" for f in planned}, "moved": {},
+            "previous_debt_entries": 0, "named": [M.key(f) for f in named],
+            "selection": {"how": {M.key(f): "measured" for f in planned},
+                          "map": {"run": "1", "commit": "c" * 40, "date": "d", "unusable": ""}}}))
+        (out / "run.json").write_text(json.dumps({"kinds": {}}))
+        debt_file = tmp_path / "debt.json"
+        debt_file.write_text(json.dumps({"functions": {}}))
+        monkeypatch.setattr(cli.M, "DEBT_FILE", str(debt_file))
+        text = "\n".join(f"    {m}: {s}" for m, s in {**CANARY_KILLED, **results}.items())
+        monkeypatch.setattr(cli, "_mutmut", lambda *a: text if a[0] == "results" else "")
+
+        class A:
+            plan, summary = str(out / "plan.json"), str(tmp_path / "summary.md")
+            state_out, budget = str(tmp_path / "next.json"), 120
+        A.mutmut_exit = mutmut_exit
+        code = cli.cmd_report(A())
+        return code, (tmp_path / "summary.md").read_text()
+
+    def test_planned_two_mutated_one_is_red_naming_the_one(self, tmp_path, monkeypatch, capsys):
+        """The budget ran out (124) after probe's mutants, before other's first: other is
+        never reached, the run red; the next run of the label continues it."""
+        code, text = self._report(tmp_path, monkeypatch, [PROBE, OTHER], [PROBE, OTHER],
+                                  {f"{PROBE_MUT}__mutmut_1": "killed"}, 124)
+        assert code == 1
+        assert "this run is red** (1 function(s) it was to mutate; 2 planned tonight)" in text
+        assert (f"- `{M.key(OTHER)}`: never reached: the budget ran out before its first "
+                "mutant") in text
+        assert f"NOT MUTATED {M.key(OTHER)}" in capsys.readouterr().out
+
+    def test_one_left_unfinished_and_one_with_no_mutant_are_each_named(self, tmp_path,
+                                                                      monkeypatch):
+        code, text = self._report(tmp_path, monkeypatch, [PROBE, OTHER], [PROBE, OTHER],
+                                  {f"{PROBE_MUT}__mutmut_1": "killed",
+                                   f"{PROBE_MUT}__mutmut_2": "not checked",
+                                   f"{PROBE_MUT}__mutmut_3": "not checked"}, 124)
+        assert code == 1 and (f"- `{M.key(PROBE)}`: unfinished: 2 of its mutants not checked "
+                              "when the budget ran out") in text
+        code, text = self._report(tmp_path / "e", monkeypatch, [PROBE], [PROBE], {}, 0)
+        assert code == 1 and (f"- `{M.key(PROBE)}`: mutmut made no mutant of it, so nothing "
+                              "in it was tested") in text
+
+    def test_a_named_run_that_mutated_every_named_function_stands(self, tmp_path, monkeypatch):
+        code, text = self._report(tmp_path, monkeypatch, [PROBE, OTHER], [PROBE],
+                                  {f"{PROBE_MUT}__mutmut_1": "killed",
+                                   f"{OTHER_MUT}__mutmut_1": "killed"}, 0)
+        assert code == 0 and "this run is red" not in text
+
+    def test_the_unnamed_nights_budget_leaves_work_in_the_record_and_stays_green(
+            self, tmp_path, monkeypatch):
+        code, text = self._report(tmp_path, monkeypatch, [PROBE, OTHER], [],
+                                  {f"{PROBE_MUT}__mutmut_1": "killed"}, 124)
+        assert code == 0 and "this run is red" not in text
+
+
+# ── C1640: a stale map's refresh runs the tests that reach its modules ───────────────────────
+
+class TestTheRefreshIsScoped:
+    """C1640 (2026-10-24): run #41's refresh of three stale functions ran the whole suite,
+    3,207 s of its 80 minutes. The refresh runs the test files the map's module index says
+    reached their modules (any phase), those importing them (parsed), those changed since the
+    map, and those reaching a module changed since; without the index, the whole suite."""
+
+    SOURCES = {"tests/test_toy.py": "from modules import toy\n",
+               "tests/test_via_page.py": "import app\n",
+               "tests/test_caller.py": "from modules.toy_caller import width\n",
+               "tests/test_new.py": "def test_x():\n    pass\n",
+               "tests/test_unrelated.py": "import json\n"}
+    INDEX = {"modules/toy.py": ["tests/test_via_page.py"],      # a fixture's setup reached it
+             "modules/toy_caller.py": ["tests/test_caller.py"],
+             "modules/far.py": ["tests/test_unrelated.py"]}
+
+    def test_the_files_that_reach_import_changed_or_reach_a_changed_module_and_no_other(self):
+        got = M.refresh_scope(["modules/toy.py::span"], {"module_files": self.INDEX},
+                              self.SOURCES, changed_tests=["tests/test_new.py",
+                                                           "tests/fixtures/x.txt"],
+                              changed_modules=["modules/toy.py", "modules/toy_caller.py"])
+        assert got["files"] == ["tests/test_caller.py", "tests/test_new.py",
+                                "tests/test_toy.py", "tests/test_via_page.py"]
+        assert "tests/test_unrelated.py" not in got["files"], "reaches only an unchanged module"
+        assert "the 4 test file(s) of 5 that reach 1 module(s)" in got["why"]
+
+    def test_a_function_the_map_lacks_falls_back_to_its_importers_and_changed_files(self):
+        """A new module: the index names no file for it; its importers and the files changed
+        since still run."""
+        got = M.refresh_scope(["modules/toy.py::span"], {"module_files": {}}, self.SOURCES,
+                              changed_tests=["tests/test_new.py"])
+        assert got["files"] == ["tests/test_new.py", "tests/test_toy.py"]
+
+    def test_no_index_or_no_usable_map_refreshes_the_whole_suite(self):
+        assert M.refresh_scope(["modules/toy.py::span"], {"module_files": None},
+                               self.SOURCES)["files"] is None
+        got = M.refresh_scope(["modules/toy.py::span"], None, self.SOURCES,
+                              unusable="no coverage drill-down was found")
+        assert got["files"] is None and "no coverage drill-down was found" in got["why"]
+
+    def test_the_index_is_read_from_the_drilldown_and_absent_from_an_old_one(self, tmp_path):
+        old = M.load_reach(_drilldown(str(tmp_path / "old"), {"modules/toy.py::span": []},
+                                      {"tests/test_toy.py::test_a": "unit"}))
+        assert old["module_files"] is None
+        folder = _drilldown(str(tmp_path / "new"), {"modules/toy.py::span": []},
+                            {"tests/test_toy.py::test_a": "unit"})
+        path = os.path.join(folder, "coverage.json")
+        rep = json.load(open(path, encoding="utf-8"))
+        rep["modules"]["modules/toy.py"]["test_files"] = ["tests/test_via_page.py"]
+        json.dump(rep, open(path, "w", encoding="utf-8"))
+        assert M.load_reach(folder)["module_files"] == {
+            "modules/toy.py": ["tests/test_via_page.py"]}
+
+    def test_the_planted_case_scoped_finds_the_callers_test_and_runs_no_other(
+            self, planted, monkeypatch, tmp_path):
+        """The real refresh, scoped: the map of A indexes toy (test_toy) and nothing else; B
+        changes span and its caller and adds the caller's test; a test file reaching nothing
+        of either is not run (its marker never written), and the scoped reach is the whole
+        suite's (the planted case above)."""
+        root, a, b = planted
+        marker = os.path.join(root, "unrelated-ran")
+        with open(os.path.join(root, "tests", "test_unrelated.py"), "w",
+                  encoding="utf-8") as fh:
+            fh.write(f"def test_marks():\n    open({marker!r}, 'w').close()\n")
+        cli = _cli()
+        monkeypatch.setattr(cli.M, "ROOT", root)
+        stale = ["modules/toy.py::span"]
+        reach = {"functions": {}, "tiers": {"t": "unit"},
+                 "module_files": {"modules/toy.py": ["tests/test_toy.py"],
+                                  "modules/toy_caller.py": []}}
+        fresh = M.reach_fresh([("modules/toy.py", "span")], {}, reach, a, b, root=root)
+        assert fresh["changed_modules"] == ["modules/toy.py", "modules/toy_caller.py"]
+        assert fresh["changed_tests"] == ["tests/test_toy_caller.py"]
+        scope = M.refresh_scope(stale, reach, _toy_sources(root), fresh["changed_tests"],
+                                fresh["changed_modules"])
+        assert scope["files"] == ["tests/test_toy.py", "tests/test_toy_caller.py"]
+        got = cli._refresh(stale, str(tmp_path / "out"), b, scope["files"])
+        assert got["exit"] == 0 and got["files"] == 2 and got["reach"]["complete"], got
+        assert got["reach"]["functions"] == {
+            "modules/toy.py::span": ["tests/test_toy.py::test_never_negative",
+                                     "tests/test_toy_caller.py::test_width"]}
+        assert not os.path.exists(marker), "a file reaching neither module ran"
+
+    def test_a_scope_of_no_file_runs_nothing_and_reaches_none(self, planted, tmp_path,
+                                                              monkeypatch):
+        """pytest given no path runs the whole suite: an empty scope runs nothing, each
+        function reached by none (its mutants then survive, red)."""
+        root, _a, b = planted
+        cli = _cli()
+        monkeypatch.setattr(cli.M, "ROOT", root)
+        got = cli._refresh(["modules/toy.py::span"], str(tmp_path / "out"), b, [])
+        assert got["reach"] == {"functions": {"modules/toy.py::span": []}, "tiers": {},
+                                "complete": True}
+        assert got["files"] == 0 and "nothing ran" in got["why"]
+        assert not os.path.exists(os.path.join(str(tmp_path / "out"), "refresh.log"))

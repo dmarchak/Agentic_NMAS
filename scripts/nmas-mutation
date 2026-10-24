@@ -11,10 +11,13 @@
         record. Writes DIR/plan.json, DIR/patterns.txt (mutmut's names) and ./setup.cfg
         (mutmut's configuration: the planned modules and the canary, and the night's tests: for
         a function the drill-down holds at its text tonight, by text hash, the tests it saw
-        execute it; for any other, the tests tonight's refresh of the map saw execute it, the
-        whole suite run once per test over its module (`refresh`, the default), or it waits in
-        the record (`defer`, or a refresh that could not finish)). With nothing to mutate,
-        writes "nothing to mutate" to F and S's next record, and DIR/patterns.txt is empty.
+        execute it; for any other, the tests tonight's refresh of the map saw execute it, run
+        once per test over its module, the test files the map's module index says reach it
+        (the whole suite with no index: `refresh`, the default), or it waits in the record
+        (`defer`, or a refresh that could not finish)). With nothing to mutate, writes
+        "nothing to mutate" to F and S's next record, and DIR/patterns.txt is empty; exit 1
+        then when a function it was to mutate was not (C1616: a named one deferred or capped,
+        or any whose refresh measured nothing), or the debt list grew.
     nmas-mutation run --out DIR
         mutmut, one mutant at a time, in three runs: the canary's in-process function (which
         also collects mutmut's statistics and each test's tier); then, each test that starts a
@@ -30,9 +33,10 @@
         reads mutmut's results and each survivor's diff; checks the canary (every mutant
         killed) and the scope (only planned functions ran); merges the record's kept results;
         writes the summary to F, the report to DIR/report.json and, unless the measurement or
-        the run failed, the next record to S. Exit 1 when the measurement or the run failed, or
+        the run failed, the next record to S. Exit 1 when the measurement or the run failed,
         when an open VERDICT survivor remains (not killed, not listed in
-        tests/mutation_equivalent.py); MESSAGE survivors are listed and kept open, never
+        tests/mutation_equivalent.py), or when a function it was to mutate was not (C1616:
+        `nmas_mutation.not_mutated`); MESSAGE survivors are listed and kept open, never
         failing it; 0 otherwise.
 """
 import argparse
@@ -207,10 +211,12 @@ def _measure_children(population, paths, functions, out) -> dict:
 REFRESH_TIMEOUT_S = 5200
 
 
-def _refresh(stale: list, out: str, head: str) -> dict:
+def _refresh(stale: list, out: str, head: str, files=None) -> dict:
     """Refresh the coverage map for *stale* (`path::qualname`) tonight (M.STALE_REFRESH): the
-    whole suite once, through scripts/nmas-test (confined, as the coverage nightly), with the C
-    tracer's per-test contexts measuring only their modules and each test's tier recorded. A
+    test *files* that reach their modules (M.refresh_scope, C1640), or the whole suite when
+    *files* is None, once, through scripts/nmas-test (confined, as the coverage nightly), with
+    the C tracer's per-test contexts measuring only their modules and each test's tier
+    recorded. A
     run that passed whole is complete; one that ended with failing tests runs those once more
     alone, and is complete when that run ends (those failing again fail at head and can kill
     no mutant: named), else used in part (its stale functions' survivors labelled stale map);
@@ -237,8 +243,9 @@ def _refresh(stale: list, out: str, head: str) -> dict:
            "-n", "auto", "-o", "faulthandler_timeout=450",
            *[f"--cov={p[:-3].replace('/', '.')}" for p in paths],
            "--cov-report=", "--cov-context=test"]
+    scope = "the whole suite" if files is None else f"{len(files)} test file(s)"
     print(f"nmas-mutation: refreshing the coverage map of {len(stale)} stale function(s) in "
-          f"{len(paths)} module(s): the whole suite, per test", flush=True)
+          f"{len(paths)} module(s): {scope}, per test", flush=True)
 
     def run(args, log):
         try:
@@ -254,10 +261,19 @@ def _refresh(stale: list, out: str, head: str) -> dict:
             fh.write(text)
         return text, code
 
+    if files is not None and not files:
+        # No test file reaches, imports or is near their modules: nothing to run (pytest given
+        # no path would run the whole suite). Each is reached by none, a measurement, so its
+        # mutants meet no test and survive: red, named.
+        return {"paths": paths, "exit": 0, "seconds": 0, "failed": [], "rerun": [], "files": 0,
+                "why": "no test file reaches their modules, so nothing ran",
+                "reach": {"functions": {k: [] for k in sorted(stale)}, "tiers": {},
+                          "complete": True}}
     start = time.monotonic()
-    text, code = run(cmd[1:], "refresh.log")
+    text, code = run(cmd[1:] + list(files or []), "refresh.log")
     res = {"paths": paths, "exit": code, "seconds": round(time.monotonic() - start),
-           "failed": [], "rerun": [], "why": "", "reach": None}
+           "failed": [], "rerun": [], "why": "", "reach": None,
+           "files": None if files is None else len(files)}
     if code not in (0, 1) or not os.path.exists(data):
         res["why"] = (f"the refresh ended with exit {code} (0 passed, 1 tests failed; 124 or 137 "
                       f"its {REFRESH_TIMEOUT_S} s bound) and left "
@@ -320,8 +336,17 @@ def cmd_plan(a) -> int:
                 "date": a.reach_date or "", "unusable": fresh["unusable"]}
     refresh, refreshed = {}, None
     if fresh["stale"] and a.stale_map == M.STALE_REFRESH:
-        refresh = _refresh(sorted(fresh["stale"]), a.out, p["head"])
+        # Scoped to the tests that reach the stale functions' modules, by the map's own module
+        # index (C1640; run #41's whole-suite refresh took 3,207 s of its 80 minutes).
+        scope = M.refresh_scope(fresh["stale"], reach, sources, fresh["changed_tests"],
+                                fresh["changed_modules"], fresh["unusable"])
+        refresh = _refresh(sorted(fresh["stale"]), a.out, p["head"], scope["files"])
+        refresh["scope"] = scope["why"]
         refreshed = refresh.pop("reach", None)
+        if refreshed is None:
+            # It measured nothing usable: every stale function waits, and the run is red
+            # (M.not_mutated, C1616).
+            p["refresh_failed"] = sorted(fresh["stale"])
     chosen = M.choose_tests(p["planned"], sources, reach if not fresh["unusable"] else None,
                             fresh["fresh"], fresh["changed_tests"], refreshed)
     if chosen["deferred"]:
@@ -357,9 +382,12 @@ def cmd_plan(a) -> int:
           f"by measured reach, {len(names)} mutmut name(s)")
     print("  " + M.map_line(map_info))
     if refresh:
-        print(f"  refreshed: the whole suite over {len(refresh['paths'])} module(s), exit "
-              f"{refresh['exit']}, {refresh['seconds']} s" + (f": {refresh['why']}"
-                                                              if refresh.get("why") else ""))
+        print(f"  refreshed: {refresh.get('scope', 'the whole suite')}, over "
+              f"{len(refresh['paths'])} module(s), exit {refresh['exit']}, "
+              f"{refresh['seconds']} s" + (f": {refresh['why']}" if refresh.get("why") else ""))
+    short = M.not_mutated(p)
+    for k, why in short:
+        print(f"  NOT MUTATED {k}: {why} (the run is red)")
     for path, q in p["planned"]:
         k = M.key((path, q))
         why = (f"moved from {p['carried'][k]}, its text unchanged: the record's results carried, "
@@ -401,17 +429,22 @@ def cmd_plan(a) -> int:
                 fh.write(M.summary(p["base"], p["head"], [], {}, [], 0,
                                    known=M.debt_entries(debt), map_info=map_info,
                                    waiting=len(p.get("deferred") or {})))
-                fh.write("\n" + "\n".join(M.selection_lines(p) + M.deferred_lines(p)
+                fh.write("\n" + "\n".join(M.not_mutated_lines(short, 0)
+                                            + M.selection_lines(p) + M.deferred_lines(p)
                                             + M.gone_lines(p) + M.not_rerun_lines(p)
                                             + M.debt_lines([], debt, prev))
                          + "\n")
                 if grew:
                     fh.write(f"**The debt list grew** from {prev} to {now}: red this night.\n")
         if a.state:
+            # The record keeps what waits (the next run of this label takes it first).
             M.save(a.state, M.next_state(p["head"], [], {}, [], {},
                                          finished_before=p.get("finished_before"),
                                          debt_count=now, deferred=p.get("deferred")))
-        return 1 if grew else 0
+        if short:
+            print(f"FAILED: {len(short)} function(s) this run was to mutate were not mutated "
+                  "(C1616): " + "; ".join(f"{k}: {why}" for k, why in short))
+        return 1 if grew or short else 0
     sources_to_mutate = files + [M.CANARY_FILE]
     with open(os.path.join(M.ROOT, "setup.cfg"), "w", encoding="utf-8") as fh:
         fh.write("[mutmut]\nsource_paths =\n" + "".join(f"    {f}\n" for f in sources_to_mutate)
@@ -596,7 +629,9 @@ def cmd_report(a) -> int:
     prev_debt, debt_now = p.get("previous_debt_entries"), M.debt_entries(debt, counted=True)
     debt_grew = prev_debt is not None and debt_now > prev_debt
     ran = sum(1 for m, s in tonight.items() if s != "not checked")
-    extra = [] if error else [
+    # C1616: what this run was to mutate and did not (said first; the run red).
+    short = [] if error else M.not_mutated(p, out, results)
+    extra = [] if error else M.not_mutated_lines(short, len(planned)) + [
         f"Canary: all {len(M.only_functions(everything, canary))} of its mutants killed, in the "
         "test's process and through a child (the measurement works).", "",
         f"Scope: {ran} mutant(s) ran tonight, all of the planned functions; "
@@ -656,7 +691,9 @@ def cmd_report(a) -> int:
         print(f"open message survivor {s['mutant']}: {s['was']} -> {s['now']}")
     print(f"known debt: {len(v['debt'])} met tonight; the list holds {debt_now}"
           + (f" (grew from {prev_debt})" if debt_grew else ""))
-    return 1 if v["new"] or debt_grew else 0
+    for k, why in short:
+        print(f"NOT MUTATED {k}: {why}")
+    return 1 if v["new"] or debt_grew or short else 0
 
 
 DEBT_ABOUT = ("Known open VERDICT survivors (scripts/nmas_mutation.py, 'The debt'): a night "

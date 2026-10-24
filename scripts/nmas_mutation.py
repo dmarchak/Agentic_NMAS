@@ -332,7 +332,14 @@ def load_reach(folder: str):
         for f in mod.get("function_list") or []:
             functions[f"{mpath}::{f['name']}"] = sorted(set(f.get("unit_tests") or [])
                                                         | set(f.get("other_tests") or []))
-    return {"functions": functions, "tiers": load_tier_records(os.path.join(folder, "tiers"))}
+    # Each module's test files, any phase (scripts/nmas_coverage.py, `files_reaching`), the
+    # index a stale map's refresh is scoped by (`refresh_scope`); None from a drill-down made
+    # before the index (2026-10-24), which scopes nothing.
+    mods = report.get("modules") or {}
+    module_files = ({m: list(mod.get("test_files") or []) for m, mod in mods.items()}
+                    if any("test_files" in mod for mod in mods.values()) else None)
+    return {"functions": functions, "tiers": load_tier_records(os.path.join(folder, "tiers")),
+            "module_files": module_files}
 
 
 def reach_fresh(planned: list, hashes: dict, reach, reach_commit: str, head: str,
@@ -347,7 +354,8 @@ def reach_fresh(planned: list, hashes: dict, reach, reach_commit: str, head: str
     names it and the two hashes are equal; stale otherwise, or when the map cannot be used at
     all. The test files changed since that commit are named, so their new tests are run
     whole."""
-    out = {"fresh": [], "stale": {}, "map_hashes": {}, "changed_tests": [], "unusable": ""}
+    out = {"fresh": [], "stale": {}, "map_hashes": {}, "changed_tests": [],
+           "changed_modules": [], "unusable": ""}
     if reach is None:
         out["unusable"] = "no coverage drill-down was found"
     elif not reach_commit:
@@ -365,6 +373,11 @@ def reach_fresh(planned: list, hashes: dict, reach, reach_commit: str, head: str
         return out
     out["changed_tests"] = sorted(git("diff", "--name-only", f"{reach_commit}..{head}", "--",
                                       "tests", root=root).split())
+    # The program's modules changed since the map (a changed caller may route a test into a
+    # stale function's module that never reached it then: `refresh_scope`).
+    out["changed_modules"] = sorted(
+        f for f in git("diff", "--name-only", f"{reach_commit}..{head}", "--", "modules",
+                       "routes", "app.py", root=root).split() if f.endswith(".py"))
     for f in planned:
         k = key(f)
         r = subprocess.run(["git", "-C", root, "show", f"{reach_commit}:{f[0]}"],
@@ -455,6 +468,45 @@ def choose_tests(planned: list, test_sources: dict, reach=None, fresh=(),
 def stale_paths(stale) -> list:
     """The modules a refresh measures: those holding a stale function (`path::qualname` keys)."""
     return sorted({k.split("::", 1)[0] for k in stale})
+
+
+def refresh_scope(stale, reach, test_sources: dict, changed_tests=(), changed_modules=(),
+                  unusable: str = "") -> dict:
+    """The test files a stale map's refresh runs (C1640): `{"files": [file] or None (the whole
+    suite), "why": str}`. With the map's module index (`load_reach`'s `module_files`, each
+    module's test files ANY phase reached at the map's commit), the files that:
+
+    - reached a stale function's module then (a caller's test included, C842, and one reaching
+      it only in a fixture's setup: run #41's whole-suite refresh chose such a file, which the
+      run-phase map lacks);
+    - import that module (`tests_for`, by parsing);
+    - changed since the map's commit (their tests are newer than it);
+    - reached then a program module changed since (a changed caller may now route its tests
+      into the stale module).
+
+    What it assumes stays true: a test that reaches the module tonight is one of those, so a
+    test reaching it only through a non-Python change (a template, a data file) and through no
+    module the map's commit and tonight share a change in would be left out. The failure is
+    visible, never hidden: a test left out of the refresh is left out of mutmut's selection,
+    so a mutant only it kills SURVIVES (a false survivor, red), never the reverse. Without the
+    index (a drill-down from before it, or none usable), the whole suite, as before."""
+    if unusable:
+        return {"files": None, "why": f"the whole suite: no usable coverage map ({unusable})"}
+    index = (reach or {}).get("module_files")
+    if index is None:
+        return {"files": None, "why": "the whole suite: the coverage map holds no module index "
+                                      "(a drill-down from before it)"}
+    paths = stale_paths(stale)
+    files = set()
+    for m in paths + [m for m in changed_modules if m not in paths]:
+        files.update(index.get(m) or [])
+    files.update(tests_for(paths, test_sources))
+    files.update(t for t in changed_tests if t in test_sources)
+    files = sorted(f for f in files if f in test_sources)
+    return {"files": files,
+            "why": f"the {len(files)} test file(s) of {len(test_sources)} that reach "
+                   f"{len(paths)} module(s), import them, changed since the map, or reach "
+                   f"one of the {len(changed_modules)} module(s) changed since"}
 
 
 def _context_test(context: str) -> str:
@@ -1483,6 +1535,7 @@ def plan(state: dict, head: str, root: str = ROOT, also: list = (), debt: dict =
             "previous_debt_entries": state.get("debt_entries"),
             "gone": gone, "debt_not_rerun": sorted(not_rerun),
             "cap": cap, "deferred": deferred,
+            "named": [key(f) for f in named],
             "since": {key(f): since[key(f)] for f in planned},
             "dropped": sorted(k for k in (state.get("functions") or {})
                               if k not in kept and k not in gone and k not in not_rerun
@@ -1521,12 +1574,14 @@ def selection_lines(p: dict, ran: dict = None) -> list:
                 f"No usable coverage map tonight ({sel['unusable']}); ")
              + f"{len(others)} did not, and were not selected by it "
              f"(the stale-map rule: {sel.get('stale_rule', STALE_REFRESH)}; "
-             + ("refresh the map tonight, the whole suite per test over their modules, chosen "
-                "by measured cost: docs/TESTING.md, \"A stale map\""
+             + ("refresh the map tonight, per test over their modules, the tests that reach "
+                "them by the map's module index (the whole suite without one), chosen by "
+                "measured cost: docs/TESTING.md, \"A stale map\""
                 if sel.get("stale_rule", STALE_REFRESH) == STALE_REFRESH else
                 "each waits in the record until a map holds its text") + "):", ""]
     if refresh:
-        lines += [f"Refreshed tonight: the whole suite run once with per-test contexts over "
+        lines += [f"Refreshed tonight: {refresh.get('scope') or 'the whole suite'}, run once "
+                  f"with per-test contexts over "
                   f"{len(refresh.get('paths') or [])} module(s), exit {refresh.get('exit')}, "
                   f"{refresh.get('seconds', '?')} s"
                   + ("; run again alone after failing in it: "
@@ -1580,6 +1635,59 @@ def deferred_lines(p: dict) -> list:
                 "nights, their results so far kept:", "",
                 *[f"- `{k}`{state(r)}" for k, r in left.items()], ""]
     return out
+
+
+def not_mutated(p: dict, out: dict = None, results: dict = None) -> list:
+    """C1616: `[(path::qualname, why)]`, each function this run was to mutate and did not, which
+    fails the run (runs #21 and #24 planned 4 and 3 named functions, mutated none, and ended
+    green). *p* is `plan`'s result; *out* `outcome`'s, and *results* the night's merged
+    results, once mutmut has run (None at the plan).
+
+    - Any run: a stale function deferred because tonight's refresh of the map measured nothing
+      usable (`refresh_failed`): the measurement failed, as a failed mutmut run fails it.
+    - A named run (the dispatch's `functions`, `plan`'s `named`), each named function: deferred
+      for a stale map by any cause (the `defer` rule included), left out by the cap, left
+      unfinished or unreached when the budget ran out, or with no mutant made of it.
+
+    The unnamed night keeps its own rules: its cap, its budget and the `defer` rule leave work
+    in the record by design, the next night first in line."""
+    stale = p.get("deferred_stale") or {}
+    deferred = p.get("deferred") or {}
+    named = list(p.get("named") or [])
+    rows = {k: f"stale map, not mutated: {stale[k]}"
+            for k in p.get("refresh_failed") or [] if k in stale}
+    for k in named:
+        if k in rows:
+            continue
+        if k in stale:
+            rows[k] = f"stale map, not mutated: {stale[k]}"
+        elif k in deferred:
+            rows[k] = f"capped: the cap of {p.get('cap')} left it for a later run"
+    if out is not None:
+        left = {key(tuple(f)) for f in out.get("left") or []}
+        empty = {key(tuple(f)) for f in out.get("empty") or []}
+        for k in named:
+            if k in rows:
+                continue
+            fn = dotted(tuple(k.split("::", 1)))
+            if k in left:
+                n = sum(1 for m, s in (results or {}).items()
+                        if function_of(m) == fn and s == "not checked")
+                rows[k] = (f"unfinished: {n} of its mutants not checked when the budget ran out"
+                           if n else "never reached: the budget ran out before its first mutant")
+            elif k in empty:
+                rows[k] = "mutmut made no mutant of it, so nothing in it was tested"
+    return sorted(rows.items())
+
+
+def not_mutated_lines(rows: list, planned: int) -> list:
+    """The summary's lines for `not_mutated`: said first, red, each function with why."""
+    if not rows:
+        return []
+    return [f"**Not mutated, so no verdict on them: this run is red** ({len(rows)} function(s) "
+            f"it was to mutate; {planned} planned tonight). A labelled run stands as a verdict on "
+            "its named functions only when every one of them was mutated (C1616):", "",
+            *[f"- `{k}`: {why}" for k, why in rows], ""]
 
 
 def not_rerun_lines(p: dict) -> list:

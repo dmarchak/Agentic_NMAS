@@ -46,6 +46,13 @@ on:
           in its run alone
         required: false
         default: ""
+      stale_map:
+        description: >-
+          A function the coverage map does not hold at its text: empty or `refresh` measures
+          it first (the plan's default); `defer` leaves it waiting in the record, so a named
+          one turns the run red, named (C1616), with no refresh's cost
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -225,10 +232,12 @@ jobs:
       # The summary names the map's run, commit and date every night. A planned function the map
       # does not hold at its text tonight (its text hash there differs, or it is absent) is never
       # selected by the map, nor by the test files importing it (a caller's test imports
-      # nothing of it, C842): the plan REFRESHES the map for it first, the whole suite once,
-      # confined by scripts/nmas-test, per-test contexts over its module alone (about 27 to 35
-      # minutes here, by the coverage nightly's shards summed; bounded at 5,200 s), and a
-      # refresh that cannot finish leaves it waiting in the record. NMAS_REQUIRE_PG as the mutate
+      # nothing of it, C842): the plan REFRESHES the map for it first, once, confined by
+      # scripts/nmas-test, per-test contexts over its module alone: the test files the map's
+      # module index says reach that module (any phase), import it, changed since, or reach a
+      # module changed since (C1640; scripts/nmas_mutation.py, `refresh_scope`), or the whole
+      # suite with no index (run #41: 3,207 s; bounded at 5,200 s). A refresh that cannot
+      # finish leaves it waiting in the record, and the run red (C1616). NMAS_REQUIRE_PG as the mutate
       # step's: the refresh runs the tests ci.yml runs, and a skipped test reaches nothing.
       - name: Plan the night
         id: plan
@@ -236,6 +245,7 @@ jobs:
           ALSO_FUNCTIONS: ${{ inputs.functions }}
           CAP: ${{ inputs.cap }}
           LABEL: ${{ inputs.label }}
+          STALE_MAP: ${{ inputs.stale_map }}
           REACH_COMMIT: ${{ steps.reach.outputs.sha }}
           REACH_RUN: ${{ steps.reach.outputs.id }}
           REACH_DATE: ${{ steps.reach.outputs.date }}
@@ -254,21 +264,33 @@ jobs:
             "") ;;
             *[!a-z0-9-]*) echo "the label '$LABEL' is not lowercase letters, digits and hyphens" >&2; exit 1;;
           esac
+          case "$STALE_MAP" in
+            "") ;;
+            refresh|defer) set -- "$@" --stale-map "$STALE_MAP";;
+            *) echo "the stale-map rule '$STALE_MAP' is not refresh or defer" >&2; exit 1;;
+          esac
+          # Its exit is kept, so a red plan (C1616: a named function not mutated, or a refresh
+          # that measured nothing, with nothing left to mutate) still shows its summary first.
+          set +e
           python scripts/nmas-mutation plan --state .mutation-state/state.json \
             --head "$GITHUB_SHA" --out mutation-out --summary mutation-out/summary.md --fence \
             --reach "$RUNNER_TEMP/coverage-reach" --reach-commit "$REACH_COMMIT" \
             --reach-run "$REACH_RUN" --reach-date "$REACH_DATE" "$@"
+          code=$?
+          set -e
           # The summary in the job's log too (readable through the API, which returns no job
           # summary), and on the run's page.
           if [ -f mutation-out/summary.md ]; then
             cat mutation-out/summary.md
             cat mutation-out/summary.md >> "$GITHUB_STEP_SUMMARY"
           fi
-          if [ -s mutation-out/patterns.txt ] && grep -q . mutation-out/patterns.txt; then
+          if [ "$code" -eq 0 ] && [ -s mutation-out/patterns.txt ] \
+              && grep -q . mutation-out/patterns.txt; then
             echo "work=yes" >> "$GITHUB_OUTPUT"
           else
             echo "work=no" >> "$GITHUB_OUTPUT"
           fi
+          exit "$code"
 
       # Confined as scripts/nmas-test confines the suite: a namespace with only loopback, brought
       # up (a new namespace's loopback starts DOWN, and a test's own 127.0.0.1 listener then
