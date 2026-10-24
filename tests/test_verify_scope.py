@@ -196,6 +196,16 @@ class TestANegationIsReadAsTheAbsenceItClaims:
         assert rb["missing"] == ["no interface Loopback0 (the device still prints "
                                  "`interface Loopback0`)"], rb
 
+    def test_a_removed_stanza_printed_with_more_words_is_missing_naming_the_stanza(self):
+        """`no router ospf 1` against a device printing `router ospf 1 vrf <name>`: the same
+        process still stands, under a header the negated words begin (r2's capture with one
+        minimal edit), and the message names that header whole."""
+        running = _r2().replace("\nrouter ospf 1\n", "\nrouter ospf 1 vrf clab-mgmt\n", 1)
+        assert running != _r2(), "floor"
+        rb = V.read_back(["no router ospf 1"], running)
+        assert rb["missing"] == ["no router ospf 1 (the device still prints "
+                                 "`router ospf 1 vrf clab-mgmt`)"], rb
+
 
 class TestThePipelineRunsTheScopedVerify:
     def test_a_quick_program_does_not_wait_out_bgp_s_hold_time(self, world):

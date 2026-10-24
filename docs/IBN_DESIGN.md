@@ -444,6 +444,13 @@ profiles that inherit. Translate adds a level above it:
 Each phase depends on the one before it. **Assure → Respond in observe mode → Respond per
 class → automatic Activate → Translate upward.**
 
+*Amended 2026-10-24 (the operator, PHASE8_PLAN 15.2): phase 3 below, Respond per class, and AI
+catalog selection reaching execution leave Phase 8 for Phase 9, the closed loop, built when the
+first class or catalog entry meets its ruled bar on observed evidence. Its prerequisites, which
+an SDN controller supplies and CLI does not: a revert timer on every autonomous change (native
+where measured, Mercury-scheduled otherwise), a defined inverse (Mode B's measured removal),
+partial-apply handling through `pipeline._stage_rollback`, and cascade limits.*
+
 | Phase | Builds | GUI (boards first) | Register | Tests | Host steps |
 |---|---|---|---|---|---|
 | 1. Assure | the statement and verifier model; today's checks as the first verifiers; status now, history after E18; Needs attention from failed verifiers | the Compliance view; a statement's evidence; Needs attention's verifier rows | the telemetry gaps (traps, severity); the Compliance view | every verifier shown able to fail on a planted reading; unknown never reads as holds | Loki's `severity` label and a stable trap label (Alloy) |

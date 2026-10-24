@@ -1570,7 +1570,8 @@ could change, never by which service it belongs to:
    trails. They are never edited directly: written only by the NMAS's operations, or
    generated from the inventory.
 3. **Does it HIDE a signal the safeguards depend on?** Silencing an alert, disabling a rule
-   and deleting logs are NOT ALLOWED.
+   and deleting logs are NOT ALLOWED. The one exception (the operator, 2026-10-24): Mercury
+   silences a device's alerts only inside a planned-restart window declared before it acts.
 4. **Can it REVEAL a secret?** Then the reveal gate and redaction apply, even to a read:
    query results can carry config lines.
 5. **Can it OVERLOAD the service?** Then it is bounded: time ranges, row limits, timeouts.

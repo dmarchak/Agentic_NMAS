@@ -52,6 +52,17 @@ def test_a_vlan_in_the_database_is_present_with_its_name_and_status(switch, vlan
     assert got["row"].split()[:3] == [vlan, name, "active"], got["row"]
 
 
+def test_a_row_directly_under_the_header_is_read_with_no_rule_line():
+    """The server capture with one minimal edit, its rule line under the header removed: the
+    row right under the header is the VLAN's, never skipped (the operator, 2026-10-24)."""
+    text = capture(SERVER, "show_vlan_id_10")
+    rule = next(ln for ln in text.split("\n") if ln.startswith("---- ---"))
+    edited = text.replace(rule + "\n", "", 1)
+    assert edited.count("\n") == text.count("\n") - 1 and "VLAN10" in edited, "floor"
+    got = R.parse("10", edited)
+    assert (got["state"], got["name"], got["status"]) == ("present", "VLAN10", "active"), got
+
+
 @pytest.mark.parametrize("switch", [SERVER, TRANSPARENT])
 def test_a_vlan_the_database_lacks_is_absent_by_ios_s_own_line(switch):
     got = R.parse("999", capture(switch, "show_vlan_id_999"))

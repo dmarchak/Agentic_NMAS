@@ -60,7 +60,7 @@ def parse(value, text) -> dict:
     table with no row or another VLAN's) is unreadable, which neither passes nor fails."""
     want = vlan_id(value)
     out = {"state": "unreadable", "name": "", "status": "", "row": "", "why": ""}
-    lines = [ln.rstrip() for ln in str(text or "").split("\n")]
+    lines = str(text or "").split("\n")             # each use strips its line whole
     for ln in lines:
         m = NOT_FOUND.match(ln.strip())
         if m and m.group(1) == want:

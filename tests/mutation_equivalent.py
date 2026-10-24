@@ -876,27 +876,19 @@ EQUIVALENT = [
            "goes nowhere else"),
     # ── A VLAN read where the switch keeps it (C1646; run #45 of 2026-10-24 at 34d33ed8, each
     # applied again by hand). Every other survivor there in vlan_read and pipeline._read_vlans
-    # is killed by a test in tests/test_vlan_read.py.
+    # is killed by a test in tests/test_vlan_read.py. The three below are approved by the
+    # operator (2026-10-24); of the two others first listed here, the redundant `rstrip` was
+    # removed (its mutant with it) and `lines[at + 2:]` is killed by a table with no rule line.
     *_each("modules.nsot.vlan_read.parse",
            'out = {"state": "unreadable", "name": "", "status": "", "row": "", "why": ""}',
            ('out = {"state": "unreadable", "name": "", "status": "", "row": "", "why": "XXXX"}',),
            "every return replaces the default `why` with its own (absent, no table, the "
            "table's rows), and present builds a new record"),
     *_each("modules.nsot.vlan_read.parse",
-           'lines = [ln.rstrip() for ln in str(text or "").split("\\n")]',
-           ('lines = [ln.lstrip() for ln in str(text or "").split("\\n")]',),
-           "every use of a line strips it whole (`ln.strip()` in each match, test and row), so "
-           "which end is stripped first changes nothing"),
-    *_each("modules.nsot.vlan_read.parse",
            'shown = next((ln.strip() for ln in lines if ln.strip()), "")',
            ('shown = next((ln.strip() for ln in lines if ln.strip()), None)',),
            "the default is reached only when no line has text, and only its truth is read "
            "(`if shown`): None and the empty string are both false"),
-    *_each("modules.nsot.vlan_read.parse",
-           "for ln in lines[at + 1:]:",
-           ("for ln in lines[at + 2:]:",),
-           "IOS prints a rule line under the VLAN table's header (both real captures, server "
-           "and transparent), which the loop skips; starting one line later skips only it"),
     *_each("modules.nsot.vlan_read.vlan_of",
            'words = str(line or "").split()',
            ('words = str(line or "XXXX").split()',),

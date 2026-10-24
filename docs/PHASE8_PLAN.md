@@ -5,6 +5,11 @@ sign-off, on Anthropic only, to a feature freeze around 11-20. Its scope and ord
 docs/AI_ANTHROPIC_PLAN.md, NSOT_PLAN section 9 records the decision and its consequences, and
 section 14 below is the endpoint direction after it.
 
+**2026-10-24 (the operator): the amendments of section 15.** Closed-loop execution leaves Phase 8
+for Phase 9, the closed loop (15.2); Anthropic is the proof of concept (15.3); Pydantic v2 strict
+is the one schema tool for AI input and output (15.4); runbooks are minimal declarative YAML
+(15.5); analysis is a button until its cost is measured (15.6); three new feature cards (15.9).
+
 **The operator's charter, 2026-10-13.** Phase 8 starts only after Phase 7 closes. **The operator
 approves this plan, and every number in it, before any code.** **Approved 2026-10-13 with the
 changes recorded in section 9 ("Decided") and applied in sections 5 to 7.** It builds on
@@ -148,7 +153,7 @@ service (CLAUDE.md), so CI cannot call a model. Evals run two ways:
 | **8.0 Foundations** (no user-facing AI; **E18, the records database, is its prerequisite**, decision 8). ***Amended 2026-10-18 (the operator, section 13.2):* 8.0 shrinks to what feature 1 needs end to end; each other piece below arrives with the first feature that needs it. Whether feature 1 needs E18 is reported in 13.2, not decided.** | roles from sign-in and `TOOLS_BY_ROLE` (IBN_DESIGN section 12), every tool bound on behalf of the asking person and filtered to their scope; the change-request queue and its board (viewer asks → flagged → filed → approver's queue → approve or decline); the security row for repeated or injection-like attempts; separation of duties per network; the gateway (provider-agnostic, Anthropic first, exact model versions pinned; a per-network switch, cost caps; the built-in local model behind the same gateway, section 10; *2026-10-16, offline-first: the local profile first and required, a hosted provider optional, section 12*); the prompt registry; the schema library; the MCP tool server; tracing (OpenTelemetry GenAI conventions); masking through C733's index (C745's shapes closed first); the eval harness (recorded in CI, live on the host) with a golden dataset from real lab incidents; the cost dashboard | the red-team set (IBN_DESIGN section 13: "I'm an admin", "ignore previous instructions", role-play, data-borne injections, link exfiltration) passes with zero unauthorised tool calls, proposals and external links, recorded in CI and live on the host; every tool re-checks `may` as the person and a denial is audited (shown by test); a viewer's session holds no `propose_*` tool and a misclassified change still changes nothing (shown by test); every tool call recorded as the asking person; no tool approves or reveals; the gateway refuses at a cap; masking shown on planted secrets of every shape; every tool read-only but `propose_*` (shown by test); a recorded and a live eval run end to end; the dashboard shows a test feature's cost per use |
 | **8.1 Assure** | the deterministic verifier model and compliance status first (history on E18); then, where cards justify it, natural-language questions → PromQL or LogQL read back by the E3/F3 builder before running, and alert correlation over deterministically grouped alerts | the verifiers' statuses on the host match the readers'; each AI feature past its observe threshold, or killed |
 | **8.2 Respond, observe** (***moved in part, 2026-10-18 (the operator):*** *the deterministic observe-mode part moves into Core 1.0's tail: the maintainer's "would have converged" records, the false-positive count per class, and lab-only drift drills labelled as drills (NSOT_PLAN section 9, "The path after Phase 7", item 3). What stays here is the AI part: root-cause proposals, incident drafts and drift classification. Enabling a class stays in 8.3.*) | the golden state rule's maintainer (IBN_DESIGN section 11): no baseline, no autonomy; convergence of the deviating lines only; the operational catalog; holds, windows and Capture-or-Revert for attributed drift; its state on Needs attention and each device page (a board first). All in observe mode ("would have converged"), on the deterministic policy engine (rotation's pattern). Plus AI root-cause proposals for novel deviations, approved by a person; incident record drafts; AI classification of deliberate vs unexplained drift, with evidence | each class's false-positive rate measured over its period; no convergence would have touched a secret line, the management path or routing; root-cause proposals' confirmed-true rate measured |
-| **8.3 Respond, enabled per class** | convergence and catalog classes enabled once observe mode meets the threshold; a verified action re-earns the baseline; AI selection only among actions that leave the golden state unchanged, if decision 9 is confirmed, after its own observe period | each enabled class within its rate and with no rail breached for its period |
+| **8.3 Respond, enabled per class** (***moved, 2026-10-24 (the operator, section 15.2):*** *closed-loop execution leaves Phase 8 for Phase 9, the closed loop, built when the first class or catalog entry meets its ruled bar on observed evidence; Phase 8 keeps observe-mode logging only*) | convergence and catalog classes enabled once observe mode meets the threshold; a verified action re-earns the baseline; AI selection only among actions that leave the golden state unchanged, if decision 9 is confirmed, after its own observe period | each enabled class within its rate and with no rail breached for its period |
 | **8.4 Activate** | commit-triggered deploys in change windows, canary then fleet (deterministic, on rotation's scheduler) | a canary failure stops the fleet (shown on the lab); a management-path commit waits for a person |
 | **8.5 Translate** | the network intent model and its deterministic compiler, first scoped to management-plane services (decided 2026-10-13), the policy-conflict layer, intent authorisation (scopes: network, site, device role), pre-change verification (Batfish for routing-affecting changes, and Mercury's IOS checks for every change; a single-node containerlab twin booted with the candidate configuration for startup-configuration, credential and AAA, and platform-upgrade changes, queued 2026-10-13, IBN_DESIGN section 9); then the 8-step natural-language → intent pipeline (IBN_DESIGN section 8), AI writing intent only; template drafting for new platforms, accepted only by round trip | the compiler's round trip on the lab's real intent; a conflict and an unauthorised intent each refused by name; the pipeline's acceptance rate at target |
 
@@ -1316,6 +1321,10 @@ only: nothing is built. Phase 8 comes after Core 1.0 (NSOT_PLAN section 9, "The 
 
 ### 13.1 Built on Anthropic; offline-first is the release gate (4a)
 
+*Amended 2026-10-24 (the operator, 15.3): Anthropic is the proof of concept behind the
+provider-neutral gateway, and more providers follow; "built and accepted on Anthropic" means
+first, never only.*
+
 - **Phase 8's features are built and accepted on Anthropic,** in the plan's tiers:
   - Claude Haiku 5.5 by default;
   - Claude Sonnet 5.5 where the eval shows the need;
@@ -1338,7 +1347,10 @@ only: nothing is built. Phase 8 comes after Core 1.0 (NSOT_PLAN section 9, "The 
    - the pinned model version;
    - the cost cap: a cap reached refuses the next call, by name (section 7).
 2. **The prompt registry:** prompts are versioned code in `prompts/` (section 4).
-3. **The schema library** (Pydantic).
+3. **The schema library** (Pydantic). *Amended 2026-10-24 (the operator, 15.4): Pydantic v2,
+   strict (`strict=True`, `extra="forbid"`), the only schema tool for AI input and output; its
+   generated schemas committed as files; `schema_for(model, provider)` derives what each
+   provider is sent; a CI test checks each against every enabled provider's strict subset.*
 4. **Masking** before every prompt (C733's index).
 5. **The eval harness:** recorded responses in CI, live runs on the host (section 4).
 6. **History's record of every prompt and response:**
@@ -1394,7 +1406,8 @@ feature 1 really needs it, with the reason. Don't decide it").
 3. **The Analysts:** features 2 (alert correlation), 3 (incident drafts) and 5 (root cause).
 4. **Respond's classes, enabled one at a time** as each class's observe data qualifies: 1% false
    positives or fewer over at least 30 days and 100 events. The observe period itself runs in
-   Core 1.0's tail.
+   Core 1.0's tail. *Moved 2026-10-24 (the operator, 15.2): enabling a class is Phase 9, the
+   closed loop; the order is otherwise unchanged (15.1).*
 5. **The rest, as ranked** (section 6).
 
 ### 13.4 An output shape on every feature card (4d)
@@ -1591,3 +1604,186 @@ the suite runs again before any feature uses it.
 - Masking before every call.
 - An endpoint's feature off, with its reason, when the endpoint is absent or below
   threshold: Mercury without AI is complete.
+
+## 15. Amendments of 2026-10-24 (the operator; documents only)
+
+**Source:** the Phase 8 course-review addendum of 2026-10-24, an addendum to this plan and to
+IBN_DESIGN, kept with the operator's reports outside the repository. Its section 8 lists the
+decisions the operator ruled on 2026-10-24; the rulings below are recorded as ruled. Nothing is
+built. The rulings of 2026-10-13 to 2026-10-20 stand wherever this section does not name them.
+
+### 15.1 The order is unchanged (13.3)
+
+- **Natural language to PromQL or LogQL stays first.** It is read-only and builds the whole 8.0
+  foundation at the lowest risk. 13.3 stands, as the first release applies it
+  (docs/AI_ANTHROPIC_PLAN.md section 4, F1 first; adopted 2026-10-20).
+- **The evidence pack with no AI (P1's deterministic part, 15.9) may be built alongside** as
+  ordinary Core work: it calls no model, so it needs no 8.0 piece.
+
+### 15.2 Closed-loop execution leaves Phase 8: Phase 9, the closed loop
+
+- **Cut from Phase 8:** every execution without a person's confirm. That is 8.3 (Respond's
+  classes enabled per class), AI catalog selection reaching execution (feature 4, decision 9),
+  and 13.3's item 4.
+- **Phase 8 keeps observe-mode logging only:** the "would have converged" records, each class's
+  false-positive count and feature 4's selections logged beside a person's, none executed.
+  The deterministic observe mode itself already runs in Core 1.0's tail (NSOT_PLAN section 9,
+  "The path after Phase 7", item 3).
+- **8.4 Activate is not a closed loop** (a person's commit starts it, and a management-path
+  commit waits for a person), so it stays in Phase 8.
+- **Phase 9, the closed loop, is named in the plan** (NSOT_PLAN section 9, the path, under item
+  4; docs/COMPLETION_INVENTORY.md's homes). **It is built when the first catalog entry or
+  Respond class meets its ruled bar on observed evidence:** 95% measured agreement over at
+  least 100 observed selections for catalog selection (section 7), or 1% false positives or
+  fewer over at least 30 days and 100 events for a Respond class (section 7). Lab drift drills
+  never count as production evidence (section 7).
+- **Why it waits** (the addendum, section 5): one operator and a few events a week will not
+  reach 100 real events for a long time.
+- **Phase 9's prerequisites, which a CLI-driven network needs and an SDN controller supplies**
+  (the addendum, section 5):
+  1. **Expiry: a revert timer on every autonomous change.** Native where measured on the
+     platform; Mercury-scheduled otherwise. IOS-XE is believed to offer
+     `configure terminal revert timer` with `configure confirm`, which needs `archive`
+     configured; vIOS-L2 15.2 is unmeasured. Neither is measured yet.
+  2. **A defined inverse for each catalog entry:** Mode B's measured removal
+     (`modules/nsot/removal.py`), never a guessed `no` form.
+  3. **Partial-apply handling:** a remediation lands device by device over CLI, never
+     atomically, so a half-applied one is undone through `pipeline._stage_rollback`, which
+     undoes what landed.
+  4. **Cascade limits:** section 7's rails (at most 6 fixes an hour per network and 1 per device
+     per hour; the same deviation fixed twice in 24 hours halts its policy), the kill switch
+     (IBN_DESIGN section 6, phase 3), and a dead-man's switch.
+
+### 15.3 The provider: Anthropic is the proof of concept
+
+- **Anthropic is the proof of concept behind the provider-neutral gateway; more providers
+  follow** behind the same gateway (10.3, 14.1: one adapter per API shape).
+- **What this amends in 13.1:** its heading and first bullet read as if Anthropic were the
+  product's provider. They mean the proof of concept: features are built and accepted on
+  Anthropic first. The rest of 13.1 stands (the release gate, the provider-neutral gateway,
+  AI off where no local tier is admitted).
+
+### 15.4 The schema tool: Pydantic v2, strict
+
+- **Pydantic v2 in strict mode** (`strict=True`, `extra="forbid"`) is the only schema tool for
+  AI input and output. This makes 13.2's "the schema library (Pydantic)" exact.
+- **Generated JSON schemas are committed as files,** one per model and version.
+- **`schema_for(model, provider)`** derives what each provider is sent from the committed
+  schema (Anthropic's supported subset, 13.5; an OpenAI-compatible server's, 14.1).
+- **Limits are enforced by Pydantic in Mercury:** ranges, lengths and counts the provider's
+  subset cannot express (13.5).
+- **A CI test checks every committed schema against each enabled provider's strict-mode
+  subset.**
+- **The licence:** Pydantic is MIT, and the `anthropic`, `openai` and `google-genai` SDKs all
+  require it, so the choice keeps every provider open. The operator's licence decision for
+  Pydantic and the `anthropic` SDK is recorded 2026-10-24 (the register); each enters the lock
+  with the first feature that needs it.
+- **Settings keep `jsonschema`** (`modules/settings_schema.py`, the settings file, NSOT_PLAN's
+  validator choice): this ruling is about AI input and output only.
+
+### 15.5 The runbook format: minimal, declarative YAML
+
+- **A runbook is minimal declarative YAML:** `show` steps, `parse` through `ntc-templates`
+  (already in the lock, through Netmiko), `assert_equal`, and a `conclusion`. No branches or
+  loops until a real runbook needs one.
+- **Stored in the network's config repository,** run only through `reads.run`, with fixtures
+  from real captures under the publication rules (documentation addresses).
+- **Python stays the escape hatch for human-written registered checks only,** never for a
+  runbook.
+- **What this refines:** docs/RUNBOOKS_PROCEDURES.md's runbooks (C1147; `runbooks/<slug>.yml`,
+  reads inside Show commands' allowlist, parsers and a report). Its section 5 stands: Mercury
+  never runs arbitrary or AI-generated playbooks.
+
+### 15.6 Automatic analysis: a button only, until its cost is measured
+
+- **An AI analysis runs only when a person presses its button,** until the cost per accepted
+  analysis is measured (section 4's cost dashboard, per accepted output).
+- **After that, a per-rule opt-in:** a person enables automatic analysis for one alert rule at a
+  time, never fleet-wide.
+
+### 15.7 Day 1 up front before feature 7
+
+- **Day 1 at onboarding (C1471) is built deterministically before feature 7** (natural language
+  to intent). Feature 7 then reuses its change-set work: an intent patch per device fed into
+  `intent_edit.preview` and the deploy route's plan and apply (docs/designs/C1471-day1-at-onboarding.md).
+
+### 15.8 Hosted AI on the lab's NMAS host
+
+- **AI is off by default on the lab's NMAS host,** which cannot run a local model (10.8).
+- **Using AI there needs the admin's hosted-only setting, with a recorded reason** (13.1's
+  "hosted AI allowed by an admin's recorded setting", applied to this host).
+
+### 15.9 New candidates: three cards now, five listed
+
+**Cards now (section 3's format, 13.4's output shape):** P1, P2 and E1 below. **Listed as
+candidates, no card yet:**
+- **P3, change review on the existing preview:** reads the program with Topology and flags
+  changes such as "removes the only path to Mercury"; read-only, beside `deploy.dangerous_in`.
+- **P4, save as runbook:** a resolved incident becomes a 15.5 runbook, accepted by replaying its
+  fixtures. Its card must meet RUNBOOKS_PROCEDURES section 5 (no AI-generated playbook runs).
+- **E2, register closure assistant:** proposes closures from each row's "closes when", with
+  links; `tests/test_register_hygiene.py` checks the edit.
+- **E3, failure to finding:** a failed gate, CI run, verify or mutation run drafts a register row
+  in house style, the register searched first.
+- **E4:** flake triage across JUnit results; documents checked against the code they cite;
+  MANUAL_STEPS LABOUR rows drafted into automation proposals; manual drafts for new screens.
+
+**E1 and the E candidates are AI applied to Mercury's own engineering,** not product features:
+they run in the development loop, never on an installation, so offline parity and the
+installation's caps do not apply to them. Each still meets non-negotiables 1, 2 and 4 in kind:
+its output is accepted only by a deterministic check.
+
+#### Card P1: the evidence pack, then one "Explain" call
+
+| Field | P1 |
+|---|---|
+| Problem | When an alert fires, the person gathers the evidence by hand: the alert, the device's recent History (deploys and receipts), its Intent check, its expected and reported neighbours, and the logs around the onset. **Unmeasured:** how often, and how long the gathering takes. The incidents it would have served: C1547 (the Lab 9 redeploy's s3 stalls: OSPF drops and failed scrapes, its cause found by hand from several sources) and C1647 (the VLAN 10 advertisement's path, still UNKNOWN). |
+| Deterministic alternative | **The pack itself is deterministic and is built first, with no AI:** triggered by `readers/grafana_alerts.py` seeing an alert transition (no inbound webhook: C1656); built from `history_sources.timeline`, `intent_match.intent_match`, `neighbours.for_device` and the E3/F3 LogQL builder; it mints its own reference ids and hashes itself, because History rows and reader values carry none (C1657). One card per firing alert, useful with AI off. **What the pack cannot do:** say which of its pieces explains the alert, in words, citing them. That one step is the Explain call. |
+| Inputs | The pack, masked by the egress mask (C1654), as data delimited from instructions; no tools. Context: **unmeasured** until packs exist; sized by section 4's method (the measured minimum times 1.5). Output schema: Pydantic v2 strict (15.4), versioned. |
+| Output shape | B (13.4): a short rationale first, then `{hypotheses: [{claim, evidence_refs[], confirm_with}], needs_human}`. Each `evidence_refs` entry must resolve to a pack reference; each `confirm_with` names a runnable read (`reads.run`'s allowlist), so a claim can be proven before it is shown (the addendum, 7.4). |
+| Success metric | 70% of top hypotheses confirmed true by a person (feature 2's target, proposed); 0 references that do not resolve to the pack (a refusal: "couldn't analyse"). Eval set: replayed Lab 9 incidents (C1547, C1647) first, at least 30 cases with 10 real before observe mode (section 7). |
+| Compared fields | Analyst (90%, 11.12): each hypothesis's `evidence_refs`, `needs_human`. |
+| Budgets | **Proposed by analogy with feature 2** (an Analyst over one group's evidence), until measured: 3k tokens in, 400 out, 5 s, Haiku 5.5; $5 a month (section 7's Analyst cap). A button only (15.6). |
+| Observe mode | 30 days and 20 analyses (a rare feature, section 7); the threshold to leave: 70% confirmed. |
+| Kill criteria | Below 60% confirmed after 20 analyses, or cost per confirmed hypothesis above 2× budget, or one claim shown with a reference that does not resolve. |
+| Owner | The operator. |
+| Relation | AI_ANTHROPIC_PLAN's F2 ("Explain a Needs attention row") is the same machinery on a different record; P1's Explain reuses F2's prompt registry entry shape and schema rules. |
+| Test plan | The addendum's 7.3: the pack from real stored captures and History, IPv4 and IPv6; a planted secret in every input never in the adapter's outbound bytes; an injection line planted in an interface description changes nothing, and no tool is offered; with AI off, the pack and every screen work; a schema failure and a missing reference refused as "couldn't analyse"; the recorded-response evaluation; a browser test of the card. |
+
+#### Card P2: the "differs" explainer
+
+| Field | P2 |
+|---|---|
+| Problem | The Intent check says a device "differs" from its intent, and the person works out why. On s5 the cause was that a VTP-server switch keeps its VLANs in vlan.dat and never prints them (C1646, found 2026-10-24 after s5's Day 1 deploy at 00:42 UTC; C1649, measured ~17:4x UTC the same day, s3, s4 and s5). Other causes of the same symptom in the register: a regenerated self-signed certificate (C302). **Unmeasured:** how often a "differs" is not a real drift, and how long each takes to explain. |
+| Deterministic alternative | **Most classes are rules, built first:** a VLAN line on a VTP server or client switch (the switch's `show vtp status`, C1649); a difference of order only (the same lines as a set); a line the extractor does not model (its not-modelled list, `unmodeled_ack`); a certificate block (`normalize.strip_self_signed_certs`). **The AI step is only for a difference no rule classifies,** which it labels as one of those classes or "unexplained", citing the lines. |
+| Inputs | The unclassified difference's lines (masked by C1654's egress mask), the device's platform and VTP mode, the rule classes' definitions; no tools. Context: **unmeasured**. Output schema: Pydantic v2 strict, versioned. |
+| Output shape | A (13.4): `{class, lines[], why}` with `class` an enum (`vtp_database`, `platform_default`, `order_only`, `unmodelled`, `unexplained`). |
+| Success metric | 80% of labels a person accepts; a difference a rule classifies never reaches the call (a rule's class always wins, shown by test). |
+| Compared fields | Translator floor (95%, 11.12) on `class` and `lines`, since a label decides how a difference is shown. |
+| Budgets | **Proposed:** 2k in, 200 out, 3 s, Haiku 5.5 (feature 1's shape), $5 a month. A button only (15.6). |
+| Observe mode | 30 days and 20 unclassified differences; the threshold: 80% accepted. |
+| Kill criteria | Below 65% accepted after 20, or the rules leave fewer than 20 unclassified differences in 60 days (the deterministic classes did the job: the feature is removed, not run). |
+| Owner | The operator. |
+
+#### Card E1: the mutation-survivor assistant
+
+| Field | E1 |
+|---|---|
+| Problem | Mutation runs leave survivors a person must kill with a test or argue equivalent. Counted 2026-10-24: `tests/mutation_debt.json` holds 366 known survivors across 17 functions; C1652 registered 355 pre-existing survivors in the verify and post-snapshot stages for a kill campaign; `tests/mutation_equivalent.py` holds 281 argued equivalent mutants, each read and judged by a person. **Unmeasured:** the time per survivor killed or argued. |
+| Deterministic alternative | mutmut generates and runs the mutants, and the coverage map names the tests that reach each function; neither writes a killing test or an argument. A template test cannot: each kill needs the input that tells the mutant from the original. |
+| Inputs | One survivor: its function's source, the mutant's one-line diff, the tests that reach the function (the coverage map), and the nearest existing test as an example; no network data. Context: **unmeasured**. Output schema: Pydantic v2 strict. |
+| Output shape | C (13.4): JSON metadata (`{verdict: "test" or "equivalent", test_name, why, the_test_that_would_have_to_fail}`), then the test in a delimited raw block. |
+| Success metric | **Accepted only by the mutant:** a drafted test is accepted only if it fails with the mutant applied and passes on the original (each mutant applied as mutmut writes it, the tests run, the file restored from a copy). An argued equivalence is never accepted by the assistant; it goes to the operator, as every equivalent does. Target: 50% of drafted tests accepted by that check. |
+| Compared fields | Translator (95%, 11.12): `verdict`, and whether the drafted test kills the mutant. |
+| Budgets | **Proposed:** 6k in, 1.5k out, 30 s, Sonnet 5.5 where the eval shows Haiku misses; a cap per campaign set by the operator. Runs in the development loop, never on an installation. |
+| Observe mode | The first campaign's 50 survivors, every draft checked by the mutant and reviewed. |
+| Kill criteria | Below 30% of drafts accepted after 50 survivors, or one accepted test that a reviewer finds asserts nothing (the coverage tool's "asserts nothing" check). |
+| Owner | The operator. |
+
+### 15.10 Alert silencing: the rule gains one exception
+
+**Ruled:** "Mercury never silences an alert, except inside a planned-restart window declared
+before it acts." The window's silence is what a declared window already sets
+(`integrations/grafana.py::put_silence`, behind the `reload_confirm` gate; the manual's Needs
+attention page). The rule's two statements are amended to say so: NSOT_PLAN's "Alerts are never
+silenced" (Grafana's tiers) and NSOT_GUI_BRIEF section 15's question 3.

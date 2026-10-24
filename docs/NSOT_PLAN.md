@@ -942,7 +942,8 @@ older paragraph below orders the work otherwise, this governs.
    - the false-positive count per class;
    - lab-only drift drills, each labelled a drill and never counted as production evidence.
    **Enabling any class stays in Phase 8 (8.3),** under its existing thresholds: 1% false
-   positives or fewer over at least 30 days and 100 events.
+   positives or fewer over at least 30 days and 100 events. *Moved 2026-10-24 (the operator,
+   PHASE8_PLAN 15.2): enabling a class is Phase 9, the closed loop (item 4 below).*
 4. **Phase 8 (AI), on Anthropic, one complete feature first:** natural language to PromQL or
    LogQL (PHASE8_PLAN, amended 2026-10-18).
 
@@ -975,6 +976,15 @@ older paragraph below orders the work otherwise, this governs.
      have, moved into E18 when K31 lands.
    - **Hardware:** hosted AI adds none (the charter). Core 1.0 still fits Minimum.
    - **The local model (K57) stays in Stage 10.** It is not part of this release.
+
+   **Phase 9, the closed loop (the operator, 2026-10-24; PHASE8_PLAN 15.2).** Closed-loop
+   execution leaves Phase 8, which keeps observe-mode logging only. Phase 9 enables Respond's
+   classes and AI catalog selection, one at a time. **It is built when evidence allows, not at a
+   point in this order:** when the first catalog entry or Respond class meets its ruled bar on
+   observed evidence (95% agreement over at least 100 observed selections; 1% false positives or
+   fewer over at least 30 days and 100 events), so it may come after Stage 10. Its prerequisites
+   are a revert timer on every autonomous change, a defined inverse (Mode B), partial-apply
+   handling through the pipeline's rollback, and cascade limits.
 5. **Stage 10, the public release.**
    - **Offline-first becomes its release gate:** every AI feature passes on the local profile
      before the public release (PHASE8_PLAN 12.1).
@@ -3835,8 +3845,10 @@ RULE, generated here with its declared remedy, and the existing reader (`readers
 puts it on Needs attention. **The app never infers an emergency from a panel's colour**: a dashboard's
 thresholds are a guide for the eye, and a colour nobody turned into a rule alerts nobody.
 
-**Alerts are never silenced** (the operator's rule, 15.3 of the brief), so a condition that is real,
-known and not going away needs somewhere to be that is not a permanent alert. Two tiers:
+**Mercury never silences an alert, except inside a planned-restart window declared before it
+acts** (the operator's rule, 15.3 of the brief; the exception the operator's, 2026-10-24,
+PHASE8_PLAN 15.10), so a condition that is real, known and not going away needs somewhere to be
+that is not a permanent alert. Two tiers:
 - **ACUTE: something changed.** A full alert rule. Either the HARM itself (a neighbour dropped, an
   interface down that should be up, a stream stopped) or a sharp departure from the device's OWN
   normal (a CPU well above its measured baseline), never a fixed line one device sits over for ever.

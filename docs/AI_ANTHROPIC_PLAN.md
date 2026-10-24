@@ -96,6 +96,10 @@ cost 1.25x or 2x of input. Changing the output format invalidates the cache.
        dependency tree, and the provider layer owns retries and headers.
      - The SDK's `messages.parse` helper is the one thing given up. Pydantic's JSON Schema
        export replaces it.
+   - *Decided 2026-10-24 (the operator; PHASE8_PLAN 15.3 and 15.4, register C1659): the
+     `anthropic` SDK returns, Anthropic being the proof of concept behind the provider-neutral
+     gateway, and Pydantic v2 strict is the one schema tool. Each enters the lock with the
+     first feature that needs it.*
 3. **Where the AI-call record lives.** E18 (K31, the one records store) is not built.
    - **Proposed:** an append-only record per network, as the receipts are: masked prompt,
      model and version, tokens with cache reads and writes, cost, latency, structured output,
