@@ -79,7 +79,10 @@ jobs:
       # installs them. The lock was compiled with overrides
       # (requirements-overrides.txt: netmiko 4.3.0 declares textfsm>=1.1.3; the
       # host runs 1.1.2), so a resolver here would install something else.
+      # Bounded (C1631): 7 to 17 s measured (CI and both nights); about 2.5 times the slowest,
+      # in whole minutes.
       - name: Install the host's versions, exactly
+        timeout-minutes: 2
         run: |
           python -m pip install --require-hashes --no-deps -r requirements.lock
           python -m pip install --no-deps -r requirements-ci.txt
@@ -104,13 +107,36 @@ jobs:
       # C411: promtool, Prometheus's own PromQL engine, for the device dashboard's tests on real
       # data (tests/promql.py). Unpacked from the distribution's package, never installed, so no
       # service starts; 24.04 ships it inside `prometheus`, later releases as `promtool`.
-      - name: promtool for the PromQL tests (unpacked, not installed)
+      # C1637: the two setup steps below reach the distribution's mirror and PGDG, and on 22 of
+      # 60 shard-steps (CI #1097 to #1111) one took 129 to 566 s where it takes 5 to 55 s, with
+      # one hang of 1,563 s (C1631). Each is cached by the runner image it was made on (the
+      # packages match the image's installed libraries), so a run reaches the network only when
+      # the image changes; a miss downloads as before, bounded (C1631) at 10 minutes: every
+      # completion measured took at most 566 s, and a hang then fails that step by name instead
+      # of the job. (2.5 times the slowest completion would be 24 minutes, the job's own limit.)
+      - name: The runner image, for the setup caches' keys
+        id: image
+        run: echo "key=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+
+      - name: promtool, cached by the runner image (C1637)
+        id: promtool-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/nmas-promtool
+          key: nmas-promtool-${{ steps.image.outputs.key }}-v1
+
+      - name: promtool for the PromQL tests, downloaded when not cached (unpacked, not installed)
+        if: steps.promtool-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 10
         run: |
           d=$(mktemp -d) && cd "$d"
           sudo apt-get update -qq
           apt-get download promtool 2>/dev/null || apt-get download prometheus
           mkdir -p "$HOME/.local/share/nmas-promtool"   # dpkg -x makes only the last folder
           dpkg -x ./*.deb "$HOME/.local/share/nmas-promtool"
+
+      - name: promtool answers
+        run: |
           "$HOME/.local/share/nmas-promtool/usr/bin/promtool" --version
 
       # Phase 4's records tests run against a REAL PostgreSQL (the operator's decision, option
@@ -124,16 +150,35 @@ jobs:
       # PostgreSQL 18, the host's major (the operator, 2026-10-09: the F2 Test checks 18, and
       # CI does not loosen it): Ubuntu 24.04 ships 16, so PGDG's repository, added by
       # postgresql-common's own script with PGDG's signing key.
-      - name: PostgreSQL 18 for the records tests, from PGDG (libpq5 installed; the server unpacked)
+      # The packages, not the installed result, are what is cached: libpq5 and the server's
+      # libraries are INSTALLED from them on every run (dpkg, no network), as before.
+      - name: PostgreSQL 18's packages, cached by the runner image (C1637)
+        id: pg-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/nmas-pg-debs
+          key: nmas-pg18-debs-${{ steps.image.outputs.key }}-v1
+
+      - name: PostgreSQL 18's packages from PGDG, downloaded when not cached
+        if: steps.pg-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 10
         run: |
           sudo apt-get install -y -qq --no-install-recommends postgresql-common
           sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
-          sudo apt-get install -y -qq --no-install-recommends libpq5
           deps=$(apt-cache depends postgresql-18 | sed -n 's/^ *Depends: \(lib[^ <>]*\)$/\1/p' | sort -u)
-          sudo apt-get install -y -qq --no-install-recommends $deps
-          d=$(mktemp -d) && cd "$d" && apt-get download postgresql-18
+          debs="$HOME/.cache/nmas-pg-debs" && mkdir -p "$debs/partial"   # apt needs partial/
+          sudo apt-get install -y -qq --no-install-recommends --download-only \
+            -o Dir::Cache::archives="$debs" libpq5 $deps
+          cd "$debs" && apt-get download postgresql-18
+          sudo rm -rf "$debs/partial" "$debs/lock" && sudo chown -R "$(id -u)" "$debs"
+
+      - name: PostgreSQL 18 for the records tests, from PGDG (libpq5 installed; the server unpacked)
+        run: |
+          debs="$HOME/.cache/nmas-pg-debs"
+          libs=$(ls "$debs"/*.deb | grep -v '/postgresql-18_' || true)
+          [ -z "$libs" ] || sudo dpkg -i $libs
           mkdir -p "$HOME/.local/share/nmas-pg"
-          dpkg -x ./*.deb "$HOME/.local/share/nmas-pg"
+          dpkg -x "$debs"/postgresql-18_*.deb "$HOME/.local/share/nmas-pg"
           bin=$(ls -d "$HOME"/.local/share/nmas-pg/usr/lib/postgresql/18/bin)
           if ldd "$bin/postgres" "$bin/initdb" | grep "not found"; then
             echo "::error::the unpacked PostgreSQL lacks a library (above)"; exit 1

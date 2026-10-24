@@ -314,3 +314,83 @@ class TestAPushMeasuresByTierAndTheNightPerTest:
         report = steps[names.index("The report and the ratchet")]
         assert '--drilldown "$DRILLDOWN"' in report["run"]
         assert report["env"]["DRILLDOWN"] == "${{ steps.drilldown.outputs.line }}"
+
+
+# ── C1637 and C1631: a setup step that reaches the network is cached and bounded ──────────────
+
+#: A setup step that reaches a PACKAGE MIRROR: apt, or PGDG's repository script. Measured slow
+#: on 22 of 60 shard-steps (CI #1097 to #1111): it must run only on its cache's miss, and is
+#: bounded at MIRROR_MINUTES, just over the slowest completion measured (566 s, promtool), so a
+#: hang (1,563 s, CI #1106) fails that step by name instead of the job (C1637, C1631).
+MIRROR = re.compile(r"\bapt-get\b|apt\.postgresql\.org\.sh")
+MIRROR_MINUTES = 10
+#: A setup step that reaches the network but was never measured slow: pip's installs (7 to 17 s
+#: on CI and both nights) and the drill-down's API read (0 to 1 s). Bounded, not cached: each
+#: bound about 2.5 times its slowest measurement, in whole minutes (C1631).
+FETCH = {"pip install": 2, "curl ": 1}
+
+
+def network_gaps(doc, job: str) -> list:
+    """Each setup step of *job* (every step before its tests) that reaches a mirror and is not
+    run only on a cache miss or is not bounded at MIRROR_MINUTES at most, each other network
+    step without its FETCH bound, and each cache step whose miss no downloading step names."""
+    steps = doc["jobs"][job]["steps"]
+    at = next((i for i, s in enumerate(steps)
+               if str(s.get("name", "")).startswith("Tests") or s.get("id") == "mutate"),
+              len(steps))
+    caches = {s["id"] for s in steps[:at]
+              if str(s.get("uses", "")).startswith("actions/cache@") and s.get("id")}
+    gaps, guarded = [], set()
+    for s in steps[:at]:
+        run, name = s.get("run", ""), s.get("name") or s.get("run", "")[:40]
+        minutes = s.get("timeout-minutes")
+        if MIRROR.search(run):
+            hit = [c for c in caches
+                   if f"steps.{c}.outputs.cache-hit != 'true'" in str(s.get("if", ""))]
+            if not hit:
+                gaps.append(f"{name}: reaches a mirror on every run (no cache-miss condition)")
+            guarded.update(hit)
+            if not isinstance(minutes, (int, float)) or minutes > MIRROR_MINUTES:
+                gaps.append(f"{name}: timeout-minutes {minutes!r}, not at most {MIRROR_MINUTES}")
+            continue
+        for word, bound in FETCH.items():
+            if word in run and (not isinstance(minutes, (int, float)) or minutes > bound):
+                gaps.append(f"{name}: reaches the network ({word.strip()}) with timeout-minutes "
+                            f"{minutes!r}, not at most {bound}")
+    gaps += [f"cache {c}: no step downloads on its miss" for c in sorted(caches - guarded)]
+    return gaps
+
+
+SETUP_JOBS = [("ci.yml", "test"), ("coverage-nightly.yml", "test"),
+              ("mutation-nightly.yml", "mutate")]
+
+
+@pytest.mark.parametrize("name,job", SETUP_JOBS)
+def test_every_network_setup_step_is_cached_and_bounded(name, job):
+    doc, _ = _load(os.path.join(ROOT, ".github", "workflows", name))
+    steps = doc["jobs"][job]["steps"]
+    assert len([s for s in steps if MIRROR.search(s.get("run", ""))]) >= 2, "floor"
+    assert network_gaps(doc, job) == []
+
+
+def test_a_planted_unbounded_or_uncached_network_step_is_named():
+    """Controls: the promtool download made to run always, the PostgreSQL download unbounded,
+    a new apt step with neither, and pip's install unbounded: each named; and a cache nothing
+    downloads for."""
+    doc, _ = _load(os.path.join(ROOT, ".github", "workflows", "ci.yml"))
+    steps = doc["jobs"]["test"]["steps"]
+    promtool = next(s for s in steps if str(s.get("name", "")).startswith("promtool for"))
+    pg = next(s for s in steps if str(s.get("name", "")).startswith("PostgreSQL 18's packages "
+                                                                      "from PGDG"))
+    del promtool["if"]
+    pg["timeout-minutes"] = 26
+    steps.insert(steps.index(pg), {"name": "A new tool", "run": "sudo apt-get install -y x"})
+    steps.insert(0, {"name": "An idle cache", "id": "idle", "uses": "actions/cache@v4"})
+    install = next(s for s in steps if str(s.get("name", "")).startswith("Install"))
+    install.pop("timeout-minutes", None)
+    gaps = network_gaps(doc, "test")
+    assert any(g.startswith("Install") and "pip install" in g for g in gaps), gaps
+    assert any(g.startswith("promtool for") and "every run" in g for g in gaps), gaps
+    assert any(g.startswith("PostgreSQL 18's packages") and "26" in g for g in gaps), gaps
+    assert any(g.startswith("A new tool:") for g in gaps), gaps
+    assert "cache idle: no step downloads on its miss" in gaps

@@ -91,7 +91,9 @@ jobs:
             requirements-test.txt
             requirements-mutation.txt
 
+      # Bounded (C1631): ci.yml's comment (9 to 17 s measured here, runs #22 to #41).
       - name: Install the host's versions, CI's tools and mutmut, exactly
+        timeout-minutes: 2
         run: |
           python -m pip install --require-hashes --no-deps -r requirements.lock
           python -m pip install --no-deps -r requirements-ci.txt
@@ -110,25 +112,59 @@ jobs:
       - name: Where PyPI's metadata disagrees with the host (information, not a gate)
         run: python -m pip check || true
 
-      - name: promtool for the PromQL tests (unpacked, not installed)
+      # The setup caches and their bounds: ci.yml's comment (C1637, C1631).
+      - name: The runner image, for the setup caches' keys
+        id: image
+        run: echo "key=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+
+      - name: promtool, cached by the runner image (C1637)
+        id: promtool-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/nmas-promtool
+          key: nmas-promtool-${{ steps.image.outputs.key }}-v1
+
+      - name: promtool for the PromQL tests, downloaded when not cached (unpacked, not installed)
+        if: steps.promtool-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 10
         run: |
           d=$(mktemp -d) && cd "$d"
           sudo apt-get update -qq
           apt-get download promtool 2>/dev/null || apt-get download prometheus
           mkdir -p "$HOME/.local/share/nmas-promtool"   # dpkg -x makes only the last folder
           dpkg -x ./*.deb "$HOME/.local/share/nmas-promtool"
+
+      - name: promtool answers
+        run: |
           "$HOME/.local/share/nmas-promtool/usr/bin/promtool" --version
 
-      - name: PostgreSQL 18 for the records tests, from PGDG (libpq5 installed; the server unpacked)
+      - name: PostgreSQL 18's packages, cached by the runner image (C1637)
+        id: pg-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/nmas-pg-debs
+          key: nmas-pg18-debs-${{ steps.image.outputs.key }}-v1
+
+      - name: PostgreSQL 18's packages from PGDG, downloaded when not cached
+        if: steps.pg-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 10
         run: |
           sudo apt-get install -y -qq --no-install-recommends postgresql-common
           sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
-          sudo apt-get install -y -qq --no-install-recommends libpq5
           deps=$(apt-cache depends postgresql-18 | sed -n 's/^ *Depends: \(lib[^ <>]*\)$/\1/p' | sort -u)
-          sudo apt-get install -y -qq --no-install-recommends $deps
-          d=$(mktemp -d) && cd "$d" && apt-get download postgresql-18
+          debs="$HOME/.cache/nmas-pg-debs" && mkdir -p "$debs/partial"   # apt needs partial/
+          sudo apt-get install -y -qq --no-install-recommends --download-only \
+            -o Dir::Cache::archives="$debs" libpq5 $deps
+          cd "$debs" && apt-get download postgresql-18
+          sudo rm -rf "$debs/partial" "$debs/lock" && sudo chown -R "$(id -u)" "$debs"
+
+      - name: PostgreSQL 18 for the records tests, from PGDG (libpq5 installed; the server unpacked)
+        run: |
+          debs="$HOME/.cache/nmas-pg-debs"
+          libs=$(ls "$debs"/*.deb | grep -v '/postgresql-18_' || true)
+          [ -z "$libs" ] || sudo dpkg -i $libs
           mkdir -p "$HOME/.local/share/nmas-pg"
-          dpkg -x ./*.deb "$HOME/.local/share/nmas-pg"
+          dpkg -x "$debs"/postgresql-18_*.deb "$HOME/.local/share/nmas-pg"
           bin=$(ls -d "$HOME"/.local/share/nmas-pg/usr/lib/postgresql/18/bin)
           if ldd "$bin/postgres" "$bin/initdb" | grep "not found"; then
             echo "::error::the unpacked PostgreSQL lacks a library (above)"; exit 1
@@ -157,8 +193,10 @@ jobs:
       # contexts, and each test's tier), from that run, outside the checkout. Its run, commit and
       # date go to the plan and the summary; a function changed since, or new, or every one when
       # none is found, has its reach refreshed by the plan (below).
+      # Bounded (C1631): 0 to 1 s measured (runs #22 to #41), so the smallest whole minute.
       - name: The newest coverage drill-down (each function's tests, measured)
         id: reach
+        timeout-minutes: 1
         env:
           REPO: ${{ github.repository }}
         run: |
