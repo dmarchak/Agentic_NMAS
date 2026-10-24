@@ -44,16 +44,17 @@ class TestASplitRange:
     def test_r7s_three_vty_lines_read_back_found(self):
         rb = V.read_back(R7_PROGRAM, R7_LINES)
         assert rb["missing"] == [], rb
-        assert rb["checked"] == 3
-        # `no shutdown` is the one skipped line: a `no` line reads back as an absence.
-        assert [s["line"] for s in rb["skipped"]] == ["interface GigabitEthernet3 > no shutdown"]
+        # The three vty lines, and `no shutdown` read as its absence (C1415: no `shutdown`
+        # under Gi3), so nothing is skipped.
+        assert rb["checked"] == 4
+        assert rb["skipped"] == []
 
     def test_a_member_lacking_the_line_is_a_miss_naming_that_member(self):
         running = R7_LINES.replace("line vty 1\n logging synchronous\n login local\n",
                                    "line vty 1\n logging synchronous\n")
         assert running != R7_LINES
         rb = V.read_back(R7_PROGRAM, running)
-        assert rb["checked"] == 3
+        assert rb["checked"] == 4
         assert rb["missing"] == ["line vty 0 4 > login local (missing on vty 1)"], rb
 
     def test_a_range_partly_uncovered_is_a_miss_naming_the_uncovered_members(self):
@@ -144,5 +145,5 @@ class TestUnchangedBehaviour:
                           "exit"], R7_LINES)
         assert rb["checked"] == 0 and rb["missing"] == []
         assert [s["why"] for s in rb["skipped"]] == [
-            "a `no` line reads back as an absence",
+            "a `no` line under a terminal-line range is not read back",
             "a secret the device stores in another form"]

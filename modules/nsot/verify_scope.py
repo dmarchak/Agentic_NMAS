@@ -116,6 +116,25 @@ def _vlan_judged(leaf):
     return None
 
 
+def negated_still(chain, line: str, held: set, key) -> str:
+    """For a program's ``no X`` under *chain*: "" when the running configuration (*held*, its
+    leaves as *key* makes them) shows the absence (it prints ``no X`` itself, or nothing that
+    ``X`` begins), else the line, or the stanza, that still stands (C1415). A match is by whole
+    words: ``no logging host 192.0.2.1`` is not denied by ``logging host 192.0.2.10``."""
+    own, words = key(chain, line)
+    if (own, words) in held:
+        return ""
+    positive = words[3:]
+    for got_chain, got in held:
+        if got_chain == own and (got == positive or got.startswith(positive + " ")):
+            return got
+        if got_chain[:len(own)] == own and len(got_chain) > len(own) and (
+                got_chain[len(own)] == positive
+                or got_chain[len(own)].startswith(positive + " ")):
+            return got_chain[len(own)]
+    return ""
+
+
 def read_back(commands: list, running: str, vlans: dict = None) -> dict:
     """Each new line of a program, quick or full (C732), looked for in *running*
     under its section. ``{"missing": [...], "skipped": [{line, why}], "checked": n,
@@ -129,10 +148,14 @@ def read_back(commands: list, running: str, vlans: dict = None) -> dict:
     or under another name, is missing, naming what the read showed; a read not made or not
     understood is ``unread``, which neither passes nor fails.
 
-    Skipped, each with its reason: a `no` line (its effect is an absence or
-    the device's default, and Mode B's removals are verified on their own);
-    a line in a secret's position (the device stores it transformed, `secret
-    0` as `secret 9`); a banner (the device prints its own delimiter).
+    **A `no` line is read as the absence it claims (C1415):** held when the device prints the
+    `no` form itself or nothing the negated line begins under the same parents
+    (`negated_still`); a ` no shutdown` meeting ` shutdown`, or a Mode B `no ip route …` whose
+    route stays, is missing, naming what stays.
+
+    Skipped, each with its reason: a `no` line under a terminal-line range, or under a VLAN
+    (the VLAN database's); a line in a secret's position (the device stores it transformed,
+    `secret 0` as `secret 9`); a banner (the device prints its own delimiter).
 
     **Terminal lines by member (C1541).** A device prints a `line` range as it
     pleases: a router sent `line vty 0 4` prints `line vty 0`, `line vty 1` and
@@ -193,6 +216,7 @@ def read_back(commands: list, running: str, vlans: dict = None) -> dict:
 
     from modules.nsot.vlan_read import command as vlan_command
     from modules.nsot.vlan_read import parse as vlan_parse
+    from modules.nsot.vlan_read import vlan_of
 
     missing, skipped, checked, unread = [], [], 0, []
     vlans = vlans or {}
@@ -216,8 +240,23 @@ def read_back(commands: list, running: str, vlans: dict = None) -> dict:
                 missing.append(f"{shown} (`{read}` names VLAN {vlan} {got['name']!r}, the "
                                f"program {want!r})")
             continue
-        if line.startswith("no "):
-            skipped.append({"line": shown, "why": "a `no` line reads back as an absence"})
+        if line.startswith("no ") and _line_range(top) is not None:
+            skipped.append({"line": shown, "why": "a `no` line under a terminal-line range "
+                                                  "is not read back"})
+        elif line.startswith("no ") and leaf.chain and vlan_of(top):
+            # A VLAN's own lines are the VLAN database's (C1646), which is read for the VLAN
+            # and its name only.
+            skipped.append({"line": shown, "why": "a `no` line under a VLAN is the VLAN "
+                                                  "database's, not read back"})
+        elif line.startswith("no "):
+            # C1415: read as the absence it claims. Held when the device prints the `no` form
+            # itself (IOS prints `no switchport`, `no ip address`, `no passive-interface Gi3`),
+            # or when no line `X`, nor `X` followed by more words, nor a stanza `X`, stays
+            # under the same parents; the line that stays is named.
+            still = negated_still(leaf.chain, line, held, key)
+            checked += 1
+            if still:
+                missing.append(f"{shown} (the device still prints `{still}`)")
         elif redact_positional(line) != line:
             skipped.append({"line": redact_positional(shown),
                             "why": "a secret the device stores in another form"})

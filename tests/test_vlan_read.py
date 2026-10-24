@@ -148,11 +148,13 @@ def test_a_vlan_read_not_made_or_not_understood_is_unread_neither_pass_nor_miss(
 
 
 def test_other_lines_under_a_vlan_and_its_negations_are_read_as_before():
-    """Only the VLAN and its `name` are the database's; `state` and `no name` keep their
-    running-configuration rules (the first missing there, the second skipped as an absence)."""
+    """Only the VLAN and its `name` are the database's; `state` keeps its running-configuration
+    rule (missing there), and `no name` is skipped: a negation under a VLAN is the database's,
+    which is read for the VLAN and its name only (C1415 reads every other negation)."""
     rb = V.read_back(["vlan 10", " state suspend", " no name", "exit"], RUNNING, {})
     assert rb["missing"] == ["vlan 10 > state suspend"] and rb["unread"] == []
-    assert [s["why"] for s in rb["skipped"]] == ["a `no` line reads back as an absence"]
+    assert [s["why"] for s in rb["skipped"]] == [
+        "a `no` line under a VLAN is the VLAN database's, not read back"]
     assert V.vlan_reads(["vlan 10", " state suspend", " no name", "exit"]) == []
 
 

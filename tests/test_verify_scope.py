@@ -91,14 +91,67 @@ class TestTheReadBack:
         assert rb["checked"] == 4
         assert rb["missing"] == ["line vty 0 4 > length 0 (missing on vty 0, 2, 3, 4)"]
 
-    def test_negations_secrets_and_banners_are_skipped_with_why(self):
+    def test_secrets_and_banners_are_skipped_with_why_and_a_negation_is_read(self):
+        """A secret and a banner are skipped, each with its reason; a `no` line is read as
+        the absence it claims (C1415): r3 prints no `logging console`, so it is held."""
+        assert "\nlogging console" not in R3, "floor"
         rb = V.read_back(["no logging console", "username ops privilege 15 secret 0 Zq7value",
                           "banner motd ^Cx^C"], R3)
-        assert rb["checked"] == 0 and rb["missing"] == []
+        assert rb["checked"] == 1 and rb["missing"] == []
         assert [s["why"] for s in rb["skipped"]] == [
-            "a `no` line reads back as an absence", "a secret the device stores in another form",
+            "a secret the device stores in another form",
             "a banner reads back in the device's own delimiter"]
         assert "Zq7value" not in str(rb)
+
+
+def _r2():
+    with open("tests/fixtures/configs/fleet/r2.cfg", encoding="utf-8") as fh:
+        return fh.read()
+
+
+class TestANegationIsReadAsTheAbsenceItClaims:
+    """C1415 (2026-10-20): verify skipped every `no` line, so a ` no shutdown` that left an
+    interface printing ` shutdown`, or a Mode B removal whose route stayed, verified with
+    nothing missing. On r2's real configuration, each with one minimal edit."""
+
+    def test_no_shutdown_meeting_shutdown_is_missing_naming_it(self):
+        running = _r2().replace("interface GigabitEthernet2\n",
+                                "interface GigabitEthernet2\n shutdown\n", 1)
+        assert running != _r2(), "floor"
+        rb = V.read_back(["interface GigabitEthernet2", " no shutdown", "exit"], running)
+        assert rb["missing"] == ["interface GigabitEthernet2 > no shutdown (the device still "
+                                 "prints `shutdown`)"], rb
+        rb = V.read_back(["interface GigabitEthernet2", " no shutdown", "exit"], _r2())
+        assert rb["missing"] == [] and rb["checked"] == 1, rb
+
+    @pytest.mark.parametrize("route", ["ip route 192.0.2.0 255.255.255.0 10.255.3.1",
+                                       "ipv6 route 2001:DB8:99::/64 2001:DB8:51::1"],
+                             ids=["ipv4", "ipv6"])
+    def test_a_removed_route_that_stays_is_missing_and_one_gone_is_held(self, route):
+        running = _r2().replace("\nline con 0", f"\n{route} name kept\nline con 0", 1)
+        assert running != _r2(), "floor"
+        rb = V.read_back([f"no {route}"], running)
+        assert rb["missing"] == [f"no {route} (the device still prints `{route} name kept`)"]
+        assert V.read_back([f"no {route}"], _r2())["missing"] == []
+
+    def test_a_match_is_by_whole_words(self):
+        running = _r2().replace("\nline con 0", "\nlogging host 192.0.2.10\nline con 0", 1)
+        rb = V.read_back(["no logging host 192.0.2.1"], running)
+        assert rb["missing"] == [] and rb["checked"] == 1, rb
+
+    def test_a_negation_the_device_prints_itself_is_held(self):
+        """IOS prints `no ip domain lookup` beside `ip domain lookup source-interface …`, a
+        line the negated words begin: the printed negation is the answer."""
+        assert "\nno ip http server" in _r2(), "floor: r2 prints its negations"
+        running = _r2().replace("\nline con 0", "\nno ip domain lookup\n"
+                                "ip domain lookup source-interface Loopback0\nline con 0", 1)
+        rb = V.read_back(["no ip domain lookup", "no ip http server"], running)
+        assert rb["missing"] == [] and rb["checked"] == 2, rb
+
+    def test_a_removed_stanza_still_printed_is_missing_naming_it(self):
+        rb = V.read_back(["no interface Loopback0"], _r2())
+        assert rb["missing"] == ["no interface Loopback0 (the device still prints "
+                                 "`interface Loopback0`)"], rb
 
 
 class TestThePipelineRunsTheScopedVerify:
