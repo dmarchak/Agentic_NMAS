@@ -193,6 +193,47 @@ def test_the_post_snapshot_reads_each_vlan_and_names_a_read_that_raised(monkeypa
     assert snap["vlan_errors"] == {"20": "OSError: the session closed"}
 
 
+def test_each_read_asks_the_pool_for_this_device_s_session_and_reads_on_it(monkeypatch):
+    """Mutation run #45's survivors: the read takes the device's pooled session (the device,
+    the run's pool and its lock, as every stage asks) and sends on that session."""
+    asked, used = [], []
+    conn = _Conn()
+
+    def get(dev, pool, lock):
+        asked.append((dev, pool, lock))
+        return conn
+
+    def run(c, cmd, **_k):
+        used.append(c)
+        return capture(SERVER, "show_vlan_id_10")
+
+    monkeypatch.setattr("modules.connection.get_persistent_connection", get)
+    monkeypatch.setattr("modules.commands.run_device_command", run)
+    pool, lock = {"x": "held"}, object()
+    dev = {"ip": "x", "hostname": "edge"}
+    ctx = pipeline.PipelineContext(
+        config_type="template", device_ips=["x"], params={}, ip_params_map={},
+        selected_devices=[dev], connections_pool=pool, pool_lock=lock, config_id="t")
+    ctx.rendered_commands = {"x": VLAN10}
+    snap = {}
+    pipeline._read_vlans(ctx, dev, snap)
+    assert asked == [(dev, pool, lock)] and used == [conn], (asked, used)
+
+
+def test_the_parse_says_each_state_whole():
+    """Each answer's whole record (run #45's survivors in the words and the row): present names
+    its status and name in order; an unreadable answer keeps no row; a table whose first line
+    under the rule is not a row is unreadable, naming that it shows no row."""
+    got = R.parse("10", capture(SERVER, "show_vlan_id_10"))
+    assert got["why"] == "VLAN 10 is active, named VLAN10", got
+    assert set(got) == {"state", "name", "status", "row", "why"}
+    text = capture(SERVER, "show_vlan_id_10")
+    row = next(ln for ln in text.splitlines() if ln.startswith("10   VLAN10"))
+    got = R.parse("10", text.replace(row, "% a line that is not a row"))
+    assert got == {"state": "unreadable", "name": "", "status": "", "row": "",
+                   "why": "the VLAN table shows no row, not VLAN 10 alone"}, got
+
+
 def test_the_post_change_snapshot_carries_the_vlan_reads(monkeypatch):
     """Stage 7 reads them, on its new session, beside the running configuration."""
     sent = []
