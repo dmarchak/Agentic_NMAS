@@ -1,5 +1,6 @@
 {%- from "v2/_macros.html" import icon, badge, stamp, how -%}
 {%- from "v2/_run_stepper.html" import run_stepper -%}
+{%- from "v2/_oob_outcome.html" import oob_level, oob_chip -%}
 {#- The one-decision out-of-band onboarding's card (boards B and C of
     docs/boards/oob-onboarding.html, counted as signed off 2026-10-23 under the Phase 7 mode):
     ONE review (every field derived and where from, the console path with the server's full
@@ -18,8 +19,8 @@
 {%- if with_asked %}<input type="hidden" name="uplink" value="{{ fields.get('uplink', '') }}">{% endif %}
 {%- endmacro -%}
 {%- if c.state == 'result' -%}
-  {%- set level = 'ok' if r.outcome == 'done' else ('warn' if r.outcome in ('not_blank', 'signed_in', 'login', 'not_answering', 'busy') else 'danger') -%}
-  {%- set chip = {'done': 'onboarded, answering: ready to Verify', 'not_blank': 'not blank: nothing typed', 'signed_in': 'found signed in: nothing typed', 'login': 'asked for a login: nothing typed', 'not_answering': 'copied, not answering yet', 'busy': 'held by another operation', 'unreachable': 'console unreachable', 'refused_line': 'a line was refused: undone', 'read_back': 'read-back differs: undone', 'copy_failed': 'copy failed: undone', 'create_failed': 'Create failed: undone', 'unexpected': 'stopped: unexpected prompt'}.get(r.outcome, 'stopped: ' ~ r.outcome) -%}
+  {%- set level = oob_level(r.outcome) | trim -%}
+  {%- set chip = oob_chip(r.outcome) | trim -%}
 {%- endif %}
 <section class="op-card{% if c.state == 'result' %} op-{{ level }}{% elif c.state in ('failed', 'lost') %} op-warn{% endif %}" id="oob-card" aria-labelledby="oob-title"
   {%- if c.state == 'running' %} aria-busy="true" hx-get="{{ url_for('oob_onboard_v2.card_view', list_name=c.list_name, run=c.run, job=c.job, hostname=c.hostname, add='1' if c.add else '') }}" hx-trigger="nmas:console_ztp from:body, nmas:device_progress from:body" hx-swap="outerHTML"{% endif %}>

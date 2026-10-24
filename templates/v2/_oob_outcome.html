@@ -1,0 +1,9 @@
+{#- The one-decision out-of-band run's outcome in words and its level, ONE home (C1642): the
+    run's card (`_oob_onboard.html`) and a pending device's page (`_onboard_pending.html`) draw
+    them alike. -#}
+{%- macro oob_level(outcome) -%}
+{{ 'ok' if outcome == 'done' else ('warn' if outcome in ('not_blank', 'signed_in', 'login', 'not_answering', 'busy', 'running') else 'danger') }}
+{%- endmacro -%}
+{%- macro oob_chip(outcome) -%}
+{{ {'done': 'onboarded, answering: ready to Verify', 'not_blank': 'not blank: nothing typed', 'signed_in': 'found signed in: nothing typed', 'login': 'asked for a login: nothing typed', 'not_answering': 'copied, not answering yet', 'busy': 'held by another operation', 'unreachable': 'console unreachable', 'refused_line': 'a line was refused: undone', 'read_back': 'read-back differs: undone', 'copy_failed': 'copy failed: undone', 'create_failed': 'Create failed: undone', 'unexpected': 'stopped: unexpected prompt', 'running': 'running'}.get(outcome, 'stopped: ' ~ outcome) }}
+{%- endmacro -%}

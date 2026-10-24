@@ -126,24 +126,51 @@ def pending_console(list_name: str, hostname: str) -> dict:
     *kick* is `surveyed_offer` (the card at the kick-start, or at the survey again when the
     recorded survey did not find it blank); without one, *netbox_id* is the NetBox record its
     onboarding recorded, whose console path the page asks for as it draws (`offer_view`,
-    ``pending=1``), so the page itself never waits on NetBox. Reads the installation's index
-    and the network's manifest; creates nothing."""
-    from modules.nsot import listref, manifest
+    ``pending=1``), so the page itself never waits on NetBox. A device onboarded out-of-band
+    (C1642, C1643) is offered neither: *oob* is its newest console run instead (`oob_run`), the
+    run that drove its console. Reads the installation's index, the network's manifest and the
+    run records; creates nothing."""
+    from modules.nsot import listref, manifest, oob_steps
 
-    out = {"kick": surveyed_offer(list_name, hostname), "netbox_id": None, "platform": "",
-           "role": "", "list_name": list_name, "hostname": hostname}
-    if out["kick"] is not None or not list_name or not listref.exists(list_name):
+    out = {"kick": None, "netbox_id": None, "platform": "", "role": "", "oob": None,
+           "list_name": list_name, "hostname": hostname}
+    entry = {}
+    if list_name and listref.exists(list_name):
+        try:
+            entry = manifest.find_by_name(listref.resolve(list_name).repo_dir,
+                                          hostname)[1] or {}
+        except Exception:                  # noqa: BLE001 - a read; the page draws no offer
+            log.warning("console ZTP: %s's manifest could not be read for %s", list_name,
+                        hostname, exc_info=True)
+            entry = {}
+    if entry.get("address_source") == oob_steps.address_source():
+        out["oob"] = oob_run(list_name, hostname)
         return out
-    try:
-        entry = manifest.find_by_name(listref.resolve(list_name).repo_dir, hostname)[1] or {}
-    except Exception:                      # noqa: BLE001 - a read; the page draws no offer
-        log.warning("console ZTP: %s's manifest could not be read for %s", list_name, hostname,
-                    exc_info=True)
-        entry = {}
+    out["kick"] = surveyed_offer(list_name, hostname)
+    if out["kick"] is not None or not entry:
+        return out
     nb = entry.get("netbox_id")
     out.update(netbox_id=nb if isinstance(nb, int) and nb > 0 else None,
                platform=entry.get("platform") or "", role=entry.get("role") or "")
     return out
+
+
+def oob_run(list_name: str, hostname: str) -> dict:
+    """*hostname*'s newest console run in *list_name*, for its pending page (C1642): ``{"state":
+    "read" | "none" | "unreadable", "outcome", "at", "why"}``; the outcome as the run's card
+    words it (`_oob_outcome.html`), *at* when it finished, else when it started. Read only."""
+    from modules.nsot import oob_onboard as O
+
+    try:
+        rec = O.latest_run(list_name, hostname)
+    except Exception as exc:              # noqa: BLE001 - drawn, never raised
+        log.warning("console ZTP: %s's console runs could not be read", hostname, exc_info=True)
+        return {"state": "unreadable", "outcome": "", "at": "",
+                "why": f"{type(exc).__name__}: {exc}"}
+    if not rec:
+        return {"state": "none", "outcome": "", "at": "", "why": ""}
+    return {"state": "read", "outcome": rec.get("outcome") or "",
+            "at": rec.get("finished_at") or rec.get("started_at") or "", "why": ""}
 
 
 # ── the card ───────────────────────────────────────────────────────────────────────────────
@@ -179,6 +206,37 @@ def _onboarded(list_name: str, hostname: str) -> str:
     if not entry:
         return (f"{hostname} is not in {list_name} yet: Create it in Add device first, so its "
                 "reservation and bootstrap exist when the kick-start makes it ask for them")
+    return ""
+
+
+def out_of_band(list_name: str, device_id: int, hostname: str) -> str:
+    """Why the standalone survey and kick-start do not run for this device (C1643), or ``""``:
+    its onboarding in *list_name* is out-of-band, its manifest entry (found by the NetBox id the
+    onboarding recorded, or by its name) naming the one-decision console run's address source.
+    That run is the out-of-band path's one home (`oob_onboard`); these serve a device onboarded
+    another way. A manifest that cannot be read refuses too, naming why. Read only."""
+    from modules.nsot import listref, manifest, oob_steps
+
+    if not list_name or not listref.exists(list_name):
+        return ""
+    try:
+        repo = listref.resolve(list_name).repo_dir
+        devices = (manifest.load(repo) or {}).get("devices") or {}
+    except Exception as exc:              # noqa: BLE001 - a read; said, never raised
+        return (f"{list_name}'s manifest could not be read ({type(exc).__name__}: {exc}), so "
+                "whether this device is onboarded out-of-band is unknown")
+    oob = oob_steps.address_source()
+    name = str(hostname or "").lower()
+    for entry in devices.values():
+        mine = ((device_id and entry.get("netbox_id") == device_id)
+                or (name and str(entry.get("name") or "").lower() == name))
+        if mine and entry.get("address_source") == oob:
+            who = entry.get("name") or hostname or f"NetBox device {device_id}"
+            return (f"{who}'s onboarding in {list_name} is out-of-band: its address source is "
+                    f"{oob!r}, the one-decision console run's, and the standalone survey and "
+                    "kick-start serve a device onboarded another way (static, DHCP or ZTP). "
+                    "Its console is its run's: Devices › Add device… (Out-of-band (console)) "
+                    "starts one, and its newest run's page names how it ended")
     return ""
 
 
@@ -265,6 +323,12 @@ def card(list_name: str, device_id: int, args) -> dict:
         else:
             c["hostname"] = c["hostname"] or c["survey"].get("device") or ""
             c["error"] = _onboarded(list_name, c["hostname"])
+    if not c["run"]:
+        # C1643: an out-of-band device's console is its one-decision run's; a recorded run of
+        # these is still read and drawn below.
+        why = out_of_band(list_name, device_id, c["hostname"])
+        if why:
+            c.update(state="refused", error=why)
     if c["run"]:
         # The JOB first, then the record (C642's order): a job seen ended means its record is
         # final; read the other way round, a run finishing between the reads drew as running.
@@ -308,6 +372,9 @@ def _preview_card(device_id: int, form, code: int = 200, **extra):
 
     list_name = (form.get("list_name") or "").strip()
     c = card(list_name, device_id, form)
+    if c["state"] == "refused":
+        c.update(extra)
+        return _draw(c, code if code != 200 else 409)
     if c["step"] == "survey":
         pv = Z.survey_preview(list_name, device_id, profile=c["profile"])
     else:
@@ -347,6 +414,8 @@ def _start(device_id: int, kind: str, confirmed: str):
     actor = ident.actor
     verified = identity.actor_verification(actor)
     c = card(list_name, device_id, form)
+    if c["state"] == "refused":
+        return _draw(dict(c, error=c["error"] + ". Nothing was sent."), 409)
     if kind == Z.KIND_SURVEY:
         pv = Z.survey_preview(list_name, device_id, profile=c["profile"])
     else:

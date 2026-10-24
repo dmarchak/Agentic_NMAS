@@ -354,6 +354,103 @@ class TestThePendingPage:
         assert 'id="ob-console"' not in html and 'id="pending-actions"' in html
 
 
+class TestAnOutOfBandDeviceHasNoStandaloneConsole:
+    """C1643 and C1642 (the operator, Lab 9's take, 2026-10-23): a device the one-decision
+    out-of-band run onboarded (address source `ztp_console`) still drew the old survey and
+    kick-start on its pending page, and their routes would run on it. Its console is its run's:
+    the routes refuse it, by its NetBox id or its name, naming its address source and the
+    path's home, and send nothing; its page names how its run ended and links the run's page.
+    Controls: the same device onboarded by ZTP is still offered the standalone flow (the
+    router's DHCP-path nudge keeps its home), and a recorded run is still read."""
+
+    WHY = ("edge1&#39;s onboarding in {list} is out-of-band: its address source is "
+           "&#39;ztp_console&#39;, the one-decision console run&#39;s")
+
+    @pytest.fixture
+    def onboarded(self, world, tmp_path, monkeypatch):
+        from modules.nsot import listref, manifest
+        repo = tmp_path / "repo"
+        (repo / ".nsot").mkdir(parents=True)
+        monkeypatch.setattr(listref, "resolve",
+                            lambda name: types.SimpleNamespace(repo_dir=str(repo)))
+
+        def onboard(address_source="ztp_console", netbox_id=None):
+            manifest.upsert_device(str(repo), manifest.identity_for(device_uid="uid-edge1"),
+                                   "edge1", pending=True, address_source=address_source,
+                                   netbox_id=netbox_id, platform="cisco_ios", role="switch")
+        return onboard
+
+    def _actions(self, client) -> str:
+        return _text(client.get(f"/v2/onboard/edge1/actions?list_name={LIST}"))
+
+    @pytest.mark.parametrize("by", ["netbox_id", "name"])
+    def test_the_card_draws_only_the_refusal(self, world, client, onboarded, by):
+        onboarded(netbox_id=world.dev["id"] if by == "netbox_id" else None)
+        name = "&hostname=edge1" if by == "name" else ""
+        html = _text(client.get(_url(world, f"?list_name={LIST}&step=survey{name}")))
+        assert "Refused:" in html and self.WHY.format(list=LIST) in html, html
+        assert "Preview the survey" not in html and "<form" not in html
+        assert world.server.accepted == 0
+
+    @pytest.mark.parametrize("path,step", [("/survey/preview", "survey"),
+                                           ("/kickstart/preview", "kickstart")])
+    def test_each_preview_refuses_it(self, world, client, onboarded, path, step):
+        onboarded(netbox_id=world.dev["id"])
+        r = client.post(_url(world, path), data={"list_name": LIST, "step": step,
+                                                 "profile": "cisco_ios_switch",
+                                                 "hostname": "edge1"})
+        html = _text(r)
+        assert r.status_code == 409 and self.WHY.format(list=LIST) in html, html
+        assert 'name="hash"' not in html and world.server.accepted == 0
+
+    @pytest.mark.parametrize("path,step", [("/survey", "survey"), ("/kickstart", "kickstart")])
+    def test_each_confirm_refuses_it_and_sends_nothing(self, world, client, person, onboarded,
+                                                       path, step):
+        onboarded(netbox_id=world.dev["id"])
+        r = client.post(_url(world, path), data={"list_name": LIST, "step": step,
+                                                 "profile": "cisco_ios_switch",
+                                                 "hostname": "edge1", "hash": "0" * 64})
+        html = _text(r)
+        assert r.status_code == 409 and self.WHY.format(list=LIST) in html, html
+        assert "Nothing was sent." in html and world.server.accepted == 0
+
+    def test_a_device_onboarded_by_ztp_is_still_offered_the_survey(self, world, client,
+                                                                   onboarded):
+        onboarded(address_source="ztp", netbox_id=world.dev["id"])
+        html = _text(client.get(_url(world, f"?list_name={LIST}&step=survey&hostname=edge1"
+                                            "&profile=cisco_ios_switch")))
+        assert "Refused:" not in html and "Preview the survey" in html
+
+    def test_its_page_names_its_run_and_offers_neither(self, world, client, onboarded,
+                                                      monkeypatch):
+        from modules.nsot import oob_onboard as O
+        onboarded(netbox_id=world.dev["id"])
+        world.survey(greeting=PNP, answers=blank_answers())     # a survey recorded before
+        monkeypatch.setattr(O, "latest_run", lambda l, h: {
+            "id": "r1", "outcome": "done", "started_at": "2026-10-23T23:53:23Z",
+            "finished_at": "2026-10-23T23:56:17Z"} if (l, h) == (LIST, "edge1") else None)
+        html = self._actions(client)
+        assert "Onboarded out of band: its console run" in html, html
+        assert "onboarded, answering: ready to Verify" in html
+        assert re.search(r'href="/v2/[^"]*run\?list=' + LIST + r'&amp;device=edge1"', html), html
+        for offer in ("Kick-start edge1", "Survey edge1", "/v2/onboard/console/"):
+            assert offer not in html, offer
+
+    def test_its_page_says_when_no_run_is_recorded_or_its_runs_cannot_be_read(
+            self, world, client, onboarded, monkeypatch):
+        from modules.nsot import oob_onboard as O
+        onboarded()
+        monkeypatch.setattr(O, "latest_run", lambda l, h: None)
+        assert f"no console run of edge1 is recorded in {LIST}" in self._actions(client)
+
+        def broken(l, h):
+            raise OSError("the run records are unreadable")
+
+        monkeypatch.setattr(O, "latest_run", broken)
+        assert ("its console run could not be read: OSError: the run records are unreadable"
+                in self._actions(client))
+
+
 def _steps(html: str) -> list:
     """THE stepper's steps as drawn: ``[(key, state), ...]`` in order."""
     return [(k, s) for s, k in re.findall(

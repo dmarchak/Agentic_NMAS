@@ -9,8 +9,12 @@ the page, each drawn on the fake console's run), not from shots: no shot test is
 this page yet (its first real run on the lab is its walk). There is no phone board; the card is
 the console card's layout (`op-card`, `op-part`), which reflows at phone width.
 Compared 2026-10-23.
-Templates compared: templates/v2/oob_run.html, templates/v2/_oob_onboard.html
-Templates sha256: `3b0eccc8c9b6c41943916f13ceae2586b712badc08dc4dd5f1733d9b8f61b4be`
+Templates compared: templates/v2/oob_run.html, templates/v2/_oob_onboard.html, templates/v2/_oob_outcome.html
+Templates sha256: `1c87a0edd99f4094e81768e178bb9bd50c3d77c688f5546d7c97b525ead103f1`
+Hash rewritten 2026-10-24 (C1642, the overnight run): the result chip's words and level moved,
+unchanged, from `_oob_onboard.html` into `_oob_outcome.html` (now compared here too), so a
+pending device's page draws the same words; no drawn text, region or control moved, every
+verdict stands.
 Hash rewritten 2026-10-23 at the Phase B merge: the run page's links name their network as `?list=` (they said `?list_name=`), and the run page's Devices link takes the page's network; no drawn text, region or control moved, every verdict stands.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or

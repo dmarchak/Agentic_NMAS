@@ -1,4 +1,5 @@
-{%- from "v2/_macros.html" import icon, badge, how -%}
+{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{%- from "v2/_oob_outcome.html" import oob_level, oob_chip -%}
 {%- from "v2/_preview_parts.html" import preview_parts, result_parts -%}
 {%- from "v2/_run_stepper.html" import run_stepper -%}
 {%- from "v2/_console_kick.html" import kick_offer -%}
@@ -82,7 +83,22 @@
   {#- C1575 (board F of docs/boards/console-ztp.html): out-of-band ZTP's card, the way back once
       Add device's is closed. A recorded survey offers it at once (no NetBox read); without one,
       a NetBox record onboarding recorded has its console path asked for as the page draws. -#}
-  {%- if console and console.kick %}
+  {#- C1642, C1643: a device onboarded out-of-band is offered neither the survey nor the
+      kick-start: its console was its one-decision run's, and the part says how that run ended,
+      its stepper and record on the run's own page. -#}
+  {%- if console and console.oob %}
+  {%- set o = console.oob %}
+  <div class="ob-console" id="ob-console">
+    <h3 class="set-label">Console</h3>
+    {%- if o.state == 'read' %}
+    <p class="small">Onboarded out of band: its console run {{ badge(oob_chip(o.outcome) | trim, oob_level(o.outcome) | trim) }} {{ stamp(o.at) }}. <a href="{{ url_for('oob_onboard_v2.run_page', list=console.list_name, device=console.hostname) }}">Open its console run's page</a> for its steps and record.</p>
+    {%- elif o.state == 'none' %}
+    <p class="muted small">Onboarded out of band; no console run of {{ console.hostname }} is recorded in {{ console.list_name }}.</p>
+    {%- else %}
+    <p class="muted small">Onboarded out of band; its console run could not be read: {{ o.why }}.</p>
+    {%- endif %}
+  </div>
+  {%- elif console and console.kick %}
   {{ kick_offer(console.kick) }}
   {%- elif console and console.netbox_id %}
   <div class="ob-console" id="ob-console" aria-busy="true" hx-get="{{ url_for('console_ztp_v2.offer_view', list_name=console.list_name, netbox_id=console.netbox_id, hostname=console.hostname, platform=console.platform, role=console.role, pending='1', list=console.list_name) }}" hx-trigger="load" hx-swap="outerHTML">

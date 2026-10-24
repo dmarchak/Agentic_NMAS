@@ -211,4 +211,7 @@ Abandon) is that device's, never this one's, and stays in History.
   for the device's console path as it draws and offers **Survey <device>'s console…** when it
   has one, and draws nothing when it has none. A survey or kick-start draws its steps on the one
   stepper from the moment you confirm, each filled as it runs. See [Out-of-band ZTP: through
-  the console](onboard#out-of-band-ztp).
+  the console](onboard#out-of-band-ztp). A device onboarded by the one-decision out-of-band
+  run (Address from: Out-of-band (console)) is offered neither: its console was its run's, so
+  **Console** says how its newest console run ended, and when, with **Open its console run's
+  page** for its steps and record; its progress says the run sets it up, never "boot it".

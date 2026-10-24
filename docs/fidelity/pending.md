@@ -31,9 +31,26 @@ operator's walk W4 (2026-10-17, steps 40 to 42) captured the page of the device 
 its Verify preview and its result (screenshots 60 and 61), read beside the shots: the same
 regions.
 Compared 2026-10-18.
-Templates compared: templates/v2/pending.html, templates/v2/_pending_progress.html, templates/v2/_onboard_pending.html, templates/v2/_pending_gone.html, templates/v2/_console_kick.html
-Templates sha256: `2e89efad4dc8a2b675e8b1386fa63d62c715257139874a763f13f98af1a84a74`
+Templates compared: templates/v2/pending.html, templates/v2/_pending_progress.html, templates/v2/_onboard_pending.html, templates/v2/_pending_gone.html, templates/v2/_console_kick.html, templates/v2/_oob_outcome.html
+Templates sha256: `ec9c7b5a304acc6f63868a2cad3ca6d5582372e11f7a44a2a5e3f85122684351`
 Hash rewritten 2026-10-23 at the Phase B merge: the run page's links name their network as `?list=` (they said `?list_name=`), and the run page's Devices link takes the page's network; no drawn text, region or control moved, every verdict stands.
+
+Compared again 2026-10-24 (C1642, C1643; the overnight run): for a device the one-decision
+out-of-band run onboarded (address source `ztp_console`), the Console part no longer offers the
+standalone survey or kick-start; it names how the device's newest console run ended, the run
+card's own outcome chip (its words moved to `_oob_outcome.html`, which the run card imports
+too) and when, with a link to the run's page for its steps and record ("Open its console run's
+page", the link `_console_kick.html` already draws), or says that no run is recorded, or that
+the runs could not be read. The progress card's Next and Waiting for it say the console run
+sets it up ("When its console run (Console, below) says it is answering, Verify"; "its console
+run types its first-boot lines on its console, copies its bootstrap config and waits for it to
+answer"), the stepper's waiting note the same words (`device_v2.pending_wait`); the identity
+step's board-serial note is drawn for a DHCP or ZTP device only. Compared by the template, not
+a new shot: words in two existing regions, Facts and Where it has got to, and the Console
+row's state for such a device; no region added or moved. Tests: tests/test_console_ztp_v2.py
+`TestAnOutOfBandDeviceHasNoStandaloneConsole`, tests/test_onboard_board_m.py. The Console row's
+verdict stands, its log line extended (Pending: the Onboarding card's Console part, compared
+with its boards).
 
 Compared again 2026-10-23 (board C of `docs/boards/oob-onboarding.html`): the console offer
 (`_console_kick.html`) gains one link under its button, "Open its newest console run's page"
@@ -72,7 +89,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Waiting's sub-states | each from Kea and the responder: reservation missing, reserved no lease, asked not served, leased not fetched, fetched not reached | the stage badge and its words in the facts and on the Waiting line | **same** |
 | Verify's preview | not drawn on OnboardPanel (the sign-off: preview, confirm by fingerprint, in place) | in place of the actions: the summary, What will be sent, the operands, the checks now and at confirm, Verify <device> with its (i) and the confirm's statement; Cancel | **same** |
 | Verify's result | board M: "Verified …", then "Next, its intent." with Deploy its intent…, or where to write it | phase two's nine steps on the one stepper (the failed one red, the rest not reached), the outcome notice, Open <device>'s page; the next step for a first-boot intent is Actions › Seed intent… (compared by the template and `tests/test_onboard_v2.py`) | **deviation** (log: C1188: Verify's result on the pending page, a first-boot intent) |
-| Console (C1575) | not drawn: OnboardPanel and board M have no console; board F of `docs/boards/console-ztp.html` draws it | under the three actions at rest: the recorded survey's offer (the kick-start when it found the device blank, the survey again when not), or, with none, NetBox's console path asked for as the page draws (the survey offered, nothing when no path); the card opens in its place | **deviation** (log: Pending: the Onboarding card's Console part, compared with its boards) |
+| Console (C1575) | not drawn: OnboardPanel and board M have no console; board F of `docs/boards/console-ztp.html` draws it | under the three actions at rest: the recorded survey's offer (the kick-start when it found the device blank, the survey again when not), or, with none, NetBox's console path asked for as the page draws (the survey offered, nothing when no path); the card opens in its place; for a device the one-decision out-of-band run onboarded, neither, but how its newest console run ended and a link to its page (C1642, 2026-10-24) | **deviation** (log: Pending: the Onboarding card's Console part, compared with its boards) |
 | Abandon… | "What does abandon remove?" beside it | the dry run in place: each step "will run" or "would fail", Abandon <device> (danger) bound to it, its (i) and the confirm's statement | **same** |
 | No longer pending | not drawn | the progress card, re-read on `pending`, says "<device> is no longer pending" with a link to its page (compared by the template and `tests/test_onboarding_progress.py`) | **deviation** (log: C1193: board M's pending page, its progress card) |
 | Phone width | no phone board | at 390 the facts wrap, the stepper turns to a list, the actions wrap; nothing past the screen | **same** |

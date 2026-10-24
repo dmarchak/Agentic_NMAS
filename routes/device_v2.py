@@ -215,6 +215,18 @@ def _retired(name):
     return (ref, rec) if rec else None
 
 
+def pending_wait(address_source: str) -> str:
+    """What a pending device waits for, ONE home (the stepper's waiting step and the page's
+    words): a device a person boots, unless the one-decision console run onboarded it, which
+    sets it up itself (C1642)."""
+    from modules.nsot.ztp import ZTP_CONSOLE
+
+    if address_source == ZTP_CONSOLE:
+        return ("its console run types its first-boot lines on its console, copies its "
+                "bootstrap config and waits for it to answer")
+    return "boot it with its bootstrap config"
+
+
 def _pending_facts(ref, p) -> dict:
     """What today's pending banner drew beside a pending device, read the same way: a ZTP
     device's stage (Kea's running configuration, its lease table, the responder's rows) and
@@ -239,7 +251,10 @@ def _pending_facts(ref, p) -> dict:
     from modules.nsot import onboard
     from modules.readers import onboarding_progress as OP
     out.update(_pending_answer(ref, p, (out["ztp"] or {}).get("stage", "")))
-    waits = (out["ztp"] or {}).get("summary") or "boot it with its bootstrap config"
+    # What it waits for when ZTP's progress says nothing, by how it is onboarded (C1642: a device
+    # the one-decision console run onboarded is set up by that run, never booted by a person).
+    out["waits"] = pending_wait(p.get("address_source", ""))
+    waits = (out["ztp"] or {}).get("summary") or out["waits"]
     if out["answer"]["state"] == "answering":
         waits = "answering: ready to Verify"
     out["run"] = run_stepper.at_step(p.get("name", ""), f"{p.get('name', '')} onboarding progress",

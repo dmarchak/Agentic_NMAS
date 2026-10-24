@@ -6,6 +6,10 @@
     and Abandon), never on a timer. From `routes/device_v2._pending_facts`, the page's own read;
     `device_v2.pending_progress` draws it alone. -#}
 {%- set ztp_way = p.address_source == 'ztp' %}
+{#- C1642: a device onboarded out of band was set up by its one-decision console run, so the
+    boot-it and board-serial words (a DHCP or ZTP device's) are not drawn for it. -#}
+{%- set oob_way = p.address_source == 'ztp_console' %}
+{%- set leased = p.address_source in ('dhcp', 'ztp') %}
 <div id="pending-progress" hx-get="{{ url_for('device_v2.pending_progress', name=p.name, list=list_name) }}" hx-trigger="nmas:pending from:body" hx-swap="outerHTML">
 <section class="card pending-card">
   {%- if p.credential_findable == false %}
@@ -26,7 +30,7 @@
     {%- elif runs_error %}
     <div><dt>Last run</dt><dd>its record could not be read: {{ runs_error }}</dd></div>
     {%- endif %}
-    <div><dt>Next</dt><dd>Boot it with its bootstrap config, then Verify: reaching it is the verification, and only then is it rotated, captured and added to the inventory.</dd></div>
+    <div><dt>Next</dt><dd>{% if oob_way %}When its console run (Console, below) says it is answering, Verify{% else %}Boot it with its bootstrap config, then Verify{% endif %}: reaching it is the verification, and only then is it rotated, captured and added to the inventory.</dd></div>
   </dl>
 </section>
 <section class="card ob-where" aria-labelledby="ob-steps-h">
@@ -46,10 +50,10 @@
   {{ run_stepper(run) }}
   <p class="muted small ob-elapsed">Created {{ stamp(p.onboarded_at) }}; the time on Waiting for it counts from then.{% if ztp_way %} The stop rule: no fetch 15 minutes after boot: stop.{% endif %}</p>
   <ul class="ob-steps-say">
-    <li><strong>Identity:</strong> {% if p.mgmt_mac %}by MAC, <span class="mono">{{ p.mgmt_mac }}</span>{% elif p.mgmt_ip %}by its address, <span class="mono">{{ p.mgmt_ip }}</span>{% else %}by its name{% endif %}. <span class="muted">By serial: not offered; a virtual C8000v's board serial changes at every boot (measured).</span></li>
+    <li><strong>Identity:</strong> {% if p.mgmt_mac %}by MAC, <span class="mono">{{ p.mgmt_mac }}</span>{% elif p.mgmt_ip %}by its address, <span class="mono">{{ p.mgmt_ip }}</span>{% else %}by its name{% endif %}.{% if leased %} <span class="muted">By serial: not offered; a virtual C8000v's board serial changes at every boot (measured).</span>{% endif %}</li>
     <li><strong>First-boot config:</strong> the management plane only (hostname, the one-time account, the domain, the address the tool reaches it on, SSH); nothing else is sent at first boot. Get the bootstrap config… below shows it.</li>
     <li><strong>Confirmed</strong> {{ stamp(p.onboarded_at) }}: {% if ztp_way %}reserved in Kea{% if p.mgmt_mac and p.reserved_address %} (<span class="mono">{{ p.mgmt_mac }}</span> → <span class="mono">{{ p.reserved_address }}</span>){% endif %} and served to the device that asks with that MAC{% else %}committed, its one-time credential staged{% endif %}.</li>
-    <li><strong>Waiting for it:</strong> {% if ztp %}{{ badge(ztp.stage | replace('_', ' '), 'warn' if ztp.stage in ('reservation_missing', 'asked_not_served', 'unknown') else 'info') }} {{ ztp.summary }}{% else %}boot it with its bootstrap config{% endif %}.</li>
+    <li><strong>Waiting for it:</strong> {% if ztp %}{{ badge(ztp.stage | replace('_', ' '), 'warn' if ztp.stage in ('reservation_missing', 'asked_not_served', 'unknown') else 'info') }} {{ ztp.summary }}{% else %}{{ waits }}{% endif %}.</li>
     <li><strong>Arrival:</strong> Verify… reaches it with the one-time account, rotates it to its role's credential, records its first golden and adds it to the inventory. Then its intent follows as an ordinary deploy, previewed, confirmed, verified and rolled back on failure.</li>
   </ul>
 </section>

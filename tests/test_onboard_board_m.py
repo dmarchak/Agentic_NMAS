@@ -55,6 +55,30 @@ class TestTheFiveSteps:
         assert "Identity: by its address, 203.0.113.31" in text
         assert "committed, its one-time credential staged" in text
         assert "Waiting for it: boot it with its bootstrap config" in text
+        assert "board serial" not in text, "a serial is a DHCP or ZTP device's question"
+
+    def test_an_out_of_band_device_says_its_console_run_sets_it_up(self, client,  # noqa: F811
+                                                                  monkeypatch):
+        """C1642 (Lab 9's take, 2026-10-23): a device the one-decision console run onboarded
+        drew a ZTP device's words, "boot it with its bootstrap config" and a C8000v's board
+        serial; its console run types its first-boot lines and copies its bootstrap."""
+        monkeypatch.setattr("modules.nsot.manifest.pending_devices", lambda repo: [
+            dict(P.PENDING, address_source="ztp_console")])
+        text = _text(client.get("/v2/device/bp1").get_data(as_text=True))
+        assert ("Waiting for it: its console run types its first-boot lines on its console, "
+                "copies its bootstrap config and waits for it to answer") in text, text
+        assert "Next When its console run (Console, below) says it is answering, Verify" in text
+        for words in ("boot it with its bootstrap config", "Boot it with its bootstrap config",
+                      "board serial"):
+            assert words not in text, words
+
+    def test_a_ztp_device_keeps_its_serial_note(self, client, monkeypatch):  # noqa: F811
+        monkeypatch.setattr("modules.nsot.manifest.pending_devices", lambda repo: [
+            dict(P.PENDING, address_source="ztp", mgmt_ip="", mgmt_mac="aa:bb:cc:00:02:60")])
+        monkeypatch.setattr("modules.nsot.ztp.progress", lambda entry, **_k: {
+            "stage": "leased_not_fetched", "summary": "leased; it has not asked yet"})
+        text = _text(client.get("/v2/device/bp1").get_data(as_text=True))
+        assert "a virtual C8000v's board serial changes at every boot" in text
 
 
 def _verify(client, monkeypatch, nxt):  # noqa: F811
