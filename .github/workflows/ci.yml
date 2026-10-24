@@ -84,9 +84,9 @@ jobs:
       - name: Install the host's versions, exactly
         timeout-minutes: 2
         run: |
-          python -m pip install --require-hashes --no-deps -r requirements.lock
-          python -m pip install --no-deps -r requirements-ci.txt
-          python -m pip install --no-deps -r requirements-test.txt
+          scripts/nmas-retry python -m pip install --require-hashes --no-deps -r requirements.lock
+          scripts/nmas-retry python -m pip install --no-deps -r requirements-ci.txt
+          scripts/nmas-retry python -m pip install --no-deps -r requirements-test.txt
 
       # Information, not a gate: the facts the lock does NOT pin. The host
       # stamps ext4 times from a 1 ms tick and this runner did not, and a test
@@ -129,9 +129,10 @@ jobs:
         if: steps.promtool-cache.outputs.cache-hit != 'true'
         timeout-minutes: 10
         run: |
+          R="$GITHUB_WORKSPACE/scripts/nmas-retry"   # one retry on failure (C1631)
           d=$(mktemp -d) && cd "$d"
-          sudo apt-get update -qq
-          apt-get download promtool 2>/dev/null || apt-get download prometheus
+          "$R" sudo apt-get update -qq
+          "$R" bash -c 'apt-get download promtool 2>/dev/null || apt-get download prometheus'
           mkdir -p "$HOME/.local/share/nmas-promtool"   # dpkg -x makes only the last folder
           dpkg -x ./*.deb "$HOME/.local/share/nmas-promtool"
 
@@ -163,13 +164,14 @@ jobs:
         if: steps.pg-cache.outputs.cache-hit != 'true'
         timeout-minutes: 10
         run: |
-          sudo apt-get install -y -qq --no-install-recommends postgresql-common
-          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          R="$GITHUB_WORKSPACE/scripts/nmas-retry"   # one retry on failure (C1631)
+          "$R" sudo apt-get install -y -qq --no-install-recommends postgresql-common
+          "$R" sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
           deps=$(apt-cache depends postgresql-18 | sed -n 's/^ *Depends: \(lib[^ <>]*\)$/\1/p' | sort -u)
           debs="$HOME/.cache/nmas-pg-debs" && mkdir -p "$debs/partial"   # apt needs partial/
-          sudo apt-get install -y -qq --no-install-recommends --download-only \
+          "$R" sudo apt-get install -y -qq --no-install-recommends --download-only \
             -o Dir::Cache::archives="$debs" libpq5 $deps
-          cd "$debs" && apt-get download postgresql-18
+          cd "$debs" && "$R" apt-get download postgresql-18
           sudo rm -rf "$debs/partial" "$debs/lock" && sudo chown -R "$(id -u)" "$debs"
 
       - name: PostgreSQL 18 for the records tests, from PGDG (libpq5 installed; the server unpacked)
@@ -216,9 +218,12 @@ jobs:
         run: >
           scripts/nmas-test -q -p no:cacheprovider -n auto
           --cov=modules --cov=routes --cov=app --cov-report=
+          --junitxml=junit-${{ matrix.shard }}.xml
           $(python scripts/nmas-shards ${{ matrix.shard }})
 
-      # Kept when a test failed too: the coverage job reports on a red run as well.
+      # Kept when a test failed too: the coverage job reports on a red run as well. The JUnit
+      # file is each test's runner seconds, which tests/shard_weights.json is measured from
+      # (scripts/nmas-shard-weights, C1637).
       - name: Keep this shard's measurement for the coverage job
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -227,6 +232,7 @@ jobs:
           path: |
             .coverage.${{ matrix.shard }}*
             tiers-${{ matrix.shard }}/
+            junit-${{ matrix.shard }}.xml
           include-hidden-files: true
           retention-days: 7
 
@@ -303,8 +309,10 @@ jobs:
         with:
           python-version: "3.12.3"
 
+      # Bounded with one retry (C1631), as the tests' jobs' install.
       - name: Install coverage, as the tests' jobs do
-        run: python -m pip install --no-deps -r requirements-ci.txt
+        timeout-minutes: 2
+        run: scripts/nmas-retry python -m pip install --no-deps -r requirements-ci.txt
 
       - name: The four shards' measurements
         uses: actions/download-artifact@v4
@@ -337,10 +345,11 @@ jobs:
       # repository is public), so this token stays contents: read; "" when it cannot be asked.
       - name: Where the per-test drill-down is
         id: drilldown
+        timeout-minutes: 1
         env:
           REPO: ${{ github.repository }}
         run: |
-          line=$(curl -sf --max-time 20 \
+          line=$(curl -sf --retry 1 --max-time 20 \
             "https://api.github.com/repos/$REPO/actions/workflows/coverage-nightly.yml/runs?status=success&per_page=1" \
             | python -c "import json,sys; r=(json.load(sys.stdin).get('workflow_runs') or [{}])[0]; print(f\"{r['created_at']}, {r['html_url']}\" if r else '')" \
             2>/dev/null || true)

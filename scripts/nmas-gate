@@ -69,7 +69,8 @@ SUITE = ("{py} -c 0 && PYTHON={py} COVERAGE_CORE=sysmon NMAS_COVERAGE_TIERS=1 "
          "COVERAGE_FILE={cov}/.coverage.{shard} NMAS_TEST_TIERS={cov}/tiers "
          "NMAS_TEST_TIMEOUT={bound} NMAS_REQUIRE_PG=1 "
          "scripts/nmas-test -q -p no:cacheprovider -n {n} --cov=modules --cov=routes "
-         "--cov=app --cov-report= -rEfs $({py} scripts/nmas-shards {shard})")
+         "--cov=app --cov-report= --junitxml={cov}/junit-{shard}.xml -rEfs "
+         "$({py} scripts/nmas-shards {shard})")
 #: The four shards run at once, two of them starting a headless browser: each shard's `-n` is
 #: the memory rule's (scripts/nmas-workers, the operator 2026-10-19), never more than CI's
 #: CI_WORKERS, measured before step 4 and said.

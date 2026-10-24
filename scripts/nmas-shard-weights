@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+"""The suite's shard weights from CI's runner (C1637): `nmas-shard-weights RUN_DIR... [--write]`.
+
+Each RUN_DIR holds one CI run's JUnit files (`junit-<shard>.xml`, the `coverage-<shard>`
+artifacts, any depth below it). A file's seconds are the sum of its test cases' times in a run,
+and its weight is the median over the runs that ran it. It prints each shard's load under the
+weights today and under the measured ones (`scripts/nmas-shards`' own placement), so the
+imbalance it removes is named before anything changes. `--write` rewrites
+tests/shard_weights.json: each measured file at its runner seconds; a file no run measured keeps
+its weight, scaled by the runner's seconds over the weights' on the files both know, so the two
+stay comparable (and the note says how many were scaled).
+"""
+
+import argparse
+import datetime
+import importlib.machinery
+import importlib.util
+import json
+import os
+import statistics
+import sys
+import xml.etree.ElementTree as ET
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+WEIGHTS = os.path.join(ROOT, "tests", "shard_weights.json")
+
+
+def _shards():
+    path = os.path.join(ROOT, "scripts", "nmas-shards")
+    loader = importlib.machinery.SourceFileLoader("nmas_shards", path)
+    spec = importlib.util.spec_from_loader("nmas_shards", loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+def test_file(classname: str) -> str:
+    """`tests.test_x.TestY` (or `tests.test_x`) to `tests/test_x.py`; "" when it names none."""
+    parts = classname.split(".")
+    for i, p in enumerate(parts):
+        if p.startswith("test_"):
+            return "/".join(parts[:i + 1]) + ".py"
+    return ""
+
+
+def run_seconds(run_dir: str) -> dict:
+    """``{test file: seconds}`` summed over every JUnit file below *run_dir*."""
+    out = {}
+    for base, _dirs, names in os.walk(run_dir):
+        for n in sorted(names):
+            if not (n.startswith("junit") and n.endswith(".xml")):
+                continue
+            for case in ET.parse(os.path.join(base, n)).iter("testcase"):
+                f = test_file(case.get("classname", ""))
+                if f:
+                    out[f] = out.get(f, 0.0) + float(case.get("time") or 0)
+    return out
+
+
+def measured(run_dirs: list) -> dict:
+    """``{test file: median seconds over the runs that ran it}``."""
+    runs = [run_seconds(d) for d in run_dirs]
+    files = sorted({f for r in runs for f in r})
+    return {f: statistics.median(r[f] for r in runs if f in r) for f in files}
+
+
+def loads(mod, weights: dict) -> dict:
+    """Each shard's seconds when *weights* place the files."""
+    mod.weights = lambda: weights
+    got = mod.assign()
+    return {s: round(sum(weights.get(f, 0) for f in got[s]), 1) for s in mod.SHARDS}
+
+
+def merged(old: dict, new: dict, files: list) -> tuple:
+    """The weights to write, and how many files kept a scaled weight."""
+    both = [f for f in new if f in old and old[f] > 0]
+    scale = (sum(new[f] for f in both) / sum(old[f] for f in both)) if both else 1.0
+    out, scaled = {}, 0
+    for f in files:
+        if f in new:
+            out[f] = round(new[f], 1)
+        elif f in old:
+            out[f], scaled = round(old[f] * scale, 1), scaled + 1
+    return out, scaled
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("runs", nargs="+", help="one folder per CI run, holding its junit-*.xml")
+    ap.add_argument("--write", action="store_true", help="rewrite tests/shard_weights.json")
+    ap.add_argument("--source", default="", help="the runs, for the note (e.g. 'runs #1114-#1116')")
+    a = ap.parse_args(argv)
+    new = measured(a.runs)
+    if not new:
+        sys.stderr.write("nmas-shard-weights: no JUnit test case under " + ", ".join(a.runs) + "\n")
+        return 1
+    mod = _shards()
+    with open(WEIGHTS, encoding="utf-8") as fh:
+        doc = json.load(fh)
+    old = doc["seconds"]
+    files = mod.test_files()
+    out, scaled = merged(old, new, files)
+    before, after = loads(mod, old), loads(mod, out)
+    for name, ld in (("weights today", before), ("measured", after)):
+        print(f"{name:14} " + "  ".join(f"{s} {v}" for s, v in ld.items())
+              + f"  (max/min {max(ld.values()) / min(ld.values()):.2f})")
+    print(f"files measured {len(new)}, kept and scaled {scaled}, of {len(files)}")
+    if a.write:
+        today = datetime.datetime.now(datetime.timezone.utc).date().isoformat()
+        doc["measured"] = (f"{today}, CI's runner (ubuntu-24.04, -n auto), each file's JUnit "
+                           f"seconds, the median over {len(a.runs)} runs"
+                           + (f" ({a.source})" if a.source else "")
+                           + f" (scripts/nmas-shard-weights, C1637); {scaled} files no run "
+                           "measured kept their earlier weight, scaled to the runner's")
+        doc["seconds"] = out
+        with open(WEIGHTS, "w", encoding="utf-8") as fh:
+            json.dump(doc, fh, indent=1, sort_keys=False)
+            fh.write("\n")
+        print(f"wrote {os.path.relpath(WEIGHTS, ROOT)}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

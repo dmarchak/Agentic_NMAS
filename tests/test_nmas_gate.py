@@ -226,6 +226,7 @@ def _ci_suite_args():
     cmd = " ".join(step[:step.index("\n\n")].split())
     # The job's shard of the files is compared on its own (test_each_job_is_a_gate_command).
     cmd = re.sub(r"\$\(python scripts/nmas-shards \$\{\{ matrix\.shard \}\}\)", "", cmd)
+    cmd = cmd.replace("${{ matrix.shard }}", "{shard}")
     env = text[text.index("name: Tests"):text.index("scripts/nmas-test", text.index("name: Tests"))]
     return cmd.split()[1:], dict(re.findall(r"(\w+): \"?([\w.]+)\"?", env.split("env:")[1]))
 
@@ -261,6 +262,11 @@ def test_the_default_suite_is_cis_command():
             assert gate.suite_workers(0)[0] == 1
         elif a.startswith("--cov-report"):
             assert any(s.startswith("--cov-report") for s in suite)
+        elif a.startswith("--junitxml="):
+            # Its value is a path of CI's workspace (C1637): the gate writes the same file,
+            # per shard, in its own folder, as it does COVERAGE_FILE.
+            assert a == "--junitxml=junit-{shard}.xml", a
+            assert "--junitxml={cov}/junit-{shard}.xml" in suite, gate.SUITE
         elif a not in CI_ONLY_ARGS:
             assert a in suite, (a, gate.SUITE)
     for k, v in env.items():

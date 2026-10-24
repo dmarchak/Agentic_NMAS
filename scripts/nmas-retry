@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# One retry for a CI setup command that reaches the network (C1631): run it; if it fails, say so
+# as a GitHub warning naming the command and its exit code, wait NMAS_RETRY_WAIT seconds (15 by
+# default), and run it once more. Its exit code is the second attempt's. A hang is not retried:
+# the step's own timeout-minutes ends it, by name (tests/test_ci_workflow.py holds both).
+#
+#     scripts/nmas-retry <command> [args...]
+set -u
+if [ "$#" -lt 1 ]; then
+    echo "usage: nmas-retry <command> [args...]" >&2
+    exit 2
+fi
+"$@" && exit 0
+first=$?
+wait_s=${NMAS_RETRY_WAIT:-15}
+echo "::warning::nmas-retry: '$*' failed (exit $first); retrying once in ${wait_s} s"
+sleep "$wait_s"
+"$@"
+second=$?
+if [ "$second" -ne 0 ]; then
+    echo "::error::nmas-retry: '$*' failed twice (exit $first, then $second)"
+fi
+exit "$second"

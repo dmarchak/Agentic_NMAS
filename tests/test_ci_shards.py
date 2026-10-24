@@ -63,3 +63,59 @@ def test_the_jobs_share_the_work_and_the_weights_are_current():
 def test_the_same_input_gives_the_same_jobs():
     m = _shards()
     assert m.assign() == m.assign()
+
+
+def _weights_tool():
+    path = os.path.join(ROOT, "scripts", "nmas-shard-weights")
+    loader = importlib.machinery.SourceFileLoader("nmas_shard_weights", path)
+    spec = importlib.util.spec_from_loader("nmas_shard_weights", loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+def _junit(path, cases):
+    body = "".join(f'<testcase classname="{c}" name="t{i}" time="{t}"/>'
+                   for i, (c, t) in enumerate(cases))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f'<?xml version="1.0"?><testsuites><testsuite name="pytest">{body}'
+                    "</testsuite></testsuites>", encoding="utf-8")
+
+
+def test_the_weights_tool_sums_each_file_and_takes_the_median_over_runs(tmp_path):
+    """C1637: a file's seconds are its cases' sum in one run (a class's cases and a module's
+    count alike, across a run's shards), its weight the median over the runs that ran it."""
+    t = _weights_tool()
+    assert t.test_file("tests.test_x.TestY") == "tests/test_x.py"
+    assert t.test_file("tests.test_x") == "tests/test_x.py" and t.test_file("conftest") == ""
+    _junit(tmp_path / "r1" / "coverage-a" / "junit-a.xml",
+           [("tests.test_x.TestY", 1.5), ("tests.test_x", 0.5), ("tests.test_z", 9)])
+    _junit(tmp_path / "r1" / "coverage-b" / "junit-b.xml", [("tests.test_w", 4)])
+    _junit(tmp_path / "r2" / "junit-a.xml", [("tests.test_x.TestY", 6), ("tests.test_w", 2)])
+    _junit(tmp_path / "r3" / "junit-a.xml", [("tests.test_x", 3), ("tests.test_w", 5)])
+    (tmp_path / "r3" / "other.xml").write_text("<not-junit/>", encoding="utf-8")
+    got = t.measured([str(tmp_path / r) for r in ("r1", "r2", "r3")])
+    assert got == {"tests/test_x.py": 3.0, "tests/test_w.py": 4.0, "tests/test_z.py": 9.0}
+
+
+def test_a_file_no_run_measured_keeps_its_weight_scaled_to_the_runner():
+    """The files both know say the runner is twice the weights; a file only the weights know
+    doubles, one only the runner knows is its seconds, one neither knows has none."""
+    t = _weights_tool()
+    out, scaled = t.merged({"a": 10, "b": 20, "old": 5}, {"a": 20, "b": 40, "new": 7},
+                           ["a", "b", "old", "new", "unknown"])
+    assert out == {"a": 20, "b": 40, "old": 10.0, "new": 7} and scaled == 1
+
+
+def test_the_weights_tool_names_both_loads_and_refuses_an_empty_measurement(tmp_path, capsys):
+    t = _weights_tool()
+    m = _shards()
+    files = m.test_files()
+    _junit(tmp_path / "r1" / "junit-a.xml",
+           [(f[:-3].replace("/", "."), 1.0) for f in files])
+    assert t.main([str(tmp_path / "r1")]) == 0
+    said = capsys.readouterr().out
+    assert said.startswith("weights today ") and "\nmeasured " in said, said
+    assert f"files measured {len(files)}, kept and scaled 0, of {len(files)}" in said, said
+    assert t.main([str(tmp_path / "nothing")]) == 1
+    assert "no JUnit test case" in capsys.readouterr().err

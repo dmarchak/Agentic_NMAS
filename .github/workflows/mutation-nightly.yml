@@ -95,10 +95,10 @@ jobs:
       - name: Install the host's versions, CI's tools and mutmut, exactly
         timeout-minutes: 2
         run: |
-          python -m pip install --require-hashes --no-deps -r requirements.lock
-          python -m pip install --no-deps -r requirements-ci.txt
-          python -m pip install --no-deps -r requirements-test.txt
-          python -m pip install --no-deps -r requirements-mutation.txt
+          scripts/nmas-retry python -m pip install --require-hashes --no-deps -r requirements.lock
+          scripts/nmas-retry python -m pip install --no-deps -r requirements-ci.txt
+          scripts/nmas-retry python -m pip install --no-deps -r requirements-test.txt
+          scripts/nmas-retry python -m pip install --no-deps -r requirements-mutation.txt
 
       # The setup ci.yml's tests stand on, step for step (its comments say why each is there):
       # a test that skips here for want of one kills no mutant, and the night would read a
@@ -128,9 +128,10 @@ jobs:
         if: steps.promtool-cache.outputs.cache-hit != 'true'
         timeout-minutes: 10
         run: |
+          R="$GITHUB_WORKSPACE/scripts/nmas-retry"   # one retry on failure (C1631)
           d=$(mktemp -d) && cd "$d"
-          sudo apt-get update -qq
-          apt-get download promtool 2>/dev/null || apt-get download prometheus
+          "$R" sudo apt-get update -qq
+          "$R" bash -c 'apt-get download promtool 2>/dev/null || apt-get download prometheus'
           mkdir -p "$HOME/.local/share/nmas-promtool"   # dpkg -x makes only the last folder
           dpkg -x ./*.deb "$HOME/.local/share/nmas-promtool"
 
@@ -149,13 +150,14 @@ jobs:
         if: steps.pg-cache.outputs.cache-hit != 'true'
         timeout-minutes: 10
         run: |
-          sudo apt-get install -y -qq --no-install-recommends postgresql-common
-          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          R="$GITHUB_WORKSPACE/scripts/nmas-retry"   # one retry on failure (C1631)
+          "$R" sudo apt-get install -y -qq --no-install-recommends postgresql-common
+          "$R" sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
           deps=$(apt-cache depends postgresql-18 | sed -n 's/^ *Depends: \(lib[^ <>]*\)$/\1/p' | sort -u)
           debs="$HOME/.cache/nmas-pg-debs" && mkdir -p "$debs/partial"   # apt needs partial/
-          sudo apt-get install -y -qq --no-install-recommends --download-only \
+          "$R" sudo apt-get install -y -qq --no-install-recommends --download-only \
             -o Dir::Cache::archives="$debs" libpq5 $deps
-          cd "$debs" && apt-get download postgresql-18
+          cd "$debs" && "$R" apt-get download postgresql-18
           sudo rm -rf "$debs/partial" "$debs/lock" && sudo chown -R "$(id -u)" "$debs"
 
       - name: PostgreSQL 18 for the records tests, from PGDG (libpq5 installed; the server unpacked)
@@ -200,7 +202,7 @@ jobs:
         env:
           REPO: ${{ github.repository }}
         run: |
-          curl -sf --max-time 20 \
+          curl -sf --retry 1 --max-time 20 \
             "https://api.github.com/repos/$REPO/actions/workflows/coverage-nightly.yml/runs?status=success&per_page=1" \
             | python -c "import json,sys; r=(json.load(sys.stdin).get('workflow_runs') or [{}])[0]; print(f\"id={r.get('id','')}\nsha={r.get('head_sha','')}\ndate={r.get('created_at','')}\")" \
             >> "$GITHUB_OUTPUT" || echo "no coverage drill-down found: every function refreshed"

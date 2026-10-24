@@ -328,22 +328,33 @@ MIRROR_MINUTES = 10
 #: on CI and both nights) and the drill-down's API read (0 to 1 s). Bounded, not cached: each
 #: bound about 2.5 times its slowest measurement, in whole minutes (C1631).
 FETCH = {"pip install": 2, "curl ": 1}
+#: A command line that reaches the network: each one runs under `scripts/nmas-retry` (one retry
+#: on failure, C1631), or is a `curl` with its own `--retry`.
+NETWORK_COMMAND = re.compile(r"\bapt-get (update|install|download)\b|apt\.postgresql\.org\.sh"
+                             r"|\bpip install\b|\bcurl\b")
+
+
+def unretried(run: str) -> list:
+    """The lines of *run* that reach the network with no retry."""
+    return [ln.strip() for ln in run.splitlines()
+            if NETWORK_COMMAND.search(ln)
+            and "nmas-retry" not in ln and "$R" not in ln
+            and not ("curl" in ln and "--retry" in ln)]
 
 
 def network_gaps(doc, job: str) -> list:
-    """Each setup step of *job* (every step before its tests) that reaches a mirror and is not
-    run only on a cache miss or is not bounded at MIRROR_MINUTES at most, each other network
-    step without its FETCH bound, and each cache step whose miss no downloading step names."""
+    """Each step of *job* that reaches a mirror and is not run only on a cache miss or is not
+    bounded at MIRROR_MINUTES at most, each other network step without its FETCH bound, each
+    network command line with no retry, and each cache step whose miss no downloading step
+    names."""
     steps = doc["jobs"][job]["steps"]
-    at = next((i for i, s in enumerate(steps)
-               if str(s.get("name", "")).startswith("Tests") or s.get("id") == "mutate"),
-              len(steps))
-    caches = {s["id"] for s in steps[:at]
+    caches = {s["id"] for s in steps
               if str(s.get("uses", "")).startswith("actions/cache@") and s.get("id")}
     gaps, guarded = [], set()
-    for s in steps[:at]:
+    for s in steps:
         run, name = s.get("run", ""), s.get("name") or s.get("run", "")[:40]
         minutes = s.get("timeout-minutes")
+        gaps += [f"{name}: '{ln}' reaches the network with no retry" for ln in unretried(run)]
         if MIRROR.search(run):
             hit = [c for c in caches
                    if f"steps.{c}.outputs.cache-hit != 'true'" in str(s.get("if", ""))]
@@ -363,6 +374,8 @@ def network_gaps(doc, job: str) -> list:
 
 SETUP_JOBS = [("ci.yml", "test"), ("coverage-nightly.yml", "test"),
               ("mutation-nightly.yml", "mutate")]
+#: Every job of every workflow, by a scan: the coverage jobs install and ask the API too.
+EVERY_JOB = [(os.path.basename(p), j) for p in WORKFLOWS for j in _load(p)[0].get("jobs", {})]
 
 
 @pytest.mark.parametrize("name,job", SETUP_JOBS)
@@ -371,6 +384,42 @@ def test_every_network_setup_step_is_cached_and_bounded(name, job):
     steps = doc["jobs"][job]["steps"]
     assert len([s for s in steps if MIRROR.search(s.get("run", ""))]) >= 2, "floor"
     assert network_gaps(doc, job) == []
+
+
+@pytest.mark.parametrize("name,job", EVERY_JOB)
+def test_every_job_s_network_steps_are_bounded_and_retried(name, job):
+    doc, _ = _load(os.path.join(ROOT, ".github", "workflows", name))
+    assert network_gaps(doc, job) == []
+
+
+def test_every_job_is_scanned():
+    """The floor: the three workflows' jobs, the four the coverage measurement runs included."""
+    assert len(EVERY_JOB) >= 5 and ("ci.yml", "coverage") in EVERY_JOB, EVERY_JOB
+
+
+def test_the_retry_runs_a_failing_command_once_more_and_names_it(tmp_path):
+    """`scripts/nmas-retry`: a command that fails once then passes ends 0 with one warning; one
+    that fails twice ends with the second exit code and an error naming both; one that passes
+    runs once and prints nothing."""
+    import subprocess
+    import sys
+    retry = os.path.join(ROOT, "scripts", "nmas-retry")
+    count = tmp_path / "count"
+    flaky = (f"{sys.executable} -c \"import pathlib,sys; p=pathlib.Path({str(count)!r}); "
+             "n=int(p.read_text() or 0) if p.exists() else 0; p.write_text(str(n+1)); "
+             "sys.exit(0 if n else 3)\"")
+    env = dict(os.environ, NMAS_RETRY_WAIT="0")
+    got = subprocess.run([retry, "bash", "-c", flaky], capture_output=True, text=True, env=env)
+    assert got.returncode == 0 and count.read_text() == "2", (got.returncode, got.stdout)
+    assert "::warning::nmas-retry:" in got.stdout and "(exit 3)" in got.stdout, got.stdout
+    got = subprocess.run([retry, "bash", "-c", "exit 4"], capture_output=True, text=True, env=env)
+    assert got.returncode == 4 and "failed twice (exit 4, then 4)" in got.stdout, got.stdout
+    count.unlink()
+    got = subprocess.run([retry, "bash", "-c", flaky.replace("0 if n else 3", "0")],
+                         capture_output=True, text=True, env=env)
+    assert (got.returncode, got.stdout, count.read_text()) == (0, "", "1")
+    got = subprocess.run([retry], capture_output=True, text=True, env=env)
+    assert got.returncode == 2 and "usage" in got.stderr
 
 
 def test_a_planted_unbounded_or_uncached_network_step_is_named():
@@ -388,7 +437,10 @@ def test_a_planted_unbounded_or_uncached_network_step_is_named():
     steps.insert(0, {"name": "An idle cache", "id": "idle", "uses": "actions/cache@v4"})
     install = next(s for s in steps if str(s.get("name", "")).startswith("Install"))
     install.pop("timeout-minutes", None)
+    install["run"] += "\npython -m pip install --no-deps -r requirements-extra.txt\n"
     gaps = network_gaps(doc, "test")
+    assert any("requirements-extra.txt' reaches the network with no retry" in g
+               for g in gaps), gaps
     assert any(g.startswith("Install") and "pip install" in g for g in gaps), gaps
     assert any(g.startswith("promtool for") and "every run" in g for g in gaps), gaps
     assert any(g.startswith("PostgreSQL 18's packages") and "26" in g for g in gaps), gaps

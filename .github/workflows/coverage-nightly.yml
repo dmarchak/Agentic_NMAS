@@ -55,9 +55,9 @@ jobs:
       - name: Install the host's versions, exactly
         timeout-minutes: 2
         run: |
-          python -m pip install --require-hashes --no-deps -r requirements.lock
-          python -m pip install --no-deps -r requirements-ci.txt
-          python -m pip install --no-deps -r requirements-test.txt
+          scripts/nmas-retry python -m pip install --require-hashes --no-deps -r requirements.lock
+          scripts/nmas-retry python -m pip install --no-deps -r requirements-ci.txt
+          scripts/nmas-retry python -m pip install --no-deps -r requirements-test.txt
 
       - name: The runner's environment (information, not a gate)
         run: python scripts/nmas-env-facts --annotate || true
@@ -81,9 +81,10 @@ jobs:
         if: steps.promtool-cache.outputs.cache-hit != 'true'
         timeout-minutes: 10
         run: |
+          R="$GITHUB_WORKSPACE/scripts/nmas-retry"   # one retry on failure (C1631)
           d=$(mktemp -d) && cd "$d"
-          sudo apt-get update -qq
-          apt-get download promtool 2>/dev/null || apt-get download prometheus
+          "$R" sudo apt-get update -qq
+          "$R" bash -c 'apt-get download promtool 2>/dev/null || apt-get download prometheus'
           mkdir -p "$HOME/.local/share/nmas-promtool"   # dpkg -x makes only the last folder
           dpkg -x ./*.deb "$HOME/.local/share/nmas-promtool"
 
@@ -102,13 +103,14 @@ jobs:
         if: steps.pg-cache.outputs.cache-hit != 'true'
         timeout-minutes: 10
         run: |
-          sudo apt-get install -y -qq --no-install-recommends postgresql-common
-          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          R="$GITHUB_WORKSPACE/scripts/nmas-retry"   # one retry on failure (C1631)
+          "$R" sudo apt-get install -y -qq --no-install-recommends postgresql-common
+          "$R" sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
           deps=$(apt-cache depends postgresql-18 | sed -n 's/^ *Depends: \(lib[^ <>]*\)$/\1/p' | sort -u)
           debs="$HOME/.cache/nmas-pg-debs" && mkdir -p "$debs/partial"   # apt needs partial/
-          sudo apt-get install -y -qq --no-install-recommends --download-only \
+          "$R" sudo apt-get install -y -qq --no-install-recommends --download-only \
             -o Dir::Cache::archives="$debs" libpq5 $deps
-          cd "$debs" && apt-get download postgresql-18
+          cd "$debs" && "$R" apt-get download postgresql-18
           sudo rm -rf "$debs/partial" "$debs/lock" && sudo chown -R "$(id -u)" "$debs"
 
       - name: PostgreSQL 18 for the records tests, from PGDG (libpq5 installed; the server unpacked)
@@ -177,8 +179,10 @@ jobs:
         with:
           python-version: "3.12.3"
 
+      # Bounded with one retry (C1631), as the tests' jobs' install.
       - name: Install coverage, as the tests' jobs do
-        run: python -m pip install --no-deps -r requirements-ci.txt
+        timeout-minutes: 2
+        run: scripts/nmas-retry python -m pip install --no-deps -r requirements-ci.txt
 
       - name: The four shards' measurements
         uses: actions/download-artifact@v4
