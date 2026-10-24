@@ -33,7 +33,8 @@ URL = f"tftp://{SERVER}/edge1.cfg"
 ERR = f"%Error opening {URL} (Timed out)"
 #: A known secret (`redact_text`'s values) planted where the copy's refusal echoes it: IOS's
 #: ``% Ambiguous command:`` names the copied file's line it refused, whole. Masking is by
-#: whole token (`redact._TOKEN_CHAR`), so the secret stands as a token of its own there.
+#: token (`redact._TOKEN_CHAR`: a letter, a digit or `_` continues one), so the secret stands
+#: as a token of its own there.
 SECRET = "Hush8Token9"
 PLANTED = {SECRET: "planted"}
 AMBIGUOUS = f'% Ambiguous command:  "snmp-server location {SECRET}"'

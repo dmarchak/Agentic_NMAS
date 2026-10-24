@@ -64,6 +64,33 @@ class TestTheBoundaryRedacts:
         out = redact.redact_text("description Str0ngC0mmunityValueExtended\n")
         assert "redacted" not in out
 
+    @pytest.mark.parametrize("before,after", [
+        # (A URL's userinfo is masked whole by POSITION first: tests/test_url_userinfo_masked.py.)
+        ("tftp://192.0.2.10/", ".cfg"),               # a URL's path and a file's name
+        ("flash:/", "/vlan.dat"),                     # a file path
+        ("cfg.", ".bak"),                             # a dotted name
+        ("edge-", "-old"),                            # a hyphenated name
+        ("$9$", "$"),                                 # inside a type-9 hash's fields
+        ("[2001:db8::1]/", "?x=1"),                   # an IPv6 URL's path
+    ], ids=["url-path", "file-path", "dotted", "hyphenated", "dollar", "ipv6-url"])
+    def test_a_secret_inside_a_url_a_path_or_a_dotted_name_is_masked(self, store, before,
+                                                                     after):
+        """C1629: a secret bounded by anything but a letter, a digit or `_` has appeared:
+        the token rule counted `/`, `.`, `-` and `$` as part of a token, so a secret inside a
+        URL's path, a file path or a dotted name stayed in clear."""
+        out = redact.redact_text(f"seen {before}Str0ngC0mmunityValue{after} here\n")
+        assert "Str0ngC0mmunityValue" not in out, out
+        assert f"{before}<redacted:" in out and out.endswith(f"{after} here\n"), out
+
+    @pytest.mark.parametrize("text", ["Str0ngC0mmunityValue9", "xStr0ngC0mmunityValue",
+                                      "Str0ngC0mmunityValue_old", "my_Str0ngC0mmunityValue"],
+                             ids=["digit-after", "letter-before", "underscore-after",
+                                  "underscore-before"])
+    def test_a_secret_that_is_part_of_a_longer_word_is_not_a_match(self, store, text):
+        """The other side of C1629's rule: a letter, a digit or `_` continues the word, so
+        the value is part of another one (`hostvars._TOKEN_CHAR`, the same rule)."""
+        assert "redacted" not in redact.redact_text(f"description {text}\n")
+
     def test_the_longest_secret_wins(self, store):
         from modules import credentials
         credentials.set_template_secret("campus:r1:overlap",
@@ -75,7 +102,8 @@ class TestTheBoundaryRedacts:
     def test_the_longest_secret_wins_past_a_character_that_ends_a_token(self, store):
         """Lab 7 (b)'s mutation sample (2026-10-17): `_compile` ordering its alternation
         SHORTEST first (`reverse=False`, or no `reverse`) survived, because the test above
-        extends its secret with `-`, a token character, so the shorter one's whole-token
+        extended its secret with `-`, then a token character (since C1629, 2026-10-24, `-` ends
+        a token, so the test above decides the order too), so the shorter one's whole-token
         lookahead refuses it whatever the order. A secret extended past a character that ends
         a token (`!`, common in passwords) is where the order decides: shortest first masks
         the shared prefix under the wrong label and leaves `!Ext9` of the longer secret in

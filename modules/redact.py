@@ -41,9 +41,13 @@ log = logging.getLogger(__name__)
 #: ``hostvars.MIN_CHECKABLE_SECRET``, which draws the line for the same reason.
 MIN_REDACTABLE = 8
 
-#: A token boundary in config text. Whole-token matching only: a secret that is
-#: a substring of a longer token has not actually appeared.
-_TOKEN_CHAR = r"[A-Za-z0-9_\-\.\$/]"
+#: What continues a token around a secret's value: a letter, a digit or `_` (the rule
+#: `hostvars._TOKEN_CHAR` applies to intent). A secret that is a part of a longer word has not
+#: actually appeared; one bounded by anything else has (C1629): inside a URL's path or
+#: userinfo, a file path, a dotted or hyphenated name (`tftp://host/<secret>.cfg`,
+#: `flash:/<secret>/`, `cfg.<secret>.bak`). `-`, `.`, `$` and `/` were token characters
+#: until 2026-10-24, and such a secret stayed in clear.
+_TOKEN_CHAR = r"[A-Za-z0-9_]"
 
 PLACEHOLDER = "<redacted:{label}>"
 

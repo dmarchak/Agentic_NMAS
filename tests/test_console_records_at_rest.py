@@ -47,6 +47,18 @@ from tests.test_oob_onboard import (ADDRESS, FAST as OFAST, FIELDS, MASK, OobWor
 #: A secret the installation holds (``{value: label}``, `redact.redact_text`'s table).
 SECRET = "Pl4ntedS3cretValue"
 VALUES = {SECRET: "enable secret"}
+#: How the secret stands in the device's text (C1629, 2026-10-24): a word of its own (every
+#: case), or inside a longer token, a URL's path, a file path and a dotted name (the second
+#: plant, `test_no_secret_inside_a_longer_token_is_at_rest`). The search is for the bare value
+#: either way.
+FORMS = {"word": "{}", "url": "tftp://192.0.2.10/{}.cfg", "path": "flash:/{}/vlan.dat",
+         "dotted": "cfg.{}.bak"}
+_FORM = {"now": "word"}
+
+
+def planted() -> str:
+    """The secret as tonight's case plants it (`FORMS`)."""
+    return FORMS[_FORM["now"]].format(SECRET)
 PLACEHOLDER = "<redacted:enable secret>"
 
 
@@ -55,14 +67,14 @@ PLACEHOLDER = "<redacted:enable secret>"
 def greeting() -> bytes:
     """s5's PnP release (printed before the wake), the PnP line naming the secret."""
     assert b"(Config Wizard)" in PNP
-    return PNP.replace(b"(Config Wizard)", f"(Config Wizard {SECRET})".encode())
+    return PNP.replace(b"(Config Wizard)", f"(Config Wizard {planted()})".encode())
 
 
 def banner() -> bytes:
     """The wake's answer (s5's evaluation banner and `Switch>`), the banner naming the secret."""
     wake = _real()[0]
     assert b"Cisco in writing." in wake
-    return wake.replace(b"Cisco in writing.", f"Cisco in writing. {SECRET}".encode())
+    return wake.replace(b"Cisco in writing.", f"Cisco in writing. {planted()}".encode())
 
 
 def nvram() -> bytes:
@@ -70,24 +82,24 @@ def nvram() -> bytes:
     secret."""
     text = _real()[2]
     assert b"persistent-data" in text
-    return text.replace(b"persistent-data", SECRET.encode())
+    return text.replace(b"persistent-data", planted().encode())
 
 
 def refusal(line: str, prompt: str) -> bytes:
     """*line*'s echo answered by a refusal naming the secret (tests/test_oob_run_stops.py's)."""
-    return f"{line}\r\n% Bad secret {SECRET} refused\r\n\r\n{prompt}".encode()
+    return f"{line}\r\n% Bad secret {planted()} refused\r\n\r\n{prompt}".encode()
 
 
 def unknown_prompt(line: str) -> bytes:
     """*line*'s echo answered by a question no profile names, carrying the secret (IOS's copy
     question's shape, tests/test_console_ztp_static.py's)."""
-    return f"{line}\r\nAddress or name of remote host [{SECRET}]? ".encode()
+    return f"{line}\r\nAddress or name of remote host [{planted()}]? ".encode()
 
 
 def copy_error() -> str:
     """The copy's transfer failing, IOS's `%Error opening` naming the secret."""
     return (f"Accessing tftp://192.0.2.10/edge1.cfg...\r\n%Error opening "
-            f"tftp://192.0.2.10/edge1.cfg ({SECRET})\r\n")
+            f"tftp://192.0.2.10/edge1.cfg ({planted()})\r\n")
 
 
 # ── the walk ─────────────────────────────────────────────────────────────────────────────
@@ -235,7 +247,7 @@ def survey_read(w):
     summary = _hardware_summary()
     assert b"Processor board ID <serial>" in summary
     got[3] = summary.replace(b"Processor board ID <serial>",
-                             f"Processor board ID {SECRET}".encode())
+                             f"Processor board ID {planted()}".encode())
     rec = survey(w, got)
     assert rec["outcome"] == "surveyed" and rec["blank"] is True, rec["reason"]
     return rec
@@ -299,7 +311,7 @@ def kick_read(w):
     at = read_index(got, "show running-config interface Vlan10")   # the SVI's read-back
     want = f" ip address {ADDRESS} {MASK}".encode()
     assert want in got[at], got[at]
-    got[at] = got[at].replace(want, f" ip address {SECRET} {MASK}".encode())
+    got[at] = got[at].replace(want, f" ip address {planted()} {MASK}".encode())
     rec = kick(w, got)
     assert rec["outcome"] == "readback_differs" and rec["readback_differs"], rec["reason"]
     return rec
@@ -371,7 +383,7 @@ def oob_read(w):
     reads = readback_answers(lines, "edge1#")
     want = f" ip address {ADDRESS} {MASK}".encode()
     (at,) = [i for i, r in enumerate(reads) if want in r]
-    reads[at] = reads[at].replace(want, f" ip address {SECRET} {MASK}".encode())
+    reads[at] = reads[at].replace(want, f" ip address {planted()} {MASK}".encode())
     rec = onboard(w, oob_answers()[:5 + len(lines)] + reads)
     assert rec["outcome"] == "read_back" and rec["read_back"]["differs"], rec["reason"]
     return rec
@@ -428,3 +440,23 @@ def test_no_secret_the_device_printed_is_at_rest(tmp_path, monkeypatch, kind, wh
     # the run's own record (the one History reads) is the run's end, not an earlier write
     stored_rec = Z.get_run(LIST, rec["id"])
     assert stored_rec is not None and stored_rec["outcome"] == rec["outcome"]
+
+
+INSIDE = sorted(f for f in FORMS if f != "word")
+
+
+@pytest.mark.parametrize("form", INSIDE)
+@pytest.mark.parametrize("kind,what", sorted(CASES), ids=[f"{k}-{i}" for k, i in sorted(CASES)])
+def test_no_secret_inside_a_longer_token_is_at_rest(tmp_path, monkeypatch, kind, what, form):
+    """C1629's measurement: every case again with the secret inside a URL's path, a file path
+    or a dotted name, which masking by whole token left in clear until 2026-10-24."""
+    monkeypatch.setitem(_FORM, "now", form)
+    assert SECRET in planted() and planted() != SECRET, "floor: planted inside a token"
+    since = time.time() - 1.0
+    w = (OobWorld if kind == "onboard" else World)(tmp_path, monkeypatch, socket.AF_INET)
+    w.monkeypatch = monkeypatch
+    try:
+        rec = CASES[(kind, what)](w)
+    finally:
+        w.server.close()
+    assert_nothing_at_rest(rec, tmp_path, since, f"{kind}/{what}/{form}")
