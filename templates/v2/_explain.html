@@ -5,7 +5,16 @@
     when no topology went with the pack, why. Drawn as text: nothing in it is followed, and
     nothing runs. -#}
 <div class="explain" id="explain-{{ x.pack_id }}">
-{%- if x.ok %}
+{%- if x.ok and x.answer.outcome == 'no_fault_found' %}
+  {#- No fault found (C1742): what the evidence shows, and each healthy piece checked. -#}
+  {%- set a = x.answer %}
+  {%- set t = x.topology or {} %}
+  <p class="explain-why">{{ badge('no fault found', 'neutral') }} {{ a.rationale }}</p>
+  <p class="muted small explain-checked">Checked {% for c in a.checked %}{% if c.in_pack %}<a class="pack-ref" href="#{{ x.pack_id }}-{{ c.ref }}" data-ref="{{ c.ref }}">{{ c.ref }}</a>{% else %}<code class="topo-ref" data-ref="{{ c.ref }}" title="in the network's topology sent with the pack">{{ c.ref }}</code>{% endif %}{{ ', ' if not loop.last }}{% endfor %}.</p>
+  {%- if a.needs_human %}<p class="small">{{ badge('needs a person', 'warn') }} Something in the pack could not be read.</p>{% endif %}
+  <p class="muted small" title="{{ explain_model }}; ${{ '%.4f' | format(x.cost_usd) }}; recorded as {{ x.call_id }}{% if t.sent %}; sent with the network around {{ t.subject }} in {{ t.network }}: {{ t.devices | length }} devices within {{ t.hops }} hop (model {{ t.version }}), observed {{ t.observed }}{% endif %}">An assessment of the pack, not of the network: only what the pack holds was checked. Nothing was run.</p>
+  {%- if t and not t.sent %}<p class="muted small topo-not-sent">No topology was sent with the pack: {{ t.why }}.</p>{% endif %}
+{%- elif x.ok %}
   {%- set a = x.answer %}
   <p class="explain-why">{{ a.rationale }}</p>
   <ol class="explain-list">

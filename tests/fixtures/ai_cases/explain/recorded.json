@@ -1,9 +1,9 @@
 {
   "task": "explain",
   "model": "claude-sonnet-5-5",
-  "prompt": ["explain", 3],
+  "prompt": ["explain", 4],
   "network": "Default",
-  "about": "P1 Explain's recorded cases (PHASE8_PLAN 13.6 and the sprint's item 9: every Analyst task's cases include healthy baselines that must report nothing wrong, P1 Explain's first). Each case is a replay of a past window (scripts/nmas-pack-replay, the product's own pack as of the alert's time); cases.explain_unready says first whether the pack holds what the case is judged on, then cases.explain_misses judges the answer on structured fields. What only a person can judge in the prose is the case's flag, read on the recording. Not yet recorded: no case holds a pack or an answer.",
+  "about": "P1 Explain's recorded cases (PHASE8_PLAN 13.6 and the sprint's item 9: every Analyst task's cases include healthy baselines that must report nothing wrong, P1 Explain's first). Each case is a replay of a past window (scripts/nmas-pack-replay, the product's own pack as of the alert's time); cases.explain_unready says first whether the pack holds what the case is judged on, then cases.explain_misses judges the answer on structured fields. A healthy baseline passes on Explain's no fault found assessment, citing the healthy evidence it checked (C1742, the operator's ruling of 2026-10-25). What only a person can judge in the prose is the case's flag, read on the recording. Not yet recorded: no case holds a pack or an answer.",
   "cases": [
     {
       "n": 1,
@@ -32,8 +32,10 @@
       "needs": ["health:r1:cpu", "health:r1:heartbeat", "health:r1:scrapes"],
       "quiet": {"failed_scrapes": 0, "max_gap_s": 450, "no_log_text": ["ADJCHG", "UPDOWN"],
                 "why": "none of case 1's symptoms: no failed scrape, no missed heartbeat (450 s is 1.5 beats of syslog_heartbeat_seconds' 300), no adjacency or link change in the device's log lines"},
-      "expect": {"outcome": ["answer", "refuse"], "hypotheses_max": 0, "figures_from_pack": true},
-      "flag": "A person reads the recording: the rationale or why_not says the evidence shows nothing wrong, and names no cause."
+      "expect": {"outcome": ["no_fault_found"], "hypotheses_max": 0,
+                 "checked": [["health:r1:cpu", "health:r1:heartbeat", "health:r1:scrapes", "health:r1:discards"]],
+                 "figures_from_pack": true},
+      "flag": "A person reads the recording: the rationale says what the checked evidence shows and names no cause."
     },
     {
       "n": 3,
@@ -44,8 +46,10 @@
       "needs": ["health:r2:cpu", "health:r2:heartbeat", "health:r2:scrapes", "health:r2:discards"],
       "quiet": {"failed_scrapes": 0, "max_gap_s": 450, "no_log_text": ["ADJCHG", "UPDOWN"],
                 "why": "none of case 1's symptoms: no failed scrape, no missed heartbeat (450 s is 1.5 beats of syslog_heartbeat_seconds' 300), no adjacency or link change in the device's log lines"},
-      "expect": {"outcome": ["answer", "refuse"], "hypotheses_max": 0, "figures_from_pack": true},
-      "flag": "A person reads the recording: the rationale or why_not says the evidence shows nothing wrong, and names no cause."
+      "expect": {"outcome": ["no_fault_found"], "hypotheses_max": 0,
+                 "checked": [["health:r2:discards"]],
+                 "figures_from_pack": true},
+      "flag": "A person reads the recording: the rationale says what the checked evidence shows and names no cause."
     },
     {
       "n": 4,
@@ -56,8 +60,10 @@
       "needs": ["health:s1:cpu", "health:s1:heartbeat", "health:s1:scrapes"],
       "quiet": {"failed_scrapes": 0, "max_gap_s": 450, "no_log_text": ["ADJCHG", "UPDOWN"],
                 "why": "none of case 1's symptoms: no failed scrape, no missed heartbeat (450 s is 1.5 beats of syslog_heartbeat_seconds' 300), no adjacency or link change in the device's log lines"},
-      "expect": {"outcome": ["answer", "refuse"], "hypotheses_max": 0, "figures_from_pack": true},
-      "flag": "A person reads the recording: the rationale or why_not says the evidence shows nothing wrong, and names no cause."
+      "expect": {"outcome": ["no_fault_found"], "hypotheses_max": 0,
+                 "checked": [["health:s1:cpu", "health:s1:heartbeat", "health:s1:scrapes", "health:s1:discards"]],
+                 "figures_from_pack": true},
+      "flag": "A person reads the recording: the rationale says what the checked evidence shows and names no cause."
     }
   ]
 }

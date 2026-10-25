@@ -122,11 +122,17 @@ ever (see [The AI mark](installation-settings#ai-mark)).
    person could run to confirm it (a `show`, `ping` or `traceroute`, as Show commands allows).
    One that cites a reference neither holds (an id of the network the topology sent did not
    include, or a health figure that was withheld, counts as not held), or names a command that
-   is not a read, makes the whole answer "couldn't analyse", and nothing is shown.
+   is not a read, makes the whole answer "couldn't analyse", and nothing is shown. An answer of
+   **no fault found** holds no hypothesis and must cite the evidence it checked, each piece one
+   the pack or the topology holds and one that was read (a section that was unreadable or
+   absent is not healthy evidence); one that does not is "couldn't analyse" too.
 5. `show`: a short rationale, then at most three hypotheses, the most likely first, each with
    the references it cites (a pack piece is a link to it above; a topology id is drawn as text)
    and its confirming read. It is a hypothesis, not a finding: nothing was run. Run the read
-   through **Show commands** to check it.
+   through **Show commands** to check it. Or **no fault found**: what the evidence shows, and
+   each piece it checked, linked. That is an assessment of the pack, not of the network: only
+   what the pack holds was checked, and an alert can fire on a passing blip or a threshold set
+   too low. Explain is told to say so rather than invent a cause.
 
 ## What of the network Explain sends {#topology}
 

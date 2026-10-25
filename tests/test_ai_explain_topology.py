@@ -93,8 +93,8 @@ def test_stable_context_first_and_the_alert_last(topo):
     got = _explain(topo)
     assert got["ok"] is True, got
     body, user, ctx = _sent(topo)
-    assert body["system"][0]["text"] == prompts.load("explain", 3)["text"]
-    assert explain.PROMPT == ("explain", 3)
+    assert body["system"][0]["text"] == prompts.load("explain", 4)["text"]
+    assert explain.PROMPT == ("explain", 4)
     assert _blocks(ctx, "context") == ["network", "pack_format", "topology_format"]
     assert body["system"][-1]["cache_control"] == {"type": "ephemeral"}
     assert _blocks(user, "data") == ["network_topology", "pack", "the_alert"]

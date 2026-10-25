@@ -911,7 +911,7 @@ def _alert_evidence(client, _lab, _mp):
                   "hypotheses": [{"claim": "The device stopped sending heartbeats.",
                                   "evidence_refs": [cite],
                                   "confirm_with": "show logging | include HEARTBEAT"}],
-                  "needs_human": True, "why_not": ""}
+                  "checked": [], "needs_human": True, "why_not": ""}
         allowed = {"ai_hosted": {"by": "operator@example.com", "at": "2026-10-25T05:00:00Z",
                                  "reason": "the walk's planted answer"}, "ai_cap_usd_per_day": 1.5}
         real_get = settings_schema.get_setting
@@ -927,6 +927,13 @@ def _alert_evidence(client, _lab, _mp):
         r = client.post(f"/v2/monitoring/alerts/pack/{pack['id']}/explain",
                         headers={"HX-Request": "true", "Accept": "text/html"})
         assert r.status_code == 200 and "The device stopped sending heartbeats." in \
+            r.get_data(as_text=True)
+        # And no fault found (C1742): what was checked drawn, no hypothesis.
+        answer = {"outcome": "no_fault_found", "rationale": "Every figure of the alert is steady.",
+                  "hypotheses": [], "checked": [cite], "needs_human": False, "why_not": ""}
+        r = client.post(f"/v2/monitoring/alerts/pack/{pack['id']}/explain",
+                        headers={"HX-Request": "true", "Accept": "text/html"})
+        assert r.status_code == 200 and "Every figure of the alert is steady." in \
             r.get_data(as_text=True)
     finally:
         mp.undo()

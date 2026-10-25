@@ -228,6 +228,10 @@ def explain_misses(expect: dict, answer, pack: dict, error: str = "") -> list:
     if "hypotheses_max" in expect and len(hyps) > expect["hypotheses_max"]:
         out.append(f"{len(hyps)} hypotheses, at most {expect['hypotheses_max']} expected "
                    "(a healthy window reports nothing wrong)")
+    checked = set(answer.get("checked") or [])
+    for group in expect.get("checked", ()):
+        if not checked & _refs(pack, group):
+            out.append(f"checked none of {group}")
     cited = {r for h in hyps for r in h.get("evidence_refs") or []}
     for group in expect.get("cites", ()):
         if not cited & _refs(pack, group):

@@ -47,7 +47,7 @@ from modules.ai.schemas import StrictModel, register
 log = logging.getLogger(__name__)
 
 FEATURE = "explain"
-PROMPT = ("explain", 3)
+PROMPT = ("explain", 4)
 #: Prompt v1's request (before the topology, 15.15, and the health figures, C1714): its
 #: sections and its data blocks, kept so a replay can ask both ways (scripts/nmas-pack-replay).
 V1_SECTIONS = ("alert", "device", "history", "intent", "neighbours", "logs")
@@ -70,10 +70,11 @@ STEPS = (
             "Explain: the pack, its health figures for the devices within two hops, and the "
             "topology as data, no tool offered"),
     ("check", "every reference resolves to the pack or to the topology as sent, and every "
-              "confirming read is on the read-only allowlist; one that does not is couldn't "
-              "analyse, and nothing is shown"),
-    ("show", "the hypotheses drawn beside the pack, each reference linked to its piece; "
-             "nothing runs"),
+              "confirming read is on the read-only allowlist; no fault found cites the "
+              "evidence it checked, each piece read; one that does not is couldn't analyse, "
+              "and nothing is shown"),
+    ("show", "the hypotheses drawn beside the pack, or no fault found with what it checked, "
+             "each reference linked to its piece; nothing runs"),
 )
 
 
@@ -96,6 +97,34 @@ class Explanation(StrictModel):
     hypotheses: list[Hypothesis]
     needs_human: bool
     why_not: str
+
+
+class Assessment(str, Enum):
+    """Schema v2's outcome: a cause hypothesised, no fault found in the evidence checked
+    (C1742), or the pack cannot say."""
+    answer = "answer"
+    no_fault_found = "no_fault_found"
+    refuse = "refuse"
+
+
+@register("explain", 2)
+class ExplanationV2(StrictModel):
+    """Shape B with a "no fault found" assessment (the operator's ruling, 2026-10-25, C1742:
+    a tool that cannot say nothing is wrong will always invent something): no hypothesis, and
+    `checked` cites the healthy evidence the model checked, never a free-text guess."""
+    outcome: Assessment
+    rationale: str
+    hypotheses: list[Hypothesis]
+    checked: list[str]
+    needs_human: bool
+    why_not: str
+
+
+#: Each prompt version's answer schema: v1 to v3 were written for `Explanation`, v4 for
+#: `ExplanationV2`, so a replay asking v1 asks it as it was.
+SCHEMA_OF = {1: Explanation, 2: Explanation, 3: Explanation, 4: ExplanationV2}
+#: A checked piece's states that were read (pack_format: only ok and empty are evidence).
+READ_STATES = ("ok", "empty")
 
 
 def vocabulary(sections=None) -> str:
@@ -216,19 +245,40 @@ def context(topo: dict = None) -> dict:
 
 def check(answer: "Explanation", pack: dict, topology_ids=(), sections=None) -> str:
     """"" when every hypothesis cites the pack as sent (*sections*, by default the pack's
-    every section) or the topology sent (*topology_ids*) and names an allowed read, else why
-    not (the first one that does not, named)."""
+    every section) or the topology sent (*topology_ids*) and names an allowed read, and every
+    piece of evidence the answer says it checked (schema v2) is one of them and was read; else
+    why not (the first one that does not, named). No fault found holds no hypothesis and cites
+    at least one piece it checked."""
     from modules import evidence_pack as EP
     from modules import readonly_commands as R
 
-    if answer.outcome is Outcome.refuse:
+    outcome = answer.outcome.value
+    if outcome == "refuse":
+        return ""
+    sent = {"sections": (pack.get("sections") or []) if sections is None else list(sections)}
+    known = set(topology_ids or ())
+    checked = list(getattr(answer, "checked", None) or [])
+    if outcome == "no_fault_found":
+        if answer.hypotheses:
+            return (f"the answer finds no fault yet holds {len(answer.hypotheses)} "
+                    "hypotheses")
+        if not checked:
+            return "the answer finds no fault but cites no evidence it checked"
+    for ref in checked:
+        piece = EP.resolve(sent, ref)
+        if piece is None and ref not in known:
+            return (f"the evidence checked cites {ref[:40]!r}, which is not in the pack"
+                    + (" or the topology sent" if known else "")
+                    + (" as sent" if EP.resolve(pack, ref) is not None else ""))
+        state = (piece or {}).get("state") or "ok"
+        if state not in READ_STATES:
+            return f"the evidence checked cites {ref[:40]!r}, which was not read ({state})"
+    if outcome == "no_fault_found":
         return ""
     if not answer.hypotheses and not answer.needs_human:
         return "the answer holds no hypothesis and does not ask for a person"
     if len(answer.hypotheses) > MAX_HYPOTHESES:
         return f"{len(answer.hypotheses)} hypotheses; at most {MAX_HYPOTHESES} are taken"
-    sent = {"sections": (pack.get("sections") or []) if sections is None else list(sections)}
-    known = set(topology_ids or ())
     for i, h in enumerate(answer.hypotheses, 1):
         if not h.evidence_refs:
             return f"hypothesis {i} cites nothing in the pack"
@@ -287,7 +337,8 @@ def explain_pack(pack: dict, *, actor: str, send=None, today: str = None,
     said = {"sent": topo["sent"], "why": topo["why"], "network": topo["network"],
             "subject": topo["subject"], "hops": HOPS, "version": topo["version"],
             "devices": sorted(topo["reached"]), "observed": topo["observed"]}
-    got = gateway.ask(FEATURE, tuple(prompt), Explanation, data, actor=actor, context=ctx,
+    schema = SCHEMA_OF.get(int(prompt[1]), ExplanationV2)
+    got = gateway.ask(FEATURE, tuple(prompt), schema, data, actor=actor, context=ctx,
                       send=send, today=today)
     if not got["ok"]:
         return dict(got, pack_id=pack_id, topology=said)
@@ -297,14 +348,17 @@ def explain_pack(pack: dict, *, actor: str, send=None, today: str = None,
     if why:
         return dict(base, ok=False, error="couldnt_analyse",
                     detail=f"couldn't analyse: {why}; nothing is shown")
-    if answer.outcome is Outcome.refuse:
+    if answer.outcome.value == "refuse":
         return dict(base, ok=False, error="unanswerable",
                     detail=f"the pack cannot say: {answer.why_not[:200]}")
-    # What is drawn (an answer's outcome is "answer" and its why_not empty by now); the whole
-    # answer is in the call's record. Each citation says where it resolves: a pack piece is a
-    # link to it on the card, a topology id is drawn as text.
+    # What is drawn (an answer or no fault found by now, its why_not empty); the whole answer
+    # is in the call's record. Each citation says where it resolves: a pack piece is a link to
+    # it on the card, a topology id is drawn as text.
     shown = answer.model_dump(mode="json", include={"rationale", "hypotheses", "needs_human"})
+    shown["outcome"] = answer.outcome.value
     for h in shown["hypotheses"]:
         h["cites"] = [{"ref": r, "in_pack": EP.resolve(pack, r) is not None}
                       for r in h.pop("evidence_refs")]
+    shown["checked"] = [{"ref": r, "in_pack": EP.resolve(pack, r) is not None}
+                        for r in getattr(answer, "checked", None) or []]
     return dict(base, ok=True, error="", answer=shown)

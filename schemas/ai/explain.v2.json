@@ -1,0 +1,84 @@
+{
+  "$defs": {
+    "Assessment": {
+      "description": "Schema v2's outcome: a cause hypothesised, no fault found in the evidence checked\n(C1742), or the pack cannot say.",
+      "enum": [
+        "answer",
+        "no_fault_found",
+        "refuse"
+      ],
+      "title": "Assessment",
+      "type": "string"
+    },
+    "Hypothesis": {
+      "additionalProperties": false,
+      "properties": {
+        "claim": {
+          "title": "Claim",
+          "type": "string"
+        },
+        "confirm_with": {
+          "title": "Confirm With",
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "claim",
+        "evidence_refs",
+        "confirm_with"
+      ],
+      "title": "Hypothesis",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Shape B with a \"no fault found\" assessment (the operator's ruling, 2026-10-25, C1742:\na tool that cannot say nothing is wrong will always invent something): no hypothesis, and\n`checked` cites the healthy evidence the model checked, never a free-text guess.",
+  "properties": {
+    "checked": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Checked",
+      "type": "array"
+    },
+    "hypotheses": {
+      "items": {
+        "$ref": "#/$defs/Hypothesis"
+      },
+      "title": "Hypotheses",
+      "type": "array"
+    },
+    "needs_human": {
+      "title": "Needs Human",
+      "type": "boolean"
+    },
+    "outcome": {
+      "$ref": "#/$defs/Assessment"
+    },
+    "rationale": {
+      "title": "Rationale",
+      "type": "string"
+    },
+    "why_not": {
+      "title": "Why Not",
+      "type": "string"
+    }
+  },
+  "required": [
+    "outcome",
+    "rationale",
+    "hypotheses",
+    "checked",
+    "needs_human",
+    "why_not"
+  ],
+  "title": "ExplanationV2",
+  "type": "object"
+}

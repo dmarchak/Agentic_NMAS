@@ -164,18 +164,19 @@ def test_explain_twice_prints_tokens_cost_and_the_answer(replay):
     assert text.count("input_tokens 4000, output_tokens 300, cache_creation_input_tokens 0, "
                       "cache_read_input_tokens 0, cost $") == 2
     assert "== explain.v1: answered and checked" in text
-    assert "== explain.v3: answered and checked" in text
+    assert "== explain.v4: answered and checked" in text
     assert "A configuration change on r1 preceded the errors." in text
-    v1, v3 = (s["body"] for s in replay.sent[-2:])
+    v1, now = (s["body"] for s in replay.sent[-2:])
     import re
     assert re.findall(r'<data name="([^"]+)">', v1["messages"][0]["content"]) == ["alert",
                                                                                "pack"]
     assert '"name":"health"' not in v1["messages"][0]["content"]
-    assert re.findall(r'<data name="([^"]+)">', v3["messages"][0]["content"]) == [
+    assert re.findall(r'<data name="([^"]+)">', now["messages"][0]["content"]) == [
         "network_topology", "pack", "the_alert"]
-    assert '"name":"health"' in v3["messages"][0]["content"]
+    assert '"name":"health"' in now["messages"][0]["content"]
     rows = calls.read()["rows"][:2]
-    assert {r["prompt"] for r in rows} == {"explain.v1", "explain.v3"}
+    assert {r["prompt"] for r in rows} == {"explain.v1", "explain.v4"}
+    assert {r["schema"] for r in rows} == {"explain.v1", "explain.v2"}
 
 
 def test_a_refusal_stops_the_run(replay):
@@ -185,4 +186,4 @@ def test_a_refusal_stops_the_run(replay):
                                        out=lines.append) == 1
     assert lines[0].startswith("== explain.v1: ai_off")
     assert "stopped at ai_off" in lines[-1] and replay.sent == []
-    assert not any("explain.v3" in line for line in lines)
+    assert not any("explain.v4" in line for line in lines)

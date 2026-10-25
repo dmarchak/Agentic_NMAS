@@ -12,8 +12,9 @@ Explain's first; tests/fixtures/ai_cases/explain/recorded.json; modules/ai/cases
   copy with them taken out.
 - The judge, on planted answers against that pack: the honest answer passes; a confident
   "s3 CPU overload" at an invented 96% misses three ways; an invented figure, a hypothesis
-  that ties nothing to the drops, a refusal and no answer each miss; a baseline passes with no
-  hypothesis or a refusal and misses with one.
+  that ties nothing to the drops, a refusal and no answer each miss; a baseline passes on no
+  fault found citing its device's figures (C1742), and misses checking none of them, with a
+  refusal or an empty answer in its place, and with a hypothesis.
 """
 import copy
 import os
@@ -74,7 +75,10 @@ def test_the_set_is_c1547_and_healthy_baselines_on_the_pin():
     baselines = [c for c in SET["cases"] if c["kind"] == "baseline"]
     assert len(baselines) >= 3
     for c in baselines:
+        assert c["expect"]["outcome"] == ["no_fault_found"], c["n"]
         assert c["expect"]["hypotheses_max"] == 0, c["n"]
+        assert all(s.startswith(f"health:{c['replay']['device']}:")
+                   for g in c["expect"]["checked"] for s in g), c["n"]
         assert c["quiet"]["failed_scrapes"] == 0 and c["quiet"]["no_log_text"], c["n"]
         assert any(s.startswith(f"health:{c['replay']['device']}:") for s in c["needs"])
     for c in SET["cases"]:
@@ -181,14 +185,33 @@ def test_a_refusal_and_no_answer_fail_the_incident(ctx):  # noqa: F811
                                 error="couldnt_analyse") == ["no answer: couldnt_analyse"]
 
 
+def _no_fault(pack, checked=("health:r1:cpu", "health:r1:heartbeat")):
+    return {"outcome": "no_fault_found", "rationale": "r1's figures are steady.",
+            "hypotheses": [], "checked": [_ref(pack, s) for s in checked],
+            "needs_human": False, "why_not": ""}
+
+
+def test_a_baseline_passes_on_no_fault_found_citing_what_it_checked(ctx):  # noqa: F811
+    assert cases.explain_misses(BY[2]["expect"], _no_fault(ctx.pack), ctx.pack) == []
+
+
+def test_a_baseline_checking_none_of_its_device_s_figures_fails(ctx):  # noqa: F811
+    got = cases.explain_misses(BY[2]["expect"], _no_fault(ctx.pack, ("health:s3:cpu",)),
+                               ctx.pack)
+    assert got == [f"checked none of {BY[2]['expect']['checked'][0]}"]
+
+
 @pytest.mark.parametrize("outcome", ["answer", "refuse"])
-def test_a_baseline_passes_with_no_hypothesis(ctx, outcome):  # noqa: F811
-    ans = {"outcome": outcome, "rationale": "Every figure is steady; nothing is wrong.",
-           "hypotheses": [], "needs_human": True, "why_not": ""}
-    assert cases.explain_misses(BY[2]["expect"], ans, ctx.pack) == []
+def test_a_baseline_without_the_assessment_fails(ctx, outcome):  # noqa: F811
+    """A refusal, or an answer with nothing in it, is not "nothing is wrong" (C1742)."""
+    ans = {"outcome": outcome, "rationale": "", "hypotheses": [], "checked": [],
+           "needs_human": True, "why_not": "nothing bears on it"}
+    assert cases.explain_misses(BY[2]["expect"], ans, ctx.pack) == [
+        f"outcome {outcome}, expected one of ['no_fault_found']"]
 
 
 def test_a_baseline_with_a_cause_fails(ctx):  # noqa: F811
-    ans = _honest(ctx.pack)
+    ans = dict(_honest(ctx.pack), outcome="no_fault_found",
+               checked=[_ref(ctx.pack, "health:r1:cpu")])
     assert cases.explain_misses(BY[2]["expect"], ans, ctx.pack) == [
         "1 hypotheses, at most 0 expected (a healthy window reports nothing wrong)"]

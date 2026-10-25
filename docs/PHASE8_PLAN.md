@@ -1880,7 +1880,7 @@ change's own tests; the Update button).
 
 **Item 9, added (the operator, 2026-10-25; small).** Every Analyst task's recorded cases
 include healthy baselines that must report nothing wrong, measured for consistency like the
-rest. P1 Explain's come first. **Started 2026-10-25, against prompt v3 (the network context
+rest. P1 Explain's come first. **Started 2026-10-25, against prompt v3, now v4 (the network context
 and the health figures):** `tests/fixtures/ai_cases/explain/recorded.json` holds C1547's
 replay (case 1, the operator's judging rule word for word) and three healthy baselines (the
 same rule on r1, output discards on r2, the error-rate rule on s1, each a quiet window of
@@ -1889,13 +1889,15 @@ same rule on r1, output discards on r2, the error-rate rule on s1, each a quiet 
 evidence measured; a baseline's window shows none of case 1's symptoms, else it is not a
 baseline and fails the check, never the model); `cases.explain_misses` judges the answer on
 structured fields (outcome, needs_human, what is cited and together, the leading hypothesis
-not s3's CPU alone, no percentage the pack does not hold; a baseline no hypothesis at all), and
+not s3's CPU alone, no percentage the pack does not hold; a baseline no fault found, checking its device's
+figures), and
 each case's `flag` names what a person judges in the prose. Not recorded yet: nothing has been
 asked, and the recorder (each case's pack built, asked five times, judged) is the next step.
-Explain has no answer that says nothing is wrong, so a baseline can pass today only by a
-refusal; the operator's ruling (2026-10-25, C1742, built in the sprint): Explain's schema gains
-a "no fault found" assessment citing the healthy evidence it checked (no free-text guess), and
-the baselines pass on that answer, measured like the rest: the roadmap's false-positive check.
+Explain had no answer that says nothing is wrong; the operator's ruling (2026-10-25, C1742,
+built the same day): schema `explain` v2 and prompt v4 add "no fault found", citing the
+healthy evidence it checked (no free-text guess), and the baselines pass on that answer,
+measured like the rest: the roadmap's false-positive check. Prompts v1 to v3 keep schema v1,
+so a replay asks them as they were.
 
 **Decided at the sprint's start (the operator, 2026-10-25, on the agent's estimate):**
 - **Labs first stands:** CSCI 5840's Labs 8 and 9 are submitted (8 on 2026-10-21, 9 on
@@ -2060,6 +2062,14 @@ was 3.59 s and its p95 5.25 s, for $0.0004 a case-run. The rulings:
 
   v6 is measured on the 20 and on the 10, five runs each, reported apart. **The held-out
   consistency is the score that counts for C1724.**
+- **v6 measured (774ee1bf, 2026-10-25 21:1x to 21:2x UTC):**
+  - the 20: 99 of 100 pass, 19 of 20 consistent (95%, at the floor);
+  - the held-out 10: 45 of 50 pass, 8 of 10 consistent (80%, below the floor). This is
+    the score that counts. Case 7's five misses are Mercury's no-match answer, not the
+    model's (C1743).
+  - $0.0516 for the 150 case-runs.
+
+  Not tuned on; no v7 until the operator has seen v6 (C1724).
 - **The offer** is narrowed by a named role's devices as well as by named devices.
 - **Case 15** expects `cpuAvgBusy5`, as measured: s3 and s4 carry no `cpmCPUTotal` series.
 - **Case 13:** the metrics builder gains a `changes` operation (PromQL `changes()` over the
@@ -2173,7 +2183,30 @@ tab alike:**
   - it never invents a figure.
 
   A confident "s3 CPU overload" is a fail. This is P1 Explain's first recorded case, beside
-  item 9's healthy baselines (15.12), in the case file written once 15.15's Explain lands.
+  item 9's healthy baselines (15.12), in `tests/fixtures/ai_cases/explain/recorded.json`.
+- **Measured, 2026-10-25 ~21:2x UTC** (774ee1bf; the pack built as of 08:20:00 with every
+  section read; Claude Sonnet 5.5, no cache read on either call):
+
+  | Call | Input | Cache write | Output | Cost |
+  |---|---|---|---|---|
+  | v1 (the six sections, no topology, no health) | 5,542 | 1,519 | 1,005 | $0.0249 |
+  | v3 (the topology, 7 devices; health for 11 devices within two hops) | 16,283 | 3,711 | 908 | $0.0509 |
+
+  **Judged by the operator's rule, v3 meets two tests, partly meets one and misses two
+  (C1744):**
+  - Met: it invents no figure (every one it states verified in the pack), and it never
+    calls s3's CPU overloaded.
+  - Partly met: it offers the host or hypervisor beneath the devices as "not in the
+    evidence", but its confirming read is a device log read, which cannot show a host's
+    contention (the allowlist offers device reads only; C1722).
+  - Missed: it ties r1's drop to s4, the neighbour the log names, and offers s3's
+    disturbed segment (discards to 23.1/s, a 668 s heartbeat gap) only as a second, hedged
+    hypothesis.
+  - Missed: it never cites s3's own CPU (57.0, peaking at 07:44:25), so it never says the
+    device does not explain itself.
+
+  v1 misses the same two and offers no host hypothesis. The case judge
+  (`cases.explain_misses`) misses both on the same two checks.
 
 ## 16. Industry-readiness roadmap (2026-10-25)
 

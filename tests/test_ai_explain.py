@@ -52,8 +52,13 @@ def world(pack_lab, monkeypatch, tmp_path):
 
     def send(body, key):
         w.sent.append({"bytes": json.dumps(body), "body": body})
+        # As a model answers: in the shape the request's schema asks for, so one planted
+        # answer serves a v1 call (no `checked`) and a v4 call alike (C1742).
+        asked = body["output_config"]["format"]["schema"].get("properties") or {}
+        ans = ({k: v for k, v in w.answer.items() if k in asked}
+               if isinstance(w.answer, dict) and asked else w.answer)
         return A.Reply(status=200, body={"content": [{"type": "text", "text": json.dumps(
-            w.answer) if not isinstance(w.answer, str) else w.answer}],
+            ans) if not isinstance(ans, str) else ans}],
             "stop_reason": "end_turn", "usage": {"input_tokens": 4000, "output_tokens": 300}},
             attempts=1, latency_s=0.9)
     w.send = send
@@ -71,7 +76,7 @@ def _answer(pack, **over):
          "hypotheses": [{"claim": "A configuration change on r1 preceded the errors.",
                          "evidence_refs": [_refs(pack, "logs")[0], "alert"],
                          "confirm_with": "show interfaces | include errors"}],
-         "needs_human": False, "why_not": ""}
+         "checked": [], "needs_human": False, "why_not": ""}
     a.update(over)
     return a
 
@@ -291,6 +296,94 @@ def test_the_schema_is_registered_and_committed():
     assert schemas.REGISTRY[("explain", 1)] is explain.Explanation
     with open(schemas.committed_path("explain", 1), encoding="utf-8") as fh:
         assert fh.read() == schemas.committed_text(explain.Explanation)
+    assert schemas.REGISTRY[("explain", 2)] is explain.ExplanationV2
+    with open(schemas.committed_path("explain", 2), encoding="utf-8") as fh:
+        assert fh.read() == schemas.committed_text(explain.ExplanationV2)
+
+
+def test_each_prompt_asks_for_the_schema_it_was_written_for(world):
+    """v1 to v3 knew no "no fault found" (a replay asks them as they were); v4 does (C1742)."""
+    assert explain.PROMPT == ("explain", 4)
+    assert {v: s.__ai_schema__ for v, s in explain.SCHEMA_OF.items()} == {
+        1: ("explain", 1), 2: ("explain", 1), 3: ("explain", 1), 4: ("explain", 2)}
+    world.answer = {k: v for k, v in _answer(world.pack).items() if k != "checked"}
+    got = explain.explain_pack(world.pack, actor="operator@example.com", send=world.send,
+                               today="2026-10-25", prompt=("explain", 3))
+    assert got["ok"] is True, got
+    assert world.sent[-1]["body"]["output_config"]["format"]["schema"]["properties"][
+        "outcome"]["$ref"] == "#/$defs/Outcome"
+    assert "no_fault_found" not in json.dumps(world.sent[-1]["body"]["output_config"])
+    world.answer = _answer(world.pack)
+    assert _explain(world)["ok"] is True
+    assert "no_fault_found" in json.dumps(world.sent[-1]["body"]["output_config"])
+
+
+# ------------------------------------------------------------ no fault found (C1742)
+
+def _health_or_logs(pack):
+    """Pieces of the pack that were read: its log lines (this world's pack predates nothing:
+    its sections are the builder's)."""
+    return _refs(pack, "logs")[:2]
+
+
+def _no_fault(pack, **over):
+    return _answer(pack, **dict({"outcome": "no_fault_found", "hypotheses": [],
+                                 "rationale": "r1's log lines show nothing wrong.",
+                                 "checked": _health_or_logs(pack)}, **over))
+
+
+def test_no_fault_found_citing_what_it_checked_is_shown(world):
+    world.answer = _no_fault(world.pack)
+    got = _explain(world)
+    assert got["ok"] is True, got
+    assert got["answer"]["outcome"] == "no_fault_found" and got["answer"]["hypotheses"] == []
+    assert [c["ref"] for c in got["answer"]["checked"]] == _health_or_logs(world.pack)
+    assert all(c["in_pack"] for c in got["answer"]["checked"])
+
+
+@pytest.mark.parametrize("over,words", [
+    ({"checked": []}, "finds no fault but cites no evidence it checked"),
+    ({"checked": ["logs:999"]}, "the evidence checked cites 'logs:999', which is not in the pack"),
+    ({"hypotheses": None}, "finds no fault yet holds 1 hypotheses"),
+])
+def test_no_fault_found_the_pack_does_not_bear_out_is_couldnt_analyse(world, over, words):
+    a = _no_fault(world.pack)
+    if over.get("hypotheses", 0) is None:
+        a["hypotheses"] = _answer(world.pack)["hypotheses"]
+    else:
+        a.update(over)
+    world.answer = a
+    got = _explain(world)
+    assert got["ok"] is False and got["error"] == "couldnt_analyse", got
+    assert words in got["detail"] and "answer" not in got
+
+
+def test_evidence_checked_that_was_not_read_is_couldnt_analyse(world):
+    """Healthy evidence is evidence that was read: a section unreadable or absent is not."""
+    import copy
+    pack = copy.deepcopy(world.pack)
+    history = _section(pack, "history")
+    history["state"] = "unreadable"
+    answer = explain.ExplanationV2.model_validate_json(
+        json.dumps(_no_fault(pack, checked=["history"])))
+    assert explain.check(answer, pack) == (
+        "the evidence checked cites 'history', which was not read (unreadable)")
+    history["state"] = "empty"
+    assert explain.check(answer, pack) == "", "empty was read: Loki answered, with nothing"
+
+
+def test_no_fault_found_is_drawn_with_what_it_checked(world):
+    from html import unescape
+    world.answer = _no_fault(world.pack)
+    r = world.lab["client"].post(f"/v2/monitoring/alerts/pack/{world.pack['id']}/explain",
+                                 headers={"HX-Request": "true"})
+    html = unescape(r.get_data(as_text=True))
+    assert r.status_code == 200 and "no fault found" in html
+    assert "r1's log lines show nothing wrong." in html
+    for ref in _health_or_logs(world.pack):
+        assert f'href="#{world.pack["id"]}-{ref}"' in html
+    assert "only what the pack holds was checked" in html and "Nothing was run" in html
+    assert "explain-list" not in html
 
 
 def test_an_explanation_stopped_at_max_tokens_shows_nothing(world):
