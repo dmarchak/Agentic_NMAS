@@ -56,7 +56,11 @@ def test_a_hang_is_named_with_its_line(tmp_path):
     assert out.returncode == 124, (out.returncode, out.stderr[-800:])
     err = out.stderr
     assert "TIMED OUT after 5 s" in err
-    assert "test_probe_bound.py::test_hangs_here" in err, err[-800:]
+    # The report's HEAD names what was running (C1674: CI #1157's failure printed the tail, the
+    # stacks, and the cut hid which test the report named).
+    running = [ln for ln in err.splitlines() if ln.startswith("  ") and "(started " in ln]
+    assert "test_probe_bound.py::test_hangs_here" in err, ("the report named", running,
+                                                           err[:600])
     assert "test_probe_bound.py\", line 7 in test_hangs_here" in err, \
         ("no stack for the hang", err[-1200:])
     assert "test_finished_first" not in err, "a test that finished is not what was running"
