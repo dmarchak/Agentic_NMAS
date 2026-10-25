@@ -410,6 +410,10 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   hand with its reason, never chased with a test.** [tests/test_nmas_mutation.py
   (`TestTheWorkflow`: the weekly schedule and its window guard); tests/test_mutation_canary.py;
   the dispatch rule: not mechanised]
+  **Until Sat 31 Oct (the operator's sprint ruling, 2026-10-25; PHASE8_PLAN 15.12), the
+  irreversible tier's proof is a hand check, not a run: every mutant applied by hand, a
+  must-die canary per function, and a committed log (docs/TIER_HAND_CHECK.md); workflow runs
+  are the weekly measurement only. Stage 10 restores the run bar.** [not mechanised]
 
 ## Module map (compact; full map in docs/ARCHITECTURE.md)
 
