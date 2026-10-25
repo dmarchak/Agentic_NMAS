@@ -91,7 +91,14 @@ back on.
 
 The **AI (hosted)** card holds what Mercury's AI features need to reach a hosted model: the
 **API key** (a secret, typed by a person with **Replace…**, never drawn back), the **Cap per
-call** and **Cap per day** in US dollars, and whether **hosted AI** is allowed. It is off
+day** in US dollars for the installation, and whether **hosted AI** is allowed. Its table,
+read-only, names each task's pinned model (its exact id), the prices its cap uses (input and
+output, cache write and read, US dollars per million tokens, from Anthropic's pricing page,
+with the date they were read; the card says so when they are older than 90 days), and each
+task's **cap per call**: its model's worst case at the task's prompt and answer bounds. A task's
+model never changes at run time; changing it re-runs that task's recorded cases. A Haiku task's
+prompt is held under 100,000 tokens, since over it every rate is five times; a longer one is
+refused, saying so. It is off
 until a person allows it. Every call goes through one gateway, which masks what leaves the
 host, refuses a call over a cap before sending it, and records it under **History › AI calls**
 (the feature, the model, the verdict, the cost, who asked). **Spent today** is the day's total

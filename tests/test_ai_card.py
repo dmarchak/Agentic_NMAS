@@ -69,9 +69,35 @@ def test_the_card_draws_off_by_default(networks, no_send):
     assert "AI (hosted)" in card and "Hosted AI" in card
     assert ">off<" in card and "every call is refused until a person allows hosted AI" in card
     assert "API key" in card and ">not set<" in card
-    assert 'name="ai_cap_usd_per_call"' in card and 'value="0.05"' in card
+    assert 'name="ai_cap_usd_per_call"' not in card, "a call's cap is its task's (retiring)"
     assert 'name="ai_cap_usd_per_day"' in card and 'value="1.5"' in card
     assert "Spent today" in card and "$0.0000" in card and "in 0 calls today" in card
+
+
+def test_the_card_draws_each_task_s_pinned_model_and_prices_read_only(networks, no_send):
+    """The operator, 2026-10-25: task → model (its exact id) → input and output price per
+    million tokens → the page and the date; each task's cap from its pin."""
+    from modules.ai import profiles
+    card = unescape(_card(_page(networks)))
+    for name, t in profiles.TASKS.items():
+        p = profiles.MODELS[t["model"]]["price"]
+        row = re.search(r'<tr data-task="' + name + r'"><td>' + re.escape(t["words"])
+                        + r"</td>(.*?)</tr>", card)
+        assert row, name
+        cells = row.group(1)
+        assert t["model"] in cells and f"${p['input']} / ${p['output']}" in cells, cells
+        assert f"${profiles.cap_per_call(name):.4f}" in cells, cells
+    assert profiles.PRICES_SOURCE in card and f"read {profiles.PRICES_AS_OF}" in card
+    assert "older than" not in card, "fresh prices say no staleness"
+    assert '<input' not in card.split('class="set-prices"')[1].split("</div>")[0], "read-only"
+
+
+def test_the_card_says_when_the_prices_are_older_than_90_days(networks, no_send, monkeypatch):
+    from modules.ai import profiles
+    real = profiles.table
+    monkeypatch.setattr(profiles, "table", lambda today=None: real(today="2027-02-01"))
+    card = unescape(_card(_page(networks)))
+    assert "99 days ago, older than 90; read the page again and update the table" in card
 
 
 def test_replace_stores_the_key_never_draws_it_and_its_test_is_refused_while_off(networks,
@@ -150,18 +176,15 @@ def test_a_test_allowed_and_keyed_is_one_recorded_call_as_the_person(networks, m
     assert "ai_calls" in r.headers.get("X-NMAS-Invalidates", "")
 
 
-def test_the_caps_save_as_numbers_and_refuse_a_word_or_too_much(networks, no_send):
+def test_the_day_cap_saves_as_a_number_and_refuses_a_word_or_too_much(networks, no_send):
     from modules.settings_schema import get_setting
     r, html = _post(networks, "/v2/settings/installation/card/ai/save",
-                    {"ai_cap_usd_per_call": "0.02", "ai_cap_usd_per_day": "0.75",
-                     "loaded": _loaded(networks)})
+                    {"ai_cap_usd_per_day": "0.75", "loaded": _loaded(networks)})
     assert r.status_code == 200 and "Saved</strong>" in _card(html)
-    assert get_setting("ai_cap_usd_per_call") == 0.02 and get_setting("ai_cap_usd_per_day") == 0.75
+    assert get_setting("ai_cap_usd_per_day") == 0.75
     r, html = _post(networks, "/v2/settings/installation/card/ai/save",
-                    {"ai_cap_usd_per_call": "lots", "ai_cap_usd_per_day": "0.75",
-                     "loaded": _loaded(networks)})
+                    {"ai_cap_usd_per_day": "lots", "loaded": _loaded(networks)})
     assert r.status_code == 409 and "is not an amount in US dollars" in html
     r, html = _post(networks, "/v2/settings/installation/card/ai/save",
-                    {"ai_cap_usd_per_call": "0.02", "ai_cap_usd_per_day": "99",
-                     "loaded": _loaded(networks)})
+                    {"ai_cap_usd_per_day": "99", "loaded": _loaded(networks)})
     assert r.status_code == 409 and get_setting("ai_cap_usd_per_day") == 0.75

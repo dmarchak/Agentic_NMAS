@@ -1879,7 +1879,7 @@ change's own tests; the Update button).
 - **Each screen ships with its browser tests and a short manual page;** its board and its
   fidelity record are batched into Saturday.
 
-**An exception, and its expiry (the operator, 2026-10-25 ~08:0x UTC; CLAUDE.md's Working
+**An exception, and its expiry (the operator, 2026-10-25 ~07:2x UTC; CLAUDE.md's Working
 method: an exception names its expiry):**
 - **8.0 deploys before its tier run, with hosted AI off.** The irreversible tier's targeted run
   comes before **Allow** (the first hosted call), not before this deploy: nothing the mask and
@@ -1891,3 +1891,13 @@ method: an exception names its expiry):**
   `schemas/`, so 17 of the gateway's tests could not run in it); its re-run, dispatched once
   C1677's fix lands, replaces it, and is not a third run this week (the operator). It names the
   key's write path too, `installation_settings.replace_secret`, changed in 8.0b.
+- **The final run (the operator, 2026-10-25 ~08:0x UTC: part of #63, not an extra campaign).**
+  #63 finishes; its results stand for every function unchanged since its commit (aea2bb76):
+  `redact_egress`, `egress_payload`, `replace_secret`, and every gateway function the price
+  table's commit did not touch. The final run, on that commit, names only the `modules/ai/`
+  functions its diff changed or added: `gateway.ask`, `caps`, `worst_case_usd` and
+  `prompt_tokens`; `profiles.cost_usd`, `prices_for`, `cap_per_call`, `task`, `profile`,
+  `table`, `prices_age_days` and `cases_off_pin`; `connection.check`.
+  `installation_settings.card` changed too, only to draw the read-only table, and is outside the
+  tier (it writes, stores and masks no secret). **Clean, for Allow:** #63's unchanged functions
+  and the final run's, every survivor killed or ruled by the operator.

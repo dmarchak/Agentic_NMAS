@@ -1255,6 +1255,9 @@ button[data-refused]::after { content: " (" attr(data-refused) ")"; font-weight:
 .set-choice { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .set-choice .seg-btn { cursor: pointer; }
 .set-origin { font-size: 11.5px; color: var(--ink-3); }
+/* The AI card's price table (read-only): scrolls inside the card on a narrow screen. */
+.set-prices { margin-top: 12px; overflow-x: auto; }
+.set-prices .set-origin { display: block; margin-top: 6px; overflow-wrap: anywhere; }
 .set-fields dd .mono { overflow-wrap: anywhere; }
 .set-who { margin: 0; font-size: 13px; }
 .set-names summary { cursor: pointer; font-size: 13px; color: var(--accent); }

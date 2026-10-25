@@ -7,13 +7,19 @@ and every call, sent or refused, is one `ai_calls` row. In order, before anythin
 1. **Hosted AI is allowed** on this installation: the admin's setting `ai_hosted`, with who,
    when and the recorded reason (PHASE8_PLAN 13.1, 15.8). Off by default.
 2. **A key is set** (`anthropic_api_key`, in the secrets store, typed by a person).
-3. **The prompt** is a registered, versioned file; **the schema** a registered StrictModel.
+3. **The task** is one `profiles.TASKS` pins: its model, its prompt bound and its answer
+   bound (the operator's ruling of 2026-10-25: pinned per task, never chosen at run time).
+   **The prompt** is a registered, versioned file; **the schema** a registered StrictModel.
 4. **Masked for egress**: the request built (the prompt as the system text, each part as
    delimited data, never as instructions), then `redact.egress_payload` over all of it; a
    known stored secret still present refuses the call (`unmasked_secret`), naming its label.
-5. **The caps**, judged by the worst case (the input estimated from the masked request's
-   size, plus all of `max_tokens`, at the model's prices): the per-call cap, and the day's
-   spend so far plus this call against the day cap. A refusal names both operands.
+5. **The prompt's length**: the estimate from the masked request's size under the task's
+   bound, which is always under its model's long tier (Haiku 5.5 over 100,000 tokens pays
+   every rate 5x); over it the call is refused (`prompt_too_long`), both numbers named.
+6. **The caps**, judged by the worst case (that estimate as cache writes, plus all of
+   `max_tokens`, at the pinned model's prices): the task's per-call cap (its pinned model's
+   worst case at its bounds, `profiles.cap_per_call`), and the day's spend so far plus this
+   call against the installation's day cap. A refusal names both operands.
 
 Then the adapter sends it; a refusal, a `max_tokens` stop, an answer that is not the schema,
 and each provider failure are each their own kind, never a parser's crash (13.5).
@@ -32,9 +38,9 @@ log = logging.getLogger(__name__)
 #: case is over, never under. The recorded usage replaces it once the call is answered.
 CHARS_PER_TOKEN = 3.0
 
-#: The defaults the schema seeds (modules/settings_schema.py): a call's worst case, and a
-#: day's spend. PHASE8_PLAN 7 caps a month at $50 globally; $1.50 a day is under that.
-DEFAULT_CAP_PER_CALL = 0.05
+#: The default the schema seeds (modules/settings_schema.py): a day's spend for the
+#: installation. PHASE8_PLAN 7 caps a month at $50 globally; $1.50 a day is under that. A
+#: call's cap is its task's (`profiles.cap_per_call`).
 DEFAULT_CAP_PER_DAY = 1.50
 
 
@@ -49,20 +55,16 @@ def hosted_allowed() -> dict:
             "reason": got.get("reason", "")}
 
 
-def caps() -> dict:
-    """The two caps, by their literal keys (a value that is not a number reads as its
-    default)."""
+def caps(feature: str) -> dict:
+    """The task's per-call cap (derived from its pin) and the installation's day cap (its
+    literal key; a value that is not a number reads as its default)."""
     from modules.settings_schema import get_setting
 
-    def num(value, default):
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return default
-    return {"per_call": num(get_setting("ai_cap_usd_per_call", DEFAULT_CAP_PER_CALL),
-                            DEFAULT_CAP_PER_CALL),
-            "per_day": num(get_setting("ai_cap_usd_per_day", DEFAULT_CAP_PER_DAY),
-                           DEFAULT_CAP_PER_DAY)}
+    try:
+        per_day = float(get_setting("ai_cap_usd_per_day", DEFAULT_CAP_PER_DAY))
+    except (TypeError, ValueError):
+        per_day = DEFAULT_CAP_PER_DAY
+    return {"per_call": profiles.cap_per_call(feature), "per_day": per_day}
 
 
 def _api_key() -> str:
@@ -97,13 +99,17 @@ def build_request(prompt: dict, schema_model, parts: dict, model: str, max_token
     }
 
 
+def prompt_tokens(body: dict) -> int:
+    """The masked request's prompt, in tokens, estimated from its size (an over-estimate)."""
+    return int(len(json.dumps(body, ensure_ascii=False)) / CHARS_PER_TOKEN) + 1
+
+
 def worst_case_usd(model: str, body: dict) -> float:
     """The call's cost if nothing is read from the cache: the whole input estimated from the
     masked request's size and priced as a cache write (the dearer of the two), plus all of
     `max_tokens`."""
-    est_in = int(len(json.dumps(body, ensure_ascii=False)) / CHARS_PER_TOKEN) + 1
     return profiles.cost_usd(model, 0, int(body.get("max_tokens", 0)),
-                             cache_write_tokens=est_in)
+                             cache_write_tokens=prompt_tokens(body))
 
 
 def _text_of(reply_body: dict) -> str:
@@ -112,12 +118,14 @@ def _text_of(reply_body: dict) -> str:
 
 
 def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
-        model: str = profiles.DEFAULT_MODEL, max_tokens: int = 1024, context: dict = None,
-        send=None, today: str = None) -> dict:
-    """One schema-bound call (the module's docstring has the order). *context* is the stable
-    prefix every call of the feature shares, cached; *parts* the call's own data, uncached.
-    *send* replaces the adapter (tests); *today* the UTC day the caps count."""
+        context: dict = None, send=None, today: str = None) -> dict:
+    """One schema-bound call of the task *feature* (the module's docstring has the order): its
+    model and bounds are its pin in `profiles.TASKS`, never an argument. *context* is the
+    stable prefix every call of the task shares, cached; *parts* the call's own data,
+    uncached. *send* replaces the adapter (tests); *today* the UTC day the caps count."""
     call_id = calls.new_id()
+    pin = profiles.TASKS.get(feature) or {}
+    model = pin.get("model", "")
     row = {"id": call_id, "feature": feature, "actor": actor, "model": model,
            "prompt": f"{prompt[0]}.v{prompt[1]}", "schema": "", "verdict": "", "detail": "",
            "cost_usd": 0.0}
@@ -134,6 +142,10 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
     key = _api_key()
     if not key:
         return refuse("no_key", "no Anthropic API key is set (Settings: a person types it)")
+    if not pin:
+        return refuse("unknown_task", f"{feature!r} is not a task profiles.TASKS pins; known: "
+                      f"{', '.join(sorted(profiles.TASKS))}")
+    max_tokens = int(pin["max_tokens"])
     try:
         profile = profiles.profile(model)
     except KeyError as exc:
@@ -160,11 +172,18 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
                       f"masking ({', '.join(leaked)}); nothing was sent")
     row["request"] = body
 
-    cap = caps()
+    est = prompt_tokens(body)
+    if est > pin["max_prompt_tokens"]:
+        long_at = profile.get("long_prompt_tokens")
+        return refuse("prompt_too_long", f"this prompt is about {est} tokens, over the task's "
+                      f"bound of {pin['max_prompt_tokens']}"
+                      + (f" ({model} charges every rate at its long tier over {long_at})"
+                         if long_at else "") + "; nothing was sent", prompt_tokens=est)
+    cap = caps(feature)
     worst = worst_case_usd(model, body)
     if worst > cap["per_call"]:
-        return refuse("over_cap", f"this call's worst case ${worst:.4f} is over the per-call "
-                      f"cap ${cap['per_call']:.4f}", worst_usd=worst)
+        return refuse("over_cap", f"this call's worst case ${worst:.4f} is over the "
+                      f"{feature} task's per-call cap ${cap['per_call']:.4f}", worst_usd=worst)
     day = today or time.strftime("%Y-%m-%d", time.gmtime())
     spent = calls.spent_usd(day)
     if spent["state"] == "unreadable":
@@ -187,8 +206,12 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
     cost = profiles.cost_usd(model, tokens["input_tokens"], tokens["output_tokens"],
                              cache_write_tokens=tokens["cache_creation_input_tokens"],
                              cache_read_tokens=tokens["cache_read_input_tokens"])
+    charged = profiles.prices_for(model, tokens["input_tokens"]
+                                  + tokens["cache_creation_input_tokens"]
+                                  + tokens["cache_read_input_tokens"])
     text = _text_of(reply.body)
-    sent = dict(row, cost_usd=cost, tokens=tokens, latency_s=round(reply.latency_s, 3),
+    sent = dict(row, cost_usd=cost, price=charged, tokens=tokens,
+                latency_s=round(reply.latency_s, 3),
                 attempts=reply.attempts, ratelimit=reply.headers,
                 stop_reason=reply.body.get("stop_reason", ""),
                 response=redact.redact_egress(text))

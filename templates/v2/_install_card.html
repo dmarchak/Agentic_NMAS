@@ -102,6 +102,19 @@
       {%- if s.note %}<span class="muted small">{{ s.note }}</span>{% endif %}
     </div>
   </form>
+  {%- if k.prices %}
+  {#- Read-only (the operator, 2026-10-25): each task's pinned model and the prices its cap
+      uses, from Anthropic's pricing page, with the page and its date. -#}
+  {%- set pt = k.prices %}
+  <div class="set-prices">
+    <table class="table set-table" aria-label="Each task's pinned model and the prices its cap uses"><thead><tr><th scope="col">Task</th><th scope="col">Model</th><th scope="col">Input / output</th><th scope="col">Cache write / read</th><th scope="col">Cap per call</th></tr></thead><tbody>
+    {%- for r in pt.rows %}
+      <tr data-task="{{ r.task }}"><td>{{ r.words }}</td><td class="mono" title="{{ r.model_words }}{% if r.long_prompt_tokens %}: every rate 5x for a prompt over {{ r.long_prompt_tokens }} tokens; this task's prompts are held under {{ r.max_prompt_tokens }}{% endif %}">{{ r.model }}</td><td class="mono">${{ r.price.input }} / ${{ r.price.output }}</td><td class="mono">${{ r.price.cache_write }} / ${{ r.price.cache_read }}</td><td class="mono" title="the worst case at {{ r.max_prompt_tokens }} prompt tokens and {{ r.max_tokens }} answer tokens">${{ '%.4f' % r.cap_usd }}</td></tr>
+    {%- endfor %}
+    </tbody></table>
+    <span class="set-origin">US dollars per million tokens, from Anthropic's pricing page (<span class="mono">{{ pt.source }}</span>), read {{ pt.as_of }}{% if pt.stale %}: <strong>{{ pt.age_days }} days ago, older than {{ pt.stale_days }}; read the page again and update the table</strong>{% endif %}. Each task's model is pinned; changing one re-runs its recorded cases.</span>
+  </div>
+  {%- endif %}
   {%- if k.hosted and not k.hosted.allowed %}
   {#- Allow is its own form: the reason is its control, never the Save's. -#}
   <form class="set-form" id="form-ai-allow" method="post" action="{{ url_for('settings_v2.install_ai_allow') }}"

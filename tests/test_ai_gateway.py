@@ -133,7 +133,7 @@ def world(monkeypatch):
     """Hosted AI allowed, a key set, default caps; a fake `send` that keeps what it got."""
     settings = {"ai_hosted": {"by": "operator@example.com", "at": "2026-10-25T05:00:00Z",
                               "reason": "the lab's proof of concept"},
-                "ai_cap_usd_per_call": 0.05, "ai_cap_usd_per_day": 1.50}
+                "ai_cap_usd_per_day": 1.50}
     from modules import settings_schema
     monkeypatch.setattr(settings_schema, "get_setting",
                         lambda k, d=None: settings.get(k, d))
@@ -318,20 +318,103 @@ def test_a_stored_secret_left_after_masking_refuses_and_sends_nothing(world, mon
     assert "default:password" in got["detail"] and "plantedStored99" not in got["detail"]
 
 
-def test_the_per_call_cap_names_both_operands(world):
-    got = _ask(world, max_tokens=200_000)
+def test_the_task_s_per_call_cap_names_both_operands(world, monkeypatch):
+    """The cap is the task's, derived from its pin; a call over it (here the cap planted
+    below the call's worst case) is refused, both named."""
+    monkeypatch.setattr(profiles, "cap_per_call", lambda name: 0.0000001)
+    got = _ask(world)
     assert got["error"] == "over_cap" and world.sent == []
-    assert "worst case $" in got["detail"] and "per-call cap $0.0500" in got["detail"]
+    assert "worst case $" in got["detail"]
+    assert "connection_check task's per-call cap $0.0000" in got["detail"]
+
+
+def test_each_task_s_cap_is_its_pinned_model_s_worst_case_at_its_bounds():
+    for name, t in profiles.TASKS.items():
+        assert profiles.cap_per_call(name) == pytest.approx(profiles.cost_usd(
+            t["model"], 0, t["max_tokens"], cache_write_tokens=t["max_prompt_tokens"]))
+    assert profiles.cap_per_call("intent_patch") > 0.05, \
+        "a single $0.05 cap would have refused feature 7 on Sonnet (the operator's ruling)"
+
+
+def test_a_prompt_over_the_task_s_bound_is_refused_and_says_the_long_tier(world):
+    bound = profiles.TASKS["connection_check"]["max_prompt_tokens"]
+    got = _ask(world, parts={"word": "w", "pack": "x" * int(bound * 4)})
+    assert got["error"] == "prompt_too_long" and world.sent == []
+    assert f"over the task's bound of {bound}" in got["detail"]
+    assert "claude-haiku-5-5 charges every rate at its long tier over 100000" in got["detail"]
+
+
+def test_every_haiku_task_s_prompt_bound_is_under_its_long_tier():
+    for name, t in profiles.TASKS.items():
+        long_at = profiles.profile(t["model"]).get("long_prompt_tokens")
+        if long_at:
+            assert t["max_prompt_tokens"] < long_at, name
+
+
+def test_a_task_no_pin_names_is_refused(world):
+    got = gateway.ask("not_a_task", ("ping", 1), connection.Ping, {"word": "w"}, actor="a",
+                      send=world.send, today="2026-10-25")
+    assert got["error"] == "unknown_task" and world.sent == [] and "connection_check" in got["detail"]
+
+
+def test_the_call_is_the_pinned_model_and_its_row_the_prices_it_was_charged(world):
+    world.answer = _answer('{"echo": "w"}', usage={"input_tokens": 200, "output_tokens": 9})
+    _ask(world)
+    assert world.sent[0]["body"]["model"] == profiles.TASKS["connection_check"]["model"]
+    assert world.sent[0]["body"]["max_tokens"] == profiles.TASKS["connection_check"]["max_tokens"]
+    row = _rows()[0]
+    assert row["model"] == "claude-haiku-5-5"
+    assert row["price"] == {"input": 0.10, "cache_write": 0.125, "cache_read": 0.01,
+                            "output": 0.50, "tier": "base", "as_of": profiles.PRICES_AS_OF,
+                            "source": profiles.PRICES_SOURCE}
+
+
+RECORDED = "tests/fixtures/ai"
+
+
+def test_every_recorded_case_was_recorded_on_its_task_s_pinned_model(tmp_path):
+    """A task's model is changed only with its recorded cases recorded again: a case whose
+    model is not its task's pin fails here. Planted: a case on the old model, and one of a
+    task no pin names, each found; one on the pin is not."""
+    assert profiles.cases_off_pin(RECORDED) == [], "re-record the task's cases on its pin"
+    (tmp_path / "nl_query").mkdir()
+    (tmp_path / "nl_query" / "a.json").write_text(json.dumps({"model": "claude-sonnet-5-5"}))
+    (tmp_path / "nl_query" / "b.json").write_text(json.dumps({"model": "claude-haiku-5-5"}))
+    (tmp_path / "gone").mkdir()
+    (tmp_path / "gone" / "c.json").write_text(json.dumps({"model": "claude-haiku-5-5"}))
+    got = [(p.rsplit("/", 2)[-2:], r, pin) for p, r, pin in profiles.cases_off_pin(str(tmp_path))]
+    assert got == [(["gone", "c.json"], "claude-haiku-5-5", ""),
+                   (["nl_query", "a.json"], "claude-sonnet-5-5", "claude-haiku-5-5")]
+
+
+def test_the_prices_are_the_pricing_page_s_and_the_table_says_when_they_are_stale():
+    """Read 2026-10-25 from Anthropic's pricing page: Sonnet 5.5's cache reads are 0.05x its
+    input rate (C1679), Haiku 5.5's 0.1x, and Haiku's long tier 5x every rate."""
+    assert profiles.MODELS["claude-sonnet-5-5"]["price"] == {
+        "input": 2.00, "cache_write": 2.50, "cache_read": 0.10, "output": 10.00}
+    haiku = profiles.MODELS["claude-haiku-5-5"]
+    assert haiku["price"] == {"input": 0.10, "cache_write": 0.125, "cache_read": 0.01,
+                              "output": 0.50}
+    assert {k: v / haiku["price"][k] for k, v in haiku["long_price"].items()} == pytest.approx(
+        {"input": 5, "cache_write": 5, "cache_read": 5, "output": 5})
+    fresh = profiles.table(today="2026-11-01")
+    assert fresh["stale"] is False and fresh["source"].startswith("https://platform.claude.com/")
+    assert {r["task"] for r in fresh["rows"]} == set(profiles.TASKS)
+    old = profiles.table(today="2027-01-24")
+    assert old["stale"] is True and old["age_days"] == 91
 
 
 def test_the_day_cap_counts_what_today_spent(world):
     calls.record({"id": "ai-old", "at": "2026-10-25T01:00:00Z", "verdict": "ok",
                   "cost_usd": 1.4999})
+    # The day's room, $0.0001, under this call's worst case (a Test's: about $0.00007 at
+    # 64 answer tokens, so the room is made smaller than that by the cap, not the spend).
+    world.settings["ai_cap_usd_per_day"] = 1.49995
     calls.record({"id": "ai-yday", "at": "2026-10-24T23:00:00Z", "verdict": "ok",
                   "cost_usd": 9.0})
     got = _ask(world)
     assert got["error"] == "over_cap" and world.sent == []
-    assert "today's spend $1.4999" in got["detail"] and "day cap $1.5000" in got["detail"]
+    assert "today's spend $1.4999" in got["detail"] and "day cap $1.4999" in got["detail"]
 
 
 def test_an_unreadable_record_refuses_rather_than_count_nothing(world, monkeypatch):
@@ -344,7 +427,7 @@ def test_an_unreadable_record_refuses_rather_than_count_nothing(world, monkeypat
 def test_an_unregistered_schema_is_refused(world):
     class Loose(schemas.StrictModel):
         x: str
-    got = gateway.ask("f", ("ping", 1), Loose, {}, actor="a", send=world.send,
+    got = gateway.ask("connection_check", ("ping", 1), Loose, {}, actor="a", send=world.send,
                       today="2026-10-25")
     assert got["error"] == "schema" and world.sent == []
 

@@ -24,8 +24,8 @@ def check(*, actor: str, send=None, today: str = None) -> dict:
     """``{"ok", "detail", "call_id", ...}``: the gateway's answer to one ping, its word
     compared with the one sent."""
     word = "mercury-" + secrets.token_hex(4)
-    got = gateway.ask(FEATURE, PROMPT, Ping, {"word": word}, actor=actor, max_tokens=64,
-                      send=send, today=today)
+    got = gateway.ask(FEATURE, PROMPT, Ping, {"word": word}, actor=actor, send=send,
+                      today=today)
     if not got["ok"]:
         return got
     if got["output"].echo != word:

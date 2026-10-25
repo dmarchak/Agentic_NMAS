@@ -350,10 +350,9 @@ CARDS = {
     # reader's minute probe: `test` here, not `integration`).
     "ai": {
         "group": "ai_gateway", "title": "AI (hosted)", "tab": "connections",
-        "fields": (_f("ai_cap_usd_per_call", "Cap per call", "usd",
-                      "a call's worst case, refused before it is sent"),
-                   _f("ai_cap_usd_per_day", "Cap per day", "usd",
-                      "today's spend plus a call's worst case, refused before it is sent")),
+        "fields": (_f("ai_cap_usd_per_day", "Cap per day", "usd",
+                      "today's spend plus a call's worst case, refused before it is sent; "
+                      "each call's own cap is its task's, below"),),
         "secret": ("anthropic_api_key", "API key"), "secret_at": 0, "with_id": None,
         "integration": None, "test": "ai",
         "note": "Test sends one small call to the model, through the mask and the caps, and "
@@ -443,8 +442,9 @@ def card(name: str, ai_state: bool = True) -> dict:
     if name == "netbox":
         out["writes"] = _writes_state()
     if spec.get("test") == "ai" and ai_state:
-        from modules.ai import calls, gateway
+        from modules.ai import calls, gateway, profiles
         out["hosted"] = gateway.hosted_allowed()
+        out["prices"] = profiles.table()
         out["spent"] = calls.spent_usd(time.strftime("%Y-%m-%d", time.gmtime()))
         out["reason_bounds"] = (AI_REASON_MIN, AI_REASON_MAX)
     return out

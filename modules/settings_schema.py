@@ -137,6 +137,8 @@ DEFAULTS: dict = {
     # a day's $1.50 stays under it), each a person's to change.
     "anthropic_api_key":        "",
     "ai_hosted":                {},
+    # Retiring (2026-10-25): each task's per-call cap is derived from its pin
+    # (modules/ai/profiles.py); declared one more release, read by nothing (expand, contract).
     "ai_cap_usd_per_call":      0.05,
     "ai_cap_usd_per_day":       1.50,
     "wf_read_first":            True,
