@@ -1289,12 +1289,34 @@ class TestTheWorkflow:
         with open(WORKFLOW, encoding="utf-8") as fh:
             return fh.read()
 
-    def test_it_runs_by_hand_only_never_on_a_push_or_a_schedule(self):
-        """The operator, 2026-10-15 (C835): no schedule while Phase 7 changes the code daily;
-        weekly, outside the backup window, once they say Phase 7 has settled."""
-        on = self.doc()[True]                    # YAML reads the bare key `on` as True
-        assert set(on) == {"workflow_dispatch"}
-        assert "WEEKLY" in self.text() and "08:30 to 09:10 UTC" in self.text()
+    def test_it_runs_weekly_outside_the_backup_window_and_by_hand_never_on_a_push(self):
+        """The operator, 2026-10-25 (C835's condition met): WEEKLY, scheduled, as a measurement,
+        outside 08:30 to 09:10 UTC, and by hand; never on a push or a pull request. A schedule
+        can fire hours late (C772), so the `window` job refuses a start inside the window and
+        the mutation job runs only when it says so."""
+        doc = self.doc()
+        on = doc[True]                           # YAML reads the bare key `on` as True
+        assert set(on) == {"schedule", "workflow_dispatch"}
+        (cron,) = [s["cron"] for s in on["schedule"]]
+        minute, hour, dom, month, dow = cron.split()
+        assert (dom, month) == ("*", "*") and dow.isdigit(), "once a week"
+        start = int(hour) * 60 + int(minute)
+        assert not 8 * 60 + 30 <= start < 9 * 60 + 10, cron
+        assert doc["jobs"]["mutate"]["needs"] == "window"
+        assert doc["jobs"]["mutate"]["if"] == "needs.window.outputs.ok == 'true'"
+        guard = doc["jobs"]["window"]["steps"][0]["run"]
+        assert '-ge 830' in guard and '-lt 910' in guard and "ok=false" in guard
+
+    @pytest.mark.parametrize("hhmm,ok", [("0829", True), ("0830", False), ("0909", False),
+                                         ("0910", True), ("1400", True)])
+    def test_the_window_guard_refuses_exactly_inside_the_backup_window(self, hhmm, ok, tmp_path):
+        """The guard's own shell, run with the clock replaced: 08:30 to 09:09 refused."""
+        guard = self.doc()["jobs"]["window"]["steps"][0]["run"]
+        out = tmp_path / "out"
+        script = guard.replace("$(date -u +%H%M)", hhmm)
+        subprocess.run(["bash", "-c", script], env=dict(os.environ, GITHUB_OUTPUT=str(out)),
+                       check=True, capture_output=True)
+        assert out.read_text().strip() == f"ok={'true' if ok else 'false'}"
 
     def test_a_labelled_dispatch_runs_beside_the_others_and_keeps_its_record_apart(self):
         """Lab 9, 2026-10-23 (the operator): the blocking function groups are measured in

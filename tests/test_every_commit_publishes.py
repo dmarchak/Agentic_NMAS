@@ -47,6 +47,9 @@ OTHER_REPOSITORY = {
         "the developer's commit gate commits in the APPLICATION's own repository, never a "
         "list's (in its snapshot worktree since 2026-10-25, moving the branch by compare and "
         "swap), and pushes it itself with --push"),
+    ("scripts/nmas-rollback", "main"): (
+        "a rollback commits a revert in the APPLICATION's own repository, never a list's "
+        "(C1669), and pushes it itself with --push"),
 }
 
 

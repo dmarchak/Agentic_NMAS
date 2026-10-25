@@ -19,10 +19,15 @@
 name: mutation-nightly
 
 on:
-  # No schedule while Phase 7 changes the code daily (the operator, 2026-10-15, C835: a late
-  # scheduled night ran on an older commit and held the one-night slot). Once the operator says
-  # Phase 7 has settled it becomes a WEEKLY schedule, outside the 08:30 to 09:10 UTC backup
-  # window. Until then, by hand, from the Actions tab or scripts/nmas-ci-dispatch.
+  # WEEKLY, as a measurement (the operator, 2026-10-25: the deploy bar is CI and the change's
+  # own tests; mutation gates only egress and masking, by a targeted run before their deploy,
+  # once that code exists; no on-demand dispatch until the testing model is approved). Sunday
+  # 14:00 UTC, outside the 08:30 to 09:10 UTC backup window; the `window` job below refuses a
+  # start inside it, since a schedule can fire hours late (C772: 5 h 26 min). C835's reason for
+  # no schedule (a late night held the one slot and a dispatched fix waited) is gone: a
+  # labelled run has a concurrency group of its own.
+  schedule:
+    - cron: "0 14 * * 0"
   workflow_dispatch:
     inputs:
       functions:
@@ -70,7 +75,29 @@ env:
   MUTATION_BUDGET_MINUTES: "120"
 
 jobs:
+  # Never inside the backup window (the hypervisor's nightly backup loads the lab host; a
+  # measurement taken then measures the backup): a start inside 08:30 to 09:10 UTC mutates
+  # nothing and says so, the run green; the next week's runs as usual.
+  window:
+    name: outside the backup window (08:30 to 09:10 UTC)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    outputs:
+      ok: ${{ steps.when.outputs.ok }}
+    steps:
+      - id: when
+        run: |
+          now=$(date -u +%H%M)
+          if [ "$now" -ge 830 ] && [ "$now" -lt 910 ]; then
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::refused: ${now} UTC is inside the backup window, 08:30 to 09:10 UTC: nothing is mutated this time"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
   mutate:
+    needs: window
+    if: needs.window.outputs.ok == 'true'
     runs-on: ubuntu-24.04
     # `actions: read`, read-only and this repository's alone: to download the newest coverage
     # nightly's drill-down from its run (the step "Download it"), which needs it (C796, C834).

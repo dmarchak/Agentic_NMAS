@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+"""Roll the application back to an earlier commit, as a forward revert (C1669; the operator,
+2026-10-25): every commit after it reverted in one commit whose TREE is that commit's, checked
+here by the trees' hashes, then pushed. A host that was deployed at that commit, and whose CI
+passed it, deploys the revert at once on that verdict (`nmas-deploy`'s tree twin), so a
+rollback takes minutes, not a gate and a CI run.
+
+    scripts/nmas-rollback <to-sha> [--host-step "<what the host needs>"] [--push]
+
+Refuses, changing nothing, when: the working tree is not clean; <to-sha> is not an ancestor of
+HEAD; the revert's tree is not <to-sha>'s; a host-installed file is reverted and no
+--host-step says what the host needs (the person's to write). Each test the revert removes is
+named in a `Test-Weakened:` trailer under C1669, from the weakening check's own findings, so
+the commit-msg hook and CI's range check accept it. The gate is not run: the tree is one this
+host already ran and CI already passed.
+"""
+import argparse
+import importlib.machinery
+import importlib.util
+import os
+import subprocess
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+sys.path.insert(0, os.path.dirname(HERE))
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+
+def git(repo, *args, check=True):
+    r = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True)
+    if check and r.returncode != 0:
+        raise SystemExit(f"nmas-rollback: REFUSED: git {' '.join(args[:2])}: "
+                         f"{(r.stderr or r.stdout).strip()[:300]}")
+    return r.stdout.strip()
+
+
+def _load(name):
+    path = os.path.join(HERE, name)
+    loader = importlib.machinery.SourceFileLoader(name.replace("-", "_"), path)
+    mod = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+    loader.exec_module(mod)
+    return mod
+
+
+def message(repo, to, head, commits, host_step, weakenings):
+    lines = [f"Rollback to {to[:10]}: {len(commits)} commit(s) reverted, the tree {to[:10]}'s", "",
+             f"The tree of this commit is {to[:10]}'s, checked by nmas-rollback (C1669). "
+             f"Reverted, newest first:"]
+    for sha in commits:
+        lines.append(f"- {sha[:10]} {git(repo, 'log', '-1', '--format=%s', sha)}")
+    lines.append("")
+    if host_step:
+        lines.append(f"Host-Step-After: {host_step}")
+    else:
+        lines.append("Host-Step-None: no host-installed file is reverted")
+    for w in weakenings:
+        lines.append(f"Test-Weakened: {w.names[0]} — C1669: a rollback to {to[:10]}; "
+                     "the reverted commits added it")
+    return "\n".join(lines) + "\n"
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("to", help="the commit to return to (an ancestor of HEAD)")
+    ap.add_argument("--host-step", default="", help="what the host needs, when a "
+                    "host-installed file is reverted")
+    ap.add_argument("--push", action="store_true", help="push the rollback")
+    ap.add_argument("--repo", default=None)
+    a = ap.parse_args(argv)
+    repo = a.repo or git(HERE, "rev-parse", "--show-toplevel")
+    if git(repo, "status", "--porcelain"):
+        raise SystemExit("nmas-rollback: REFUSED: the working tree is not clean; nothing changed")
+    to = git(repo, "rev-parse", "--verify", f"{a.to}^{{commit}}")
+    head = git(repo, "rev-parse", "HEAD")
+    if to == head or subprocess.run(["git", "-C", repo, "merge-base", "--is-ancestor", to, head]
+                                    ).returncode != 0:
+        raise SystemExit(f"nmas-rollback: REFUSED: {to[:10]} is not an earlier commit of HEAD "
+                         f"({head[:10]}); nothing changed")
+    commits = git(repo, "rev-list", f"{to}..{head}").split()
+    want = git(repo, "rev-parse", f"{to}^{{tree}}")
+    git(repo, "revert", "--no-edit", "--no-commit", f"{to}..{head}")
+    try:
+        got = git(repo, "write-tree")
+        if got != want:
+            raise SystemExit(f"nmas-rollback: REFUSED: the revert's tree {got[:10]} is not "
+                             f"{to[:10]}'s tree {want[:10]}; nothing changed")
+        staged = git(repo, "diff", "--cached", "--name-only").split()
+        hosted = _load("nmas-host-step-check").host_paths(staged)
+        if hosted and not a.host_step:
+            raise SystemExit("nmas-rollback: REFUSED: the rollback reverts host-installed "
+                             f"file(s) {', '.join(hosted)}: say what the host needs with "
+                             "--host-step; nothing changed")
+        weak = _load("nmas-test-weakening-check")
+        changes = weak._changes(git(repo, "diff", "--cached", "-M", "--name-status", "-z"))
+        old = os.getcwd()
+        os.chdir(repo)                 # the check reads the repository it runs in
+        try:
+            found = weak.weakenings_of(changes, weak.Side("HEAD"), weak.Side(""))
+        finally:
+            os.chdir(old)
+        text = message(repo, to, head, commits, a.host_step, found)
+        msg = os.path.join(git(repo, "rev-parse", "--absolute-git-dir"), "nmas-rollback-msg.txt")
+        with open(msg, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        git(repo, "commit", "-q", "-F", msg)
+    except BaseException:
+        git(repo, "revert", "--abort", check=False)
+        git(repo, "reset", "-q", "--hard", head, check=False)
+        raise
+    new = git(repo, "rev-parse", "HEAD")
+    if git(repo, "rev-parse", f"{new}^{{tree}}") != want:
+        git(repo, "reset", "-q", "--hard", head)
+        raise SystemExit("nmas-rollback: REFUSED: the commit's tree is not the one checked; "
+                         "it was undone")
+    print(f"nmas-rollback: committed {new[:10]}: its tree is {to[:10]}'s ({want[:10]}), "
+          f"{len(commits)} commit(s) reverted")
+    if a.push:
+        git(repo, "push", "-q")
+        print(f"nmas-rollback: pushed {new[:10]}. Deploy it now: the Update page, or "
+              "`nmas-deploy --wait` on the host, takes the CI verdict of the commit with its tree")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

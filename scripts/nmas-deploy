@@ -413,8 +413,46 @@ def _others(runs, chosen):
     return f" (other runs for this commit: {words})"
 
 
+#: How many of the checkout's most recent positions (its reflog) a rollback's tree twin is
+#: looked for among: far more deploys than a rollback goes back.
+TWIN_BOUND = 50
+
+
+def deployed_shas(repo) -> list:
+    """The commits this checkout has been at, newest first, at most TWIN_BOUND: its reflog.
+    Every deploy moves HEAD by fast-forward, so each is a commit this host ran."""
+    out = git(repo, "reflog", "--format=%H", f"-n{TWIN_BOUND}", check=False)
+    seen = []
+    for sha in out.split():
+        if sha not in seen:
+            seen.append(sha)
+    return seen
+
+
+def tree_twin(repo, target, slug, get):
+    """``(sha, run, tree)``: a commit this checkout was deployed at whose TREE is *target*'s and
+    whose CI passed (a rollback, C1669: the operator, 2026-10-25), else ``(None, None, tree)``.
+    The equality is the trees' hashes, read here, never assumed from a message."""
+    try:
+        tree = git(repo, "rev-parse", f"{target}^{{tree}}")
+    except RuntimeError:
+        return None, None, ""
+    for sha in deployed_shas(repo):
+        if sha == target or git(repo, "rev-parse", f"{sha}^{{tree}}", check=False) != tree:
+            continue
+        status, body, reason = get(f"/repos/{slug}/actions/runs?head_sha={sha}&event=push"
+                                   f"&per_page=20")
+        runs = [r for r in (body or {}).get("workflow_runs", []) if r.get("path") == WORKFLOW_PATH]
+        if runs and verdict_of_runs(runs)[0] == "PASSED":
+            return sha, verdict_of_runs(runs)[1], tree
+    return None, None, tree
+
+
 def ci_verdict(repo, target, get=github_get):
-    """(exit code, sentence naming the SHA and what was found)."""
+    """(exit code, sentence naming the SHA and what was found). A target whose own CI has not
+    concluded, and whose tree is that of a commit this checkout was deployed at and CI passed,
+    takes that verdict (a rollback, C1669), naming both; a target whose own CI FAILED is
+    refused whatever its twin's said."""
     short = target[:10]
     try:
         slug = slug_of(git(repo, "remote", "get-url", "origin"))
@@ -427,6 +465,14 @@ def ci_verdict(repo, target, get=github_get):
                                "unverified commit is never deployed. Retry, or run "
                                "`nmas-deploy --offline` to run the suite here.")
     runs = [r for r in body.get("workflow_runs", []) if r.get("path") == WORKFLOW_PATH]
+    own = verdict_of_runs(runs)[0] if runs else "NO RUN"
+    if own not in ("PASSED", "FAILED"):
+        twin, trun, tree = tree_twin(repo, target, slug, get)
+        if twin:
+            return OK, (f"CI's verdict REUSED: {short}'s tree {tree[:10]} is that of {twin[:10]}, "
+                        f"which this checkout was deployed at and CI passed (run "
+                        f"#{trun.get('run_number', '?')}, {trun.get('html_url', '')}); "
+                        f"{short}'s own CI: {own.lower()}")
     if runs:
         state, run, _all = verdict_of_runs(runs)
         url, num = run.get("html_url", ""), run.get("run_number", "?")

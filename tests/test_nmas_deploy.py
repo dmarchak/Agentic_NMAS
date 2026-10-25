@@ -185,6 +185,77 @@ def _head(world):
     return _git(world.host, "rev-parse", "HEAD")
 
 
+class TestARollbackTakesItsTwinsVerdict:
+    """C1669 (the operator, 2026-10-25): a rollback is a revert whose TREE is that of a commit
+    this checkout was deployed at, and whose CI passed. It takes that verdict, named with both
+    shas, instead of waiting for its own CI; the equality is the trees' hashes, read by the
+    tool. A twin never deployed here, a twin CI did not pass, and a target whose own CI FAILED
+    each take nothing."""
+
+    @staticmethod
+    def _revert(world, sha):
+        _git(world.dev, "revert", "--no-edit", sha)
+        _git(world.dev, "push", "-q", "origin", "main")
+        return _git(world.dev, "rev-parse", "HEAD")
+
+    @staticmethod
+    def _tree(world, sha):
+        return _git(world.dev, "rev-parse", f"{sha}^{{tree}}")
+
+    def test_a_revert_to_a_deployed_tree_deploys_now_on_its_twins_verdict(self, world, capsys):
+        bad = world.advance({"docs/a.md": "a docs-only change\n"}, "bad")
+        code, _, _ = _run(world, {bad: _run_entry(bad)})
+        assert code == 0 and _head(world) == bad, "floor: bad is deployed"
+        rev = self._revert(world, bad)
+        assert self._tree(world, rev) == self._tree(world, world.base), "floor: the tree is base's"
+        code, _, _ = _run(world, {rev: _run_entry(rev, conclusion=None, status="in_progress"),
+                                  world.base: _run_entry(world.base)})
+        out = capsys.readouterr().out
+        assert code == 0 and _head(world) == rev, out
+        assert "CI's verdict REUSED" in out and world.base[:10] in out and rev[:10] in out
+        assert "own CI: pending" in out
+
+    def test_a_new_tree_waits_for_its_own_ci_whatever_was_deployed_before(self, world, capsys):
+        """An ordinary new commit (a tree no deploy here had) is never deployed on an earlier
+        commit's pass, however many this checkout ran."""
+        bad = world.advance({"docs/a.md": "x\n"}, "bad")
+        _run(world, {bad: _run_entry(bad)})
+        new = world.advance({"app.py": "v = 3\n"}, "a new change")
+        code, _, _ = _run(world, {new: _run_entry(new, conclusion=None, status="in_progress"),
+                                  bad: _run_entry(bad), world.base: _run_entry(world.base)})
+        out = capsys.readouterr().out
+        assert code == 7 and _head(world) == bad and "REUSED" not in out, out
+
+    def test_a_twin_this_checkout_never_ran_lends_nothing(self, world, capsys):
+        """t1's tree comes back, but the host was never AT t1: its CI pass says nothing about
+        what this host ran."""
+        t1 = world.advance({"docs/a.md": "one\n"}, "t1")
+        t2 = world.advance({"docs/a.md": "two\n"}, "t2")
+        rev = self._revert(world, t2)
+        assert self._tree(world, rev) == self._tree(world, t1), "floor: the tree is t1's"
+        code, _, _ = _run(world, {rev: _run_entry(rev, conclusion=None, status="in_progress"),
+                                  t1: _run_entry(t1), t2: _run_entry(t2)})
+        assert code == 7 and _head(world) == world.base, capsys.readouterr().out
+
+    def test_a_twin_ci_did_not_pass_lends_nothing(self, world, capsys):
+        bad = world.advance({"docs/a.md": "x\n"}, "bad")
+        _run(world, {bad: _run_entry(bad)})
+        rev = self._revert(world, bad)
+        code, _, _ = _run(world, {rev: _run_entry(rev, conclusion=None, status="in_progress"),
+                                  world.base: _run_entry(world.base, conclusion="failure")})
+        assert code == 7 and _head(world) == bad, capsys.readouterr().out
+
+    def test_a_target_whose_own_ci_failed_is_refused_whatever_its_twin_says(self, world,
+                                                                             capsys):
+        bad = world.advance({"docs/a.md": "x\n"}, "bad")
+        _run(world, {bad: _run_entry(bad)})
+        rev = self._revert(world, bad)
+        code, _, _ = _run(world, {rev: _run_entry(rev, conclusion="failure"),
+                                  world.base: _run_entry(world.base)})
+        out = capsys.readouterr().out
+        assert code == 1 and _head(world) == bad and "REUSED" not in out, out
+
+
 class TestTheGate:
     def test_a_passing_run_deploys(self, world, capsys):
         sha = world.advance({"app.py": "v = 2\n"})
