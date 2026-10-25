@@ -1992,6 +1992,8 @@ summary.lq-chip::-webkit-details-marker { display: none; }
   border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--ink);
   min-height: 34px; }
 .lq-text { display: inline-flex; gap: 6px; align-items: center; }
+/* Ask in words (8.1): the question takes the row's width, its button beside it. */
+.lq-row input.lq-words-in { flex: 1 1 18rem; min-width: 0; }
 .lq-more { position: relative; }
 .lq-more[open] > summary { background: var(--accent-soft); color: var(--accent-ink); }
 .lq-add, .lq-menu { position: absolute; z-index: 15; top: calc(100% + 4px); left: 0; background: var(--surface);

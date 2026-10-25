@@ -17,7 +17,7 @@ desktop board at 1440 and 1280 beside the page; the phone board at 390 beside th
 Compared 2026-10-15. History's own page (heading, remote line) is board D's; the board's Code
 mode panel is today's Ask your own box, Code on the Mode switch.
 Templates compared: templates/v2/history_ask_metrics.html, templates/v2/_history_body.html, templates/v2/_history_ask_metrics.html, templates/v2/_history_ask_parts.html, templates/v2/_history_ask_head.html
-Templates sha256: `6357e667ba5601243738d5fe301506067d339162be1aa01bcf88be7d98c1619d`
+Templates sha256: `6e78140fd539a30094b6e5a8d6ac720d9eba7794d2a151e8742c3e2104735897`
 
 Compared again 2026-10-15 (P7-03): `_history_body.html` gained a `data-concept` marker and one
 sentence inside a Baselines row's detail (the block drawing each baseline's Re-apply… link); this
@@ -36,6 +36,15 @@ Ask your own never draws. The page rendered on test_device_v2's lab from the tem
 were and as they are: every byte the same. No region here changed; the hash written again.
 Templates sha256 before: `e4ba3491dcf923a164f7678a65c33f2e6622075648ce2233da95593dd876d8c8`.
 
+Changed 2026-10-25 (PHASE8_PLAN 8.1, feature 1): `_history_ask_metrics.html` gained one row
+at the top of the builder card, **Ask in words** (a question, Fill the builder, its "How does
+this work?", and the result's notice beneath), which board E3 does not draw. Every other
+region is as it was. The row's verdict is **later**: its board and its comparison are batched
+into the sprint's Saturday (PHASE8_PLAN 15.12, "Each screen ships with its browser tests and a
+short manual page; its board and its fidelity record are batched into Saturday"); its browser
+test is tests/test_ai_nl_query.py's `test_ask_in_words_in_a_browser`. The hash written again.
+Templates sha256 before: `6357e667ba5601243738d5fe301506067d339162be1aa01bcf88be7d98c1619d`.
+
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
 
@@ -43,6 +52,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 |---|---|---|---|
 | Tabs | Timeline, Query, Baselines, Authorisations; Query on | Timeline, Query, Baselines; Query on | **deviation** (log: E3 metrics builder: History's tabs) |
 | Head | "Ask your own ‹ back to the questions"; Source (Metrics, Logs) and Mode (Builder, Code) | the same, shared with F3; Metrics and Builder on | **same** |
+| Ask in words | (not drawn: 8.1 came after E3) | a question, Fill the builder busy on itself, "How does this work?"; the result's notice under it | **later** (8.1's board, the sprint's Saturday, PHASE8_PLAN 15.12) |
 | Start from | four chips, the one the choices match marked | the same four, each setting every choice; marked when the question is exactly its own; a chip whose metric Prometheus does not hold is drawn but no link | **same** |
 | What | search box, the matching metrics with help, "per interface · counter · bytes", the count read | the same box and list; each with Prometheus's help and its type and unit; the count over the range, when read | **deviation** (log: E3 metrics builder: the metric list) |
 | Devices | + device, by role: core, all 9; "the values the device label holds now" | the same, from the metric's `device` and `role` labels over the range | **deviation** (log: E3 metrics builder: devices, roles and interfaces) |

@@ -1,0 +1,164 @@
+{
+  "$defs": {
+    "Filter": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "op": {
+          "$ref": "#/$defs/FilterOp"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "op",
+        "value"
+      ],
+      "title": "Filter",
+      "type": "object"
+    },
+    "FilterOp": {
+      "enum": [
+        "=",
+        "!=",
+        "=~",
+        "!~"
+      ],
+      "title": "FilterOp",
+      "type": "string"
+    },
+    "OpKind": {
+      "description": "The builder's operations (history_promq: RANGE_OPS, UNIT_OPS, AGGS, COMPARE).",
+      "enum": [
+        "rate",
+        "increase",
+        "bits",
+        "per_min",
+        "sum",
+        "avg",
+        "min",
+        "max",
+        "count",
+        "ne",
+        "eq",
+        "gt",
+        "lt"
+      ],
+      "title": "OpKind",
+      "type": "string"
+    },
+    "Operation": {
+      "additionalProperties": false,
+      "description": "One step: *kind*, and its argument (a rate's window, a group's label or none, a\ncomparison's number; empty for bits and per_min).",
+      "properties": {
+        "arg": {
+          "title": "Arg",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/OpKind"
+        }
+      },
+      "required": [
+        "kind",
+        "arg"
+      ],
+      "title": "Operation",
+      "type": "object"
+    },
+    "Range": {
+      "enum": [
+        "1h",
+        "24h",
+        "7d",
+        "30d",
+        "90d"
+      ],
+      "title": "Range",
+      "type": "string"
+    },
+    "Top": {
+      "enum": [
+        "none",
+        "5",
+        "10"
+      ],
+      "title": "Top",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The builder's choices for one question, or why the builder cannot answer it.",
+  "properties": {
+    "answerable": {
+      "title": "Answerable",
+      "type": "boolean"
+    },
+    "devices": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Devices",
+      "type": "array"
+    },
+    "filters": {
+      "items": {
+        "$ref": "#/$defs/Filter"
+      },
+      "title": "Filters",
+      "type": "array"
+    },
+    "interfaces": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Interfaces",
+      "type": "array"
+    },
+    "metric": {
+      "title": "Metric",
+      "type": "string"
+    },
+    "operations": {
+      "items": {
+        "$ref": "#/$defs/Operation"
+      },
+      "title": "Operations",
+      "type": "array"
+    },
+    "range": {
+      "$ref": "#/$defs/Range"
+    },
+    "role": {
+      "title": "Role",
+      "type": "string"
+    },
+    "top": {
+      "$ref": "#/$defs/Top"
+    },
+    "why_not": {
+      "title": "Why Not",
+      "type": "string"
+    }
+  },
+  "required": [
+    "answerable",
+    "why_not",
+    "metric",
+    "devices",
+    "role",
+    "interfaces",
+    "filters",
+    "operations",
+    "top",
+    "range"
+  ],
+  "title": "MetricsChoices",
+  "type": "object"
+}

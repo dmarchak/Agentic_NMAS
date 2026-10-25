@@ -1901,3 +1901,26 @@ method: an exception names its expiry):**
   `installation_settings.card` changed too, only to draw the read-only table, and is outside the
   tier (it writes, stores and masks no secret). **Clean, for Allow:** #63's unchanged functions
   and the final run's, every survivor killed or ruled by the operator.
+- **Amended (the operator, 2026-10-25 ~08:2x UTC): the final run is on the 8.1 commit,** one
+  run, so "clean" covers 8.1, whose deploy waits for it; e086407f deploys after 09:10 UTC under
+  this exception. The run names the functions above and `gateway.build_request` (its docstring
+  changed in 8.1); `nl_query`'s are outside the tier (below). **And `redact.redact_positional`**
+  (the operator, 2026-10-25 ~08:5x UTC: C1685, a sealed value masked, fixed now as a sprint
+  exception because it is the masking path; the fix rides in the 8.1 commit, so the one run
+  measures it).
+
+**The tier's boundary for the rest of the sprint (the operator, 2026-10-25 ~08:2x UTC; it
+expires at the sprint's end, Sat 31 Oct, and at Stage 10 the GO bar returns everywhere,
+features included):**
+- **The irreversible tier is the single egress path:** the gateway's payload builder
+  (`gateway.build_request`, and `ask`'s path from the mask to the send), the egress mask
+  (`redact.redact_egress`, `redact.egress_payload`) and the adapter's send
+  (`anthropic_adapter.send`), plus the secret-value code docs/TESTING.md's table already lists.
+  A change to the egress path gets its targeted run before its deploy.
+- **The AI features (`nl_query`, P1's Explain, feature 7) are outside it.** Each reaches the
+  model only through the gateway, which `tests/test_ai_boundary.py` holds: no module but the
+  adapter names Anthropic's API or its key header, none but the gateway imports the adapter,
+  and none imports an Anthropic SDK. Each feature's own tests assert that its prompt carries
+  only its allowed-class fields, and that a planted secret (a secret's shape in data an
+  exporter or a device wrote, and a stored secret's value in the person's words) is masked in
+  the bytes sent. A feature's change needs no tier run.

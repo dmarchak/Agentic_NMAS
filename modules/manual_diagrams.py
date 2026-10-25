@@ -1232,6 +1232,39 @@ def alert_evidence():
     ])
 
 
+def ask_in_words():
+    return svg(470, (
+        "Ask in words: the question's words choose the metrics to offer, never the whole "
+        "catalogue, and a question matching none stops there with nothing sent; one recorded, "
+        "capped call through the AI gateway, the builder's vocabulary as its cached prefix and "
+        "the question and the offered metrics as data, answers with the builder's choices; the "
+        "builder reads them back as it reads a person's, a metric not offered refused and a "
+        "device the network lacks left out; one time-limited count of the query's series tests "
+        "it; the builder is drawn filled, and nothing runs until the person presses Ask."), [
+        lanes(20, 464, right="THE SERVICES"),
+        svc(250, 36, 130, 36, "Prometheus", "its metric names"),
+        arrow("read", 248, 56, 202, 56),
+        doc("box", 14, 40, 186, 36, "The metrics offered", "sharing the question's words"),
+        num(14, 40, 1),
+        t(14, 92, "none matched: nothing sent", "sm"),
+        svc(250, 118, 130, 36, "The AI gateway", "capped, recorded"),
+        arrow("send", 202, 136, 248, 136),
+        doc("box", 14, 118, 186, 36, "The builder's choices", "a strict schema"),
+        num(14, 118, 2),
+        doc("box", 14, 186, 186, 40, "Read back", "by the builder's own checks"),
+        num(14, 186, 3),
+        t(14, 240, "a metric not offered: refused", "sm"),
+        svc(250, 262, 130, 30, "Prometheus", "count, 10 s at most"),
+        arrow("send", 202, 280, 248, 280),
+        doc("box", 14, 262, 186, 36, "The test run", "how many series now"),
+        num(14, 262, 4),
+        doc("box", 14, 330, 186, 40, "The builder, filled", "the query shown"),
+        num(14, 330, 5),
+        t(14, 392, "You press Ask: then it runs.", "sm"),
+        t(14, 444, "No device is asked or changed.", "sm"),
+    ])
+
+
 def path_trace():
     return svg(470, (
         "A path trace: From and To are checked before any device is asked; the first device is "
@@ -1540,6 +1573,7 @@ DIAGRAMS = {
     "logging-path": logging_path,
     "reveal-log-line": reveal_log_line,
     "alert-evidence": alert_evidence,
+    "ask-in-words": ask_in_words,
     "path-trace": path_trace,
     "privileged": privileged,
     "publish-remote": publish_remote,

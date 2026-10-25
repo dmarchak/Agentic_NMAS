@@ -143,6 +143,15 @@ _POSITIONAL = (
         r"(\b[a-zA-Z][a-zA-Z0-9+.-]*://)([^/\s:@\"'<>]+:[^/\s@\"'<>]+)(@)")),
     ("url_userinfo", re.compile(
         r"(?i)(\b(?:https?|ftps?)://)([^/\s:@\"'<>]+)(@)")),
+    # A SEALED value (C1685, the operator, 2026-10-25: a host read printed the settings file's
+    # `enc:v1:` Fernet token, the Anthropic key sealed): ciphertext is a secret's own form, so
+    # it is masked as the clear value is, by its shape. One rule, the token's: the settings
+    # store's `enc:v1:` prefix and an inventory's encrypted column (`devices.csv`) hold the
+    # same Fernet token, so `enc:v1:` is kept and the token after it masked. A Fernet token is
+    # version 0x80 and a timestamp, base64url, so it begins `gAAAAA`, and is at least 100
+    # characters with its padding (a 16-byte block, an IV and an HMAC; the shortest, one byte
+    # sealed, measured 100: `gAAAAA`, 92 more, `==`).
+    ("sealed", re.compile(r"(?<![A-Za-z0-9_-])()(gAAAAA[A-Za-z0-9_-]{80,}={0,2})()")),
 )
 
 #: Already redacted, or a marker — replacing these again would nest markers.

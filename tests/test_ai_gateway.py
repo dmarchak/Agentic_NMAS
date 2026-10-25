@@ -23,7 +23,7 @@ import pytest
 import requests
 
 from modules.ai import anthropic_adapter as A
-from modules.ai import calls, connection, gateway, profiles, prompts, schemas
+from modules.ai import calls, connection, gateway, nl_query, profiles, prompts, schemas  # noqa: F401 (nl_query registers its schema)
 
 KEY = "sk-planted-test-key-0123456789"
 

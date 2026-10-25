@@ -44,11 +44,16 @@ SEPARATORS = {";", "&&", "||", "&", ";;"}
 #: `screens/backups.md` are not stores (no tracked file matches; the test says so).
 STORE_PATH = re.compile(
     r"(?:^|[/\s'\"=])(?:data/(?:lists|config_cache|checkpoints)(?=/|[\s'\"]|$)|data/?$"
-    r"|[^\s'\"]*/(?:config_repo|golden_configs|pre_change|backups)(?=/|[\s'\"]|$))")
+    r"|[^\s'\"]*/(?:config_repo|golden_configs|pre_change|backups)(?=/|[\s'\"]|$))"
+    # C1685 (2026-10-25): the stores holding SEALED secrets, files rather than folders: the
+    # settings file (a raw host grep of it printed the sealed Anthropic key), the key that
+    # opens every secret, and an inventory's encrypted credential column.
+    r"|(?:^|[/\s'\"=])[^\s'\"]*(?:user_settings\.json|key\.key|devices\.csv)(?=[\s'\"]|$)")
 #: Words naming configuration, in a part run on a host or in a script sent to one.
 CONFIG_WORDS = re.compile(
     r"golden|config_repo|config_cache|checkpoints|pre_change|\bbackups?\b|\.cfg\b"
-    r"|running-config|startup-config|\bshow\s+run|\bLISTS_DIR\b|\bdata/lists\b")
+    r"|running-config|startup-config|\bshow\s+run|\bLISTS_DIR\b|\bdata/lists\b"
+    r"|user_settings|USER_SETTINGS_FILE|key\.key|devices\.csv")
 #: In a scratch script run on the laptop: names a store.
 SCRIPT_STORE_WORDS = re.compile(
     r"config_repo|golden_configs|config_cache|pre_change|\bLISTS_DIR\b|data/lists"

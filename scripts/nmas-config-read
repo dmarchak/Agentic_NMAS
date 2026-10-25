@@ -89,7 +89,11 @@ def masked_lines(text: str, grep=None, stanza=None) -> list:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("paths", nargs="+", help="paths in the list's config_repo")
+    ap.add_argument("paths", nargs="*", help="paths in the list's config_repo")
+    ap.add_argument("--settings", action="store_true",
+                    help="read the installation's settings file (data/user_settings.json) "
+                         "instead, masked as everything here is: a sealed value prints as "
+                         "enc:v1:<redacted:sealed> (C1685)")
     ap.add_argument("--list", default="default", help="the list's folder (default: default)")
     ap.add_argument("--repo", default="", help="a repository path, in place of --list")
     ap.add_argument("--rev", default="HEAD", help="the revision to read (default: HEAD)")
@@ -102,14 +106,30 @@ def main(argv=None) -> int:
     checkout = _checkout(args.checkout)
     sys.path.insert(0, checkout)
     os.chdir(checkout)
+    grep = re.compile(args.grep) if args.grep else None
+    stanza = re.compile(args.stanza) if args.stanza else None
+    if args.settings:
+        # The settings file the app reads (C1685, 2026-10-25: a raw host grep of it printed a
+        # sealed key whole). The working file, not a revision: it is not committed anywhere.
+        from modules.config import USER_SETTINGS_FILE
+        try:
+            with open(USER_SETTINGS_FILE, encoding="utf-8") as fh:
+                text = fh.read()
+        except OSError as exc:
+            print(f"nmas-config-read: the settings file could not be read: {exc}",
+                  file=sys.stderr)
+            return 1
+        for line in masked_lines(text, grep, stanza):
+            print(f"settings: {line}")
+        return 0
+    if not args.paths:
+        ap.error("name the config_repo paths to read, or --settings")
     repo = _repo(args.list, args.repo)
     if not os.path.isdir(repo):
         print(f"nmas-config-read: no repository at {repo}", file=sys.stderr)
         return 2
 
-    grep = re.compile(args.grep) if args.grep else None
-    stanza = re.compile(args.stanza) if args.stanza else None
-    try:                                   # pinned to the list's repository (C931)
+    try:                                  # pinned to the list's repository (C931)
         from modules.nsot.repo import run_git
     except ImportError:                    # a host checkout from before run_git existed
         run_git = None

@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, info, stamp -%}
+{%- from "v2/_macros.html" import how, icon, info, stamp -%}
 {%- import "v2/_history_ask_parts.html" as part with context -%}
 {#- History › Query › Ask your own, the metrics builder (board E3, QueryBuilderMetrics3 and its
     phone board, approved 2026-10-15; compared in docs/fidelity/history-ask-metrics.md). One
@@ -41,6 +41,20 @@
 <div class="pq-lay">
 <div class="pq-main">
 <section class="card lq-build" aria-label="Build a metrics question">
+  {#- Ask in words (PHASE8_PLAN feature 1, 8.1): the question fills the builder's choices
+      through the AI gateway; the builder reads them back, and nothing runs until Ask. The
+      form carries the choices drawn, so a refusal redraws them as they were. -#}
+  {%- set w = q.words %}
+  <form class="lq-row lq-words" method="post" action="{{ url_for('v2.history_ask_metrics_words') }}" hx-post="{{ url_for('v2.history_ask_metrics_words') }}" hx-target="#lq" hx-swap="outerHTML" autocomplete="off">{{ hidden() }}
+    <label class="lq-lab" for="lq-words">Ask in words</label>
+    <div class="lq-line"><input id="lq-words" class="lq-words-in" type="text" name="words" maxlength="300" value="{{ w.question if w else '' }}" placeholder="input errors per interface, top 5, last 7 days">
+    <span class="op-act"><button type="submit" class="btn btn-small" data-op="ask-in-words" hx-disabled-elt="this"{{ gate('configure') }} title="One recorded AI call ({{ q.words_model }}), capped; it fills the choices below and runs nothing"><span class="op-idle">Fill the builder</span><span class="op-busy">Filling…</span></button>{{ how('ask-in-words', compact=True) }}</span></div>
+  </form>
+  {%- if w and w.ok %}
+  <div class="notice" role="status">{{ icon('info', 16) }}<p>Filled from your words ({{ q.words_model }}, ${{ '%.4f' | format(w.cost_usd) }}){% if w.test %}: {{ w.test }}{% endif %}. Check the choices and the query below, then Ask.</p></div>
+  {%- elif w %}
+  <div class="notice notice-warn" role="alert">{{ icon('warn', 16) }}<p>Not filled: {{ w.detail }}.</p></div>
+  {%- endif %}
   <div class="lq-row"><span class="lq-lab">Start from</span><div class="lq-chips">
     {%- for key, title, _a, params in q.presets %}
     {%- if q.presets_held.get(key) %}<a class="lq-chip{{ ' on' if q.preset_on == key }}" href="{{ here }}{{ q.preset_qs(params) }}" hx-get="{{ region }}{{ q.preset_qs(params) }}" hx-target="#lq" hx-swap="outerHTML"{% if q.preset_on == key %} aria-current="true"{% endif %}>{{ title }}</a>

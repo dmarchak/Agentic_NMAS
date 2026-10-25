@@ -79,8 +79,8 @@ def _delimited(tag: str, parts: dict) -> str:
 def build_request(prompt: dict, schema_model, parts: dict, model: str, max_tokens: int,
                   context: dict = None) -> dict:
     """The Messages API body. **The stable prefix, cached** (the operator, 2026-10-25): the
-    prompt, then the *context* (what every call of a feature shares, as 8.1's metric and label
-    catalogue), as system blocks, the last marked `cache_control` (the 5-minute TTL). **The
+    prompt, then the *context* (what every call of a feature shares, as 8.1's builder
+    vocabulary), as system blocks, the last marked `cache_control` (the 5-minute TTL). **The
     call's own parts, uncached**: each as data, delimited by its name, in one user turn (a
     question, an evidence pack). The answer's schema in `output_config.format`. Nothing
     volatile (a time, an id) is ever in the system blocks: any byte that moves there misses

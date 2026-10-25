@@ -18,6 +18,7 @@ The slip: a read of a committed golden on the host, searching for `ntp`, printed
 
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -132,6 +133,44 @@ class TestTheReaderMasks:
         assert SECRETS["username"][1] not in r.stdout and "<redacted:user_password>" in r.stdout
 
 
+class TestTheSettingsReadMasksSealedValues:
+    """C1685 (the operator, 2026-10-25): a raw host grep of the settings file printed the
+    sealed Anthropic key (`enc:v1:` and its Fernet token). The agent's one read of that file
+    is `nmas-config-read --settings`, and no `enc:` value is printed, nor a bare Fernet
+    token (an inventory's encrypted column)."""
+
+    @pytest.fixture
+    def settings(self, tmp_path):
+        from cryptography.fernet import Fernet
+        f = Fernet(Fernet.generate_key())
+        sealed, bare = f.encrypt(b"sk-ant-planted").decode(), f.encrypt(b"x").decode()
+        (tmp_path / "user_settings.json").write_text(json.dumps({
+            "no_change_windows": [{"start": "08:30", "end": "09:10", "reason": "a backup"}],
+            "anthropic_api_key": f"enc:v1:{sealed}", "note": f"r1,{bare},ok"}, indent=2),
+            encoding="utf-8")
+        return {"dir": str(tmp_path), "sealed": sealed, "bare": bare}
+
+    def _read(self, settings, *args):
+        with open(READER, encoding="utf-8") as fh:
+            return subprocess.run([sys.executable, "-", "--checkout", ROOT, "--settings", *args],
+                                  stdin=fh, capture_output=True, text=True,
+                                  env=dict(os.environ, NMAS_DATA_DIR=settings["dir"]))
+
+    def test_a_read_of_the_settings_file_prints_no_enc_value(self, settings):
+        r = self._read(settings)
+        assert r.returncode == 0, r.stderr
+        assert settings["sealed"] not in r.stdout and settings["bare"] not in r.stdout
+        assert '"anthropic_api_key": "enc:v1:<redacted:sealed>"' in r.stdout
+        assert all(not m.startswith("enc:v1:g") for m in re.findall(r"enc:\S*", r.stdout))
+        assert "r1,<redacted:sealed>,ok" in r.stdout
+        assert '"start": "08:30"' in r.stdout, "what is not secret still reads"
+
+    def test_a_search_matching_the_sealed_line_prints_it_masked(self, settings):
+        r = self._read(settings, "--grep", "anthropic|gAAAA")
+        lines = r.stdout.splitlines()
+        assert len(lines) == 2 and all("<redacted:sealed>" in ln for ln in lines), lines
+
+
 def hook(name, **tool_input):
     payload = json.dumps({"tool_name": name, "tool_input": tool_input})
     return subprocess.run([sys.executable, HOOK], input=payload, capture_output=True,
@@ -173,6 +212,15 @@ def refused_bash(scripts):
         # A separator does not carry the reader's allowance to the next command.
         "scripts/nmas-config-read golden/s1.cfg; cat /x/lists/default/golden_configs/s1.cfg",
         f"python3 {s['local']}",
+        # C1685: the stores of sealed secrets. The slip: a host grep of the settings file
+        # ran past the window it wanted and printed the sealed key.
+        "scripts/nmas-host nmas -- grep -A8 '\"no_change_windows\"' "
+        "/srv/app/data/user_settings.json",
+        "scripts/nmas-host nmas -- cat /srv/app/data/key.key",
+        "scripts/nmas-host nmas -- head -3 /srv/app/data/lists/x/devices.csv",
+        "scripts/nmas-host nmas -- python3 -c 'from modules.config import USER_SETTINGS_FILE'",
+        "cat data/user_settings.json",
+        "grep anthropic ~/app/data/user_settings.json",
     ]
 
 
@@ -181,6 +229,9 @@ def allowed_bash(scripts):
         "scripts/nmas-host nmas -- env PYTHONDONTWRITEBYTECODE=1 python3 - --checkout "
         "/srv/app --grep '^ntp ' golden/s1.cfg < scripts/nmas-config-read",
         "scripts/nmas-config-read --grep ntp golden/s1.cfg golden/s2.cfg | head -5",
+        "scripts/nmas-host nmas -- env PYTHONDONTWRITEBYTECODE=1 python3 - --checkout "
+        "/srv/app --settings --grep no_change < scripts/nmas-config-read",
+        "grep -n USER_SETTINGS_FILE modules/config.py",
         f"scripts/nmas-host nmas -- env PYTHONDONTWRITEBYTECODE=1 python3 - < {scripts['loki']}",
         "scripts/nmas-host nmas -- git -C /srv/app log -1 --format=%h",
         "scripts/nmas-host nmas -- bash -c 'cd /srv/app && git status --porcelain | wc -l'",
