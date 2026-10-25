@@ -5,6 +5,12 @@ everything after it:
 
   1. stage:         git add -A (the gate tests what it commits, C224);
   2. stage guard:   scripts/nmas-stage-guard refuses a secret or a stray, and lists new files;
+  2b. the snapshot: the staged tree (`git write-tree`) checked out in a worktree of its own,
+                    where every step after this one runs and the commit is made, so the
+                    working tree is never locked: an edit made during the run is simply not in
+                    this commit (the operator, 2026-10-25). The branch moves to the commit only
+                    if it still points where the gate began (compare and swap), and only when
+                    the committed tree IS the tested one; the snapshot is removed either way;
   3. the suite:     CI's command in CI's interpreter (docs/TESTING.md, "CI's interpreter
                     here"), its WHOLE output kept in a result file that is removed FIRST, so a
                     run that did not happen leaves nothing to read (e986e66);
@@ -23,7 +29,7 @@ everything after it:
                     previous message, df17b55, 17e9c7d), and "@SUITE@" in it is replaced by
                     the run's own result line (a count is never written before the run that
                     makes it, 71ed99e);
-  7. commit:        git commit -F, the hooks running as usual;
+  7. commit:        git commit -F in the snapshot, the hooks running as usual;
   8. push:          optional (--push), naming the pushed sha.
 
   0. With --push, first: CI's newest verdict on main (`nmas-ci-log main-ci`). Red refuses,
@@ -185,6 +191,114 @@ def git(repo, *args, check=True):
     if check and r.returncode != 0:
         refuse("git " + args[0], (r.stderr or r.stdout).strip()[:400])
     return r
+
+
+#: Files outside git that tests read in the checkout (measured 2026-10-25: the whole suite run
+#: once with an audit hook recording every file each test opened, then `git check-ignore`):
+#: the snapshot gets the same, or a test the gate runs would see less than the one the operator
+#: runs (the publication scan's real values, the secret file's mode, a generated rule file).
+#: Each is copied, its mode kept, only if present, into the owner-only snapshot that is removed
+#: after the run. `logs/` and `data/` themselves start empty there, as in CI.
+SNAPSHOT_LOCAL = (".env", "data/lab_hosts.json", "data/publication_denylist.txt",
+                  "deploy/grafana/provisioning/alerting/nmas-heartbeat.yaml", "setup.cfg")
+
+
+#: Every snapshot's folder begins so (in the temporary directory, owner-only by `mkdtemp`).
+SNAPSHOT_PREFIX = "nmas-gate-snapshot-"
+
+
+#: The file in a snapshot's folder naming the gate process that owns it.
+SNAPSHOT_OWNER = "owner.pid"
+
+
+#: A snapshot folder with no readable owner (an earlier gate's) is stale only when older than
+#: this: 4x the longest gate measured (29 min, 2026-10-23 to 25). A younger one may belong to
+#: a gate still running; 2026-10-25's first snapshot run lost its snapshot mid-suite to a
+#: cleanup that judged an ownerless folder stale.
+OWNERLESS_STALE_S = 2 * 3600
+
+
+def _owner_alive(parent) -> bool:
+    """May the gate that made the snapshot folder *parent* still be running? Its owner's pid,
+    asked: no such process is gone; a process this one may not signal (another user, or outside
+    the suite's namespace) is ALIVE. With no readable owner: alive while younger than
+    OWNERLESS_STALE_S."""
+    try:
+        pid = int(open(os.path.join(parent, SNAPSHOT_OWNER), encoding="utf-8").read().strip())
+    except (OSError, ValueError):
+        try:
+            import time
+            return time.time() - os.stat(parent).st_mtime < OWNERLESS_STALE_S
+        except OSError:
+            return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def remove_stale_snapshots(repo):
+    """Remove every snapshot a gate that is no longer running left behind (killed, so its
+    `finally` never ran): it holds `.env`, so it is never left. A snapshot whose gate still
+    runs (another gate, or the gate's own tests inside a gate's suite) is never touched. Each
+    of *repo*'s worktrees under such a folder, then any such folder of this user left in the
+    temporary directory. ``[folders removed]``."""
+    import tempfile
+
+    gone = []
+    for line in git(repo, "worktree", "list", "--porcelain", check=False).stdout.splitlines():
+        path = line[len("worktree "):] if line.startswith("worktree ") else ""
+        parent = os.path.dirname(path)
+        if os.path.basename(parent).startswith(SNAPSHOT_PREFIX) and not _owner_alive(parent):
+            git(repo, "worktree", "remove", "--force", path, check=False)
+            shutil.rmtree(parent, ignore_errors=True)
+            gone.append(parent)
+    tmp = tempfile.gettempdir()
+    for name in os.listdir(tmp):
+        full = os.path.join(tmp, name)
+        if (name.startswith(SNAPSHOT_PREFIX) and full not in gone and os.path.isdir(full)
+                and os.stat(full).st_uid == os.getuid() and not _owner_alive(full)):
+            shutil.rmtree(full, ignore_errors=True)
+            gone.append(full)
+    git(repo, "worktree", "prune", check=False)
+    return gone
+
+
+def _exit_on_signal(signum, _frame):
+    """SIGTERM and SIGHUP end the gate as an exit does, so its `finally` removes the snapshot
+    (Python's default for them ends the process without running it)."""
+    raise SystemExit(128 + signum)
+
+
+def make_snapshot(repo, tree, head):
+    """A worktree of *head*, set to exactly *tree* (index and files), with SNAPSHOT_LOCAL
+    copied in: ``(path, remove)``. Its folder is owner-only (0700, `mkdtemp`'s mode, checked).
+    Nothing in *repo* changes."""
+    import tempfile
+
+    parent = tempfile.mkdtemp(prefix=SNAPSHOT_PREFIX)     # 0700, whatever the umask
+    with open(os.path.join(parent, SNAPSHOT_OWNER), "w", encoding="utf-8") as fh:
+        fh.write(str(os.getpid()))
+    snap = os.path.join(parent, "tree")
+    git(repo, "worktree", "add", "-q", "--detach", snap, head)
+
+    def remove():
+        git(repo, "worktree", "remove", "--force", snap, check=False)
+        shutil.rmtree(parent, ignore_errors=True)
+        git(repo, "worktree", "prune", check=False)
+    r = git(snap, "read-tree", "-u", "--reset", tree, check=False)
+    if r.returncode != 0:
+        remove()
+        refuse("the snapshot", (r.stderr or r.stdout).strip()[:400])
+    for rel in SNAPSHOT_LOCAL:
+        src = os.path.join(repo, rel)
+        if os.path.isfile(src):
+            os.makedirs(os.path.dirname(os.path.join(snap, rel)), exist_ok=True)
+            shutil.copy2(src, os.path.join(snap, rel))
+    return snap, remove
 
 
 def verdict(path, rc):
@@ -349,10 +463,32 @@ def main(argv=None):
     if guard.returncode != 0:
         refuse("the stage guard", (guard.stderr or guard.stdout).strip()[-400:])
 
+    tree = git(repo, "write-tree").stdout.strip()
+    head = git(repo, "rev-parse", "HEAD").stdout.strip()
+    branch = git(repo, "symbolic-ref", "-q", "HEAD", check=False).stdout.strip()
+    if not branch:
+        refuse("the snapshot", "HEAD is detached: the gate commits onto a branch")
+    for stale in remove_stale_snapshots(repo):
+        say(f"2b. removed a snapshot an earlier run left behind: {stale}")
+    import signal
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, _exit_on_signal)
+    snap, remove = make_snapshot(repo, tree, head)
+    say(f"2b. the snapshot: tree {tree[:10]} of {head[:10]}, tested in {snap}; the working "
+        "tree is free")
+    try:
+        return _tested(a, repo, snap, gitdir, tree, head, branch, first_line)
+    finally:
+        remove()
+
+
+def _tested(a, repo, snap, gitdir, tree, head, branch, first_line):
+    """Steps 3 to 8, in the snapshot *snap* of *tree*; the commit made there moves *branch*
+    only if it still points at *head*, and only when its tree is *tree*."""
     suite_out = os.path.join(gitdir, "nmas-gate-suite.out")
     if not os.environ.get("NMAS_GATE_SUITE"):       # the gate's own tests stand a suite in
         say("3. CI's interpreter holds what CI installs")
-        diffs = interpreter_differs(a.python, repo)
+        diffs = interpreter_differs(a.python, snap)
         if diffs:
             refuse("CI's interpreter", f"{a.python} differs from what CI installs from "
                    f"{', '.join(CI_FILES)}: " + "; ".join(diffs[:8])
@@ -383,7 +519,7 @@ def main(argv=None):
     held = hold_full_suite(f"nmas-gate (pid {os.getpid()})")
     if isinstance(held, str):
         refuse("the full-suite lock", held)
-    codes = run_all_to_files(runs, repo, env)
+    codes = run_all_to_files(runs, snap, env)
     whys, lines = [], []
     for name, (_cmd, out) in runs.items():
         why = verdict(out, codes[name]) or browser_skipped(out)
@@ -403,7 +539,7 @@ def main(argv=None):
     cmd = os.environ.get("NMAS_GATE_RATCHET") or RATCHET.format(
         py=shlex.quote(a.python), cov=shlex.quote(cov),
         files=" ".join(shlex.quote(os.path.join(cov, f".coverage.{s}")) for s in SHARDS))
-    rc = run_to_file(cmd, repo, ratchet_out, env)
+    rc = run_to_file(cmd, snap, ratchet_out, env)
     why = ratchet_failed(ratchet_out, rc)
     if why:
         refuse("the coverage ratchet", why, ratchet_out)
@@ -414,7 +550,7 @@ def main(argv=None):
         browser_out = os.path.join(gitdir, "nmas-gate-browser.out")
         say("5. the browser tests, unconfined")
         cmd = os.environ.get("NMAS_GATE_BROWSER") or BROWSER.format(py=shlex.quote(a.python))
-        rc = run_to_file(cmd, repo, browser_out)
+        rc = run_to_file(cmd, snap, browser_out)
         why = verdict(browser_out, rc)
         browser_line = last_line(browser_out) if os.path.isfile(browser_out) else ""
         say(f"   {browser_line or '(no output)'}")
@@ -431,9 +567,22 @@ def main(argv=None):
     with open(final, "w", encoding="utf-8") as fh:
         fh.write(body)
 
-    say("7. commit")
-    git(repo, "commit", "-q", "-F", final)
-    sha = git(repo, "rev-parse", "--short", "HEAD").stdout.strip()
+    say("7. commit, in the snapshot")
+    git(snap, "commit", "-q", "-F", final)
+    new = git(snap, "rev-parse", "HEAD").stdout.strip()
+    committed = git(snap, "rev-parse", f"{new}^{{tree}}").stdout.strip()
+    if committed != tree:
+        refuse("the commit", f"its tree {committed[:10]} is not the tested tree {tree[:10]} (a "
+                             f"hook changed what is committed): {branch} was not moved")
+    # Compare and swap: the branch moves to the commit only if it still points where the gate
+    # began; the working tree and the index keep whatever was done during the run.
+    r = git(repo, "update-ref", "-m", "nmas-gate: the tested snapshot", branch, new, head,
+            check=False)
+    if r.returncode != 0:
+        now = git(repo, "rev-parse", branch, check=False).stdout.strip()
+        refuse("the branch", f"{branch} moved during the run (from {head[:10]} to {now[:10]}), "
+                             f"so the tested commit {new[:10]} was not put on it")
+    sha = new[:8]
     say(f"   committed {sha}: {body.splitlines()[0]}")
     if a.push:
         say("8. push")

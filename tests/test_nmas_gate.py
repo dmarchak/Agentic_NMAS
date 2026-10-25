@@ -81,11 +81,146 @@ class TestAPassingRunCommits:
         assert "The suite: 12 passed, 1 skipped in 3.10s" in body and "@SUITE@" not in body
         assert "1. git add -A" in r.stdout and "7. commit" in r.stdout
 
+    def test_the_suite_runs_in_a_snapshot_and_the_working_tree_stays_free(self, repo, tmp_path):
+        """The operator, 2026-10-25: the gate never locks the working tree. The suite runs in
+        a snapshot of the staged tree; an edit made in the checkout DURING the run is not in
+        the commit and is left as it was, uncommitted."""
+        where = tmp_path / "where"
+        r = _gate(repo, tmp_path, suite=(f"pwd > {where}; echo three > {repo / 'docs' / 'a.md'}; "
+                                         + _suite(["12 passed in 1.00s"])))
+        assert r.returncode == 0, r.stdout + r.stderr
+        ran_in = where.read_text().strip()
+        assert ran_in != str(repo) and "nmas-gate-snapshot-" in ran_in, ran_in
+        assert _git(repo, "show", "HEAD:docs/a.md") == "two"           # the staged tree
+        assert (repo / "docs" / "a.md").read_text() == "three\n"       # the edit, kept
+        assert _git(repo, "status", "--porcelain") == "M docs/a.md"
+        assert "2b. the snapshot" in r.stdout
+        assert not os.path.exists(ran_in), "the snapshot was not removed"
+        assert _git(repo, "worktree", "list").count("\n") == 0         # only the checkout
+
+    def test_the_committed_tree_is_the_tested_one(self, repo, tmp_path):
+        tree = None
+        r = _gate(repo, tmp_path, suite=f"git write-tree > {tmp_path / 'tested'}; "
+                                        + _suite(["12 passed in 1.00s"]))
+        assert r.returncode == 0, r.stdout + r.stderr
+        tree = (tmp_path / "tested").read_text().strip()
+        assert _git(repo, "rev-parse", "HEAD^{tree}") == tree
+
+    def test_a_hook_that_changes_the_commit_refuses_and_moves_nothing(self, repo, tmp_path):
+        """A committed tree other than the tested one is refused: the branch does not move."""
+        hooks = repo / ".git" / "hooks"
+        hooks.mkdir(exist_ok=True)
+        hook = hooks / "pre-commit"
+        hook.write_text("#!/bin/sh\necho extra > extra.txt && git add extra.txt\n")
+        hook.chmod(0o755)
+        before = _git(repo, "rev-parse", "HEAD")
+        r = _gate(repo, tmp_path)
+        assert r.returncode == 1 and "REFUSED at the commit" in r.stdout, r.stdout + r.stderr
+        assert "is not the tested tree" in r.stdout
+        assert _git(repo, "rev-parse", "HEAD") == before
+        assert _git(repo, "worktree", "list").count("\n") == 0
+
+    def test_a_branch_that_moved_during_the_run_refuses_and_keeps_it(self, repo, tmp_path):
+        """Compare and swap: a commit put on the branch while the suite ran is kept, and the
+        gate's commit is not put over it."""
+        other = (f"git -C {repo} -c user.name=T -c user.email=t@example.com commit -q "
+                 "--allow-empty -m other; ")
+        r = _gate(repo, tmp_path, suite=other + _suite(["12 passed in 1.00s"]))
+        assert r.returncode == 1 and "REFUSED at the branch" in r.stdout, r.stdout + r.stderr
+        assert "moved during the run" in r.stdout
+        assert _git(repo, "log", "-1", "--format=%s") == "other"
+        assert _git(repo, "worktree", "list").count("\n") == 0
+
     def test_the_browser_tests_are_a_step_of_their_own(self, repo, tmp_path):
         r = _gate(repo, tmp_path, extra=("--browser",),
                   browser=_suite(["207 passed in 100.18s (0:01:40)"]))
         assert r.returncode == 0, r.stdout + r.stderr
         assert "browser tests: 207 passed" in _git(repo, "log", "-1", "--format=%B")
+
+
+class TestTheSnapshotNeverSurvives:
+    """The operator, 2026-10-25: the snapshot holds `.env`, so it is owner-only (0700) and is
+    removed on every exit: a pass, a refusal, an interrupt or a termination; one a killed gate
+    left behind is removed by the next gate, and one a running gate owns is never touched."""
+
+    @staticmethod
+    def _snapshots():
+        tmp = tempfile.gettempdir()
+        return {n for n in os.listdir(tmp) if n.startswith("nmas-gate-snapshot-")
+                and os.stat(os.path.join(tmp, n)).st_uid == os.getuid()}
+
+    def _mode_and_folder(self, tmp_path):
+        """A stand-in suite that records its snapshot's folder and that folder's mode."""
+        return (f'p=$(dirname "$PWD"); echo "$p" > {tmp_path / "folder"}; '
+                f'stat -c %a "$p" > {tmp_path / "mode"}; ')
+
+    def test_owner_only_and_removed_after_a_pass(self, repo, tmp_path):
+        r = _gate(repo, tmp_path, suite=self._mode_and_folder(tmp_path)
+                                        + _suite(["12 passed in 1.00s"]))
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert (tmp_path / "mode").read_text().strip() == "700"
+        assert not os.path.exists((tmp_path / "folder").read_text().strip())
+
+    def test_removed_after_a_refused_suite(self, repo, tmp_path):
+        r = _gate(repo, tmp_path, suite=self._mode_and_folder(tmp_path)
+                                        + _suite(["1 failed in 1s"], rc=1))
+        assert r.returncode == 1 and "REFUSED at the suite" in r.stdout
+        assert not os.path.exists((tmp_path / "folder").read_text().strip())
+
+    @pytest.mark.parametrize("sig", ["INT", "TERM", "HUP"])
+    def test_removed_after_an_interrupt_or_a_termination(self, repo, tmp_path, sig):
+        """The suite signals the gate itself mid-run (Ctrl-C is SIGINT; a closed terminal,
+        SIGHUP; a stop, SIGTERM), then waits to be killed with it."""
+        suite = (self._mode_and_folder(tmp_path)
+                 + f"kill -{sig} $PPID; sleep 30; " + _suite(["12 passed in 1.00s"]))
+        r = _gate(repo, tmp_path, suite=suite)
+        assert r.returncode != 0 and _commits(repo) == 1, r.stdout + r.stderr
+        assert not os.path.exists((tmp_path / "folder").read_text().strip()), sig
+
+    def test_a_snapshot_a_killed_gate_left_is_removed_and_a_live_one_kept(self, repo, tmp_path):
+        """A folder whose gate is gone (here an owner that is not running) is removed by the
+        next gate; one whose owner runs (this test's own process) is left alone."""
+        tmp = tempfile.gettempdir()
+        dead = tempfile.mkdtemp(prefix="nmas-gate-snapshot-", dir=tmp)
+        live = tempfile.mkdtemp(prefix="nmas-gate-snapshot-", dir=tmp)
+        try:
+            with open(os.path.join(dead, "owner.pid"), "w") as fh:
+                fh.write("999999999")
+            with open(os.path.join(live, "owner.pid"), "w") as fh:
+                fh.write(str(os.getpid()))
+            r = _gate(repo, tmp_path)
+            assert r.returncode == 0, r.stdout + r.stderr
+            assert not os.path.exists(dead) and f"left behind: {dead}" in r.stdout
+            assert os.path.exists(live)
+        finally:
+            import shutil
+            shutil.rmtree(dead, ignore_errors=True)
+            shutil.rmtree(live, ignore_errors=True)
+
+    def test_an_ownerless_snapshot_is_kept_while_young_and_removed_once_old(self, repo,
+                                                                          tmp_path):
+        """2026-10-25: the first real snapshot run lost its snapshot mid-suite to a cleanup that
+        judged a folder with no owner file (an earlier gate's) stale. Ownerless, it is kept
+        while younger than the bound, and removed once older."""
+        tmp = tempfile.gettempdir()
+        young = tempfile.mkdtemp(prefix="nmas-gate-snapshot-", dir=tmp)
+        old = tempfile.mkdtemp(prefix="nmas-gate-snapshot-", dir=tmp)
+        try:
+            os.utime(old, (1, 1))
+            r = _gate(repo, tmp_path)
+            assert r.returncode == 0, r.stdout + r.stderr
+            assert os.path.exists(young) and not os.path.exists(old)
+        finally:
+            import shutil
+            shutil.rmtree(young, ignore_errors=True)
+            shutil.rmtree(old, ignore_errors=True)
+
+    def test_no_snapshot_of_these_runs_survives(self, repo, tmp_path):
+        """The floor for every test above: a pass and a refusal leave no folder of theirs."""
+        before = self._snapshots()
+        _gate(repo, tmp_path)
+        _gate(repo, tmp_path, suite=_suite(["1 failed in 1s"], rc=1))
+        assert self._snapshots() - before == set()
 
 
 class TestEveryWayAStepFails:
@@ -117,10 +252,12 @@ class TestEveryWayAStepFails:
         assert "5330 passed" not in r.stdout and _commits(repo) == 1
 
     def test_a_message_that_is_not_this_commits_refuses_before_the_suite(self, repo, tmp_path):
+        # The stand-in marks an ABSOLUTE path: the suite runs in the gate's snapshot, not in
+        # the checkout, so a relative mark would never be where this looks.
         r = _gate(repo, tmp_path, subject="Plan: an older commit's subject", expect="Docs:",
-                  suite="touch ran; " + _suite(["1 passed in 0.1s"]))
+                  suite=f"touch {tmp_path / 'ran'}; " + _suite(["1 passed in 0.1s"]))
         assert r.returncode == 1 and "REFUSED at the message" in r.stdout
-        assert not (repo / "ran").exists() and _commits(repo) == 1
+        assert not (tmp_path / "ran").exists() and _commits(repo) == 1
 
     def test_a_failed_browser_run_refuses(self, repo, tmp_path):
         r = _gate(repo, tmp_path, extra=("--browser",),
@@ -131,9 +268,10 @@ class TestEveryWayAStepFails:
     def test_a_staged_secret_refuses_before_the_suite(self, repo, tmp_path):
         # Built by concatenation, so this file holds no key block the guard would refuse.
         (repo / "docs" / "server.key").write_text("-----BEGIN " + "PRIVATE KEY-----\nx\n")
-        r = _gate(repo, tmp_path, suite="touch ran; " + _suite(["1 passed in 0.1s"]))
+        r = _gate(repo, tmp_path, suite=f"touch {tmp_path / 'ran'}; "
+                                        + _suite(["1 passed in 0.1s"]))
         assert r.returncode == 1 and "REFUSED at the stage guard" in r.stdout
-        assert not (repo / "ran").exists() and _commits(repo) == 1
+        assert not (tmp_path / "ran").exists() and _commits(repo) == 1
 
     def test_an_empty_expect_is_refused(self, repo, tmp_path):
         r = _gate(repo, tmp_path, expect=" ")
