@@ -85,7 +85,13 @@ def misses(expect: dict, got: dict, now: float) -> list:
                else "guide" if error == "no_match" and got.get("guide")
                else f"not the model's: {error}")
     out = []
-    if outcome not in expect.get("outcome", ()):
+    allowed = list(expect.get("outcome", ()))
+    # Mercury's own guidance asks the person to say what they mean, so on a case that expects
+    # a question back it is one (the operator, 2026-10-25; ruled after held-out set 1 was
+    # seen, C1743).
+    if "ask" in allowed and "guide" not in allowed:
+        allowed.append("guide")
+    if outcome not in allowed:
         return [f"outcome {outcome}, expected one of {expect.get('outcome')}"]
     if outcome != "answer":
         return out
@@ -119,7 +125,36 @@ def misses(expect: dict, got: dict, now: float) -> list:
     if expect.get("yesterday") and (v.get("from"), v.get("to")) != _yesterday(now):
         out.append(f"From {v.get('from')!r} to {v.get('to')!r}, expected yesterday "
                    f"{_yesterday(now)}")
+    if expect.get("span"):
+        out += _span_misses(expect["span"], v, now)
     return out
+
+
+#: How far a span that runs to now may end from the recording's own time: the call's data
+#: gives now to the minute, read a moment after the recording's clock.
+NOW_SLACK_S = 120
+
+
+def _span_misses(span: str, v: dict, now: float) -> list:
+    """A named span (C1740: "yesterday", "this week", "last week") judged as the recorder asks,
+    in UTC (it sends no viewer timezone): from the span's start to the next one's, or to now
+    within `NOW_SLACK_S`."""
+    import datetime as dt
+
+    from modules.ai import nl_query
+
+    s = nl_query.spans(now, dt.timezone.utc)
+    end = {"yesterday": s["today"], "last week": s["this week"]}.get(span)
+    if v.get("from") != s[span]:
+        return [f"From {v.get('from')!r}, expected {span}'s start {s[span]!r}"]
+    if end is not None:
+        return [] if v.get("to") == end else [f"to {v.get('to')!r}, expected {span}'s end "
+                                              f"{end!r}"]
+    try:
+        to = calendar.timegm(time.strptime(v.get("to") or "", "%Y-%m-%d %H:%M"))
+    except ValueError:
+        return [f"to {v.get('to')!r}, expected now"]
+    return [] if abs(to - now) <= NOW_SLACK_S else [f"to {v.get('to')!r}, expected now"]
 
 
 def _section(pack: dict, name: str) -> dict:
@@ -212,6 +247,32 @@ def explain_unready(case: dict, pack: dict) -> list:
     return out
 
 
+def _reasoning(expect: dict, hyps: list, pack: dict) -> list:
+    """What *hyps* lack of one line of reasoning: `cites` (each group cited somewhere),
+    `together` (one hypothesis citing each group), and `common` (one hypothesis citing the
+    named figures of at least `min_devices` devices: a cause shared beneath them)."""
+    out = []
+    cited = {r for h in hyps for r in h.get("evidence_refs") or []}
+    for group in expect.get("cites", ()):
+        if not cited & _refs(pack, group):
+            out.append(f"cites none of {group}")
+    for together in expect.get("together", ()):
+        wanted = [_refs(pack, g) for g in together]
+        if not any(all(set(h.get("evidence_refs") or []) & w for w in wanted) for h in hyps):
+            out.append(f"no one hypothesis cites each of {together}")
+    common = expect.get("common")
+    if common:
+        by_ref = {p.get("ref"): p for p in _section(pack, "health").get("pieces") or []}
+
+        def devices(h):
+            return {by_ref[r]["device"] for r in h.get("evidence_refs") or []
+                    if r in by_ref and by_ref[r].get("figure") in common["figures"]}
+        if not any(len(devices(h)) >= common["min_devices"] for h in hyps):
+            out.append(f"no one hypothesis cites {' or '.join(common['figures'])} figures of "
+                       f"{common['min_devices']} or more devices")
+    return out
+
+
 def explain_misses(expect: dict, answer, pack: dict, error: str = "") -> list:
     """What Explain's answer (*answer*, the model's `Explanation` as JSON; None with *error*
     when Mercury refused it, a couldn't analyse) does that *expect* does not allow: ``[]`` is a
@@ -232,14 +293,17 @@ def explain_misses(expect: dict, answer, pack: dict, error: str = "") -> list:
     for group in expect.get("checked", ()):
         if not checked & _refs(pack, group):
             out.append(f"checked none of {group}")
-    cited = {r for h in hyps for r in h.get("evidence_refs") or []}
-    for group in expect.get("cites", ()):
-        if not cited & _refs(pack, group):
-            out.append(f"cites none of {group}")
-    for together in expect.get("together", ()):
-        wanted = [_refs(pack, g) for g in together]
-        if not any(all(set(h.get("evidence_refs") or []) & w for w in wanted) for h in hyps):
-            out.append(f"no one hypothesis cites each of {together}")
+    out += _reasoning(expect, hyps, pack)
+    # Any one of several acceptable lines of reasoning (the operator, 2026-10-25, on C1547:
+    # a common cause beneath every device is better than one pinned on a single switch): the
+    # first that holds passes; when none does, each says what it lacked.
+    alternatives = expect.get("one_of") or ()
+    if alternatives:
+        lacks = [(a.get("name") or f"line {i}", _reasoning(a, hyps, pack))
+                 for i, a in enumerate(alternatives, 1)]
+        if all(why for _n, why in lacks):
+            out.append("none of the accepted lines of reasoning: " + "; ".join(
+                f"{n}: {', '.join(why)}" for n, why in lacks))
     if hyps and expect.get("lead_not_only"):
         lead = set(hyps[0].get("evidence_refs") or [])
         if lead and lead <= _refs(pack, expect["lead_not_only"]):

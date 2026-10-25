@@ -2070,6 +2070,25 @@ was 3.59 s and its p95 5.25 s, for $0.0004 a case-run. The rulings:
   - $0.0516 for the 150 case-runs.
 
   Not tuned on; no v7 until the operator has seen v6 (C1724).
+- **The operator, having seen v6 (2026-10-25):** C1724 stays open.
+  - **v7** carries C1740's spans ("yesterday", "this week" and "last week" as calendar
+    spans in today's timezone, each start given as data) and only general defaults from the
+    20, never from held-out misses: one, the per-CPU MIB over the older average (case 3).
+  - **Held-out set 1** is seen and retired as a test.
+  - **Held-out set 2** (`held_out_2.json`) is ten new questions, written before v7 is
+    measured. No lab device is new to both sets, so it uses r6, s2 and s5 (which the 20 never
+    name), with metrics new to both sets and no prompt names, and asks the named spans.
+  - **Scoring (ruled after set 1 was seen):** on a case expecting a question back, Mercury's
+    own guidance counts as a pass (C1743).
+  - **The batched gateway change, now:** thinking per task (`profiles.THINKING`; a model's
+    own form, `disabled` on Haiku 5.5, `between_tools` on Sonnet 5.5), with a run able to ask
+    either (`nmas-nl-cases --thinking`).
+    - The API rule, confirmed first (the claude-api reference, Haiku 5.5's breaking change
+      2): its temperature must be 1, so a lower one is a 400, thinking on or off; only
+      thinking off is built.
+    - Proved by the tier's hand check.
+    - v7 is measured with and without it on the 20 and on set 2. **Set 2's consistency
+      decides** the pin.
 - **The offer** is narrowed by a named role's devices as well as by named devices.
 - **Case 15** expects `cpuAvgBusy5`, as measured: s3 and s4 carry no `cpmCPUTotal` series.
 - **Case 13:** the metrics builder gains a `changes` operation (PromQL `changes()` over the
@@ -2207,6 +2226,25 @@ tab alike:**
 
   v1 misses the same two and offers no host hypothesis. The case judge
   (`cases.explain_misses`) misses both on the same two checks.
+- **The operator's revision (2026-10-25, after reading the pack):** every router's CPU
+  peaked near 08:12 (r1 66, r2 67, r4 71, r6 67), with failed scrapes everywhere. That is a
+  shared-host signature, and the real cause. An answer citing those simultaneous peaks as a
+  common cause beneath is better than one pinned on s3 (57%, the lowest).
+  - Case 1 accepts either line (`one_of`): a common cause (one hypothesis citing the CPU or
+    scrape figures of three or more devices), or the drops tied to s3 with its CPU cited.
+  - **Under it, v3 passes the judge** on its third hypothesis's scrape figures (r1, r2, r3).
+    On the CPU peaks alone it would miss, as it cites only r1's. v1 still misses.
+  - The verdict stands once the operator has read both answers' text.
+- **Proposed, not built: a trim of the health section** (C1547's pack, 11 devices).
+  - The health section is about 5,600 of v3's roughly 20,000 input tokens. That is an
+    estimate: the sizes at 2.12 characters a token, measured on v1's call.
+  - **One line per device**, each figure in a few words with its id implied
+    (`health:<device id>:<figure>`), is about 810 tokens. That takes v3 from 16,283 input
+    tokens and $0.0509 to about 11,500 and $0.041. Nothing cited is lost: the pack keeps the
+    pieces, and the check resolves against them.
+  - **Health only for devices whose figures moved** saves little here: 9 of 10 devices moved,
+    as on any shared-host incident. It would also drop the healthy evidence a no fault found
+    answer must cite (C1742), so it is not proposed.
 
 ## 16. Industry-readiness roadmap (2026-10-25)
 

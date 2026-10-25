@@ -79,19 +79,21 @@ def _delimited(tag: str, parts: dict) -> str:
 
 
 def build_request(prompt: dict, schema_model, parts: dict, model: str, max_tokens: int,
-                  context: dict = None) -> dict:
+                  context: dict = None, thinking: dict = None) -> dict:
     """The Messages API body. **The stable prefix, cached** (the operator, 2026-10-25): the
     prompt, then the *context* (what every call of a feature shares, as 8.1's builder
     vocabulary), as system blocks, the last marked `cache_control` (the 5-minute TTL). **The
     call's own parts, uncached**: each as data, delimited by its name, in one user turn (a
     question, an evidence pack). The answer's schema in `output_config.format`. Nothing
     volatile (a time, an id) is ever in the system blocks: any byte that moves there misses
-    the cache for everything after it."""
+    the cache for everything after it. *thinking*, when given, is sent as the request's
+    `thinking` (a task's thinking off, its model's own form); none leaves the model's
+    default."""
     system = [{"type": "text", "text": prompt["text"]}]
     if context:
         system.append({"type": "text", "text": _delimited("context", context)})
     system[-1]["cache_control"] = {"type": "ephemeral"}
-    return {
+    body = {
         "model": model,
         "max_tokens": int(max_tokens),
         "system": system,
@@ -99,6 +101,9 @@ def build_request(prompt: dict, schema_model, parts: dict, model: str, max_token
         "output_config": {"format": {"type": "json_schema",
                                      "schema": schemas.schema_for(schema_model)}},
     }
+    if thinking:
+        body["thinking"] = dict(thinking)
+    return body
 
 
 def prompt_tokens(body: dict) -> int:
@@ -120,11 +125,14 @@ def _text_of(reply_body: dict) -> str:
 
 
 def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
-        context: dict = None, send=None, today: str = None) -> dict:
+        context: dict = None, send=None, today: str = None, thinking: str = None) -> dict:
     """One schema-bound call of the task *feature* (the module's docstring has the order): its
     model and bounds are its pin in `profiles.TASKS`, never an argument. *context* is the
     stable prefix every call of the task shares, cached; *parts* the call's own data,
-    uncached. *send* replaces the adapter (tests); *today* the UTC day the caps count."""
+    uncached. *send* replaces the adapter (tests); *today* the UTC day the caps count.
+    *thinking* (one of `profiles.THINKING`) replaces the task's for this call alone, as a
+    measurement of both asks; by default the task's pin, "adaptive" when it names none. The
+    row records which was sent."""
     call_id = calls.new_id()
     pin = profiles.TASKS.get(feature) or {}
     model = pin.get("model", "")
@@ -155,6 +163,15 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
         return refuse("unknown_model", str(exc))
     if profile["provider"] != profiles.ANTHROPIC:
         return refuse("unknown_model", f"{model} is not served by the Anthropic adapter")
+    mode = thinking if thinking is not None else pin.get("thinking", "adaptive")
+    row["thinking"] = mode
+    if mode not in profiles.THINKING:
+        return refuse("thinking", f"thinking {mode!r} is not one of "
+                      f"{', '.join(profiles.THINKING)}; nothing was sent")
+    if mode == "off" and not profile.get("thinking_off"):
+        return refuse("thinking", f"{model}'s profile names no way to turn thinking off; "
+                      "nothing was sent")
+    sent_thinking = profile["thinking_off"] if mode == "off" else None
     ident = getattr(schema_model, "__ai_schema__", None)
     if ident is None or schemas.REGISTRY.get(ident) is not schema_model:
         return refuse("schema", f"{getattr(schema_model, '__name__', schema_model)} is not a "
@@ -168,7 +185,8 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
 
     from modules import redact
     body = redact.egress_payload(build_request(prompt_file, schema_model, parts, model,
-                                               max_tokens, context=context))
+                                               max_tokens, context=context,
+                                               thinking=sent_thinking))
     leaked = redact.contains_known_secret(body)
     if leaked:
         return refuse("unmasked_secret", "a stored secret is still in the request after "

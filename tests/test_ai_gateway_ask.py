@@ -22,6 +22,9 @@ MODEL = profiles.TASKS["connection_check"]["model"]
 BASE = {"id": CALL_ID, "feature": "connection_check", "actor": ACTOR, "model": MODEL,
         "prompt": "ping.v1", "schema": "", "verdict": "", "detail": "", "cost_usd": 0.0}
 SHA = prompts.load("ping", 1)["sha256"]
+#: A row once the task's model is known: it records the thinking asked (the batched gateway
+#: change, 2026-10-25), the model's default when the task names none.
+ASKED = dict(BASE, thinking="adaptive")
 
 
 @pytest.fixture(autouse=True)
@@ -133,7 +136,7 @@ class _Plain:
 def test_a_schema_that_is_not_the_registered_one_is_refused_naming_it(world, schema, named):
     words = f"{named} is not a registered AI schema"
     assert _ask(world, schema=schema) == _refused("schema", words) and world.sent == []
-    assert _row() == dict(BASE, verdict="schema", detail=words)
+    assert _row() == dict(ASKED, verdict="schema", detail=words)
 
 
 def test_a_prompt_that_does_not_load_is_refused_in_its_words(world):
@@ -141,7 +144,7 @@ def test_a_prompt_that_does_not_load_is_refused_in_its_words(world):
         prompts.load("no_such_prompt", 1)
     words = str(missing.value)
     assert _ask(world, prompt=("no_such_prompt", 1)) == _refused("prompt", words)
-    assert _row() == dict(BASE, prompt="no_such_prompt.v1", schema="ping.v1",
+    assert _row() == dict(ASKED, prompt="no_such_prompt.v1", schema="ping.v1",
                           verdict="prompt", detail=words)
 
 
@@ -153,7 +156,7 @@ def test_a_stored_secret_left_after_masking_is_refused_before_the_request_is_kep
     words = ("a stored secret is still in the request after masking (default:password, "
              "snmp:community); nothing was sent")
     assert _ask(world) == _refused("unmasked_secret", words) and world.sent == []
-    assert _row() == dict(BASE, schema="ping.v1", prompt_sha256=SHA,
+    assert _row() == dict(ASKED, schema="ping.v1", prompt_sha256=SHA,
                           verdict="unmasked_secret", detail=words)
 
 
@@ -166,7 +169,7 @@ def test_a_prompt_over_its_bound_is_refused_with_its_estimate_and_the_long_tier(
              f"({MODEL} charges every rate at its long tier over "
              f"{profiles.profile(MODEL)['long_prompt_tokens']}); nothing was sent")
     assert got == _refused("prompt_too_long", words) and world.sent == []
-    assert row == dict(BASE, schema="ping.v1", prompt_sha256=SHA, request=row["request"],
+    assert row == dict(ASKED, schema="ping.v1", prompt_sha256=SHA, request=row["request"],
                        verdict="prompt_too_long", detail=words, prompt_tokens=est)
     assert row["request"]["messages"][0]["content"].count("x" * 100) > 0
 
@@ -196,7 +199,7 @@ def test_a_worst_case_over_the_call_cap_is_refused_with_both_operands(world, mon
     words = (f"this call's worst case ${worst:.4f} is over the connection_check task's "
              f"per-call cap ${worst / 2:.4f}")
     assert _ask(world) == _refused("over_cap", words) and world.sent == []
-    assert _row() == dict(BASE, schema="ping.v1", prompt_sha256=SHA, request=body,
+    assert _row() == dict(ASKED, schema="ping.v1", prompt_sha256=SHA, request=body,
                           verdict="over_cap", detail=words, worst_usd=worst)
 
 
@@ -224,7 +227,7 @@ def test_an_unreadable_record_is_refused_in_its_words(world, monkeypatch):
     words = ("the record of AI calls cannot be read, so today's spend is unknown (a torn line "
              "at 3); nothing was sent")
     assert _ask(world) == _refused("over_cap", words) and world.sent == []
-    assert _row() == dict(BASE, schema="ping.v1", prompt_sha256=SHA, request=body,
+    assert _row() == dict(ASKED, schema="ping.v1", prompt_sha256=SHA, request=body,
                           verdict="over_cap", detail=words)
     assert days == ["2026-10-25"], "the day given is the day counted"
 
@@ -236,7 +239,7 @@ def test_the_day_cap_is_refused_with_its_three_operands(world, monkeypatch):
     words = (f"today's spend ${1.5 - worst / 2:.4f} plus this call's worst case ${worst:.4f} "
              f"is over the day cap ${1.5:.4f}")
     assert _ask(world) == _refused("over_cap", words) and world.sent == []
-    assert _row() == dict(BASE, schema="ping.v1", prompt_sha256=SHA, request=body,
+    assert _row() == dict(ASKED, schema="ping.v1", prompt_sha256=SHA, request=body,
                           verdict="over_cap", detail=words, worst_usd=worst)
 
 
@@ -285,7 +288,7 @@ def test_a_provider_failure_is_refused_with_its_attempts_and_headers(world):
         raise A.Overloaded("HTTP 529 after 3 attempts: busy", status=529, attempts=3,
                            headers={"retry-after": "3"})
     assert _ask(world, send=down) == _refused("overloaded", "HTTP 529 after 3 attempts: busy")
-    assert _row() == dict(BASE, schema="ping.v1", prompt_sha256=SHA, request=body,
+    assert _row() == dict(ASKED, schema="ping.v1", prompt_sha256=SHA, request=body,
                           verdict="overloaded", detail="HTTP 529 after 3 attempts: busy",
                           attempts=3, ratelimit={"retry-after": "3"})
 
@@ -312,11 +315,81 @@ def test_an_answer_is_returned_and_recorded_whole(world):
     assert got == {"ok": True, "output": connection.Ping(echo="w"), "call_id": CALL_ID,
                    "cost_usd": cost, "recorded": True}
     assert sent == [(body, KEY)]
-    assert _row() == dict(BASE, schema="ping.v1", prompt_sha256=SHA, request=body,
+    assert _row() == dict(ASKED, schema="ping.v1", prompt_sha256=SHA, request=body,
                           cost_usd=cost, price=profiles.prices_for(MODEL, 1150),
                           tokens=USAGE, latency_s=0.123, attempts=2,
                           ratelimit={"x-ratelimit-limit": "50"}, stop_reason="end_turn",
                           response='{"echo": "w"}', verdict="ok", output={"echo": "w"})
+
+
+# ------------------------------------------- thinking per task (the batched gateway change)
+
+def test_a_task_naming_no_thinking_sends_none_and_its_request_is_unchanged(world):
+    """The model's default ("adaptive") sends no `thinking` at all: the body is the one every
+    call made before the change, byte for byte (the cached prefix's bytes included)."""
+    body = _request(world)
+    assert "thinking" not in body
+    assert set(body) == {"model", "max_tokens", "system", "messages", "output_config"}
+
+
+def test_thinking_off_sends_the_model_s_own_form_and_records_it(world):
+    send, sent = _sending(_answer('{"echo": "w"}'))
+    got = gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
+                      actor=ACTOR, send=send, today="2026-10-25", thinking="off")
+    assert got["ok"] is True
+    ((body, _key),) = sent
+    assert body["thinking"] == {"type": "disabled"} == profiles.MODELS[MODEL]["thinking_off"]
+    assert _row()["thinking"] == "off"
+
+
+def test_a_task_s_pin_names_its_thinking(world, monkeypatch):
+    monkeypatch.setitem(profiles.TASKS, "connection_check",
+                        dict(profiles.TASKS["connection_check"], thinking="off"))
+    send, sent = _sending(_answer('{"echo": "w"}'))
+    assert _ask(world, send=send)["ok"] is True
+    assert sent[0][0]["thinking"] == {"type": "disabled"}
+    open(calls._path(), "w").close()
+    send, sent = _sending(_answer('{"echo": "w"}'))
+    assert gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
+                       actor=ACTOR, send=send, today="2026-10-25",
+                       thinking="adaptive")["ok"] is True
+    assert "thinking" not in sent[0][0], "a measurement's ask replaces the pin for one call"
+
+
+def test_a_thinking_not_known_is_refused_before_anything_is_sent(world):
+    got = gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
+                      actor=ACTOR, send=world.send, today="2026-10-25", thinking="low")
+    words = "thinking 'low' is not one of adaptive, off; nothing was sent"
+    assert got == _refused("thinking", words) and world.sent == []
+    assert _row() == dict(BASE, thinking="low", verdict="thinking", detail=words)
+
+
+def test_thinking_off_on_a_model_with_no_way_to_turn_it_off_is_refused(world, monkeypatch):
+    monkeypatch.setitem(profiles.MODELS, MODEL,
+                        {k: v for k, v in profiles.MODELS[MODEL].items() if k != "thinking_off"})
+    got = gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
+                      actor=ACTOR, send=world.send, today="2026-10-25", thinking="off")
+    words = f"{MODEL}'s profile names no way to turn thinking off; nothing was sent"
+    assert got == _refused("thinking", words) and world.sent == []
+
+
+def test_every_model_s_thinking_off_is_its_documented_form():
+    """Haiku 5.5 takes `disabled`; Sonnet 5.5 refuses it and takes `between_tools` (the
+    claude-api reference, read 2026-10-25); no task pins a thinking its model cannot take."""
+    assert profiles.MODELS["claude-haiku-5-5"]["thinking_off"] == {"type": "disabled"}
+    assert profiles.MODELS["claude-sonnet-5-5"]["thinking_off"] == {"type": "between_tools"}
+    for name, pin in profiles.TASKS.items():
+        mode = pin.get("thinking", "adaptive")
+        assert mode in profiles.THINKING, name
+        assert mode == "adaptive" or profiles.MODELS[pin["model"]].get("thinking_off"), name
+
+
+def test_build_request_sends_thinking_only_when_given():
+    p = {"text": "p"}
+    assert "thinking" not in gateway.build_request(p, connection.Ping, {"a": "b"}, MODEL, 8)
+    got = gateway.build_request(p, connection.Ping, {"a": "b"}, MODEL, 8,
+                                thinking={"type": "disabled"})
+    assert got["thinking"] == {"type": "disabled"}
 
 
 def test_the_prices_charged_are_the_tier_of_every_prompt_token_counted(world):

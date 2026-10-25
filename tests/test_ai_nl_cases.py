@@ -128,6 +128,45 @@ def test_the_judge_passes_a_right_answer_and_names_each_miss():
         "outcome not the model's: no_match")
 
 
+def test_the_judge_knows_the_named_spans_from_now():
+    """C1740's spans, judged in UTC as the recorder asks (no viewer timezone): yesterday and
+    last week end where the next span starts; this week runs to now, within a minute's
+    slack."""
+    import calendar as cal
+    now = cal.timegm((2026, 10, 25, 22, 30, 0))       # a Sunday
+    v = lambda frm, to: {"ok": True, "values": {"m": "x", "range": "custom",  # noqa: E731
+                                                "from": frm, "to": to}}
+    assert cases.misses({"outcome": ["answer"], "span": "yesterday"},
+                        v("2026-10-24 00:00", "2026-10-25 00:00"), now) == []
+    assert cases.misses({"outcome": ["answer"], "span": "last week"},
+                        v("2026-10-12 00:00", "2026-10-19 00:00"), now) == []
+    assert cases.misses({"outcome": ["answer"], "span": "this week"},
+                        v("2026-10-19 00:00", "2026-10-25 22:31"), now) == []
+    assert cases.misses({"outcome": ["answer"], "span": "this week"},
+                        v("2026-10-18 22:30", "2026-10-25 22:30"), now) == [
+        "From '2026-10-18 22:30', expected this week's start '2026-10-19 00:00'"]
+    assert cases.misses({"outcome": ["answer"], "span": "this week"},
+                        v("2026-10-19 00:00", "2026-10-25 20:00"), now) == [
+        "to '2026-10-25 20:00', expected now"]
+    assert cases.misses({"outcome": ["answer"], "span": "last week"},
+                        v("2026-10-12 00:00", "2026-10-25 22:30"), now) == [
+        "to '2026-10-25 22:30', expected last week's end '2026-10-19 00:00'"]
+
+
+def test_mercury_s_guidance_is_a_question_back_where_one_is_expected():
+    """The operator's ruling (2026-10-25, after held-out set 1 was seen; C1743): Mercury's
+    own guidance asks the person to say what they mean, so it passes a case expecting a
+    question back, and only such a case."""
+    guide = {"ok": False, "error": "no_match", "guide": {"words": "Name a metric"}}
+    asks = {"outcome": ["ask"]}
+    assert cases.misses(asks, guide, NOW) == []
+    assert cases.misses({"outcome": ["answer"]}, guide, NOW) == [
+        "outcome guide, expected one of ['answer']"]
+    assert cases.misses({"outcome": ["refuse"]}, guide, NOW) == [
+        "outcome guide, expected one of ['refuse']"]
+    assert asks == {"outcome": ["ask"]}, "the case's own expectation is left as written"
+
+
 def test_no_case_puts_different_devices_into_one_line_unless_it_asks_for_it():
     """The operator's rule (2026-10-25), held over every case: a group with no label is one
     line for every device it reaches, a miss unless the case names it (8 and 9 count whether
@@ -175,14 +214,18 @@ def _recorder():
     return mod
 
 
-HELD = cases.load(os.path.join(CASES_DIR, "nl_query", "held_out.json"))
+#: Held-out set 2 (the operator, 2026-10-25): set 1 was seen when v6 was measured, and is
+#: retired as a test; it stays in the repository as v6's record, guarded by nothing here.
+HELD = cases.load(os.path.join(CASES_DIR, "nl_query", "held_out_2.json"))
+SEEN = cases.load(os.path.join(CASES_DIR, "nl_query", "held_out.json"))
 
 
 def test_the_held_out_set_is_ten_new_questions_on_new_devices_and_metrics():
-    """C1724's overfitting guard (the operator, 2026-10-25): ten questions written before v6
-    was measured, on devices the 20 name none of and metrics the 20 expect none of (each answer
-    case has at least one expected metric of its own), none named by any prompt's worked
-    examples; two ambiguous cases ask, one healthy-nothing case answers."""
+    """C1724's overfitting guard (the operator, 2026-10-25): ten questions written before v7
+    was measured, on devices the 20 name none of and metrics neither the 20 nor the seen set 1
+    expects (each answer case has at least one expected metric of its own), none named by any
+    prompt's worked examples, in questions of its own; two ambiguous cases ask, one
+    healthy-nothing case answers, and the named spans of C1740 are asked."""
     assert [c["n"] for c in HELD["cases"]] == list(range(1, 11))
     assert HELD["model"] == profiles.TASKS["nl_query"]["model"]
     words = lambda c: set(re.findall(r"[A-Za-z0-9][A-Za-z0-9_.-]*", c["question"]))  # noqa: E731
@@ -190,16 +233,20 @@ def test_the_held_out_set_is_ten_new_questions_on_new_devices_and_metrics():
     twenty_devices |= {w for c in SET["cases"] for w in words(c) if w in NETWORK}
     held_devices = {d for c in HELD["cases"] for d in c["expect"].get("devices", ())}
     assert held_devices and not held_devices & twenty_devices, held_devices & twenty_devices
-    twenty_metrics = {m for c in SET["cases"] for m in c["expect"].get("metric", ())}
+    seen_metrics = {m for s in (SET, SEEN) for c in s["cases"]
+                    for m in c["expect"].get("metric", ())}
     for c in HELD["cases"]:
         if "metric" in c["expect"]:
-            assert set(c["expect"]["metric"]) - twenty_metrics, (c["n"], "no metric of its own")
+            assert set(c["expect"]["metric"]) - seen_metrics, (c["n"], "no metric of its own")
             for m in c["expect"]["metric"]:
                 assert m in CAPTURED, (c["n"], m)
     outcomes = [c["expect"]["outcome"] for c in HELD["cases"]]
     assert outcomes.count(["ask"]) == 2
     assert sum(1 for c in HELD["cases"] if c["flag"].startswith("HEALTHY")) == 1
-    assert not {c["question"] for c in HELD["cases"]} & {c["question"] for c in SET["cases"]}
+    asked = {c["question"] for s in (SET, SEEN) for c in s["cases"]}
+    assert not {c["question"] for c in HELD["cases"]} & asked
+    assert {c["expect"].get("span") for c in HELD["cases"]} >= {"yesterday", "this week",
+                                                                "last week"}
 
 
 def test_no_prompt_names_a_held_out_device_or_its_own_metric():

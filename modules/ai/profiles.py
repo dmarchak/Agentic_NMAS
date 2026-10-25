@@ -27,6 +27,11 @@ PRICES_STALE_DAYS = 90
 MODELS = {
     "claude-haiku-5-5": {
         "provider": ANTHROPIC, "words": "Claude Haiku 5.5",
+        # Thinking off, as this model accepts it: `disabled`, at effort low, medium or high
+        # (its default is medium, which Mercury never changes). Its temperature cannot be
+        # lowered: any value but 1, the default, is a 400, thinking on or off (the claude-api
+        # reference's Haiku 5.5 migration, breaking change 2; read 2026-10-25).
+        "thinking_off": {"type": "disabled"},
         "price": {"input": 0.10, "cache_write": 0.125, "cache_read": 0.01, "output": 0.50},
         # "for prompts over 100,000 tokens"
         "long_prompt_tokens": 100_000,
@@ -35,13 +40,22 @@ MODELS = {
     },
     "claude-sonnet-5-5": {
         "provider": ANTHROPIC, "words": "Claude Sonnet 5.5",
+        # This model refuses `disabled`; its lowest setting is `between_tools` (the same
+        # reference's error codes, read 2026-10-25).
+        "thinking_off": {"type": "between_tools"},
         # Cache hits at 0.05x the input rate (the page's note 2; C1679).
         "price": {"input": 2.00, "cache_write": 2.50, "cache_read": 0.10, "output": 10.00},
     },
 }
 
+#: A task's thinking: "adaptive", the model's own default (no `thinking` sent), or "off", as
+#: its model's profile says (`thinking_off`). The batched gateway change (the operator,
+#: 2026-10-25): per task, and a measurement may ask either for one run (`gateway.ask`).
+THINKING = ("adaptive", "off")
+
 #: Each task's pinned model and bounds (the operator's ruling of 2026-10-25). `explain` starts
-#: on Sonnet 5.5, then its cases run on Haiku 5.5, pinned there if it meets its 90% floor.
+#: on Sonnet 5.5, then its cases run on Haiku 5.5, pinned there if it meets its 90% floor. A
+#: task names no `thinking` while it is the model's default ("adaptive").
 TASKS = {
     "connection_check": {"model": "claude-haiku-5-5", "max_prompt_tokens": 2_000,
                          "max_tokens": 64, "words": "Test connection"},

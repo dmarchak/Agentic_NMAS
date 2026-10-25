@@ -44,9 +44,11 @@ FEATURE = "nl_query"
 #: choices the runs still alternated between, fixed: a top N only when the question says "top"
 #: or a number; no group when the series are already one per interface asked; bits only when
 #: the question says bits or bandwidth; "today" a custom range from `today_start_utc` (midnight
-#: in the viewer's timezone, worked out here, never by the model) to now. Earlier versions
-#: stay for their record.
-PROMPT = ("nl_metrics", 6)
+#: in the viewer's timezone, worked out here, never by the model) to now. v7 (C1740's ruling
+#: and v6's runs on the 20, never held-out set 1's, 2026-10-25): "yesterday", "this week" and
+#: "last week" as calendar spans in the same timezone, each start given as data; the per-CPU
+#: MIB over the older average when both are offered. Earlier versions stay for their record.
+PROMPT = ("nl_metrics", 7)
 #: The operation's steps, named on its manual page (docs/manual/how-it-works/ask-in-words.md).
 STEPS = (
     ("offer", "the metrics sharing a word with the question, never the whole catalogue"),
@@ -368,8 +370,36 @@ def zone(name: str = "", offset: str = "") -> dict:
 def today_start(now: float, tz) -> float:
     """Today's first instant in *tz*, as epoch seconds: midnight of the date *now* falls on
     there. A midnight a DST change skips is the day's first instant (its earlier offset)."""
-    day = dt.datetime.fromtimestamp(now, tz).date()
+    return day_start(now, tz)
+
+
+def day_start(now: float, tz, days_back: int = 0) -> float:
+    """The first instant, in *tz*, of the calendar day *days_back* days before the one *now*
+    falls on there (0 today, 1 yesterday), as epoch seconds: counted in calendar days, never
+    in 24-hour steps, so a DST change between them moves nothing."""
+    day = dt.datetime.fromtimestamp(now, tz).date() - dt.timedelta(days=days_back)
     return dt.datetime.combine(day, dt.time(0, 0), tzinfo=tz).timestamp()
+
+
+#: Weeks start on Monday (ISO 8601), said beside a filled week (the operator's C1740 ruling,
+#: 2026-10-25: "this week" and "last week" in the same timezone as "today").
+WEEK_STARTS = "Monday"
+
+
+def week_start(now: float, tz, weeks_back: int = 0) -> float:
+    """Midnight in *tz* of the Monday of the week *now* falls in there, less *weeks_back*
+    weeks (0 this week, 1 last week), as epoch seconds; in calendar days, as `day_start`."""
+    local = dt.datetime.fromtimestamp(now, tz).date()
+    monday = local - dt.timedelta(days=local.weekday() + 7 * weeks_back)
+    return dt.datetime.combine(monday, dt.time(0, 0), tzinfo=tz).timestamp()
+
+
+def spans(now: float, tz) -> dict:
+    """The named spans' starts, UTC stamps as the data gives them: ``{"today", "yesterday",
+    "this week", "last week"}``. Each ends where the next one up starts, or now."""
+    return {"today": _stamp(day_start(now, tz)), "yesterday": _stamp(day_start(now, tz, 1)),
+            "this week": _stamp(week_start(now, tz)),
+            "last week": _stamp(week_start(now, tz, 1))}
 
 
 def _stamp(epoch: float) -> str:
@@ -391,15 +421,31 @@ def today_words(z: dict) -> str:
     return f"'Today' runs from midnight {z['name']} ({why})"
 
 
+def span_words(z: dict, span: str) -> str:
+    """Which midnight a named span was counted from, said beside the filled range: today's
+    words as ever; yesterday's, this week's and last week's in the same timezone, a week's
+    naming the day it starts on."""
+    if span == "today":
+        return today_words(z)
+    words = today_words(z).split(" (", 1)[1]
+    start = {"yesterday": "midnight", "this week": f"midnight on {WEEK_STARTS}",
+             "last week": f"midnight on {WEEK_STARTS}"}[span]
+    return f"'{span[0].upper()}{span[1:]}' is counted from {start} {z['name']} ({words}"
+
+
 def parts(question: str, offered: list, devices: list, roles: list, now: float,
           z: dict = None) -> dict:
     """The call's own data, in the user turn (the time too: it moves every call, so it is
     never in the cached prefix). *z* is `zone`'s answer; none, UTC."""
     z = z or zone()
+    s = spans(now, z["tz"])
     return {
         "question": question,
         "now_utc": _stamp(now),
-        "today_start_utc": _stamp(today_start(now, z["tz"])),
+        "today_start_utc": s["today"],
+        "yesterday_start_utc": s["yesterday"],
+        "week_start_utc": s["this week"],
+        "last_week_start_utc": s["last week"],
         "today_zone": z["name"],
         "metrics": "\n".join(f"{n} | {k} | {u or 'no unit'} | {' '.join(h.split())[:HELP_MAX]}"
                              for n, k, u, h in offered),
@@ -420,12 +466,15 @@ def values(c: MetricsChoices) -> dict:
 
 
 def metrics(list_name: str, question: str, *, actor: str, send=None, client=None,
-            now: float = None, today: str = None, viewer_zone: dict = None) -> dict:
+            now: float = None, today: str = None, viewer_zone: dict = None,
+            thinking: str = None) -> dict:
     """``{"ok", "error", "detail", "values", "view", "series", "call_id", "cost_usd",
     "offered", "today"}``: the builder filled from *question*, read back by the builder, and
     its test run; or a refusal naming why, with nothing filled. *viewer_zone* is `zone`'s answer
     for the viewer (none: UTC, said); *today* is the gateway's spend day, not this. A filled
-    range that starts at today's midnight carries ``today``, the words saying which midnight."""
+    range that starts at today's midnight carries ``today``, the words saying which midnight.
+    *thinking* is a measurement's (scripts/nmas-nl-cases --thinking); the screen never sends
+    one, so the task's pin holds."""
     from modules import history_promq as pq
 
     z = viewer_zone or zone()
@@ -476,7 +525,8 @@ def metrics(list_name: str, question: str, *, actor: str, send=None, client=None
                           "words, or search the builder's Metric box)"}
     got = gateway.ask(FEATURE, PROMPT, MetricsChoices,
                       parts(question, offered, named, roles, now, z),
-                      actor=actor, context={"builder": vocabulary()}, send=send, today=today)
+                      actor=actor, context={"builder": vocabulary()}, send=send, today=today,
+                      thinking=thinking)
     if not got["ok"]:
         return dict(got, offered=[o[0] for o in offered])
     c, base = got["output"], {"call_id": got["call_id"], "cost_usd": got["cost_usd"],
@@ -506,12 +556,14 @@ def metrics(list_name: str, question: str, *, actor: str, send=None, client=None
         said.append(f"left out the role {v['role'][:40]!r}: no device of {list_name} has it")
         v["role"] = ""
     view = pq.view(list_name, v, now=now, client=probe)
-    # The range is today's when it starts at the midnight the call was given: then the filled
-    # notice says whose midnight that was (the operator, 2026-10-25, C1724).
-    is_today = c.range is Range.custom and v.get("from") == _stamp(today_start(now, z["tz"]))
+    # The range is a named span's when it starts at a start the call was given: then the
+    # filled notice says whose midnight that was (the operator, 2026-10-25, C1724, C1740).
+    # On a Monday "today" and "this week" start together; the day is said.
+    started = {v_: k for k, v_ in reversed(spans(now, z["tz"]).items())}
+    span = started.get(v.get("from")) if c.range is Range.custom else None
     out = dict(base, ok=True, error="", values=v, view=view,
                errors=said + list(view["errors"]), series=None, test="",
-               today=today_words(z) if is_today else "")
+               today=span_words(z, span) if span else "")
     built = view.get("built")
     if built and view["state"] == "ok":
         n = pq.instant_count(client or pq._client(list_name, TEST_WAIT), built["query"],

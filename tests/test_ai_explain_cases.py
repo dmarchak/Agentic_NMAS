@@ -151,7 +151,7 @@ def test_a_confident_s3_cpu_overload_fails(ctx):  # noqa: F811
     assert any(g.startswith("needs_human False") for g in got), got
     assert any("rests on ['health:s3:cpu'] alone" in g for g in got), got
     assert any("states 96%" in g for g in got), got
-    assert any(g.startswith("no one hypothesis cites each of") for g in got), got
+    assert any(g.startswith("none of the accepted lines of reasoning") for g in got), got
 
 
 def test_an_invented_figure_alone_fails(ctx):  # noqa: F811
@@ -173,7 +173,40 @@ def test_a_hypothesis_that_ties_nothing_to_the_drops_fails(ctx):  # noqa: F811
     ans["hypotheses"][0]["evidence_refs"] = [_ref(ctx.pack, "health:s3:cpu"),
                                              _ref(ctx.pack, "health:s3:heartbeat")]
     got = cases.explain_misses(BY[1]["expect"], ans, ctx.pack)
-    assert got == [f"no one hypothesis cites each of {BY[1]['expect']['together'][0]}"]
+    tie = BY[1]["expect"]["one_of"][1]["together"][0]
+    assert len(got) == 1 and got[0].startswith("none of the accepted lines of reasoning"), got
+    assert f"no one hypothesis cites each of {tie}" in got[0]
+    assert "no one hypothesis cites cpu or scrapes figures of 3 or more devices" in got[0]
+
+
+def _common(pack, devices, figure="cpu"):
+    """A common cause beneath the devices (the operator's revision, 2026-10-25), as the model
+    would shape it: one hypothesis citing the same figure of each device."""
+    return {"outcome": "answer", "why_not": "", "needs_human": True,
+            "rationale": "Every router's CPU peaked together while scrapes failed on each.",
+            "hypotheses": [{"claim": "Contention beneath the devices, not in the evidence.",
+                            "evidence_refs": [_ref(pack, f"health:{d}:{figure}")
+                                              for d in devices],
+                            "confirm_with": "show processes cpu history"}]}
+
+
+def test_the_case_states_the_operator_s_revision():
+    assert BY[1]["revised"].startswith("The pack shows every router's CPU peaking near 08:12")
+    names = [a["name"] for a in BY[1]["expect"]["one_of"]]
+    assert names == ["a common cause beneath the devices", "the drops tied to s3, its CPU noted"]
+
+
+@pytest.mark.parametrize("figure", ["cpu", "scrapes"])
+def test_a_common_cause_beneath_three_devices_passes(ctx, figure):  # noqa: F811
+    ans = _common(ctx.pack, ["r1", "r2", "r3"], figure)
+    assert cases.explain_misses(BY[1]["expect"], ans, ctx.pack) == []
+
+
+def test_a_common_cause_on_two_devices_or_on_heartbeats_alone_fails(ctx):  # noqa: F811
+    for ans in (_common(ctx.pack, ["r1", "r2"]),
+                _common(ctx.pack, ["r1", "r2", "r3"], "heartbeat")):
+        got = cases.explain_misses(BY[1]["expect"], ans, ctx.pack)
+        assert len(got) == 1 and "3 or more devices" in got[0], got
 
 
 def test_a_refusal_and_no_answer_fail_the_incident(ctx):  # noqa: F811

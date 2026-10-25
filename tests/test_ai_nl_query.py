@@ -177,11 +177,13 @@ def test_a_planted_instruction_in_help_text_rides_only_as_data(world):
 def test_the_prompt_carries_only_its_allowed_fields(world):
     """What Ask in words may send (the operator, 2026-10-25; PHASE8_PLAN 15.12: a feature's
     tests assert its prompt carries only its allowed-class fields): its prompt and the
-    builder's vocabulary as the system blocks, and exactly these seven data blocks (v6, C1724:
-    today's start, worked out by Mercury, and the timezone's name, which is not a secret)."""
+    builder's vocabulary as the system blocks, and exactly these ten data blocks (v6, C1724:
+    today's start, worked out by Mercury, and the timezone's name, which is not a secret; v7,
+    C1740: yesterday's, this week's and last week's starts, worked out the same way)."""
     import re
     from modules.ai import prompts
-    allowed = {"question", "now_utc", "today_start_utc", "today_zone", "metrics",
+    allowed = {"question", "now_utc", "today_start_utc", "yesterday_start_utc",
+               "week_start_utc", "last_week_start_utc", "today_zone", "metrics",
                "devices_named", "roles"}
     world.answer = _choices()
     _ask(world)
@@ -572,17 +574,87 @@ def test_a_range_from_today_s_midnight_says_whose_midnight(world):
     assert _ask(world, viewer_zone=nl_query.zone("America/New_York"))["today"] == ""
 
 
+@pytest.mark.parametrize("zone_name,now,want", [
+    # A Thursday in New York (EDT, UTC-4): yesterday Wednesday, this week from Monday the 12th,
+    # last week from Monday the 5th, each at local midnight.
+    ("America/New_York", "2026-10-15 09:48",
+     {"today": "2026-10-15 04:00", "yesterday": "2026-10-14 04:00",
+      "this week": "2026-10-12 04:00", "last week": "2026-10-05 04:00"}),
+    # The Monday after DST ends (2026-11-01): today is EST (05:00 UTC), yesterday, Sunday the
+    # 1st, began in EDT (04:00 UTC), this week starts today, and last week's Monday was EDT.
+    ("America/New_York", "2026-11-02 15:00",
+     {"today": "2026-11-02 05:00", "yesterday": "2026-11-01 04:00",
+      "this week": "2026-11-02 05:00", "last week": "2026-10-26 04:00"}),
+    # A Sunday evening in UTC: the week began six days before.
+    ("UTC", "2026-10-25 22:30",
+     {"today": "2026-10-25 00:00", "yesterday": "2026-10-24 00:00",
+      "this week": "2026-10-19 00:00", "last week": "2026-10-12 00:00"}),
+    # 03:30 UTC on a Monday is still Sunday evening in New York: its week began the Monday
+    # before.
+    ("America/New_York", "2026-10-26 03:30",
+     {"today": "2026-10-25 04:00", "yesterday": "2026-10-24 04:00",
+      "this week": "2026-10-19 04:00", "last week": "2026-10-12 04:00"}),
+])
+def test_the_named_spans_are_calendar_days_and_weeks_in_the_zone(zone_name, now, want):
+    """C1740's ruling (the operator, 2026-10-25): yesterday, this week and last week in the
+    same timezone as today, counted in calendar days, so a DST change between moves none."""
+    assert nl_query.spans(_epoch(now), nl_query.zone(zone_name)["tz"]) == want
+
+
+def test_the_spans_ride_as_data(world):
+    world.answer = _choices()
+    _ask(world, viewer_zone=nl_query.zone("America/New_York"))
+    user = world.sent[-1]["body"]["messages"][0]["content"]
+    for name, value in (("yesterday_start_utc", "2026-10-14 04:00"),
+                        ("week_start_utc", "2026-10-12 04:00"),
+                        ("last_week_start_utc", "2026-10-05 04:00")):
+        assert f'<data name="{name}">\n{value}\n</data>' in user, name
+
+
+@pytest.mark.parametrize("frm,to,said", [
+    ("2026-10-14 04:00", "2026-10-15 04:00",
+     "'Yesterday' is counted from midnight America/New_York (your browser's timezone; no "
+     "installation timezone is set)"),
+    ("2026-10-12 04:00", "2026-10-15 09:48",
+     "'This week' is counted from midnight on Monday America/New_York (your browser's "
+     "timezone; no installation timezone is set)"),
+    ("2026-10-05 04:00", "2026-10-12 04:00",
+     "'Last week' is counted from midnight on Monday America/New_York (your browser's "
+     "timezone; no installation timezone is set)"),
+])
+def test_a_range_from_a_named_span_says_whose_midnight(world, frm, to, said):
+    world.answer = _choices(range="custom", from_utc=frm, to_utc=to)
+    got = _ask(world, viewer_zone=nl_query.zone("America/New_York"))
+    assert got["ok"] is True and got["today"] == said, got
+
+
 def test_v6_is_the_prompt_and_says_the_four_defaults():
+    """v6's four defaults, and v7 keeps every one (v7 is the pin since C1740's ruling)."""
     from modules.ai import prompts
-    assert nl_query.PROMPT == ("nl_metrics", 6)
-    text = prompts.load(*nl_query.PROMPT)["text"]       # refuses a prompt naming JSON
-    for said in ('"today_start_utc"', '"today_zone"', "never work a timezone out yourself",
-                 'only when the question says "top" or names a number',
-                 "only when the question says bits or bandwidth",
-                 "needs no group at all"):
-        assert said in text, said
+    for version in (6, 7):
+        text = prompts.load("nl_metrics", version)["text"]   # refuses a prompt naming JSON
+        for said in ('"today_start_utc"', '"today_zone"', "never work a timezone out yourself",
+                     'only when the question says "top" or names a number',
+                     "only when the question says bits or bandwidth",
+                     "needs no group at all"):
+            assert said in text, (version, said)
     for v in range(1, 6):                               # the earlier versions stay
         assert prompts.load("nl_metrics", v)["version"] == v
+
+
+def test_v7_is_the_prompt_and_says_the_named_spans_and_the_cpu_mib():
+    """C1740's ruling (the operator, 2026-10-25): yesterday, this week and last week are
+    calendar spans in today's timezone, each start given as data, never worked out; and v6's
+    runs on the 20 (case 3 once took the older CPU average): the per-CPU total MIB first."""
+    from modules.ai import prompts
+    assert nl_query.PROMPT == ("nl_metrics", 7)
+    text = " ".join(prompts.load(*nl_query.PROMPT)["text"].split())    # as one line of words
+    for said in ('"yesterday_start_utc"', '"week_start_utc"', '"last_week_start_utc"',
+                 '"yesterday" from yesterday_start_utc to today_start_utc',
+                 '"this week" (and "so far this week") from week_start_utc to now_utc, never 7d',
+                 '"last week" from last_week_start_utc to week_start_utc',
+                 "midnight on Monday", "choose the per-CPU total"):
+        assert said in text, said
 
 
 def _words_tz(site, question, answer, **form):

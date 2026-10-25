@@ -26,7 +26,11 @@ anything is asked or spent, never as the model's miss (the operator, 2026-10-25:
 and 15 were stale).
 
 **`--cases`** names the case file: the 20 recorded cases by default, or the held-out set
-(`tests/fixtures/ai_cases/nl_query/held_out.json`), measured beside them and reported apart.
+(`tests/fixtures/ai_cases/nl_query/held_out_2.json`; set 1, `held_out.json`, is retired),
+measured beside them and reported apart.
+
+**`--thinking adaptive|off`** asks every case with that thinking in place of the task's pin,
+for this run (the batched gateway change: v7 measured with and without it).
 """
 import os
 import sys
@@ -45,8 +49,9 @@ import time  # noqa: E402
 
 CASES = os.path.join("tests", "fixtures", "ai_cases", "nl_query", "metrics.json")
 #: The held-out set (C1724's overfitting guard): measured beside the 20, reported apart, never
-#: tuned on.
-HELD_OUT = os.path.join("tests", "fixtures", "ai_cases", "nl_query", "held_out.json")
+#: tuned on. Set 2 since v7 (the operator, 2026-10-25): set 1, `held_out.json`, was seen when
+#: v6 was measured and is retired.
+HELD_OUT = os.path.join("tests", "fixtures", "ai_cases", "nl_query", "held_out_2.json")
 #: Refusals that are Mercury's or the provider's, not the model's: the run stops, spending
 #: nothing more (the adapter's kinds, modules/ai/anthropic_adapter.py, among them).
 STOPS = ("ai_off", "no_key", "over_cap", "unknown_task", "unknown_model", "not_configured",
@@ -77,7 +82,8 @@ def check(checkout: str, list_name: str, case_file: str = CASES) -> list:
     return cases.stale(data, carried)
 
 
-def record(checkout: str, list_name: str, actor: str, out: str, case_file: str = CASES) -> int:
+def record(checkout: str, list_name: str, actor: str, out: str, case_file: str = CASES,
+           thinking: str = None) -> int:
     from modules.ai import cases, nl_query, profiles
 
     if os.path.realpath(out).startswith(os.path.realpath(checkout) + os.sep):
@@ -102,7 +108,7 @@ def record(checkout: str, list_name: str, actor: str, out: str, case_file: str =
     got_all, spent = [], 0.0
     for case in data["cases"]:
         now = time.time()
-        got = nl_query.metrics(list_name, case["question"], actor=actor)
+        got = nl_query.metrics(list_name, case["question"], actor=actor, thinking=thinking)
         spent += float(got.get("cost_usd") or 0)
         if got.get("error") in STOPS:
             print(f"nmas-nl-cases: case {case['n']} refused by Mercury ({got['error']}: "
@@ -118,7 +124,8 @@ def record(checkout: str, list_name: str, actor: str, out: str, case_file: str =
         verdict = "pass" if not rec["misses"] else "MISS: " + "; ".join(rec["misses"])
         print(f"case {case['n']:2d}: {verdict}")
     with open(out, "w", encoding="utf-8") as fh:
-        json.dump({"model": pin, "recordings": got_all}, fh, indent=2)
+        json.dump({"model": pin, "thinking": thinking or "the task's pin",
+                   "recordings": got_all}, fh, indent=2)
     passed = sum(1 for r in got_all if not r["misses"])
     print(f"{passed} of {len(got_all)} recorded cases pass; ${spent:.4f} spent; written {out}")
     return 0
@@ -160,6 +167,9 @@ def main(argv=None) -> int:
     ap.add_argument("--cases", default=CASES,
                     help="the case file, relative to the checkout (the held-out set: "
                          + HELD_OUT + ")")
+    ap.add_argument("--thinking", default=None, choices=("adaptive", "off"),
+                    help="ask with this thinking in place of the task's pin, for this run "
+                         "(the batched gateway change's measurement)")
     args = ap.parse_args(argv)
     checkout = _checkout(args.checkout)
     sys.path.insert(0, checkout)
@@ -177,7 +187,7 @@ def main(argv=None) -> int:
     if args.record:
         if not (args.list and args.actor and args.out):
             ap.error("--record needs --list, --actor and --out")
-        return record(checkout, args.list, args.actor, args.out, args.cases)
+        return record(checkout, args.list, args.actor, args.out, args.cases, args.thinking)
     ap.error("--record or --merge")
     return 2
 

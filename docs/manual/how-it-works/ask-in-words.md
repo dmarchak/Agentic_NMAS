@@ -45,16 +45,19 @@ itself, its choices and **Ask**, stays as usable as ever (see
    maximum when you say highest, peak or busiest), never summed; no grouping when you ask per
    interface or for the top interfaces, as each interface is already its own line; the
    inbound variant when you do not say in or out; a count of the things in a state
-   ("sessions not established"); the 5-minute CPU measure; a 64-bit counter where both are
-   offered; a rate over 5 minutes as a counter's first operation; a top 5 or 10 only when
-   you say "top" or give a number ("highest" alone draws every line); bits only when you say
-   bits or bandwidth ("traffic" keeps bytes); and "today" from today's midnight to now.
+   ("sessions not established"); the 5-minute CPU measure, and the per-CPU total where an
+   older average is offered beside it; a 64-bit counter where both are offered; a rate over
+   5 minutes as a counter's first operation; a top 5 or 10 only when you say "top" or give a
+   number ("highest" alone draws every line); bits only when you say bits or bandwidth
+   ("traffic" keeps bytes); and "today", "yesterday", "this week" and "last week" as the
+   calendar's, from their midnights (see [What "today" means](#today)).
    **A question back**, when your words leave a choice no default settles (which interface,
    or a device this network does not have): it is shown as "One question first", your words
    stay in the box, and nothing is filled; add the answer and fill again.
    **A refusal**, when no offered metric answers the question or the builder cannot express it
-   (counting restarts, for one): it says why, and nothing is filled. A period like "yesterday"
-   becomes the builder's From… to…, in UTC, worked out from the time the question was asked.
+   (counting restarts, for one): it says why, and nothing is filled. Any other named period no
+   range fits becomes the builder's From… to…, in UTC, worked out from the time the question
+   was asked.
 3. `read_back`: the choices become the builder's address, and the builder checks them as it
    checks yours. A metric that was not offered is refused, and nothing is filled. A device or
    role this network lacks is left out, and so is a label the metric does not carry, or an
@@ -80,7 +83,14 @@ installation timezone is set)". If your browser named no timezone {{product}} kn
 offset is used and said ("midnight UTC-04:00"). If nothing usable was sent, today starts at
 midnight UTC, and the note says that too, and why.
 
-"Yesterday" and other named days are still worked out in UTC.
+"Yesterday", "this week" and "last week" are counted the same way, in the same timezone as
+today: yesterday from the midnight before today's to today's; this week from midnight on
+Monday to now; last week from the Monday before to this Monday. {{product}} works each start
+out (calendar days, so a daylight-saving change between them moves nothing) and gives it to
+the model as it gives today's. The note under the question says whose midnight the span was
+counted from: "'This week' is counted from midnight on Monday America/New_York (…)". "The
+last 7 days" or "the past week" is not a calendar week: it is the builder's 7 days, ending
+now.
 
 ## What it costs, and what is recorded {#cost}
 
