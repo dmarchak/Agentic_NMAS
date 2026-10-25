@@ -22,7 +22,7 @@ What each practice is, and what holds it today:
 | Practice | Held by | Still a reviewer's | To mechanise |
 |---|---|---|---|
 | 1. Every bug fix starts with a test that fails first | the rule; each fix's commit names the test and its control | that the test failed on the code as it was | C1289: a commit closing a row as Fixed that changes product code must change a test |
-| 2. Mutation is a weekly measurement, its survivors registered, not worked (the operator, 2026-10-25; "Mutation testing" below has the rule). The one exception, once that code exists: a change to egress or masking gets a targeted changed-line run before it is deployed | `.github/workflows/mutation-nightly.yml` weekly (one mutant at a time, after a canary); `tests/mutation_equivalent.py` for equivalents | which survivor is a VERDICT | C1290: the egress and masking functions declared, and the deploy naming a changed one with no targeted run |
+| 2. Mutation is a weekly measurement, its survivors registered, not worked (the operator, 2026-10-25; "The deploy bar" below has the rule). The one exception: a change to the irreversible tier (egress, masking, data off the host, the code that writes, stores or masks secret values) gets a targeted run of its changed functions before it is deployed | `.github/workflows/mutation-nightly.yml` weekly (one mutant at a time, after a canary); `tests/mutation_equivalent.py` for equivalents | which survivor is a VERDICT | C1290: the tier declared (`tests/irreversible_tier.py`, this week), and the deploy naming a changed tier function with no targeted run |
 | 3. A new fake of an external service is measured against the real service once, per endpoint it fakes, and answers the same; the measurement recorded beside it | the shared fake NetBox, measured per endpoint (C1240, C1248) | that the measurement covers the endpoints used | C1291: a registry of fakes with their measurements, and a scan that refuses a fake it does not hold |
 | 4. A defect found by walking the product (green but wrong) gets a survey of the suite for the same shape | the C1148 and C1150 survey (`UNTESTED_BEHAVIOUR.md`'s method: each scan with a floor and a planted case) | the survey's population and its quality | C1292: a row marked as found by walking cannot close without its survey named |
 | 5. A flaky test is fixed, never silently retried | C1260 (B, fixed this week); each occurrence retried once, openly, and recorded | that a retry was the flaky test and not a real failure | C1293: the gate records a failed run, and a run of the same staged tree after it needs the register row it is retried under, written into the commit |
@@ -197,6 +197,75 @@ never by the job itself.
   the laptop held the same morning; **6 or 8 shards is the option if the gate moves off the
   laptop.**
 
+### The deploy bar (the operator, 2026-10-25; the pre-release, single-user, lab-production stage, until Stage 10)
+
+**Speed of recovery over prevention by gates.** A deploy needs:
+- **CI green on the exact sha deployed**, or on a deployed commit with the same tree (a
+  rollback, `scripts/nmas-rollback`: the verdict is reused by tree hash, `nmas-deploy`'s
+  `ci_verdict`);
+- **the change's own tests,** written with it and run in the gate.
+
+**Recovery is the safety net.** The host returns to the previous deployed release in about
+2.5 minutes: `scripts/nmas-rollback <sha> --push`, then Update, which deploys on the reused
+verdict (measured 2026-10-25: 2 min 22 s, CI reused from #1148; C1669). The Update page's own
+"Return to <sha>" is C1672.
+
+**Stored data: expand, then contract.** A change to stored data comes in two releases, never
+one:
+1. **Expand:** the release adds the new field, file, table or store switch, and keeps writing
+   and reading the old shape, so the release before it still reads everything this one writes.
+2. **Contract:** only a LATER release stops writing or removes the old shape.
+
+A rename is an expand, then a contract. A records store moves to the database only when the
+running release AND the previous deployed one both carry its switch.
+
+**The check (to build): the previous deployed release reads what this one writes.**
+- **Where:** in the deploy, on the host, before the checkout moves: the one place both shas
+  are known.
+- **How:** the arriving code writes a fully populated data folder in a temporary directory
+  (settings, a network's list and manifest, a golden, intent, a receipt, an approval, an
+  acknowledgement, a restart window, every records store in its configured backend); the
+  running release's readers open it, in their own process.
+- **Its verdict:** the deploy refuses, naming the store and both shas, if any reader errors or
+  reads fewer rows than were written.
+- **In CI, as early warning:** the same pair, with the commit's first parent.
+- **Control:** a planted contract (the new writer drops a field the old reader needs) is
+  refused.
+
+**Mutation gates only the irreversible tier.** A change there gets a targeted run of its
+changed functions (whole functions: the changed-lines mode is not built, C1668) before its
+deploy, every VERDICT survivor killed or ruled equivalent by the operator. Everywhere else,
+mutation is the weekly measurement ("Mutation testing" below): survivors registered, not
+worked, unless the operator directs a campaign. No other run is dispatched.
+
+**The irreversible tier** (the operator, 2026-10-25): egress, masking, data off the host, and
+the code that writes, stores or masks secret values. To be a committed list,
+`tests/irreversible_tier.py`, with a test that refuses an unlisted module calling a push,
+publish or sealing path (built with Phase 8 8.0's mask, this week).
+
+| Class | Module, or function | Why |
+|---|---|---|
+| Masking | `modules/redact.py` | every log, response and stored record |
+| Masking | `modules/outbound.py` | the mask on every JSON payload on its way out |
+| Masking | `modules/netbox_context_mask.py` | a credential NetBox still holds in a device's stored context |
+| Data off the host | `modules/nsot/remote.py`, `modules/nsot/hooks.py`, `modules/integrations/nsot_git.py` | the config repository pushed to its remote: off the host, not recalled |
+| Data off the host | `modules/nsot/archive.py` | the published archives |
+| Data off the host | `modules/breakglass_export.py` | every credential, handed to a person |
+| Egress | the AI gateway and its egress mask (Phase 8 8.0, building) | data to a cloud model |
+| Secret values: stored | `modules/secrets_store.py` | the Fernet key's use; every settings secret sealed and opened |
+| Secret values: stored | every module in `breakglass.WRITERS` (each call that seals a secret, the set complete by `tests/test_breakglass.py`'s scan): `modules/credentials.py`, `modules/list_settings.py` (`write`, `_transform_group`), `modules/device.py` (`save_device`), `modules/nsot/credential_rotation.py` (`stage_plaintext`, `_commit`'s inventory write), `modules/nsot/onboard.py` (`stage_bootstrap_credential`, `promote_device`), `modules/nsot/adopt.py` (`add_tool_account`), `modules/inventory/netbox_source.py` (`_encrypt_for_shape`), `scripts/nmas-credential-dedupe` | where a secret value is written, encrypted, to a store or a row |
+| Secret values: stored | `modules/breakglass.py` (the escrow record) | every credential's escrowed copy |
+| Secret values: stored | `modules/config.py` (`open_secure`) | a secret file owner-only from its creation |
+| Secret values: generated | `modules/nsot/credential_rotation.py` (`generate_password`), `modules/nsot/onboard.py` (`mint_bootstrap_credential`) | the credentials Mercury makes |
+| Secret values: masked | `modules/nsot/credential_rotation.py` (`masked_commands`, `masked_command`, `record_outcome`'s reasons) | the rotation's output, as shown and recorded |
+
+**Not in it:** device pushes (deploy, restore), reversible by verify, rollback and the previous
+golden; and **the rotation runner** (`modules/nsot/rotate_op.py`, `modules/nsot/scheduled_rotation.py`,
+and `credential_rotation.py`'s plan, apply, verify and save steps), the operator's ruling.
+
+**Stage 10 restores the GO bar on everything** before the public release: every changed line's
+mutants killed or ruled, across tiers.
+
 ### Mutation testing: are the tests any good?
 
 Coverage says a line ran under a test; it cannot say the test would notice the line being
@@ -255,22 +324,18 @@ across the whole file rather than within the line (C767): the message only, neve
 refused. Fixed the same day (line by line, "line N, column M"); the rewritten function's 25
 mutants are all killed.
 
-**The rule (the operator, 2026-10-25, in force until the testing model is approved):**
-
-- **No on-demand mutation dispatches.** Runs #58 to #61 finished as information; nothing is
-  dispatched after them: no continuations, no targeted runs, no re-runs for fixes.
-- **Mutation runs only weekly, scheduled, outside 08:30 to 09:10 UTC, as a measurement.**
-  Survivors are registered, not worked, unless the operator directs a campaign.
-- **The one exception, when that code exists:** a change to egress or masking gets a targeted
-  changed-line run before it is deployed.
-- **The deploy bar meanwhile:** CI green on the exact sha, and the change's own tests. GO/NO-GO
-  is retired for everything else.
+**The rule (the operator, 2026-10-25; the testing model, approved the same day; "The deploy
+bar" above):** mutation runs weekly, scheduled, outside 08:30 to 09:10 UTC, as a measurement;
+survivors are registered, not worked, unless the operator directs a campaign; no other run is
+dispatched but a change to the irreversible tier, whose targeted run comes before its deploy.
+(The interim rule of the same night, "no on-demand dispatches", ran from runs #58 to #61 to
+this approval: no continuation, targeted run or re-run was dispatched in it.)
 
 **The weekly run** (`.github/workflows/mutation-nightly.yml`, Sunday 14:00 UTC; never on a push
 or a pull request). A schedule can start hours late (C772 measured 5 h 26 min), so its first
 job, `window`, reads the clock and refuses a start inside 08:30 to 09:10 UTC: nothing is
 mutated, the run says why, and the next week's runs as usual. The dispatch trigger stays for an
-egress or masking run and a campaign the operator directs; nothing else uses it.
+irreversible tier's targeted run and a campaign the operator directs; nothing else uses it.
 [tests/test_nmas_mutation.py, `TestTheWorkflow`: one weekly cron outside the window, the guard
 before the mutation job, the guard's own shell refusing exactly 08:30 to 09:09]
 

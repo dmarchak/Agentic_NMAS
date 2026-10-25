@@ -729,6 +729,10 @@ C1536.
   its reason). The rest of O1, O2 and O6 is sampled, and the sample says what it did not run
   (practice 6). If the budget cannot finish the zero-survivor set, the operator is told before
   the deploy, with the unrun count.
+  *Amended 2026-10-25 (the operator; docs/TESTING.md, "The deploy bar"): the zero-survivor
+  threshold before a deploy now applies only to the irreversible tier. O1, O2a, O3 and the
+  kick-start's rendering send to a device and are reversible by rollback; their mutation is the
+  weekly measurement.*
 - **The ratchet is never lowered for the build:** every new automation function has a unit
   test that reaches it. If a new module cannot meet that, the operator is told before the
   deploy, never after. `nmas-coverage baseline` is run only to ADD the new modules at full
