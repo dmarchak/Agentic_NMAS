@@ -846,6 +846,61 @@ def _silenced_alert(client, _lab, _mp):
         mp.undo()
 
 
+def _alert_evidence(client, _lab, _mp):
+    """Monitoring › Alerts with packs (PHASE8_PLAN 15.9, P1): r3's real heartbeat instance
+    firing (its device by label, r3 in the lab), the real `Critical syslog received` instance
+    firing for s4 under a silence (no device of the lab's), and an earlier pack of r3's alert
+    from a first firing, each built by the real trigger over the Loki and Prometheus captures
+    (tests/test_evidence_pack.py's stand-ins); then the tab and each card's pack drawn. Its
+    patches and stores are undone before the next provider."""
+    import json
+    import shutil
+    import tempfile
+
+    import pytest
+
+    from modules import evidence_pack as EP
+    from modules import history_logq as Q
+    from modules import reader_job
+    from modules.readers import grafana_alerts as G
+    from tests import test_evidence_pack as T
+    from tests import test_grafana_reader as GR
+
+    mp = pytest.MonkeyPatch()
+    folder = tempfile.mkdtemp(prefix="nmas-v2-context-packs-")
+    try:
+        mp.setattr(EP, "_path", lambda: os.path.join(folder, "evidence_packs.jsonl"))
+        mp.setattr(EP, "_alert_stores", lambda: ["grafana-alerts-walk"])
+        mp.setattr(reader_job, "store_path",
+                   lambda name: os.path.join(folder, "readers", f"{name}.json"))
+        mp.setattr(Q, "_client", lambda *a, **k: T.DeviceLoki())
+        T._prometheus(mp)
+        os.makedirs(os.path.join(folder, "readers"))
+
+        def store(value):
+            with open(reader_job.store_path("grafana-alerts-walk"), "w", encoding="utf-8") as fh:
+                json.dump({"last_good": {"value": value, "value_at": "2026-10-15T08:24:00Z"}},
+                          fh)
+        store(T._alerts(heartbeat=True, active="2026-10-15T08:05:00Z"))
+        assert EP.after_alerts_read(clock=lambda: T.NOW)
+        value = T._alerts(heartbeat=True)
+        view, am = GR.silenced_syslog()
+        value["instances"] += G.parse(GR.load("ruler"), view, am, GR.READ_AT,
+                                      silences=[GR.SILENCE])["instances"]
+        store(value)
+        assert EP.after_alerts_read(clock=lambda: T.NOW)
+        r = client.get("/v2/monitoring/alerts", headers={"Accept": "text/html"})
+        html = r.get_data(as_text=True)
+        assert r.status_code == 200 and "2 firing" in html, r.status_code
+        for pack in EP.read()["rows"]:
+            r = client.get(f"/v2/monitoring/alerts/pack/{pack['id']}",
+                           headers={"HX-Request": "true", "Accept": "text/html"})
+            assert r.status_code == 200 and 'data-ref="logs"' in r.get_data(as_text=True)
+    finally:
+        mp.undo()
+        shutil.rmtree(folder, ignore_errors=True)
+
+
 def _save_no_golden(client, _lab, _mp):
     """Devices › Save's no-golden scope (C1232) on the lab as it is: r3 holds a committed
     golden and is left out, named; r9 holds none and is planned."""
@@ -1296,6 +1351,7 @@ def _oob_onboard(client, _lab, _mp):
 #: a state the lab's walk does not hold. In order: `_deploy` changes r3, so it is last.
 PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _drift,
                    _in_progress, _pending, _netbox_source, _netbox_lag, _silenced_alert,
+                   _alert_evidence,
                    _save_no_golden, _profile_versions,
                    _no_change_window, _update_owed, _lease_release, _ip_sla_retunes, _ip_sla_unsent,
                    _console_ztp, _console_servers, _oob_onboard, _deploy]

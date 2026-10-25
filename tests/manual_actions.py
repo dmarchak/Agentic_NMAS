@@ -60,6 +60,8 @@ NOT_AN_OPERATION = {
     ("_macros.html", "Apply"): "applies a time range to the charts (range_controls)",
     ("_history_body.html", "Show"): "applies the commit filters",
     ("_logs_tail.html", "Show"): "applies the live tail's filters to the stored window, a read",
+    ("_alert_evidence.html", "Show"): "narrows Monitoring › Alerts' cards to a rule, device or "
+                                      "label, a read of the stored alerts and packs",
     ("devices.html", "Discovered"): "opens Onboard devices › Discovered, a page of its own",
     ("_onboard_discovered.html", "Search"): "narrows the discovered devices to a MAC, client-id "
                                             "or hostname, a read of the reader's stored value",

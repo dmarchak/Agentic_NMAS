@@ -2,6 +2,21 @@
 {%- from "v2/_macros.html" import info -%}
 {% block title %}Monitoring · {{ brand.short }}{% endblock %}
 {% block main %}
+{%- if monitoring_tab == 'alerts' %}
+{#- Monitoring › Alerts (PHASE8_PLAN 15.9, P1's evidence pack, no AI): every firing alert with
+    the evidence Mercury gathered when it began. Built ahead of its board (board owed Saturday,
+    the operator's ruling of 2026-10-25; tests/signed_off_screens.py). -#}
+<div class="page-head">
+  <div class="page-title">
+    <h1>Monitoring · Alerts {{ info('alert-evidence') }}</h1>
+    <p class="sub">Every network's firing alerts, each with the evidence gathered when it began: its device's recent History, Intent check, neighbours and log lines.</p>
+  </div>
+</div>
+{% include "v2/_monitoring_tabs.html" %}
+<div class="tab-body" id="tab-body">
+{% include "v2/_alert_evidence.html" %}
+</div>
+{%- else %}
 <div class="page-head">
   <div class="page-title">
     <h1>Monitoring · {{ m.network }} {{ info('monitoring', 'dashboards') }}</h1>
@@ -12,4 +27,5 @@
 <div class="tab-body" id="tab-body">
 {% include "v2/_fleet.html" %}
 </div>
+{%- endif %}
 {% endblock %}

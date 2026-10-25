@@ -87,7 +87,7 @@ SCOPES: dict = {
              "records_store_retry_log", "records_store_netbox_created",
              "records_store_netbox_modified", "records_store_netbox_adopted",
              "records_store_interrupted_holds", "records_store_reader_values",
-             "records_store_ai_calls"),
+             "records_store_ai_calls", "records_store_evidence_packs"),
     # Phase 8's gateway (modules/ai): one key, one allowance and two caps for the installation.
     **_group(HOST, "ai_gateway", "anthropic_api_key", "ai_hosted", "ai_cap_usd_per_call",
              "ai_cap_usd_per_day"),

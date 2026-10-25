@@ -600,6 +600,18 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .evidence { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); padding: 8px 16px; }
 .evidence summary { cursor: pointer; font-size: 13px; color: var(--ink-2); padding: 4px 0; }
 .evidence .table { margin-top: 6px; }
+/* Monitoring › Alerts: each firing alert a closed card; its evidence pack opens in it (P1). */
+.alert-evidence { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.pack-card { border-top: 1px solid var(--line-2); padding: 6px 0; min-width: 0; }
+.pack-card > summary { cursor: pointer; font-size: 13px; overflow-wrap: anywhere; }
+.pack-body { margin-top: 8px; padding-left: 12px; border-left: 3px solid var(--line); }
+.pack { display: flex; flex-direction: column; gap: 10px; font-size: 13px; }
+.pack-meta, .pack-source { margin: 0; color: var(--ink-2); font-size: 12px; overflow-wrap: anywhere; }
+.pack-section h3 { margin: 0 0 2px; font-size: 13px; font-weight: 600; }
+.pack-pieces { margin: 4px 0 0; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; }
+.pack-pieces li { overflow-wrap: anywhere; }
+.pack-ref { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-right: 6px; }
+.pack-text { white-space: pre-wrap; }
 .row-warn td { color: var(--warn); }
 .recent { list-style: none; margin: 0; padding: 0; }
 .recent li { display: flex; gap: 12px; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--line-2); font-size: 13px; }

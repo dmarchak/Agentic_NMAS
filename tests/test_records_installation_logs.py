@@ -1,6 +1,7 @@
-"""Four of the installation's own logs on the records database (K31 part 2b), through the one
+"""Five of the installation's own logs on the records database (K31 part 2b), through the one
 line-store seam `records_migrate.store_rows` / `store_append`: the reveal record, the host steps
-said done, the heartbeat windows' re-measures and NetBox's removals, against a REAL PostgreSQL
+said done, the heartbeat windows' re-measures, NetBox's removals, and the alerts' evidence packs
+(PHASE8_PLAN 15.9, P1; `evidence_pack.record` and `evidence_pack.read`), against a REAL PostgreSQL
 shaped as host step 6a makes it (tests/pg_instance.py; skipped with its reason here, a failure in
 CI).
 
@@ -16,7 +17,7 @@ import stat
 
 import pytest
 
-from modules import heartbeat_windows, host_steps, netbox_guard, records_db
+from modules import evidence_pack, heartbeat_windows, host_steps, netbox_guard, records_db
 from modules import records_migrate as RM
 from modules import reveal_audit
 from tests.test_records_restarts import pg  # noqa: F401 (the module's real server)
@@ -54,8 +55,23 @@ def _removal(n):
                                                                  "id": n, "name": f"r{n}"}]})["ok"]
 
 
+def _pack(n):
+    """A pack as `evidence_pack.build` shapes one (no source asked: the alert alone, the rest
+    absent), kept through its owner's writer."""
+    EP = evidence_pack
+    sections = [EP._section("alert", "Grafana's alert state", "2026-10-15T08:24:00Z", "ok",
+                            pieces=[{"rule": "Interface error rate elevated",
+                                     "labels": {"instance": f"192.0.2.{n}"}}])]
+    pack = {"schema": EP.SCHEMA, "id": EP.pack_id(f"{n:020x}"), "alert_key": f"{n:020x}",
+            "built_at": f"2026-10-1{n}T00:00:00Z", "sections": sections}
+    pack["hash"] = EP.digest(pack)
+    assert EP.record(pack)["ok"]
+
+
 #: Each store: its writer, its owner's read as a list of rows, and its file.
 CASES = {
+    "evidence_packs": (_pack, lambda: evidence_pack.read()["rows"],
+                       lambda: evidence_pack._path()),
     "reveals": (_reveal, lambda: reveal_audit.read()["rows"], lambda: reveal_audit._path()),
     "host_steps_done": (_host_step, lambda: sorted(host_steps.done_records().values(),
                                                    key=lambda r: r["id"]),
@@ -138,6 +154,13 @@ class TestEachOwnerSaysAFailedRecord:
     def test_a_heartbeat_record_says_it_cannot_be_read(self, down):
         assert heartbeat_windows.records()["error"].startswith("the record cannot be read")
         assert "error" in heartbeat_windows.last_written()
+
+    def test_a_pack_says_it_was_not_kept_and_none_is_built_blind(self, down):
+        _write, _read, _path = CASES["evidence_packs"]
+        got = evidence_pack.record({"id": "ep-x", "alert_key": "x"})
+        assert got["ok"] is False and got["error"]
+        assert evidence_pack.read()["state"] == "unreadable"
+        assert evidence_pack.known_keys() is None
 
     def test_a_removal_record_says_it_was_not_written(self, down):
         got = netbox_guard.record_removal("Default", "alex@example.com", {"ok": True})

@@ -393,6 +393,14 @@ def band_readings(value: dict, acks=None, prom=None) -> dict:
     return out
 
 
+def _evidence_packs() -> bool:
+    """After each stored read: a pack for each alert newly stored as firing (PHASE8_PLAN 15.9,
+    P1; `modules/evidence_pack.py`), before the announcement, so the Alerts tab that redraws on
+    it shows the pack. True when one was built."""
+    from modules import evidence_pack
+    return evidence_pack.after_alerts_read()
+
+
 READER = reader_job.register(reader_job.Reader(
     name="grafana-alerts",
     what="Grafana's alert rules and instances, and the silences on them, read for Needs "
@@ -408,6 +416,7 @@ READER = reader_job.register(reader_job.Reader(
     remedy=("Check Grafana's URL and token in Settings › Default, the Grafana card (or the "
             "network's own); the error names the endpoint that refused"),
     window="the state at the read; history is not read here (8.6 reads it uncapped)",
+    after_store=_evidence_packs,
     # P.8 step 5: each network's Grafana (and the Prometheus its bands read), once each.
     per_group=("grafana", "prometheus"),
     read_for=lambda list_name: read(list_name=list_name),

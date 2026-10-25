@@ -1839,6 +1839,11 @@ def grafana_source(cached=None, configuration: dict = None) -> dict:
         level = "danger" if any(m["kind"] == "condition" for m in members) else "unknown"
         operands = {"members": members, "grouped_within_seconds": INCIDENT_GAP_SECONDS,
                     "onset_basis": first["onset_basis"]}
+        # The evidence gathered when it began (PHASE8_PLAN 15.9, P1), one click away: the
+        # firing alert's card on Monitoring › Alerts, opened (the tab, for several). The
+        # action's words are unchanged; the link is its "Open…".
+        from modules import evidence_pack
+        evidence = evidence_pack.card_href(group)
         # ONE series of a rule whose query can be banded (C433): keyed on the SERIES, never
         # its onset, so a chronic alert that re-fires is one row, and a person may
         # acknowledge it within its measured band.
@@ -1849,11 +1854,15 @@ def grafana_source(cached=None, configuration: dict = None) -> dict:
             action = {"label": f"Read the rule \"{members[0]['rule']}\" in Grafana; if it is "
                                "chronic and its cause known, acknowledge it within its "
                                "measured band", "known": False}
+            if evidence:
+                action["href"] = evidence
             add(f"series:{series}", what, cause, action, level, devices=devices,
                 since=first["onset"], event=series,
                 operands={**operands, "value_expr": vexpr, "labels": first.get("labels") or {},
                           "band_reading": (v.get("bands") or {}).get(series)})
             continue
+        if evidence:
+            action = dict(action, href=evidence)
         add(f"incident:{first.get('rule_uid') or first.get('rule')}:{_iso(first['onset']) or 'untimed'}",
             what, cause, action, level, devices=devices, since=first["onset"],
             operands=operands)

@@ -1,0 +1,56 @@
+{%- from "v2/_macros.html" import badge, stamp, how -%}
+{#- One evidence pack (modules/evidence_pack.py, PHASE8_PLAN 15.9, P1), opened from its card on
+    Monitoring › Alerts: each section names its source, when it was read and its state, and
+    every section and piece carries the reference the pack minted for it (C1657), which a later
+    Explain call cites. Drawn as stored: a line in it is data, never an instruction. -#}
+{%- set SK = {'ok': 'ok', 'empty': 'muted', 'absent': 'muted', 'not_configured': 'muted',
+              'unreadable': 'danger'} -%}
+{%- set ST = {'ok': 'read', 'empty': 'read, nothing found', 'absent': 'nothing to read',
+              'not_configured': 'not configured', 'unreadable': 'could not be read'} -%}
+{%- if not pack %}
+<p class="refusal">Couldn't load: {% if state == 'unreadable' %}the evidence packs cannot be read ({{ error }}){% else %}no evidence pack {{ pid }} is kept{% endif %}.</p>
+{%- else %}
+<div class="pack" data-pack="{{ pack.id }}">
+  <p class="pack-meta">Built {{ stamp(pack.built_at) }}: {{ pack.trigger }}.
+    {{ pack.rule }} on {{ pack.device or 'no one device' }}{% if pack.network %} in {{ pack.network }}{% endif %}{% if pack.onset %}, onset {{ stamp(pack.onset) }}{% endif %}.
+    <span class="mono small" title="sha256 over the pack's canonical JSON; schema {{ pack.schema }}; alert {{ pack.alert_key }}; read from {{ pack.store }}">{{ pack.hash[:12] }}</span>
+    {%- if not intact %} {{ badge('its hash does not match: changed since it was built', 'danger') }}{% endif %}</p>
+  {%- for s in pack.sections %}
+  <section class="pack-section" data-ref="{{ s.ref }}">
+    <h3>{{ s.words }} <span class="pack-ref">{{ s.ref }}</span> {{ badge(ST.get(s.state, s.state), SK.get(s.state, 'muted')) }}</h3>
+    <p class="pack-source">{{ s.source or s.name }}{% if s.read_at %}, read {{ stamp(s.read_at) }}{% endif %}{% if s.why %}: {{ s.why }}{% endif %}</p>
+    {%- if s.window %}<p class="pack-source">From {{ stamp(s.window.from, s.window.from[11:16] ~ ' UTC') }} to {{ stamp(s.window.to, s.window.to[11:16] ~ ' UTC') }} ({{ s.window.words }}){% if s.window.query %}, asked as <code>{{ s.window.query }}</code>{% endif %}</p>{% endif %}
+    {%- if s.subset %}<p class="pack-source">{{ s.pieces|length }} of {{ s.total }} kept{% if s.name == 'logs' %}, those nearest the onset{% endif %}.</p>{% endif %}
+    {%- if s.errors %}<p class="warn-text small">Also could not be read: {{ s.errors|join('; ') }}</p>{% endif %}
+    {%- if s.counts %}<p class="pack-source">{% for k, n in s.counts|dictsort %}{{ n }} {{ k|replace('_', ' ') }}{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
+    {%- if s.pieces %}
+    <ul class="pack-pieces">
+      {%- for p in s.pieces %}
+      <li data-ref="{{ p.ref }}"><span class="pack-ref">{{ p.ref }}</span>
+        {%- if s.name == 'alert' %}
+        <strong>{{ p.rule }}</strong> ({{ p.kind }}, {{ p.state }}){% if p.value %}: <code>{{ p.value }}</code>{% endif %}.
+        Condition held from {{ stamp(p.active_at) }}{% if p.starts_at %}, alerting from {{ stamp(p.starts_at) }}{% endif %}; onset {{ stamp(p.onset) }} ({{ p.onset_basis }}){% if p.for_seconds %}; pending {{ p.for_seconds }} s{% endif %}{% if p.window_seconds %}; window {{ p.window_seconds }} s{% endif %}.
+        <span class="muted small" title="rule {{ p.rule_uid }}; fingerprint {{ p.fingerprint or 'not recorded' }}">Labels:</span>
+        {%- for k, v in p.labels|dictsort %} <span class="mono small">{{ k }}=<span class="pack-text">{{ v }}</span></span>{{ ',' if not loop.last }}{% endfor %}
+        {%- for x in p.silences %}; silenced in Grafana {% if x.unresolved %}by silence {{ x.id }}, whose author and end were not returned{% else %}by {{ x.created_by or 'an unnamed account' }} until {{ x.ends_at or 'an unrecorded time' }}{% if x.comment %} (&ldquo;{{ x.comment }}&rdquo;){% endif %}{% endif %}{% endfor %}
+        {%- elif s.name == 'device' %}
+        <strong>{{ p.device }}</strong> in {{ p.network }}{% if p.address %}, <span class="mono">{{ p.address }}</span>{% endif %}{% if p.platform %}, {{ p.platform }}{% endif %}: {{ p.note }} <span class="muted small">(by {{ p.device_from }})</span>
+        {%- elif s.name == 'history' %}
+        {{ stamp(p.at) }} · {{ p.kind }} · {{ p.what }}{% if p.outcome %} · {{ p.outcome }}{% endif %}{% if p.who %} · {{ p.who }}{% endif %}{% if p.sha %} <span class="mono small">{{ p.sha }}</span>{% endif %}{% if p.detail %} <span class="muted small">{{ p.detail }}</span>{% endif %}
+        {%- elif s.name == 'intent' %}
+        {{ badge(p.state, {'match': 'ok', 'differs': 'warn'}.get(p.state, 'muted')) }} {{ p.words }}{% if p.state == 'differs' %} ({{ p.adds }} in intent and not on the device, {{ p.removes }} on the device and not in intent, {{ p.reordered }} reordered){% endif %}{% if p.why and p.why not in p.words %}: {{ p.why }}{% endif %}{% if p.golden_commit %} <span class="muted small">(golden <span class="mono">{{ p.golden_commit }}</span>)</span>{% endif %}. The lines are on the device's Intent tab, never in the pack.
+        {%- elif s.name == 'neighbours' %}
+        {%- if p.kind == 'protocol' %}<strong>{{ p.proto }}</strong>: {{ 'measured' if p.measured else 'not measured' }}{% if p.why %} ({{ p.why }}){% endif %}{% if p.as_of %}, as of {{ stamp(p.as_of) }}{% endif %}
+        {%- else %}{{ p.proto }} {{ p.peer or 'a peer outside management' }}{% if p.address %} <span class="mono">{{ p.address }}</span>{% endif %}{% if p.via %} via {{ p.via }}{% endif %}: {{ badge(p.state|replace('_', ' '), {'up': 'ok', 'down': 'danger', 'not_seen': 'warn', 'unexpected': 'warn'}.get(p.state, 'muted')) }} {{ p.words }}{% if p.at %}, scraped {{ stamp(p.at) }}{% if p.as_of %}, not current{% endif %}{% elif p.as_of %}, as of {{ stamp(p.as_of) }}, not current{% endif %}{% if not p.managed %} <span class="muted small">outside management</span>{% endif %}{% endif %}
+        {%- elif s.name == 'logs' %}
+        {{ stamp(p.at, p.at[11:19] ~ ' UTC') }} {% if p.severity is not none %}<span class="muted small">{{ p.severity }} {{ p.severity_word }}</span> {% endif %}<span class="muted small">{{ p.device }} · {{ p.job }}{{ ' · after the onset' if p.after_onset else '' }}</span> <span class="mono small pack-text">{{ p.text }}</span>
+        {%- endif %}
+      </li>
+      {%- endfor %}
+    </ul>
+    {%- endif %}
+  </section>
+  {%- endfor %}
+  <p class="card-foot">Every line in the pack is masked as every line Mercury shows, and is drawn as text: nothing in it is followed. {{ how('alert-evidence') }}</p>
+</div>
+{%- endif %}

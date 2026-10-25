@@ -473,6 +473,7 @@ DEFAULTS: dict = {
     "records_store_interrupted_holds": "file",
     "records_store_reader_values": "file",
     "records_store_ai_calls": "file",
+    "records_store_evidence_packs": "file",
 
     # ── Platform map (NetBox platform slug → how NMAS treats the device) ────
     # This map is what makes multi-vendor support a configuration change rather
@@ -886,6 +887,7 @@ SCHEMA: dict = {
         "records_store_interrupted_holds": {"type": "string", "enum": ["file", "postgres"]},
         "records_store_reader_values": {"type": "string", "enum": ["file", "postgres"]},
         "records_store_ai_calls": {"type": "string", "enum": ["file", "postgres"]},
+        "records_store_evidence_packs": {"type": "string", "enum": ["file", "postgres"]},
 
         "platform_map": {
             "type": "object",

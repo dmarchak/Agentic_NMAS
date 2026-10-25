@@ -1202,6 +1202,36 @@ def reveal_log_line():
     ])
 
 
+def alert_evidence():
+    return svg(470, (
+        "An alert's evidence pack: the Grafana alerts reader stores an alert as firing; after "
+        "that read, a pack is built once for each firing alert that has none; its device is "
+        "resolved as Needs attention resolves it; History, the Intent check's state, the "
+        "neighbours and the log lines around the onset are read, each section naming its "
+        "source, when it was read and whether it could be; every string is masked, every "
+        "section and piece given its own reference, and the pack hashed; it is kept in the "
+        "evidence pack record, and Monitoring's Alerts tab draws it."), [
+        lanes(20, 464, right="THE SOURCES"),
+        svc(250, 36, 130, 36, "Grafana", "via its reader"),
+        arrow("read", 248, 56, 202, 56),
+        doc("box", 14, 40, 186, 36, "Firing, no pack yet", "after the alerts' read"),
+        num(14, 40, 1),
+        doc("box", 14, 92, 186, 36, "Its device", "as Needs attention finds it"),
+        num(14, 92, 2),
+        band(146, 120, "Each section · its source, its time"),
+        svc(250, 168, 130, 30, "History, intent", "the repository"),
+        svc(250, 214, 130, 30, "Prometheus, Loki", "neighbours, logs"),
+        *rows([(186, "read", 3, "History, Intent state", "never a configuration line"),
+               (232, "read", None, "Neighbours, log lines", "around the onset")], dev_x=250),
+        doc("box", 14, 284, 186, 40, "Masked and hashed", "a reference for each piece"),
+        num(14, 284, 4),
+        store(14, 340, 186, 40, "The evidence pack record", "one per firing alert"),
+        num(14, 340, 5),
+        t(14, 402, "Monitoring › Alerts draws it.", "sm"),
+        t(14, 444, "No device is asked or changed.", "sm"),
+    ])
+
+
 def path_trace():
     return svg(470, (
         "A path trace: From and To are checked before any device is asked; the first device is "
@@ -1509,6 +1539,7 @@ DIAGRAMS = {
     "show-commands": show_commands,
     "logging-path": logging_path,
     "reveal-log-line": reveal_log_line,
+    "alert-evidence": alert_evidence,
     "path-trace": path_trace,
     "privileged": privileged,
     "publish-remote": publish_remote,

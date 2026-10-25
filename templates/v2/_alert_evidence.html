@@ -1,0 +1,70 @@
+{%- from "v2/_macros.html" import icon, badge, stamp -%}
+{#- Monitoring › Alerts' list (modules/evidence_pack.tab): every firing alert, grouped by rule,
+    each a closed card naming its device, onset and pack; the pack itself opens on expand
+    (GET /v2/monitoring/alerts/pack/<id>, a read). Redrawn when the alerts reader announces,
+    which it does after the packs for newly firing alerts are built (PHASE8_PLAN 15.9, P1).
+    Built ahead of its board: board owed Saturday, the operator's ruling of 2026-10-25. -#}
+{%- set c = e.counts -%}
+<div class="alert-evidence" id="alert-evidence" hx-get="{{ url_for('v2.monitoring_alerts_list', q=e.q or none) }}"
+     hx-trigger="nmas:alerts from:body" hx-swap="outerHTML">
+  <p class="att-summary">
+    <strong>{{ c.firing }} firing</strong> · {{ c.packed }} with {{ 'its' if c.packed == 1 else 'their' }} evidence pack
+    {%- if c.waiting %} · <span class="warn-text">{{ c.waiting }} waiting for one</span> (at most {{ e.max_per_run }} are built each time the alerts are read){% endif %}
+    · {{ c.earlier }} earlier pack{{ '' if c.earlier == 1 else 's' }}
+  </p>
+  {%- for s in e.sources %}
+  {%- if s.state != 'ok' %}
+  <div class="notice notice-warn">{{ icon('warn', 16) }}<div><strong>Grafana's alerts ({{ s.store }}) have not been read.</strong> {{ s.why or 'The reader has stored no value yet' }}. What fires there is not known, so it is not listed.</div></div>
+  {%- else %}
+  <p class="limits">Alerts as the <span class="mono">{{ s.store }}</span> reader stored them, {{ stamp(s.value_at, note='the reading this list stands on') }}{% if s.why %}; its newest read failed, so this is its last good value: {{ s.why }}{% endif %}.</p>
+  {%- endif %}
+  {%- endfor %}
+  {%- if e.store.state == 'unreadable' %}
+  <div class="notice notice-danger">{{ icon('warn', 16) }}<div><strong>The evidence packs cannot be read.</strong> {{ e.store.error }}. No pack is built or shown until they can be: a firing alert below reads as waiting.</div></div>
+  {%- endif %}
+  <form class="toolbar" method="get" action="{{ url_for('v2.monitoring_alerts') }}" role="search">
+    <label class="sr-only" for="alert-q">Filter by rule, device or label</label>
+    <input id="alert-q" name="q" type="search" value="{{ e.q }}" maxlength="80" placeholder="Filter by rule, device or label">
+    <button type="submit" class="btn btn-small btn-outline">Show</button>
+    {%- if e.q %}<span class="muted small">{{ c.shown }} of {{ c.firing }} firing match &ldquo;{{ e.q }}&rdquo;</span>{% endif %}
+  </form>
+  {%- if not c.firing %}
+  <p class="att-clear">{{ icon('check', 16) }} Nothing is firing in what the reader stored.</p>
+  {%- endif %}
+  {%- for g in e.groups %}
+  <section class="card pack-group">
+    <div class="card-head"><h2>{{ g.family }}</h2>{{ badge(g.count ~ ' firing', 'danger') }}</div>
+    {%- if g.count > g.cards|length %}<p class="muted small">The first {{ g.cards|length }} of {{ g.count }} are drawn: filter above to find the rest.</p>{% endif %}
+    {%- for k in g.cards %}
+    {%- set p = k.pack %}
+    <details class="pack-card" data-keep="pack-{{ k.key }}"{% if open_key == k.key %} open{% endif %}{% if p %} hx-get="{{ url_for('v2.monitoring_alert_pack', pack_id=p.id) }}" hx-trigger="{{ 'load' if open_key == k.key else 'toggle once' }}" hx-target="find .pack-body" hx-swap="innerHTML" data-what="the evidence pack"{% endif %}>
+      <summary><strong>{{ k.device or 'no one device' }}</strong>{% if k.network %} <span class="muted">in {{ k.network }}</span>{% endif %}
+        · {{ k.rule }}
+        · since {{ stamp(k.since) }}{% if k.onset %}, onset {{ stamp(k.onset) }}{% endif %}
+        {%- if k.silenced %} {{ badge('silenced in Grafana', 'muted') }}{% endif %}
+        {%- if p %} {{ badge(p.pieces ~ ' pieces', 'info', title='pack ' ~ p.id ~ ', built ' ~ p.built_at ~ ', sha256 ' ~ p.hash) }}
+          {%- if p.not_read %} {{ badge(p.not_read|length ~ ' not read', 'warn', title='could not be read: ' ~ p.not_read|join(', ')) }}{% endif %}
+          {%- if not p.intact %} {{ badge('changed since built', 'danger', title='its stored hash is not its digest now') }}{% endif %}
+        {%- else %} {{ badge('pack waiting', 'warn', title='built the next time the alerts are read') }}{% endif %}
+        <span class="muted small" title="{{ k.state }}; read from {{ k.store }}">{{ k.summary_labels }}</span>
+      </summary>
+      <div class="pack-body">{% if p %}<p class="muted small">Reading the pack for {{ p.rule }} on {{ p.device or 'no one device' }}{% if p.network %} in {{ p.network }}{% endif %}, built {{ stamp(p.built_at) }}…</p>{% else %}<p class="muted small">No pack yet: it is built the next time the alerts are read.</p>{% endif %}</div>
+    </details>
+    {%- endfor %}
+  </section>
+  {%- endfor %}
+  {%- if e.earlier %}
+  <details class="evidence" data-keep="earlier-packs">
+    <summary>Earlier · {{ c.earlier }} pack{{ '' if c.earlier == 1 else 's' }} of alerts no longer firing{% if c.earlier > e.earlier|length %}, the newest {{ e.earlier|length }} drawn{% endif %}</summary>
+    {%- for p in e.earlier %}
+    <details class="pack-card" data-keep="pack-{{ p.id }}" hx-get="{{ url_for('v2.monitoring_alert_pack', pack_id=p.id) }}" hx-trigger="toggle once" hx-target="find .pack-body" hx-swap="innerHTML" data-what="the evidence pack">
+      <summary><strong>{{ p.device or 'no one device' }}</strong>{% if p.network %} <span class="muted">in {{ p.network }}</span>{% endif %} · {{ p.rule }}{% if p.onset %} · onset {{ stamp(p.onset) }}{% endif %} · built {{ stamp(p.built_at) }}
+        {{ badge(p.pieces ~ ' pieces', 'info', title='pack ' ~ p.id ~ ', sha256 ' ~ p.hash) }}
+        {%- if p.not_read %} {{ badge(p.not_read|length ~ ' not read', 'warn', title='could not be read: ' ~ p.not_read|join(', ')) }}{% endif %}
+        {%- if not p.intact %} {{ badge('changed since built', 'danger', title='its stored hash is not its digest now') }}{% endif %}</summary>
+      <div class="pack-body"><p class="muted small">Reading the pack…</p></div>
+    </details>
+    {%- endfor %}
+  </details>
+  {%- endif %}
+</div>

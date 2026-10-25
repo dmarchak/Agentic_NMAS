@@ -79,6 +79,7 @@ PAGES = (
      "how-it-works/show-commands.md"),
     ("logging-path", "Test the logging path", H, "how-it-works/logging-path.md"),
     ("reveal-log-line", "Reveal a log line", H, "how-it-works/reveal-log-line.md"),
+    ("alert-evidence", "An alert's evidence pack", H, "how-it-works/alert-evidence.md"),
     ("path-trace", "A path trace: the path packets take", H, "how-it-works/path-trace.md"),
     ("privileged", "Run a privileged command (Tier 2)", H, "how-it-works/privileged.md"),
     ("settings-switch", "Inherit or stand alone: switch a network's settings", H,

@@ -245,14 +245,16 @@ class TestTheTabsAndTheSidebar:
         """The operator, 2026-10-02: a new screen needs a mockup and a sign-off
         BEFORE it is built. IP SLA and Heartbeat were tabs that had neither;
         Monitoring holds the tabs that were signed off (Profile: C566 board A, signed off
-        2026-10-07); another is a change
+        2026-10-07; Alerts, P1's evidence pack: built ahead of its board under the operator's
+        ruling of 2026-10-25, PHASE8_PLAN 15.12, boards batched into Saturday, recorded in
+        tests/signed_off_screens.py); another is a change
         to this test, made with the operator's sign-off."""
         tabs = "templates/v2/_monitoring_tabs.html"
         labels = re.findall(r'class="tab[^"]*"[^>]*>([^<]+)</a>', open(tabs, encoding="utf-8").read())
-        assert labels == ["Dashboards", "Coverage", "Profile"]
+        assert labels == ["Dashboards", "Coverage", "Profile", "Alerts"]
         _r, html = _get(lab, "/v2/monitoring")
         nav = html.split('aria-label="Monitoring">', 1)[1].split("</nav>", 1)[0]
-        assert re.findall(r">([^<]+)</a>", nav) == ["Dashboards", "Coverage", "Profile"]
+        assert re.findall(r">([^<]+)</a>", nav) == ["Dashboards", "Coverage", "Profile", "Alerts"]
 
     def test_every_monitoring_url_carries_the_strict_policy(self, lab):
         from modules import csp

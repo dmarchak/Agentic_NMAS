@@ -1,6 +1,6 @@
 # Monitoring
 
-The fleet's monitoring, in three tabs: **Dashboards**, **Coverage** and **Profile**.
+The fleet's monitoring, in four tabs: **Dashboards**, **Coverage**, **Profile** and **Alerts**.
 
 ## Dashboards {#dashboards}
 
@@ -157,3 +157,23 @@ devices hold different versions of a section's shared fields, it offers **Use th
 by …** for each, and previews the one you choose with what every other device gains. Committing
 it records the profile, and any version you chose, as you; nothing is sent to a device. See
 [Apply a monitoring template](monitoring-templates#propose).
+
+## Alerts {#alerts}
+
+Every network's firing alerts, as Grafana's alert reader last stored them, each with its
+**evidence pack**: what was gathered about its device when the alert began (see
+[An alert's evidence pack](alert-evidence)). The line at the top counts them: how many are
+firing, how many have their pack, how many are waiting for one, and how many packs belong to
+alerts no longer firing.
+
+The alerts are grouped by rule (a rule generated per device, such as a heartbeat, is one
+group), each alert a closed card naming its device, its network, when it began and its onset,
+how many pieces its pack holds and how many of its sources could not be read. Open a card to
+read its pack, section by section, each with its source, when it was read and the reference
+the pack gave it. **Show** narrows the cards to a rule, device or label. **Earlier** holds the
+packs of alerts that have resolved, the newest 50 drawn. A Needs attention row about an alert
+opens its card here.
+
+The list redraws when the alert reader finishes a read, after any new pack is built. If the
+reader has not read Grafana, or the pack record cannot be read, the tab says so instead of
+listing nothing.

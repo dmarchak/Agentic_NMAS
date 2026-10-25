@@ -1289,6 +1289,50 @@ def monitoring_panel(uid, panel_id):
 
 
 # ---------------------------------------------------------------------------
+# Monitoring > Alerts: every firing alert with the evidence pack Mercury gathered when it began
+# (PHASE8_PLAN 15.9, P1, no AI; modules/evidence_pack.py). Reads only: the alerts reader's
+# stores and the pack store, once each; the pack itself opens on expand.
+# ---------------------------------------------------------------------------
+
+_PACK_KEY = re.compile(r"^[0-9a-f]{20}$")
+
+
+def _alerts_ctx() -> dict:
+    from modules import evidence_pack
+
+    want = request.args.get("open", "")
+    return {"e": evidence_pack.tab(request.args.get("q", "")),
+            "open_key": want if _PACK_KEY.match(want) else ""}
+
+
+@bp.route("/monitoring/alerts", methods=["GET"])
+def monitoring_alerts():
+    """Monitoring > Alerts: each firing alert, grouped, a closed card with its pack."""
+    return _page("v2/monitoring.html", active_nav="monitoring", monitoring_tab="alerts",
+                 **_alerts_ctx())
+
+
+@bp.route("/monitoring/alerts/list", methods=["GET"])
+def monitoring_alerts_list():
+    """The list alone, re-fetched when the alerts reader announces."""
+    return _strict(render_template("v2/_alert_evidence.html", **_alerts_ctx()))
+
+
+@bp.route("/monitoring/alerts/pack/<pack_id>", methods=["GET"])
+def monitoring_alert_pack(pack_id):
+    """One pack, drawn in its card when the card opens; one that is not kept says so, in
+    place (404)."""
+    from modules import evidence_pack
+
+    pid = pack_id[:64]
+    pack, state, error = (evidence_pack.find(pid) if pid.startswith("ep-")
+                          else (None, "ok", ""))
+    html = render_template("v2/_evidence_pack.html", pack=pack, state=state, error=error,
+                           pid=pid, intact=evidence_pack.intact(pack) if pack else False)
+    return _strict(html, 200 if pack else 404)
+
+
+# ---------------------------------------------------------------------------
 # Monitoring > Coverage's batch Apply (P.9 step d2): the preview, the confirm
 # and the result, drawn server-side from the six-part contract (today's
 # renderer emits inline handlers, which the strict policy refuses). The

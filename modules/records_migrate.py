@@ -477,6 +477,17 @@ def _ai_calls_path() -> str:
 LINE_STORES["ai_calls"] = _installation_store("ai_calls", "AI calls", "calls", _ai_calls_path)
 
 
+def _evidence_packs_path() -> str:
+    from modules import evidence_pack
+    return evidence_pack._path()
+
+
+# The alerts' evidence packs (PHASE8_PLAN 15.9, P1): one file for the installation, one line per
+# pack, written and read through `store_append` and `store_rows` (`modules/evidence_pack.py`).
+LINE_STORES["evidence_packs"] = _installation_store("evidence_packs", "Alert evidence packs",
+                                                    "packs", _evidence_packs_path)
+
+
 # ── The files ────────────────────────────────────────────────────────────────────────────────
 
 def file_networks(store: str = STORE) -> dict:
