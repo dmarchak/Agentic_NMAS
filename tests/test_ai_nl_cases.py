@@ -174,6 +174,52 @@ def _recorder():
     return mod
 
 
+def test_a_stale_expectation_fails_the_check_not_the_model():
+    """The operator's rule (2026-10-25; cases 11, 13 and 15 were stale): each answer case's
+    expected metric must be carried by its devices, else its role, else the network's devices;
+    a scope that could not be read is a problem too; a case expecting no answer is not asked."""
+    data = {"cases": [
+        {"n": 1, "expect": {"outcome": ["answer"], "metric": ["m1"], "devices": ["d1"]}},
+        {"n": 2, "expect": {"outcome": ["answer"], "metric": ["m2", "m3"], "role": "edge"}},
+        {"n": 3, "expect": {"outcome": ["answer"], "metric": ["m4"]}},
+        {"n": 4, "expect": {"outcome": ["guide"]}},
+        {"n": 5, "expect": {"outcome": ["answer"], "metric": ["m5"], "devices": ["d2"]}},
+        {"n": 6, "expect": {"outcome": ["ask", "answer"], "metric": ["m6"], "role": "core"}}]}
+    asked = []
+
+    def carried(kind, value):
+        asked.append((kind, value))
+        return {"devices": {"m1"} if value == ["d1"] else None,
+                "role": {"m3"} if value == "edge" else {"m7"}, "all": {"x"}}[kind]
+    assert cases.stale(data, carried) == [
+        "case 3: none of m4 is carried by the network's devices",
+        "case 5: what devices d2 carry could not be read",
+        "case 6: none of m6 is carried by the core role"]
+    assert ("devices", ["d1"]) in asked and ("role", "edge") in asked and len(asked) == 5
+
+
+def test_the_case_file_is_not_stale_against_the_captured_catalogue(world):
+    """The recorder's check through the builder's own client, the 2026-10-15 capture's
+    stand-in answering what the devices carry (it ignores a device or role selector)."""
+    assert _recorder().check(ROOT, "Lab") == []
+
+
+def test_the_recorder_stops_at_a_stale_expectation_spending_nothing(world, tmp_path, capsys):
+    plain = world.prom._get
+
+    def _get(path, **params):
+        if path == "api/v1/label/__name__/values" and "match[]" in params:
+            return world.prom._ok({"status": "success", "data": []})   # nothing carried
+        return plain(path, **params)
+    world.prom._get = _get
+    out = tmp_path / "rec.json"
+    assert _recorder().record(ROOT, "Lab", "operator@example.com", str(out)) == 3
+    assert world.sent == [] and not out.exists()
+    err = capsys.readouterr().err
+    assert "stale expectation: case 1: none of cpmCPUTotal1minRev, cpmCPUTotal5minRev" in err
+    assert "nothing recorded, nothing spent" in err
+
+
 def test_the_recorder_stops_at_hosted_ai_off_spending_nothing(world, monkeypatch, tmp_path):
     from modules import settings_schema
     monkeypatch.setattr(settings_schema, "get_setting", lambda k, d=None: d)

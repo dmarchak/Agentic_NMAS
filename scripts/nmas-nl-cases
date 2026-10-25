@@ -18,6 +18,12 @@ that is not the model's (hosted AI off, a cap), naming it, with nothing more spe
 
 **Merge** writes each recorded case's `recorded` into the case file, refusing a recording
 made on another model than the file's (a pin changed is a set recorded again).
+
+**Check** (`--check --list <network>`, and first thing in every `--record`): each case's
+expected metric must be carried by its named devices, else its role, else the network's
+devices, in the live catalogue (`cases.stale`). A stale expectation fails the check, before
+anything is asked or spent, never as the model's miss (the operator, 2026-10-25: cases 11, 13
+and 15 were stale).
 """
 import os
 import sys
@@ -46,6 +52,25 @@ def _checkout(given: str) -> str:
     return os.path.abspath(os.path.expanduser(given)) if given else ROOT
 
 
+def check(checkout: str, list_name: str) -> list:
+    """The stale expectations (`cases.stale`) against the network's live Prometheus: what the
+    named devices, the role or the network's devices carry, one read each."""
+    from modules import history_promq as pq
+    from modules.ai import cases, nl_query
+
+    data = cases.load(os.path.join(checkout, CASES))
+    client = pq._client(list_name, 15.0)
+    rng = pq.window(dict(pq.DEFAULTS), time.time())
+
+    def carried(kind, value):
+        if kind == "devices":
+            return nl_query.device_metrics(client, rng, value)
+        if kind == "role":
+            return nl_query.device_metrics(client, rng, [value], label=pq.ROLE_LABEL)
+        return nl_query.device_metrics(client, rng)
+    return cases.stale(data, carried)
+
+
 def record(checkout: str, list_name: str, actor: str, out: str) -> int:
     from modules.ai import cases, nl_query, profiles
 
@@ -59,6 +84,15 @@ def record(checkout: str, list_name: str, actor: str, out: str) -> int:
         print(f"nmas-nl-cases: the case file is for {data['model']}, the task is pinned to "
               f"{pin}: record against the pin, after the file says so", file=sys.stderr)
         return 2
+    # Every measurement starts with the expectations checked against the live catalogue: a
+    # stale one fails here, before anything is asked or spent, never as the model's miss.
+    problems = check(checkout, list_name)
+    if problems:
+        for p in problems:
+            print(f"nmas-nl-cases: stale expectation: {p}", file=sys.stderr)
+        print(f"nmas-nl-cases: {len(problems)} stale expectation(s); nothing recorded, "
+              "nothing spent", file=sys.stderr)
+        return 3
     got_all, spent = [], 0.0
     for case in data["cases"]:
         now = time.time()
@@ -116,12 +150,21 @@ def main(argv=None) -> int:
     ap.add_argument("--actor", default="")
     ap.add_argument("--out", default="")
     ap.add_argument("--merge", default="")
+    ap.add_argument("--check", action="store_true")
     args = ap.parse_args(argv)
     checkout = _checkout(args.checkout)
     sys.path.insert(0, checkout)
     os.chdir(checkout)
     if args.merge:
         return merge(checkout, args.merge)
+    if args.check:
+        if not args.list:
+            ap.error("--check needs --list")
+        problems = check(checkout, args.list)
+        for p in problems:
+            print(f"stale expectation: {p}")
+        print(f"{len(problems)} stale expectation(s)")
+        return 3 if problems else 0
     if args.record:
         if not (args.list and args.actor and args.out):
             ap.error("--record needs --list, --actor and --out")

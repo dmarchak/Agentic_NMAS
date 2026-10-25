@@ -36,8 +36,10 @@ FEATURE = "nl_query"
 #: scope is one line per device, never collapsed unprompted. v3 (v2's live run, case 9):
 #: things in a state are counted, never maxed. v4 (v3's five runs, the operator): the defaults
 #: the runs alternated between, fixed: the 5-minute CPU, the 64-bit counter, a rate over 5m,
-#: no group for one named device. Earlier versions stay for their record.
-PROMPT = ("nl_metrics", 4)
+#: no group for one named device. v5 (v4's five runs, the operator): a gauge grouped by avg
+#: (max for highest or peak), never summed; one interface label, ifName; a rate unless a
+#: count is asked for. Earlier versions stay for their record.
+PROMPT = ("nl_metrics", 5)
 #: The operation's steps, named on its manual page (docs/manual/how-it-works/ask-in-words.md).
 STEPS = (
     ("offer", "the metrics sharing a word with the question, never the whole catalogue"),

@@ -84,6 +84,7 @@ not built.
 | Field | What it says |
 |---|---|
 | Problem | the operator's task, how often it happens, and today's time and cost without AI: **measured** (8.0's observe period times the task as people do it), never guessed |
+| Industry need (the operator, 2026-10-25; a standing principle, MERCURY_CHARTER "The test for every feature") | the problem network engineers have; how established commercial tools address it; how Mercury meets or improves on it at enterprise scale. A feature without a stated industry need is questioned before it is built |
 | Deterministic alternative | the rule, query, template or builder considered, and why it falls short |
 | Inputs | the exact context, sized in tokens (the measured minimum, section 4); the tools (read-only, bounded); the output schema (Pydantic, versioned) |
 | Success metric | a target (accepted-without-edit rate, time saved, findings confirmed true) and the eval set that measures it |
@@ -1877,6 +1878,12 @@ change's own tests; the Update button).
 | Fri | **P2's rules only** (below). |
 | Sat | The buffer: evaluation runs, fixes for escapes, a full walk of every sprint feature, and the batched boards and fidelity records (below). |
 
+**Item 9, added (the operator, 2026-10-25; small).** Every Analyst task's recorded cases
+include healthy baselines that must report nothing wrong, measured for consistency like the
+rest. P1 Explain's come first. Explain has no recorded-case file yet: its tests use planted
+answers. Its file starts with the healthy baselines once 15.15's Explain (the network context,
+prompt v2) lands, so the cases are written against the Explain that ships.
+
 **Decided at the sprint's start (the operator, 2026-10-25, on the agent's estimate):**
 - **Labs first stands:** CSCI 5840's Labs 8 and 9 are submitted (8 on 2026-10-21, 9 on
   2026-10-23). A future lab's step pre-empts a sprint item, and the agent names what slipped.
@@ -2008,6 +2015,20 @@ was 3.59 s and its p95 5.25 s, for $0.0004 a case-run. The rulings:
   unstated scope answered per device, and a total asked for. Each uses device, role and metric
   names no recorded case uses (`edge1`, `edge2`, `edge`, invented CPU names and IF-MIB's
   unicast packets), so the cases still test generalisation, not recall.
+- **v4's five runs (on fc1d1f7c):** 90 of 100 pass; 15 of 20 consistent (75%); p50 3.01 s,
+  p95 5.04 s. The remaining variance was in the operations. **v5 (the operator):**
+  - a gauge is grouped by avg (max when the question says highest or peak), never summed;
+  - one interface label, `ifName`: RFC 2863's name as the device's console shows it, the same
+    meaning on every vendor, where `ifDescr` is vendor free text;
+  - a rate unless a count of events is asked for.
+
+  v5 is measured five times together with `changes`, once it is live.
+- **The recorded cases' expectations are checked against the live catalogue before every
+  measurement** (`cases.stale`, run by `nmas-nl-cases --check` and first in `--record`). Each
+  case's expected metric must be carried by its named devices, else its role, else the
+  network's devices. A stale expectation fails the check, before anything is spent, never as
+  the model's miss. Cases 11, 13 and 15 were stale: 15 and 11 were corrected from the
+  measurement (no switch carries a memory series), and 13 awaited `changes`.
 - **The offer** is narrowed by a named role's devices as well as by named devices.
 - **Case 15** expects `cpuAvgBusy5`, as measured: s3 and s4 carry no `cpmCPUTotal` series.
 - **Case 13:** the metrics builder gains a `changes` operation (PromQL `changes()` over the
@@ -2085,3 +2106,103 @@ tab alike:**
 - **P1 Explain uses it now; feature 7 next.** What it sends is the topology class (15.11).
 - **Reported:** tokens and cost per Explain call, before and after, on a replayed Lab 9
   incident.
+- **The replay is C1547** (Lab 9, hour E, 2026-10-22 07:25 to 08:25 UTC: the routers' OSPF
+  drops while s3 stalled; still within Prometheus's and Loki's retention). Its known cause
+  (the lab host's CPU 22 at about 96%) is in no store Mercury reads. **Explain is judged on
+  honest reasoning at the edge of its evidence (the operator, 2026-10-25):**
+  - it ties the routers' OSPF drops to s3's symptoms: the heartbeat gaps, failed scrapes and
+    discards;
+  - it notes that s3's own CPU peaked at 57%, so the device does not explain itself;
+  - it offers resource contention beneath s3 (the host or hypervisor, or the link) as an
+    unevidenced hypothesis, with what would confirm it;
+  - it never invents a figure.
+
+  A confident "s3 CPU overload" is a fail. This is P1 Explain's first recorded case, beside
+  item 9's healthy baselines (15.12), in the case file written once 15.15's Explain lands.
+
+## 16. Industry-readiness roadmap (2026-10-25)
+
+**The source:** the CSCI 5280 Lab 8 review, read as evidence of what industry needs, not as a
+lab to complete (the operator, 2026-10-25; docs and register only). These are post-sprint
+candidates. Each gets a feature card in section 3's format, its industry need included, before
+any code. The order is the operator's.
+
+### 16.1 Straight after the sprint: the foundations Phase 9 depends on
+
+1. **An action catalogue with risk classes.** Every action Mercury can take, whether a person
+   or automation triggers it, is classified on three axes:
+   - **Blast radius:** a port or host, a device, a path, the network.
+   - **Reversibility:** self-expiring, golden-restorable, manual.
+   - **Plane:** management, control, data.
+
+   The classes drive approvals, the GUI's warnings and, later, autonomy. They replace
+   "management plane only" as the autonomy boundary.
+2. **Time-bound changes.** A change may carry an expiry, for people and automation alike.
+   - **The revert:** the platform's own revert where it has one and it is measured (IOS-XE's
+     revert timer, Junos's commit confirmed); otherwise a revert Mercury schedules.
+   - **The list:** "active temporary changes", each with its countdown and four actions:
+     extend, make permanent (promoted to intent), revert now.
+   - Every change and revert is recorded in History.
+3. **An environment class per network:** production, staging or lab-disposable.
+   - Policy attaches to the class: autonomy, change windows, approvals, AI egress.
+   - Staging gives the pre-deployment test network a first-class home: deploy to staging,
+     verify, promote.
+
+### 16.2 Phase 9, the closed loop, redesigned on 1 to 3 and piloted on a lab-disposable network
+
+4. **Autonomy per action class, trigger and environment.**
+   - Reversible, narrow, time-limited actions come earliest; returning to the golden state
+     next; broad or lasting actions stay human-only.
+   - It starts in observe mode, with budgets, a kill switch and a dead-man's switch.
+   - Human-in-the-loop stays the default everywhere.
+   - It supersedes the single promotion bar for the Respond classes.
+5. **Event-driven detection.**
+   - Deterministic detectors (thresholds, baselines, rate of change), then dedupe and
+     correlation; the model is called only on flagged events.
+   - Each rule graduates from button-only to automatic analysis by its measured cost per
+     useful analysis.
+7. **Assure beyond configuration:** expected against observed for any managed state. For
+   example, a controller's expected flow table, where a rogue flow is drift.
+
+### 16.3 Toward Stage 10
+
+6. **A device access model:** a per-platform capability matrix (CLI, API, controller) for
+   reads, writes, the configuration model, telemetry and expiry support. Part of multi-vendor.
+   - The CLI stays the baseline.
+   - The first API driver is IOS-XE's NETCONF.
+   - Controller drivers cover OpenFlow controllers and vendor controllers (for example
+     Meraki and Catalyst Center).
+8. **Traffic and security analytics, by integration.**
+   - Flow telemetry ingest (NetFlow, IPFIX, sFlow) for network-level detectors.
+   - Events in from IDS and SIEM tools, and Mercury's events out to them.
+   - Mercury acts on the network; it is not a SIEM.
+10. **Host and hypervisor telemetry for virtual network functions** (the operator, 2026-10-25;
+    C1722, linked to C1547 and item 5).
+    - What it reads: per-host and per-VM CPU, steal time, per-core load and pinning, and
+      memory pressure.
+    - Where from: the hypervisor's API (Proxmox first, behind a vendor-neutral interface), or
+      node_exporter on the hosts.
+    - Who uses it: Assure, the detectors and the evidence packs, so a virtual device's
+      control-plane flaps can be traced to contention on its host.
+
+### 16.4 What Mercury will not adopt from lab-style designs
+
+- **The model in a polling loop.** Detection is deterministic, and the model is called on a
+  flagged event (item 5).
+- **The model as the only detector.**
+- **Executing a model's free-text action.** Every action is a catalogued action (item 1),
+  previewed and confirmed by hash as today.
+- **Unbounded autonomy.** Autonomy is per class, trigger and environment, budgeted, with a kill
+  switch (item 4).
+
+### 16.5 In the sprint: item 9
+
+Every Analyst task's recorded cases include healthy baselines that must report nothing wrong,
+measured for consistency like the rest; P1 Explain's first (15.12).
+
+### 16.6 Linked from the register
+
+- **Item 5 (event-driven detection):** C93, C1547 and C1682, the lab's load and cadence
+  findings.
+- **Item 10 (host and hypervisor telemetry):** C1722, linked to C1547 and item 5.
+- **Item 3 (environment class policy):** C1720, the classification marking.

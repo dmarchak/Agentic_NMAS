@@ -24,6 +24,32 @@ def _yesterday(now: float) -> tuple:
     return time.strftime(fmt, time.gmtime(day)), time.strftime(fmt, time.gmtime(day + 86400))
 
 
+def stale(data: dict, carried) -> list:
+    """The expectations the live catalogue no longer bears out, in words, before any case is
+    asked (the operator, 2026-10-25: cases 11, 13 and 15 were all stale expectations; a stale
+    one fails this check, not the model). For each case expecting an answer with a metric, at
+    least one expected metric must be carried by its named devices, else its role, else the
+    network's devices. *carried(kind, value)* answers the metric names for ("devices", [...]),
+    ("role", name) or ("all", None), or None when it cannot be read, itself a problem: a check
+    that could not look passes nothing."""
+    out = []
+    for c in data["cases"]:
+        e = c["expect"]
+        if "answer" not in e.get("outcome", ()) or not e.get("metric"):
+            continue
+        scope = (("devices", e["devices"]) if e.get("devices")
+                 else ("role", e["role"]) if e.get("role") else ("all", None))
+        where = {"devices": f"devices {', '.join(e.get('devices') or [])}",
+                 "role": f"the {e.get('role')} role",
+                 "all": "the network's devices"}[scope[0]]
+        names = carried(*scope)
+        if names is None:
+            out.append(f"case {c['n']}: what {where} carry could not be read")
+        elif not set(e["metric"]) & set(names):
+            out.append(f"case {c['n']}: none of {', '.join(e['metric'])} is carried by {where}")
+    return out
+
+
 def result_of(choices: dict) -> dict:
     """A recorded answer (`MetricsChoices`, as JSON) as nl_query.metrics says it, without the
     builder's read-back: the outcome and the builder's address. CI replays the model's

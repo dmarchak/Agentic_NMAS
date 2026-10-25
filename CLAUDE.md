@@ -100,6 +100,11 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
 - **A standing change given in a prompt amends the doc that states the rule, in the same
   commit; an exception names its expiry; every new process rule states its cost and the defect
   class it prevents (the operator, 2026-10-25).** [not mechanised]
+- **Every feature states its industry need before it is built:** the problem network
+  engineers have, how established commercial tools address it, and how Mercury meets or
+  improves on it at enterprise scale; a feature without one is questioned first (the
+  operator, 2026-10-25; MERCURY_CHARTER "The test for every feature", PHASE8_PLAN section 3's
+  card). [not mechanised]
 
 ### Git, the gate and deploys
 

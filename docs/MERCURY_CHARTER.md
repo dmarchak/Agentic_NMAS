@@ -99,6 +99,11 @@ are consolidated into ONE store (a database of its own, archived to MinIO past r
 It must make a network engineer's life easier than the CLI alone, or they will go around it.
 Simple first; cleverness later.
 
+**Every feature states its industry need** (the operator, 2026-10-25): the problem network
+engineers have, how established commercial tools address it, and how Mercury meets or improves
+on it at enterprise scale. A feature without a stated industry need is questioned before it is
+built. The need is a section of each feature card (PHASE8_PLAN section 3).
+
 **IPv6 parity: a feature that works only over IPv4 management is unfinished** (the operator,
 2026-10-17). Every feature works on an IPv6-only management network; the audit, the designs and
 the measurement plan are `docs/IPV6_PARITY.md`, the epic C1245 (FUTURE, Phase 8's first).
