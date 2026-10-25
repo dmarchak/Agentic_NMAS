@@ -339,6 +339,44 @@ class TestAV2PageDoesNoPerDeviceWork:
         assert (one["children"], three["children"]) == (1, 3)
         assert three["calls"] > one["calls"]
 
+    def test_only_the_requests_own_calls_are_counted(self):
+        """C875 (2026-10-25): a thread left running beside the request (an earlier test's
+        job or reader in the same worker) adds nothing to `calls`. cProfile, the counter
+        until then, counted it on Python 3.12 (171,444 calls beside one busy thread against
+        102 alone, measured in CI's interpreter), and the `/v2/` pin moved with test order."""
+        import threading
+        import time
+
+        from flask import Flask
+        from scripts_scale_helper import measure
+
+        app = Flask("scale_threads")
+
+        @app.route("/page")
+        def page():
+            # The request gives up the interpreter lock for a moment, as a real one does on
+            # its git and file reads, so the other thread runs inside it: without this the
+            # request finishes inside one switch interval and the old counter passed too.
+            time.sleep(0.05)
+            return "<p>" + ",".join(str(i) for i in range(50)) + "</p>"
+        c, loads = app.test_client(), {"n": 0}
+        alone = measure(c, "/page", "/nonexistent", loads)["calls"]
+        stop, started = threading.Event(), threading.Event()
+
+        def busy():
+            started.set()
+            while not stop.is_set():
+                sum(abs(i) for i in range(200))
+        t = threading.Thread(target=busy, daemon=True)
+        t.start()
+        try:
+            started.wait(5)
+            beside = [measure(c, "/page", "/nonexistent", loads)["calls"] for _ in range(3)]
+        finally:
+            stop.set()
+            t.join(5)
+        assert alone > 100 and beside == [alone] * 3, (alone, beside)
+
 
 class TestWhatMovesWithTheFleetIsPinned:
     """Asserting the STATUS QUO, per page: the fixed bytes, and the bytes and Python calls

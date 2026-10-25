@@ -12,20 +12,26 @@ work per request"), for one request after a warm one:
 - ``opens``: files opened under the network's folder (a golden, intent, the manifest);
 - ``loads``: reads of the inventory (`load_saved_devices`), counted by the caller's loader;
 - ``connects``: socket connects (a device session, or any other), counted at the socket;
-- ``calls``: Python function calls (`cProfile`'s count), the CPU work no I/O count sees:
-  a loop over the whole inventory to draw one device's page reads no file per device and
-  still costs one pass per device (measured 2026-10-15 on the device page);
+- ``calls``: function calls made by the REQUEST'S OWN THREAD (Python and builtin, each
+  generator resumed counted again, as cProfile counted them), the CPU work no I/O count
+  sees: a loop over the whole inventory to draw one device's page reads no file per device
+  and still costs one pass per device (measured 2026-10-15 on the device page). Counted by
+  `sys.setprofile`, which watches only the thread that sets it. Until 2026-10-25 this was
+  `cProfile`'s total, and on Python 3.12 cProfile is built on `sys.monitoring`, which
+  counts EVERY thread: measured in CI's interpreter, 102 calls alone and 171,444 beside one
+  busy thread. A thread an earlier test in the worker left running (a job, a reader) was
+  counted into whichever readings it overlapped, so the `/v2/` pin moved with test order
+  (C875: +3.0, -3.3, -1.1, -1.0, -1.2);
 - ``bytes``: the answer's size.
 
 Nothing here writes into `data/lists/`: the caller's lab is under a temporary folder.
 """
 
 import builtins
-import cProfile
 import os
-import pstats
 import socket
 import subprocess
+import sys
 from unittest import mock
 
 
@@ -81,15 +87,20 @@ def measure(client, path: str, list_dir: str, loads: dict) -> dict:
         counts["connects"] += 1
         return real_connect(self, *a, **k)
 
-    profile = cProfile.Profile()
+    calls = {"n": 0}
+
+    def tally(_frame, event, _arg):
+        if event in ("call", "c_call"):
+            calls["n"] += 1
+
     with mock.patch.object(subprocess.Popen, "__init__", popen_init), \
          mock.patch.object(builtins, "open", counting_open), \
          mock.patch.object(socket.socket, "connect", connect):
-        profile.enable()
+        before = sys.getprofile()
+        sys.setprofile(tally)                         # this thread only (the docstring)
         try:
             r = client.get(path)
         finally:
-            profile.disable()
+            sys.setprofile(before)
     assert r.status_code == 200, (path, r.status_code)
-    return dict(counts, loads=loads["n"], calls=pstats.Stats(profile).total_calls,
-                bytes=len(r.get_data()))
+    return dict(counts, loads=loads["n"], calls=calls["n"], bytes=len(r.get_data()))
