@@ -68,7 +68,8 @@ def test_every_expectation_is_the_real_catalogue_s():
         for token in list(e.get("ops_include", ())) + list(e.get("group_any", ())):
             assert pq.parse_op(token) is not None, (c["n"], token)
         for kind in e.get("first_op", ()):
-            assert kind in pq.RANGE_OPS, (c["n"], kind)
+            # A range operation (a counter's), or `changes` (a gauge's, case 13).
+            assert kind in pq.RANGE_OPS or kind in pq.CHANGES_OPS, (c["n"], kind)
         if "role" in e:
             assert e["role"] in ROLES, (c["n"], e["role"])
         for r in e.get("range", ()):

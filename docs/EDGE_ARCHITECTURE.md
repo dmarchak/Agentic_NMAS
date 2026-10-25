@@ -343,6 +343,9 @@ pull into the kit's own branch.
 
 ### 9.1 The marking and the export point
 
+**Planned, not built** (C1720, a public-release blocker): no code reads or enforces a marking
+today, so this section describes a design, not a current safeguard.
+
 A network may carry a classification marking. A marked network refuses any destination outside
 its enclave, checked **at the point of export**, the way the publication gate already holds
 secrets: `remote.scan_history_secrets` counts each live secret by kind and salted fingerprint,

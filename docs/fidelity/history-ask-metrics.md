@@ -17,7 +17,7 @@ desktop board at 1440 and 1280 beside the page; the phone board at 390 beside th
 Compared 2026-10-15. History's own page (heading, remote line) is board D's; the board's Code
 mode panel is today's Ask your own box, Code on the Mode switch.
 Templates compared: templates/v2/history_ask_metrics.html, templates/v2/_history_body.html, templates/v2/_history_ask_metrics.html, templates/v2/_history_ask_parts.html, templates/v2/_history_ask_head.html, templates/v2/_history_ask_words.html, templates/v2/_ai.html, templates/v2/_history_ask_chips.html
-Templates sha256: `74389e8daf7572290fae2e4abe0e794acacb361b07104a01e0b0fec8e491282b`
+Templates sha256: `65002398e8dd65f73e7a2ca9c12e2d7ea4b1de399a313796d1e4cc4bfed83bc2`
 
 Compared again 2026-10-15 (P7-03): `_history_body.html` gained a `data-concept` marker and one
 sentence inside a Baselines row's detail (the block drawing each baseline's Re-apply… link); this
@@ -90,6 +90,20 @@ Changed 2026-10-25 again (the gate's fixes):
 
 No region changed; the hash written again.
 Templates sha256 before: `c1890ebd8fc6acb68d7b63d46ea375a2216afb0efb3a8d49a65a1e8bb5313903`.
+Changed 2026-10-25 again (PHASE8_PLAN 15.13, the operator's ruling on case 13): the Operations
+row gained **changes**, a first step for a gauge (or a metric Prometheus gives no type): an
+option in the first operation's select, "changes: times the value changed", its window select
+offering a rate's four windows and the ranges' lengths (1 day to 90 days), each row offering
+only its own windows; a **Changes** heading and item in + operation's menu, before Units; and
+the gauge's hint gains "changes counts how often it changed" (the untyped one's "and changes,
+for a gauge"). Compared by rendering the page from the templates and module as they were and
+as they are, the stand-in answering (the board's question asked and not, its op3 marked, the
+Start-from chips' errors, CPU and BGP questions, a counter's increase, nothing chosen): the
+board's own question, and every counter's, is the same bytes but the run's temporary folder;
+a gauge's page differs only by the menu's Changes item and the hint. The board draws a
+counter's chain, so no region of the shots moves. The Operations region stays a
+**deviation**, its log line widened (log: E3 metrics builder: the operation menu, with
+changes). The hash written again. Templates sha256 before: `74389e8daf7572290fae2e4abe0e794acacb361b07104a01e0b0fec8e491282b`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
@@ -104,7 +118,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Devices | + device, by role: core, all 9; "the values the device label holds now" | the same, from the metric's `device` and `role` labels over the range | **deviation** (log: E3 metrics builder: devices, roles and interfaces) |
 | Interfaces | all, three names, + 14 more | all, the first three of the `ifDescr` values, + 15 more (a field with the rest) | **deviation** (log: E3 metrics builder: devices, roles and interfaces) |
 | Filters | the chip with ×, + filter, the editor: label, = != =~ !~, value, Add, Cancel, the values held, "would leave out 9 series" | the same, the count from Prometheus (9, as the board) | **deviation** (log: E3 metrics builder: the filter editor) |
-| Operations | the numbered chain of selects with × and arrows, + operation's menu (Units, Group), the counter rule and the unit | the same; the menu adds Rate, Compare and count by | **deviation** (log: E3 metrics builder: the operation menu) |
+| Operations | the numbered chain of selects with × and arrows, + operation's menu (Units, Group), the counter rule and the unit | the same; the menu adds Rate, Compare and count by, and, for a gauge, Changes | **deviation** (log: E3 metrics builder: the operation menu, with changes) |
 | Top | only the top, 5 or 10, why off | the same control; the hint says what topk does | **deviation** (log: E3 metrics builder: Top) |
 | The query | the dark box, the last choice marked and repeated, the plain sentence, Edit as code | the same, shared with F3 | **same** |
 | Range | 1 h to 90 days, From… to… with relative or absolute UTC and local beside, the fit line, the limits by source, the step ladder, Apply, Cancel | the same; the picker opens under the row | **deviation** (log: E3 metrics builder: the range row) |

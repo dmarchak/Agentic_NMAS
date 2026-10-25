@@ -34,10 +34,11 @@
       "type": "string"
     },
     "OpKind": {
-      "description": "The builder's operations (history_promq: RANGE_OPS, UNIT_OPS, AGGS, COMPARE).",
+      "description": "The builder's operations (history_promq: RANGE_OPS, CHANGES_OPS, UNIT_OPS, AGGS,\nCOMPARE).",
       "enum": [
         "rate",
         "increase",
+        "changes",
         "bits",
         "per_min",
         "sum",

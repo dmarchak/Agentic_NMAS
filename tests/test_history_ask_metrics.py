@@ -350,6 +350,143 @@ class TestDiscovered:
         assert any("not counted in bytes" in e for e in g["errors"])
 
 
+# ---------------------------------------------------------------------------- changes
+
+#: The operator's ruling (2026-10-25, PHASE8_PLAN 15.13, case 13): "Interface status changes on
+#: s1 today" is this query, written here by hand, never by the code it checks.
+CASE_13 = 'changes(ifOperStatus{device="s1"}[1d])'
+#: A gauge the capture holds with its labels (the stand-in's labels API answers for it).
+GAUGE = "cpmCPUTotal5minRev"
+
+
+class TestChanges:
+    """`changes`: how many times a gauge's value changed in the window before each point
+    (PromQL changes()), first in the chain, its window the token's own argument, the range's
+    own length by default."""
+
+    def test_case_13_is_the_operator_s_query(self):
+        spec, errors = P.ask({"m": "ifOperStatus", "dev": ["s1"], "op": ["changes:1d"],
+                              "range": "24h"})
+        kind = P.kind_of("ifOperStatus", {n: e[0] for n, e in META["data"].items()})
+        assert kind == "gauge" and not errors, (kind, errors)
+        ops, op_errors, notes = P.check_ops(spec, kind, "", ["device", "ifDescr", "role"])
+        assert ops == ["changes:1d"] and op_errors == [] and notes == []
+        assert P.build(spec, kind, "", "ifDescr", ops)["query"] == CASE_13
+
+    def test_the_range_s_own_length_is_the_default_window(self):
+        assert {r: P.changes_window(s) for r, (_w, s) in P.RANGES.items()} == \
+            {"1h": "1h", "24h": "1d", "7d": "7d", "30d": "30d", "90d": "90d"}
+        assert P.changes_window(6 * 3600) == "1h", "never longer than the range"
+        for rng, want in (("24h", "changes:1d"), ("7d", "changes:7d"), ("custom", "changes:1d")):
+            assert P.ask({"m": GAUGE, "ok1": "changes", "range": rng})[0]["op"] == [want], rng
+
+    def test_the_address_round_trips(self):
+        from urllib.parse import parse_qs, urlsplit
+        for w in P.CHANGES_WINDOWS:
+            spec, errors = P.ask({"m": GAUGE, "op": [f"changes:{w}"]})
+            assert spec["op"] == [f"changes:{w}"] and not errors, (w, errors)
+            back = parse_qs(urlsplit(P.qs(spec, "Lab")).query)
+            assert back["op"] == [f"changes:{w}"], back
+            assert P.ask(back)[0]["op"] == spec["op"]
+        form = P.ask({"m": GAUGE, "ok1": "changes", "oa1": "90d"})[0]
+        assert form["op"] == ["changes:90d"] and "op=changes%3A90d" in P.qs(form, "Lab")
+        for bad in ("changes", "changes:", "changes:2d", "changes:5m:1"):
+            assert P.parse_op(bad) is None, bad
+            assert P.ask({"m": GAUGE, "op": [bad]})[1], bad
+
+    def test_its_words_say_what_it_counts(self, web):
+        q = P.view("Lab", {"m": GAUGE, "dev": ["s1"], "op": ["changes:1d"]}, now=NOW,
+                   client=web.prom)
+        assert q["errors"] == [] and \
+            q["built"]["query"] == f'changes({GAUGE}{{device="s1"}}[1d])', q["errors"]
+        assert q["built"]["explain"]["op1"] == (
+            "counts how many times the value changed in the 1 day before each point (a state "
+            "moving, up to down or back, counts once each time), never by how much")
+        assert "as how many times it changed in the 1 day before each point" in \
+            q["built"]["reads"]
+        assert q["built"]["unit_words"] == "changes per 1 day"
+        assert q["built"]["chart_unit"] == ""
+
+    def test_refused_on_a_counter_with_its_reason(self, web):
+        q = P.view("Lab", {"m": "ifHCInOctets", "op": ["changes:1d"]}, now=NOW,
+                   client=web.prom)
+        assert any("ifHCInOctets is a counter" in e and "changes is for a gauge" in e
+                   for e in q["errors"]), q["errors"]
+        assert q["built"]["query"] == "rate(ifHCInOctets[5m])", "the counter rule still holds"
+        assert not q["menu"]["changes"]
+
+    def test_refused_anywhere_but_first_and_nothing_bits_after_it(self, web):
+        q = P.view("Lab", {"m": GAUGE, "op": ["max:device", "changes:1d"]}, now=NOW,
+                   client=web.prom)
+        assert any("changes counts how often the metric itself changed, so it is the first "
+                   "operation" in e for e in q["errors"]), q["errors"]
+        assert q["built"]["query"] == f"max by (device) ({GAUGE})"
+        spec = P.ask({"m": GAUGE, "op": ["changes:1d", "bits"]})[0]
+        ops, errors, _n = P.check_ops(spec, "gauge", "bytes", ["device"])
+        assert ops == ["changes:1d"] and "after changes the values are counts" in errors[0]
+
+    def test_the_operations_row_offers_it_for_a_gauge_only(self, web):
+        g = _page(web, m=GAUGE, op=["changes:1d"])
+        assert '<option value="changes" selected>changes: times the value changed</option>' in g
+        win = re.search(r'<select name="oa1"[^>]*>(.*?)</select>', g, re.S).group(1)
+        assert re.findall(r'<option value="([^"]+)"', win) == list(P.CHANGES_WINDOWS)
+        assert '<option value="1d" selected>1 day</option>' in win
+        assert "Window" in g and "is a gauge" in g and "changes counts how often it changed" in g
+        menu = _page(web, m=GAUGE, range="7d")
+        assert "op=changes%3A7d" in menu and "changes: times the value changed (first)" in menu
+        # A counter's row is as it was: rate and increase, over a rate's four windows.
+        c = _page(web, m="ifHCInOctets", op=["rate:5m"])
+        kinds = re.search(r'<select name="ok1"[^>]*>(.*?)</select>', c, re.S).group(1)
+        assert re.findall(r'<option value="([^"]+)"', kinds) == ["rate", "increase"]
+        win = re.search(r'<select name="oa1"[^>]*>(.*?)</select>', c, re.S).group(1)
+        assert re.findall(r'<option value="([^"]+)"', win) == list(P.WINDOWS)
+        assert "op=changes" not in c and "times the value changed" not in c
+
+    def test_a_metric_of_no_stated_type_is_offered_both_first_steps(self, web):
+        """A metric Prometheus gives no type (one of the capture's YANG states) may be a
+        counter or a gauge: its first step may be a rate, an increase or changes, and once
+        one is first the menu offers no other first step."""
+        name = "Cisco_IOS_XE_interfaces_oper:interfaces_interface_ether_state_auto_negotiate"
+        q = P.view("Lab", {"m": name, "op": ["changes:1h"]}, now=NOW, client=web.prom)
+        assert q["kind"] == "unknown" and q["errors"] == [], (q["kind"], q["errors"])
+        assert q["built"]["query"] == f"changes({name}[1h])"
+        assert q["op_rows"][0]["kinds"] == ["rate", "increase", "changes"]
+        assert not q["menu"]["range"] and not q["menu"]["changes"]
+        rows, menu = P.op_rows(["rate:5m"], "unknown", "", [])
+        assert rows[0]["kinds"] == ["rate", "increase", "changes"] and not menu["changes"]
+        _rows, menu = P.op_rows([], "unknown", "", [])
+        assert menu["range"] and menu["changes"]
+        rows, menu = P.op_rows(["changes:1d"], "gauge", "", [])
+        assert rows[0]["kinds"] == ["changes"] and rows[0]["removable"]
+
+    def test_ask_in_words_is_told_what_it_counts_and_where_it_applies(self):
+        """The vocabulary Ask in words is given (modules/ai/nl_query.vocabulary, generated from
+        the builder's operations) says what changes counts, its windows, the range's own
+        length for a whole range, and that it is a gauge's, never a counter's."""
+        from modules.ai import nl_query
+        line = next(x for x in nl_query.vocabulary().splitlines() if x.startswith("- changes:"))
+        assert "how many times a gauge's value changed in the window" in line
+        assert "one of 1m, 5m, 15m, 1h, 1d, 7d, 30d, 90d;" in line
+        assert "(1h = 1h, 24h = 1d, 7d = 7d, 30d = 30d, 90d = 90d)" in line
+        assert line.endswith("it applies to a gauge, never a counter, and only first")
+
+    def test_its_window_meets_the_bounds_a_rate_s_does(self):
+        """Two scrapes in each window, and every sample in the window loaded: a count of
+        changes reads its window's samples as a rate does."""
+        spec = P.ask({"m": GAUGE, "op": ["changes:1m"], "range": "24h"})[0]
+        rng = P.window(spec, NOW)
+        lim = {"scrape": {"snmp": 60}, "scrape_default": 60}
+        got = P.refusals(spec, {}, rng, 300, lim, ["snmp"], {})
+        assert got[0][0].startswith("Refused: a count of changes needs two samples in each "
+                                    "window") and "A window of 1 min is shorter than two " \
+            "scrapes, 2 min." in got[0][0], got
+        assert got[0][1] == [("Changes over 5 minutes", {"op": ["changes:5m"]})]
+        day = P.ask({"m": GAUGE, "op": ["changes:1d"], "range": "24h"})[0]
+        most = dict(lim, **{"query.max-samples": {"n": 10_000_000}})
+        got = P.refusals(day, {}, rng, 300, most, ["snmp"], {"selector": 100})
+        assert "× 1440 samples a window" in got[0][0], got
+
+
 # ---------------------------------------------------------------------------- the answer
 
 def _si(v, suffix):
@@ -623,4 +760,35 @@ def test_the_builder_in_a_browser(web):  # noqa: F811
         b.go("about:blank")
     assert legend == 2 and marked.strip() == "sum by (device)", (legend, marked)
     assert re.fullmatch(r"UTC · \d\d:\d\d local \(UTC([+\u2212]\d+(:\d\d)?)?\)", local), local
+    assert wide and narrow, (wide, narrow)
+
+
+def test_changes_in_a_browser(web):  # noqa: F811
+    """A count of changes' row in a real browser: its window select (a rate's four windows and
+    the ranges' lengths) redraws the region in place and pushes its address; nothing scrolls
+    sideways, at 1440 or at a phone's 390."""
+    from tests import browser
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    import app as A
+
+    url = "/v2/history/query/ask/metrics" + P.qs(P.ask({"m": GAUGE, "dev": ["s1"],
+                                                        "op": ["changes:1d"]})[0], "Lab")
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        b._call("POST", f"/session/{b.session}/window/rect", {"width": 1440, "height": 1000})
+        b.go(srv.url(url))
+        b.wait_for("return document.querySelector('select[name=oa1]')", 15)
+        b.js("var s = document.querySelector('select[name=oa1]'); s.value = '7d';"
+             "s.dispatchEvent(new Event('change', {bubbles: true})); return 1")
+        b.wait_for("return location.search.indexOf('op=changes%3A7d') >= 0", 10)
+        b.wait_for("return document.querySelector('.lq-q').textContent.indexOf('[7d])') >= 0",
+                   10)
+        query = b.js("return document.querySelector('.lq-q').textContent")
+        wide = b.js("return document.documentElement.scrollWidth <= window.innerWidth")
+        b._call("POST", f"/session/{b.session}/window/rect", {"width": 390, "height": 900})
+        b.go(srv.url(url))
+        b.wait_for("return document.querySelector('select[name=oa1]')", 15)
+        narrow = b.js("return document.documentElement.scrollWidth <= window.innerWidth + 1")
+        b.go("about:blank")
+    assert query.startswith(f'changes({GAUGE}{{device="s1"}}[7d])'), query
     assert wide and narrow, (wide, narrow)

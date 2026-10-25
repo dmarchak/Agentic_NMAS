@@ -305,8 +305,10 @@ def test_hosted_ai_off_sends_nothing_and_says_so(world, monkeypatch):
 
 
 def test_the_schema_is_registered_and_committed():
-    assert schemas.REGISTRY[("nl_metrics", 1)] is nl_query.MetricsChoices
-    with open(schemas.committed_path("nl_metrics", 1), encoding="utf-8") as fh:
+    # v2: the builder's `changes` operation joined the operations (2026-10-25, case 13).
+    assert schemas.REGISTRY[("nl_metrics", 2)] is nl_query.MetricsChoices
+    assert "changes" in [k.value for k in nl_query.OpKind]
+    with open(schemas.committed_path("nl_metrics", 2), encoding="utf-8") as fh:
         assert fh.read() == schemas.committed_text(nl_query.MetricsChoices)
 
 

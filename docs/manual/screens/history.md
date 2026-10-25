@@ -293,11 +293,18 @@ one click from its answer.
   pattern is RE2, anchored at both ends) and a value, with the values the label holds offered
   and how many series the filter would keep or leave out.
 - **Operations** apply in order. A counter (Prometheus's metadata says so) always starts with a
-  **rate per second** or an **increase** over a window, never its raw value. **+ operation** adds
+  **rate per second** or an **increase** over a window, never its raw value. A gauge (a level or
+  a state, such as an interface's status: 1 up, 2 down) may start with **changes**: how many
+  times its value changed in the window before each point, never by how much (PromQL's
+  `changes()`). Its window is offered up to 90 days, and it starts at the range's own length
+  (24 h is 1 day), so the last point is the count over the whole range: "interface status
+  changes on one device today" is `changes(ifOperStatus{device="…"}[1d])` over 24 h. It is
+  refused on a counter, whose value rises at nearly every scrape, and anywhere but first; a
+  metric Prometheus gives no type is offered both. **+ operation** adds
   × 8 (bytes to bits, for a metric counted in bytes), per minute (× 60, after a rate), a group
   (sum, avg, min, max or count, by a label the series still carry), or a comparison that keeps
   only the values equal to, not equal to, above or below a number. The unit follows the chain:
-  bytes, × 8 is bits, a rate is per second.
+  bytes, × 8 is bits, a rate is per second, changes are counted per window.
 - **Top** keeps the 5 or 10 highest series at each step (`topk`); over a range, more than that
   many series can appear.
 
@@ -319,7 +326,8 @@ and Loki's for the logs builder.
 changing any choice afterwards removes the answer. The answer is one of: the chart, with each
 series' value now and its highest and lowest in the range (past 20 series, the 20 highest are
 drawn and the rest counted); **Refused**, naming the bound and what passed it, with the choice
-that fits: a rate's window shorter than two scrapes of the metric's slowest job, more samples
+that fits: a rate's or a count of changes' window shorter than two scrapes of the metric's
+slowest job, more samples
 than Prometheus loads in one ask, more than 200 series; **Couldn't load**, naming what
 Prometheus answered (its own words for a query it refused) or how long it was waited for, and
 what its probe last found, with **Ask again**; or **No data in range**, saying whether the

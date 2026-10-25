@@ -5,8 +5,9 @@ what the two share (one token each, durations, the range, the address) is module
 
 A person builds a PromQL question by choosing, never by typing PromQL: what (a metric Prometheus
 holds, found by searching its names and help text), the devices, the interfaces, filters on any
-label the metric carries, a chain of operations (a rate or an increase, × 8 for bits, per
-minute, sum, average, lowest, highest or count by a label, a comparison), the top so many, and
+label the metric carries, a chain of operations (a rate or an increase, how many times a
+gauge's value changed, × 8 for bits, per minute, sum, average, lowest, highest or count by a
+label, a comparison), the top so many, and
 a range. Mercury forms the query from those choices and draws it as it forms, the last choice
 marked and said in plain words; Ask sends it.
 
@@ -19,7 +20,7 @@ interface names (`ifDescr`, `ifName`); a metric without one has no such row.
 
 **The counter rule.** A counter (Prometheus's metadata says so) is asked as a rate or an
 increase first, never its raw value, and the unit follows the chain: bytes, × 8 is bits, rate
-is per second.
+is per second. Its changes are never counted (`changes` is for a gauge, such as a state).
 
 **One token each.** A value reaches Prometheus only inside a string Mercury quotes
 (`history_ask.string`); several values are an alternation of literals; a pattern typed for
@@ -54,8 +55,24 @@ RANGES = {"1h": ("1 h", 3600), "24h": ("24 h", 86400), "7d": ("7 days", 7 * 8640
 #: A rate's or an increase's window: key -> (words, seconds).
 WINDOWS = {"1m": ("1 minute", 60), "5m": ("5 minutes", 300), "15m": ("15 minutes", 900),
            "1h": ("1 hour", 3600)}
+#: A count of changes' window: a rate's windows, and each range chip's own length (1 h is
+#: already one), so the count can be over the range itself (the operator's ruling of
+#: 2026-10-25, PHASE8_PLAN 15.13: "Interface status changes on edge1 today" is
+#: `changes(ifOperStatus{device="edge1"}[1d])`). The window is the token's own argument, as a
+#: rate's is, never read from the range at query time: the query stays a function of the
+#: address alone (a saved view's query, `saved`, is formed with no range), the range stays
+#: "not part of the query", and every address formed before keeps its bytes. The range only
+#: picks the default a person or the menu is handed (`changes_window`).
+CHANGES_WINDOWS = dict(WINDOWS, **{"1d": ("1 day", 86400), "7d": ("7 days", 7 * 86400),
+                                  "30d": ("30 days", 30 * 86400),
+                                  "90d": ("90 days", 90 * 86400)})
 #: The operations: kind -> (the menu's words, its group).
 RANGE_OPS = {"rate": "rate per second", "increase": "increase over the window"}
+#: PromQL's changes(): how many times a gauge's value changed in the window before each point
+#: (a state such as ifOperStatus's 1 up, 2 down). A counter's value moves at nearly every
+#: scrape, so it is refused there (`check_ops`). First in the chain, as a rate is: it applies
+#: to the metric itself (a range vector).
+CHANGES_OPS = {"changes": "changes: times the value changed"}
 UNIT_OPS = {"bits": "× 8, bytes to bits", "per_min": "per minute (× 60)"}
 AGGS = {"sum": "sum", "avg": "avg", "min": "min", "max": "max", "count": "count"}
 #: What a group does, said under the query, and in the whole query's sentence.
@@ -157,6 +174,8 @@ def parse_op(token: str):
     kind, _sep, arg = token.partition(":")
     if kind in RANGE_OPS:
         return (kind, arg) if arg in WINDOWS else None
+    if kind in CHANGES_OPS:
+        return (kind, arg) if arg in CHANGES_WINDOWS else None
     if kind in UNIT_OPS:
         return (kind, "") if not arg else None
     if kind in AGGS:
@@ -170,7 +189,17 @@ def op_token(kind: str, arg: str = "") -> str:
     return kind if kind in UNIT_OPS else f"{kind}:{arg}"
 
 
-def _ops_from_form(values) -> list:
+def changes_window(seconds) -> str:
+    """The window a count of changes is handed by default: the range's own length where a
+    window is that long (each range chip: 24 h is 1d), else the longest window inside the
+    range, so the last point never counts a change from before the range."""
+    fits = [k for k, (_w, s) in CHANGES_WINDOWS.items() if s <= (seconds or 0)]
+    if not fits:
+        return next(iter(CHANGES_WINDOWS))
+    return max(fits, key=lambda k: CHANGES_WINDOWS[k][1])
+
+
+def _ops_from_form(values, rng_key: str = "") -> list:
     """The chain as the Operations row's selects send it: kind `ok<i>` and argument `oa<i>`
     for each operation in order (the address itself carries `op` tokens)."""
     out = []
@@ -181,6 +210,8 @@ def _ops_from_form(values) -> list:
         arg = (values.get(f"oa{i}") or "").strip()
         if kind in RANGE_OPS and arg not in WINDOWS:
             arg = "5m"
+        if kind in CHANGES_OPS and arg not in CHANGES_WINDOWS:
+            arg = changes_window(RANGES.get(rng_key, ("", 86400))[1])
         out.append(op_token(kind, arg))
     return out
 
@@ -191,7 +222,7 @@ def ask(values) -> tuple:
     never passed on. Whether a name is one Prometheus holds is `view`'s, after discovery."""
     spec, errors = history_ask.read_values(values, DEFAULTS, LISTS), []
     if (values.get("ok1") or "").strip():
-        spec["op"] = _ops_from_form(values)
+        spec["op"] = _ops_from_form(values, spec["range"])
     if spec["m"] and not _NAME.match(spec["m"]):
         errors.append(f"{spec['m'][:60]!r} is not a metric name")
         spec["m"] = ""
@@ -473,9 +504,9 @@ def instant_count(client, expr: str, at: float):
 
 def check_ops(spec: dict, kind: str, unit: str, labels: list) -> tuple:
     """``(ops, errors, notes)``: the chain the metric can take. The counter rule puts a rate
-    first where a counter has none; a rate of a gauge, × 8 of what is not bytes, per minute
-    before a rate, and a group by a label the series no longer carry are each left out and
-    said."""
+    first where a counter has none; a rate of a gauge, changes of a counter or anywhere but
+    first, × 8 of what is not bytes (or after changes), per minute before a rate, and a group
+    by a label the series no longer carry are each left out and said."""
     errors, notes, ops = [], [], []
     tokens = list(spec["op"])
     first = parse_op(tokens[0]) if tokens else None
@@ -484,7 +515,7 @@ def check_ops(spec: dict, kind: str, unit: str, labels: list) -> tuple:
         notes.append(f"{spec['m']} is a counter (Prometheus's metadata says so), so the first "
                      "step is a rate or an increase, never its raw value: rate over 5 minutes "
                      "is put first")
-    held, rated = set(labels), False
+    held, rated, counted = set(labels), False, False
     for i, token in enumerate(tokens):
         k, arg = parse_op(token)
         if k in RANGE_OPS:
@@ -497,6 +528,22 @@ def check_ops(spec: dict, kind: str, unit: str, labels: list) -> tuple:
                               f"{k} is for counters, so it is left out")
                 continue
             rated = True
+        elif k in CHANGES_OPS:
+            if kind == "counter":
+                errors.append(f"{spec['m']} is a counter (Prometheus's metadata says so): its "
+                              "value rises at nearly every scrape, so counting its changes "
+                              "says nothing; changes is for a gauge, such as a state, so it "
+                              "is left out")
+                continue
+            if i != 0:
+                errors.append("changes counts how often the metric itself changed, so it is "
+                              "the first operation; it was not")
+                continue
+            counted = True
+        elif k == "bits" and counted:
+            errors.append("× 8 turns bytes into bits, and after changes the values are counts "
+                          "of changes")
+            continue
         elif k == "bits" and unit != "bytes":
             errors.append(f"× 8 turns bytes into bits, and {spec['m']} is not counted in bytes")
             continue
@@ -518,15 +565,23 @@ def op_rows(ops: list, kind: str, unit: str, labels: list) -> tuple:
     """``(rows, menu)``: each operation as the Operations row draws it (its kind and argument,
     the kinds and arguments it may change to, and whether it may be removed: a counter's rate
     may not), and what + operation may add next."""
-    rows, held, rated = [], set(labels), False
+    rows, held, rated, counted = [], set(labels), False, False
+    # The first step's kinds: a rate or an increase for what may be a counter, changes for
+    # what may be a gauge (a metric Prometheus gives no type may be either).
+    firsts = ([*RANGE_OPS] if kind != "gauge" else []) + \
+        ([*CHANGES_OPS] if kind != "counter" else [])
     for i, token in enumerate(ops, 1):
         k, arg = parse_op(token)
         if k in RANGE_OPS:
-            group, kinds, args = "range", list(RANGE_OPS), list(WINDOWS)
+            group, kinds, args = "range", firsts, list(WINDOWS)
             rated = True
+        elif k in CHANGES_OPS:
+            group, kinds, args = "range", firsts, list(CHANGES_WINDOWS)
+            counted = True
         elif k in UNIT_OPS:
             group, args = "unit", []
-            kinds = [x for x in UNIT_OPS if x == k or (x == "bits" and unit == "bytes")
+            kinds = [x for x in UNIT_OPS if x == k
+                     or (x == "bits" and unit == "bytes" and not counted)
                      or (x == "per_min" and rated)]
         elif k in AGGS:
             group, kinds, args = "agg", list(AGGS), [""] + sorted(held)
@@ -536,8 +591,11 @@ def op_rows(ops: list, kind: str, unit: str, labels: list) -> tuple:
         rows.append({"i": i, "kind": k, "arg": arg, "group": group, "kinds": kinds, "args": args,
                      "removable": not (i == 1 and group == "range" and kind == "counter")})
     first = parse_op(ops[0])[0] if ops else ""
-    menu = {"range": first not in RANGE_OPS and kind != "gauge",
-            "bits": unit == "bytes" and "bits" not in ops,
+    # A counter's chain always starts with its rate (`check_ops`), so changes, never offered
+    # after a first step, is never offered for one.
+    menu = {"range": first not in RANGE_OPS and first not in CHANGES_OPS and kind != "gauge",
+            "changes": first not in RANGE_OPS and first not in CHANGES_OPS,
+            "bits": unit == "bytes" and "bits" not in ops and not counted,
             "per_min": rated and "per_min" not in ops, "full": len(ops) >= MAX_OPS}
     return rows, menu
 
@@ -551,6 +609,8 @@ def _unit_after(unit: str, ops: list) -> tuple:
             per = "second"
         elif k == "increase":
             per = WINDOWS[arg][0]
+        elif k == "changes":
+            unit, per = "changes", CHANGES_WINDOWS[arg][0]
         elif k == "bits" and unit == "bytes":
             unit = "bits"
         elif k == "per_min":
@@ -616,6 +676,14 @@ def build(spec: dict, kind: str, unit: str, iface: str, ops: list, meta_help: st
                             else f"is the counter's increase over each {w}")
             words.append(f"as a per-second rate over {w}" if k == "rate"
                          else f"as its increase over each {w}")
+            prec = 9
+        elif k in CHANGES_OPS:
+            parts = [(f"{k}(", key)] + parts + [(f"[{arg}])", key)]
+            w = CHANGES_WINDOWS[arg][0]
+            explain[key] = (f"counts how many times the value changed in the {w} before each "
+                            "point (a state moving, up to down or back, counts once each "
+                            "time), never by how much")
+            words.append(f"as how many times it changed in the {w} before each point")
             prec = 9
         elif k in UNIT_OPS:
             if prec < 5:
@@ -706,21 +774,25 @@ def refusals(spec: dict, built: dict, rng: dict, step: int, lim: dict, jobs: lis
 
     out = []
     ops = [parse_op(t) for t in spec["op"]]
-    win = next((WINDOWS[a][1] for k, a in ops if k in RANGE_OPS), 0)
+    # A rate, an increase or a count of changes each read the samples in a window: each needs
+    # two in it, and each loads them all.
+    windows = {**{k: WINDOWS for k in RANGE_OPS}, **{k: CHANGES_WINDOWS for k in CHANGES_OPS}}
+    win = next((windows[k][a][1] for k, a in ops if k in windows), 0)
     longest = max((lim.get("scrape") or {}).get(j) or lim.get("scrape_default") or 0
                   for j in jobs) if jobs else 0
     if win and longest and win < 2 * longest:
-        fit = next((k for k, (_w, s) in WINDOWS.items() if s >= 2 * longest), None)
-        idx = next(i for i, (k, _a) in enumerate(ops) if k in RANGE_OPS)
+        idx = next(i for i, (k, _a) in enumerate(ops) if k in windows)
         k, _a = ops[idx]
+        fit = next((w for w, (_w, s) in windows[k].items() if s >= 2 * longest), None)
         fixed = list(spec["op"])
         if fit:
             fixed[idx] = op_token(k, fit)
-        out.append((f"Refused: a {k} needs two samples in each window, and the slowest job "
+        what = "count of changes" if k in CHANGES_OPS else k
+        out.append((f"Refused: a {what} needs two samples in each window, and the slowest job "
                     f"this metric comes from is scraped every {duration_words(longest)} (its "
                     f"scrape_interval). A window of {duration_words(win)} is shorter than two "
                     f"scrapes, {duration_words(2 * longest)}.",
-                    [(f"{k.capitalize()} over {WINDOWS[fit][0]}", {"op": fixed})] if fit
+                    [(f"{k.capitalize()} over {windows[k][fit][0]}", {"op": fixed})] if fit
                     else []))
     points = int(rng["seconds"] // step) + 1
     per = max(1, win // longest) if win and longest else 1
@@ -888,8 +960,11 @@ def view(list_name: str, values, now: float = None, client=None) -> dict:
     client = client or _client(list_name, wait)
     out = {"list": list_name, "s": spec, "errors": errors, "notes": [], "range": rng,
            "limits": lim, "step": step, "step_words": duration_words(step),
-           "points": int(rng["seconds"] // step) + 1, "ranges": RANGES, "windows": WINDOWS,
-           "presets": PRESETS, "range_ops": RANGE_OPS, "unit_ops": UNIT_OPS, "aggs": AGGS,
+           "points": int(rng["seconds"] // step) + 1, "ranges": RANGES,
+           # Every window an operation takes; each row offers its own (`op_rows`' args).
+           "windows": CHANGES_WINDOWS,
+           "presets": PRESETS, "range_ops": RANGE_OPS, "changes_ops": CHANGES_OPS,
+           "changes_window": changes_window(rng["seconds"]), "unit_ops": UNIT_OPS, "aggs": AGGS,
            "compare": COMPARE, "filter_ops": FILTER_OPS, "tops": TOPS, "drawn": DRAWN,
            "max_points": panels.MAX_POINTS, "max_series": panels.MAX_SERIES,
            "ladder": [(RANGES[k][0], duration_words(panels.step_for(s)))

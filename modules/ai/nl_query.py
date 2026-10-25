@@ -85,9 +85,11 @@ _SPLIT = re.compile(r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|\d+")
 
 
 class OpKind(str, Enum):
-    """The builder's operations (history_promq: RANGE_OPS, UNIT_OPS, AGGS, COMPARE)."""
+    """The builder's operations (history_promq: RANGE_OPS, CHANGES_OPS, UNIT_OPS, AGGS,
+    COMPARE)."""
     rate = "rate"
     increase = "increase"
+    changes = "changes"
     bits = "bits"
     per_min = "per_min"
     sum = "sum"
@@ -145,7 +147,9 @@ class Operation(StrictModel):
     arg: str
 
 
-@register("nl_metrics", 1)
+# v2 (2026-10-25): the builder's `changes` operation joined OpKind (recorded case 13, the
+# operator's ruling); v1's schema is in git's history and in the calls recorded against it.
+@register("nl_metrics", 2)
 class MetricsChoices(StrictModel):
     """The builder's choices for one question; or the one question that settles what the
     words leave open; or why the builder cannot answer it. (v1 changed in place 2026-10-25,
@@ -255,6 +259,13 @@ def vocabulary() -> str:
     lines += [f"- {k}: {w}; its argument is a window, one of "
               + ", ".join(pq.WINDOWS) + "; it applies to a counter, and only first"
               for k, w in pq.RANGE_OPS.items()]
+    lines += [f"- {k}: how many times a gauge's value changed in the window before each "
+              "point (a state such as an interface's up or down), never by how much; its "
+              "argument is a window, one of " + ", ".join(pq.CHANGES_WINDOWS)
+              + "; over a whole range, the window is the range's own length ("
+              + ", ".join(f"{r} = {pq.changes_window(s)}" for r, (_w, s) in pq.RANGES.items())
+              + "); it applies to a gauge, never a counter, and only first"
+              for k in pq.CHANGES_OPS]
     lines += [f"- {k}: {w}; no argument" for k, w in pq.UNIT_OPS.items()]
     lines += [f"- {k}: groups the series ({pq.AGG_WORDS[k][0]} one line per label); its "
               "argument is the label to keep, or empty for one line" for k in pq.AGGS]

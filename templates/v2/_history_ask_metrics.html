@@ -146,11 +146,11 @@
       {%- if not loop.first %}<li class="pq-arr" aria-hidden="true">→</li>{% endif %}
       <li><span class="pq-n">{{ r.i }}</span>
         <select name="ok{{ r.i }}" form="lq-form" aria-label="Operation {{ r.i }}" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" hx-include="#lq-form" hx-vals='{"ask": "", "hl": "op{{ r.i }}"}' hx-indicator="this" hx-disabled-elt="this">
-          {%- for k in r.kinds %}<option value="{{ k }}"{% if k == r.kind %} selected{% endif %}>{{ q.range_ops.get(k) or q.unit_ops.get(k) or (q.aggs.get(k)) or ('only values ' ~ q.compare[k][0]) }}</option>{% endfor %}
+          {%- for k in r.kinds %}<option value="{{ k }}"{% if k == r.kind %} selected{% endif %}>{{ q.range_ops.get(k) or q.changes_ops.get(k) or q.unit_ops.get(k) or (q.aggs.get(k)) or ('only values ' ~ q.compare[k][0]) }}</option>{% endfor %}
         </select>
         {%- if r.group == 'range' %}<span class="muted">over</span>
         <select name="oa{{ r.i }}" form="lq-form" aria-label="Window" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" hx-include="#lq-form" hx-vals='{"ask": "", "hl": "op{{ r.i }}"}' hx-indicator="this" hx-disabled-elt="this">
-          {%- for w, ww in q.windows.items() %}<option value="{{ w }}"{% if w == r.arg %} selected{% endif %}>{{ ww[0] }}</option>{% endfor %}
+          {%- for w, ww in q.windows.items() if w in r.args %}<option value="{{ w }}"{% if w == r.arg %} selected{% endif %}>{{ ww[0] }}</option>{% endfor %}
         </select>
         {%- elif r.group == 'agg' %}<span class="muted">by</span>
         <select name="oa{{ r.i }}" form="lq-form" aria-label="By" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" hx-include="#lq-form" hx-vals='{"ask": "", "hl": "op{{ r.i }}"}' hx-indicator="this" hx-disabled-elt="this">
@@ -168,6 +168,7 @@
           {%- set n = s.op | length %}
           {%- if q.menu.range %}<span class="pq-mh">Rate</span>
           {%- for k, words in q.range_ops.items() %}{{ go(dict(change, op=[k ~ ':5m'] + s.op, hl='op1'), words ~ ' (first)', 'lq-item') }}{% endfor %}{% endif %}
+          {%- if q.menu.changes %}<span class="pq-mh">Changes</span>{{ go(dict(change, op=['changes:' ~ q.changes_window] + s.op, hl='op1'), q.changes_ops.changes ~ ' (first)', 'lq-item') }}{% endif %}
           {%- if q.menu.bits or q.menu.per_min %}<span class="pq-mh">Units</span>{% endif %}
           {%- if q.menu.bits %}{{ go(dict(change, op=s.op + ['bits'], hl='op' ~ (n + 1)), '× 8, bytes to bits', 'lq-item') }}{% endif %}
           {%- if q.menu.per_min %}{{ go(dict(change, op=s.op + ['per_min'], hl='op' ~ (n + 1)), 'per minute (× 60)', 'lq-item') }}{% endif %}
@@ -179,7 +180,7 @@
       </details></li>
       {%- endif %}
     </ol>
-    <span class="lq-hint">{% if q.kind == 'counter' %}The counter rule: {{ s.m }} is a counter (Prometheus's metadata says so), so the first step is a rate or an increase, never its raw value. {% elif q.kind == 'gauge' %}{{ s.m }} is a gauge (Prometheus's metadata says so): its value is drawn as it is, so no rate is offered. {% else %}Prometheus's metadata gives {{ s.m }} no type{% if q.kind != 'unknown' %} ({{ q.kind }}){% endif %}: a rate is offered, for a counter. {% endif %}The unit follows the chain{% if q.unit %} ({{ q.unit }}, from {{ q.unit_where }}){% endif %}: the answer is in {{ b.unit_words }}.</span>
+    <span class="lq-hint">{% if q.kind == 'counter' %}The counter rule: {{ s.m }} is a counter (Prometheus's metadata says so), so the first step is a rate or an increase, never its raw value. {% elif q.kind == 'gauge' %}{{ s.m }} is a gauge (Prometheus's metadata says so): its value is drawn as it is, so no rate is offered; changes counts how often it changed. {% else %}Prometheus's metadata gives {{ s.m }} no type{% if q.kind != 'unknown' %} ({{ q.kind }}){% endif %}: a rate is offered, for a counter, and changes, for a gauge. {% endif %}The unit follows the chain{% if q.unit %} ({{ q.unit }}, from {{ q.unit_where }}){% endif %}: the answer is in {{ b.unit_words }}.</span>
   </div></div>
 
   <div class="lq-row"><label class="lq-lab" for="pq-top">Top</label><div class="lq-line">

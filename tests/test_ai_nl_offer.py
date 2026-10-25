@@ -177,6 +177,25 @@ def test_a_role_is_named_by_its_word_or_its_plural():
     assert nl_query.named_roles("the accessories", roles) == [], "a whole word, not a part"
 
 
+def test_an_answer_counting_a_state_s_changes_fills_the_builder_with_changes(world):
+    """Case 13 (the operator's ruling, 2026-10-25): the answer's `changes` (schema v2) is read
+    back by the builder into its changes query. This stand-in's capture holds ifOperStatus
+    with no device label, so the builder leaves the device out and says so;
+    tests/test_history_ask_metrics.py's TestChanges pins the device's form,
+    `changes(ifOperStatus{device="s1"}[1d])`."""
+    from tests.test_ai_nl_query import _choices
+    world.answer = _choices(metric="ifOperStatus", devices=["s1"], top="none",
+                            operations=[{"kind": "changes", "arg": "1d"}], range="24h")
+    got = nl_query.metrics("Lab", "Interface status changes on s1 today",
+                           actor="operator@example.com", send=world.send, client=world.prom,
+                           now=NOW, today="2026-10-25")
+    assert got["ok"] is True, got.get("detail")
+    assert got["values"]["op"] == ["changes:1d"]
+    view = json.dumps(got["view"], default=str)
+    assert "changes(ifOperStatus" in view and "[1d])" in view, "no changes query formed"
+    assert any("device chosen is left out" in e for e in got["errors"]), got["errors"]
+
+
 def test_each_device_is_a_literal_in_the_label_s_regex(world):
     asked = _per_device(world)
     rng = pq.window(dict(pq.DEFAULTS), NOW)

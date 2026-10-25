@@ -350,7 +350,8 @@ section 12.2 audits the ten.
     **APPROVED by the operator, 2026-10-16, with one change to 12.1:**
     - A host that cannot run a local model has AI off BY DEFAULT.
     - An installation setting may allow hosted-only AI, set by an admin with a recorded reason.
-    - A network carrying a classification marking forces it off with no override.
+    - A network carrying a classification marking forces it off with no override (planned,
+      not built: C1720).
 
     Item 1's consequences are accepted:
     - the gateway becomes local-first, with hosted adapters optional and off unless configured;
@@ -869,7 +870,8 @@ with this change):
 - An installation setting may allow **hosted-only AI**, set by an admin with a recorded reason
   (the course's own labs call hosted APIs). It is never on by default and never set by Mercury.
 - A network carrying a **classification marking** forces AI off with no override
-  ([EDGE_ARCHITECTURE.md](EDGE_ARCHITECTURE.md) section 9).
+  ([EDGE_ARCHITECTURE.md](EDGE_ARCHITECTURE.md) section 9). **Planned, not built** (C1720, a
+  public-release blocker): no marking exists today, so it is no current safeguard.
 
 Offline-first stays the rule for the core path: no feature may depend on a hosted model. A
 feature that does not fit the local profile's context is split or not built, never offered
@@ -1338,7 +1340,8 @@ first, never only.*
   adapter for `llama-server` stays in the design. Only its build waits for the release work.
 - **What stays from 12.1:** with AI off, the deterministic path answers (non-negotiable 3). A
   host that admits no local tier has AI off by default, with hosted AI allowed by an admin's
-  recorded setting. A classification marking forces it off with no override.
+  recorded setting. A classification marking forces it off with no override (planned, not
+  built: C1720).
 
 ### 13.2 8.0 shrinks to what feature 1 needs (4b)
 
@@ -1800,6 +1803,7 @@ The addendum's egress ruling, as resolved by the operator the same day: a third 
 | Class | What a cloud model may receive | Default |
 |---|---|---|
 | **Allowed** | alert labels, metric series, masked log lines, intent diffs | on wherever AI is on for the network |
+| **Topology** (the operator, 2026-10-25) | the compiled network model's slice (15.15): devices, roles, sites, platforms, links with their subnets, expected and observed adjacencies; no configuration lines, no secrets | **on by default** wherever AI is on for the network; an admin turns it off per network |
 | **Configuration** | configuration lines: goldens, a deploy's program, a captured configuration, the stanzas they touch | **off per network**; an admin enables it per network with a recorded reason (the hosted-only setting's pattern, 13.1 and 15.8) |
 | **Never** | credentials, host keys, NetBox secrets, even masked | no setting enables it |
 
@@ -1813,6 +1817,8 @@ The addendum's egress ruling, as resolved by the operator the same day: a third 
    never a whole golden by default (F2: the program and the stanzas it touches; F3: the diff
    and its context before any full golden).
 4. **A classification marking forces AI off,** whatever the class settings say (13.1).
+   **Planned, not built** (C1720): until it exists this is no current safeguard, and the
+   configuration class stays off on every network.
 
 **The features that now require the configuration class** (each is off on a network until an
 admin enables the class there, and says so beside its control):
@@ -1825,6 +1831,20 @@ admin enables the class there, and says so beside its control):
   configuration, its secret-bearing lines dropped.
 - **15.9's P2** (the "differs" explainer): the unclassified difference's lines. P1's pack stays
   in the allowed class: it carries the Intent check's state, never its lines.
+
+**The topology class (the operator's egress ruling, 2026-10-25).** It holds what the network
+context model (15.15) sends:
+- devices, roles, sites, platforms;
+- links with their computed subnets;
+- expected adjacencies (OSPF, BGP), and observed ones with their read times.
+
+It holds no configuration lines and no secrets. It is on by default wherever AI is on for the
+network, with a per-network off switch. A classification marking is to force AI off
+whatever the class settings say (13.1); it is **planned, not built** (C1720), so today the
+per-network off switch is the only control. Full intent documents and configurations stay in the
+configuration class: the model sends what intent means for the topology (an address on an
+interface, a VLAN, OSPF and BGP membership), never the intent document or a configuration
+line.
 
 **A candidate, not a condition:** pseudonymising addresses and hostnames before a payload leaves
 (a reversible map held in Mercury), listed with 15.9's candidates; nothing above waits for it.
@@ -2046,3 +2066,22 @@ tab alike:**
   to the same place.
 - **Scale.** At large-fleet scale, a test with many thousands of events checks that each load
   stays bounded, in time and in rows.
+
+### 15.15 The network context model (the operator, 2026-10-25; in the sprint: it improves P1 Explain, and feature 7 needs it)
+
+- **A compiled network model, with no model call to build it.**
+  - **Its sources:** NetBox (devices, roles, sites, platforms, cables) and committed intent
+    (interfaces, addresses, VLANs, OSPF and BGP membership). It reuses `topology_expected`
+    and `neighbours.ospf_links`.
+  - **What it holds:** nodes, and links with their computed subnets and expected adjacencies.
+  - **Its version** is the intent's commit sha and NetBox's change. It is rebuilt only when
+    either changes.
+- **`context_for(subject, hops=1)`** gives the subgraph around a subject.
+  - It is overlaid with the observed neighbours, each with its read time.
+  - It is compact YAML, with stable ids the model must cite.
+  - A source that could not be read is stated as such, never omitted.
+- **Prompts put the stable context first** (the network summary, the notes when they exist,
+  the schema) for caching. The event or the question comes last.
+- **P1 Explain uses it now; feature 7 next.** What it sends is the topology class (15.11).
+- **Reported:** tokens and cost per Explain call, before and after, on a replayed Lab 9
+  incident.
