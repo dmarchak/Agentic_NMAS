@@ -21,10 +21,12 @@ range, in a strict schema (`MetricsChoices`). Everything else is Mercury's, dete
 The person sees the builder filled, the query as the builder forms it, and presses Ask
 themselves: nothing runs as an answer until they do.
 """
+import datetime as dt
 import logging
 import re
 import time
 from enum import Enum
+from zoneinfo import ZoneInfo
 
 from modules.ai import gateway
 from modules.ai.schemas import StrictModel, register
@@ -38,8 +40,13 @@ FEATURE = "nl_query"
 #: the runs alternated between, fixed: the 5-minute CPU, the 64-bit counter, a rate over 5m,
 #: no group for one named device. v5 (v4's five runs, the operator): a gauge grouped by avg
 #: (max for highest or peak), never summed; one interface label, ifName; a rate unless a
-#: count is asked for. Earlier versions stay for their record.
-PROMPT = ("nl_metrics", 5)
+#: count is asked for. v6 (v5's five runs, C1724; the operator's ruling, 2026-10-25): the four
+#: choices the runs still alternated between, fixed: a top N only when the question says "top"
+#: or a number; no group when the series are already one per interface asked; bits only when
+#: the question says bits or bandwidth; "today" a custom range from `today_start_utc` (midnight
+#: in the viewer's timezone, worked out here, never by the model) to now. Earlier versions
+#: stay for their record.
+PROMPT = ("nl_metrics", 6)
 #: The operation's steps, named on its manual page (docs/manual/how-it-works/ask-in-words.md).
 STEPS = (
     ("offer", "the metrics sharing a word with the question, never the whole catalogue"),
@@ -306,12 +313,94 @@ def named_devices(question: str, rows: list) -> list:
                   if d.get("hostname") and d["hostname"].lower() in said)
 
 
-def parts(question: str, offered: list, devices: list, roles: list, now: float) -> dict:
+# ------------------------------------------------------------------------ "today" (C1724)
+#
+# "Today" starts at midnight, and midnight is a timezone's. No installation timezone setting
+# exists (C1740), so until one does, the viewer's browser names its own: the words form
+# carries the IANA name (`tz`) and the offset east of UTC in minutes (`tz_off`) as a fallback,
+# filled by static/js/nmas_logq.js. Mercury works out midnight as a UTC time, DST-correct, and
+# hands the model that time as data: the model never computes a timezone.
+
+#: The longest IANA name taken (the longest in the database is 32 characters).
+ZONE_NAME_MAX = 64
+#: An IANA name's shape: letters, digits, `_`, `+`, `-`, in at most three parts. Checked
+#: before zoneinfo reads it, so no path ("../") reaches the zone files.
+_ZONE_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_+\-]*(?:/[A-Za-z0-9_+\-]+){0,2}$")
+#: The widest offset any zone has: UTC+14 (Kiritimati) and UTC-12; ±14 h either way.
+OFFSET_MAX_MIN = 14 * 60
+
+
+def _offset_name(minutes: int) -> str:
+    sign = "-" if minutes < 0 else "+"
+    return f"UTC{sign}{abs(minutes) // 60:02d}:{abs(minutes) % 60:02d}"
+
+
+def zone(name: str = "", offset: str = "") -> dict:
+    """The timezone "today" is counted in, from what the viewer's browser sent: ``{"tz",
+    "name", "source", "ignored"}``. *source* is ``browser`` (an IANA name zoneinfo knows),
+    ``offset`` (no usable name; the offset, minutes east of UTC, within ±14 h) or ``none``
+    (neither: UTC). *ignored* says what was sent and not used, or is empty."""
+    name, offset, ignored = (name or "").strip(), (offset or "").strip(), []
+    if name:
+        if len(name) <= ZONE_NAME_MAX and _ZONE_NAME.match(name):
+            try:
+                return {"tz": ZoneInfo(name), "name": name, "source": "browser",
+                        "ignored": ""}
+            # ZoneInfoNotFoundError is a KeyError; a folder ("America") is an OSError.
+            except (KeyError, ValueError, OSError):
+                pass
+        ignored.append(f"the timezone {name[:ZONE_NAME_MAX]!r} is not one Mercury knows")
+    if offset:
+        try:
+            minutes = int(offset)
+        except ValueError:
+            minutes = None
+        if minutes is not None and abs(minutes) <= OFFSET_MAX_MIN:
+            return {"tz": dt.timezone(dt.timedelta(minutes=minutes)),
+                    "name": _offset_name(minutes), "source": "offset",
+                    "ignored": "; ".join(ignored)}
+        ignored.append(f"the offset {offset[:12]!r} is not a whole number of minutes within "
+                       "±14 hours")
+    return {"tz": dt.timezone.utc, "name": "UTC", "source": "none",
+            "ignored": "; ".join(ignored)}
+
+
+def today_start(now: float, tz) -> float:
+    """Today's first instant in *tz*, as epoch seconds: midnight of the date *now* falls on
+    there. A midnight a DST change skips is the day's first instant (its earlier offset)."""
+    day = dt.datetime.fromtimestamp(now, tz).date()
+    return dt.datetime.combine(day, dt.time(0, 0), tzinfo=tz).timestamp()
+
+
+def _stamp(epoch: float) -> str:
+    return time.strftime("%Y-%m-%d %H:%M", time.gmtime(epoch))
+
+
+def today_words(z: dict) -> str:
+    """Which midnight "today" ran from, and why that timezone (said beside the filled range)."""
+    if z["source"] == "browser":
+        why = "your browser's timezone; no installation timezone is set"
+    elif z["source"] == "offset":
+        why = ("your browser's offset from UTC, as it named no timezone Mercury knows; no "
+               "installation timezone is set")
+    elif z["ignored"]:
+        what = "both were" if "; " in z["ignored"] else "it was"
+        why = f"{z['ignored']}, so {what} ignored; no installation timezone is set"
+    else:
+        why = "no timezone was sent; no installation timezone is set"
+    return f"'Today' runs from midnight {z['name']} ({why})"
+
+
+def parts(question: str, offered: list, devices: list, roles: list, now: float,
+          z: dict = None) -> dict:
     """The call's own data, in the user turn (the time too: it moves every call, so it is
-    never in the cached prefix)."""
+    never in the cached prefix). *z* is `zone`'s answer; none, UTC."""
+    z = z or zone()
     return {
         "question": question,
-        "now_utc": time.strftime("%Y-%m-%d %H:%M", time.gmtime(now)),
+        "now_utc": _stamp(now),
+        "today_start_utc": _stamp(today_start(now, z["tz"])),
+        "today_zone": z["name"],
         "metrics": "\n".join(f"{n} | {k} | {u or 'no unit'} | {' '.join(h.split())[:HELP_MAX]}"
                              for n, k, u, h in offered),
         "devices_named": "\n".join(devices) or "(none)",
@@ -331,11 +420,15 @@ def values(c: MetricsChoices) -> dict:
 
 
 def metrics(list_name: str, question: str, *, actor: str, send=None, client=None,
-            now: float = None, today: str = None) -> dict:
+            now: float = None, today: str = None, viewer_zone: dict = None) -> dict:
     """``{"ok", "error", "detail", "values", "view", "series", "call_id", "cost_usd",
-    "offered"}``: the builder filled from *question*, read back by the builder, and its
-    test run; or a refusal naming why, with nothing filled."""
+    "offered", "today"}``: the builder filled from *question*, read back by the builder, and
+    its test run; or a refusal naming why, with nothing filled. *viewer_zone* is `zone`'s answer
+    for the viewer (none: UTC, said); *today* is the gateway's spend day, not this. A filled
+    range that starts at today's midnight carries ``today``, the words saying which midnight."""
     from modules import history_promq as pq
+
+    z = viewer_zone or zone()
 
     question = " ".join((question or "").split())
     if not question:
@@ -382,7 +475,7 @@ def metrics(list_name: str, question: str, *, actor: str, send=None, client=None
                           "word with the question; nothing was sent (try the metric's own "
                           "words, or search the builder's Metric box)"}
     got = gateway.ask(FEATURE, PROMPT, MetricsChoices,
-                      parts(question, offered, named, roles, now),
+                      parts(question, offered, named, roles, now, z),
                       actor=actor, context={"builder": vocabulary()}, send=send, today=today)
     if not got["ok"]:
         return dict(got, offered=[o[0] for o in offered])
@@ -413,8 +506,12 @@ def metrics(list_name: str, question: str, *, actor: str, send=None, client=None
         said.append(f"left out the role {v['role'][:40]!r}: no device of {list_name} has it")
         v["role"] = ""
     view = pq.view(list_name, v, now=now, client=probe)
+    # The range is today's when it starts at the midnight the call was given: then the filled
+    # notice says whose midnight that was (the operator, 2026-10-25, C1724).
+    is_today = c.range is Range.custom and v.get("from") == _stamp(today_start(now, z["tz"]))
     out = dict(base, ok=True, error="", values=v, view=view,
-               errors=said + list(view["errors"]), series=None, test="")
+               errors=said + list(view["errors"]), series=None, test="",
+               today=today_words(z) if is_today else "")
     built = view.get("built")
     if built and view["state"] == "ok":
         n = pq.instant_count(client or pq._client(list_name, TEST_WAIT), built["query"],

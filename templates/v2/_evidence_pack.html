@@ -12,7 +12,7 @@
 <p class="refusal">Couldn't load: {% if state == 'unreadable' %}the evidence packs cannot be read ({{ error }}){% else %}no evidence pack {{ pid }} is kept{% endif %}.</p>
 {%- else %}
 <div class="pack" data-pack="{{ pack.id }}">
-  <p class="pack-meta">Built {{ stamp(pack.built_at) }}: {{ pack.trigger }}.
+  <p class="pack-meta">Built {{ stamp(pack.built_at) }}{% if pack.replayed_at %} (as of then; replayed {{ stamp(pack.replayed_at) }}){% endif %}: {{ pack.trigger }}.
     {{ pack.rule }} on {{ pack.device or 'no one device' }}{% if pack.network %} in {{ pack.network }}{% endif %}{% if pack.onset %}, onset {{ stamp(pack.onset) }}{% endif %}.
     <span class="mono small" title="sha256 over the pack's canonical JSON; schema {{ pack.schema }}; alert {{ pack.alert_key }}; read from {{ pack.store }}">{{ pack.hash[:12] }}</span>
     {%- if not intact %} {{ badge('its hash does not match: changed since it was built', 'danger') }}{% endif %}</p>
@@ -33,6 +33,8 @@
     {%- if s.subset %}<p class="pack-source">{{ s.pieces|length }} of {{ s.total }} kept{% if s.name == 'logs' %}, those nearest the onset{% endif %}.</p>{% endif %}
     {%- if s.errors %}<p class="warn-text small">Also could not be read: {{ s.errors|join('; ') }}</p>{% endif %}
     {%- if s.counts %}<p class="pack-source">{% for k, n in s.counts|dictsort %}{{ n }} {{ k|replace('_', ' ') }}{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
+    {%- if s.name == 'observed' and s.as_of %}<p class="pack-source" title="around {{ s.subject or 'the device' }}; network model {{ s.model or 'not read' }}">Captured {{ s.as_of_words }}{% if s.observed_at %}: the Topology reader's read of {{ stamp(s.observed_at) }}{% endif %}{% if s.hops %}, the items touching a device within {{ s.hops }} hops{% endif %}. Explain overlays this capture, never a later read.</p>{% endif %}
+    {%- if s.name == 'health' and s.as_of %}<p class="pack-source" title="{{ s.questions }} questions, asked {{ s.asked_at }}; the discards rate one point every {{ s.window.step_s }} s">The alert's device and {{ s.devices_kept - 1 }} of the {{ s.devices_total - 1 }} devices within two hops, nearest first{% if s.devices_kept < s.devices_total %} (the rest not read){% endif %}; each figure summarised over the window, {{ s.window.basis }}, evaluated at {{ stamp(s.as_of) }}{% if s.window.bounded %} ({{ s.window.bounded }}){% endif %}{% if s.figures %}: {% for k, w in s.figures|dictsort %}{{ k }}, {{ w }}{{ '; ' if not loop.last }}{% endfor %}{% endif %}.</p>{% endif %}
     {%- if s.pieces %}
     <ul class="pack-pieces">
       {%- for p in s.pieces %}
@@ -52,6 +54,17 @@
         {%- elif s.name == 'neighbours' %}
         {%- if p.kind == 'protocol' %}<strong>{{ p.proto }}</strong>: {{ 'measured' if p.measured else 'not measured' }}{% if p.why %} ({{ p.why }}){% endif %}{% if p.as_of %}, as of {{ stamp(p.as_of) }}{% endif %}
         {%- else %}{{ p.proto }} {{ p.peer or 'a peer outside management' }}{% if p.address %} <span class="mono">{{ p.address }}</span>{% endif %}{% if p.via %} via {{ p.via }}{% endif %}: {{ badge(p.state|replace('_', ' '), {'up': 'ok', 'down': 'danger', 'not_seen': 'warn', 'unexpected': 'warn'}.get(p.state, 'muted')) }} {{ p.words }}{% if p.at %}, scraped {{ stamp(p.at) }}{% if p.as_of %}, not current{% endif %}{% elif p.as_of %}, as of {{ stamp(p.as_of) }}, not current{% endif %}{% if not p.managed %} <span class="muted small">outside management</span>{% endif %}{% endif %}
+        {%- elif s.name == 'observed' %}
+        {%- if p.kind == 'cable' %}Cable <span class="mono small">{{ p.id }}</span>: {{ badge(p.state, {'up': 'ok', 'down': 'danger'}.get(p.state, 'muted')) }}{% if p.reported %} reported {{ p.reported }}{% endif %}{% if p.down_at %}, down at {{ p.down_at|join(', ') }}{% endif %}
+        {%- else %}{{ (p.proto or '')|upper }} adjacency <span class="mono small">{{ p.id }}</span>: {{ badge(p.state, {'up': 'ok', 'down': 'danger'}.get(p.state, 'muted')) }}{% if p.words %} {{ p.words }}{% endif %}{% if p.expected is false %} <span class="muted small">not implied by intent</span>{% endif %}{% if p.since %}, since {{ stamp(p.since) }}{% endif %}{% endif %}{% if p.read_at %} <span class="muted small">read {{ stamp(p.read_at) }}</span>{% endif %}
+        {%- elif s.name == 'health' %}
+        <strong title="{{ p.dev }}">{{ p.device }}</strong> <span class="muted small">hop {{ p.hop }}</span> · {{ p.figure }}:
+        {%- if p.state != 'ok' %} {{ badge(ST.get(p.state, p.state), SK.get(p.state, 'muted')) }}{% if p.why %} {{ p.why }}{% endif %}
+        {%- elif p.figure == 'cpu' %} min {{ p.min }}%, avg {{ p.avg }}%, max {{ p.max }}% at {{ stamp(p.peak_at, p.peak_at[11:19] ~ ' UTC') }} <span class="muted small">({{ p.metric }}, {{ p.samples }} samples)</span>
+        {%- elif p.figure == 'heartbeat' %} {{ p.beats }} heartbeats{% if p.max_gap_s is not none %}, longest gap {{ p.max_gap_s }} s, ended {{ stamp(p.max_gap_ended_at, p.max_gap_ended_at[11:19] ~ ' UTC') }}{% endif %}, {{ p.since_last_s }} s since the last ({{ stamp(p.last_at) }}){% if p.cut %} <span class="muted small">{{ p.cut }}</span>{% endif %}
+        {%- elif p.figure == 'scrapes' %} {{ p.failed }} of {{ p.scrapes }} scrapes failed{% if p.first_failed_at %}, from {{ stamp(p.first_failed_at, p.first_failed_at[11:19] ~ ' UTC') }} to {{ stamp(p.last_failed_at, p.last_failed_at[11:19] ~ ' UTC') }}{% endif %}{% if p.jobs_failing %} ({{ p.jobs_failing|join(', ') }}){% endif %}
+        {%- elif p.figure == 'discards' %} min {{ p.min }}, avg {{ p.avg }}, max {{ p.max }} {{ p.unit }} at {{ stamp(p.peak_at, p.peak_at[11:19] ~ ' UTC') }} <span class="muted small">({{ p.points }} points)</span>
+        {%- endif %} <span class="muted small">read {{ stamp(p.read_at) }}</span>
         {%- elif s.name == 'logs' %}
         {{ stamp(p.at, p.at[11:19] ~ ' UTC') }} {% if p.severity is not none %}<span class="muted small">{{ p.severity }} {{ p.severity_word }}</span> {% endif %}<span class="muted small">{{ p.device }} · {{ p.job }}{{ ' · after the onset' if p.after_onset else '' }}</span> <span class="mono small pack-text">{{ p.text }}</span>
         {%- endif %}

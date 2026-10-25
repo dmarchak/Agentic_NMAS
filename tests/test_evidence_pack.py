@@ -524,7 +524,7 @@ def test_the_card_in_a_real_browser(pack_lab):
             assert b.js("return document.querySelectorAll('details.pack-card[open]').length") == 0
             b.click(f'details[data-keep="pack-{key}"] > summary')
             b.wait_for(f"return document.querySelectorAll('details[data-keep=\"pack-{key}\"] "
-                       "section.pack-section').length === 6", 15)
+                       f"section.pack-section').length === {len(EP.SECTIONS)}", 15)
             got = b.js(f"var d = document.querySelector('details[data-keep=\"pack-{key}\"]');"
                        "return [Array.from(d.querySelectorAll('[data-ref]')).map("
                        "e => e.getAttribute('data-ref')), d.textContent,"

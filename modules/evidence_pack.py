@@ -3,8 +3,11 @@
 model and needs no 8.0 piece).
 
 When an alert fires, a person gathers the evidence by hand: the alert, the device's recent
-History, its Intent check, its expected and reported neighbours, and the log lines around the
-onset. The pack gathers exactly those, once, when the `grafana-alerts` reader first stores the
+History, its Intent check, its expected and reported neighbours, the network around it as it
+was observed (`observed`, C1712: captured here, so Explain never reads the network as it is
+later), the health of the devices within two hops (`health`, C1714, `evidence_health`), and
+the log lines around the onset, every time series read as of the alert's time (`build`'s
+*now*). The pack gathers exactly those, once, when the `grafana-alerts` reader first stores the
 alert as firing, and keeps them: one pack per firing alert, readable while it fires and after it
 resolves (Monitoring › Alerts draws them). With AI off it is the answer on its own; Phase 8's
 Explain call (P1's second half) cites its pieces, and a citation is checked against it.
@@ -50,16 +53,23 @@ import time
 
 log = logging.getLogger(__name__)
 
-#: The pack's own shape; a reader of a later shape says it cannot read this one.
-SCHEMA = 1
+#: The pack's own shape; a reader of a later shape says it cannot read this one. 2 (C1712,
+#: C1714, 2026-10-25) adds the `observed` and `health` sections; a pack of 1 stays readable
+#: and says it holds neither (expand, then contract).
+SCHEMA = 2
 #: The records store (`records_db.STORES`) and its file.
 STORE = "evidence_packs"
 FILE_NAME = "evidence_packs.jsonl"
 #: The sections, in the order a person reads them.
-SECTIONS = ("alert", "device", "history", "intent", "neighbours", "logs")
+SECTIONS = ("alert", "device", "history", "intent", "neighbours", "observed", "health", "logs")
 SECTION_WORDS = {"alert": "The alert", "device": "The device", "history": "Recent History",
                  "intent": "Intent check", "neighbours": "Neighbours",
+                 "observed": "The network around it, as observed",
+                 "health": "Health of the devices around it",
                  "logs": "Log lines around the onset"}
+#: A build more than this before the clock is a replay of a past alert (`build`'s *now*): the
+#: sections that read a store as it is now (History, the Intent check) say what they read.
+REPLAY_SLACK_SECONDS = 300
 #: A section's states. `empty` is a source read that held nothing; `absent`, nothing to read.
 STATES = ("ok", "empty", "absent", "not_configured", "unreadable")
 #: The log window around the onset: 15 minutes each side (the reader's alerts fire from 1 to
@@ -229,9 +239,10 @@ def _absent(name: str, source: str, why: str) -> dict:
     return _section(name, source, _now(), "absent", why)
 
 
-def history_section(ref, host: str) -> dict:
+def history_section(ref, host: str, until: float = None) -> dict:
     """The device's recent History: `history_sources.timeline`, the History tab's own reader,
-    filtered to deploys and restores, goldens, intent, restarts, reloads and planned windows."""
+    filtered to deploys and restores, goldens, intent, restarts, reloads and planned windows.
+    *until* (a replay of a past alert) leaves out what History recorded after it, counted."""
     from modules import history_sources as HS
 
     source = (f"History (history_sources.timeline) for {host}: "
@@ -243,6 +254,13 @@ def history_section(ref, host: str) -> dict:
     except Exception as exc:                          # noqa: BLE001
         return _section("history", source, at, "unreadable", _failed(exc))
     events, errors = got.get("events") or [], list(got.get("errors") or [])
+    if until is not None:
+        cut = _iso(until)
+        later = [e for e in events if (e.get("at") or "") > cut]
+        if later:
+            events = [e for e in events if (e.get("at") or "") <= cut]
+            source += (f"; {len(later)} recorded after the alert's time {cut} left out, the "
+                       "pack being of that time")
     pieces = [{"at": e.get("at") or "", "kind": e.get("kind") or "", "what": e.get("what") or "",
                "who": e.get("who_short") or "", "outcome": e.get("outcome") or "",
                "sha": (e.get("sha") or "")[:12], "detail": e.get("detail") or ""}
@@ -294,10 +312,10 @@ def intent_section(ref, dev: dict) -> dict:
     return _section("intent", source, at, "ok", pieces=[piece])
 
 
-def neighbours_section(ref, dev: dict) -> dict:
+def neighbours_section(ref, dev: dict, as_of: float = None) -> dict:
     """The device's expected and reported neighbours: `neighbours.for_device`, the Neighbours
     tab's own view (committed intent against what Prometheus last scraped, and RIP from its
-    reader)."""
+    reader), Prometheus asked as of *as_of* (the alert's time)."""
     from modules import neighbours as N
 
     host = dev.get("hostname") or ""
@@ -305,7 +323,7 @@ def neighbours_section(ref, dev: dict) -> dict:
               "Prometheus's routing tables, the RIP reader")
     at = _now()
     try:
-        view = N.for_device(ref, dev)
+        view = N.for_device(ref, dev, at=as_of)
     except Exception as exc:                          # noqa: BLE001
         return _section("neighbours", source, at, "unreadable", _failed(exc))
     errors = list(view.get("errors") or [])
@@ -396,15 +414,121 @@ def logs_section(ref, host: str, onset, now: float, client=None) -> dict:
     return _section("logs", source, now, "ok", pieces=pieces, **extra)
 
 
+#: An observed item's fields the pack keeps beside its id and kind (`network_model.observed`'s
+#: entries): what was reported and when, never more.
+OBSERVED_KINDS = {"routing": "adjacency", "cables": "cable"}
+
+
+def observed_section(capture: dict, now: float, built: float) -> dict:
+    """The network model's observed overlay around the device, CAPTURED now (C1712): the
+    Topology reader's read as the alert was found firing (*now*, the alert's time), kept to
+    the items touching a device within two hops, each with its id and the read's own time.
+    Explain overlays this, never a later read. *capture* is `network_model.capture`'s."""
+    source = ("the Topology reader's stored read (LLDP and the routing tables, from "
+              "Prometheus), captured with the pack")
+    as_of = _iso(now)
+    words = f"as of {as_of}, the alert's time"
+    if not capture.get("ok"):
+        return _section("observed", source, built, "unreadable",
+                        f"the network model could not be read ({capture.get('error')})",
+                        as_of=as_of, as_of_words=words)
+    ov = capture["overlay"]
+    extra = {"as_of": as_of, "as_of_words": words, "observed_at": ov.get("read_at") or "",
+             "subject": capture.get("subject") or "", "model": capture.get("version") or "",
+             "hops": max([r["hop"] for r in (capture.get("reached") or {}).values()] or [0])}
+    if ov.get("state") != "read":
+        state = ov.get("cause") if ov.get("cause") in STATES else "unreadable"
+        return _section("observed", source, built, state, ov.get("why") or "", **extra)
+    pieces = []
+    for key, kind in OBSERVED_KINDS.items():
+        for oid, entry in sorted((ov.get(key) or {}).items()):
+            pieces.append(dict(entry, id=oid, kind=kind))
+    if not pieces:
+        return _section("observed", source, built, "empty",
+                        f"the read of {ov.get('read_at')} reports no adjacency or cable "
+                        "touching these devices", **extra)
+    return _section("observed", source, built, "ok", pieces=pieces, **extra)
+
+
+def overlay_of(pack: dict) -> dict:
+    """The observed overlay a pack keeps, in `network_model.observed`'s shape, for Explain to
+    overlay (C1712): never a live read. A pack built before overlays were captured (schema 1)
+    says so on every item."""
+    from modules import network_model as NM
+
+    sec = next((s for s in pack.get("sections") or [] if s.get("name") == "observed"), None)
+    if sec is None:
+        return NM.unread("observed state not captured with this pack")
+    if sec.get("state") not in ("ok", "empty"):
+        return dict(NM.unread(f"{sec.get('why') or 'not read'}, when the pack was built"),
+                    as_of=sec.get("as_of") or "")
+    out = {"state": "read", "why": "", "cause": "", "read_at": sec.get("observed_at") or "",
+           "routing": {}, "cables": {}, "source": sec.get("source") or "",
+           "as_of": sec.get("as_of") or ""}
+    back = {kind: key for key, kind in OBSERVED_KINDS.items()}
+    for p in sec.get("pieces") or []:
+        key = back.get(p.get("kind"))
+        if key and p.get("id"):
+            out[key][p["id"]] = {k: v for k, v in p.items() if k not in ("id", "kind", "ref")}
+    return out
+
+
+def health_section(ref, host: str, capture: dict, onset, now: float, built: float,
+                   prometheus=None, loki=None) -> dict:
+    """The health figures of the alert's device and every device within two hops, over the
+    incident's window, from 15 minutes before the onset to the alert's time (C1714;
+    `evidence_health`): each a piece whose reference is ``health:<device id>:<figure>``."""
+    from modules import evidence_health as H
+
+    source = ("Prometheus (CPU, scrapes, interface discards) and Loki (the syslog heartbeat), "
+              "for the alert's device and every device within two hops of it, one question "
+              "each for them all, each summarised over the window")
+    devices, total = H.devices_of(capture, host)
+    got = H.read(ref.name, devices, onset, now, prom=prometheus, loki=loki)
+    extra = {"window": got["window"], "as_of": _iso(now), "asked_at": _iso(built),
+             "questions": got["asked"], "errors": got["errors"],
+             "devices_total": total, "devices_kept": len(devices),
+             "figures": {k: H.FIGURE_WORDS[k] for k in H.FIGURES}}
+    if not capture.get("ok"):
+        extra["errors"] = [f"the network model could not be read ({capture.get('error')}), "
+                           "so only the alert's device is read"] + extra["errors"]
+    pieces = [{k: v for k, v in p.items() if k != "ref"} for p in got["pieces"]]
+    states = {p["state"] for p in pieces}
+    if not pieces:
+        return _section("health", source, built, "absent", "no device to read", **extra)
+    if states <= {"not_configured"}:
+        sec = _section("health", source, built, "not_configured",
+                       "neither Prometheus nor a log store is configured for "
+                       f"{ref.name}", pieces=pieces, **extra)
+    elif states <= {"unreadable", "not_configured"}:
+        sec = _section("health", source, built, "unreadable", "; ".join(got["errors"]),
+                       pieces=pieces, **extra)
+    else:
+        sec = _section("health", source, built, "ok", pieces=pieces, **extra)
+    # Each figure's reference is its stable id, the one an answer cites.
+    for p, mine in zip(sec["pieces"], got["pieces"]):
+        p["ref"] = mine["ref"]
+    return sec
+
+
 # ----------------------------------------------------------------------------- the pack
 
-def build(inst: dict, *, store: str, value_at: str, now: float = None, loki=None) -> dict:
+def build(inst: dict, *, store: str, value_at: str, now: float = None, loki=None,
+          prometheus=None, observed_read: dict = None, trigger: str = "") -> dict:
     """One alert instance's pack, masked and hashed. Never raises: a source that fails is
-    its section saying so. *loki* stands in for the network's Loki client (tests)."""
+    its section saying so. *now* is the alert's time, when it was found firing: every read of
+    a time series (the neighbours, the observed topology, the health figures, the log lines)
+    is as of it. *loki* and *prometheus* stand in for the network's clients (tests);
+    *observed_read* for the Topology reader's stored read, in its store's shape (a replay of
+    a past alert, `scripts/nmas-pack-replay`, gives the read made as of that time), and
+    *trigger* for what made the pack (the replay's own words)."""
     from modules import attention as A
+    from modules import network_model as NM
     from modules import redact
 
-    now = _now() if now is None else now
+    clock = _now()
+    now = clock if now is None else now
+    replay = clock - now > REPLAY_SLACK_SECONDS
     onset, basis = A._onset(inst)
     sections = [_alert_section(inst, store, value_at, onset, basis)]
     try:
@@ -416,20 +540,38 @@ def build(inst: dict, *, store: str, value_at: str, now: float = None, loki=None
     host = (dev or {}).get("hostname") or ""
     if ref is None:
         why = f"no device to read for: {dev_section['why']}"
-        for name in ("history", "intent", "neighbours", "logs"):
+        for name in ("history", "intent", "neighbours", "observed", "health", "logs"):
             sections.append(_absent(name, "", why))
     else:
-        sections.append(history_section(ref, host))
-        sections.append(intent_section(ref, dev))
-        sections.append(neighbours_section(ref, dev))
+        sections.append(history_section(ref, host, until=now if replay else None))
+        intent = intent_section(ref, dev)
+        if replay:
+            intent["source"] += (f"; the committed golden and intent as they are at "
+                                 f"{_iso(clock)}, not as of the alert's time {_iso(now)}")
+        sections.append(intent)
+        sections.append(neighbours_section(ref, dev, as_of=now))
+        try:
+            cap = NM.capture(ref.name, host, hops=NM.CAPTURE_HOPS, now=now,
+                             stored=observed_read)
+        except Exception as exc:                      # noqa: BLE001 (said, never raised)
+            cap = {"ok": False, "error": _failed(exc)}
+        sections.append(observed_section(cap, now, clock))
+        try:
+            sections.append(health_section(ref, host, cap, onset, now, clock,
+                                           prometheus=prometheus, loki=loki))
+        except Exception as exc:                      # noqa: BLE001
+            sections.append(_section("health", "Prometheus and Loki", clock, "unreadable",
+                                     _failed(exc)))
         sections.append(logs_section(ref, host, onset, now, client=loki))
     key = alert_key(inst)
     pack = {"schema": SCHEMA, "id": pack_id(key), "alert_key": key, "built_at": _iso(now),
             "store": store, "rule": inst.get("rule") or "", "device": host,
             "network": ref.name if ref is not None else "", "onset": _iso(onset),
-            "trigger": (f"the {store} reader stored this alert as firing (its value of "
-                        f"{value_at or 'an unrecorded time'})"),
+            "trigger": trigger or (f"the {store} reader stored this alert as firing (its "
+                                   f"value of {value_at or 'an unrecorded time'})"),
             "sections": sections}
+    if replay:
+        pack["replayed_at"] = _iso(clock)
     # Masked BEFORE it is hashed or kept: what is hashed is what is stored and shown.
     pack = redact.redact_payload(pack)
     pack["hash"] = digest(pack)

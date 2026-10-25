@@ -19,12 +19,13 @@ value built by the real reader from the real captures (tests/test_topology_graph
 - **The version:** asking again builds nothing; a golden committed alone builds nothing; a
   change to intent or to the inventory's fields rebuilds; a hit asks git once.
 - **A read writes nothing:** the data folder is the same after a build and a subgraph.
-- **Scale:** a 900-device fleet builds within a bound and a subgraph of it stays small; a
+- **Scale, by work and growth, never wall-clock:** a 900-device fleet builds in one pass (each
+  device's links asked once) with its walk's edges exactly 10x a 90-device one's, and a
+  one-hop subgraph of it expands one node and draws the same as at 90; a
   segment of 900 is listed, not walked.
 """
 import json
 import os
-import time
 
 import pytest
 import yaml
@@ -183,8 +184,12 @@ class TestTheModel:
 
 # ------------------------------------------------------------------------------ context_for
 
-def _ctx(subject="r1", hops=1):
-    got = NM.context_for("Lab", subject, hops=hops)
+def _ctx(subject="r1", hops=1, overlay=None):
+    """The subgraph, overlaid with the Topology reader's stored read mapped onto the model
+    (what a pack captures, here the whole network's) unless *overlay* is given."""
+    if overlay is None:
+        overlay = NM.observed("Lab", _model())
+    got = NM.context_for("Lab", subject, hops=hops, overlay=overlay)
     assert got["ok"], got
     return got, yaml.safe_load(got["yaml"])
 
@@ -283,6 +288,72 @@ class TestTheSubgraph:
         assert yaml.safe_load(a["summary"])["devices"] == len(HOSTS)
 
 
+# ------------------------------------------------------------------------------ the capture
+
+class TestTheCapture:
+    """C1712 and C1714: the observed overlay is read once, when a pack is built, and kept to
+    the items touching a device within two hops; the walk's hops are the subgraph's own (a
+    shared segment's members are one hop)."""
+
+    def test_two_hops_through_the_shared_segment(self, net):
+        cap = NM.capture("Lab", "r1", now=NOW)
+        assert cap["ok"], cap
+        hops = {d: r["hop"] for d, r in cap["reached"].items()}
+        assert hops[_dev("r1")] == 0
+        # The core segment's members are one hop, all of them (the segment, not a chain).
+        assert {hops[_dev(h)] for h in ("r2", "r3", "r4", "s3", "s4")} == {1}
+        assert cap["reached"][_dev("s3")]["via"] == "link:10.255.3.0/24"
+        # And on from there to two: s2, behind the switches.
+        assert hops[_dev("s2")] == 2
+        assert set(cap["nodes"]) == {d for d in hops if d.startswith("dev:")}
+        assert cap["nodes"][_dev("s3")] == {"name": "s3", "role": "switch",
+                                            "platform": "cisco_ios"}
+
+    def test_it_keeps_the_items_touching_the_devices_reached(self, net):
+        full = NM.observed("Lab", _model(), now=NOW)
+        cap = NM.capture("Lab", "r1", hops=0, now=NOW)
+        kept = cap["overlay"]
+        assert kept["read_at"] == READ_AT and kept["state"] == "read"
+        assert kept["cables"] and set(kept["cables"]) < set(full["cables"])
+        assert all(_dev("r1") in [e["dev"] for e in c["ends"]] for c in kept["cables"].values())
+        assert kept["routing"] and set(kept["routing"]) < set(full["routing"])
+        assert all(_dev("r1") in aid for aid in kept["routing"])
+        two = NM.capture("Lab", "r1", now=NOW)["overlay"]
+        assert set(two["routing"]) > set(kept["routing"])
+
+    def test_a_read_later_than_the_time_it_is_captured_for_is_not_used(self, net):
+        """A replay of a past alert must never take today's read as the alert's."""
+        cap = NM.capture("Lab", "r1", now=NOW - 3600)
+        ov = cap["overlay"]
+        assert ov["state"] == "could not read" and not ov["routing"] and not ov["cables"]
+        assert "is later than 2026-10-15T07:21:00Z" in ov["why"]
+
+    def test_a_given_read_is_used_in_place_of_the_store(self, net):
+        """The replay's read, made as of the alert's time, never the store's."""
+        _unstore(NM.OBSERVED_READER)
+        at = "2026-10-15T07:20:00Z"
+        cap = NM.capture("Lab", "r1", now=NOW - 3600, stored={
+            "value": {"configured": True, "networks": {"Lab": TG._graph()}}, "value_at": at})
+        assert cap["overlay"]["state"] == "read" and cap["overlay"]["read_at"] == at
+        assert all(o["read_at"] == at for o in cap["overlay"]["routing"].values())
+
+    def test_the_subgraph_reads_no_observed_state(self, net, monkeypatch):
+        """By construction: context_for overlays what it is given and asks no store."""
+        from modules import reader_job
+        overlay = NM.capture("Lab", "r1", now=NOW)["overlay"]
+
+        def boom(*a, **k):
+            raise AssertionError("a live read")
+        monkeypatch.setattr(NM, "observed", boom)
+        monkeypatch.setattr(reader_job, "read_cached", boom)
+        _g, doc = _ctx("r1", 1, overlay=overlay)
+        assert doc["observed"]["read_at"] == READ_AT
+        none = NM.context_for("Lab", "r1", hops=1)
+        assert none["ok"]
+        words = "could not read (no observed state was given)"
+        assert yaml.safe_load(none["yaml"])["observed"]["state"] == words
+
+
 # ------------------------------------------------------------------------------ the version
 
 class TestTheVersion:
@@ -290,10 +361,11 @@ class TestTheVersion:
         from modules.nsot import repo as R
         _ctx("r1")
         assert NM.BUILDS["Lab"] == 1
+        overlay = NM.observed("Lab", _model())
         calls = []
         real = R.run_git
         monkeypatch.setattr(R, "run_git", lambda *a, **k: calls.append(a[1:3]) or real(*a, **k))
-        _ctx("s3")
+        _ctx("s3", overlay=overlay)
         assert NM.BUILDS["Lab"] == 1
         assert calls == [("ls-tree", "HEAD")], calls
 
@@ -350,23 +422,11 @@ def test_a_read_writes_nothing(net):
 
 # ------------------------------------------------------------------------------- scale
 
-#: Measured where the test runs, CI's runner (C1741; run #1177, 2026-10-25, browser1 shard
-#: under load): a 900-device build, the median of five, 0.569 s (all: 0.381 to 0.817); a
-#: one-hop subgraph of it with the model kept, the median of seven, 0.0142 s (all: 0.0084 to
-#: 0.0177). The first bounds (0.4 s and 0.01 s) came from the laptop's 0.145 s and 0.0037 s,
-#: so the runner, the slower machine, refused them. Each bound is about 2.5x the runner's
-#: median, and each test takes a median (C463: one sample on a shared runner measures it).
-BUILD_BOUND_S = 1.4
-CONTEXT_BOUND_S = 0.036
-
-
-def _median(fn, n):
-    times = []
-    for _ in range(n):
-        t = time.perf_counter()
-        out = fn()
-        times.append(time.perf_counter() - t)
-    return sorted(times)[n // 2], times, out
+#: Performance is asserted on WORK and its GROWTH, never wall-clock (the operator, 2026-10-25:
+#: CI #1177 ran the 900-device build in 0.569 s against a laptop-measured 0.4 s bound, C1741;
+#: the runner's medians then were 0.569 s for the build and 0.0142 s for a one-hop subgraph).
+#: The laptop's times, for the record only (CI's interpreter, 3.12.3): the build 0.145 s
+#: (median of five), a one-hop subgraph of it 0.0037 s.
 
 
 def scale_fleet(routers=300, switches_per=2):
@@ -404,32 +464,74 @@ def scale_fleet(routers=300, switches_per=2):
     return intents, inventory
 
 
+class Expanded(dict):
+    """The model's edges, counting each node the walk expands (`_walk` asks `edges.get(node)`
+    once per node it walks out of): the subgraph's work, counted, never timed."""
+
+    def __init__(self, *a, **k):
+        super().__init__(*a, **k)
+        self.asked = []
+
+    def get(self, key, default=None):
+        self.asked.append(key)
+        return super().get(key, default)
+
+
+def _built(routers, monkeypatch):
+    """``(model, calls)``: the scale fleet of ``routers * 3`` devices built, with how often the
+    Neighbours rules (`ospf_links`, `ospfv3_links`) were asked, by device."""
+    from modules import neighbours as N
+
+    calls = []
+    for name in ("ospf_links", "ospfv3_links"):
+        real = getattr(N, name)
+        monkeypatch.setattr(N, name, lambda hv, _r=real, _n=name: calls.append(
+            (_n, hv.get("hostname"))) or _r(hv))
+    intents, inventory = scale_fleet(routers=routers)
+    m = NM.build("Big", inventory, intents, {}, version={"key": "nm-scale"})
+    return m, calls
+
+
 class TestScale:
-    def test_a_fleet_of_900_builds_within_its_bound(self):
-        intents, inventory = scale_fleet()
-        assert len(intents) == 900
-        took, times, m = _median(lambda: NM.build("Big", inventory, intents, {},
-                                                  version={"key": "nm-scale"}), 5)
-        assert took < BUILD_BOUND_S, (f"a 900-device build took {took:.3f} s (median of 5; "
-                                      f"all: {', '.join(f'{t:.3f}' for t in times)})")
+    """Machine-independent (the operator, 2026-10-25, after CI #1177 and C1741): work counted
+    and its growth from N to 10N, never a wall-clock bound."""
+
+    def test_a_fleet_of_900_builds_in_one_pass_and_its_work_grows_linearly(self, monkeypatch):
+        small, small_calls = _built(30, monkeypatch)
+        small_calls = list(small_calls)       # the second build's wrappers chain through it
+        m, calls = _built(300, monkeypatch)
         assert m["counts"]["devices"] == 900
         assert m["counts"]["adjacencies"]["ospfv3"] == 300 + 300 * 3
+        # One pass: each device's links asked once per protocol, never once per pair.
+        assert len(calls) == 2 * 900 and len(set(calls)) == len(calls)
+        assert len(small_calls) == 2 * 90
+        # The walk's edges: each ring link's pair and each LAN's three pairs, both ways; the
+        # management segment of 900 (over MAX_SEGMENT) adds none. Exactly 10x from 90 to 900.
+        edges = sum(len(v) for v in m["edges"].values())
+        assert edges == 2 * (300 + 3 * 300)
+        assert edges == 10 * sum(len(v) for v in small["edges"].values())
+        assert sum(len(l["members"]) for l in m["links"].values()) == \
+            10 * sum(len(l["members"]) for l in small["links"].values())
 
-    def test_a_subgraph_of_900_is_small_and_quick(self, monkeypatch):
-        intents, inventory = scale_fleet()
-        m = NM.build("Big", inventory, intents, {}, version={"key": "nm-scale"})
-        monkeypatch.setattr(NM, "model_for", lambda net: (m, ""))
-        monkeypatch.setattr(NM, "observed", lambda net, model, now=None: {
-            "state": "could not read", "why": "planted", "read_at": "", "routing": {},
-            "cables": {}, "source": "planted"})
-        took, times, got = _median(lambda: NM.context_for("Big", "r7", hops=1), 7)
-        assert took < CONTEXT_BOUND_S, (f"a subgraph of 900 took {took:.4f} s (median of 7; "
-                                        f"all: {', '.join(f'{t:.4f}' for t in times)})")
+    def test_a_subgraph_of_900_walks_only_what_it_reaches(self, monkeypatch):
+        out = {}
+        for routers in (30, 300):
+            m, _calls = _built(routers, monkeypatch)
+            m["edges"] = Expanded(m["edges"])
+            monkeypatch.setattr(NM, "model_for", lambda net, _m=m: (_m, ""))
+            got = NM.context_for("Big", "r7", hops=1, overlay=NM.unread("planted"))
+            out[routers] = (got, list(m["edges"].asked))
+        got, asked = out[300]
+        # One hop walks out of the subject alone: one node expanded, at 90 devices and 900.
+        assert asked == out[30][1] == ["dev:1021"], (asked, out[30][1])
         # r7, its two ring neighbours and its two switches; the management segment of 900 is
         # listed with the members reached and never walked.
-        assert len(got["reached"]) == 5, got["reached"]
+        assert len(got["reached"]) == len(out[30][0]["reached"]) == 5, got["reached"]
         doc = yaml.safe_load(got["yaml"])
         mgmt = doc["links"]["link:mgmt/2001:db8:ffff::/64"]
         assert mgmt["members_total"] == 900 and len(mgmt["members"]) == 5
         assert "not walked through" in mgmt["note"]
-        assert len(got["yaml"]) < 12_000
+        # What is drawn does not grow with the fleet: the same devices, links and adjacencies.
+        small = yaml.safe_load(out[30][0]["yaml"])
+        assert (len(doc["devices"]), len(doc["links"]), len(doc["adjacencies"])) == \
+            (len(small["devices"]), len(small["links"]), len(small["adjacencies"]))

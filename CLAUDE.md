@@ -389,6 +389,11 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
 - **Bounds are about 2.5x a measured time, written beside it; a firing bound names what ran; a poll
   that cannot ask says so; choose a library's default too.** [tests/test_suite_bound.py;
   tests/test_ssh_sessions.py] [why](docs/LESSONS.md#bounds-from-measurement)
+- **Performance tests assert on work or growth, never wall-clock:** work counted (calls, rows,
+  nodes visited) or a growth ratio (N against 10N); the 2.5x-a-measured-time rule above is for
+  timeouts and process bounds, not for asserting speed (the operator, 2026-10-25; C1741: a
+  laptop-measured bound refused by CI's runner). [tests/test_network_model.py (`TestScale`);
+  docs/TESTING.md]
 - **A read returning exactly its page size is truncated; a claim about all time needs a window that
   covers it; keep the whole record, then summarise.** [tests/test_reader_job.py (full pages)] [why](docs/LESSONS.md#truncated-reads-and-whole-records)
 - **A stored answer is dated by its value and judged against its promise;** a failed read keeps the

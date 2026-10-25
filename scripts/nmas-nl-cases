@@ -24,6 +24,9 @@ expected metric must be carried by its named devices, else its role, else the ne
 devices, in the live catalogue (`cases.stale`). A stale expectation fails the check, before
 anything is asked or spent, never as the model's miss (the operator, 2026-10-25: cases 11, 13
 and 15 were stale).
+
+**`--cases`** names the case file: the 20 recorded cases by default, or the held-out set
+(`tests/fixtures/ai_cases/nl_query/held_out.json`), measured beside them and reported apart.
 """
 import os
 import sys
@@ -41,6 +44,9 @@ import json  # noqa: E402
 import time  # noqa: E402
 
 CASES = os.path.join("tests", "fixtures", "ai_cases", "nl_query", "metrics.json")
+#: The held-out set (C1724's overfitting guard): measured beside the 20, reported apart, never
+#: tuned on.
+HELD_OUT = os.path.join("tests", "fixtures", "ai_cases", "nl_query", "held_out.json")
 #: Refusals that are Mercury's or the provider's, not the model's: the run stops, spending
 #: nothing more (the adapter's kinds, modules/ai/anthropic_adapter.py, among them).
 STOPS = ("ai_off", "no_key", "over_cap", "unknown_task", "unknown_model", "not_configured",
@@ -52,13 +58,13 @@ def _checkout(given: str) -> str:
     return os.path.abspath(os.path.expanduser(given)) if given else ROOT
 
 
-def check(checkout: str, list_name: str) -> list:
+def check(checkout: str, list_name: str, case_file: str = CASES) -> list:
     """The stale expectations (`cases.stale`) against the network's live Prometheus: what the
     named devices, the role or the network's devices carry, one read each."""
     from modules import history_promq as pq
     from modules.ai import cases, nl_query
 
-    data = cases.load(os.path.join(checkout, CASES))
+    data = cases.load(os.path.join(checkout, case_file))
     client = pq._client(list_name, 15.0)
     rng = pq.window(dict(pq.DEFAULTS), time.time())
 
@@ -71,14 +77,14 @@ def check(checkout: str, list_name: str) -> list:
     return cases.stale(data, carried)
 
 
-def record(checkout: str, list_name: str, actor: str, out: str) -> int:
+def record(checkout: str, list_name: str, actor: str, out: str, case_file: str = CASES) -> int:
     from modules.ai import cases, nl_query, profiles
 
     if os.path.realpath(out).startswith(os.path.realpath(checkout) + os.sep):
         print(f"nmas-nl-cases: --out {out} is inside the checkout; write it elsewhere",
               file=sys.stderr)
         return 2
-    data = cases.load(os.path.join(checkout, CASES))
+    data = cases.load(os.path.join(checkout, case_file))
     pin = profiles.TASKS[nl_query.FEATURE]["model"]
     if data["model"] != pin:
         print(f"nmas-nl-cases: the case file is for {data['model']}, the task is pinned to "
@@ -86,7 +92,7 @@ def record(checkout: str, list_name: str, actor: str, out: str) -> int:
         return 2
     # Every measurement starts with the expectations checked against the live catalogue: a
     # stale one fails here, before anything is asked or spent, never as the model's miss.
-    problems = check(checkout, list_name)
+    problems = check(checkout, list_name, case_file)
     if problems:
         for p in problems:
             print(f"nmas-nl-cases: stale expectation: {p}", file=sys.stderr)
@@ -118,8 +124,8 @@ def record(checkout: str, list_name: str, actor: str, out: str) -> int:
     return 0
 
 
-def merge(checkout: str, path: str) -> int:
-    file = os.path.join(checkout, CASES)
+def merge(checkout: str, path: str, case_file: str = CASES) -> int:
+    file = os.path.join(checkout, case_file)
     with open(file, encoding="utf-8") as fh:
         data = json.load(fh)
     with open(path, encoding="utf-8") as fh:
@@ -138,7 +144,7 @@ def merge(checkout: str, path: str) -> int:
     with open(file, "w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2, ensure_ascii=False)
         fh.write("\n")
-    print(f"merged {n} recorded case(s) into {CASES}")
+    print(f"merged {n} recorded case(s) into {case_file}")
     return 0
 
 
@@ -151,16 +157,19 @@ def main(argv=None) -> int:
     ap.add_argument("--out", default="")
     ap.add_argument("--merge", default="")
     ap.add_argument("--check", action="store_true")
+    ap.add_argument("--cases", default=CASES,
+                    help="the case file, relative to the checkout (the held-out set: "
+                         + HELD_OUT + ")")
     args = ap.parse_args(argv)
     checkout = _checkout(args.checkout)
     sys.path.insert(0, checkout)
     os.chdir(checkout)
     if args.merge:
-        return merge(checkout, args.merge)
+        return merge(checkout, args.merge, args.cases)
     if args.check:
         if not args.list:
             ap.error("--check needs --list")
-        problems = check(checkout, args.list)
+        problems = check(checkout, args.list, args.cases)
         for p in problems:
             print(f"stale expectation: {p}")
         print(f"{len(problems)} stale expectation(s)")
@@ -168,7 +177,7 @@ def main(argv=None) -> int:
     if args.record:
         if not (args.list and args.actor and args.out):
             ap.error("--record needs --list, --actor and --out")
-        return record(checkout, args.list, args.actor, args.out)
+        return record(checkout, args.list, args.actor, args.out, args.cases)
     ap.error("--record or --merge")
     return 2
 

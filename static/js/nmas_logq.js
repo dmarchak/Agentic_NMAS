@@ -5,7 +5,11 @@
  *    changing nothing; closes a Reveal… box once the line it revealed is drawn (C818), so the
  *    box never covers it;
  *  - on a click on the counts chart, names the window and the series under the pointer and
- *    offers that window's lines (`data-lq-pick`, each series' `href` from the server).
+ *    offers that window's lines (`data-lq-pick`, each series' `href` from the server);
+ *  - fills Ask in words' timezone inputs (`data-lq-tz`: the browser's IANA name, and its
+ *    offset east of UTC in minutes as the fallback), drawn and refilled with the region and
+ *    again as the form is sent, so the server can say whose midnight "today" began at (C1724;
+ *    no installation timezone exists, C1740).
  *
  * ES5; no inline script (the strict policy). The pure functions are exported on
  * `window.NMAS_LOGQ` and executed in duktape by tests/test_history_ask_logs.py.
@@ -64,6 +68,27 @@
     return best;
   }
 
+  /* PURE: what a `data-lq-tz` input carries: *kind* "name" the IANA name *intl* resolved (''
+     when it has none), "offset" the offset east of UTC in minutes, from *jsOffset* (Date's
+     getTimezoneOffset, which counts WEST of UTC). */
+  function tzValue(kind, intl, jsOffset) {
+    if (kind === 'name') {
+      var name = '';
+      try { name = intl ? intl().resolvedOptions().timeZone || '' : ''; } catch (e) { name = ''; }
+      return String(name);
+    }
+    if (kind === 'offset') return isFinite(jsOffset) ? String(-jsOffset) : '';
+    return '';
+  }
+
+  function zones(scope) {
+    var list = (scope || root.document).querySelectorAll('[data-lq-tz]');
+    var intl = root.Intl && root.Intl.DateTimeFormat ? function () { return root.Intl.DateTimeFormat(); } : null;
+    for (var i = 0; i < list.length; i++) {
+      list[i].value = tzValue(list[i].getAttribute('data-lq-tz'), intl, new Date().getTimezoneOffset());
+    }
+  }
+
   function local(input) {
     var out = root.document.getElementById(input.getAttribute('data-lq-local'));
     if (!out) return;
@@ -101,8 +126,12 @@
   }
 
   if (root.document && root.document.addEventListener) {
-    root.document.addEventListener('DOMContentLoaded', function () { refresh(); });
-    root.document.addEventListener('htmx:afterSettle', function (e) { refresh(e.target); });
+    root.document.addEventListener('DOMContentLoaded', function () { refresh(); zones(); });
+    root.document.addEventListener('htmx:afterSettle', function (e) { refresh(e.target); zones(e.target); });
+    /* Capture: before htmx reads the form's values on its own submit handler. */
+    root.document.addEventListener('submit', function (e) {
+      if (e.target && e.target.querySelector && e.target.querySelector('[data-lq-tz]')) zones(e.target);
+    }, true);
     root.document.addEventListener('htmx:afterRequest', function (e) {
       var form = e.detail && e.detail.elt;
       if (!form || !form.classList || !form.classList.contains('lq-rvpop')) return;
@@ -128,5 +157,5 @@
   }
 
   root.NMAS_LOGQ = {parseUtc: parseUtc, localWords: localWords, windowOf: windowOf,
-                    pickHref: pickHref, nearest: nearest, stamp: stamp};
+                    pickHref: pickHref, nearest: nearest, stamp: stamp, tzValue: tzValue};
 })(typeof window !== 'undefined' ? window : this);

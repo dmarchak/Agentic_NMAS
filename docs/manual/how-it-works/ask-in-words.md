@@ -35,14 +35,20 @@ itself, its choices and **Ask**, stays as usable as ever (see
 2. `ask`: one call through the AI gateway, as you. What is sent is masked first. The builder's
    vocabulary (its ranges, operations and filters) is the same on every call, so it is cached.
    Your question, the metrics offered, the devices you named that this network holds, and its
-   roles go as data. Metric help text is written by an exporter, not by {{product}}, so it is
-   data too, and an instruction inside it is not followed. The answer must be the builder's
-   own choices, in a fixed shape, or one of two other answers. What your words leave unsaid
-   takes a default you see in the builder and can change: one line per device unless you ask
-   for a total (never different devices in one line unasked), and no grouping when you name
-   one device; the inbound variant when you do not say in or out; a count of the things in a
-   state ("sessions not established"); the 5-minute CPU measure; a 64-bit counter where both
-   are offered; and a rate over 5 minutes as a counter's first operation.
+   roles go as data, with the time now and the time today began (see
+   [What "today" means](#today)). Metric help text is written by an exporter, not by
+   {{product}}, so it is data too, and an instruction inside it is not followed. The answer
+   must be the builder's own choices, in a fixed shape, or one of two other answers. What
+   your words leave unsaid takes a default you see in the builder and can change: one line
+   per device unless you ask for a total (never different devices in one line unasked), and
+   no grouping when you name one device; a level such as CPU averaged per device (its
+   maximum when you say highest, peak or busiest), never summed; no grouping when you ask per
+   interface or for the top interfaces, as each interface is already its own line; the
+   inbound variant when you do not say in or out; a count of the things in a state
+   ("sessions not established"); the 5-minute CPU measure; a 64-bit counter where both are
+   offered; a rate over 5 minutes as a counter's first operation; a top 5 or 10 only when
+   you say "top" or give a number ("highest" alone draws every line); bits only when you say
+   bits or bandwidth ("traffic" keeps bytes); and "today" from today's midnight to now.
    **A question back**, when your words leave a choice no default settles (which interface,
    or a device this network does not have): it is shown as "One question first", your words
    stay in the box, and nothing is filled; add the answer and fill again.
@@ -58,6 +64,23 @@ itself, its choices and **Ask**, stays as usable as ever (see
    not answer.
 5. `fill`: the builder is drawn with the choices, and its address is the page's. Check the
    choices and the query, change any of them, then press **Ask**.
+
+## What "today" means {#today}
+
+"Today" runs from midnight to now, and midnight depends on where you are. {{product}} has no
+installation timezone setting yet, so it uses your browser's: the form sends your browser's
+timezone name (and its offset from UTC, in case the name is missing or unknown), and
+{{product}} works out when today's midnight was, in UTC, correctly across a daylight-saving
+change. The model is given that time as it is; it never works out a timezone itself. The
+builder's From… to… shows the range in UTC.
+
+When an answer's range starts at today's midnight, the note under the question says whose
+midnight it was: "'Today' runs from midnight America/New_York (your browser's timezone; no
+installation timezone is set)". If your browser named no timezone {{product}} knows, its
+offset is used and said ("midnight UTC-04:00"). If nothing usable was sent, today starts at
+midnight UTC, and the note says that too, and why.
+
+"Yesterday" and other named days are still worked out in UTC.
 
 ## What it costs, and what is recorded {#cost}
 

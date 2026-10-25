@@ -75,18 +75,21 @@ def _value(row) -> float:
 
 # ---------------------------------------------------------------------------- the fetch
 
-def prometheus_series(list_name: str = "") -> tuple:
+def prometheus_series(list_name: str = "", at: float = None) -> tuple:
     """``(configured, {device: {metric: rows}}, {device: {job: 0|1}})`` for one Prometheus
     configuration. Raises when it is configured and cannot be read, so a failure is the
-    reader's failure (job health), never an empty map."""
+    reader's failure (job health), never an empty map. *at* evaluates every query at that
+    past time (Prometheus's own `time`, a replay of a past alert's evidence pack); the reader
+    asks for now."""
     from modules.integrations.prometheus import PrometheusIntegration
 
     prom = PrometheusIntegration(list_name=list_name) if list_name else PrometheusIntegration()
     if not prom.is_configured():
         return False, {}, {}
     results, up = {}, {}
+    when = {"time": f"{float(at):.3f}"} if at is not None else {}
     for metric in METRICS + ("up",):
-        r = prom._get("api/v1/query", query=metric)
+        r = prom._get("api/v1/query", query=metric, **when)
         if not r.get("ok"):
             raise RuntimeError(f"Prometheus could not be asked for {metric}: {r.get('error')}")
         for row in (r["response"].json().get("data") or {}).get("result") or []:

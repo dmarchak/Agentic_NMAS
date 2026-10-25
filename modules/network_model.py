@@ -16,11 +16,16 @@ read-only: no model is asked to build it, and nothing here writes.
   line, and never a description.
 - *The committed manifest* (`leased_address.committed_manifest`, one git read): each device's
   NetBox id, so its id is stable across a rename.
-- **Observed**, overlaid when a subgraph is asked for, never compiled into the model: the
-  Topology reader's stored read (`topology-graph`: LLDP's links and the routing tables, the
-  whole fleet per read, from Prometheus), each observed item with the read's time. A read that
-  cannot be used (absent, unreadable, older than its promise) is said as "could not read" with
-  why, on every item it would have overlaid; never left out.
+- **Observed**, never compiled into the model: the Topology reader's stored read
+  (`topology-graph`: LLDP's links and the routing tables, the whole fleet per read, from
+  Prometheus), each observed item with the read's time. **It is CAPTURED, never read when a
+  subgraph is drawn** (C1712, the operator's ruling of 2026-10-25): `capture` reads it once,
+  when an alert's evidence pack is built, keeps the part around the subject (the items
+  touching any device within `CAPTURE_HOPS`), and the pack keeps it, "as of" the alert's time;
+  `context_for` overlays the overlay it is GIVEN and reads no observed state itself, so Explain
+  of a past alert never describes the network now. A read that cannot be used (absent,
+  unreadable, older than its promise, later than the time it is captured for) is said as
+  "could not read" with why, on every item it would have overlaid; never left out.
 
 **What it reuses.** The adjacencies are the Neighbours tab's own rules (`neighbours.ospf_links`,
 `ospfv3_links`, `bgp_peers`, `router_id`, `addresses`), each device's links computed ONCE and
@@ -71,6 +76,13 @@ MAX_HOPS = 3
 SUMMARY_DEVICES = 50
 #: The observed overlay's reader (modules/readers/topology_graph.py).
 OBSERVED_READER = "topology-graph"
+#: How far a capture reaches (C1714's two hops for the health figures; the topology DETAIL
+#: Explain sends stays at its own one hop).
+CAPTURE_HOPS = 2
+#: A stored read later than the time it is captured for by more than this is not of that
+#: time (a replay of a past alert reading today's value): the clocks of one host, so a minute
+#: of slack covers a read stored in the same second the alert was found.
+LATER_SLACK_SECONDS = 60
 ROUTING = ("ospf", "ospfv3", "bgp")
 #: Mercury's own host on the observed map (topology_graph.MANAGER): an end, never a way through.
 MANAGER_ID = "mercury"
@@ -456,22 +468,33 @@ def forget(network: str = "") -> None:
 
 # ----------------------------------------------------------------------------- observed
 
-def observed(network: str, model: dict, now: float = None) -> dict:
+def observed(network: str, model: dict, now: float = None, stored: dict = None) -> dict:
     """The Topology reader's stored read for *network*, mapped onto the model's ids:
-    ``{"state": "read"|"could not read", "why", "read_at", "routing": {adj id: entry},
-    "cables": {cable id: entry}}``. One stored value read; no source is asked."""
+    ``{"state": "read"|"could not read", "why", "cause", "read_at", "routing": {adj id: entry},
+    "cables": {cable id: entry}}``. One stored value read; no source is asked. *stored* is a
+    read in the store's own shape (``{"value", "value_at"}``) given in place of the store's
+    (a replay of a past alert reads the reader's sources as they were then). *cause* is the
+    pack's state for a read that could not be used: ``absent`` (never read),
+    ``not_configured`` (no Prometheus) or ``unreadable`` (everything else)."""
     from modules import reader_job
     from modules.readers import topology_graph as T
 
     now = _now() if now is None else now
-    out = {"state": "could not read", "why": "", "read_at": "", "routing": {}, "cables": {},
+    out = {"state": "could not read", "why": "", "cause": "unreadable", "read_at": "",
+           "routing": {}, "cables": {},
            "source": "the Topology reader's last read of Prometheus (LLDP and the routing "
                      "tables)"}
-    got = reader_job.read_cached(OBSERVED_READER)
-    good = (got.get("doc") or {}).get("last_good") or {}
+    if stored is None:
+        got = reader_job.read_cached(OBSERVED_READER)
+        good = (got.get("doc") or {}).get("last_good") or {}
+        state, why = got["state"], got.get("why")
+    else:
+        good, state, why = dict(stored or {}), "ok", ""
     if not good:
-        out["why"] = ("the Topology reader has not read yet" if got["state"] == "absent"
-                      else f"the Topology reader's store {got['state']}: {got.get('why')}")
+        out["why"] = ("the Topology reader has not read yet" if state in ("absent", "ok")
+                      else f"the Topology reader's store {state}: {why}")
+        if state in ("absent", "ok"):
+            out["cause"] = "absent"
         return out
     at = good.get("value_at") or (good.get("value") or {}).get("read_at") or ""
     out["read_at"] = at
@@ -485,15 +508,21 @@ def observed(network: str, model: dict, now: float = None) -> dict:
         out["why"] = (f"the Topology reader's last read, at {at}, is older than its promise "
                       f"of {promise} s, so it is not current")
         return out
+    if stamp - now > LATER_SLACK_SECONDS:
+        out["why"] = (f"the Topology reader's last read, at {at}, is later than "
+                      f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(now))}, the time it "
+                      "is asked for, so it describes a later network")
+        return out
     value = good.get("value") or {}
     if value.get("configured") is False:
         out["why"] = "Prometheus is not configured, so nothing is observed"
+        out["cause"] = "not_configured"
         return out
     net = (value.get("networks") or {}).get(network)
     if net is None:
         out["why"] = f"the Topology reader's last read holds nothing for {network}"
         return out
-    out["state"], out["why"] = "read", ""
+    out["state"], out["why"], out["cause"] = "read", "", ""
     names = model["names"]
 
     def end(name, link=None):
@@ -579,12 +608,95 @@ def _yaml(doc) -> str:
                           width=100)
 
 
-def context_for(network: str, subject: str, hops: int = 1, now: float = None) -> dict:
+def _extra(obs: dict) -> dict:
+    """The walk's observed edges: an LLDP cable between two devices (never through Mercury's
+    host) and an adjacency intent does not imply."""
+    extra = {}
+    for cid, c in (obs.get("cables") or {}).items():
+        (a, b) = [e["dev"] for e in c["ends"]]
+        if a != MANAGER_ID and b != MANAGER_ID:
+            extra.setdefault(a, {}).setdefault(b, cid)
+            extra.setdefault(b, {}).setdefault(a, cid)
+    for aid, o in (obs.get("routing") or {}).items():
+        if o.get("expected") is False:
+            a, b = o["between"]
+            extra.setdefault(a, {}).setdefault(b, aid)
+            extra.setdefault(b, {}).setdefault(a, aid)
+    return extra
+
+
+def _seeds(network: str, model: dict, subject: str) -> tuple:
+    """``(subject id, seeds, error)``: a device by its NetBox id, its model id or its name; a
+    link by its id (its members are the seeds)."""
+    subject = str(subject or "").strip()
+    if subject.startswith("link:"):
+        link = model["links"].get(subject)
+        if link is None:
+            return subject, [], f"{network} has no link {subject[:60]}"
+        return subject, [m["dev"] for m in link["members"]], ""
+    names = model["names"]
+    sid = (subject if subject in model["nodes"] else f"dev:{subject}"
+           if f"dev:{subject}" in model["nodes"] else names.get(subject))
+    if sid is None:
+        return subject, [], f"{network}'s model holds no device {subject[:60]}"
+    return sid, [sid], ""
+
+
+def unread(why: str) -> dict:
+    """An overlay that holds nothing, saying why (a pack built before overlays were captured,
+    C1712): every item it would have overlaid says "could not read" with *why*."""
+    return {"state": "could not read", "why": why, "cause": "absent", "read_at": "",
+            "routing": {}, "cables": {}, "source": "none"}
+
+
+def capture(network: str, subject: str, hops: int = CAPTURE_HOPS, now: float = None,
+            stored: dict = None) -> dict:
+    """The observed overlay around *subject*, read ONCE, for an evidence pack to keep (C1712):
+    ``{"ok", "error", "overlay", "reached", "nodes", "subject", "version"}``. *overlay* is
+    `observed`'s answer kept to the items touching a device within *hops* (walked with the
+    overlay's own cables, as `context_for` walks); *reached* each device's ``{"hop", "via"}``;
+    *nodes* each reached managed device's ``{"name", "role", "platform"}`` (who the health
+    figures are read for, C1714). *now* is the time it is captured for (the alert's); *stored*
+    a read in the store's shape given in place of the store's (a replay)."""
+    try:
+        hops = max(0, min(int(hops), MAX_HOPS))
+    except (TypeError, ValueError):
+        hops = CAPTURE_HOPS
+    model, err = model_for(network)
+    if model is None:
+        return {"ok": False, "error": err}
+    sid, seeds, err = _seeds(network, model, subject)
+    if err:
+        return {"ok": False, "error": err}
+    obs = observed(network, model, now=now, stored=stored)
+    reached = _walk(model, _extra(obs), seeds, hops)
+    near = set(reached)
+    kept = dict(obs, routing={}, cables={})
+    for aid, o in obs["routing"].items():
+        a = model["adjacencies"].get(aid) or {}
+        ends = o.get("between") or (a.get("between") if isinstance(a.get("between"), list)
+                                    else [])
+        if any(e in near for e in ends):
+            kept["routing"][aid] = o
+    for cid, c in obs["cables"].items():
+        if any(e["dev"] in near for e in c["ends"]):
+            kept["cables"][cid] = c
+    nodes = {n: {k: model["nodes"][n][k] for k in ("name", "role", "platform")
+                 if k in model["nodes"][n]}
+             for n in reached if n in model["nodes"]}
+    return {"ok": True, "error": "", "overlay": kept, "subject": sid,
+            "reached": {n: {"hop": h, "via": v} for n, (h, v) in reached.items()},
+            "nodes": nodes, "version": model["version"].get("key", "")}
+
+
+def context_for(network: str, subject: str, hops: int = 1, overlay: dict = None) -> dict:
     """The subgraph of *network* around *subject* (a device by its NetBox id, its model id or
-    its name; or a link by its id), within *hops*, the observed overlaid. ``{"ok", "error",
-    "yaml", "summary", "ids", "reached", "version"}``: *yaml* compact (sorted keys, no
-    anchors), *ids* every id it holds (what a citation may name), *reached* each device's
-    ``(hop, via)``."""
+    its name; or a link by its id), within *hops*, *overlay* overlaid: the observed state
+    `capture` kept (C1712: this reads no observed state itself, so a subgraph of a past alert
+    is never the network now). No overlay is said as could not read on every item.
+    ``{"ok", "error", "yaml", "summary", "ids", "reached", "version"}``: *yaml* compact
+    (sorted keys, no anchors), *ids* every id it holds (what a citation may name), *reached*
+    each device's ``(hop, via)``."""
     try:
         hops = max(0, min(int(hops), MAX_HOPS))
     except (TypeError, ValueError):
@@ -592,32 +704,11 @@ def context_for(network: str, subject: str, hops: int = 1, now: float = None) ->
     model, err = model_for(network)
     if model is None:
         return {"ok": False, "error": err}
-    subject = str(subject or "").strip()
-    names = model["names"]
-    if subject.startswith("link:"):
-        link = model["links"].get(subject)
-        if link is None:
-            return {"ok": False, "error": f"{network} has no link {subject[:60]}"}
-        seeds = [m["dev"] for m in link["members"]]
-    else:
-        sid = (subject if subject in model["nodes"] else f"dev:{subject}"
-               if f"dev:{subject}" in model["nodes"] else names.get(subject))
-        if sid is None:
-            return {"ok": False, "error": f"{network}'s model holds no device {subject[:60]}"}
-        subject, seeds = sid, [sid]
-    obs = observed(network, model, now=now)
-    extra = {}
-    for cid, c in obs["cables"].items():
-        (a, b) = [e["dev"] for e in c["ends"]]
-        if a != MANAGER_ID and b != MANAGER_ID:
-            extra.setdefault(a, {}).setdefault(b, cid)
-            extra.setdefault(b, {}).setdefault(a, cid)
-    for aid, o in obs["routing"].items():
-        if o.get("expected") is False:
-            a, b = o["between"]
-            extra.setdefault(a, {}).setdefault(b, aid)
-            extra.setdefault(b, {}).setdefault(a, aid)
-    reached = _walk(model, extra, seeds, hops)
+    subject, seeds, err = _seeds(network, model, subject)
+    if err:
+        return {"ok": False, "error": err}
+    obs = overlay if overlay is not None else unread("no observed state was given")
+    reached = _walk(model, _extra(obs), seeds, hops)
     inner = {n for n, (h, _v) in reached.items() if h < hops or h == 0}
     could_not = f"could not read ({obs['why']})" if obs["state"] != "read" else ""
 
@@ -686,6 +777,8 @@ def context_for(network: str, subject: str, hops: int = 1, now: float = None) ->
            "cables": cables or (could_not or "none reported for these devices"),
            "observed": {"source": obs["source"], "read_at": obs["read_at"] or "never",
                         "state": "read" if obs["state"] == "read" else could_not}}
+    if obs.get("as_of"):
+        doc["observed"]["as_of"] = obs["as_of"]
     if model["errors"]:
         doc["model_errors"] = list(model["errors"])
     ids = set(devices) | set(links) | set(adjacencies) | set(cables)
@@ -695,10 +788,10 @@ def context_for(network: str, subject: str, hops: int = 1, now: float = None) ->
             "version": model["version"].get("key", ""), "observed": obs["state"]}
 
 
-def reach(network: str, subject: str, hops: int = 1, now: float = None) -> list:
+def reach(network: str, subject: str, hops: int = 1, overlay: dict = None) -> list:
     """``[(hop, id, name, via)]``, sorted: which devices *subject* and *hops* reach, for a
     person reading what a call was given."""
-    got = context_for(network, subject, hops, now=now)
+    got = context_for(network, subject, hops, overlay=overlay)
     if not got["ok"]:
         return []
     model, _err = model_for(network)
@@ -746,8 +839,9 @@ FORMAT = "\n".join([
     "Ids: " + "; ".join(ID_WORDS) + ". Cite an item by its id exactly as written.",
     "Each device has its hop from the subject and the item it was reached by (via); devices "
     "at the last hop carry identity only.",
-    "observed is the Topology reader's last read, with its time (read_at). It may be later "
-    "than the alert: compare read_at with the alert's onset before using it. 'could not read' "
+    "observed is the Topology reader's read captured with the evidence pack when the alert "
+    "was found firing (as_of), each item with the read's own time (read_at); it is never read "
+    "again later. Compare read_at with the alert's onset before using it. 'could not read' "
     "means nothing was observed, never that nothing is there; 'not in the read' means the "
     "read did not hold it.",
     "Intent says what should be; observed says what was reported. Neither is a configuration "

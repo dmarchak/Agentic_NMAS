@@ -599,11 +599,12 @@ def _with_rip(view: dict, intents: dict, host: str, list_name: str) -> dict:
     return view
 
 
-def for_device(ref, dev: dict) -> dict:
+def for_device(ref, dev: dict, at: float = None) -> dict:
     """The Neighbours tab's view for one device: committed intent (two git
     reads), four Prometheus instant queries filtered to the device, and the RIP
     reader's stored answer for RIP and RIPng (C12). Never raises; every source
-    that could not be read is said."""
+    that could not be read is said. *at* evaluates the queries at that time (an
+    evidence pack built for a past alert, C1712); the tab asks for now."""
     from modules.integrations.prometheus import PrometheusIntegration
 
     host = dev.get("hostname", "")
@@ -619,8 +620,9 @@ def for_device(ref, dev: dict) -> dict:
         return _with_rip(view, intents, host, ref.name)
     results, up = {}, {}
     label = host.replace("\\", "\\\\").replace('"', '\\"')
+    when = {"time": f"{float(at):.3f}"} if at is not None else {}
     for metric in [m for _j, m in SERIES.values()] + ["up"]:
-        r = prom._get("api/v1/query", query=query(metric, label))
+        r = prom._get("api/v1/query", query=query(metric, label), **when)
         if not r.get("ok"):
             view["errors"].append(f"Prometheus could not be asked for {metric}: {r.get('error')}")
             continue
@@ -641,5 +643,5 @@ def for_device(ref, dev: dict) -> dict:
     if view["errors"] and not results and not up:
         return _with_rip(view, intents, host, ref.name)
     import time
-    view.update(compare(intents, host, results, up, now=time.time()))
+    view.update(compare(intents, host, results, up, now=time.time() if at is None else at))
     return _with_rip(view, intents, host, ref.name)

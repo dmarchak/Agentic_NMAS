@@ -42,7 +42,7 @@
 <div class="pq-main">
 <section class="card lq-build" aria-label="Build a metrics question">
   {%- set words_url = url_for('v2.history_ask_metrics_words') %}{% set words_hidden = hidden() %}
-  {%- set words_placeholder = 'input errors per interface, top 5, last 7 days' %}
+  {%- set words_placeholder = 'input errors per interface, top 5, last 7 days' %}{% set words_tz = true %}
   {%- include "v2/_history_ask_words.html" %}
   <div class="lq-row"><span class="lq-lab">Start from</span>{% include "v2/_history_ask_chips.html" %}</div>
 

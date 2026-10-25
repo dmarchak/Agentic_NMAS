@@ -7,9 +7,17 @@ the model's own answer (`recorded`: its choices, when and on which model).
 
 `misses` judges one result against one case's `expect`, the same way for a live recording and
 for CI's replay of it, so a case that passes live passes in CI and the other way round.
+
+Explain's cases (`tests/fixtures/ai_cases/explain/recorded.json`, P1) are replays of a past
+window (`scripts/nmas-pack-replay`), each judged on its pack: `explain_unready` says first
+whether the pack holds what the case is judged on (an incident's evidence measured, a healthy
+baseline's window quiet), so a wrong window fails the check, never the model; then
+`explain_misses` judges the model's answer against `expect`, structured fields only. What only
+a person can judge in the prose is the case's `flag`, read on the recording.
 """
 import calendar
 import json
+import re
 import time
 
 
@@ -111,4 +119,131 @@ def misses(expect: dict, got: dict, now: float) -> list:
     if expect.get("yesterday") and (v.get("from"), v.get("to")) != _yesterday(now):
         out.append(f"From {v.get('from')!r} to {v.get('to')!r}, expected yesterday "
                    f"{_yesterday(now)}")
+    return out
+
+
+def _section(pack: dict, name: str) -> dict:
+    return next((s for s in pack.get("sections") or [] if s.get("name") == name), {})
+
+
+def select(pack: dict, selector: str) -> list:
+    """The pack's pieces a case's selector names: ``health:<device name>:<figure>`` (the
+    figure's id carries the device's id, which a case cannot know before the pack is built), or
+    ``<section>:*``, every piece of that section and the section itself."""
+    parts = selector.split(":")
+    if parts[0] == "health" and len(parts) == 3:
+        return [p for p in _section(pack, "health").get("pieces") or []
+                if p.get("device") == parts[1] and p.get("figure") == parts[2]]
+    if len(parts) == 2 and parts[1] == "*":
+        s = _section(pack, parts[0])
+        return ([s] if s else []) + list(s.get("pieces") or [])
+    return []
+
+
+def _refs(pack: dict, selectors) -> set:
+    return {p.get("ref") for sel in selectors for p in select(pack, sel) if p.get("ref")}
+
+
+_PERCENT = re.compile(r"(\d+(?:\.\d+)?)\s*(?:%|percent\b)")
+
+
+def _percents(value) -> set:
+    """Every percentage a pack holds: the min, avg and max of a piece whose unit is percent,
+    and every percentage written in its text, at any depth. Any other number (a count of
+    scrapes, a gap in seconds) is not one: a stated percentage matching it by chance is not
+    allowed."""
+    if isinstance(value, str):
+        return {float(m.group(1)) for m in _PERCENT.finditer(value)}
+    if isinstance(value, list):
+        return set().union(*(_percents(v) for v in value)) if value else set()
+    if not isinstance(value, dict):
+        return set()
+    out = set().union(*(_percents(v) for v in value.values())) if value else set()
+    if value.get("unit") == "percent":
+        # The summary's own figures (evidence_health._summary), never its sample count or hop.
+        out |= {float(value[k]) for k in ("min", "avg", "max")
+                if isinstance(value.get(k), (int, float)) and not isinstance(value[k], bool)}
+    return out
+
+
+def invented_percents(text: str, pack: dict) -> list:
+    """The percentages *text* states that are not a percentage the pack holds (exactly, or
+    rounded to the precision the text writes): a figure stated that is not in the evidence
+    (the operator's rule, 2026-10-25: "never invent a figure"). Only percentages are checked."""
+    held = _percents(pack)
+    out = []
+    for m in _PERCENT.finditer(text or ""):
+        said = m.group(1)
+        places = len(said.split(".")[1]) if "." in said else 0
+        if not any(round(h, places) == float(said) for h in held):
+            out.append(said + "%")
+    return out
+
+
+def explain_unready(case: dict, pack: dict) -> list:
+    """Why *pack* cannot judge *case*, in words; ``[]`` when it can. Every selector in
+    `needs` must name a piece that was measured (state ok); a `quiet` case (a healthy
+    baseline) must show none of the symptoms it names anywhere in its health figures or its
+    log lines, else the window was not healthy and the case is not one."""
+    out = []
+    if not _section(pack, "health"):
+        out.append("the pack holds no health section (built before C1714)")
+    for sel in case.get("needs", ()):
+        got = select(pack, sel)
+        if not got:
+            out.append(f"{sel}: not in the pack")
+        elif not any(p.get("state", "ok") == "ok" for p in got):
+            out.append(f"{sel}: not measured ({got[0].get('state')}: {got[0].get('why', '')})")
+    quiet = case.get("quiet")
+    if quiet:
+        for p in _section(pack, "health").get("pieces") or []:
+            if p.get("state") != "ok":
+                continue
+            if p.get("figure") == "scrapes" and (p.get("failed") or 0) > quiet["failed_scrapes"]:
+                out.append(f"not quiet: {p['device']} failed {p['failed']} scrape(s)")
+            if (p.get("figure") == "heartbeat"
+                    and (p.get("max_gap_s") or 0) > quiet["max_gap_s"]):
+                out.append(f"not quiet: {p['device']}'s longest heartbeat gap was "
+                           f"{p['max_gap_s']} s, over {quiet['max_gap_s']} s")
+        for p in _section(pack, "logs").get("pieces") or []:
+            hit = [w for w in quiet.get("no_log_text", ()) if w in (p.get("text") or "")]
+            if hit:
+                out.append(f"not quiet: a log line at {p.get('at')} holds {hit[0]}")
+    return out
+
+
+def explain_misses(expect: dict, answer, pack: dict, error: str = "") -> list:
+    """What Explain's answer (*answer*, the model's `Explanation` as JSON; None with *error*
+    when Mercury refused it, a couldn't analyse) does that *expect* does not allow: ``[]`` is a
+    pass. Structured fields only; the prose is the case's `flag`, a person's to judge."""
+    if answer is None:
+        return [f"no answer: {error or 'nothing recorded'}"]
+    out = []
+    outcome = answer.get("outcome")
+    if outcome not in expect.get("outcome", ()):
+        return [f"outcome {outcome}, expected one of {expect.get('outcome')}"]
+    hyps = answer.get("hypotheses") or []
+    if "needs_human" in expect and bool(answer.get("needs_human")) != expect["needs_human"]:
+        out.append(f"needs_human {answer.get('needs_human')}, expected {expect['needs_human']}")
+    if "hypotheses_max" in expect and len(hyps) > expect["hypotheses_max"]:
+        out.append(f"{len(hyps)} hypotheses, at most {expect['hypotheses_max']} expected "
+                   "(a healthy window reports nothing wrong)")
+    cited = {r for h in hyps for r in h.get("evidence_refs") or []}
+    for group in expect.get("cites", ()):
+        if not cited & _refs(pack, group):
+            out.append(f"cites none of {group}")
+    for together in expect.get("together", ()):
+        wanted = [_refs(pack, g) for g in together]
+        if not any(all(set(h.get("evidence_refs") or []) & w for w in wanted) for h in hyps):
+            out.append(f"no one hypothesis cites each of {together}")
+    if hyps and expect.get("lead_not_only"):
+        lead = set(hyps[0].get("evidence_refs") or [])
+        if lead and lead <= _refs(pack, expect["lead_not_only"]):
+            out.append(f"the leading hypothesis rests on {expect['lead_not_only']} alone")
+    if expect.get("figures_from_pack"):
+        text = " ".join([answer.get("rationale") or "", answer.get("why_not") or ""]
+                        + [h.get("claim") or "" for h in hyps])
+        bad = invented_percents(text, pack)
+        if bad:
+            out.append(f"states {', '.join(bad)}, which the pack does not hold")
     return out

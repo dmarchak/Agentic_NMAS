@@ -5,19 +5,23 @@
     them back, and nothing runs until Ask. The form carries the choices drawn
     (*words_hidden*), so a refusal or a question back redraws them as they were. Set before
     the include: *q* (its `words`, the result, and `words_model`), *words_url* (where the
-    form posts), *words_hidden* (the builder's own hidden inputs), *words_placeholder*.
+    form posts), *words_hidden* (the builder's own hidden inputs), *words_placeholder*, and
+    *words_tz* (the metrics builder: "today" is midnight in the viewer's browser's timezone
+    until an installation timezone exists, C1740; `tz` and `tz_off`, filled by
+    static/js/nmas_logq.js from `data-lq-tz`).
     An AI control (PHASE8_PLAN 15.13): the AI mark; disabled with its reason while hosted AI
     cannot answer, the builder beside it untouched. -#}
 {%- set w = q.words %}
 {%- set aic = ai_control('ask_in_words') %}
 <form class="lq-row lq-words" method="post" action="{{ words_url }}" hx-post="{{ words_url }}" hx-target="#lq" hx-swap="outerHTML" autocomplete="off">{{ words_hidden }}
+  {%- if words_tz %}<input type="hidden" name="tz" value="" data-lq-tz="name"><input type="hidden" name="tz_off" value="" data-lq-tz="offset">{% endif %}
   <label class="lq-lab" for="lq-words">Ask in words {{ ai.mark(aic) }}</label>
   <div class="lq-line"><input id="lq-words" class="lq-words-in" type="text" name="words" maxlength="300" value="{{ w.question if w else '' }}" placeholder="{{ words_placeholder }}"{{ ai.input_attrs(aic) }}>
   <span class="op-act"><button type="submit" class="btn btn-small" data-op="ask-in-words" hx-disabled-elt="this"{{ ai.attrs(aic, 'configure') }} title="One recorded AI call ({{ q.words_model }}), capped; it fills the choices below and runs nothing"><span class="op-idle">Fill the builder</span><span class="op-busy">Filling…</span></button>{{ how('ask-in-words', compact=True) }}</span>
   {{- ai.reason(aic) }}</div>
 </form>
 {%- if w and w.ok %}
-<div class="notice" role="status">{{ icon('info', 16) }}<p>Filled from your words ({{ q.words_model }}, ${{ '%.4f' | format(w.cost_usd) }}){% if w.test %}: {{ w.test }}{% endif %}. Check the choices and the query below, then Ask.</p></div>
+<div class="notice" role="status">{{ icon('info', 16) }}<p>Filled from your words ({{ q.words_model }}, ${{ '%.4f' | format(w.cost_usd) }}){% if w.test %}: {{ w.test }}{% endif %}.{% if w.today %} {{ w.today }}.{% endif %} Check the choices and the query below, then Ask.</p></div>
 {%- elif w and w.error == 'ask' %}
 <div class="notice" role="status">{{ icon('info', 16) }}<p>One question first: {{ w.clarify }} Add the answer to your words, then fill again.</p></div>
 {%- elif w and w.guide %}

@@ -1207,8 +1207,10 @@ def alert_evidence():
         "An alert's evidence pack: the Grafana alerts reader stores an alert as firing; after "
         "that read, a pack is built once for each firing alert that has none; its device is "
         "resolved as Needs attention resolves it; History, the Intent check's state, the "
-        "neighbours and the log lines around the onset are read, each section naming its "
-        "source, when it was read and whether it could be; every string is masked, every "
+        "neighbours, the observed network around it, the health of every device within two "
+        "hops and the log lines around the onset are read as of the alert's time, each "
+        "section naming its source, when it was read and whether it could be; every string "
+        "is masked, every "
         "section and piece given its own reference, and the pack hashed; it is kept in the "
         "evidence pack record, and Monitoring's Alerts tab draws it."), [
         lanes(20, 464, right="THE SOURCES"),
@@ -1220,9 +1222,10 @@ def alert_evidence():
         num(14, 92, 2),
         band(146, 120, "Each section · its source, its time"),
         svc(250, 168, 130, 30, "History, intent", "the repository"),
-        svc(250, 214, 130, 30, "Prometheus, Loki", "neighbours, logs"),
+        svc(250, 214, 130, 30, "Prometheus, Loki", "as of the alert"),
         *rows([(186, "read", 3, "History, Intent state", "never a configuration line"),
-               (232, "read", None, "Neighbours, log lines", "around the onset")], dev_x=250),
+               (232, "read", None, "Neighbours, network, health", "logs around the onset")],
+              dev_x=250),
         doc("box", 14, 284, 186, 40, "Masked and hashed", "a reference for each piece"),
         num(14, 284, 4),
         store(14, 340, 186, 40, "The evidence pack record", "one per firing alert"),

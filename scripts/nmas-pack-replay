@@ -1,0 +1,202 @@
+#!/usr/bin/env python3
+"""Replay a past alert's evidence pack, and Explain it before and after (PHASE8_PLAN 15.15's
+"tokens and cost per Explain call, before and after, on a replayed incident"; C1712, C1714).
+
+    # on the host, the deployed copy run as a file (it adopts the app's interpreter): the pack
+    # as of <time>, written outside the checkout, nothing asked of a model
+    nmas-host nmas -- <checkout>/scripts/nmas-pack-replay --network <network> \\
+        --device <device> --at <YYYY-MM-DDTHH:MM:SSZ> --out /tmp/pack.json
+    # and Explain it twice through the gateway, as <actor>: prompt v1 (the pack alone) and the
+    # current prompt (the topology and the health figures)
+    nmas-host nmas -- <checkout>/scripts/nmas-pack-replay --network <network> \\
+        --device <device> --at <time> --out /tmp/pack.json --explain --actor <actor>
+
+C1547's replay: `--onset 2026-10-22T07:40:44Z --at 2026-10-22T08:20:00Z` with the router whose
+OSPF drops were measured, so the health figures' window is 07:25:44 to 08:20:00 (15 minutes
+before the onset to the alert's time); the onset reaches the window only through `--onset`.
+
+**The pack is the product's own** (`evidence_pack.build`, `now=` the alert's time): Prometheus
+asked as of that time (the neighbours, the health figures), Loki over the windows ending at it
+(the log lines, the heartbeats), and the observed topology from the Topology reader's own code
+run over Prometheus as it was then (`topology_graph.read` with `prometheus_series(at=)`), given
+to the build in place of the reader's stored value, which is today's. What cannot be read as
+of then is said in the pack: History leaves out what it recorded after the time, and the Intent
+check is of the committed golden now, the section's source says so.
+
+**The alert is synthesized: no Grafana rule in the lab alerts on an OSPF adjacency** (C38,
+scheduled: nothing alerts on a protocol adjacency; the rules,
+tests/fixtures/grafana/rules_view.json: a heartbeat rule per device, Interface down, gRPC
+telemetry stream lost, Critical syslog received (severities 0 to 2; OSPF's ADJCHG is 5),
+Device unreachable (SNMP), Interface error rate elevated, Interface output discards, IP SLA
+probe failing). It is a firing instance in the alerts reader's own shape (`grafana_alerts`):
+rule `--rule` (by default "Replayed: OSPF adjacency drops"), its `device` label the device,
+`device_from` label (as a heartbeat rule's), its condition first holding at `--onset` (by
+default `--at`), alerting from `--at`, no pending time and no window, so its onset is the
+onset given. The pack's trigger says it was replayed, and when.
+
+**Where the pack goes:** `--out` only, never inside the checkout, and never Mercury's pack store:
+Explain takes the pack in hand (`explain.explain_pack`), the same checks as a stored one (its
+hash, the classification seam, the topology class).
+
+**`--explain`** asks through the real gateway (the allowance, the caps, the egress mask, the
+record of AI calls), as `--actor`, twice: v1 (the six sections v1 knew, no topology, no
+health) and the current prompt. Per call it prints the input, output, cache-write and cache-read
+tokens and the cost from the call's record, then the answer's text as the model wrote it
+(masked as recorded) and Mercury's check of it. It stops at a refusal that is not the model's
+(hosted AI off, a cap), naming it, with nothing more spent.
+"""
+import os
+import sys
+
+sys.dont_write_bytecode = True
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+import argparse  # noqa: E402
+import calendar  # noqa: E402
+import json  # noqa: E402
+import time  # noqa: E402
+
+RULE = "Replayed: OSPF adjacency drops"
+STORE = "replay"
+#: Refusals that are Mercury's or the provider's, not the model's: the run stops.
+STOPS = ("ai_off", "no_key", "over_cap", "unknown_task", "unknown_model", "prompt",
+         "prompt_too_long", "unmasked_secret", "provider_error", "rate_limited",
+         "overloaded", "key_refused", "bad_request", "provider_down", "changed", "classified")
+TOKENS = ("input_tokens", "output_tokens", "cache_creation_input_tokens",
+          "cache_read_input_tokens")
+
+
+def _iso(ts: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(ts)))
+
+
+def _when(text: str) -> float:
+    try:
+        return float(calendar.timegm(time.strptime(text, "%Y-%m-%dT%H:%M:%SZ")))
+    except (TypeError, ValueError):
+        raise SystemExit(f"nmas-pack-replay: {text!r} is not a UTC time "
+                         "(YYYY-MM-DDTHH:MM:SSZ)") from None
+
+
+def instance(device: str, at: float, onset: float, rule: str = RULE) -> dict:
+    """The synthesized firing instance, in the alerts reader's shape (the docstring says
+    why there is no real one)."""
+    return {"rule": rule, "rule_uid": "replay", "kind": "condition", "state": "Alerting",
+            "value": "", "labels": {"alertname": rule, "device": device, "replay": "true"},
+            "device": device, "device_from": "label", "active_at": _iso(onset),
+            "starts_at": _iso(at), "fingerprint": "", "for_seconds": 0, "window_seconds": 0,
+            "silences": []}
+
+
+def observed_then(network: str, at: float, source=None) -> dict:
+    """The Topology reader's value as of *at*, in its store's shape: the reader's own `read`
+    over Prometheus evaluated at that time, for *network* alone (RIP left out: its reader's
+    stored answer is today's, and the model does not carry RIP, C1711)."""
+    from modules.readers import adjacencies
+    from modules.readers import topology_graph as T
+
+    value = T.read(source=source or (lambda: T.prometheus_series(network, at=at)),
+                   population=lambda: [x for x in adjacencies.lists() if x[0] == network],
+                   clock=lambda: at, previous={}, rip=lambda clock: ({}, ""))
+    return {"value": value, "value_at": _iso(at)}
+
+
+def build(network: str, device: str, at: float, onset: float, rule: str = RULE,
+          observed=None, now=None) -> dict:
+    """The pack as of *at*, through the product's own builder."""
+    from modules import evidence_pack as EP
+
+    if observed is None:
+        observed = observed_then(network, at)
+    when = _iso(now if now is not None else time.time())
+    return EP.build(instance(device, at, onset, rule), store=STORE, value_at=_iso(at), now=at,
+                    observed_read=observed,
+                    trigger=(f"replayed by scripts/nmas-pack-replay at {when}: a synthesized "
+                             f"alert on {device} as of {_iso(at)}, no Grafana rule alerting "
+                             "on what is replayed"))
+
+
+def _row(call_id: str) -> dict:
+    from modules.ai import calls
+    return next((r for r in calls.read()["rows"] if r.get("id") == call_id), {})
+
+
+def explain_twice(pack: dict, actor: str, out=print, ask=None) -> int:
+    """v1, then the current prompt; each call's tokens, cost and answer printed. 0 when both
+    were asked, 1 when a refusal stopped the run."""
+    from modules.ai import explain
+
+    ask = ask or explain.explain_pack
+    for prompt in (("explain", 1), explain.PROMPT):
+        got = ask(pack, actor=actor, prompt=prompt)
+        row = _row(got.get("call_id") or "") if got.get("call_id") else {}
+        tokens = row.get("tokens") or {}
+        out(f"== explain.v{prompt[1]}: "
+            + ("answered and checked" if got.get("ok") else
+               f"{got.get('error')}: {got.get('detail', '')}"))
+        out("   " + ", ".join(f"{k} {int(tokens.get(k) or 0)}" for k in TOKENS)
+            + f", cost ${float(row.get('cost_usd') or got.get('cost_usd') or 0):.4f}"
+            + (f", call {got['call_id']}" if got.get("call_id") else ""))
+        topo = got.get("topology") or {}
+        if topo:
+            out(f"   topology: {'sent' if topo.get('sent') else 'not sent'}"
+                + (f", {len(topo.get('devices') or [])} devices, observed "
+                   f"{topo.get('observed')}" if topo.get("sent") else
+                   f" ({topo.get('why')})"))
+        out("   answer as the model wrote it (masked as recorded):")
+        out("   " + (row.get("response") or "(none: no answer was recorded)"))
+        if got.get("error") in STOPS:
+            out(f"nmas-pack-replay: stopped at {got['error']}, nothing more is asked")
+            return 1
+    return 0
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
+    ap.add_argument("--network", required=True)
+    ap.add_argument("--device", required=True)
+    ap.add_argument("--at", required=True, help="the alert's time, UTC, YYYY-MM-DDTHH:MM:SSZ")
+    ap.add_argument("--onset", default="", help="when its condition first held (default --at)")
+    ap.add_argument("--rule", default=RULE)
+    ap.add_argument("--out", required=True)
+    ap.add_argument("--explain", action="store_true")
+    ap.add_argument("--actor", default="")
+    args = ap.parse_args(argv)
+    at = _when(args.at)
+    onset = _when(args.onset) if args.onset else at
+    if at > time.time():
+        ap.error(f"--at {args.at} is in the future")
+    if onset > at:
+        ap.error("--onset is after --at")
+    if args.explain and not args.actor:
+        ap.error("--explain needs --actor (the person the calls are recorded as)")
+    out = os.path.abspath(os.path.expanduser(args.out))
+    if os.path.realpath(out).startswith(os.path.realpath(ROOT) + os.sep):
+        print(f"nmas-pack-replay: --out {args.out} is inside the checkout; write it elsewhere",
+              file=sys.stderr)
+        return 2
+    try:
+        observed = observed_then(args.network, at)
+    except Exception as exc:                            # noqa: BLE001 (said, and stopped)
+        print(f"nmas-pack-replay: the topology as of {args.at} could not be read "
+              f"({type(exc).__name__}: {exc}); no pack is built", file=sys.stderr)
+        return 1
+    pack = build(args.network, args.device, at, onset, args.rule, observed=observed)
+    from modules import config
+    with config.open_secure(out, "w") as fh:
+        json.dump(pack, fh, indent=1, sort_keys=True)
+    sections = ", ".join(f"{s['name']} {s['state']}" for s in pack["sections"])
+    print(f"pack {pack['id']} as of {pack['built_at']}, hash {pack['hash'][:12]}, written to "
+          f"{out}: {sections}")
+    if not args.explain:
+        return 0
+    return explain_twice(pack, args.actor)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

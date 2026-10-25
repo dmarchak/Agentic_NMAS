@@ -17,7 +17,7 @@ desktop board at 1440 and 1280 beside the page; the phone board at 390 beside th
 Compared 2026-10-15. History's own page (heading, remote line) is board D's; the board's Code
 mode panel is today's Ask your own box, Code on the Mode switch.
 Templates compared: templates/v2/history_ask_metrics.html, templates/v2/_history_body.html, templates/v2/_history_ask_metrics.html, templates/v2/_history_ask_parts.html, templates/v2/_history_ask_head.html, templates/v2/_history_ask_words.html, templates/v2/_ai.html, templates/v2/_history_ask_chips.html
-Templates sha256: `65002398e8dd65f73e7a2ca9c12e2d7ea4b1de399a313796d1e4cc4bfed83bc2`
+Templates sha256: `1e69029e69320f998cfa45dd1080705a932d6905312e0d09de738ecd332739a2`
 
 Compared again 2026-10-15 (P7-03): `_history_body.html` gained a `data-concept` marker and one
 sentence inside a Baselines row's detail (the block drawing each baseline's Re-apply… link); this
@@ -105,6 +105,21 @@ counter's chain, so no region of the shots moves. The Operations region stays a
 **deviation**, its log line widened (log: E3 metrics builder: the operation menu, with
 changes). The hash written again. Templates sha256 before: `74389e8daf7572290fae2e4abe0e794acacb361b07104a01e0b0fec8e491282b`.
 
+Changed 2026-10-25 again (C1724, the operator's ruling on prompt v6; C1740): "today" runs from
+midnight in the viewer's browser's timezone, as no installation timezone exists. The Ask in
+words form gains two hidden inputs, `tz` and `tz_off`, which static/js/nmas_logq.js fills
+(drawn by `_history_ask_metrics.html` setting `words_tz`), and the filled notice gains one
+sentence when the answer's range starts at today's midnight: "'Today' runs from midnight
+<zone> (your browser's timezone; no installation timezone is set)", or the offset's, or
+UTC's with why. Compared by rendering the page from the templates as they were and as they
+are, the stand-in answering (nothing chosen, a metric chosen, filled with a range not today's,
+filled with today's): the pages differ only by the two hidden inputs, which draw nothing, and
+the today's fill by that one sentence inside the notice. No region of the shots moves; the
+row's verdict stays **later** with 8.1's board (Saturday). Its tests are
+tests/test_ai_nl_query.py's "today" section, in Firefox
+`test_the_timezone_is_filled_and_sent_in_a_browser`. The hash written again.
+Templates sha256 before: `65002398e8dd65f73e7a2ca9c12e2d7ea4b1de399a313796d1e4cc4bfed83bc2`.
+
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
 
@@ -112,7 +127,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 |---|---|---|---|
 | Tabs | Timeline, Query, Baselines, Authorisations; Query on | Timeline, Query, Baselines; Query on | **deviation** (log: E3 metrics builder: History's tabs) |
 | Head | "Ask your own ‹ back to the questions"; Source (Metrics, Logs) and Mode (Builder, Code) | the same, shared with F3; Metrics and Builder on | **same** |
-| Ask in words | (not drawn: 8.1 came after E3) | a question, Fill the builder busy on itself, "How does this work?"; the result's notice under it; the AI mark; disabled with its reason (and the AI card's link) while hosted AI cannot answer | **later** (8.1's board, the sprint's Saturday, PHASE8_PLAN 15.12) |
+| Ask in words | (not drawn: 8.1 came after E3) | a question, Fill the builder busy on itself, "How does this work?"; the result's notice under it (saying whose midnight "today" began, when the range is today's); the AI mark; disabled with its reason (and the AI card's link) while hosted AI cannot answer | **later** (8.1's board, the sprint's Saturday, PHASE8_PLAN 15.12) |
 | Start from | four chips, the one the choices match marked | the same four, each setting every choice; marked when the question is exactly its own; a chip whose metric Prometheus does not hold is drawn but no link | **same** |
 | What | search box, the matching metrics with help, "per interface · counter · bytes", the count read | the same box and list; each with Prometheus's help and its type and unit; the count over the range, when read | **deviation** (log: E3 metrics builder: the metric list) |
 | Devices | + device, by role: core, all 9; "the values the device label holds now" | the same, from the metric's `device` and `role` labels over the range | **deviation** (log: E3 metrics builder: devices, roles and interfaces) |

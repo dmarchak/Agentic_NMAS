@@ -177,10 +177,12 @@ def test_a_planted_instruction_in_help_text_rides_only_as_data(world):
 def test_the_prompt_carries_only_its_allowed_fields(world):
     """What Ask in words may send (the operator, 2026-10-25; PHASE8_PLAN 15.12: a feature's
     tests assert its prompt carries only its allowed-class fields): its prompt and the
-    builder's vocabulary as the system blocks, and exactly these five data blocks."""
+    builder's vocabulary as the system blocks, and exactly these seven data blocks (v6, C1724:
+    today's start, worked out by Mercury, and the timezone's name, which is not a secret)."""
     import re
     from modules.ai import prompts
-    allowed = {"question", "now_utc", "metrics", "devices_named", "roles"}
+    allowed = {"question", "now_utc", "today_start_utc", "today_zone", "metrics",
+               "devices_named", "roles"}
     world.answer = _choices()
     _ask(world)
     body = world.sent[0]["body"]
@@ -485,3 +487,214 @@ def test_a_form_naming_another_network_than_its_address_is_refused(site):
                   data={"list": "Other", "words": "input errors"},
                   headers={"HX-Request": "true"})
     assert r.status_code == 409 and site.world.sent == []
+
+
+# ---------------------------------------------------------------------------- "today" (C1724)
+#
+# The operator's ruling (2026-10-25): "today" runs from midnight in the installation's
+# timezone; none exists (C1740), so the viewer's browser's, stated. Mercury works out that
+# midnight as UTC and gives it to the model as data; the model never computes a timezone.
+
+def _epoch(text):
+    import calendar
+    import time
+    return calendar.timegm(time.strptime(text, "%Y-%m-%d %H:%M"))
+
+
+@pytest.mark.parametrize("name,offset,source,shown", [
+    ("America/New_York", "-240", "browser", "America/New_York"),
+    ("UTC", "", "browser", "UTC"),
+    ("", "-180", "offset", "UTC-03:00"),
+    ("", "330", "offset", "UTC+05:30"),
+    ("Mars/Olympus_Mons", "-240", "offset", "UTC-04:00"),
+    ("../../etc/passwd", "", "none", "UTC"),
+    ("America", "", "none", "UTC"),
+    ("", "900", "none", "UTC"),
+    ("", "-6h", "none", "UTC"),
+    ("", "", "none", "UTC"),
+], ids=["iana", "utc-name", "offset-west", "offset-half-hour", "unknown-name-offset-used",
+        "path", "folder", "offset-too-wide", "offset-not-minutes", "nothing"])
+def test_the_viewer_s_timezone_is_an_iana_name_or_an_offset_and_junk_is_ignored(
+        name, offset, source, shown):
+    z = nl_query.zone(name, offset)
+    assert (z["source"], z["name"]) == (source, shown), z
+    # What was sent and not used is said; nothing sent, nothing said.
+    junk = (name and source != "browser") or (offset and source == "none")
+    assert bool(z["ignored"]) == bool(junk), z
+    if name and source != "browser":
+        assert "is not one Mercury knows" in z["ignored"], z
+
+
+@pytest.mark.parametrize("zone_name,now,start", [
+    # America/New_York, DST begins 2026-03-08 02:00 local: that day's midnight is EST (UTC-5),
+    # the next day's EDT (UTC-4).
+    ("America/New_York", "2026-03-08 15:00", "2026-03-08 05:00"),
+    ("America/New_York", "2026-03-09 15:00", "2026-03-09 04:00"),
+    # DST ends 2026-11-01 02:00 local: that day's midnight is EDT, the next day's EST.
+    ("America/New_York", "2026-11-01 15:00", "2026-11-01 04:00"),
+    ("America/New_York", "2026-11-02 15:00", "2026-11-02 05:00"),
+    # 03:30 UTC is still yesterday evening in New York: today began the day before, in UTC.
+    ("America/New_York", "2026-10-25 03:30", "2026-10-24 04:00"),
+    ("Asia/Kolkata", "2026-10-25 20:00", "2026-10-25 18:30"),
+    ("UTC", "2026-10-25 19:41", "2026-10-25 00:00"),
+])
+def test_today_starts_at_midnight_in_the_zone_dst_correct(zone_name, now, start):
+    z = nl_query.zone(zone_name)
+    assert z["source"] == "browser"
+    assert nl_query.today_start(_epoch(now), z["tz"]) == _epoch(start)
+
+
+def test_today_s_start_and_its_zone_ride_as_data(world):
+    world.answer = _choices()
+    _ask(world, viewer_zone=nl_query.zone("America/New_York"))
+    _ask(world)
+    eastern, unsent = (s["body"]["messages"][0]["content"] for s in world.sent)
+    # NOW is 2026-10-15 09:48 UTC: 05:48 in New York (EDT), whose midnight is 04:00 UTC.
+    assert '<data name="today_start_utc">\n2026-10-15 04:00\n</data>' in eastern
+    assert '<data name="today_zone">\nAmerica/New_York\n</data>' in eastern
+    assert '<data name="today_start_utc">\n2026-10-15 00:00\n</data>' in unsent
+    assert '<data name="today_zone">\nUTC\n</data>' in unsent
+    a, b = (s["body"]["system"] for s in world.sent)
+    assert a == b and "America/New_York" not in json.dumps(a), \
+        "the zone moved the cached prefix"
+
+
+def test_a_range_from_today_s_midnight_says_whose_midnight(world):
+    world.answer = _choices(range="custom", from_utc="2026-10-15 04:00",
+                            to_utc="2026-10-15 09:48")
+    got = _ask(world, viewer_zone=nl_query.zone("America/New_York"))
+    assert got["ok"] is True, got
+    assert got["today"] == ("'Today' runs from midnight America/New_York (your browser's "
+                            "timezone; no installation timezone is set)")
+    # The same range given no timezone is not today's (UTC's midnight is 00:00): nothing said.
+    assert _ask(world)["today"] == ""
+    world.answer = _choices(range="24h")
+    assert _ask(world, viewer_zone=nl_query.zone("America/New_York"))["today"] == ""
+
+
+def test_v6_is_the_prompt_and_says_the_four_defaults():
+    from modules.ai import prompts
+    assert nl_query.PROMPT == ("nl_metrics", 6)
+    text = prompts.load(*nl_query.PROMPT)["text"]       # refuses a prompt naming JSON
+    for said in ('"today_start_utc"', '"today_zone"', "never work a timezone out yourself",
+                 'only when the question says "top" or names a number',
+                 "only when the question says bits or bandwidth",
+                 "needs no group at all"):
+        assert said in text, said
+    for v in range(1, 6):                               # the earlier versions stay
+        assert prompts.load("nl_metrics", v)["version"] == v
+
+
+def _words_tz(site, question, answer, **form):
+    site.world.answer = answer
+    return _words(site, question, **form)
+
+
+@pytest.mark.parametrize("form,said", [
+    ({"tz": "America/New_York", "tz_off": "-240"},
+     "'Today' runs from midnight America/New_York (your browser's timezone; no installation "
+     "timezone is set)."),
+    ({"tz": "", "tz_off": "-240"},
+     "'Today' runs from midnight UTC-04:00 (your browser's offset from UTC, as it named no "
+     "timezone Mercury knows; no installation timezone is set)."),
+], ids=["iana", "offset-only"])
+def test_the_filled_notice_says_whose_midnight_today_began(site, form, said):
+    _r, html = _words_tz(site, "input errors per interface today, the top 5",
+                         _choices(range="custom", from_utc="2026-10-15 04:00",
+                                  to_utc="2026-10-15 09:48"), **form)
+    note = html.split("Filled from your words", 1)[1].split("</p>", 1)[0]
+    assert said in note, note
+
+
+@pytest.mark.parametrize("form,said", [
+    ({}, "'Today' runs from midnight UTC (no timezone was sent; no installation timezone is "
+         "set)."),
+    ({"tz": "Not/AZone", "tz_off": "junk"},
+     "'Today' runs from midnight UTC (the timezone 'Not/AZone' is not one Mercury knows; the "
+     "offset 'junk' is not a whole number of minutes within ±14 hours, so both were ignored; "
+     "no installation timezone is set)."),
+    ({"tz": "Not/AZone"},
+     "'Today' runs from midnight UTC (the timezone 'Not/AZone' is not one Mercury knows, so it "
+     "was ignored; no installation timezone is set)."),
+], ids=["nothing-sent", "both-junk", "name-junk"])
+def test_with_no_usable_timezone_today_is_utc_s_and_said(site, form, said):
+    _r, html = _words_tz(site, "input errors per interface today, the top 5",
+                         _choices(range="custom", from_utc="2026-10-15 00:00",
+                                  to_utc="2026-10-15 09:48"), **form)
+    note = html.split("Filled from your words", 1)[1].split("</p>", 1)[0]
+    assert said in note, note
+
+
+def test_a_range_not_today_s_says_nothing_of_midnight(site):
+    _r, html = _words_tz(site, "input errors per interface, the top 5", _choices(),
+                         tz="America/New_York", tz_off="-240")
+    assert "Filled from your words" in html and "'Today' runs" not in html
+
+
+def test_the_words_form_draws_the_timezone_inputs_on_the_metrics_builder_only(site):
+    import re
+    from html import unescape
+    html = unescape(site.get("/v2/history/query/ask/metrics?list=Lab").get_data(as_text=True))
+    form = re.search(r'<form class="lq-row lq-words".*?</form>', html, re.S).group(0)
+    assert '<input type="hidden" name="tz" value="" data-lq-tz="name">' in form
+    assert '<input type="hidden" name="tz_off" value="" data-lq-tz="offset">' in form
+    # The logs half's "today" is not this ruling's (nl_logs v1, C1740): no inputs it ignores.
+    logs = site.get("/v2/history/query/ask/logs?list=Lab").get_data(as_text=True)
+    assert 'name="words"' in logs and "data-lq-tz" not in logs
+
+
+def _logq(expr):
+    import dukpy
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            "static", "js", "nmas_logq.js"), encoding="utf-8").read()
+    return dukpy.evaljs("var window = {};" + src + ";" + expr)
+
+
+def test_the_script_s_timezone_values():
+    intl = ("function () { return {resolvedOptions: function () {"
+            " return {timeZone: 'America/New_York'}; }}; }")
+    assert _logq(f"window.NMAS_LOGQ.tzValue('name', {intl}, 240)") == "America/New_York"
+    # getTimezoneOffset counts WEST of UTC: New York's EDT is 240, sent as -240 (east).
+    assert _logq(f"window.NMAS_LOGQ.tzValue('offset', {intl}, 240)") == "-240"
+    assert _logq("window.NMAS_LOGQ.tzValue('offset', null, -330)") == "330"
+    # No Intl, or one that throws: no name, the offset still sent.
+    assert _logq("window.NMAS_LOGQ.tzValue('name', null, 300)") == ""
+    assert _logq("window.NMAS_LOGQ.tzValue('name', function () { throw 1; }, 300)") == ""
+
+
+def test_the_timezone_is_filled_and_sent_in_a_browser(site):
+    """In Firefox: the words form's timezone inputs hold the browser's own IANA name and offset;
+    Fill the builder sends them, and an answer from that zone's midnight is said as such."""
+    from tests import browser
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    import app as A
+
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        b.go(srv.url("/v2/history/query/ask/metrics?list=Lab"))
+        b.wait_for("return document.getElementById('lq-words')", 15)
+        try:                                            # filled once the script has run
+            b.wait_for("return document.querySelector('[data-lq-tz=name]').value !== ''", 10)
+        except Exception:                               # noqa: BLE001 (asserted below)
+            pass
+        got = b.js("return {name: document.querySelector('[name=tz]').value,"
+                   " off: document.querySelector('[name=tz_off]').value,"
+                   " intl: Intl.DateTimeFormat().resolvedOptions().timeZone,"
+                   " js: String(-new Date().getTimezoneOffset())}")
+        # The answer the model would give in that zone: today's midnight as Mercury works it.
+        start = nl_query.today_start(NOW, nl_query.zone(got["name"])["tz"])
+        site.world.answer = _choices(range="custom", from_utc=nl_query._stamp(start),
+                                     to_utc=nl_query._stamp(NOW))
+        b.js("document.getElementById('lq-words').value = 'input errors per interface today';"
+             " return 1")
+        b.js("document.querySelector('[data-op=ask-in-words]').click(); return 1")
+        b.wait_for("return location.search.indexOf('m=ifInErrors') >= 0", 15)
+        note = b.js("return document.querySelector('.lq-build .notice').textContent")
+        refilled = b.js("return document.querySelector('[name=tz]').value")
+        b.go("about:blank")
+    assert got["name"] == got["intl"] and got["name"], got
+    assert got["off"] == got["js"], got
+    sent = site.world.sent[-1]["body"]["messages"][0]["content"]
+    assert f'<data name="today_zone">\n{got["name"]}\n</data>' in sent, sent[-400:]
+    assert f"'Today' runs from midnight {got['name']} (your browser's timezone" in note, note
+    assert refilled == got["name"], "the redrawn form's timezone was not filled again"

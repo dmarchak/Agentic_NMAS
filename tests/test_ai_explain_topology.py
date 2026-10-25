@@ -28,11 +28,13 @@ import re
 import pytest
 import yaml
 
+from modules import evidence_pack as EP
 from modules import network_model as NM
 from modules.ai import explain
 from tests.test_ai_explain import _answer, _explain, _refs, world  # noqa: F401 (fixtures)
 from tests.test_device_v2 import _unstore, lab  # noqa: F401 (the fixture)
-from tests.test_evidence_pack import DEVICES, pack_lab  # noqa: F401 (the fixture)
+from tests.test_evidence_pack import (DEVICES, INJECTION, V6, _alerts, _build,  # noqa: F401
+                                      pack_lab)
 from tests.test_network_model import (NOW, PLANTED, READ_AT, commit_fleet,
                                       store_observed)
 
@@ -60,6 +62,11 @@ def topo(world, monkeypatch):  # noqa: F811
     monkeypatch.setattr(NM, "_now", lambda: NOW)
     NM.forget()
     world.ids = {r["hostname"]: f"dev:{r['_netbox_id']}" for r in rows}
+    # The pack built now that the network is committed and observed: it captures the overlay
+    # (C1712) and the health figures (C1714) as of its alert's time, and is the one Explain
+    # reads (the newest with its id).
+    world.pack = _build(_alerts(V6, extra_labels={"ifAlias": INJECTION}))
+    assert EP.record(world.pack)["ok"]
     yield world
     NM.forget()
     _unstore(NM.OBSERVED_READER)
@@ -86,8 +93,8 @@ def test_stable_context_first_and_the_alert_last(topo):
     got = _explain(topo)
     assert got["ok"] is True, got
     body, user, ctx = _sent(topo)
-    assert body["system"][0]["text"] == prompts.load("explain", 2)["text"]
-    assert explain.PROMPT == ("explain", 2)
+    assert body["system"][0]["text"] == prompts.load("explain", 3)["text"]
+    assert explain.PROMPT == ("explain", 3)
     assert _blocks(ctx, "context") == ["network", "pack_format", "topology_format"]
     assert body["system"][-1]["cache_control"] == {"type": "ephemeral"}
     assert _blocks(user, "data") == ["network_topology", "pack", "the_alert"]
@@ -96,7 +103,9 @@ def test_stable_context_first_and_the_alert_last(topo):
     assert set(got["topology"]["devices"]) == {topo.ids[h] for h in HOSTS} | {"ext:s1"}
 
 
-def test_the_cached_prefix_is_the_same_bytes_a_read_apart(topo):
+def test_the_cached_prefix_is_the_same_bytes_and_a_later_read_changes_nothing(topo):
+    """C1712: the observed overlay is the pack's capture. A later read of the Topology
+    reader moves nothing Explain sends, the cached prefix or the call's own data."""
     topo.answer = _answer(topo.pack)
     _explain(topo)
     first_system, first_user = topo.sent[-1]["body"]["system"], topo.sent[-1]["body"][
@@ -105,8 +114,9 @@ def test_the_cached_prefix_is_the_same_bytes_a_read_apart(topo):
     _explain(topo)
     body = topo.sent[-1]["body"]
     assert json.dumps(body["system"]) == json.dumps(first_system)
-    assert body["messages"][0]["content"] != first_user
-    assert "2026-10-15T08:20:30Z" in body["messages"][0]["content"]
+    assert body["messages"][0]["content"] == first_user
+    assert "2026-10-15T08:20:30Z" not in body["messages"][0]["content"]
+    assert READ_AT in body["messages"][0]["content"]
     assert not re.search(r"\d{4}-\d\d-\d\dT\d\d:\d\d", json.dumps(body["system"]))
 
 
@@ -120,7 +130,7 @@ CLASS_KEYS = {
     "router_id", "areas", "passive", "asn", "peers", "remote_as", "subnet", "members", "dev",
     "interface", "expanded", "note", "members_total", "listed", "proto", "between", "link",
     "expected", "outside_management", "state", "words", "read_at", "since", "ends", "port",
-    "reported", "down_at", "mercury_attaches_here", "source"}
+    "reported", "down_at", "mercury_attaches_here", "source", "as_of"}
 ID = re.compile(r"^(dev|link|adj|cable|ext):|^mercury$")
 
 
@@ -216,7 +226,10 @@ def test_the_topology_class_off_sends_none_and_says_so(topo, monkeypatch):
     body, user, ctx = _sent(topo)
     assert _blocks(user, "data") == ["pack", "the_alert"]
     assert _blocks(ctx, "context") == ["pack_format"]
-    assert "dev:" not in topo.sent[-1]["bytes"]
+    # Nothing of the network around it: the only device id sent is the alert's own device's,
+    # in its own health figures' references (C1714; who is near it is topology).
+    assert set(re.findall(r"dev:\d+", topo.sent[-1]["bytes"])) == {topo.ids["r1"]}
+    assert "adj:" not in topo.sent[-1]["bytes"] and "cable:" not in topo.sent[-1]["bytes"]
     why = "the topology class is off for Lab (ai_topology_class, an admin's setting)"
     assert got["topology"] == dict(got["topology"], sent=False, why=why, devices=[])
     r = topo.lab["client"].post(f"/v2/monitoring/alerts/pack/{topo.pack['id']}/explain",

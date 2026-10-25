@@ -1880,9 +1880,22 @@ change's own tests; the Update button).
 
 **Item 9, added (the operator, 2026-10-25; small).** Every Analyst task's recorded cases
 include healthy baselines that must report nothing wrong, measured for consistency like the
-rest. P1 Explain's come first. Explain has no recorded-case file yet: its tests use planted
-answers. Its file starts with the healthy baselines once 15.15's Explain (the network context,
-prompt v2) lands, so the cases are written against the Explain that ships.
+rest. P1 Explain's come first. **Started 2026-10-25, against prompt v3 (the network context
+and the health figures):** `tests/fixtures/ai_cases/explain/recorded.json` holds C1547's
+replay (case 1, the operator's judging rule word for word) and three healthy baselines (the
+same rule on r1, output discards on r2, the error-rate rule on s1, each a quiet window of
+2026-10-24 outside the backup window). Each case is a replay (`scripts/nmas-pack-replay`):
+`cases.explain_unready` says first whether its pack holds what it is judged on (case 1's
+evidence measured; a baseline's window shows none of case 1's symptoms, else it is not a
+baseline and fails the check, never the model); `cases.explain_misses` judges the answer on
+structured fields (outcome, needs_human, what is cited and together, the leading hypothesis
+not s3's CPU alone, no percentage the pack does not hold; a baseline no hypothesis at all), and
+each case's `flag` names what a person judges in the prose. Not recorded yet: nothing has been
+asked, and the recorder (each case's pack built, asked five times, judged) is the next step.
+Explain has no answer that says nothing is wrong, so a baseline can pass today only by a
+refusal; the operator's ruling (2026-10-25, C1742, built in the sprint): Explain's schema gains
+a "no fault found" assessment citing the healthy evidence it checked (no free-text guess), and
+the baselines pass on that answer, measured like the rest: the roadmap's false-positive check.
 
 **Decided at the sprint's start (the operator, 2026-10-25, on the agent's estimate):**
 - **Labs first stands:** CSCI 5840's Labs 8 and 9 are submitted (8 on 2026-10-21, 9 on
@@ -2029,6 +2042,24 @@ was 3.59 s and its p95 5.25 s, for $0.0004 a case-run. The rulings:
   network's devices. A stale expectation fails the check, before anything is spent, never as
   the model's miss. Cases 11, 13 and 15 were stale: 15 and 11 were corrected from the
   measurement (no switch carries a memory series), and 13 awaited `changes`.
+- **v5's five runs (on fad95c6c):** 100 of 100 pass, 16 of 20 consistent (80%); p50 3.23 s,
+  p95 5.12 s (C1724). **v6 (the operator)** adds four defaults:
+  - a top N only when the question says "top" or a number;
+  - no group when the series are already one per interface asked;
+  - bits only when the question says bits or bandwidth;
+  - "today" a custom range from midnight in the installation's timezone. No such setting
+    exists (registered), so the viewer's browser timezone is used, and the drawn result says
+    which.
+- **The overfitting guard (the operator):** a held-out set of 10 new questions
+  (`tests/fixtures/ai_cases/nl_query/held_out.json`), written before v6 was measured and never
+  tuned on:
+  - its devices are r6, s2 and s5, which the 20 name none of;
+  - each case has a metric of its own, which no prompt names;
+  - two are ambiguous and one is healthy-nothing;
+  - its expectations come from the live catalogue, behind the stale check.
+
+  v6 is measured on the 20 and on the 10, five runs each, reported apart. **The held-out
+  consistency is the score that counts for C1724.**
 - **The offer** is narrowed by a named role's devices as well as by named devices.
 - **Case 15** expects `cpuAvgBusy5`, as measured: s3 and s4 carry no `cpmCPUTotal` series.
 - **Case 13:** the metrics builder gains a `changes` operation (PromQL `changes()` over the
@@ -2104,6 +2135,30 @@ tab alike:**
 - **Prompts put the stable context first** (the network summary, the notes when they exist,
   the schema) for caching. The event or the question comes last.
 - **P1 Explain uses it now; feature 7 next.** What it sends is the topology class (15.11).
+- **The pack carries its own context (the operator's ruling of 2026-10-25, built as part of
+  P1: C1712, C1714).**
+  - **The observed overlay is captured into the pack when it is built** (its `observed`
+    section, hashed with it), "as of" the alert's time; Explain overlays that capture and
+    never reads live state for a past alert. A pack without one says so.
+  - **Health figures over the incident's window** for the alert's device and every device
+    within two hops (a shared segment's members are one hop): CPU, heartbeat gaps, failed
+    scrapes, interface discards, each with its read time and an id the answer must cite
+    (`health:<device id>:<figure>`). **The operator's correction (2026-10-25): they summarise
+    the window from 15 minutes before the onset to the alert's time, never one instant,** each
+    as min, avg and max with the peak's time (heartbeat: the longest gap and when it ended;
+    scrapes: when the failures were), so a spike during the trouble shows even when it has
+    passed by the alert; one compact line per device per figure.
+    Topology detail stays at one hop. They are the allowed class (metric series). With the
+    topology class off, only the alert's device's own go: which devices sit within two hops
+    of it is topology (a reading of 15.11 taken when building it, the closed direction;
+    confirmed by the operator, 2026-10-25: neighbours' names with their figures would reveal
+    adjacency, which is topology).
+  - **Explain's prompt v3** tells the model to cite figures by id, never to state one the pack
+    does not hold, to say when a device's own figures do not explain it, and to offer an
+    unevidenced cause only as such, with what would confirm it.
+  - **The replay** is `scripts/nmas-pack-replay`: the pack built as of a past time from
+    Prometheus and Loki as they held it, and Explain asked as v1 and as v3, each call's tokens
+    and cost printed.
 - **Reported:** tokens and cost per Explain call, before and after, on a replayed Lab 9
   incident.
 - **The replay is C1547** (Lab 9, hour E, 2026-10-22 07:25 to 08:25 UTC: the routers' OSPF

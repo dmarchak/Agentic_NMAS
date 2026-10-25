@@ -700,7 +700,12 @@ def history_ask_metrics_words():
     from modules import history_promq
     from modules.ai import nl_query
 
-    return _ask_words(nl_query.metrics, history_promq.view, "v2/_history_ask_metrics.html",
+    def fill(name, question, actor):
+        # "Today" is midnight in the viewer's browser's timezone (the form's `tz`, or its
+        # `tz_off` minutes east of UTC), until an installation timezone exists (C1740).
+        return nl_query.metrics(name, question, actor=actor, viewer_zone=nl_query.zone(
+            request.form.get("tz", ""), request.form.get("tz_off", "")))
+    return _ask_words(fill, history_promq.view, "v2/_history_ask_metrics.html",
                       _ask_metrics_ctx, "v2.history_ask_metrics")
 
 

@@ -14,6 +14,7 @@ tests/fixtures/ai_cases/nl_query/metrics.json; modules/ai/cases.py).
 """
 import json
 import os
+import re
 import time
 
 from modules import history_promq as pq
@@ -172,6 +173,52 @@ def _recorder():
     mod = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
     loader.exec_module(mod)
     return mod
+
+
+HELD = cases.load(os.path.join(CASES_DIR, "nl_query", "held_out.json"))
+
+
+def test_the_held_out_set_is_ten_new_questions_on_new_devices_and_metrics():
+    """C1724's overfitting guard (the operator, 2026-10-25): ten questions written before v6
+    was measured, on devices the 20 name none of and metrics the 20 expect none of (each answer
+    case has at least one expected metric of its own), none named by any prompt's worked
+    examples; two ambiguous cases ask, one healthy-nothing case answers."""
+    assert [c["n"] for c in HELD["cases"]] == list(range(1, 11))
+    assert HELD["model"] == profiles.TASKS["nl_query"]["model"]
+    words = lambda c: set(re.findall(r"[A-Za-z0-9][A-Za-z0-9_.-]*", c["question"]))  # noqa: E731
+    twenty_devices = {d for c in SET["cases"] for d in c["expect"].get("devices", ())}
+    twenty_devices |= {w for c in SET["cases"] for w in words(c) if w in NETWORK}
+    held_devices = {d for c in HELD["cases"] for d in c["expect"].get("devices", ())}
+    assert held_devices and not held_devices & twenty_devices, held_devices & twenty_devices
+    twenty_metrics = {m for c in SET["cases"] for m in c["expect"].get("metric", ())}
+    for c in HELD["cases"]:
+        if "metric" in c["expect"]:
+            assert set(c["expect"]["metric"]) - twenty_metrics, (c["n"], "no metric of its own")
+            for m in c["expect"]["metric"]:
+                assert m in CAPTURED, (c["n"], m)
+    outcomes = [c["expect"]["outcome"] for c in HELD["cases"]]
+    assert outcomes.count(["ask"]) == 2
+    assert sum(1 for c in HELD["cases"] if c["flag"].startswith("HEALTHY")) == 1
+    assert not {c["question"] for c in HELD["cases"]} & {c["question"] for c in SET["cases"]}
+
+
+def test_no_prompt_names_a_held_out_device_or_its_own_metric():
+    """Never tuned on: no prompt file names a held-out device or a metric only the held-out
+    set expects, so the set measures generalisation."""
+    twenty_metrics = {m for c in SET["cases"] for m in c["expect"].get("metric", ())}
+    held_devices = {d for c in HELD["cases"] for d in c["expect"].get("devices", ())}
+    own = {m for c in HELD["cases"] for m in c["expect"].get("metric", ())} - twenty_metrics
+    prompts_dir = os.path.join(ROOT, "prompts")
+    for name in sorted(os.listdir(prompts_dir)):
+        text = open(os.path.join(prompts_dir, name), encoding="utf-8").read()
+        found = [d for d in held_devices if re.search(rf"\b{re.escape(d)}\b", text)]
+        found += [m for m in own if m in text]
+        assert not found, (name, found)
+
+
+def test_the_held_out_set_is_not_stale_against_the_captured_catalogue(world):
+    rec = _recorder()
+    assert rec.check(ROOT, "Lab", rec.HELD_OUT) == []
 
 
 def test_a_stale_expectation_fails_the_check_not_the_model():

@@ -1,0 +1,63 @@
+{
+  "task": "explain",
+  "model": "claude-sonnet-5-5",
+  "prompt": ["explain", 3],
+  "network": "Default",
+  "about": "P1 Explain's recorded cases (PHASE8_PLAN 13.6 and the sprint's item 9: every Analyst task's cases include healthy baselines that must report nothing wrong, P1 Explain's first). Each case is a replay of a past window (scripts/nmas-pack-replay, the product's own pack as of the alert's time); cases.explain_unready says first whether the pack holds what the case is judged on, then cases.explain_misses judges the answer on structured fields. What only a person can judge in the prose is the case's flag, read on the recording. Not yet recorded: no case holds a pack or an answer.",
+  "cases": [
+    {
+      "n": 1,
+      "name": "C1547: the Lab 9 OSPF drops beneath s3",
+      "kind": "incident",
+      "replay": {"device": "r1", "onset": "2026-10-22T07:40:44Z", "at": "2026-10-22T08:20:00Z",
+                 "rule": "Replayed: OSPF adjacency drops"},
+      "judge": "judge Explain on honest reasoning at the edge of its evidence, not on naming the host's 96%: it must tie the routers' OSPF drops to s3's symptoms (heartbeat gaps, failed scrapes, discards), note s3's own CPU peaked at 57% so the device doesn't explain itself, offer resource contention beneath s3 (host/hypervisor or link) as an unevidenced hypothesis with what would confirm it, and never invent a figure. A confident 's3 CPU overload' is a fail. (the operator, 2026-10-25)",
+      "needs": ["logs:*", "health:s3:cpu", "health:s3:heartbeat", "health:s3:scrapes"],
+      "expect": {
+        "outcome": ["answer"],
+        "needs_human": true,
+        "cites": [["health:s3:cpu"]],
+        "together": [[["logs:*"], ["health:s3:heartbeat", "health:s3:scrapes", "health:s3:discards"]]],
+        "lead_not_only": ["health:s3:cpu"],
+        "figures_from_pack": true
+      },
+      "flag": "A person reads the recording for what the structured fields cannot show: that s3's CPU peak is said as not explaining its own symptoms, that contention beneath s3 (the host, the hypervisor or a link) is offered as not in the evidence with a read that would show it, and that no hypothesis calls s3's CPU overloaded."
+    },
+    {
+      "n": 2,
+      "name": "Healthy baseline: the same rule on the same router, a quiet window",
+      "kind": "baseline",
+      "replay": {"device": "r1", "onset": "2026-10-24T14:50:00Z", "at": "2026-10-24T15:00:00Z",
+                 "rule": "Replayed: OSPF adjacency drops"},
+      "needs": ["health:r1:cpu", "health:r1:heartbeat", "health:r1:scrapes"],
+      "quiet": {"failed_scrapes": 0, "max_gap_s": 450, "no_log_text": ["ADJCHG", "UPDOWN"],
+                "why": "none of case 1's symptoms: no failed scrape, no missed heartbeat (450 s is 1.5 beats of syslog_heartbeat_seconds' 300), no adjacency or link change in the device's log lines"},
+      "expect": {"outcome": ["answer", "refuse"], "hypotheses_max": 0, "figures_from_pack": true},
+      "flag": "A person reads the recording: the rationale or why_not says the evidence shows nothing wrong, and names no cause."
+    },
+    {
+      "n": 3,
+      "name": "Healthy baseline: interface output discards on a router, a quiet window",
+      "kind": "baseline",
+      "replay": {"device": "r2", "onset": "2026-10-24T16:50:00Z", "at": "2026-10-24T17:00:00Z",
+                 "rule": "Interface output discards"},
+      "needs": ["health:r2:cpu", "health:r2:heartbeat", "health:r2:scrapes", "health:r2:discards"],
+      "quiet": {"failed_scrapes": 0, "max_gap_s": 450, "no_log_text": ["ADJCHG", "UPDOWN"],
+                "why": "none of case 1's symptoms: no failed scrape, no missed heartbeat (450 s is 1.5 beats of syslog_heartbeat_seconds' 300), no adjacency or link change in the device's log lines"},
+      "expect": {"outcome": ["answer", "refuse"], "hypotheses_max": 0, "figures_from_pack": true},
+      "flag": "A person reads the recording: the rationale or why_not says the evidence shows nothing wrong, and names no cause."
+    },
+    {
+      "n": 4,
+      "name": "Healthy baseline: interface error rate on a switch, a quiet window",
+      "kind": "baseline",
+      "replay": {"device": "s1", "onset": "2026-10-24T18:50:00Z", "at": "2026-10-24T19:00:00Z",
+                 "rule": "Interface error rate elevated"},
+      "needs": ["health:s1:cpu", "health:s1:heartbeat", "health:s1:scrapes"],
+      "quiet": {"failed_scrapes": 0, "max_gap_s": 450, "no_log_text": ["ADJCHG", "UPDOWN"],
+                "why": "none of case 1's symptoms: no failed scrape, no missed heartbeat (450 s is 1.5 beats of syslog_heartbeat_seconds' 300), no adjacency or link change in the device's log lines"},
+      "expect": {"outcome": ["answer", "refuse"], "hypotheses_max": 0, "figures_from_pack": true},
+      "flag": "A person reads the recording: the rationale or why_not says the evidence shows nothing wrong, and names no cause."
+    }
+  ]
+}
