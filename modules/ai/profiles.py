@@ -121,7 +121,9 @@ def cases_off_pin(root: str) -> list:
         pinned = (TASKS.get(name) or {}).get("model", "")
         for case in sorted(f for f in os.listdir(folder) if f.endswith(".json")):
             path = os.path.join(folder, case)
-            with open(path, encoding="utf-8") as fh:
+            # Read as bytes: JSON's own rule finds the encoding (RFC 8259, UTF-8), so no
+            # encoding is named whose spelling could change and mean the same.
+            with open(path, "rb") as fh:
                 recorded = (json.load(fh) or {}).get("model", "")
             if recorded != pinned:
                 out.append((path, recorded, pinned))

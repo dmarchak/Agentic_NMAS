@@ -110,6 +110,21 @@ def test_every_object_is_closed_however_pydantic_writes_it(monkeypatch):
     assert p["name"] == {"type": "string"} and "additionalProperties" not in p["either"]["anyOf"][1]
 
 
+@pytest.mark.parametrize("stored,per_day", [({}, 1.50), ({"ai_cap_usd_per_day": 0.75}, 0.75),
+                                            ({"ai_cap_usd_per_day": "0.25"}, 0.25),
+                                            ({"ai_cap_usd_per_day": "lots"}, 1.50),
+                                            ({"ai_cap_usd_per_day": None}, 1.50)])
+def test_the_day_cap_is_the_stored_number_else_its_declared_default(monkeypatch, stored,
+                                                                    per_day):
+    """Through the real settings read: a key never set reads as the schema's default, and a
+    stored value that is not a number (a hand-edited file) as the gateway's, the same one."""
+    from modules import settings_schema
+    monkeypatch.setattr(settings_schema, "load_user_settings", lambda: dict(stored))
+    assert gateway.DEFAULT_CAP_PER_DAY == settings_schema.DEFAULTS["ai_cap_usd_per_day"]
+    assert gateway.caps("connection_check") == {
+        "per_call": gateway.profiles.cap_per_call("connection_check"), "per_day": per_day}
+
+
 def test_another_provider_is_refused_naming_it():
     with pytest.raises(ValueError) as got:
         schemas.schema_for(Ping, "local")

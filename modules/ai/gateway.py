@@ -24,9 +24,9 @@ and every call, sent or refused, is one `ai_calls` row. In order, before anythin
 Then the adapter sends it; a refusal, a `max_tokens` stop, an answer that is not the schema,
 and each provider failure are each their own kind, never a parser's crash (13.5).
 """
+import datetime
 import json
 import logging
-import time
 
 from pydantic import ValidationError
 
@@ -62,7 +62,8 @@ def caps(feature: str) -> dict:
     from modules.settings_schema import get_setting
 
     try:
-        per_day = float(get_setting("ai_cap_usd_per_day", DEFAULT_CAP_PER_DAY))
+        # The schema declares the key's default, so `get_setting` never falls past it.
+        per_day = float(get_setting("ai_cap_usd_per_day"))
     except (TypeError, ValueError):
         per_day = DEFAULT_CAP_PER_DAY
     return {"per_call": profiles.cap_per_call(feature), "per_day": per_day}
@@ -108,8 +109,8 @@ def prompt_tokens(body: dict) -> int:
 def worst_case_usd(model: str, body: dict) -> float:
     """The call's cost if nothing is read from the cache: the whole input estimated from the
     masked request's size and priced as a cache write (the dearer of the two), plus all of
-    `max_tokens`."""
-    return profiles.cost_usd(model, 0, int(body.get("max_tokens", 0)),
+    `max_tokens` (every body `build_request` makes carries it)."""
+    return profiles.cost_usd(model, 0, int(body["max_tokens"]),
                              cache_write_tokens=prompt_tokens(body))
 
 
@@ -127,9 +128,10 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
     call_id = calls.new_id()
     pin = profiles.TASKS.get(feature) or {}
     model = pin.get("model", "")
+    # No verdict here: every path that records the row sets its own (a refusal's kind,
+    # `_answered`'s, or "ok").
     row = {"id": call_id, "feature": feature, "actor": actor, "model": model,
-           "prompt": f"{prompt[0]}.v{prompt[1]}", "schema": "", "verdict": "", "detail": "",
-           "cost_usd": 0.0}
+           "prompt": f"{prompt[0]}.v{prompt[1]}", "schema": "", "detail": "", "cost_usd": 0.0}
 
     def refuse(kind, detail, **extra):
         out = calls.record(dict(row, verdict=kind, detail=detail, **extra))
@@ -185,7 +187,8 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
     if worst > cap["per_call"]:
         return refuse("over_cap", f"this call's worst case ${worst:.4f} is over the "
                       f"{feature} task's per-call cap ${cap['per_call']:.4f}", worst_usd=worst)
-    day = today or time.strftime("%Y-%m-%d", time.gmtime())
+    # The UTC day, from a clock asked for UTC by name (never a local time read by default).
+    day = today or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
     spent = calls.spent_usd(day)
     if spent["state"] == "unreadable":
         return refuse("over_cap", "the record of AI calls cannot be read, so today's spend "
@@ -226,10 +229,11 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
     try:
         output = schema_model.model_validate_json(text)
     except ValidationError as exc:
-        first = exc.errors()[0] if exc.errors() else {}
-        where = ".".join(str(p) for p in first.get("loc", ())) or "the answer"
+        # A ValidationError Pydantic raises always holds an error, each with its loc and msg.
+        first = exc.errors()[0]
+        where = ".".join(str(p) for p in first["loc"]) or "the answer"
         return _answered(sent, "schema", f"the answer is not {row['schema']}: {where}: "
-                         f"{first.get('msg', 'invalid')}")
+                         f"{first['msg']}")
     out = calls.record(dict(sent, verdict="ok", output=output.model_dump(mode="json")))
     return {"ok": True, "output": output, "call_id": call_id, "cost_usd": cost,
             "recorded": out.get("recorded", False)}
