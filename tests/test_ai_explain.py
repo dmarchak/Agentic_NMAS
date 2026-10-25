@@ -268,3 +268,24 @@ def test_the_schema_is_registered_and_committed():
     assert schemas.REGISTRY[("explain", 1)] is explain.Explanation
     with open(schemas.committed_path("explain", 1), encoding="utf-8") as fh:
         assert fh.read() == schemas.committed_text(explain.Explanation)
+
+
+def test_an_explanation_stopped_at_max_tokens_shows_nothing(world):
+    """A complete, valid explanation whose stop is max_tokens shows nothing (the operator,
+    2026-10-25; tests/test_ai_truncated_answers.py)."""
+    from tests.test_ai_truncated_answers import _cut
+    got = explain.explain(world.pack["id"], actor="operator@example.com",
+                          send=_cut(world, json.dumps(_answer(world.pack))), today="2026-10-25")
+    bound = profiles.TASKS["explain"]["max_tokens"]
+    assert got["ok"] is False and "answer" not in got
+    assert got["error"] == "max_tokens"
+    assert got["detail"] == f"the answer ran past max_tokens ({bound})"
+    (row,) = calls.read()["rows"]
+    assert row["verdict"] == "max_tokens" and "output" not in row
+    from flask import render_template
+    from modules import csp
+    from app import app
+    with app.test_request_context():
+        html = render_template("v2/_explain.html", x=got, csp=csp)
+    assert f"Not explained: the answer ran past max_tokens ({bound})." in html
+    assert "hypothes" not in html.lower(), "a cut explanation was drawn"

@@ -1969,3 +1969,47 @@ rule: when the device or role scope is unstated, either return a clarifying ques
 default to one line per device; never collapse different devices into one line unprompted.
 The prompt is versioned (`nl_metrics` v2), and the judge holds the rule over every case
 (`cases.misses`).
+
+**A truncated answer is refused whole (the operator, 2026-10-25; 2 of the first 24 live calls
+ran past `max_tokens`).** The gateway reads the stop reason before the answer. A
+`max_tokens` stop is recorded as `max_tokens`, even when the answer is complete and valid,
+and nothing is filled or shown. The builder is redrawn as the person's form carried it, with
+"Not filled: the answer ran past max_tokens (N)", and the alert card says "Not explained: …".
+The cause was the bound, not the prompt. Haiku 5.5's adaptive thinking is on by default, and
+the answers of about 100 tokens used 346 to 978 in all. `nl_query`'s bound is now 2,560
+(C1698). The Sonnet tasks' bounds are C1699.
+
+### 15.14 History's AI calls (the operator, 2026-10-25; 13.2's History record; built after 15.13)
+
+**One home.** AI calls stay in the main timeline as their own kind (`ai_call`), behind the
+kind filter. There is no separate tab.
+- **Each row:** when; who, or "scheduled"; the feature and its subject (the device, the alert
+  or the query); the model; tokens in and out; cache write and read; the cost; and the
+  outcome (accepted, refused by validation with the reason, or used or not).
+- **Expanded:** the prompt exactly as it was sent (the masked bytes that left the host, never
+  the unmasked form) and the response as received, verbatim, with the prompt's and the
+  schema's versions. A large prompt is collapsed, with a note of its size.
+- **Links both ways.** The feature's own "filled from your words … $x" line links to its row,
+  and the row links to what it produced.
+- **Recorded at the source.** The subject is written with the call. The use is its own
+  append-only row, keyed by the call's id. Old rows stay readable (expand, then contract).
+- **The test.** A secret planted in a question never appears in the stored prompt or the
+  drawn one.
+- **A device's History tab** shows the AI calls whose subject is that device.
+- **Retention (the operator's ruling).** The metadata is kept like the rest of History: when,
+  who, feature, subject, model, tokens, cost, verdict and use. The request and response bodies
+  are pruned after 90 days by default, a setting. The pruning ships in a release later than
+  the field (expand, then contract).
+
+**The timeline's paging (the operator, 2026-10-25), for History and for a device's History
+tab alike:**
+- **Paging.** The timeline loads 50 rows. "Load more", at the bottom, fetches the next 50
+  older than the last one shown, by a keyset cursor on the time and the id: never an offset or
+  page numbers, so rows that arrive meanwhile do not shift it.
+- **Jump to date.** A "jump to date" control starts the timeline at a chosen day.
+- **Filters.** The filters (kind, device, who, AI calls) apply on the server and combine with
+  both.
+- **The URL.** The cursor and the filters live in the URL, so Back and a shared link return
+  to the same place.
+- **Scale.** At large-fleet scale, a test with many thousands of events checks that each load
+  stays bounded, in time and in rows.

@@ -41,11 +41,15 @@ def result_of(choices: dict) -> dict:
 def misses(expect: dict, got: dict, now: float) -> list:
     """What *got* (nl_query.metrics's result) does that *expect* does not allow: ``[]`` is a
     pass. The outcome first: an answer is `ok`, a question back `ask`, a refusal anything else
-    the model chose to say (`unanswerable`); a refusal by Mercury (no match, a cap) is no
-    outcome of the model's and is a miss named as it is."""
+    the model chose to say (`unanswerable`), and Mercury's own answer to a question no metric
+    matches `guide`; any other refusal by Mercury (a cap) is no outcome of the model's and is
+    a miss named as it is."""
     error = got.get("error", "")
+    # `guide`: Mercury's own answer to a question no metric matches, no model asked (C1700).
     outcome = ("answer" if got.get("ok") else "ask" if error == "ask"
-               else "refuse" if error == "unanswerable" else f"not the model's: {error}")
+               else "refuse" if error == "unanswerable"
+               else "guide" if error == "no_match" and got.get("guide")
+               else f"not the model's: {error}")
     out = []
     if outcome not in expect.get("outcome", ()):
         return [f"outcome {outcome}, expected one of {expect.get('outcome')}"]

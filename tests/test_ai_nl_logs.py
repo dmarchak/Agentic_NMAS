@@ -190,3 +190,16 @@ def test_the_logs_schema_is_registered_and_committed():
     assert schemas.REGISTRY[("nl_logs", 1)] is nl_query.LogsChoices
     with open(schemas.committed_path("nl_logs", 1), encoding="utf-8") as fh:
         assert fh.read() == schemas.committed_text(nl_query.LogsChoices)
+
+
+def test_an_answer_stopped_at_max_tokens_fills_nothing(world):
+    """A complete, valid answer whose stop is max_tokens fills nothing (the operator,
+    2026-10-25; tests/test_ai_truncated_answers.py has the metrics half and the route)."""
+    from tests.test_ai_truncated_answers import _cut
+    got = nl_query.logs("Lab", "OSPF adjacency changes per device",
+                        actor="operator@example.com", send=_cut(world, json.dumps(_choices())),
+                        client=world.loki, now=NOW, today="2026-10-25")
+    assert got["ok"] is False and got["error"] == "max_tokens"
+    assert "values" not in got and "view" not in got and "choices" not in got
+    (row,) = calls.read()["rows"]
+    assert row["verdict"] == "max_tokens" and "output" not in row

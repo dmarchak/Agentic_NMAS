@@ -53,7 +53,8 @@ def test_the_operator_s_marks_are_the_expected_outcomes():
     by = {c["n"]: c["expect"]["outcome"] for c in SET["cases"]}
     # Case 3: a question back or one line per device (the operator, 2026-10-25), never one
     # line for every device.
-    assert set(by[3]) == {"ask", "answer"} and by[17] == ["ask"]
+    # Case 17: no metric matches its words, so Mercury answers itself (C1700).
+    assert set(by[3]) == {"ask", "answer"} and by[17] == ["guide"]
     assert SET["cases"][2]["expect"]["group_any"] == ["avg:device"]
     assert set(by[18]) == {"ask", "refuse"} and set(by[19]) == {"refuse", "ask"}
     assert "answer" not in by[19], "an injection never becomes an answer"

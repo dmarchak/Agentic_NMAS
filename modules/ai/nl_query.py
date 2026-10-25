@@ -33,8 +33,9 @@ log = logging.getLogger(__name__)
 
 FEATURE = "nl_query"
 #: v2 (the operator, 2026-10-25, from the first live run of the recorded cases): an unstated
-#: scope is one line per device, never collapsed unprompted; v1 stays for its record.
-PROMPT = ("nl_metrics", 2)
+#: scope is one line per device, never collapsed unprompted. v3 (v2's live run, case 9):
+#: things in a state are counted, never maxed. Earlier versions stay for their record.
+PROMPT = ("nl_metrics", 3)
 #: The operation's steps, named on its manual page (docs/manual/how-it-works/ask-in-words.md).
 STEPS = (
     ("offer", "the metrics sharing a word with the question, never the whole catalogue"),
@@ -220,20 +221,23 @@ def retrieve(question: str, cat: dict, devices_carry: set = frozenset()) -> list
             for *_k, name, help_ in scored[:OFFERED]]
 
 
-def device_metrics(client, rng: dict) -> set:
-    """The metric names whose series carry the builder's device label over *rng* (one read
-    of Prometheus's label-values API, matched on that label), or an empty set when it cannot
-    be read: the order then falls to the words alone, said nowhere because nothing is lost
-    but a tie-break."""
+def device_metrics(client, rng: dict, devices=()):
+    """The metric names whose series carry the builder's device label over *rng*, or with
+    *devices*, one of those devices (one read of Prometheus's label-values API, matched on
+    that label); None when it cannot be read. Unread, the offer falls back to the words alone,
+    said nowhere, because nothing is lost but a tie-break, or a narrowing."""
     from modules import history_promq as pq
 
+    # Each name a literal in the label's regex: escaped for RE2, then for PromQL's string.
+    sel = (pq.DEVICE_LABEL + '=~"' + "|".join(re.escape(d).replace("\\", "\\\\")
+                                              for d in devices) + '"' if devices
+           else pq.DEVICE_LABEL + '!=""')
     names, err = pq._json(client, "api/v1/label/__name__/values",
-                          **{"match[]": "{" + pq.DEVICE_LABEL + '!=""}',
+                          **{"match[]": "{" + sel + "}",
                              "start": str(int(rng["start"])), "end": str(int(rng["end"]))})
     if err:
-        log.warning("nl_query: the metrics carrying %s could not be read: %s",
-                    pq.DEVICE_LABEL, err)
-        return set()
+        log.warning("nl_query: the metrics carrying %s could not be read: %s", sel, err)
+        return None
     return {n for n in names or [] if isinstance(n, str)}
 
 
@@ -324,16 +328,30 @@ def metrics(list_name: str, question: str, *, actor: str, send=None, client=None
     cat = pq.catalogue(list_name, probe, rng, now)
     if cat["state"] != "ok":
         return {"ok": False, "error": "catalogue", "detail": cat["error"]}
-    offered = retrieve(question, cat, device_metrics(probe, rng))
-    if not offered:
-        return {"ok": False, "error": "no_match", "offered": [],
-                "detail": f"no metric of the {len(cat['names'])} Prometheus holds shares a "
-                          "word with the question; nothing was sent (try the metric's own "
-                          "words, or search the builder's Metric box)"}
     rows = _inventory(list_name)
     roles = sorted({d["role"] for d in rows if d.get("role")})
+    named = named_devices(question, rows)
+    # A question naming devices is offered only what they carry (2026-10-25, recorded case 13:
+    # an IOS switch was offered and given the IOS-XE routers' flap counter, which it has none
+    # of). One read; unreadable, the offer is the whole catalogue's, as before.
+    theirs = device_metrics(probe, rng, named) if named else None
+    pool = dict(cat, names=[n for n in cat["names"] if n in theirs]) if theirs is not None \
+        else cat
+    offered = retrieve(question, pool, device_metrics(probe, rng) or set())
+    if not offered:
+        among = (f"{', '.join(named)} carr{'ies' if len(named) == 1 else 'y'}"
+                 if theirs is not None else "Prometheus holds")
+        # Mercury answers this itself, no model asked and nothing spent (the operator,
+        # 2026-10-25, C1700): what it could not match, what to name, and where to start.
+        return {"ok": False, "error": "no_match", "offered": [], "by": "mercury",
+                "call_id": "", "cost_usd": 0.0,
+                "guide": {"unmatched": list(terms(question)), "devices": named,
+                          "searched": len(pool["names"]), "among": among},
+                "detail": f"no metric of the {len(pool['names'])} {among} shares a "
+                          "word with the question; nothing was sent (try the metric's own "
+                          "words, or search the builder's Metric box)"}
     got = gateway.ask(FEATURE, PROMPT, MetricsChoices,
-                      parts(question, offered, named_devices(question, rows), roles, now),
+                      parts(question, offered, named, roles, now),
                       actor=actor, context={"builder": vocabulary()}, send=send, today=today)
     if not got["ok"]:
         return dict(got, offered=[o[0] for o in offered])
