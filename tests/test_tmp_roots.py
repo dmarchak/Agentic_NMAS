@@ -1,6 +1,7 @@
 """C776: pytest's temporary roots of killed runs are removed when the next run starts
 (tests/tmp_roots.py). Measured 2026-10-14: 429 locked roots holding 842,278 files filled 88% of
 the tmpfs /tmp's inodes, and the gate then failed hundreds of tests unable to make a folder."""
+import json
 import os
 import subprocess
 import sys
@@ -67,3 +68,57 @@ def test_a_run_removes_the_roots_killed_runs_left(tmp_path):
     assert out.returncode == 0, out.stdout[-800:] + out.stderr[-800:]
     assert not killed.exists(), "the killed run's root is left"
     assert live.exists(), "a live run's root was removed"
+
+
+#: A probe that writes where its run's pytest base folder was, and the run's in-flight folder.
+WHERE = ("import json, os\n\n"
+         "def test_where(tmp_path_factory):\n"
+         "    with open(os.environ['PROBE_OUT'], 'w', encoding='utf-8') as fh:\n"
+         "        json.dump({'base': str(tmp_path_factory.getbasetemp()),\n"
+         "                   'inflight': os.environ['NMAS_TEST_INFLIGHT']}, fh)\n")
+
+
+def _nmas_test(tmp_path, n, *extra):
+    """Start the real scripts/nmas-test over the WHERE probe (as test_suite_bound runs it)."""
+    probe =tmp_path / f"test_probe_where_{n}.py"
+    probe.write_text(WHERE)
+    env = dict(os.environ, PYTHON=sys.executable, NMAS_PROBE_RUN="1",
+               PROBE_OUT=str(tmp_path / f"where-{n}.json"))
+    env.pop("PYTEST_XDIST_WORKER", None)
+    env.pop("NMAS_TEST_INFLIGHT", None)
+    return subprocess.Popen(
+        [os.path.join(ROOT, "scripts", "nmas-test"), "--allow-unconfined", "-q",
+         "-p", "no:randomly", "-p", "no:cacheprovider", "-p", "tests.conftest",
+         "--rootdir", ROOT, "-c", os.path.join(ROOT, "pytest.ini"), *extra, str(probe)],
+        cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+
+def test_each_run_has_its_own_base_folder_removed_at_its_end(tmp_path):
+    """C1670 (2026-10-25): the gate's five shards shared pytest's one base folder under
+    /tmp/pytest-of-<user>; each session's start removed the older numbered folders there, two
+    removed one at once, and pytest's warning ("(rm_rf) error removing …garbage-…") turned a
+    whole pass into the gate's refusal. Each scripts/nmas-test run now gives pytest a base
+    folder inside its own in-flight folder: three runs started together each use their own,
+    none warns, and each is gone when its run ends."""
+    runs =[_nmas_test(tmp_path, n) for n in range(3)]
+    outs = [p.communicate(timeout=120) for p in runs]
+    seen = []
+    for n, (p, (out, err)) in enumerate(zip(runs, outs)):
+        assert p.returncode == 0, out[-800:] + err[-800:]
+        assert "warning" not in out.lower(), out[-800:]
+        where = json.loads((tmp_path / f"where-{n}.json").read_text())
+        assert where["base"] == os.path.join(where["inflight"], "t"), where
+        # No longer than pytest's own root (`/tmp/pytest-of-<user>/pytest-<n>`): a test's Unix
+        # socket under its tmp_path has 107 bytes in all (test_no_pattern_kill's did not fit).
+        assert len(where["base"]) <= len(f"/tmp/pytest-of-{os.environ.get('USER', 'u')}/pytest-0000"), where
+        assert not os.path.exists(where["inflight"]), f"run {n}'s folder is left: {where}"
+        seen.append(where["base"])
+    assert len(set(seen)) == 3, seen
+
+
+def test_a_base_folder_asked_for_is_honoured(tmp_path):
+    asked = tmp_path / "asked-for"
+    p = _nmas_test(tmp_path, 9, "--basetemp", str(asked))
+    out, err = p.communicate(timeout=120)
+    assert p.returncode == 0, out[-800:] + err[-800:]
+    assert json.loads((tmp_path / "where-9.json").read_text())["base"] == str(asked)

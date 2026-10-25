@@ -1828,3 +1828,53 @@ admin enables the class there, and says so beside its control):
 
 **A candidate, not a condition:** pseudonymising addresses and hostnames before a payload leaves
 (a reversible map held in Mercury), listed with 15.9's candidates; nothing above waits for it.
+
+### 15.12 The Phase 8 sprint, Sun 2026-10-25 to Sat 2026-10-31 (the operator, 2026-10-25)
+
+**The goal:** the sprint's Phase 8 features working, deployed and usable on the lab; no video
+work. **A feature is done** when it is deployed, its about 20 recorded cases pass in CI, and the
+operator has used it on the lab. A deploy every evening (CI green on the exact sha and the
+change's own tests; the Update button).
+
+**The sprint's rulings:**
+1. **Findings freeze:** a finding is registered, and worked only if it blocks a sprint feature.
+   The 2026-10-18 condition "no open A or B" (NSOT_PLAN, Core 1.0) is suspended for the sprint.
+2. **Roles move to before the public release;** feature 7 runs for the verified operator only.
+3. **11.1's consistency floors are measured daily** during the sprint, and gate only before the
+   public release.
+4. **Standing delegation:** the agent decides anything inside this plan. It escalates only a new
+   licence, egress, anything irreversible, CLAUDE.md, and a change to a ruling.
+5. **Reports:** a status of about 10 lines each day; a full report only when a ruling is needed.
+
+**The scope, in order:**
+
+| Day | Item |
+|---|---|
+| Sun | **8.0, minimal** (13.2): the gateway's Anthropic adapter (the pinned model, timeouts, a cap per call and a cap per day); Pydantic v2 strict schemas, `schema_for` and the committed schema files (15.4); the stricter egress mask (C1654; the irreversible tier, so its targeted mutation run before its deploy); the `ai_calls` store and its History row; the hosted-only admin setting with a recorded reason (13.1, 15.8); the API key in the secrets store, typed by the operator. Prompts are versioned files (section 4). **Beside it:** P1's evidence pack, no AI (15.1, 15.9). |
+| Mon | **8.1: natural language to PromQL or LogQL** (feature 1): a deterministic catalogue of metrics and labels, its schema, validation (allowlisted metrics and labels, a time-limited test run), the screen. |
+| Tue | **P1's Explain** on the alert cards: one schema-bound call, its references checked against the pack. |
+| Wed to Thu | **Feature 7, constrained:** natural language to an intent patch for interface descriptions and shutdown, VLANs and OSPF network statements; checked by the intent editor's validator; through the existing preview, confirm by hash, deploy and verify. |
+| Fri | **P2's rules only** (below). |
+| Sat | The buffer: evaluation runs, fixes for escapes, a full walk of every sprint feature, and the batched boards and fidelity records (below). |
+
+**Decided at the sprint's start (the operator, 2026-10-25, on the agent's estimate):**
+- **Labs first stands:** CSCI 5840's Labs 8 and 9 are submitted (8 on 2026-10-21, 9 on
+  2026-10-23). A future lab's step pre-empts a sprint item, and the agent names what slipped.
+- **C1471 is a sprint item, unfrozen:** it blocks feature 7 (15.7). Its patch-per-device step is
+  feature 7's first piece (Wednesday).
+- **Licences:** Pydantic v2 is approved (pydantic, pydantic-core, annotated-types,
+  typing-inspection; MIT). **The Anthropic SDK is not taken now:** the adapter is a thin one over
+  `requests` (already locked), behind the gateway's interface, with retries and backoff, typed
+  errors, rate-limit handling, timeouts, the caps and the pinned model, so taking the SDK later
+  changes one module. No PromQL or LogQL parser: feature 1 produces History › Query's builder
+  choices (13.2), checked by the builders' own rules and by Prometheus's or Loki's parser in a
+  time-limited test run.
+- **P2 is rules only this sprint** (the VTP database, order only, a line not modelled, a
+  certificate block); its AI step and the configuration egress class (15.11) come after it.
+- **`ai_calls` is a records store** with the per-store file or database switch, as the other
+  stores are (`modules/records_db.py`, `STORES`). Cost caps, no cost dashboard (13.2).
+- **The egress mask's targeted mutation run is within the egress exception** (docs/TESTING.md,
+  "Mutation testing", the rule of 2026-10-25): two mutation runs this week, the scheduled weekly
+  run and the mask's dispatched one.
+- **Each screen ships with its browser tests and a short manual page;** its board and its
+  fidelity record are batched into Saturday.

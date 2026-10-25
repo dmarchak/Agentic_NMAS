@@ -102,18 +102,31 @@ report_timeout() {
 # WITH A TERMINAL (C1414, the operator, 2026-10-20: a run from a terminal hung for ever in state
 # T, and Ctrl+C could not reach it): that group of its own is a BACKGROUND group on the
 # terminal, so the first touch of the terminal stops it (SIGTTIN, SIGTTOU) and the terminal's
-# Ctrl+C goes to the foreground group it is not in. `--foreground` keeps it in the terminal's
-# own group; `timeout` then signals only the command, so on a fired bound what the run left
-# (the workers, anything a test started) is ended by IDENTITY: this run's own INFLIGHT folder
-# in its environment, never a name pattern.
-end_leftovers() {
-  local p pids=()
+# Ctrl+C goes to the foreground group it is not in. So with a terminal the command runs in the
+# terminal's own foreground group, bounded by the watchdog below (C1599: not `timeout
+# --foreground`, which doubled the Ctrl+C), and on a fired bound what the run left (the
+# workers, anything a test started) is ended by IDENTITY: this run's own INFLIGHT folder in its
+# environment, never a name pattern.
+
+#: This run's processes, by identity: every process naming this run's INFLIGHT folder in its
+#: environment, but this script and any pid given.
+run_pids() {
+  local p skip
   for p in /proc/[0-9]*; do
-    [ "${p#/proc/}" = "$$" ] && continue
-    if tr '\0' '\n' < "$p/environ" 2>/dev/null | grep -qxF "NMAS_TEST_INFLIGHT=$INFLIGHT"; then
-      pids+=("${p#/proc/}")
+    p="${p#/proc/}"
+    [ "$p" = "$$" ] && continue
+    for skip in "$@"; do [ "$p" = "$skip" ] && continue 2; done
+    # Another user's process: its environment is unreadable, and the redirect's own error is
+    # the shell's, so it is silenced before the redirect is made.
+    if tr '\0' '\n' 2>/dev/null < "/proc/$p/environ" | grep -qxF "NMAS_TEST_INFLIGHT=$INFLIGHT"; then
+      echo "$p"
     fi
   done
+}
+
+end_leftovers() {
+  local pids=()
+  mapfile -t pids < <(run_pids)
   [ "${#pids[@]}" -eq 0 ] && return 0
   echo "nmas-test: ending ${#pids[@]} process(es) this run left (each names $INFLIGHT): ${pids[*]}" >&2
   kill -TERM "${pids[@]}" 2>/dev/null
@@ -122,11 +135,37 @@ end_leftovers() {
   return 0
 }
 
+# THE TERMINAL'S BOUND IS A WATCHDOG, NEVER `timeout` (C1599, reopened 2026-10-25). One Ctrl+C
+# on a terminal reaches every process in its foreground group, and `timeout --foreground`, in
+# that group, forwards the SIGINT it receives to its command as well: pytest got TWO (measured
+# under a pseudo-terminal: 2 under `timeout --foreground`, 1 alone, three of three), and the
+# second, arriving while it handled the first, broke its capture's teardown ("cannot snap in
+# state 'done'" in CI #1150, "was already stopped" in #1090) in place of its KeyboardInterrupt
+# summary. The command runs in the foreground alone; beside it, in the background (where a
+# non-interactive shell ignores SIGINT), the watchdog waits the bound, then marks the run timed
+# out and ends this run's processes by identity: TERM (each test process dumps its stacks for
+# the report), and KILL 15 s later, as --kill-after did.
+watchdog() {
+  local s
+  trap 'kill "$s" 2>/dev/null; exit 0' TERM
+  sleep "$TIMEOUT" & s=$!
+  wait "$s"
+  : > "$INFLIGHT/.timed-out"
+  kill -TERM $(run_pids "$BASHPID") 2>/dev/null
+  sleep 15 & s=$!
+  wait "$s"
+  kill -KILL $(run_pids "$BASHPID") 2>/dev/null
+}
+
 run() {
   if [ -t 0 ]; then
-    timeout --foreground --kill-after=15 "$TIMEOUT" "$@"
+    watchdog &
+    dog=$!
+    "$@"
     rc=$?
-    if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then report_timeout; end_leftovers; fi
+    kill "$dog" 2>/dev/null
+    wait "$dog" 2>/dev/null
+    if [ -e "$INFLIGHT/.timed-out" ]; then rc=124; report_timeout; end_leftovers; fi
   else
     timeout --kill-after=15 "$TIMEOUT" "$@"
     rc=$?
@@ -203,6 +242,20 @@ while [ "$i" -lt "${#args[@]}" ]; do
   i=$((i+1))
 done
 args=("${capped[@]}")
+# EACH RUN ITS OWN PYTEST BASE FOLDER (C1670, C627's remedy; the operator, 2026-10-25). Left to
+# itself, every session shares /tmp/pytest-of-<user> and each one's start removes the older
+# numbered folders there, so the gate's five shards, starting together, removed one folder
+# twice and pytest's warning turned a whole pass into a refusal. Under this run's INFLIGHT
+# folder no other session ever cleans it, and the EXIT trap removes it with everything the
+# run's tests made. A --basetemp asked for is honoured. One letter: a Unix socket's path is
+# at most 107 bytes, and a test's socket under its tmp_path failed "AF_UNIX path too long" at
+# `$INFLIGHT/pytest` (37 characters, against pytest's own `/tmp/pytest-of-<user>/pytest-<n>`,
+# 33); `$INFLIGHT/t` is 32.
+own_base=1
+for a in "${args[@]}"; do
+  case "$a" in --basetemp|--basetemp=*) own_base=0 ;; esac
+done
+[ "$own_base" -eq 1 ] && args+=(--basetemp "$INFLIGHT/t")
 if [ "$full" -eq 1 ]; then
   lock="${NMAS_FULL_LOCK:-$HOME/.cache/nmas/full-suite.lock}"
   mkdir -p "$(dirname "$lock")"

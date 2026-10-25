@@ -107,8 +107,15 @@ class TestC399:
                     assert b.js("return !window.Alpine"), "the click must land before Alpine"
                     b.click(BUTTON)
                     release.set()           # Alpine is served once the click has landed
-                    # Open BY THE CLICK, once Alpine runs: Alpine started (the page's scripts
-                    # loaded at all), the button says it is expanded, and the menu shows.
+                    # Alpine starts: its script is one request once released, bounded as every
+                    # request a browser test's page makes (browser.REQUESTS_SECONDS, 2.5x the
+                    # slowest measured over four shards at once). C993 (CI #1150, 2026-10-25):
+                    # one 10 s wait held both this and the opening, and under a runner's load
+                    # the script's arrival alone could take it.
+                    b.wait_for("return !!window.Alpine", browser.REQUESTS_SECONDS)
+                    # Open BY THE CLICK, once Alpine runs: the button says it is expanded, and
+                    # the menu shows, within the 10 s this wait always had, counted from
+                    # Alpine's start (about 1.5 s measured alone, C993).
                     b.wait_for("return !!window.Alpine && document.querySelector('"
                                + BUTTON + "').getAttribute('aria-expanded') === 'true' && "
                                "(function () { " + MENU + " })()", ALPINE_DELAY + 8)
