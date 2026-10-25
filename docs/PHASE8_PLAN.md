@@ -1915,6 +1915,20 @@ method: an exception names its expiry):**
   by a test or restructured and every current mutant of it checked by hand first, are
   confirmed by the second (label `tier-63b`). Each summary is read for mutants run (C1683).
   A true equivalent is listed for the operator's ruling, never marked approved by the agent.
+  #65 (tier-63b) came back clean: 523 mutants run, 523 killed. #66 (tier-64b) measured nothing
+  (C1697): a family of tests fails in mutmut's copy.
+- **The sprint's tier proof (the operator's ruling, 2026-10-25 ~15:0x UTC; it expires Sat 31
+  Oct, and Stage 10 restores the run bar): no third run.** For Allow, the tier's proof is the
+  hand check with a canary and a recorded log. For each of #64's 15 functions:
+  - every mutant is applied by hand and the tests run;
+  - a planted must-die canary per function must be killed by the tests (a surviving canary
+    voids the result);
+  - a committed log records each mutant, the test that killed it, and the canary's outcome.
+  C1697 is fixed after the sprint. Workflow runs are the weekly measurement only. The held
+  batch deploys with hosted AI off: cfa0822b was live at 15:08:23 UTC.
+  **Done, 2026-10-25 ~16:4x UTC, at cfa0822b:** 858 mutants, 858 killed; all 15 canaries
+  killed; every baseline passed; every file restored identical (docs/TIER_HAND_CHECK.md).
+  With #65's 13 functions, the tier is **clean for Allow**, with no equivalent to rule.
 
 **The tier's boundary for the rest of the sprint (the operator, 2026-10-25 ~08:2x UTC; it
 expires at the sprint's end, Sat 31 Oct, and at Stage 10 the GO bar returns everywhere,

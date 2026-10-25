@@ -238,6 +238,17 @@ deploy, every VERDICT survivor killed or ruled equivalent by the operator. Every
 mutation is the weekly measurement ("Mutation testing" below): survivors registered, not
 worked, unless the operator directs a campaign. No other run is dispatched.
 
+**Until Sat 31 Oct, the tier's proof is a hand check, not a run** (the operator's sprint
+ruling, 2026-10-25; PHASE8_PLAN 15.12; Stage 10 restores the run bar). For each function:
+- every mutant mutmut generates is applied by hand and the tests run;
+- a planted must-die canary per function must be killed by the tests (a surviving canary voids
+  the result);
+- a committed log records each mutant, the test that killed it, and the canary's outcome (the
+  first, 2026-10-25: docs/TIER_HAND_CHECK.md).
+
+Workflow runs are the weekly measurement only until then. C1697, which voided #66, is fixed
+after the sprint.
+
 **The irreversible tier** (the operator, 2026-10-25): egress, masking, data off the host, and
 the code that writes, stores or masks secret values. To be a committed list,
 `tests/irreversible_tier.py`, with a test that refuses an unlisted module calling a push,
