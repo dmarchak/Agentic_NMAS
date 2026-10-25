@@ -66,6 +66,14 @@ def misses(expect: dict, got: dict, now: float) -> list:
             out.append(f"operations {ops} lack {need!r}")
     if "group_any" in expect and not any(g in ops for g in expect["group_any"]):
         out.append(f"operations {ops} hold no group of {expect['group_any']}")
+    # Never different devices in one line unasked (the operator, 2026-10-25, from case 3's
+    # first live answer): a group with no label is one line, a miss unless the case names it.
+    from modules.history_promq import AGGS
+    one_line = [o for o in ops if o.endswith(":") and o[:-1] in AGGS]
+    if (one_line and len(v.get("dev") or []) != 1
+            and not set(one_line) & set(expect.get("group_any", ()))):
+        out.append(f"operations {ops} put every device into one line ({', '.join(one_line)}), "
+                   "which the question did not ask for")
     if "top" in expect and (v.get("top") or "") not in expect["top"]:
         out.append(f"top {v.get('top')!r}, expected one of {expect['top']}")
     if "range" in expect and v.get("range") not in expect["range"]:

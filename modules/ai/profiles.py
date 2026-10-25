@@ -48,8 +48,11 @@ TASKS = {
     # Measured 2026-10-25 on the lab's captured catalogue: 2,301 to 3,026 tokens (estimated,
     # an over-estimate) for five questions, 20 metrics offered; 8,000 is about 2.6x, and the
     # local tier's context (13.1).
+    # max_tokens holds Haiku 5.5's adaptive thinking (on by default) as well as the answer:
+    # the first live run of the 20 recorded cases (2026-10-25) used 346 to 978 output tokens
+    # for answers of about 100, and two ran past 1,024; 2,560 is about 2.6x the 978.
     "nl_query": {"model": "claude-haiku-5-5", "max_prompt_tokens": 8_000,
-                 "max_tokens": 1_024, "words": "Ask in words (History › Query)"},
+                 "max_tokens": 2_560, "words": "Ask in words (History › Query)"},
     "explain": {"model": "claude-sonnet-5-5", "max_prompt_tokens": 20_000,
                 "max_tokens": 1_024, "words": "Explain an alert (Monitoring › Alerts)"},
     "intent_patch": {"model": "claude-sonnet-5-5", "max_prompt_tokens": 40_000,

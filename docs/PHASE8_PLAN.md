@@ -1945,3 +1945,27 @@ features included):**
   only its allowed-class fields, and that a planted secret (a secret's shape in data an
   exporter or a device wrote, and a stored secret's value in the person's words) is masked in
   the bytes sent. A feature's change needs no tier run.
+
+### 15.13 AI controls: one mark, and shown disabled when AI cannot answer (the operator, 2026-10-25)
+
+A design rule built in the sprint, holding for every AI surface (docs/NSOT_GUI_BRIEF.md
+section 6, "AI controls"):
+- **One mark.** Every control that needs AI carries one shared **AI** mark: Ask in words,
+  Explain, the intent change in words, the AI card's Test, and any later one. The mark's
+  tooltip names the task, its pinned model and its per-call cap.
+- **Shown disabled, never hidden.** When hosted AI is off, no key is set, or today's cap is
+  reached, the control is shown disabled, with its input not fillable, and gives the reason in
+  place. For an admin it also links to Settings › Installation, the AI (hosted) card. It is
+  never hidden, and never an error after the fact.
+- **Offline parity.** The path beside it that needs no AI stays fully usable: the builder, the
+  evidence pack, the intent editor.
+- **One registry.** One registry of AI controls. A test fails if a route draws an AI-calling
+  control without the mark, or leaves it enabled while hosted AI cannot answer.
+
+**The recorded cases' first live run (the operator, 2026-10-25).** The first live answer
+collapsed every device into one line (case 3, "Average CPU usage over the past 7 days":
+`avg(cpmCPUTotal5minRev)` over all 9, $0.0009). It guessed the scope instead of asking. The
+rule: when the device or role scope is unstated, either return a clarifying question or
+default to one line per device; never collapse different devices into one line unprompted.
+The prompt is versioned (`nl_metrics` v2), and the judge holds the rule over every case
+(`cases.misses`).

@@ -32,7 +32,9 @@ from modules.ai.schemas import StrictModel, register
 log = logging.getLogger(__name__)
 
 FEATURE = "nl_query"
-PROMPT = ("nl_metrics", 1)
+#: v2 (the operator, 2026-10-25, from the first live run of the recorded cases): an unstated
+#: scope is one line per device, never collapsed unprompted; v1 stays for its record.
+PROMPT = ("nl_metrics", 2)
 #: The operation's steps, named on its manual page (docs/manual/how-it-works/ask-in-words.md).
 STEPS = (
     ("offer", "the metrics sharing a word with the question, never the whole catalogue"),

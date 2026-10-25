@@ -51,7 +51,10 @@ def test_twenty_numbered_cases_on_the_pinned_model():
 
 def test_the_operator_s_marks_are_the_expected_outcomes():
     by = {c["n"]: c["expect"]["outcome"] for c in SET["cases"]}
-    assert by[3] == ["ask"] and by[17] == ["ask"]
+    # Case 3: a question back or one line per device (the operator, 2026-10-25), never one
+    # line for every device.
+    assert set(by[3]) == {"ask", "answer"} and by[17] == ["ask"]
+    assert SET["cases"][2]["expect"]["group_any"] == ["avg:device"]
     assert set(by[18]) == {"ask", "refuse"} and set(by[19]) == {"refuse", "ask"}
     assert "answer" not in by[19], "an injection never becomes an answer"
 
@@ -112,9 +115,31 @@ def test_the_judge_passes_a_right_answer_and_names_each_miss():
     assert cases.misses(one, _answer(m="sysUpTime"), NOW)[0].startswith("metric 'sysUpTime'")
     three = SET["cases"][2]["expect"]
     assert cases.misses(three, {"ok": False, "error": "ask", "clarify": "which?"}, NOW) == []
-    assert cases.misses(three, _answer(), NOW) == ["outcome answer, expected one of ['ask']"]
+    every = dict(dev=[], range="7d")
+    assert cases.misses(three, _answer(op=["avg:device"], **every), NOW) == []
+    assert cases.misses(three, _answer(op=["avg:"], **every), NOW) == [
+        "operations ['avg:'] hold no group of ['avg:device']",
+        "operations ['avg:'] put every device into one line (avg:), which the question did "
+        "not ask for"]
     assert cases.misses(three, {"ok": False, "error": "no_match"}, NOW)[0].startswith(
         "outcome not the model's: no_match")
+
+
+def test_no_case_puts_different_devices_into_one_line_unless_it_asks_for_it():
+    """The operator's rule (2026-10-25), held over every case: a group with no label is one
+    line for every device it reaches, a miss unless the case names it (8 and 9 count whether
+    any session is down); one line for one named device is that device's."""
+    fifteen = SET["cases"][14]["expect"]
+    two = dict(dev=["s3", "s4"], range="7d")
+    assert cases.misses(fifteen, _answer(**two), NOW) == []
+    assert cases.misses(fifteen, _answer(op=["max:"], **two), NOW) == [
+        "operations ['max:'] put every device into one line (max:), which the question did "
+        "not ask for"]
+    eight = SET["cases"][7]["expect"]
+    assert cases.misses(eight, _answer(m="cbgpPeer2State", dev=[], op=["ne:6", "count:"]),
+                        NOW) == []
+    one = SET["cases"][0]["expect"]
+    assert cases.misses(one, _answer(op=["avg:"]), NOW) == [], "one device's one line"
 
 
 def test_the_judge_knows_yesterday_from_now():

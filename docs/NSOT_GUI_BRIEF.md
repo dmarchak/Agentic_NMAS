@@ -561,6 +561,20 @@ The code's `LEVELS` do not change; only the words drawn do.
 - Nothing a person must read to act is in a hover. Today's `title=` reasoning moves into the
   page or the help panel.
 
+**AI controls** (the operator, 2026-10-25: built in the Phase 8 sprint; it holds for every AI
+surface; PHASE8_PLAN 15.13)
+- Every control that needs AI carries one shared **AI** mark: Ask in words, Explain, the intent
+  change in words, the AI card's Test, and any later one. The mark's tooltip names the task,
+  its pinned model and its per-call cap (provenance on hover).
+- When hosted AI cannot answer the control is shown, disabled, with its input not fillable, and
+  says why in place. The reasons are: hosted AI is off, no key is set, or today's cap is
+  reached. For an admin it also links to Settings › Installation, the AI (hosted) card.
+  Never hidden, and never an error after the fact.
+- The path beside it that needs no AI stays fully usable: the builder, the evidence pack, the
+  intent editor (offline parity).
+- One registry of AI controls. A test fails if a route draws an AI-calling control without the
+  mark, or leaves it enabled while hosted AI cannot answer.
+
 **Icons:** today's emoji go. A subset of **Bootstrap Icons** (MIT) is vendored as one inline
 SVG sprite, listed in `static/js/vendor/MANIFEST.json` with its hash (C123), and holds only
 the icons the pages use.
