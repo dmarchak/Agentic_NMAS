@@ -294,6 +294,7 @@ KINDS = {
     "date": "a date, YYYY-MM-DD, or empty",
     "text": "text on one line",
     "email": "an email address",
+    "usd": "an amount in US dollars, up to four decimals",
 }
 
 
@@ -343,7 +344,28 @@ CARDS = {
         "secret": None, "with_id": None, "integration": None,
         "note": "Bind and port take effect at the next restart, and the result says so.",
     },
+    # Phase 8's gateway (modules/ai; PHASE8_PLAN 13.1, 15.8, 15.12): the key, the two caps,
+    # the hosted allowance with its recorded reason, and a Test that is one real, paid call
+    # through the whole gateway, run only when a person presses it (never the integrations
+    # reader's minute probe: `test` here, not `integration`).
+    "ai": {
+        "group": "ai_gateway", "title": "AI (hosted)", "tab": "connections",
+        "fields": (_f("ai_cap_usd_per_call", "Cap per call", "usd",
+                      "a call's worst case, refused before it is sent"),
+                   _f("ai_cap_usd_per_day", "Cap per day", "usd",
+                      "today's spend plus a call's worst case, refused before it is sent")),
+        "secret": ("anthropic_api_key", "API key"), "secret_at": 0, "with_id": None,
+        "integration": None, "test": "ai",
+        "note": "Test sends one small call to the model, through the mask and the caps, and "
+                "records it under History › AI calls.",
+    },
 }
+
+#: The hosted allowance's Allow (a person's recorded decision) and Turn off.
+AI_HOSTED_ON_STEPS = ("check", "write", "record")
+AI_HOSTED_OFF_STEPS = ("write", "record")
+#: A reason's bounds: one line a person writes, long enough to say why.
+AI_REASON_MIN, AI_REASON_MAX = 10, 300
 
 
 def settings_place(name: str, label: str) -> str:
@@ -366,7 +388,8 @@ WRITES_OFF_STEPS = ("write", "record")
 #: The fields a restart reads (the result says the change waits for one).
 RESTART_KEYS = ("flask_host", "flask_port")
 #: The record kinds the cards write (the records database's are its own, above).
-CARD_KINDS = ("card_save", "card_replace", "netbox_writes_off")
+CARD_KINDS = ("card_save", "card_replace", "netbox_writes_off", "ai_hosted_allow",
+              "ai_hosted_off")
 
 
 def _health(name: str) -> dict:
@@ -399,9 +422,10 @@ def _writes_state() -> dict:
     return {"on": on, "last_off": None if on else last}
 
 
-def card(name: str) -> dict:
+def card(name: str, ai_state: bool = True) -> dict:
     """One card as drawn: its fields with today's values (a secret only as set or not set),
-    its integration's stored health, and NetBox's master switch."""
+    its integration's stored health, and NetBox's master switch; the AI card's allowance and
+    today's spend unless *ai_state* is off (the Replace form draws neither)."""
     from modules.secrets_store import is_set
     from modules.settings_schema import DEFAULTS, get_setting
 
@@ -418,6 +442,11 @@ def card(name: str) -> dict:
         out["health"] = _health(spec["integration"])
     if name == "netbox":
         out["writes"] = _writes_state()
+    if spec.get("test") == "ai" and ai_state:
+        from modules.ai import calls, gateway
+        out["hosted"] = gateway.hosted_allowed()
+        out["spent"] = calls.spent_usd(time.strftime("%Y-%m-%d", time.gmtime()))
+        out["reason_bounds"] = (AI_REASON_MIN, AI_REASON_MAX)
     return out
 
 
@@ -476,6 +505,10 @@ def _value(f: dict, raw):
         if not re.fullmatch(r"[^\s@]+@[^\s@]+", text):
             raise no()
         return text
+    if kind == "usd":
+        if not re.fullmatch(r"\d{1,3}(\.\d{1,4})?", text):
+            raise no()
+        return float(text)
     if "\n" in text or "\r" in text or not text:
         raise no()
     return text
@@ -519,12 +552,21 @@ def save_card(name: str, form: dict, actor: str, verified: str, loaded=None) -> 
                 restart=any(k in changed for k in RESTART_KEYS))
 
 
-def test_card(name: str, client=None) -> dict:
+def test_card(name: str, client=None, actor: str = "") -> dict:
     """The card's Test: its integration asked now, with what is saved; nothing changed. The
-    answer is drawn in the card (the badge stays the reader's, refreshed on its minute)."""
+    answer is drawn in the card (the badge stays the reader's, refreshed on its minute). The
+    AI card's Test is the gateway's connection check, one recorded call as *actor*."""
     from modules.integrations import get_integration
 
     spec = CARDS[name]
+    if spec.get("test") == "ai":
+        from modules.ai import connection
+        got = connection.check(actor=actor)
+        now = _now()
+        return {"ok": bool(got.get("ok")), "message": got.get("detail") or "",
+                "error": "" if got.get("ok") else
+                f"{(got.get('error') or 'failed').replace('_', ' ')}: {got.get('detail') or ''}",
+                "at": now, "at_iso": _iso(now), "call_id": got.get("call_id", "")}
     if not spec["integration"]:
         raise Refused(f"{spec['title']} has no Test: it configures no service to ask")
     c = client or get_integration(spec["integration"])
@@ -572,7 +614,42 @@ def replace_secret(name: str, form: dict, actor: str, verified: str, client=None
                          else "nothing was replaced"))
     entry = _record({"kind": "card_replace", "card": name, "actor": actor,          # record
                      "actor_verified": verified, "fields": fields})
-    return dict(entry, ok=True, tested=test_card(name, client))                     # test
+    return dict(entry, ok=True, tested=test_card(name, client, actor=actor))        # test
+
+
+def ai_allow(reason: str, actor: str, verified: str) -> dict:
+    """Allow hosted AI (AI_HOSTED_ON_STEPS): a person's decision about data leaving the host, so
+    a reason of their own is required (one line, 10 to 300 characters), written with who and
+    when as `ai_hosted` and recorded. The gateway refuses every call until it is set."""
+    from modules.settings_schema import write_settings
+
+    text = " ".join((reason or "").split())                                        # check
+    if not AI_REASON_MIN <= len(text) <= AI_REASON_MAX:
+        raise Refused(f"a reason of {AI_REASON_MIN} to {AI_REASON_MAX} characters is "
+                      f"required (this one has {len(text)}); hosted AI stays off")
+    now = _now()
+    out = write_settings({"ai_hosted": {"by": actor, "at": _iso(now), "reason": text}},
+                         actor=actor)                                                # write
+    if not out["ok"]:
+        raise Refused(out["error"])
+    entry = _record({"kind": "ai_hosted_allow", "card": "ai", "actor": actor,       # record
+                     "actor_verified": verified, "fields": ["ai_hosted"], "reason": text})
+    return dict(entry, ok=True, nothing=False)
+
+
+def ai_off(actor: str, verified: str) -> dict:
+    """Turn hosted AI off (AI_HOSTED_OFF_STEPS): the allowance emptied and recorded. Off already:
+    nothing written."""
+    from modules.settings_schema import get_setting, write_settings
+
+    if not (get_setting("ai_hosted", {}) or {}).get("reason"):
+        return {"ok": True, "nothing": True, "recorded": True}
+    out = write_settings({"ai_hosted": {}}, actor=actor)                            # write
+    if not out["ok"]:
+        raise Refused(out["error"])
+    entry = _record({"kind": "ai_hosted_off", "card": "ai", "actor": actor,         # record
+                     "actor_verified": verified, "fields": ["ai_hosted"]})
+    return dict(entry, ok=True, nothing=False)
 
 
 def netbox_writes_off(actor: str, verified: str) -> dict:

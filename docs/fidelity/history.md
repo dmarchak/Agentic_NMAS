@@ -32,7 +32,7 @@ the fixture's counts unfiltered); the Baselines tab (`history-baselines`, 1280 a
 real records (`history-real`, 1280).
 Compared 2026-10-16.
 Templates compared: templates/v2/history.html, templates/v2/_history_body.html, templates/v2/_history_remote.html, templates/v2/_history_timeline.html, templates/v2/_timeline.html
-Templates sha256: `cdffbb36d100c038f4ab2da4ed517c128a34e590facd3d74e5b8629b5e0afd3c`
+Templates sha256: `5da74570cc50f940ed61bf6c098fcf28cb900e83af3272c0d135a809e8abf9c8`
 
 Compared again 2026-10-16 (C522) after `_history_body.html`'s Baselines card gained a heading
 row: the count of baselines ("2 baselines") and "How does this work?" in words (to the restore's
@@ -131,6 +131,14 @@ notice. No shot was retaken: Firefox could not start in the runner where this wa
 stylesheet's (`.seg.hist-quick` wraps within its width), not measured. One region added, The
 Kind choices; The Kind menu's Built amended; no other region's verdict changed.
 Templates sha256 before: `6a448609b62db7fda7b875e667b98cb6db107e60b70f8bfdcac9a7e5b505d35d`.
+
+**Compared again 2026-10-25 (Phase 8's 8.0b):** `_history_timeline.html`'s `hx-trigger` gained
+`nmas:ai_calls from:body`, so the fleet's timeline re-reads when an AI call is recorded (the AI
+card's Test; `modules/invalidation.py`'s `ai_calls`). The attribute is the template's only change
+(`git diff` of the five templates: that one line), and it draws nothing: the page and every
+fragment render the same bytes but that attribute. The new kind, AI calls, is data
+(`history_sources.KIND_GROUPS`), drawn as every kind is. No region's verdict changed.
+Templates sha256 before: `cdffbb36d100c038f4ab2da4ed517c128a34e590facd3d74e5b8629b5e0afd3c`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).

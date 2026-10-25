@@ -4,7 +4,7 @@
     redrawn in place when a record lands. A cut list says how much it shows of how many. -#}
 <section class="card hist-timeline" id="hist-timeline"
          hx-get="{{ url_for('v2.history_timeline', device=f.device, person=f.person, kind=f.kinds, since=f.since, limit=f.limit) }}"
-         hx-trigger="nmas:goldens from:body, nmas:deploy_job from:body, nmas:restarts from:body, nmas:acknowledgements from:body, nmas:rotation from:body, nmas:device_state from:body, nmas:inventory from:body, nmas:reveals from:body, nmas:netbox from:body" hx-swap="outerHTML">
+         hx-trigger="nmas:goldens from:body, nmas:deploy_job from:body, nmas:restarts from:body, nmas:acknowledgements from:body, nmas:rotation from:body, nmas:device_state from:body, nmas:inventory from:body, nmas:reveals from:body, nmas:netbox from:body, nmas:ai_calls from:body" hx-swap="outerHTML">
   {%- if f.error %}
   <div class="notice notice-warn">{{ icon('warn') }}<p>Not applied: {{ f.error }}.</p></div>
   {%- endif %}

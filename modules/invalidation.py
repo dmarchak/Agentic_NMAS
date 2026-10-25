@@ -91,6 +91,8 @@ VOCABULARY = {
                    "(modules/saved_views.py, C667)",
     "reveals": "the reveal record: who saw a masked value, when, which and why "
                "(modules/reveal_audit.py); History's timeline draws every kind (C818, C837)",
+    "ai_calls": "the record of AI calls (modules/ai/calls.py): each call, its verdict and its "
+                "cost; History's timeline draws it (Phase 8)",
     "job_health": "job-health rows, as the job-health reader last stored them",
     "alerts": "Grafana's alert rules and instances, as the grafana-alerts reader last stored them",
     "dashboards": "Grafana's dashboards and their models, as the grafana-dashboards reader last stored them",
@@ -392,7 +394,10 @@ DECLARED = {
     "bulk_intent_v2.preview": Nothing("previews the change for the ticked devices; the apply "
                                       "commits"),
     "settings_v2.group_test": Nothing("tests an integration's connection and reports in the card"),
-    "settings_v2.install_test": Nothing("tests an Installation card's service and reports in the card; keeps nothing"),
+    # A card's Test keeps nothing, but the AI card's is one recorded call (Phase 8).
+    "settings_v2.install_test": ("ai_calls",),
+    "settings_v2.install_ai_allow": ("settings",),
+    "settings_v2.install_ai_off": ("settings",),
     "settings_v2.platforms_preview": Nothing("previews a map change from each list's last inventory; writes nothing"),
     "settings_v2.network_source_preview": Nothing("reads NetBox with proposed filters for the preview; writes nothing"),
     "settings_v2.network_create_preview": Nothing("checks a new network's name and the folder it derives; writes nothing"),

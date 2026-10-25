@@ -741,7 +741,9 @@ class TestTheShippedScripts:
         # starts, finishes or its result is opened, C537).
         # +2 2026-10-22: console_ztp (out-of-band ZTP's card listens for its run's end, O6b)
         # and console_servers (Settings › Installation › Console servers redraws, O8).
-        assert len(keys) == 49
+        # +1 2026-10-25: ai_calls (History's fleet timeline redraws when an AI call is
+        # recorded, the AI card's Test; Phase 8's 8.0b).
+        assert len(keys) == 50
         for key in keys:
             assert f"nmas:{key} from:body" in heard, key
         src = _js("nmas_v2.js")

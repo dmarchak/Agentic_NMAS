@@ -382,13 +382,15 @@ def install_save(name):
 
 @bp.route("/installation/card/<name>/test", methods=["POST"])
 def install_test(name):
-    """Board F3: the card's Test, its integration asked now with what is saved."""
+    """Board F3: the card's Test, its integration asked now with what is saved (the AI card's:
+    one recorded call through the gateway, as the person who pressed it)."""
+    from modules import identity
     from modules import installation_settings as I
 
     if name not in I.CARDS:
         return _install(name)
     try:
-        tested = I.test_card(name)
+        tested = I.test_card(name, actor=identity.request_actor())
     except I.Refused as exc:
         return _install(name, 409, refused=str(exc))
     return _install(name, tested=tested)
@@ -403,7 +405,7 @@ def install_replace_form(name):
         return _install(name)
     if not I.CARDS[name]["secret"]:
         return _install(name, 409, refused=f"{I.CARDS[name]['title']} holds no secret to replace")
-    return _fragment("v2/_install_card_replace.html", k=I.card(name))
+    return _fragment("v2/_install_card_replace.html", k=I.card(name, ai_state=False))
 
 
 @bp.route("/installation/card/<name>/replace", methods=["POST"])
@@ -421,9 +423,36 @@ def install_replace(name):
         out = I.replace_secret(name, {k: request.form.get(k) for k in keys},
                                identity.request_actor(), _verified())
     except I.Refused as exc:
-        return _fragment("v2/_install_card_replace.html", 409, k=I.card(name),
+        return _fragment("v2/_install_card_replace.html", 409, k=I.card(name, ai_state=False),
                          refused=str(exc))
     return _install(name, replaced=out, tested=out["tested"])
+
+
+@bp.route("/installation/ai/allow", methods=["POST"])
+def install_ai_allow():
+    """Allow hosted AI: a verified person's decision, with their reason, recorded (PHASE8_PLAN
+    15.8). The gateway refuses every call until it is set."""
+    from modules import identity
+    from modules import installation_settings as I
+
+    try:
+        out = I.ai_allow(request.form.get("reason", ""), identity.request_actor(), _verified())
+    except I.Refused as exc:
+        return _install("ai", 409, refused=str(exc))
+    return _install("ai", ai_allowed=out)
+
+
+@bp.route("/installation/ai/off", methods=["POST"])
+def install_ai_off():
+    """Turn hosted AI off, recorded: the next call is refused."""
+    from modules import identity
+    from modules import installation_settings as I
+
+    try:
+        out = I.ai_off(identity.request_actor(), _verified())
+    except I.Refused as exc:
+        return _install("ai", 409, refused=str(exc))
+    return _install("ai", ai_off=out)
 
 
 @bp.route("/installation/netbox/writes-off", methods=["POST"])

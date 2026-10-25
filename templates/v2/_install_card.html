@@ -38,6 +38,15 @@
     {%- if writes_off.nothing %}<strong>Already off:</strong> nothing was written.
     {%- else %}<strong>NetBox writes turned off</strong> by {{ writes_off.actor_label }} {{ stamp(writes_off.at_iso) }}, for every network{% if not writes_off.recorded %}, and its record could not be written: {{ writes_off.record_error }}{% endif %}.{% endif %}</div></div>
   {%- endif %}
+  {%- if ai_allowed %}
+  <div class="notice notice-{{ 'muted' if ai_allowed.recorded else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<div>
+    <strong>Hosted AI allowed</strong> by {{ ai_allowed.actor_label }} {{ stamp(ai_allowed.at_iso) }}, with the reason below{% if not ai_allowed.recorded %}, and its record could not be written: {{ ai_allowed.record_error }}{% endif %}. Calls go to the model, masked, within the caps; each is recorded under History › AI calls.</div></div>
+  {%- endif %}
+  {%- if ai_off %}
+  <div class="notice notice-{{ 'muted' if ai_off.recorded else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<div>
+    {%- if ai_off.nothing %}<strong>Already off:</strong> nothing was written.
+    {%- else %}<strong>Hosted AI turned off</strong> by {{ ai_off.actor_label }} {{ stamp(ai_off.at_iso) }}: every call is refused until a person allows it again{% if not ai_off.recorded %}, and its record could not be written: {{ ai_off.record_error }}{% endif %}.{% endif %}</div></div>
+  {%- endif %}
   {%- if tested %}
   <div class="notice notice-{{ 'muted' if tested.ok else 'danger' }} set-result" role="status">{{ icon('tick' if tested.ok else 'warn', 16) }}<div>
     <strong>Test {{ 'passed' if tested.ok else 'failed' }}</strong> {{ stamp(tested.at_iso) }}: {{ tested.message if tested.ok else tested.error }}.</div></div>
@@ -73,12 +82,33 @@
       <span class="set-origin">{% if k.writes.last_off %}turned off by {{ k.writes.last_off.actor_label }} {{ stamp(k.writes.last_off.at_iso) }}; {% endif %}no NetBox write runs until a person confirms an authorised one with writes permitted, which turns it on</span>
       {%- endif %}</div>
     {%- endif %}
+    {%- if k.hosted %}
+    <span class="set-label">Hosted AI</span>
+    <div>{%- if k.hosted.allowed %}<span class="set-inline">{{ badge('allowed', 'ok') }}
+      <span class="op-act"><button type="button" class="btn btn-small" data-op="installation-settings" hx-post="{{ url_for('settings_v2.install_ai_off') }}" hx-target="#card-ai" hx-swap="outerHTML" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Turn off</span><span class="op-busy">Turning off…</span></button>{{ how('installation-settings', 'ai-off', compact=True, op='turning hosted AI off') }}</span></span>
+      <span class="set-origin">allowed by {{ k.hosted.by }} {{ stamp(k.hosted.at) }}: “{{ k.hosted.reason }}”</span>
+      {%- else %}{{ badge('off', 'neutral') }}
+      <span class="set-origin">every call is refused until a person allows hosted AI, below, with a reason of {{ k.reason_bounds[0] }} to {{ k.reason_bounds[1] }} characters, recorded</span>
+      {%- endif %}</div>
+    <span class="set-label">Spent today</span>
+    <div>{%- if k.spent.state == 'unreadable' %}{{ badge('unreadable', 'danger') }} <span class="set-origin">the record of AI calls could not be read ({{ k.spent.error }}), so every call is refused</span>
+      {%- else %}<span class="mono">${{ '%.4f' % k.spent.usd }}</span> <span class="set-origin">in {{ k.spent.calls }} call{{ '' if k.spent.calls == 1 else 's' }} today (UTC), against the day cap</span>{% endif %}</div>
+    {%- endif %}
     <div class="set-foot set-form-note">
       <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="installation-settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('installation-settings', 'save', op='saving ' ~ named) }}</span>
-      {%- if s.integration %}
+      {%- if s.integration or s.test %}
       <span class="op-act"><button type="button" class="btn btn-small" data-op="installation-settings" hx-post="{{ url_for('settings_v2.install_test', name=k.name) }}" hx-target="#card-{{ k.name }}" hx-swap="outerHTML" hx-disabled-elt="this" title="Tests what is saved, not what is typed: Save first"{{ gate('configure') }}><span class="op-idle">Test</span><span class="op-busy">Testing…</span></button>{{ how('installation-settings', 'test', compact=True, op='testing ' ~ named) }}</span>
       {%- endif %}
       {%- if s.note %}<span class="muted small">{{ s.note }}</span>{% endif %}
     </div>
   </form>
+  {%- if k.hosted and not k.hosted.allowed %}
+  {#- Allow is its own form: the reason is its control, never the Save's. -#}
+  <form class="set-form" id="form-ai-allow" method="post" action="{{ url_for('settings_v2.install_ai_allow') }}"
+        hx-post="{{ url_for('settings_v2.install_ai_allow') }}" hx-target="#card-ai" hx-swap="outerHTML">
+    <label for="ai-reason">Allow hosted AI</label>
+    <div class="set-inline"><input id="ai-reason" name="reason" type="text" maxlength="{{ k.reason_bounds[1] }}" placeholder="why this installation may send data to a hosted model" autocomplete="off">
+      <span class="op-act"><button type="submit" class="btn btn-small" data-op="installation-settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Allow</span><span class="op-busy">Allowing…</span></button>{{ how('installation-settings', 'ai-allow', compact=True, op='allowing hosted AI') }}</span></div>
+  </form>
+  {%- endif %}
 </section>

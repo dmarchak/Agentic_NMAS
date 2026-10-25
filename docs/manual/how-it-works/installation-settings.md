@@ -87,6 +87,38 @@ There is no confirm step: turning writes off takes nothing away a person must ke
 operation that needs NetBox writes afterwards asks for its own confirm, which turns the switch
 back on.
 
+## AI (hosted) {#ai}
+
+The **AI (hosted)** card holds what Mercury's AI features need to reach a hosted model: the
+**API key** (a secret, typed by a person with **Replace…**, never drawn back), the **Cap per
+call** and **Cap per day** in US dollars, and whether **hosted AI** is allowed. It is off
+until a person allows it. Every call goes through one gateway, which masks what leaves the
+host, refuses a call over a cap before sending it, and records it under **History › AI calls**
+(the feature, the model, the verdict, the cost, who asked). **Spent today** is the day's total
+from that record (UTC); a record that cannot be read refuses every call. The card's **Test**
+is one small, real call: the model is given a word Mercury chose and must give it back, so a
+passing Test means the allowance, the key, the mask, the caps, the model and the record all
+held. It costs a fraction of a cent and is recorded like any call.
+
+## Allow hosted AI {#ai-allow}
+
+Sending network data to a hosted model is a person's decision, so **Allow** needs a reason of
+your own, one line of 10 to 300 characters.
+
+1. `check`: the reason is 10 to 300 characters. Read: nothing. Sent: nothing. A refusal
+   changes nothing and hosted AI stays off.
+2. `write`: who, when and the reason are written as the installation's allowance. Read:
+   nothing. Sent: nothing.
+3. `record`: the allowance, with the reason, is appended to the installation's settings
+   record.
+
+## Turn hosted AI off {#ai-off}
+
+1. `write`: the allowance is emptied. Already off: nothing is written and the card says so.
+2. `record`: who and when are appended to the installation's settings record.
+
+From then on every call is refused, named "hosted AI is off", until a person allows it again.
+
 ## Change the platform map {#platforms}
 
 On the **Platforms and roles** tab: a device that comes from NetBox becomes something Mercury

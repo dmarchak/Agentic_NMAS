@@ -216,6 +216,8 @@ GATES = {
     "settings_v2.network_delete_preview": _g(N, "counts what a network holds and says where its data would go; writes nothing"),
     "settings_v2.records_store_preview": _g(N, "counts a record store's lines, network by network, in the files and the records database for a move's preview; writes nothing"),
     "settings_v2.install_writes_off": _g(K, "turns NetBox's master write switch off for every network, recorded; never turns it on"),
+    "settings_v2.install_ai_allow": _g(K, "allows hosted AI for the installation with the person's reason, recorded (PHASE8_PLAN 15.8)"),
+    "settings_v2.install_ai_off": _g(K, "turns hosted AI off for the installation, recorded"),
     "topology_v2.expected_declare": _g(K, "declares a device an expected island of its "
                                           "network, with a reason, recorded (P.11)"),
     "topology_v2.expected_withdraw": _g(K, "withdraws an expected-island declaration, "
