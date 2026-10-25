@@ -420,7 +420,14 @@ def test_each_job_is_a_gate_command():
     doc = yaml.safe_load(open(os.path.join(ROOT, ".github", "workflows", "ci.yml"),
                               encoding="utf-8"))
     job = doc["jobs"]["test"]
-    assert tuple(job["strategy"]["matrix"]["shard"]) == gate.SHARDS
+    # The matrix is the scope job's (the operator, 2026-10-25): the gate's five for any change
+    # outside docs/, the gate's doc job for a docs-only one, read from nmas-shards, the one rule.
+    assert job["needs"] == "scope"
+    assert job["strategy"]["matrix"]["shard"] == "${{ fromJSON(needs.scope.outputs.shards) }}"
+    shards = _shards_module()
+    assert tuple(shards.matrix(["modules/redact.py", "docs/a.md"])) == gate.SHARDS
+    assert tuple(shards.matrix(None)) == gate.SHARDS, "an unreadable range runs everything"
+    assert shards.matrix(["docs/a.md", "docs/OPEN_FINDINGS.md"]) == [gate.DOC_SHARD]
     assert job["strategy"].get("fail-fast") is False, "every job reports, a failure or not"
     tests = next(s for s in job["steps"] if str(s.get("name", "")).startswith("Tests"))
     assert "$(python scripts/nmas-shards ${{ matrix.shard }})" in tests["run"]
@@ -428,9 +435,54 @@ def test_each_job_is_a_gate_command():
     for s in gate.SHARDS:
         assert gate.SUITE.format(py="P", shard=s, cov="D", n=4, bound=740).endswith(
             f"$(P scripts/nmas-shards {s})")
-    once = [s for s in job["steps"] if s.get("if") == "matrix.shard == 'a'"]
+    once = [s for s in job["steps"]
+            if s.get("if") == "matrix.shard == 'a' || matrix.shard == 'docs'"]
     assert {s["name"][:20] for s in once} == {"No removed definitio", "Every host-installed",
                                               "Every weakened test "}
+    cov = doc["jobs"]["coverage"]
+    assert cov["needs"] == ["scope", "test"]
+    assert cov["if"] == "${{ !cancelled() && needs.scope.outputs.docs_only != 'true' }}"
+
+
+def _shards_module():
+    import importlib.machinery
+    import importlib.util
+    path = os.path.join(ROOT, "scripts", "nmas-shards")
+    loader = importlib.machinery.SourceFileLoader("nmas_shards_for_gate_test", path)
+    spec = importlib.util.spec_from_loader("nmas_shards_for_gate_test", loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+class TestADocsOnlyCommit:
+    """The operator, 2026-10-25: a tree whose every changed path is under docs/ runs the doc
+    set alone (tests/doc_tests.py) and not the ratchet; any other path runs everything."""
+
+    @pytest.fixture
+    def ruled(self, repo):
+        """The fixture's repository with the real rule (tests/doc_tests.py) committed in it."""
+        (repo / "tests").mkdir()
+        with open(os.path.join(ROOT, "tests", "doc_tests.py"), encoding="utf-8") as fh:
+            (repo / "tests" / "doc_tests.py").write_text(fh.read())
+        _git(repo, "add", "tests/doc_tests.py")
+        _git(repo, "commit", "-q", "-m", "the rule")
+        return repo
+
+    def test_a_docs_only_tree_skips_the_ratchet_and_says_why(self, ruled, tmp_path):
+        r = _gate(ruled, tmp_path, ratchet="echo 'ratchet ran' > " + str(tmp_path / "rat")
+                                           + "; exit 1")
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "4. docs only: every one of the 1 changed path(s) is under docs/" in r.stdout
+        assert "4b. the coverage ratchet: not run, docs only" in r.stdout
+        assert not (tmp_path / "rat").exists()
+
+    def test_a_tree_touching_anything_else_runs_the_ratchet(self, ruled, tmp_path):
+        (ruled / "tests" / "test_x.py").write_text("x = 1\n")
+        r = _gate(ruled, tmp_path, ratchet="echo 'ratchet ran' > " + str(tmp_path / "rat")
+                                           + "; echo 'Tests that assert nothing: 0'")
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "docs only" not in r.stdout and (tmp_path / "rat").exists()
 
 
 def test_the_four_jobs_run_at_once_and_each_is_judged(repo, tmp_path, monkeypatch):

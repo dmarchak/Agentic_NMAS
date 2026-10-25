@@ -285,7 +285,19 @@ class TestAPushMeasuresByTierAndTheNightPerTest:
         runs = {s["run"] for s in n_steps if "run" in s}
         missing = [s.get("name") for s in before if "run" in s and s["run"] not in runs]
         assert len([s for s in before if "run" in s]) >= 7 and missing == [], missing   # 7 today
-        assert night["jobs"]["test"]["strategy"] == ci["jobs"]["test"]["strategy"]
+        # CI's matrix is its scope job's (the operator, 2026-10-25: a docs-only push runs the doc
+        # job alone); the night measures every shard, so its matrix is the five CI runs for a
+        # change to code, read from the one rule (`nmas-shards`'s `matrix`), the rest the same.
+        import importlib.machinery
+        import importlib.util
+        path = os.path.join(ROOT, "scripts", "nmas-shards")
+        loader = importlib.machinery.SourceFileLoader("nmas_shards_for_ci_test", path)
+        spec = importlib.util.spec_from_loader("nmas_shards_for_ci_test", loader)
+        shards = importlib.util.module_from_spec(spec)
+        loader.exec_module(shards)
+        code_change = shards.matrix(["modules/redact.py"])
+        ci_strategy = dict(ci["jobs"]["test"]["strategy"], matrix={"shard": code_change})
+        assert night["jobs"]["test"]["strategy"] == ci_strategy
 
     def test_the_nights_tests_take_cis_actions_with_their_options(self):
         """C786 (the first nightly coverage run, 2026-10-14): the night checked out shallow

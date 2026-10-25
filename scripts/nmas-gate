@@ -203,6 +203,23 @@ SNAPSHOT_LOCAL = (".env", "data/lab_hosts.json", "data/publication_denylist.txt"
                   "deploy/grafana/provisioning/alerting/nmas-heartbeat.yaml", "setup.cfg")
 
 
+#: The doc job's name (`scripts/nmas-shards docs`): the doc set alone, for a docs-only tree.
+DOC_SHARD = "docs"
+
+
+def _docs_only(snap, changed) -> bool:
+    """Does every one of *changed* lie under docs/, by the snapshot's own rule
+    (tests/doc_tests.py `docs_only`, the one CI's scope job applies through nmas-shards)?"""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "doc_tests", os.path.join(snap, "tests", "doc_tests.py"))
+    if spec is None or not os.path.isfile(spec.origin):
+        return False                                  # no rule there: everything runs
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.docs_only(changed)
+
+
 #: Every snapshot's folder begins so (in the temporary directory, owner-only by `mkdtemp`).
 SNAPSHOT_PREFIX = "nmas-gate-snapshot-"
 
@@ -505,15 +522,25 @@ def _tested(a, repo, snap, gitdir, tree, head, branch, first_line):
     if os.path.isdir(PG_LIB):
         env["LD_LIBRARY_PATH"] = os.pathsep.join(
             p for p in (PG_LIB, os.environ.get("LD_LIBRARY_PATH", "")) if p)
+    # Docs only (the operator, 2026-10-25): a tree whose every changed path is under docs/ runs
+    # the doc set alone (tests/doc_tests.py, `nmas-shards docs`), as CI's doc job does.
+    changed = git(repo, "diff-tree", "-r", "--name-only", head, tree).stdout.split()
+    docs_only = _docs_only(snap, changed)
+    shards = (DOC_SHARD,) if docs_only else SHARDS
+    if docs_only:
+        say(f"4. docs only: every one of the {len(changed)} changed path(s) is under docs/, so "
+            "the doc set runs (tests/doc_tests.py) and the rest does not")
     if os.environ.get("NMAS_GATE_SUITE"):           # the gate's own tests: one stand-in run
         runs = {"suite": (os.environ["NMAS_GATE_SUITE"], suite_out)}
     else:
         n, words = suite_workers()
+        if docs_only:
+            n = min(CI_WORKERS, n * len(SHARDS))     # one run has the five runs' memory
         say(f"4. workers, from the memory available now: {words}; each shard bound at "
             f"{suite_bound(n)} s")
         runs = {s: (SUITE.format(py=shlex.quote(a.python), shard=s, cov=shlex.quote(cov), n=n,
                                  bound=suite_bound(n)),
-                    os.path.join(gitdir, f"nmas-gate-suite-{s}.out")) for s in SHARDS}
+                    os.path.join(gitdir, f"nmas-gate-suite-{s}.out")) for s in shards}
     # AT MOST ONE FULL-SUITE RUN AT A TIME (the operator, 2026-10-19): held for the suite and
     # the ratchet; another gate, or a bare scripts/nmas-test, refuses naming this one.
     held = hold_full_suite(f"nmas-gate (pid {os.getpid()})")
@@ -534,16 +561,20 @@ def _tested(a, repo, snap, gitdir, tree, head, branch, first_line):
         refuse("the suite", (f"job {name}: " if len(runs) > 1 else "") + why
                + (f" (and {len(whys) - 1} more)" if len(whys) > 1 else ""), out)
 
-    say("4b. the coverage ratchet, CI's coverage job over the four shards' measurement")
-    ratchet_out = os.path.join(gitdir, "nmas-gate-ratchet.out")
-    cmd = os.environ.get("NMAS_GATE_RATCHET") or RATCHET.format(
-        py=shlex.quote(a.python), cov=shlex.quote(cov),
-        files=" ".join(shlex.quote(os.path.join(cov, f".coverage.{s}")) for s in SHARDS))
-    rc = run_to_file(cmd, snap, ratchet_out, env)
-    why = ratchet_failed(ratchet_out, rc)
-    if why:
-        refuse("the coverage ratchet", why, ratchet_out)
-    say("4b. the coverage ratchet holds")
+    if docs_only:
+        say("4b. the coverage ratchet: not run, docs only (the code, and so its coverage, is "
+            "its parent's; CI's coverage job skips it the same way)")
+    else:
+        say("4b. the coverage ratchet, CI's coverage job over the four shards' measurement")
+        ratchet_out = os.path.join(gitdir, "nmas-gate-ratchet.out")
+        cmd = os.environ.get("NMAS_GATE_RATCHET") or RATCHET.format(
+            py=shlex.quote(a.python), cov=shlex.quote(cov),
+            files=" ".join(shlex.quote(os.path.join(cov, f".coverage.{s}")) for s in SHARDS))
+        rc = run_to_file(cmd, snap, ratchet_out, env)
+        why = ratchet_failed(ratchet_out, rc)
+        if why:
+            refuse("the coverage ratchet", why, ratchet_out)
+        say("4b. the coverage ratchet holds")
 
     browser_line = ""
     if a.browser:

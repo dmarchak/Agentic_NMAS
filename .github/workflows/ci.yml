@@ -34,7 +34,35 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  # Which jobs this push runs (the operator, 2026-10-25): a range whose every path is under
+  # docs/ (the register among them) runs the doc job alone, the tests that read documents
+  # (tests/doc_tests.py) and job a's range checks, about 3 minutes; any other range, an
+  # unreadable one or a new branch's, runs the five. CLAUDE.md is not under docs/ (C1287's
+  # lesson: a path filter that skipped it ran neither its tests nor the range checks).
+  scope:
+    name: scope (docs only, or everything)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    outputs:
+      shards: ${{ steps.matrix.outputs.shards }}
+      docs_only: ${{ steps.matrix.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - id: matrix
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          shards=$(python3 scripts/nmas-shards --matrix "${BEFORE:-}" "$AFTER")
+          echo "shards=$shards" >> "$GITHUB_OUTPUT"
+          if [ "$shards" = '["docs"]' ]; then echo "docs_only=true" >> "$GITHUB_OUTPUT"; else echo "docs_only=false" >> "$GITHUB_OUTPUT"; fi
+          echo "this push runs: $shards"
+
   test:
+    needs: scope
     # Five jobs at once (the operator, 2026-10-03: a run took 6.5 to 9 minutes, 93% of it the
     # tests; four since C614: the browser files weighed 40% of the suite; five since
     # 2026-10-24, a trial kept only if the median to verdict falls by a minute, C1637): three
@@ -45,7 +73,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [browser1, browser2, browser3, a, b]
+        # [browser1, browser2, browser3, a, b], or [docs] for a docs-only push (the scope job).
+        shard: ${{ fromJSON(needs.scope.outputs.shards) }}
     runs-on: ubuntu-24.04
     # From a measurement, not a round number (the operator, 2026-09-28), and
     # RE-DERIVED when it moves (2026-10-01): the tests step grew from 207 s
@@ -237,9 +266,10 @@ jobs:
           include-hidden-files: true
           retention-days: 7
 
-      # The three range checks read the pushed range, not the tests: once, in job a.
+      # The three range checks read the pushed range, not the tests: once, in job a (or the
+      # doc job, when it is the only one).
       - name: No removed definition is still called (R2)
-        if: matrix.shard == 'a'
+        if: matrix.shard == 'a' || matrix.shard == 'docs'
         env:
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.sha }}
@@ -257,7 +287,7 @@ jobs:
       # what the host needs: Host-Step or Host-Step-None (2026-09-30). The
       # commit-msg hook refuses it locally; this refuses a bypass.
       - name: Every host-installed change says what the host needs
-        if: matrix.shard == 'a'
+        if: matrix.shard == 'a' || matrix.shard == 'docs'
         env:
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.sha }}
@@ -276,7 +306,7 @@ jobs:
       # (CLAUDE.md, Measurement and testing). The commit-msg hook refuses it locally; this
       # refuses a bypass.
       - name: Every weakened test names its register row
-        if: matrix.shard == 'a'
+        if: matrix.shard == 'a' || matrix.shard == 'docs'
         env:
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.sha }}
@@ -295,10 +325,11 @@ jobs:
   # tests/coverage_baseline.json as the job's verdict.
   coverage:
     name: coverage (function and line, by tier; the ratchet)
-    needs: test
+    needs: [scope, test]
     # On a red run too (a failing test is no reason to hide the report or the ratchet's
-    # verdict); not when the run was cancelled, when there is nothing to combine.
-    if: ${{ !cancelled() }}
+    # verdict); not when the run was cancelled, when there is nothing to combine; not for a
+    # docs-only push, whose code, and so whose coverage, is its parent's.
+    if: ${{ !cancelled() && needs.scope.outputs.docs_only != 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

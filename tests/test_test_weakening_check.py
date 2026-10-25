@@ -398,7 +398,9 @@ class TestTheCommitBeingMade:
         host = next(s for s in steps if 'nmas-host-step-check --range "$RANGE"' in s.get("run", ""))
         mine = next(s for s in steps
                     if 'nmas-test-weakening-check --range "$RANGE"' in s.get("run", ""))
-        assert mine["if"] == host["if"] == "matrix.shard == 'a'"
+        # Shard a, or the doc shard a docs-only push runs alone (its matrix has no a): every
+        # pushed range is still checked once.
+        assert mine["if"] == host["if"] == "matrix.shard == 'a' || matrix.shard == 'docs'"
         assert mine["env"] == host["env"]
         assert mine["run"].replace("nmas-test-weakening-check", "X") == \
             host["run"].replace("nmas-host-step-check", "X")

@@ -68,6 +68,7 @@ DECLARED = {
     ("scripts/nmas-gate", "git"): "the APPLICATION's checkout (the developer's gate)",
     ("scripts/nmas-gate", "main"): "the APPLICATION's checkout (the developer's gate)",
     ("scripts/nmas-stage-guard", "_git"): "the APPLICATION's checkout (what is staged)",
+    ("scripts/nmas-shards", "changed_paths"): "the APPLICATION's checkout (a pushed range)",
     ("scripts/nmas-deploy", "git"): "the APPLICATION's checkout on the host",
     ("scripts/nmas-deploy", "read"): "the APPLICATION's checkout on the host",
     ("scripts/nmas-deploy", "offline_verdict"): "the APPLICATION's checkout on the host",

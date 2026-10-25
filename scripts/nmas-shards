@@ -76,12 +76,47 @@ def assign() -> dict:
     return {k: sorted(v) for k, v in out.items()}
 
 
+#: The job a commit touching only docs/ runs instead of the five (the operator, 2026-10-25):
+#: the doc set (tests/doc_tests.py), and job a's range checks.
+DOCS = "docs"
+
+
+def _doc_tests():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("doc_tests", os.path.join(TESTS, "doc_tests.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def changed_paths(before: str, after: str) -> list:
+    """The paths *before*..*after* changes, or None when the range cannot be read (a new
+    branch's all-zero *before*, an unknown sha): then everything runs."""
+    import subprocess
+    if not before or set(before) == {"0"}:
+        return None
+    r = subprocess.run(["git", "-C", ROOT, "diff", "--name-only", f"{before}..{after}"],
+                       capture_output=True, text=True)
+    return r.stdout.split() if r.returncode == 0 else None
+
+
+def matrix(paths) -> list:
+    """The jobs a change of *paths* runs: the doc job alone when every path is under docs/,
+    else the five (None, an unreadable range, runs the five)."""
+    return [DOCS] if paths is not None and _doc_tests().docs_only(paths) else list(SHARDS)
+
+
 def main(argv=None) -> int:
     argv = sys.argv[1:] if argv is None else argv
-    if len(argv) != 1 or argv[0] not in SHARDS:
-        sys.stderr.write(f"usage: nmas-shards <{'|'.join(SHARDS)}>\n")
+    if len(argv) == 3 and argv[0] == "--matrix":
+        # CI's scope job: `nmas-shards --matrix <before> <after>` prints the JSON matrix.
+        print(json.dumps(matrix(changed_paths(argv[1], argv[2]))))
+        return 0
+    if len(argv) != 1 or argv[0] not in SHARDS + (DOCS,):
+        sys.stderr.write(f"usage: nmas-shards <{'|'.join(SHARDS + (DOCS,))}> | "
+                         "--matrix <before> <after>\n")
         return 2
-    print(" ".join(assign()[argv[0]]))
+    print(" ".join(_doc_tests().doc_set(ROOT) if argv[0] == DOCS else assign()[argv[0]]))
     return 0
 
 
