@@ -27,7 +27,6 @@ implies an adjacency only where the subnet and the network statements say so (a
 neighbour statement, a virtual link or a demand circuit is not modelled here).
 """
 
-# C1669's rollback walk (2026-10-25): this comment is the "bad" change, rolled back next.
 import ipaddress
 import logging
 import re
