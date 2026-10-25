@@ -282,7 +282,10 @@ class TestOtherOnboardingsKeepTheRemover:
             step = _step(got, "netbox")
             assert step == {"step": "netbox", "ok": True, "detail": NOTHING_MADE + (
                 f"; kept: NetBox device s5 (id {world.dev['id']}), not this onboarding's")}, step
-            assert got["netbox"]["kept"] == [world.dev["id"]], got["netbox"]
+            # The step's whole record (the GO path, 2026-10-25): done, the record kept by id,
+            # nothing deleted, nothing skipped.
+            assert got["netbox"] == {"ok": True, "kept": [world.dev["id"]], "deleted": [],
+                                     "skipped": []}, got["netbox"]
         assert out["released"] == "s5" and manifest.find_by_name(world.repo, "s5") == (
             None, None), out
         assert netbox_guard.was_created_by_nmas(LIST, "dcim/devices", world.dev["id"])
@@ -299,7 +302,7 @@ class TestOtherOnboardingsKeepTheRemover:
         step = _step(out, "netbox")
         assert step == {"step": "netbox", "ok": True,
                         "detail": NOTHING_MADE + "; NetBox holds no device named s5"}, step
-        assert out["netbox"]["kept"] == []
+        assert out["netbox"] == {"ok": True, "kept": [], "deleted": [], "skipped": []}, out
 
     def test_the_record_is_read_from_netbox_s_own_address_by_its_exact_name(self, world,
                                                                            monkeypatch):

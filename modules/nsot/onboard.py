@@ -2646,12 +2646,13 @@ def _abandon_onboarding(repo: str, hostname: str, list_name: str, *,
                             "deleted": [], "skipped": []}
         if kept["ok"]:
             retained = ("netbox",)
-    elif (entry or {}).get("netbox_id") in (None, ""):
+    elif not entry.get("netbox_id"):
         # SCOPED TO THIS ONBOARDING (C1597): it recorded no NetBox id, so Verify's NetBox step,
         # the only creator before promotion, never ran, and this onboarding made nothing there.
         # The remover is never called: a record by the name, Mercury's or anyone's, is not this
-        # onboarding's to delete, and is named as kept.
-        kept = _nothing_created_in_netbox(entry.get("name", hostname))
+        # onboarding's to delete, and is named as kept. The entry is the one found by the name
+        # (an identity always has its entry, and its name), so neither needs a default.
+        kept = _nothing_created_in_netbox(entry["name"])
         _step("netbox", True, kept["detail"])
         result["netbox"] = {"ok": True, "kept": kept["kept"], "deleted": [], "skipped": []}
         retained = ("netbox",)
