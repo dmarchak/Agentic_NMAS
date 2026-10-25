@@ -20,7 +20,10 @@ OPEN = re.compile(r"<(button|form)\b", re.I)
 URL = re.compile(r"url_for\(\s*['\"]([\w.]+)['\"]")
 MUT = re.compile(r"\bhx-(post|put|patch|delete)\s*=", re.I)
 POSTFORM = re.compile(r"\bmethod\s*=\s*\"post\"", re.I)
-GATE = re.compile(r"\{\{\s*gate\(\s*'(\w+)'\s*\)\s*\}\}")
+#: `gate('<kind>')`, or an AI control's `ai.attrs(<control>, '<kind>')`, which renders exactly
+#: `gate(kind)` while its control can answer and disables it for everyone while it cannot
+#: (PHASE8_PLAN 15.13; pinned by `test_an_ai_control_s_attrs_are_its_gate_while_it_can_answer`).
+GATE = re.compile(r"\{\{\s*(?:gate\(|ai\.attrs\(\s*\w+\s*,)\s*'(\w+)'\s*\)\s*\}\}")
 
 
 def _tag_end(text, i):
@@ -105,6 +108,28 @@ def test_a_person_sees_it_unchanged(monkeypatch):
     with A.app.test_request_context("/"):
         html = A.app.jinja_env.from_string("<button{{ gate('confirm') }}>Go</button>").render()
     assert html == "<button>Go</button>"
+
+
+@pytest.mark.parametrize("allowed", [True, False], ids=["a-person", "refused"])
+def test_an_ai_control_s_attrs_are_its_gate_while_it_can_answer(monkeypatch, allowed):
+    """The scan above reads `ai.attrs(c, kind)` as `gate(kind)`: so, while the control can
+    answer, the two render the same bytes, for a person and for a refused viewer alike; and
+    while it cannot, the control is disabled whoever looks."""
+    import app as A
+    from modules import identity
+    monkeypatch.setattr(identity, "may", lambda ident, kind, operation="": (
+        (True, "") if allowed else (False, "requires a person")))
+    env = A.app.jinja_env
+    with A.app.test_request_context("/"):
+        gate = env.from_string("<button{{ gate('configure') }}>Go</button>").render()
+        ai = env.from_string("{% import 'v2/_ai.html' as ai %}"
+                             "<button{{ ai.attrs(c, 'configure') }}>Go</button>").render(
+            c={"ready": True})
+        off = env.from_string("{% import 'v2/_ai.html' as ai %}"
+                              "<button{{ ai.attrs(c, 'configure') }}>Go</button>").render(
+            c={"ready": False, "kind": "ai_off"})
+    assert ai == gate
+    assert " disabled" in off and 'data-ai-off="ai_off"' in off
 
 
 def test_the_reason_is_drawn_not_only_on_hover():

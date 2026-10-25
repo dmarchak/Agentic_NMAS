@@ -42,6 +42,8 @@ def world(tmp_path, monkeypatch):
     from modules import history_promq, settings_schema
     monkeypatch.setattr(settings_schema, "get_setting", lambda k, d=None: settings.get(k, d))
     monkeypatch.setattr(gateway, "_api_key", lambda: KEY)
+    # The AI controls ask whether a key is stored, presence only (modules/ai/controls.py).
+    monkeypatch.setattr("modules.ai.controls._key_set", lambda: True)
     monkeypatch.setattr(calls, "_path", lambda: str(tmp_path / "ai_calls.jsonl"))
     monkeypatch.setattr(nl_query, "_inventory", lambda name: [
         {"hostname": "r1", "role": "core"}, {"hostname": "s1", "role": "access"}])
@@ -337,6 +339,27 @@ def test_the_page_draws_ask_in_words_with_its_model_and_its_manual(site):
     assert 'data-op="ask-in-words"' in html and 'data-manual="ask-in-words"' in html
 
 
+def test_ask_in_words_is_an_ai_control_and_the_builder_stays_usable(site, monkeypatch):
+    """PHASE8_PLAN 15.13, through the page's real route: the AI mark with its task, model and
+    cap; with hosted AI off, no key, the day cap reached or the record unreadable, the question
+    box and Fill the builder disabled with the reason in place (the AI card's link for a person
+    who may configure, none for anyone else), while the builder's Ask and choices stay usable."""
+    import re
+
+    from tests import ai_controls_check as AIC
+
+    def get():
+        # A metric chosen, so the builder draws its Ask.
+        return site.get("/v2/history/query/ask/metrics?list=Lab&m=ifHCInOctets"
+                        ).get_data(as_text=True)
+
+    def parity(html):
+        ask = re.findall(r'<button id="lq-ask"[^>]*>', html)
+        assert len(ask) == 1 and " disabled" not in ask[0], ask
+        assert 'id="lq-form"' in html and 'class="lq-chip' in html, "the builder is drawn"
+    AIC.check_screen(monkeypatch, get, "ask_in_words", parity)
+
+
 def test_words_fill_the_builder_and_push_its_address(site):
     site.world.answer = _choices()
     r, html = _words(site, "input errors per interface, the top 5")
@@ -401,6 +424,48 @@ def test_ask_in_words_in_a_browser(site):
     assert "topk(5, rate(ifInErrors" in query, query
     assert not any(p == "api/v1/query_range" for p, _ in site.asked), "it ran the answer"
     assert wide is True and narrow, (wide, narrow)
+
+
+def test_ask_in_words_with_hosted_ai_off_in_a_browser(site, monkeypatch):
+    """PHASE8_PLAN 15.13 in Firefox: with hosted AI off the row is drawn, its box and its
+    button disabled, the reason visible in place with its link to the AI card, the mark's hover
+    naming the task; the builder's Ask still enabled; nothing scrolls sideways at 1440 or at a
+    phone's 390. Shots: NMAS_AI_SHOTS names a folder to keep them in (run only when asked)."""
+    import os as _os
+
+    from tests import ai_controls_check as AIC
+    from tests import browser
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    import app as APP
+
+    AIC.set_state(monkeypatch, "ai_off")
+    shots = _os.environ.get("NMAS_AI_SHOTS", "")
+    got = {}
+    with browser.Served(APP.app) as srv, browser.Browser() as b:
+        try:
+            for width in (1440, 390):
+                b._call("POST", f"/session/{b.session}/window/rect",
+                        {"width": width, "height": 1000})
+                b.go(srv.url("/v2/history/query/ask/metrics?list=Lab&m=ifHCInOctets"))
+                b.wait_for("return !!document.querySelector('[data-ai-off-reason]')", 15)
+                got[width] = b.js(
+                    "var r = document.querySelector('[data-ai-off-reason=ask_in_words]');"
+                    "return {box: document.getElementById('lq-words').disabled,"
+                    " fill: document.querySelector('[data-op=ask-in-words]').disabled,"
+                    " ask: document.getElementById('lq-ask').disabled,"
+                    " shown: r.offsetHeight > 0 && r.getBoundingClientRect().width > 0,"
+                    " words: r.textContent, link: !!r.querySelector('a[href$=\"#card-ai\"]'),"
+                    " mark: document.querySelector('.ai-mark').getAttribute('title'),"
+                    " wide: document.documentElement.scrollWidth <= window.innerWidth + 1}")
+                if shots:
+                    b.screenshot(_os.path.join(shots, f"ask-in-words-off-{width}.png"))
+        finally:
+            b.go("about:blank")
+    for width, g in got.items():
+        assert g["box"] is True and g["fill"] is True and g["ask"] is False, (width, g)
+        assert g["shown"] is True and "hosted AI is off" in g["words"] and g["link"], (width, g)
+        assert "Ask in words (History › Query)" in g["mark"] and g["wide"] is True, (width, g)
 
 
 def test_a_question_back_is_drawn_as_information_with_the_words_kept(site):

@@ -44,12 +44,7 @@
   {%- set words_url = url_for('v2.history_ask_metrics_words') %}{% set words_hidden = hidden() %}
   {%- set words_placeholder = 'input errors per interface, top 5, last 7 days' %}
   {%- include "v2/_history_ask_words.html" %}
-  <div class="lq-row"><span class="lq-lab">Start from</span><div class="lq-chips">
-    {%- for key, title, _a, params in q.presets %}
-    {%- if q.presets_held.get(key) %}<a class="lq-chip{{ ' on' if q.preset_on == key }}" href="{{ here }}{{ q.preset_qs(params) }}" hx-get="{{ region }}{{ q.preset_qs(params) }}" hx-target="#lq" hx-swap="outerHTML"{% if q.preset_on == key %} aria-current="true"{% endif %}>{{ title }}</a>
-    {%- else %}<span class="lq-chip pq-off" aria-disabled="true" title="{{ 'Prometheus holds no ' ~ params.m ~ ' over ' ~ rng.words if q.cat.state == 'ok' else 'Prometheus could not be read' }}">{{ title }}</span>{% endif %}
-    {%- endfor %}
-  </div></div>
+  <div class="lq-row"><span class="lq-lab">Start from</span>{% include "v2/_history_ask_chips.html" %}</div>
 
   <div class="lq-row"><label class="lq-lab" for="pq-mq">What</label><div class="lq-col">
     <form class="pq-search" method="get" action="{{ here }}" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" role="search">{{ hidden(('mq',)) }}<input type="hidden" name="hl" value="what">

@@ -34,6 +34,8 @@ def world(web, monkeypatch, tmp_path):
     from modules import settings_schema
     monkeypatch.setattr(settings_schema, "get_setting", lambda k, d=None: settings.get(k, d))
     monkeypatch.setattr(gateway, "_api_key", lambda: KEY)
+    # The AI controls ask whether a key is stored, presence only (modules/ai/controls.py).
+    monkeypatch.setattr("modules.ai.controls._key_set", lambda: True)
     monkeypatch.setattr(calls, "_path", lambda: str(tmp_path / "ai_calls.jsonl"))
     monkeypatch.setattr(nl_query, "_inventory", lambda name: [
         {"hostname": "r1", "role": "router"}, {"hostname": "s1", "role": "switch"},
@@ -150,6 +152,25 @@ def test_the_logs_builder_draws_ask_in_words_and_a_fill_pushes_its_address(world
     assert "/v2/history/query/ask/logs?" in r.headers["HX-Push-Url"]
     assert not any(p.get("direction") == "backward" for _path, p in world.loki.asked), \
         "it read lines as an answer"
+
+
+def test_ask_in_words_on_the_logs_builder_is_an_ai_control_and_the_builder_stays_usable(
+        world, monkeypatch):
+    """PHASE8_PLAN 15.13 on the logs builder's page, through its real route: the AI mark, and
+    the row disabled with its reason while hosted AI cannot answer; the builder's Ask and
+    choices stay usable."""
+    import re
+
+    from tests import ai_controls_check as AIC
+
+    def get():
+        return world.web.get("/v2/history/query/ask/logs?list=Lab").get_data(as_text=True)
+
+    def parity(html):
+        ask = re.findall(r'<button id="lq-ask"[^>]*>', html)
+        assert len(ask) == 1 and " disabled" not in ask[0], ask
+        assert 'id="lq-form"' in html and 'class="lq-chip' in html, "the builder is drawn"
+    AIC.check_screen(monkeypatch, get, "ask_in_words", parity)
 
 
 def test_ask_in_words_on_the_logs_builder_in_a_browser(world):

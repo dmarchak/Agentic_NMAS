@@ -10,6 +10,12 @@ It makes one call to a hosted model (Anthropic's, the model named in the button'
 through {{product}}'s AI gateway: allowed only once hosted AI is allowed on **Settings ›
 Installation › AI (hosted)**, capped, and recorded with who asked.
 
+The row carries the **AI** mark: hover it for the task, its pinned model and its cap per call.
+When hosted AI cannot answer (it is off, no key is set, or today's cap would be crossed), the
+box and **Fill the builder** are disabled and the reason is written under them; the builder
+itself, its choices and **Ask**, stays as usable as ever (see
+[The AI mark](installation-settings#ai-mark)).
+
 ![Ask in words: the question's words choose the metrics to offer, never the whole catalogue, and a question matching none stops there with nothing sent; one recorded, capped call through the AI gateway, the builder's vocabulary as its cached prefix and the question and the offered metrics as data, answers with the builder's choices; the builder reads them back as it reads a person's, a metric not offered refused and a device the network lacks left out; one time-limited count of the query's series tests it; the builder is drawn filled, and nothing runs until the person presses Ask.](diagrams/ask-in-words.svg)
 
 ## The steps {#steps}
@@ -19,17 +25,27 @@ Installation › AI (hosted)**, capped, and recorded with who asked.
    the metrics your network's devices carry (their series hold the device label) come before
    the monitoring stack's own, so "CPU" means the routers' CPU before the monitoring host's. A
    few network words are read as SNMP's ("traffic" as octets, "interface" as if, "up" as
-   uptime). It is never the whole catalogue. A question that matches no metric stops here, and
-   nothing is sent.
+   uptime). A question that names devices, or a role ("all switches"), is offered only the
+   metrics those devices carry, from one read of Prometheus for each; if a read fails, the
+   offer is the whole catalogue's. It is
+   never the whole catalogue sent. A question that matches no metric stops here: nothing is
+   sent, nothing is spent, and {{product}} answers it itself. **Mercury answered this itself**
+   says which of your words it could not match, asks you to name what to measure and which
+   devices, and gives the Start-from chips as links.
 2. `ask`: one call through the AI gateway, as you. What is sent is masked first. The builder's
    vocabulary (its ranges, operations and filters) is the same on every call, so it is cached.
    Your question, the metrics offered, the devices you named that this network holds, and its
    roles go as data. Metric help text is written by an exporter, not by {{product}}, so it is
    data too, and an instruction inside it is not followed. The answer must be the builder's
-   own choices, in a fixed shape, or one of two other answers. **A question back**, when your
-   words leave a choice only you can make (which device, one line per device or one for all,
-   which interface, or a device this network does not have): it is shown as "One question
-   first", your words stay in the box, and nothing is filled; add the answer and fill again.
+   own choices, in a fixed shape, or one of two other answers. What your words leave unsaid
+   takes a default you see in the builder and can change: one line per device unless you ask
+   for a total (never different devices in one line unasked), and no grouping when you name
+   one device; the inbound variant when you do not say in or out; a count of the things in a
+   state ("sessions not established"); the 5-minute CPU measure; a 64-bit counter where both
+   are offered; and a rate over 5 minutes as a counter's first operation.
+   **A question back**, when your words leave a choice no default settles (which interface,
+   or a device this network does not have): it is shown as "One question first", your words
+   stay in the box, and nothing is filled; add the answer and fill again.
    **A refusal**, when no offered metric answers the question or the builder cannot express it
    (counting restarts, for one): it says why, and nothing is filled. A period like "yesterday"
    becomes the builder's From… to…, in UTC, worked out from the time the question was asked.
@@ -53,8 +69,13 @@ come from Prometheus; nothing is read from or sent to a device.
 
 ## When it says no {#refusals}
 
-- **Hosted AI is off:** nothing is sent until it is allowed, with a reason, on the AI card.
-- **No metric shares a word:** try the metric's own words, or search the builder's Metric box.
+- **Hosted AI is off, no key is set, or today's cap is reached:** the row is disabled before
+  you can ask, with the reason; a call made as the state changed elsewhere is refused before
+  anything is sent, saying the same.
+- **No metric shares a word:** {{product}} answers itself, at no cost: name what to measure in
+  a metric's words and which devices, start from a chip, or search the builder's Metric box.
+- **The answer ran past its length:** nothing is filled, the builder stays as you had it, and
+  it says "Not filled: the answer ran past max_tokens".
 - **Not one of the metrics offered:** the answer named a metric {{product}} did not offer, so
   nothing is filled.
 - **Over a cap:** the call's worst case, and the cap it would cross, are both named.

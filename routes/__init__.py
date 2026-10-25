@@ -54,6 +54,14 @@ def register_blueprints(app) -> list:
     from modules import preview_confirm
     app.jinja_env.globals["gate"] = preview_confirm.control_gate
 
+    # Every AI control draws its mark and whether hosted AI could answer now (PHASE8_PLAN
+    # 15.13): `{% set c = ai_control('<name>') %}`, a name in modules/ai/controls.CONTROLS.
+    # Imported when a page draws one, never at the app's import.
+    def ai_control(name):
+        from modules.ai import controls
+        return controls.control(name)
+    app.jinja_env.globals["ai_control"] = ai_control
+
     # A Content-Security-Policy on every HTML page (C88 (c)): the belt to
     # escaping's braces, bounding where injected script can send data and
     # what it can load; it cannot stop inline script running.

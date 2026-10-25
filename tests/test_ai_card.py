@@ -123,6 +123,29 @@ def test_replace_stores_the_key_never_draws_it_and_its_test_is_refused_while_off
     assert "makes one small, recorded call to the model" in form
 
 
+def test_the_card_s_test_is_an_ai_control_and_save_replace_allow_stay_usable(networks, no_send,
+                                                                            monkeypatch):
+    """PHASE8_PLAN 15.13, through the Installation page's real route: the AI card's Test
+    carries the AI mark with its task, model and cap; while hosted AI cannot answer it is
+    disabled with the reason in place (the card's link for a person who may configure), and
+    Save, Replace… and Allow beside it need no AI and are never disabled for it."""
+    from tests import ai_controls_check as AIC
+
+    def get():
+        return _page(networks)
+
+    def parity(html):
+        card = re.search(r'<section class="card set-card[^"]*" id="card-ai".*?</section>', html,
+                         re.S).group(0)
+        save = re.findall(r'<button type="submit" class="btn btn-primary btn-small"[^>]*>', card)
+        allow = re.findall(r'<form class="set-form" id="form-ai-allow".*?<button[^>]*>', card,
+                           re.S)
+        assert len(save) == 1 and len(allow) == 1, (save, allow)
+        assert "data-ai-off" not in save[0] and "data-ai-off" not in allow[0]
+        assert "/installation/card/ai/replace" in card, "Replace… is drawn"
+    AIC.check_screen(monkeypatch, get, "ai_card_test", parity)
+
+
 @pytest.mark.parametrize("reason", ["", "too short", "x" * 301])
 def test_allow_needs_a_reason_of_its_bounds(networks, no_send, reason):
     r, html = _post(networks, "/v2/settings/installation/ai/allow", {"reason": reason})

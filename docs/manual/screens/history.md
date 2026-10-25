@@ -213,6 +213,10 @@ written by hand; **Edit as code** hands it the query the builder formed). Each c
 address, so **Copy the link** carries the whole question, and **Save this view…** saves it for
 the network like any other view.
 
+- **Ask in words**, at the top of both builders, fills the choices from a question as you
+  would say it, through one recorded AI call (see [Ask in words](ask-in-words)). It carries
+  the **AI** mark; when hosted AI cannot answer it is disabled with the reason under it, and
+  everything below it works as ever (see [The AI mark](installation-settings#ai-mark)).
 - **Start from** sets every choice at once to a common question: interfaces going down, OSPF
   adjacency changes, configuration changes and who made them, errors and worse.
 - **Kind** offers the values of Loki's `job` label over the range: whatever the network's log

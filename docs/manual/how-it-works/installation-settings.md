@@ -107,6 +107,32 @@ is one small, real call: the model is given a word Mercury chose and must give i
 passing Test means the allowance, the key, the mask, the caps, the model and the record all
 held. It costs a fraction of a cent and is recorded like any call.
 
+## The AI mark, and a control shown disabled {#ai-mark}
+
+Every control that needs AI carries the same small **AI** mark: **Ask in words** on History ›
+Query, **Explain** in an alert's evidence pack, and this card's **Test**. Hover it to see the
+task it runs, the model that task is pinned to, and the most one call of it may cost (its cap
+per call, from the table above).
+
+Before drawing such a control, {{product}} asks what the gateway would ask before sending
+anything, in the same order: is hosted AI allowed, is a key stored (only whether one is; its
+value is never read to draw a page), and would today's spend plus this task's cap per call
+still be within the cap per day. If any answer is no, the control is still drawn, never
+hidden, but disabled, its box not fillable, and the reason is written under it:
+
+- **hosted AI is off**: allow it on this card, with a reason;
+- **no Anthropic API key is set**: a person types it with **Replace…** on this card;
+- **today's AI spend plus this task's cap per call is over the day cap**: both amounts and the
+  cap are named; the day starts again at 00:00 UTC, or the cap per day can be raised here;
+- **the record of AI calls cannot be read**: today's spend is unknown, so no call is made.
+
+A person who may change settings also sees a link to this card. The path beside each control
+needs no AI and stays usable whatever the state: the builder (History › Query), the evidence
+pack (Monitoring › Alerts), the intent editor (a device's Intent tab), and this card's
+**Save**, **Replace…** and **Allow**. The state is the one when the page was drawn: if hosted
+AI is turned off in another tab, or the day's cap is reached meanwhile, the gateway still
+refuses the call before anything is sent, and the control says why in place.
+
 ## Allow hosted AI {#ai-allow}
 
 Sending network data to a hosted model is a person's decision, so **Allow** needs a reason of

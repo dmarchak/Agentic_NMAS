@@ -16,8 +16,8 @@ desktop board at 1440 and 1280 beside the page; the phone board at 390 beside th
 390 px column; the three states (refused, Prometheus not answering, no data in range) at 1440.
 Compared 2026-10-15. History's own page (heading, remote line) is board D's; the board's Code
 mode panel is today's Ask your own box, Code on the Mode switch.
-Templates compared: templates/v2/history_ask_metrics.html, templates/v2/_history_body.html, templates/v2/_history_ask_metrics.html, templates/v2/_history_ask_parts.html, templates/v2/_history_ask_head.html, templates/v2/_history_ask_words.html
-Templates sha256: `634fba84df494aab18a4d3c1580cd9200ba238380e68ac14056add4d6c82c05f`
+Templates compared: templates/v2/history_ask_metrics.html, templates/v2/_history_body.html, templates/v2/_history_ask_metrics.html, templates/v2/_history_ask_parts.html, templates/v2/_history_ask_head.html, templates/v2/_history_ask_words.html, templates/v2/_ai.html, templates/v2/_history_ask_chips.html
+Templates sha256: `74389e8daf7572290fae2e4abe0e794acacb361b07104a01e0b0fec8e491282b`
 
 Compared again 2026-10-15 (P7-03): `_history_body.html` gained a `data-concept` marker and one
 sentence inside a Baselines row's detail (the block drawing each baseline's Re-apply… link); this
@@ -56,6 +56,41 @@ same markup, into `_history_ask_words.html`, which both builders include (one ho
 joins the templates compared, so a change to it is compared again. No region here changed;
 the hash written again. Templates sha256 before: `f31e221fd21162962e924384046eb44e2e0bb566163c03851ca2fb002c3f3930`.
 
+Changed 2026-10-25 again (PHASE8_PLAN 15.13, the AI controls' rule): the Ask in words row
+gained the one AI mark beside its label (its hover the task, its pinned model and its per-call
+cap) and, while hosted AI cannot answer (off, no key, the day cap reached, the record
+unreadable), its box and Fill the builder disabled with the reason drawn under them and, for a
+person who may configure, the link to the AI (hosted) card. The row draws them through
+`_ai.html`, which joins the templates compared. Only `_history_ask_words.html` changed, and
+only inside the row; every other region is as it was, and nothing in the builder is disabled
+by AI's state (tests/test_ai_nl_query.py's
+`test_ask_in_words_is_an_ai_control_and_the_builder_stays_usable`; in Firefox at 1440 and 390,
+`test_ask_in_words_with_hosted_ai_off_in_a_browser`). The row's verdict stays **later** with
+8.1's board (Saturday). The hash written again.
+Templates sha256 before: `634fba84df494aab18a4d3c1580cd9200ba238380e68ac14056add4d6c82c05f`.
+
+Changed 2026-10-25 again (C1700, approved by the operator for the sprint):
+- **Ask in words gains a fourth notice.** A question no metric matches is answered by Mercury
+  itself, with no AI call: "Mercury answered this itself, with no AI call ($0)". It says what
+  could not be matched among how many, what to name and which devices, then gives the
+  Start-from chips as links. It is drawn as information, the muted notice and never the
+  warning, and the person's words stay in the box. Its verdict stays **later** with the row
+  (8.1's board, Saturday). Its test is tests/test_ai_nl_offer.py's.
+- **The Start-from chips moved, byte for byte the same, into `_history_ask_chips.html`.** The
+  builder's own row and that answer draw it (one home), and it joins the templates compared.
+  The Start from region is drawn as it was; its verdict stays **same**.
+
+The hash written again.
+Templates sha256 before: `44add06d08bb11d0795a5be383c7b169a11a6d526a4cc600e48bf0106ecf4a43`.
+
+Changed 2026-10-25 again (the gate's fixes):
+- `_ai.html`'s `attrs` takes the control's route's kind (`ai.attrs(c, 'configure')`), which
+  renders exactly `gate(kind)` while the control can answer.
+- Mercury's unmatched words are joined, not looped: the same words drawn.
+
+No region changed; the hash written again.
+Templates sha256 before: `c1890ebd8fc6acb68d7b63d46ea375a2216afb0efb3a8d49a65a1e8bb5313903`.
+
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
 
@@ -63,7 +98,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 |---|---|---|---|
 | Tabs | Timeline, Query, Baselines, Authorisations; Query on | Timeline, Query, Baselines; Query on | **deviation** (log: E3 metrics builder: History's tabs) |
 | Head | "Ask your own ‹ back to the questions"; Source (Metrics, Logs) and Mode (Builder, Code) | the same, shared with F3; Metrics and Builder on | **same** |
-| Ask in words | (not drawn: 8.1 came after E3) | a question, Fill the builder busy on itself, "How does this work?"; the result's notice under it | **later** (8.1's board, the sprint's Saturday, PHASE8_PLAN 15.12) |
+| Ask in words | (not drawn: 8.1 came after E3) | a question, Fill the builder busy on itself, "How does this work?"; the result's notice under it; the AI mark; disabled with its reason (and the AI card's link) while hosted AI cannot answer | **later** (8.1's board, the sprint's Saturday, PHASE8_PLAN 15.12) |
 | Start from | four chips, the one the choices match marked | the same four, each setting every choice; marked when the question is exactly its own; a chip whose metric Prometheus does not hold is drawn but no link | **same** |
 | What | search box, the matching metrics with help, "per interface · counter · bytes", the count read | the same box and list; each with Prometheus's help and its type and unit; the count over the range, when read | **deviation** (log: E3 metrics builder: the metric list) |
 | Devices | + device, by role: core, all 9; "the values the device label holds now" | the same, from the metric's `device` and `role` labels over the range | **deviation** (log: E3 metrics builder: devices, roles and interfaces) |

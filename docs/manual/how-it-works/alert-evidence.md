@@ -66,6 +66,11 @@ An open pack has one button, **Explain**. It makes one call to a hosted model, t
 AI (hosted)**, capped, and recorded with who pressed it. With hosted AI off it says so, and the
 pack is the whole of what {{product}} gathered.
 
+**Explain** carries the **AI** mark: hover it for the task, its pinned model and its cap per
+call. When hosted AI cannot answer (it is off, no key is set, or today's cap would be
+crossed), Explain is drawn disabled with the reason under it, and the pack is drawn whole as
+ever (see [The AI mark](installation-settings#ai-mark)).
+
 1. `pack`: the alert's stored pack is read and its hash checked; a pack that changed since it
    was built is not explained.
 2. `ask`: the pack goes as data (masked when it was built, and masked again on the way out),

@@ -1,4 +1,5 @@
 {%- from "v2/_macros.html" import badge, stamp, how -%}
+{%- import "v2/_ai.html" as ai -%}
 {#- One evidence pack (modules/evidence_pack.py, PHASE8_PLAN 15.9, P1), opened from its card on
     Monitoring › Alerts: each section names its source, when it was read and its state, and
     every section and piece carries the reference the pack minted for it (C1657), which a later
@@ -15,9 +16,13 @@
     {{ pack.rule }} on {{ pack.device or 'no one device' }}{% if pack.network %} in {{ pack.network }}{% endif %}{% if pack.onset %}, onset {{ stamp(pack.onset) }}{% endif %}.
     <span class="mono small" title="sha256 over the pack's canonical JSON; schema {{ pack.schema }}; alert {{ pack.alert_key }}; read from {{ pack.store }}">{{ pack.hash[:12] }}</span>
     {%- if not intact %} {{ badge('its hash does not match: changed since it was built', 'danger') }}{% endif %}</p>
-  {#- Explain (P1's one AI step, a button only, 15.6): the answer replaces the slot below. -#}
+  {#- Explain (P1's one AI step, a button only, 15.6): the answer replaces the slot below. An
+      AI control (PHASE8_PLAN 15.13): the AI mark; disabled with its reason while hosted AI
+      cannot answer, the pack below drawn as ever. -#}
+  {%- set aic = ai_control('explain') %}
   <form class="explain-ask" method="post" action="{{ url_for('v2.monitoring_alert_explain', pack_id=pack.id) }}" hx-post="{{ url_for('v2.monitoring_alert_explain', pack_id=pack.id) }}" hx-target="#explain-{{ pack.id }}" hx-swap="outerHTML">
-    <span class="op-act"><button type="submit" class="btn btn-small" data-op="alert-evidence" hx-disabled-elt="this"{{ gate('configure') }} title="One recorded AI call ({{ explain_model }}), capped; it reads this pack and runs nothing"><span class="op-idle">Explain</span><span class="op-busy">Explaining…</span></button>{{ how('alert-evidence', 'explain', compact=True) }}</span>
+    <span class="op-act">{{ ai.mark(aic) }} <button type="submit" class="btn btn-small" data-op="alert-evidence" hx-disabled-elt="this"{{ ai.attrs(aic, 'configure') }} title="One recorded AI call ({{ explain_model }}), capped; it reads this pack and runs nothing"><span class="op-idle">Explain</span><span class="op-busy">Explaining…</span></button>{{ how('alert-evidence', 'explain', compact=True) }}</span>
+    {{- ai.reason(aic) }}
   </form>
   <div class="explain" id="explain-{{ pack.id }}"></div>
   {%- for s in pack.sections %}

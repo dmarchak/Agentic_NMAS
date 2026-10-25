@@ -12,7 +12,7 @@ import re
 
 from modules import history_promq as pq
 from modules.ai import nl_query
-from tests.test_ai_nl_query import NOW, _ask, world  # noqa: F401 (the fixture)
+from tests.test_ai_nl_query import NOW, _ask, _words, site, web, world  # noqa: F401
 
 FIX = os.path.join(os.path.dirname(__file__), "fixtures", "prometheus")
 FLAPS = "Cisco_IOS_XE_interfaces_oper:interfaces_interface_statistics_num_flaps"
@@ -112,6 +112,69 @@ def test_a_question_no_metric_matches_is_mercury_s_own_answer_at_no_cost(world):
     assert cases.misses({"outcome": ["guide"]}, bare, NOW) == [
         "outcome not the model's: no_match, expected one of ['guide']"], \
         "a no-match without Mercury's answer is no guide"
+
+
+def test_mercury_s_answer_is_drawn_with_what_to_name_and_the_start_from_chips(site):
+    """Through the real metrics route (C1700): the answer says it is Mercury's, at no cost,
+    what to name and which devices, and draws the builder's own Start-from chips as links;
+    nothing was sent and the words stay in the box."""
+    from modules import history_promq as pq
+    r, html = _words(site, "Show me the network")
+    assert r.status_code == 200 and site.world.sent == []
+    assert "Mercury answered this itself</strong>, with no AI call ($0)" in html
+    assert "none of your words names something to measure" in html
+    assert "Name what to measure, in a metric's words" in html and "which devices" in html
+    answer = html.split('class="notice lq-guide"', 1)[1].split("</div></div>", 1)[0]
+    held = [t for k, t, _a, p in pq.PRESETS]
+    assert held and all(f">{t}<" in answer for t in held), "the chips are not in the answer"
+    assert "hx-get=" in answer, "a chip is not a link"
+    assert 'value="Show me the network"' in html, "the person's words were not kept"
+    assert "Not filled:" not in html, "drawn as a refusal"
+
+
+def test_mercury_s_answer_names_the_words_it_could_not_match(site):
+    r, html = _words(site, "flibbertigibbet wobbles on s1")
+    assert site.world.sent == []
+    assert "matches “flibbertigibbet”, “wobbles”" in html
+    assert "you named s1" in html
+
+
+def test_a_question_naming_a_role_is_offered_only_what_its_devices_carry(world):
+    """v3's case 11 (2026-10-25): "all switches" was offered, and twice chose, the monitoring
+    host's own memory. A named role narrows by the role label: one short selector, however
+    many devices hold the role."""
+    world.answer = {"outcome": "ask", "question": "which?", "why_not": "", "metric": "",
+                    "devices": [], "role": "", "interfaces": [], "filters": [],
+                    "operations": [], "top": "none", "range": "24h", "from_utc": "",
+                    "to_utc": ""}
+    asked = _per_device(world)
+    nl_query.metrics("Lab", "Interface status on all access devices",
+                     actor="operator@example.com", send=world.send, client=world.prom,
+                     now=NOW, today="2026-10-25")
+    assert asked == ['{role=~"access"}']
+    offered = _offered_in_request(world)
+    assert offered and set(offered) <= set(_s1()["data"]) and FLAPS not in offered
+
+
+def test_a_device_and_a_role_named_are_offered_what_either_carries(world):
+    world.answer = {"outcome": "ask", "question": "which?", "why_not": "", "metric": "",
+                    "devices": [], "role": "", "interfaces": [], "filters": [],
+                    "operations": [], "top": "none", "range": "24h", "from_utc": "",
+                    "to_utc": ""}
+    asked = _per_device(world)
+    nl_query.metrics("Lab", "Interface status on r1 and the access devices",
+                     actor="operator@example.com", send=world.send, client=world.prom,
+                     now=NOW, today="2026-10-25")
+    assert asked == ['{device=~"r1"}', '{role=~"access"}']
+
+
+def test_a_role_is_named_by_its_word_or_its_plural():
+    roles = ["access", "core", "router", "switch"]
+    assert nl_query.named_roles("Memory used on all switches", roles) == ["switch"]
+    assert nl_query.named_roles("CPU on the routers", roles) == ["router"]
+    assert nl_query.named_roles("errors in the core", roles) == ["core"]
+    assert nl_query.named_roles("show me the network", roles) == []
+    assert nl_query.named_roles("the accessories", roles) == [], "a whole word, not a part"
 
 
 def test_each_device_is_a_literal_in_the_label_s_regex(world):

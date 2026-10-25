@@ -1,0 +1,10 @@
+{#- The metrics builder's Start-from chips (board E's four), one home: the builder's own row and
+    Mercury's answer to a question no metric matches (C1700) draw these same links. Set before
+    the include: *q* (its `presets`, `presets_held`, `preset_on`, `preset_qs`, `cat`), *here*,
+    *region*, *rng*. A chip whose metric Prometheus does not hold is drawn as such. -#}
+<div class="lq-chips">
+    {%- for key, title, _a, params in q.presets %}
+    {%- if q.presets_held.get(key) %}<a class="lq-chip{{ ' on' if q.preset_on == key }}" href="{{ here }}{{ q.preset_qs(params) }}" hx-get="{{ region }}{{ q.preset_qs(params) }}" hx-target="#lq" hx-swap="outerHTML"{% if q.preset_on == key %} aria-current="true"{% endif %}>{{ title }}</a>
+    {%- else %}<span class="lq-chip pq-off" aria-disabled="true" title="{{ 'Prometheus holds no ' ~ params.m ~ ' over ' ~ rng.words if q.cat.state == 'ok' else 'Prometheus could not be read' }}">{{ title }}</span>{% endif %}
+    {%- endfor %}
+  </div>

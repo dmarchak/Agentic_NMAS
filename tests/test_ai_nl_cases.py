@@ -131,7 +131,7 @@ def test_no_case_puts_different_devices_into_one_line_unless_it_asks_for_it():
     line for every device it reaches, a miss unless the case names it (8 and 9 count whether
     any session is down); one line for one named device is that device's."""
     fifteen = SET["cases"][14]["expect"]
-    two = dict(dev=["s3", "s4"], range="7d")
+    two = dict(m="cpuAvgBusy5", dev=["s3", "s4"], range="7d")
     assert cases.misses(fifteen, _answer(**two), NOW) == []
     assert cases.misses(fifteen, _answer(op=["max:"], **two), NOW) == [
         "operations ['max:'] put every device into one line (max:), which the question did "

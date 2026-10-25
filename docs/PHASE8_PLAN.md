@@ -1970,6 +1970,39 @@ default to one line per device; never collapse different devices into one line u
 The prompt is versioned (`nl_metrics` v2), and the judge holds the rule over every case
 (`cases.misses`).
 
+**Per-task thinking is deferred (the operator, 2026-10-25).** `gateway.build_request` carries
+no thinking setting, so every call runs its model's default (Haiku 5.5: adaptive, effort
+medium). The request builder is not changed now. If feature 7 needs a gateway change, a
+per-task thinking setting is batched into that one change, under one hand check; otherwise it
+waits until after the sprint. Ask in words' latency is reported as p50 and p95 per case, from
+v3's five-run measurement.
+
+**v3's five runs and the operator's rulings (2026-10-25).** v3 measured 87 of 100 case-runs
+passing and 12 of 20 cases consistent (60%, against 11.1's Translator floor of 95%). Its p50
+was 3.59 s and its p95 5.25 s, for $0.0004 a case-run. The rulings:
+- **v4** fixes the defaults the runs alternated between: the 5-minute CPU variant, the 64-bit
+  counters, a 5m rate window, and no group when one device is named. **It carries worked
+  examples** (the operator: a prompt is role, context slice, schema and examples). v1 to v3
+  had none. Five examples, each a question and the right fill, demonstrate those defaults: the
+  5-minute CPU by device, a 64-bit counter at a 5m rate, one named device ungrouped, an
+  unstated scope answered per device, and a total asked for. Each uses device, role and metric
+  names no recorded case uses (`edge1`, `edge2`, `edge`, invented CPU names and IF-MIB's
+  unicast packets), so the cases still test generalisation, not recall.
+- **The offer** is narrowed by a named role's devices as well as by named devices.
+- **Case 15** expects `cpuAvgBusy5`, as measured: s3 and s4 carry no `cpmCPUTotal` series.
+- **Case 13:** the metrics builder gains a `changes` operation (PromQL `changes()` over the
+  range; deterministic, outside the tier, tested like the other operations). Case 13 then
+  expects `changes(ifOperStatus{device="s1"}[1d])` or the builder's equivalent. If it cannot
+  land this sprint, the expectation is the `ifOperStatus` graph for today instead; never a
+  refusal.
+- **Sprint ruling 3:** 11.1's floors are measured and gate before release. Ask in words stays
+  on, since every answer only fills the builder for the person to check.
+- **The batched gateway change** (only if one happens anyway): per-task thinking off for
+  `nl_query`, measured against v4. The API's rule, confirmed: Claude Haiku 5.5 returns 400 for
+  any non-default `temperature` or `top_p`, with thinking on or off. So no lower temperature
+  can be sent to it (11.11's per-model temperature has no effect on Haiku 5.5).
+  `thinking: {type: "disabled"}` is accepted at effort high or below.
+
 **A truncated answer is refused whole (the operator, 2026-10-25; 2 of the first 24 live calls
 ran past `max_tokens`).** The gateway reads the stop reason before the answer. A
 `max_tokens` stop is recorded as `max_tokens`, even when the answer is complete and valid,

@@ -172,7 +172,9 @@ how many pieces its pack holds and how many of its sources could not be read. Op
 read its pack, section by section, each with its source, when it was read and the reference
 the pack gave it. **Show** narrows the cards to a rule, device or label. **Earlier** holds the
 packs of alerts that have resolved, the newest 50 drawn. A Needs attention row about an alert
-opens its card here.
+opens its card here. An open pack's **Explain** carries the **AI** mark; when hosted AI cannot
+answer it is disabled with the reason under it, and the pack is drawn whole (see
+[The AI mark](installation-settings#ai-mark)).
 
 The list redraws when the alert reader finishes a read, after any new pack is built. If the
 reader has not read Grafana, or the pack record cannot be read, the tab says so instead of

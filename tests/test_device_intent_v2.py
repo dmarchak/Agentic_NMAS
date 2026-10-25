@@ -81,3 +81,29 @@ class TestTheIntentTab:
         assert "Editing r2's intent" in html and 'id="ie-text"' in html
         plain = lab["client"].get("/v2/device/r2?tab=intent").get_data(as_text=True)
         assert 'id="ie-text"' not in plain
+
+    def test_the_intent_editor_needs_no_ai(self, lab, page, monkeypatch):
+        """Offline parity (PHASE8_PLAN 15.13): the intent editor is the path beside the intent
+        change in words, so whatever hosted AI's state (off, no key, the day cap reached, the
+        record unreadable), the editor is drawn exactly as when it could answer: its document,
+        its reason and its Commit as usable, nothing disabled for AI."""
+        from tests import ai_controls_check as AIC
+
+        def get():
+            r = lab["client"].get("/v2/device/r2/intent/edit")
+            assert r.status_code == 200
+            return r.get_data(as_text=True)
+
+        def controls(html):
+            return AIC.CONTROL_TAG.findall(html)
+        with monkeypatch.context() as m:
+            AIC.set_state(m, "ready")
+            ready = controls(get())
+        doc = [t for t in ready if 'id="ie-text"' in t]
+        commit = [t for t in ready if 'data-op="edit-intent"' in t]
+        assert len(doc) == 1 and len(commit) >= 1, ready
+        assert not any(" disabled" in t for t in doc + commit), doc + commit
+        for kind in AIC.NOT_READY:
+            with monkeypatch.context() as m:
+                AIC.set_state(m, kind)
+                assert controls(get()) == ready, f"{kind}: the editor changed with AI's state"

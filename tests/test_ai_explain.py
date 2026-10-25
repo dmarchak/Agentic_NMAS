@@ -38,6 +38,8 @@ def world(pack_lab, monkeypatch, tmp_path):
     from modules import settings_schema
     monkeypatch.setattr(settings_schema, "get_setting", lambda k, d=None: settings.get(k, d))
     monkeypatch.setattr(gateway, "_api_key", lambda: KEY)
+    # The AI controls ask whether a key is stored, presence only (modules/ai/controls.py).
+    monkeypatch.setattr("modules.ai.controls._key_set", lambda: True)
     monkeypatch.setattr(calls, "_path", lambda: str(tmp_path / "ai_calls.jsonl"))
     pack = _build(_alerts(V6, extra_labels={"ifAlias": INJECTION}))
     assert EP.record(pack)["ok"]
@@ -187,6 +189,24 @@ def test_hosted_ai_off_sends_nothing_and_the_pack_still_draws(world):
     r = c.post(f"/v2/monitoring/alerts/pack/{world.pack['id']}/explain",
                headers={"HX-Request": "true"})
     assert "hosted AI is off until it is allowed" in unescape(r.get_data(as_text=True))
+
+
+def test_explain_is_an_ai_control_and_the_pack_stays_drawn(world, monkeypatch):
+    """PHASE8_PLAN 15.13, through the pack's real route: Explain carries the AI mark with its
+    task, model and cap; while hosted AI cannot answer it is disabled with the reason in place
+    (the AI card's link for a person who may configure), and the evidence pack is drawn whole
+    beside it."""
+    from tests import ai_controls_check as AIC
+
+    def get():
+        return world.lab["client"].get(
+            f"/v2/monitoring/alerts/pack/{world.pack['id']}").get_data(as_text=True)
+
+    def parity(html):
+        assert f'data-pack="{world.pack["id"]}"' in html
+        assert html.count('class="pack-section"') == len(world.pack["sections"]), \
+            "every section of the pack is drawn"
+    AIC.check_screen(monkeypatch, get, "explain", parity)
 
 
 # ---------------------------------------------------------------------------- the card

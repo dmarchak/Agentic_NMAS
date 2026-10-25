@@ -1,20 +1,31 @@
 {%- from "v2/_macros.html" import how, icon -%}
+{%- import "v2/_ai.html" as ai -%}
 {#- Ask in words (PHASE8_PLAN feature 1, 8.1), one row shared by both builders (E3 metrics, F3
     logs): the question fills the builder's choices through the AI gateway; the builder reads
     them back, and nothing runs until Ask. The form carries the choices drawn
     (*words_hidden*), so a refusal or a question back redraws them as they were. Set before
     the include: *q* (its `words`, the result, and `words_model`), *words_url* (where the
-    form posts), *words_hidden* (the builder's own hidden inputs), *words_placeholder*. -#}
+    form posts), *words_hidden* (the builder's own hidden inputs), *words_placeholder*.
+    An AI control (PHASE8_PLAN 15.13): the AI mark; disabled with its reason while hosted AI
+    cannot answer, the builder beside it untouched. -#}
 {%- set w = q.words %}
+{%- set aic = ai_control('ask_in_words') %}
 <form class="lq-row lq-words" method="post" action="{{ words_url }}" hx-post="{{ words_url }}" hx-target="#lq" hx-swap="outerHTML" autocomplete="off">{{ words_hidden }}
-  <label class="lq-lab" for="lq-words">Ask in words</label>
-  <div class="lq-line"><input id="lq-words" class="lq-words-in" type="text" name="words" maxlength="300" value="{{ w.question if w else '' }}" placeholder="{{ words_placeholder }}">
-  <span class="op-act"><button type="submit" class="btn btn-small" data-op="ask-in-words" hx-disabled-elt="this"{{ gate('configure') }} title="One recorded AI call ({{ q.words_model }}), capped; it fills the choices below and runs nothing"><span class="op-idle">Fill the builder</span><span class="op-busy">Filling…</span></button>{{ how('ask-in-words', compact=True) }}</span></div>
+  <label class="lq-lab" for="lq-words">Ask in words {{ ai.mark(aic) }}</label>
+  <div class="lq-line"><input id="lq-words" class="lq-words-in" type="text" name="words" maxlength="300" value="{{ w.question if w else '' }}" placeholder="{{ words_placeholder }}"{{ ai.input_attrs(aic) }}>
+  <span class="op-act"><button type="submit" class="btn btn-small" data-op="ask-in-words" hx-disabled-elt="this"{{ ai.attrs(aic, 'configure') }} title="One recorded AI call ({{ q.words_model }}), capped; it fills the choices below and runs nothing"><span class="op-idle">Fill the builder</span><span class="op-busy">Filling…</span></button>{{ how('ask-in-words', compact=True) }}</span>
+  {{- ai.reason(aic) }}</div>
 </form>
 {%- if w and w.ok %}
 <div class="notice" role="status">{{ icon('info', 16) }}<p>Filled from your words ({{ q.words_model }}, ${{ '%.4f' | format(w.cost_usd) }}){% if w.test %}: {{ w.test }}{% endif %}. Check the choices and the query below, then Ask.</p></div>
 {%- elif w and w.error == 'ask' %}
 <div class="notice" role="status">{{ icon('info', 16) }}<p>One question first: {{ w.clarify }} Add the answer to your words, then fill again.</p></div>
+{%- elif w and w.guide %}
+{#- No metric matched the words, so Mercury answers itself, no model asked (C1700): what it
+    could not match, what to name, and where to start. -#}
+{%- set g = w.guide %}
+<div class="notice lq-guide" role="status">{{ icon('info', 16) }}<div><p><strong>Mercury answered this itself</strong>, with no AI call ($0): {% if g.unmatched %}no metric of the {{ g.searched }} {{ g.among }} matches “{{ g.unmatched | join('”, “') }}”{% else %}none of your words names something to measure{% endif %}. Name what to measure, in a metric's words (CPU, memory, interface errors, bytes in, BGP sessions, uptime), and which devices (a device's name, or a role){% if g.devices %}; you named {{ g.devices | join(', ') }}{% endif %}, then fill again.{% if q.presets %} Or start from one of these:{% endif %}</p>
+{%- if q.presets %}{% include "v2/_history_ask_chips.html" %}{% endif %}</div></div>
 {%- elif w %}
 <div class="notice notice-warn" role="alert">{{ icon('warn', 16) }}<p>Not filled: {{ w.detail }}.</p></div>
 {%- endif %}

@@ -36,6 +36,7 @@
   --gold: #8A6A00; --gold-soft: #FBF3DD; --lab: #6B4FA0; --lab-soft: #EFEAF7;
   --code-bg: #14202B; --code-ink: #E6EDF3; --code-dim: #8FA1B2; --mark: #FFF1C2; --mark-ink: #14202B;
   --sev-line: #E0B84A;
+  --ai: #0E6E78; --ai-soft: #E3F3F4;
   color-scheme: light;
 }
 
@@ -66,6 +67,7 @@
     --gold: #D9B44A; --gold-soft: #2E2610; --lab: #B39DDB; --lab-soft: #2A2240;
     --code-bg: #0A0F14; --code-ink: #E6EAEE; --code-dim: #8FA1B2; --mark: #5C4A12; --mark-ink: #FFF1C2;
     --sev-line: #D9B44A;
+    --ai: #5CC8D2; --ai-soft: #0F2E31;
     color-scheme: dark;
   }
 }
@@ -89,6 +91,7 @@
   --gold: #D9B44A; --gold-soft: #2E2610; --lab: #B39DDB; --lab-soft: #2A2240;
   --code-bg: #0A0F14; --code-ink: #E6EAEE; --code-dim: #8FA1B2; --mark: #5C4A12; --mark-ink: #FFF1C2;
   --sev-line: #D9B44A;
+  --ai: #5CC8D2; --ai-soft: #0F2E31;
   color-scheme: dark;
 }
 
@@ -1196,6 +1199,18 @@ select { max-width: 100%; }
    and its reason drawn on it, never hidden and never only on hover. */
 button[data-refused] { cursor: not-allowed; opacity: 1; }
 button[data-refused]::after { content: " (" attr(data-refused) ")"; font-weight: 400; white-space: normal; }
+/* The AI controls' one mark and their state when hosted AI cannot answer (PHASE8_PLAN 15.13;
+   templates/v2/_ai.html): the mark names the task, model and cap on hover; the reason is drawn
+   in place, on its own line, never only on hover. */
+.ai-mark { display: inline-flex; align-items: center; font-size: 10.5px; font-weight: 600;
+  letter-spacing: .04em; line-height: 1; padding: 2px 5px; border-radius: 4px;
+  background: var(--ai-soft); color: var(--ai); border: 1px solid var(--ai);
+  text-decoration: none; cursor: help; vertical-align: middle; text-transform: none; }
+.ai-off { display: flex; gap: 6px; align-items: flex-start; margin: 4px 0 0; font-size: 12.5px;
+  color: var(--ink-2); flex: 1 1 100%; min-width: 0; }
+.ai-off > svg { flex: none; margin-top: 2px; }
+button[data-ai-off] { cursor: not-allowed; }
+input[type=text][aria-disabled="true"]:disabled { background: var(--muted-soft); color: var(--ink-3); cursor: not-allowed; }
 /* A menu row stays open and busy on itself until its card arrives (C399). */
 .menu-item.htmx-request, .menu-item[aria-busy="true"] { cursor: progress; background: var(--hover); }
 .menu-item.htmx-request::after, .menu-item[aria-busy="true"]::after { content: ""; width: 10px; height: 10px;

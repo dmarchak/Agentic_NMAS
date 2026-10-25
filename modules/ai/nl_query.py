@@ -34,8 +34,10 @@ log = logging.getLogger(__name__)
 FEATURE = "nl_query"
 #: v2 (the operator, 2026-10-25, from the first live run of the recorded cases): an unstated
 #: scope is one line per device, never collapsed unprompted. v3 (v2's live run, case 9):
-#: things in a state are counted, never maxed. Earlier versions stay for their record.
-PROMPT = ("nl_metrics", 3)
+#: things in a state are counted, never maxed. v4 (v3's five runs, the operator): the defaults
+#: the runs alternated between, fixed: the 5-minute CPU, the 64-bit counter, a rate over 5m,
+#: no group for one named device. Earlier versions stay for their record.
+PROMPT = ("nl_metrics", 4)
 #: The operation's steps, named on its manual page (docs/manual/how-it-works/ask-in-words.md).
 STEPS = (
     ("offer", "the metrics sharing a word with the question, never the whole catalogue"),
@@ -221,17 +223,20 @@ def retrieve(question: str, cat: dict, devices_carry: set = frozenset()) -> list
             for *_k, name, help_ in scored[:OFFERED]]
 
 
-def device_metrics(client, rng: dict, devices=()):
+def device_metrics(client, rng: dict, devices=(), label: str = None):
     """The metric names whose series carry the builder's device label over *rng*, or with
-    *devices*, one of those devices (one read of Prometheus's label-values API, matched on
-    that label); None when it cannot be read. Unread, the offer falls back to the words alone,
-    said nowhere, because nothing is lost but a tie-break, or a narrowing."""
+    *devices*, one of those values of *label* (the device label unless named: the role label
+    for a named role, one short selector however many devices hold it); one read of
+    Prometheus's label-values API. None when it cannot be read. Unread, the offer falls back
+    to the words alone, said nowhere, because nothing is lost but a tie-break, or a
+    narrowing."""
     from modules import history_promq as pq
 
-    # Each name a literal in the label's regex: escaped for RE2, then for PromQL's string.
-    sel = (pq.DEVICE_LABEL + '=~"' + "|".join(re.escape(d).replace("\\", "\\\\")
-                                              for d in devices) + '"' if devices
-           else pq.DEVICE_LABEL + '!=""')
+    label = label or pq.DEVICE_LABEL
+    # Each value a literal in the label's regex: escaped for RE2, then for PromQL's string.
+    sel = (label + '=~"' + "|".join(re.escape(d).replace("\\", "\\\\")
+                                    for d in devices) + '"' if devices
+           else label + '!=""')
     names, err = pq._json(client, "api/v1/label/__name__/values",
                           **{"match[]": "{" + sel + "}",
                              "start": str(int(rng["start"])), "end": str(int(rng["end"]))})
@@ -271,6 +276,14 @@ def _inventory(list_name: str) -> list:
     except Exception as exc:                          # noqa: BLE001
         log.warning("nl_query: %s's inventory could not be read: %s", list_name, exc)
         return []
+
+
+def named_roles(question: str, roles: list) -> list:
+    """The network's roles the question names, each as a whole word or its plural ("all
+    switches" names the role switch)."""
+    said = {w.lower() for w in re.findall(r"[A-Za-z][A-Za-z0-9_-]*", question or "")}
+    return sorted(r for r in roles
+                  if r and {r.lower(), r.lower() + "s", r.lower() + "es"} & said)
 
 
 def named_devices(question: str, rows: list) -> list:
@@ -331,15 +344,20 @@ def metrics(list_name: str, question: str, *, actor: str, send=None, client=None
     rows = _inventory(list_name)
     roles = sorted({d["role"] for d in rows if d.get("role")})
     named = named_devices(question, rows)
-    # A question naming devices is offered only what they carry (2026-10-25, recorded case 13:
-    # an IOS switch was offered and given the IOS-XE routers' flap counter, which it has none
-    # of). One read; unreadable, the offer is the whole catalogue's, as before.
-    theirs = device_metrics(probe, rng, named) if named else None
+    by_role = named_roles(question, roles)
+    # A question naming devices or roles is offered only what they carry (2026-10-25: recorded
+    # case 13, an IOS switch offered the IOS-XE routers' flap counter it has none of; v3's
+    # case 11, "all switches" offered the monitoring host's own memory). One read for each
+    # kind named; any unreadable, the offer is the whole catalogue's, as before.
+    reads = ([device_metrics(probe, rng, named)] if named else []) + \
+        ([device_metrics(probe, rng, by_role, label=pq.ROLE_LABEL)] if by_role else [])
+    theirs = set().union(*reads) if reads and None not in reads else None
     pool = dict(cat, names=[n for n in cat["names"] if n in theirs]) if theirs is not None \
         else cat
     offered = retrieve(question, pool, device_metrics(probe, rng) or set())
     if not offered:
-        among = (f"{', '.join(named)} carr{'ies' if len(named) == 1 else 'y'}"
+        scope = named + [f"the {r} role" for r in by_role]
+        among = (f"{', '.join(scope)} carr{'ies' if len(scope) == 1 else 'y'}"
                  if theirs is not None else "Prometheus holds")
         # Mercury answers this itself, no model asked and nothing spent (the operator,
         # 2026-10-25, C1700): what it could not match, what to name, and where to start.

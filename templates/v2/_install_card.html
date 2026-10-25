@@ -1,4 +1,5 @@
 {%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{%- import "v2/_ai.html" as ai -%}
 {#- Board F3 (signed off 2026-10-09): one of Settings › Installation's cards (NetBox
     connection, Proxmox, Commit author, Server), every setting a control, in the board's order
     (the token before field `secret_at`). Its badge is the integrations reader's stored health
@@ -96,7 +97,14 @@
     {%- endif %}
     <div class="set-foot set-form-note">
       <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="installation-settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('installation-settings', 'save', op='saving ' ~ named) }}</span>
-      {%- if s.integration or s.test %}
+      {%- if s.test == 'ai' %}
+      {#- The AI card's Test is one paid call (an AI control, PHASE8_PLAN 15.13): the AI mark;
+          disabled with its reason while hosted AI cannot answer; Save, Replace… and Allow
+          beside it need no AI and stay usable. -#}
+      {%- set aic = ai_control('ai_card_test') %}
+      <span class="op-act">{{ ai.mark(aic) }} <button type="button" class="btn btn-small" data-op="installation-settings" hx-post="{{ url_for('settings_v2.install_test', name=k.name) }}" hx-target="#card-{{ k.name }}" hx-swap="outerHTML" hx-disabled-elt="this" title="Tests what is saved, not what is typed: Save first"{{ ai.attrs(aic, 'configure') }}><span class="op-idle">Test</span><span class="op-busy">Testing…</span></button>{{ how('installation-settings', 'test', compact=True, op='testing ' ~ named) }}</span>
+      {{- ai.reason(aic) }}
+      {%- elif s.integration or s.test %}
       <span class="op-act"><button type="button" class="btn btn-small" data-op="installation-settings" hx-post="{{ url_for('settings_v2.install_test', name=k.name) }}" hx-target="#card-{{ k.name }}" hx-swap="outerHTML" hx-disabled-elt="this" title="Tests what is saved, not what is typed: Save first"{{ gate('configure') }}><span class="op-idle">Test</span><span class="op-busy">Testing…</span></button>{{ how('installation-settings', 'test', compact=True, op='testing ' ~ named) }}</span>
       {%- endif %}
       {%- if s.note %}<span class="muted small">{{ s.note }}</span>{% endif %}
