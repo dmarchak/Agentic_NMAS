@@ -350,12 +350,14 @@ def test_a_read_writes_nothing(net):
 
 # ------------------------------------------------------------------------------- scale
 
-#: Measured 2026-10-25 on the laptop in CI's interpreter (3.12.3): a 900-device build, the
-#: median of five, 0.145 s (worst 0.166); a one-hop subgraph of it with the model kept, the
-#: median of twenty, 0.0037 s (worst 0.0039). Each bound is about 2.5x its median, and each
-#: test takes a median (C463: one sample on a shared CI runner measures the runner).
-BUILD_BOUND_S = 0.4
-CONTEXT_BOUND_S = 0.01
+#: Measured where the test runs, CI's runner (C1741; run #1177, 2026-10-25, browser1 shard
+#: under load): a 900-device build, the median of five, 0.569 s (all: 0.381 to 0.817); a
+#: one-hop subgraph of it with the model kept, the median of seven, 0.0142 s (all: 0.0084 to
+#: 0.0177). The first bounds (0.4 s and 0.01 s) came from the laptop's 0.145 s and 0.0037 s,
+#: so the runner, the slower machine, refused them. Each bound is about 2.5x the runner's
+#: median, and each test takes a median (C463: one sample on a shared runner measures it).
+BUILD_BOUND_S = 1.4
+CONTEXT_BOUND_S = 0.036
 
 
 def _median(fn, n):
