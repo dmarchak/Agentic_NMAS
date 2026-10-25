@@ -1878,3 +1878,16 @@ change's own tests; the Update button).
   run and the mask's dispatched one.
 - **Each screen ships with its browser tests and a short manual page;** its board and its
   fidelity record are batched into Saturday.
+
+**An exception, and its expiry (the operator, 2026-10-25 ~08:0x UTC; CLAUDE.md's Working
+method: an exception names its expiry):**
+- **8.0 deploys before its tier run, with hosted AI off.** The irreversible tier's targeted run
+  comes before **Allow** (the first hosted call), not before this deploy: nothing the mask and
+  the gateway touch can leave the host until a person allows hosted AI with a reason.
+- **It expires at the first clean tier run.** Clean: every survivor in `redact_egress`,
+  `egress_payload` and the gateway (`modules/ai/`) killed or ruled by the operator. The
+  operator does not press Allow until the agent reports it clean.
+- **The run:** the first tier run, #62, was invalid (C1677: mutmut's copy lacked `prompts/` and
+  `schemas/`, so 17 of the gateway's tests could not run in it); its re-run, dispatched once
+  C1677's fix lands, replaces it, and is not a third run this week (the operator). It names the
+  key's write path too, `installation_settings.replace_secret`, changed in 8.0b.

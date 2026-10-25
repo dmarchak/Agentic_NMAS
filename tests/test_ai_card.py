@@ -81,8 +81,15 @@ def test_replace_stores_the_key_never_draws_it_and_its_test_is_refused_while_off
     card = _card(html)
     assert r.status_code == 200 and "API key replaced" in card and KEY not in html
     assert "Test failed" in card and "ai off" in card
-    from modules.secrets_store import get_secret
+    from modules.secrets_store import SECRET_KEYS, get_secret
     assert get_secret("anthropic_api_key") == KEY
+    # Sealed at rest, never in clear in the settings file (the operator, 2026-10-25: a test
+    # fails if anthropic_api_key leaves SECRET_KEYS).
+    from modules.config import USER_SETTINGS_FILE
+    assert "anthropic_api_key" in SECRET_KEYS
+    with open(USER_SETTINGS_FILE, encoding="utf-8") as fh:
+        stored = json.load(fh)["anthropic_api_key"]
+    assert KEY not in stored and stored.startswith("enc:v1:"), "the key is sealed at rest"
     (row,) = [x for x in _record(networks) if x["kind"] == "card_replace"]
     assert row["card"] == "ai" and row["fields"] == ["anthropic_api_key"]
     assert KEY not in json.dumps(_record(networks))
