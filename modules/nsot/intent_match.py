@@ -10,7 +10,9 @@ of that computation.
 Three states, never two:
 - ``match``: the render of committed intent reproduces the capture;
 - ``differs``: it does not, with the counts and the lines (masked: the
-  render is masked by construction);
+  render is masked by construction), and each line's class by P2's rules
+  (`differs.classify`: a VTP switch's VLAN database, order only, a line not
+  modelled, the device's own certificate, or unexplained);
 - ``unknown``: no committed intent, or the render could not be made. Unknown
   is not a match: a baseline asserts intent, and an unmade comparison cannot
   support one.
@@ -66,11 +68,40 @@ def intent_match(repo: str, list_name: str, hostname: str, config_text: str,
         return _unknown(f"committed intent could not be rendered: {exc}")
     drift = artifact.intent_drift
     details = (artifact.report or {}).get("details") or {}
-    lines = ([f"+ {m.get('line', '')}" for m in details.get("extra") or []]
-             + [f"- {m.get('line', '')}" for m in details.get("missing") or []])
+    # Masked here, once, for every reader of the result (C1688, 2026-10-25): the rendered
+    # intent is hydrated with the network's real secrets, so a `+` line can carry a value, and
+    # the lines reach the device page's Intent row, Reload's gate, the deploy and revert
+    # previews (explain) and Save All's baseline refusal (baseline_denial).
+    from modules import redact
+    lines = [redact.redact_text(l) for l in
+             ([f"+ {m.get('line', '')}" for m in details.get("extra") or []]
+              + [f"- {m.get('line', '')}" for m in details.get("missing") or []])]
+    classes, mode = _classes(details, config_text, intent, stored, platform) \
+        if drift.get("differs") else ([], "")
+    classes = [dict(c, lines=[redact.redact_text(l) for l in c.get("lines") or []])
+               for c in classes]
     return {"state": "differs" if drift.get("differs") else "match",
             "adds": drift.get("adds", 0), "removes": drift.get("removes", 0),
-            "reordered": drift.get("reordered", 0), "lines": lines[:LINE_CAP], "why": ""}
+            "reordered": drift.get("reordered", 0), "lines": lines[:LINE_CAP], "why": "",
+            "classes": classes, "vtp_mode": mode}
+
+
+def _classes(details: dict, config_text: str, intent: dict, stored: str, platform: str):
+    """``(classes, vtp mode)``: P2's rules over the difference (`differs.classify`), the VTP
+    mode read from the golden as captured (its `! VTP:` header or its `vtp mode` line), the
+    not-modelled lines from intent and from the golden's own parse. Every line, never only the
+    capped ones. A rule that cannot be applied leaves its lines unexplained, never a guess."""
+    from modules.nsot import differs
+    from modules.nsot.parsers import get_parser
+
+    mode = differs.vtp_mode(config_text)
+    try:
+        captured = get_parser(platform).parse(stored)
+    except Exception as exc:                   # noqa: BLE001
+        log.warning("intent_match: the golden's parse for its not-modelled lines failed: %s", exc)
+        captured = {}
+    return differs.classify(details, vtp_mode=mode,
+                            unmodelled=differs.unmodelled_of(intent, captured)), mode
 
 
 def first_boot(repo: str, hostname: str) -> bool:
@@ -95,7 +126,7 @@ def first_boot_words(hostname: str) -> str:
 
 def _unknown(why: str) -> dict:
     return {"state": "unknown", "adds": 0, "removes": 0, "reordered": 0,
-            "lines": [], "why": why}
+            "lines": [], "why": why, "classes": [], "vtp_mode": ""}
 
 
 def words(result: dict) -> str:

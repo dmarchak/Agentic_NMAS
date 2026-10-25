@@ -550,8 +550,15 @@ def intent_check(ref, dev: dict) -> dict:
                 "on_device": [], "in_intent": [], "commit": (golden.get("commit") or "")[:7]}
     on_device =[redact.redact_text(l[2:]) for l in r["lines"] if l.startswith("- ")]
     in_intent = [redact.redact_text(l[2:]) for l in r["lines"] if l.startswith("+ ")]
+    # P2's rules (`differs`): each class's count and its few words, after the departure's own,
+    # in the row's one text. The state stays the comparison's: a class explains a difference,
+    # it never clears one. The text names up to three of the lines themselves (`explain`), so
+    # it is masked on the way out as the lines beside it are.
+    from modules.nsot import differs
+    by_rule = differs.words(r.get("classes") or [], r.get("vtp_mode") or "")
     return {"name": "Intent", "state": {"match": "ok", "differs": "warn"}.get(r["state"], "unknown"),
-            "text": explain(r), "on_device": on_device, "in_intent": in_intent,
+            "text": redact.redact_text(explain(r) + (f". {by_rule}" if by_rule else "")),
+            "on_device": on_device, "in_intent": in_intent,
             "commit": (golden.get("commit") or "")[:7]}
 
 

@@ -66,6 +66,19 @@ read when you open it (nothing is read from the device):
   apply with nothing sent ([Deploy a change](deploy), [Capture and Save All](capture),
   [Remove lines (Mode B)](removal)).
 
+**Intent** names the lines on the device that intent lacks and the lines in intent the device
+lacks, masked. Where a rule explains some of them, the row says so after its lines, each class
+with its count ("By rule: 2 lines: VLANs a VTP server switch keeps in vlan.dat, never in its
+configuration; 1 line: not explained by a rule"). The rules: VLAN lines intent has on a switch
+whose VTP mode is server or client (such a switch keeps its VLANs in its VLAN database and never
+prints them, so its golden cannot hold them; the mode is read from the golden's capture header
+or its `vtp mode` line, and when neither says, the VLAN lines stay unexplained); a section
+holding the same lines in another order (in an access list or route map that order is a real
+change); a line Mercury does not model, carried as it is in intent; and the device's own
+self-signed certificate. A class explains a difference and never clears it: the row stays a
+departure until the golden matches intent. Whether a VTP switch has a VLAN is read with
+`show vlan id <N>` in [Show commands](show-commands).
+
 ## Intent {#intent}
 
 The device's intent as committed (a file edited on the host but never committed is never
