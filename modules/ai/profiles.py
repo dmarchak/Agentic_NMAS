@@ -10,11 +10,15 @@ so when it is older than `PRICES_STALE_DAYS`.
 **Tasks** pin their model, and the bounds their caps derive from: the most a prompt may hold
 (`max_prompt_tokens`, always under a model's long tier) and the most an answer may
 (`max_tokens`). A task's per-call cap is its pinned model's worst case at those bounds; there is
-no model switch at run time. Changing a task's model is an edit here that re-runs the task's
-recorded cases (their recorded model must be the pinned one: tests/test_ai_gateway.py). The
-rule: a task runs on the cheapest model that meets its floor.
+no model switch at run time. Each task's pin is a file, `pins/<task>.json`, with its request
+settings (thinking, temperature) beside its bounds: tuning one is an edit to that file, read by
+the gateway's unchanged code. Changing a task's model re-runs the task's recorded cases (their
+recorded model must be the pinned one: tests/test_ai_gateway.py). The rule: a task runs on the
+cheapest model that meets its floor.
 """
 import datetime
+import json
+import os
 
 #: Each provider's API shape has one adapter (PHASE8_PLAN 10.3); the gateway is neutral.
 ANTHROPIC = "anthropic"
@@ -32,6 +36,8 @@ MODELS = {
         # lowered: any value but 1, the default, is a 400, thinking on or off (the claude-api
         # reference's Haiku 5.5 migration, breaking change 2; read 2026-10-25).
         "thinking_off": {"type": "disabled"},
+        # The temperatures a pin may send: only the default (same reference, read 2026-10-25).
+        "temperatures": [1],
         "price": {"input": 0.10, "cache_write": 0.125, "cache_read": 0.01, "output": 0.50},
         # "for prompts over 100,000 tokens"
         "long_prompt_tokens": 100_000,
@@ -43,6 +49,9 @@ MODELS = {
         # This model refuses `disabled`; its lowest setting is `between_tools` (the same
         # reference's error codes, read 2026-10-25).
         "thinking_off": {"type": "between_tools"},
+        # Only the default temperature (its migration checklist: remove temperature, top_p
+        # and top_k; read 2026-10-25).
+        "temperatures": [1],
         # Cache hits at 0.05x the input rate (the page's note 2; C1679).
         "price": {"input": 2.00, "cache_write": 2.50, "cache_read": 0.10, "output": 10.00},
     },
@@ -53,25 +62,35 @@ MODELS = {
 #: 2026-10-25): per task, and a measurement may ask either for one run (`gateway.ask`).
 THINKING = ("adaptive", "off")
 
-#: Each task's pinned model and bounds (the operator's ruling of 2026-10-25). `explain` starts
-#: on Sonnet 5.5, then its cases run on Haiku 5.5, pinned there if it meets its 90% floor. A
-#: task names no `thinking` while it is the model's default ("adaptive").
-TASKS = {
-    "connection_check": {"model": "claude-haiku-5-5", "max_prompt_tokens": 2_000,
-                         "max_tokens": 64, "words": "Test connection"},
-    # Measured 2026-10-25 on the lab's captured catalogue: 2,301 to 3,026 tokens (estimated,
-    # an over-estimate) for five questions, 20 metrics offered; 8,000 is about 2.6x, and the
-    # local tier's context (13.1).
-    # max_tokens holds Haiku 5.5's adaptive thinking (on by default) as well as the answer:
-    # the first live run of the 20 recorded cases (2026-10-25) used 346 to 978 output tokens
-    # for answers of about 100, and two ran past 1,024; 2,560 is about 2.6x the 978.
-    "nl_query": {"model": "claude-haiku-5-5", "max_prompt_tokens": 8_000,
-                 "max_tokens": 2_560, "words": "Ask in words (History › Query)"},
-    "explain": {"model": "claude-sonnet-5-5", "max_prompt_tokens": 20_000,
-                "max_tokens": 1_024, "words": "Explain an alert (Monitoring › Alerts)"},
-    "intent_patch": {"model": "claude-sonnet-5-5", "max_prompt_tokens": 40_000,
-                     "max_tokens": 2_048, "words": "An intent change in words"},
-}
+#: Each task's pin is its own file, `pins/<task>.json` (the operator, 2026-10-25: a task's
+#: request settings are read from its pin file, so tuning one is a change to the file, never
+#: to the tier's code). Its keys, exactly: the model and the bounds, and the request's own
+#: settings (`thinking`, one of THINKING; `temperature`, null for the model's default or one
+#: its profile's `temperatures` holds), and `why`, each setting's reason in words.
+PIN_KEYS = ("words", "model", "max_prompt_tokens", "max_tokens", "thinking", "temperature",
+            "why")
+PINS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pins")
+
+
+def load_pins(folder: str = PINS) -> dict:
+    """Every task's pin from *folder*, ``{task: pin}``, a task named by its file. A file whose
+    keys are not exactly `PIN_KEYS`, or that is not JSON, is refused at import, naming it: no
+    task runs on a pin half read."""
+    out = {}
+    for name in sorted(os.listdir(folder)):
+        if not name.endswith(".json"):
+            continue
+        with open(os.path.join(folder, name), encoding="utf-8") as fh:
+            pin = json.load(fh)
+        if sorted(pin) != sorted(PIN_KEYS):
+            raise ValueError(f"pin {name}: keys {sorted(pin)}, expected {sorted(PIN_KEYS)}")
+        out[name[:-len(".json")]] = pin
+    return out
+
+
+#: Each task's pinned model, bounds and request settings (the operator's ruling of
+#: 2026-10-25), from its pin file.
+TASKS = load_pins()
 
 #: The default only for a profile's own checks; a call always takes its task's pin.
 DEFAULT_MODEL = "claude-haiku-5-5"

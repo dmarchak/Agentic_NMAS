@@ -1971,6 +1971,23 @@ method: an exception names its expiry):**
   **Done, 2026-10-25 ~16:4x UTC, at cfa0822b:** 858 mutants, 858 killed; all 15 canaries
   killed; every baseline passed; every file restored identical (docs/TIER_HAND_CHECK.md).
   With #65's 13 functions, the tier is **clean for Allow**, with no equivalent to rule.
+- **A change to tier code (the operator's sprint ruling, 2026-10-25 ~23:0x UTC; the same
+  expiry, Sat 31 Oct):** the hand check covers the mutants on the lines changed since the
+  last proved commit, plus a must-die canary per changed function, logged as before.
+  - cfa0822b's full check stands for every other line while their tests are unchanged.
+  - The cost: minutes, not the full check's hours (`ask` alone has 535 mutants, about
+    100 minutes).
+  - The defect class it prevents: an unproved change to the tier reaching the host because
+    its proof took too long to run before the deploy.
+  - **Its first use** is the batched gateway change and the pin files.
+- **A task's request settings are its pin file's** (the operator, 2026-10-25):
+  `modules/ai/pins/<task>.json` holds each task's model, bounds, `thinking` and
+  `temperature`, with each setting's reason. `profiles.load_pins` reads the files, and
+  `gateway.build_request` reads the settings from the pin. Tuning a task is therefore an
+  edit to its file, not to the tier's code, and needs no tier check.
+  - `ask` still refuses, before anything is sent, a setting the pin's model cannot take: a
+    thinking it has no off form for, or a temperature its profile does not list. Haiku 5.5
+    and Sonnet 5.5 each list only 1, the default.
 
 **The tier's boundary for the rest of the sprint (the operator, 2026-10-25 ~08:2x UTC; it
 expires at the sprint's end, Sat 31 Oct, and at Stage 10 the GO bar returns everywhere,

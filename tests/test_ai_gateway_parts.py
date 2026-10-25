@@ -13,10 +13,13 @@ from modules.ai import calls, gateway, schemas
 from modules.ai.connection import Ping
 
 PROMPT = {"name": "ping", "version": 1, "text": "the prompt's text", "sha256": "0" * 64}
+#: A pin as its file holds it (the model's defaults: no thinking or temperature sent).
+PIN = {"words": "w", "model": "claude-haiku-5-5", "max_prompt_tokens": 2000, "max_tokens": 64,
+       "thinking": "adaptive", "temperature": None, "why": {}}
 
 
 def test_the_request_body_is_exactly_what_is_sent():
-    body = gateway.build_request(PROMPT, Ping, {"b": "two", "a": "one"}, "claude-haiku-5-5", 64,
+    body = gateway.build_request(PROMPT, Ping, {"b": "two", "a": "one"}, PIN,
                                  context={"vocab": "the shared words"})
     assert body == {
         "model": "claude-haiku-5-5",
@@ -31,7 +34,7 @@ def test_the_request_body_is_exactly_what_is_sent():
 
 
 def test_a_call_with_no_data_says_so_and_no_context_marks_the_prompt():
-    body = gateway.build_request(PROMPT, Ping, {}, "claude-haiku-5-5", 64)
+    body = gateway.build_request(PROMPT, Ping, {}, PIN)
     assert body["messages"] == [{"role": "user", "content": "(no data)"}]
     assert body["system"] == [{"type": "text", "text": "the prompt's text",
                                "cache_control": {"type": "ephemeral"}}]

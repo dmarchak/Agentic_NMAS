@@ -1,0 +1,9 @@
+{
+  "words": "An intent change in words",
+  "model": "claude-sonnet-5-5",
+  "max_prompt_tokens": 40000,
+  "max_tokens": 2048,
+  "thinking": "adaptive",
+  "temperature": null,
+  "why": {}
+}

@@ -384,12 +384,61 @@ def test_every_model_s_thinking_off_is_its_documented_form():
         assert mode == "adaptive" or profiles.MODELS[pin["model"]].get("thinking_off"), name
 
 
-def test_build_request_sends_thinking_only_when_given():
-    p = {"text": "p"}
-    assert "thinking" not in gateway.build_request(p, connection.Ping, {"a": "b"}, MODEL, 8)
-    got = gateway.build_request(p, connection.Ping, {"a": "b"}, MODEL, 8,
-                                thinking={"type": "disabled"})
-    assert got["thinking"] == {"type": "disabled"}
+def test_build_request_sends_the_pin_s_settings_only_when_it_names_them():
+    p, pin = {"text": "p"}, dict(profiles.TASKS["connection_check"], max_tokens=8)
+    prof = profiles.MODELS[MODEL]
+    plain = gateway.build_request(p, connection.Ping, {"a": "b"}, pin, profile=prof)
+    assert "thinking" not in plain and "temperature" not in plain
+    assert plain["model"] == MODEL and plain["max_tokens"] == 8
+    got = gateway.build_request(p, connection.Ping, {"a": "b"},
+                                dict(pin, thinking="off", temperature=1), profile=prof)
+    assert got["thinking"] == {"type": "disabled"} and got["temperature"] == 1
+
+
+def test_a_pin_s_temperature_its_model_takes_is_sent(world, monkeypatch):
+    monkeypatch.setitem(profiles.TASKS, "connection_check",
+                        dict(profiles.TASKS["connection_check"], temperature=1))
+    send, sent = _sending(_answer('{"echo": "w"}'))
+    assert _ask(world, send=send)["ok"] is True
+    assert sent[0][0]["temperature"] == 1
+
+
+def test_a_pin_s_temperature_its_model_refuses_is_refused_before_anything_is_sent(
+        world, monkeypatch):
+    """Haiku 5.5 takes only its default, 1 (any other is a 400): a pin naming 0.2 is refused
+    here, naming both, never sent to fail there."""
+    monkeypatch.setitem(profiles.TASKS, "connection_check",
+                        dict(profiles.TASKS["connection_check"], temperature=0.2))
+    words = (f"the pin's temperature 0.2 is not one {MODEL} takes ([1]); nothing was sent")
+    assert _ask(world) == _refused("temperature", words) and world.sent == []
+
+
+def test_every_pin_file_is_exactly_its_keys_and_every_task_has_one(tmp_path):
+    """The operator, 2026-10-25: a task's request settings are its pin file's, so tuning is an
+    edit to the file. A file with a key missing or added is refused at load, naming it."""
+    assert sorted(profiles.TASKS) == ["connection_check", "explain", "intent_patch",
+                                      "nl_query"]
+    for name, pin in profiles.TASKS.items():
+        assert sorted(pin) == sorted(profiles.PIN_KEYS), name
+        assert pin["temperature"] is None or pin["temperature"] in \
+            profiles.MODELS[pin["model"]]["temperatures"], name
+    good = json.loads(open(f"{profiles.PINS}/nl_query.json", encoding="utf-8").read())
+    (tmp_path / "t.json").write_text(json.dumps(dict(good, max_tokens=99)))
+    assert profiles.load_pins(str(tmp_path)) == {"t": dict(good, max_tokens=99)}
+    (tmp_path / "t.json").write_text(json.dumps({k: v for k, v in good.items() if k != "why"}))
+    with pytest.raises(ValueError, match="pin t.json: keys"):
+        profiles.load_pins(str(tmp_path))
+
+
+def test_a_pin_file_s_value_is_what_the_request_carries(world, monkeypatch, tmp_path):
+    """The point of the file: a value changed there reaches the body with no code changed."""
+    good = json.loads(open(f"{profiles.PINS}/connection_check.json", encoding="utf-8").read())
+    (tmp_path / "connection_check.json").write_text(json.dumps(dict(good, max_tokens=77,
+                                                                    thinking="off")))
+    monkeypatch.setattr(profiles, "TASKS", profiles.load_pins(str(tmp_path)))
+    send, sent = _sending(_answer('{"echo": "w"}'))
+    assert _ask(world, send=send)["ok"] is True
+    assert sent[0][0]["max_tokens"] == 77 and sent[0][0]["thinking"] == {"type": "disabled"}
 
 
 def test_the_prices_charged_are_the_tier_of_every_prompt_token_counted(world):

@@ -78,31 +78,35 @@ def _delimited(tag: str, parts: dict) -> str:
     return "\n\n".join(f'<{tag} name="{name}">\n{parts[name]}\n</{tag}>' for name in sorted(parts))
 
 
-def build_request(prompt: dict, schema_model, parts: dict, model: str, max_tokens: int,
-                  context: dict = None, thinking: dict = None) -> dict:
+def build_request(prompt: dict, schema_model, parts: dict, pin: dict, context: dict = None,
+                  profile: dict = None) -> dict:
     """The Messages API body. **The stable prefix, cached** (the operator, 2026-10-25): the
     prompt, then the *context* (what every call of a feature shares, as 8.1's builder
     vocabulary), as system blocks, the last marked `cache_control` (the 5-minute TTL). **The
     call's own parts, uncached**: each as data, delimited by its name, in one user turn (a
     question, an evidence pack). The answer's schema in `output_config.format`. Nothing
     volatile (a time, an id) is ever in the system blocks: any byte that moves there misses
-    the cache for everything after it. *thinking*, when given, is sent as the request's
-    `thinking` (a task's thinking off, its model's own form); none leaves the model's
-    default."""
+    the cache for everything after it. **The request's settings are the task's *pin*'s**
+    (its file, `profiles.load_pins`): its model and `max_tokens`; its `thinking` off sent in
+    the model's own form (*profile*'s `thinking_off`), adaptive sending none; its
+    `temperature` sent when it names one, null sending none. `ask` checks the pin's settings
+    against the model before this is built."""
     system = [{"type": "text", "text": prompt["text"]}]
     if context:
         system.append({"type": "text", "text": _delimited("context", context)})
     system[-1]["cache_control"] = {"type": "ephemeral"}
     body = {
-        "model": model,
-        "max_tokens": int(max_tokens),
+        "model": pin["model"],
+        "max_tokens": int(pin["max_tokens"]),
         "system": system,
         "messages": [{"role": "user", "content": _delimited("data", parts) or "(no data)"}],
         "output_config": {"format": {"type": "json_schema",
                                      "schema": schemas.schema_for(schema_model)}},
     }
-    if thinking:
-        body["thinking"] = dict(thinking)
+    if pin.get("thinking") == "off":
+        body["thinking"] = dict((profile or {})["thinking_off"])
+    if pin.get("temperature") is not None:
+        body["temperature"] = pin["temperature"]
     return body
 
 
@@ -163,7 +167,9 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
         return refuse("unknown_model", str(exc))
     if profile["provider"] != profiles.ANTHROPIC:
         return refuse("unknown_model", f"{model} is not served by the Anthropic adapter")
-    mode = thinking if thinking is not None else pin.get("thinking", "adaptive")
+    # The request's settings are the pin file's; a measurement's *thinking* replaces its one.
+    asked = dict(pin, thinking=thinking) if thinking is not None else pin
+    mode = asked.get("thinking", "adaptive")
     row["thinking"] = mode
     if mode not in profiles.THINKING:
         return refuse("thinking", f"thinking {mode!r} is not one of "
@@ -171,7 +177,11 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
     if mode == "off" and not profile.get("thinking_off"):
         return refuse("thinking", f"{model}'s profile names no way to turn thinking off; "
                       "nothing was sent")
-    sent_thinking = profile["thinking_off"] if mode == "off" else None
+    temperature = asked.get("temperature")
+    if temperature is not None and temperature not in profile.get("temperatures", ()):
+        return refuse("temperature", f"the pin's temperature {temperature!r} is not one "
+                      f"{model} takes ({profile.get('temperatures') or 'none'}); nothing "
+                      "was sent")
     ident = getattr(schema_model, "__ai_schema__", None)
     if ident is None or schemas.REGISTRY.get(ident) is not schema_model:
         return refuse("schema", f"{getattr(schema_model, '__name__', schema_model)} is not a "
@@ -184,9 +194,8 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
     row["prompt_sha256"] = prompt_file["sha256"]
 
     from modules import redact
-    body = redact.egress_payload(build_request(prompt_file, schema_model, parts, model,
-                                               max_tokens, context=context,
-                                               thinking=sent_thinking))
+    body = redact.egress_payload(build_request(prompt_file, schema_model, parts, asked,
+                                               context=context, profile=profile))
     leaked = redact.contains_known_secret(body)
     if leaked:
         return refuse("unmasked_secret", "a stored secret is still in the request after "

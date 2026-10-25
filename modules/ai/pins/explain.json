@@ -1,0 +1,11 @@
+{
+  "words": "Explain an alert (Monitoring › Alerts)",
+  "model": "claude-sonnet-5-5",
+  "max_prompt_tokens": 20000,
+  "max_tokens": 1024,
+  "thinking": "adaptive",
+  "temperature": null,
+  "why": {
+    "model": "Starts on Sonnet 5.5; its cases then run on Haiku 5.5, pinned there if it meets its 90% floor (the operator's ruling, 2026-10-25)."
+  }
+}
