@@ -53,7 +53,10 @@ import nmas_mutation as M  # noqa: E402
 ALSO_COPY = ("modules/", "routes/", "app.py", "telnetlib.py", "tests/", "scripts/", "templates/",
              "static/", "deploy/", "docs/", "lab/", "pytest.ini", "requirements.txt",
              "requirements.lock", "requirements-ci.txt", "requirements-test.txt",
-             "requirements-overrides.txt")
+             "requirements-overrides.txt",
+             # Phase 8's prompt files and committed AI schemas, read beside the program
+             # (modules/ai/prompts.py, modules/ai/schemas.py; C1677).
+             "prompts/", "schemas/")
 STATS = os.path.join(M.ROOT, "mutants", "mutmut-stats.json")
 
 

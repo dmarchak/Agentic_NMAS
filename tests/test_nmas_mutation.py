@@ -1253,6 +1253,38 @@ class TestEveryNightStartsEmpty:
         assert -1 < run.index("M.fresh_workspace()") < first_mutmut, "before mutmut runs"
 
 
+#: Tracked top-level entries mutmut's copy leaves out, each with why no test needs it there.
+NOT_COPIED = {
+    ".claude": "the agent's hooks and settings: no program code or test reads them",
+    ".github": "CI's workflows; the tests that read them read the checkout's (ROOT), never "
+               "the copy's",
+    ".gitignore": "git's, read by no test through the copy",
+    "CLAUDE.md": "the rules' document; tests/test_claude_md.py reads it from ROOT",
+    "README.md": "read by no test",
+    "requirements-mutation.txt": "mutmut's own pins, installed before the copy exists",
+}
+
+
+class TestTheCopy:
+    def test_every_tracked_top_level_entry_is_copied_or_says_why_not(self):
+        """C1677 (2026-10-25): the AI gateway's tests read prompts/ and schemas/ beside the
+        program, two top-level folders 8.0a added and ALSO_COPY did not hold, so 17 of them
+        failed in mutmut's copy with no mutant active and run #62 measured the gateway
+        without them. Every tracked top-level entry is copied, or named here with why."""
+        import ast
+        tree = ast.parse(open(os.path.join(ROOT, "scripts", "nmas-mutation"),
+                              encoding="utf-8").read())
+        also = next(ast.literal_eval(n.value) for n in tree.body if isinstance(n, ast.Assign)
+                    and any(getattr(t, "id", "") == "ALSO_COPY" for t in n.targets))
+        files = subprocess.run(["git", "-C", ROOT, "ls-files"], capture_output=True, text=True,
+                               check=True).stdout.split("\n")
+        top = {f.split("/", 1)[0] for f in files if f}
+        copied = {c.rstrip("/") for c in also}
+        assert sorted(top - copied - set(NOT_COPIED)) == [], "copy it, or say why not"
+        assert set(NOT_COPIED) <= top, "no ghost: each entry names something tracked"
+        assert {"prompts", "schemas"} <= copied
+
+
 class TestTheEquivalentList:
     def test_every_entry_names_a_function_both_lines_and_a_reason(self):
         assert len(EQ.EQUIVALENT) >= 20, "the population: the first pass's and the first night's"
