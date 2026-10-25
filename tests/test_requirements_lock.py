@@ -25,7 +25,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 IMPORT_TO_DIST = {
     "cryptography": "cryptography",
     "dotenv": "python-dotenv", "flask": "Flask", "flask_socketio": "Flask-SocketIO",
-    "jinja2": "Jinja2", "jsonschema": "jsonschema", "jwt": "PyJWT",
+    "jinja2": "Jinja2", "jsonschema": "jsonschema", "jwt": "PyJWT", "pydantic": "pydantic",
     "boto3": "boto3", "botocore": "botocore", "psycopg": "psycopg",
     "psycopg_pool": "psycopg-pool",
     "minio": "minio", "ncclient": "ncclient", "netmiko": "netmiko",

@@ -467,6 +467,16 @@ def _interrupted_holds() -> LineStore:
 LINE_STORES["interrupted_holds"] = _interrupted_holds
 
 
+def _ai_calls_path() -> str:
+    from modules.ai import calls
+    return calls._path()
+
+
+# Phase 8's record of every AI call (modules/ai/calls.py; the operator, 2026-10-25: a records
+# store with the per-store switch), one file for the installation.
+LINE_STORES["ai_calls"] = _installation_store("ai_calls", "AI calls", "calls", _ai_calls_path)
+
+
 # ── The files ────────────────────────────────────────────────────────────────────────────────
 
 def file_networks(store: str = STORE) -> dict:

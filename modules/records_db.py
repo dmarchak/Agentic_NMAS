@@ -61,7 +61,7 @@ STORES = ("receipts", "acknowledgements", "restarts", "restart_windows", "restar
           "breakglass_drills", "reveals", "host_steps_done", "heartbeat_rules", "netbox_removals",
           "network_settings_record", "onboarding_runs", "inventory_edits", "approval_queue",
           "rollback_blocks", "retry_log", "netbox_created", "netbox_modified", "netbox_adopted",
-          "interrupted_holds", "reader_values")
+          "interrupted_holds", "reader_values", "ai_calls")
 STORE_WORDS = {"receipts": "Deploy receipts", "acknowledgements": "Acknowledgements",
                "restarts": "Restarts seen", "restart_windows": "Planned-restart windows",
                "restart_window_ends": "Planned-restart windows ended early",
@@ -79,7 +79,7 @@ STORE_WORDS = {"receipts": "Deploy receipts", "acknowledgements": "Acknowledgeme
                "netbox_modified": "NetBox objects modified",
                "netbox_adopted": "NetBox objects adopted",
                "interrupted_holds": "Interrupted operations",
-               "reader_values": "Stored reader values"}
+               "reader_values": "Stored reader values", "ai_calls": "AI calls"}
 FILE, POSTGRES = "file", "postgres"
 
 

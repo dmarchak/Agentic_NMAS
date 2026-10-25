@@ -129,6 +129,16 @@ DEFAULTS: dict = {
     # always said, where it once defaulted on for a fresh install. An install that set it keeps
     # its value; the host's is already False.
     "background_agent_enabled": False,
+    # Phase 8's gateway (modules/ai/gateway.py; PHASE8_PLAN 13.1, 15.8, 15.12). The key is a
+    # secret, typed by a person, empty until then. Hosted AI is OFF until an admin allows it
+    # with a recorded reason (`{"by", "at", "reason"}`, the settings_not_applicable pattern):
+    # no measurement can decide that, it is a person's decision about data leaving the host.
+    # The caps: a call's worst case, and a day's spend (PHASE8_PLAN 7 caps a month at $50;
+    # a day's $1.50 stays under it), each a person's to change.
+    "anthropic_api_key":        "",
+    "ai_hosted":                {},
+    "ai_cap_usd_per_call":      0.05,
+    "ai_cap_usd_per_day":       1.50,
     "wf_read_first":            True,
     "wf_auto_backup":           True,
     "wf_run_jenkins":           True,
@@ -462,6 +472,7 @@ DEFAULTS: dict = {
     "records_store_netbox_adopted": "file",
     "records_store_interrupted_holds": "file",
     "records_store_reader_values": "file",
+    "records_store_ai_calls": "file",
 
     # ── Platform map (NetBox platform slug → how NMAS treats the device) ────
     # This map is what makes multi-vendor support a configuration change rather
@@ -691,6 +702,11 @@ SCHEMA: dict = {
 
         "ai_enabled": _BOOL,
         "background_agent_enabled": _BOOL,
+        "anthropic_api_key": _STR,
+        "ai_hosted": {"type": "object", "additionalProperties": False,
+                      "properties": {"by": _STR, "at": _STR, "reason": _STR}},
+        "ai_cap_usd_per_call": {"type": "number", "minimum": 0, "maximum": 5},
+        "ai_cap_usd_per_day": {"type": "number", "minimum": 0, "maximum": 50},
         "wf_read_first": _BOOL,
         "wf_auto_backup": _BOOL,
         "wf_run_jenkins": _BOOL,
@@ -869,6 +885,7 @@ SCHEMA: dict = {
         "records_store_netbox_adopted": {"type": "string", "enum": ["file", "postgres"]},
         "records_store_interrupted_holds": {"type": "string", "enum": ["file", "postgres"]},
         "records_store_reader_values": {"type": "string", "enum": ["file", "postgres"]},
+        "records_store_ai_calls": {"type": "string", "enum": ["file", "postgres"]},
 
         "platform_map": {
             "type": "object",

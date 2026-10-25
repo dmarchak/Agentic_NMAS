@@ -57,6 +57,10 @@ PyYAML==6.0.1
 # Settings schema validation: settings are plain dicts round-tripped through
 # config.load_user_settings, so a declarative schema layers on without typed models.
 jsonschema==4.10.3
+# AI input and output schemas, strict (Phase 8, PHASE8_PLAN 15.4; the operator approved the
+# licence 2026-10-25, 15.12: pydantic, pydantic-core, annotated-types, typing-inspection, MIT).
+# 2.13.5 (2026-08-28), the last patch of 2.13; settings keep jsonschema.
+pydantic==2.13.5
 
 # S3-compatible archive: newer boto3 sends default checksum headers some MinIO releases
 # reject. An absent client reads "not installed"; the archive never blocks a commit.

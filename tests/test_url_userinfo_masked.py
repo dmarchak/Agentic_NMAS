@@ -78,6 +78,9 @@ ENTRY_POINTS = {
     "modules/nsot/config_check.py:mask": lambda: (
         __import__("modules.nsot.config_check", fromlist=["_Run"])._Run(".", False).mask(PLANTED)),
     "modules/redact.py:redact_text": lambda: redact.redact_text(PLANTED, values={}),
+    # What leaves the host through Phase 8's gateway (C1654): redact_text, then the egress
+    # shapes.
+    "modules/redact.py:redact_egress": lambda: redact.redact_egress(PLANTED, values={}),
     # A golden's archive copy (C730): the bytes the bucket receives.
     "modules/integrations/s3_archive.py:masked_golden": lambda: __import__(
         "modules.integrations.s3_archive", fromlist=["x"]).masked_golden(

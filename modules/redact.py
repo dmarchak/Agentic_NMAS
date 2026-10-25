@@ -361,6 +361,78 @@ def redact_payload(payload, values: dict = None):
     return _walk(payload)
 
 
+# ---------------------------------------------------------------------------
+# The egress boundary (C1654): what leaves the host, never what Mercury stores
+# ---------------------------------------------------------------------------
+
+#: The shapes `redact_text` leaves in clear because its positions are anchored where a
+#: configuration puts them (C1654, measured 2026-10-24: a log line quoting `enable secret 9
+#: $9$…` mid-line, a bare `$1$…` hash, `neighbor … password 7 <hex>` mid-sentence; C745:
+#: `message-digest-key`, `snmp-server user … auth/priv`). Applied ONLY to a payload leaving the
+#: host (Phase 8's gateway), never to a golden or a store, so it may over-mask: a word after
+#: "password" in prose is masked too, which costs the model a word and leaks nothing.
+#: Addresses and hostnames are never masked. Each entry captures (prefix, secret, suffix).
+_EGRESS = (
+    # A secret or password anywhere on a line, an optional type number before it.
+    ("egress_password", re.compile(
+        r"(?i)\b((?:secret|password)\s+(?:\d+\s+)?)" + _VALUE + r"()")),
+    # `key N <x>` anywhere (authentication-key, message-digest-key, key 7, ntp's
+    # authentication-key N md5 <x>), an optional algorithm and type before the value.
+    ("egress_key", re.compile(
+        r"(?i)\b(key\s+\d+\s+(?:(?:md5|sha\S*|hmac-\S+)\s+)?(?:\d+\s+)?)" + _VALUE + r"()")),
+    # SNMPv3 `auth <md5|sha…> <x>` and `priv <des|3des|aes [N]> <x>`.
+    ("egress_snmp_auth", re.compile(
+        r"(?i)\b(auth\s+(?:md5|sha\S*)\s+)" + _VALUE + r"()")),
+    ("egress_snmp_priv", re.compile(
+        r"(?i)\b(priv\s+(?:des|3des|aes)(?:\s+\d+)?\s+)" + _VALUE + r"()")),
+    # A hash-shaped token wherever it stands: crypt's $1$ (MD5), $5$ (SHA-256), and IOS's $8$
+    # (PBKDF2), $9$ (scrypt), $14$ (the type 5 successor).
+    ("egress_hash", re.compile(
+        r"()(?<![A-Za-z0-9_$])(\$(?:1|5|8|9|14)\$[^\s'\"<>]+)()")),
+)
+
+
+def redact_egress(text: str, values: dict = None) -> str:
+    """Mask *text* for a payload leaving the host (C1654): `redact_text` (by position and by
+    known value), then every secret, password and key value anywhere on a line, SNMPv3's
+    auth and priv values, and every hash-shaped token. Idempotent: a placeholder is left
+    alone. Never applied to what Mercury stores (goldens stay verbatim)."""
+    if not text:
+        return text
+    text = redact_text(text, values)
+
+    def _sub(label):
+        def _replace(match):
+            token = match.group(2)
+            if _ALREADY.match(token):
+                return match.group(0)
+            return match.group(1) + PLACEHOLDER.format(label=label) + match.group(3)
+        return _replace
+
+    for label, pattern in _EGRESS:
+        text = pattern.sub(_sub(label), text)
+    return text
+
+
+def egress_payload(payload, values: dict = None):
+    """`redact_egress` over every string of a payload (dicts, lists, tuples), the table of
+    known values resolved once, as `redact_payload` does."""
+    values = known_secret_values() if values is None else values
+
+    def _walk(node):
+        if isinstance(node, str):
+            return redact_egress(node, values)
+        if isinstance(node, dict):
+            return {k: _walk(v) for k, v in node.items()}
+        if isinstance(node, list):
+            return [_walk(v) for v in node]
+        if isinstance(node, tuple):
+            return tuple(_walk(v) for v in node)
+        return node
+
+    return _walk(payload)
+
+
 def contains_known_secret(payload) -> list:
     """Labels of any known secret present in *payload*. For tests and audits."""
     values = known_secret_values()

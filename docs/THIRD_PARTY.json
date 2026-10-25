@@ -96,7 +96,9 @@
   "static/css/nmas-v2.css": "this repository's",
   "static/img/topology/*": "the project's OWN device symbols: router and switch drawn 2026-10-04 in the conventional network-diagram style (the operator: no third-party artwork), server, cloud and the dashed circle (class unknown) drawn 2026-10-10, firewall, access point and controller drawn 2026-10-10 for the board's legend; the project's licence",
   "static/img/brand/*": "the project's OWN Mercury mark and icons (NSOT_STAGE7_PLAN 19), drawn by modules/brand.py from the operator's master geometry; the PNG rendered from its SVG by scripts/nmas-brand-icons; the project's licence",
-  "static/js/vendor/MANIFEST.json": "this repository's record of the vendored files"
+  "static/js/vendor/MANIFEST.json": "this repository's record of the vendored files",
+  "prompts/*": "this repository's prompts, versioned files (Phase 8, PHASE8_PLAN 4)",
+  "schemas/*": "this repository's AI schemas, generated from modules/ai and committed (PHASE8_PLAN 15.4)"
  },
  "audit": [
   "tests/fixtures/grafana/dashboards/rcn-lab-overview.json and rcn-lab1-snmp.json: captured from the lab's Grafana. Confirm neither was imported from grafana.com under terms that forbid redistribution",
@@ -105,6 +107,13 @@
   "The history: no Cisco image, licence file, proprietary MIB or key was ever committed (NSOT_STAGE10_PLAN 8.2a); lab tooling names images the person supplies and ships none"
  ],
  "python": {
+  "annotated-types": {
+   "name": "annotated-types",
+   "version": "0.8.0",
+   "licence": "MIT",
+   "source": "https://pypi.org/project/annotated-types/0.8.0/",
+   "from": "requirements.lock"
+  },
   "attrs": {
    "name": "attrs",
    "version": "23.2.0",
@@ -371,6 +380,20 @@
    "source": "https://pypi.org/project/pycparser/3.11/",
    "from": "requirements.lock"
   },
+  "pydantic": {
+   "name": "pydantic",
+   "version": "2.13.5",
+   "licence": "MIT",
+   "source": "https://pypi.org/project/pydantic/2.13.5/",
+   "from": "requirements.lock"
+  },
+  "pydantic-core": {
+   "name": "pydantic_core",
+   "version": "2.46.5",
+   "licence": "MIT",
+   "source": "https://pypi.org/project/pydantic-core/2.46.5/",
+   "from": "requirements.lock"
+  },
   "pygments": {
    "name": "Pygments",
    "version": "2.17.2",
@@ -509,6 +532,13 @@
    "version": "4.16.0",
    "licence": "PSF-2.0",
    "source": "https://pypi.org/project/typing_extensions/4.16.0/",
+   "from": "requirements.lock"
+  },
+  "typing-inspection": {
+   "name": "typing-inspection",
+   "version": "0.4.4",
+   "licence": "MIT",
+   "source": "https://pypi.org/project/typing-inspection/0.4.4/",
    "from": "requirements.lock"
   },
   "urllib3": {

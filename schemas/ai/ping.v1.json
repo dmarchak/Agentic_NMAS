@@ -1,0 +1,15 @@
+{
+  "additionalProperties": false,
+  "description": "The connection check's answer: the word it was given, back.",
+  "properties": {
+    "echo": {
+      "title": "Echo",
+      "type": "string"
+    }
+  },
+  "required": [
+    "echo"
+  ],
+  "title": "Ping",
+  "type": "object"
+}

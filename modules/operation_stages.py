@@ -432,6 +432,9 @@ WRITTEN_ELSEWHERE = {
                  "the approve and reject routes left with the AI family (D15)",
     "show_commands": "a Show commands run's record (modules/nsot/reads.py), written by the two "
                      "reveal routes that read devices, Ask the device and Show commands",
+    "ai_calls": "the AI gateway's record (modules/ai/calls.py), one row per call, written by "
+                "modules/ai/gateway.ask whoever calls it: the connection check "
+                "(modules/ai/connection.py) and each Phase 8 feature",
     "reveals": "the reveal record (modules/reveal_audit.py), written by the reveal routes: a "
                "golden version (device_v2.golden_reveal), a bootstrap config "
                "(onboard_v2.bootstrap, onboard.bootstrap, the ZTP responder) and a log line "

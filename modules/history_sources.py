@@ -922,6 +922,30 @@ def updates(ctx):
                  for o in got.get("rows") or []])
 
 
+def ai_calls(ctx):
+    """Each call to a model through Phase 8's gateway (modules/ai/calls.py): the feature, the
+    model, the verdict, the cost and who asked; the record holds the masked request and the
+    answer, never a key. The installation's, never one device's."""
+    from modules.ai import calls
+    if ctx["device"]:
+        return _out()
+    got = calls.read()
+    if got["state"] == "unreadable":
+        return _out(errors=[f"the record of AI calls could not be read: {got.get('error', '')}"])
+
+    def what(r):
+        verdict = r.get("verdict") or "?"
+        head = f"AI call, {r.get('feature', '?')}: "
+        head += "answered" if verdict == "ok" else verdict.replace("_", " ")
+        return head + f" ({r.get('model', '?')}, ${float(r.get('cost_usd') or 0):.4f})"
+    return _out([_event(r.get("at"), "ai_call", what(r), [], who=r.get("actor", ""),
+                        detail=r.get("detail", "") or f"prompt {r.get('prompt', '?')}",
+                        outcome=r.get("verdict", ""),
+                        record=[("Call", r.get("id")), ("Prompt", r.get("prompt")),
+                                ("Schema", r.get("schema")), ("Verdict", r.get("verdict"))])
+                 for r in (got.get("rows") or [])[:ctx["limit"]]])
+
+
 def credential_profiles(ctx):
     """Each change to a credential profile from Credentials › Profiles: who, which profile, and
     the fields set, never a value. Installation-wide, so the fleet's, never one device's."""
@@ -1576,6 +1600,7 @@ SOURCES = {
     "topology_expected": topology_expected, "topology_layout": topology_layout,
     "saved_views": saved_views, "reveals": reveals, "host_keys": host_keys,
     "netbox": netbox, "grafana_writes": grafana_writes, "heartbeat_windows": heartbeat_windows,
+    "ai_calls": ai_calls,
 }
 
 #: The kind filter (board D): each a group of event kinds, in the board's four headings.
@@ -1606,6 +1631,7 @@ KIND_GROUPS = (
                                ("hostkeys", "SSH host keys", ("hostkey",)),
                                ("decisions", "Baseline decisions", ("decision",)),
                                ("updates", "App updates", ("update",)),
+                               ("ai_calls", "AI calls", ("ai_call",)),
                                ("netbox", "NetBox imports and removals", ("netbox",)),
                                ("grafana", "Grafana writes", ("grafana", "heartbeat")),
                                ("show_commands", "Show commands", ("show_commands",)))),

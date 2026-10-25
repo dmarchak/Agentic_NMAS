@@ -40,8 +40,10 @@ SECRET_KEYS = (
     # them here would have encrypted nothing while making it LOOK covered (a
     # second store needs a second mechanism). See docs/SECRETS.md.
     #
-    # NOT anthropic_api_key either: it lived in `.env`, plaintext by design,
-    # its file mode the whole control, until it left with the AI family (D15).
+    # anthropic_api_key lived in `.env`, plaintext by design, until it left with the AI
+    # family (D15); it returns sealed here with Phase 8's gateway (AI_ANTHROPIC_PLAN 3.2:
+    # write-only, typed by a person, never shown).
+    "anthropic_api_key",
     "netbox_token",
     "prometheus_password",
     "prometheus_bearer_token",
