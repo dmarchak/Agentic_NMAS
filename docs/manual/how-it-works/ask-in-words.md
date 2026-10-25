@@ -15,16 +15,24 @@ Installation › AI (hosted)**, capped, and recorded with who asked.
 ## The steps {#steps}
 
 1. `offer`: the metrics Prometheus holds whose name or help shares a word with your question
-   are offered, at most 20, a word in the name counting twice a word in the help. A few
-   network words are read as SNMP's ("traffic" as octets, "interface" as if). It is never the
-   whole catalogue. A question that matches no metric stops here, and nothing is sent.
+   are offered, at most 20, a word in the name counting twice a word in the help. Among equals,
+   the metrics your network's devices carry (their series hold the device label) come before
+   the monitoring stack's own, so "CPU" means the routers' CPU before the monitoring host's. A
+   few network words are read as SNMP's ("traffic" as octets, "interface" as if, "up" as
+   uptime). It is never the whole catalogue. A question that matches no metric stops here, and
+   nothing is sent.
 2. `ask`: one call through the AI gateway, as you. What is sent is masked first. The builder's
    vocabulary (its ranges, operations and filters) is the same on every call, so it is cached.
    Your question, the metrics offered, the devices you named that this network holds, and its
    roles go as data. Metric help text is written by an exporter, not by {{product}}, so it is
    data too, and an instruction inside it is not followed. The answer must be the builder's
-   own choices, in a fixed shape. If the model finds that no offered metric answers the
-   question, it says why, and nothing is filled.
+   own choices, in a fixed shape, or one of two other answers. **A question back**, when your
+   words leave a choice only you can make (which device, one line per device or one for all,
+   which interface, or a device this network does not have): it is shown as "One question
+   first", your words stay in the box, and nothing is filled; add the answer and fill again.
+   **A refusal**, when no offered metric answers the question or the builder cannot express it
+   (counting restarts, for one): it says why, and nothing is filled. A period like "yesterday"
+   becomes the builder's From… to…, in UTC, worked out from the time the question was asked.
 3. `read_back`: the choices become the builder's address, and the builder checks them as it
    checks yours. A metric that was not offered is refused, and nothing is filled. A device or
    role this network lacks is left out, and so is a label the metric does not carry, or an
@@ -51,4 +59,13 @@ come from Prometheus; nothing is read from or sent to a device.
   nothing is filled.
 - **Over a cap:** the call's worst case, and the cap it would cross, are both named.
 
-It answers metrics questions only. Questions about logs use the logs builder by hand.
+## On the logs builder {#logs}
+
+**History › Query › Ask your own › Logs** has the same row, and the same steps fill the logs
+builder: `offer` gives the kinds of log Loki holds, its other labels, and the mnemonics that
+share a word with your question (the Start-from chips' and those the logs reader counted:
+"OSPF adjacency changes" offers `%OSPF-5-ADJCHG`); a question about severity or a word in the
+line is offered none, and is answered by the severity and text filters. `ask`, `read_back`
+and `fill` are as above: a kind or mnemonic that was not offered is left out and said.
+`test_run` counts the lines the query matches over the range, within 10 seconds. Nothing reads
+the lines until you press **Ask**.

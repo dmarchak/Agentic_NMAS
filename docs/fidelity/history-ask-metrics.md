@@ -16,8 +16,8 @@ desktop board at 1440 and 1280 beside the page; the phone board at 390 beside th
 390 px column; the three states (refused, Prometheus not answering, no data in range) at 1440.
 Compared 2026-10-15. History's own page (heading, remote line) is board D's; the board's Code
 mode panel is today's Ask your own box, Code on the Mode switch.
-Templates compared: templates/v2/history_ask_metrics.html, templates/v2/_history_body.html, templates/v2/_history_ask_metrics.html, templates/v2/_history_ask_parts.html, templates/v2/_history_ask_head.html
-Templates sha256: `6e78140fd539a30094b6e5a8d6ac720d9eba7794d2a151e8742c3e2104735897`
+Templates compared: templates/v2/history_ask_metrics.html, templates/v2/_history_body.html, templates/v2/_history_ask_metrics.html, templates/v2/_history_ask_parts.html, templates/v2/_history_ask_head.html, templates/v2/_history_ask_words.html
+Templates sha256: `634fba84df494aab18a4d3c1580cd9200ba238380e68ac14056add4d6c82c05f`
 
 Compared again 2026-10-15 (P7-03): `_history_body.html` gained a `data-concept` marker and one
 sentence inside a Baselines row's detail (the block drawing each baseline's Re-apply… link); this
@@ -44,6 +44,17 @@ into the sprint's Saturday (PHASE8_PLAN 15.12, "Each screen ships with its brows
 short manual page; its board and its fidelity record are batched into Saturday"); its browser
 test is tests/test_ai_nl_query.py's `test_ask_in_words_in_a_browser`. The hash written again.
 Templates sha256 before: `6357e667ba5601243738d5fe301506067d339162be1aa01bcf88be7d98c1619d`.
+
+Changed 2026-10-25 again (the operator's recorded cases: a question back, never a guess): the
+Ask in words row's result gained a third notice, "One question first: …", drawn as information
+(the muted notice, never the warning), the person's words kept in the box. Its verdict stays
+**later** with the row (8.1's board, Saturday). The hash written again.
+Templates sha256 before: `6e78140fd539a30094b6e5a8d6ac720d9eba7794d2a151e8742c3e2104735897`.
+
+Changed 2026-10-25 again (8.1's logs half): the Ask in words row moved, byte for byte the
+same markup, into `_history_ask_words.html`, which both builders include (one home); that file
+joins the templates compared, so a change to it is compared again. No region here changed;
+the hash written again. Templates sha256 before: `f31e221fd21162962e924384046eb44e2e0bb566163c03851ca2fb002c3f3930`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).

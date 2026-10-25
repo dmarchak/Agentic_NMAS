@@ -72,13 +72,24 @@
       "title": "Operation",
       "type": "object"
     },
+    "Outcome": {
+      "description": "What the answer is: the builder's choices; one question back, when the words leave\nthe choice to the person (which device, or per device); or a refusal, saying why.",
+      "enum": [
+        "answer",
+        "ask",
+        "refuse"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
     "Range": {
       "enum": [
         "1h",
         "24h",
         "7d",
         "30d",
-        "90d"
+        "90d",
+        "custom"
       ],
       "title": "Range",
       "type": "string"
@@ -94,12 +105,8 @@
     }
   },
   "additionalProperties": false,
-  "description": "The builder's choices for one question, or why the builder cannot answer it.",
+  "description": "The builder's choices for one question; or the one question that settles what the\nwords leave open; or why the builder cannot answer it. (v1 changed in place 2026-10-25,\nbefore any call was made with it or any case recorded: `answerable` became `outcome`.)",
   "properties": {
-    "answerable": {
-      "title": "Answerable",
-      "type": "boolean"
-    },
     "devices": {
       "items": {
         "type": "string"
@@ -113,6 +120,10 @@
       },
       "title": "Filters",
       "type": "array"
+    },
+    "from_utc": {
+      "title": "From Utc",
+      "type": "string"
     },
     "interfaces": {
       "items": {
@@ -132,11 +143,22 @@
       "title": "Operations",
       "type": "array"
     },
+    "outcome": {
+      "$ref": "#/$defs/Outcome"
+    },
+    "question": {
+      "title": "Question",
+      "type": "string"
+    },
     "range": {
       "$ref": "#/$defs/Range"
     },
     "role": {
       "title": "Role",
+      "type": "string"
+    },
+    "to_utc": {
+      "title": "To Utc",
       "type": "string"
     },
     "top": {
@@ -148,7 +170,8 @@
     }
   },
   "required": [
-    "answerable",
+    "outcome",
+    "question",
     "why_not",
     "metric",
     "devices",
@@ -157,7 +180,9 @@
     "filters",
     "operations",
     "top",
-    "range"
+    "range",
+    "from_utc",
+    "to_utc"
   ],
   "title": "MetricsChoices",
   "type": "object"

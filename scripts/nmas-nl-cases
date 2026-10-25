@@ -1,0 +1,134 @@
+#!/usr/bin/env python3
+"""Record Ask in words' cases live, and merge a recording into the case file (PHASE8_PLAN 13.6;
+modules/ai/cases.py; tests/fixtures/ai_cases/nl_query/metrics.json).
+
+    # on the host, once hosted AI is allowed and this release is deployed: each case one
+    # recorded call, as <actor> (the deployed copy, run as a file: it adopts the app's
+    # interpreter, whose packages it imports)
+    nmas-host nmas -- <checkout>/scripts/nmas-nl-cases --record --list <network> \\
+        --actor <actor> --out /tmp/cases.json
+    # on the laptop: the recording into the case file, then the gate
+    scripts/nmas-nl-cases --merge /tmp/cases.json
+
+**Record** asks each case through `nl_query.metrics`, the screen's own path (the gateway: the
+allowance, the caps, the mask, the record), and writes, per case, the model's choices, when,
+on which model, its cost and the judge's misses (`cases.misses`), to `--out`, which may not be
+inside the checkout (the host's live checkout is never written). It stops at the first refusal
+that is not the model's (hosted AI off, a cap), naming it, with nothing more spent.
+
+**Merge** writes each recorded case's `recorded` into the case file, refusing a recording
+made on another model than the file's (a pin changed is a set recorded again).
+"""
+import os
+import sys
+
+sys.dont_write_bytecode = True
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+import argparse  # noqa: E402
+import json  # noqa: E402
+import time  # noqa: E402
+
+CASES = os.path.join("tests", "fixtures", "ai_cases", "nl_query", "metrics.json")
+#: Refusals that are Mercury's or the provider's, not the model's: the run stops, spending
+#: nothing more (the adapter's kinds, modules/ai/anthropic_adapter.py, among them).
+STOPS = ("ai_off", "no_key", "over_cap", "unknown_task", "unknown_model", "not_configured",
+         "catalogue", "provider_error", "rate_limited", "overloaded", "key_refused",
+         "bad_request", "provider_down")
+
+
+def _checkout(given: str) -> str:
+    return os.path.abspath(os.path.expanduser(given)) if given else ROOT
+
+
+def record(checkout: str, list_name: str, actor: str, out: str) -> int:
+    from modules.ai import cases, nl_query, profiles
+
+    if os.path.realpath(out).startswith(os.path.realpath(checkout) + os.sep):
+        print(f"nmas-nl-cases: --out {out} is inside the checkout; write it elsewhere",
+              file=sys.stderr)
+        return 2
+    data = cases.load(os.path.join(checkout, CASES))
+    pin = profiles.TASKS[nl_query.FEATURE]["model"]
+    if data["model"] != pin:
+        print(f"nmas-nl-cases: the case file is for {data['model']}, the task is pinned to "
+              f"{pin}: record against the pin, after the file says so", file=sys.stderr)
+        return 2
+    got_all, spent = [], 0.0
+    for case in data["cases"]:
+        now = time.time()
+        got = nl_query.metrics(list_name, case["question"], actor=actor)
+        spent += float(got.get("cost_usd") or 0)
+        if got.get("error") in STOPS:
+            print(f"nmas-nl-cases: case {case['n']} refused by Mercury ({got['error']}: "
+                  f"{got.get('detail', '')}); stopped, {len(got_all)} recorded, "
+                  f"${spent:.4f} spent", file=sys.stderr)
+            break
+        rec = {"n": case["n"], "model": pin, "now": now,
+               "recorded_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
+               "choices": got.get("choices"), "call_id": got.get("call_id", ""),
+               "cost_usd": got.get("cost_usd", 0), "error": got.get("error", ""),
+               "misses": cases.misses(case["expect"], got, now)}
+        got_all.append(rec)
+        verdict = "pass" if not rec["misses"] else "MISS: " + "; ".join(rec["misses"])
+        print(f"case {case['n']:2d}: {verdict}")
+    with open(out, "w", encoding="utf-8") as fh:
+        json.dump({"model": pin, "recordings": got_all}, fh, indent=2)
+    passed = sum(1 for r in got_all if not r["misses"])
+    print(f"{passed} of {len(got_all)} recorded cases pass; ${spent:.4f} spent; written {out}")
+    return 0
+
+
+def merge(checkout: str, path: str) -> int:
+    file = os.path.join(checkout, CASES)
+    with open(file, encoding="utf-8") as fh:
+        data = json.load(fh)
+    with open(path, encoding="utf-8") as fh:
+        rec = json.load(fh)
+    if rec.get("model") != data["model"]:
+        print(f"nmas-nl-cases: the recording is on {rec.get('model')}, the file on "
+              f"{data['model']}: refused", file=sys.stderr)
+        return 2
+    by = {c["n"]: c for c in data["cases"]}
+    n = 0
+    for r in rec.get("recordings", ()):
+        if r.get("choices") is None:
+            continue                           # a Mercury refusal: nothing the model said
+        by[r["n"]]["recorded"] = {k: r[k] for k in ("model", "now", "recorded_at", "choices")}
+        n += 1
+    with open(file, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2, ensure_ascii=False)
+        fh.write("\n")
+    print(f"merged {n} recorded case(s) into {CASES}")
+    return 0
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
+    ap.add_argument("--checkout", default="")
+    ap.add_argument("--record", action="store_true")
+    ap.add_argument("--list", default="")
+    ap.add_argument("--actor", default="")
+    ap.add_argument("--out", default="")
+    ap.add_argument("--merge", default="")
+    args = ap.parse_args(argv)
+    checkout = _checkout(args.checkout)
+    sys.path.insert(0, checkout)
+    os.chdir(checkout)
+    if args.merge:
+        return merge(checkout, args.merge)
+    if args.record:
+        if not (args.list and args.actor and args.out):
+            ap.error("--record needs --list, --actor and --out")
+        return record(checkout, args.list, args.actor, args.out)
+    ap.error("--record or --merge")
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

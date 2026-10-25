@@ -43,6 +43,9 @@
 
 <form id="lq-form" class="lq-form" method="get" action="{{ here }}" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" hx-disabled-elt="#lq-ask" hx-indicator="#lq-ask">{{ hidden(('sev', 'has', 'not', 'by', 'every')) }}<input type="hidden" name="ask" value="1"></form>
 <section class="card lq-build" aria-label="Build a logs question">
+  {%- set words_url = url_for('v2.history_ask_logs_words') %}{% set words_hidden = hidden() %}
+  {%- set words_placeholder = 'OSPF adjacency changes per device, last 7 days' %}
+  {%- include "v2/_history_ask_words.html" %}
   <div class="lq-row"><span class="lq-lab">Start from</span><div class="lq-chips">
     {%- for key, title, params in q.presets %}<a class="lq-chip{{ ' on' if q.preset_on == key }}" href="{{ here }}{{ q.preset_qs(params) }}" hx-get="{{ region }}{{ q.preset_qs(params) }}" hx-target="#lq" hx-swap="outerHTML"{% if q.preset_on == key %} aria-current="true"{% endif %}>{{ title }}</a>{% endfor %}
   </div></div>

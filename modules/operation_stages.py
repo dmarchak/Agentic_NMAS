@@ -407,6 +407,8 @@ HISTORY = {
     "settings_v2.install_test": NOT_A_DEVICE,
     "v2.history_ask_metrics_words": "n/a: one AI call, kept in the fleet's ai_calls record, "
                                     "never one device's record",
+    "v2.history_ask_logs_words": "n/a: one AI call, kept in the fleet's ai_calls record, "
+                                 "never one device's record",
     "settings_v2.install_replace": NOT_A_DEVICE,
     "settings_v2.install_writes_off": NOT_A_DEVICE,
     "settings_v2.install_ai_allow": NOT_A_DEVICE,

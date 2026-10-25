@@ -16,8 +16,8 @@ answering) at 1440. Compared 2026-10-15. History's own page (heading, remote lin
 Compared again 2026-10-15: each `<details>` keyed (`data-keep`, C472) so a redraw keeps it open; the shots retaken, nothing drawn moved.
 Compared again 2026-10-15 (board E3): the go links, the query box, the range chips and picker, the actions and the three states moved into `_history_ask_parts.html`, which the metrics builder shares (the rendered page the same but for whitespace, every state rendered before and after and compared); the head's Metrics switch now opens the metrics builder, and Code mode's Builder is a link. The shots at 1440, 1280 and 390 retaken; nothing drawn moved. Two fixes found on the way, neither a region's verdict: the bounds line says no log store is configured where none is (it raised an error page before, reading Loki's unread limits), and the heartbeat stage writes the marker as an RE2 literal, `NMAS-HEARTBEAT` (Python's escape wrote `NMAS\\-HEARTBEAT`, the same lines matched).
 Compared again 2026-10-15 (C818, C819; the operator's decisions of that day): Reveal… built as the board draws it, and Edit as code from Counts ending in Code mode's chart. The page shot at 1440, 1280 and 390 as before, and two more states beside the board's Lines view: `history-ask-logs-reveal-ask-page-<width>` (the box open with a reason) and `history-ask-logs-revealed-page-<width>` (the line revealed), at 1440 and 390, fed by the lines capture with one planted secret-bearing line (tests/test_log_reveal.py). Each masked value is now marked as the board marks it; the bounds line says revealing is recorded, as the board's does.
-Templates compared: templates/v2/history_ask_logs.html, templates/v2/_history_body.html, templates/v2/_history_ask_logs.html, templates/v2/_history_ask_head.html, templates/v2/_history_ask_parts.html
-Templates sha256: `4eeb3357744f3d6b3311086208d30f8123d8b8da924a0536eb6a471348a4cc1a`
+Templates compared: templates/v2/history_ask_logs.html, templates/v2/_history_body.html, templates/v2/_history_ask_logs.html, templates/v2/_history_ask_head.html, templates/v2/_history_ask_parts.html, templates/v2/_history_ask_words.html
+Templates sha256: `fdcd932bf6275b73e1b7fa21a6f1b3b46762e335b36197b9820dbf9813490a68`
 
 Compared again 2026-10-15 (P7-03): `_history_body.html` gained a `data-concept` marker and one
 sentence inside a Baselines row's detail (the block drawing each baseline's Re-apply… link); this
@@ -36,6 +36,16 @@ Ask your own never draws. The page rendered on test_device_v2's lab from the tem
 were and as they are: every byte the same. No region here changed; the hash written again.
 Templates sha256 before: `bae7fb3468ed1abd511564d3cd771d79652bc80df9b74cf9e60a809434ddac2d`.
 
+Changed 2026-10-25 (PHASE8_PLAN 8.1, feature 1's logs half): `_history_ask_logs.html` gained
+one row at the top of the builder card, **Ask in words** (`_history_ask_words.html`, the row
+the metrics builder has, now included by both: a question, Fill the builder, its "How does
+this work?", and the result's notice beneath), which board F3 does not draw. Every other
+region is as it was. The row's verdict is **later**: its board and comparison are batched
+into the sprint's Saturday (PHASE8_PLAN 15.12); its browser test is tests/test_ai_nl_logs.py's
+`test_ask_in_words_on_the_logs_builder_in_a_browser`. The included file joins the templates
+compared. The hash written again.
+Templates sha256 before: `4eeb3357744f3d6b3311086208d30f8123d8b8da924a0536eb6a471348a4cc1a`.
+
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
 
@@ -43,6 +53,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 |---|---|---|---|
 | Tabs | Timeline, Query, Baselines, Authorisations; Query on | Timeline, Query, Baselines; Query on | **deviation** (log: F3 logs builder: History's tabs) |
 | Head | "Ask your own ‹ back to the questions"; Source (Metrics, Logs) and Mode (Builder, Code) switches | the same; Metrics opens the metrics builder (E3, shared head) | **same** |
+| Ask in words | (not drawn: 8.1 came after F3) | a question, Fill the builder busy on itself, "How does this work?"; the result's notice under it | **later** (8.1's board, the sprint's Saturday, PHASE8_PLAN 15.12) |
 | Start from | four chips, the one the choices match marked | the same four, each setting every choice; marked when the choices are exactly its own | **same** |
 | Kind | syslog, SNMP traps, both; the job names and when read in the hint | the `job` label's values over the range as switches (one or more) and every job; how many and when read in the hint | **deviation** (log: F3 logs builder: the Kind row) |
 | Devices | chosen chips with ×, + device, by role, all N; "by the device label, never a regex" | the same; + device asks a name from the values Loki holds; the hint says label or line, with the label's first line | **deviation** (log: F3 logs builder: devices before the label began) |

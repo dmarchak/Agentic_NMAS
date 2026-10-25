@@ -397,6 +397,7 @@ DECLARED = {
     # A card's Test keeps nothing, but the AI card's is one recorded call (Phase 8).
     "settings_v2.install_test": ("ai_calls",),
     "v2.history_ask_metrics_words": ("ai_calls",),
+    "v2.history_ask_logs_words": ("ai_calls",),
     "settings_v2.install_ai_allow": ("settings",),
     "settings_v2.install_ai_off": ("settings",),
     "settings_v2.platforms_preview": Nothing("previews a map change from each list's last inventory; writes nothing"),

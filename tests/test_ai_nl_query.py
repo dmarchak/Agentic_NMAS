@@ -14,6 +14,7 @@ fake `send` that keeps the bytes and answers as a test plants.
   only inside the user turn's data, never the system blocks.
 """
 import json
+import os
 
 import pytest
 
@@ -50,6 +51,19 @@ def world(tmp_path, monkeypatch):
     from tests import test_history_ask_metrics as TH
     monkeypatch.setattr(TH, "META", copy.deepcopy(TH.META))
     prom = FakeProm()
+    # Which metrics the devices carry: the lab's own answer (ask_device_names.json, read
+    # 2026-10-25), where the builder's stand-in ignores a match[] and returns every name.
+    with open(os.path.join(os.path.dirname(__file__), "fixtures", "prometheus",
+                           "ask_device_names.json"), encoding="utf-8") as fh:
+        carried = json.load(fh)["answer"]
+    plain = prom._get
+
+    def _get(path, **params):
+        if path == "api/v1/label/__name__/values" and "match[]" in params:
+            prom.asked.append((path, params))
+            return prom._ok(carried)
+        return plain(path, **params)
+    prom._get = _get
     monkeypatch.setattr(history_promq, "_client", lambda list_name, wait=125.0: prom)
     history_promq.forget()
 
@@ -69,9 +83,10 @@ def world(tmp_path, monkeypatch):
 
 
 def _choices(**over):
-    c = {"answerable": True, "why_not": "", "metric": "ifInErrors", "devices": [], "role": "",
-         "interfaces": [], "filters": [], "operations": [{"kind": "rate", "arg": "5m"}],
-         "top": "5", "range": "24h"}
+    c = {"outcome": "answer", "question": "", "why_not": "", "metric": "ifInErrors",
+         "devices": [], "role": "", "interfaces": [], "filters": [],
+         "operations": [{"kind": "rate", "arg": "5m"}], "top": "5", "range": "24h",
+         "from_utc": "", "to_utc": ""}
     c.update(over)
     return c
 
@@ -160,10 +175,10 @@ def test_a_planted_instruction_in_help_text_rides_only_as_data(world):
 def test_the_prompt_carries_only_its_allowed_fields(world):
     """What Ask in words may send (the operator, 2026-10-25; PHASE8_PLAN 15.12: a feature's
     tests assert its prompt carries only its allowed-class fields): its prompt and the
-    builder's vocabulary as the system blocks, and exactly these four data blocks."""
+    builder's vocabulary as the system blocks, and exactly these five data blocks."""
     import re
     from modules.ai import prompts
-    allowed = {"question", "metrics", "devices_named", "roles"}
+    allowed = {"question", "now_utc", "metrics", "devices_named", "roles"}
     world.answer = _choices()
     _ask(world)
     body = world.sent[0]["body"]
@@ -255,10 +270,29 @@ def test_the_builder_s_own_refusals_are_said(world):
 
 
 def test_an_unanswerable_question_says_why_and_fills_nothing(world):
-    world.answer = _choices(answerable=False, why_not="no metric counts the fans")
+    world.answer = _choices(outcome="refuse", why_not="no metric counts the fans", metric="")
     got = _ask(world, "fan errors on the chassis")
     assert got["ok"] is False and got["error"] == "unanswerable"
     assert "no metric counts the fans" in got["detail"] and "values" not in got
+
+
+def test_a_question_back_is_said_and_nothing_is_filled(world):
+    """The operator's cases (2026-10-25): words that leave the choice to the person get one
+    question back, never a guess."""
+    world.answer = _choices(outcome="ask", question="Which device, or one line per device?",
+                            metric="")
+    got = _ask(world, "average input errors over the past 7 days")
+    assert got["ok"] is False and got["error"] == "ask" and "values" not in got
+    assert got["clarify"] == "Which device, or one line per device?"
+
+
+def test_a_named_span_is_the_builder_s_from_and_to(world):
+    world.answer = _choices(range="custom", from_utc="2026-10-14 00:00", to_utc="2026-10-15 00:00")
+    got = _ask(world, "input errors per interface yesterday, the top 5")
+    assert got["ok"] is True, got
+    assert (got["values"]["range"], got["values"]["from"], got["values"]["to"]) == \
+        ("custom", "2026-10-14 00:00", "2026-10-15 00:00")
+    assert "range=custom" in got["view"]["qs"]() and "from=2026-10-14" in got["view"]["qs"]()
 
 
 def test_hosted_ai_off_sends_nothing_and_says_so(world, monkeypatch):
@@ -367,6 +401,16 @@ def test_ask_in_words_in_a_browser(site):
     assert "topk(5, rate(ifInErrors" in query, query
     assert not any(p == "api/v1/query_range" for p, _ in site.asked), "it ran the answer"
     assert wide is True and narrow, (wide, narrow)
+
+
+def test_a_question_back_is_drawn_as_information_with_the_words_kept(site):
+    site.world.answer = _choices(outcome="ask", question="Which device, or one line per device?",
+                                 metric="")
+    r, html = _words(site, "average cpu usage over the past 7 days")
+    assert r.status_code == 200 and "HX-Push-Url" not in r.headers
+    assert "One question first: Which device, or one line per device?" in html
+    assert "notice-warn" not in html.split("One question first", 1)[0].rsplit("<div", 1)[-1]
+    assert 'value="average cpu usage over the past 7 days"' in html, "the words are kept"
 
 
 def test_a_form_naming_another_network_than_its_address_is_refused(site):

@@ -201,6 +201,7 @@ GATES = {
     "console_servers_v2.port_remove": _g(K, "forgets how Mercury reaches one console-server port; NetBox's port and the key stay, recorded with who"),
     "console_servers_v2.key_generate": _g(K, "generates a console server's SSH key pair: the private half stored encrypted under its reference in the credential store, only the public key shown"),
     "settings_v2.install_save": _g(K,"saves an Installation card's settings (NetBox connection, Proxmox, Commit author, Server) for every network, recorded (board F3)"),
+    "v2.history_ask_logs_words": _g(K, "Ask in words on the logs builder: one recorded, capped AI call as the person who asked, turning a question into the logs builder's choices (modules/ai/nl_query.py); reads Loki, changes nothing else"),
     "v2.history_ask_metrics_words": _g(K, "Ask in words: one recorded, capped AI call as the person who asked, turning a question into the metrics builder's choices (modules/ai/nl_query.py); reads Prometheus, changes nothing else"),
     "settings_v2.install_test": _g(K,"tests an Installation card's service (NetBox, Proxmox) with its saved settings; changes nothing"),
     "settings_v2.install_replace": _g(K, "replaces an Installation card's token (a secret; Proxmox's with its id), recorded, then tests it"),

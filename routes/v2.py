@@ -590,15 +590,26 @@ def history_query_metric_data(key):
 # from them, and, asked, the answer. Reads: nothing is written and no list is created.
 # ---------------------------------------------------------------------------
 
-def _ask_logs_ctx() -> dict:
+def _ask_logs_ctx(q: dict = None) -> dict:
     from modules import history_logq
     from modules.nsot import listref
     from routes.list_param import named_list
 
     ref = listref.active()
+    if q is None:
+        q = history_logq.view(named_list(request) or ref.name, request.args)
+    _words_model(q)
     return {"tab": "query", "tabs": HISTORY_TABS, "ref": ref, "remote": _history_remote(ref),
-            "f": _history_filters(request), "ask_logs": True,
-            "q": history_logq.view(named_list(request) or ref.name, request.args)}
+            "f": _history_filters(request), "ask_logs": True, "q": q}
+
+
+def _words_model(q: dict) -> None:
+    """Ask in words' row on either builder: the result so far (none) and the model it calls."""
+    from modules.ai import profiles
+
+    pin = profiles.task("nl_query")
+    q.setdefault("words", None)
+    q["words_model"] = f"{profiles.profile(pin['model'])['words']}, {pin['model']}"
 
 
 @bp.route("/history/query/ask/logs", methods=["GET"])
@@ -651,14 +662,10 @@ def _ask_metrics_ctx(q: dict = None) -> dict:
     from modules.nsot import listref
     from routes.list_param import named_list
 
-    from modules.ai import profiles
-
     ref = listref.active()
     if q is None:
         q = history_promq.view(named_list(request) or ref.name, request.args)
-    pin = profiles.task("nl_query")
-    q.setdefault("words", None)
-    q["words_model"] = f"{profiles.profile(pin['model'])['words']}, {pin['model']}"
+    _words_model(q)
     return {"tab": "query", "tabs": HISTORY_TABS, "ref": ref, "remote": _history_remote(ref),
             "f": _history_filters(request), "ask_metrics": True, "q": q}
 
@@ -690,33 +697,54 @@ def history_ask_metrics_words():
     read back by the builder and test-run; the region is drawn filled and its address pushed.
     Nothing runs as an answer until the person presses Ask. Refused, the builder is drawn as
     it was (the form carries its choices) with the reason."""
+    from modules import history_promq
+    from modules.ai import nl_query
+
+    return _ask_words(nl_query.metrics, history_promq.view, "v2/_history_ask_metrics.html",
+                      _ask_metrics_ctx, "v2.history_ask_metrics")
+
+
+@bp.route("/history/query/ask/logs/words", methods=["POST"])
+def history_ask_logs_words():
+    """Ask in words on the logs builder (8.1's LogQL half): as the metrics builder's, the
+    logs builder filled, read back and test-run; nothing runs until Ask."""
+    from modules import history_logq
+    from modules.ai import nl_query
+
+    return _ask_words(nl_query.logs, history_logq.view, "v2/_history_ask_logs.html",
+                      _ask_logs_ctx, "v2.history_ask_logs")
+
+
+def _ask_words(fill, view, template: str, ctx, page: str):
+    """Both builders' Ask in words, one path: the network the form names (refused, with the
+    builder drawn on the active one, 409), the fill as the person who asked, the region drawn
+    with the result and, filled, its address pushed."""
     from flask import url_for
 
-    from modules import history_promq, identity
+    from modules import identity
     from modules.ai import nl_query
-    from routes.list_param import submitted_list
-
     from modules.nsot import listref
+    from routes.list_param import submitted_list
 
     name, refused = submitted_list(request)
     question = request.form.get("words", "")
     if refused:
         got = {"ok": False, "error": "network", "detail": refused}
-        q = history_promq.view(listref.active().name, request.form)
+        q = view(listref.active().name, request.form)
     else:
-        got = nl_query.metrics(name, question, actor=identity.request_actor())
+        got = fill(name, question, actor=identity.request_actor())
         if got["ok"]:
             q = got.pop("view")
             q["errors"] = got["errors"]
         else:
-            q = history_promq.view(name, request.form)
+            q = view(name, request.form)
     got["question"] = " ".join(question.split())[:nl_query.QUESTION_MAX]
     q["words"] = got
-    resp = _strict(render_template("v2/_history_ask_metrics.html", **_ask_metrics_ctx(q)))
+    resp = _strict(render_template(template, **ctx(q)))
     if refused:
         return resp, 409
     if got["ok"]:
-        resp.headers["HX-Push-Url"] = url_for("v2.history_ask_metrics") + q["qs"]()
+        resp.headers["HX-Push-Url"] = url_for(page) + q["qs"]()
     return resp
 
 
