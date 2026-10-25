@@ -185,7 +185,7 @@ was opened since.
 | C139 | **Deferred, by the operator (the 2026-10-07 triage):** CORE, NetBox Phase 1, deferred (L). Burn-down section 4: "NetBox Phase 1, after cutover". |
 | C552 | **Deferred, by the operator (the triage):** CORE, NetBox Phase 1, which removes the interface-counter Drained. Burn-down section 4: the same. |
 | C551 | **Deferred, by the operator (the triage):** FUTURE; NetBox's Drained status is the fact. Burn-down section 4: "After Phase 7". |
-| C781 | **Deferred, by the operator:** mutation testing is parked (C835; CLAUDE.md: "Mutation testing is parked"; the burn-down's section 4: no nights run until the operator says Phase 7 has settled). |
+| C781 | **Deferred, by the operator:** mutation testing is parked (C835; CLAUDE.md's mutation rule of the time, "parked", replaced on 2026-10-25 by the weekly measurement of the approved testing model, docs/TESTING.md, "The deploy bar"; the burn-down's section 4: no nights run until the operator says Phase 7 has settled). |
 | C842 | **Deferred, by the operator:** mutation parked, as C781. |
 
 ### The 19 B rows

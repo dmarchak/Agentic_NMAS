@@ -76,7 +76,9 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   masked one. [hook: scripts/hooks/claude-no-raw-config-reads (.claude/settings.json);
   tests/test_claude_config_reads.py] [why](docs/LESSONS.md#the-agent-reads-configs-masked)
 - **Search the register first, record a finding the turn it is raised with its bucket (A, B,
-  UNKNOWN, C; the criterion applied), and move a fixed row to Closed the same turn.**
+  UNKNOWN, C; the criterion applied), and move a fixed row to Closed the same turn. A row rides
+  in the commit it belongs to; no register-only commit but at a session's end; a C row is
+  recorded, not worked, until it is relevant (the operator, 2026-10-25).**
   [buckets and placement: tests/test_register_hygiene.py; search-first: not mechanised] [why](docs/LESSONS.md#record-findings-in-the-register)
 - **Sweep stopping rule:** a sweep registers all it finds and fixes only the A items it found;
   the rest waits however cheap. Bound a sweep by a property-defined survey. [not mechanised] [why](docs/LESSONS.md#the-sweep-stopping-rule)
@@ -95,12 +97,19 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
 - **Sequence by dependency and by whether it works, never "before a demo". The frontend decides;
   the backend is rewired to serve it, and test churn is a stated cost, never a veto.** A course lab's due date counts as a dependency (the operator, 2026-10-18): a
   Core 1.0 item a lab needs goes first; it never licenses demo-only work. [not mechanised]
+- **A standing change given in a prompt amends the doc that states the rule, in the same
+  commit; an exception names its expiry; every new process rule states its cost and the defect
+  class it prevents (the operator, 2026-10-25).** [not mechanised]
 
 ### Git, the gate and deploys
 
-- **The gate:** `git add -A` → `scripts/nmas-stage-guard` → the suite in CI's interpreter and
-  command (docs/TESTING.md, "CI's interpreter here") → commit; report each new file the guard lists.
-  [hooks/pre-commit runs the guard; tests/test_stage_guard.py; the order: not mechanised] [why](docs/LESSONS.md#the-gate-and-the-stage-guard)
+- **The gate:** `git add -A` → `scripts/nmas-stage-guard` → a snapshot worktree of the staged
+  tree → the suite in CI's interpreter and command there (docs/TESTING.md, "CI's interpreter
+  here"; a commit whose every path is under docs/ runs the doc set alone) → commit in the
+  snapshot, the branch moved only if unmoved and only when the committed tree is the tested
+  one; the working tree is never locked. Report each new file the guard lists.
+  [hooks/pre-commit runs the guard; tests/test_stage_guard.py; tests/test_nmas_gate.py;
+  tests/test_doc_tests.py; the order: not mechanised] [why](docs/LESSONS.md#the-gate-and-the-stage-guard)
 - **A gate's result is this run's:** remove the result file first, chain with `&&`, never pipe a
   command whose exit code counts, never write a count before the run that makes it. [not mechanised] [why](docs/LESSONS.md#gate-results-from-this-run)
 - **Gate `git commit -F` on the message file's first line naming THIS commit**, in a `case` that
@@ -110,8 +119,13 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
 - **Never stack a commit on a RED CI; never wait idle for a green one.** Push, name the sha and
   start the next task while CI runs; when a run fails, stop new work and fix forward before
   anything else. Nothing unverified reaches the host: `nmas-deploy --wait` and the Update button
-  refuse a commit CI has not passed. [the host refusing it: tests/test_nmas_deploy.py,
+  refuse a commit whose tree CI has not passed. [the host refusing it: tests/test_nmas_deploy.py,
   tests/test_update_when_ci_passes.py; the rest: not mechanised] [why](docs/LESSONS.md#no-commits-on-a-red-ci)
+- **The deploy bar is CI green on the exact sha and the change's own tests; recovery is the
+  safety net** (the operator, 2026-10-25, until Stage 10): the host returns to the previous
+  deployed release by `scripts/nmas-rollback <sha> --push` and Update, which deploys on the CI
+  verdict of the deployed commit with the same tree (about 2.5 minutes). [the tree check:
+  tests/test_nmas_rollback.py; the reused verdict: tests/test_nmas_deploy.py]
 - **Deploys are the operator's** (`nmas-deploy --wait`). Never deploy, pull or write in the live
   checkout on the host. [nmas-deploy needs CI's pass: tests/test_nmas_deploy.py; the agent:
   hook scripts/hooks/claude-no-host-writes, tests/test_claude_host_writes_hook.py]
@@ -277,6 +291,11 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
 - **Readers take what is COMMITTED; a writer stages exactly its files; every commit goes through
   `repo.commit()` and publishes.** [tests/test_readers_use_what_is_committed.py;
   tests/test_commits_stage_what_they_wrote.py; tests/test_every_commit_publishes.py] [why](docs/LESSONS.md#readers-take-what-is-committed)
+- **Stored data changes expand, then contract: a release adds the new shape and keeps the old
+  readable; only a later release removes the old; a records store moves only when the running
+  and the previous deployed release both carry its switch.** This is what keeps a rollback
+  safe (the operator, 2026-10-25). [the deploy's previous-release read check: not mechanised
+  yet, docs/TESTING.md, "The deploy bar"]
 - **`Actor:` is who is accountable, `Actor-Verified:` how it was established, `Source:` a slug.**
   [tests/test_actor_verified_trailer.py; tests/test_no_second_commit_path.py]
 - **A write path carries its list; only a read may derive the active one.**
@@ -382,11 +401,15 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   new automation module no unit test reaches, or a new test that asserts nothing fails CI; the
   baseline moves only by `scripts/nmas-coverage baseline`. [tests/test_nmas_coverage.py; the
   coverage job in .github/workflows/ci.yml]
-- **Mutation testing is parked (the operator, C835: the nightly schedule is off); it runs on
-  demand, one mutant at a time, after a canary that must die; only an open VERDICT survivor
-  turns a run red; an equivalent mutant is listed by hand with its reason, never chased with a
-  test.** [tests/test_nmas_mutation.py; tests/test_mutation_canary.py;
-  .github/workflows/mutation-nightly.yml (dispatch only)]
+- **Mutation is a weekly measurement (the operator, 2026-10-25): scheduled, outside 08:30 to
+  09:10 UTC, its survivors registered, not worked, unless the operator directs a campaign; no
+  other run is dispatched but a change to the irreversible tier (egress, masking, data off the
+  host, and the code that writes, stores or masks secret values; docs/TESTING.md, "The deploy
+  bar"), whose targeted run comes before its deploy. One mutant at a time, after a canary that
+  must die; only an open VERDICT survivor turns a run red; an equivalent mutant is listed by
+  hand with its reason, never chased with a test.** [tests/test_nmas_mutation.py
+  (`TestTheWorkflow`: the weekly schedule and its window guard); tests/test_mutation_canary.py;
+  the dispatch rule: not mechanised]
 
 ## Module map (compact; full map in docs/ARCHITECTURE.md)
 
