@@ -86,6 +86,8 @@ def spent_usd(day: str) -> dict:
     got = read()
     if got["state"] == "unreadable":
         return {"state": "unreadable", "usd": None, "calls": 0, "error": got["error"]}
-    rows = [r for r in got["rows"] if str(r.get("at", "")).startswith(day)]
+    # A row is the day's when its time is text that starts with it: one with no time is no
+    # day's (read without a default, which no row could tell from another).
+    rows = [r for r in got["rows"] if isinstance(r.get("at"), str) and r["at"].startswith(day)]
     return {"state": got["state"], "usd": sum(float(r.get("cost_usd") or 0) for r in rows),
             "calls": len(rows), "error": ""}

@@ -178,6 +178,35 @@ def test_an_allowance_without_its_reason_is_still_off(world):
     assert _ask(world)["error"] == "ai_off" and world.sent == []
 
 
+#: hosted_allowed's answer when hosted AI is off, whole (tier run #63's survivors in it were
+#: its words and keys, which no test read).
+OFF = {"allowed": False, "why": "hosted AI is off: an admin allows it in Settings, with a "
+       "recorded reason (PHASE8_PLAN 15.8)", "by": "", "at": "", "reason": ""}
+
+
+@pytest.mark.parametrize("value", [None, {}, "yes", ["by"],
+                                   {"by": "operator@example.com", "at": "x", "reason": ""},
+                                   {"by": "", "at": "x", "reason": "a reason of its own"},
+                                   {"at": "x", "reason": "a reason of its own"}])
+def test_the_allowance_is_off_without_a_person_and_a_reason(world, value):
+    if value is None:
+        world.settings.pop("ai_hosted")
+    else:
+        world.settings["ai_hosted"] = value
+    assert gateway.hosted_allowed() == OFF
+
+
+@pytest.mark.parametrize("value,at", [
+    ({"by": "operator@example.com", "at": "2026-10-25T05:00:00Z", "reason": "the lab's PoC"},
+     "2026-10-25T05:00:00Z"),
+    ({"by": "operator@example.com", "reason": "the lab's PoC"}, ""),
+])
+def test_the_allowance_says_who_when_and_why(world, value, at):
+    world.settings["ai_hosted"] = value
+    assert gateway.hosted_allowed() == {"allowed": True, "why": "", "by": "operator@example.com",
+                                        "at": at, "reason": "the lab's PoC"}
+
+
 def test_no_key_sends_nothing_and_is_recorded(world, monkeypatch):
     monkeypatch.setattr(gateway, "_api_key", lambda: "")
     got = _ask(world)

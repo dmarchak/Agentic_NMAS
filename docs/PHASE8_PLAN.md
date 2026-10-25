@@ -1908,6 +1908,13 @@ method: an exception names its expiry):**
   (the operator, 2026-10-25 ~08:5x UTC: C1685, a sealed value masked, fixed now as a sprint
   exception because it is the masking path; the fix rides in the 8.1 commit, so the one run
   measures it).
+- **The night of 2026-10-25 (the operator's pre-approval: survivors killed by a test, or the
+  dead code that made a mutant unkillable removed; a continuation run and one confirming run,
+  at most two):** #64, the final run, measured nothing (C1696), so its 15 functions run again
+  as the continuation (label `tier-64b`); #63's other 13 functions with survivors, each killed
+  by a test or restructured and every current mutant of it checked by hand first, are
+  confirmed by the second (label `tier-63b`). Each summary is read for mutants run (C1683).
+  A true equivalent is listed for the operator's ruling, never marked approved by the agent.
 
 **The tier's boundary for the rest of the sprint (the operator, 2026-10-25 ~08:2x UTC; it
 expires at the sprint's end, Sat 31 Oct, and at Stage 10 the GO bar returns everywhere,

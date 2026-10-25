@@ -594,7 +594,9 @@ def replace_secret(name: str, form: dict, actor: str, verified: str, client=None
         raise Refused(f"{spec['title']} holds no secret")
     key, label = spec["secret"]
     new = (form.get(key) or "").strip()
-    if not new or not re.fullmatch(r"[\x21-\x7e]+", new):                        # check
+    # Printable ASCII but space: `!` to `~` (0x21 to 0x7e), written as the characters, so the
+    # class has no letters whose case could change and nothing in it mean the same either way.
+    if not new or not re.fullmatch(r"[!-~]+", new):                                # check
         raise Refused(f"the new {label.lower()} is empty or holds a space or a character a "
                       "token never has; nothing was replaced")
     fields = [key]

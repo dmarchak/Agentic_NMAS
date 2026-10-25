@@ -47,12 +47,13 @@ DEFAULT_CAP_PER_DAY = 1.50
 def hosted_allowed() -> dict:
     """``{"allowed": bool, "why": str, "by", "at", "reason"}`` from the admin's setting."""
     from modules.settings_schema import get_setting
-    got = get_setting("ai_hosted", {}) or {}
+    got = get_setting("ai_hosted") or {}
     if not isinstance(got, dict) or not got.get("reason") or not got.get("by"):
         return {"allowed": False, "why": "hosted AI is off: an admin allows it in Settings, "
                 "with a recorded reason (PHASE8_PLAN 15.8)", "by": "", "at": "", "reason": ""}
-    return {"allowed": True, "why": "", "by": got.get("by", ""), "at": got.get("at", ""),
-            "reason": got.get("reason", "")}
+    # `by` and `reason` are there (the guard above); only `at` may be absent.
+    return {"allowed": True, "why": "", "by": got["by"], "at": got.get("at", ""),
+            "reason": got["reason"]}
 
 
 def caps(feature: str) -> dict:

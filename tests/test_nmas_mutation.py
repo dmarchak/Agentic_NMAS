@@ -1864,8 +1864,105 @@ class TestTestsThatFailInTheCopy:
         assert [r["log"] for r in record["runs"]] == ["mutmut-run-1.log", "mutmut-run-2.log"]
         assert record["failure"] == ["FAILED tests/test_y.py::test_2 - no"], "the retry's cause"
 
+    #: Run #64's clean run (mutmut-run-1.log, 2026-10-25), its last lines as written, the
+    #: assertion's long tail cut: the copy check had passed its bound before reaching the test.
+    RUN_64_CLEAN = (
+        "=========================== short test summary info ============================\n"
+        "FAILED tests/test_confirm_buttons_drawn.py::TestProfileLabCards::test_its_confirm_is_"
+        "drawn_from_its_real_preview[bring] - AssertionError: bring: no button labelled "
+        "'Commit the shipped _common\\\\.j2' that a person can press; the buttons drawn: "
+        "['Cancel']\n"
+        "!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
+        "1 failed, 539 passed in 259.31s (0:04:19)\n"
+        "failed to collect stats. runner returned 1\n")
+    RUN_64_TEST = ("tests/test_confirm_buttons_drawn.py::TestProfileLabCards::"
+                   "test_its_confirm_is_drawn_from_its_real_preview[bring]")
 
-PROBE_FN = "modules.readers.reachability.probe"          # a function's dotted name
+    def _run_step(self, tmp_path, monkeypatch, logs, copy_log):
+        """The real CLI's run step, mutmut stood in by *logs* (one a run, each exit 1 but the
+        last given as None, which finishes), the copy check naming nothing and leaving
+        *copy_log* as copy-run.log."""
+        import json
+        cli = _cli()
+        root, out = tmp_path / "root", tmp_path / "out"
+        root.mkdir()
+        out.mkdir()
+        (root / "setup.cfg").write_text("[mutmut]\npytest_add_cli_args =\n    -p\n"
+                                        "    no:cacheprovider\n")
+        (out / "plan.json").write_text(json.dumps({"tests": ["tests/test_x.py"],
+                                                   "planned": []}))
+        monkeypatch.setattr(cli.M, "ROOT", str(root))
+        monkeypatch.setattr(cli.M, "fresh_workspace", lambda root=None: False)
+        runs = []
+
+        def fake_run(names, log, env=None):
+            text = logs[len(runs)]
+            runs.append(names)
+            with open(log, "w", encoding="utf-8") as fh:
+                fh.write(text or "")
+            return 1 if text is not None else cli.M.FINISHED
+
+        def copy_check(p, o):
+            (out / "copy-run.log").write_text(copy_log)
+            return []
+        monkeypatch.setattr(cli, "_mutmut_run", fake_run)
+        monkeypatch.setattr(cli, "_fails_in_the_copy", copy_check)
+        # Past the canary the night is not this test's: the step stops at the tiers it reads.
+        monkeypatch.setattr(cli.M, "load_tier_records", lambda d: (_ for _ in ()).throw(
+            RuntimeError("past the canary")))
+
+        class A:
+            pass
+        a = A()
+        a.out = str(out)
+        try:
+            code = cli.cmd_run(a)
+        except RuntimeError as exc:
+            assert str(exc) == "past the canary"
+            code = "past the canary"
+        return code, runs, root, json.loads((out / "run.json").read_text())
+
+    def test_a_clean_run_failing_on_a_test_the_copy_check_never_reached_sets_it_aside(
+            self, tmp_path, monkeypatch):
+        """C1696, run #64: the copy check passed its bound before reaching a test that fails in
+        mutmut's copy, and the clean run then stopped on it, so the night measured nothing. The
+        test the clean run names is set aside, recorded, and the run tried again."""
+        code, runs, root, record = self._run_step(
+            tmp_path, monkeypatch, [self.RUN_64_CLEAN, None],
+            "....\nnmas-mutation: the copy's run passed its 850 s bound\n")
+        assert code == "past the canary", "the retry finished, and the night went on"
+        assert len(runs) == 2 and runs[0] == runs[1]
+        assert f"--deselect\n    {self.RUN_64_TEST}\n" in (root / "setup.cfg").read_text()
+        assert record["not_run_fail_in_the_copy"] == [self.RUN_64_TEST]
+        assert "failure" not in record, "the set-aside run's cause is not the night's"
+
+    def test_a_clean_run_failing_after_a_copy_check_that_finished_is_the_nights_cause(
+            self, tmp_path, monkeypatch):
+        """A copy check that finished has named every test that fails in the copy, so a failure
+        the clean run meets after it is not the copy's: it stops the night, nothing set aside."""
+        code, runs, root, record = self._run_step(
+            tmp_path, monkeypatch, [self.RUN_64_CLEAN, None], "....\n4087 passed in 700 s\n")
+        assert code == 1 and len(runs) == 1
+        assert "--deselect" not in (root / "setup.cfg").read_text()
+        assert "not_run_fail_in_the_copy" not in record
+        assert record["failure"][-1] == "failed to collect stats. runner returned 1"
+
+    def test_the_clean_runs_set_asides_are_bounded(self, tmp_path, monkeypatch):
+        """A night whose clean run keeps failing on a new test stops after CLEAN_RUN_SET_ASIDE
+        set aside, with the last failure as its cause, never retrying for ever."""
+        cli = _cli()
+        n = cli.CLEAN_RUN_SET_ASIDE
+        logs = [f"FAILED tests/test_y.py::test_{i} - no\nfailed to collect stats. runner "
+                f"returned 1\n" for i in range(n + 3)]
+        code, runs, root, record = self._run_step(
+            tmp_path, monkeypatch, logs, "nmas-mutation: the copy's run passed its 850 s bound\n")
+        assert code == 1 and len(runs) == n + 1
+        assert record["not_run_fail_in_the_copy"] == [f"tests/test_y.py::test_{i}"
+                                                      for i in range(n)]
+        assert record["failure"][0] == f"FAILED tests/test_y.py::test_{n} - no"
+
+
+PROBE_FN ="modules.readers.reachability.probe"          # a function's dotted name
 PROBE_MUT = "modules.readers.reachability.x_probe"      # mutmut's, before `__mutmut_<n>`
 SURVIVOR_12 = ("if response and response > 0:", "if response or response > 0:")
 SURVIVOR_31 = ("with connect((ip, 22), timeout=2):", "with connect((ip, 22), ):")

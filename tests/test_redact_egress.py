@@ -43,7 +43,9 @@ def test_each_shape_redact_text_leaves_is_masked_on_egress(label, line, secret):
     assert secret in redact.redact_text(line, values={}), "the gap must be real: " + line
     out = redact.redact_egress(line, values={})
     assert secret not in out, out
-    assert f"<redacted:{label}>" in out or "<redacted:" in out, out
+    # Its own label: the placeholder says which rule masked it (tier run #63's survivors 17
+    # and 25, a placeholder labelled None, were let through by any label passing here).
+    assert f"<redacted:{label}>" in out, out
 
 
 def test_a_real_captured_hash_line_is_masked():
@@ -63,6 +65,36 @@ def test_the_words_addresses_and_names_survive():
     for kept in ("BGP: neighbor 192.0.2.7 password 7 ", " refused on r1-core;",
                  "neighbor 2001:db8::7 remote-as 65001"):
         assert kept in out, out
+
+
+def test_a_line_redact_text_masked_keeps_its_label_on_egress():
+    """An egress rule meeting a placeholder `redact_text` already wrote leaves it as it is:
+    the line says what masked it first, never relabelled (tier run #63's survivor 9 read the
+    empty suffix group as the token and wrote egress_password over user_password)."""
+    line = "username admin privilege 15 secret 9 $9$PlantedScryptHashValue01"
+    first = redact.redact_text(line, values={})
+    assert first == "username admin privilege 15 secret 9 <redacted:user_password>", first
+    assert redact.redact_egress(line, values={}) == first
+
+
+def test_the_payload_uses_the_values_given_and_resolves_the_table_once(monkeypatch):
+    """`egress_payload` masks by the values it is given, never the store's in their place,
+    and resolves the store's table once for a whole payload, never once per string (tier run
+    #63's survivors 1 to 4, 6 and 8)."""
+    calls = []
+
+    def store():
+        calls.append(1)
+        return {"PlantedStoreValue77": "lab:store"}
+    monkeypatch.setattr(redact, "known_secret_values", store)
+    given = {"PlantedGivenValue55": "lab:given"}
+    payload = {"a": "uses PlantedGivenValue55 here", "b": ["PlantedStoreValue77 there"]}
+    out = redact.egress_payload(payload, values=given)
+    assert "PlantedGivenValue55" not in str(out), out
+    assert "PlantedStoreValue77" in str(out), "the values given, not the store's"
+    assert calls == [], "a payload with its values never reads the store"
+    out = redact.egress_payload({"a": "x PlantedStoreValue77", "b": ["y", "z w"], "c": ("q",)})
+    assert "PlantedStoreValue77" not in str(out) and calls == [1], calls
 
 
 def test_masking_twice_changes_nothing():

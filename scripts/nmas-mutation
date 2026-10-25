@@ -121,6 +121,24 @@ def _fails_in_the_copy(p, out) -> list:
     return M.failing_tests(text) if code == 1 else []
 
 
+#: How many tests a clean run that failed in mutmut's copy may name and set aside, one a try,
+#: when the copy check passed its bound before reaching them (C1696). Run #64 met one; five
+#: leaves room for a few more of the same kind without letting a broken night retry for ever.
+CLEAN_RUN_SET_ASIDE = 5
+#: What mutmut prints when its clean run, the one with no mutant active, fails.
+CLEAN_RUN_FAILED = "failed to collect stats"
+
+
+def _copy_check_passed_its_bound(out) -> bool:
+    """Whether tonight's copy check stopped at its bound (copy-run.log says so) before it could
+    name every test that fails in the copy."""
+    try:
+        with open(os.path.join(out, "copy-run.log"), encoding="utf-8") as fh:
+            return f"the copy's run passed its {COPY_RUN_TIMEOUT_S} s bound" in fh.read()
+    except OSError:
+        return False
+
+
 #: The bound on collecting the selected tests' files at plan time (`_collected`): the laptop's
 #: plan of a capped night took 64 s, nearly all of it this collection (2026-10-15, 20 functions,
 #: 51 files whole and 412 test functions), and the runner runs tests about 2.2 times slower
@@ -544,6 +562,38 @@ def cmd_run(a) -> int:
             print(f"nmas-mutation: {len(failing)} test(s) fail in mutmut's copy itself and are "
                   f"not run tonight: {', '.join(failing)}", flush=True)
             code = _mutmut_run(first, next_log(), env=tiers_env)
+        # The copy check cannot name what it did not reach: when it passed its bound, a test
+        # failing in the copy reaches mutmut's clean run and no result stands (run #64, C1696:
+        # 57% of 4,087 tests in 850 s, then the clean run stopped on a test that reads the
+        # application's git history, which the copy has none of). With no mutant active a
+        # failure there is the copy's, so the one the clean run names is set aside, named, and
+        # the run tried again, at most CLEAN_RUN_SET_ASIDE times.
+        set_aside = list(failing)
+        tries = 0
+        while (code not in (M.FINISHED, M.OUT_OF_TIME) and _copy_check_passed_its_bound(a.out)
+               and tries < CLEAN_RUN_SET_ASIDE):
+            with open(next_log(), encoding="utf-8") as fh:
+                said = fh.read()
+            if CLEAN_RUN_FAILED not in said:
+                break
+            named = [t for t in M.failing_tests(said) if t not in set_aside]
+            if not named:
+                break
+            done("the canary, in process (a test failing in mutmut's copy, named by its clean "
+                 "run)", code)
+            record.pop("failure", None)
+            set_aside += named
+            record["not_run_fail_in_the_copy"] = set_aside
+            cfg_path = os.path.join(M.ROOT, "setup.cfg")
+            with open(cfg_path, encoding="utf-8") as fh:
+                cfg = fh.read()
+            with open(cfg_path, "w", encoding="utf-8") as fh:
+                fh.write(M.with_deselected(cfg, named))
+            M.save(os.path.join(a.out, "run.json"), record)
+            print(f"nmas-mutation: the clean run failed in mutmut's copy on {', '.join(named)}; "
+                  "set aside, not run tonight, and the run tried again", flush=True)
+            code = _mutmut_run(first, next_log(), env=tiers_env)
+            tries += 1
     if done("the canary, in process", code):
         return code
     # 2. A child records nothing in mutmut's statistics, and the coverage nightly's contexts do

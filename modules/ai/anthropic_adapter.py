@@ -81,11 +81,16 @@ def ratelimit_headers(headers) -> dict:
             if k.lower().startswith(RATELIMIT_PREFIXES) or k.lower() == "retry-after"}
 
 
-def _retry_after(headers) -> float:
+def _retry_after(headers):
+    """The seconds the provider's `retry-after` asks for, at least 0; None when it sends none
+    or one that is not a number (the caller then backs off on its own)."""
+    value = (headers or {}).get("retry-after")
+    if value is None:
+        return None
     try:
-        return max(0.0, float((headers or {}).get("retry-after", "")))
+        return max(0.0, float(value))
     except (TypeError, ValueError):
-        return -1.0
+        return None
 
 
 def _error_words(resp) -> str:
@@ -133,7 +138,7 @@ def send(body: dict, api_key: str, *, session=None, sleep=time.sleep, clock=time
         if status in (429, 529):
             cls = RateLimited if status == 429 else Overloaded
             wait = _retry_after(resp.headers)
-            if wait < 0:
+            if wait is None:
                 wait = float(2 ** (attempt - 1))
             if attempt > MAX_RETRIES:
                 raise cls(f"HTTP {status} after {attempt} attempts: {words}", status=status,
