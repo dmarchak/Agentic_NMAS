@@ -203,6 +203,7 @@ GATES = {
     "settings_v2.install_save": _g(K,"saves an Installation card's settings (NetBox connection, Proxmox, Commit author, Server) for every network, recorded (board F3)"),
     "v2.history_ask_logs_words": _g(K, "Ask in words on the logs builder: one recorded, capped AI call as the person who asked, turning a question into the logs builder's choices (modules/ai/nl_query.py); reads Loki, changes nothing else"),
     "v2.history_ask_metrics_words": _g(K, "Ask in words: one recorded, capped AI call as the person who asked, turning a question into the metrics builder's choices (modules/ai/nl_query.py); reads Prometheus, changes nothing else"),
+    "v2.monitoring_alert_explain": _g(K, "Explain an alert: one recorded, capped AI call as the person who pressed it, reading the alert's stored evidence pack (modules/ai/explain.py); changes nothing, runs nothing"),
     "settings_v2.install_test": _g(K,"tests an Installation card's service (NetBox, Proxmox) with its saved settings; changes nothing"),
     "settings_v2.install_replace": _g(K, "replaces an Installation card's token (a secret; Proxmox's with its id), recorded, then tests it"),
     "settings_v2.platforms_preview": _g(K, "previews a platform or role map change: every device it moves, from each NetBox list's last inventory; writes nothing (board F4)"),

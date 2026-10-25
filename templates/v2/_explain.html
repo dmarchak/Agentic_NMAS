@@ -1,0 +1,26 @@
+{%- from "v2/_macros.html" import badge, icon -%}
+{#- Explain's answer, in its pack (modules/ai/explain.py; PHASE8_PLAN 15.9, P1): the rationale,
+    then each hypothesis with the pack's pieces it cites (each a link to the piece) and the read
+    that would confirm it; or why there is none. Drawn as text: nothing in it is followed, and
+    nothing runs. -#}
+<div class="explain" id="explain-{{ x.pack_id }}">
+{%- if x.ok %}
+  {%- set a = x.answer %}
+  <p class="explain-why">{{ a.rationale }}</p>
+  <ol class="explain-list">
+    {%- for h in a.hypotheses %}
+    <li><strong>{{ h.claim }}</strong>
+      <span class="muted small">Cites {% for r in h.evidence_refs %}<a class="pack-ref" href="#{{ x.pack_id }}-{{ r }}" data-ref="{{ r }}">{{ r }}</a>{{ ', ' if not loop.last }}{% endfor %}. To confirm, a read: <code>{{ h.confirm_with }}</code> (Show commands).</span></li>
+    {%- endfor %}
+  </ol>
+  {%- if a.needs_human %}<p class="small">{{ badge('needs a person', 'warn') }} The evidence does not settle the cause.</p>{% endif %}
+  <p class="muted small" title="{{ explain_model }}; ${{ '%.4f' | format(x.cost_usd) }}; recorded as {{ x.call_id }}">A hypothesis, not a finding: each cites the pack above. Nothing was run.</p>
+{%- elif x.error == 'ai_off' %}
+  <p class="muted small">{{ icon('info', 14) }} Not explained: hosted AI is off until it is allowed (Settings › Installation › AI). The pack above is the whole of what Mercury gathered.</p>
+{%- else %}
+  <p class="refusal" role="alert">Not explained: {{ x.detail }}.</p>
+{%- endif %}
+{%- if x.recorded is defined and not x.recorded %}
+  <p class="warn-text small">The record of AI calls could not be written, so History will not show this call.</p>
+{%- endif %}
+</div>

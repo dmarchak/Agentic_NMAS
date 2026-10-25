@@ -1,0 +1,74 @@
+{
+  "$defs": {
+    "Hypothesis": {
+      "additionalProperties": false,
+      "properties": {
+        "claim": {
+          "title": "Claim",
+          "type": "string"
+        },
+        "confirm_with": {
+          "title": "Confirm With",
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "claim",
+        "evidence_refs",
+        "confirm_with"
+      ],
+      "title": "Hypothesis",
+      "type": "object"
+    },
+    "Outcome": {
+      "enum": [
+        "answer",
+        "refuse"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Shape B: the rationale first, then the hypotheses, or why the pack cannot say.",
+  "properties": {
+    "hypotheses": {
+      "items": {
+        "$ref": "#/$defs/Hypothesis"
+      },
+      "title": "Hypotheses",
+      "type": "array"
+    },
+    "needs_human": {
+      "title": "Needs Human",
+      "type": "boolean"
+    },
+    "outcome": {
+      "$ref": "#/$defs/Outcome"
+    },
+    "rationale": {
+      "title": "Rationale",
+      "type": "string"
+    },
+    "why_not": {
+      "title": "Why Not",
+      "type": "string"
+    }
+  },
+  "required": [
+    "outcome",
+    "rationale",
+    "hypotheses",
+    "needs_human",
+    "why_not"
+  ],
+  "title": "Explanation",
+  "type": "object"
+}

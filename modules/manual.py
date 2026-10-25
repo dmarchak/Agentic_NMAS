@@ -195,6 +195,7 @@ OPERATIONS = {
     "show-commands": ("modules.nsot.reads", "STEPS"),
     "logging-path": ("modules.nsot.logging_path", "STEPS"),
     "reveal-log-line": ("modules.log_reveal", "STEPS"),
+    "alert-explain": ("modules.ai.explain", "STEPS"),
     "ask-in-words": ("modules.ai.nl_query", "STEPS"),
     "privileged": ("modules.nsot.privileged", "STEPS"),
     "save": ("modules.nsot.save_op", "STEPS"),
@@ -211,6 +212,7 @@ OPERATIONS = {
 #: The page each operation's steps are named on (an operation may have two
 #: declared sequences on one page: onboarding's two phases and its ZTP form).
 OPERATION_PAGE = {"onboard-phase-two": "onboard", "onboard-ztp": "onboard",
+                  "alert-explain": "alert-evidence",
                   "scheduled-rotation": "rotate",
                   "records-database-test": "records-database",
                   "records-database-replace": "records-database",

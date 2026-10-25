@@ -59,6 +59,27 @@ labels, masked log lines and the Intent check's state, never a configuration lin
 credential. A line that reads like an instruction (in an interface description, a log line or
 a label) is kept and drawn as text; nothing in a pack is followed.
 
+## Explain {#explain}
+
+An open pack has one button, **Explain**. It makes one call to a hosted model, through
+{{product}}'s AI gateway: allowed only once hosted AI is allowed on **Settings › Installation ›
+AI (hosted)**, capped, and recorded with who pressed it. With hosted AI off it says so, and the
+pack is the whole of what {{product}} gathered.
+
+1. `pack`: the alert's stored pack is read and its hash checked; a pack that changed since it
+   was built is not explained.
+2. `ask`: the pack goes as data (masked when it was built, and masked again on the way out),
+   the pack's layout and the allowed reads as the instructions' context; no tool is offered, so
+   the model can only read.
+3. `check`: every hypothesis must cite pieces the pack holds, by their references, and name one
+   read-only command a person could run to confirm it (a `show`, `ping` or `traceroute`, as Show
+   commands allows). One that cites a reference the pack does not hold, or names a command that
+   is not a read, makes the whole answer "couldn't analyse", and nothing is shown.
+4. `show`: a short rationale, then at most three hypotheses, the most likely first, each with
+   the references it cites (each a link to its piece above) and its confirming read. It is a
+   hypothesis, not a finding: nothing was run. Run the read through **Show commands** to check
+   it.
+
 ## Where it is kept {#kept}
 
 In the evidence pack record (`evidence_packs.jsonl` in the data folder, one line per pack, or

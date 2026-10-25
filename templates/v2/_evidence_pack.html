@@ -15,8 +15,13 @@
     {{ pack.rule }} on {{ pack.device or 'no one device' }}{% if pack.network %} in {{ pack.network }}{% endif %}{% if pack.onset %}, onset {{ stamp(pack.onset) }}{% endif %}.
     <span class="mono small" title="sha256 over the pack's canonical JSON; schema {{ pack.schema }}; alert {{ pack.alert_key }}; read from {{ pack.store }}">{{ pack.hash[:12] }}</span>
     {%- if not intact %} {{ badge('its hash does not match: changed since it was built', 'danger') }}{% endif %}</p>
+  {#- Explain (P1's one AI step, a button only, 15.6): the answer replaces the slot below. -#}
+  <form class="explain-ask" method="post" action="{{ url_for('v2.monitoring_alert_explain', pack_id=pack.id) }}" hx-post="{{ url_for('v2.monitoring_alert_explain', pack_id=pack.id) }}" hx-target="#explain-{{ pack.id }}" hx-swap="outerHTML">
+    <span class="op-act"><button type="submit" class="btn btn-small" data-op="alert-evidence" hx-disabled-elt="this"{{ gate('configure') }} title="One recorded AI call ({{ explain_model }}), capped; it reads this pack and runs nothing"><span class="op-idle">Explain</span><span class="op-busy">Explaining…</span></button>{{ how('alert-evidence', 'explain', compact=True) }}</span>
+  </form>
+  <div class="explain" id="explain-{{ pack.id }}"></div>
   {%- for s in pack.sections %}
-  <section class="pack-section" data-ref="{{ s.ref }}">
+  <section class="pack-section" data-ref="{{ s.ref }}" id="{{ pack.id }}-{{ s.ref }}">
     <h3>{{ s.words }} <span class="pack-ref">{{ s.ref }}</span> {{ badge(ST.get(s.state, s.state), SK.get(s.state, 'muted')) }}</h3>
     <p class="pack-source">{{ s.source or s.name }}{% if s.read_at %}, read {{ stamp(s.read_at) }}{% endif %}{% if s.why %}: {{ s.why }}{% endif %}</p>
     {%- if s.window %}<p class="pack-source">From {{ stamp(s.window.from, s.window.from[11:16] ~ ' UTC') }} to {{ stamp(s.window.to, s.window.to[11:16] ~ ' UTC') }} ({{ s.window.words }}){% if s.window.query %}, asked as <code>{{ s.window.query }}</code>{% endif %}</p>{% endif %}
@@ -26,7 +31,7 @@
     {%- if s.pieces %}
     <ul class="pack-pieces">
       {%- for p in s.pieces %}
-      <li data-ref="{{ p.ref }}"><span class="pack-ref">{{ p.ref }}</span>
+      <li data-ref="{{ p.ref }}" id="{{ pack.id }}-{{ p.ref }}"><span class="pack-ref">{{ p.ref }}</span>
         {%- if s.name == 'alert' %}
         <strong>{{ p.rule }}</strong> ({{ p.kind }}, {{ p.state }}){% if p.value %}: <code>{{ p.value }}</code>{% endif %}.
         Condition held from {{ stamp(p.active_at) }}{% if p.starts_at %}, alerting from {{ stamp(p.starts_at) }}{% endif %}; onset {{ stamp(p.onset) }} ({{ p.onset_basis }}){% if p.for_seconds %}; pending {{ p.for_seconds }} s{% endif %}{% if p.window_seconds %}; window {{ p.window_seconds }} s{% endif %}.

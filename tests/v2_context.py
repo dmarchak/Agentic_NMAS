@@ -896,6 +896,38 @@ def _alert_evidence(client, _lab, _mp):
             r = client.get(f"/v2/monitoring/alerts/pack/{pack['id']}",
                            headers={"HX-Request": "true", "Accept": "text/html"})
             assert r.status_code == 200 and 'data-ref="logs"' in r.get_data(as_text=True)
+            # P1's Explain on each pack, hosted AI off (its default): the answer it draws,
+            # with nothing sent.
+            r = client.post(f"/v2/monitoring/alerts/pack/{pack['id']}/explain",
+                            headers={"HX-Request": "true", "Accept": "text/html"})
+            assert r.status_code == 200 and "hosted AI is off" in r.get_data(as_text=True)
+        # And one answered (hosted AI allowed, the adapter answering as planted): the
+        # hypotheses and their references drawn.
+        from modules import settings_schema
+        from modules.ai import anthropic_adapter, calls, gateway
+        pack = EP.read()["rows"][-1]
+        cite = next(s["ref"] for s in pack["sections"] if s["name"] == "alert")
+        answer = {"outcome": "answer", "rationale": "The heartbeat stopped.",
+                  "hypotheses": [{"claim": "The device stopped sending heartbeats.",
+                                  "evidence_refs": [cite],
+                                  "confirm_with": "show logging | include HEARTBEAT"}],
+                  "needs_human": True, "why_not": ""}
+        allowed = {"ai_hosted": {"by": "operator@example.com", "at": "2026-10-25T05:00:00Z",
+                                 "reason": "the walk's planted answer"}, "ai_cap_usd_per_day": 1.5}
+        real_get = settings_schema.get_setting
+        mp.setattr(settings_schema, "get_setting",
+                   lambda k, d=None: allowed[k] if k in allowed else real_get(k, d))
+        mp.setattr(gateway, "_api_key", lambda: "sk-planted-walk-key-0123456789")
+        mp.setattr(calls, "_path", lambda: os.path.join(folder, "ai_calls.jsonl"))
+        mp.setattr(anthropic_adapter, "send", lambda body, key: anthropic_adapter.Reply(
+            status=200, body={"content": [{"type": "text", "text": json.dumps(answer)}],
+                              "stop_reason": "end_turn",
+                              "usage": {"input_tokens": 4000, "output_tokens": 200}},
+            attempts=1, latency_s=0.5))
+        r = client.post(f"/v2/monitoring/alerts/pack/{pack['id']}/explain",
+                        headers={"HX-Request": "true", "Accept": "text/html"})
+        assert r.status_code == 200 and "The device stopped sending heartbeats." in \
+            r.get_data(as_text=True)
     finally:
         mp.undo()
         shutil.rmtree(folder, ignore_errors=True)

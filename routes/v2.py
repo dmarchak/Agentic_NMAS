@@ -1399,8 +1399,28 @@ def monitoring_alert_pack(pack_id):
     pack, state, error = (evidence_pack.find(pid) if pid.startswith("ep-")
                           else (None, "ok", ""))
     html = render_template("v2/_evidence_pack.html", pack=pack, state=state, error=error,
-                           pid=pid, intact=evidence_pack.intact(pack) if pack else False)
+                           pid=pid, intact=evidence_pack.intact(pack) if pack else False,
+                           explain_model=_explain_model())
     return _strict(html, 200 if pack else 404)
+
+
+def _explain_model() -> str:
+    from modules.ai import profiles
+
+    pin = profiles.task("explain")
+    return f"{profiles.profile(pin['model'])['words']}, {pin['model']}"
+
+
+@bp.route("/monitoring/alerts/pack/<pack_id>/explain", methods=["POST"])
+def monitoring_alert_explain(pack_id):
+    """Explain (PHASE8_PLAN 15.9, P1's one AI step; modules/ai/explain.py): the pack's
+    hypotheses, each citing it, from one recorded call as the person who pressed Explain,
+    drawn in the pack; a refusal says why in place. Nothing runs."""
+    from modules import identity
+    from modules.ai import explain
+
+    got = explain.explain(pack_id[:64], actor=identity.request_actor())
+    return _strict(render_template("v2/_explain.html", x=got, explain_model=_explain_model()))
 
 
 # ---------------------------------------------------------------------------
