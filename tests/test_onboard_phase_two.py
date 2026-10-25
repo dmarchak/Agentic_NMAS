@@ -21,7 +21,7 @@ import pytest
 @pytest.fixture
 def world(tmp_path, monkeypatch):
     from modules.nsot import manifest as _m, repo as _repo
-    from modules.nsot.repo import GoldenItem, adopt_identity
+    from modules.nsot.repo import adopt_identity
 
     list_dir = tmp_path / "probe"
     repo_dir = str(list_dir / "config_repo")
@@ -46,7 +46,7 @@ def world(tmp_path, monkeypatch):
     monkeypatch.setattr("modules.credentials._FILE", str(tmp_path / "creds.json"))
     _repo.init_repo(repo_dir)
 
-    identity = adopt_identity(repo_dir, GoldenItem("bp1", "", "203.0.113.31"))
+    identity = adopt_identity(hostname="bp1", mgmt_ip="203.0.113.31")
     _m.upsert_device(repo_dir, identity, "bp1", mgmt_ip="203.0.113.31",
                      platform="cisco_iosxe", pending=True)
 
@@ -215,8 +215,8 @@ class TestAPartialRunLeavesTheDevicePending:
             "the control did not reproduce the defect, so it proves nothing")
         # And the shipped order does NOT do that:
         from modules.nsot import repo as _repo
-        from modules.nsot.repo import GoldenItem, adopt_identity
-        ident2 = adopt_identity(world["repo"], GoldenItem("bp2", "", "203.0.113.32"))
+        from modules.nsot.repo import adopt_identity
+        ident2 = adopt_identity(hostname="bp2", mgmt_ip="203.0.113.32")
         _m.upsert_device(world["repo"], ident2, "bp2", mgmt_ip="203.0.113.32",
                          platform="cisco_iosxe", pending=True)
         import modules.credentials as creds

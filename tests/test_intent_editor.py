@@ -648,9 +648,9 @@ class TestNeverCommittedIsItsOwnState:
     def test_mid_onboarding_is_normal_and_says_so(self, world):
         """The same absence, the opposite meaning."""
         from modules.nsot import hostvars, manifest as _m
-        from modules.nsot.repo import GoldenItem, adopt_identity
+        from modules.nsot.repo import adopt_identity
 
-        identity = adopt_identity(world["repo"], GoldenItem("s9", "", "10.0.0.9"))
+        identity = adopt_identity(hostname="s9", mgmt_ip="10.0.0.9")
         _m.upsert_device(world["repo"], identity, "s9", mgmt_ip="10.0.0.9",
                          platform="cisco_ios", pending=True)
         # `pending` is DERIVED from onboarded_at/verified_at; the manifest

@@ -290,7 +290,7 @@ class TestAbandonReleasesAZtpDevicesLeases:
 
     def _repo(self, tmp_path, monkeypatch):
         from modules.nsot import manifest as _m, repo as _repo
-        from modules.nsot.repo import GoldenItem, adopt_identity
+        from modules.nsot.repo import adopt_identity
 
         list_dir = tmp_path / "probe"
         repo = str(list_dir / "config_repo")
@@ -299,7 +299,7 @@ class TestAbandonReleasesAZtpDevicesLeases:
         monkeypatch.setattr("modules.config.get_list_data_dir", lambda _n: str(list_dir))
         monkeypatch.setattr("modules.secrets_store.KEY_FILE", str(tmp_path / "key.key"))
         _repo.init_repo(repo)
-        identity = adopt_identity(repo, GoldenItem("zr6", "", ""))
+        identity = adopt_identity(hostname="zr6", mgmt_ip="")
         _m.upsert_device(repo, identity, "zr6", platform="cisco_iosxe", pending=True,
                          address_source="ztp", mgmt_mac=self.ZMAC, reserved_address=self.ZADDR)
         return repo

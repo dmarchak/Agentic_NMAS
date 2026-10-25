@@ -892,7 +892,7 @@ def test_the_responder_lists_a_pending_out_of_band_device(tmp_path, monkeypatch)
     """`_pending_ztp_devices` reads the manifests: a pending ``ztp_console`` device is listed,
     a verified one is not (pending is the manifest's own)."""
     from modules.nsot import manifest
-    from modules.nsot.repo import GoldenItem, adopt_identity, init_repo
+    from modules.nsot.repo import adopt_identity, init_repo
     lists = tmp_path / "lists"
     repo = str(lists / "lab" / "config_repo")
     os.makedirs(repo)
@@ -902,7 +902,7 @@ def test_the_responder_lists_a_pending_out_of_band_device(tmp_path, monkeypatch)
     init_repo(repo)
     identities = {}
     for name in ("s5", "s6"):
-        identities[name] = adopt_identity(repo, GoldenItem(name, "", ""))
+        identities[name] = adopt_identity(hostname=name, mgmt_ip="")
         manifest.upsert_device(repo, identities[name], name, mgmt_ip=ADDRESS, pending=True,
                                address_source="ztp_console")
     # The identity the entry was written under: `adopt_identity` MINTS one per call, so a

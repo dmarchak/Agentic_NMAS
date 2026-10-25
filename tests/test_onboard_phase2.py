@@ -27,7 +27,7 @@ from modules.nsot.onboard import (ANSWERED, DID_NOT_ANSWER,  # noqa: E402
 @pytest.fixture
 def repo(tmp_path, monkeypatch):
     from modules.nsot import manifest as _m, repo as _repo
-    from modules.nsot.repo import GoldenItem, adopt_identity
+    from modules.nsot.repo import adopt_identity
 
     list_dir = tmp_path / "probe"
     repo_dir = str(list_dir / "config_repo")
@@ -44,7 +44,7 @@ def repo(tmp_path, monkeypatch):
     monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda c: None)
     monkeypatch.setattr("modules.secrets_store.KEY_FILE", str(tmp_path / "key.key"))
     _repo.init_repo(repo_dir)
-    identity = adopt_identity(repo_dir, GoldenItem("bp1", "", "203.0.113.31"))
+    identity = adopt_identity(hostname="bp1", mgmt_ip="203.0.113.31")
     _m.upsert_device(repo_dir, identity, "bp1", mgmt_ip="203.0.113.31",
                      platform="cisco_iosxe", pending=True)
     return repo_dir

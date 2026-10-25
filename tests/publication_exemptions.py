@@ -230,7 +230,7 @@ EXEMPT = {
     # tests/test_intent_editor.py
     ('tests/test_intent_editor.py', 'c606ebc87650'): ('INVENTED', ('address',)),
     ('tests/test_intent_editor.py', 'bbdc66ceec96'): ('INVENTED', ('address',)),
-    ('tests/test_intent_editor.py', 'e82fb2805790'): ('INVENTED', ('address',)),
+    ('tests/test_intent_editor.py', '9a67ad94815e'): ('INVENTED', ('address',)),
     ('tests/test_intent_editor.py', 'ef1b919ddf87'): ('INVENTED', ('address',)),
     # tests/test_masked_lines_not_compared.py
     ('tests/test_masked_lines_not_compared.py', '946d64f2ee89'): ('INVENTED', ('address',)),

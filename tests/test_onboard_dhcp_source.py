@@ -582,7 +582,7 @@ class TestVerifyConnectsToTheDiscoveredAddress:
         import os
 
         from modules.nsot import manifest as _m, repo as _repo
-        from modules.nsot.repo import GoldenItem, adopt_identity
+        from modules.nsot.repo import adopt_identity
 
         list_dir = tmp_path / "probe"
         repo = str(list_dir / "config_repo")
@@ -593,7 +593,7 @@ class TestVerifyConnectsToTheDiscoveredAddress:
         monkeypatch.setattr("modules.secrets_store.KEY_FILE",
                             str(tmp_path / "key.key"))
         _repo.init_repo(repo)
-        identity = adopt_identity(repo, GoldenItem("bp-dhcp-a", "", ""))
+        identity = adopt_identity(hostname="bp-dhcp-a", mgmt_ip="")
         _m.upsert_device(repo, identity, "bp-dhcp-a", platform="cisco_iosxe",
                          pending=True, **entry)
         return repo
@@ -1116,7 +1116,7 @@ class TestTheLeaseCarriesItsSubnet:
 
         from modules.nsot import manifest as _m, repo as _repo
         from modules.nsot.onboard import verify_device
-        from modules.nsot.repo import GoldenItem, adopt_identity
+        from modules.nsot.repo import adopt_identity
         import modules.config as cfg
 
         tmp = tempfile.mkdtemp()
@@ -1126,7 +1126,7 @@ class TestTheLeaseCarriesItsSubnet:
             repo = os.path.join(tmp, "probe", "config_repo")
             os.makedirs(os.path.join(repo, "host_vars"), exist_ok=True)
             _repo.init_repo(repo)
-            identity = adopt_identity(repo, GoldenItem("bp-dhcp-a", "", ""))
+            identity = adopt_identity(hostname="bp-dhcp-a", mgmt_ip="")
             _m.upsert_device(repo, identity, "bp-dhcp-a", platform="cisco_iosxe",
                              pending=True, address_source="dhcp",
                              mgmt_mac="aa:bb:cc:00:02:40",

@@ -71,7 +71,7 @@ The break-glass record holds the old password, so the result's next step is a ne
 
 ## On a schedule {#scheduled}
 
-A credential profile on Credentials › Profiles can carry a **rotation policy**: off, or every N days (30 unless you say otherwise; 1 is allowed), a preferred window in UTC hours, and at most K devices a run (5 unless you say otherwise). Only a verified person sets one, with Rotation policy… on the profile's row, and History records who, when and what. A device follows the policy of the profile the resolver would give it a login from, the most specific that exists (`role:<role>`, then `site:<site>`, then `default`), and that profile's policy alone, off included.
+A credential profile on Credentials › Profiles can carry a **rotation policy**: off, or every N days (30 unless you say otherwise; 1 is allowed), a preferred window in UTC hours, and at most K devices a run (5 unless you say otherwise); it may name only some devices, and says why it is as it is. Only a verified person sets one, with Rotation policy… on the profile's row, and History records who, when and what. A device follows the policy of the profile the resolver would give it a login from, the most specific that exists (`role:<role>`, then `site:<site>`, then `default`), and that profile's policy alone, off included.
 
 A device's **credential age** is read from the rotation record: its last rotation that reached the device. A device with none is "never rotated by Mercury" and counts as due. Credentials › Profiles shows each device's age and next due date, grouped (due now, within their policy, no policy on), and the device page's Overview shows its own as the Credential check.
 

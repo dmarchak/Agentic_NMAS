@@ -249,9 +249,9 @@ class TestANewDeviceIsAskedItsRole:
         from modules.device import load_saved_devices
         from modules.nsot import manifest as _m
         from modules.nsot.onboard import promote_device
-        from modules.nsot.repo import GoldenItem, adopt_identity
+        from modules.nsot.repo import adopt_identity
 
-        identity = adopt_identity(repo, GoldenItem("sw9", "", "203.0.113.39"))
+        identity = adopt_identity(hostname="sw9", mgmt_ip="203.0.113.39")
         _m.upsert_device(repo, identity, "sw9", mgmt_ip="203.0.113.39", platform="cisco_ios",
                          pending=True, role="switch")
         assert _m.find_by_name(repo, "sw9")[1]["role"] == "switch"

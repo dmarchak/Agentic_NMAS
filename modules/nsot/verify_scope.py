@@ -186,7 +186,9 @@ def read_back(commands: list, running: str, vlans: dict = None) -> dict:
     for l in leaves:
         rng = _line_range(l.chain[0].strip()) if l.chain else None
         if rng:
-            stanzas.setdefault(rng, set()).add(key(l.chain[1:], l.line))
+            # Indexed, never defaulted: every printed `line` stanza is a key (the operator,
+            # 2026-10-24; each fleet capture's stanzas read back, test_verify_scope).
+            stanzas[rng].add(key(l.chain[1:], l.line))
 
     def problems(chain, line) -> list:
         """What keeps *line* under *chain* from reading back: [] when it is held."""

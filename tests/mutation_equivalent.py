@@ -859,21 +859,6 @@ EQUIVALENT = [
            "console.session set (it begins a session from the seed, or continues the one "
            "`attach` set on a done wake, dereferencing it either way): with a session set the "
            "guard is true both ways (as console_ztp._stopped's)"),
-    # ── Create's one commit (C1644; run #41 of 2026-10-24 at 9913cb2f, each applied again by
-    # hand after the dead `gateway_route` branch went). Every other survivor there is killed
-    # by a test in tests/test_onboard_commit_step.py naming the field it pins.
-    *_each("modules.nsot.onboard.commit_step",
-           'identity = adopt_identity(repo, GoldenItem(plan.hostname, "", plan.mgmt_ip))',
-           ('identity = adopt_identity(None, GoldenItem(plan.hostname, "", plan.mgmt_ip))',),
-           "repo.adopt_identity never reads its repository: it mints from the item's NetBox id "
-           "and device uid alone (`item.identity or new_device_uid()`), and logs"),
-    *_each("modules.nsot.onboard.commit_step",
-           'identity = adopt_identity(repo, GoldenItem(plan.hostname, "", plan.mgmt_ip))',
-           ('identity = adopt_identity(repo, GoldenItem(plan.hostname, None, plan.mgmt_ip))',
-            'identity = adopt_identity(repo, GoldenItem(plan.hostname, "XXXX", plan.mgmt_ip))'),
-           "the item's config text is never read by repo.adopt_identity (only its NetBox id, "
-           "device uid, hostname and address: the last two for its log line), and the item "
-           "goes nowhere else"),
     # ── A VLAN read where the switch keeps it (C1646; run #45 of 2026-10-24 at 34d33ed8, each
     # applied again by hand). Every other survivor there in vlan_read and pipeline._read_vlans
     # is killed by a test in tests/test_vlan_read.py. The three below are approved by the
@@ -896,7 +881,9 @@ EQUIVALENT = [
            "answer is None"),
     # ── Verify's read-back (C1415; run #48 of 2026-10-24 at 7b161dcf, each applied again by
     # hand). Every other survivor there is killed by tests/test_verify_scope.py's
-    # `TestTheReadBackRecordsEachLineWhole`, and three went with a redundant guard.
+    # `TestTheReadBackRecordsEachLineWhole`, and three went with a redundant guard. The four
+    # below are approved by the operator (2026-10-24); the two `setdefault` defaults first
+    # listed here went when the stanza came to be indexed directly.
     *_each("modules.nsot.verify_scope.read_back",
            'leaves = config_leaves(running or "")',
            ('leaves = config_leaves(running or "XXXX")',),
@@ -907,14 +894,8 @@ EQUIVALENT = [
            ('stanzas = {rng: set() for _h, rng, _c in _pre_line_stanzas(running or "XXXX")}',),
            "an empty running configuration's stand-in holds no `line` stanza, so it adds none"),
     *_each("modules.nsot.verify_scope.read_back",
-           "stanzas.setdefault(rng, set()).add(key(l.chain[1:], l.line))",
-           ("stanzas.setdefault(rng, None).add(key(l.chain[1:], l.line))",
-            "stanzas.setdefault(rng, ).add(key(l.chain[1:], l.line))"),
-           "every leaf's stanza is already a key (`_pre_line_stanzas` lists every printed "
-           "`line` stanza, from the same text), so the default is never taken"),
-    *_each("modules.nsot.verify_scope.read_back",
-           "stanzas.setdefault(rng, set()).add(key(l.chain[1:], l.line))",
-           ("stanzas.setdefault(rng, set()).add(key(l.chain[2:], l.line))",),
+           "stanzas[rng].add(key(l.chain[1:], l.line))",
+           ("stanzas[rng].add(key(l.chain[2:], l.line))",),
            "IOS's terminal-line stanzas hold no stanza of their own, so a leaf's chain below the "
            "stanza is empty either way"),
     *_each("modules.nsot.verify_scope.read_back",

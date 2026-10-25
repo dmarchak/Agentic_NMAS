@@ -114,6 +114,26 @@ class TestTheReadBackRecordsEachLineWhole:
     record whole, the lines after a VLAN still read, the count, a printed terminal-line stanza
     with nothing under it, and a range's own members only."""
 
+    @pytest.mark.parametrize("name", ["r1", "r2", "r3", "r4", "r5", "s1", "s2", "s3", "s4"])
+    def test_every_printed_line_stanza_is_indexed_and_its_lines_read_back(self, name):
+        """`read_back` indexes each leaf's terminal-line stanza directly (the operator,
+        2026-10-24: no default), so every stanza a real capture prints must be one
+        `_pre_line_stanzas` lists: each capture's own `line` stanzas read back held."""
+        from modules.nsot.deploy import _line_range
+        with open(f"tests/fixtures/configs/fleet/{name}.cfg", encoding="utf-8") as fh:
+            running = fh.read()
+        program, header = [], None
+        for ln in running.splitlines():
+            if not ln[:1].isspace():
+                header = ln.rstrip() if _line_range(ln.rstrip()) else None
+                if header:
+                    program.append(header)
+            elif header and ln.strip() and not ln.strip().startswith(("password", "secret")):
+                program.append(ln.rstrip())
+        assert program and any(not p[:1].isspace() for p in program), "floor: a line stanza"
+        rb = V.read_back(program, running)
+        assert rb["missing"] == [] and rb["unread"] == [], rb
+
     def test_each_skipped_line_is_recorded_with_its_line_and_its_reason(self):
         from modules.redact import redact_positional
         from tests.test_verify_read_back_line_ranges import R7_LINES

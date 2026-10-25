@@ -538,6 +538,37 @@ def test_a_policy_limited_to_named_devices_covers_only_those(data):
     assert not bad["ok"] and "is not a device name" in bad["error"]
 
 
+def test_a_policy_keeps_its_reason_in_its_words_and_its_record(data):
+    """C1663 (the operator, 2026-10-24): a policy says why it is as it is, one line kept with
+    the policy and in its words, the record History draws."""
+    _profile()
+    got = SR.set_policy("role:router", {"state": "on", "days": "7", "max_per_run": "5",
+                                        "devices": "r1, r3, r2",
+                                        "why": "  pilot set proven;\n s3 excluded  "},
+                        actor=SETTER, verified="access", person=True)
+    assert got["ok"], got
+    assert got["policy"]["why"] == "pilot set proven; s3 excluded"
+    assert got["words"] == ("every 7 days, any hour, at most 5 a run, only r1, r2, r3 "
+                            "(why: pilot set proven; s3 excluded)")
+    (rec,) = [json.loads(l) for l in (data / "credential_changes.jsonl").read_text().splitlines()]
+    assert rec["policy"] == got["words"]
+    one = SR.set_policy("role:router", {"state": "on", "days": "1", "why": "x" * 300},
+                        actor=SETTER, verified="access", person=True)
+    assert one["ok"] and one["words"].startswith("every 1 day, any hour"), one
+    none = SR.set_policy("role:router", {"state": "on", "days": "1"}, actor=SETTER,
+                         verified="access", person=True)
+    assert none["ok"] and "why" not in none["policy"] and "(why" not in none["words"], none
+
+
+@pytest.mark.parametrize("why", ["x" * 301, "bell\x07here"], ids=["too-long", "not-printable"])
+def test_a_reason_of_the_wrong_shape_changes_nothing(data, why):
+    _profile()
+    got = SR.set_policy("role:router", {"state": "on", "why": why}, actor=SETTER,
+                        verified="access", person=True)
+    assert not got["ok"] and "one printable line of at most 300" in got["error"], got
+    assert "nothing was changed" in got["error"] and SR.policies() == {}
+
+
 def test_the_policy_cell_counts_its_scope_and_names_the_rest(data, monkeypatch):
     """The operator, 2026-10-13: the cell said "9 devices" where the scope named 8 (s3 left
     out). The devices in the scope are counted; the profile's others are counted apart."""

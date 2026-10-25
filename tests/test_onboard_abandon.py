@@ -54,10 +54,10 @@ def _onboard(repo, name="bp1", ip="203.0.113.31", netbox_id=None):
     *netbox_id*, the id Verify's NetBox step recorded)."""
     from modules.nsot import manifest as _m
     from modules.nsot import repo as _repo
-    from modules.nsot.repo import GoldenItem, adopt_identity
+    from modules.nsot.repo import adopt_identity
 
     # The real path: mint, then RECORD. `adopt_identity` persists nothing.
-    identity = adopt_identity(repo, GoldenItem(name, "", ip))
+    identity = adopt_identity(hostname=name, mgmt_ip=ip)
     _m.upsert_device(repo, identity, name, mgmt_ip=ip, platform="cisco_iosxe",
                      **({"netbox_id": netbox_id} if netbox_id is not None else {}))
     with open(os.path.join(repo, "host_vars", f"{name}.yml"), "w") as fh:

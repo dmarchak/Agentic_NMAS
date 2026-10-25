@@ -1357,7 +1357,7 @@ def _apply(list_name, hostname, *, mgmt_ip, platform, supplied_username, supplie
         return _stop("golden", cap.get("error") or "the device could not be read")
     identity, _entry = _m.find_by_name(repo, hostname)
     if not identity:
-        identity = adopt_identity(repo, GoldenItem(hostname, "", mgmt_ip))
+        identity = adopt_identity(hostname=hostname, mgmt_ip=mgmt_ip)
     _m.upsert_device(repo, identity, hostname, mgmt_ip=mgmt_ip, platform=platform,
                      adopted=True, role=p.get("role", ""))
     try:

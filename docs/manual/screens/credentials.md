@@ -75,7 +75,9 @@ never a value.
 
 **Rotation policy…** on a profile's row sets how its devices' credentials are rotated on a
 schedule: off, or every N days inside a preferred window of UTC hours, at most K devices a run.
-Only a verified person sets one, and History records who, when and the policy. The row's
+It can name only some devices (a pilot), and says **why** the policy is as it is, one line
+kept with it. Only a verified person sets one, and History records who, when
+and the policy with its reason. The row's
 Rotation policy column says the policy, how many devices follow it, how many are due and the
 next due date. The **Scheduled rotation** card below the table leads with how many devices are
 due, says when the last run ran and what it did, and lists each device's credential age and

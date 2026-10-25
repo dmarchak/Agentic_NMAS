@@ -704,8 +704,12 @@ def resolve_identity(repo: str, item):
     return identity or None
 
 
-def adopt_identity(repo: str, item) -> str:
-    """Mint an identity for a device the manifest has never seen.
+def adopt_identity(netbox_id=None, device_uid: str = "", *, hostname: str,
+                   mgmt_ip: str) -> str:
+    """Mint an identity for a device the manifest has never seen: from its NetBox id or its
+    device uid when it has one (`manifest.identity_for`), else a new uid, logged with the
+    device's name and address. It takes only what it reads (the operator, 2026-10-24: no
+    repository it never opened, no stand-in item).
 
     The only place a device identity is created outside migration. Separate
     from :func:`resolve_identity` so that "I am looking this up" and "I am
@@ -727,9 +731,8 @@ def adopt_identity(repo: str, item) -> str:
         A rule enforced by a parameter whose default breaks it is a
         convention. The default is the behaviour.
     """
-    identity = item.identity or _manifest.new_device_uid()
-    log.info("repo: adopting %s (%s) as %s", item.hostname,
-             item.mgmt_ip or "no ip", identity)
+    identity = _manifest.identity_for(netbox_id, device_uid) or _manifest.new_device_uid()
+    log.info("repo: adopting %s (%s) as %s", hostname, mgmt_ip or "no ip", identity)
     return identity
 
 
@@ -1053,7 +1056,8 @@ def save_golden(list_name: str, items: list, source: str = "manual",
                     return {"ok": False, "error": error, "changed": [],
                             "unchanged": unchanged, "tags": [],
                             "renamed": rename_result["renamed"]}
-                identity = adopt_identity(repo, item)
+                identity = adopt_identity(item.netbox_id, item.device_uid,
+                                          hostname=item.hostname, mgmt_ip=item.mgmt_ip)
             rel = f"golden/{_safe_name(item.hostname)}.cfg"
             abs_path = os.path.join(repo, rel)
             content = golden_body(item.hostname, item.mgmt_ip, item.config_text)

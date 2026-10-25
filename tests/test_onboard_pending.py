@@ -48,9 +48,9 @@ def repo(tmp_path, monkeypatch):
 
 def _pending(repo, name="bp1", ip="203.0.113.31", age=0):
     from modules.nsot import manifest as _m
-    from modules.nsot.repo import GoldenItem, adopt_identity
+    from modules.nsot.repo import adopt_identity
 
-    identity = adopt_identity(repo, GoldenItem(name, "", ip))
+    identity = adopt_identity(hostname=name, mgmt_ip=ip)
     _m.upsert_device(repo, identity, name, mgmt_ip=ip,
                      platform="cisco_iosxe", pending=True)
     if age:

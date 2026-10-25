@@ -56,6 +56,8 @@ DEFAULT_DAYS = 30
 DEFAULT_MAX = 5
 #: A device name as an inventory holds it (a policy's "only these devices").
 _DEVICE_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9._-]*$")
+#: A policy's reason is one line (C1663): long enough for a sentence, short enough to read.
+WHY_MAX = 300
 #: The timer's tick. The preferred window is whole hours, so five minutes is at most a
 #: twelfth of the shortest window; a tick does no device work unless a policy is due.
 TICK_SECONDS = 300
@@ -150,7 +152,8 @@ def policy_words(p) -> str:
     only = f", only {', '.join(p['devices'])}" if p.get("devices") else ""
     cap = (f"at most {int(p['max_per_run'])} a run" if p.get("max_per_run")
            else "every due device a run")
-    return f"every {days} day{'s' if days != 1 else ''}, {window}, {cap}{only}"
+    why = f" (why: {p['why']})" if p.get("why") else ""
+    return f"every {days} day{'s' if days != 1 else ''}, {window}, {cap}{only}{why}"
 
 
 def set_policy(profile: str, form: dict, *, actor: str, verified: str,
@@ -201,6 +204,13 @@ def set_policy(profile: str, form: dict, *, actor: str, verified: str,
                                       "changed"}
     if devices:
         policy["devices"] = devices
+    # Why this policy is as it is (C1663): one line, kept with the policy and its record.
+    why = " ".join(str(form.get("why") or "").split())
+    if len(why) > WHY_MAX or not why.isprintable():
+        return {"ok": False, "error": f"the reason is one printable line of at most {WHY_MAX} "
+                                      f"characters, not {len(why)}: nothing was changed"}
+    if why:
+        policy["why"] = why
     policy.update(set_by=actor, set_at=_iso(time.time()), verified=verified)
     merged = dict(policies())
     merged[profile] = policy

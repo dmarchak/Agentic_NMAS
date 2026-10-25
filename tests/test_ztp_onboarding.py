@@ -222,7 +222,7 @@ class TestTheSharedPaths:
     def test_verify_discovers_the_lease_for_a_ztp_device(self, tmp_path, monkeypatch):
         from modules.integrations.kea import KeaIntegration
         from modules.nsot import manifest as _m, repo as _repo
-        from modules.nsot.repo import GoldenItem, adopt_identity
+        from modules.nsot.repo import adopt_identity
 
         list_dir = tmp_path / "probe"
         repo = str(list_dir / "config_repo")
@@ -231,7 +231,7 @@ class TestTheSharedPaths:
         monkeypatch.setattr("modules.config.get_list_data_dir", lambda _n: str(list_dir))
         monkeypatch.setattr("modules.secrets_store.KEY_FILE", str(tmp_path / "key.key"))
         _repo.init_repo(repo)
-        identity = adopt_identity(repo, GoldenItem("bp-ztp-a", "", ""))
+        identity = adopt_identity(hostname="bp-ztp-a", mgmt_ip="")
         _m.upsert_device(repo, identity, "bp-ztp-a", platform="cisco_iosxe", pending=True,
                          address_source="ztp", mgmt_mac=MAC, reserved_address=ADDR)
         kea = KeaIntegration()
@@ -410,7 +410,7 @@ class TestPhaseTwoIsUnchanged:
 class TestAbandon:
     def _repo(self, tmp_path, monkeypatch, source="ztp"):
         from modules.nsot import manifest as _m, repo as _repo
-        from modules.nsot.repo import GoldenItem, adopt_identity
+        from modules.nsot.repo import adopt_identity
 
         list_dir = tmp_path / "probe"
         repo = str(list_dir / "config_repo")
@@ -419,7 +419,7 @@ class TestAbandon:
         monkeypatch.setattr("modules.config.get_list_data_dir", lambda _n: str(list_dir))
         monkeypatch.setattr("modules.secrets_store.KEY_FILE", str(tmp_path / "key.key"))
         _repo.init_repo(repo)
-        identity = adopt_identity(repo, GoldenItem("bp-ztp-a", "", ""))
+        identity = adopt_identity(hostname="bp-ztp-a", mgmt_ip="")
         _m.upsert_device(repo, identity, "bp-ztp-a", platform="cisco_iosxe", pending=True,
                          address_source=source, mgmt_mac=MAC, reserved_address=ADDR)
         return repo

@@ -722,6 +722,21 @@ class TestMintingIsNotReachableFromTheResolver:
         import inspect
         assert "new_device_uid" in inspect.getsource(R.adopt_identity)
 
+    def test_adopt_identity_mints_a_new_uid_each_time_it_is_given_none(self):
+        """With no NetBox id and no uid, each adoption is a NEW device: two mints never
+        share an identity."""
+        a = R.adopt_identity(hostname="bp1", mgmt_ip="192.0.2.31")
+        b = R.adopt_identity(hostname="bp2", mgmt_ip="2001:db8::32")
+        assert a.startswith("uid:") and b.startswith("uid:") and a != b, (a, b)
+        assert len(a) == len("uid:") + 36, a
+
+    def test_adopt_identity_keeps_the_netbox_id_or_the_uid_it_is_given(self):
+        """An identity the device already has is the one it gets: its NetBox id first, else
+        its uid (`manifest.identity_for`), never a new mint."""
+        assert R.adopt_identity(28, hostname="s5", mgmt_ip="192.0.2.15") == "nb:28"
+        assert R.adopt_identity(None, "uid:abc", hostname="s5", mgmt_ip="") == "uid:abc"
+        assert R.adopt_identity(28, "uid:abc", hostname="s5", mgmt_ip="") == "nb:28"
+
     def test_a_supplied_identity_the_manifest_holds_is_honoured(self, lab):
         """The narrowing must not break the legitimate case.
 

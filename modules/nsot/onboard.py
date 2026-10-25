@@ -1852,7 +1852,7 @@ def commit_step(plan, *, actor: str) -> str:
 
     from modules.config import get_list_data_dir
     from modules.nsot import hostvars, manifest
-    from modules.nsot.repo import GoldenItem, adopt_identity, save_host_vars
+    from modules.nsot.repo import adopt_identity, save_host_vars
 
     repo = os.path.join(get_list_data_dir(plan.list_name), "config_repo")
 
@@ -1868,7 +1868,7 @@ def commit_step(plan, *, actor: str) -> str:
     # This docstring said "the identity is minted here and only here"; it was
     # minted into a local and discarded. Fourth docstring this stage to teach
     # something the code did not do.
-    identity = adopt_identity(repo, GoldenItem(plan.hostname, "", plan.mgmt_ip))
+    identity = adopt_identity(hostname=plan.hostname, mgmt_ip=plan.mgmt_ip)
     # PENDING. The device is in the manifest, in NetBox and in git, and
     # deliberately **not** in the inventory: a device in the inventory is one
     # the tool will poll, back up, drift-check, pool a connection for and

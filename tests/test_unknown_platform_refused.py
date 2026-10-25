@@ -223,9 +223,9 @@ class TestOnboardingTakesItsDriverFromThePlan:
     @staticmethod
     def _plan(repo, platform):
         from modules.nsot import manifest as _m
-        from modules.nsot.repo import GoldenItem, adopt_identity
+        from modules.nsot.repo import adopt_identity
 
-        identity = adopt_identity(repo, GoldenItem("bp7", "", "192.0.2.37"))
+        identity = adopt_identity(hostname="bp7", mgmt_ip="192.0.2.37")
         _m.upsert_device(repo, identity, "bp7", mgmt_ip="192.0.2.37", platform=platform,
                          pending=True)
 

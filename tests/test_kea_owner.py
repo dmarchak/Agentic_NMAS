@@ -529,12 +529,12 @@ class TestZtpReservationRecordedInTheOwner:
 def _pending_ztp_device(world, slug):
     """A pending ZTP device in *slug*'s repository, as Create's commit step leaves it."""
     from modules.nsot import manifest as _m
-    from modules.nsot.repo import GoldenItem, adopt_identity, init_repo
+    from modules.nsot.repo import adopt_identity, init_repo
 
     repo = _repo_of(world, slug)
     os.makedirs(os.path.join(repo, "host_vars"), exist_ok=True)
     init_repo(repo)
-    identity = adopt_identity(repo, GoldenItem(ZTP_HOST, "", ""))
+    identity = adopt_identity(hostname=ZTP_HOST, mgmt_ip="")
     _m.upsert_device(repo, identity, ZTP_HOST, platform="cisco_iosxe", pending=True,
                      address_source="ztp", mgmt_mac=ZTP_MAC, reserved_address=ZTP_ADDR)
     return repo

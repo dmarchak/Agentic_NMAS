@@ -102,14 +102,14 @@ def pending(lab, monkeypatch):
     profile proposed and committed, the staged credential in the override."""
     from modules import credentials
     from modules.nsot import manifest as _m
-    from modules.nsot.repo import GoldenItem, adopt_identity
+    from modules.nsot.repo import adopt_identity
     from modules.nsot import profile_apply
     from modules.settings_schema import DEFAULTS
     # The lab's settings stub answers only what it names: give it the real
     # platform map, or no Netmiko driver resolves (stub drift, not the code).
     lab["settings"]["platform_map"] = DEFAULTS["platform_map"]
     _commit_proposal()
-    identity = adopt_identity(lab["repo"], GoldenItem("r7", "", IP7))
+    identity = adopt_identity(hostname="r7", mgmt_ip=IP7)
     _m.upsert_device(lab["repo"], identity, "r7", mgmt_ip=IP7, platform="cisco_iosxe",
                      pending=True)
     credentials.set_device_override(IP7, "admin", "BootStrap7Value", "BootStrap7Value")
