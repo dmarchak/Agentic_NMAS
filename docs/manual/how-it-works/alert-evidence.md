@@ -73,17 +73,49 @@ ever (see [The AI mark](installation-settings#ai-mark)).
 
 1. `pack`: the alert's stored pack is read and its hash checked; a pack that changed since it
    was built is not explained.
-2. `ask`: the pack goes as data (masked when it was built, and masked again on the way out),
-   the pack's layout and the allowed reads as the instructions' context; no tool is offered, so
-   the model can only read.
-3. `check`: every hypothesis must cite pieces the pack holds, by their references, and name one
-   read-only command a person could run to confirm it (a `show`, `ping` or `traceroute`, as Show
-   commands allows). One that cites a reference the pack does not hold, or names a command that
-   is not a read, makes the whole answer "couldn't analyse", and nothing is shown.
-4. `show`: a short rationale, then at most three hypotheses, the most likely first, each with
-   the references it cites (each a link to its piece above) and its confirming read. It is a
-   hypothesis, not a finding: nothing was run. Run the read through **Show commands** to check
-   it.
+2. `topology`: the part of the network around the alert's device, from {{product}}'s network
+   model (below): the device and everything one link, adjacency or cable away from it. It goes
+   unless the network has the topology class turned off; the answer then says "No topology was
+   sent with the pack" and why.
+3. `ask`: the pack and the topology go as data (masked when they were built, and masked again
+   on the way out), the pack's layout, the topology's layout, the network's summary and the
+   allowed reads as the instructions' context; no tool is offered, so the model can only read.
+4. `check`: every hypothesis must cite pieces the pack holds, by their references, or items of
+   the topology that was sent, by their ids, and name one read-only command a person could run
+   to confirm it (a `show`, `ping` or `traceroute`, as Show commands allows). One that cites a
+   reference neither holds (an id of the network the topology sent did not include counts as
+   not held), or names a command that is not a read, makes the whole answer "couldn't
+   analyse", and nothing is shown.
+5. `show`: a short rationale, then at most three hypotheses, the most likely first, each with
+   the references it cites (a pack piece is a link to it above; a topology id is drawn as text)
+   and its confirming read. It is a hypothesis, not a finding: nothing was run. Run the read
+   through **Show commands** to check it.
+
+## What of the network Explain sends {#topology}
+
+{{product}} compiles each network into a model with no AI call: its devices (name, role, site,
+platform and management address, from the inventory and NetBox), the subnets two or more
+devices share by committed intent (the links), the adjacencies intent implies (OSPF, OSPFv3
+and BGP), each interface's addresses, VRF and VLANs, and OSPF and BGP membership (router id,
+areas, passive interfaces, AS and peers). It never holds a configuration line, a description
+or a credential: it holds what intent means for the topology, not the intent itself. It is
+rebuilt only when the committed intent or the inventory changes.
+
+Explain sends the alert's device and what is one hop from it: the devices on its links (a
+switch carrying its segment among them), each with its hop and what reached it, the links and
+the device's adjacencies, and the cables LLDP reports. What was observed rides on each item
+with the time it was read (the Topology reader's last read of Prometheus), which may be later
+than the alert: a read that cannot be used (never made, too old, or holding nothing for this
+network) is written "could not read" with why, never left out. A segment of more than 16
+devices, or one whose devices share an address, is listed and not walked through. Each item
+has a stable id (`dev:<NetBox id>`, `link:<subnet>`, `adj:...`, `cable:...`) that a hypothesis
+may cite.
+
+**The topology class** is on for every network by default. It is the network's setting
+`ai_topology_class`; turned off, Explain sends the pack alone and says so beside the answer,
+and a setting that cannot be read counts as off. No screen turns it off yet: its control on
+the network's Settings is registered to build (C1713). A classification marking that forces AI
+off is planned and not built yet: nothing reads one today.
 
 ## Where it is kept {#kept}
 

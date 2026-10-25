@@ -3,8 +3,9 @@ planted answers (live cases wait for Allow): the pack is tests/test_evidence_pac
 from the real captures by the real builder (r1 by IPv6, the planted community line in its logs,
 an instruction planted in an interface description), the gateway allowed with a fake `send`.
 
-- The request: its prompt and the pack's format as the cached prefix, exactly two data blocks
-  (the alert and the pack), no tool offered, the prompt under its task's bound; the planted
+- The request: its prompt and the pack's format as the cached prefix, exactly three data
+  blocks (the network around the device, the pack and the alert, in that order; prompt v2,
+  tests/test_ai_explain_topology.py), no tool offered, the prompt under its task's bound; the planted
   instruction only in the data; a stored secret's value the pack kept is not in the bytes sent.
 - The check: an answer citing only the pack's references and naming a read on the allowlist is
   shown; a reference the pack does not hold, a confirming command that is not a read, an
@@ -93,7 +94,9 @@ def test_the_request_is_the_pack_as_data_with_no_tool(world):
     assert body["system"][0]["text"] == prompts.load(*explain.PROMPT)["text"]
     assert "evidence pack has sections" in body["system"][1]["text"]
     data = re.findall(r'<data name="([^"]+)">', body["messages"][0]["content"])
-    assert sorted(data) == ["alert", "pack"]
+    # Prompt v2 (15.15): the network around the device beside the pack, the alert last
+    # (tests/test_ai_explain_topology.py holds what the topology carries).
+    assert data == ["network_topology", "pack", "the_alert"]
     assert gateway.prompt_tokens(body) <= profiles.TASKS["explain"]["max_prompt_tokens"]
 
 

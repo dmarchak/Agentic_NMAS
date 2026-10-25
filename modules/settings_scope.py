@@ -53,7 +53,7 @@ SCOPES: dict = {
         "verify_settle_windows", "deploy_max_workers", "deploy_verify_failure_limit",
         "nsot_device_tag_retention", "nsot_config_read_timeout", "netbox_excluded_vrfs",
         "settings_not_applicable", "reads_answer_cap_kib",
-        "reads_max_workers", "reads_retention_days")},
+        "reads_max_workers", "reads_retention_days", "ai_topology_class")},
     # ── Host-wide ─────────────────────────────────────────────────────────────────────────
     **_group(HOST, "netbox_connection", "netbox_url", "netbox_token", "netbox_auth_scheme",
              "netbox_verify_tls", "netbox_allow_writes"),
@@ -149,6 +149,7 @@ GROUP_LABELS: dict = {
     "reads_answer_cap_kib": "Show commands: answer cap (KiB)",
     "reads_max_workers": "Show commands: devices read at once",
     "reads_retention_days": "Show commands: answers kept (days)",
+    "ai_topology_class": "AI: the topology class",
 }
 
 #: The key whose value says a group's outside service is configured at all: with it empty

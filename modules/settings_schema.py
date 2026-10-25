@@ -548,6 +548,12 @@ DEFAULTS: dict = {
     "reads_answer_cap_kib": 32,
     "reads_max_workers": 6,
     "reads_retention_days": 30,
+    # The topology class (PHASE8_PLAN 15.11, the operator's egress ruling of 2026-10-25): a
+    # network's model slice (devices, links, subnets, adjacencies; no configuration line, no
+    # secret) may go with a hosted AI call about it. ON by default, as ruled; an admin turns
+    # it off per network (modules/ai/egress_classes.py). No measurement can decide it: it is
+    # a person's decision about what leaves the host.
+    "ai_topology_class": True,
 
     # ── Jenkins ─────────────────────────────────────────────────────────────
     # Every generated pipeline emitted Windows `bat` steps; that stays the
@@ -912,6 +918,7 @@ SCHEMA: dict = {
         "reads_answer_cap_kib": {"type": "integer", "minimum": 1, "maximum": 4096},
         "reads_max_workers": {"type": "integer", "minimum": 1, "maximum": 16},
         "reads_retention_days": {"type": "integer", "minimum": 1},
+        "ai_topology_class": _BOOL,
         "deploy_max_workers": {"type": "integer", "minimum": 1, "maximum": 16},
         "deploy_verify_failure_limit": {"type": "integer", "minimum": 1},
         "verify_settle_windows": {
