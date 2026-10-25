@@ -58,6 +58,28 @@ def read() -> dict:
     return dict(got, rows=list(reversed(got["rows"])))
 
 
+def cache_summary(day: str, feature: str = None) -> dict:
+    """The prompt cache's effect on the UTC *day*'s answered calls (of *feature*, or all):
+    ``{"state", "calls", "input", "cache_write", "cache_read", "hit_rate", "error"}``. The hit
+    rate is the share of all prompt tokens read from the cache; None with no prompt tokens
+    (no call answered), never 0 in its place."""
+    got = read()
+    if got["state"] == "unreadable":
+        return {"state": "unreadable", "calls": 0, "input": 0, "cache_write": 0,
+                "cache_read": 0, "hit_rate": None, "error": got["error"]}
+    rows = [r for r in got["rows"] if str(r.get("at", "")).startswith(day)
+            and r.get("tokens") and (feature is None or r.get("feature") == feature)]
+    sums = {"input": 0, "cache_write": 0, "cache_read": 0}
+    for r in rows:
+        t = r["tokens"]
+        sums["input"] += int(t.get("input_tokens") or 0)
+        sums["cache_write"] += int(t.get("cache_creation_input_tokens") or 0)
+        sums["cache_read"] += int(t.get("cache_read_input_tokens") or 0)
+    total = sum(sums.values())
+    return dict(sums, state=got["state"], calls=len(rows), error="",
+                hit_rate=(sums["cache_read"] / total) if total else None)
+
+
 def spent_usd(day: str) -> dict:
     """``{"state", "usd", "calls", "error"}``: what the calls recorded on the UTC *day*
     (``YYYY-MM-DD``) cost. An unreadable record is said, never read as nothing spent."""

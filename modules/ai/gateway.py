@@ -70,25 +70,40 @@ def _api_key() -> str:
     return get_secret("anthropic_api_key") or ""
 
 
-def build_request(prompt: dict, schema_model, parts: dict, model: str, max_tokens: int) -> dict:
-    """The Messages API body: the prompt as the system text; each part as data, delimited by
-    its name, in one user turn; the answer's schema in `output_config.format`."""
-    blocks = []
-    for name in sorted(parts):
-        blocks.append(f'<data name="{name}">\n{parts[name]}\n</data>')
+def _delimited(tag: str, parts: dict) -> str:
+    return "\n\n".join(f'<{tag} name="{name}">\n{parts[name]}\n</{tag}>' for name in sorted(parts))
+
+
+def build_request(prompt: dict, schema_model, parts: dict, model: str, max_tokens: int,
+                  context: dict = None) -> dict:
+    """The Messages API body. **The stable prefix, cached** (the operator, 2026-10-25): the
+    prompt, then the *context* (what every call of a feature shares, as 8.1's metric and label
+    catalogue), as system blocks, the last marked `cache_control` (the 5-minute TTL). **The
+    call's own parts, uncached**: each as data, delimited by its name, in one user turn (a
+    question, an evidence pack). The answer's schema in `output_config.format`. Nothing
+    volatile (a time, an id) is ever in the system blocks: any byte that moves there misses
+    the cache for everything after it."""
+    system = [{"type": "text", "text": prompt["text"]}]
+    if context:
+        system.append({"type": "text", "text": _delimited("context", context)})
+    system[-1]["cache_control"] = {"type": "ephemeral"}
     return {
         "model": model,
         "max_tokens": int(max_tokens),
-        "system": prompt["text"],
-        "messages": [{"role": "user", "content": "\n\n".join(blocks) or "(no data)"}],
+        "system": system,
+        "messages": [{"role": "user", "content": _delimited("data", parts) or "(no data)"}],
         "output_config": {"format": {"type": "json_schema",
                                      "schema": schemas.schema_for(schema_model)}},
     }
 
 
 def worst_case_usd(model: str, body: dict) -> float:
+    """The call's cost if nothing is read from the cache: the whole input estimated from the
+    masked request's size and priced as a cache write (the dearer of the two), plus all of
+    `max_tokens`."""
     est_in = int(len(json.dumps(body, ensure_ascii=False)) / CHARS_PER_TOKEN) + 1
-    return profiles.cost_usd(model, est_in, int(body.get("max_tokens", 0)))
+    return profiles.cost_usd(model, 0, int(body.get("max_tokens", 0)),
+                             cache_write_tokens=est_in)
 
 
 def _text_of(reply_body: dict) -> str:
@@ -97,10 +112,11 @@ def _text_of(reply_body: dict) -> str:
 
 
 def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
-        model: str = profiles.DEFAULT_MODEL, max_tokens: int = 1024, send=None,
-        today: str = None) -> dict:
-    """One schema-bound call (the module's docstring has the order). *send* replaces the
-    adapter (tests); *today* the UTC day the caps count."""
+        model: str = profiles.DEFAULT_MODEL, max_tokens: int = 1024, context: dict = None,
+        send=None, today: str = None) -> dict:
+    """One schema-bound call (the module's docstring has the order). *context* is the stable
+    prefix every call of the feature shares, cached; *parts* the call's own data, uncached.
+    *send* replaces the adapter (tests); *today* the UTC day the caps count."""
     call_id = calls.new_id()
     row = {"id": call_id, "feature": feature, "actor": actor, "model": model,
            "prompt": f"{prompt[0]}.v{prompt[1]}", "schema": "", "verdict": "", "detail": "",
@@ -137,7 +153,7 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
 
     from modules import redact
     body = redact.egress_payload(build_request(prompt_file, schema_model, parts, model,
-                                               max_tokens))
+                                               max_tokens, context=context))
     leaked = redact.contains_known_secret(body)
     if leaked:
         return refuse("unmasked_secret", "a stored secret is still in the request after "
@@ -168,8 +184,9 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
     tokens = {k: int(usage.get(k) or 0) for k in ("input_tokens", "output_tokens",
                                                    "cache_read_input_tokens",
                                                    "cache_creation_input_tokens")}
-    cost = profiles.cost_usd(model, tokens["input_tokens"] + tokens["cache_read_input_tokens"]
-                             + tokens["cache_creation_input_tokens"], tokens["output_tokens"])
+    cost = profiles.cost_usd(model, tokens["input_tokens"], tokens["output_tokens"],
+                             cache_write_tokens=tokens["cache_creation_input_tokens"],
+                             cache_read_tokens=tokens["cache_read_input_tokens"])
     text = _text_of(reply.body)
     sent = dict(row, cost_usd=cost, tokens=tokens, latency_s=round(reply.latency_s, 3),
                 attempts=reply.attempts, ratelimit=reply.headers,

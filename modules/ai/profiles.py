@@ -34,13 +34,28 @@ def profile(model: str) -> dict:
         raise KeyError(f"no model profile for {model!r}; known: {', '.join(sorted(MODELS))}")
 
 
-def cost_usd(model: str, input_tokens: int, output_tokens: int) -> float:
-    """What a call of *model* with these token counts costs, at its profile's prices (a prompt
-    over the long threshold priced whole at the long rate, as Anthropic bills it)."""
+#: Prompt caching's prices, as multiples of the input rate (the API reference's prompt-caching
+#: page, read 2026-10-25): a write to the 5-minute cache 1.25x, a read about 0.1x on Haiku 5.5
+#: and Sonnet 5.5. The cache's 5-minute TTL is the only one Mercury asks for (the operator,
+#: 2026-10-25). A prefix under the model's minimum (512 tokens on Haiku 5.5) is not cached at
+#: all, silently: the record's cache counts show it.
+CACHE_WRITE_MULTIPLIER = 1.25
+CACHE_READ_MULTIPLIER = 0.10
+
+
+def cost_usd(model: str, input_tokens: int, output_tokens: int, *,
+             cache_write_tokens: int = 0, cache_read_tokens: int = 0) -> float:
+    """What a call of *model* costs: uncached input at the input rate, a cache write at 1.25x
+    it, a cache read at 0.1x, output at the output rate. A prompt (all three inputs together)
+    over the long threshold is priced whole at the long rate, as Anthropic bills it."""
     p = profile(model)
+    prompt = input_tokens + cache_write_tokens + cache_read_tokens
     long_at = p.get("long_prompt_tokens")
-    if long_at and input_tokens > long_at:
+    if long_at and prompt > long_at:
         rate_in, rate_out = p["long_usd_per_mtok_in"], p["long_usd_per_mtok_out"]
     else:
         rate_in, rate_out = p["usd_per_mtok_in"], p["usd_per_mtok_out"]
-    return (input_tokens * rate_in + output_tokens * rate_out) / 1_000_000
+    return (input_tokens * rate_in
+            + cache_write_tokens * rate_in * CACHE_WRITE_MULTIPLIER
+            + cache_read_tokens * rate_in * CACHE_READ_MULTIPLIER
+            + output_tokens * rate_out) / 1_000_000
