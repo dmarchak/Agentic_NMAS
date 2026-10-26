@@ -646,3 +646,56 @@ class TestNothingIsPushedOnARedCi:
         r = subprocess.run([sys.executable, GATE, "--repo", str(repo), "--message", str(msg),
                             "--expect", "Docs:"], capture_output=True, text=True, env=env)
         assert r.returncode == 0 and not (tmp_path / "asked").exists()
+
+
+class TestOnlyNamedPaths:
+    """`--only PATH ...` (the operator, 2026-10-26): a commit that must leave a file out names
+    what it holds, never hides the file from git (skip-worktree is refused by the hook). It
+    stages exactly the named paths, refuses anything else staged, and lists the commit's
+    contents before the suite; without it, the list is printed too, and a modified tracked
+    file the session's Edit and Write tools did not touch (the edit ledger) is named."""
+
+    @pytest.fixture
+    def two(self, repo):
+        (repo / "docs" / "b.md").write_text("b one\n")
+        _git(repo, "add", "docs/b.md")                    # a.md's change stays uncommitted
+        _git(repo, "commit", "-q", "-m", "b")
+        (repo / "docs" / "b.md").write_text("b two\n")      # a second, unrelated change
+        return repo
+
+    def test_it_commits_exactly_the_named_paths_and_lists_them(self, two, tmp_path):
+        before = _commits(two)
+        r = _gate(two, tmp_path, extra=("--only", "docs/a.md"))
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "1. git add -A -- docs/a.md" in r.stdout
+        assert ("nmas-gate: 1b. the commit will contain 1 file(s):\n"
+                "nmas-gate:      M docs/a.md\nnmas-gate: 2. the stage guard\n") in r.stdout
+        assert _commits(two) == before + 1
+        assert _git(two, "show", "--name-only", "--format=", "HEAD") == "docs/a.md"
+        assert _git(two, "status", "--porcelain") == "M docs/b.md", "left as it was"
+
+    def test_anything_else_staged_is_refused_and_nothing_committed(self, two, tmp_path):
+        _git(two, "add", "docs/b.md")
+        before = _commits(two)
+        r = _gate(two, tmp_path, extra=("--only", "docs/a.md"))
+        assert r.returncode == 1
+        assert "REFUSED at stage: staged and not named by --only: ['docs/b.md']" in r.stdout
+        assert _commits(two) == before
+
+    def test_a_path_outside_the_repository_is_refused(self, two, tmp_path):
+        r = _gate(two, tmp_path, extra=("--only", "../elsewhere.md"))
+        assert r.returncode == 1 and "names a path outside" in r.stdout
+
+    def test_without_only_the_list_names_what_the_ledger_did_not_see(self, two, tmp_path):
+        ledger = two / ".git" / "nmas-edited-paths"
+        ledger.write_text("docs/a.md\n")
+        r = _gate(two, tmp_path)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert ("nmas-gate: 1b. the commit will contain 2 file(s):\n"
+                "nmas-gate:      M docs/a.md\nnmas-gate:      M docs/b.md\n") in r.stdout
+        assert "not touched by this session's Edit or Write tools: docs/b.md (" in r.stdout
+        assert ledger.read_text() == "", "a committed path leaves the ledger"
+
+    def test_without_a_ledger_nothing_is_named(self, two, tmp_path):
+        r = _gate(two, tmp_path)
+        assert r.returncode == 0 and "not touched by this session" not in r.stdout

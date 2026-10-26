@@ -21,12 +21,29 @@ closed one shape; the agent then edited docs/CONSOLE_DRILL.md and docs/TESTING.m
 edit of code, and an interpreter running a script FILE (what it writes cannot be seen here;
 the rule still holds).
 
+**And the working tree** (the operator, 2026-10-26: "mechanise the rest rather than soften
+it"; CLAUDE.md, "Control, canary and mutation runs never write to the working tree"). Inside
+this checkout (the session's directory, `cd`, or `git -C`; an agent's worktree under
+.claude/worktrees/ and every other folder are not it), these are refused:
+- `git checkout -- <path>` and `git checkout <ref> -- <path>`; `git restore`;
+  `git reset --hard`; `git clean`; `git stash pop` and `git stash apply`;
+- `git update-index --skip-worktree` and `--assume-unchanged`, which hide a file from status,
+  diff and the gate (a commit that must leave a file out uses `nmas-gate --only`);
+- `cp`, `mv`, `rsync` and `install` whose destination is a tracked file (or, for rsync, a
+  folder holding one).
+**Allowed:** `git stash create`, `scripts/nmas-control` (its runs are in a throwaway worktree),
+clearing a mark (`--no-skip-worktree`, `--no-assume-unchanged`), copies out of the checkout or
+onto an untracked file, and the Edit tool. A destination named through a variable the command
+does not set cannot be seen here and is let through.
+
 An input the hook cannot read exits 1 (a hook error Claude Code shows), never silently allowed.
 """
 
 import json
+import os
 import re
 import shlex
+import subprocess
 import sys
 
 PROSE = re.compile(r"(^|[\s/'\"=(])docs/|\.md\b")
@@ -132,11 +149,165 @@ def refusal(command: str) -> str:
     return ""
 
 
+# ── the working tree (the operator, 2026-10-26) ─────────────────────────────────────────
+
+#: The checkout this hook guards: two folders above it (scripts/hooks/<this>). Agents' own
+#: worktrees under .claude/worktrees/ and every folder outside are not it.
+ROOT = os.path.realpath(os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__)))))
+GIT_OPTS_WITH_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace"}
+COPIERS = {"cp", "mv", "install", "rsync"}
+COPIER_OPTS_WITH_VALUE = {"cp": {"-t", "--target-directory", "-S", "--suffix"},
+                          "mv": {"-t", "--target-directory", "-S", "--suffix"},
+                          "install": {"-t", "--target-directory", "-m", "--mode", "-o",
+                                      "--owner", "-g", "--group", "-S", "--suffix"},
+                          "rsync": {"-e", "--rsh", "-f", "--filter", "--exclude", "--include",
+                                    "-T", "--temp-dir", "--log-file"}}
+
+RESTORE_MESSAGE = (
+    "Refused by the project's PreToolUse hook (scripts/hooks/claude-no-shell-prose-edits): "
+    "{what}. Control, canary and mutation runs never write to the working tree: run them "
+    "through scripts/nmas-control, and change a file with the Edit tool (CLAUDE.md; the "
+    "operator, 2026-10-26).")
+
+
+def _inside(path: str) -> bool:
+    """Whether *path* is in the guarded checkout (and not an agent's worktree in it)."""
+    real = os.path.realpath(path)
+    if real != ROOT and not real.startswith(ROOT + os.sep):
+        return False
+    return not real.startswith(os.path.join(ROOT, ".claude", "worktrees") + os.sep)
+
+
+_tracked_cache = {}
+
+
+def _tracked() -> set:
+    """The checkout's tracked files, as real paths (read once per call)."""
+    if "files" not in _tracked_cache:
+        out = subprocess.run(["git", "-C", ROOT, "ls-files", "-z"], capture_output=True,
+                             text=True, timeout=10, check=False).stdout
+        _tracked_cache["files"] = {os.path.join(ROOT, p) for p in out.split("\0") if p}
+    return _tracked_cache["files"]
+
+
+def _resolve(path: str, cwd: str, env: dict) -> str:
+    """*path* with the command's own assignments expanded, absolute against *cwd*; "" when a
+    variable stays unresolved (what it names cannot be seen here)."""
+    expanded = re.sub(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?",
+                      lambda m: env.get(m.group(1), m.group(0)), path)
+    expanded = os.path.expanduser(expanded)
+    if "$" in expanded or "*" in expanded or "?" in expanded:
+        return ""
+    return os.path.normpath(os.path.join(cwd, expanded))
+
+
+def _git_restore(args: list, cwd: str, env: dict) -> str:
+    """Why a git command rewrites or hides the guarded working tree, or ""."""
+    target, i = cwd, 0
+    while i < len(args) and args[i].startswith("-"):
+        if args[i] == "-C" and i + 1 < len(args):
+            target = _resolve(args[i + 1], cwd, env) or target
+        if args[i] in GIT_OPTS_WITH_VALUE:
+            i += 2
+            continue
+        i += 1
+    sub, rest = (args[i], args[i + 1:]) if i < len(args) else ("", [])
+    if not _inside(target):
+        return ""
+    if sub == "checkout" and "--" in rest:
+        return "`git checkout ... -- <path>` overwrites working-tree files"
+    if sub == "restore":
+        return "`git restore` overwrites working-tree files"
+    if sub == "reset" and "--hard" in rest:
+        return "`git reset --hard` discards working-tree edits"
+    if sub == "clean":
+        return "`git clean` deletes untracked files"
+    if sub == "stash" and rest[:1] and rest[0] in ("pop", "apply"):
+        return f"`git stash {rest[0]}` writes a stash over the working tree"
+    if sub == "update-index":
+        hiding = [f for f in ("--skip-worktree", "--assume-unchanged") if f in rest]
+        if hiding:
+            return (f"`git update-index {hiding[0]}` hides a file from status, diff and the "
+                    "gate; a commit that must leave a file out uses `nmas-gate --only`")
+    return ""
+
+
+def _copy_onto_tracked(name: str, args: list, cwd: str, env: dict) -> str:
+    """Why a cp, mv, install or rsync writes onto a tracked file of the checkout, or ""."""
+    takes = COPIER_OPTS_WITH_VALUE[name]
+    operands, target_dir, i = [], None, 0
+    while i < len(args):
+        a = args[i]
+        if a == "--":
+            operands += args[i + 1:]
+            break
+        if a.startswith("--target-directory="):
+            target_dir = a.split("=", 1)[1]
+        elif a in ("-t", "--target-directory") and name != "rsync" and i + 1 < len(args):
+            target_dir = args[i + 1]
+            i += 2
+            continue
+        elif a in takes:
+            i += 2
+            continue
+        elif not a.startswith("-") or a == "-":
+            operands.append(a)
+        i += 1
+    if name == "install" and ("-d" in args or "--directory" in args):
+        return ""
+    if target_dir is None:
+        if len(operands) < 2:
+            return ""
+        sources, dest = operands[:-1], _resolve(operands[-1], cwd, env)
+    else:
+        sources, dest = operands, _resolve(target_dir, cwd, env)
+    if not dest or not _inside(dest):
+        return ""
+    tracked = _tracked()
+    if name == "rsync":
+        hit = dest in tracked or any(t.startswith(dest.rstrip(os.sep) + os.sep)
+                                     for t in tracked)
+    elif os.path.isdir(dest) or target_dir is not None:
+        hit = any(os.path.join(dest, os.path.basename(s.rstrip("/"))) in tracked
+                  for s in sources)
+    else:
+        hit = dest in tracked
+    if hit:
+        return (f"`{name}` writes onto a tracked file of the checkout "
+                f"({os.path.relpath(dest, ROOT)})")
+    return ""
+
+
+def restore_refusal(command: str, cwd: str) -> str:
+    """Why *command*, run in *cwd*, would write over or hide the guarded working tree, or ""."""
+    env, here = {}, cwd or os.getcwd()
+    for seg in _segments(command):
+        for word in seg:
+            m = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$", word)
+            if not m:
+                break
+            env[m.group(1)] = m.group(2)
+        name, args = _program(seg)
+        if name == "cd" and args:
+            here = _resolve(args[0], here, env) or here
+        elif name == "git":
+            why = _git_restore(args, here, env)
+            if why:
+                return why
+        elif name in COPIERS:
+            why = _copy_onto_tracked(name, args, here, env)
+            if why:
+                return why
+    return ""
+
+
 def main() -> int:
     try:
         call = json.load(sys.stdin)
         tool = call.get("tool_name")
         command = (call.get("tool_input") or {}).get("command", "")
+        cwd = call.get("cwd") or ""
     except (ValueError, AttributeError) as exc:
         print(f"claude-no-shell-prose-edits: could not read the hook input ({exc}); the "
               "command was NOT checked", file=sys.stderr)
@@ -146,6 +317,10 @@ def main() -> int:
     why = refusal(command)
     if why:
         print(MESSAGE.format(what=why), file=sys.stderr)
+        return 2
+    why = restore_refusal(command, cwd if isinstance(cwd, str) else "")
+    if why:
+        print(RESTORE_MESSAGE.format(what=why), file=sys.stderr)
         return 2
     return 0
 

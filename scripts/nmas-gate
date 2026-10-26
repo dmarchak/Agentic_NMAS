@@ -3,7 +3,15 @@
 only in CLAUDE.md and in memory, each behind a past incident). In order, each step able to stop
 everything after it:
 
-  1. stage:         git add -A (the gate tests what it commits, C224);
+  1. stage:         git add -A (the gate tests what it commits, C224); with --only PATH ...,
+                    exactly those paths (`git add -A -- PATH ...`), refused when anything
+                    else is staged, before or after (the operator, 2026-10-26: a commit that
+                    must leave a file out names what it holds, never hides the file);
+  1b. the contents: the files the commit will contain, listed before anything runs; without
+                    --only, also each modified tracked file it sweeps in that this session's
+                    Edit and Write tools did not touch (the edit ledger, `<git dir>/
+                    nmas-edited-paths`, written by scripts/hooks/claude-record-edits: a change
+                    made through the shell or by another session is named, never refused);
   2. stage guard:   scripts/nmas-stage-guard refuses a secret or a stray, and lists new files;
   2b. the snapshot: the staged tree (`git write-tree`) checked out in a worktree of its own,
                     where every step after this one runs and the commit is made, so the
@@ -38,7 +46,7 @@ everything after it:
      which must name that very run. A verdict that cannot be read refuses too, never a guess.
 
     scripts/nmas-gate --message MSG --expect "Subject prefix" [--browser] [--push]
-                      [--fixes-red N]
+                      [--fixes-red N] [--only PATH ...]
 
 Exit 0 committed; 1 refused at a step (named, with where its evidence is kept); 2 usage.
 For tests only, NMAS_GATE_SUITE, NMAS_GATE_RATCHET and NMAS_GATE_BROWSER replace the three
@@ -439,6 +447,43 @@ def interpreter_differs(py, repo):
     return diffs
 
 
+#: The edit ledger in the git dir: one path per line, relative to the checkout, appended by
+#: scripts/hooks/claude-record-edits for every Edit and Write; a committed path leaves it.
+LEDGER = "nmas-edited-paths"
+
+
+def staged(repo) -> list:
+    """``[(status, path)]`` of what is staged against HEAD (renames as a delete and an add)."""
+    out = git(repo, "diff", "--cached", "--name-status", "--no-renames", "HEAD").stdout
+    return [tuple(line.split("\t", 1)) for line in out.splitlines() if "\t" in line]
+
+
+def named(path, only) -> bool:
+    """Whether *path* is one of *only* or under one of its folders."""
+    return any(path == p or path.startswith(p + "/") for p in only)
+
+
+def edited(gitdir):
+    """The edit ledger's paths, or None where no ledger exists (nothing to judge against)."""
+    path = os.path.join(gitdir, LEDGER)
+    if not os.path.isfile(path):
+        return None
+    with open(path, encoding="utf-8") as fh:
+        return {line.strip() for line in fh if line.strip()}
+
+
+def forget(gitdir, paths) -> None:
+    """Take committed *paths* out of the edit ledger (a later edit adds them again)."""
+    have = edited(gitdir)
+    if have is None:
+        return
+    keep = sorted(have - set(paths))
+    tmp = os.path.join(gitdir, LEDGER + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write("".join(f"{p}\n" for p in keep))
+    os.replace(tmp, os.path.join(gitdir, LEDGER))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--message", required=True, help="the commit message file")
@@ -450,6 +495,9 @@ def main(argv=None):
     ap.add_argument("--repo", default=None, help="the repository (default: this checkout)")
     ap.add_argument("--python", default=os.environ.get("NMAS_GATE_PYTHON", DEFAULT_PY),
                     help="CI's interpreter (default: the venv scripts/nmas-ci-env builds)")
+    ap.add_argument("--only", nargs="+", default=None, metavar="PATH",
+                    help="commit exactly these paths (files or folders, relative to the "
+                         "repository); refused when anything else is staged")
     a = ap.parse_args(argv)
     if not a.expect.strip():
         ap.error("--expect must name the subject: an empty prefix matches every message")
@@ -471,8 +519,35 @@ def main(argv=None):
         if why:
             refuse("CI on main", why)
 
-    say("1. git add -A")
-    git(repo, "add", "-A")
+    if a.only:
+        only = sorted({os.path.relpath(os.path.abspath(p), repo) if os.path.isabs(p)
+                       else os.path.normpath(p) for p in a.only})
+        if any(p == ".." or p.startswith("../") for p in only):
+            refuse("stage", f"--only names a path outside {repo}: {only}")
+        extra = sorted(p for _s, p in staged(repo) if not named(p, only))
+        if extra:
+            refuse("stage", f"staged and not named by --only: {extra}; unstage them "
+                            "(git reset -q -- <path>) or name them")
+        say(f"1. git add -A -- {' '.join(only)}")
+        git(repo, "add", "-A", "--", *only)
+        extra = sorted(p for _s, p in staged(repo) if not named(p, only))
+        if extra:
+            refuse("stage", f"staged and not named by --only after staging: {extra}")
+    else:
+        say("1. git add -A")
+        git(repo, "add", "-A")
+    files = staged(repo)
+    say(f"1b. the commit will contain {len(files)} file(s):")
+    for status, path in files:
+        say(f"     {status} {path}")
+    if not a.only:
+        ledger = edited(gitdir)
+        if ledger is not None:
+            unseen = [p for s, p in files if s in ("M", "D") and p not in ledger]
+            if unseen:
+                say(f"1b. swept in, modified and not touched by this session's Edit or Write "
+                    f"tools: {', '.join(unseen)} (a shell edit or another session's; check "
+                    "it belongs here, or commit with --only)")
     say("2. the stage guard")
     guard = subprocess.run([sys.executable, os.path.join(HERE, "nmas-stage-guard"),
                             "--repo", repo], capture_output=True, text=True)
@@ -494,9 +569,12 @@ def main(argv=None):
     say(f"2b. the snapshot: tree {tree[:10]} of {head[:10]}, tested in {snap}; the working "
         "tree is free")
     try:
-        return _tested(a, repo, snap, gitdir, tree, head, branch, first_line)
+        rc = _tested(a, repo, snap, gitdir, tree, head, branch, first_line)
     finally:
         remove()
+    if rc == 0:
+        forget(gitdir, [p for _s, p in files])
+    return rc
 
 
 def _tested(a, repo, snap, gitdir, tree, head, branch, first_line):

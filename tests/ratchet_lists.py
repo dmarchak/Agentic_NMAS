@@ -169,6 +169,7 @@ NOT_RATCHETS = {
     ("tests/test_claude_md_edit_hook.py", "ALLOWED_BASH"): "commands the test asserts the hook allows (cases)",
     ("tests/test_claude_md_edit_hook.py", "FLAG_ALLOWED"): "commands the test asserts the hook allows (cases)",
     ("tests/test_claude_prose_edit_hook.py", "ALLOWED"): "commands the test asserts the hook allows (cases)",
+    ("tests/test_claude_restore_hook.py", "ALLOWED"): "commands the test asserts the hook allows (cases)",
     ("tests/test_dhcp_exclusions.py", "EMPTY"): "an empty Kea document (fixture)",
     ("tests/test_golden_panel_says_what_to_do.py", "INVENTORY"): "a fixture's devices",
     ("tests/test_grafana_reader.py", "INVENTORY"): "a fixture's devices",

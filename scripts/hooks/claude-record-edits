@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+"""Claude Code PostToolUse hook: record each file the Edit and Write tools change in this
+checkout, in the edit ledger the gate reads (`<git dir>/nmas-edited-paths`, one path per line,
+relative to the checkout).
+
+Wired in `.claude/settings.json` (matcher `Edit|Write|MultiEdit|NotebookEdit`). Claude Code
+passes the tool call as JSON on stdin. The hook only records; it never refuses (exit 0), and an
+input it cannot read is said on stderr and recorded as nothing.
+
+**Why it exists** (the operator, 2026-10-26): without `--only`, `scripts/nmas-gate` sweeps in
+every change in the working tree. It now names each modified tracked file it sweeps in that this
+ledger does not hold, which means a change made through the shell or by another session, so a
+file nobody meant to commit is seen before the commit, not after. The gate takes a committed
+path out of the ledger.
+"""
+
+import json
+import os
+import sys
+
+ROOT = os.path.realpath(os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__)))))
+LEDGER = "nmas-edited-paths"
+
+
+def record(path: str, root: str = ROOT) -> str:
+    """Append *path* to *root*'s ledger when it is inside *root* (not an agent's worktree);
+    the relative path recorded, or ""."""
+    real = os.path.realpath(path)
+    if not real.startswith(root + os.sep) or \
+            real.startswith(os.path.join(root, ".claude", "worktrees") + os.sep):
+        return ""
+    gitdir = os.path.join(root, ".git")
+    if not os.path.isdir(gitdir):
+        return ""
+    rel = os.path.relpath(real, root)
+    with open(os.path.join(gitdir, LEDGER), "a", encoding="utf-8") as fh:
+        fh.write(rel + "\n")
+    return rel
+
+
+def main() -> int:
+    try:
+        call = json.load(sys.stdin)
+        tool_input = call.get("tool_input") or {}
+    except (ValueError, AttributeError) as exc:
+        print(f"claude-record-edits: could not read the hook input ({exc}); nothing recorded",
+              file=sys.stderr)
+        return 0
+    path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
+    if isinstance(path, str) and path:
+        record(path)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
