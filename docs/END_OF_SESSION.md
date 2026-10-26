@@ -1,9 +1,10 @@
 # End of session: where Phase 7 stands
 
-**REMINDER, 2026-10-26: the AI day cap (`ai_cap_usd_per_day`) was raised from $1.50 to $3.00
-for 2026-10-26 only, for Explain v5's proof and the Sonnet comparison. The operator sets it
-back to $1.50. If it is still above $1.50 on 2026-10-27, say so first thing: Mercury cannot
-raise that reminder itself (C1751).**
+**REMINDER: the AI day cap (`ai_cap_usd_per_day`) is $10.00 for the rest of the sprint (the
+operator, 2026-10-26; it was $3.00 for 2026-10-26's proof first). It expires Sat 31 Oct, when
+the operator sets it back to $1.50. If it is still above $1.50 after Sat 31 Oct, say so first
+thing: Mercury cannot raise that reminder itself (C1751). Report AI spend in every status
+update meanwhile.**
 
 **NEXT (PHASE8_PLAN 15.12, "Tuning pauses"):** after Explain v5's proof and the Sonnet
 comparison, no more tuning of Ask in words or Explain this sprint, except a pin change the

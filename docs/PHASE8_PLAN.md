@@ -2007,6 +2007,14 @@ features included):**
   exporter or a device wrote, and a stored secret's value in the person's words) is masked in
   the bytes sent. A feature's change needs no tier run.
 
+**The AI day cap is $10.00 for the rest of the sprint (the operator, 2026-10-26; expires Sat
+31 Oct, when the operator sets it back to $1.50).**
+- The measurements the work needs run without asking about spend: Explain's cases on v4
+  once C1754's bound is live, and v5's re-proof in the background, adopted when it is
+  scored.
+- AI spend is reported in each status update.
+- Mercury cannot raise the reminder to set it back (C1751), so END_OF_SESSION.md carries it.
+
 **Tuning pauses for the rest of the sprint (the operator, 2026-10-26; expires with the sprint,
 Sat 31 Oct).**
 - **The pause.** After Explain v5's proof and the Sonnet comparison, no more tuning of Ask in
@@ -2135,6 +2143,18 @@ was 3.59 s and its p95 5.25 s, for $0.0004 a case-run. The rulings:
   |---|---|---|---|---|---|---|
   | adaptive | 99/100 | 95% | **70%** | 29/50 / **38/50** | 3.06 s | $0.055 |
   | off | 84/100 | 60% | 40% | 37/50 / 45/50 | 1.44 s | $0.030 |
+  | Sonnet 5.5, adaptive (set 2 only, a comparison) | not run | not run | **90%** | 39/50 / 39/50 | 2.72 s | $0.26 (about 13x a question) |
+
+  - **The Sonnet comparison** (3fd1ff4f, `nmas-nl-cases --model`; no pin change):
+    - Sonnet misses case 7 five times out of five, answering "flapped" as
+      `changes(ifOperStatus[1h]) > 0`, counted. The 20's case 13 expects `changes` on
+      ifOperStatus, so whether set 2's case 7 accepts it is the operator's ruling, as cases 2
+      and 3 were.
+    - It refuses case 8 (C1750) every time, and case 1 once.
+    - The pin decision is the operator's.
+- **Explain v5's proof is void (C1754):** 50 of its 60 calls stopped at the pin's 1,024
+  output tokens (v4 answered 6 of 30, v5 4 of 30; $1.92). It is re-run once the provisional
+  8,192 bound is deployed.
 
   - **Adaptive stays the pin; nothing changes in `pins/nl_query.json`.** Set 2's consistency
     decides, and is still below the floor, so C1724 stays open.
@@ -2176,6 +2196,17 @@ kind filter. There is no separate tab.
 - **Expanded:** the prompt exactly as it was sent (the masked bytes that left the host, never
   the unmasked form) and the response as received, verbatim, with the prompt's and the
   schema's versions. A large prompt is collapsed, with a note of its size.
+  - **Its form (the operator, 2026-10-26):** "the exact wording of the prompt that was
+    given and the exact structured response from the AI when expanded, similar to how device
+    configuration changes have a window in their history record to show what was changed".
+  - So it mirrors a commit's change window (`/v2/history/commit/<sha>`, drawn when the row is
+    opened): the opened row fetches `/v2/history/ai-call/<id>` and draws two windows.
+  - **Sent:** the instructions' text, each context block and each data block by its name,
+    with the model, `max_tokens`, thinking, and the schema's name and version.
+  - **Received:** the structured answer, its fields laid out for reading, with the raw bytes
+    kept in the record.
+  - Both are masked again on the way out. A secret shows only as its mask, because the
+    unmasked prompt never left the host and is never stored.
 - **Links both ways.** The feature's own "filled from your words … $x" line links to its row,
   and the row links to what it produced.
 - **Recorded at the source.** The subject is written with the call. The use is its own

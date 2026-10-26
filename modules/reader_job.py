@@ -850,13 +850,15 @@ def request_run(reader: Reader, by: str, announce=None, clock=time.time,
             log.exception("reader %s: run %s on request by %s raised; nothing was stored",
                           reader.name, entry["run"], entry["by"] or "nobody identified")
         finally:
-            entry["done"] = True
             took = time.monotonic() - t0
             if bound and took > bound:
                 log.warning("reader %s: run %s on request by %s answered after %.1f s, past the "
                             "%d s its page waits: the page said there was no answer",
                             reader.name, entry["run"], entry["by"] or "nobody identified",
                             took, bound)
+            # Done last (C1758): a run is done once its record of lateness is written, so
+            # whoever waits on `done` reads that record too (CI #1190 read it in between).
+            entry["done"] = True
 
     threading.Thread(target=_go, name=f"request:{reader.name}", daemon=True).start()
     return {**entry, "started": True}

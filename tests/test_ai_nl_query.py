@@ -152,7 +152,7 @@ def test_the_vocabulary_is_the_cached_prefix_and_the_question_rides_uncached(wor
     assert "rate per second" in a["system"][-1]["text"]
     assert "input errors per interface" in a["messages"][0]["content"]
     assert "input errors per interface" not in json.dumps(a["system"])
-    assert a["model"] == profiles.TASKS["nl_query"]["model"] == "claude-haiku-5-5"
+    assert a["model"] == profiles.TASKS["nl_query"]["model"] == "claude-sonnet-5-5"
 
 
 def test_the_prompt_stays_under_the_task_s_bound(world):
@@ -341,7 +341,7 @@ def test_the_page_draws_ask_in_words_with_its_model_and_its_manual(site):
     from html import unescape
     html = unescape(site.get("/v2/history/query/ask/metrics?list=Lab").get_data(as_text=True))
     assert 'name="words"' in html and "Fill the builder" in html
-    assert "Claude Haiku 5.5, claude-haiku-5-5" in html
+    assert "Claude Sonnet 5.5, claude-sonnet-5-5" in html
     assert 'data-op="ask-in-words"' in html and 'data-manual="ask-in-words"' in html
 
 
@@ -370,7 +370,7 @@ def test_words_fill_the_builder_and_push_its_address(site):
     site.world.answer = _choices()
     r, html = _words(site, "input errors per interface, the top 5")
     assert r.status_code == 200
-    assert "Filled from your words (Claude Haiku 5.5" in html and "series now" in html
+    assert "Filled from your words (Claude Sonnet 5.5" in html and "series now" in html
     assert "topk(5, rate(ifInErrors" in html
     assert "m=ifInErrors" in r.headers["HX-Push-Url"]
     assert not any(p == "api/v1/query_range" for p, _ in site.asked), "it ran the answer"

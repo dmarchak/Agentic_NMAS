@@ -406,14 +406,17 @@ def test_every_recorded_case_was_recorded_on_its_task_s_pinned_model(tmp_path):
     model is not its task's pin fails here. Planted: a case on the old model, and one of a
     task no pin names, each found; one on the pin is not."""
     assert profiles.cases_off_pin(RECORDED) == [], "re-record the task's cases on its pin"
+    # The pin as its file names it (Sonnet 5.5 since 2026-10-26), and a model that is not it.
+    PINNED = profiles.TASKS["nl_query"]["model"]
+    OTHER_THAN_PIN = next(m for m in sorted(profiles.MODELS) if m != PINNED)
     (tmp_path / "nl_query").mkdir()
-    (tmp_path / "nl_query" / "a.json").write_text(json.dumps({"model": "claude-sonnet-5-5"}))
-    (tmp_path / "nl_query" / "b.json").write_text(json.dumps({"model": "claude-haiku-5-5"}))
+    (tmp_path / "nl_query" / "a.json").write_text(json.dumps({"model": OTHER_THAN_PIN}))
+    (tmp_path / "nl_query" / "b.json").write_text(json.dumps({"model": PINNED}))
     (tmp_path / "gone").mkdir()
     (tmp_path / "gone" / "c.json").write_text(json.dumps({"model": "claude-haiku-5-5"}))
     got = [(p.rsplit("/", 2)[-2:], r, pin) for p, r, pin in profiles.cases_off_pin(str(tmp_path))]
     assert got == [(["gone", "c.json"], "claude-haiku-5-5", ""),
-                   (["nl_query", "a.json"], "claude-sonnet-5-5", "claude-haiku-5-5")]
+                   (["nl_query", "a.json"], OTHER_THAN_PIN, PINNED)]
 
 
 def test_the_prices_are_the_pricing_page_s_and_the_table_says_when_they_are_stale():

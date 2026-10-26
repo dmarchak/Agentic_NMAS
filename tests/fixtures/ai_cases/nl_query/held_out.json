@@ -1,6 +1,6 @@
 {
   "about": "Ask in words' held-out set (the operator, 2026-10-25, C1724: the overfitting guard). Written before prompt v6 was measured, and never seen while tuning: no prompt may be changed to fit these questions. Different phrasings, devices (r6, s2, s5; the 20 recorded cases name none of them) and metrics (none the 20 expect, none the prompt's worked examples use) from the 20. Two ambiguous cases expect a question back; one healthy-nothing case (CRC errors on r6) expects an answer whose query finds nothing wrong. Each expectation was read from the live catalogue on 2026-10-25 (what r6, s2 and s5 carry) and is checked by the stale-expectation check before every measurement. Measured beside the 20, five runs each, and reported apart; its consistency is the score that counts for C1724.",
-  "model": "claude-haiku-5-5",
+  "model": "claude-sonnet-5-5",
   "cases": [
     {"n": 1, "question": "How much multicast is s2 receiving on each port over the last hour?",
      "expect": {"outcome": ["answer"], "metric": ["ifHCInMulticastPkts"], "devices": ["s2"],

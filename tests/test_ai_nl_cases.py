@@ -388,7 +388,7 @@ def test_merge_writes_the_recording_and_refuses_another_model(tmp_path):
     merged = json.loads((dest / "metrics.json").read_text())["cases"]
     assert merged[2]["recorded"]["choices"]["question"] == "which device?"
     assert merged[3]["recorded"] is None, "a Mercury refusal is no recording"
-    rec.write_text(json.dumps({"model": "claude-sonnet-5-5", "recordings": []}))
+    rec.write_text(json.dumps({"model": "claude-haiku-5-5", "recordings": []}))
     assert _recorder().merge(str(tmp_path), str(rec)) == 2
 
 

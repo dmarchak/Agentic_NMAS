@@ -16,6 +16,11 @@ import pytest
 from modules.ai import calls, connection, profiles
 from tests.test_ai_gateway import own_record, world  # noqa: F401 (fixtures)
 
+#: nl_query's pin (its pin file, read by the code under test) and a model that is not it: the
+#: off-pin cases hold whichever model the pin names (Sonnet 5.5 since 2026-10-26).
+PIN = profiles.TASKS["nl_query"]["model"]
+OTHER = next(m for m in sorted(profiles.MODELS) if m != PIN)
+
 
 # ---------------------------------------------------------------- lookups
 
@@ -55,9 +60,9 @@ def test_the_long_tier_counts_cache_writes_into_the_prompt():
 def test_a_file_beside_the_task_folders_is_passed_over_and_the_folders_still_read(tmp_path):
     (tmp_path / "a_note.txt").write_text("the folders' own notes")   # sorts before them
     (tmp_path / "nl_query").mkdir()
-    (tmp_path / "nl_query" / "a.json").write_text(json.dumps({"model": "claude-sonnet-5-5"}))
+    (tmp_path / "nl_query" / "a.json").write_text(json.dumps({"model": OTHER}))
     assert profiles.cases_off_pin(str(tmp_path)) == [
-        (str(tmp_path / "nl_query" / "a.json"), "claude-sonnet-5-5", "claude-haiku-5-5")]
+        (str(tmp_path / "nl_query" / "a.json"), OTHER, PIN)]
 
 
 def test_a_case_naming_no_model_is_off_its_pin_with_no_model(tmp_path):
@@ -65,18 +70,18 @@ def test_a_case_naming_no_model_is_off_its_pin_with_no_model(tmp_path):
     (tmp_path / "nl_query" / "a.json").write_text(json.dumps({"question": "q"}))
     (tmp_path / "nl_query" / "b.json").write_text("null")
     assert profiles.cases_off_pin(str(tmp_path)) == [
-        (str(tmp_path / "nl_query" / "a.json"), "", "claude-haiku-5-5"),
-        (str(tmp_path / "nl_query" / "b.json"), "", "claude-haiku-5-5")]
+        (str(tmp_path / "nl_query" / "a.json"), "", PIN),
+        (str(tmp_path / "nl_query" / "b.json"), "", PIN)]
 
 
 def test_a_case_in_the_operators_words_is_read(tmp_path):
     """A case holds the operator's words (a non-ASCII question), read as JSON reads bytes."""
     (tmp_path / "nl_query").mkdir()
     (tmp_path / "nl_query" / "a.json").write_bytes(json.dumps(
-        {"question": "Débit sur r1 › Gi1", "model": "claude-sonnet-5-5"},
+        {"question": "Débit sur r1 › Gi1", "model": OTHER},
         ensure_ascii=False).encode("utf-8"))
     assert profiles.cases_off_pin(str(tmp_path)) == [
-        (str(tmp_path / "nl_query" / "a.json"), "claude-sonnet-5-5", "claude-haiku-5-5")]
+        (str(tmp_path / "nl_query" / "a.json"), OTHER, PIN)]
 
 
 def test_a_case_saved_with_a_byte_order_mark_is_read(tmp_path):
@@ -84,9 +89,9 @@ def test_a_case_saved_with_a_byte_order_mark_is_read(tmp_path):
     JSON's reading of bytes still reads; a text read would hand JSON the mark."""
     (tmp_path / "nl_query").mkdir()
     (tmp_path / "nl_query" / "a.json").write_bytes(
-        b"\xef\xbb\xbf" + json.dumps({"model": "claude-sonnet-5-5"}).encode("utf-8"))
+        b"\xef\xbb\xbf" + json.dumps({"model": OTHER}).encode("utf-8"))
     assert profiles.cases_off_pin(str(tmp_path)) == [
-        (str(tmp_path / "nl_query" / "a.json"), "claude-sonnet-5-5", "claude-haiku-5-5")]
+        (str(tmp_path / "nl_query" / "a.json"), OTHER, PIN)]
 
 
 def test_no_cases_folder_is_no_case(tmp_path):
