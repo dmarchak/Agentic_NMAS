@@ -27,7 +27,8 @@ anchoring"). What it finds:
   hides it from the coverage ratchet). A move is credited.
 - **a ratchet loosened**: each list or number DECLARED in `tests/ratchet_lists.py` (`RATCHETS`,
   read at both revisions, the parent's and the commit's together): a `shrinks` list that gains
-  a member (even where another left) or a member whose count rose, a `ceiling` raised, a
+  a member (even where another left) or a member whose count rose, a `grows` list that loses
+  one (a hook test's refused forms, the operator, 2026-10-26), a `ceiling` raised, a
   `floor` lowered, a `ceilings`/`floors` table with a value moved the wrong way, the coverage
   baseline's uncovered count risen (`uncovered`), and an entry taken out of the registry while
   its list is still there (`registry`).
@@ -75,7 +76,7 @@ PRAGMA = re.compile(r"#\s*(pragma|PRAGMA)[:\s]?\s*(no|NO)\s*(cover|COVER)")
 SKIP_MARKS = {"skip", "skipif", "xfail"}
 SKIP_CALLS = {"skip", "xfail", "importorskip"}
 UNITTEST_SKIPS = {"skip", "skipIf", "skipUnless", "expectedFailure"}
-KINDS = ("shrinks", "ceiling", "floor", "ceilings", "floors", "uncovered", "registry")
+KINDS = ("shrinks", "grows", "ceiling", "floor", "ceilings", "floors", "uncovered", "registry")
 
 TRAILER_KEY = re.compile(r"^Test-Weakened:[ \t]*", re.I)
 #: The next trailer (`Key:` or `Key-Word:`), which ends a wrapped trailer's value. A
@@ -590,10 +591,12 @@ def _comprehended(comp):
     return out
 
 
-def members(value):
+def members(value, whole=False):
     """{identity: weight or None} of a `shrinks` list, or UNREADABLE. A dict's members are its
     keys, and the members of each value that is itself a collection, under the key; a record's
-    leading number is its weight (a per-member count that may not rise)."""
+    leading number is its weight (a per-member count that may not rise). With *whole* (a
+    `grows` list of refused forms), an element is itself whole: a record's last item is part
+    of the form, not a reason, so ("Write", {...a}) and ("Write", {...b}) are two members."""
     if isinstance(value, (list, tuple)):       # JSON
         return {json.dumps(v, sort_keys=True): None for v in value}
     if isinstance(value, dict):
@@ -603,9 +606,9 @@ def members(value):
     if isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and \
             value.func.id in ("set", "frozenset", "tuple", "list", "dict", "sorted") and \
             not value.keywords and len(value.args) <= 1:
-        return members(value.args[0]) if value.args else {}
+        return members(value.args[0], whole) if value.args else {}
     if isinstance(value, ast.BinOp) and isinstance(value.op, (ast.BitOr, ast.Add)):
-        left, right = members(value.left), members(value.right)
+        left, right = members(value.left, whole), members(value.right, whole)
         if left is UNREADABLE or right is UNREADABLE:
             return UNREADABLE
         return {**left, **right}
@@ -632,7 +635,10 @@ def members(value):
     if isinstance(value, (ast.List, ast.Tuple, ast.Set)):
         out = {}
         for e in value.elts:
-            out[_identity(e)] = _weight(e) if isinstance(e, ast.Tuple) else None
+            if whole:
+                out[ast.unparse(e)] = None
+            else:
+                out[_identity(e)] = _weight(e) if isinstance(e, ast.Tuple) else None
         return out
     return UNREADABLE
 
@@ -734,6 +740,16 @@ def judge_ratchet(path, name, kind, was, now, entries_now=None) -> list:
         if rose:
             out += w("a member's count rose", "", _show(rose))
         return out
+    if kind == "grows":
+        a, b = members(was, whole=True), members(now, whole=True)
+        if b is UNREADABLE and a is not UNREADABLE:
+            return w("no longer a list the check can read", "readable",
+                     type(now).__name__)
+        if a is UNREADABLE or b is UNREADABLE:
+            return []
+        removed = sorted(set(a) - set(b))
+        return w("list removed from", f"{len(a)} members",
+                 f"-{len(removed)}: {_show(removed)}") if removed else []
     if kind == "registry":
         a, b = _entries(was), _entries(now)
         if a is UNREADABLE or b is UNREADABLE:

@@ -64,6 +64,7 @@ REGISTRY = """RATCHETS = (
     ("tests/test_lists.py", "KNOWN_GAPS", "shrinks"),
     ("tests/test_lists.py", "GAPS_CEILING", "ceiling"),
     ("tests/test_lists.py", "POPULATION_FLOOR", "floor"),
+    ("tests/test_lists.py", "BLOCKED_FORMS", "grows"),
     ("tests/ratchet_lists.py", "RATCHETS", "registry"),
 )
 """
@@ -87,6 +88,7 @@ def test_three():
 TEST_LISTS = """KNOWN_GAPS = {"a": "why a", "b": "why b"}
 GAPS_CEILING = 2
 POPULATION_FLOOR = 10
+BLOCKED_FORMS = {"git restore": "git restore x", "git clean": "git clean -fd"}
 
 
 def test_gaps():
@@ -176,6 +178,9 @@ WEAKENINGS = {
     "a list added to": (
         "tests/test_lists.py", '"b": "why b"}', '"b": "why b", "c": "why c"}',
         "list added to: KNOWN_GAPS (2 members -> +1: 'c')", "KNOWN_GAPS"),
+    "a refused form removed": (
+        "tests/test_lists.py", ', "git clean": "git clean -fd"}', "}",
+        "list removed from: BLOCKED_FORMS (2 members -> -1: 'git clean')", "BLOCKED_FORMS"),
     "a bound in an assert lowered": (
         "tests/test_a.py", "assert len(found) >= 3", "assert len(found) >= 2",
         "floor loosened: test_three: len(found) (3 -> 2)", "test_three"),
@@ -264,6 +269,13 @@ class TestTheTrailer:
 
 
 class TestWhatIsNotAWeakening:
+    def test_a_refused_form_added(self, repo):
+        """A `grows` list gaining a member is its direction: nothing to name."""
+        _edit(repo, "tests/test_lists.py", ', "git clean": "git clean -fd"}',
+              ', "git clean": "git clean -fd", "git reset --hard": "git reset --hard"}')
+        _commit(repo, "a refused form more")
+        assert _range(repo).returncode == 0
+
     def test_a_pure_rename(self, repo):
         _edit(repo, "tests/test_a.py", "def test_two(self):", "def test_two_renamed(self):")
         _commit(repo, "rename")
@@ -454,12 +466,60 @@ def ratchet_candidates(path, text):
     return out
 
 
+#: A test that drives a hook under scripts/hooks/ (its path written out or joined).
+HOOK_TEST = re.compile(r"scripts/hooks/|[\"']hooks[\"']")
+
+
+def refused_form_lists(path, text):
+    """[(path, name)]: a hook test's refused forms (the operator, 2026-10-26): each module-level
+    collection named REFUSED... in a test that drives a hook. Each is a `grows` ratchet, so a
+    refusal the test stops asserting needs a Test-Weakened trailer."""
+    if not HOOK_TEST.search(text):
+        return []
+    out = []
+    for node in ast.parse(text).body:
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
+            continue
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        out += [(path, t.id) for t in targets
+                if isinstance(t, ast.Name) and t.id.startswith("REFUSED")
+                and _ratchet_shaped(node.value) and not isinstance(node.value, ast.Constant)]
+    return out
+
+
 def _population():
     found = []
     for p in tracked("tests", "modules", suffix=".py", root=ROOT):
         rel = os.path.relpath(p, ROOT)
         found += ratchet_candidates(rel, Path(p).read_text(encoding="utf-8"))
     return found
+
+
+class TestEveryHookTestsRefusedFormsGrow:
+    """The operator, 2026-10-26: any hook test's refused-form list is declared `grows` in
+    tests/ratchet_lists.py, as ratchet-looking lists already are, so the next hook needs no
+    register row to be held."""
+
+    def test_every_one_is_declared_grows(self):
+        from tests.ratchet_lists import RATCHETS
+        grows = {(f, n) for f, n, k in RATCHETS if k == "grows"}
+        found = []
+        for p in tracked("tests", suffix=".py", root=ROOT):
+            rel = os.path.relpath(p, ROOT)
+            found += refused_form_lists(rel, Path(p).read_text(encoding="utf-8"))
+        assert len(found) >= 6, found           # the floor: 6 found on 2026-10-26
+        missing = sorted(c for c in found if c not in grows)
+        assert missing == [], (
+            "a hook test's refused-form list that tests/ratchet_lists.py does not declare "
+            f"`grows`: {missing}")
+
+    def test_the_scan_finds_a_planted_one_and_only_in_a_hook_test(self):
+        planted = ('HOOK = os.path.join(ROOT, "scripts", "hooks", "x")\n'
+                   'REFUSED = {"a": "cmd a"}\nREFUSED_BASH = ["cmd b"]\nREFUSED_COUNT = 3\n'
+                   'ALLOWED = {"c": "cmd c"}\n')
+        assert refused_form_lists("tests/p.py", planted) == [
+            ("tests/p.py", "REFUSED"), ("tests/p.py", "REFUSED_BASH")]
+        assert refused_form_lists("tests/q.py", 'REFUSED = {"a": "cmd a"}\n') == []
 
 
 class TestTheRegistryIsComplete:
@@ -491,7 +551,7 @@ class TestTheRegistryIsComplete:
             value = wk.read_ratchet(text, path, name)
             if value in (wk.ABSENT, wk.UNREADABLE):
                 bad.append((path, name, "absent or unreadable"))
-            elif kind == "shrinks" and wk.members(value) is wk.UNREADABLE:
+            elif kind in ("shrinks", "grows") and wk.members(value) is wk.UNREADABLE:
                 bad.append((path, name, "members unreadable"))
             elif kind in ("ceiling", "floor") and wk._numeric(value) is wk.UNREADABLE:
                 bad.append((path, name, "not a number"))
@@ -522,6 +582,17 @@ class TestTheReaders:
         now = ast.parse("X = {'f.py': (5, 'why, again')}").body[0].value
         [w] = wk.judge_ratchet("tests/t.py", "X", "shrinks", was, now)
         assert w.what == "a member's count rose" and "'f.py': 4 -> 5" in w.after
+
+    def test_a_refused_form_is_whole_two_sharing_a_first_item_are_two(self, wk):
+        """A `grows` list's member is the whole form: in a `shrinks` list a record's last item
+        is its reason, but ("Write", {...a}) and ("Write", {...b}) are two refused forms, and
+        removing either is refused (tests/test_claude_md_edit_hook.py's REFUSED_FILE)."""
+        was = ast.parse("X = [('Write', {'p': 'a'}), ('Write', {'p': 'b'})]").body[0].value
+        now = ast.parse("X = [('Write', {'p': 'a'})]").body[0].value
+        [w] = wk.judge_ratchet("tests/t.py", "X", "grows", was, now)
+        assert w.what == "list removed from" and "Write" in w.after and "'b'" in w.after
+        assert wk.judge_ratchet("tests/t.py", "X", "shrinks", now, was) == [], \
+            "a shrinks list still reads a record's last item as its reason"
 
     def test_the_coverage_baselines_uncovered_count(self, wk):
         was = {"modules/a.py": {"functions": 10, "covered_unit": 8}}

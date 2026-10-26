@@ -10,6 +10,9 @@ one the other way without a `Test-Weakened: <list> — C<n>: <reason>` trailer (
   is not in its parent is refused even where another left; a dict's members are its keys, and
   the members of a value that is itself a collection; a record's last item is its reason (an
   edited reason is no new member) and its leading number a count that may not rise.
+- `grows`: the mirror, a list or dict that may only gain members: a member of the parent the
+  commit no longer holds is refused (a hook test's refused forms: removing one stops testing a
+  refusal; the operator, 2026-10-26).
 - `ceiling`: a number that may not rise. `floor`: a number that may not fall (the operator's
   spec names ceilings; a lowered population floor is the same weakening, mirrored).
 - `ceilings` / `floors`: a table of numbers, each held the same way.
@@ -32,6 +35,14 @@ one in the same function or module.
 """
 
 RATCHETS = (
+    # ── A hook test's refused forms: they only grow (the operator, 2026-10-26; every one is
+    #    declared, tests/test_test_weakening_check.py's hook-test scan) ────────────────────
+    ("tests/test_claude_heredoc_hook.py", "REFUSED", "grows"),
+    ("tests/test_claude_host_writes_hook.py", "REFUSED", "grows"),
+    ("tests/test_claude_md_edit_hook.py", "REFUSED_BASH", "grows"),
+    ("tests/test_claude_md_edit_hook.py", "REFUSED_FILE", "grows"),
+    ("tests/test_claude_prose_edit_hook.py", "REFUSED", "grows"),
+    ("tests/test_claude_restore_hook.py", "REFUSED", "grows"),
     # ── Known gaps, excused and pending lists: they only shrink ─────────────────────────────
     ("modules/manual.py", "ON_TODAYS_APP", "shrinks"),
     ("modules/manual.py", "UNDECLARED", "shrinks"),
