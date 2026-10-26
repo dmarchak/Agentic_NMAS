@@ -122,7 +122,14 @@ class ExplanationV2(StrictModel):
 
 #: Each prompt version's answer schema: v1 to v3 were written for `Explanation`, v4 for
 #: `ExplanationV2`, so a replay asking v1 asks it as it was.
-SCHEMA_OF = {1: Explanation, 2: Explanation, 3: Explanation, 4: ExplanationV2}
+SCHEMA_OF = {1: Explanation, 2: Explanation, 3: Explanation, 4: ExplanationV2,
+             5: ExplanationV2}
+#: A candidate prompt, asked only by a replay (`nmas-pack-replay --prompt 5`) until it is
+#: proved: v5 adds general Analyst guidance ("when symptoms appear on several devices in the
+#: same window, consider a common cause beneath them early, citing the cross-device evidence";
+#: the operator, 2026-10-26), proved on newly replayed incidents and the healthy baselines,
+#: never on C1547.
+CANDIDATES = (("explain", 5),)
 #: A checked piece's states that were read (pack_format: only ok and empty are evidence).
 READ_STATES = ("ok", "empty")
 
@@ -153,7 +160,8 @@ def vocabulary(sections=None) -> str:
             + "; ".join(f"{k} = {H.FIGURE_WORDS[k]}" for k in H.FIGURES)
             + ". A figure's reference is health:<device id>:<figure>, the device id the "
             "topology gives the device. A figure whose state is not ok was not measured: it "
-            "says why, and is not a zero.")
+            "says why, and is not a zero. The section's lines hold the figures, "
+            + H.LINE_FORMAT)
     lines += [
         "A confirming read is one command a person may run on the device, read-only: it begins "
         "with one of " + ", ".join(R.READ_ONLY_VERBS) + "; a pipe may follow with "
@@ -211,11 +219,25 @@ def sent_sections(pack: dict, topo: dict = None) -> list:
     return out
 
 
+def as_sent(section: dict) -> dict:
+    """A section as the model reads it: the health figures one line per device (the operator,
+    2026-10-26, the approved trim; `evidence_health.lines`), every other section as stored.
+    The check resolves against the pieces, which the pack keeps."""
+    from modules import evidence_health as H
+
+    if section.get("name") != "health":
+        return section
+    # The figures' words are the pack format's (the cached prefix), not repeated per call.
+    out = {k: v for k, v in section.items() if k not in ("pieces", "figures")}
+    out["lines"] = H.lines(section.get("pieces") or [])
+    return out
+
+
 def parts(pack: dict, topo: dict = None) -> dict:
     """The call's own data: the topology around the device (when sent, or why it could not be
     read), the pack's sections as sent, and the alert's own words, which sort last."""
-    out = {"pack": json.dumps(sent_sections(pack, topo), sort_keys=True, ensure_ascii=False,
-                              separators=(",", ":")),
+    out = {"pack": json.dumps([as_sent(s) for s in sent_sections(pack, topo)], sort_keys=True,
+                              ensure_ascii=False, separators=(",", ":")),
            "the_alert": f"{pack.get('rule', '')} on {pack.get('device') or 'no one device'}"}
     if topo and topo.get("yaml"):
         out["network_topology"] = topo["yaml"]

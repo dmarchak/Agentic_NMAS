@@ -460,6 +460,31 @@ class TestExplainWithTheContext:
             assert got["error"] == "couldnt_analyse", got
             assert f"cites {bad!r}, which is not in the pack" in got["detail"]
 
+    def test_the_figures_go_one_line_per_device_every_device_kept(self, ctx):
+        """The approved trim (the operator, 2026-10-26): the health section is sent as one line
+        per device, every device the pack holds, nearest first, each figure in a few words with
+        the device's id (a figure's reference is health:<id>:<figure>); the pieces stay in the
+        pack, so the check still resolves them; the figures' descriptions are the cached
+        prefix's, not repeated."""
+        ctx.answer = _citing(ctx, [f"health:{ctx.ids['s3']}:cpu"])
+        assert _explain(ctx)["ok"] is True
+        sent = next(s for s in _pack_sent(ctx) if s["name"] == "health")
+        stored = _section(ctx.pack, "health")
+        devices = []
+        for p in stored["pieces"]:
+            if (p["device"], p["dev"], p["hop"]) not in devices:
+                devices.append((p["device"], p["dev"], p["hop"]))
+        assert [ln.split("): ", 1)[0] + ")" for ln in sent["lines"]] == [
+            f"{d} ({i}, hop {h})" for d, i, h in devices]
+        assert "pieces" not in sent and "figures" not in sent and stored["pieces"]
+        s3 = next(ln for ln in sent["lines"] if ln.startswith("s3 "))
+        assert "cpu 41/" in s3 and "/57% peak 08:13:00" in s3, s3
+        assert "scrapes " in s3 and "failed 08:12:00-" in s3, s3
+        absent = next(p for p in stored["pieces"] if p["state"] != "ok")
+        line = next(ln for ln in sent["lines"] if ln.startswith(absent["device"] + " "))
+        assert f"{absent['figure']} {absent['state']} (" in line, line
+        assert len(json.dumps(sent)) < len(json.dumps(stored)) / 2
+
     def test_with_the_topology_class_off_only_the_alerts_device_figures_go(self, ctx,
                                                                            monkeypatch):
         from modules.ai import egress_classes
@@ -468,7 +493,14 @@ class TestExplainWithTheContext:
         ctx.answer = _citing(ctx, [f"health:{ctx.ids['r1']}:cpu"])
         assert _explain(ctx)["ok"] is True
         health = next(s for s in _pack_sent(ctx) if s["name"] == "health")
-        assert {p["hop"] for p in health["pieces"]} == {0} and len(health["pieces"]) == 4
+        # Sent one line per device (the approved trim, 2026-10-26): one line, the alert's own
+        # device's, with its four figures; no neighbour's name or figure.
+        assert len(health["lines"]) == 1 and health["lines"][0].startswith(
+            f"r1 ({ctx.ids['r1']}, hop 0): cpu ")
+        assert all(f in health["lines"][0] for f in ("cpu ", "heartbeat ", "scrapes ",
+                                                      "discards "))
+        assert not any(h in health["lines"][0] for h in ("s3", "r2", "r3", "s4"))
+        assert "pieces" not in health
         assert "the topology class" in health["withheld"]
         ref = f"health:{ctx.ids['s3']}:cpu"
         ctx.answer = _citing(ctx, [ref])

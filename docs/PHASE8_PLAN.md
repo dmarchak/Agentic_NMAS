@@ -1409,6 +1409,8 @@ feature 1 really needs it, with the reason. Don't decide it").
 
 1. **Feature 1:** natural language to PromQL or LogQL.
 2. **Feature 7:** natural language to intent.
+   - **Then, after the sprint: card P5, Plan with AI and the action library** (16.7; the
+     operator, 2026-10-26).
 3. **The Analysts:** features 2 (alert correlation), 3 (incident drafts) and 5 (root cause).
 4. **Respond's classes, enabled one at a time** as each class's observe data qualifies: 1% false
    positives or fewer over at least 30 days and 100 events. The observe period itself runs in
@@ -2106,6 +2108,19 @@ was 3.59 s and its p95 5.25 s, for $0.0004 a case-run. The rulings:
     - Proved by the tier's hand check.
     - v7 is measured with and without it on the 20 and on set 2. **Set 2's consistency
       decides** the pin.
+- **v7 measured (8e49b197, 2026-10-26 00:50 to 01:1x UTC), five runs each:**
+
+  | Thinking | The 20: pass | The 20: consistent | Set 2: consistent | Set 2: pass (as written / corrected) | p50 | Cost |
+  |---|---|---|---|---|---|---|
+  | adaptive | 99/100 | 95% | **70%** | 29/50 / **38/50** | 3.06 s | $0.055 |
+  | off | 84/100 | 60% | 40% | 37/50 / 45/50 | 1.44 s | $0.030 |
+
+  - **Adaptive stays the pin; nothing changes in `pins/nl_query.json`.** Set 2's consistency
+    decides, and is still below the floor, so C1724 stays open.
+  - **Set 2's cases 2 and 3 were corrected** after the first runs, by the operator's ruling:
+    the 64-bit counter is the prompt's own default and the right one, as 32-bit counters
+    wrap. The corrected score counts, and both are shown once.
+  - Case 8, a refusal on an unknown role, is C1750: registered, not tuned on.
 - **The offer** is narrowed by a named role's devices as well as by named devices.
 - **Case 15** expects `cpuAvgBusy5`, as measured: s3 and s4 carry no `cpmCPUTotal` series.
 - **Case 13:** the metrics builder gains a `changes` operation (PromQL `changes()` over the
@@ -2252,7 +2267,20 @@ tab alike:**
   - **Under it, v3 passes the judge** on its third hypothesis's scrape figures (r1, r2, r3).
     On the CPU peaks alone it would miss, as it cites only r1's. v1 still misses.
   - The verdict stands once the operator has read both answers' text.
-- **Proposed, not built: a trim of the health section** (C1547's pack, 11 devices).
+- **The operator's ruling, 2026-10-26, having read both answers:** the s3-centred check is
+  replaced.
+  - The case now asks that r1's drop be tied to its neighbour s4's symptoms (the heartbeat
+    gap, the failed scrape).
+  - It asks for a shared cause beneath (the host or hypervisor), offered as a hedged
+    hypothesis citing cross-device evidence (scrape failures, heartbeat gaps or CPU peaks
+    across devices), and for no invented figure.
+  - **v3 passes; v1 misses both.**
+- **Explain v5 candidate** (general Analyst guidance, never C1547-specific): "when symptoms
+  appear on several devices in the same window, consider a common cause beneath them early,
+  citing the cross-device evidence". It is proved only on two or three newly replayed
+  incidents plus the healthy baselines, never on C1547.
+- **A trim of the health section, approved by the operator (2026-10-26): one line per
+  device, every device kept** (C1547's pack, 11 devices).
   - The health section is about 5,600 of v3's roughly 20,000 input tokens. That is an
     estimate: the sizes at 2.12 characters a token, measured on v1's call.
   - **One line per device**, each figure in a few words with its id implied
@@ -2349,3 +2377,91 @@ measured for consistency like the rest; P1 Explain's first (15.12).
   findings.
 - **Item 10 (host and hypervisor telemetry):** C1722, linked to C1547 and item 5.
 - **Item 3 (environment class policy):** C1720, the classification marking.
+
+### 16.7 Card P5: Plan with AI, and the action library (after the sprint; the operator, 2026-10-26)
+
+In 13.3's order after feature 7. **It depends on:**
+- 16.1 items 1 and 2: the action catalogue with risk classes, and time-bound changes;
+- feature 7 (natural language to intent) and C1471 (Day 1 at onboarding), whose change-set
+  work the executor reuses;
+- the network model (15.15).
+
+**New screens need mockups and the operator's sign-off before any build (the standing
+rule).** Its open questions are C1747, C1748 and C1749.
+
+#### The workflow: "Plan with AI"
+
+An entry on the Actions menu, carrying the AI mark (15.13). The principle: **"AI advises,
+validation decides, Python executes."**
+
+1. **The goal.** The person states a goal in words.
+2. **The draft.** The AI drafts a plan as structured steps, chosen only from the action
+   catalogue (16.1 item 1). Each step carries:
+   - its parameters;
+   - a verifier;
+   - the action's own rollback.
+
+   No free text is a step.
+3. **The validation.** Mercury validates the plan deterministically:
+   - every step is in the catalogue, and its parameters are the action's own;
+   - impact analysis on the network model: alternate paths, cut vertices, VRRP and HSRP
+     masters, single-homed links, BGP sessions;
+   - the change windows;
+   - the plan's risk is its highest step's class.
+4. **The decision.** The person approves, declines, or edits in a structured editor (no free
+   text; C1747).
+5. **The run.** Mercury's executor runs the plan step by step, each through the normal
+   pipeline (preview, apply, verify, rollback). It stops if a step's program differs from what
+   was approved. A drain is time-bound (16.1 item 2).
+6. **On failure** it stops. The AI may explain, or propose a revised plan, which needs fresh
+   approval. The model never acts mid-run.
+7. **The record.** Each step is reported, and the run is recorded in History.
+8. **Save as action.** The plan, with its parameters, becomes a named action in the network's
+   repository:
+   - versioned, with its first run kept as the reference;
+   - re-runnable with no AI (offline parity).
+
+**P4 (save as runbook, 15.9)** becomes the read-only case of the same format.
+
+#### The action library, built for 100 or more saved actions
+
+- **The Actions menu stays short, about 10 entries:**
+  - Plan with AI…;
+  - the built-in operations;
+  - Pinned (personal and team);
+  - Suggested for this device: the top few saved actions that apply to it by platform, role
+    and site, never one that cannot run here (C1748);
+  - Recently used;
+  - All actions….
+- **A command palette (Ctrl+K)** searches every action by name, tag and description, from
+  anywhere, phone included.
+- **An Action library page:**
+  - categories: maintenance, troubleshooting, onboarding, security;
+  - applicability filters;
+  - each action's owner, version, risk class, last run, success rate and approval state;
+  - built for large fleets: summary counts, grouping, search, never one long list.
+- **Governance:**
+  - an action moves from draft (its author only), to reviewed (an approver checked it, and it
+    is shared), to retired;
+  - an edit is a new version, and every run records the version it ran;
+  - actions are network-scoped by default, and export and import share them across networks;
+  - who may approve before roles exist is C1749 (decision 13).
+- **Read-only diagnostic runbooks (P4)** live in the same library, marked as such.
+
+#### The card (section 3's format)
+
+| Field | P5 |
+|---|---|
+| Problem | A maintenance or change (a device drained for an upgrade, a link moved, a site's VLAN added) is planned by hand: the steps chosen, the impact reasoned over the topology, the order and the rollback written down, then the steps run one by one. The procedures that work live in people's heads or wiki pages. **Unmeasured:** how often, and how long planning and running take; 8.0's observe period measures it before the card is accepted. |
+| Industry need | Network engineers plan changes against the impact they will have: what loses its alternate path, which first-hop redundancy master moves, which BGP sessions drop. Then they run the steps in order with a way back. They also need tribal procedures turned into repeatable automation. Established tools split this: change-management systems hold a method of procedure and an approval; impact-verification and network-modelling tools answer "what breaks if"; automation platforms run playbooks or job templates. Few join a plan's impact analysis to its own verified execution. Mercury does both in one path: a plan of catalogued, risk-classed actions; an impact analysis on its own network model before approval; execution through its preview, verify and rollback pipeline, stopping when a program differs from what was approved; and the plan kept as a versioned action that runs again with no AI, scaled by a short menu, a palette and a library rather than a long list. |
+| Deterministic alternative | The person composes the steps from the catalogue by hand in the same structured editor, and the validation, impact analysis and executor are identical. That path is built and works with AI off. What it cannot do: turn a stated goal into a first draft of steps and parameters. That one step is the AI's. |
+| Inputs | The goal (masked), the action catalogue's entries and their parameter schemas, and the network model's part around the devices named (the topology class, 15.11), as data. No tools. Context: **unmeasured**, sized by section 4's method. Output schema: Pydantic v2 strict, versioned: steps chosen from the catalogue's identifiers only. |
+| Output shape | A (13.4): structured steps, each `{action_id, parameters, verifier, rollback}`, or one question back, or a refusal saying why. Every `action_id` resolves to the catalogue, every parameter validates against its action's schema; one that does not is "couldn't plan", and nothing is shown. |
+| Success metric | Plans approved without edit (target **proposed**: 60%), and 0 approved plans whose run stops on a program differing from what was approved. Eval set: recorded cases of goals over the lab's network, with healthy baselines (a goal with nothing to do says so: item 9). |
+| Compared fields | Decision-maker (95%, 11.12): the steps' `action_id`s, their order and their parameters. |
+| Budgets | **Unmeasured;** proposed by analogy with feature 7 once its cost is measured. A button only (15.6). |
+| Observe mode | Drafts shown beside the hand-composed path. The threshold to leave is the success metric over 20 plans. |
+| Kill criteria | Approved-without-edit below 40% after 20 plans; one approved plan whose run met a program differing from what was approved; or cost per approved plan above 2× budget. |
+| Owner | The operator. |
+| Relation | P4 (save as runbook) is the read-only case of the same saved-action format. Feature 7 supplies the intent-patch path the executor's intent steps use. |
+| Test plan | A drafted plan citing an action not in the catalogue, or a parameter out of its schema, is refused. The impact analysis is planted on the network model: a cut vertex, a single-homed link, a VRRP master, a BGP session. A run stopping when a step's program differs from the approved one. Rollback per step on a planted failure. A saved action re-run with AI off gives the same programs. The library tested at 100+ actions on test_scale's fleet, with summary counts and no long list. A browser test of each signed-off screen. |

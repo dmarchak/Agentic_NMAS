@@ -394,3 +394,56 @@ def read(network: str, devices: list, onset, at: float, prom=None, loki=None) ->
                        **({"bounded": win["bounded"]} if win["bounded"] else {}),
                        "step_s": STEP_SECONDS},
             "pieces": pieces, "errors": errors, "asked": asked}
+
+
+#: How the figures go to a model (the operator, 2026-10-26: one line per device, every device
+#: kept; C1547's 11 devices took about 5,600 tokens as pieces and about 810 as lines). Each
+#: figure keeps its reference, `health:<device id>:<figure>`, from the device id the line
+#: names; times are the window's, UTC, to the second.
+LINE_FORMAT = ("one line per device: <device> (<device id>, hop <n>): then each figure, "
+               "'cpu min/avg/max% peak <time>', 'heartbeat <beats> beats, gap <longest gap>s "
+               "to <when it ended>, last <seconds before the alert>s', 'scrapes "
+               "<failed>/<scrapes> failed <first>-<last> (<jobs>)', 'discards min/avg/max/s "
+               "peak <time>' ('discards 0/s' when there were none), or the figure's state and "
+               "why it was not measured. A figure's reference is health:<device id>:<figure>.")
+
+
+def _clock(iso) -> str:
+    return (iso or "")[11:19] or "-"
+
+
+def _figure_words(p: dict) -> str:
+    """One figure in a few words (`LINE_FORMAT`), from its piece."""
+    fig, state = p["figure"], p.get("state")
+    if state != "ok":
+        return f"{fig} {state}" + (f" ({p['why']})" if p.get("why") else "")
+    if fig == "cpu":
+        return f"cpu {p['min']:g}/{p['avg']:g}/{p['max']:g}% peak {_clock(p.get('peak_at'))}"
+    if fig == "discards":
+        if not p["max"]:
+            return "discards 0/s"
+        return (f"discards {p['min']:g}/{p['avg']:g}/{p['max']:g}/s "
+                f"peak {_clock(p.get('peak_at'))}")
+    if fig == "heartbeat":
+        gap = (f", gap {p['max_gap_s']}s to {_clock(p.get('max_gap_ended_at'))}"
+               if p.get("max_gap_s") is not None else "")
+        last = (f", last {p['since_last_s']}s" if p.get("since_last_s") is not None else "")
+        return f"heartbeat {p.get('beats', 0)} beats{gap}{last}" + (
+            f" ({p['cut']})" if p.get("cut") else "")
+    out = f"scrapes {p.get('failed', 0)}/{p.get('scrapes', 0)} failed"
+    if p.get("failed"):
+        out += (f" {_clock(p.get('first_failed_at'))}-{_clock(p.get('last_failed_at'))}"
+                f" ({', '.join(p.get('jobs_failing') or [])})")
+    return out
+
+
+def lines(pieces: list) -> list:
+    """The pieces as one line per device, in the pieces' order (nearest first)."""
+    order, by = [], {}
+    for p in pieces:
+        key = (p.get("device"), p.get("dev"), p.get("hop"))
+        if key not in by:
+            order.append(key)
+            by[key] = []
+        by[key].append(_figure_words(p))
+    return [f"{d} ({i}, hop {h}): " + "; ".join(by[(d, i, h)]) for d, i, h in order]

@@ -3,18 +3,20 @@ every Analyst task's cases include healthy baselines that must report nothing wr
 Explain's first; tests/fixtures/ai_cases/explain/recorded.json; modules/ai/cases.py
 `explain_unready`, `explain_misses`).
 
-- The set: C1547's replay with the operator's judging rule word for word, and healthy
-  baselines, each a replay window outside the nightly backup window, each baseline expecting no
-  hypothesis; on the task's pinned model and its current prompt.
+- The set: C1547's replay, its judging history kept word for word (the rule, its revision,
+  and the operator's ruling of 2026-10-26 that replaced both), and healthy baselines, each a
+  replay window outside the nightly backup window, each expecting no fault found; on the
+  task's pinned model and its current prompt.
 - Ready to judge, on test_evidence_pack_context's pack (the real builder, C1547's planted
-  shape: s3's CPU peaking at 57% while its scrapes fail and its heartbeat gaps 586 s): case 1's
-  evidence is all measured; a baseline's quiet check finds that window's symptoms, and passes a
-  copy with them taken out.
-- The judge, on planted answers against that pack: the honest answer passes; a confident
-  "s3 CPU overload" at an invented 96% misses three ways; an invented figure, a hypothesis
-  that ties nothing to the drops, a refusal and no answer each miss; a baseline passes on no
-  fault found citing its device's figures (C1742), and misses checking none of them, with a
-  refusal or an empty answer in its place, and with a hypothesis.
+  shape): case 1's evidence (r1's log lines, s4's heartbeat and scrapes) is all measured; a
+  baseline's quiet check finds that window's symptoms, and passes a copy with them taken out.
+- The judge, on planted answers against that pack, by the ruling: the honest answer (r1's
+  drop tied to s4's symptoms, a shared cause beneath citing three devices' figures) passes; a
+  confident "s3 CPU overload" at an invented 96% misses on the tie, the shared cause, the
+  person and the figure; an invented figure alone, a drop tied to nothing, a shared cause on
+  two devices, a refusal and no answer each miss; a baseline passes on no fault found citing
+  its device's figures (C1742), and misses checking none of them, with a refusal or an empty
+  answer in its place, and with a hypothesis.
 """
 import copy
 import os
@@ -45,19 +47,27 @@ def _ref(pack, sel):
     return got[-1]["ref"]
 
 
+RULED = ("Replace the s3-centred check with: ties r1's drop to its neighbour s4's symptoms "
+         "(heartbeat gap, failed scrape), offers a shared cause beneath (host/hypervisor) as a "
+         "hedged hypothesis citing cross-device evidence (scrape failures, heartbeat gaps or CPU "
+         "peaks across devices), invents no figure.")
+
+
 def _honest(pack):
-    """The answer the operator's rule asks for, as the model would shape it."""
+    """The answer the operator's ruling (2026-10-26) asks for, as the model would shape it:
+    r1's drop tied to s4's symptoms, and a shared cause beneath, hedged, on three devices."""
     return {"outcome": "answer", "why_not": "",
-            "rationale": "r1's OSPF adjacencies dropped while s3, on the core segment, missed "
-                         "heartbeats and failed scrapes; s3's own CPU peaked at 57%, which does "
-                         "not explain its symptoms.",
+            "rationale": "r1's OSPF adjacency to s4 dropped while s4 missed heartbeats and "
+                         "failed scrapes; scrapes failed on several devices in the same window.",
             "needs_human": True,
             "hypotheses": [
-                {"claim": "Contention beneath s3 (its host, the hypervisor or a link), not in "
-                          "the evidence, stalled it and with it the adjacencies through it.",
-                 "evidence_refs": [_ref(pack, "logs:*"), _ref(pack, "health:s3:heartbeat"),
-                                   _ref(pack, "health:s3:scrapes"),
-                                   _ref(pack, "health:s3:cpu")],
+                {"claim": "s4 stopped answering hellos, so r1's dead timer expired.",
+                 "evidence_refs": [_ref(pack, "logs:*"), _ref(pack, "health:s4:heartbeat"),
+                                   _ref(pack, "health:s4:scrapes")],
+                 "confirm_with": "show ip ospf neighbor"},
+                {"claim": "A shared cause beneath the devices (their host or the hypervisor), "
+                          "not in the evidence, stalled several at once.",
+                 "evidence_refs": [_ref(pack, f"health:{d}:scrapes") for d in ("r1", "r2", "s3")],
                  "confirm_with": "show processes cpu history"}]}
 
 
@@ -69,6 +79,7 @@ def test_the_set_is_c1547_and_healthy_baselines_on_the_pin():
     assert tuple(SET["prompt"]) == explain.PROMPT
     assert [c["n"] for c in SET["cases"]] == list(range(1, len(SET["cases"]) + 1))
     assert BY[1]["kind"] == "incident" and BY[1]["judge"].startswith(RULE)
+    assert BY[1]["ruled"].startswith(RULED)
     assert BY[1]["replay"] == {"device": "r1", "onset": "2026-10-22T07:40:44Z",
                                "at": "2026-10-22T08:20:00Z",
                                "rule": "Replayed: OSPF adjacency drops"}
@@ -104,10 +115,10 @@ def test_case_1_s_evidence_is_measured_in_the_pack(ctx):  # noqa: F811
 
 def test_a_needed_figure_not_measured_is_said(ctx):  # noqa: F811
     pack = copy.deepcopy(ctx.pack)
-    for p in cases.select(pack, "health:s3:heartbeat"):
+    for p in cases.select(pack, "health:s4:heartbeat"):
         p["state"], p["why"] = "unreadable", "Loki could not be asked"
     assert cases.explain_unready(BY[1], pack) == [
-        "health:s3:heartbeat: not measured (unreadable: Loki could not be asked)"]
+        "health:s4:heartbeat: not measured (unreadable: Loki could not be asked)"]
     assert cases.explain_unready(dict(BY[1], needs=["health:s9:cpu"]), ctx.pack) == [
         "health:s9:cpu: not in the pack"]
 
@@ -149,9 +160,9 @@ def test_a_confident_s3_cpu_overload_fails(ctx):  # noqa: F811
                              "confirm_with": "show processes cpu"}]}
     got = cases.explain_misses(BY[1]["expect"], wrong, ctx.pack)
     assert any(g.startswith("needs_human False") for g in got), got
-    assert any("rests on ['health:s3:cpu'] alone" in g for g in got), got
     assert any("states 96%" in g for g in got), got
-    assert any(g.startswith("none of the accepted lines of reasoning") for g in got), got
+    assert any(g.startswith("no one hypothesis cites each of") for g in got), got
+    assert any("3 or more devices" in g for g in got), got
 
 
 def test_an_invented_figure_alone_fails(ctx):  # noqa: F811
@@ -168,45 +179,40 @@ def test_a_count_is_not_a_percentage(ctx):  # noqa: F811
     assert cases.invented_percents("57% and 57.0 percent", ctx.pack) == []
 
 
-def test_a_hypothesis_that_ties_nothing_to_the_drops_fails(ctx):  # noqa: F811
+def test_a_drop_tied_to_s4_by_its_symptoms_without_the_log_fails(ctx):  # noqa: F811
+    """The tie is the log line and s4's symptoms in one hypothesis: s4's figures alone tie
+    nothing to r1's drop."""
     ans = _honest(ctx.pack)
-    ans["hypotheses"][0]["evidence_refs"] = [_ref(ctx.pack, "health:s3:cpu"),
-                                             _ref(ctx.pack, "health:s3:heartbeat")]
-    got = cases.explain_misses(BY[1]["expect"], ans, ctx.pack)
-    tie = BY[1]["expect"]["one_of"][1]["together"][0]
-    assert len(got) == 1 and got[0].startswith("none of the accepted lines of reasoning"), got
-    assert f"no one hypothesis cites each of {tie}" in got[0]
-    assert "no one hypothesis cites cpu or scrapes figures of 3 or more devices" in got[0]
+    ans["hypotheses"][0]["evidence_refs"] = [_ref(ctx.pack, "health:s4:heartbeat"),
+                                             _ref(ctx.pack, "health:s4:scrapes")]
+    tie = BY[1]["expect"]["together"][0]
+    assert cases.explain_misses(BY[1]["expect"], ans, ctx.pack) == [
+        f"no one hypothesis cites each of {tie}"]
 
 
-def _common(pack, devices, figure="cpu"):
-    """A common cause beneath the devices (the operator's revision, 2026-10-25), as the model
-    would shape it: one hypothesis citing the same figure of each device."""
-    return {"outcome": "answer", "why_not": "", "needs_human": True,
-            "rationale": "Every router's CPU peaked together while scrapes failed on each.",
-            "hypotheses": [{"claim": "Contention beneath the devices, not in the evidence.",
-                            "evidence_refs": [_ref(pack, f"health:{d}:{figure}")
-                                              for d in devices],
-                            "confirm_with": "show processes cpu history"}]}
-
-
-def test_the_case_states_the_operator_s_revision():
+def test_the_case_keeps_its_judging_history():
+    """The rule, its revision and the ruling that replaced both stay in the case, word for
+    word; only the ruling is judged."""
     assert BY[1]["revised"].startswith("The pack shows every router's CPU peaking near 08:12")
-    names = [a["name"] for a in BY[1]["expect"]["one_of"]]
-    assert names == ["a common cause beneath the devices", "the drops tied to s3, its CPU noted"]
+    assert "one_of" not in BY[1]["expect"] and "lead_not_only" not in BY[1]["expect"]
 
 
-@pytest.mark.parametrize("figure", ["cpu", "scrapes"])
-def test_a_common_cause_beneath_three_devices_passes(ctx, figure):  # noqa: F811
-    ans = _common(ctx.pack, ["r1", "r2", "r3"], figure)
+@pytest.mark.parametrize("figure", ["cpu", "scrapes", "heartbeat"])
+def test_a_shared_cause_on_three_devices_passes_on_any_cross_device_figure(ctx,  # noqa: F811
+                                                                          figure):
+    """Scrape failures, heartbeat gaps or CPU peaks across devices (the ruling's words)."""
+    ans = _honest(ctx.pack)
+    ans["hypotheses"][1]["evidence_refs"] = [_ref(ctx.pack, f"health:{d}:{figure}")
+                                             for d in ("r1", "r2", "s3")]
     assert cases.explain_misses(BY[1]["expect"], ans, ctx.pack) == []
 
 
-def test_a_common_cause_on_two_devices_or_on_heartbeats_alone_fails(ctx):  # noqa: F811
-    for ans in (_common(ctx.pack, ["r1", "r2"]),
-                _common(ctx.pack, ["r1", "r2", "r3"], "heartbeat")):
-        got = cases.explain_misses(BY[1]["expect"], ans, ctx.pack)
-        assert len(got) == 1 and "3 or more devices" in got[0], got
+def test_a_shared_cause_on_two_devices_fails(ctx):  # noqa: F811
+    ans = _honest(ctx.pack)
+    ans["hypotheses"][1]["evidence_refs"] = [_ref(ctx.pack, f"health:{d}:scrapes")
+                                             for d in ("r1", "r2")]
+    assert cases.explain_misses(BY[1]["expect"], ans, ctx.pack) == [
+        "no one hypothesis cites cpu or scrapes or heartbeat figures of 3 or more devices"]
 
 
 def test_a_refusal_and_no_answer_fail_the_incident(ctx):  # noqa: F811
@@ -247,4 +253,4 @@ def test_a_baseline_with_a_cause_fails(ctx):  # noqa: F811
     ans = dict(_honest(ctx.pack), outcome="no_fault_found",
                checked=[_ref(ctx.pack, "health:r1:cpu")])
     assert cases.explain_misses(BY[2]["expect"], ans, ctx.pack) == [
-        "1 hypotheses, at most 0 expected (a healthy window reports nothing wrong)"]
+        "2 hypotheses, at most 0 expected (a healthy window reports nothing wrong)"]

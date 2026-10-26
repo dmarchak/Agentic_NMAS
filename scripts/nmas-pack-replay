@@ -126,13 +126,16 @@ def _row(call_id: str) -> dict:
     return next((r for r in calls.read()["rows"] if r.get("id") == call_id), {})
 
 
-def explain_twice(pack: dict, actor: str, out=print, ask=None) -> int:
-    """v1, then the current prompt; each call's tokens, cost and answer printed. 0 when both
-    were asked, 1 when a refusal stopped the run."""
+def explain_twice(pack: dict, actor: str, out=print, ask=None, versions=None) -> int:
+    """v1, then the current prompt (or the *versions* named, in order: `--prompt`, a
+    candidate's before-and-after); each call's tokens, cost and answer printed. 0 when each
+    was asked, 1 when a refusal stopped the run."""
     from modules.ai import explain
 
     ask = ask or explain.explain_pack
-    for prompt in (("explain", 1), explain.PROMPT):
+    prompts = ([("explain", int(v)) for v in versions] if versions
+               else [("explain", 1), explain.PROMPT])
+    for prompt in prompts:
         got = ask(pack, actor=actor, prompt=prompt)
         row = _row(got.get("call_id") or "") if got.get("call_id") else {}
         tokens = row.get("tokens") or {}
@@ -166,6 +169,9 @@ def main(argv=None) -> int:
     ap.add_argument("--out", required=True)
     ap.add_argument("--explain", action="store_true")
     ap.add_argument("--actor", default="")
+    ap.add_argument("--prompt", action="append", type=int, default=None,
+                    help="ask this Explain prompt version (repeatable, in order) in place of "
+                         "v1 and the current one: a candidate's before-and-after")
     args = ap.parse_args(argv)
     at = _when(args.at)
     onset = _when(args.onset) if args.onset else at
@@ -195,7 +201,7 @@ def main(argv=None) -> int:
           f"{out}: {sections}")
     if not args.explain:
         return 0
-    return explain_twice(pack, args.actor)
+    return explain_twice(pack, args.actor, versions=args.prompt)
 
 
 if __name__ == "__main__":

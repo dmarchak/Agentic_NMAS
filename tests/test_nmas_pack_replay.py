@@ -179,6 +179,32 @@ def test_explain_twice_prints_tokens_cost_and_the_answer(replay):
     assert {r["schema"] for r in rows} == {"explain.v1", "explain.v2"}
 
 
+def test_named_versions_are_asked_in_order_a_candidate_s_before_and_after(replay):
+    """`--prompt 4 --prompt 5`: the current prompt and the candidate, each through the real
+    gateway and recorded under its own version; nothing else is asked."""
+    from modules.ai import calls
+    pack = _built(replay)
+    replay.answer = _answer(pack)
+    lines = []
+    assert replay.driver.explain_twice(pack, "operator@example.com", out=lines.append,
+                                       versions=[4, 5]) == 0
+    text = "\n".join(lines)
+    assert "== explain.v4: answered and checked" in text
+    assert "== explain.v5: answered and checked" in text and "explain.v1" not in text
+    assert text.index("== explain.v4") < text.index("== explain.v5"), "asked in order"
+    assert {r["prompt"] for r in calls.read()["rows"][:2]} == {"explain.v4", "explain.v5"}
+
+
+def test_v5_is_a_candidate_never_the_pin():
+    """Proved only on newly replayed incidents and the baselines (the operator, 2026-10-26)."""
+    from modules.ai import explain, prompts
+    assert explain.PROMPT == ("explain", 4) and ("explain", 5) in explain.CANDIDATES
+    text = " ".join(prompts.load("explain", 5)["text"].split())
+    assert ("When symptoms appear on several devices in the same window, consider a common "
+            "cause beneath them early, citing the cross-device evidence.") in text
+    assert "s3" not in text and "C1547" not in text and "r1" not in text
+
+
 def test_a_refusal_stops_the_run(replay):
     replay.settings.pop("ai_hosted")
     lines = []

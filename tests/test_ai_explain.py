@@ -305,7 +305,8 @@ def test_each_prompt_asks_for_the_schema_it_was_written_for(world):
     """v1 to v3 knew no "no fault found" (a replay asks them as they were); v4 does (C1742)."""
     assert explain.PROMPT == ("explain", 4)
     assert {v: s.__ai_schema__ for v, s in explain.SCHEMA_OF.items()} == {
-        1: ("explain", 1), 2: ("explain", 1), 3: ("explain", 1), 4: ("explain", 2)}
+        1: ("explain", 1), 2: ("explain", 1), 3: ("explain", 1), 4: ("explain", 2),
+        5: ("explain", 2)}
     world.answer = {k: v for k, v in _answer(world.pack).items() if k != "checked"}
     got = explain.explain_pack(world.pack, actor="operator@example.com", send=world.send,
                                today="2026-10-25", prompt=("explain", 3))

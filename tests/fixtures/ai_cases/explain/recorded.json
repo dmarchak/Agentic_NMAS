@@ -7,27 +7,22 @@
   "cases": [
     {
       "n": 1,
-      "name": "C1547: the Lab 9 OSPF drops beneath s3",
+      "name": "C1547: the Lab 9 OSPF drops, a shared cause beneath the devices",
       "kind": "incident",
       "replay": {"device": "r1", "onset": "2026-10-22T07:40:44Z", "at": "2026-10-22T08:20:00Z",
                  "rule": "Replayed: OSPF adjacency drops"},
       "judge": "judge Explain on honest reasoning at the edge of its evidence, not on naming the host's 96%: it must tie the routers' OSPF drops to s3's symptoms (heartbeat gaps, failed scrapes, discards), note s3's own CPU peaked at 57% so the device doesn't explain itself, offer resource contention beneath s3 (host/hypervisor or link) as an unevidenced hypothesis with what would confirm it, and never invent a figure. A confident 's3 CPU overload' is a fail. (the operator, 2026-10-25)",
       "revised": "The pack shows every router's CPU peaking near 08:12 (r1 66, r2 67, r4 71, r6 67) and failed scrapes everywhere: a shared-host signature, which is the real cause. An answer citing those simultaneous peaks as a common cause beneath is better than one pinned on s3 (57%, the lowest). (the operator, 2026-10-25, after reading the replay's pack)",
-      "needs": ["logs:*", "health:s3:cpu", "health:s3:heartbeat", "health:s3:scrapes"],
+      "ruled": "Replace the s3-centred check with: ties r1's drop to its neighbour s4's symptoms (heartbeat gap, failed scrape), offers a shared cause beneath (host/hypervisor) as a hedged hypothesis citing cross-device evidence (scrape failures, heartbeat gaps or CPU peaks across devices), invents no figure. (the operator, 2026-10-26, replacing the judge and the revision above, which stay as this case's history)",
+      "needs": ["logs:*", "health:s4:heartbeat", "health:s4:scrapes"],
       "expect": {
         "outcome": ["answer"],
         "needs_human": true,
-        "lead_not_only": ["health:s3:cpu"],
         "figures_from_pack": true,
-        "one_of": [
-          {"name": "a common cause beneath the devices",
-           "common": {"figures": ["cpu", "scrapes"], "min_devices": 3}},
-          {"name": "the drops tied to s3, its CPU noted",
-           "cites": [["health:s3:cpu"]],
-           "together": [[["logs:*"], ["health:s3:heartbeat", "health:s3:scrapes", "health:s3:discards"]]]}
-        ]
+        "together": [[["logs:*"], ["health:s4:heartbeat", "health:s4:scrapes"]]],
+        "common": {"figures": ["cpu", "scrapes", "heartbeat"], "min_devices": 3}
       },
-      "flag": "A person reads the recording for what the structured fields cannot show: that the common cause is offered as beneath the devices (the host, the hypervisor or a shared link) and as not in the evidence, with a read that would show it; or, on the second line, that s3's CPU peak is said as not explaining its own symptoms; and that no hypothesis calls s3's CPU overloaded."
+      "flag": "A person reads the recording for what the structured fields cannot show: that the shared cause is offered beneath the devices (the host or the hypervisor), hedged as not in the evidence; that the drop is tied to s4's symptoms in words, not only by citation; and that no figure is stated the pack does not hold beyond percentages, which the judge checks."
     },
     {
       "n": 2,
