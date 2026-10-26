@@ -191,7 +191,7 @@ def topology(pack: dict) -> dict:
         return dict(out, why="the alert is not one device's, so no part of the network is "
                              "picked out")
     overlay = EP.overlay_of(pack)
-    got = NM.context_for(network, device, hops=HOPS, overlay=overlay)
+    got = NM.context_for(network, device, hops=HOPS, overlay=overlay, carried=carried_layers(pack))
     if not got["ok"]:
         return dict(out, why=f"the network model could not be read ({got['error']})",
                     yaml=f"could not read: the network model ({got['error']})")
@@ -199,6 +199,27 @@ def topology(pack: dict) -> dict:
                 f"could not read ({overlay['why']})")
     return dict(out, sent=True, summary=got["summary"], yaml=got["yaml"], ids=got["ids"],
                 reached=got["reached"], version=got["version"], observed=observed)
+
+
+#: The pack's sections that are a layer of the network context's coverage header.
+CARRIED_LAYERS = {"health": "performance", "logs": "events"}
+
+
+def carried_layers(pack: dict) -> dict:
+    """The coverage header's layers this pack carries beside its topology: health is
+    performance and the log lines are events, each present when its section was read (empty
+    is read, with nothing in its window), else not_collected with the section's why."""
+    out = {}
+    for s in pack.get("sections") or []:
+        layer = CARRIED_LAYERS.get(s.get("name"))
+        if not layer:
+            continue
+        read = s.get("state") in ("ok", "empty")
+        out[layer] = {"state": "present" if read else "not_collected",
+                      "source": f"the evidence pack's {s['name']} section: {s.get('source', '')}",
+                      "age": s.get("read_at") or "",
+                      "why": "" if read else f"{s.get('state')}: {s.get('why', '')}"}
+    return out
 
 
 def sent_sections(pack: dict, topo: dict = None) -> list:

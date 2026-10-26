@@ -1342,3 +1342,37 @@ or refused) and `tests/test_ai_gateway.py`, the file restored from its copy and 
 | 37 | `- "subject": dict(subject or {})}`<br>`+ "subject": dict(None)}` | killed | `tests/test_ai_gateway_ask.py::test_hosted_ai_off_is_refused_whole_and_logged` |
 | 38 | `- "subject": dict(subject or {})}`<br>`+ "subject": dict(subject and {})}` | killed | `tests/test_ai_gateway_ask.py::test_hosted_ai_off_is_refused_whole_and_logged` |
 
+## 2026-10-26: the AI day cap's stated boundary, changed lines only, at e87f1dd8
+
+**What changed in the tier since 16c65d1b** (the last proved commit, the section above):
+`gateway.ask` reads the cap's day from its one home, `calls.today()` (the stated boundary's
+midnight, UTC by default; the operator's order of 2026-10-26 ~07:4x UTC, item 2), where it had
+computed the UTC day inline (lines 220 to 222: the comment and `day = today or
+calls.today()`), and the module's now-unused `import datetime` is removed. No other function
+of the tier changed (`git diff 16c65d1b e87f1dd8` over `gateway.py`, `profiles.py`,
+`connection.py` and `redact.py`: 3 lines added, 3 removed, all in `gateway.py`).
+
+**The method**, as the sections above: the mutants on the changed lines only, plus a must-die
+canary, in a clean checkout of e87f1dd8, one at a time, the aimed tests
+`tests/test_ai_gateway_ask.py`, `tests/test_ai_gateway.py` and `tests/test_ai_day_boundary.py`
+(the counter and the gateway counting the stated day), the file restored from its copy and
+compared.
+
+**The result: no survivor.** The deploy that carries it waited for this.
+
+| function | mutants | killed | survived | canary | baseline | file restored |
+|---|---|---|---|---|---|---|
+| `modules.ai.gateway.ask` | 2 | 2 | 0 | killed | passed | identical |
+| **all 1** | **2** | **2** | **0** | | | |
+
+### `modules.ai.gateway.ask`
+
+- Baseline: the tests passed on the committed file (4.3 s).
+- Canary: the body replaced by `raise RuntimeError("the tier hand check's canary: this function must not pass")`, **killed** by `tests/test_ai_gateway_ask.py::test_hosted_ai_off_is_refused_whole_and_logged`.
+- Mutants: 2, killed 2, survived 0.
+
+| # | change (− committed, + mutant) | outcome | killed by |
+|---|---|---|---|
+| 318 | `- day = today or calls.today()`<br>`+ day = None` | killed | `tests/test_ai_gateway_ask.py::test_an_unreadable_record_is_refused_in_its_words` |
+| 319 | `- day = today or calls.today()`<br>`+ day = today and calls.today()` | killed | `tests/test_ai_gateway_ask.py::test_an_unreadable_record_is_refused_in_its_words` |
+

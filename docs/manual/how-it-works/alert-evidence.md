@@ -108,7 +108,10 @@ ever (see [The AI mark](installation-settings#ai-mark)).
    model (below): the device and everything one link, adjacency or cable away from it, with
    what the pack captured as observed when the alert fired (never read again). It goes unless
    the network has the topology class turned off; the answer then says "No topology was sent
-   with the pack" and why.
+   with the pack" and why. It opens with a **coverage header**: each layer of the network's
+   context (inventory, intent, adjacency, performance, events, endpoints, flows) as present,
+   partial or not collected, with its source and age, so a gap is said rather than left to be
+   guessed. Endpoints and flows are not collected yet.
 3. `ask`: the pack (its health figures among it) and the topology go as data (masked when they
    were built, and masked again on the way out), the pack's layout, the topology's layout, the
    network's summary and the allowed reads as the instructions' context; no tool is offered,

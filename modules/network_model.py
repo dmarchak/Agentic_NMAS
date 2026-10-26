@@ -424,7 +424,62 @@ def build(network: str, inventory, intents: dict, manifest: dict = None, version
     BUILDS[network] = BUILDS.get(network, 0) + 1
     return {"schema": SCHEMA, "network": network, "version": dict(version or {}),
             "nodes": nodes, "links": links, "adjacencies": adjs, "names": ids,
-            "edges": edges, "counts": counts, "errors": errors}
+            "edges": edges, "counts": counts, "errors": errors,
+            # When the inventory and committed intent were read into it: the age the coverage
+            # header gives those two layers.
+            "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(_now()))}
+
+
+# ----------------------------------------------------------------------------- coverage
+
+#: The layers a network context can hold, in the order the coverage header lists them (the
+#: operator, 2026-10-26: "make gaps explicit"). Flows remain roadmap.
+LAYERS = ("inventory", "intent", "adjacency", "performance", "events", "endpoints", "flows")
+#: A layer's state: all of it here, some of it, or none collected.
+PRESENT, PARTIAL, NOT_COLLECTED = "present", "partial", "not_collected"
+
+
+def coverage(model: dict, obs: dict, devices: dict, carried: dict = None) -> dict:
+    """The coverage header of a context bundle: ``{layer: {"state", "source", "age", "why"}}``
+    for every layer of `LAYERS`, so a gap is said, never left for the model to infer.
+    *devices* is the bundle's devices (by id); *carried* the layers the caller holds beside
+    this bundle (an evidence pack's health and log sections), each ``{"state", "source",
+    "age"}``, said as the caller's. A layer nobody collects is not_collected, with why."""
+    built = model.get("built_at", "")
+    nodes = [model["nodes"][n] for n in devices if n in model["nodes"]]
+    out = {}
+    outside = [n["name"] for n in nodes if n.get("inventory")]
+    out["inventory"] = {
+        "state": PARTIAL if outside else PRESENT,
+        "source": "the network's inventory (name, NetBox id, role, site, platform, address)",
+        "age": built, "why": (f"{', '.join(sorted(outside))} known by committed intent only"
+                              if outside else "")}
+    lacking = [n["name"] for n in nodes if n.get("intent")]
+    out["intent"] = {
+        "state": (NOT_COLLECTED if nodes and len(lacking) == len(nodes)
+                  else PARTIAL if lacking else PRESENT),
+        "source": "committed intent (host_vars), what it implies for the topology",
+        "age": built, "why": (f"{', '.join(sorted(lacking))}: none committed or not compiled"
+                              if lacking else "")}
+    read = obs.get("state") == "read"
+    out["adjacency"] = {
+        "state": PRESENT if read else PARTIAL,
+        "source": "expected from intent; observed: " + (obs.get("source") or "the Topology "
+                                                          "reader"),
+        "age": obs.get("read_at") or built,
+        "why": "" if read else f"observed state could not be read ({obs.get('why', '')}); "
+                               "only what intent expects is here"}
+    carried = carried or {}
+    for layer, words in (("performance", "health figures (CPU, memory, interfaces)"),
+                         ("events", "log lines and alerts")):
+        out[layer] = (dict(carried[layer]) if layer in carried else {
+            "state": NOT_COLLECTED, "source": "", "age": "",
+            "why": f"{words} are not in this bundle"})
+    out["endpoints"] = {"state": NOT_COLLECTED, "source": "", "age": "",
+                        "why": "Mercury reads no endpoints (MAC, ARP, leases) yet (C1772)"}
+    out["flows"] = {"state": NOT_COLLECTED, "source": "", "age": "",
+                    "why": "flows are not collected (roadmap)"}
+    return {layer: out[layer] for layer in LAYERS}
 
 
 # ----------------------------------------------------------------------------- the cache
@@ -689,14 +744,17 @@ def capture(network: str, subject: str, hops: int = CAPTURE_HOPS, now: float = N
             "nodes": nodes, "version": model["version"].get("key", "")}
 
 
-def context_for(network: str, subject: str, hops: int = 1, overlay: dict = None) -> dict:
+def context_for(network: str, subject: str, hops: int = 1, overlay: dict = None,
+                carried: dict = None) -> dict:
     """The subgraph of *network* around *subject* (a device by its NetBox id, its model id or
     its name; or a link by its id), within *hops*, *overlay* overlaid: the observed state
     `capture` kept (C1712: this reads no observed state itself, so a subgraph of a past alert
     is never the network now). No overlay is said as could not read on every item.
     ``{"ok", "error", "yaml", "summary", "ids", "reached", "version"}``: *yaml* compact
     (sorted keys, no anchors), *ids* every id it holds (what a citation may name), *reached*
-    each device's ``(hop, via)``."""
+    each device's ``(hop, via)``. Its ``coverage`` (`coverage`), in the bundle and the
+    answer, lists every layer as present, partial or not_collected, with its source and age;
+    *carried* the layers the caller holds beside it (an evidence pack's health and logs)."""
     try:
         hops = max(0, min(int(hops), MAX_HOPS))
     except (TypeError, ValueError):
@@ -779,13 +837,15 @@ def context_for(network: str, subject: str, hops: int = 1, overlay: dict = None)
                         "state": "read" if obs["state"] == "read" else could_not}}
     if obs.get("as_of"):
         doc["observed"]["as_of"] = obs["as_of"]
+    doc["coverage"] = coverage(model, obs, devices, carried)
     if model["errors"]:
         doc["model_errors"] = list(model["errors"])
     ids = set(devices) | set(links) | set(adjacencies) | set(cables)
     return {"ok": True, "error": "", "yaml": _yaml(doc), "summary": summary(model),
             "ids": sorted(ids), "reached": {n: {"hop": h, "via": v}
                                             for n, (h, v) in reached.items()},
-            "version": model["version"].get("key", ""), "observed": obs["state"]}
+            "version": model["version"].get("key", ""), "observed": obs["state"],
+            "coverage": doc["coverage"]}
 
 
 def reach(network: str, subject: str, hops: int = 1, overlay: dict = None) -> list:

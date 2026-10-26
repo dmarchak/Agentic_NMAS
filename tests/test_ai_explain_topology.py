@@ -130,7 +130,10 @@ CLASS_KEYS = {
     "router_id", "areas", "passive", "asn", "peers", "remote_as", "subnet", "members", "dev",
     "interface", "expanded", "note", "members_total", "listed", "proto", "between", "link",
     "expected", "outside_management", "state", "words", "read_at", "since", "ends", "port",
-    "reported", "down_at", "mercury_attaches_here", "source", "as_of"}
+    "reported", "down_at", "mercury_attaches_here", "source", "as_of",
+    # The coverage header (C1777, the operator's order of 2026-10-26): each layer's state,
+    # source, age and why; metadata about what the bundle holds, no value of a device.
+    "coverage", "adjacency", "performance", "events", "endpoints", "flows", "age", "why"}
 ID = re.compile(r"^(dev|link|adj|cable|ext):|^mercury$")
 
 
@@ -155,6 +158,53 @@ def test_the_subgraph_holds_only_the_topology_class(topo):
     for line in ("description", "router ospf", "ip address", "remote-as", "passive-interface",
                  "snmp-server", "network 10.", "username", "password"):
         assert line not in sub and line not in _block(ctx, "context", "network"), line
+
+
+def test_the_bytes_sent_carry_a_coverage_header_naming_every_layer(topo):
+    """C1777: the subgraph sent states each layer, present, partial or not_collected, with its
+    source and age: performance and events as the pack carries them, endpoints and flows not
+    collected, each with why."""
+    topo.answer = _answer(topo.pack)
+    _explain(topo)
+    _b, user, _ctx = _sent(topo)
+    cov = yaml.safe_load(_block(user, "data", "network_topology"))["coverage"]
+    assert sorted(cov) == sorted(NM.LAYERS), "every layer, keys sorted as the bundle sorts them"
+    assert cov["endpoints"]["state"] == "not_collected" and "C1772" in cov["endpoints"]["why"]
+    assert cov["flows"]["state"] == "not_collected" and "roadmap" in cov["flows"]["why"]
+    sections = {s["name"]: s for s in topo.pack["sections"]}
+    for section, layer in (("health", "performance"), ("logs", "events")):
+        read = sections[section]["state"] in ("ok", "empty")
+        assert cov[layer]["state"] == ("present" if read else "not_collected"), (layer, cov)
+        assert cov[layer]["age"] == sections[section]["read_at"]
+    for layer in ("inventory", "intent"):
+        assert cov[layer]["state"] in ("present", "partial") and cov[layer]["age"], cov[layer]
+
+
+def test_the_coverage_header_is_accurate_per_layer():
+    model = {"built_at": "2026-10-26T08:00:00Z", "nodes": {
+        "dev:1": {"name": "s1"},
+        "dev:2": {"name": "r9", "inventory": "not in the inventory: known by its committed "
+                                            "intent only"},
+        "dev:3": {"name": "s7", "intent": "none committed: nothing is implied"}}}
+    read = {"state": "read", "read_at": "2026-10-26T07:59:00Z", "source": "the Topology read"}
+    unread = {"state": "could not read", "why": "the Topology reader has not read yet",
+              "read_at": "", "source": "the Topology read"}
+    cov = NM.coverage(model, read, {"dev:1": {}, "dev:2": {}, "dev:3": {}})
+    assert cov["inventory"]["state"] == "partial" and "r9" in cov["inventory"]["why"]
+    assert cov["intent"]["state"] == "partial" and "s7" in cov["intent"]["why"]
+    assert cov["adjacency"] == {"state": "present", "source": "expected from intent; "
+                                "observed: the Topology read", "age": "2026-10-26T07:59:00Z",
+                                "why": ""}
+    assert cov["performance"]["state"] == "not_collected"
+    whole = NM.coverage(model, unread, {"dev:1": {}}, carried={"events": {
+        "state": "present", "source": "the pack's logs", "age": "2026-10-26T07:58:00Z"}})
+    assert whole["inventory"]["state"] == "present" and whole["intent"]["state"] == "present"
+    assert whole["adjacency"]["state"] == "partial" and "has not read yet" in \
+        whole["adjacency"]["why"]
+    assert whole["events"]["state"] == "present" and whole["events"]["age"] == \
+        "2026-10-26T07:58:00Z"
+    none = NM.coverage(model, read, {"dev:3": {}})
+    assert none["intent"]["state"] == "not_collected"
 
 
 def test_planted_secrets_never_reach_the_bytes_sent(topo, monkeypatch):

@@ -2433,6 +2433,14 @@ NetOps platform answers from the MAC and ARP tables. Flows remain roadmap. In th
    them not_collected; the stale-expectation check first. Read path only: no device changes,
    nothing on s3 beyond reads, nothing in 08:30 to 09:10 UTC.
 
+- **Built 2026-10-26 (1, coverage; C1777):** `network_model.coverage`, in every
+  `context_for()` bundle and its answer: each layer present, partial or not_collected, with
+  source, age and why. Performance and events are as the caller carries them (Explain: the
+  pack's health and logs). Endpoints are not collected until 2 lands; flows are roadmap.
+- **Not yet (1):** the prompt line ("say when an answer depends on a layer that is
+  not_collected"). It is a new Explain prompt version, so it waits on the operator: Explain's
+  tuning is closed for the sprint by the operator's rule of the same day.
+
 ### 15.16 Feature 7's egress: the touched sections' current values, never the intent document (the operator, 2026-10-26)
 
 The order's item 4 asked first: does feature 7 send a device's **full intent**, or **only the
