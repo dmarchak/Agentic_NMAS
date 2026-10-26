@@ -65,6 +65,44 @@
                  "checked": [["health:s1:cpu", "health:s1:heartbeat", "health:s1:scrapes", "health:s1:discards"]],
                  "figures_from_pack": true},
       "flag": "A person reads the recording: the rationale says what the checked evidence shows and names no cause."
+    },
+    {
+      "n": 5,
+      "name": "A shared stall: 8 devices failing scrapes together (2026-10-21 ~11:53), replayed for Explain v5's proof",
+      "kind": "incident",
+      "replay": {"device": "r2", "onset": "2026-10-21T11:50:00Z", "at": "2026-10-21T12:00:00Z",
+                 "rule": "Device unreachable (SNMP)"},
+      "found": "Prometheus, read 2026-10-26: count(max by (device) (up == 0)) at 3 or more devices; r1, r2, r3, r4, r7, s1, s2 and s3 failed scrapes in the 10 minutes to 11:53",
+      "needs": ["health:r2:scrapes", "health:r2:heartbeat"],
+      "expect": {"outcome": ["answer"], "needs_human": true, "figures_from_pack": true,
+                 "common": {"figures": ["cpu", "scrapes", "heartbeat"], "min_devices": 3}},
+      "flag": "A person reads the recording: a shared cause beneath the devices (the host or the hypervisor) offered as not in the evidence, citing the cross-device figures; no device's own fault claimed without its own figures."
+    },
+    {
+      "n": 6,
+      "name": "A shared stall: 10 devices failing scrapes together (2026-10-22 ~18:05), replayed for Explain v5's proof",
+      "kind": "incident",
+      "replay": {"device": "r4", "onset": "2026-10-22T18:00:00Z", "at": "2026-10-22T18:15:00Z",
+                 "rule": "Device unreachable (SNMP)"},
+      "found": "Prometheus, read 2026-10-26: r1, r2, r3, r4, r6, r7, s1, s2, s3 and s4 failed scrapes in the 10 minutes to 18:05",
+      "needs": ["health:r4:scrapes", "health:r4:heartbeat"],
+      "expect": {"outcome": ["answer"], "needs_human": true, "figures_from_pack": true,
+                 "common": {"figures": ["cpu", "scrapes", "heartbeat"], "min_devices": 3}},
+      "flag": "A person reads the recording: a shared cause beneath the devices offered as not in the evidence, citing the cross-device figures."
+    },
+    {
+      "n": 7,
+      "name": "The control: one device alone failing scrapes (s3, 2026-10-25 ~06:03); a common cause beneath is not the evidence's",
+      "kind": "control",
+      "replay": {"device": "s3", "onset": "2026-10-25T05:58:00Z", "at": "2026-10-25T06:10:00Z",
+                 "rule": "Device unreachable (SNMP)"},
+      "found": "Prometheus, read 2026-10-26: s3 alone failed scrapes in the 10 minutes to 06:03",
+      "needs": ["health:s3:scrapes"],
+      "alone": {"device": "s3", "max_gap_s": 450,
+                "why": "the control holds only if no other device in the pack failed a scrape or missed a heartbeat (450 s is 1.5 beats of syslog_heartbeat_seconds' 300)"},
+      "expect": {"outcome": ["answer", "no_fault_found"], "figures_from_pack": true,
+                 "no_common": {"figures": ["cpu", "scrapes", "heartbeat"], "min_devices": 3}},
+      "flag": "A person reads the recording: the symptom is placed on s3 itself (its own figures), or said to be a passing blip; no cause shared beneath several devices is offered."
     }
   ]
 }

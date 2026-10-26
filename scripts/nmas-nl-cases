@@ -83,7 +83,7 @@ def check(checkout: str, list_name: str, case_file: str = CASES) -> list:
 
 
 def record(checkout: str, list_name: str, actor: str, out: str, case_file: str = CASES,
-           thinking: str = None) -> int:
+           thinking: str = None, model: str = None) -> int:
     from modules.ai import cases, nl_query, profiles
 
     if os.path.realpath(out).startswith(os.path.realpath(checkout) + os.sep):
@@ -91,6 +91,18 @@ def record(checkout: str, list_name: str, actor: str, out: str, case_file: str =
               file=sys.stderr)
         return 2
     data = cases.load(os.path.join(checkout, case_file))
+    if model:
+        # A comparison on another model (the operator, 2026-10-26: Sonnet 5.5 beside the
+        # pinned Haiku 5.5): this process's pin alone is replaced, never the pin file; its
+        # recordings name their model, and merge refuses them for a file on another.
+        if model not in profiles.MODELS:
+            print(f"nmas-nl-cases: no model profile for {model!r}; known: "
+                  f"{', '.join(sorted(profiles.MODELS))}", file=sys.stderr)
+            return 2
+        profiles.TASKS[nl_query.FEATURE] = dict(profiles.TASKS[nl_query.FEATURE], model=model)
+        print(f"nmas-nl-cases: a comparison on {model}, the pin file unchanged "
+              f"({data['model']} pinned)")
+        data = dict(data, model=model)
     pin = profiles.TASKS[nl_query.FEATURE]["model"]
     if data["model"] != pin:
         print(f"nmas-nl-cases: the case file is for {data['model']}, the task is pinned to "
@@ -170,6 +182,10 @@ def main(argv=None) -> int:
     ap.add_argument("--thinking", default=None, choices=("adaptive", "off"),
                     help="ask with this thinking in place of the task's pin, for this run "
                          "(the batched gateway change's measurement)")
+    ap.add_argument("--model", default=None,
+                    help="ask on this model in place of the pin, for this run only: a "
+                         "comparison; its recordings are never merged into a file pinned "
+                         "to another")
     args = ap.parse_args(argv)
     checkout = _checkout(args.checkout)
     sys.path.insert(0, checkout)
@@ -187,7 +203,8 @@ def main(argv=None) -> int:
     if args.record:
         if not (args.list and args.actor and args.out):
             ap.error("--record needs --list, --actor and --out")
-        return record(checkout, args.list, args.actor, args.out, args.cases, args.thinking)
+        return record(checkout, args.list, args.actor, args.out, args.cases, args.thinking,
+                      args.model)
     ap.error("--record or --merge")
     return 2
 

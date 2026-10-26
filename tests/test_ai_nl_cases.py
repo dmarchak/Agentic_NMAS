@@ -346,6 +346,32 @@ def test_the_recorder_records_each_case_and_judges_it(world, tmp_path, capsys, m
     assert "case  1: pass" in capsys.readouterr().out
 
 
+def test_a_comparison_on_another_model_asks_it_and_leaves_the_pin(world, tmp_path, capsys,
+                                                                   monkeypatch):
+    """`--model claude-sonnet-5-5` (the operator, 2026-10-26: Sonnet beside the pinned Haiku):
+    every call goes to that model, the recording names it, the pin file is not touched, and
+    an unknown model is refused before anything is asked."""
+    from modules.ai import anthropic_adapter
+    from tests.test_ai_nl_query import _choices
+    monkeypatch.setattr(anthropic_adapter, "send", world.send)
+    monkeypatch.setitem(profiles.TASKS, "nl_query", dict(profiles.TASKS["nl_query"]))
+    pinned = profiles.load_pins()["nl_query"]
+    world.answer = _choices(metric="cpmCPUTotal5minRev", devices=["r1"], operations=[],
+                            top="none", range="1h")
+    out = tmp_path / "rec.json"
+    assert _recorder().record(ROOT, "Lab", "operator@example.com", str(out),
+                              model="claude-sonnet-5-5") == 0
+    got = json.loads(out.read_text())
+    assert got["model"] == "claude-sonnet-5-5" and world.sent
+    assert {s["body"]["model"] for s in world.sent} == {"claude-sonnet-5-5"}
+    assert profiles.load_pins()["nl_query"] == pinned, "the pin file is never written"
+    assert "a comparison on claude-sonnet-5-5, the pin file unchanged" in capsys.readouterr().out
+    sent = len(world.sent)
+    assert _recorder().record(ROOT, "Lab", "operator@example.com", str(out),
+                              model="no-such-model") == 2
+    assert len(world.sent) == sent
+
+
 def test_merge_writes_the_recording_and_refuses_another_model(tmp_path):
     import shutil
     dest = tmp_path / "tests" / "fixtures" / "ai_cases" / "nl_query"

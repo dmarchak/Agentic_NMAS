@@ -215,6 +215,40 @@ def test_a_shared_cause_on_two_devices_fails(ctx):  # noqa: F811
         "no one hypothesis cites cpu or scrapes or heartbeat figures of 3 or more devices"]
 
 
+def test_the_control_is_ready_only_while_its_device_is_alone(ctx):  # noqa: F811
+    """Case 7 (Explain v5's control): ready while s3 alone failed scrapes (the planted pack's
+    shape); another device's failed scrape or missed heartbeat makes it no control."""
+    control = dict(BY[7], alone=dict(BY[7]["alone"], max_gap_s=10 ** 6))
+    assert cases.explain_unready(control, ctx.pack) == []
+    pack = copy.deepcopy(ctx.pack)
+    for p in cases.select(pack, "health:r2:scrapes"):
+        p["failed"] = 2
+    assert cases.explain_unready(control, pack) == ["not alone: r2 failed 2 scrape(s) too"]
+    for p in cases.select(pack, "health:r2:scrapes"):
+        p["failed"] = 0
+    for p in cases.select(pack, "health:r2:heartbeat"):
+        p["state"], p["max_gap_s"] = "ok", 900
+    assert cases.explain_unready(dict(BY[7]), pack)[-1] == (
+        "not alone: r2's longest heartbeat gap was 900 s, over 450 s")
+
+
+def test_the_control_misses_a_shared_cause_and_passes_the_device_s_own(ctx):  # noqa: F811
+    """Where one device alone shows the symptom, a cause resting on three devices' figures is
+    not the evidence's; the device's own figures are."""
+    own = {"outcome": "answer", "why_not": "", "needs_human": True, "rationale": "s3 stalled.",
+           "hypotheses": [{"claim": "s3 itself stalled.",
+                           "evidence_refs": [_ref(ctx.pack, "health:s3:scrapes"),
+                                             _ref(ctx.pack, "health:s3:cpu")],
+                           "confirm_with": "show processes cpu history"}]}
+    assert cases.explain_misses(BY[7]["expect"], own, ctx.pack) == []
+    wide = copy.deepcopy(own)
+    wide["hypotheses"][0]["evidence_refs"] = [_ref(ctx.pack, f"health:{d}:cpu")
+                                              for d in ("r1", "r2", "s3")]
+    assert cases.explain_misses(BY[7]["expect"], wide, ctx.pack) == [
+        "hypothesis 1 rests on cpu or scrapes or heartbeat figures of 3 or more devices, "
+        "where one device alone shows the symptom"]
+
+
 def test_a_refusal_and_no_answer_fail_the_incident(ctx):  # noqa: F811
     refused = {"outcome": "refuse", "rationale": "", "hypotheses": [], "needs_human": True,
                "why_not": "nothing bears on it"}

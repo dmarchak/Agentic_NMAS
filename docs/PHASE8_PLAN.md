@@ -2465,3 +2465,62 @@ validation decides, Python executes."**
 | Owner | The operator. |
 | Relation | P4 (save as runbook) is the read-only case of the same saved-action format. Feature 7 supplies the intent-patch path the executor's intent steps use. |
 | Test plan | A drafted plan citing an action not in the catalogue, or a parameter out of its schema, is refused. The impact analysis is planted on the network model: a cut vertex, a single-homed link, a VRRP master, a BGP session. A run stopping when a step's program differs from the approved one. Rollback per step on a planted failure. A saved action re-run with AI off gives the same programs. The library tested at 100+ actions on test_scale's fleet, with summary counts and no long list. A browser test of each signed-off screen. |
+
+### 16.8 Card P6: AI-assisted platform packs (after the sprint; the operator, 2026-10-26)
+
+It extends section 6's feature 10 (a template draft for a new platform) from one template to
+the whole platform. **It depends on:**
+- 16.3 item 6 (the device access model), with Mercury's parsers and drivers made
+  data-driven. They are Python today (`modules/nsot/parsers/`), and making them rule-driven
+  is a prerequisite, registered as C1752;
+- 16.1 item 3 (an environment class, staging);
+- 15.11's configuration class (a captured configuration, its secret-bearing lines dropped);
+- the action library (16.7).
+
+#### The workflow
+
+1. **The platform.** A person names its make, model and OS version.
+2. **The draft.** The AI drafts a platform pack **as data only**: no code, and nothing
+   that runs on its own. The pack holds:
+   - the connection type;
+   - the allowlisted reads;
+   - the capture command and its normalisation;
+   - the masking rules and the parser rules;
+   - the Jinja templates;
+   - the deploy semantics: merge, and commit, rollback and commit-confirmed where the OS has
+     them;
+   - the removal shapes and the verify reads;
+   - the monitoring profile and the credential rotation sequence.
+
+   It prefers existing open-source parsers. Any new third-party licence is the operator's.
+3. **The acceptance, by measurement, level by level.** Every level is measured on a real
+   device in a staging or lab network, and a person approves each one:
+
+   | Level | Name | What is measured |
+   |---|---|---|
+   | 0 | read | the allowlisted reads, parsed |
+   | 1 | capture | a capture normalised |
+   | 2 | intent | a round trip, exact |
+   | 3 | deploy | a staged deploy verified, then rolled back |
+   | 4 | full | each removal shape, and the rotation sequence |
+
+4. **The pack.** It is versioned and shareable (export and import), and it runs with no AI.
+   A platform is supported at the level its pack has passed, and the screens say which.
+
+#### The card (section 3's format)
+
+| Field | P6 |
+|---|---|
+| Problem | Supporting a new platform means writing its connection, reads, capture normalisation, parsers, templates, deploy and removal semantics, verify reads and rotation by hand, and proving each on a device. **Unmeasured:** the engineering time per platform (the IOS and IOS-XE packs are the only measured precedent, built over Phases 1 to 7). |
+| Industry need | Vendor onboarding takes weeks of engineering in today's tools: a new platform needs its drivers, parsers, templates and change semantics written and tested before a tool can manage it. That cost is why multi-vendor support stays narrow. Multi-vendor is a release goal. Mercury improves on that by drafting the platform as data, then accepting it only level by level on a real device: read, capture, intent, deploy, full. Each level is approved by a person, so a draft is never trusted. The pack is versioned and shareable, so one installation's measured work serves another, with no AI at run time. |
+| Deterministic alternative | A person writes the pack in the same data format, and the same acceptance measures it. That path works with AI off. What it cannot do: draft the pack's many parts from the platform's documentation and a captured configuration in hours, where writing them takes weeks. That drafting is the AI's. |
+| Inputs | The make, model and OS version; a captured configuration in 15.11's configuration class, its secret-bearing lines dropped; the existing packs' format and the nearest pack as examples. Context: **unmeasured**, sized by section 4's method. Output schema: Pydantic v2 strict, versioned: the pack's data, every field validated, no executable content. |
+| Output shape | A (13.4): the pack as structured data, or one question back (for example, which OS train), or a refusal saying why. |
+| Success metric | Packs reaching level 2 (an exact round trip) within two revisions (target **proposed**: 50%, feature 10's), and 0 packs approved at a level whose measurement did not pass. Eval set: the lab's IOS and IOS-XE devices, their packs drafted blind and compared with the measured ones, then one new platform. |
+| Compared fields | Translator (95%, 11.12): the pack's structured fields (the reads, the parser rules, the templates' rendered output on the captured configuration). |
+| Budgets | **Unmeasured;** feature 10's 30k in and 6k out per template is the floor, and a pack is several of those. A button only (15.6). |
+| Observe mode | Each drafted pack measured beside a hand-written one on the lab's platforms before a new platform is attempted. |
+| Kill criteria | Below 40% of packs reaching level 2 within two revisions after 5 platforms; or one pack approved at a level whose measurement failed; or cost per accepted level above 3× budget. |
+| Owner | The operator. |
+| Relation | Feature 10 (the template draft) becomes one part of a pack. The action library (16.7) carries the pack's verify reads and removal shapes as actions. The device access model (16.3 item 6) is the pack's runtime. |
+| Test plan | A drafted pack with executable content, or a read off the allowlist, is refused. A masking rule is planted with a secret and must never leave. Each acceptance level runs on a lab device: the read parsed, the capture normalised, the round trip exact, a staged deploy verified and rolled back, each removal shape and the rotation sequence measured. A level cannot be approved without its measurement passing. Export and import carry a pack between networks unchanged. A pack is run with AI off. |

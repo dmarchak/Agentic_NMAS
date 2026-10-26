@@ -1,5 +1,10 @@
 # End of session: where Phase 7 stands
 
+**REMINDER, 2026-10-26: the AI day cap (`ai_cap_usd_per_day`) was raised from $1.50 to $3.00
+for 2026-10-26 only, for Explain v5's proof and the Sonnet comparison. The operator sets it
+back to $1.50. If it is still above $1.50 on 2026-10-27, say so first thing: Mercury cannot
+raise that reminder itself (C1751).**
+
 ## THE OVERNIGHT RUN, 2026-10-23 ~23:0x to 2026-10-24 ~10:0x UTC (the operator asleep)
 
 The operator's brief: CI speed, then the mutation workflow, then the register's triage and

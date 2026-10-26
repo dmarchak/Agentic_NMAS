@@ -229,6 +229,16 @@ def explain_unready(case: dict, pack: dict) -> list:
             out.append(f"{sel}: not in the pack")
         elif not any(p.get("state", "ok") == "ok" for p in got):
             out.append(f"{sel}: not measured ({got[0].get('state')}: {got[0].get('why', '')})")
+    alone = case.get("alone")
+    if alone:
+        for p in _section(pack, "health").get("pieces") or []:
+            if p.get("device") == alone["device"] or p.get("state") != "ok":
+                continue
+            if p.get("figure") == "scrapes" and p.get("failed"):
+                out.append(f"not alone: {p['device']} failed {p['failed']} scrape(s) too")
+            if p.get("figure") == "heartbeat" and (p.get("max_gap_s") or 0) > alone["max_gap_s"]:
+                out.append(f"not alone: {p['device']}'s longest heartbeat gap was "
+                           f"{p['max_gap_s']} s, over {alone['max_gap_s']} s")
     quiet = case.get("quiet")
     if quiet:
         for p in _section(pack, "health").get("pieces") or []:
@@ -250,7 +260,8 @@ def explain_unready(case: dict, pack: dict) -> list:
 def _reasoning(expect: dict, hyps: list, pack: dict) -> list:
     """What *hyps* lack of one line of reasoning: `cites` (each group cited somewhere),
     `together` (one hypothesis citing each group), and `common` (one hypothesis citing the
-    named figures of at least `min_devices` devices: a cause shared beneath them)."""
+    named figures of at least `min_devices` devices: a cause shared beneath them); and what
+    they do that `no_common` forbids (a hypothesis resting on that many devices' figures)."""
     out = []
     cited = {r for h in hyps for r in h.get("evidence_refs") or []}
     for group in expect.get("cites", ()):
@@ -260,16 +271,26 @@ def _reasoning(expect: dict, hyps: list, pack: dict) -> list:
         wanted = [_refs(pack, g) for g in together]
         if not any(all(set(h.get("evidence_refs") or []) & w for w in wanted) for h in hyps):
             out.append(f"no one hypothesis cites each of {together}")
-    common = expect.get("common")
-    if common:
-        by_ref = {p.get("ref"): p for p in _section(pack, "health").get("pieces") or []}
+    by_ref = {p.get("ref"): p for p in _section(pack, "health").get("pieces") or []}
 
-        def devices(h):
-            return {by_ref[r]["device"] for r in h.get("evidence_refs") or []
-                    if r in by_ref and by_ref[r].get("figure") in common["figures"]}
-        if not any(len(devices(h)) >= common["min_devices"] for h in hyps):
-            out.append(f"no one hypothesis cites {' or '.join(common['figures'])} figures of "
-                       f"{common['min_devices']} or more devices")
+    def devices(h, figures):
+        return {by_ref[r]["device"] for r in h.get("evidence_refs") or []
+                if r in by_ref and by_ref[r].get("figure") in figures}
+    common = expect.get("common")
+    if common and not any(len(devices(h, common["figures"])) >= common["min_devices"]
+                          for h in hyps):
+        out.append(f"no one hypothesis cites {' or '.join(common['figures'])} figures of "
+                   f"{common['min_devices']} or more devices")
+    # The control's other side: where one device alone shows the symptom, a cause shared
+    # beneath several is not the evidence's (Explain v5's proof, the operator, 2026-10-26).
+    alone = expect.get("no_common")
+    if alone:
+        wide = [i for i, h in enumerate(hyps, 1)
+                if len(devices(h, alone["figures"])) >= alone["min_devices"]]
+        if wide:
+            out.append(f"hypothesis {wide[0]} rests on {' or '.join(alone['figures'])} figures "
+                       f"of {alone['min_devices']} or more devices, where one device alone "
+                       "shows the symptom")
     return out
 
 
