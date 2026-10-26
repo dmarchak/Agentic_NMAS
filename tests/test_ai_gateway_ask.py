@@ -413,6 +413,28 @@ def test_a_pin_s_temperature_its_model_refuses_is_refused_before_anything_is_sen
     assert _ask(world) == _refused("temperature", words) and world.sent == []
 
 
+def test_a_temperature_on_a_model_that_lists_none_is_refused_saying_none(world, monkeypatch):
+    """A model profile with no `temperatures` takes none but its default: a pin naming one is
+    refused, and the refusal says the model lists none (the hand check's survivors, 2026-10-25:
+    the profile's absent list was never asked)."""
+    monkeypatch.setitem(profiles.MODELS, MODEL,
+                        {k: v for k, v in profiles.MODELS[MODEL].items() if k != "temperatures"})
+    monkeypatch.setitem(profiles.TASKS, "connection_check",
+                        dict(profiles.TASKS["connection_check"], temperature=1))
+    words = f"the pin's temperature 1 is not one {MODEL} takes (none); nothing was sent"
+    assert _ask(world) == _refused("temperature", words) and world.sent == []
+
+
+def test_a_file_that_is_not_a_pin_is_passed_over_and_the_rest_still_load(tmp_path):
+    """A note beside the pins (sorting before them) is not a pin, and no pin after it is
+    missed."""
+    good = json.loads(open(f"{profiles.PINS}/nl_query.json", encoding="utf-8").read())
+    (tmp_path / "README.txt").write_text("not a pin")
+    (tmp_path / "a.json").write_text(json.dumps(good))
+    (tmp_path / "b.json").write_text(json.dumps(dict(good, max_tokens=5)))
+    assert profiles.load_pins(str(tmp_path)) == {"a": good, "b": dict(good, max_tokens=5)}
+
+
 def test_every_pin_file_is_exactly_its_keys_and_every_task_has_one(tmp_path):
     """The operator, 2026-10-25: a task's request settings are its pin file's, so tuning is an
     edit to the file. A file with a key missing or added is refused at load, naming it."""

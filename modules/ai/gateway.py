@@ -169,7 +169,7 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
         return refuse("unknown_model", f"{model} is not served by the Anthropic adapter")
     # The request's settings are the pin file's; a measurement's *thinking* replaces its one.
     asked = dict(pin, thinking=thinking) if thinking is not None else pin
-    mode = asked.get("thinking", "adaptive")
+    mode = asked["thinking"]                    # every pin names it (profiles.PIN_KEYS)
     row["thinking"] = mode
     if mode not in profiles.THINKING:
         return refuse("thinking", f"thinking {mode!r} is not one of "
@@ -177,7 +177,7 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
     if mode == "off" and not profile.get("thinking_off"):
         return refuse("thinking", f"{model}'s profile names no way to turn thinking off; "
                       "nothing was sent")
-    temperature = asked.get("temperature")
+    temperature = asked["temperature"]
     if temperature is not None and temperature not in profile.get("temperatures", ()):
         return refuse("temperature", f"the pin's temperature {temperature!r} is not one "
                       f"{model} takes ({profile.get('temperatures') or 'none'}); nothing "
