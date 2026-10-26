@@ -11,8 +11,8 @@ update meanwhile.**
 The operator's order: the Phase 8 sprint queue in order, items 1 to 6. The full report is the
 operator's `2026-10-26-overnight.md` (the laptop's reports folder).
 
-- **Live:** dd68fa2d (deployed 05:45 UTC, CI #1199). It carries every item below but the 8.1
-  board's commit, 1499e5c4: tests and records only, nothing for the host.
+- **Live:** 93f08b6b (deployed 06:25 UTC, CI #1201), every item below. AI spend on
+  2026-10-26 to 06:4x UTC: $5.39 of the $10 cap.
 - **Item 1, Explain:** v4's recorded cases, 33 of 35, the healthy baselines "no fault found"
   every run (C1744 closed); max_tokens 5,760 from a measured 2,286 (C1754 closed). **v5 was
   scored (29 of 30), not adopted: the operator's decision.**
@@ -23,8 +23,11 @@ operator's `2026-10-26-overnight.md` (the laptop's reports folder).
 - **Item 5, feature 7:** built to the preview (dd68fa2d). Its commit step is not built, and
   no intent change was deployed. First measured on the host on dd68fa2d: recorded 82 of 100
   runs, held-out 40 of 50, $0.29; every miss read, none the model's wrong change. Cases 11
-  and 12 were Mercury refusing a description naming a neighbour (C1770, fixed) and four
-  premises were wrong (corrected with their evidence); measured again after C1770's deploy.
+  and 12 were Mercury refusing a description naming a neighbour (C1770, fixed in 93f08b6b) and
+  four premises were wrong (corrected with their evidence). **Measured again on 93f08b6b:
+  recorded 100 of 100, 19 of 20 cases consistent (95%, the floor); held-out 50 of 50, 10 of
+  10; p50 3.8 s and 4.4 s; $0.31; output at most 326 tokens of the pin's 2,048.** The one
+  varying case is C1771 (UNKNOWN).
 - **Item 6:** P1's Alerts tab (canvas v143) and 8.1's Ask in words (v144), drawn and compared.
   C1769 registered.
 - **Waiting on the operator:** Explain v5's adoption; feature 7's next step (its commit);

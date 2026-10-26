@@ -2425,13 +2425,69 @@ secret reference.
   interface, VLAN or network the sentence did not name; one filling a field its op does not
   use. The patch's own rules then hold (`intent_patch.parse`), and `intent_patch.apply`
   refuses what the intent lacks.
-- **Mercury answers itself, no call:** a sentence naming no device in scope, another device
-  than the tab's, or no interface, VLAN or network.
+- **Mercury answers itself, no call:** a sentence naming no device in scope, or no interface,
+  VLAN or network (C1770 removed "another device than the tab's").
 - Every operation then goes through the intent editor's preview. The commit and the deploy
   after it are the existing paths, unchanged (feature 7 is built to the preview tonight).
 
 **What this costs:** "shut the uplink" names no section, so Mercury asks for the interface's
-name rather than sending the device's interfaces for the model to choose from.
+name rather than sending the device's interfaces for the model to choose from. Part 1 below
+answers it.
+
+**Feature 7, parts 1 and 2 (the operator, 2026-10-26 ~06:4x UTC), in this order:**
+
+*Part 1, how people name things*, resolved in the pre-check, by code, before any call; the
+model receives resolved names only:
+- **Shorthand**, canonicalised as the device names it, per platform (G, Gi, Gig, gi to
+  GigabitEthernet; Te, Fa, Po, Lo, Vl, Tu), reusing the existing normaliser, and only when the
+  interface exists on the device.
+- **References**, from the network model (cables and observed links) and committed intent:
+  - "uplink(s)", "the uplink to r1": ports toward a router or the management path;
+  - "trunk(s)"; "the VLAN 10 ports";
+  - "host port(s)", "the port to h1": see the ruling below.
+  - A plural word ("host ports", "all host ports") means every match.
+- **One match:** used. **Several, with a singular reference:** Mercury asks before any call,
+  each candidate a button naming its neighbour, plus "Both" or "All N"; the choice continues
+  the same draft. **No match, or a name the device lacks:** said, the device's real interfaces
+  as buttons, and a link to Neighbours.
+- **The draft shows every resolution** ("host port -> GigabitEthernet1/0 (by role)", "G1/0 ->
+  GigabitEthernet1/0"). The resolved interfaces are the request's scope; anything else is
+  refused before preview.
+- **Host ports (the operator's ruling of 2026-10-26, measured first: Mercury's inventory, NetBox
+  and the Topology read hold no host, and s1's host-facing ports have no cable or LLDP
+  neighbour):**
+  - "Host port" resolves structurally and never from a description: an access port, enabled in
+    intent, with no managed neighbour (no cable, no observed link). An access port shut in
+    intent is not a host port unless named directly, so unused ports never inflate the
+    candidates.
+  - The description is only the button's label and the match for "the port to h1", by word
+    boundary (h1 never matches h10).
+  - The preview says which: "host port -> GigabitEthernet1/0 (by role)", "port to h1 ->
+    GigabitEthernet1/0 (by description 'h1 - VLAN 10')".
+  - Observed endpoints (MAC table and ARP read per device, DHCP leases through an optional
+    integration, with last seen) come after the sprint, C1772. When present, "port to X"
+    prefers observation over description, and a disagreement is reported as drift.
+- **Cases:** shorthand in several forms; a one-match reference; a several-match singular
+  (asks); a several-match plural (changes all); "both" chosen; none matching; a name that does
+  not exist; an injection inside a reference.
+
+*Part 2, commit a drafted change:*
+- **"Commit this draft"** on the draft card: a verified person commits the drafted patch as an
+  intent commit through the existing write path (`repo.commit`), with trailers `Source:
+  ai-draft` and `AI-Call: <call id>`, the person as Actor. Refused if the intent moved since
+  the draft (the existing at-commit check) or if the patch differs from the drafted one.
+- **"Commit and plan deploy"**, one step to the existing preview; the deploy path after it is
+  unchanged (preview, confirm by hash, apply, verify, rollback on failure). Never
+  auto-confirmed. **"Discard draft"**; an uncommitted draft never persists past the page.
+- **History links both ways:** AI call, intent commit, deploy receipt.
+- Tests: refused on moved intent, on an unverified person, on a differing patch; the trailers
+  present; the links drawn.
+
+*With them:* a **stale-expectation pre-check** for feature 7's cases, as nl_query's: each
+expectation validated against the committed intent and the network model, run first in every
+recording; a stale one stops the run before any call. Then parts 1 and 2's new cases, five
+runs each, reported for pass, consistency and cost. When both parts are live, the operator
+walks it on s1.
 
 ## 16. Industry-readiness roadmap (2026-10-25)
 

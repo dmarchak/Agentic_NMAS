@@ -20,6 +20,7 @@ never a secret-bearing key.
 """
 
 import ipaddress
+import json
 import logging
 import re
 from enum import Enum
@@ -370,6 +371,60 @@ def change(list_name: str, sentence: str, *, actor: str, send=None, today: str =
                                       for p in refused)[:200], links=links)
     return dict(base, ok=not refused, error="intent" if refused else "", previews=previews,
                 detail="; ".join(f"{p['hostname']}: {p.get('error', '')}" for p in refused))
+
+
+def stale(list_name: str, case: dict) -> list:
+    """Why a recorded case's expectation no longer holds against *list_name*'s committed
+    intent (``[]``: it holds), asked of the real path with no call: the expected operations
+    made the answer, put through `to_patches` with the sentence's own scope and then the intent
+    editor's preview. Stale when the device has no committed intent; when the expected answer
+    is outside what the sentence names; when it changes nothing and the case does not allow
+    "the answer changes no device"; when the editor refuses it and the case does not expect
+    that refusal in its words; or when the case expects the editor's refusal and the intent now
+    takes the change. Run first in every recording (scripts/nmas-intent-cases), so a stale
+    expectation stops the run before anything is asked or spent, never scored as the model's
+    miss."""
+    from modules.nsot import intent_edit, intent_patch
+
+    device, expect = case.get("device") or "", case.get("expect") or {}
+    allowed, said = expect.get("outcome") or [], expect.get("said") or {}
+    where = f"case {case.get('n')} ({device})"
+    opened = intent_edit.open_doc(list_name, device)
+    if not opened["ok"]:
+        return [f"{where}: no committed intent to judge it against: {opened['error']}"]
+    if not expect.get("ops") or not ({"answer", "refused_after"} & set(allowed)):
+        return []
+    blank = {k: (0 if f.annotation is int else "")
+             for k, f in Operation.model_fields.items() if k != "op"}
+    ops = [dict(blank, op=o["op"], **{("vlan_name" if k == "name" else k): v
+                                      for k, v in o.items() if k != "op"})
+           for o in expect["ops"]]
+    # Strict, as the gateway reads an answer: from its JSON (an enum is its value there).
+    answer = IntentChange.model_validate_json(json.dumps({
+        "outcome": "answer", "question": "", "why_not": "",
+        "patches": [{"hostname": device, "operations": ops}]}))
+    made = to_patches(answer, {device: touched(case.get("sentence") or "")})
+    if not made["ok"]:
+        return [f"{where}: the expected operations are outside what the sentence names: "
+                f"{made['error']}"]
+    shown = intent_patch.preview(list_name, device, made["patches"][0])
+    if not shown.get("ok"):
+        words = said.get("refused_after") or ""
+        if "refused_after" in allowed and words and words in (shown.get("error") or ""):
+            return []
+        return [f"{where}: the intent editor refuses the expected change: "
+                f"{(shown.get('error') or '')[:200]}"]
+    # Already so: the patch changes nothing, or changes only how the document says it (an
+    # up interface given an explicit `no shutdown`, C1401) and no line of the configuration.
+    if not shown.get("changed") or not shown.get("vs_intent_changed", True):
+        if "refused_after" in allowed and "changes no device" in said.get("refused_after", ""):
+            return []
+        return [f"{where}: the expected change is already in the committed intent: "
+                + (shown.get("message") or "the configuration it renders does not change")[:200]]
+    if "answer" not in allowed:
+        return [f"{where}: the case expects the editor's refusal, and the committed intent now "
+                "takes the change"]
+    return []
 
 
 def slices(list_name: str, hostnames: list, t: dict) -> dict:

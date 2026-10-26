@@ -21,6 +21,12 @@ the passes, whether every run gave the same outcome and operations (consistency)
 cost and latency. A refusal that is Mercury's or the provider's (hosted AI off, a cap) stops the
 run with nothing more spent. A call that stops at max_tokens voids the run (C1756's rule).
 `--out` may not be inside the checkout (the host's live checkout is never written).
+
+**Check** (`--check --list <network>`, and first thing in every recording): each case's
+expected change put through the real path against the committed intent, with no call
+(`intent_words.stale`). A stale expectation (an interface already up, a VLAN still in use, an
+answer outside what the sentence names) stops the recording before anything is asked or spent
+(exit 5), never scored as the model's miss.
 """
 import argparse
 import json
@@ -55,6 +61,15 @@ def summary(case: dict, runs: list) -> dict:
             "expect": case["expect"]["outcome"]}
 
 
+def check(checkout: str, list_name: str, case_file: str = CASES) -> list:
+    """The stale expectations (`intent_words.stale`): each case's expected change against
+    *list_name*'s committed intent, through the real path, with no call."""
+    from modules.ai import cases, intent_words
+
+    data = cases.load(os.path.join(checkout, case_file))
+    return [p for c in data["cases"] for p in intent_words.stale(list_name, c)]
+
+
 def record(checkout: str, list_name: str, actor: str, out: str, case_file: str,
            runs: int) -> int:
     from modules.ai import cases, intent_words, profiles
@@ -63,6 +78,15 @@ def record(checkout: str, list_name: str, actor: str, out: str, case_file: str,
         print(f"nmas-intent-cases: --out {out} is inside the checkout; write it elsewhere",
               file=sys.stderr)
         return 2
+    # Every measurement starts with the expectations checked against the committed intent: a
+    # stale one fails here, before anything is asked or spent, never as the model's miss.
+    problems = check(checkout, list_name, case_file)
+    if problems:
+        for p in problems:
+            print(f"nmas-intent-cases: stale expectation: {p}", file=sys.stderr)
+        print(f"nmas-intent-cases: {len(problems)} stale expectation(s); nothing asked, "
+              "nothing spent", file=sys.stderr)
+        return 5
     data = cases.load(os.path.join(checkout, case_file))
     pin = profiles.TASKS[intent_words.FEATURE]["model"]
     if data["model"] != pin:
@@ -119,14 +143,24 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
     ap.add_argument("--checkout", default="")
     ap.add_argument("--list", required=True)
-    ap.add_argument("--actor", required=True)
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--actor", default="")
+    ap.add_argument("--out", default="")
     ap.add_argument("--cases", default=CASES)
     ap.add_argument("--runs", type=int, default=1)
+    ap.add_argument("--check", action="store_true",
+                    help="only check the expectations against the committed intent; no call")
     args = ap.parse_args(argv)
     checkout = os.path.abspath(os.path.expanduser(args.checkout)) if args.checkout else ROOT
     sys.path.insert(0, checkout)
     os.chdir(checkout)
+    if args.check:
+        problems = check(checkout, args.list, args.cases)
+        for p in problems:
+            print(f"stale expectation: {p}")
+        print(f"{len(problems)} stale expectation(s) in {args.cases}")
+        return 5 if problems else 0
+    if not (args.actor and args.out):
+        ap.error("a recording needs --actor and --out")
     return record(checkout, args.list, args.actor, args.out, args.cases, args.runs)
 
 

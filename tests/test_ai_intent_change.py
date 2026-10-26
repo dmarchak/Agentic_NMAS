@@ -200,6 +200,52 @@ def test_on_a_tab_an_answer_changing_the_device_named_in_words_is_refused(world)
     assert not got.get("previews") and _committed("s1") == before
 
 
+# ── the stale-expectation check (the operator, 2026-10-26; C1770's premises) ─────────────
+
+def _case(sentence, outcome, ops, said=None, device="s1"):
+    expect = {"outcome": outcome, "ops": ops}
+    if said:
+        expect["said"] = said
+    return {"n": 1, "device": device, "sentence": sentence, "expect": expect}
+
+
+@pytest.mark.parametrize("case,words", [
+    (_case("bring GigabitEthernet1/0 up", ["answer"],
+           [{"op": "no_shutdown", "interface": "GigabitEthernet1/0"}]),
+     "the expected change is already in the committed intent"),
+    (_case("remove vlan 30", ["answer"], [{"op": "remove_vlan", "vlan": 30}]),
+     "the intent editor refuses the expected change: operations[0] removes VLAN 30"),
+    (_case("add vlan 40 named LAB", ["refused_after"],
+           [{"op": "add_vlan", "vlan": 40, "name": "LAB"}],
+           {"refused_after": "still uses it"}),
+     "the case expects the editor's refusal, and the committed intent now takes the change"),
+    (_case("shut GigabitEthernet0/1", ["answer"],
+           [{"op": "shutdown", "interface": "GigabitEthernet0/2"}]),
+     "the expected operations are outside what the sentence names"),
+    (_case("shut GigabitEthernet0/1", ["answer"],
+           [{"op": "shutdown", "interface": "GigabitEthernet0/1"}], device="r9"),
+     "no committed intent to judge it against"),
+], ids=["already-up", "vlan-in-use", "now-taken", "outside-the-sentence", "no-intent"])
+def test_a_stale_expectation_is_found_by_the_real_path_with_no_call(world, case, words):
+    got = intent_words.stale("Lab", case)
+    assert len(got) == 1 and words in got[0], got
+    assert world.sent == [] and calls.read()["rows"] == [], "no call, nothing spent"
+
+
+@pytest.mark.parametrize("case", [
+    _case("bring GigabitEthernet1/0 up", ["answer", "refuse", "refused_after"],
+          [{"op": "no_shutdown", "interface": "GigabitEthernet1/0"}],
+          {"refused_after": "the answer changes no device"}),
+    _case("remove vlan 30", ["refused_after"], [{"op": "remove_vlan", "vlan": 30}],
+          {"refused_after": "removes VLAN 30, and s1's intent still uses it"}),
+    _case("shut GigabitEthernet0/1", ["answer"],
+          [{"op": "shutdown", "interface": "GigabitEthernet0/1"}]),
+    _case("which interface?", ["ask"], []),
+], ids=["no-op-allowed", "refusal-expected", "a-change", "ask"])
+def test_an_expectation_that_holds_is_not_stale(world, case):
+    assert intent_words.stale("Lab", case) == []
+
+
 def test_the_intent_tab_draws_the_row_and_its_draft_in_the_editor_s_preview(world, host):  # noqa: F811
     """The route on s1's Intent tab: the row with its AI mark; drafted, the changes in words
     and the editor's own preview (what the change does in s1's configuration); the state

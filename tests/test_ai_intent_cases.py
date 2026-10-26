@@ -156,6 +156,9 @@ def _planted(monkeypatch, answers):
         asked.append((sentence, tuple(devices or ())))
         return dict(answers(sentence), cost_usd=0.01, call_id="ai-0000000000000001")
     monkeypatch.setattr(intent_words, "change", change)
+    # The recording's first step checks each expectation against the committed intent; these
+    # tests have none, so it is stood in as fresh (its own tests: test_ai_intent_change.py).
+    monkeypatch.setattr(intent_words, "stale", lambda list_name, case: [])
     return asked
 
 
@@ -195,3 +198,20 @@ def test_a_mercury_refusal_stops_and_max_tokens_voids(monkeypatch, tmp_path):
     assert mod.record(ROOT, "default", "a", str(tmp_path / "b.json"), path, 1) == 4
     assert mod.record(ROOT, "default", "a", os.path.join(ROOT, "out.json"), path, 1) == 2
     assert not os.path.exists(os.path.join(ROOT, "out.json"))
+
+
+def test_a_stale_expectation_stops_the_recording_before_any_call(monkeypatch, tmp_path, capsys):
+    """The check runs first: one stale case and nothing is asked, nothing written (exit 5);
+    `--check` alone says the same with no call."""
+    mod = _script()
+    path = os.path.join("tests", "fixtures", "ai_cases", "intent_patch", "recorded.json")
+    asked = _planted(monkeypatch, lambda s: {"ok": True})
+    monkeypatch.setattr(intent_words, "stale", lambda list_name, case: (
+        [f"case {case['n']} (s1): the expected change is already in the committed intent"]
+        if case["n"] == 3 else []))
+    out = tmp_path / "a.json"
+    assert mod.record(ROOT, "default", "a", str(out), path, 5) == 5
+    assert asked == [] and not out.exists()
+    assert "case 3 (s1): the expected change is already" in capsys.readouterr().err
+    assert mod.main(["--check", "--list", "default", "--cases", path]) == 5
+    assert asked == [] and "1 stale expectation(s)" in capsys.readouterr().out
