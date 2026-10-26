@@ -1,0 +1,43 @@
+{%- from "v2/_macros.html" import icon, how -%}
+{%- import "v2/_ai.html" as ai -%}
+{#- Change it in words (PHASE8_PLAN feature 7, 15.16; board F7, signed off under the Phase 7
+    mode 2026-10-26): a sentence drafts a patch to THIS device's intent, which the one intent
+    editor previews (`_intent_check.html`, exactly as for an edit typed by hand). Nothing is
+    written; nothing reaches the device. An AI control (15.13): the mark, and disabled with its
+    reason when hosted AI cannot answer, the editor beside it untouched.
+    Set before the include: *host*, and *w* (`intent_words.change`'s answer, with `sentence`
+    and `model`), absent until a sentence is drafted. -#}
+{%- set aic = ai_control('intent_in_words') %}
+<div class="intent-words" id="intent-words">
+<form class="iw-row" method="post" action="{{ url_for('intent_v2.words', name=host) }}" hx-post="{{ url_for('intent_v2.words', name=host) }}" hx-target="#intent-words" hx-swap="outerHTML" autocomplete="off">
+  <label class="lq-lab" for="iw-words">Change it in words {{ ai.mark(aic) }}</label>
+  <div class="lq-line"><input id="iw-words" class="lq-words-in" type="text" name="words" maxlength="300" value="{{ w.sentence if w else '' }}" placeholder="describe GigabitEthernet3 as core uplink, shut GigabitEthernet4"{{ ai.input_attrs(aic) }}>
+  <span class="op-act"><button type="submit" class="btn btn-small" data-op="intent-in-words" hx-disabled-elt="this"{{ ai.attrs(aic, 'configure') }} title="One recorded AI call, capped: it drafts a change to {{ host }}'s intent and previews it; nothing is written"><span class="op-idle">Draft the change</span><span class="op-busy">Drafting…</span></button>{{ how('intent-in-words', compact=True) }}</span>
+  {{- ai.reason(aic) }}</div>
+</form>
+{%- if w and w.ok %}
+{%- set p = w.previews[0] %}
+<div class="notice" role="status">{{ icon('info', 16) }}<p>Drafted from your words ({{ w.model }}, ${{ '%.4f' | format(w.cost_usd) }}): {{ p.changes | length }} change{{ '' if p.changes | length == 1 else 's' }} to {{ host }}'s intent. Check them below. The draft is not committed: committing a drafted change is feature 7's next step, so to make it now, Edit the document.</p></div>
+<div class="iw-draft">
+  <h3 class="ie-k">The changes, as Mercury would make them</h3>
+  <ol class="iw-ops">{% for c in p.changes %}<li>{{ c.summary }}</li>{% endfor %}</ol>
+  {%- if p.device_keeps %}<p class="muted small">{{ p.device_keeps }}</p>{% endif %}
+  {%- if p.changed %}
+  {%- with p=p, host=host, text=p.yaml %}{% include "v2/_intent_check.html" %}{% endwith %}
+  {%- else %}
+  <p class="muted">{{ p.message }}</p>
+  {%- endif %}
+  <p class="muted small">What left the host: your sentence, the keys a change may set, and the parts of {{ host }}'s intent it names with their current values; never the intent document. The call is in History, its prompt and answer opened in place.</p>
+</div>
+{%- elif w and w.error == 'ask' %}
+<div class="notice" role="status">{{ icon('info', 16) }}<p><strong>One question first:</strong> {{ w.clarify }} Add the answer to your words, then draft again. <span class="faint">({{ w.model }}, ${{ '%.4f' | format(w.cost_usd) }})</span></p></div>
+{%- elif w and w.by == 'mercury' %}
+<div class="notice" role="status">{{ icon('info', 16) }}<p>{{ w.detail[:1] | upper }}{{ w.detail[1:] }}.</p></div>
+{%- elif w and w.error == 'unanswerable' %}
+<div class="notice notice-warn" role="alert">{{ icon('warn', 16) }}<p><strong>This change cannot be drafted in words:</strong> {{ w.detail.split(': ', 1)[1] if ': ' in w.detail else w.detail }}. Edit the document to make it.</p></div>
+{%- elif w and w.error == 'intent' %}
+<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Nothing drafted:</strong> {{ w.detail }}.</p></div>
+{%- elif w %}
+<div class="notice notice-warn" role="alert">{{ icon('warn', 16) }}<p><strong>Nothing drafted:</strong> {{ w.detail or w.error }}.</p></div>
+{%- endif %}
+</div>

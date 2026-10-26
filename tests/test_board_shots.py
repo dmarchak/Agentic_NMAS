@@ -1737,6 +1737,110 @@ _D_ROWS = "!!document.querySelector('.hist-tl details.tl-row')"
 _D_OPEN = "document.querySelector('.hist-tl details.tl-row').open = true"
 
 
+def test_monitoring_alerts_explain(tmp_path, monkeypatch):
+    """P1's Alerts tab (PHASE8_PLAN 15.9) beside its board, owed since 15.12 and drawn
+    2026-10-26 (`AlertsExplain.dc.html`, 1440): tests/v2_context.py's `_alert_evidence` set-up
+    (r3's real heartbeat instance and a silenced syslog instance firing, each pack built by the
+    real trigger over the Loki and Prometheus captures), on test_device_v2's lab; the tab, the
+    first card opened, and Explain pressed with hosted AI allowed and an answer planted."""
+    import json as _json
+    import tempfile
+
+    from modules import evidence_pack as EP
+    from modules import history_logq as Q
+    from modules import reader_job, settings_schema
+    from modules.ai import anthropic_adapter, calls, gateway
+    from modules.readers import grafana_alerts as G
+    from tests import browser
+    from tests import test_device_v2 as DV
+    from tests import test_evidence_pack as T
+    from tests import test_grafana_reader as GR
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    gen = DV.lab.__wrapped__(tmp_path, monkeypatch)
+    next(gen)
+    folder = tempfile.mkdtemp(prefix="nmas-shots-packs-", dir=str(tmp_path))
+    monkeypatch.setattr(EP, "_path", lambda: os.path.join(folder, "evidence_packs.jsonl"))
+    monkeypatch.setattr(EP, "_alert_stores", lambda: ["grafana-alerts-walk"])
+    monkeypatch.setattr(reader_job, "store_path",
+                        lambda name: os.path.join(folder, "readers", f"{name}.json"))
+    monkeypatch.setattr(Q, "_client", lambda *a, **k: T.DeviceLoki())
+    T._prometheus(monkeypatch)
+    os.makedirs(os.path.join(folder, "readers"))
+    value = T._alerts(heartbeat=True)
+    view, am = GR.silenced_syslog()
+    value["instances"] += G.parse(GR.load("ruler"), view, am, GR.READ_AT,
+                                  silences=[GR.SILENCE])["instances"]
+    with open(reader_job.store_path("grafana-alerts-walk"), "w", encoding="utf-8") as fh:
+        _json.dump({"last_good": {"value": value, "value_at": "2026-10-15T08:24:00Z"}}, fh)
+    assert EP.after_alerts_read(clock=lambda: T.NOW)
+    pack = EP.read()["rows"][-1]
+    cite = next(s["ref"] for s in pack["sections"] if s["name"] == "alert")
+    answer = {"outcome": "answer", "rationale": "The heartbeat stopped while the device was up.",
+              "hypotheses": [{"claim": "The device stopped sending its heartbeat.",
+                              "evidence_refs": [cite],
+                              "confirm_with": "show logging | include HEARTBEAT"}],
+              "checked": [], "needs_human": True, "why_not": ""}
+    allowed = {"ai_hosted": {"by": "operator@example.com", "at": "2026-10-25T05:00:00Z",
+                             "reason": "the shot's planted answer"}, "ai_cap_usd_per_day": 1.5}
+    real_get = settings_schema.get_setting
+    monkeypatch.setattr(settings_schema, "get_setting",
+                        lambda k, d=None: allowed[k] if k in allowed else real_get(k, d))
+    monkeypatch.setattr(gateway, "_api_key", lambda: "sk-planted-shot-key-0123456789")
+    monkeypatch.setattr("modules.ai.controls._key_set", lambda: True)
+    monkeypatch.setattr(calls, "_path", lambda: os.path.join(folder, "ai_calls.jsonl"))
+    monkeypatch.setattr(anthropic_adapter, "send", lambda body, key: anthropic_adapter.Reply(
+        status=200, body={"content": [{"type": "text", "text": _json.dumps(answer)}],
+                          "stop_reason": "end_turn",
+                          "usage": {"input_tokens": 4000, "output_tokens": 200}},
+        attempts=1, latency_s=0.5))
+    card = "document.querySelector('details.pack-card')"
+    try:
+        import app as A
+        _d_walk("alerts-explain", None, "", [], boards=(("AlertsExplain.dc.html", 1440),),
+                widths=((1440, 1.0),))
+        with browser.Served(A.app) as served:
+            _d_walk("alerts-explain", served, "/v2/monitoring/alerts", [
+                ("tab", None, f"!!{card}"),
+                ("open", f"{card}.open = true",
+                 f"!!{card}.querySelector('[data-op=\"alert-evidence\"]')"),
+                ("explained", f"{card}.querySelector('[data-op=\"alert-evidence\"]').click()",
+                 f"/The device stopped sending its heartbeat/.test({card}.textContent)")],
+                widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
+    finally:
+        next(gen, None)
+
+
+def test_tab_intent_words(tmp_path, monkeypatch):
+    """Feature 7 (PHASE8_PLAN 15.16): board F7 (`IntentWords.dc.html`, 1440) beside s1's Intent
+    tab on the host's real committed lab (tests/test_committed_before_p1's `host`): the row
+    drawn, then a sentence drafted (hosted AI allowed, the adapter answering as planted) and
+    previewed by the intent editor in place."""
+    import json as _json
+    from tests import browser
+    from tests import test_ai_intent_change as F
+    from tests import test_committed_before_p1 as P
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    host = P.host.__wrapped__(monkeypatch, tmp_path)
+    world = F.world.__wrapped__(host, monkeypatch, tmp_path)
+    world.answer = F.DESCRIBE
+    row = "document.getElementById('intent-words')"
+    draft = ("var i = document.getElementById('iw-words'); "
+             "i.value = 'describe GigabitEthernet0/1 as uplink to edge1'; "
+             "i.form.querySelector('button[type=submit]').click()")
+    _d_walk("tab-intent-words", None, "", [], boards=(
+        ("IntentWords.dc.html", 1440),), widths=((1440, 1.0),))
+    with browser.Served(host["app"]) as served:
+        _d_walk("tab-intent-words", served, "/v2/device/s1?tab=intent&list=Lab", [
+            ("row", None, f"!!{row}"),
+            ("drafted", draft, f"/Drafted from your words/.test({row}.textContent)")],
+            widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
+    assert _json.dumps(world.sent[-1]["body"]).count("uplink to edge1") >= 1
+
+
 def test_tab_history(tmp_path, monkeypatch):
     """C650 group D, tab:history: board D (`HistoryTimeline.dc.html`, 1280; signed off
     2026-10-03, "a device tab is the same timeline filtered to the device") beside r3's

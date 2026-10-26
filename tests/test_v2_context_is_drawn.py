@@ -610,8 +610,6 @@ EMPTY_IN_FIXTURE = {
     "v2/_install_platforms_preview.html e.unread": _OP + " (a platform map change previewed)",
     "v2/_install_platforms_preview.html pv.testable": _OP + " (a platform map change previewed)",
     "v2/_intent.html iv.profile.excluded.items()": "the Intent tab's profile exclusions: r3 declines no section of the profile",
-    "v2/_intent_check.html d.not_from": _INTENT_CHECK,
-    "v2/_intent_check.html list": _INTENT_CHECK,
     "v2/_intent_check.html p.unmodelled": _INTENT_CHECK,
     "v2/_intent_edit.html list": "the intent editor's diff rows (what a deploy sends, how the device departs): the walk opens the editor and types nothing, so no row is drawn",
     "v2/_logs.html g.errors": _LOKI,
@@ -835,8 +833,10 @@ EMPTY_IN_FIXTURE = {
 #: 386 measured 2026-10-18 (C1274), when the list was made: it only shrinks. 382 with C1277's
 #: provider (a silenced Grafana alert), which draws a row's devices and its members; 377 with
 #: C1232's (Save's no-golden scope), which draws the plan's groups and their devices; 371 with
-#: C1403's (DHCP › Leases' Release lease…), which draws the DHCP page's tabs and lease groups.
-EMPTY_IN_FIXTURE_CEILING = 370
+#: C1403's (DHCP › Leases' Release lease…), which draws the DHCP page's tabs and lease groups;
+#: 368 with feature 7's (Change it in words, 2026-10-26), whose draft draws the intent check's
+#: diff rows and pending lines.
+EMPTY_IN_FIXTURE_CEILING = 368
 #: The population and how many of it drew, measured 2026-10-18 (557 and 171): floors, a little
 #: under the measurement, so a scan that stopped seeing loops, or a walk that stopped drawing,
 #: fails.

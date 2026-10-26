@@ -63,6 +63,61 @@ def edit(name):
     return _card(editor_ctx(ref, dev))
 
 
+#: A draft's preview keys the row draws: `_intent_words.html`'s and the intent editor's check
+#: partial's (`_intent_check.html`), and no others.
+_DRAFT_DRAWN = ("changed", "changes", "device_keeps", "message", "yaml", "blocking_reasons",
+                "column", "deployable", "diffs", "document_changed", "error", "intent_note",
+                "line", "masked_not_compared", "ok", "rendered", "template", "unmodelled")
+#: Of its `diffs`, what the check partial reads (`d.*`), with the golden's sha and time and each
+#: pending line's words.
+_DIFFS_DRAWN = ("edit_changes", "edit_rows", "from_edit", "from_edit_rows", "golden",
+                "not_from", "not_removed", "replaces", "same", "sent")
+_PENDING_DRAWN = ("at", "line", "section", "sha", "then", "words")
+
+
+def _drawn(p: dict) -> dict:
+    """A draft's preview cut to what the row draws (every carried field is drawn)."""
+    out = {k: p[k] for k in _DRAFT_DRAWN if k in p}
+    out["changes"] = [{"summary": c.get("summary", "")} for c in p.get("changes") or []
+                      if isinstance(c, dict)]
+    d = p.get("diffs")
+    if isinstance(d, dict):
+        out["diffs"] = {k: d[k] for k in _DIFFS_DRAWN if k in d}
+        if isinstance(d.get("golden"), dict):
+            out["diffs"]["golden"] = {k: d["golden"][k] for k in ("sha", "timestamp")
+                                      if k in d["golden"]}
+        out["diffs"]["not_from"] = [{k: n[k] for k in _PENDING_DRAWN if k in n}
+                                    for n in d.get("not_from") or [] if isinstance(n, dict)]
+    return out
+
+
+@bp.route("/<name>/intent/words", methods=["POST"])
+def words(name):
+    """Change it in words (PHASE8_PLAN feature 7, 15.16; board F7): one recorded, capped AI
+    call as the person who asked, its draft a patch to THIS device's intent alone, previewed by
+    the intent editor (`intent_words.change`). Writes nothing; nothing reaches the device."""
+    from modules import identity
+    from modules.ai import intent_words, profiles
+
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    host = dev.get("hostname", "")
+    sentence = request.form.get("words", "")
+    got = intent_words.change(ref.name, sentence, actor=identity.request_actor(),
+                              devices=[host])
+    pin = profiles.TASKS.get(intent_words.FEATURE) or {}
+    model = f"{profiles.profile(pin['model'])['words']}, {pin['model']}" if pin else ""
+    # What the row draws, and only that (every carried field is drawn): the answer in words,
+    # and each preview as the editor's check partial reads it (the patch and its base, which
+    # a commit will carry, are not drawn here).
+    w = {k: got[k] for k in ("ok", "error", "detail", "clarify", "by", "cost_usd") if k in got}
+    w["previews"] = [_drawn(p) for p in got.get("previews") or []]
+    return _strict(render_template("v2/_intent_words.html", host=host,
+                                   w=dict(w, sentence=sentence, model=model)))
+
+
 @bp.route("/<name>/intent/check", methods=["POST"])
 def check(name):
     """The edit, checked as typed: `intent_edit.preview`. Writes nothing."""

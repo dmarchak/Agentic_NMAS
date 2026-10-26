@@ -24,6 +24,7 @@ import requests
 
 from modules.ai import anthropic_adapter as A
 from modules.ai import calls, connection, explain, gateway, nl_query, profiles, prompts, schemas  # noqa: F401 (nl_query and explain register their schemas)
+from modules.ai import intent_words  # noqa: F401,E402 (it registers feature 7's schema)
 
 KEY = "sk-planted-test-key-0123456789"
 

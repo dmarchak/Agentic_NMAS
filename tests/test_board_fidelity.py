@@ -61,7 +61,10 @@ COMPONENTS = {"_run_stepper.html": "stepper.md",
               "_decline.html": "decline.md",
               # C537's In progress chip in every v2 page's top bar (canvas v66, boards A and B,
               # signed off under the Phase 7 mode 2026-10-16).
-              "_in_progress.html": "in-progress.md"}
+              "_in_progress.html": "in-progress.md",
+              # P1's Alerts tab, an alert's evidence pack and Explain (canvas page "P1,
+              # Monitoring › Alerts", signed off under the Phase 7 mode 2026-10-26).
+              "_evidence_pack.html": "alerts-explain.md"}
 
 #: Signed-off screens built before the fidelity step and not yet compared with their boards
 #: (C650). Each is compared, and its differences fixed or logged, before it leaves this list.

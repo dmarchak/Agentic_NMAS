@@ -336,3 +336,78 @@ def explain_misses(expect: dict, answer, pack: dict, error: str = "") -> list:
         if bad:
             out.append(f"states {', '.join(bad)}, which the pack does not hold")
     return out
+
+
+# ── feature 7: an intent change in words (tests/fixtures/ai_cases/intent_patch/) ──
+
+#: What `intent_words.change` answered, in a case's words: the model's draft previewed
+#: ("answer"), one question back ("ask"), a refusal of the change ("refuse"), a draft refused
+#: by Mercury after the model answered, by the scope check, the patch's rules or the intent
+#: ("refused_after"), or Mercury's own answer with no call ("mercury").
+MERCURY_ERRORS = ("empty", "too_long", "no_device", "other_device", "nothing_named",
+                  "no_intent")
+
+
+def intent_outcome(got: dict) -> str:
+    if got.get("ok"):
+        return "answer"
+    error = got.get("error") or ""
+    if error == "ask":
+        return "ask"
+    if error == "unanswerable":
+        return "refuse"
+    if error in ("couldnt_change", "intent"):
+        return "refused_after"
+    if error in MERCURY_ERRORS:
+        return "mercury"
+    return error or "none"
+
+
+def intent_ops(choices: dict) -> list:
+    """The draft's operations from the model's own answer (`choices`), each with only the
+    fields its op uses, in the case file's shape (interface canonical, area as its number)."""
+    from modules.ai.intent_words import FIELDS, Op
+    from modules.nsot import ifnames
+    from modules.nsot.features import area_number
+
+    out = []
+    for patch in (choices or {}).get("patches") or []:
+        for o in patch.get("operations") or []:
+            name = o.get("op")
+            op = {"op": name}
+            fields = FIELDS[Op(name)] if name in {m.value for m in Op} else ()
+            for f in fields:
+                value = o.get(f)
+                if f == "interface":
+                    value = ifnames.canonical(str(value or ""))
+                if f == "area":
+                    value = str(area_number(value)) if area_number(value) is not None else value
+                op["name" if f == "vlan_name" else f] = value
+            out.append(op)
+    return out
+
+
+def _op_key(op: dict) -> tuple:
+    from modules.nsot.features import area_number
+    o = dict(op)
+    if "area" in o and area_number(o["area"]) is not None:
+        o["area"] = str(area_number(o["area"]))
+    return tuple(sorted((k, str(v)) for k, v in o.items()))
+
+
+def intent_misses(expect: dict, got: dict) -> list:
+    """What *got* (`intent_words.change`'s answer) does that *expect* does not allow: ``[]``
+    is a pass. The outcome must be one the case allows; an answer's operations must be
+    exactly the expected ones, order aside."""
+    outcome = intent_outcome(got)
+    if outcome not in expect["outcome"]:
+        why = got.get("detail") or got.get("error") or ""
+        return [f"outcome {outcome}, expected one of {expect['outcome']}"
+                + (f" ({why[:160]})" if why else "")]
+    if outcome != "answer" or "ops" not in expect:
+        return []
+    want = sorted(_op_key(o) for o in expect["ops"])
+    have = sorted(_op_key(o) for o in intent_ops(got.get("choices")))
+    if want == have:
+        return []
+    return [f"operations {[dict(k) for k in have]}, expected {[dict(k) for k in want]}"]

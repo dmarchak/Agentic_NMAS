@@ -1,0 +1,130 @@
+{
+  "$defs": {
+    "DevicePatch": {
+      "additionalProperties": false,
+      "properties": {
+        "hostname": {
+          "title": "Hostname",
+          "type": "string"
+        },
+        "operations": {
+          "items": {
+            "$ref": "#/$defs/Operation"
+          },
+          "title": "Operations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "hostname",
+        "operations"
+      ],
+      "title": "DevicePatch",
+      "type": "object"
+    },
+    "Op": {
+      "description": "The patch's eight operations (`intent_patch.Operation`), by their own names.",
+      "enum": [
+        "set_description",
+        "clear_description",
+        "shutdown",
+        "no_shutdown",
+        "add_vlan",
+        "remove_vlan",
+        "add_ospf_network",
+        "remove_ospf_network"
+      ],
+      "title": "Op",
+      "type": "string"
+    },
+    "Operation": {
+      "additionalProperties": false,
+      "description": "One operation, flat and closed (every field required, so the provider's schema has no\nunion): the fields its op does not use are empty, or 0. Converted to the patch's own shape\nby :func:`to_patches`, where `intent_patch` validates it.",
+      "properties": {
+        "area": {
+          "title": "Area",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "interface": {
+          "title": "Interface",
+          "type": "string"
+        },
+        "op": {
+          "$ref": "#/$defs/Op"
+        },
+        "prefix": {
+          "title": "Prefix",
+          "type": "string"
+        },
+        "process": {
+          "title": "Process",
+          "type": "integer"
+        },
+        "vlan": {
+          "title": "Vlan",
+          "type": "integer"
+        },
+        "vlan_name": {
+          "title": "Vlan Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "interface",
+        "description",
+        "vlan",
+        "vlan_name",
+        "process",
+        "prefix",
+        "area"
+      ],
+      "title": "Operation",
+      "type": "object"
+    },
+    "Outcome": {
+      "description": "What the answer is: the builder's choices; one question back, when the words leave\nthe choice to the person (which device, or per device); or a refusal, saying why.",
+      "enum": [
+        "answer",
+        "ask",
+        "refuse"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One patch per device the sentence changes; or the one question that settles what the\nwords leave open; or why the change cannot be made with the patch's operations.",
+  "properties": {
+    "outcome": {
+      "$ref": "#/$defs/Outcome"
+    },
+    "patches": {
+      "items": {
+        "$ref": "#/$defs/DevicePatch"
+      },
+      "title": "Patches",
+      "type": "array"
+    },
+    "question": {
+      "title": "Question",
+      "type": "string"
+    },
+    "why_not": {
+      "title": "Why Not",
+      "type": "string"
+    }
+  },
+  "required": [
+    "outcome",
+    "question",
+    "why_not",
+    "patches"
+  ],
+  "title": "IntentChange",
+  "type": "object"
+}

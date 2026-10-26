@@ -1017,7 +1017,7 @@ def updates(ctx):
 
 #: A subject's words (15.14): what the call was about, from the row's own `subject`.
 SUBJECT_WORDS = {"alert": "the alert", "query": "a question on", "device": "the device",
-                 "": "the installation"}
+                 "intent": "an intent change on", "": "the installation"}
 
 
 def subject_words(subject: dict) -> str:
@@ -1030,6 +1030,8 @@ def subject_words(subject: dict) -> str:
         return f"{head} {s.get('rule') or s.get('id') or ''}".strip()
     if kind == "query":
         return f"{head} {s.get('id') or 'the network'}"
+    if kind == "intent":
+        return f"{head} {', '.join(s.get('devices') or []) or 'no device'}"
     return head
 
 

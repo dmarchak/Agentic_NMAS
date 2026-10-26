@@ -1268,6 +1268,33 @@ def ask_in_words():
     ])
 
 
+def intent_in_words():
+    return svg(470, (
+        "Change it in words: the device and the interfaces, VLANs and networks the sentence "
+        "names are read by code, and a sentence naming none stops there with nothing sent; one "
+        "recorded, capped call through the AI gateway carries only those parts' current values "
+        "and the keys a change may set, and answers with a patch; the patch is refused before "
+        "any preview if it changes what the sentence did not name; the intent editor previews "
+        "it, its diff and what a deploy would send; nothing is written and no device is asked."),
+        [
+        lanes(20, 464, right="THE SERVICES"),
+        doc("box", 14, 40, 186, 36, "The named parts", "read by code"),
+        num(14, 40, 1),
+        t(14, 92, "none named: nothing sent", "sm"),
+        svc(250, 118, 130, 36, "The AI gateway", "capped, recorded"),
+        arrow("send", 202, 136, 248, 136),
+        doc("box", 14, 118, 186, 36, "A patch", "a strict schema"),
+        num(14, 118, 2),
+        doc("box", 14, 186, 186, 40, "Checked", "only what was named"),
+        num(14, 186, 3),
+        t(14, 240, "anything else: refused", "sm"),
+        doc("box", 14, 262, 186, 40, "The editor's preview", "what a deploy would send"),
+        num(14, 262, 4),
+        t(14, 330, "Nothing is written.", "sm"),
+        t(14, 444, "No device is asked or changed.", "sm"),
+    ])
+
+
 def path_trace():
     return svg(470, (
         "A path trace: From and To are checked before any device is asked; the first device is "
@@ -1577,6 +1604,7 @@ DIAGRAMS = {
     "reveal-log-line": reveal_log_line,
     "alert-evidence": alert_evidence,
     "ask-in-words": ask_in_words,
+    "intent-in-words": intent_in_words,
     "path-trace": path_trace,
     "privileged": privileged,
     "publish-remote": publish_remote,

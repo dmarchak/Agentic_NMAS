@@ -2379,6 +2379,57 @@ tab alike:**
     as on any shared-host incident. It would also drop the healthy evidence a no fault found
     answer must cite (C1742), so it is not proposed.
 
+### 15.16 Feature 7's egress: the touched sections' current values, never the intent document (the operator, 2026-10-26)
+
+The order's item 4 asked first: does feature 7 send a device's **full intent**, or **only the
+keys the change is about**? **The operator's ruling (2026-10-26, the overnight order):** "send
+only the schema of allowed keys and the current values of the intent sections the request
+touches (e.g. that interface, those VLANs, those OSPF statements) for the named devices; never
+a full intent document, never secret-bearing keys. Treat these as the topology class." With
+it: "any change outside the devices/keys the request names is refused before preview".
+- Full intent stays where 15.11 put it, the configuration class, off on every network until
+  C1720. An earlier draft of this section (the agent's, the same night) sent every interface's
+  name and state but no description text; the ruling replaced it before anything was built on
+  it.
+
+**What feature 7 sends** (`modules/ai/intent_words.py`):
+- **The schema of allowed keys,** in the cached prefix: `interfaces[].description`,
+  `interfaces[].shutdown`, `vlans[].id` and `.name`, `routing.ospf[].networks` by process,
+  with the operations and their fields.
+- **For each device in scope, the sections the sentence touches, with their current values:**
+  - each interface it names (name, description, shut state);
+  - each VLAN it names (id, name);
+  - when it names a network, each OSPF process by its number with the named statements and
+    their areas;
+  - what it names that the device does not hold (`not_held`), and the platform and role.
+- **What the sentence touches is read by code, never by the model** (`touched`): interface
+  names in their written forms (`ifnames.canonical`: Gi0/1, GigabitEthernet 0/1), VLAN numbers
+  after "vlan" ("Vlan10" is an interface), network prefixes (an address and wildcard or mask
+  read as its prefix; an IPv6 prefix kept, for the patch to refuse by name).
+- **Scope:** on a device's Intent tab, that device alone, and a sentence naming another device
+  is Mercury's own refusal; elsewhere, the devices the sentence names.
+
+**It never sends:** the intent document; any section the sentence does not touch; any key
+outside the allowlist (`READS`), so no address, account, AAA, SNMP, NTP, logging, banner or
+secret reference.
+
+**How it is held:**
+- The slice is an allowlist over the committed document, tested on the host's real committed
+  r2 and s1: every other leaf (at least 150 checked), a planted description on an untouched
+  interface and a planted secret reference are absent from its bytes; keys planted inside a
+  touched section are not read (tests/test_ai_intent_words.py).
+- **Refused before preview** (`to_patches`): an operation on a device out of scope, or on an
+  interface, VLAN or network the sentence did not name; one filling a field its op does not
+  use. The patch's own rules then hold (`intent_patch.parse`), and `intent_patch.apply`
+  refuses what the intent lacks.
+- **Mercury answers itself, no call:** a sentence naming no device in scope, another device
+  than the tab's, or no interface, VLAN or network.
+- Every operation then goes through the intent editor's preview. The commit and the deploy
+  after it are the existing paths, unchanged (feature 7 is built to the preview tonight).
+
+**What this costs:** "shut the uplink" names no section, so Mercury asks for the interface's
+name rather than sending the device's interfaces for the model to choose from.
+
 ## 16. Industry-readiness roadmap (2026-10-25)
 
 **The source:** the CSCI 5280 Lab 8 review, read as evidence of what industry needs, not as a

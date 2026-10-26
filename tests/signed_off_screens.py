@@ -48,9 +48,10 @@ SIGNED_OFF = {
     "monitoring.html": ("2026-09-30", "NSOT_STAGE7_PLAN 1g, the Services mockups (fleet-wide "
                                       "Monitoring, native panels). Its Alerts tab (PHASE8_PLAN "
                                       "15.9, P1's evidence pack, one card per firing alert): "
-                                      "built ahead of its board, board owed Saturday, the "
-                                      "operator's ruling of 2026-10-25 (15.12: boards and "
-                                      "fidelity records batched into Saturday)"),
+                                      "built ahead of its board (the operator's ruling of "
+                                      "2026-10-25, 15.12); its board P1 drawn and signed off "
+                                      "under the Phase 7 mode 2026-10-26 and compared, "
+                                      "docs/fidelity/alerts-explain.md"),
     "history.html": ("2026-10-03", "board D, History as one timeline (C369), signed off "
                                    "2026-10-03 by the operator: one reader (modules/"
                                    "history_sources.timeline) across every device and the fleet's "

@@ -89,6 +89,13 @@ commit with your reason. Nothing is sent to the device until you plan a deploy. 
 intent is only onboarding's bootstrap has no Edit: seed it first. See
 [Edit a device's intent](edit-intent).
 
+**Change it in words** (marked **AI**), above the document, drafts a change from a sentence
+("shut GigabitEthernet4", "add VLAN 40 named LAB") and shows it in the editor's own preview:
+the changes in words, what they change, what a deploy would send, the checks. Nothing is
+written: the draft is not committed yet, so make the change with **Edit**. It changes this
+device only, and only the interfaces, VLANs and networks your sentence names. See
+[Change it in words](intent-in-words).
+
 ## History {#history-tab}
 
 The History page's timeline filtered to this device, over all time. It is the same reader

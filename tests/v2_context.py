@@ -591,6 +591,66 @@ def _intent_check(client, lab, _mp):
         assert r.status_code == 200, r.status_code
 
 
+def _intent_words(client, lab, _mp):
+    """Change it in words on r3's Intent tab (feature 7, 15.16): hosted AI allowed and the
+    adapter answering as planted, a draft that sets the description of r3's first committed
+    interface, previewed by the intent editor (its changes listed). Its patches and stores
+    are undone before the next provider (the row's not-ready states are
+    tests/test_ai_intent_change.py's `check_screen`)."""
+    import json
+    import shutil
+    import tempfile
+
+    import pytest
+    import yaml
+
+    from modules import settings_schema
+    from modules.ai import anthropic_adapter, calls, gateway
+
+    from modules.nsot import intent_edit
+    from modules.nsot.repo import save_host_vars
+    # r2's real capture holds a partial syslog block (`heartbeat: 0`), which the editor's check
+    # refuses, so a draft on it is refused before the patch. The heartbeat typed in, as
+    # tests/test_intent_editor_v2.py's person does, and committed: a document the check passes.
+    text = intent_edit.open_doc("Lab", "r3")["yaml"]
+    assert "heartbeat: 0" in text, "the walk's r3 holds no syslog heartbeat to set"
+    with open(os.path.join(lab["repo"], "host_vars", "r3.yml"), "w", encoding="utf-8") as fh:
+        fh.write(text.replace("heartbeat: 0", "heartbeat: 300", 1))
+    assert save_host_vars("Lab", ["r3"], actor="t", source="extraction")["ok"]
+    doc = yaml.safe_load(intent_edit.open_doc("Lab", "r3")["yaml"])
+    iface = next(i["name"] for i in doc.get("interfaces") or [] if i.get("name"))
+    answer = {"outcome": "answer", "question": "", "why_not": "", "patches": [
+        {"hostname": "r3", "operations": [
+            {"op": "set_description", "interface": iface, "description": "drafted in words",
+             "vlan": 0, "vlan_name": "", "process": 0, "prefix": "", "area": ""}]}]}
+    mp = pytest.MonkeyPatch()
+    folder = tempfile.mkdtemp(prefix="nmas-v2-context-words-")
+    try:
+        allowed = {"ai_hosted": {"by": "operator@example.com", "at": "2026-10-25T05:00:00Z",
+                                 "reason": "the walk's planted answer"}, "ai_cap_usd_per_day": 1.5}
+        real_get = settings_schema.get_setting
+        mp.setattr(settings_schema, "get_setting",
+                   lambda k, d=None: allowed[k] if k in allowed else real_get(k, d))
+        mp.setattr(gateway, "_api_key", lambda: "sk-planted-walk-key-0123456789")
+        mp.setattr("modules.ai.controls._key_set", lambda: True)
+        mp.setattr(calls, "_path", lambda: os.path.join(folder, "ai_calls.jsonl"))
+        mp.setattr(anthropic_adapter, "send", lambda body, key: anthropic_adapter.Reply(
+            status=200, body={"content": [{"type": "text", "text": json.dumps(answer)}],
+                              "stop_reason": "end_turn",
+                              "usage": {"input_tokens": 1500, "output_tokens": 120}},
+            attempts=1, latency_s=0.4))
+        r = client.post("/v2/device/r3/intent/words",
+                        data={"words": f"describe {iface} as drafted in words"},
+                        headers={"HX-Request": "true", "Accept": "text/html"})
+        html = r.get_data(as_text=True)
+        import re
+        assert r.status_code == 200 and "Drafted from your words" in html, \
+            re.sub(r"<svg.*?</svg>", "", html.split("</form>", 1)[-1], flags=re.S)[:600]
+    finally:
+        mp.undo()
+        shutil.rmtree(folder, ignore_errors=True)
+
+
 def _persist_read(client, _lab, mp):
     """Persist's preview read (C886), asked by a POST on load and drawn by its job's GET: r3
     answering with r1's real running and startup (tests/test_persist_effect.py), one logging
@@ -1397,4 +1457,8 @@ PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _dr
                    _alert_evidence,
                    _save_no_golden, _profile_versions,
                    _no_change_window, _update_owed, _lease_release, _ip_sla_retunes, _ip_sla_unsent,
-                   _console_ztp, _console_servers, _oob_onboard, _deploy]
+                   _console_ztp, _console_servers, _oob_onboard, _deploy,
+                   # After _deploy: r3's intent is then a real device's (r2's capture,
+                   # parsed), which the editor's check passes; the walk's own r3 lacks a
+                   # syslog heartbeat, so a draft on it is refused before the patch.
+                   _intent_words]

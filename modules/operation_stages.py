@@ -411,6 +411,8 @@ HISTORY = {
                                     "never one device's record",
     "v2.history_ask_logs_words": "n/a: one AI call, kept in the fleet's ai_calls record, "
                                  "never one device's record",
+    "intent_v2.words": "n/a: one AI call, kept in the fleet's ai_calls record (its subject the "
+                       "device); its draft writes nothing, and its commit is intent_v2.commit's",
     "settings_v2.install_replace": NOT_A_DEVICE,
     "settings_v2.install_writes_off": NOT_A_DEVICE,
     "settings_v2.install_ai_allow": NOT_A_DEVICE,

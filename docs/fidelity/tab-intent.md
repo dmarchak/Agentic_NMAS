@@ -26,8 +26,8 @@ Shots: each board at 1440; the page at 1440, 1280 and 390 in six states (`tab-in
 `-open`, `-edited`, `-error`, `-fixed`, `-done`), and `tab-intent-moved` and
 `tab-intent-departs` (C884) at 1440.
 Compared 2026-10-16.
-Templates compared: templates/v2/_intent.html, templates/v2/_intent_edit.html, templates/v2/_intent_check.html
-Templates sha256: `5f031cd1606d366b6d41d2f97beeda3250dc19fd44cee44a1a584f56e26451b7`
+Templates compared: templates/v2/_intent.html, templates/v2/_intent_edit.html, templates/v2/_intent_check.html, templates/v2/_intent_words.html
+Templates sha256: `91ee38590f13ff5f43224862e60ebe3b5d999643989b1730e746cafb31d93162`
 
 Compared again 2026-10-17 (C1023) after "Open (commit) with your edit on it" (`_intent_edit.html`)
 and Write the ticked lines into the document (`_intent_check.html`) became busy on themselves
@@ -47,6 +47,23 @@ deploy would send is drawn as rows (the lines it sends), and the lines only the 
 apart, with Remove lines (Mode B)…. `tab-intent-done` shot again at 1440, 1280 and 390, and a
 new shot, `tab-intent-departs` (1440): Loopback0's description deleted and committed. The two
 committed regions rewritten and one added; no other region's verdict changed.
+
+Compared again 2026-10-26 (feature 7, board F7, `IntentWords.dc.html`, signed off under the
+Phase 7 mode): `_intent.html` includes **Change it in words** (`_intent_words.html`, which
+joins the templates compared) above the committed document, for a device whose intent is not
+bootstrap only. Shot `tab-intent-words` (`tests/test_board_shots.py::test_tab_intent_words`,
+on the host's real committed s1): the board at 1440, and the page at 1440, 1280 and 390, the
+row drawn and then a sentence drafted (hosted AI allowed, the adapter answering as planted).
+- The row: the label with the AI mark, the box at the row's width, Draft the change (busy on
+  itself), its (i); at 390 the button wraps under the box. **same** as F7.
+- The draft: the notice with the model and cost; the changes in words; the editor's own check
+  column (`_intent_check.html`, the same rows, pending lines and checks as an edit typed by
+  hand); what left the host. As F7, but for the footer: F7 draws "Why, in one line" and Commit
+  to s1's intent; built to the preview only (the overnight order), the notice says the draft
+  is not committed and to make it with Edit. **later** (feature 7's commit step).
+- Every other region of this record rendered as before; the row adds no control to the
+  editor's own card. No other region's verdict changed.
+Templates sha256 before: `5f031cd1606d366b6d41d2f97beeda3250dc19fd44cee44a1a584f56e26451b7`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).

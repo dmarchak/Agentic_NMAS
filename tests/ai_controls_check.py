@@ -30,6 +30,8 @@ MARKUP = {
     "explain": {"button": r'<button\b[^>]*\bdata-op="alert-evidence"[^>]*>', "input": None},
     "ai_card_test": {"button": r'<button\b[^>]*\bhx-post="[^"]*/installation/card/ai/test"[^>]*>',
                      "input": None},
+    "intent_in_words": {"button": r'<button\b[^>]*\bdata-op="intent-in-words"[^>]*>',
+                        "input": r'<input\b[^>]*\bid="iw-words"[^>]*>'},
 }
 
 #: Each state that cannot answer, and words its reason must hold.

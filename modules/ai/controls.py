@@ -61,13 +61,10 @@ CONTROLS = {
     "intent_in_words": {
         "task": "intent_patch",
         "words": "An intent change in words",
-        "endpoints": (),
-        # Not drawn yet: C1471's intent patch (modules/nsot/intent_patch.py) is deterministic,
-        # and no screen asks for one in words (feature 7's next piece). The task is pinned and
-        # priced, so it is registered now: the screen that draws it uses this entry.
-        "template": None,
-        "screen": "a device's Intent tab (not yet drawn)",
-        "beside": "the intent editor",
+        "endpoints": ("intent_v2.words",),
+        "template": "v2/_intent_words.html",
+        "screen": "a device's Intent tab, Change it in words (board F7)",
+        "beside": "the intent editor: Edit",
     },
 }
 

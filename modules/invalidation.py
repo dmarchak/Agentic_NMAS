@@ -399,6 +399,7 @@ DECLARED = {
     "v2.monitoring_alert_explain": ("ai_calls",),
     "v2.history_ask_metrics_words": ("ai_calls",),
     "v2.history_ask_logs_words": ("ai_calls",),
+    "intent_v2.words": ("ai_calls",),
     "settings_v2.install_ai_allow": ("settings",),
     "settings_v2.install_ai_off": ("settings",),
     "settings_v2.platforms_preview": Nothing("previews a map change from each list's last inventory; writes nothing"),
