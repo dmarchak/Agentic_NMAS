@@ -1111,11 +1111,15 @@ The fix is b06d8046, and the check was run again on it.
 three canaries killed, every baseline passed, and every file restored identical; the
 checkout was clean by `git status` at the end.
 
-**Listed for the operator's ruling, not marked equivalent here.** The 3 survivors are
+**The 3 survivors, ruled equivalent by the operator (2026-10-26 ~00:5x UTC).** They are
 `load_pins` 10, 12 and 18: `encoding="utf-8"` made `encoding=None`, made absent, and made
-`"UTF-8"`. On this host and in CI, Python reads files as UTF-8 by default, so each opens the
-pin files the same way, and no test can tell them apart there. They read the pin files, not
-egress, masking or a secret.
+`"UTF-8"`. They read the pin files, not egress, masking or a secret.
+- **18:** encoding names are case-insensitive, so "UTF-8" is "utf-8".
+- **10 and 12:** Python 3.7 and later on Linux reads UTF-8 by default, the C locale included
+  (PEP 538 and PEP 540), and Mercury supports Linux containers only.
+
+With the ruling, the change is proved: every mutant on a changed line is killed or ruled
+equivalent.
 
 | function | mutants | killed | survived | canary | baseline | file restored |
 |---|---|---|---|---|---|---|
