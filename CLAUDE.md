@@ -352,7 +352,9 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   (uncommitted and untracked edits included), removed afterwards. Never `git checkout`/
   `git restore` in the working tree, and never copy files onto it. Cost: seconds per run.
   Prevents: source overwritten by a restore (2026-10-26: two files named endpoints.py shared one
-  backup) and edits discarded by a git restore. [mechanised: scripts/nmas-control]
+  backup) and edits discarded by a git restore. [mechanised: scripts/nmas-control; the hook
+  refuses git restore/checkout --/reset --hard/clean/stash pop|apply, update-index
+  --skip-worktree/--assume-unchanged and cp/mv/rsync/install onto tracked files]
 - **A test may be deleted, skipped or loosened only with a registered row and a stated reason
   in the commit; a ceiling, allowlist, known-gap or excused list only goes down.** A commit that
   removes a test, adds a skip, xfail or `pragma: no cover`, weakens an assertion, or raises a
