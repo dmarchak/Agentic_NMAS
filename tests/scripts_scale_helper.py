@@ -66,6 +66,11 @@ def commit_goldens(list_name: str, devices: list) -> dict:
     return out
 
 
+#: The subprocess functions that wait for a child: each is counted as one call, never the
+#: polling inside it (C1562).
+WAITS = ("communicate", "wait")
+
+
 def measure(client, path: str, list_dir: str, loads: dict) -> dict:
     """One request for *path*, after a warm one, and what it cost (the module docstring)."""
     client.get(path)                                   # warm: templates, caches
@@ -92,11 +97,22 @@ def measure(client, path: str, list_dir: str, loads: dict) -> dict:
     calls = {"n": 0}
     # C1562: the same count by function, so a count that moved names where (`profile_diff`).
     by_func = collections.Counter()
+    # C1562's cause (measured 2026-10-26): a child's wait (`communicate`, `wait`) polls in a loop
+    # whose length is how long the child takes, about 3,100 of /v2/'s calls for its 9 git
+    # children, so the count measured wall-clock time. A wait is one call; its polling is not
+    # counted (work, never wall-clock: CLAUDE.md, "Performance tests assert on work or growth").
+    waiting = {"frame": None}
 
     def tally(frame, event, arg):
+        if waiting["frame"] is not None:
+            if event == "return" and frame is waiting["frame"]:
+                waiting["frame"] = None
+            return
         if event == "call":
             calls["n"] += 1
             by_func[(frame.f_code.co_filename, frame.f_code.co_name)] += 1
+            if frame.f_code.co_name in WAITS and frame.f_code.co_filename == subprocess.__file__:
+                waiting["frame"] = frame
         elif event == "c_call":
             calls["n"] += 1
             by_func[("<builtin>", getattr(arg, "__qualname__", repr(arg)))] += 1

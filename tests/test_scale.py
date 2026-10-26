@@ -437,6 +437,35 @@ class TestWhatMovesWithTheFleetIsPinned:
             f"{profile_diff(cost[SIZES[0]]['profile'], cost[SIZES[-1]]['profile'])}")
 
 
+def test_a_child_s_wait_counts_as_one_call_however_long_the_child_takes(tmp_path):
+    """C1562's cause (measured 2026-10-26): /v2/ starts 9 git children per request, and the
+    polling inside `communicate` ran about 3,100 counted calls, one trip round its loop for each
+    piece of output that arrived apart, so the per-device count moved with the runner's load. A
+    wait is one call now: the same request whose child writes the same 40 lines, all at once or
+    10 ms apart, counts the same."""
+    import subprocess
+    from flask import Flask
+    from scripts_scale_helper import measure
+
+    gap = {"s": "0"}
+    app = Flask(__name__)
+    write = ("import sys, time\nfor _ in range(40):\n    sys.stdout.write('x' * 80 + '\\n')\n"
+             "    sys.stdout.flush()\n    time.sleep(float(sys.argv[1]))\n")
+
+    @app.route("/child")
+    def child():
+        subprocess.run([sys.executable, "-c", write, gap["s"]], capture_output=True,
+                       timeout=20, check=True)
+        return "ok"
+
+    client = app.test_client()
+    together = measure(client, "/child", str(tmp_path), {"n": 0})
+    gap["s"] = "0.01"
+    apart = measure(client, "/child", str(tmp_path), {"n": 0})
+    assert together["children"] == apart["children"] == 1
+    assert apart["calls"] == together["calls"], (together["calls"], apart["calls"])
+
+
 def test_the_profile_diff_names_the_function_that_moved():
     """C1562's diagnostic: the function whose count moved most leads, with both counts; an
     unchanged one is left out."""
