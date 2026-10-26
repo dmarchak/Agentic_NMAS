@@ -1868,6 +1868,11 @@ change's own tests; the Update button).
 4. **Standing delegation:** the agent decides anything inside this plan. It escalates only a new
    licence, egress, anything irreversible, CLAUDE.md, and a change to a ruling.
 5. **Reports:** a status of about 10 lines each day; a full report only when a ruling is needed.
+   **Every morning report opens with every open CRITICAL row in Needs attention, each with its
+   age** (the operator, 2026-10-26, standing; the 10-26 morning report left out
+   nmas-heartbeat-check's 8-day CRITICAL). It costs one read of `/v2/attention` per report, and
+   it prevents a red row standing unreported for days because a report listed only that
+   night's work.
 
 **The scope, in order:**
 
@@ -2480,6 +2485,16 @@ NetOps platform answers from the MAC and ARP tables. Flows remain roadmap. In th
   5. **No backup-window awareness** in the reader (Mercury does not know the installation's
      environment). The read interval is a per-network setting, `endpoint_read_interval_minutes`
      (15); the reader looks every 5 minutes. One read's cost on s3 is measured and reported.
+     **Measured 2026-10-26 15:53 UTC, read-only:**
+     - One read of s3 through the reader's `read_device` (its three show commands, one SSH
+       session) took **13.4 s**, giving 8 MAC, 10 ARP and 7 IPv6 rows. The whole fleet's run
+       took 11 to 22 s per scheduled run (12 runs since 12:59 UTC; reads run concurrently).
+     - **s3's CPU** (SNMP `cpuAvgBusy1`, sampled each minute): in the two minutes after each of
+       the 12 runs it rose by a median 2.4 points (max 8.6) over the five minutes before. Over
+       the span s3 itself ran at a median 48%, p90 54%, max 65%. So a read sits inside s3's own
+       minute-to-minute range. The 5-second `cpuBusyPer` is sampled once a minute and cannot
+       see a 13 s read.
+     - **Not material:** the 15-minute default stands, and no other default is proposed.
 - **Not yet (1):** the prompt line ("say when an answer depends on a layer that is
   not_collected"). It is a new Explain prompt version, so it waits on the operator: Explain's
   tuning is closed for the sprint by the operator's rule of the same day.
