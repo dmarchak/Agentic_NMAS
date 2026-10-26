@@ -28,10 +28,12 @@ Nothing here writes into `data/lists/`: the caller's lab is under a temporary fo
 """
 
 import builtins
+import collections
 import os
 import socket
 import subprocess
 import sys
+import sysconfig
 from unittest import mock
 
 
@@ -88,10 +90,16 @@ def measure(client, path: str, list_dir: str, loads: dict) -> dict:
         return real_connect(self, *a, **k)
 
     calls = {"n": 0}
+    # C1562: the same count by function, so a count that moved names where (`profile_diff`).
+    by_func = collections.Counter()
 
-    def tally(_frame, event, _arg):
-        if event in ("call", "c_call"):
+    def tally(frame, event, arg):
+        if event == "call":
             calls["n"] += 1
+            by_func[(frame.f_code.co_filename, frame.f_code.co_name)] += 1
+        elif event == "c_call":
+            calls["n"] += 1
+            by_func[("<builtin>", getattr(arg, "__qualname__", repr(arg)))] += 1
 
     with mock.patch.object(subprocess.Popen, "__init__", popen_init), \
          mock.patch.object(builtins, "open", counting_open), \
@@ -103,4 +111,23 @@ def measure(client, path: str, list_dir: str, loads: dict) -> dict:
         finally:
             sys.setprofile(before)
     assert r.status_code == 200, (path, r.status_code)
-    return dict(counts, loads=loads["n"], calls=calls["n"], bytes=len(r.get_data()))
+    return dict(counts, loads=loads["n"], calls=calls["n"], bytes=len(r.get_data()),
+                profile=by_func)
+
+
+def profile_diff(small: dict, large: dict, top: int = 12) -> str:
+    """The functions whose call counts differ most between two `measure` profiles, as
+    ``file:function small→large (±n)``, largest difference first (C1562: the calls a count
+    gained or lost, named)."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + os.sep
+
+    def where(key):
+        path, name = key
+        for cut in (root, "site-packages" + os.sep, sysconfig.get_paths()["stdlib"] + os.sep):
+            if cut in path:
+                path = path.split(cut, 1)[1]
+        return f"{path}:{name}"
+    moved = sorted(((small.get(k, 0) - large.get(k, 0), k) for k in set(small) | set(large)),
+                   key=lambda d: (-abs(d[0]), where(d[1])))
+    return "; ".join(f"{where(k)} {small.get(k, 0)}→{large.get(k, 0)} ({-d:+d})"
+                     for d, k in moved[:top] if d)

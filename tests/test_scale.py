@@ -285,7 +285,10 @@ def measured(tmp_path_factory):
                 # xdist's load scheduling, which depends on the runner's timing, with no seed.
                 runs = [measure(client, page, os.path.dirname(lab["repo"]), loads)
                         for _ in range(3)]
-                out[page][size] = {k: min(r[k] for r in runs) for k in runs[0]}
+                out[page][size] = {k: min(r[k] for r in runs) for k in runs[0]
+                                   if k != "profile"}
+                # C1562: the least reading's calls by function, for the failure message.
+                out[page][size]["profile"] = min(runs, key=lambda r: r["calls"])["profile"]
                 # C1562: what the page drew at this size, so a count that moved with the
                 # worker's state names that state when it fires (each recurrence so far, #1162
                 # and #1194, failed in CI alone and passed in three local runs of its shard).
@@ -419,6 +422,8 @@ class TestWhatMovesWithTheFleetIsPinned:
 
     @pytest.mark.parametrize("page", sorted(V2_PAGES))
     def test_the_python_calls_per_device(self, measured, page):
+        from scripts_scale_helper import profile_diff
+
         _fixed, _bytes, per_device = V2_PAGES[page]
         cost = measured[page]
         marginal = (cost[SIZES[-1]]["calls"] - cost[SIZES[0]]["calls"]) / (SIZES[-1] - SIZES[0])
@@ -427,7 +432,25 @@ class TestWhatMovesWithTheFleetIsPinned:
             "A page that stopped passing over every device: record the new number. "
             f"C1562: {cost[SIZES[0]]['calls']} calls at {SIZES[0]} devices drawing "
             f"{cost[SIZES[0]]['drawn']}; {cost[SIZES[-1]]['calls']} at {SIZES[-1]} drawing "
-            f"{cost[SIZES[-1]]['drawn']}")
+            f"{cost[SIZES[-1]]['drawn']}. The functions that moved most, {SIZES[0]}→"
+            f"{SIZES[-1]}: "
+            f"{profile_diff(cost[SIZES[0]]['profile'], cost[SIZES[-1]]['profile'])}")
+
+
+def test_the_profile_diff_names_the_function_that_moved():
+    """C1562's diagnostic: the function whose count moved most leads, with both counts; an
+    unchanged one is left out."""
+    from scripts_scale_helper import profile_diff
+
+    # By name, alpha and the builtin sort before zeta: the order must be by the move.
+    small = {("/x/modules/zeta.py", "rows"): 900, ("/x/modules/a.py", "same"): 5,
+             ("<builtin>", "len"): 40, ("/x/modules/alpha.py", "f"): 3}
+    large = {("/x/modules/zeta.py", "rows"): 10, ("/x/modules/a.py", "same"): 5,
+             ("<builtin>", "len"): 50, ("/x/modules/alpha.py", "f"): 4}
+    said = profile_diff(small, large)
+    assert said.startswith("/x/modules/zeta.py:rows 900→10 (-890); <builtin>:len 40→50 "
+                           "(+10); /x/modules/alpha.py:f 3→4 (+1)"), said
+    assert "same" not in said
 
 
 # TestTheExtractedScript (Stage 7 §0b's acceptance: today's pages' inline script extracted to
