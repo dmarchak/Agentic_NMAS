@@ -74,6 +74,21 @@ protocol timers run slow.**
     the two slowest clocks.
   - s3 is the management gateway. When it falls behind, its Gi1/1 output discards rise and every
     SNMP poll crossing it fails.
+- **Re-measured 2026-10-26 (read-only, after Phase 3's changes; C535, C1791):** the switches
+  still lose ticks.
+  - Rates over 48 h, by heartbeat device time against Loki's receive time (Prometheus's
+    `sysUpTime` agrees): s3 0.703, s4 0.775, s2 0.906, s1 0.920, s5 0.928. Every C8000v is
+    exact (1.0000).
+  - They rank with each qemu's emulated-I/O (main) thread time. s3's vCPU waited runnable only
+    6.2% of its life, so the ticks are lost inside the guest under emulated I/O, not by the
+    host starving it.
+  - **Every protocol timer a vIOS switch runs stretches by the same factor:** VRRP, STP, EEM.
+    The 300 s heartbeat watchdog fires every 424 s of real time on s3; the OSPF hellos are as
+    above.
+  - NTP cannot recover the clock. s3 is at stratum 16, synchronised once at boot (10-22), and
+    was 34.3 h behind on 10-26. The loss is far past NTP's 500 ppm slew, and the offset past its
+    panic threshold.
+  - No change on s3: it is attended only.
 - **The stalls track CPU contention inside the lab VM.** Against failed scrapes per 10 s over 25
   minutes:
 
