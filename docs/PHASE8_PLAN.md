@@ -2343,6 +2343,12 @@ any code. The order is the operator's.
    - The first API driver is IOS-XE's NETCONF.
    - Controller drivers cover OpenFlow controllers and vendor controllers (for example
      Meraki and Catalyst Center).
+   - **A prerequisite: the Driver contract** (the operator, 2026-10-26; C1753). It holds
+     connect, read, capture, apply, commit (with an optional confirm), rollback, and the
+     driver's declared capabilities. There is one driver per paradigm (IOS-style CLI,
+     set/commit CLI, NETCONF/YANG, REST/JSON device APIs, controller APIs). Each is code,
+     reviewed in development and shipped in signed releases. Platform packs (16.8) are data
+     choosing a driver.
 8. **Traffic and security analytics, by integration.**
    - Flow telemetry ingest (NetFlow, IPFIX, sFlow) for network-level detectors.
    - Events in from IDS and SIEM tools, and Mercury's events out to them.
@@ -2507,13 +2513,46 @@ the whole platform. **It depends on:**
 4. **The pack.** It is versioned and shareable (export and import), and it runs with no AI.
    A platform is supported at the level its pack has passed, and the screens say which.
 
+#### Drivers are code; packs are data (the operator, 2026-10-26)
+
+- **A driver is code, one per paradigm:**
+  - IOS-style CLI;
+  - set/commit CLI;
+  - NETCONF/YANG;
+  - REST/JSON device APIs;
+  - controller APIs.
+- **Every driver meets one contract:** connect, read, capture, apply, commit (with an
+  optional confirm), rollback, and its declared capabilities. A driver is written and
+  reviewed in development, and shipped in signed releases.
+- **A pack is data choosing a driver.** It never carries code.
+- **The installation's AI never writes or changes code.**
+- **When no driver fits,** the pack is accepted at the levels the existing driver can prove.
+  The AI then produces a structured driver request for the maintainers: the capability
+  missing, the device evidence, and the levels it blocks.
+- The driver contract is a prerequisite, in 16.3 item 6 (C1753).
+
+#### A shared pack library (the operator, 2026-10-26)
+
+- **Signed, with provenance and proof.** A pack carries:
+  - its signature;
+  - its provenance: the author and the OS versions it was measured on;
+  - its proof records: each level measured, and how.
+- **An imported pack is untrusted** until its levels are proven again on the importing
+  network's own staging devices. Nothing reaches production on another network's proof
+  alone: the proof records travel with the pack as evidence, not as acceptance.
+- **Industry precedent:** NetBox's device-type library and Ansible collections, both shared
+  catalogues of platform definitions or automation, reused across installations.
+- **The release message is guided onboarding with measured proof, not instant support:** a
+  new platform is drafted in hours, then accepted on the network's own devices level by
+  level, and supported only at the level it has passed there.
+
 #### The card (section 3's format)
 
 | Field | P6 |
 |---|---|
 | Problem | Supporting a new platform means writing its connection, reads, capture normalisation, parsers, templates, deploy and removal semantics, verify reads and rotation by hand, and proving each on a device. **Unmeasured:** the engineering time per platform (the IOS and IOS-XE packs are the only measured precedent, built over Phases 1 to 7). |
 | Industry need | Vendor onboarding takes weeks of engineering in today's tools: a new platform needs its drivers, parsers, templates and change semantics written and tested before a tool can manage it. That cost is why multi-vendor support stays narrow. Multi-vendor is a release goal. Mercury improves on that by drafting the platform as data, then accepting it only level by level on a real device: read, capture, intent, deploy, full. Each level is approved by a person, so a draft is never trusted. The pack is versioned and shareable, so one installation's measured work serves another, with no AI at run time. |
-| Deterministic alternative | A person writes the pack in the same data format, and the same acceptance measures it. That path works with AI off. What it cannot do: draft the pack's many parts from the platform's documentation and a captured configuration in hours, where writing them takes weeks. That drafting is the AI's. |
+| Deterministic alternative | A person writes the pack in the same data format, and the same acceptance measures it. That path works with AI off. What it cannot do: draft the pack's many parts from the platform's documentation and a captured configuration in hours, where writing them takes weeks. That drafting is the AI's. A driver is never drafted: drivers are code from the maintainers, and where none fits, the AI drafts a structured driver request instead. |
 | Inputs | The make, model and OS version; a captured configuration in 15.11's configuration class, its secret-bearing lines dropped; the existing packs' format and the nearest pack as examples. Context: **unmeasured**, sized by section 4's method. Output schema: Pydantic v2 strict, versioned: the pack's data, every field validated, no executable content. |
 | Output shape | A (13.4): the pack as structured data, or one question back (for example, which OS train), or a refusal saying why. |
 | Success metric | Packs reaching level 2 (an exact round trip) within two revisions (target **proposed**: 50%, feature 10's), and 0 packs approved at a level whose measurement did not pass. Eval set: the lab's IOS and IOS-XE devices, their packs drafted blind and compared with the measured ones, then one new platform. |
@@ -2523,4 +2562,30 @@ the whole platform. **It depends on:**
 | Kill criteria | Below 40% of packs reaching level 2 within two revisions after 5 platforms; or one pack approved at a level whose measurement failed; or cost per accepted level above 3× budget. |
 | Owner | The operator. |
 | Relation | Feature 10 (the template draft) becomes one part of a pack. The action library (16.7) carries the pack's verify reads and removal shapes as actions. The device access model (16.3 item 6) is the pack's runtime. |
-| Test plan | A drafted pack with executable content, or a read off the allowlist, is refused. A masking rule is planted with a secret and must never leave. Each acceptance level runs on a lab device: the read parsed, the capture normalised, the round trip exact, a staged deploy verified and rolled back, each removal shape and the rotation sequence measured. A level cannot be approved without its measurement passing. Export and import carry a pack between networks unchanged. A pack is run with AI off. |
+| Test plan | A drafted pack with executable content, or a read off the allowlist, is refused. A masking rule is planted with a secret and must never leave. Each acceptance level runs on a lab device: the read parsed, the capture normalised, the round trip exact, a staged deploy verified and rolled back, each removal shape and the rotation sequence measured. A level cannot be approved without its measurement passing. Export and import carry a pack between networks unchanged, its signature checked. An imported pack runs at no level until each is proven again on the importing network's staging devices, and a production deploy with only the exporter's proof is refused. A pack is run with AI off. |
+
+### 16.9 Long horizon: device-resident AI (a roadmap note, no card; the operator, 2026-10-26)
+
+**What to expect.** Devices will run local agents:
+- summarising their own telemetry;
+- detecting anomalies locally;
+- diagnosing themselves;
+- a natural-language CLI.
+
+Later, they will take bounded local actions.
+
+**Mercury's stance:**
+- **A device agent's output is evidence:** structured findings, never instructions. It
+  enters an evidence pack as data, as any reader's value does, and nothing in it is
+  followed.
+- **Mercury is the policy authority.** It may grant a device agent narrow, reversible,
+  time-limited actions by the action catalogue's classes (16.1 items 1 and 2), each grant
+  with:
+  - a budget;
+  - an expiry;
+  - full audit in History.
+- **Agent protocols (for example MCP) arrive as drivers** (16.3 item 6's contract), never as
+  a second path around it.
+
+**Reviewed yearly against vendor reality**, the first review by 2027-10-26: what devices
+actually ship, and whether the stance still holds.

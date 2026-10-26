@@ -1390,6 +1390,37 @@ to Stage 8 (outside the release's critical path).
   agent's first real runs);
 - the release depends on 9.P and the second vendor, never on 8.10.
 
+### 12.8 Platform packs: a release test matrix by driver, and pack support labels (the operator, 2026-10-26)
+
+**Not before the CSCI course's lab topology is retired.** The matrix replaces the course
+lab as the release's integration lab. It does not run beside it.
+
+**The matrix is by driver, not by vendor count** (PHASE8_PLAN 16.8: drivers are code, one
+per paradigm; packs are data choosing a driver). Each paradigm is proved by at least one
+image:
+
+| Driver paradigm | Images |
+|---|---|
+| IOS-style CLI | Cisco images; Arista cEOS |
+| set/commit CLI, and commit-confirmed | vJunos; VyOS |
+| model-driven | Nokia SR Linux |
+| REST/JSON device API | cEOS's eAPI |
+| controller | OpenFlow, through Ryu or ONOS |
+| optional breadth | FRR; SONiC |
+
+- **Each image's licence is checked when it is added** (8.2a's gate); a new third-party
+  licence is the operator's.
+- **Container images run as an integration lab on every release.** VM images run where the
+  runner provides KVM, else on the operator's hardware.
+
+**Pack support labels, shown beside every device using a pack, with its proof record:**
+- **maintainer-verified:** proven again on the matrix at every release;
+- **community-proven:** its proof record ships with it;
+- **local-only:** proven on this installation alone.
+
+An imported pack, whatever its label, is proven again on the installation's own staging
+devices before it reaches production (PHASE8_PLAN 16.8's shared pack library).
+
 ---
 
 ## 13. AI providers: configured at once, switched at will
