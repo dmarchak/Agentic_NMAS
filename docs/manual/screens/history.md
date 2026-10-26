@@ -132,8 +132,17 @@ drawing it as nothing having happened.
 
 **One AI call.** Explain's answer ("This call in History") and Ask in words' filled notice
 ("this call in History") link to the call's own row, `?call=<id>`: that one call, opened,
-however old, with **Every AI call** and **Every record** beside it. A
-network with no repository yet says so once above the list ("No repository yet: the network's
+however old, with **Every AI call** and **Every record** beside it.
+
+**From an AI call to the device, both ways.** A change drafted in words and committed (Change
+it in words) is an intent change whose row links **Open the AI call that drafted it**; the
+call's row says it was committed. A deploy's row names the intent it deployed and links **Open
+the intent change it deployed**, and an intent change's row links **Open its deploys**. Both
+open `?commit=<sha>`: that commit's row and every deploy that sent it, among the newest rows
+of each record, said as such. A deploy recorded before Mercury recorded this says "not
+recorded", and a restore says it sent a golden, not intent.
+
+A network with no repository yet says so once above the list ("No repository yet: the network's
 first commit makes it"), naming the records the repository will hold (the golden and intent
 histories, the measured saves, the other commits, the baseline decisions), never "could not be
 read"; a repository git cannot read keeps each of those as could not be read, with git's own

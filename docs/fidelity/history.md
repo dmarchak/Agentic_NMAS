@@ -32,7 +32,7 @@ the fixture's counts unfiltered); the Baselines tab (`history-baselines`, 1280 a
 real records (`history-real`, 1280).
 Compared 2026-10-16.
 Templates compared: templates/v2/history.html, templates/v2/_history_body.html, templates/v2/_history_remote.html, templates/v2/_history_timeline.html, templates/v2/_timeline.html
-Templates sha256: `9c14e0f3676722b4540f3ef2954553a814a48fcc1bb2084e6dc5569e9f83cfb5`
+Templates sha256: `f8111df04f15575e2311b6fad8790f46f4e2261ac5bb52e7c31a4c7dcf73dfcf`
 
 Compared again 2026-10-16 (C522) after `_history_body.html`'s Baselines card gained a heading
 row: the count of baselines ("2 baselines") and "How does this work?" in words (to the restore's
@@ -222,6 +222,18 @@ History's own boards draw no AI-drafted commit. Its test is tests/test_ai_intent
 the link and the call's id drawn). No shot retaken: the link is one anchor in the row's links
 line, as drawn on F7; no other region moved. The hash written again.
 Templates sha256 before: `a0d4d6854fb30fe0bb8e5b4f8d153807e1665a1c507d80ad3f6c30cd0f383683`.
+
+Compared again 2026-10-26 (C1775, AI call ↔ intent commit ↔ deploy receipt): `_timeline.html`
+draws, on a deploy's receipt row whose receipt names the intent commit it deployed, "Open the
+intent change it deployed", and on an intent change's row "Open its deploys", each to
+`/v2/history?commit=<sha>&since=` (that commit's row and every receipt naming it);
+`_history_timeline.html` heads that view "Commit <sha> and the deploys that sent it: N rows,
+among the newest 50 of each record" (a subset, said). The receipt's record gains "Intent
+deployed": the commit, "not recorded" for a receipt from before C1775, or a restore's "none".
+Board F7 draws them (1d, canvas version 148). Tests: tests/test_ai_intent_change.py's
+`test_a_deploy_receipt_records_its_intent_commit_and_history_links_both_ways`. No other region
+moved; the hash written again.
+Templates sha256 before: `9c14e0f3676722b4540f3ef2954553a814a48fcc1bb2084e6dc5569e9f83cfb5`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).

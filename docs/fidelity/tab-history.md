@@ -20,7 +20,7 @@ Shots: the board at 1280; the tab at 1280, 1440 and 390, its rows closed (`tab-h
 and the newest opened (`tab-history-open`).
 Compared 2026-10-16.
 Templates compared: templates/v2/_history.html, templates/v2/_timeline.html
-Templates sha256: `6ad43af3c7ee8a5b19ba94eec4b614227e620e3b6371d977d445cfb246836108`
+Templates sha256: `110d8299643e1b3cc3a56c1481354e63f81695b7bc515f85dee0edcbd400604c`
 
 Compared again 2026-10-16 (C957) after `_timeline.html` gained one state: on a network with no
 repository yet, the tab draws one muted notice above the rows, "No repository yet: the
@@ -104,6 +104,11 @@ docs/fidelity/history.md records; drawn on board F7 (1d). Tested on this tab
 (tests/test_ai_intent_change.py, the s1 History tab after a draft is committed). No other region
 moved; the hash written again.
 Templates sha256 before: `7328da4f83c4c0e398c04f9df2ed1b076511aee627b6828f65fcd7847f861286`.
+
+Compared again 2026-10-26 (C1775): the tab's receipt rows link "Open the intent change it
+deployed" and its intent rows "Open its deploys", as docs/fidelity/history.md records; drawn
+on board F7 (1d, version 148). No other region moved; the hash written again.
+Templates sha256 before: `6ad43af3c7ee8a5b19ba94eec4b614227e620e3b6371d977d445cfb246836108`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).

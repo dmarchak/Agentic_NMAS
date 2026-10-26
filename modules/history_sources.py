@@ -587,6 +587,18 @@ def decisions(ctx):
 
 # ---------------------------------------------------------------------------- the stores
 
+def _intent_words(r: dict) -> str:
+    """A receipt's intent commit in words (C1775): the commit; "not recorded" for a receipt
+    written before the receipt recorded it (2026-10-26), never a blank; "not read" when it
+    could not be read; and a restore's or re-apply's, which sends a golden, not intent."""
+    if "intent_commit" not in r:
+        return "not recorded (this receipt is from before the intent commit was recorded)"
+    sha = r.get("intent_commit")
+    if sha is None:
+        return "none: a restore or re-apply sends a golden, not intent"
+    return sha[:12] if sha else "not read when the receipt was written"
+
+
 def receipts(ctx):
     """The deploy and restore receipts. Each text a row carries (its reason, a removed line, an
     authorised line and its reason, its source ref) is masked again on the way out: the rows
@@ -628,8 +640,12 @@ def receipts(ctx):
                                                     for a in r.get("authorised") or [])),
                            ("Rollback", rb.get("state") if rb.get("performed") else ""),
                            ("Commit", (r.get("golden_commit") or "")[:12]),
+                           ("Intent deployed", _intent_words(r)),
                            ("Source ref", m(r.get("source_ref")))])
         e["pending"] = pending
+        # C1775: the intent commit it deployed, the link to it and back (`?commit=`).
+        if re.fullmatch(r"[0-9a-f]{40}", str(r.get("intent_commit") or "")):
+            e["intent_commit"] = r["intent_commit"]
         events.append(e)
     return _out(events, cut=[f"the receipts' newest {ctx['limit']}"]
                 if len(got.get("rows") or []) >= ctx["limit"] else [])
@@ -2051,7 +2067,7 @@ def _short(r: dict, horizon: float, page_last: str) -> bool:
 
 def timeline(ref, device: str = "", person: str = "", kinds=None, since_days: str = "",
              limit: int = DEFAULT_LIMIT, members=None, unverified: bool = False,
-             before=None, call: str = "") -> dict:
+             before=None, call: str = "", commit: str = "") -> dict:
     """THE reader (C369): ``{"events", "errors", "unreached", "unborn", "limit", "total",
     "more", "next", "people", "counts", "identity"}``, newest first. Both the History page and a
     device's History tab call it; the tab with *device* set. *kinds*: KIND_FILTERS keys to keep
@@ -2075,12 +2091,13 @@ def timeline(ref, device: str = "", person: str = "", kinds=None, since_days: st
     feature's link to its row), whatever its age."""
     limit = max(1, min(int(limit or DEFAULT_LIMIT), MAX_LIMIT))
     since = (time.time() - int(since_days) * 86400) if str(since_days or "").isdigit() else None
-    if call:
+    if call or commit:
         since = None
     inventory, inventory_error = _inventory(ref, members, device or "")
     ctx = {"ref": ref, "device": device or "", "limit": limit, "since": since,
            "members": set(members) if members is not None else None, "inventory": inventory,
-           "until": before[0] if before else None, "call": call or ""}
+           "until": before[0] if before else None, "call": call or "",
+           "commit": commit or ""}
     # The kind filter keeps its rows BEFORE the newest-*limit* cut below: each source read its
     # own newest *limit*, so a golden older than the page's other rows is still found under
     # "Goldens" (the operator's walk, 2026-10-18, B; tests/test_history_kind_filter.py).
@@ -2160,6 +2177,12 @@ def _kept(reads, ctx, device, person, wanted, unverified, call, before, reused) 
         events = [e for e in events if e["kind"] in wanted]
     if call:
         events = [e for e in events if e.get("call") == call]
+    if ctx.get("commit"):
+        # One commit (C1775): its own row and every row naming it as the intent it deployed,
+        # the links both ways between an intent change and its deploys.
+        c = ctx["commit"]
+        events = [e for e in events if str(e.get("sha") or "").startswith(c)
+                  or str(e.get("intent_commit") or "").startswith(c)]
     if unverified:
         events = [e for e in events if "verified" in e and e["verified"] != "access"]
     # Newest first; rows of one time keep their stores' order (a stable sort), as before paging.

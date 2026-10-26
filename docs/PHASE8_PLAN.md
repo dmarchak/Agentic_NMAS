@@ -2562,8 +2562,9 @@ walks it on s1.
     row links the call (its `AI-Call:` trailer).
   - Board F7 was redrawn (canvas versions 146 and 147); 16 part 1 cases are in
     `tests/fixtures/ai_cases/intent_patch/names.json`.
+- **Built 2026-10-26 (C1775):** a deploy's receipt records the intent commit it rendered;
+  History links AI call, intent commit and deploy receipt both ways (`?commit=<sha>`).
 - **Not yet:**
-  - the deploy receipt's link to the intent commit (C1775, B, next);
   - part 1's cases measured live (after the deploy);
   - observed endpoints (C1772, after parts 1 and 2, with the network context's order above).
 

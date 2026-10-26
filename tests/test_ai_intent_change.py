@@ -351,6 +351,45 @@ def test_a_service_cannot_commit_a_draft(world, host, monkeypatch):  # noqa: F81
     assert _committed("s1") == before
 
 
+def test_a_deploy_receipt_records_its_intent_commit_and_history_links_both_ways(world, host):  # noqa: F811
+    """C1775: AI call ↔ intent commit ↔ deploy receipt. A deploy's receipt records the intent
+    commit it rendered; History's receipt row opens it, the commit's row opens its deploys
+    (`?commit=`, both rows); a receipt from before C1775 says "not recorded", never a blank;
+    a restore's says it sent a golden."""
+    from html import unescape
+    from modules.nsot import receipts
+    fields = _drafted(world, host)
+    r, _html = _commit(host, fields)
+    assert r.status_code == 200
+    sha = _git(host, "rev-parse", "HEAD").strip()
+    result = {"device": "s1", "outcome": "sent", "commands": [
+        "interface GigabitEthernet1/0", "description walk F7 test"], "program_hash": "f" * 64}
+    (row,) = receipts.rows_for({"results": [result], "golden": {}}, list_name="Lab",
+                               action="deploy", actor="operator@example.com",
+                               actor_kind="person")
+    assert row["intent_commit"] == sha
+    (restore,) = receipts.rows_for({"results": [result], "golden": {}}, list_name="Lab",
+                                   action="restore", actor="operator@example.com",
+                                   actor_kind="person")
+    assert restore["intent_commit"] is None
+    before = {k: v for k, v in row.items() if k != "intent_commit"}
+    before.update(id="c1775-before", at="2026-10-20T10:00:00Z")
+    restore.update(at="2026-10-21T10:00:00Z")
+    assert receipts.write("Lab", [row, before, restore]).get("ok", True) is not False
+    c = host["client"]
+    both = unescape(c.get(f"/v2/history?commit={sha}&since=&list=Lab").get_data(as_text=True))
+    import re
+    words = " ".join(re.sub(r"<[^>]+>", " ", both).split())
+    assert f"Commit {sha[:12]} and the deploys that sent it: 2 rows" in words, \
+        both[both.find("hist-count"):][:400]
+    assert both.count("Open the intent change it deployed") == 1
+    assert "Open its deploys" in both and f"commit={sha}" in both
+    page = unescape(c.get("/v2/history?since=&list=Lab&kind=receipts").get_data(as_text=True))
+    assert "not recorded (this receipt is from before the intent commit was recorded)" in page
+    assert "none: a restore or re-apply sends a golden, not intent" in page
+    assert f"<dd>{sha[:12]}</dd>" in page
+
+
 def intent_words_doc(name):
     from modules.nsot import intent_edit
     return intent_edit.open_doc("Lab", name)["yaml"]

@@ -272,7 +272,9 @@ def _history_filters(request) -> dict:
          # jumped to (`on=YYYY-MM-DD`), and one AI call by its id (a feature's link to its
          # row), each in the address so Back and a shared link return to the same place.
          "before": a.get("before", "").strip(), "on": a.get("on", "").strip(),
-         "call": a.get("call", "").strip()}
+         "call": a.get("call", "").strip(),
+         # C1775: one commit, its row and the deploys that sent it (`HS.timeline` *commit*).
+         "commit": a.get("commit", "").strip().lower()}
     errors = []
     for name in ("device", "person"):
         if f[name] and not _SAFE_NAME.match(f[name]):
@@ -287,6 +289,9 @@ def _history_filters(request) -> dict:
     if f["call"] and not _CALL_ID.match(f["call"]):
         errors.append(f"the call {f['call'][:64]!r} is not an AI call's id")
         f["call"] = ""
+    if f["commit"] and not re.fullmatch(r"[0-9a-f]{7,40}", f["commit"]):
+        errors.append(f"the commit {f['commit'][:64]!r} is not a commit's id")
+        f["commit"] = ""
     f["error"] = "; ".join(errors + ([kind_error] if kind_error else []))
     # Every filter the timeline's own addresses keep (its redraw, Load more's fragment and the
     # page address it pushes, Back to the newest): one list, so none drops one (15.14 part B:
@@ -295,7 +300,7 @@ def _history_filters(request) -> dict:
     f["keep"] = [("device", f["device"] or None), ("person", f["person"] or None),
                  ("kind", f["kinds"] or None), ("since", f["since"]),
                  ("limit", f["limit"] or None), ("identity", f["identity"] or None),
-                 ("on", f["on"] or None)]
+                 ("on", f["on"] or None), ("commit", f["commit"] or None)]
     return f
 
 
@@ -409,7 +414,7 @@ def _history_timeline(ref, f, members) -> dict:
                     members=members, unverified=f.get("identity") == "unverified",
                     before=HS.place(HS.parse_cursor(f.get("before"))[0],
                                     HS.parse_day(f.get("on"))[0]),
-                    call=f.get("call", ""))
+                    call=f.get("call", ""), commit=f.get("commit", ""))
     # A filter not applied (`f["error"]`) is drawn by the timeline card as itself, "Not
     # applied: ...", never among the stores that could not be read: the rows are all there.
     return h

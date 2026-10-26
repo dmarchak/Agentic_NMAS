@@ -70,10 +70,13 @@
         {%- if e.exception %}<p class="tl-exception">This {{ 'commit' if e.sha else 'row' }}'s record is known to be wrong: {{ e.exception }}</p>{% endif %}
         {%- if e.record %}<dl class="tl-record">{% for k2, v2 in e.record %}<dt>{{ k2 }}</dt><dd>{{ v2 }}</dd>{% endfor %}</dl>{% endif %}
         {%- set others = e.devices | reject('equalto', '*') | reject('equalto', here) | list %}
-        {%- if others or e.sha or e.call %}<p class="small tl-links">
+        {%- if others or e.sha or e.call or e.intent_commit %}<p class="small tl-links">
           {%- for d in others %}<a href="{{ url_for('device_v2.device', name=d, tab='history') }}">Open {{ d }}'s History</a>{% if not loop.last or e.sha or e.produced %} · {% endif %}{% endfor %}
           {#- A change drafted in words (feature 7, part 2): the AI call that drafted it, from the commit's AI-Call trailer. -#}
           {%- if e.from_call %}<a href="{{ url_for('v2.history_page', call=e.from_call) }}">Open the AI call that drafted it</a> · {% endif %}
+          {#- C1775, both ways: a deploy's receipt opens the intent change it deployed; an intent change opens its deploys. -#}
+          {%- if e.intent_commit %}<a href="{{ url_for('v2.history_page', commit=e.intent_commit, since='') }}">Open the intent change it deployed</a> · {% endif %}
+          {%- if e.kind == 'intent' and e.sha %}<a href="{{ url_for('v2.history_page', commit=e.sha, since='') }}">Open its deploys</a> · {% endif %}
           {#- What an AI call's answer produced (15.14's links both ways): its last use row's page and anchor. -#}
           {%- if e.produced %}<a href="{{ e.produced }}">Open what it produced</a>{% endif %}
           {#- An AI call's prompt as sent and answer as received (15.14), drawn when opened, as a commit's change is. -#}

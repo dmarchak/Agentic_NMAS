@@ -42,6 +42,7 @@ store on the Records database card (`records_migrate.move`), the records databas
 import json
 import logging
 import os
+import re
 import time
 import uuid
 
@@ -222,6 +223,29 @@ def stages_before_send() -> tuple:
     return tuple(STAGE_NAMES[:STAGE_NAMES.index("deploy")])
 
 
+def intent_commits(list_name: str, hosts: list) -> dict:
+    """``{host: commit}``: each device's newest commit of its committed intent
+    (``host_vars/<host>.yml``) now, the intent a deploy renders at apply (C1775); a device whose
+    commit cannot be read is absent (its receipt says "not read", never a guess)."""
+    from modules.nsot import listref, repo as R
+
+    out = {}
+    if not listref.exists(list_name):              # resolve() would create its folder
+        return out
+    try:
+        repo = listref.resolve(list_name).repo_dir
+    except Exception as exc:                            # noqa: BLE001 (said by the receipt)
+        log.warning("receipts: %s's repository could not be resolved: %s", list_name, exc)
+        return out
+    for host in sorted({h for h in hosts if h}):
+        rc, sha, _err = R.git(repo, "log", "-1", "--format=%H", "--",
+                              f"host_vars/{host}.yml")
+        sha = (sha or "").strip()
+        if rc == 0 and re.fullmatch(r"[0-9a-f]{40}", sha):
+            out[host] = sha
+    return out
+
+
 def rows_for(report: dict, *, list_name: str, action: str, actor: str,
              actor_kind: str, confirmations: dict = None,
              command_hashes: dict = None, source_ref: str = "", scope: str = "") -> list:
@@ -235,6 +259,10 @@ def rows_for(report: dict, *, list_name: str, action: str, actor: str,
                       - {r.get("device") for r in golden.get("refused") or []})
     batch_id = golden.get("batch_id", "")
     at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    # C1775: the intent commit a deploy rendered (a restore or re-apply sends a golden: None).
+    intent = (intent_commits(list_name, [r.get("device", "") for r in
+                                         report.get("results") or []])
+              if action == "deploy" else {})
     rows = []
     for result in report.get("results") or []:
         host = result.get("device", "")
@@ -300,6 +328,9 @@ def rows_for(report: dict, *, list_name: str, action: str, actor: str,
             },
             "saved_startup": _saved_startup(result),
             "golden_commit": golden.get("commit", "") if host in golden_devices else "",
+            # The intent it deployed (C1775): its commit, "" when it could not be read, None
+            # for a run that deploys no intent; a row from before C1775 has no key at all.
+            "intent_commit": intent.get(host, "") if action == "deploy" else None,
             "commit_state": (COMMITTED if golden.get("commit") and host in golden_devices
                              else NO_GOLDEN),
             "second_reading": dict(SECOND_READING_NOT_BUILT),
