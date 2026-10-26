@@ -1859,6 +1859,24 @@ work. **A feature is done** when it is deployed, its about 20 recorded cases pas
 operator has used it on the lab. A deploy every evening (CI green on the exact sha and the
 change's own tests; the Update button).
 
+**Changed 2026-10-26 ~18:4x UTC (the operator): Phase 8 completes as fast as possible; it closes
+when every item is done and walked, not on a date.** These replace the dated schedule:
+- Independent items run in parallel.
+- The consistency floors are measured as soon as each feature's cases exist (replacing ruling
+  3's daily measure).
+- Each walk is reported as soon as it is ready.
+- The AI day cap is raised by the operator until the phase closes, and goes back to $1.50 then.
+  A cap that blocks work is said at once. Spend is reported per item.
+- C1778 is in scope, after the sprint-scope items, completing 15.15.
+- Unchanged:
+  - done = about 20 recorded cases passing in CI plus the operator's walk;
+  - expectations come from the evidence before any model run;
+  - nothing in 08:30 to 09:10 UTC;
+  - the findings freeze (register, don't fix) except where a finding blocks a Phase 8
+    feature's completion;
+  - Explain's tuning stays closed (cases set the bar, not the prompt).
+- Its cost: none in work. Its defect class: a feature held "done" without its cases or a walk.
+
 **The sprint's rulings:**
 1. **Findings freeze:** a finding is registered, and worked only if it blocks a sprint feature.
    The 2026-10-18 condition "no open A or B" (NSOT_PLAN, Core 1.0) is suspended for the sprint.

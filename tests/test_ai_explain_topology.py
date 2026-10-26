@@ -162,16 +162,18 @@ def test_the_subgraph_holds_only_the_topology_class(topo):
 
 def test_the_bytes_sent_carry_a_coverage_header_naming_every_layer(topo):
     """C1777: the subgraph sent states each layer, present, partial or not_collected, with its
-    source and age: performance and events as the pack carries them, endpoints and flows not
-    collected, each with why."""
+    source and age: performance, events and endpoints as the pack carries them (endpoints
+    since C1778, the pack's own section and its why), flows not collected, each with why."""
     topo.answer = _answer(topo.pack)
     _explain(topo)
     _b, user, _ctx = _sent(topo)
     cov = yaml.safe_load(_block(user, "data", "network_topology"))["coverage"]
     assert sorted(cov) == sorted(NM.LAYERS), "every layer, keys sorted as the bundle sorts them"
-    assert cov["endpoints"]["state"] == "not_collected" and "C1772" in cov["endpoints"]["why"], "no endpoint read in this test"
-    assert cov["flows"]["state"] == "not_collected" and "roadmap" in cov["flows"]["why"]
     sections = {s["name"]: s for s in topo.pack["sections"]}
+    assert sections["endpoints"]["state"] == "absent", "no endpoint read in this test"
+    assert cov["endpoints"]["state"] == "not_collected" and \
+        cov["endpoints"]["why"] == f"absent: {sections['endpoints']['why']}", cov["endpoints"]
+    assert cov["flows"]["state"] == "not_collected" and "roadmap" in cov["flows"]["why"]
     for section, layer in (("health", "performance"), ("logs", "events")):
         read = sections[section]["state"] in ("ok", "empty")
         assert cov[layer]["state"] == ("present" if read else "not_collected"), (layer, cov)

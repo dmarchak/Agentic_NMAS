@@ -55,16 +55,19 @@ log = logging.getLogger(__name__)
 
 #: The pack's own shape; a reader of a later shape says it cannot read this one. 2 (C1712,
 #: C1714, 2026-10-25) adds the `observed` and `health` sections; a pack of 1 stays readable
-#: and says it holds neither (expand, then contract).
-SCHEMA = 2
+#: and says it holds neither (expand, then contract). 3 (C1778, 2026-10-26) adds `endpoints`;
+#: a pack of 2 stays readable and holds none.
+SCHEMA = 3
 #: The records store (`records_db.STORES`) and its file.
 STORE = "evidence_packs"
 FILE_NAME = "evidence_packs.jsonl"
 #: The sections, in the order a person reads them.
-SECTIONS = ("alert", "device", "history", "intent", "neighbours", "observed", "health", "logs")
+SECTIONS = ("alert", "device", "history", "intent", "neighbours", "observed", "endpoints",
+            "health", "logs")
 SECTION_WORDS = {"alert": "The alert", "device": "The device", "history": "Recent History",
                  "intent": "Intent check", "neighbours": "Neighbours",
                  "observed": "The network around it, as observed",
+                 "endpoints": "What is attached around it, as observed",
                  "health": "Health of the devices around it",
                  "logs": "Log lines around the onset"}
 #: A build more than this before the clock is a replay of a past alert (`build`'s *now*): the
@@ -472,6 +475,54 @@ def observed_section(capture: dict, now: float, built: float) -> dict:
     return _section("observed", source, built, "ok", pieces=pieces, **extra)
 
 
+#: How far the endpoint store's read may lie from the alert's time and still be the alert's:
+#: one read interval before (the reader's 15 minutes, `readers/endpoints`) and a little
+#: after (a read in flight as the alert was found). Outside it, the read is not the alert's.
+ENDPOINTS_BEFORE_S, ENDPOINTS_AFTER_S = 1200, 300
+
+
+def endpoints_section(network: str, devices, now: float, built: float,
+                      stored: dict = None) -> dict:
+    """Who was attached to the alert's device and those beside it, CAPTURED with the pack
+    (C1778, as `observed_section` captures the Topology read, C1712): the endpoint store's
+    read when it was made as of the alert's time (`ENDPOINTS_BEFORE_S`, `ENDPOINTS_AFTER_S`),
+    each endpoint located on one of *devices* with its last-seen in words. The store keeps
+    only its latest read (the endpoint history is C1793), so a replay of an older alert says
+    the read is not the alert's, never a later read in its place. *stored* stands in for
+    `endpoints.stored(network)` (tests)."""
+    from modules import endpoints as E
+    source = ("the endpoint reader's stored read (each device's MAC table, ARP and IPv6 "
+              "neighbours, and the DHCP leases), captured with the pack")
+    as_of = _iso(now)
+    got = stored if stored is not None else E.stored(network)
+    if got.get("state") != "read":
+        state = "unreadable" if got.get("state") == "unreadable" else "absent"
+        return _section("endpoints", source, built, state,
+                        got.get("why") or "no endpoint read", as_of=as_of)
+    read_at = got.get("read_at") or ""
+    at = E._epoch(read_at)
+    if not at or not now - ENDPOINTS_BEFORE_S <= at <= now + ENDPOINTS_AFTER_S:
+        return _section("endpoints", source, built, "absent",
+                        f"the endpoint store keeps only its latest read ({read_at or 'none'}), "
+                        f"which is not as of this alert's time {as_of} (no endpoint history "
+                        "is kept yet, C1793)", as_of=as_of, endpoints_read_at=read_at)
+    hours = E.stale_after_hours(network)
+    keep = set(devices)
+    pieces = [{"mac": e.get("mac") or "", "addresses": list(e.get("addresses") or []),
+               "hostname": e.get("hostname") or "", "device": e.get("device") or "",
+               "interface": e.get("interface") or "", "vlan": e.get("vlan") or "",
+               "last_seen": e.get("last_seen") or "",
+               "seen": E.seen(e, now=now, stale_hours=hours)["said"]}
+              for e in got.get("endpoints") or [] if e.get("device") in keep]
+    if not pieces:
+        return _section("endpoints", source, built, "empty",
+                        f"the read of {read_at} locates no endpoint on "
+                        f"{', '.join(sorted(keep)) or 'these devices'}", as_of=as_of,
+                        endpoints_read_at=read_at)
+    return _section("endpoints", source, built, "ok", pieces=pieces, as_of=as_of,
+                    endpoints_read_at=read_at)
+
+
 def overlay_of(pack: dict) -> dict:
     """The observed overlay a pack keeps, in `network_model.observed`'s shape, for Explain to
     overlay (C1712): never a live read. A pack built before overlays were captured (schema 1)
@@ -536,7 +587,8 @@ def health_section(ref, host: str, capture: dict, onset, now: float, built: floa
 # ----------------------------------------------------------------------------- the pack
 
 def build(inst: dict, *, store: str, value_at: str, now: float = None, loki=None,
-          prometheus=None, observed_read: dict = None, trigger: str = "") -> dict:
+          prometheus=None, observed_read: dict = None, trigger: str = "",
+          endpoints_read: dict = None) -> dict:
     """One alert instance's pack, masked and hashed. Never raises: a source that fails is
     its section saying so. *now* is the alert's time, when it was found firing: every read of
     a time series (the neighbours, the observed topology, the health figures, the log lines)
@@ -562,7 +614,8 @@ def build(inst: dict, *, store: str, value_at: str, now: float = None, loki=None
     host = (dev or {}).get("hostname") or ""
     if ref is None:
         why = f"no device to read for: {dev_section['why']}"
-        for name in ("history", "intent", "neighbours", "observed", "health", "logs"):
+        for name in ("history", "intent", "neighbours", "observed", "endpoints", "health",
+                     "logs"):
             sections.append(_absent(name, "", why))
     else:
         sections.append(history_section(ref, host, until=now if replay else None))
@@ -578,6 +631,17 @@ def build(inst: dict, *, store: str, value_at: str, now: float = None, loki=None
         except Exception as exc:                      # noqa: BLE001 (said, never raised)
             cap = {"ok": False, "error": _failed(exc)}
         sections.append(observed_section(cap, now, clock))
+        # The alert's device and those one hop from it, by name (the endpoint store's key);
+        # the capture keys its walk by node id, named in its `nodes`.
+        names = (cap.get("nodes") or {}) if cap.get("ok") else {}
+        near = [host] + [names[n]["name"] for n, r in (cap.get("reached") or {}).items()
+                         if (r or {}).get("hop", 9) <= 1 and names.get(n, {}).get("name")]
+        try:
+            sections.append(endpoints_section(ref.name, near, now, clock,
+                                              stored=endpoints_read))
+        except Exception as exc:                      # noqa: BLE001 (said, never raised)
+            sections.append(_section("endpoints", "the endpoint reader's stored read", clock,
+                                     "unreadable", _failed(exc)))
         try:
             sections.append(health_section(ref, host, cap, onset, now, clock,
                                            prometheus=prometheus, loki=loki))

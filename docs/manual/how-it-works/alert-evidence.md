@@ -22,7 +22,7 @@ reaches {{product}} from Grafana by a webhook: the reader asks.
 
 ## What it holds {#sections}
 
-Eight sections, each naming its source, when it was read, and its state: **read**, **read,
+Nine sections, each naming its source, when it was read, and its state: **read**, **read,
 nothing found**, **nothing to read** (no device, no committed golden, no onset), **not
 configured**, or **could not be read**, with why. A source that fails is a section saying so,
 never a shorter pack.
@@ -46,7 +46,15 @@ never a shorter pack.
    later is explained against the network as it was. A read that cannot be used (never made,
    older than the reader's promise, or later than the alert) is said, with why. A pack built
    before captures existed says "observed state not captured with this pack".
-7. **Health of the devices around it:** a few figures for the alert's device and every device
+7. **What is attached around it, as observed:** the endpoints (hosts, phones, printers) the
+   endpoint reader located on the alert's device and on each device one hop from it: name (from
+   its DHCP lease), MAC, addresses, interface, VLAN, and when it was last seen there, in words
+   ("last seen edge1 GigabitEthernet1/0, 3 h ago", "stale" past the network's age). CAPTURED
+   when the pack is built, only from a read made as of the alert's time. Mercury keeps only the
+   latest read, with no endpoint history yet, so an older alert's pack says the read is not its
+   own, with why, never a later read in its place. Endpoints are the topology class: Explain
+   sends them only when the network's topology switch is on.
+8. **Health of the devices around it:** a few figures for the alert's device and every device
    within two hops of it (a shared segment's members are one hop, as in the network model;
    at most 24 devices, nearest first, the rest counted), each summarising the incident's
    window, never one instant: from 15 minutes before the onset to the alert's time, so a
@@ -69,7 +77,7 @@ never a shorter pack.
    `health:dev:12:cpu`), and the time it was read. A figure that could not be read, whose
    source is not configured, or that the source holds nothing for says so, never a zero. Four
    questions are asked for all the devices together, never one per device.
-8. **Log lines around the onset:** the device's lines from 15 minutes before the onset to 15
+9. **Log lines around the onset:** the device's lines from 15 minutes before the onset to 15
    minutes after it (or until the pack was built, if sooner), asked through History › Query's
    logs builder with Mercury's heartbeat lines left out; the 50 nearest the onset are kept and
    the rest counted.

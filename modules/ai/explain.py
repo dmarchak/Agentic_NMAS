@@ -202,13 +202,15 @@ def topology(pack: dict) -> dict:
 
 
 #: The pack's sections that are a layer of the network context's coverage header.
-CARRIED_LAYERS = {"health": "performance", "logs": "events"}
+CARRIED_LAYERS = {"health": "performance", "logs": "events", "endpoints": "endpoints"}
 
 
 def carried_layers(pack: dict) -> dict:
     """The coverage header's layers this pack carries beside its topology: health is
-    performance and the log lines are events, each present when its section was read (empty
-    is read, with nothing in its window), else not_collected with the section's why."""
+    performance, the log lines are events, and the endpoints are endpoints (C1778), each
+    present when its section was read (empty is read, with nothing in its window), else
+    not_collected with the section's why (a pack before schema 3 holds no endpoints section,
+    so that layer stays as the coverage header says it without one)."""
     out = {}
     for s in pack.get("sections") or []:
         layer = CARRIED_LAYERS.get(s.get("name"))
@@ -230,6 +232,12 @@ def sent_sections(pack: dict, topo: dict = None) -> list:
     for s in pack.get("sections") or []:
         if s.get("name") in NOT_SENT:
             continue
+        if s.get("name") == "endpoints" and not (topo or {}).get("sent"):
+            # Endpoints (MAC, address, hostname) are the topology class (15.15, the
+            # operator's ruling): with no topology sent, none of them is.
+            s = dict(s, pieces=[], withheld=(
+                "the endpoints are not sent: they are the topology class, and no topology "
+                "was sent"))
         if s.get("name") == "health" and not (topo or {}).get("sent"):
             kept = [p for p in s.get("pieces") or [] if p.get("hop") == 0]
             if len(kept) < len(s.get("pieces") or []):

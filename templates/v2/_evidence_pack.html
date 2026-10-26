@@ -34,6 +34,7 @@
     {%- if s.errors %}<p class="warn-text small">Also could not be read: {{ s.errors|join('; ') }}</p>{% endif %}
     {%- if s.counts %}<p class="pack-source">{% for k, n in s.counts|dictsort %}{{ n }} {{ k|replace('_', ' ') }}{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
     {%- if s.name == 'observed' and s.as_of %}<p class="pack-source" title="around {{ s.subject or 'the device' }}; network model {{ s.model or 'not read' }}">Captured {{ s.as_of_words }}{% if s.observed_at %}: the Topology reader's read of {{ stamp(s.observed_at) }}{% endif %}{% if s.hops %}, the items touching a device within {{ s.hops }} hops{% endif %}. Explain overlays this capture, never a later read.</p>{% endif %}
+    {%- if s.name == 'endpoints' and s.as_of %}<p class="pack-source">Captured as of {{ stamp(s.as_of) }}, the alert's time{% if s.endpoints_read_at %}, from the endpoint reader's read of {{ stamp(s.endpoints_read_at) }}{% endif %}: who was attached to the device and those one hop from it. Explain reads this capture, never a later read.</p>{% endif %}
     {%- if s.name == 'health' and s.as_of %}<p class="pack-source" title="{{ s.questions }} questions, asked {{ s.asked_at }}; the discards rate one point every {{ s.window.step_s }} s">The alert's device and {{ s.devices_kept - 1 }} of the {{ s.devices_total - 1 }} devices within two hops, nearest first{% if s.devices_kept < s.devices_total %} (the rest not read){% endif %}; each figure summarised over the window, {{ s.window.basis }}, evaluated at {{ stamp(s.as_of) }}{% if s.window.bounded %} ({{ s.window.bounded }}){% endif %}{% if s.figures %}: {% for k, w in s.figures|dictsort %}{{ k }}, {{ w }}{{ '; ' if not loop.last }}{% endfor %}{% endif %}.</p>{% endif %}
     {%- if s.pieces %}
     <ul class="pack-pieces">
@@ -57,6 +58,8 @@
         {%- elif s.name == 'observed' %}
         {%- if p.kind == 'cable' %}Cable <span class="mono small">{{ p.id }}</span>: {{ badge(p.state, {'up': 'ok', 'down': 'danger'}.get(p.state, 'muted')) }}{% if p.reported %} reported {{ p.reported }}{% endif %}{% if p.down_at %}, down at {{ p.down_at|join(', ') }}{% endif %}
         {%- else %}{{ (p.proto or '')|upper }} adjacency <span class="mono small">{{ p.id }}</span>: {{ badge(p.state, {'up': 'ok', 'down': 'danger'}.get(p.state, 'muted')) }}{% if p.words %} {{ p.words }}{% endif %}{% if p.expected is false %} <span class="muted small">not implied by intent</span>{% endif %}{% if p.since %}, since {{ stamp(p.since) }}{% endif %}{% endif %}{% if p.read_at %} <span class="muted small">read {{ stamp(p.read_at) }}</span>{% endif %}
+        {%- elif s.name == 'endpoints' %}
+        <strong>{{ p.hostname or 'an unnamed endpoint' }}</strong> <span class="mono small pack-text">{{ p.mac }}</span>{% if p.addresses %} <span class="mono small pack-text">{{ p.addresses|join(', ') }}</span>{% endif %}: {{ p.seen }}{% if p.vlan %}, VLAN {{ p.vlan }}{% endif %} <span class="muted small">(on {{ p.device }} {{ p.interface }}; last seen {{ p.last_seen }})</span>
         {%- elif s.name == 'health' %}
         <strong title="{{ p.dev }}">{{ p.device }}</strong> <span class="muted small">hop {{ p.hop }}</span> · {{ p.figure }}:
         {%- if p.state != 'ok' %} {{ badge(ST.get(p.state, p.state), SK.get(p.state, 'muted')) }}{% if p.why %} {{ p.why }}{% endif %}
