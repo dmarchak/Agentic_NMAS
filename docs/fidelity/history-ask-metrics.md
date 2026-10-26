@@ -17,7 +17,7 @@ desktop board at 1440 and 1280 beside the page; the phone board at 390 beside th
 Compared 2026-10-15. History's own page (heading, remote line) is board D's; the board's Code
 mode panel is today's Ask your own box, Code on the Mode switch.
 Templates compared: templates/v2/history_ask_metrics.html, templates/v2/_history_body.html, templates/v2/_history_ask_metrics.html, templates/v2/_history_ask_parts.html, templates/v2/_history_ask_head.html, templates/v2/_history_ask_words.html, templates/v2/_ai.html, templates/v2/_history_ask_chips.html
-Templates sha256: `2724e7ee9f0a0f96951c790c101037d33dee6f462bcdb4c31799b674459ef356`
+Templates sha256: `94a252f672da1286af07698c19a651d40dc8f641a97bca7c482b56ac2af60533`
 
 Compared again 2026-10-15 (P7-03): `_history_body.html` gained a `data-concept` marker and one
 sentence inside a Baselines row's detail (the block drawing each baseline's Re-apply… link); this
@@ -124,6 +124,15 @@ Changed 2026-10-26 (C1740's logs half): `_history_ask_words.html`'s comment now 
 builders set `words_tz`. Only the comment changed, and it renders nothing: this page draws the
 same bytes. No region changed; the hash written again.
 Templates sha256 before: `1e69029e69320f998cfa45dd1080705a932d6905312e0d09de738ecd332739a2`.
+
+Compared again 2026-10-26 (15.14 part B, links both ways): `_history_ask_words.html`'s filled
+notice reads "Filled from your words (<model>, $x, this call in History)", the last words a
+link to the call's own row on History (`/v2/history?call=<id>`: that call, opened); and the
+call's row there links back to this builder as the answer filled it ("Open what it produced",
+every choice in its address, the address the fill pushes). `_history_body.html` gained Jump to
+in the Timeline tab's branch, which this page never draws. No board draws Ask in words (the
+row stays **later** with 8.1's board); nothing else on the page moved; the hash written again.
+Templates sha256 before: `2724e7ee9f0a0f96951c790c101037d33dee6f462bcdb4c31799b674459ef356`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).

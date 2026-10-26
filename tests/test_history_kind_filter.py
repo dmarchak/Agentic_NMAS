@@ -6,7 +6,7 @@ History page).
 On test_device_v2's lab (a real repository: r3's golden committed by `save_golden`, Source:
 capture), with 55 Save All measurements of r3 committed AFTER it as Save All writes them (an
 empty commit naming r3 in `Devices-Measured:`), so the golden is older than both page sizes
-(the tab's 30, the History page's 50):
+(50 each since 15.14 part B; the tab's was 30):
 
 - without a filter neither the tab nor the page draws the golden in its first page (the defect's
   precondition);
@@ -26,7 +26,7 @@ import pytest
 
 from tests.test_device_v2 import _get, _text, lab  # noqa: F401 (the fixture)
 
-MEASURED = 55            # more than the History page's 50 and the tab's 30
+MEASURED = 55            # more than the History page's 50 and the tab's (50; 30 before 15.14 B)
 GOLDEN = "Golden recorded (capture)"
 
 
@@ -84,7 +84,7 @@ class TestTheDeviceTab:
     def test_without_a_filter_the_golden_is_not_in_the_first_page(self, saves):
         _r, html = _get(saves, "/v2/device/r3/history")
         assert GOLDEN not in _whats(html)
-        assert re.search(r"Showing the newest 30 of \d+", _text(html))
+        assert re.search(r"Showing the newest 50 of \d+", _text(html))
 
     @pytest.mark.parametrize("url", ["/v2/device/r3/history?kind=golden",
                                      "/v2/device/r3?tab=history&kind=golden"])
@@ -123,7 +123,7 @@ class TestTheDeviceTab:
     def test_an_unknown_kind_is_ignored_and_said_by_name(self, saves):
         _r, html = _get(saves, "/v2/device/r3/history?kind=bogus")
         assert "Not applied: the kind filter &#39;bogus&#39; is not a kind History records" in html
-        assert re.search(r"Showing the newest 30 of \d+", _text(html))   # every kind drawn
+        assert re.search(r"Showing the newest 50 of \d+", _text(html))   # every kind drawn
 
 
 class TestTheHistoryPage:

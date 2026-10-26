@@ -62,7 +62,7 @@ def _timeline(ref, f, members):
                                 ("before verification was recorded", 1)]}}
 
 
-def _history(ref, dev, limit=None, kinds=None):
+def _history(ref, dev, limit=None, kinds=None, before=None):
     return {"events": [
         {"at": "2026-10-01T16:58:00Z", "kind": "restart", "what": "Restarted as planned",
          "devices": ["r2"], "devices_words": "r2",
@@ -199,13 +199,13 @@ class TestTheFilterBarIsOneHeight:
         b.wait_for("return document.querySelector('form.dev-filters .btn')", 10)
         got = b.js(
             "var f=document.querySelector('form.dev-filters'), out=[];"
-            "f.querySelectorAll('select, .hist-kinds-sum, input[type=search], .btn').forEach("
+            "f.querySelectorAll('select, .hist-kinds-sum, input[type=search], input[type=date], .btn').forEach("
             "function(e){var r=e.getBoundingClientRect();"
             "out.push([e.tagName + '.' + (e.className||''), Math.round(r.height), Math.round(r.bottom)]);});"
             "return out;")
         heights = {h for _n, h, _b in got}
         bottoms = {bt for _n, _h, bt in got}
-        assert len(got) >= 4, got
+        assert len(got) >= 5, got                    # with Jump to (15.14 part B)
         assert len(heights) == 1, f"the bar's controls differ in height: {got}"
         assert max(bottoms) - min(bottoms) <= 1, f"their bottoms do not align: {got}"
 

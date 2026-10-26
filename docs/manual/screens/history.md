@@ -66,7 +66,9 @@ Open a line for the full record underneath. It shows:
   - **Received:** the answer, laid out for reading.
 
   Secrets show only as their masks: the prompt was masked before it left the host, and the
-  unmasked form is never stored. A call refused before it was sent says so;
+  unmasked form is never stored. A call refused before it was sent says so. **Open what it
+  produced** opens what the answer made: Explain's answer in its alert's evidence pack, or the
+  builder as Ask in words filled it (every choice in its address);
 - **Open (device)'s History** for each device the record names. A device's own History tab
   shows the AI calls about that device.
 
@@ -93,6 +95,7 @@ Filters:
     the heartbeat check's row on Needs attention, who wrote it and each of the network's
     devices' windows), and Show commands runs.
 - **Since.**
+- **Jump to:** a day; the timeline starts at its end (below).
 
 A row's **who** is a verified person's email, or, for a host command, the host login labelled
 "host login, not a verified identity". A deploy of part of intent is named by what it sent:
@@ -107,8 +110,29 @@ golden is found under **Goldens** however many saves came after it. A kind the t
 know (a mistyped link) is not applied, and the list says so above its rows ("Not applied: the
 kind filter 'goldn' is not a kind History records") and draws every kind; a device or person
 that is not a name is said the same way. Each filter is part of the page's
-address, so a view is a link you can share. A long list shows the newest and says how many there
-are, with **Show more**. A record store that could not be read is said above the list. A
+address, so a view is a link you can share. A record store that could not be read is said
+above the list.
+
+**Load more and Jump to.** The timeline shows 50 records at a time, newest first, and says how
+many it read ("Showing the newest 50 of 316 read"). **Load more**, under the last record, reads
+the next 50 older than it and draws them in place under it; it shows "Loading…" until they
+arrive. It asks for the records older than the last one shown, by its time and its id, never
+by a page number, so records that arrive while you read do not shift what comes next. Every
+filter applies to the records it reads, and the page's address takes the place it reached
+(`before=<time>~<id>`): Back returns to the place before, and a link you share opens at the
+same place, with **Back to the newest** above the records. **Jump to**, beside Since, starts
+the timeline at the end of a chosen day (UTC; `on=YYYY-MM-DD`), with every other filter;
+Load more then reads back from there. When nothing older is left, the list says "No older
+record than these." Most records are read from the place itself, so any depth costs the same.
+A few stores can only give their newest records (deploy and restore receipts, app updates,
+Show commands runs, Tier 2 runs and console runs): Mercury reads more of them when a page
+needs it, up to 3,200 records a store, and a page further back than that says, under the
+records, which store it could not reach ("Load more does not reach further back in …"), never
+drawing it as nothing having happened.
+
+**One AI call.** Explain's answer ("This call in History") and Ask in words' filled notice
+("this call in History") link to the call's own row, `?call=<id>`: that one call, opened,
+however old, with **Every AI call** and **Every record** beside it. A
 network with no repository yet says so once above the list ("No repository yet: the network's
 first commit makes it"), naming the records the repository will hold (the golden and intent
 histories, the measured saves, the other commits, the baseline decisions), never "could not be

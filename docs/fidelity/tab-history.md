@@ -20,7 +20,7 @@ Shots: the board at 1280; the tab at 1280, 1440 and 390, its rows closed (`tab-h
 and the newest opened (`tab-history-open`).
 Compared 2026-10-16.
 Templates compared: templates/v2/_history.html, templates/v2/_timeline.html
-Templates sha256: `2934e519314ab53e8176939aaa571d6213519f0fb52d0cac0e41f1b17ebb0da2`
+Templates sha256: `7328da4f83c4c0e398c04f9df2ed1b076511aee627b6828f65fcd7847f861286`
 
 Compared again 2026-10-16 (C957) after `_timeline.html` gained one state: on a network with no
 repository yet, the tab draws one muted notice above the rows, "No repository yet: the
@@ -76,6 +76,28 @@ the first shot found and fixed.
 Rows without a call render as before, but for the separator after a row's last device link.
 Templates sha256 before: `e7d401c1a170eb7175b634fd212b32b48daa3281ac70e612c4c96179b585b80c`.
 
+**Compared again 2026-10-26 (15.14 part B: paging for History and a device's History tab
+alike):** the tab draws 50 rows (30 before), and both templates changed.
+- `_timeline.html` as on History (docs/fidelity/history.md's comparison of the same date):
+  each row's id, Load more at the foot of the rows, "No older record than these.", a store
+  read only by its newest rows that a page could not reach named under them, Open what it
+  produced on an AI call.
+- `_history.html`: under the Kind choices, **Jump to** (a date field) and **Go**, a form to
+  the device page's own address keeping the kind (`on=`); Load more's fragment is
+  `/v2/device/<name>/history/more` and the address it pushes the device page's
+  (`?tab=history&before=<time>~<id>`); at a place, "Showing the 50 before <stamp>" with Back
+  to the newest; "Showing the newest 50 of N read · Load more, at the foot, reads the next 50"
+  replaces "Showing the newest N of M · Show more on the History page", since the tab now
+  reads further back itself. Its redraw keeps the place.
+
+Board D draws "Showing the newest 12 of 41 · Show more" beside the filters and no date control.
+No board shot was retaken (the canvas's copy was not to hand); the tab's Load more was
+requested as a person's click would (tests/test_history_paging.py, `TestTheDeviceTab`: the next
+50 drawn, the pushed address opening at the same place), and the browser row-overflow check
+passed on `/v2/device/r2?tab=history` at its widths. "Show more" amended and a region added,
+Jump to; no other region's verdict changed.
+Templates sha256 before: `2934e519314ab53e8176939aaa571d6213519f0fb52d0cac0e41f1b17ebb0da2`.
+
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
 
@@ -91,7 +113,8 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Who | the person, shortened | the person; how they were identified only in the opened row | **same** |
 | An opened row | under the row at full width: "By operator@example.com, verified by Access · via the device page · 58 s"; the run's stages; Open r3's History · The commit | under the row at full width: the detail and the commit's sha, "By" the person as identified, the record's fields (Program, Commit), Show the change; on a golden row the sentence "A golden is a record of what the device ran when it was captured, not a target" and Reveal r3's version…; other devices' History links on a record of several; on an AI call whose subject names the device (15.14), the call's record and Show the prompt and the answer, its window as on History (`tab-history-ai-call`) | **deviation** (log: History: an opened row's links) |
 | The fleet's rows | choosing a device keeps its rows and drops the fleet's | none on the tab: the fleet's own commits are read only without a device (`history_sources.fleet_commits`); records of several devices that include this one stay (the Save All's "measured" and the break-glass rows in capture 05) | **same** |
-| Show more | "Showing the newest 12 of 41 · Show more" | "Showing the newest N of M · Show more on the History page" when cut, all time (the template; tests/test_device_history_v2.py's `test_a_cut_timeline_says_where`) | **same** |
-| The Kind choices | none: the tab is the timeline's rows, filtered to the device only | under the tab's (i), one segmented row of links: All, Goldens, Intent, Deploys and restores, Measured, unchanged, Restarts, each the device page's address with its `kind`, the chosen one pressed; kept by the reader before its newest-30 cut, carried by the live redraw, the link to the History page and Show more (the operator's walk, 2026-10-18, B; tests/test_history_kind_filter.py) | **deviation** (log: History tab: Kind choices one click away, Goldens first, the operator's walk of 2026-10-18) |
+| Show more | "Showing the newest 12 of 41 · Show more" | "Showing the newest 50 of N read · Load more, at the foot, reads the next 50" above the rows, and Load more under the last, appending the next 50 in place and pushing the device page's address with the place; at a place, "Showing the 50 before <stamp>" with Back to the newest (15.14 part B; tests/test_device_history_v2.py's `test_a_cut_timeline_says_where`, tests/test_history_paging.py) | **deviation** (log: History: Load more by keyset and jump to date (15.14 part B)) |
+| Jump to (15.14 part B) | not drawn | under the Kind choices, a date field and Go: the tab from the end of that day, UTC, the kind kept (`on=`); a day with nothing on or before it says "Nothing is recorded for r3 on or before <day>" with Back to the newest | **deviation** (log: History: Load more by keyset and jump to date (15.14 part B)) |
+| The Kind choices | none: the tab is the timeline's rows, filtered to the device only | under the tab's (i), one segmented row of links: All, Goldens, Intent, Deploys and restores, Measured, unchanged, Restarts, each the device page's address with its `kind`, the chosen one pressed; kept by the reader before its newest-50 cut (30 until 15.14 part B), carried by the live redraw, the link to the History page, Load more and Jump to (the operator's walk, 2026-10-18, B; tests/test_history_kind_filter.py) | **deviation** (log: History tab: Kind choices one click away, Goldens first, the operator's walk of 2026-10-18) |
 | Nothing, or a store unreadable | not drawn | "Nothing is recorded for r3 yet: no golden, no intent commit, no deploy"; under a kind with none, "No record of the kind chosen (Restarts) for r3" and Every kind; a kind not known is a notice above the rows, "Not applied: …"; a store that cannot be read is a notice above the rows (tests/test_device_history_v2.py, tests/test_history_kind_filter.py) | **same** |
 | Phone | no phone board | each row's cells stacked in the row, the opened detail under them | **same** |

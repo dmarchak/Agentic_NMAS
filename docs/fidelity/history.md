@@ -32,7 +32,7 @@ the fixture's counts unfiltered); the Baselines tab (`history-baselines`, 1280 a
 real records (`history-real`, 1280).
 Compared 2026-10-16.
 Templates compared: templates/v2/history.html, templates/v2/_history_body.html, templates/v2/_history_remote.html, templates/v2/_history_timeline.html, templates/v2/_timeline.html
-Templates sha256: `476c427c7071d5b88678e04045e8954423620a7c0b85d75224812b5613d9b35a`
+Templates sha256: `a0d4d6854fb30fe0bb8e5b4f8d153807e1665a1c507d80ad3f6c30cd0f383683`
 
 Compared again 2026-10-16 (C522) after `_history_body.html`'s Baselines card gained a heading
 row: the count of baselines ("2 baselines") and "How does this work?" in words (to the restore's
@@ -178,6 +178,41 @@ which is drawn only when a commit follows (a call's window now starts its own li
 "An opened row" amended; no other region's verdict changed.
 Templates sha256 before: `5da74570cc50f940ed61bf6c098fcf28cb900e83af3272c0d135a809e8abf9c8`.
 
+**Compared again 2026-10-26 (15.14 part B; the operator, 2026-10-25: "Load more … by a keyset
+cursor on the time and the id … Jump to date … the cursor and the filters live in the URL"):**
+four templates changed.
+- `_timeline.html`: each row carries its id (`id="<row id>"`, an AI call's its own `ai-…`),
+  its windows keyed by it (`diff-<id>`, `rv-<id>`) so the rows Load more appends never share
+  one; under the last row a foot holds **Load more** (a small button, "Loading…" and disabled
+  while its answer is out), or "No older record than these.", and, when a store that can give
+  only its newest rows could not be read far enough back, one muted line naming it. An AI
+  call's opened row gains "Open what it produced" (its last use row's page and anchor).
+- `_history_timeline.html`: the count reads "Showing the newest 50 of 316 read · Load more, at
+  the foot, reads the next 50"; at a place, "Showing the 50 before <stamp>" (or "on or before
+  <day> (UTC)") with Back to the newest; `?call=<id>` reads "One AI call, <id>, opened" with
+  Every AI call and Every record. Its redraw now keeps every filter, `identity` included
+  (it dropped it), and the place.
+- `_history_body.html`: the filter bar gains **Jump to** (a date field) after Since, one
+  height with the others (tests/test_v2_layout_in_a_browser.py's filter-bar check, which now
+  measures it); the Kind choices and the menu's Every kind and Commits only keep the day.
+- `_history_ask_words.html` (Query's builders): the filled notice's "(model, $x" gains ",
+  this call in History)" (docs/fidelity/history-ask-metrics.md, history-ask-logs.md).
+
+Board D draws "Showing the newest 12 of 41 · Show more" beside the filters, and no foot: Show
+more there (and as built until now) asked for twice as many rows from the top. As built, the
+count stays at the card's head and Show more is replaced by Load more at the foot, which
+appends the next rows under the last one read, so a person reading down meets it where the
+rows end; the board draws no date control, no paging place and no AI call. The board shots
+were taken again before the commit (`test_history` and `test_history_ai_call`, the three
+boards beside the page at 1280, 1440 and 390): Jump to sits in the filter bar after Since,
+the card's head says "Showing the newest 2", and its foot "No older record than these.".
+Load more was also clicked in Firefox (tests/test_history_paging.py, `TestInABrowser`): busy and
+disabled while held, 50 rows appended to 100 and then 120, each once, "No older record than
+these." at the end, the place pushed into the address and Back returning to it, and no
+horizontal scroll at 390 px. "The count" amended and a region added, Load more and Jump to;
+no other region's verdict changed.
+Templates sha256 before: `476c427c7071d5b88678e04045e8954423620a7c0b85d75224812b5613d9b35a`.
+
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
 
@@ -190,7 +225,8 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Filters | Device ("Any device, and the fleet"), Person ("Anyone"), Kind, Since; Show on the identity board | the same four and Show (capture 34); every filter in the address, so a view is a link | **same** |
 | The Kind menu | "Every kind except 2": the kinds in two columns under The repository, What ran on a device, What happened to a device, Decisions and records, Retries authorised and Freshness authorised off; Every kind · Commits only | one column under the same four headings, every kind by default (none ticked is every kind); the kinds recorded since (Privileged commands, Reloads, Credential profiles, Expected islands, Topology layouts, Saved views, Reveals, Show commands) in their groups, Freshness authorised not a kind; Goldens and Intent each its own kind under The repository, beside Commits (2026-10-18); Every kind · Commits only | **deviation** (log: History: the Kind menu) |
 | The Kind choices | none: the Kind menu is the only way to a kind | under the filters, one segmented row of links: All, Goldens, Intent, Deploys and restores, Measured, unchanged, Restarts; each keeps the device, person and time filters and the page's network, the chosen one pressed; the kind is kept before the newest-N cut, so a golden older than the newest page is found; a kind not known is not applied and said by name above the rows (the operator's walk, 2026-10-18, B; tests/test_history_kind_filter.py) | **deviation** (log: History: Kind choices one click away, Goldens first, the operator's walk of 2026-10-18) |
-| The count | "Showing the newest 12 of 41 · Show more" beside the filters | at the head of the timeline card, "Showing the newest 50 of 316 · Show more" when cut (capture 34), else "N records"; the card's foot says each store read its newest 50 (capture 35) | **same** |
+| The count | "Showing the newest 12 of 41 · Show more" beside the filters | at the head of the timeline card, "Showing the newest 50 of 316 read · Load more, at the foot, reads the next 50" when more are older (the shape of capture 34's "Showing the newest 50 of 316 · Show more"); at a place, "Showing the 50 before <stamp>" or "on or before <day> (UTC)", with Back to the newest (15.14 part B) | **deviation** (log: History: Load more by keyset and jump to date (15.14 part B)) |
+| Load more and Jump to (15.14 part B) | not drawn: Show more beside the count | under the last row, Load more (busy on itself, "Loading…"), appending the next 50 older than the last shown in place and pushing the page's address with that place (`before=<time>~<id>`), every filter kept; "No older record than these." at the end; a store read only by its newest rows that a page could not reach named under them; Jump to, a date field in the filter bar after Since (`on=`); one AI call by `?call=<id>`, opened (tests/test_history_paging.py) | **deviation** (log: History: Load more by keyset and jump to date (15.14 part B)) |
 | The identity line (7.5) | "41 of 52 commits in this window carry a verified identity (signed in through the access proxy)", chips 8 host login, 3 not verified, 0 before verification was recorded, Show only these 11 | the same words and chips ("39 of 62 commits … 16 host login, 7 not verified, Show only these 23" in capture 34), a kind with no commit not drawn (no "0 …" chip); Show only these wraps under the line at 1280 | **deviation** (log: History: the identity line draws no empty chip) |
 | The identity line's other states | all verified in ok colour; a filter set says what is shown; no commit says so, never "0 of 0"; Show only these with Show every identity | the same four (the template; `history-unverified` shows the last, its counts the fixture's, unfiltered) | **same** |
 | Rows | When, Kind, Device, What, Who; one line each | the same five; When as a v2 stamp with the UTC time on hover; a disclosure mark before each row; a long What cut with "…" on its one line (the layout rows, capture 35) | **same** |
@@ -198,7 +234,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | An update's colour | an "update" chip in the kind's own colour; red only for a failure | a successful update ("The app updated to <sha>: updated") is drawn red: `_timeline.html` reads any update outcome but "confirmed", "done" and "ok" as a failure; it was the sitting's only red row (capture 35; C901) | **deviation** (log: History: a successful update drawn red (C901)) |
 | What | the record in words, its detail faint after " · " | the same; an intent edit made on v2 reads "Intent committed (extraction)" (C895), a rotation writes "rotated persistence not attempted" before "rotated and persisted" (C896), and a Save All adds a "persist" row per device under its own (C898; captures 34 and 35) | **deviation** (log: History: an intent edit on v2 reads as an extraction (C895)) |
 | A decision and a known-wrong record | "decision", "baseline earned" with its tag; "corrected" on a persist | "decision" with the decision's words, its Baseline field in the opened row; " · record known wrong", its note in the opened row | **same** |
-| An opened row | under the row at full width: who and how identified, via what, how long; the run's stages; Open r3's History · The commit | the detail and the commit's sha, By the person as identified, the record's fields (Run, Devices, Outcome for the logging test in capture 08), Show the change, Open <device>'s History for each device of several, and on a golden row "A golden is a record of what the device ran …" and Reveal <device>'s version…; on an AI call (15.14), the call's record (About, Prompt, Schema, Model, Tokens, Cost, Verdict, Then) and Show the prompt and the answer, which opens its window on its own line: the request's bound, thinking and why the answer stopped, each part sent and the answer received (`history-ai-call`) | **deviation** (log: History: an opened row's links) |
+| An opened row | under the row at full width: who and how identified, via what, how long; the run's stages; Open r3's History · The commit | the detail and the commit's sha, By the person as identified, the record's fields (Run, Devices, Outcome for the logging test in capture 08), Show the change, Open <device>'s History for each device of several, and on a golden row "A golden is a record of what the device ran …" and Reveal <device>'s version…; on an AI call (15.14), the call's record (About, Prompt, Schema, Model, Tokens, Cost, Verdict, Then) and Show the prompt and the answer, which opens its window on its own line: the request's bound, thinking and why the answer stopped, each part sent and the answer received (`history-ai-call`), and Open what it produced, its last use row's page and anchor (15.14 part B) | **deviation** (log: History: an opened row's links) |
 | How a row's person was identified | the identity board's table puts "host login" as a chip after the person in Who | in the opened row ("By … (host login, not verified)"), as the board's note says ("as today, in the expanded row") | **deviation** (log: History: how a row's person was identified) |
 | The fleet's own records | rows with no device read "fleet"; a commit is one row naming its devices | the same; but a golden commit that also writes a path outside `golden/` and `host_vars/` (here r3's first, which adopts it into the manifest) is drawn twice, as r3's golden and again as a fleet commit, "golden: 1 device(s) via capture" (`history-real`) | **deviation** (log: History: a device's first golden drawn again as a fleet commit (a defect, register C650 follow-up)) |
 | The earlier board (History.dc.html) | a Commits tab; a Workflow filter; a Baseline column; Re-apply this baseline… under a Save All | superseded by board D: Commits a kind (Commits only), Workflow folded into Kind, a baseline decision its own row; Re-apply… on the Baselines tab | **same** |

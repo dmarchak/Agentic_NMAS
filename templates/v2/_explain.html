@@ -34,5 +34,9 @@
 {%- endif %}
 {%- if x.recorded is defined and not x.recorded %}
   <p class="warn-text small">The record of AI calls could not be written, so History will not show this call.</p>
+{%- elif x.call_id %}
+  {#- The link to the call's own row (15.14's links both ways): its prompt as sent, the answer
+      as received, its tokens and cost. -#}
+  <p class="muted small explain-call"><a href="{{ url_for('v2.history_page', call=x.call_id) }}">This call in History</a> (${{ '%.4f' | format(x.cost_usd or 0) }})</p>
 {%- endif %}
 </div>

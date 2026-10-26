@@ -1,17 +1,34 @@
-{%- from "v2/_macros.html" import icon -%}
-{%- from "v2/_timeline.html" import timeline_rows -%}
+{%- from "v2/_macros.html" import icon, stamp -%}
+{%- from "v2/_timeline.html" import timeline_rows, timeline_page -%}
 {#- History's timeline card (C369; board D): THE reader's rows, filtered as the address says,
-    redrawn in place when a record lands. A cut list says how much it shows of how many. -#}
+    redrawn in place when a record lands. A cut list says how much it shows of how many.
+    15.14 part B: the page starts at the address's place (`before`, Load more's cursor, or
+    `on`, a day jumped to); Load more at the foot appends the next rows in place
+    (`page_only`: the rows and the next foot alone) and pushes the page's address with the
+    new place; `call` shows one AI call, opened (a feature's link to its row). -#}
+{#- Every filter its addresses keep, the route's one list (`_history_filters`' `keep`). -#}
+{%- set keep = dict(f.keep or []) -%}
+{%- set more_url = url_for('v2.history_timeline_more', before=h.next, **keep) if h.next else '' -%}
+{%- set page_url = url_for('v2.history_page', before=h.next, **keep) if h.next else '' -%}
+{%- if page_only %}
+{{ timeline_page(h, more_url=more_url, page_url=page_url, appended=True) }}
+{%- else %}
 <section class="card hist-timeline" id="hist-timeline"
-         hx-get="{{ url_for('v2.history_timeline', device=f.device, person=f.person, kind=f.kinds, since=f.since, limit=f.limit) }}"
+         hx-get="{{ url_for('v2.history_timeline', before=f.before or None, call=f.call or None, **keep) }}"
          hx-trigger="nmas:goldens from:body, nmas:deploy_job from:body, nmas:restarts from:body, nmas:acknowledgements from:body, nmas:rotation from:body, nmas:device_state from:body, nmas:inventory from:body, nmas:reveals from:body, nmas:netbox from:body, nmas:ai_calls from:body" hx-swap="outerHTML">
   {%- if f.error %}
   <div class="notice notice-warn">{{ icon('warn') }}<p>Not applied: {{ f.error }}.</p></div>
   {%- endif %}
-  {%- if not h.events and not h.errors %}
-  <p class="cov-head">{{ icon('info') }} Nothing matches{% if f.device %} device {{ f.device }}{% endif %}{% if f.person %}, person {{ f.person }}{% endif %}{% if f.kinds %}, the kinds chosen{% endif %}{% if f.since %} in the last {{ f.since }} day(s){% endif %}.</p>
+  {%- if f.call %}
+  {#- One AI call, opened: the link a feature's result draws to its call's row (15.14). -#}
+  <p class="muted small hist-count">{% if h.events %}One AI call, {{ f.call }}, opened{% else %}No AI call {{ f.call }} is recorded for this network{% endif %} · <a href="{{ url_for('v2.history_page', kind='ai_calls', since='') }}">Every AI call</a> · <a href="{{ url_for('v2.history_page') }}">Every record</a></p>
+  {%- elif not h.events and not h.errors %}
+  <p class="cov-head">{{ icon('info') }} Nothing matches{% if f.device %} device {{ f.device }}{% endif %}{% if f.person %}, person {{ f.person }}{% endif %}{% if f.kinds %}, the kinds chosen{% endif %}{% if f.since %} in the last {{ f.since }} day(s){% endif %}{% if f.before_at %} before {{ stamp(f.before_at) }}{% elif f.on %} on or before {{ f.on }}{% endif %}.{% if f.before or f.on %} <a href="{{ url_for('v2.history_page', **dict(keep, on=None)) }}">Back to the newest</a>{% endif %}</p>
   {%- elif h.events %}
-  <p class="muted small hist-count">{% if h.total > h.events | length %}Showing the newest {{ h.events | length }} of {{ h.total }} · <a href="{{ url_for('v2.history_page', device=f.device, person=f.person, kind=f.kinds, since=f.since, limit=h.limit * 2) }}">Show more</a>{% else %}{{ h.events | length }} record{{ 's' if h.events | length != 1 }}{% endif %}</p>
+  {#- Board D's count; the place a page starts at (Load more's, or a day jumped to) said with
+      the way back to the newest. -#}
+  <p class="muted small hist-count">Showing the {% if f.before_at %}{{ h.events | length }} before {{ stamp(f.before_at) }}{% elif f.on %}{{ h.events | length }} on or before {{ f.on }} (UTC){% else %}newest {{ h.events | length }}{% endif %}{% if h.total > h.events | length %} of {{ h.total }} read{% endif %}{% if h.more %} · Load more, at the foot, reads the next {{ h.limit }}{% endif %}{% if f.before or f.on %} · <a href="{{ url_for('v2.history_page', **dict(keep, on=None)) }}">Back to the newest</a>{% endif %}</p>
   {%- endif %}
-  {{ timeline_rows(h) }}
+  {{ timeline_rows(h, more_url=more_url, page_url=page_url, opened=f.call) }}
 </section>
+{%- endif %}

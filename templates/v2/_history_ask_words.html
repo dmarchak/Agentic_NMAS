@@ -21,7 +21,7 @@
   {{- ai.reason(aic) }}</div>
 </form>
 {%- if w and w.ok %}
-<div class="notice" role="status">{{ icon('info', 16) }}<p>Filled from your words ({{ q.words_model }}, ${{ '%.4f' | format(w.cost_usd) }}){% if w.test %}: {{ w.test }}{% endif %}.{% if w.today %} {{ w.today }}.{% endif %} Check the choices and the query below, then Ask.</p></div>
+<div class="notice" role="status">{{ icon('info', 16) }}<p>Filled from your words ({{ q.words_model }}, ${{ '%.4f' | format(w.cost_usd) }}{% if w.call_id %}, <a href="{{ url_for('v2.history_page', call=w.call_id) }}" title="The prompt as sent and the answer as received">this call in History</a>{% endif %}){% if w.test %}: {{ w.test }}{% endif %}.{% if w.today %} {{ w.today }}.{% endif %} Check the choices and the query below, then Ask.</p></div>
 {%- elif w and w.error == 'ask' %}
 <div class="notice" role="status">{{ icon('info', 16) }}<p>One question first: {{ w.clarify }} Add the answer to your words, then fill again.</p></div>
 {%- elif w and w.guide %}

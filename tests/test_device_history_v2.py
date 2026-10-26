@@ -57,7 +57,7 @@ class TestTheTimeline:
         full wording expands UNDER it at full width."""
         from modules import device_page
         long_note = "the redeploy was planned; the tool could not record a window until 30c2fd4"
-        monkeypatch.setattr(device_page, "history", lambda ref, dev, limit=None, kinds=None: {
+        monkeypatch.setattr(device_page, "history", lambda ref, dev, limit=None, kinds=None, before=None: {
             "events": [{"at": "2026-10-01T16:58:00Z", "kind": "restart",
                         "what": "Restarted as planned", "marks": ["corrected"],
                         "who": "alex (host login, not a verified identity)",

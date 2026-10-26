@@ -17,7 +17,12 @@
                  'credential': ('credential profile', 'muted'),
                  'expected': ('expected island', 'muted'), 'netbox': ('NetBox', 'muted'),
                  'grafana': ('Grafana', 'muted'), 'ai_call': ('AI call', 'muted')} -%}
-{%- macro timeline_rows(h, here='') -%}
+{#- The whole timeline: the states said once above the rows, the rows, and Load more at their
+    foot (15.14 part B). *more_url* is the next page's fragment (the rows older than the last
+    one shown, `h.next`) and *page_url* the page's own address with that place, pushed so Back
+    and a shared link return to it; *opened* an AI call's id drawn opened (a feature's link to
+    its row). -#}
+{%- macro timeline_rows(h, here='', more_url='', page_url='', opened='') -%}
   {#- A network with no repository yet (C957): the records its repository holds are a state,
       said once with what ends it (the header's words, C945), never "could not be read". -#}
   {%- if h.unborn %}
@@ -29,6 +34,16 @@
   {%- if h.events %}
   <div class="hist-list hist-tl">
     <div class="hist-head" aria-hidden="true"><span></span><span>When</span><span>Kind</span><span>Device</span><span>What</span><span>Who</span></div>
+    {{ timeline_page(h, here, more_url, page_url, opened) }}
+  </div>
+  {%- elif h.unreached %}
+  <p class="muted small tl-unreached">{{ icon('warn', 14) }} Nothing to draw here, but these could not be read far enough back to say whether they hold older records: {{ h.unreached | join('; ') }}.</p>
+  {%- endif %}
+{%- endmacro %}
+
+{#- One page of rows and the foot under them: what Load more appends in place of its own foot
+    (`page_only`), and what the first page draws inside the list. -#}
+{%- macro timeline_page(h, here='', more_url='', page_url='', opened='', appended=False) -%}
     {%- for e in h.events %}
     {%- set k = KIND.get(e.kind, (e.kind, 'muted')) %}
     {%- set failed = (e.kind == 'receipt' and e.outcome and e.outcome != 'deployed')
@@ -39,7 +54,9 @@
                      or (e.kind == 'netbox' and e.outcome in ('failed', 'partial'))
                      or (e.kind == 'grafana' and e.outcome == 'failed')
                      or (e.kind == 'ai_call' and e.outcome and e.outcome != 'ok') %}
-    <details class="hist-row tl-row" data-kind="{{ e.kind }}" data-keep="{{ e.kind }}:{{ e.at }}:{{ e.sha or e.devices_words }}">
+    {#- The row's id is its address (`#<id>`) and Load more's cursor (15.14 part B); an AI
+        call's is its own id, which a feature's "in History" link opens. -#}
+    <details class="hist-row tl-row" id="{{ e.id }}" data-kind="{{ e.kind }}" data-keep="tl-{{ e.id }}"{% if opened and e.call == opened %} open{% endif %}>
       <summary class="hist-sum"><span class="hist-when">{{ stamp(e.at) }}</span><span class="hist-kind">{{ badge(k[0], 'danger' if failed else 'warn' if e.pending else k[1]) }}</span>
         <span class="hist-dev{% if not e.devices %} muted{% endif %}">{{ e.devices_words }}</span>
         <span class="hist-what"><strong>{{ e.what }}</strong>{% for m in e.marks or [] %}<span class="tl-mark"> · {{ m }}</span>{% endfor %}</span>
@@ -54,17 +71,34 @@
         {%- if e.record %}<dl class="tl-record">{% for k2, v2 in e.record %}<dt>{{ k2 }}</dt><dd>{{ v2 }}</dd>{% endfor %}</dl>{% endif %}
         {%- set others = e.devices | reject('equalto', '*') | reject('equalto', here) | list %}
         {%- if others or e.sha or e.call %}<p class="small tl-links">
-          {%- for d in others %}<a href="{{ url_for('device_v2.device', name=d, tab='history') }}">Open {{ d }}'s History</a>{% if not loop.last or e.sha %} · {% endif %}{% endfor %}
+          {%- for d in others %}<a href="{{ url_for('device_v2.device', name=d, tab='history') }}">Open {{ d }}'s History</a>{% if not loop.last or e.sha or e.produced %} · {% endif %}{% endfor %}
+          {#- What an AI call's answer produced (15.14's links both ways): its last use row's page and anchor. -#}
+          {%- if e.produced %}<a href="{{ e.produced }}">Open what it produced</a>{% endif %}
           {#- An AI call's prompt as sent and answer as received (15.14), drawn when opened, as a commit's change is. -#}
           {%- if e.call %}<span id="ai-{{ e.call }}" class="tl-window"><button type="button" class="btn btn-small" hx-get="{{ url_for('v2.history_ai_call', call_id=e.call) }}" hx-target="#ai-{{ e.call }}" hx-swap="innerHTML">Show the prompt and the answer</button></span>{% endif %}
-          {%- if e.sha %}<span id="diff-{{ e.sha[:12] }}-{{ loop.index }}"><button type="button" class="btn btn-small" hx-get="{{ url_for('v2.history_commit', sha=e.sha) }}" hx-target="#diff-{{ e.sha[:12] }}-{{ loop.index }}" hx-swap="innerHTML">Show the change</button></span>{% endif %}
+          {#- Each window's id is its row's (15.14 part B): unique across the pages Load more appends. -#}
+          {%- if e.sha %}<span id="diff-{{ e.id }}"><button type="button" class="btn btn-small" hx-get="{{ url_for('v2.history_commit', sha=e.sha) }}" hx-target="#diff-{{ e.id }}" hx-swap="innerHTML">Show the change</button></span>{% endif %}
           {#- One device's golden version, revealed in place to a person and recorded (2026-10-10). -#}
           {%- set one = here or (e.devices[0] if e.devices | length == 1 and e.devices[0] != '*' else '') %}
-          {%- if e.kind == 'golden' and e.sha and one %} · <span id="rv-{{ e.sha[:12] }}-{{ loop.index }}"><button type="button" class="btn btn-small" data-op="history" hx-post="{{ url_for('device_v2.golden_reveal', name=one) }}" hx-vals='{{ {"ref": e.sha} | tojson }}' hx-target="#rv-{{ e.sha[:12] }}-{{ loop.index }}" hx-swap="innerHTML" hx-disabled-elt="this" title="A reveal: a verified person, recorded"{{ gate('reveal') }}><span class="op-idle">Reveal {{ one }}'s version…</span><span class="op-busy">Revealing…</span></button>{{ how('history', 'reveal', compact=True, op='a reveal') }}</span>{% endif %}</p>{% endif %}
+          {%- if e.kind == 'golden' and e.sha and one %} · <span id="rv-{{ e.id }}"><button type="button" class="btn btn-small" data-op="history" hx-post="{{ url_for('device_v2.golden_reveal', name=one) }}" hx-vals='{{ {"ref": e.sha} | tojson }}' hx-target="#rv-{{ e.id }}" hx-swap="innerHTML" hx-disabled-elt="this" title="A reveal: a verified person, recorded"{{ gate('reveal') }}><span class="op-idle">Reveal {{ one }}'s version…</span><span class="op-busy">Revealing…</span></button>{{ how('history', 'reveal', compact=True, op='a reveal') }}</span>{% endif %}</p>{% endif %}
       </div>
     </details>
     {%- endfor %}
-  </div>
-  {%- endif %}
-  {%- if h.cut %}<p class="muted small">Each store read its newest {{ h.limit }} ({{ h.cut | join(', ') }}): older entries are in the repository's history and the stores.</p>{% endif %}
+    {#- The foot (15.14 part B): Load more, busy on itself until its rows are drawn in its place;
+        or that nothing older is left; and any store this page could not read far enough back. -#}
+    <div class="tl-foot">
+      {#- An appended page's own unreadable stores, said where its rows land (the first page
+          says its own above the list). -#}
+      {%- if appended and h.errors %}
+      <p class="small warn-text">{{ icon('warn', 14) }} Not read for the records just loaded: {{ h.errors | join('; ') }}. They lack it, which is not the same as nothing having happened.</p>
+      {%- endif %}
+      {%- if h.unreached %}
+      <p class="muted small tl-unreached">{{ icon('warn', 14) }} Load more does not reach further back in {{ h.unreached | join('; ') }}: its older records are not on this page or the next.</p>
+      {%- endif %}
+      {%- if h.more and more_url %}
+      <p class="tl-more-row"><button type="button" class="btn btn-small tl-more-btn" hx-get="{{ more_url }}" hx-target="closest .tl-foot" hx-swap="outerHTML" hx-push-url="{{ page_url }}" hx-disabled-elt="this" title="The next {{ h.limit }} records older than {{ h.events[-1].at }}"><span class="op-idle">Load more</span><span class="op-busy">Loading…</span></button></p>
+      {%- elif not h.more %}
+      <p class="muted small tl-end">No older record{% if h.events %} than these{% endif %}.</p>
+      {%- endif %}
+    </div>
 {%- endmacro %}

@@ -2227,10 +2227,20 @@ kind filter. There is no separate tab.
     and fidelity records: docs/fidelity/history.md, tab-history.md);
   - a failed call, or one whose answer its feature refused, is drawn in danger.
 
+- **Built 2026-10-26 (part B):**
+  - the links both ways: Explain's answer ("This call in History") and Ask in words' filled
+    notice ("this call in History") link to `/v2/history?call=<id>`, that one call opened
+    however old; the row's "Open what it produced" opens its last use row's page and anchor
+    (only a page of Mercury's own), Ask in words' fill recording the builder's address with
+    every choice it filled;
+  - the paging below, for History and a device's History tab (which draws 50 now, 30
+    before): each row's id (an AI call's own id; any other the sha1 of its kind, time,
+    commit, devices and words), Load more's cursor `before=<time>~<id>`, Jump to's `on=`,
+    and the filters, all in the address (shots and fidelity records: docs/fidelity/history.md,
+    tab-history.md; tests/test_history_paging.py).
+
   **Not yet:**
-  - the links both ways (a feature's line to its row; the row to what it produced);
-  - the bodies' retention setting and its pruning (a later release, as above);
-  - the paging below (part B).
+  - the bodies' retention setting and its pruning (a later release, as above).
 
 **The timeline's paging (the operator, 2026-10-25), for History and for a device's History
 tab alike:**
@@ -2244,6 +2254,19 @@ tab alike:**
   to the same place.
 - **Scale.** At large-fleet scale, a test with many thousands of events checks that each load
   stays bounded, in time and in rows.
+- **As built (2026-10-26):**
+  - **The cursor.** Rows of one time keep their stores' order (git's, for commits within one
+    second), and the cursor resumes after its row's id among the rows of its time, so no
+    second's rows are lost or drawn twice at a page's edge.
+  - **Each source is asked for rows older than the cursor.** It keeps its rows at or before
+    the place before its newest-N cut (`_recent`, git's `--until`), so one read reaches any
+    depth. The five whose store's reader takes only a count (`UNPAGED`: receipts, app updates,
+    Show commands, Tier 2 and console runs) are read again for more when a page needs it: at
+    most 4 reads a source a load, 3,200 rows a read. A page past that names them under its
+    rows.
+  - **A kind filter reads only the sources that can hold its kinds** (`SOURCE_KINDS`).
+  - **Scale is measured as work counted, never time** (CLAUDE.md's performance rule): 6,000
+    events in each of two stores, every load 50 rows and at most 4 reads a source.
 
 ### 15.15 The network context model (the operator, 2026-10-25; in the sprint: it improves P1 Explain, and feature 7 needs it)
 

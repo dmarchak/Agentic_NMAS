@@ -267,14 +267,40 @@ def _history_filters(request) -> dict:
          "limit": a.get("limit", ""), "error": "",
          # 7.5's identity line: "unverified" keeps only the commits not signed in through the
          # access proxy; any other value is no filter.
-         "identity": "unverified" if a.get("identity") == "unverified" else ""}
+         "identity": "unverified" if a.get("identity") == "unverified" else "",
+         # 15.14 part B: the page's place (Load more's cursor, `before=<time>~<id>`), a day
+         # jumped to (`on=YYYY-MM-DD`), and one AI call by its id (a feature's link to its
+         # row), each in the address so Back and a shared link return to the same place.
+         "before": a.get("before", "").strip(), "on": a.get("on", "").strip(),
+         "call": a.get("call", "").strip()}
     errors = []
     for name in ("device", "person"):
         if f[name] and not _SAFE_NAME.match(f[name]):
             errors.append(f"the {name} filter {f[name]!r} is not a name")
             f[name] = ""
+    for name, parse in (("before", HS.parse_cursor), ("on", HS.parse_day)):
+        _place, err = parse(f[name])
+        if err:
+            errors.append(err)
+            f[name] = ""
+    f["before_at"] = f["before"].rpartition("~")[0]
+    if f["call"] and not _CALL_ID.match(f["call"]):
+        errors.append(f"the call {f['call'][:64]!r} is not an AI call's id")
+        f["call"] = ""
     f["error"] = "; ".join(errors + ([kind_error] if kind_error else []))
+    # Every filter the timeline's own addresses keep (its redraw, Load more's fragment and the
+    # page address it pushes, Back to the newest): one list, so none drops one (15.14 part B:
+    # Load more carries them all; the redraw had dropped `identity`). The address's own pairs,
+    # (name, value), a value None left out by `url_for`.
+    f["keep"] = [("device", f["device"] or None), ("person", f["person"] or None),
+                 ("kind", f["kinds"] or None), ("since", f["since"]),
+                 ("limit", f["limit"] or None), ("identity", f["identity"] or None),
+                 ("on", f["on"] or None)]
     return f
+
+
+#: An AI call's id (`modules/ai/calls.new_id`: "ai-" and hex), as the call filter takes it.
+_CALL_ID = re.compile(r"^ai-[0-9a-f]{1,32}$")
 
 
 #: What an uncommitted path is, by the folder it is in, and what clears it (C1136). Every write
@@ -380,7 +406,10 @@ def _history_timeline(ref, f, members) -> dict:
     h = HS.timeline(ref, device=f["device"], person=f["person"], kinds=f["kinds"],
                     since_days=f["since"],
                     limit=int(f["limit"]) if str(f["limit"]).isdigit() else HS.DEFAULT_LIMIT,
-                    members=members, unverified=f.get("identity") == "unverified")
+                    members=members, unverified=f.get("identity") == "unverified",
+                    before=HS.place(HS.parse_cursor(f.get("before"))[0],
+                                    HS.parse_day(f.get("on"))[0]),
+                    call=f.get("call", ""))
     # A filter not applied (`f["error"]`) is drawn by the timeline card as itself, "Not
     # applied: ...", never among the stores that could not be read: the rows are all there.
     return h
@@ -887,6 +916,21 @@ def history_timeline():
     return _strict(render_template("v2/_history_timeline.html",
                                    h=_history_timeline(ref, f, _history_members(ref)), f=f,
                                    kind_groups=HS.KIND_GROUPS))
+
+
+@bp.route("/history/timeline/more", methods=["GET"])
+def history_timeline_more():
+    """Load more (15.14 part B): the next rows older than the address's place (`before`, the
+    last row shown), filtered as the address says, appended in place under the rows shown,
+    with the next Load more. A read; its button pushes the History page's own address with
+    the same place, so Back and a shared link return to it."""
+    from flask import request
+
+    from modules.nsot import listref
+    ref = listref.active()
+    f = _history_filters(request)
+    return _strict(render_template("v2/_history_timeline.html", page_only=True,
+                                   h=_history_timeline(ref, f, _history_members(ref)), f=f))
 
 
 @bp.route("/history/ai-call/<call_id>", methods=["GET"])

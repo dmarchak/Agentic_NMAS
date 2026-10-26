@@ -93,11 +93,15 @@ intent is only onboarding's bootstrap has no Edit: seed it first. See
 
 The History page's timeline filtered to this device, over all time. It is the same reader
 drawing the same rows, so the two can never disagree; the link at the top opens the History page
-filtered to the device. It shows the newest 30 records; **Show more on the History page** opens
-the rest.
+filtered to the device. It shows the newest 50 records; **Load more**, under the last, reads
+the next 50 older than it and draws them in place (busy, "Loading…", until they arrive), and the
+device page's address takes the place it reached (`before=`), so Back and a shared link return
+there, with **Back to the newest** above the records. **Jump to** a day and **Go** start the tab
+at the end of that day (UTC; `on=`), keeping the kind chosen. Paging works as on the History
+page: [Load more and Jump to](history#timeline).
 
 Above the records, one click chooses a kind: **All**, **Goldens**, **Intent**, **Deploys and
-restores**, **Measured, unchanged** or **Restarts**. The kind is chosen before the newest 30 are
+restores**, **Measured, unchanged** or **Restarts**. The kind is chosen before the newest 50 are
 cut, so the device's goldens are all reachable under **Goldens** even when a daily Save All has
 written a newer "measured" row every day since. The choice is part of the page's address
 (`?tab=history&kind=golden`), so it survives a reload and can be shared, and the link to the

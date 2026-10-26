@@ -10,8 +10,11 @@ device, person, kind and time; a device's History tab IS it filtered to the devi
 rows by the same code (tests/test_history_one_timeline.py holds the two to the same rows).
 
 A source is ``fn(ctx) -> {"events", "errors", "cut"}``, *ctx* being ``{"ref", "device",
-"limit", "since", "members"}``: *device* "" for every device; *since* an epoch or None for all
-time; *members* the list's device names, for a store whose rows name no list. Each source
+"limit", "since", "members", "until", "call"}``: *device* "" for every device; *since* an epoch
+or None for all time; *members* the list's device names, for a store whose rows name no list;
+*until* the page's place (an epoch, or None for the newest), which a source keeps its rows at
+or before BEFORE its newest-*limit* cut (`_recent`; those that cannot are `UNPAGED`); *call*
+one AI call's id, or "". Each source
 reads its store ONCE for the request, whatever the number of devices (the enterprise-scale
 rule); a git source passes a device's paths to git itself. An event is ``{"at", "kind",
 "what", "devices", "who", "detail", "sha", "outcome", "marks", "record"}``: *devices* the
@@ -147,7 +150,16 @@ def _inventory(ref, members, device: str) -> tuple:
 
 
 def _recent(ctx, at) -> bool:
-    return ctx["since"] is None or epoch(at) >= ctx["since"]
+    """Within the read's window: at or after *since* (the Since filter), and at or before
+    *until* (the place a page starts, 15.14 part B: Load more's cursor or a jumped-to day).
+    A source that asks this BEFORE its newest-N cut reads its rows older than the cursor, so
+    its cut never hides an older record from the next page."""
+    if ctx.get("since") is None and ctx.get("until") is None:
+        return True
+    t = epoch(at)
+    if ctx.get("since") is not None and t < ctx["since"]:
+        return False
+    return ctx.get("until") is None or t <= ctx["until"]
 
 
 # ---------------------------------------------------------------------------- git records
@@ -171,6 +183,9 @@ def _log(ctx, paths, *extra, follow=False, count=None):
 
     count = count or ctx["limit"] + 1
     since = [f"--since=@{int(ctx['since'])}"] if ctx["since"] is not None else []
+    # The page's place (15.14 part B): git keeps the commits at or before it, before the count.
+    if ctx.get("until") is not None:
+        since.append(f"--until=@{int(ctx['until'])}")
     if follow:
         # ONE device's file followed across renames, as `golden_history` did; git refuses
         # --follow with --full-diff (2.53), so a second bounded read takes those commits' whole
@@ -623,11 +638,13 @@ def restarts(ctx):
     if rs["state"] == "unreadable":
         errors.append(f"the restart record could not be read: {rs.get('error', '')}")
     limit = ctx["limit"]
+    # The page's window before the newest-N cut (15.14 part B), so a cut hides no older row.
+    found = [r for r in rs["rows"] if _recent(ctx, r.get("at", ""))]
     try:
-        rows = _restarts.judged(rs["rows"][:limit], _restarts.planned_rows())
+        rows = _restarts.judged(found[:limit], _restarts.planned_rows())
     except RuntimeError as exc:
         errors.append(str(exc))
-        rows = rs["rows"][:limit]
+        rows = found[:limit]
     acks = _acks.read()
     if acks["state"] == "unreadable" and any(not r.get("planned") for r in rows):
         errors.append(f"the acknowledgement record could not be read: {acks.get('error', '')}")
@@ -656,7 +673,7 @@ def restarts(ctx):
         e["correction"] = r.get("planned_correction", "")
         events.append(e)
     return _out(events, errors,
-                [f"the restarts' newest {limit}"] if len(rs["rows"]) > limit else [])
+                [f"the restarts' newest {limit}"] if len(found) > limit else [])
 
 
 def restart_windows(ctx):
@@ -670,7 +687,8 @@ def restart_windows(ctx):
     events = []
     for w in reversed(rows):
         devices = w.get("devices") or []
-        if w.get("list") not in (ctx["ref"].name, None, ""):
+        if w.get("list") not in (ctx["ref"].name, None, "") or \
+                not _recent(ctx, w.get("recorded_at") or w.get("from")):
             continue
         # A window naming this network is its own; one naming none is told by its devices.
         mine = _mine if w.get("list") else _ours
@@ -728,7 +746,8 @@ def rotation(ctx):
         return _ours(ctx, r.get("device", ""))
 
     try:
-        rows = [r for r in cr.rotation_records_as_known() if mine(r)]
+        rows = [r for r in cr.rotation_records_as_known()
+                if mine(r) and _recent(ctx, r.get("at", ""))]
     except OSError as exc:
         return _out(errors=[f"the rotation record could not be read: {exc}"])
     events = []
@@ -769,7 +788,8 @@ def rotation(ctx):
 def retries(ctx):
     """Each authorised retry of a change that was rolled back (gitignored, so no commit)."""
     from modules.nsot import hostvars
-    rows = [r for r in hostvars.retry_log(ctx["ref"].repo_dir) if _mine(ctx, r.get("device", ""))]
+    rows = [r for r in hostvars.retry_log(ctx["ref"].repo_dir)
+            if _mine(ctx, r.get("device", "")) and _recent(ctx, r.get("at", ""))]
     return _out([_event(r.get("at", ""), "retry", "Retry authorised after a rollback",
                         [r.get("device", "")], who=r.get("actor", ""), detail=r.get("reason", ""),
                         record=[("Reason", r.get("reason")), ("The rollback it lifted", r.get("note"))])
@@ -782,7 +802,8 @@ def onboarding(ctx):
     got = onboard.read_runs(ctx["ref"].repo_dir)
     if got["state"] == "unreadable":
         return _out(errors=[f"the onboarding runs could not be read: {got.get('error', '')}"])
-    rows = [r for r in got["rows"] if _mine(ctx, r.get("device", ""))][:ctx["limit"]]
+    rows = [r for r in got["rows"] if _mine(ctx, r.get("device", ""))
+            and _recent(ctx, r.get("at", ""))][:ctx["limit"]]
     return _out([_event(r.get("at", ""), "onboarding",
                         f"{'Adopted' if r.get('kind') == 'adopt' else 'Onboarding ' + str(r.get('kind', 'run'))}"
                         f": {'done' if r.get('ok') else 'stopped'}", [r.get("device", "")],
@@ -826,7 +847,7 @@ def acknowledgements(ctx):
     hosts = None
     rows = []
     for r in got["rows"]:
-        if r.get("kind") in DRAWN_ELSEWHERE:
+        if r.get("kind") in DRAWN_ELSEWHERE or not _recent(ctx, r.get("at", "")):
             continue
         row_id = str(r.get("row", ""))
         if row_id.startswith("authorisations:") and not row_id.startswith(
@@ -874,7 +895,8 @@ def breakglass(ctx):
     for r in reversed(rows):
         held = list(r.get("devices") or {})
         v = (verdicts.get("by_sha") or {}).get(r.get("sha256") or "")
-        if r.get("list") != ctx["ref"].name or not any(_mine(ctx, d) for d in held):
+        if r.get("list") != ctx["ref"].name or not any(_mine(ctx, d) for d in held) \
+                or not _recent(ctx, r.get("at")):
             continue
         events.append(_event(r.get("at"), "breakglass",
                              f"Break-glass record exported ({len(held)} device"
@@ -891,7 +913,7 @@ def breakglass(ctx):
     done = bg.drills(config.DATA_DIR)
     if done["state"] == "unreadable":
         return _out(events, errors=[f"the break-glass drills could not be read: {done.get('error')}"])
-    for r in reversed(done["rows"][-ctx["limit"]:]):
+    for r in reversed([r for r in done["rows"] if _recent(ctx, r.get("at"))][-ctx["limit"]:]):
         if r.get("list") != ctx["ref"].name or ctx["device"]:
             continue
         events.append(_event(r.get("at"), "breakglass",
@@ -904,7 +926,7 @@ def breakglass(ctx):
     got = bg.checks(config.DATA_DIR)
     if got["state"] == "unreadable":
         return _out(events, errors=[f"the break-glass checks could not be read: {got.get('error')}"])
-    for r in reversed(got["rows"][-ctx["limit"]:]):
+    for r in reversed([r for r in got["rows"] if _recent(ctx, r.get("at"))][-ctx["limit"]:]):
         held = list(r.get("devices") or {})
         if r.get("list") != ctx["ref"].name or not any(_mine(ctx, d) for d in held):
             continue
@@ -929,7 +951,7 @@ def interrupted(ctx):
     from modules.nsot import device_ops
     try:
         rows = [r for r in device_ops.interrupted(ctx["ref"].name)
-                if _mine(ctx, r.get("device", ""))]
+                if _mine(ctx, r.get("device", "")) and _recent(ctx, r.get("started"))]
     except OSError as exc:
         return _out(errors=[f"the device holds could not be read: {exc}"])
     return _out([_event(r.get("started"), "interrupted",
@@ -951,7 +973,8 @@ def approvals(ctx):
         rows = approval_queue.read_list(ctx["ref"])
     except StoreUnreadable as exc:
         return _out(errors=[str(exc)])
-    rows = [r for r in rows if _mine(ctx, r.get("device_hostname", "")) and r.get("resolved_at")]
+    rows = [r for r in rows if _mine(ctx, r.get("device_hostname", "")) and r.get("resolved_at")
+            and _recent(ctx, r.get("resolved_at"))]
 
     def withdrawn(r):
         # C368: a withdrawal records `withdrawn_by` and its reason, never `resolved_by`, so it
@@ -1026,6 +1049,11 @@ def ai_calls(ctx):
     if ctx["device"]:
         rows = [r for r in rows if ctx["device"] in ((r.get("subject") or {}).get("devices")
                                                      or [])]
+    # One call by its id (a feature's link to its row, 15.14), and the page's window, both
+    # before the newest-N cut, so an old call is found and a page reads older calls.
+    if ctx.get("call"):
+        rows = [r for r in rows if r.get("id") == ctx["call"]]
+    rows = [r for r in rows if _recent(ctx, r.get("at"))]
 
     def what(r):
         verdict = r.get("verdict") or "?"
@@ -1046,21 +1074,44 @@ def ai_calls(ctx):
         return (f"{int(t.get('input_tokens') or 0)} in, {int(t.get('output_tokens') or 0)} "
                 f"out, cache {int(t.get('cache_creation_input_tokens') or 0)} written, "
                 f"{int(t.get('cache_read_input_tokens') or 0)} read") if t else "none (not sent)"
-    return _out([_event(r.get("at"), "ai_call", what(r),
-                        list((r.get("subject") or {}).get("devices") or []),
-                        who=r.get("actor", ""),
-                        detail=r.get("detail", "") or f"prompt {r.get('prompt', '?')}",
-                        outcome=outcome(r), call=r.get("id", ""),
-                        record=[("Call", r.get("id")), ("About", subject_words(r.get("subject"))),
-                                ("Prompt", r.get("prompt")), ("Schema", r.get("schema")),
-                                ("Model", r.get("model")), ("Tokens", tokens(r)),
-                                ("Cost", f"${float(r.get('cost_usd') or 0):.4f}"),
-                                ("Verdict", r.get("verdict")),
-                                ("Then", "; ".join(u.get("use", "") + (f" ({u['detail']})"
-                                                                       if u.get("detail") else "")
-                                                   for u in used.get(r.get("id")) or [])
-                                 or "nothing recorded")])
-                 for r in rows[:ctx["limit"]]])
+    def event(r):
+        e = _event(r.get("at"), "ai_call", what(r),
+                   list((r.get("subject") or {}).get("devices") or []),
+                   who=r.get("actor", ""),
+                   detail=r.get("detail", "") or f"prompt {r.get('prompt', '?')}",
+                   outcome=outcome(r), call=r.get("id", ""),
+                   record=[("Call", r.get("id")), ("About", subject_words(r.get("subject"))),
+                           ("Prompt", r.get("prompt")), ("Schema", r.get("schema")),
+                           ("Model", r.get("model")), ("Tokens", tokens(r)),
+                           ("Cost", f"${float(r.get('cost_usd') or 0):.4f}"),
+                           ("Verdict", r.get("verdict")),
+                           ("Then", "; ".join(u.get("use", "") + (f" ({u['detail']})"
+                                                                  if u.get("detail") else "")
+                                              for u in used.get(r.get("id")) or [])
+                            or "nothing recorded")])
+        # What the answer produced (15.14's links both ways): the last use row's page and
+        # anchor, drawn as "Open what it produced".
+        e["produced"] = produced((used.get(r.get("id")) or [{}])[-1].get("links"))
+        return e
+    return _out([event(r) for r in rows[:ctx["limit"]]],
+                cut=[f"the AI calls' newest {ctx['limit']}"] if len(rows) > ctx["limit"] else [])
+
+
+#: A use row's page is one of Mercury's own (`/v2/...`, a path and its query): any other value
+#: (another host, a scheme, a path outside v2) is not drawn as a link.
+_PRODUCED = re.compile(r"^/v2/[A-Za-z0-9/_.~%-]*(\?[A-Za-z0-9_.~%=&+-]*)?$")
+_ANCHOR = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
+
+
+def produced(links) -> str:
+    """The address of what an AI call's answer produced, from its use row's *links*
+    (``{"page", "anchor"}``): the page and ``#anchor``, or "" when the row names none or names
+    anything but a page of Mercury's own."""
+    links = links if isinstance(links, dict) else {}
+    page, anchor = str(links.get("page") or ""), str(links.get("anchor") or "")
+    if not _PRODUCED.match(page):
+        return ""
+    return page + (f"#{anchor}" if _ANCHOR.match(anchor) else "")
 
 
 def credential_profiles(ctx):
@@ -1835,44 +1886,257 @@ def _from_reuse(events: list, device: str, reused: dict) -> list:
     return kept
 
 
+# ---------------------------------------------------------------------------- paging (15.14 B)
+# The operator, 2026-10-25: "Load more" fetches the next 50 older than the last one shown, by a
+# keyset cursor on the time and the id, never an offset or page numbers, so rows that arrive
+# meanwhile do not shift it; a jump to a day starts there; the filters apply on the server and
+# combine with both; the cursor and the filters live in the address.
+
+#: Each source's event kinds: a kind filter asks only the sources that can hold its kinds, so a
+#: load filtered to Goldens reads no other store (and its cut cannot send the reader back to a
+#: store none of whose rows it keeps). A source absent here is read for every filter;
+#: tests/test_history_paging.py holds every source's rows to the kinds named here.
+SOURCE_KINDS = {
+    "golden": ("golden",), "intent": ("intent",), "measured": ("measured",),
+    "commits": ("commit",), "decisions": ("decision",), "receipts": ("receipt",),
+    "restarts": ("restart",), "restart_windows": ("window",), "rotation": ("rotation", "persist"),
+    "retries": ("retry",), "onboarding": ("onboarding",), "acknowledgements": ("acknowledged",),
+    "breakglass": ("breakglass",), "interrupted": ("interrupted",), "approvals": ("approval",),
+    "updates": ("update",), "show_commands": ("show_commands",), "privileged": ("privileged",),
+    "reloads": ("reload",), "console_ztp": ("console",), "credential_profiles": ("credential",),
+    "topology_expected": ("expected",), "topology_layout": ("layout",), "saved_views": ("view",),
+    "reveals": ("reveal",), "host_keys": ("hostkey",), "netbox": ("netbox",),
+    "grafana_writes": ("grafana",), "heartbeat_windows": ("heartbeat",), "ai_calls": ("ai_call",),
+}
+
+#: The sources that cannot be asked for rows older than a page's place, each with why: their
+#: store's reader takes only a newest-N count. The reader asks them again for more (`GROWTH`
+#: times as many, at most `ROUNDS` reads a load, never past `MAX_READ` rows), and a page that
+#: needed more than that says so by name. Every other source keeps its rows at or before the
+#: place (`_recent`, or git's ``--until``) BEFORE its newest-N cut, so one read reaches as far
+#: back as the place is.
+UNPAGED = {
+    "receipts": "the receipts' reader (`receipts.read`) returns its newest N rows",
+    "updates": "the updater's record (`update_op.history`) returns its newest N lines",
+    "show_commands": "the runs' reader (`reads.runs`) stops at its newest N run files",
+    "privileged": "the Tier 2 runs' reader (`privileged.runs`) stops at its newest N run files",
+    "console_ztp": "the console runs' reader (`console_ztp.runs`) stops at its newest N files",
+}
+#: At most this many reads of one source for one load (the first, and three asking for more).
+ROUNDS = 4
+#: Each further read asks for this many times the rows of the one before.
+GROWTH = 4
+#: No read of one source asks for more rows than this (50 rows, grown three times).
+MAX_READ = DEFAULT_LIMIT * GROWTH ** (ROUNDS - 1)
+
+_CURSOR_ID = re.compile(r"^[A-Za-z0-9_-]{0,80}$")
+_DAY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def row_id(e: dict) -> str:
+    """A row's stable id, its address on the page (``#<id>``) and the second half of the
+    cursor: an AI call's own id (``ai-<hex>``, 15.14's link to its row); any other row the sha1
+    of what makes it that row (kind, time, commit, devices, what). The same record read again
+    has the same id."""
+    call = re.sub(r"[^A-Za-z0-9_-]", "", str(e.get("call") or ""))[:64]
+    if call:
+        return call if call.startswith("ai-") else f"ai-{call}"
+    import hashlib
+    key = "\x1f".join([e.get("kind", ""), e.get("at", ""), e.get("sha", ""),
+                       ",".join(e.get("devices") or []), e.get("what", "")])
+    return "r-" + hashlib.sha1(key.encode("utf-8", "replace")).hexdigest()[:16]
+
+
+def parse_cursor(text: str) -> tuple:
+    """``(cursor, error)`` from an address's ``before=<time>~<id>`` (Load more's): *cursor*
+    ``(epoch, id)``, the page holding the rows older than it; None and the reason when it is
+    not a time and an id (the filter then is not applied, and the page says so)."""
+    from datetime import datetime
+    text = str(text or "")
+    if not text:
+        return None, ""
+    at, sep, rid = text.rpartition("~")
+    try:
+        when = datetime.fromisoformat(at.replace("Z", "+00:00"))
+    except ValueError:
+        when = None
+    if not sep or when is None or not _CURSOR_ID.match(rid):
+        return None, f"the place {text[:80]!r} is not a time and a row (Load more's before=)"
+    if when.tzinfo is None:
+        return None, f"the place {text[:80]!r} names no time zone"
+    return (when.timestamp(), rid), ""
+
+
+def parse_day(text: str) -> tuple:
+    """``(cursor, error)`` from an address's ``on=YYYY-MM-DD`` (Jump to): the page holds the
+    rows at or before the END of that day, UTC (the cursor is the next midnight, which no row
+    at it passes)."""
+    from datetime import datetime, timedelta, timezone
+    text = str(text or "")
+    if not text:
+        return None, ""
+    try:
+        day = datetime.strptime(text, "%Y-%m-%d").replace(tzinfo=timezone.utc) \
+            if _DAY.match(text) else None
+    except ValueError:
+        day = None
+    if day is None:
+        return None, f"the day {text[:40]!r} is not a date (YYYY-MM-DD)"
+    return ((day + timedelta(days=1)).timestamp(), ""), ""
+
+
+def after(events: list, cursor) -> list:
+    """The rows of *events* (in the timeline's order: newest first, rows of one time in the
+    order their stores hold them, which a read gives the same each time) that come after
+    *cursor*, ``(epoch, id)``: every row older than its time, and of the rows AT its time those
+    after the row with its id. Git's commits within one second keep git's order this way (a
+    sort by id would shuffle them). A cursor whose row is no longer among them (or a day's,
+    whose id is "") keeps the rows at its time whose id sorts below it."""
+    t, rid = cursor
+    at_t = [e["id"] for e in events if epoch(e["at"]) == t]
+    later = set(at_t[at_t.index(rid) + 1:]) if rid in at_t else {i for i in at_t if i < rid}
+    return [e for e in events if epoch(e["at"]) < t
+            or (epoch(e["at"]) == t and e["id"] in later)]
+
+
+def place(*cursors):
+    """The earliest of the places given (a jumped-to day and Load more's cursor together:
+    the page starts at whichever is further back), or None."""
+    given = [c for c in cursors if c]
+    return min(given) if given else None
+
+
+def _read(name, source, ctx) -> dict:
+    """One read of one source: its rows, each given its id, and whether the store holds more
+    than it returned (*more*: it said it was cut, or it returned as many rows as it was asked
+    for, which is a truncated read), and the oldest row it returned (*floor*; with none
+    returned and more held, nothing below is known: +inf)."""
+    try:
+        got = source(ctx)
+    except Exception as exc:                          # noqa: BLE001
+        log.warning("history: source %s failed: %s", name, exc)
+        return {"events": [], "errors": [f"the {name.replace('_', ' ')} record could not be "
+                                         f"read ({type(exc).__name__}: {exc})"],
+                "cut": [], "unborn": [], "more": False, "floor": None}
+    events = list(got.get("events") or [])
+    for e in events:
+        e["id"] = row_id(e)
+    more = bool(got.get("cut")) or len(events) >= ctx["limit"]
+    floor = min((epoch(e["at"]) for e in events), default=float("inf") if more else None)
+    # The last row the store returned at its oldest time: rows it did not return come after it.
+    last = [e["id"] for e in events if epoch(e["at"]) == floor][-1:] or [""]
+    return {"events": events, "errors": list(got.get("errors") or []),
+            "cut": list(got.get("cut") or []), "unborn": list(got.get("unborn") or []),
+            "more": more, "floor": floor, "last": last[0]}
+
+
+def _short(r: dict, horizon: float, page_last: str) -> bool:
+    """Whether read *r* stopped short of the page: its store holds rows it did not return, and
+    those can sort inside the page, above its *horizon* (the last row's time). At the horizon's
+    own time only when the page's last row is not this store's own last one returned (its
+    unreturned rows of that time come after its returned ones, so after the page)."""
+    if not r["more"] or r["floor"] is None:
+        return False
+    return r["floor"] > horizon or (r["floor"] == horizon and r["last"] != page_last)
+
+
 def timeline(ref, device: str = "", person: str = "", kinds=None, since_days: str = "",
-             limit: int = DEFAULT_LIMIT, members=None, unverified: bool = False) -> dict:
-    """THE reader (C369): ``{"events", "errors", "cut", "limit", "total", "people",
-    "counts"}``, newest first. Both the History page and a device's History tab call it; the
-    tab with *device* set. *kinds*: KIND_FILTERS keys to keep (None or empty: every kind);
-    *since_days*: "" for all time. *people* and *counts* are of the rows before the person and
-    kind filters, for the filters' choices. *members*: the list's devices as its caller read
-    them (an empty network's is ``[]``, which keeps none of another network's rows); None
-    reads the inventory here, for the stores every network shares (`SHARED_BY_DEVICE`, C1028),
-    and filters no device out of the network's own. *unborn*: the records that
-    live in the network's repository, for a network with no repository yet (C957): drawn as
-    that state, once, never as errors."""
+             limit: int = DEFAULT_LIMIT, members=None, unverified: bool = False,
+             before=None, call: str = "") -> dict:
+    """THE reader (C369): ``{"events", "errors", "unreached", "unborn", "limit", "total",
+    "more", "next", "people", "counts", "identity"}``, newest first. Both the History page and a
+    device's History tab call it; the tab with *device* set. *kinds*: KIND_FILTERS keys to keep
+    (None or empty: every kind); *since_days*: "" for all time. *people* and *counts* are of
+    the rows before the person and kind filters, for the filters' choices. *members*: the
+    list's devices as its caller read them (an empty network's is ``[]``, which keeps none of
+    another network's rows); None reads the inventory here, for the stores every network
+    shares (`SHARED_BY_DEVICE`, C1028), and filters no device out of the network's own.
+    *unborn*: the records that live in the network's repository, for a network with no
+    repository yet (C957): drawn as that state, once, never as errors.
+
+    **Paging (15.14 part B).** *before* is the page's place, ``(epoch, id)`` (`parse_cursor`,
+    `parse_day`, `place`): the page holds the newest *limit* rows older than it. Each source
+    is asked for its newest rows at or before the place (``ctx["until"]``), the keyset
+    (`after`: the time, then the row's id among the rows of that time) decides the rest, and
+    *next* is the last row's place, Load more's cursor, when *more* rows are older. Each source read its own newest N, so the page is exact once
+    every source that held more had reached back past the page's last row; one that had not
+    is read again with `GROWTH` times as many (at most `ROUNDS` reads a load, `MAX_READ` rows
+    a read), and one still short after that is named in *unreached*: older rows of it are not
+    on this page or the next, said, never drawn as none. *call*: one AI call by its id (a
+    feature's link to its row), whatever its age."""
     limit = max(1, min(int(limit or DEFAULT_LIMIT), MAX_LIMIT))
     since = (time.time() - int(since_days) * 86400) if str(since_days or "").isdigit() else None
+    if call:
+        since = None
     inventory, inventory_error = _inventory(ref, members, device or "")
     ctx = {"ref": ref, "device": device or "", "limit": limit, "since": since,
-           "members": set(members) if members is not None else None, "inventory": inventory}
-    events, errors, cut, unborn = [], [inventory_error] if inventory_error else [], [], []
-    for name, source in SOURCES.items():
-        try:
-            got = source(ctx)
-        except Exception as exc:                      # noqa: BLE001
-            log.warning("history: source %s failed: %s", name, exc)
-            errors.append(f"the {name.replace('_', ' ')} record could not be read "
-                          f"({type(exc).__name__}: {exc})")
-            continue
-        events += got.get("events") or []
-        errors += got.get("errors") or []
-        cut += got.get("cut") or []
-        unborn += got.get("unborn") or []
-    events = [e for e in events if _recent(ctx, e["at"])
-              and (not device or about(e, device))]
+           "members": set(members) if members is not None else None, "inventory": inventory,
+           "until": before[0] if before else None, "call": call or ""}
+    # The kind filter keeps its rows BEFORE the newest-*limit* cut below: each source read its
+    # own newest *limit*, so a golden older than the page's other rows is still found under
+    # "Goldens" (the operator's walk, 2026-10-18, B; tests/test_history_kind_filter.py).
+    wanted = {"ai_call"} if call else \
+        {k for key in (kinds or ()) for k in KIND_FILTERS.get(key, ())}
+    names = [n for n in SOURCES
+             if not wanted or n not in SOURCE_KINDS or wanted & set(SOURCE_KINDS[n])]
+    reused = name_reused(ref, device) if device else None
+    # A read at or before the place returns the row the cursor names too (the last one shown),
+    # which the keyset then leaves out: one more, so a page of *limit* is still read whole.
+    first = min(limit + 1, MAX_READ) if before else limit
+    asked, reads, pending = {n: first for n in names}, {}, list(names)
+    for n_round in range(1, ROUNDS + 1):
+        for name in pending:
+            reads[name] = _read(name, SOURCES[name], dict(ctx, limit=asked[name]))
+        events, people, counts = _kept(reads, ctx, device, person, wanted, unverified, call,
+                                       before, reused)
+        page = events[:limit]
+        # Below the page's last row (a full page), or the Since bound, a source's unread rows
+        # cannot change the page; above it, they can.
+        horizon = epoch(page[-1]["at"]) if len(page) >= limit else float("-inf")
+        if since is not None:
+            horizon = max(horizon, since)
+        page_last = page[-1]["id"] if len(page) >= limit else ""
+        pending = [n for n in names if _short(reads[n], horizon, page_last)]
+        if not pending or n_round == ROUNDS:
+            break
+        pending = [n for n in pending if asked[n] < MAX_READ]
+        for n in pending:
+            asked[n] = min(asked[n] * GROWTH, MAX_READ)
+        if not pending:
+            break
+    unreached = [n for n in names if _short(reads[n], horizon, page_last)]
+    errors = ([inventory_error] if inventory_error else []) + \
+        [x for n in names for x in reads[n]["errors"]]
+    unborn = [x for n in names for x in reads[n]["unborn"]]
+    # Older rows exist when this load kept more than a page, or a source holds rows it did not
+    # return that can still be inside the Since window (a source whose oldest row returned is
+    # older than Since has none left inside it).
+    more = len(events) > limit or any(
+        reads[n]["more"] and (since is None or reads[n]["floor"] >= since)
+        for n in names if n not in unreached)
+    # *total*: the rows this load kept, the page's and those past it (board D's "of 41"; the
+    # evidence pack's subset); never the store's own count, which paging does not read.
+    return {"events": page, "errors": errors, "unborn": unborn, "limit": limit,
+            "total": len(events),
+            "unreached": [f"the {n.replace('_', ' ')} record, read to its newest {asked[n]}"
+                          + (f" ({UNPAGED[n]})" if n in UNPAGED else "") for n in unreached],
+            "more": bool(more and page),
+            "next": f"{page[-1]['at']}~{page[-1]['id']}" if more and page else "",
+            "people": people, "counts": counts, "identity": identity(events)}
+
+
+def _kept(reads, ctx, device, person, wanted, unverified, call, before, reused) -> tuple:
+    """``(events, people, counts)``: every row read, filtered as the address says, newest
+    first, and after the page's place (`after`). Each row is a copy, so a read kept from an
+    earlier round is filtered again unchanged."""
+    events = [dict(e) for r in reads.values() for e in r["events"]]
+    events = [e for e in events if _recent(ctx, e["at"]) and (not device or about(e, device))]
     # A name onboarded again starts its history at the name's retirement (C1420): the device
     # view only; History of every device keeps every row.
-    reused = name_reused(ref, device) if device else None
     if reused:
         events = _from_reuse(events, device, reused)
     for e in events:
+        e.setdefault("id", row_id(e))
         # The row's ONE line (the operator, 2026-10-02): what, its marks and the person's short
         # name; the full wording, who with how they were identified, expands under the row.
         e["who_short"] = short_who(e.get("who", ""))
@@ -1883,16 +2147,14 @@ def timeline(ref, device: str = "", person: str = "", kinds=None, since_days: st
         counts[e["kind"]] = counts.get(e["kind"], 0) + 1
     if person:
         events = [e for e in events if e["who_short"] == person]
-    # The kind filter keeps its rows BEFORE the newest-*limit* cut below: each source read its
-    # own newest *limit*, so a golden older than the page's other rows is still found under
-    # "Goldens" (the operator's walk, 2026-10-18, B; tests/test_history_kind_filter.py).
-    wanted = {k for key in (kinds or ()) for k in KIND_FILTERS.get(key, ())}
     if wanted:
         events = [e for e in events if e["kind"] in wanted]
+    if call:
+        events = [e for e in events if e.get("call") == call]
     if unverified:
         events = [e for e in events if "verified" in e and e["verified"] != "access"]
+    # Newest first; rows of one time keep their stores' order (a stable sort), as before paging.
     events.sort(key=lambda e: epoch(e["at"]), reverse=True)
-    return {"events": events[:limit], "errors": errors, "cut": cut, "unborn": unborn,
-            "limit": limit,
-            "total": len(events), "people": people, "counts": counts,
-            "identity": identity(events)}
+    if before:
+        events = after(events, before)
+    return events, people, counts

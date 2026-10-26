@@ -582,8 +582,19 @@ def metrics(list_name: str, question: str, *, actor: str, send=None, client=None
                        "refused it" if n is None else
                        f"the test run answers {n} series now")
     calls.record_use(got["call_id"], "filled the builder", actor=actor,
-                     detail="; ".join(out["errors"])[:200], links=links)
+                     detail="; ".join(out["errors"])[:200],
+                     links=_filled_links(links, "/v2/history/query/ask/metrics", view))
     return out
+
+
+def _filled_links(links: dict, page: str, view: dict) -> dict:
+    """A fill's use row's links (15.14: the call's History row links to what it produced): the
+    builder's address with every choice the answer filled (the view's own `qs`), else the
+    builder's page as *links* names it."""
+    try:
+        return dict(links, page=page + view["qs"]())
+    except Exception:                                  # noqa: BLE001 - the page alone
+        return links
 
 
 # ---------------------------------------------------------------------------- the logs half
@@ -812,5 +823,6 @@ def logs(list_name: str, question: str, *, actor: str, send=None, client=None,
                        "refused it" if n is None else
                        f"the test run matches {n} line(s) over the range")
     calls.record_use(got["call_id"], "filled the builder", actor=actor,
-                     detail="; ".join(out["errors"])[:200], links=links)
+                     detail="; ".join(out["errors"])[:200],
+                     links=_filled_links(links, "/v2/history/query/ask/logs", view))
     return out

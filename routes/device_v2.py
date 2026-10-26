@@ -167,11 +167,24 @@ def _history_ctx(ref, dev):
     """The tab's timeline, filtered by the address's ``kind`` (the operator's walk, 2026-10-18,
     B: a golden older than the newest 30 rows is reached in one click, the reader filtering
     before its cut); a kind it does not know is ignored and said by name."""
-    from modules import history_sources
+    from modules import history_sources as HS
 
-    kinds, kind_error = history_sources.kind_filter(request.args.getlist("kind"))
-    return {"device": dev, "h": device_page.history(ref, dev, kinds=kinds), "kinds": kinds,
-            "kind_error": kind_error, "quick_kinds": history_sources.QUICK_KINDS}
+    kinds, kind_error = HS.kind_filter(request.args.getlist("kind"))
+    # 15.14 part B: the page's place, Load more's (`before=<time>~<id>`) or a day jumped to
+    # (`on=YYYY-MM-DD`), in the address as the History page's are; one that is not a place is
+    # not applied and said with the kind's.
+    errors = [kind_error] if kind_error else []
+    before, err = HS.parse_cursor(request.args.get("before", "").strip())
+    if err:
+        errors.append(err)
+    on, err = HS.parse_day(request.args.get("on", "").strip())
+    if err:
+        errors.append(err)
+    return {"device": dev, "kinds": kinds, "kind_error": "; ".join(errors),
+            "h": device_page.history(ref, dev, kinds=kinds, before=HS.place(before, on)),
+            "before": request.args.get("before", "").strip() if before else "",
+            "on": request.args.get("on", "").strip() if on else "",
+            "quick_kinds": HS.QUICK_KINDS}
 
 
 def _monitored_by(ref, dev) -> dict:
@@ -628,6 +641,18 @@ def history(name):
         return refusal
     ref, dev = found
     return _strict(render_template("v2/_history.html", **_history_ctx(ref, dev)))
+
+
+@bp.route("/device/<name>/history/more", methods=["GET"])
+def history_more(name):
+    """The History tab's Load more (15.14 part B): the device's next rows older than the
+    address's place (`before`), appended in place under the rows shown, with the next Load
+    more; its button pushes the device page's own address with the same place. A read."""
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    return _strict(render_template("v2/_history.html", page_only=True, **_history_ctx(ref, dev)))
 
 
 @bp.route("/device/<name>/intent", methods=["GET"])

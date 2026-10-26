@@ -38,7 +38,7 @@
           {%- endfor %}
         </fieldset>
         {%- endfor %}
-        <p class="small"><a href="{{ url_for('v2.history_page', device=f.device, person=f.person, since=f.since) }}">Every kind</a> · <a href="{{ url_for('v2.history_page', device=f.device, person=f.person, since=f.since, kind='commits') }}">Commits only</a> <span class="muted">· each a filter in the address, so a view is a link</span></p>
+        <p class="small"><a href="{{ url_for('v2.history_page', device=f.device, person=f.person, since=f.since, on=f.on or None) }}">Every kind</a> · <a href="{{ url_for('v2.history_page', device=f.device, person=f.person, since=f.since, on=f.on or None, kind='commits') }}">Commits only</a> <span class="muted">· each a filter in the address, so a view is a link</span></p>
       </div>
     </details>
   </div>
@@ -46,15 +46,19 @@
     <select name="since">
       {%- for v, words in since_choices %}<option value="{{ v }}"{% if v == f.since %} selected{% endif %}>{{ words }}</option>{% endfor %}
     </select></label>
+  {#- Jump to a day (15.14 part B): the timeline starts at the end of that day, UTC, with every
+      other filter; Load more then reads back from there. -#}
+  <label class="hist-filter"><span class="muted small">Jump to</span>
+    <input type="date" name="on" value="{{ f.on }}" aria-label="Start the timeline at the end of this day (UTC)"></label>
   {%- if f.identity %}<input type="hidden" name="identity" value="{{ f.identity }}">{% endif %}
   <button type="submit" class="btn">Show</button>
 </form>
 {# The kinds one click away, Goldens first (the operator's walk, 2026-10-18, B): each a link
     keeping the other filters, the reader filtering before its newest-N cut. -#}
 <div class="seg hist-quick" role="group" aria-label="Kind">
-  <a class="seg-btn{% if not f.kinds %} on{% endif %}" aria-pressed="{{ 'true' if not f.kinds else 'false' }}" href="{{ url_for('v2.history_page', device=f.device or None, person=f.person or None, since=f.since) }}">All</a>
+  <a class="seg-btn{% if not f.kinds %} on{% endif %}" aria-pressed="{{ 'true' if not f.kinds else 'false' }}" href="{{ url_for('v2.history_page', device=f.device or None, person=f.person or None, since=f.since, on=f.on or None) }}">All</a>
   {%- for key, words in quick_kinds %}
-  <a class="seg-btn{% if f.kinds == [key] %} on{% endif %}" aria-pressed="{{ 'true' if f.kinds == [key] else 'false' }}" href="{{ url_for('v2.history_page', device=f.device or None, person=f.person or None, since=f.since, kind=key) }}">{{ words }}</a>
+  <a class="seg-btn{% if f.kinds == [key] %} on{% endif %}" aria-pressed="{{ 'true' if f.kinds == [key] else 'false' }}" href="{{ url_for('v2.history_page', device=f.device or None, person=f.person or None, since=f.since, on=f.on or None, kind=key) }}">{{ words }}</a>
   {%- endfor %}
 </div>
 {#- 7.5's identity line (board HistoryIdentity, canvas v112): the commits in the window the

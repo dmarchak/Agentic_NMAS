@@ -187,6 +187,10 @@ NOT_AN_OPERATION = {
     ("_timeline.html", "Show the change"): "reads one commit's masked change",
     ("_timeline.html", "Show the prompt and the answer"): "reads one AI call's masked prompt "
                                                           "and its answer (15.14)",
+    ("_timeline.html", "Load more"): "reads the timeline's next rows older than the last one "
+                                     "shown and draws them under it (15.14 part B)",
+    ("_history.html", "Go"): "starts a device's History tab at the end of the day chosen, a "
+                             "read (15.14 part B)",
     ("_actions_menu.html", "Actions"): "opens the actions menu; each row carries its own link",
     ("_devices.html", "Actions"): "opens the Devices selection's actions menu; each row carries "
                                   "its own link (C593, board A)",

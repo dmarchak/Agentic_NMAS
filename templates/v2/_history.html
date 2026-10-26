@@ -1,28 +1,51 @@
-{%- from "v2/_macros.html" import icon, info -%}
-{%- from "v2/_timeline.html" import timeline_rows -%}
+{%- from "v2/_macros.html" import icon, info, stamp -%}
+{%- from "v2/_timeline.html" import timeline_rows, timeline_page -%}
 {#- The device page's History (NSOT_GUI_BRIEF 3.3; board D, signed off 2026-10-03, C369): the
     History page's timeline filtered to this device, all time: the same reader
     (history_sources.timeline) and the same drawing (_timeline.html), so one can never show what
     the other lacks. The kinds one click away, Goldens first (the operator's walk, 2026-10-18,
-    B): the reader filters before its newest-30 cut, and the choice is in the address. -#}
+    B): the reader filters before its newest-N cut, and the choice is in the address.
+    15.14 part B: the newest 50, Load more at the foot appending the next 50 in place
+    (`page_only`: the rows and the next foot alone) and pushing the device page's address with
+    the new place (`before`); Jump to starts at the end of a day (`on`). -#}
 {%- set kind_words = (quick_kinds | selectattr(0, 'in', kinds) | map(attribute=1) | list) if kinds else [] -%}
-<section class="card history" id="history" hx-get="{{ url_for('device_v2.history', name=device.hostname, kind=kinds or None) }}"
+{%- set more_url = url_for('device_v2.history_more', name=device.hostname, kind=kinds or None, on=on or None, before=h.next) if h.next else '' -%}
+{%- set page_url = url_for('device_v2.device', name=device.hostname, tab='history', kind=kinds or None, on=on or None, before=h.next) if h.next else '' -%}
+{%- if page_only %}
+{{ timeline_page(h, here=device.hostname, more_url=more_url, page_url=page_url, appended=True) }}
+{%- else %}
+<section class="card history" id="history" hx-get="{{ url_for('device_v2.history', name=device.hostname, kind=kinds or None, on=on or None, before=before or None) }}"
          hx-trigger="nmas:goldens from:body, nmas:deploy_job from:body, nmas:restarts from:body, nmas:acknowledgements from:body, nmas:rotation from:body, nmas:device_state from:body, nmas:inventory from:body, nmas:reveals from:body" hx-swap="outerHTML">
 <p class="tab-help">{{ info('device-page', 'history-tab', 'About this tab') }} <a class="small" href="{{ url_for('v2.history_page', device=device.hostname, since='', kind=kinds or None) }}">The fleet's timeline, filtered to {{ device.hostname }}</a></p>
 <div class="seg hist-quick" role="group" aria-label="Kind">
-  <a class="seg-btn{% if not kinds %} on{% endif %}" aria-pressed="{{ 'true' if not kinds else 'false' }}" href="{{ url_for('device_v2.device', name=device.hostname, tab='history') }}">All</a>
+  <a class="seg-btn{% if not kinds %} on{% endif %}" aria-pressed="{{ 'true' if not kinds else 'false' }}" href="{{ url_for('device_v2.device', name=device.hostname, tab='history', on=on or None) }}">All</a>
   {%- for key, words in quick_kinds %}
-  <a class="seg-btn{% if kinds == [key] %} on{% endif %}" aria-pressed="{{ 'true' if kinds == [key] else 'false' }}" href="{{ url_for('device_v2.device', name=device.hostname, tab='history', kind=key) }}">{{ words }}</a>
+  <a class="seg-btn{% if kinds == [key] %} on{% endif %}" aria-pressed="{{ 'true' if kinds == [key] else 'false' }}" href="{{ url_for('device_v2.device', name=device.hostname, tab='history', kind=key, on=on or None) }}">{{ words }}</a>
   {%- endfor %}
 </div>
+{#- Jump to a day (15.14 part B): the tab starts at the end of that day, UTC, keeping the kind;
+    the device page's own address, so Back and a shared link return to it. -#}
+<form class="hist-jump" method="get" action="{{ url_for('device_v2.device', name=device.hostname) }}">
+  <input type="hidden" name="tab" value="history">
+  {%- if kinds %}<input type="hidden" name="kind" value="{{ kinds | first }}">{% endif %}
+  <label class="hist-filter"><span class="muted small">Jump to</span>
+    <input type="date" name="on" value="{{ on }}" aria-label="Start the tab at the end of this day (UTC)"></label>
+  <button type="submit" class="btn btn-small">Go</button>
+</form>
   {%- if kind_error %}
   <div class="notice notice-warn">{{ icon('warn') }}<p>Not applied: {{ kind_error }}.</p></div>
   {%- endif %}
   {%- if not h.events and not h.errors and kinds %}
-  <p class="cov-head">{{ icon('info') }} No record of the kind chosen ({{ kind_words | join(', ') if kind_words else kinds | join(', ') }}) for {{ device.hostname }}. <a href="{{ url_for('device_v2.device', name=device.hostname, tab='history') }}">Every kind</a></p>
+  <p class="cov-head">{{ icon('info') }} No record of the kind chosen ({{ kind_words | join(', ') if kind_words else kinds | join(', ') }}) for {{ device.hostname }}{% if before or on %} this far back{% endif %}. <a href="{{ url_for('device_v2.device', name=device.hostname, tab='history') }}">Every kind</a></p>
+  {%- elif not h.events and not h.errors and (before or on) %}
+  <p class="cov-head">{{ icon('info') }} Nothing is recorded for {{ device.hostname }} {% if on and not before %}on or before {{ on }}{% else %}before {{ stamp(before.rpartition('~')[0]) }}{% endif %}. <a href="{{ url_for('device_v2.device', name=device.hostname, tab='history', kind=kinds or None) }}">Back to the newest</a></p>
   {%- elif not h.events and not h.errors %}
   <p class="cov-head">{{ icon('info') }} Nothing is recorded for {{ device.hostname }} yet: no golden, no intent commit, no deploy.</p>
+  {%- elif before or on %}
+  <p class="muted small hist-count">Showing the {{ h.events | length }} {% if on and not before %}on or before {{ on }} (UTC){% else %}before {{ stamp(before.rpartition('~')[0]) }}{% endif %} · <a href="{{ url_for('device_v2.device', name=device.hostname, tab='history', kind=kinds or None) }}">Back to the newest</a></p>
+  {%- elif (h.total or 0) > h.events | length %}
+  <p class="muted small hist-count">Showing the newest {{ h.events | length }} of {{ h.total }} read · Load more, at the foot, reads the next {{ h.limit }}</p>
   {%- endif %}
-  {{ timeline_rows(h, here=device.hostname) }}
-  {%- if (h.total or 0) > h.events | length %}<p class="muted small">Showing the newest {{ h.events | length }} of {{ h.total }} · <a href="{{ url_for('v2.history_page', device=device.hostname, since='', kind=kinds or None, limit=h.limit * 2) }}">Show more on the History page</a></p>{% endif %}
+  {{ timeline_rows(h, here=device.hostname, more_url=more_url, page_url=page_url) }}
 </section>
+{%- endif %}

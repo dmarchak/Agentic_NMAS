@@ -939,8 +939,15 @@ input[type="checkbox"]:disabled + label, input[type="radio"]:disabled + label { 
    taller than the filters beside it), aligned on their bottoms under the labels. */
 .dev-filters { align-items: flex-end; }
 .dev-filters select, .dev-filters input[type="search"], .dev-filters input[type="text"],
-.dev-filters .hist-kinds-sum, .dev-filters > .btn {
+.dev-filters input[type="date"], .dev-filters .hist-kinds-sum, .dev-filters > .btn {
   height: 30px; box-sizing: border-box; font-size: 13px; }
+/* History's paging (15.14 part B): Jump to on a device's tab, and the timeline's foot (Load
+   more, or that nothing older is left), under the last row. */
+.hist-jump { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; margin: 0 0 12px; }
+.hist-jump input[type="date"], .hist-jump > .btn { height: 30px; box-sizing: border-box;
+  font-size: 13px; }
+.tl-foot { padding: 10px 0 2px; }
+.tl-foot > p { margin: 0 0 6px; }
 .dev-filters > .btn { padding: 0 14px; }
 .dev-filters .hist-kinds-sum { display: flex; align-items: center; }
 .dev-table td, .dev-table th { white-space: nowrap; }

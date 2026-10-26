@@ -17,7 +17,7 @@ Compared again 2026-10-11 (7.5's identity line): `_history_body.html` gained the
 Compared again 2026-10-12 (C708): History's Authorisations tab left the shared `_history_body.html`; its branch drew only at `?tab=authorisations`, so nothing this board draws moved.
 Compared again 2026-10-15 (board F3): `_history_body.html` gained the logs builder's branch, drawn only on its own page (`/v2/history/query/ask/logs`); the shots at 1440 and 390 retaken; nothing on this board's page moved.
 Compared again 2026-10-15 (board E3): `_history_body.html` gained the metrics builder's branch, drawn only on its own page (`/v2/history/query/ask/metrics`); the shots at 1440 and 390 retaken; nothing on this board's page moved.
-Templates sha256: `fa40e91b832453170ff5d22d740e80d54939fcf820cba3e1812894ebf63e0672`
+Templates sha256: `e2e6dbe76b6d98a38ca182ea13ce5df2d0ed95c671fa5c16e9b473e85bf4df0f`
 
 Compared again 2026-10-15 (P7-03): `_history_body.html` gained a `data-concept` marker and one
 sentence ("It claims: …") inside a Baselines row's detail, the block drawing each baseline's
@@ -35,6 +35,12 @@ unchanged, Restarts) under the Timeline tab's filters, inside the Timeline tab's
 this record's syslog view never draws. The page rendered on test_device_v2's lab from the
 templates as they were and as they are: every byte the same. No region here changed; the hash
 written again. Templates sha256 before: `a5a617a0a1ec0a6eb699ae4933514f151891627437bb2bfef6aabd469ff0bc92`.
+
+Compared again 2026-10-26 (15.14 part B): `_history_body.html` gained Jump to (a date field)
+in the Timeline tab's filter bar, and its Kind choices and Kind menu links keep the day (`on=`),
+all inside the Timeline tab's branch, which this record's syslog view never draws. Nothing
+this board's page draws moved; no region here changed; the hash written again.
+Templates sha256 before: `fa40e91b832453170ff5d22d740e80d54939fcf820cba3e1812894ebf63e0672`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).
