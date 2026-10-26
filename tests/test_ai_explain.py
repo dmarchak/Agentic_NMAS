@@ -373,6 +373,46 @@ def test_evidence_checked_that_was_not_read_is_couldnt_analyse(world):
     assert explain.check(answer, pack) == "", "empty was read: Loki answered, with nothing"
 
 
+def test_a_piece_s_own_state_is_what_it_describes_not_whether_it_was_read(world):
+    """C1761 (measured live, 2026-10-26: case 2's replay on v4 answered no fault found citing
+    r1's neighbours, and was refused, "cites 'neighbours:2', which was not read (up)"). An
+    adjacency's "up" and an alert's own state say what they describe; whether a piece was
+    read is its section's state."""
+    import copy
+    pack = copy.deepcopy(world.pack)
+    described = [p for name in ("alert", "neighbours", "intent")
+                 for p in _section(pack, name)["pieces"]
+                 if p.get("state") and p["state"] not in explain.READ_STATES]
+    assert {r["ref"].split(":")[0] for r in described} >= {"alert", "neighbours"}, \
+        "the floor: pieces whose own state is not a read state"
+    answer = explain.ExplanationV2.model_validate_json(
+        json.dumps(_no_fault(pack, checked=[p["ref"] for p in described])))
+    assert explain.check(answer, pack) == ""
+    neighbours = _section(pack, "neighbours")
+    neighbours["state"] = "unreadable"
+    first = next(p["ref"] for p in described if p["ref"].startswith("neighbours:"))
+    assert explain.check(answer, pack) == (
+        f"the evidence checked cites {first!r}, which was not read (unreadable)")
+
+
+def test_a_health_figure_is_read_when_it_was_measured(world):
+    """A health figure carries its own read state (C1761's one such section): one not measured
+    is not healthy evidence, though its section was read."""
+    import copy
+    pack = copy.deepcopy(world.pack)
+    health = {"ref": "health", "name": "health", "state": "ok", "pieces": [
+        {"ref": "health:dev:u1:cpu", "figure": "cpu", "state": "ok"},
+        {"ref": "health:dev:u1:scrapes", "figure": "scrapes", "state": "unreadable"}]}
+    pack["sections"] = [s for s in pack["sections"] if s["name"] != "health"] + [health]
+    ok = explain.ExplanationV2.model_validate_json(
+        json.dumps(_no_fault(pack, checked=["health:dev:u1:cpu"])))
+    assert explain.check(ok, pack) == ""
+    not_measured = explain.ExplanationV2.model_validate_json(
+        json.dumps(_no_fault(pack, checked=["health:dev:u1:scrapes"])))
+    assert explain.check(not_measured, pack) == (
+        "the evidence checked cites 'health:dev:u1:scrapes', which was not read (unreadable)")
+
+
 def test_no_fault_found_is_drawn_with_what_it_checked(world):
     from html import unescape
     world.answer = _no_fault(world.pack)

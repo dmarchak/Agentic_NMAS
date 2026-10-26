@@ -151,6 +151,28 @@ def resolve(pack: dict, ref: str):
     return None
 
 
+#: The sections whose pieces each carry a read state of their own (one of STATES): a health
+#: figure is measured or says why not. Every other piece's ``state`` is what it describes (an
+#: alert's, an adjacency's, an intent check's), never whether it was read (C1761).
+PIECES_READ_ON_THEIR_OWN = ("health",)
+
+
+def read_state(pack: dict, ref: str) -> str:
+    """Whether what *ref* names was read, one of STATES, or "" when it names nothing: a
+    section's own state; a piece's section's, and, in a section of
+    `PIECES_READ_ON_THEIR_OWN`, the piece's own when its section was read."""
+    for s in pack.get("sections") or []:
+        if s.get("ref") == ref:
+            return s.get("state") or ""
+        for p in s.get("pieces") or []:
+            if p.get("ref") == ref:
+                state = s.get("state") or ""
+                if state in ("ok", "empty") and s.get("name") in PIECES_READ_ON_THEIR_OWN:
+                    return p.get("state") or ""
+                return state
+    return ""
+
+
 # ----------------------------------------------------------------------------- sections
 
 def _now() -> float:

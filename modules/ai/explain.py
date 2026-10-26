@@ -292,7 +292,10 @@ def check(answer: "Explanation", pack: dict, topology_ids=(), sections=None) -> 
             return (f"the evidence checked cites {ref[:40]!r}, which is not in the pack"
                     + (" or the topology sent" if known else "")
                     + (" as sent" if EP.resolve(pack, ref) is not None else ""))
-        state = (piece or {}).get("state") or "ok"
+        # Whether it was read is its section's state (a health figure's own); a piece's own
+        # `state` is what it describes, an adjacency "up", an alert "alerting" (C1761). A
+        # topology id was read with the network's model.
+        state = EP.read_state(sent, ref) if piece is not None else "ok"
         if state not in READ_STATES:
             return f"the evidence checked cites {ref[:40]!r}, which was not read ({state})"
     if outcome == "no_fault_found":
