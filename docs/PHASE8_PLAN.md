@@ -2598,9 +2598,21 @@ walks it on s1.
     `tests/fixtures/ai_cases/intent_patch/names.json`.
 - **Built 2026-10-26 (C1775):** a deploy's receipt records the intent commit it rendered;
   History links AI call, intent commit and deploy receipt both ways (`?commit=<sha>`).
-- **Not yet:**
-  - part 1's cases measured live (after the deploy);
-  - observed endpoints (C1772, after parts 1 and 2, with the network context's order above).
+- **Live 2026-10-26 09:10 UTC (13505da8).** Confirmed on the host as the operator, in-process:
+  - the Intent tab draws Change it in words;
+  - the host-port ask draws Mercury's question with no call ($0);
+  - a chosen port drafts Commit this draft and Commit and plan deploy ($0.0081, nothing
+    committed);
+  - the deploy preview draws "nothing to send".
+- **Part 1 measured live, 2026-10-26 09:1x UTC** (13505da8, five runs; the stale-expectation
+  check first, 0 stale): **80 of 80 runs pass, 16 of 16 cases consistent**, latency p50 4.0 s,
+  **$0.1261** (65 calls, about $0.0019 each; case 16, the injection, the dearest at $0.0036 a
+  run).
+  - Cases 10 (the host port, choose), 14 (the port to an unknown host) and 15 (no such
+    interface) made **no call** in any run: no call id, $0. The record grew by exactly 65 rows
+    (1,301 to 1,366), the runs that called.
+- **Observed endpoints** were built afterwards (C1772, 0c23bf99), with the network context's
+  order above.
 
 ## 16. Industry-readiness roadmap (2026-10-25)
 

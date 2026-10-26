@@ -6,6 +6,32 @@ the operator sets it back to $1.50. If it is still above $1.50 after Sat 31 Oct,
 thing: Mercury cannot raise that reminder itself (C1751). Report AI spend in every status
 update meanwhile.**
 
+## THE SECOND OVERNIGHT ORDER, 2026-10-26 ~07:0x to ~09:3x UTC (the operator away)
+
+The operator's order: land what was in flight, deploy, measure Part 1, close Explain, then the
+network-context work. The full report is the operator's `2026-10-26-morning.md` (the laptop's
+reports folder).
+
+- **Live:** 13505da8, deployed 09:10 UTC, with feature 7's parts 1 and 2, C1775 and the day
+  boundary. Confirmed as the operator, in-process on the host: the Intent tab, the host-port
+  question (no call), a draft's commit form ($0.0081, nothing committed), and the deploy
+  preview.
+  - 8edc8959 (the coverage header, C1777) is green.
+  - 0c23bf99 (the endpoint layer C1772, and the needs helper) went red once on C1562's
+    flake and was re-run. It deploys when green, outside the backup window.
+- **Part 1 live, five runs:** 80 of 80 pass, 16 of 16 consistent, $0.1261. The choose and
+  no-match cases made no call: the record grew by exactly the 65 calling runs.
+- **Explain:** v4 kept by the operator's rule. Tuning is closed.
+- **The day cap** resets 00:00 UTC (18:00 MDT; 17:00 MST from 1 Nov).
+- **Spend:** about $5.52 of $10 on 2026-10-26.
+- **Waiting on the operator:**
+  - walk 1 (feature 7 on s1, then the revert and the three links);
+  - the coverage prompt line and C1780's wiring, one post-sprint prompt version
+    (recommended);
+  - a board for "Which port is h1 on?";
+  - C1779's active refresh;
+  - C1562's next measurement.
+
 ## THE OVERNIGHT RUN, 2026-10-25 ~20:00 to 2026-10-26 ~0x:00 UTC (the operator away)
 
 The operator's order: the Phase 8 sprint queue in order, items 1 to 6. The full report is the
