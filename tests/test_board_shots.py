@@ -528,6 +528,87 @@ def test_history_ask_metrics(tmp_path, monkeypatch):
     history_logq.forget()
 
 
+def _words_step(world, answer, words):
+    """Ask in words' step: *answer* planted for the adapter, *words* typed, Fill pressed."""
+    def step(b):
+        world.answer = answer
+        b.js("var i = document.getElementById('lq-words'); i.value = " + json.dumps(words)
+             + "; document.querySelector('[data-op=ask-in-words]').click(); return 1")
+    return step
+
+
+_W_NOTE = "(document.querySelector('.lq-words + .notice') || {}).textContent || ''"
+
+
+def test_history_ask_words(tmp_path, monkeypatch):
+    """8.1's board (`AskWords.dc.html`, 1440; drawn under the Phase 7 mode after the row was
+    built) beside the metrics builder's Ask in words row, on tests/test_ai_nl_query.py's site
+    (the builder's stand-in Prometheus, hosted AI allowed, the adapter answering as planted):
+    the row; filled; a question back; Mercury's own answer; refused; then hosted AI off."""
+    from tests import ai_controls_check as AIC
+    from tests import browser
+    from tests import test_ai_nl_query as Q
+    from tests import test_history_ask_metrics as HM
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    webs = HM.web.__wrapped__(tmp_path, monkeypatch)
+    worlds = Q.world.__wrapped__(tmp_path, monkeypatch)
+    site = Q.site.__wrapped__(next(webs), next(worlds), monkeypatch)
+    w = site.world
+    url = "/v2/history/query/ask/metrics?list=Lab"
+    states = [
+        ("row", None, "!!document.getElementById('lq-words')"),
+        ("filled", _words_step(w, Q._choices(), "input errors per interface, the top 5"),
+         f"/Filled from your words/.test({_W_NOTE})"),
+        ("ask", _words_step(w, Q._choices(outcome="ask", metric="",
+                                          question="Which device, or one line per device?"),
+                            "average cpu usage over the past 7 days"),
+         f"/One question first/.test({_W_NOTE})"),
+        ("guide", _words_step(w, None, "how is the weather on r1"),
+         f"/answered this itself/.test({_W_NOTE})"),
+        ("refused", _words_step(w, Q._choices(metric="ifInErrorz"),
+                                "input errors per interface, the top 5"),
+         f"/Not filled/.test({_W_NOTE})")]
+    import app as A
+    try:
+        with browser.Served(A.app) as served:
+            _d_walk("history-ask-words", served, url, states,
+                    boards=(("AskWords.dc.html", 1440),),
+                    widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
+            AIC.set_state(monkeypatch, "ai_off")
+            _d_walk("history-ask-words-off", served, url, [
+                ("off", None, "!!document.querySelector('[data-ai-off-reason=ask_in_words]')")],
+                widths=((1440, 1.0), (390, 2.0)))
+    finally:
+        next(worlds, None)
+        next(webs, None)
+
+
+def test_history_ask_words_logs(tmp_path, monkeypatch):
+    """8.1's board's last state beside the logs builder's Ask in words row, on
+    tests/test_ai_nl_logs.py's world (the builder's stand-in Loki): the row, then filled."""
+    from tests import browser
+    from tests import test_ai_nl_logs as L
+    from tests import test_history_ask_logs as HL
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    webs = HL.web.__wrapped__(tmp_path, monkeypatch)
+    w = L.world.__wrapped__(next(webs), monkeypatch, tmp_path)
+    import app as A
+    try:
+        with browser.Served(A.app) as served:
+            _d_walk("history-ask-words-logs", served, "/v2/history/query/ask/logs?list=Lab", [
+                ("row", None, "!!document.getElementById('lq-words')"),
+                ("filled", _words_step(w, L._choices(range="7d"),
+                                       "OSPF adjacency changes per device, last 7 days"),
+                 f"/Filled from your words/.test({_W_NOTE})")],
+                widths=((1440, 1.0), (390, 2.0)))
+    finally:
+        next(webs, None)
+
+
 def test_history_metric(tmp_path, monkeypatch):
     """C667's board B (AskMetric, 1440) beside the metrics question, Grafana answering with a
     real capture (tests/fixtures/grafana/dsquery/throughput.json)."""

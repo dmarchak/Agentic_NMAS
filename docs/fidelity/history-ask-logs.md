@@ -99,6 +99,14 @@ which this page never draws. No board draws Ask in words (its row stays **later*
 board); nothing else on the page moved; the hash written again.
 Templates sha256 before: `2f07e4738a293a07888e1575b4e542b29041ba8e1029ec100de39b8009bf8be2`.
 
+Compared 2026-10-26 with 8.1's board (the overnight order's item 6): `AskWords.dc.html`, its
+last state the logs builder's row. Shots: `tests/test_board_shots.py::test_history_ask_words_logs`,
+on tests/test_ai_nl_logs.py's world (the stand-in Loki): the row and filled, at 1440 and 390.
+The row's other states are the metrics builder's, the same template, compared in
+docs/fidelity/history-ask-metrics.md. Drawn as the board draws it but the one deviation
+there: the notice spans the card's width, and names the model's id. No template changed; the
+hash stands.
+
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
 
@@ -106,7 +114,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 |---|---|---|---|
 | Tabs | Timeline, Query, Baselines, Authorisations; Query on | Timeline, Query, Baselines; Query on | **deviation** (log: F3 logs builder: History's tabs) |
 | Head | "Ask your own ‹ back to the questions"; Source (Metrics, Logs) and Mode (Builder, Code) switches | the same; Metrics opens the metrics builder (E3, shared head) | **same** |
-| Ask in words | (not drawn: 8.1 came after F3) | a question, Fill the builder busy on itself, "How does this work?"; the result's notice under it; the AI mark; disabled with its reason (and the AI card's link) while hosted AI cannot answer | **later** (8.1's board, the sprint's Saturday, PHASE8_PLAN 15.12) |
+| Ask in words | 8.1's board (`AskWords.dc.html`), its logs state: the row, its example a logs question, filled (model, cost, the call in History, the lines the test run matches) | a question, Fill the builder busy on itself, "How does this work?"; the result's notice under it; the AI mark; disabled with its reason (and the AI card's link) while hosted AI cannot answer; each notice the card's width, the model's id beside its name | **deviation** (log: 8.1 Ask in words: the notices) |
 | Start from | four chips, the one the choices match marked | the same four, each setting every choice; marked when the choices are exactly its own | **same** |
 | Kind | syslog, SNMP traps, both; the job names and when read in the hint | the `job` label's values over the range as switches (one or more) and every job; how many and when read in the hint | **deviation** (log: F3 logs builder: the Kind row) |
 | Devices | chosen chips with ×, + device, by role, all N; "by the device label, never a regex" | the same; + device asks a name from the values Loki holds; the hint says label or line, with the label's first line | **deviation** (log: F3 logs builder: devices before the label began) |

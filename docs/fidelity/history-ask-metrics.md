@@ -134,6 +134,19 @@ in the Timeline tab's branch, which this page never draws. No board draws Ask in
 row stays **later** with 8.1's board); nothing else on the page moved; the hash written again.
 Templates sha256 before: `2724e7ee9f0a0f96951c790c101037d33dee6f462bcdb4c31799b674459ef356`.
 
+Compared 2026-10-26 with 8.1's board (the overnight order's item 6): `AskWords.dc.html`, canvas
+page "History, Query", drawn under the Phase 7 operating mode after the row was built, nine
+states of the one row. Shots: `tests/test_board_shots.py::test_history_ask_words`, on
+tests/test_ai_nl_query.py's site (the stand-in Prometheus, hosted AI allowed, the adapter
+answering as planted): the row, filled, a question back, Mercury's own answer and refused at
+1440, 1280 and 390, then hosted AI off at 1440 and 390; the board at 1440. Every state is drawn
+as the board draws it but two ways, one deviation: each notice spans the card's width, edge to
+edge, where the board insets it under the row, and the filled notice names the model's id
+beside its name. The busy state is not shot (it lasts as long as the call);
+tests/test_v2_busy_on_itself.py holds it. "Today"'s sentence is compared from the rendered
+page by tests/test_ai_nl_query.py's "today" section, not a shot. No template changed; the
+hash stands.
+
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
 
@@ -141,7 +154,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 |---|---|---|---|
 | Tabs | Timeline, Query, Baselines, Authorisations; Query on | Timeline, Query, Baselines; Query on | **deviation** (log: E3 metrics builder: History's tabs) |
 | Head | "Ask your own ‹ back to the questions"; Source (Metrics, Logs) and Mode (Builder, Code) | the same, shared with F3; Metrics and Builder on | **same** |
-| Ask in words | (not drawn: 8.1 came after E3) | a question, Fill the builder busy on itself, "How does this work?"; the result's notice under it (saying whose midnight "today" began, when the range is today's); the AI mark; disabled with its reason (and the AI card's link) while hosted AI cannot answer | **later** (8.1's board, the sprint's Saturday, PHASE8_PLAN 15.12) |
+| Ask in words | 8.1's board (`AskWords.dc.html`): the row, busy, filled (model, cost, the call in History, the test run), a named day's midnight, a question back, Mercury's own answer with the chips, refused, hosted AI off | a question, Fill the builder busy on itself, "How does this work?"; the result's notice under it (saying whose midnight "today" began, when the range is today's); the AI mark; disabled with its reason (and the AI card's link) while hosted AI cannot answer; each notice the card's width, the model's id beside its name | **deviation** (log: 8.1 Ask in words: the notices) |
 | Start from | four chips, the one the choices match marked | the same four, each setting every choice; marked when the question is exactly its own; a chip whose metric Prometheus does not hold is drawn but no link | **same** |
 | What | search box, the matching metrics with help, "per interface · counter · bytes", the count read | the same box and list; each with Prometheus's help and its type and unit; the count over the range, when read | **deviation** (log: E3 metrics builder: the metric list) |
 | Devices | + device, by role: core, all 9; "the values the device label holds now" | the same, from the metric's `device` and `role` labels over the range | **deviation** (log: E3 metrics builder: devices, roles and interfaces) |
