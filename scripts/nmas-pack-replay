@@ -161,18 +161,40 @@ def explain_twice(pack: dict, actor: str, out=print, ask=None, versions=None) ->
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
-    ap.add_argument("--network", required=True)
-    ap.add_argument("--device", required=True)
-    ap.add_argument("--at", required=True, help="the alert's time, UTC, YYYY-MM-DDTHH:MM:SSZ")
+    ap.add_argument("--network", default="")
+    ap.add_argument("--device", default="")
+    ap.add_argument("--at", default="", help="the alert's time, UTC, YYYY-MM-DDTHH:MM:SSZ")
     ap.add_argument("--onset", default="", help="when its condition first held (default --at)")
     ap.add_argument("--rule", default=RULE)
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--out", default="")
     ap.add_argument("--explain", action="store_true")
     ap.add_argument("--actor", default="")
     ap.add_argument("--prompt", action="append", type=int, default=None,
                     help="ask this Explain prompt version (repeatable, in order) in place of "
                          "v1 and the current one: a candidate's before-and-after")
+    ap.add_argument("--pack", default="",
+                    help="explain this pack, written earlier by --out, as it was built (its "
+                         "hash checked), in place of building one: a pack is frozen once "
+                         "built, so a case's five runs and a candidate's ask the same evidence "
+                         "(an endpoint read the store no longer holds among it)")
     args = ap.parse_args(argv)
+    if args.pack:
+        if not (args.explain and args.actor):
+            ap.error("--pack explains a saved pack: it needs --explain and --actor")
+        from modules import evidence_pack as EP
+        with open(os.path.expanduser(args.pack), encoding="utf-8") as fh:
+            pack = json.load(fh)
+        if not EP.intact(pack):
+            print(f"nmas-pack-replay: {args.pack}'s hash does not match its content; not "
+                  "explained", file=sys.stderr)
+            return 1
+        print(f"pack {pack['id']} as of {pack['built_at']}, hash {pack['hash'][:12]}, read from "
+              f"{args.pack}: " + ", ".join(f"{s['name']} {s['state']}"
+                                           for s in pack["sections"]))
+        return explain_twice(pack, args.actor, versions=args.prompt)
+    if not (args.network and args.device and args.at and args.out):
+        ap.error("building a pack needs --network, --device, --at and --out (or --pack to "
+                 "explain a saved one)")
     at = _when(args.at)
     onset = _when(args.onset) if args.onset else at
     if at > time.time():

@@ -262,10 +262,14 @@ def first_labelled(list_name: str, label: str, client, now: float, lookback: flo
     return since
 
 
-def discover(list_name: str, start: float, end: float, client=None, now: float = None) -> dict:
+def discover(list_name: str, start: float, end: float, client=None, now: float = None,
+             jobs=()) -> dict:
     """What Loki holds over the range: its label names, the values of the job and device labels,
     whether it carries `severity`, and when each of device and severity began. ``{"state":
-    "ok"|"not_configured"|"error", ...}``."""
+    "ok"|"not_configured"|"error", ...}``. The builder's scope comes first (the operator's
+    design note, 2026-10-26: Range, then Kind, then Devices): every list is read over the
+    range, and the devices for the *jobs* chosen (Loki's label-values `query`), so a choice
+    drawn from the scope is one the scope holds."""
     now = _now() if now is None else now
     client = client or _client(list_name)
     out = {"state": "ok", "error": "", "labels": [], "values": {"job": [], "device": []},
@@ -281,7 +285,9 @@ def discover(list_name: str, start: float, end: float, client=None, now: float =
     out["labels"] = sorted(l for l in labels or [] if isinstance(l, str) and _LABEL.match(l))
     for name in ("job", "device"):
         if name in out["labels"]:
-            vals, err = _json(client, f"loki/api/v1/label/{name}/values", **window)
+            scope = ({"query": "{" + _matcher("job", jobs) + "}"}
+                     if name == "device" and jobs else {})
+            vals, err = _json(client, f"loki/api/v1/label/{name}/values", **window, **scope)
             if err:
                 return dict(out, state="error", error=err)
             out["values"][name] = sorted(v for v in vals or [] if isinstance(v, str))
@@ -599,14 +605,21 @@ def counts(list_name: str, spec: dict, built: dict, rng: dict, client, now: floa
                 continue
         vals = [got.get(g, 0) for g in grid]
         total = sum(vals)
-        last = max((g for g, v in zip(grid, vals) if v), default=None)
+        # Its own name: `last` is the range's last window close, which the title names (it was
+        # overwritten here by each series' last window with a line, so a 7-day title ended at
+        # the last series' last line, the operator's walk of 2026-10-26).
+        last_line = max((g for g, v in zip(grid, vals) if v), default=None)
         series.append({"value": value, "label": f'{shown_label}="{value}"' if value else
                        f"no {shown_label}", "total": total, "most": max(vals) if vals else 0,
-                       "last": last, "values": vals,
+                       "last": last_line, "values": vals,
                        "href": href(shown_label, value) if href and value else ""})
     series.sort(key=lambda s: (-s["total"], s["label"]))
     shown = series[:MAX_SERIES]
+    # `window_close`: each point's time is the CLOSE of the window it counts
+    # (count_over_time(…[w]) at t counts (t − w, t]), so the chart draws each count over
+    # (t − step, t], never over the window after it (static/js/nmas_panels.js, `windowData`).
     payload = {"ok": True, "type": "timeseries", "stepped": True, "legend_off": True,
+               "window_close": True, "hover_utc": True,
                "title": "", "unit": "", "range": rng["words"].replace("the last ", ""),
                "step": step, "read_at": _iso(now), "asked": [built["query"]],
                "series": [{"label": s["label"], "times": grid, "values": s["values"],
@@ -614,8 +627,9 @@ def counts(list_name: str, spec: dict, built: dict, rng: dict, client, now: floa
                "note": (f"{len(series)} series: the {MAX_SERIES} with the most lines are drawn"
                         if len(series) > MAX_SERIES else "")}
     for s in shown:
-        s["last_words"] = (f"{_utc(s['last'] - step, '%-d %b %H:%M')} to "
-                           f"{_utc(s['last'], '%H:%M')} UTC") if s["last"] else "none"
+        s["last_words"] = (history_ask.span(s["last"] - step, s["last"]) + " UTC"
+                           if s["last"] else "none")
+        s["last_from"] = s["last"] - step if s["last"] else None
     out = {"state": "ok" if any(s["total"] for s in series) else "empty", "series": shown,
            "series_total": len(series), "payload": payload, "took_ms": took,
            "read_at": _iso(now), "window_words": w_words, "label": shown_label,
@@ -626,6 +640,51 @@ def counts(list_name: str, spec: dict, built: dict, rng: dict, client, now: floa
 
 
 # ---------------------------------------------------------------------------- the view
+
+#: A mnemonic named inside the text a line must contain ("OSPF-5-ADJCHG", "%LINK-3-UPDOWN").
+_MN_IN_TEXT = re.compile(r"%?([A-Z][A-Z0-9_]*(?:-[A-Z0-9_]+)*-[0-7]-[A-Z0-9_]+)")
+
+
+def clashes(spec: dict) -> list:
+    """Filters no line can match together, each ``(words, [(label, over)])``, the first fix
+    dropping the leftover: the choice NOT made last (`hl`), since a Start-from chip or an
+    earlier fill leaves choices the person then contradicts (the operator's walk of
+    2026-10-26: LINK-3-UPDOWN left chosen while OSPF-5-ADJCHG was typed into Text). A line
+    carries one mnemonic, one severity, and holds the excluded text wherever it holds text
+    that contains it; each is a certainty, never a guess about what a line might say."""
+    out, mn, hl = [], spec["mn"], spec["hl"]
+    chips = ", ".join(m[1:] for m in mn)
+
+    def order(drop_first, drop_other, first_key):
+        # The chosen-earlier one is the leftover: when *first_key* was the last choice made,
+        # the other is dropped first.
+        return [drop_other, drop_first] if hl == first_key else [drop_first, drop_other]
+
+    named = ["%" + m for m in _MN_IN_TEXT.findall(spec["has"] or "")]
+    if mn and named and not set(named) & set(mn):
+        words = (f"The mnemonic{'s' if len(mn) > 1 else ''} chosen ({chips}) and the text "
+                 f"“{spec['has']}” name different mnemonics: a line carries one, so "
+                 "no line can match both")
+        out.append((words, order((f"Drop {chips}", {"mn": [], "hl": "mn"}),
+                                 (f"Drop the text “{spec['has']}”",
+                                  {"has": "", "hl": "has"}), "mn")))
+    if mn and spec["sev"]:
+        digits = [m.rsplit("-", 2)[-2] for m in mn]
+        if all(int(d) > int(spec["sev"]) for d in digits):
+            words = (f"Severity at or worse than {spec['sev']} leaves out every mnemonic chosen "
+                     f"({chips}, severity {', '.join(digits)} by its name), so no line can "
+                     "match both")
+            out.append((words, order((f"Drop {chips}", {"mn": [], "hl": "mn"}),
+                                     ("Any severity", {"sev": "", "hl": "sev"}), "mn")))
+    nope = spec["not"]
+    if nope and ((spec["has"] and nope in spec["has"]) or (mn and all(nope in m for m in mn))):
+        held = f"the text “{spec['has']}”" if spec["has"] and nope in spec["has"] \
+            else f"every mnemonic chosen ({chips})"
+        words = (f"Every line holding {held} holds “{nope}” too, which the line must "
+                 "exclude, so no line can match")
+        out.append((words, [(f"Drop the excluded text “{nope}”",
+                             {"not": "", "hl": "not"})]))
+    return out
 
 def mnemonics(list_name: str, rng: dict, devices: list) -> dict:
     """The mnemonics the logs reader counted for the chosen devices over the range, most first:
@@ -663,7 +722,8 @@ def view(list_name: str, values, now: float = None, client=None) -> dict:
     lim = limits(list_name, client=probe, now=now) if probe.is_configured() else {}
     # The wait is Loki's own query_timeout and 5 s (its default, 1 min, when it is not read).
     client = client or _client(list_name, wait(lim))
-    disc = discover(list_name, rng["start"], rng["end"], client=client, now=now)
+    disc = discover(list_name, rng["start"], rng["end"], client=client, now=now,
+                    jobs=spec["job"])
     devices = list(spec["dev"])
     role_devices = _devices_of_role(list_name, spec["role"]) if spec["role"] else []
     if spec["role"]:
@@ -686,10 +746,18 @@ def view(list_name: str, values, now: float = None, client=None) -> dict:
            "now": _iso(now), "answer": None}
     from modules.device_logs import SEVERITY
     out["severities"] = SEVERITY
+    out["clashes"] = clashes(spec)
+    # A choice the range's lists no longer hold is kept and marked, never dropped (the
+    # operator's design note, 2026-10-26): only where the list was read.
+    held_dev = disc["values"]["device"] if disc["state"] == "ok" and "device" in disc["labels"] \
+        else None
+    out["unseen"] = {
+        "job": [j for j in spec["job"] if disc["state"] == "ok" and j not in disc["values"]["job"]],
+        "dev": [d for d in spec["dev"] if held_dev is not None and d not in held_dev],
+        "mn": [m for m in spec["mn"] if out["mnemonics"]["state"] == "ok"
+               and m not in {r[0] for r in out["mnemonics"]["rows"]}]}
     out["by_choices"] = ["device", "mnemonic"] + [l for l in disc["labels"]
                                                   if l not in ("device",)]
-    out["since_words"] = {k: _utc(v, "%-d %b %Y %H:%M UTC")
-                          for k, v in (disc.get("since") or {}).items() if v}
     for item in lim.values():
         if isinstance(item, dict) and "seconds" in item:
             item["words"] = duration_words(item["seconds"])
@@ -708,7 +776,11 @@ def view(list_name: str, values, now: float = None, client=None) -> dict:
         title = title or "The lines"
     who = (" and ".join(devices) if len(devices) <= 3 else f"{len(devices)} devices") \
         if devices else "every device"
-    out["answer_title"] = (f"{title}, {who}, {_utc(rng['start'])} to {_utc(rng['end'])} UTC")
+    # The title's words and its span apart: the page draws the span in the viewer's zone, UTC
+    # on hover (one zone per view, the operator, 2026-10-26); `answer_title` is the UTC text.
+    out["answer_what"] = f"{title}, {who}"
+    out["answer_span"] = (rng["start"], rng["end"])
+    out["answer_title"] = f"{out['answer_what']}, {history_ask.span(*out['answer_span'])} UTC"
     out["code_range"] = spec["range"] if spec["range"] in ("24h", "7d", "30d") else "30d"
     if spec["ask"] != "1":
         return out
@@ -741,8 +813,8 @@ def view(list_name: str, values, now: float = None, client=None) -> dict:
         ans["last_good"] = _last_good(list_name)
     if ans.get("covers"):
         # Whole windows inside the range: the title names the span they cover.
-        out["answer_title"] = (out["answer_title"].rsplit(", ", 1)[0] + f", {_utc(ans['covers'][0])}"
-                               f" to {_utc(ans['covers'][1])} UTC")
+        out["answer_span"] = ans["covers"]
+        out["answer_title"] = f"{out['answer_what']}, {history_ask.span(*ans['covers'])} UTC"
     ans["kept"] = (lim.get("retention_period") or {}).get("seconds")
     ans["kept_words"] = duration_words(ans["kept"]) if ans["kept"] else ""
     ans["inside_kept"] = bool(ans["kept"]) and rng["start"] >= now - ans["kept"]

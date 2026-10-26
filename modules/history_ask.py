@@ -110,6 +110,14 @@ def utc(ts: float, fmt: str = "%-d %b %H:%M") -> str:
     return time.strftime(fmt, time.gmtime(ts))
 
 
+def span(start: float, end: float) -> str:
+    """Two instants as one span in UTC, the end's date written when it is another day's:
+    "22 Oct 08:00 to 09:00", "22 Oct 00:00 to 23 Oct 00:00" (the operator, 2026-10-26: a
+    day's window read "22 Oct 00:00 to 00:00")."""
+    same = utc(start, "%Y-%m-%d") == utc(end, "%Y-%m-%d")
+    return f"{utc(start)} to {utc(end, '%H:%M' if same else '%-d %b %H:%M')}"
+
+
 def iso(ts: float) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
 

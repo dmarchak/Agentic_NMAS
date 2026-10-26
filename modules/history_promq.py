@@ -859,7 +859,13 @@ def answer(client, built: dict, rng: dict, step: int, now: float) -> dict:
     for s in shown:
         s["now_words"], s["high_words"], s["low_words"] = (
             fmt_value(s["now"], unit), fmt_value(s["high"], unit), fmt_value(s["low"], unit))
+    # A point at t is drawn AT t, a line through the instants, never a step held over the
+    # window after it: a rate or an increase over [w] at t covers (t − w, t], and the point
+    # sits at that window's close, as Prometheus answers it (the logs builder's counts were
+    # drawn a window late as steps, the operator's walk of 2026-10-26; this chart has no step).
+    # `hover_utc`: the hover names the viewer's zone and gives UTC under it.
     payload = {"ok": True, "type": "timeseries", "legend_off": True, "title": "",
+               "hover_utc": True,
                "unit": unit, "range": rng["words"].replace("the last ", ""), "step": step,
                "read_at": iso(now), "asked": [built["query"]],
                "series": [{"label": s["label"], "times": grid, "values": s["values"]}
@@ -868,7 +874,8 @@ def answer(client, built: dict, rng: dict, step: int, now: float) -> dict:
                         if len(series) > DRAWN else "")}
     return {"state": "ok" if any(s["high"] is not None for s in series) else "empty",
             "series": shown, "series_total": len(series), "payload": payload, "took_ms": took,
-            "read_at": iso(now), "end_words": utc(grid[-1], "%H:%M") if grid else ""}
+            "read_at": iso(now), "end_words": utc(grid[-1], "%H:%M") if grid else "",
+            "end_at": grid[-1] if grid else None}
 
 
 # ---------------------------------------------------------------------------- the view
@@ -985,7 +992,8 @@ def view(list_name: str, values, now: float = None, client=None) -> dict:
            "cat": {"names": [], "meta": {}, "state": ""}, "pick": {"rows": [], "total": 0},
            "presets_held": {}, "kind": "", "unit": "", "unit_where": "", "help": "",
            "disc": {"labels": [], "values": {}, "iface": "", "state": ""}, "built": None,
-           "fe_count": None, "op_rows": [], "menu": {}}
+           "fe_count": None, "op_rows": [], "menu": {}, "unseen_m": "",
+           "unseen": {"dev": [], "if": []}}
     for item in lim.values():
         if isinstance(item, dict) and "seconds" in item:
             item["words"] = duration_words(item["seconds"])
@@ -1006,8 +1014,12 @@ def view(list_name: str, values, now: float = None, client=None) -> dict:
     names = set(cat["names"])
     out["presets_held"] = {k: p["m"] in names for k, _t, _a, p in PRESETS}
     if spec["m"] and spec["m"] not in names:
-        errors.append(f"Prometheus holds no metric {spec['m']!r} over {rng['words']}")
-        spec["m"] = ""
+        # Kept in the address and marked "not seen in this range", never dropped (the
+        # operator's design note, 2026-10-26: the scope comes first, and a choice it no longer
+        # holds is said, so a range that holds it brings it back). Nothing is formed from it.
+        out["unseen_m"] = spec["m"]
+        out["pick"] = search(cat, spec["mq"], "")
+        return _finish(out, spec)
     out["pick"] = search(cat, spec["mq"], spec["m"])
     if not spec["m"]:
         return _finish(out, spec)
@@ -1042,6 +1054,11 @@ def view(list_name: str, values, now: float = None, client=None) -> dict:
     spec["f"] = kept
     if spec["fl"] and spec["fl"] not in held:
         spec["fl"] = ""
+    # A device or interface chosen that the range's values no longer hold is kept and marked.
+    out["unseen"] = {"dev": [v for v in spec["dev"] if DEVICE_LABEL in held
+                             and v not in (disc["values"].get(DEVICE_LABEL) or [])],
+                     "if": [v for v in spec["if"] if disc["iface"]
+                            and v not in (disc["values"].get(disc["iface"]) or [])]}
     ops, op_errors, notes = check_ops(spec, kind, out["unit"], disc["labels"])
     spec["op"] = ops
     errors.extend(op_errors)
@@ -1074,9 +1091,10 @@ def _finish(out: dict, spec: dict, client=None, lim=None, disc=None) -> dict:
     if built:
         title = f"{title}, in {built['unit_words']}" if built["unit_words"][0].isalpha() and \
             "no unit" not in built["unit_words"] else title
-    out["answer_title"] = f"{title}, {utc(rng['start'])} to {utc(rng['end'])} UTC"
-    out["between"] = (f"{utc(rng['start'], '%-d %b %Y %H:%M')} and "
-                      f"{utc(rng['end'], '%-d %b %Y %H:%M')} UTC")
+    # The words and the span apart, as the logs builder's: the page draws the span in the
+    # viewer's zone, UTC on hover (one zone per view, the operator, 2026-10-26).
+    out["answer_what"], out["answer_span"] = title, (rng["start"], rng["end"])
+    out["answer_title"] = f"{title}, {history_ask.span(rng['start'], rng['end'])} UTC"
     secs = rng["seconds"]
     out["code_range"] = ("24h" if secs <= 86400 else "7d" if secs <= 7 * 86400 else
                          "30d" if secs <= 30 * 86400 else "180d")
@@ -1090,8 +1108,11 @@ def _finish(out: dict, spec: dict, client=None, lim=None, disc=None) -> dict:
             out["answer"] = None
         return out
     if out["errors"] or not built:
+        unseen = ([(f"Prometheus holds no metric {out['unseen_m']!r} over {rng['words']}: "
+                    "nothing is asked; choose another range, or another metric", [])]
+                  if out.get("unseen_m") else [])
         out["answer"] = {"state": "refused", "asked_at": now,
-                         "refusals": [(e, []) for e in out["errors"]] or
+                         "refusals": unseen + [(e, []) for e in out["errors"]] or
                          [("Nothing is asked yet: choose what to ask", [])]}
         return out
     step = out["step"]

@@ -156,6 +156,46 @@ def test_the_logs_builder_draws_ask_in_words_and_a_fill_pushes_its_address(world
         "it read lines as an answer"
 
 
+def _words_post(world, question, **form):
+    r = world.web.post("/v2/history/query/ask/logs/words",
+                       data=dict({"list": "Lab", "words": question}, **form),
+                       headers={"HX-Request": "true"})
+    return unescape(r.get_data(as_text=True))
+
+
+def _ask_button(html):
+    return re.search(r'<button id="lq-ask"[^>]*>', html).group(0)
+
+
+def test_not_filled_the_builder_is_marked_left_and_ask_is_off_until_kept(world):
+    """The operator's walk of 2026-10-26: after "Not filled" the builder still held the
+    previous question's query with Ask on, so Ask answered the wrong question. It is marked,
+    Ask is off, and one click keeps the choices (Ask on); filled, nothing is marked."""
+    world.answer = _choices(outcome="refuse", why_not="logs do not hold CPU", mnemonics=[])
+    html = _words_post(world, "the CPU from the logs", mn="%LINK-3-UPDOWN", show="counts")
+    assert "Not filled:" in html and "Left from your previous question" in html
+    assert "left from your previous question</span>" in html, "the query box is not marked"
+    assert " disabled" in _ask_button(html) and 'aria-describedby="lq-left"' in _ask_button(html)
+    keep = re.search(r'<a class="btn btn-small" href="[^"]+" hx-get="([^"]+)"[^>]*>Keep these '
+                     r'choices</a>', html).group(1)
+    assert "mn=%25LINK-3-UPDOWN" in keep and "show=counts" in keep and "words" not in keep
+    again = unescape(world.web.get(keep, headers={"HX-Request": "true"}).get_data(as_text=True))
+    assert "Left from your previous question" not in again
+    assert " disabled" not in _ask_button(again)
+    # Nothing chosen before the words: the builder's defaults, said so, Ask off the same.
+    html = _words_post(world, "the CPU from the logs")
+    assert "Not filled from these words" in html and " disabled" in _ask_button(html)
+    # A question back is not filled either.
+    world.answer = _choices(outcome="ask", question="Which device?", mnemonics=[])
+    html = _words_post(world, "show me the logs", mn="%LINK-3-UPDOWN")
+    assert "One question first" in html and " disabled" in _ask_button(html)
+    # Filled: nothing left from before, Ask on.
+    world.answer = _choices()
+    html = _words_post(world, "OSPF adjacency changes per device", mn="%LINK-3-UPDOWN")
+    assert "Filled from your words" in html and "Left from your previous" not in html
+    assert " disabled" not in _ask_button(html)
+
+
 def test_ask_in_words_on_the_logs_builder_is_an_ai_control_and_the_builder_stays_usable(
         world, monkeypatch):
     """PHASE8_PLAN 15.13 on the logs builder's page, through its real route: the AI mark, and

@@ -4,7 +4,11 @@ On **History › Query › Ask your own › Metrics**, **Ask in words** takes a 
 would say it ("input errors per interface, top 5, last 7 days") and fills the metrics
 builder's choices for you: the metric, the devices, the operations, the range. It never writes
 a query you cannot see. The builder forms the query from those choices, as it does from yours,
-and checks them, and nothing runs as an answer until you press **Ask**.
+and checks them, and nothing runs as an answer until you press **Ask**. When your words
+do not fill it (a refusal, a question back, or {{product}}'s own answer), the builder keeps what
+it held before them, marked **Left from your previous question**, and **Ask** is off until
+you press **Keep these choices** or change a choice, so Ask never answers an earlier question
+in place of yours.
 
 It makes one call to a hosted model (Anthropic's, the model named in the button's hover),
 through {{product}}'s AI gateway: allowed only once hosted AI is allowed on **Settings ›

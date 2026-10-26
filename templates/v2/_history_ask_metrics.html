@@ -34,7 +34,7 @@
 {%- if q.state == 'not_configured' %}
 <div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>{{ q.error | capitalize }}: there are no metrics to ask here (Settings › Integrations › Prometheus).</p></div>
 {%- elif q.state == 'error' and not q.answer %}
-{%- call part.state('danger', 'Prometheus not answering') %}<p><strong>Couldn't load: {{ q.error }}</strong>, asked {{ q.now[11:16] }} UTC. The choices below are the address's; Prometheus's metrics and labels could not be read, so no query is formed.</p><div>{{ go(dict(change), 'Ask again', 'btn btn-small') }}</div>{% endcall %}
+{%- call part.state('danger', 'Prometheus not answering') %}<p><strong>Couldn't load: {{ q.error }}</strong>, asked {{ part.when(q.now, 't') }}. The choices below are the address's; Prometheus's metrics and labels could not be read, so no query is formed.</p><div>{{ go(dict(change), 'Ask again', 'btn btn-small') }}</div>{% endcall %}
 {%- endif %}
 
 <form id="lq-form" class="lq-form" method="get" action="{{ here }}" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" hx-disabled-elt="#lq-ask" hx-indicator="#lq-ask">{{ hidden(('op', 'top')) }}<input type="hidden" name="ask" value="1"></form>
@@ -46,10 +46,29 @@
   {%- include "v2/_history_ask_words.html" %}
   <div class="lq-row"><span class="lq-lab">Start from</span>{% include "v2/_history_ask_chips.html" %}</div>
 
+  <div class="lq-row"><span class="lq-lab">Range</span><div class="lq-col">
+    {%- set fit %}<p class="lq-ok">{{ q.range_words }} · step {{ q.step_words }} · {{ '{:,}'.format(q.points) }} points a series · within every limit below</p>{% endset %}
+    {%- call part.range_chips(q, here, region, s, rng, change, hidden(('range', 'within', 'from', 'to')), fit, 'pq-pop') %}
+            <h4>Limits, measured on this network's services{% if lim.read_at and not lim.error %} <span class="faint">(Prometheus's read {{ part.when(lim.read_at, 'dty') }})</span>{% endif %}</h4>
+            <table class="lq-lim pq-lim">
+              <tr><th scope="row">Prometheus</th><td>{% if lim.error or not lim %}its bounds could not be read{% if lim.error %} ({{ lim.error }}){% endif %}; it refuses what passes them, and the refusal is drawn{% else %}keeps {{ lim['storage.tsdb.retention.time'].words if lim['storage.tsdb.retention.time'] else '(not stated)' }} at full detail (<span class="mono">storage.tsdb.retention.time {{ lim['storage.tsdb.retention.time'].text if lim['storage.tsdb.retention.time'] else '' }}</span>{% if lim['storage.tsdb.retention.size'] %}, capped at {{ lim['storage.tsdb.retention.size'].text }}{% endif %}); one ask stops at {{ lim['query.timeout'].words if lim['query.timeout'] else '(not stated)' }} (<span class="mono">query.timeout</span>) and {{ '{:,}'.format(lim['query.max-samples'].n) if lim['query.max-samples'] else '(not stated)' }} samples (<span class="mono">query.max-samples</span>), read from its flags{% endif %}</td></tr>
+              <tr><th scope="row">Long-term store</th><td>{% if q.stores.history %}beyond {{ q.stores.live_days }} days, {{ q.stores.history }}: Code mode reads it; the builder asks Prometheus{% elif q.stores.error %}not known here ({{ q.stores.error }}); the builder asks Prometheus{% else %}none set{% if q.stores.why %} ({{ q.stores.why }}){% endif %}: past what Prometheus keeps, nothing is held{% endif %}</td></tr>
+              <tr><th scope="row">Mercury</th><td>at most {{ '{:,}'.format(q.max_points) }} points a series (the step grows to fit) and {{ q.max_series }} series an answer, the {{ q.drawn }} highest drawn</td></tr>
+              <tr><th scope="row">Loki (for Logs)</th><td>{% if not q.loki %}no log store is configured for this network{% elif q.loki.error %}its bounds could not be read ({{ q.loki.error }}){% else %}one ask spans at most {{ q.loki.max_query_length.words if q.loki.max_query_length else '(not stated)' }} (<span class="mono">max_query_length {{ q.loki.max_query_length.text if q.loki.max_query_length else '' }}</span>); lines kept {{ q.loki.retention_period.words if q.loki.retention_period else '(not stated)' }} (<span class="mono">retention_period {{ q.loki.retention_period.text if q.loki.retention_period else '' }}</span>), read from Loki's /config{% endif %}</td></tr>
+            </table>
+            <h4>The step widens with the range</h4>
+            <div class="pq-ladder" aria-label="Range and its step">{% for r, st in q.ladder %}<div><b>{{ r }}</b>{{ st }}</div>{% endfor %}</div>
+    {%- endcall %}
+    <span class="lq-hint">Step {{ q.step_words }}, {{ '{:,}'.format(q.points) }} points a series: the step widens with the range, so a series is at most {{ '{:,}'.format(q.max_points) }} points.</span>
+  </div></div>
+
   <div class="lq-row"><label class="lq-lab" for="pq-mq">What</label><div class="lq-col">
     <form class="pq-search" method="get" action="{{ here }}" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" role="search">{{ hidden(('mq',)) }}<input type="hidden" name="hl" value="what">
       <input id="pq-mq" type="text" name="mq" value="{{ s.mq }}" maxlength="80" placeholder="search the names and help, then Enter" aria-label="Search the metrics Prometheus holds" autocomplete="off">
     </form>
+    {%- if q.unseen_m %}
+    <div class="lq-chips">{{ go(dict(change, m='', op=[], f=[], top='', hl='what', dev=[], role='', **{'if': []}), q.unseen_m ~ ' ×', 'lq-chip on mono', none, 'Remove ' ~ q.unseen_m ~ ', not seen in this range') }}{{ part.unseen() }}<span class="lq-hint">Chosen and kept: Prometheus holds no series of it over {{ rng.words }}, so nothing is formed from it; a range that holds it brings it back.</span></div>
+    {%- endif %}
     {%- if q.pick.rows %}
     <div class="pq-pick" role="listbox" aria-label="Metrics Prometheus holds">
       {%- for name, help, kind, unit in q.pick.rows %}{% set on = name == s.m %}
@@ -57,14 +76,14 @@
       {%- endfor %}
     </div>
     {%- endif %}
-    <span class="lq-hint">{% if q.cat.state == 'ok' %}From Prometheus's own list of metric names ({{ '{:,}'.format(q.cat.names | length) }} over {{ rng.words }}, read {{ q.cat.read_at[:10] }} {{ q.cat.read_at[11:16] }} UTC), each with its help text{% if s.mq %}; {{ q.pick.total }} match "{{ s.mq }}"{% if q.pick.total > q.pick.rows | length %}, the first {{ q.pick.rows | length }} shown: narrow the search{% endif %}{% elif q.pick.total > q.pick.rows | length %}; search to find one{% endif %}.{% else %}Prometheus's metric names could not be read, so none is offered.{% endif %}</span>
+    <span class="lq-hint">{% if q.cat.state == 'ok' %}From Prometheus's own list of metric names ({{ '{:,}'.format(q.cat.names | length) }} over {{ rng.words }}, read {{ part.when(q.cat.read_at, 'dty') }}), each with its help text{% if s.mq %}; {{ q.pick.total }} match "{{ s.mq }}"{% if q.pick.total > q.pick.rows | length %}, the first {{ q.pick.rows | length }} shown: narrow the search{% endif %}{% elif q.pick.total > q.pick.rows | length %}; search to find one{% endif %}.{% else %}Prometheus's metric names could not be read, so none is offered.{% endif %}</span>
   </div></div>
 
   {%- if b %}
   {%- set held = d['values'] %}
   <div class="lq-row"><span class="lq-lab">Devices</span><div class="lq-col">
     <div class="lq-chips">
-      {%- for dv in s.dev %}{{ go(dict(change, dev=(s.dev | reject('equalto', dv) | list), hl='dev'), dv ~ ' ×', 'lq-chip on mono', none, 'Remove ' ~ dv) }}{% endfor %}
+      {%- for dv in s.dev %}{{ go(dict(change, dev=(s.dev | reject('equalto', dv) | list), hl='dev'), dv ~ ' ×', 'lq-chip on mono', none, 'Remove ' ~ dv) }}{% if dv in q.unseen.dev %}{{ part.unseen() }}{% endif %}{% endfor %}
       {%- if s.role %}{{ go(dict(change, role='', hl='dev'), 'role: ' ~ s.role ~ ' ×', 'lq-chip on', none, 'Remove the role ' ~ s.role) }}{% endif %}
       {%- set others = (held.get('device') or []) | reject('in', s.dev) | list %}
       {%- if others %}
@@ -87,7 +106,7 @@
   <div class="lq-row"><span class="lq-lab">Interfaces</span><div class="lq-col">
     <div class="lq-chips">
       {{- go(dict(change, hl='if', **{'if': []}), 'all', 'lq-chip' ~ (' on' if not s['if']), not s['if']) }}
-      {%- for i in s['if'] %}{{ go(dict(change, hl='if', **{'if': s['if'] | reject('equalto', i) | list}), i ~ ' ×', 'lq-chip on mono', none, 'Remove ' ~ i) }}{% endfor %}
+      {%- for i in s['if'] %}{{ go(dict(change, hl='if', **{'if': s['if'] | reject('equalto', i) | list}), i ~ ' ×', 'lq-chip on mono', none, 'Remove ' ~ i) }}{% if i in q.unseen['if'] %}{{ part.unseen() }}{% endif %}{% endfor %}
       {%- set rest = (held.get(d.iface) or []) | reject('in', s['if']) | list %}
       {%- for i in rest[:q.chips] %}{{ go(dict(change, hl='if', **{'if': s['if'] + [i]}), i, 'lq-chip') }}{% endfor %}
       {%- if rest | length > q.chips %}
@@ -197,22 +216,6 @@
   </div></div>
   {%- endif %}
 
-  <div class="lq-row"><span class="lq-lab">Range</span><div class="lq-col">
-    {%- set fit %}<p class="lq-ok">{{ q.range_words }} · step {{ q.step_words }} · {{ '{:,}'.format(q.points) }} points a series · within every limit below</p>{% endset %}
-    {%- call part.range_chips(q, here, region, s, rng, change, hidden(('range', 'within', 'from', 'to')), fit, 'pq-pop') %}
-            <h4>Limits, measured on this network's services{% if lim.read_at and not lim.error %} <span class="faint">(Prometheus's read {{ lim.read_at[:10] }} {{ lim.read_at[11:16] }} UTC)</span>{% endif %}</h4>
-            <table class="lq-lim pq-lim">
-              <tr><th scope="row">Prometheus</th><td>{% if lim.error or not lim %}its bounds could not be read{% if lim.error %} ({{ lim.error }}){% endif %}; it refuses what passes them, and the refusal is drawn{% else %}keeps {{ lim['storage.tsdb.retention.time'].words if lim['storage.tsdb.retention.time'] else '(not stated)' }} at full detail (<span class="mono">storage.tsdb.retention.time {{ lim['storage.tsdb.retention.time'].text if lim['storage.tsdb.retention.time'] else '' }}</span>{% if lim['storage.tsdb.retention.size'] %}, capped at {{ lim['storage.tsdb.retention.size'].text }}{% endif %}); one ask stops at {{ lim['query.timeout'].words if lim['query.timeout'] else '(not stated)' }} (<span class="mono">query.timeout</span>) and {{ '{:,}'.format(lim['query.max-samples'].n) if lim['query.max-samples'] else '(not stated)' }} samples (<span class="mono">query.max-samples</span>), read from its flags{% endif %}</td></tr>
-              <tr><th scope="row">Long-term store</th><td>{% if q.stores.history %}beyond {{ q.stores.live_days }} days, {{ q.stores.history }}: Code mode reads it; the builder asks Prometheus{% elif q.stores.error %}not known here ({{ q.stores.error }}); the builder asks Prometheus{% else %}none set{% if q.stores.why %} ({{ q.stores.why }}){% endif %}: past what Prometheus keeps, nothing is held{% endif %}</td></tr>
-              <tr><th scope="row">Mercury</th><td>at most {{ '{:,}'.format(q.max_points) }} points a series (the step grows to fit) and {{ q.max_series }} series an answer, the {{ q.drawn }} highest drawn</td></tr>
-              <tr><th scope="row">Loki (for Logs)</th><td>{% if not q.loki %}no log store is configured for this network{% elif q.loki.error %}its bounds could not be read ({{ q.loki.error }}){% else %}one ask spans at most {{ q.loki.max_query_length.words if q.loki.max_query_length else '(not stated)' }} (<span class="mono">max_query_length {{ q.loki.max_query_length.text if q.loki.max_query_length else '' }}</span>); lines kept {{ q.loki.retention_period.words if q.loki.retention_period else '(not stated)' }} (<span class="mono">retention_period {{ q.loki.retention_period.text if q.loki.retention_period else '' }}</span>), read from Loki's /config{% endif %}</td></tr>
-            </table>
-            <h4>The step widens with the range</h4>
-            <div class="pq-ladder" aria-label="Range and its step">{% for r, st in q.ladder %}<div><b>{{ r }}</b>{{ st }}</div>{% endfor %}</div>
-    {%- endcall %}
-    <span class="lq-hint">Step {{ q.step_words }}, {{ '{:,}'.format(q.points) }} points a series: the step widens with the range, so a series is at most {{ '{:,}'.format(q.max_points) }} points.</span>
-  </div></div>
-
   <div class="lq-row lq-acts"><span class="lq-lab"></span><div class="lq-line">
     {%- if b %}
     {{ part.actions(q, here, 'Asking Prometheus…', address_over, 'ask-metrics', 'About the metrics builder') }}
@@ -234,24 +237,24 @@
 {%- elif a.state == 'error' %}
 {%- set refused = a.error.startswith('Prometheus refused') %}
 {%- call part.state('danger', 'Prometheus refused the query' if refused else 'Prometheus not answering') %}
-  <p><strong>Couldn't load: {{ a.error }}</strong>, asked {{ a.asked_at[11:16] }} UTC. Nothing is drawn from an earlier answer.</p>
+  <p><strong>Couldn't load: {{ a.error }}</strong>, asked {{ part.when(a.asked_at, 't') }}. Nothing is drawn from an earlier answer.</p>
   <p class="muted">{% if refused %}Prometheus answered and refused it: change the choice its words name (a pattern typed for a filter is RE2).{% elif a.probe and a.probe.state == 'down' %}The integrations probe found it down too, {{ stamp(a.probe.at) }}: Needs attention carries it as a row while it stays down.{% elif a.probe and a.probe.state == 'up' %}The integrations probe last found it answering, {{ stamp(a.probe.at) }} (it probes every 60 s); if it stays down, Needs attention carries it as a row.{% else %}The integrations probe has no read of it, so nothing says when it last answered.{% endif %}</p>
   <div>{{ go({'ask': '1'}, 'Ask again', 'btn btn-small') }}</div>
 {% endcall %}
 {%- elif a.state == 'empty' %}
 {%- call part.state('', 'No data in range', 'status') %}
-  <p><strong>No samples between {{ q.between }}</strong> for <span class="mono">{{ s.m }}</span>{% if s.dev or s.role or s.f or s['if'] %}, as filtered{% endif %}.</p>
+  <p><strong>No samples between {{ part.when(q.answer_span[0], 'dty') }} and {{ part.when(q.answer_span[1], 'dty') }}</strong> for <span class="mono">{{ s.m }}</span>{% if s.dev or s.role or s.f or s['if'] %}, as filtered{% endif %}.</p>
   <p class="muted">{% if a.inside_kept %}The range is inside what Prometheus keeps ({{ q.kept_words }}), so this is an answer: nothing matched then.{% elif a.kept_from_words %}Prometheus holds {{ s.m }} from {{ a.kept_from_words }} ({{ q.kept_words }}){% if not q.stores.history %}, and no long-term store is set{% endif %}: nothing older is held here.{% else %}How long Prometheus keeps is not known here.{% endif %} This is not the same as a zero.</p>
   {%- if a.start_at %}<div>{{ go(a.start_at.over, 'Start the range at ' ~ a.start_at.words, 'btn btn-small') }}</div>{% endif %}
 {% endcall %}
 {%- else %}
 <section class="card lq-card" aria-label="The answer">
-  <div class="lq-top"><strong>{{ q.answer_title }}</strong><span class="faint">{{ a.series_total }} series · answered in {{ a.took_ms }} ms · read {{ a.read_at[11:16] }} UTC</span></div>
+  <div class="lq-top"><strong title="{{ q.answer_title }}">{{ q.answer_what }}, {{ part.when(q.answer_span[0], 'dt', q.answer_span[1]) }}</strong><span class="faint">{{ a.series_total }} series · answered in {{ a.took_ms }} ms · read {{ part.when(a.read_at, 't') }}</span></div>
   <section class="panel lq-panel" data-panel-json='{{ a.payload | tojson }}' data-panel-h="9" aria-label="{{ a.series_total }} series, {{ b.unit_words }}">
     <div class="panel-body"><p class="panel-wait">Drawing…</p></div>
   </section>
   <div class="table-wrap"><table class="table lq-legend pq-legend" aria-label="The series">
-    <thead><tr><th scope="col">Series</th><th scope="col" class="num">Now ({{ a.end_words }} UTC)</th><th scope="col" class="num">Highest in range</th><th scope="col" class="num">Lowest in range</th></tr></thead>
+    <thead><tr><th scope="col">Series</th><th scope="col" class="num">Now ({{ part.when(a.end_at, 't') if a.end_at is not none else a.end_words }})</th><th scope="col" class="num">Highest in range</th><th scope="col" class="num">Lowest in range</th></tr></thead>
     <tbody>{% for sr in a.series %}<tr><td><span class="swatch s{{ loop.index0 % 6 }}" aria-hidden="true"></span> <span class="mono">{{ sr.label }}</span></td><td class="num"><span class="pq-k">now </span>{{ sr.now_words }}</td><td class="num"><span class="pq-k">highest </span>{{ sr.high_words }}</td><td class="num"><span class="pq-k">lowest </span>{{ sr.low_words }}</td></tr>{% endfor %}</tbody>
   </table></div>
   {%- if a.series_total > a.series | length %}<p class="lq-hint">{{ a.series_total }} series answer: the {{ a.series | length }} highest in range are drawn; the other {{ a.series_total - a.series | length }} are counted, not drawn. Only the top, a group or a filter narrows it.</p>{% endif %}

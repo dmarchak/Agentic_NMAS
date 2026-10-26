@@ -258,15 +258,29 @@ written by hand; **Edit as code** hands it the query the builder formed). Each c
 address, so **Copy the link** carries the whole question, and **Save this view…** saves it for
 the network like any other view.
 
+The rows run in the order a question depends on them: the scope first (**Range**, then
+**Kind**, then **Devices**), then the choices read over that scope (**Severity**,
+**Mnemonic**, **Text**, **Show**). Changing the range or a kind reads the lists below it
+again. A choice the new scope no longer holds (a kind, a device or a mnemonic) is kept, its
+chip still on and in the address, and marked **not seen in this range**; it is never dropped
+without a word, so choosing the old range again brings it back.
+
 - **Ask in words**, at the top of both builders, fills the choices from a question as you
   would say it, through one recorded AI call (see [Ask in words](ask-in-words)). It carries
   the **AI** mark; when hosted AI cannot answer it is disabled with the reason under it, and
   everything below it works as ever (see [The AI mark](installation-settings#ai-mark)).
+  When it does not fill the builder (it is refused, it asks a question back, or
+  Mercury answers itself), the builder still holds what it held before your words: it is
+  marked **Left from your previous question** (or, if nothing was chosen, as the builder's
+  defaults), the query box is outlined, and **Ask** is off. **Keep these choices** turns Ask
+  back on for the choices as they are; changing any choice does too.
 - **Start from** sets every choice at once to a common question: interfaces going down, OSPF
   adjacency changes, configuration changes and who made them, errors and worse.
+- **Range** (its choices and bounds are described after the query, below) comes first because
+  every list under it is read over it.
 - **Kind** offers the values of Loki's `job` label over the range: whatever the network's log
   store holds, read from Loki, never assumed. Choose one or more, or every job.
-- **Devices** offers the devices Loki holds lines from in the range (**+ device**), the network's
+- **Devices** offers the devices Loki holds lines from in the range, of the kinds chosen (**+ device**), the network's
   roles (**by role**), or **all**. Where Loki's `device` label covers the whole range a device is
   matched by it; a range starting before the label's first line matches each device by its own
   name before the line's timestamp, which reads the older lines too, and the row says which.
@@ -286,6 +300,13 @@ part does and what the whole query reads. Every value you choose reaches Loki in
 string, escaped, so a quote, a backslash or a line break in it can never become part of the
 query's own structure; a label name, which cannot be quoted, must be one Loki holds. Mercury's
 heartbeat lines are always left out.
+
+**These filters cannot match together** appears above the query when no line could ever
+match the choices: a mnemonic chosen while **Text contains** names a different mnemonic (a
+line carries one), a severity every chosen mnemonic is milder than (the digit in its name),
+or excluded text that every matching line holds. It says which, and its first button drops
+the leftover (the choice you made earlier, usually one a Start-from chip or Ask in words
+set), the second the other one. It is a warning: Ask still runs.
 
 **Range** is 1 h, 24 h, 7 days, 30 days, or **From… to…**: the last so many minutes, hours or
 days, or two times in UTC, your local time shown beside each; Apply or Cancel. The **Bounds**
@@ -307,7 +328,20 @@ last read Loki well, with **Ask again** (nothing is drawn from an earlier answer
 or **No lines in range**, saying how many lines the same jobs and devices sent in the range and
 whether the range is inside what Loki keeps, so an empty answer is not mistaken for a gap, with
 **Drop the text filter** when a text filter is set. A
-line's time is when the collector received it, never the device's clock. These are reads:
+line's time is when the collector received it, never the device's clock.
+
+**Counts over time** are drawn over the windows they count: Loki's count at a time covers the
+window that ends then, so each step is drawn from the window's start to its end (a line
+received on 22 Oct at 13:00, counted per day, is drawn over 22 Oct, never 23 Oct). The
+answer's title spans the whole windows inside the range, and a window that crosses midnight
+names both dates. Hovering the chart names the window under the pointer.
+
+**One time zone per view.** Every time in an answer (its title, when it was read, the legend's
+windows, the Lines view's times, whose column head names the zone) and the builder's read
+times are in your browser's time zone, named after each time; hover a time for the same
+instant in UTC, and the chart's hover gives both. The chart's axis is in the same zone.
+Mercury has no per-person or installation time zone yet, so your browser's is the
+view's. **From… to…** is typed in UTC, your local time shown beside each. These are reads:
 nothing is written, and nothing reaches a device. **Edit as code** from Counts over time opens
 Code mode with the count query, drawn there on the same chart.
 
@@ -323,6 +357,17 @@ Ask a question of the network's metrics by choosing, not by writing PromQL. It s
 builder's head (**Source**, **Mode**), its range, its query box and its actions; **Edit as code**
 hands the PromQL formed to Code mode. The network's **Saved queries** are listed beside it, each
 one click from its answer.
+
+As on the logs builder, the scope comes first: **Range** is the row after **Start from**,
+before **What**, **Devices** and **Interfaces**, since the metrics and their labels are read
+over it. A metric, device or interface chosen that the new range no longer holds is kept in
+the address, its chip still on, and marked **not seen in this range**; a metric Prometheus
+holds nothing of over the range forms no query, and **Ask** says so. When **Ask in words**
+does not fill the builder, it is marked **Left from your previous question** and Ask is off
+until **Keep these choices** or a change, as on the logs builder. Times are in your browser's
+time zone, named, with UTC on hover. Each point of the chart is drawn at the instant it was
+read for: a rate or an increase over a window covers the window that ends there, and the line
+joins those instants; nothing is held over the window after it.
 
 - **Start from** sets every choice at once to a common question: errors per interface (the top
   5), CPU per device over 7 days, BGP sessions not established, bytes in per role. A question

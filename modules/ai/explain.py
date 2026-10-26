@@ -42,6 +42,7 @@ import logging
 from enum import Enum
 
 from modules.ai import calls, gateway
+from modules.ai.needs import Need
 from modules.ai.schemas import StrictModel, register
 
 log = logging.getLogger(__name__)
@@ -120,16 +121,31 @@ class ExplanationV2(StrictModel):
     why_not: str
 
 
+@register("explain", 3)
+class ExplanationV3(StrictModel):
+    """Prompt v6's answer (the network-context version, the operator, 2026-10-26): v2's, and
+    `needs`, what the answer lacked that Mercury looks up once (`modules/ai/needs.py`, C1780)."""
+    outcome: Assessment
+    rationale: str
+    hypotheses: list[Hypothesis]
+    checked: list[str]
+    needs_human: bool
+    why_not: str
+    needs: list[Need]
+
+
 #: Each prompt version's answer schema: v1 to v3 were written for `Explanation`, v4 for
 #: `ExplanationV2`, so a replay asking v1 asks it as it was.
 SCHEMA_OF = {1: Explanation, 2: Explanation, 3: Explanation, 4: ExplanationV2,
-             5: ExplanationV2}
-#: A candidate prompt, asked only by a replay (`nmas-pack-replay --prompt 5`) until it is
-#: proved: v5 adds general Analyst guidance ("when symptoms appear on several devices in the
-#: same window, consider a common cause beneath them early, citing the cross-device evidence";
-#: the operator, 2026-10-26), proved on newly replayed incidents and the healthy baselines,
-#: never on C1547.
-CANDIDATES = (("explain", 5),)
+             5: ExplanationV2, 6: ExplanationV3}
+#: Candidate prompts, asked only by a replay (`nmas-pack-replay --prompt N`) until proved.
+#: v5 adds general Analyst guidance ("when symptoms appear on several devices in the same
+#: window, consider a common cause beneath them early"; the operator, 2026-10-26); it stays
+#: rejected. v6, the network-context version, is built from v4 (the operator, 2026-10-26):
+#: the coverage header's line (say when an answer rests on a layer not collected), the pack's
+#: endpoints (C1778), the needs round (C1780), and a pack section rebuilt afterwards never
+#: read as observed at the time (alert history, C1808); adopted only by the operator's bar.
+CANDIDATES = (("explain", 5), ("explain", 6))
 #: A checked piece's states that were read (pack_format: only ok and empty are evidence).
 READ_STATES = ("ok", "empty")
 
@@ -360,6 +376,38 @@ def explain(pack_id: str, *, actor: str, send=None, today: str = None) -> dict:
     return explain_pack(pack, actor=actor, send=send, today=today)
 
 
+def _ask_round(prompt, schema, data, ctx, network, *, actor, send, today, subject) -> dict:
+    """v6's call and its needs round (at most one follow-up, `needs.run`), as Ask in words'
+    (`nl_query._ask_round`): the follow-up's answer in place of the first's when there was one,
+    the cost the round's, ``parent_call_id`` the first call's."""
+    from modules.ai import needs as N
+    from modules.ai import nl_query
+
+    kw = {"actor": actor, "context": ctx, "send": send, "today": today}
+    got = gateway.ask(FEATURE, prompt, schema, dict(data, looked_up=nl_query.looked_up([])),
+                      subject=subject, **kw)
+    wanted = list(getattr(got.get("output"), "needs", None) or []) if got.get("ok") else []
+    if not wanted:
+        return got
+    held = {}
+
+    def follow(results, link):
+        held["got"] = gateway.ask(FEATURE, prompt, schema,
+                                  dict(data, looked_up=nl_query.looked_up(results)),
+                                  subject=dict(subject, **link), **kw)
+        return held["got"]
+
+    rnd = N.run(got["call_id"], network, [n.model_dump(mode="json") for n in wanted],
+                actor=actor, follow=follow)
+    second = held.get("got")
+    if not rnd["ok"] or second is None:
+        return dict(got, needs_said=rnd["error"] or "nothing could be looked up")
+    total = round((got.get("cost_usd") or 0) + (second.get("cost_usd") or 0), 6)
+    return dict(second, cost_usd=total, parent_call_id=got["call_id"],
+                needs_said="; ".join(f"{r['kind']} {r['subject']}: {r['state']}"
+                                     for r in rnd["results"]))
+
+
 def explain_pack(pack: dict, *, actor: str, send=None, today: str = None,
                  prompt: tuple = PROMPT) -> dict:
     """`explain` of a pack in hand (a stored one, or a replay's, scripts/nmas-pack-replay):
@@ -395,12 +443,18 @@ def explain_pack(pack: dict, *, actor: str, send=None, today: str = None,
     # What the call is about, written with it (15.14): the alert's pack and its device.
     subject = {"kind": "alert", "id": pack_id, "rule": pack.get("rule") or "",
                "devices": [pack["device"]] if pack.get("device") else []}
-    got = gateway.ask(FEATURE, tuple(prompt), schema, data, actor=actor, context=ctx,
-                      send=send, today=today, subject=subject)
+    if int(prompt[1]) >= 6:
+        got = _ask_round(tuple(prompt), schema, data, ctx, pack.get("network") or "",
+                         actor=actor, send=send, today=today, subject=subject)
+    else:
+        got = gateway.ask(FEATURE, tuple(prompt), schema, data, actor=actor, context=ctx,
+                          send=send, today=today, subject=subject)
     if not got["ok"]:
         return dict(got, pack_id=pack_id, topology=said)
     answer, base = got["output"], {"pack_id": pack_id, "call_id": got["call_id"],
-                                   "cost_usd": got["cost_usd"], "topology": said}
+                                   "cost_usd": got["cost_usd"], "topology": said,
+                                   **{k: got[k] for k in ("parent_call_id", "needs_said")
+                                      if got.get(k)}}
     links = {"page": f"/v2/monitoring/alerts/pack/{pack_id}", "anchor": f"explain-{pack_id}"}
     why = check(answer, pack, topo["ids"] if topo["sent"] else (), sections=sections)
     if why:

@@ -1,5 +1,6 @@
 {%- from "v2/_macros.html" import how, icon -%}
 {%- import "v2/_ai.html" as ai -%}
+{%- import "v2/_history_ask_parts.html" as part with context -%}
 {#- Ask in words (PHASE8_PLAN feature 1, 8.1), one row shared by both builders (E3 metrics, F3
     logs): the question fills the builder's choices through the AI gateway; the builder reads
     them back, and nothing runs until Ask. The form carries the choices drawn
@@ -32,4 +33,12 @@
 {%- if q.presets %}{% include "v2/_history_ask_chips.html" %}{% endif %}</div></div>
 {%- elif w %}
 <div class="notice notice-warn" role="alert">{{ icon('warn', 16) }}<p>Not filled: {{ w.detail }}.</p></div>
+{%- endif %}
+{#- Not filled, the builder below still holds what it held before these words, and Ask would
+    answer that (the operator's walk, 2026-10-26): it is marked, and Ask is off until one click
+    keeps it or a choice changes (either redraws the region without the words). *here*,
+    *region* and *change* are the including builder's. -#}
+{%- if q.left %}
+<div class="notice notice-warn lq-left" id="lq-left" role="status">{{ icon('warn', 16) }}<div><p><strong>{{ 'Left from your previous question' if q.left.previous else 'Not filled from these words' }}.</strong> The choices and the query below are {{ 'the ones from before these words' if q.left.previous else "the builder's defaults" }}, not your words, so Ask is off until you keep them or change one.</p>
+  <div class="lq-line">{{ part.go(q, here, region, dict(change, hl=''), 'Keep these choices', 'btn btn-small', none, 'Keep these choices and turn Ask on') }}</div></div></div>
 {%- endif %}

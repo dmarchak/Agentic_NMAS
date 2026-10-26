@@ -1,0 +1,121 @@
+{
+  "$defs": {
+    "Assessment": {
+      "description": "Schema v2's outcome: a cause hypothesised, no fault found in the evidence checked\n(C1742), or the pack cannot say.",
+      "enum": [
+        "answer",
+        "no_fault_found",
+        "refuse"
+      ],
+      "title": "Assessment",
+      "type": "string"
+    },
+    "Hypothesis": {
+      "additionalProperties": false,
+      "properties": {
+        "claim": {
+          "title": "Claim",
+          "type": "string"
+        },
+        "confirm_with": {
+          "title": "Confirm With",
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "claim",
+        "evidence_refs",
+        "confirm_with"
+      ],
+      "title": "Hypothesis",
+      "type": "object"
+    },
+    "Need": {
+      "additionalProperties": false,
+      "description": "One thing an answer lacked: its kind, and what it is about (an endpoint's name, address\nor MAC; a device; a device and an interface as ``device interface``).",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/NeedKind"
+        },
+        "subject": {
+          "title": "Subject",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "subject"
+      ],
+      "title": "Need",
+      "type": "object"
+    },
+    "NeedKind": {
+      "enum": [
+        "endpoint_location",
+        "interface_state",
+        "neighbour",
+        "route"
+      ],
+      "title": "NeedKind",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Prompt v6's answer (the network-context version, the operator, 2026-10-26): v2's, and\n`needs`, what the answer lacked that Mercury looks up once (`modules/ai/needs.py`, C1780).",
+  "properties": {
+    "checked": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Checked",
+      "type": "array"
+    },
+    "hypotheses": {
+      "items": {
+        "$ref": "#/$defs/Hypothesis"
+      },
+      "title": "Hypotheses",
+      "type": "array"
+    },
+    "needs": {
+      "items": {
+        "$ref": "#/$defs/Need"
+      },
+      "title": "Needs",
+      "type": "array"
+    },
+    "needs_human": {
+      "title": "Needs Human",
+      "type": "boolean"
+    },
+    "outcome": {
+      "$ref": "#/$defs/Assessment"
+    },
+    "rationale": {
+      "title": "Rationale",
+      "type": "string"
+    },
+    "why_not": {
+      "title": "Why Not",
+      "type": "string"
+    }
+  },
+  "required": [
+    "outcome",
+    "rationale",
+    "hypotheses",
+    "checked",
+    "needs_human",
+    "why_not",
+    "needs"
+  ],
+  "title": "ExplanationV3",
+  "type": "object"
+}

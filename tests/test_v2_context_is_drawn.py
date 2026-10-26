@@ -205,8 +205,7 @@ UNDRAWN = {
         ("by_label log_query", "the selector and grouping label the query is built from; the "
                                "whole query is drawn token by token"),
         ("notes", "copies of the explain's device and severity notes, which the same region "
-                  "draws"),
-        ("since", "the label discovery's start epoch, drawn as its since-words")],
+                  "draws")],
     "GET /v2/history/query/ask/metrics": [
         ("csv_path data_dir repo_dir", LISTREF),
         ("end kept_from now_ts seconds start", RANGE_RAW),
@@ -348,7 +347,9 @@ UNDRAWN = {
 #: before, unmeasured (C1219).
 #: -2 2026-10-19: the Record stores card draws each store's `store` (K31 part 2a: its Move and
 #: Move back buttons send it).
-UNDRAWN_CEILING = 365
+#: -1 2026-10-26: the logs builder draws each label's first line from its epoch, `since` (the
+#: operator's walk of History › Query: each time in the viewer's zone, through `when()`).
+UNDRAWN_CEILING = 364
 
 #: {route: [(keys, reason), ...]}: in the preview a card is built from, read by neither its
 #: adapter nor its template.
@@ -551,10 +552,8 @@ EMPTY_IN_FIXTURE = {
     "v2/_history_ask_logs.html a.refusals #2": _LOGS_ASK,
     "v2/_history_ask_logs.html a.rows": _LOGS_ASK,
     "v2/_history_ask_logs.html a.series": _LOGS_ASK,
-    "v2/_history_ask_logs.html d['values']['job']": _LOGS_ASK,
     "v2/_history_ask_logs.html extra.items()": _LOGS_ASK,
     "v2/_history_ask_logs.html fixes": _LOGS_ASK,
-    "v2/_history_ask_logs.html others": _LOGS_ASK,
     "v2/_history_ask_logs.html q.errors": _LOGS_ASK,
     "v2/_history_ask_logs.html q.roles": _LOGS_ASK,
     "v2/_history_ask_logs.html r.text | masked_parts": _LOGS_ASK,
@@ -597,7 +596,6 @@ EMPTY_IN_FIXTURE = {
     "v2/_history_metric.html lq.lines": _LOKI,
     "v2/_history_metric.html m.interfaces": "a metrics question's interface choices: no Prometheus answers the walk with the device's interfaces",
     "v2/_history_metric.html rec.rows": "a metrics question's restart record: no restart is recorded on the walk's store",
-    "v2/_history_remote.html remote.dirty_items": _REMOTE,
     "v2/_history_remote.html v.failed": _REMOTE + " (and no Verify is run)",
     "v2/_history_views.html views.views": "History › Saved by your team: no view is saved on the walk's store",
     "v2/_in_progress.html ip.finished": _NOTHING_RUNS,
@@ -835,8 +833,10 @@ EMPTY_IN_FIXTURE = {
 #: C1232's (Save's no-golden scope), which draws the plan's groups and their devices; 371 with
 #: C1403's (DHCP › Leases' Release lease…), which draws the DHCP page's tabs and lease groups;
 #: 368 with feature 7's (Change it in words, 2026-10-26), whose draft draws the intent check's
-#: diff rows and pending lines.
-EMPTY_IN_FIXTURE_CEILING = 368
+#: diff rows and pending lines; 365 with the logs builder's leftovers (the operator's walk
+#: of History › Query, 2026-10-26), which draws Loki's jobs and devices to add, and History's
+#: remote line's uncommitted files as the lab stands by then.
+EMPTY_IN_FIXTURE_CEILING = 365
 #: The population and how many of it drew, measured 2026-10-18 (557 and 171): floors, a little
 #: under the measurement, so a scan that stopped seeing loops, or a walk that stopped drawing,
 #: fails.

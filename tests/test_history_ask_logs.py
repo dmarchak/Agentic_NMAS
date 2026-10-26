@@ -365,7 +365,7 @@ class TestTheAnswer:
         html = _page(web, ask="1", range="1h")
         q = _logs_asked(web)[0]
         assert q["limit"] == 200 and "!~ \"%HA_EM-" in q["query"]
-        times = re.findall(r'<td class="lq-nw mono" title="([0-9T:Z-]+)">', html)
+        times = re.findall(r'<td class="lq-nw mono"><time datetime="([0-9T:Z-]+)"', html)
         assert times and times == sorted(times, reverse=True)
         assert "%OSPF-5-ADJCHG: Process 1, Nbr 192.0.2.21" in html
         assert ">network_syslog</td>" in html and "5 notice" in html
@@ -375,7 +375,8 @@ class TestTheAnswer:
         q = _logs_asked(web)[0]
         assert q["query"].startswith('{job="snmptrapd"}')
         assert "IF-MIB::linkDown" in html and ">snmptrapd</td>" in html
-        row = re.search(r"<tr><td class=\"lq-nw mono\"[^>]*>[^<]*</td><td class=\"mono\">s1</td>"
+        row = re.search(r"<tr><td class=\"lq-nw mono\"><time [^>]*>[^<]*</time></td>"
+                        r"<td class=\"mono\">s1</td>"
                         r"<td>(.*?)</td>", html)
         assert row and "—" in row.group(1) and "notice" not in row.group(1)
 
@@ -530,7 +531,18 @@ def test_the_builder_in_a_browser(web):  # noqa: F811
              " clientX: x, clientY: y})); }); return 1")
         b.wait_for("var p = document.querySelector('.lq-pick'); return p && !p.hidden", 10)
         pick = b.js("var p = document.querySelector('.lq-pick'); var a = p.querySelector('a');"
-                    "return [p.textContent, a ? a.getAttribute('href') : '']")
+                    "var s = p.querySelector('span');"
+                    "return [p.textContent, a ? a.getAttribute('href') : '', s.title]")
+        # One zone per view (the operator, 2026-10-26): the title's span and the legend's
+        # windows in the browser's zone, named, UTC on hover; the chart's counts over their
+        # windows (the first drawn time a step before the first count's close).
+        zone = b.js("var t = document.querySelector('.lq-top time[data-lq-when=span]');"
+                    "var c = document.querySelector('.lq-panel').__nmasChart;"
+                    "var p = document.querySelector('.lq-panel').__nmasLast;"
+                    "return [t.textContent, t.title, window.NMAS_PANELS.viewerZone("
+                    "Date.parse(t.getAttribute('data-lq-to')) / 1000),"
+                    " c.data[0][0], p.series[0].times[0], p.step,"
+                    " c.data[0].length, p.series[0].times.length]")
         b.js("var d = document.querySelector('.lq-pickbox'); d.open = true;"
              "var i = document.getElementById('lq-from'); i.value = '2026-10-10 06:00';"
              "i.dispatchEvent(new Event('input', {bubbles: true})); return 1")
@@ -547,9 +559,13 @@ def test_the_builder_in_a_browser(web):  # noqa: F811
         nested = b.js("return document.querySelectorAll('#lq').length")
         wide = b.js("return document.documentElement.scrollWidth <= window.innerWidth")
         b.go("about:blank")
-    words, href = pick
-    assert re.search(r'device="(r1|s1)" · \d\d-\d\d \d\d:\d\d to \d\d:\d\d UTC · \d+ lines? in '
-                     r'this window', words), words
+    words, href, utc_words = pick
+    assert re.search(r'device="(r1|s1)" · \d+ \w{3} \d\d:\d\d to (\d+ \w{3} )?\d\d:\d\d \S+ · '
+                     r'\d+ lines? in this window', words), words
+    assert re.search(r' UTC · \d+ lines? in this window$', utc_words), utc_words
+    text, title, name, first_drawn, first_close, step, drawn_n, closes_n = zone
+    assert text.endswith(" " + name) and title.endswith(" UTC"), (text, title, name)
+    assert first_drawn == first_close - step and drawn_n == closes_n + 1, zone
     assert "show=counts" not in href and "range=custom" in href and "from=" in href and "to=" in href
     assert re.search(r"dev=(r1|s1)(&|$)", href) and "ask=1" in href, href
     assert re.fullmatch(r"UTC · \d\d:\d\d local \(UTC([+\u2212]\d+(:\d\d)?)?\)", local), local
@@ -692,3 +708,192 @@ class TestLokisOwnWords:
             html[html.find("Couldn't load"):][:400]
         assert "error parsing regexp: missing closing )" in html
         assert PLANTED not in html
+
+
+# ---------------------------------------------------------------------------- the walk of 10-26
+# The operator walked History › Query on 2026-10-26: a count drawn a window late, a 7-day
+# title ending at the last series' last line, a day's window without its end date, the axis
+# in one zone and the words in another, leftover filters no line could match, and a builder
+# whose scope came after the choices read over it.
+
+#: The walk's day: the read at 26 Oct 08:25 UTC, and r1's lines at known times on 22 Oct.
+WALK_NOW = 1793003100                                     # 2026-10-26 08:25 UTC
+EVENTS = [1792674000, 1792674300, 1792677600]             # 22 Oct 13:00, 13:05, 14:00 UTC
+DAY = 86400
+
+
+class EventLoki(FakeLoki):
+    """Loki's counts as count_over_time defines them, written here from its definition, not
+    from the code under test: the point at t counts the lines in (t − step, t], and Loki
+    leaves out a point with none. Every other read is the captures' (FakeLoki)."""
+
+    def _get(self, path, **params):
+        if path.endswith("query_range") and params.get("step"):
+            self.asked.append((path, params))
+            step = int(params["step"])
+            start, end = int(params["start"]) // 10 ** 9, int(params["end"]) // 10 ** 9
+            values = [[t, str(n)] for t in range(start, end + 1, step)
+                      for n in [sum(1 for e in EVENTS if t - step < e <= t)] if n]
+            return {"ok": True, "response": _Resp({"data": {"resultType": "matrix", "result": [
+                {"metric": {"device": "r1"}, "values": values}]}})}
+        return super()._get(path, **params)
+
+
+def _panels(expr):
+    """static/js/nmas_panels.js (and nmas_logq.js after it, as base.html loads them) in
+    duktape, *expr* evaluated."""
+    src = "".join(open(os.path.join(ROOT, "static", "js", f), encoding="utf-8").read() + ";"
+                  for f in ("nmas_panels.js", "nmas_logq.js"))
+    return dukpy.evaljs("var window = {};" + src + expr)
+
+
+def _week_of_days(web):
+    loki = EventLoki()
+    got = Q.view("Lab", {"show": "counts", "by": "device", "every": "1d", "range": "7d",
+                         "ask": "1"}, now=WALK_NOW, client=loki)
+    assert got["answer"]["state"] == "ok", got["answer"]
+    return got
+
+
+class TestACountIsDrawnOverTheWindowItCounts:
+    def test_r1_s_lines_of_22_oct_are_drawn_over_22_oct(self, web):
+        got = _week_of_days(web)
+        p = got["answer"]["payload"]
+        assert p["window_close"] is True and p["step"] == DAY
+        drawn = _panels(f"window.NMAS_PANELS.drawnData({json.dumps(p)})")
+        times, counts = drawn[0], drawn[1]
+        i = counts.index(3)
+        # uPlot's stepped path (align 1) holds a point's value from its time to the next one.
+        assert times[i] <= EVENTS[0] < times[i + 1] and times[i] <= EVENTS[-1] < times[i + 1], \
+            (Q._utc(times[i]), Q._utc(times[i + 1]))
+        assert (Q._utc(times[i]), Q._utc(times[i + 1])) == ("22 Oct 00:00", "23 Oct 00:00")
+        assert sum(counts[:-1]) == 3, "a count drawn twice, or the closing point counted"
+
+    def test_the_last_window_is_drawn_to_its_close_and_the_pointer_reads_its_own_window(self):
+        got = _panels("var P = window.NMAS_PANELS; var d = P.windowData([[200, 300], [4, 7]], 100);"
+                      "[d, P.windowIdx(d[0], 150), P.windowIdx(d[0], 250), P.windowIdx(d[0], 300)]")
+        assert got[0] == [[100, 200, 300], [4, 7, 7]]
+        assert got[1:] == [0, 1, 1], "a pointer is read as the window it is in, never the close"
+
+    def test_the_title_spans_the_whole_windows_and_a_day_s_window_names_both_dates(self, web):
+        got = _week_of_days(web)
+        a = got["answer"]
+        # Points 21 Oct to 26 Oct 00:00 close the six whole days from 20 Oct: the title is the
+        # range's, never the last series' last line (it read "to 23 Oct" from r1's).
+        assert got["answer_span"] == (WALK_NOW // DAY * DAY - 6 * DAY, WALK_NOW // DAY * DAY)
+        assert got["answer_title"].endswith(", 20 Oct 00:00 to 26 Oct 00:00 UTC"), \
+            got["answer_title"]
+        assert a["series"][0]["last_words"] == "22 Oct 00:00 to 23 Oct 00:00 UTC"
+        assert Q.history_ask.span(EVENTS[0], EVENTS[-1]) == "22 Oct 13:00 to 14:00"
+
+    def test_the_page_draws_the_window_r1_s_lines_were_counted_in(self, web, monkeypatch):
+        loki = EventLoki()
+        monkeypatch.setattr("modules.history_logq._client", lambda list_name, wait=65.0: loki)
+        monkeypatch.setattr("modules.history_logq._now", lambda: WALK_NOW)
+        html = _page(web, show="counts", every="1d", range="7d", ask="1")
+        assert re.search(r'<td><time datetime="2026-10-22T00:00:00Z" data-lq-to="2026-10-23T'
+                         r'00:00:00Z" data-lq-when="span">22 Oct 00:00 to 23 Oct 00:00 UTC</time>'
+                         r'</td>', html), "the legend's last window"
+
+
+class TestOneZonePerView:
+    def test_every_time_in_an_answer_is_one_the_script_writes_in_the_viewer_s_zone(self, web):
+        html = _page(web, ask="1", range="1h")
+        top = re.search(r'<div class="lq-top">(.*?)</div>', html, re.S).group(1)
+        assert "UTC" not in re.sub(r"<time [^>]*>[^<]*</time>|title=\"[^\"]*\"", "", top), \
+            "a time written outside a <time> the script redraws"
+        assert re.search(r'<strong title="The lines, every device, \d+ Oct \d\d:\d\d to '
+                         r'\d\d:\d\d UTC">', top), "the title's UTC words are its hover"
+        assert '<th scope="col">Time (<span class="lq-zone" data-lq-zone>UTC</span>)</th>' in html
+        assert re.search(r'<td class="lq-nw mono"><time datetime="[0-9T:-]+Z" '
+                         r'data-lq-when="dts" data-lq-bare>\d+ Oct \d\d:\d\d:\d\d</time>', html)
+
+    def test_the_words_in_a_zone_six_hours_west(self):
+        got = _panels("var P = window.NMAS_PANELS, L = window.NMAS_LOGQ;"
+                      "var west = function () { return -360; }, z = function () { return 'MDT'; };"
+                      "[P.whenWords(1792627200, -360, 'dt'), P.whenWords(1792627200, 0, 't'),"
+                      " P.spanWords(1792627200, 1792713600, -360, -360),"
+                      " P.spanWords(1792656000, 1792659600, -360, -360),"
+                      " L.timeText('span', 1792627200, 1792713600, west, z, false),"
+                      " L.timeText('dts', 1792674005, 0, west, z, true),"
+                      " P.tipWhen(1792627200, {stepped: true, window_close: true, step: 86400},"
+                      "           west, z),"
+                      " P.tipWhen(1792627200, {hover_utc: true}, west, z),"
+                      " L.pickWords('device=\"r1\"', 1792627200, 1792713600, 3, west, z),"
+                      " P.offsetWords(-360), P.offsetWords(330), P.offsetWords(0)]")
+        assert got == ["21 Oct 18:00", "00:00", "21 Oct 18:00 to 22 Oct 18:00",
+                       "22 Oct 02:00 to 03:00", "21 Oct 18:00 to 22 Oct 18:00 MDT",
+                       "22 Oct 07:00:05",
+                       ["21 Oct 18:00 to 22 Oct 18:00 MDT", "22 Oct 00:00 to 23 Oct 00:00 UTC"],
+                       ["21 Oct 18:00 MDT", "22 Oct 00:00 UTC"],
+                       'device="r1" · 21 Oct 18:00 to 22 Oct 18:00 MDT · 3 lines in this window',
+                       "UTC\u22126", "UTC+5:30", "UTC"]
+
+    def test_a_panel_outside_history_keeps_its_one_line(self):
+        got = _panels("window.NMAS_PANELS.tipWhen(1792627200, {}, function () { return -360; },"
+                      " function () { return 'MDT'; })")
+        assert got[1] is None
+
+
+class TestFiltersThatCannotMatchTogether:
+    def test_a_mnemonic_chosen_and_another_typed_into_text(self):
+        spec, _e = Q.ask({"mn": ["%LINK-3-UPDOWN"], "has": "OSPF-5-ADJCHG"})
+        (words, fixes), = Q.clashes(spec)
+        assert "LINK-3-UPDOWN" in words and "OSPF-5-ADJCHG" in words
+        assert fixes[0] == ("Drop LINK-3-UPDOWN", {"mn": [], "hl": "mn"}), "the leftover first"
+        spec, _e = Q.ask({"mn": ["%LINK-3-UPDOWN"], "has": "OSPF-5-ADJCHG", "hl": "mn"})
+        assert Q.clashes(spec)[0][1][0][1] == {"has": "", "hl": "has"}, \
+            "the mnemonic chosen last: the text is the leftover"
+
+    def test_what_can_match_together_is_not_warned(self):
+        for values in ({"mn": ["%OSPF-5-ADJCHG"], "has": "OSPF-5-ADJCHG"},
+                       {"mn": ["%OSPF-5-ADJCHG"], "has": "Neighbor Down"},
+                       {"has": "OSPF-5-ADJCHG"}, {"mn": ["%OSPF-5-ADJCHG"], "sev": "5"},
+                       {"mn": ["%OSPF-5-ADJCHG", "%LINK-3-UPDOWN"], "sev": "3"},
+                       {"has": "Down", "not": "Up"}):
+            spec, _e = Q.ask(values)
+            assert Q.clashes(spec) == [], values
+
+    def test_a_severity_every_mnemonic_is_milder_than_and_text_excluded_by_its_own(self):
+        spec, _e = Q.ask({"mn": ["%OSPF-5-ADJCHG"], "sev": "3"})
+        (words, fixes), = Q.clashes(spec)
+        assert "severity 5" in words and [f[0] for f in fixes] == ["Drop OSPF-5-ADJCHG",
+                                                                   "Any severity"]
+        spec, _e = Q.ask({"has": "Neighbor Down", "not": "Down"})
+        assert Q.clashes(spec)[0][1] == [("Drop the excluded text \u201cDown\u201d",
+                                          {"not": "", "hl": "not"})]
+
+    def test_the_page_warns_with_the_one_click_that_drops_the_leftover(self, web):
+        html = _page(web, mn="%LINK-3-UPDOWN", has="OSPF-5-ADJCHG", show="counts")
+        box = html[html.index("cannot match together"):]
+        href = re.search(r'<a class="btn btn-small btn-primary" href="([^"]+)"', box).group(1)
+        assert "has=OSPF-5-ADJCHG" in href and "mn=" not in href, href
+        assert "Drop LINK-3-UPDOWN</a>" in box
+
+
+class TestScopeFirst:
+    """The builder's order by dependency (the operator's design note, 2026-10-26): Range, Kind
+    and Devices, then what is read over them; a choice the scope no longer holds is kept and
+    marked, never dropped."""
+
+    def test_the_rows_run_range_kind_devices_then_the_choices(self, web):
+        html = _page(web)
+        rows = re.findall(r'<div class="lq-row(?: lq-acts)?"><(?:span|label)[^>]*class="lq-lab"'
+                          r'[^>]*>([^<]*)<', html)
+        assert [r for r in rows if r] == ["Start from", "Range", "Kind", "Devices", "Severity",
+                                          "Mnemonic", "Text", "Show", "The query"], rows
+
+    def test_a_kind_and_a_device_the_range_does_not_hold_are_kept_and_marked(self, web):
+        html = _page(web, job="no-such-kind", dev="r99")
+        assert re.search(r'>no-such-kind ×</a>', html) and re.search(
+            r'>r99 ×</a><span class="lq-unseen">not seen in this range</span>', html)
+        assert 'name="job" value="no-such-kind"' in html and 'name="dev" value="r99"' in html
+
+    def test_the_devices_are_read_for_the_kinds_chosen(self, web):
+        _page(web, job="snmptrapd")
+        got = [p for path, p in web.asked if path.endswith("/label/device/values")]
+        assert got and got[-1].get("query") == '{job="snmptrapd"}', got
+        web.asked.clear()
+        _page(web)
+        got = [p for path, p in web.asked if path.endswith("/label/device/values")]
+        assert got and "query" not in got[-1], "every kind: no narrowing"

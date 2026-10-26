@@ -132,6 +132,24 @@ def test_mercury_s_answer_is_drawn_with_what_to_name_and_the_start_from_chips(si
     assert "Not filled:" not in html, "drawn as a refusal"
 
 
+def test_mercury_s_answer_leaves_the_builder_marked_and_ask_off_until_kept(site):
+    """The operator's walk of 2026-10-26: after Mercury's own $0 answer the builder still held
+    the previous question's query with Ask on, so Ask answered the wrong question. It is now
+    marked left from the previous question, Ask is off, and one click keeps the choices (the
+    region drawn again without the words, Ask on)."""
+    r, html = _words(site, "Show me the network", m="ifHCInOctets")
+    assert "Mercury answered this itself" in html
+    assert "Left from your previous question" in html and "lq-leftmark" in html
+    assert " disabled" in re.search(r'<button id="lq-ask"[^>]*>', html).group(0)
+    keep = re.search(r'<a class="btn btn-small" href="[^"]+" hx-get="([^"]+)"[^>]*>Keep these '
+                     r'choices</a>', html).group(1)
+    assert "m=ifHCInOctets" in keep and "words" not in keep
+    from html import unescape
+    again = unescape(site.get(keep, headers={"HX-Request": "true"}).get_data(as_text=True))
+    assert "Left from your previous question" not in again and "lq-leftmark" not in again
+    assert " disabled" not in re.search(r'<button id="lq-ask"[^>]*>', again).group(0)
+
+
 def test_mercury_s_answer_names_the_words_it_could_not_match(site):
     r, html = _words(site, "flibbertigibbet wobbles on s1")
     assert site.world.sent == []

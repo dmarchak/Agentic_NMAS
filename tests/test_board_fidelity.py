@@ -149,6 +149,22 @@ def test_every_region_has_a_verdict_and_a_deviation_its_log_line():
                 assert tag and tag.group(1) in log, (name, region, "names no approval log line")
 
 
+def test_a_board_the_folder_lacks_is_refused_never_shot_as_a_404(tmp_path, monkeypatch):
+    """The board shots serve NMAS_BOARDS_DIR; a board missing from it was shot as the server's
+    404 page and the shot passed (2026-10-26: two records' comparisons rested on 404 shots).
+    A missing board is refused by name; a present one is served."""
+    import pytest
+
+    from tests import test_board_shots as B
+    (tmp_path / "Here.dc.html").write_text("<!doctype html><p>a board</p>")
+    monkeypatch.setattr(B, "BOARDS", str(tmp_path))
+    with B._Boards() as boards:
+        assert boards.url("Here.dc.html").endswith("/Here.dc.html")
+        assert boards.url("Here.dc.html?v=1").endswith("/Here.dc.html?v=1")
+        with pytest.raises(AssertionError, match="board Gone.dc.html is not in NMAS_BOARDS_DIR"):
+            boards.url("Gone.dc.html")
+
+
 def test_a_changed_template_is_refused(tmp_path):
     """The control: a record whose hash no longer matches is found."""
     r = _record(RECORDS["topology.html"])

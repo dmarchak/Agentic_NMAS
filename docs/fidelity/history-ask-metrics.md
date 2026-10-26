@@ -17,7 +17,7 @@ desktop board at 1440 and 1280 beside the page; the phone board at 390 beside th
 Compared 2026-10-15. History's own page (heading, remote line) is board D's; the board's Code
 mode panel is today's Ask your own box, Code on the Mode switch.
 Templates compared: templates/v2/history_ask_metrics.html, templates/v2/_history_body.html, templates/v2/_history_ask_metrics.html, templates/v2/_history_ask_parts.html, templates/v2/_history_ask_head.html, templates/v2/_history_ask_words.html, templates/v2/_ai.html, templates/v2/_history_ask_chips.html
-Templates sha256: `99af8181cc6bbd6f4df3e92de102e8ffc95c3f450d406aea489fdcfd742bfc7f`
+Templates sha256: `165c2477d3c2b4b29b239e6d420d8c6337d234821c18fad25c863b6ce62b5e01`
 
 Compared again 2026-10-15 (P7-03): `_history_body.html` gained a `data-concept` marker and one
 sentence inside a Baselines row's detail (the block drawing each baseline's Re-apply… link); this
@@ -161,6 +161,51 @@ named span's midnight when there is one. The shots at 1440, 1280 and 390 retaken
 wraps inside its box at 390; nothing else moved. A deviation (log: 8.1 Ask in words: the period
 read). `_history_ask_logs.html`'s empty state changed too, which this page never draws
 (docs/fidelity/history-ask-logs.md).
+
+Compared again 2026-10-26 (the operator's walk of History › Query that day, items 3, 9, 10
+and 12). Shots: `tests/test_board_shots.py::test_history_ask_metrics` (the board's question,
+the phone, the three states, and a new state, `history-ask-metrics-unseen`, at 1440: a device
+chosen that the range does not hold) and `test_history_ask_words` (its question back,
+Mercury's own answer and refused states now drawn after a fill, so each shows the builder
+left from the previous question). Board E3's files (`QueryBuilderMetrics3*.dc.html`) were not
+in the canvas copy the shots read, so the regions were compared with this record's own
+description of the board (the Board column below) and with 8.1's `AskWords.dc.html`, which
+was. What moved:
+- **Scope first** (item 12): Range is the third row, after Start from and before What,
+  Devices and Interfaces, which are read over it; the board draws it after the query. A
+  metric, device or interface chosen that the range no longer holds is kept in the address,
+  its chip on, marked "not seen in this range"; a metric not held forms no query, and Ask says
+  so (it was dropped from the address before, with a "Not taken" notice).
+- **Left from your previous question** (item 3): after Mercury's own $0 answer, a question
+  back or a refusal, the builder is marked (a notice with **Keep these choices**, the query
+  box outlined and labelled) and Ask is off until kept or a choice changes.
+- **One zone per view** (item 10): the answer's title, its timing, the legend's Now head, the
+  empty state's span, the metric list's and the limits' read times are written in the
+  browser's zone, named, with UTC on hover; the chart's axis was already the browser's, and
+  its hover now names the zone with UTC under it.
+- **Each point at its own instant** (item 9, checked): a rate or increase over [w] at t covers
+  (t − w, t] and is drawn at t, a line through the instants, never a step held over the next
+  window; nothing moved here (tests/test_history_ask_metrics.py,
+  `test_a_point_is_drawn_at_the_instant_prometheus_answered_for`).
+Every other region is as it was. The hash written again.
+
+Compared again 2026-10-26, against board E3 itself (the operator, the same evening: the boards
+found and restored). `QueryBuilderMetrics3.dc.html` and `QueryBuilderMetrics3Phone.dc.html`
+were never committed to git; they are in the mockups canvas's `project/` folder, now copied
+whole into the shots' folder (the shots refuse a missing board, C1818). Shots:
+`tests/test_board_shots.py::test_history_ask_metrics` and `test_history_ask_words`, the board at
+1440, 1280 and 390 beside the page as merged (the walk's fixes and the builder's items), each
+board shot opened and seen to be the board. Region by region, the verdicts below hold as written
+from the description, but one: the board draws From… to…'s picker open inline at the bottom,
+under a Range that follows the query; with Range now the third row, the page's picker opens
+over What, Devices and Interfaces until Apply or Cancel (the Range row's verdict, and log: E3
+metrics builder: the range picker over the scope rows). The chart title and the legend's Now are
+the browser's zone where the board's are UTC (log: History › Query: one zone per view); Ask in
+words is 8.1's row, which E3 predates (its log lines). The board's fidelity and shell notes are
+its annotations. Nothing else differs.
+Templates sha256 before: `c9f18041accccf75419f186a6c8350718c384715f542342a8d1c840a76c10a24` (the
+builder's items alone) and `99af8181cc6bbd6f4df3e92de102e8ffc95c3f450d406aea489fdcfd742bfc7f`
+(the walk's fixes alone), each written before the two were merged.
 Templates sha256 before: `d18c51cf3a8a68efe8ad28dc9c2bbdbdaa00e83c3728df837c81f3c72e26047e`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
@@ -170,18 +215,18 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 |---|---|---|---|
 | Tabs | Timeline, Query, Baselines, Authorisations; Query on | Timeline, Query, Baselines; Query on | **deviation** (log: E3 metrics builder: History's tabs) |
 | Head | "Ask your own ‹ back to the questions"; Source (Metrics, Logs) and Mode (Builder, Code) | the same, shared with F3; Metrics and Builder on | **same** |
-| Ask in words | 8.1's board (`AskWords.dc.html`): the row, busy, filled (model, cost, the call in History, the test run), a named day's midnight, a question back, Mercury's own answer with the chips, refused, hosted AI off | a question, Fill the builder busy on itself, "How does this work?"; the result's notice under it (saying whose midnight "today" began, when the range is today's); the AI mark; disabled with its reason (and the AI card's link) while hosted AI cannot answer; each notice the card's width, the model's id beside its name | **deviation** (log: 8.1 Ask in words: the notices) |
+| Ask in words | 8.1's board (`AskWords.dc.html`): the row, busy, filled (model, cost, the call in History, the test run), a named day's midnight, a question back, Mercury's own answer with the chips, refused, hosted AI off | a question, Fill the builder busy on itself, "How does this work?"; the result's notice under it (saying whose midnight "today" began, when the range is today's); the AI mark; disabled with its reason (and the AI card's link) while hosted AI cannot answer; each notice the card's width, the model's id beside its name; not filled, the builder marked left from the previous question (Keep these choices, the query box outlined, Ask off until kept or changed) | **deviation** (log: 8.1 Ask in words: the notices); (log: History › Query: left from your previous question) |
 | Start from | four chips, the one the choices match marked | the same four, each setting every choice; marked when the question is exactly its own; a chip whose metric Prometheus does not hold is drawn but no link | **same** |
-| What | search box, the matching metrics with help, "per interface · counter · bytes", the count read | the same box and list; each with Prometheus's help and its type and unit; the count over the range, when read | **deviation** (log: E3 metrics builder: the metric list) |
-| Devices | + device, by role: core, all 9; "the values the device label holds now" | the same, from the metric's `device` and `role` labels over the range | **deviation** (log: E3 metrics builder: devices, roles and interfaces) |
+| What | search box, the matching metrics with help, "per interface · counter · bytes", the count read | the same box and list; each with Prometheus's help and its type and unit; the count over the range, when read; after Range; a metric chosen the range does not hold kept, marked "not seen in this range" | **deviation** (log: E3 metrics builder: the metric list); (log: History › Query: not seen in this range) |
+| Devices | + device, by role: core, all 9; "the values the device label holds now" | the same, from the metric's `device` and `role` labels over the range; a device chosen the range does not hold kept, marked "not seen in this range" (an interface the same) | **deviation** (log: E3 metrics builder: devices, roles and interfaces); (log: History › Query: not seen in this range) |
 | Interfaces | all, three names, + 14 more | all, the first three of the `ifDescr` values, + 15 more (a field with the rest) | **deviation** (log: E3 metrics builder: devices, roles and interfaces) |
 | Filters | the chip with ×, + filter, the editor: label, = != =~ !~, value, Add, Cancel, the values held, "would leave out 9 series" | the same, the count from Prometheus (9, as the board) | **deviation** (log: E3 metrics builder: the filter editor) |
 | Operations | the numbered chain of selects with × and arrows, + operation's menu (Units, Group), the counter rule and the unit | the same; the menu adds Rate, Compare and count by, and, for a gauge, Changes | **deviation** (log: E3 metrics builder: the operation menu, with changes) |
 | Top | only the top, 5 or 10, why off | the same control; the hint says what topk does | **deviation** (log: E3 metrics builder: Top) |
 | The query | the dark box, the last choice marked and repeated, the plain sentence, Edit as code | the same, shared with F3 | **same** |
-| Range | 1 h to 90 days, From… to… with relative or absolute UTC and local beside, the fit line, the limits by source, the step ladder, Apply, Cancel | the same; the picker opens under the row | **deviation** (log: E3 metrics builder: the range row) |
+| Range | 1 h to 90 days, From… to… with relative or absolute UTC and local beside, the fit line, the limits by source, the step ladder, Apply, Cancel | the same; the third row, after Start from, before What; the picker opens over the rows under it (What, Devices, Interfaces) until Apply or Cancel, where the board draws it inline at the bottom | **deviation** (log: E3 metrics builder: the range row); (log: History › Query: scope first); (log: E3 metrics builder: the range picker over the scope rows) |
 | Actions | Ask, Save…, Copy the link | Ask (busy on itself, "Asking Prometheus…"), Save this view…, Copy the link, the (i) | **deviation** (log: E3 metrics builder: the actions' words) |
-| The answer | title, series and timing, the chart in bits per second, legend with now, highest, lowest | the same title, timing and legend; the Monitoring chart | **deviation** (log: E3 metrics builder: the answer's chart) |
+| The answer | title, series and timing, the chart in bits per second, legend with now, highest, lowest | the same title, timing and legend; the Monitoring chart; every time in the browser's zone, named, UTC on hover | **deviation** (log: E3 metrics builder: the answer's chart); (log: History › Query: one zone per view) |
 | Code mode | the box with PromQL; "the builder can't read this back" | today's Ask your own box, Code on the switch, handed the query; its Builder opens the builder afresh | **later** (reading PromQL back into the builder, registered with this record) |
 | Saved queries | the network's saved queries, each with its tag, query, pin and Run › | the same list from the saved views | **deviation** (log: E3 metrics builder: the saved queries) |
 | Refused by a bound | "at most 1,000 points a series", with the step and the narrower range | the bounds the builder can pass, both operands, the choice that fits | **deviation** (log: E3 metrics builder: the refused state) |

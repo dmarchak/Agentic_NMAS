@@ -60,6 +60,31 @@ def masked_parts(text) -> list:
     return out
 
 
+@bp.app_template_filter("utc_when")
+def utc_when(ts, fmt="dt", to=None) -> dict:
+    """An instant (epoch seconds or an ISO time), or the span *ts* to *to*, as History › Query's
+    `when()` draws it (templates/v2/_history_ask_parts.html): ``{"iso", "to_iso", "words"}``,
+    the words in UTC (*fmt* 'dt', 't', 'dts', 'dty'; a span writes the end's date when it is
+    another day's), which static/js/nmas_logq.js writes again in the viewer's zone."""
+    from datetime import datetime
+
+    from modules import history_ask
+
+    def epoch(v):
+        if isinstance(v, (int, float)):
+            return float(v)
+        return datetime.fromisoformat(str(v).replace("Z", "+00:00")).timestamp()
+
+    a = epoch(ts)
+    if to is not None:
+        b = epoch(to)
+        return {"iso": history_ask.iso(a), "to_iso": history_ask.iso(b),
+                "words": history_ask.span(a, b)}
+    pyfmt = {"t": "%H:%M", "dts": "%-d %b %H:%M:%S", "dty": "%-d %b %Y %H:%M"}.get(fmt,
+                                                                                  "%-d %b %H:%M")
+    return {"iso": history_ask.iso(a), "to_iso": "", "words": history_ask.utc(a, pyfmt)}
+
+
 @bp.app_template_filter("age_words")
 def age_words(iso, now=None) -> str:
     """An ISO time as the page's own age words ("just now", "3 min ago", "2 h ago"), the
@@ -784,6 +809,14 @@ def _ask_words(fill, view, template: str, ctx, page: str):
             q = view(name, request.form)
     got["question"] = " ".join(question.split())[:nl_query.QUESTION_MAX]
     q["words"] = got
+    if not got["ok"] and q.get("built"):
+        # Not filled (refused, a question back, or Mercury's own $0 answer): the builder still
+        # holds what it held before these words, and Ask would answer THAT (the operator's walk
+        # of 2026-10-26). It is marked, and Ask is off until one click keeps it or a choice
+        # changes (each redraws the region without the words).
+        from urllib.parse import parse_qsl
+        chosen = [k for k, _v in parse_qsl(q["qs"]({"ask": "", "hl": ""})[1:]) if k != "list"]
+        q["left"] = {"previous": bool(chosen)}
     resp = _strict(render_template(template, **ctx(q)))
     if refused:
         return resp, 409

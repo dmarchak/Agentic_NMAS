@@ -38,7 +38,7 @@
 {%- if d.state == 'not_configured' %}
 <div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>{{ d.error | capitalize }}: there are no logs to ask here (Settings › Integrations › Loki).</p></div>
 {%- elif d.state == 'error' %}
-{%- call part.state('danger', 'Loki not answering') %}<p><strong>Couldn't load: {{ d.error }}</strong>, asked {{ q.now[11:16] }} UTC. The choices below are the address's; Loki's jobs, devices and labels could not be read.</p><div>{{ go(dict(change), 'Ask again', 'btn btn-small') }}</div>{% endcall %}
+{%- call part.state('danger', 'Loki not answering') %}<p><strong>Couldn't load: {{ d.error }}</strong>, asked {{ part.when(q.now, 't') }}. The choices below are the address's; Loki's jobs, devices and labels could not be read.</p><div>{{ go(dict(change), 'Ask again', 'btn btn-small') }}</div>{% endcall %}
 {%- endif %}
 
 <form id="lq-form" class="lq-form" method="get" action="{{ here }}" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" hx-disabled-elt="#lq-ask" hx-indicator="#lq-ask">{{ hidden(('sev', 'has', 'not', 'by', 'every')) }}<input type="hidden" name="ask" value="1"></form>
@@ -50,17 +50,40 @@
     {%- for key, title, params in q.presets %}<a class="lq-chip{{ ' on' if q.preset_on == key }}" href="{{ here }}{{ q.preset_qs(params) }}" hx-get="{{ region }}{{ q.preset_qs(params) }}" hx-target="#lq" hx-swap="outerHTML"{% if q.preset_on == key %} aria-current="true"{% endif %}>{{ title }}</a>{% endfor %}
   </div></div>
 
+  <div class="lq-row"><span class="lq-lab">Range</span><div class="lq-col">
+    {%- set fit %}<p class="lq-ok{{ ' lq-over' if q.fit.words != 'within every limit below' }}">{{ q.range_words }}{% if s.show == 'counts' %} · every {{ q.windows[s.every][0] }} · {{ '{:,}'.format(q.fit.windows) }} windows{% endif %} · {{ q.fit.words }}</p>{% endset %}
+    {%- call part.range_chips(q, here, region, s, rng, change, hidden(('range', 'within', 'from', 'to')), fit) %}
+            <h4>Limits{% if lim.read_at and not lim.error %} <span class="faint">(Loki's read {{ part.when(lim.read_at, 'dty') }})</span>{% endif %}</h4>
+            <table class="lq-lim">
+              <tr><th scope="row">Loki</th><td>{% if lim.error %}its bounds could not be read ({{ lim.error }}); it refuses what passes them, and the refusal is drawn{% else %}one ask spans at most {{ lim.max_query_length.text if lim.max_query_length else '(not stated)' }} (<span class="mono">max_query_length</span>); lines kept {{ lim.retention_period.text if lim.retention_period else '(not stated)' }} (<span class="mono">retention_period</span>), read from Loki's /config{% endif %}</td></tr>
+              <tr><th scope="row">Mercury</th><td>{{ q.page }} lines a page; at most {{ '{:,}'.format(q.max_windows) }} windows a series; the {{ q.max_series }} series with the most lines drawn</td></tr>
+            </table>
+    {%- endcall %}
+    <p class="lq-bounds"><b>Bounds:</b> {{ q.page }} lines a page (Mercury)
+      {%- if not lim %} · no log store is configured for this network, so Loki's bounds are not read.
+      {%- elif lim.error %} · Loki's own bounds could not be read ({{ lim.error }}): it refuses what passes them, and the refusal is drawn.
+      {%- else %}
+      {%- if lim.max_query_length %} · one ask spans at most {{ lim.max_query_length.words }} (Loki's <span class="mono">max_query_length {{ lim.max_query_length.text }}</span>){% endif %}
+      {%- if lim.query_timeout %} · {{ lim.query_timeout.words }} an ask (Loki's <span class="mono">query_timeout</span>){% endif %}
+      {%- if lim.max_entries_limit_per_query %} · at most {{ '{:,}'.format(lim.max_entries_limit_per_query.n) }} lines (<span class="mono">max_entries_limit_per_query</span>){% endif %}
+      {%- if lim.max_query_series %} and {{ lim.max_query_series.n }} series (<span class="mono">max_query_series</span>) an ask{% endif %}
+      {%- if lim.retention_period %} · lines kept {{ lim.retention_period.words }} (Loki's <span class="mono">retention_period {{ lim.retention_period.text }}</span>){% endif %}. Loki's values read from its /config {{ part.when(lim.read_at, 'dty') }}. Lines are masked; revealing one is recorded.
+      {%- endif %}</p>
+  </div></div>
+
   <div class="lq-row"><span class="lq-lab">Kind</span><div class="lq-col">
     <div class="seg lq-seg" role="group" aria-label="Kind of log">
       {%- for j in d['values']['job'] %}{% set on = j in s.job %}{{ go(dict(change, job=(s.job | reject('equalto', j) | list) if on else s.job + [j], hl='job'), j, 'seg-btn mono' ~ (' on' if on), on) }}{% endfor %}
+      {%- for j in q.unseen.job %}{{ go(dict(change, job=(s.job | reject('equalto', j) | list), hl='job'), j ~ ' ×', 'seg-btn mono on', true, 'Remove ' ~ j ~ ', not seen in this range') }}{% endfor %}
       {{- go(dict(change, job=[], hl='job'), 'every job', 'seg-btn' ~ (' on' if not s.job), not s.job) }}
     </div>
-    <span class="lq-hint">{% if d.state == 'ok' %}The values Loki's <span class="mono">job</span> label holds over {{ rng.words }}, read {{ d.read_at[11:16] }} UTC: {{ d['values']['job'] | length }}. Choose one or more, or every job.{% else %}Loki's jobs could not be read, so none is offered.{% endif %}</span>
+    {%- if q.unseen.job %}<span class="lq-hint">{{ part.unseen() }}: {{ q.unseen.job | join(', ') }}, chosen and kept; Loki holds no line of {{ 'it' if q.unseen.job | length == 1 else 'them' }} over {{ rng.words }}.</span>{% endif %}
+    <span class="lq-hint">{% if d.state == 'ok' %}The values Loki's <span class="mono">job</span> label holds over {{ rng.words }}, read {{ part.when(d.read_at, 't') }}: {{ d['values']['job'] | length }}. Choose one or more, or every job.{% else %}Loki's jobs could not be read, so none is offered.{% endif %}</span>
   </div></div>
 
   <div class="lq-row"><span class="lq-lab">Devices</span><div class="lq-col">
     <div class="lq-chips">
-      {%- for dv in s.dev %}{{ go(dict(change, dev=(s.dev | reject('equalto', dv) | list), hl='dev'), dv ~ ' ×', 'lq-chip on mono', none, 'Remove ' ~ dv) }}{% endfor %}
+      {%- for dv in s.dev %}{{ go(dict(change, dev=(s.dev | reject('equalto', dv) | list), hl='dev'), dv ~ ' ×', 'lq-chip on mono', none, 'Remove ' ~ dv) }}{% if dv in q.unseen.dev %}{{ part.unseen() }}{% endif %}{% endfor %}
       {%- if s.role %}{{ go(dict(change, role='', hl='dev'), 'role: ' ~ s.role ~ ' (' ~ q.role_devices | length ~ ') ×', 'lq-chip on', none, 'Remove the role ' ~ s.role) }}{% endif %}
       {%- set others = d['values']['device'] | reject('in', q.devices) | list %}
       {%- if others %}
@@ -76,7 +99,7 @@
       {%- for role, n in q.roles if role != s.role %}{{ go(dict(change, role=role, hl='dev'), 'by role: ' ~ role, 'lq-chip') }}{% endfor %}
       {{- go(dict(change, dev=[], role='', hl='dev'), 'all ' ~ d['values']['device'] | length, 'lq-chip' ~ (' on' if not q.devices), not q.devices) }}
     </div>
-    <span class="lq-hint">{% if 'device' not in d.labels %}Loki holds no <span class="mono">device</span> label over {{ rng.words }}: a device chosen is matched by its own name in the line.{% elif b.modes.dev == 'line' %}The <span class="mono">device</span> label's first line is {{ q.since_words.device or 'not known' }}, after this range starts: a device chosen is matched by its own name before the line's timestamp, which reads older lines too.{% else %}By the <span class="mono">device</span> label Loki holds (its first line {{ q.since_words.device }}), never by a pattern over the line.{% endif %}</span>
+    <span class="lq-hint">{% if 'device' in d.labels %}The devices Loki holds lines from over {{ rng.words }}{% if s.job %}, of {{ 'the kind' if s.job | length == 1 else 'the kinds' }} chosen{% endif %}. {% endif %}{% if 'device' not in d.labels %}Loki holds no <span class="mono">device</span> label over {{ rng.words }}: a device chosen is matched by its own name in the line.{% elif b.modes.dev == 'line' %}The <span class="mono">device</span> label's first line is {% if d.since.device %}{{ part.when(d.since.device, 'dty') }}{% else %}not known{% endif %}, after this range starts: a device chosen is matched by its own name before the line's timestamp, which reads older lines too.{% else %}By the <span class="mono">device</span> label Loki holds (its first line {{ part.when(d.since.device, 'dty') }}), never by a pattern over the line.{% endif %}</span>
   </div></div>
 
   <div class="lq-row"><label class="lq-lab" for="lq-sev">Severity</label><div class="lq-line">
@@ -85,13 +108,13 @@
       <option value=""{% if not s.sev %} selected{% endif %}>any severity</option>
       {%- for n in range(8) %}<option value="{{ n }}"{% if s.sev == n | string %} selected{% endif %}>{{ n }} {{ q.severities[n] }}</option>{% endfor %}
     </select>
-    {%- if s.sev %}<span class="lq-hint">{% if b.modes.sev == 'label' %}By Loki's <span class="mono">severity</span> label (its first line {{ q.since_words.severity }}); a line with none, a trap, is left out.{% else %}By the digit in each line's mnemonic{% if q.since_words.severity %}: the <span class="mono">severity</span> label's first line is {{ q.since_words.severity }}, after this range starts{% elif 'severity' not in d.labels %}: Loki holds no <span class="mono">severity</span> label here{% endif %}.{% endif %}</span>{% endif %}
+    {%- if s.sev %}<span class="lq-hint">{% if b.modes.sev == 'label' %}By Loki's <span class="mono">severity</span> label (its first line {{ part.when(d.since.severity, 'dty') }}); a line with none, a trap, is left out.{% else %}By the digit in each line's mnemonic{% if d.since.severity %}: the <span class="mono">severity</span> label's first line is {{ part.when(d.since.severity, 'dty') }}, after this range starts{% elif 'severity' not in d.labels %}: Loki holds no <span class="mono">severity</span> label here{% endif %}.{% endif %}</span>{% endif %}
   </div></div>
 
   <div class="lq-row"><span class="lq-lab">Mnemonic</span><div class="lq-col">
     {%- set mrows = q.mnemonics.rows %}
     <div class="lq-chips">
-      {%- for mn in s.mn %}{{ go(dict(change, mn=(s.mn | reject('equalto', mn) | list), hl='mn'), mn[1:] ~ ' ×', 'lq-chip on mono', none, 'Remove ' ~ mn[1:]) }}{% endfor %}
+      {%- for mn in s.mn %}{{ go(dict(change, mn=(s.mn | reject('equalto', mn) | list), hl='mn'), mn[1:] ~ ' ×', 'lq-chip on mono', none, 'Remove ' ~ mn[1:]) }}{% if mn in q.unseen.mn %}{{ part.unseen() }}{% endif %}{% endfor %}
       {%- set rest = mrows | rejectattr(0, 'in', s.mn) | list %}
       {%- for mn, n in rest[:4] %}{{ go(dict(change, mn=s.mn + [mn], hl='mn'), mn[1:], 'lq-chip mono', none, 'Add ' ~ mn[1:] ~ ', ' ~ n ~ ' lines') }}{% endfor %}
       {%- if rest | length > 4 %}
@@ -121,31 +144,14 @@
     {%- else %}<input type="hidden" name="by" form="lq-form" value="{{ s.by }}"><input type="hidden" name="every" form="lq-form" value="{{ s.every }}">{% endif %}
   </div></div>
 
+  {%- if q.clashes %}
+  <div class="lq-row"><span class="lq-lab"></span><div class="lq-col">{{ part.clashes(q, here, region, q.clashes, change) }}</div></div>
+  {%- endif %}
+
   <div class="lq-row"><span class="lq-lab">The query</span><div class="lq-col">
     {%- set hl = 'count' if s.hl == 'show' and s.show == 'counts' else s.hl %}
     {%- set tail %}{% if s.show == 'counts' %}, which draws the counts on the same chart{% endif %}. Lines are masked as every log line Mercury shows.{% endset %}
     {{ part.query_box(b, hl, url_for('v2.history_query_metric', key='ask', lang='logql', range=code_range, q=b.query, list=q.list), tail) }}
-  </div></div>
-
-  <div class="lq-row"><span class="lq-lab">Range</span><div class="lq-col">
-    {%- set fit %}<p class="lq-ok{{ ' lq-over' if q.fit.words != 'within every limit below' }}">{{ q.range_words }}{% if s.show == 'counts' %} · every {{ q.windows[s.every][0] }} · {{ '{:,}'.format(q.fit.windows) }} windows{% endif %} · {{ q.fit.words }}</p>{% endset %}
-    {%- call part.range_chips(q, here, region, s, rng, change, hidden(('range', 'within', 'from', 'to')), fit) %}
-            <h4>Limits{% if lim.read_at and not lim.error %} <span class="faint">(Loki's read {{ lim.read_at[:10] }} {{ lim.read_at[11:16] }} UTC)</span>{% endif %}</h4>
-            <table class="lq-lim">
-              <tr><th scope="row">Loki</th><td>{% if lim.error %}its bounds could not be read ({{ lim.error }}); it refuses what passes them, and the refusal is drawn{% else %}one ask spans at most {{ lim.max_query_length.text if lim.max_query_length else '(not stated)' }} (<span class="mono">max_query_length</span>); lines kept {{ lim.retention_period.text if lim.retention_period else '(not stated)' }} (<span class="mono">retention_period</span>), read from Loki's /config{% endif %}</td></tr>
-              <tr><th scope="row">Mercury</th><td>{{ q.page }} lines a page; at most {{ '{:,}'.format(q.max_windows) }} windows a series; the {{ q.max_series }} series with the most lines drawn</td></tr>
-            </table>
-    {%- endcall %}
-    <p class="lq-bounds"><b>Bounds:</b> {{ q.page }} lines a page (Mercury)
-      {%- if not lim %} · no log store is configured for this network, so Loki's bounds are not read.
-      {%- elif lim.error %} · Loki's own bounds could not be read ({{ lim.error }}): it refuses what passes them, and the refusal is drawn.
-      {%- else %}
-      {%- if lim.max_query_length %} · one ask spans at most {{ lim.max_query_length.words }} (Loki's <span class="mono">max_query_length {{ lim.max_query_length.text }}</span>){% endif %}
-      {%- if lim.query_timeout %} · {{ lim.query_timeout.words }} an ask (Loki's <span class="mono">query_timeout</span>){% endif %}
-      {%- if lim.max_entries_limit_per_query %} · at most {{ '{:,}'.format(lim.max_entries_limit_per_query.n) }} lines (<span class="mono">max_entries_limit_per_query</span>){% endif %}
-      {%- if lim.max_query_series %} and {{ lim.max_query_series.n }} series (<span class="mono">max_query_series</span>) an ask{% endif %}
-      {%- if lim.retention_period %} · lines kept {{ lim.retention_period.words }} (Loki's <span class="mono">retention_period {{ lim.retention_period.text }}</span>){% endif %}. Loki's values read from its /config {{ lim.read_at[:10] }} {{ lim.read_at[11:16] }} UTC. Lines are masked; revealing one is recorded.
-      {%- endif %}</p>
   </div></div>
 
   <div class="lq-row lq-acts"><span class="lq-lab"></span><div class="lq-line">
@@ -164,7 +170,7 @@
 {% endcall %}
 {%- elif a.state == 'error' %}
 {%- call part.state('danger', 'Loki not answering') %}
-  <p><strong>Couldn't load: {{ a.error }}</strong>, asked {{ a.asked_at[11:16] }} UTC. Nothing is drawn from an earlier answer.</p>
+  <p><strong>Couldn't load: {{ a.error }}</strong>, asked {{ part.when(a.asked_at, 't') }}. Nothing is drawn from an earlier answer.</p>
   <p class="muted">{% if a.last_good %}Its last good read (the live tail's, every 5 s) was {{ stamp(a.last_good) }}.{% else %}The live tail has no good read of it either.{% endif %} If Loki stays down, Needs attention carries it as a row (its probe runs every 60 s).</p>
   <div>{{ go({'ask': '1'}, 'Ask again', 'btn btn-small') }}</div>
 {% endcall %}
@@ -178,24 +184,24 @@
 {% endcall %}
 {%- elif s.show == 'counts' %}
 <section class="card lq-card" aria-label="The answer, counts over time">
-  <div class="lq-top"><strong>{{ q.answer_title }}</strong><span class="faint">{{ a.series_total }} series · answered in {{ a.took_ms }} ms · read {{ a.read_at[11:16] }} UTC</span></div>
+  <div class="lq-top"><strong title="{{ q.answer_title }}">{{ q.answer_what }}, {{ part.when(q.answer_span[0], 'dt', q.answer_span[1]) }}</strong><span class="faint">{{ a.series_total }} series · answered in {{ a.took_ms }} ms · read {{ part.when(a.read_at, 't') }}</span></div>
   <section class="panel lq-panel" data-panel-json='{{ a.payload | tojson }}' data-panel-h="9" data-lq-pick aria-label="{{ a.series_total }} series of lines per {{ a.window_words }}">
     <div class="panel-body"><p class="panel-wait">Drawing…</p></div>
   </section>
   <p class="lq-pick" aria-live="polite" hidden></p>
   <div class="table-wrap"><table class="table lq-legend" aria-label="The series">
     <thead><tr><th scope="col">Series</th><th scope="col" class="num">Lines in range</th><th scope="col" class="num">Most in a window</th><th scope="col">Last window with a line</th></tr></thead>
-    <tbody>{% for sr in a.series %}<tr><td><span class="swatch s{{ loop.index0 % 6 }}" aria-hidden="true"></span> <span class="mono">{{ sr.label }}</span></td><td class="num">{{ '{:,}'.format(sr.total) }} line{{ 's' if sr.total != 1 }}</td><td class="num">{{ sr.most }} per {{ a.window_words }}</td><td>{{ sr.last_words }}</td></tr>{% endfor %}</tbody>
+    <tbody>{% for sr in a.series %}<tr><td><span class="swatch s{{ loop.index0 % 6 }}" aria-hidden="true"></span> <span class="mono">{{ sr.label }}</span></td><td class="num">{{ '{:,}'.format(sr.total) }} line{{ 's' if sr.total != 1 }}</td><td class="num">{{ sr.most }} per {{ a.window_words }}</td><td>{% if sr.last %}{{ part.when(sr.last_from, 'dt', sr.last) }}{% else %}{{ sr.last_words }}{% endif %}</td></tr>{% endfor %}</tbody>
   </table></div>
   {%- if a.series_total > a.series | length %}<p class="lq-hint">{{ a.series_total }} series: the {{ a.series | length }} with the most lines are drawn.</p>{% endif %}
   <span class="lq-hint">Counts are drawn on the metrics chart, the same as a PromQL answer. Click a point for that window's lines: they open in the Lines view, filtered to the window.</span>
 </section>
 {%- else %}
 <section id="lines" class="card lq-card" aria-label="The Lines view">
-  <div class="lq-top"><strong>{{ q.answer_title }}</strong><span class="faint">{% if a.total is not none %}{{ '{:,}'.format(a.total) }} line{{ 's' if a.total != 1 }} · {% endif %}answered in {{ a.took_ms }} ms · read {{ a.read_at[11:16] }} UTC</span></div>
+  <div class="lq-top"><strong title="{{ q.answer_title }}">{{ q.answer_what }}, {{ part.when(q.answer_span[0], 'dt', q.answer_span[1]) }}</strong><span class="faint">{% if a.total is not none %}{{ '{:,}'.format(a.total) }} line{{ 's' if a.total != 1 }} · {% endif %}answered in {{ a.took_ms }} ms · read {{ part.when(a.read_at, 't') }}</span></div>
   <div class="table-wrap"><table class="table lq-lines">
-    <thead><tr><th scope="col">Time (UTC)</th><th scope="col">Device</th><th scope="col">Severity</th><th scope="col">Kind</th><th scope="col">Line (masked)</th><th scope="col"><span class="sr">Reveal</span></th></tr></thead>
-    <tbody>{% for r in a.rows %}<tr><td class="lq-nw mono" title="{{ r.iso }}">{{ r.at }}</td><td class="mono">{{ r.device or '—' }}</td><td>{% if r.sev is not none %}<span class="lq-sev{{ ' s3' if r.sev <= 3 else ' s4' if r.sev == 4 }}">{{ r.sev }} {{ r.sev_word }}</span>{% else %}<span class="muted">—</span>{% endif %}</td><td class="mono small lq-nw">{{ r.kind }}</td><td class="lq-l">{% for piece, masked in r.text | masked_parts %}{% if masked %}<span class="lq-mask">{{ piece }}</span>{% else %}{{ piece }}{% endif %}{% endfor %}{% if r.reveal %}<div class="lq-rv-out" id="{{ r.reveal.slot }}"></div>{% endif %}</td><td class="lq-rv">{% if r.reveal %}{{ reveal_form(r) }}{% endif %}</td></tr>{% endfor %}</tbody>
+    <thead><tr><th scope="col">Time ({{ part.zone() }})</th><th scope="col">Device</th><th scope="col">Severity</th><th scope="col">Kind</th><th scope="col">Line (masked)</th><th scope="col"><span class="sr">Reveal</span></th></tr></thead>
+    <tbody>{% for r in a.rows %}<tr><td class="lq-nw mono">{{ part.when(r.iso, 'dts', bare=true) }}</td><td class="mono">{{ r.device or '—' }}</td><td>{% if r.sev is not none %}<span class="lq-sev{{ ' s3' if r.sev <= 3 else ' s4' if r.sev == 4 }}">{{ r.sev }} {{ r.sev_word }}</span>{% else %}<span class="muted">—</span>{% endif %}</td><td class="mono small lq-nw">{{ r.kind }}</td><td class="lq-l">{% for piece, masked in r.text | masked_parts %}{% if masked %}<span class="lq-mask">{{ piece }}</span>{% else %}{{ piece }}{% endif %}{% endfor %}{% if r.reveal %}<div class="lq-rv-out" id="{{ r.reveal.slot }}"></div>{% endif %}</td><td class="lq-rv">{% if r.reveal %}{{ reveal_form(r) }}{% endif %}</td></tr>{% endfor %}</tbody>
   </table></div>
   <div class="lq-foot"><span class="muted">Lines {{ a.at + 1 }} to {{ a.at + a.rows | length }}{% if a.total is not none %} of {{ '{:,}'.format(a.total) }}{% endif %}, newest first. A line's time is when the collector received it, never the device's clock.</span>
     <span class="lq-line">{% if a.at %}{{ go({'ask': '1', 'before': '', 'at': ''}, '‹ Newest', 'btn btn-small') }}{% endif %}{% if a.more %}{{ go({'ask': '1', 'before': a.next_before, 'at': a.at + a.rows | length}, 'Older ›', 'btn btn-small') }}{% endif %}</span></div>

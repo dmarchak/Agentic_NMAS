@@ -214,6 +214,11 @@ def _ranges(web):
     return [p for path, p in web.asked if path == "api/v1/query_range"]
 
 
+def _text(html):
+    """The page's words as drawn before its script runs: the tags taken out."""
+    return re.sub(r"<[^>]+>", "", html)
+
+
 # ---------------------------------------------------------------------------- one token each
 
 HOSTILE = ['say "hi"', "back\\slash", "brace} {job=~\".+\"}", "pipe | or", "new\nline\r\tend",
@@ -519,8 +524,28 @@ class TestTheAnswer:
                               html, re.S).group(1)
             for v in (vals[-1], max(vals), min(vals)):
                 assert _si(v, "b/s") in cells, (role, _si(v, "b/s"), cells)
-        assert "2 series · answered in" in html and "Now (06:00 UTC)" in html
-        assert "Bytes in per role, in bits per second, 12 Oct 06:00 to 15 Oct 06:00 UTC" in html
+        # Each time is written in UTC and named so, for the script to write again in the
+        # viewer's zone (one zone per view, the operator, 2026-10-26); the title's UTC words
+        # are its hover.
+        assert "2 series · answered in" in html and "Now (06:00 UTC)" in _text(html)
+        assert "Bytes in per role, in bits per second, 12 Oct 06:00 to 15 Oct 06:00 UTC" in \
+            _text(html)
+        assert 'title="Bytes in per role, in bits per second, 12 Oct 06:00 to 15 Oct 06:00 UTC"' \
+            in html
+
+    def test_a_point_is_drawn_at_the_instant_prometheus_answered_for(self, web):
+        """Checked for the logs counts' offset (the operator's walk, 2026-10-26): a rate or an
+        increase over [w] at t covers (t − w, t] and is drawn AT t, a line through the
+        instants, never a step held over the window after it."""
+        from tests.test_history_ask_logs import _panels
+        q = P.view("Lab", dict(BOARD, ask="1"), now=NOW, client=web.prom)
+        p = q["answer"]["payload"]
+        asked = _ranges(web)[-1]
+        instants = list(range(int(asked["start"]), int(asked["end"]) + 1, int(asked["step"])))
+        assert p["series"][0]["times"] == instants
+        assert not p.get("stepped") and not p.get("window_close") and p["hover_utc"] is True
+        drawn = _panels(f"window.NMAS_PANELS.drawnData({json.dumps(p)})")
+        assert drawn[0] == instants, "a metrics point moved off the instant it was read for"
 
     def test_the_chart_payload_is_the_answer_in_its_unit(self, web):
         q = P.view("Lab", dict(BOARD, ask="1"), now=NOW, client=web.prom)
@@ -615,7 +640,7 @@ class TestTheAnswer:
         web.prom.empty = True
         html = _page(web, ask="1", **dict(BOARD, **{"from": "2026-06-01 06:00",
                                                      "to": "2026-07-01 06:00"}))
-        assert "No samples between 1 Jun 2026 06:00 and 1 Jul 2026 06:00 UTC" in html
+        assert "No samples between 1 Jun 2026 06:00 UTC and 1 Jul 2026 06:00 UTC" in _text(html)
         assert "Prometheus holds ifHCInOctets from 17 Jul 2026" in html and "(90 days)" in html
         assert "This is not the same as a zero." in html and "Start the range at 17 Jul" in html
 
@@ -651,6 +676,26 @@ class TestThePage:
         assert len(tags) >= 30
         for tag in tags:
             assert 'hx-target="#lq"' in tag and 'hx-swap="outerHTML"' in tag, tag
+
+    def test_the_range_comes_before_what_is_read_over_it(self, web):
+        """The operator's design note, 2026-10-26: the metrics and their labels are read over
+        the range, so Range comes before What and Devices."""
+        html = _page(web, **BOARD)
+        rows = re.findall(r'<div class="lq-row(?: lq-acts)?"><(?:span|label)[^>]*class="lq-lab"'
+                          r'[^>]*>([^<]*)<', html)
+        assert [r for r in rows if r] == ["Start from", "Range", "What", "Devices", "Interfaces",
+                                          "Filters", "Operations", "Top", "The query"], rows
+
+    def test_a_metric_or_device_the_range_does_not_hold_is_kept_and_marked(self, web):
+        html = _page(web, m="noSuchMetric", dev="r1")
+        assert re.search(r'>noSuchMetric ×</a><span class="lq-unseen">not seen in this range'
+                         r'</span>', html)
+        assert 'name="m" value="noSuchMetric"' in html, "dropped from the address"
+        assert "Not taken: Prometheus holds no metric" not in html
+        html = _page(web, **dict(BOARD, dev=["r99"]))
+        assert re.search(r'>r99 ×</a><span class="lq-unseen">not seen in this range</span>',
+                         html)
+        assert 'name="dev" value="r99"' in html
 
     def test_the_last_choice_is_marked_and_said(self, web):
         html = _page(web, hl="op3", **BOARD)

@@ -205,6 +205,27 @@ def test_v5_is_a_candidate_never_the_pin():
     assert "s3" not in text and "C1547" not in text and "r1" not in text
 
 
+def test_a_saved_pack_is_explained_as_built_and_a_changed_one_never(replay, tmp_path,
+                                                                    capsys):
+    """`--pack`: a pack is frozen once built (the operator, 2026-10-26), so a case's five runs
+    and a candidate ask the same evidence, an endpoint read the store no longer holds among
+    it; its hash is checked first, and a pack whose content moved is not explained."""
+    pack = _built(replay)
+    path = tmp_path / "pack.json"
+    path.write_text(json.dumps(pack))
+    replay.answer = _answer(pack)
+    assert replay.driver.main(["--pack", str(path), "--explain", "--actor", "evaluation:t",
+                               "--prompt", "4"]) == 0
+    out = capsys.readouterr().out
+    assert f"pack {pack['id']} as of {pack['built_at']}" in out and "read from" in out
+    assert "== explain.v4: answered and checked" in out and len(replay.sent) == 1
+    pack["sections"][0]["state"] = "empty"
+    path.write_text(json.dumps(pack))
+    assert replay.driver.main(["--pack", str(path), "--explain", "--actor", "evaluation:t",
+                               "--prompt", "4"]) == 1
+    assert "hash does not match" in capsys.readouterr().err and len(replay.sent) == 1
+
+
 def test_a_refusal_stops_the_run(replay):
     replay.settings.pop("ai_hosted")
     lines = []

@@ -5,7 +5,10 @@
  *    changing nothing; closes a Reveal… box once the line it revealed is drawn (C818), so the
  *    box never covers it;
  *  - on a click on the counts chart, names the window and the series under the pointer and
- *    offers that window's lines (`data-lq-pick`, each series' `href` from the server);
+ *    offers that window's lines (`data-lq-pick`, each series' `href` from the server), the
+ *    window the one the count is drawn over (its close a step after the time the chart holds);
+ *  - writes each answer's times in the viewer's zone, named, with UTC on hover
+ *    (`time[data-lq-when]`, `data-lq-zone`; one zone per view, the operator, 2026-10-26);
  *  - fills Ask in words' timezone inputs (`data-lq-tz`: the browser's IANA name, and its
  *    offset east of UTC in minutes as the fallback), drawn and refilled with the region and
  *    again as the form is sent, so the server can say whose midnight "today" began at (C1724;
@@ -81,6 +84,50 @@
     return '';
   }
 
+  /* The chart's time helpers (static/js/nmas_panels.js, loaded on every v2 page). */
+  function panels() { return root.NMAS_PANELS; }
+
+  /* PURE: what a click on the counts chart says of a window: the series, the window in the
+     zone *offOf* and *zoneOf* give (the viewer's, or UTC for its hover), and its count. */
+  function pickWords(label, from, to, n, offOf, zoneOf) {
+    return label + ' · ' + panels().spanWords(from, to, offOf(from), offOf(to)) + ' ' + zoneOf(to) +
+      ' · ' + n + ' line' + (n === 1 ? '' : 's') + ' in this window';
+  }
+
+  /* PURE (one zone per view, the operator, 2026-10-26): a `<time data-lq-when>`'s words in the
+     zone *offOf* and *zoneOf* give: *fmt* 'dt', 't', 'dts' or 'dty' for the instant *a*, 'span' for
+     *a* to *b*; the zone's name after it unless *bare* (a column whose head names it). */
+  function timeText(fmt, a, b, offOf, zoneOf, bare) {
+    var P = panels();
+    var text = fmt === 'span' ? P.spanWords(a, b, offOf(a), offOf(b)) : P.whenWords(a, offOf(a), fmt);
+    return bare ? text : text + ' ' + zoneOf(fmt === 'span' ? b : a);
+  }
+
+  /* Every time the server wrote in UTC, written again in the viewer's zone, the server's UTC
+     words kept on hover; and every `data-lq-zone` names the viewer's zone. The server's words
+     stay where this cannot run. */
+  function times(scope) {
+    var P = panels();
+    if (!P || !P.whenWords) return;
+    var list = (scope || root.document).querySelectorAll('time[data-lq-when]');
+    for (var i = 0; i < list.length; i++) {
+      var node = list[i];
+      if (!node.getAttribute('data-lq-utc')) node.setAttribute('data-lq-utc', node.textContent);
+      var a = Date.parse(node.getAttribute('datetime')) / 1000;
+      var b = node.getAttribute('data-lq-to') ? Date.parse(node.getAttribute('data-lq-to')) / 1000 : a;
+      if (a !== a || b !== b) continue;
+      node.textContent = timeText(node.getAttribute('data-lq-when'), a, b, P.viewerOffset,
+                                  P.viewerZone, node.hasAttribute('data-lq-bare'));
+      node.title = node.getAttribute('data-lq-utc');
+    }
+    var zs = (scope || root.document).querySelectorAll('[data-lq-zone]');
+    var now = Date.now() / 1000;
+    for (var j = 0; j < zs.length; j++) {
+      zs[j].textContent = P.viewerZone(now);
+      zs[j].title = 'Your browser’s time zone; hover a time for UTC';
+    }
+  }
+
   function zones(scope) {
     var list = (scope || root.document).querySelectorAll('[data-lq-tz]');
     var intl = root.Intl && root.Intl.DateTimeFormat ? function () { return root.Intl.DateTimeFormat(); } : null;
@@ -109,10 +156,15 @@
     var i = nearest(chart.data, idx, chart.cursor.top, function (v) { return chart.valToPos(v, 'y'); });
     while (holder.firstChild) holder.removeChild(holder.firstChild);
     if (i < 0) { holder.hidden = true; return; }
-    var s = p.series[i], t = chart.data[0][idx], w = windowOf(t, p.step), n = chart.data[i + 1][idx];
+    // The chart draws each count over its window, its time the window's START (nmas_panels.js,
+    // `windowData`); the window closes a step later.
+    var close = chart.data[0][idx] + (panels().windowed(p) ? p.step : 0);
+    var s = p.series[i], w = windowOf(close, p.step), n = chart.data[i + 1][idx];
     var words = root.document.createElement('span');
-    words.textContent = s.label + ' · ' + w.from.slice(5) + ' to ' + w.to.slice(11) + ' UTC · ' + n +
-      ' line' + (n === 1 ? '' : 's') + ' in this window';
+    words.textContent = pickWords(s.label, close - p.step, close, n, panels().viewerOffset,
+                                  panels().viewerZone);
+    words.title = pickWords(s.label, close - p.step, close, n, function () { return 0; },
+                            function () { return 'UTC'; });
     holder.appendChild(words);
     var href = pickHref(s.href, w);
     if (href) {
@@ -126,8 +178,8 @@
   }
 
   if (root.document && root.document.addEventListener) {
-    root.document.addEventListener('DOMContentLoaded', function () { refresh(); zones(); });
-    root.document.addEventListener('htmx:afterSettle', function (e) { refresh(e.target); zones(e.target); });
+    root.document.addEventListener('DOMContentLoaded', function () { refresh(); zones(); times(); });
+    root.document.addEventListener('htmx:afterSettle', function (e) { refresh(e.target); zones(e.target); times(e.target); });
     /* Capture: before htmx reads the form's values on its own submit handler. */
     root.document.addEventListener('submit', function (e) {
       if (e.target && e.target.querySelector && e.target.querySelector('[data-lq-tz]')) zones(e.target);
@@ -157,5 +209,6 @@
   }
 
   root.NMAS_LOGQ = {parseUtc: parseUtc, localWords: localWords, windowOf: windowOf,
-                    pickHref: pickHref, nearest: nearest, stamp: stamp, tzValue: tzValue};
+                    pickHref: pickHref, nearest: nearest, stamp: stamp, tzValue: tzValue,
+                    timeText: timeText, pickWords: pickWords};
 })(typeof window !== 'undefined' ? window : this);

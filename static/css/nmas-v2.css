@@ -2078,6 +2078,16 @@ summary.lq-chip::-webkit-details-marker { display: none; }
 .lq-pick { margin: 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 12.5px;
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; }
 .lq-pick[hidden] { display: none; }
+/* The operator's walk of History › Query, 2026-10-26: a builder Ask in words did not fill,
+   marked (its query box outlined, its words above it); a chosen value the range no longer
+   holds; filters no line can match together; the zone each answer's times are in. */
+.lq-left .lq-line, .lq-clash .lq-line { margin-top: 6px; }
+.lq-leftmark { align-self: flex-start; font-size: 12px; font-weight: 600; color: var(--warn);
+  background: var(--warn-soft); border: 1px solid var(--warn-line); border-radius: 4px; padding: 0 6px; }
+.lq-q.lq-q-left { outline: 2px dashed var(--warn-line); outline-offset: 2px; }
+.lq-unseen { font-size: 12px; color: var(--warn); font-style: italic; align-self: center; }
+.lq-zone { font-weight: 500; }
+.chart-tip-utc { color: var(--ink-2); font-family: var(--mono); font-size: 11.5px; margin: -2px 0 4px; }
 .lq-legend .num { text-align: right; }
 .lq-legend td.num { font-family: var(--mono); }
 .lq-legend .swatch { display: inline-block; width: 14px; vertical-align: middle; }

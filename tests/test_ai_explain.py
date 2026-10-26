@@ -306,7 +306,7 @@ def test_each_prompt_asks_for_the_schema_it_was_written_for(world):
     assert explain.PROMPT == ("explain", 4)
     assert {v: s.__ai_schema__ for v, s in explain.SCHEMA_OF.items()} == {
         1: ("explain", 1), 2: ("explain", 1), 3: ("explain", 1), 4: ("explain", 2),
-        5: ("explain", 2)}
+        5: ("explain", 2), 6: ("explain", 3)}
     world.answer = {k: v for k, v in _answer(world.pack).items() if k != "checked"}
     got = explain.explain_pack(world.pack, actor="operator@example.com", send=world.send,
                                today="2026-10-25", prompt=("explain", 3))
@@ -317,6 +317,60 @@ def test_each_prompt_asks_for_the_schema_it_was_written_for(world):
     world.answer = _answer(world.pack)
     assert _explain(world)["ok"] is True
     assert "no_fault_found" in json.dumps(world.sent[-1]["body"]["output_config"])
+
+
+# ------------------------------------- v6, the network-context version (2026-10-26)
+
+V6_PROMPT = ("explain", 6)
+
+
+def test_v6_is_a_candidate_built_from_v4_and_says_what_it_adds():
+    """The operator, 2026-10-26: built from v4 (v5 stays rejected) with the coverage line,
+    the needs wiring, the pack's endpoints and the rebuilt-evidence marks (C1808)."""
+    from modules.ai import prompts, schemas
+    assert V6_PROMPT in explain.CANDIDATES and explain.PROMPT == ("explain", 4)
+    assert schemas.REGISTRY[("explain", 3)] is explain.ExplanationV3
+    with open(schemas.committed_path("explain", 3), encoding="utf-8") as fh:
+        assert fh.read() == schemas.committed_text(explain.ExplanationV3)
+    text = " ".join(prompts.load(*V6_PROMPT)["text"].split())
+    for said in ("coverage header", "never infer it from another layer", '"endpoints"',
+                 '"looked_up"', '"provenance"', "never call it observed",
+                 "its absence is no evidence either way"):
+        assert said in text, said
+    v4 = " ".join(prompts.load("explain", 4)["text"].split())
+    assert "common cause" not in text and "common cause" not in v4, "v5's line stays out"
+
+
+def test_v6_sends_nothing_looked_up_first_and_a_need_is_looked_up_once(world, monkeypatch):
+    """C1780: v6's first call says nothing was looked up; an answer naming a need is looked up
+    once (`needs.run`) and asked once more, the follow-up's answer the one checked and shown,
+    the cost the round's."""
+    from modules.ai import needs
+    monkeypatch.setitem(needs._LOOKUPS, needs.NeedKind.neighbour,
+                        lambda net, subject: ({"Gi0/1": "s4"}, ""))
+    monkeypatch.setattr("modules.ai.egress_classes.topology_allowed",
+                        lambda net: {"allowed": True, "why": ""})
+    answers = [dict(_answer(world.pack), needs=[{"kind": "neighbour", "subject": "r1"}]),
+               dict(_answer(world.pack), needs=[])]
+    plain = world.send
+
+    def send(body, key):
+        world.answer = answers.pop(0)
+        return plain(body, key)
+    got = explain.explain_pack(world.pack, actor="operator@example.com", send=send,
+                               today="2026-10-25", prompt=V6_PROMPT)
+    assert got["ok"] is True and len(world.sent) == 2, got
+    first, second = (s["body"]["messages"][0]["content"] for s in world.sent)
+    assert '<data name="looked_up">\n(nothing looked up)\n</data>' in first
+    assert 'neighbour r1: {"Gi0/1": "s4"}' in second
+    assert got["parent_call_id"] and got["parent_call_id"] != got["call_id"]
+    assert "neighbour r1: fulfilled" in got["needs_said"]
+
+
+def test_v4_sends_no_looked_up_block(world):
+    world.answer = _answer(world.pack)
+    assert _explain(world)["ok"] is True
+    assert "looked_up" not in world.sent[-1]["body"]["messages"][0]["content"]
 
 
 # ------------------------------------------------------------ no fault found (C1742)

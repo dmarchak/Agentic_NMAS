@@ -237,12 +237,113 @@
     return {time: data[0][idx], rows: rows};
   }
 
+  /* PURE (the operator's walk of History › Query, 2026-10-26): a count per window drawn over
+     the window it counts. A point at t CLOSES its window (count_over_time(…[w]) at t counts
+     (t − w, t]); a step drawn from each point to the next (`stepped`, align 1) put it over
+     (t, t + w], one window late. So each time moves back to its window's start, and one
+     closing time is added holding the last values, so the last window is drawn to its close.
+     uPlot's aligned *data* in, the same shape out; *step* in seconds. */
+  function windowData(data, step) {
+    var times = data[0], out = [[]], i, s;
+    for (i = 0; i < times.length; i++) out[0].push(times[i] - step);
+    if (times.length) out[0].push(times[times.length - 1]);
+    for (s = 1; s < data.length; s++) {
+      var col = data[s].slice(0);
+      if (times.length) col.push(col[col.length - 1]);
+      out.push(col);
+    }
+    return out;
+  }
+
+  /* PURE: whether a payload is counts per window, each point its window's close: stepped,
+     `window_close` and a step (the logs builder's counts; a metrics answer is none of them). */
+  function windowed(p) {
+    return (p.type === 'state-timeline' || p.stepped === true) && p.window_close === true && p.step > 0;
+  }
+
+  /* PURE: the data a series payload is drawn from: its series aligned on their times, and,
+     for counts per window, each count moved over the window it counts (`windowData`); any other
+     series is drawn at its own instants. */
+  function drawnData(p) {
+    var data = alignSeries(p.series);
+    return windowed(p) ? windowData(data, p.step) : data;
+  }
+
+  /* PURE: which window the pointer is in, over `windowData`'s times: the last start at or
+     before *x*, never the closing time added after the last window. */
+  function windowIdx(times, x) {
+    var best = 0;
+    for (var i = 0; i < times.length - 1; i++) if (times[i] <= x) best = i;
+    return best;
+  }
+
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  /* PURE (one zone per view, the operator, 2026-10-26): an instant in the zone *offsetMin*
+     minutes east of UTC, as History › Query writes one: *fmt* 'dt' "22 Oct 00:00", 't'
+     "00:00", 'dts' "22 Oct 00:00:05", 'dty' "22 Oct 2026 00:00". */
+  function whenWords(epoch, offsetMin, fmt) {
+    var d = new Date((epoch + offsetMin * 60) * 1000);
+    var hm = pad2(d.getUTCHours()) + ':' + pad2(d.getUTCMinutes());
+    var day = d.getUTCDate() + ' ' + MONTHS[d.getUTCMonth()];
+    if (fmt === 't') return hm;
+    if (fmt === 'dts') return day + ' ' + hm + ':' + pad2(d.getUTCSeconds());
+    if (fmt === 'dty') return day + ' ' + d.getUTCFullYear() + ' ' + hm;
+    return day + ' ' + hm;
+  }
+
+  /* PURE: two instants as one span, the end's date written when it falls on another day in
+     that zone: "22 Oct 08:00 to 09:00", "22 Oct 00:00 to 23 Oct 00:00". */
+  function spanWords(a, b, offA, offB) {
+    var same = whenWords(a, offA, 'dty').split(' ').slice(0, 3).join(' ') ===
+      whenWords(b, offB, 'dty').split(' ').slice(0, 3).join(' ');
+    return whenWords(a, offA, 'dt') + ' to ' + whenWords(b, offB, same ? 't' : 'dt');
+  }
+
+  /* PURE: an offset east of UTC in minutes as words, "UTC−6", "UTC+5:30", "UTC". */
+  function offsetWords(offsetMin) {
+    if (!offsetMin) return 'UTC';
+    var h = Math.floor(Math.abs(offsetMin) / 60), m = Math.abs(offsetMin) % 60;
+    return 'UTC' + (offsetMin < 0 ? '−' : '+') + h + (m ? ':' + pad2(m) : '');
+  }
+
+  /* The viewer's zone at an instant: its offset east of UTC, and its short name ("MDT"), or
+     the offset in words where the browser names none. */
+  function viewerOffset(epoch) { return -new Date(epoch * 1000).getTimezoneOffset(); }
+  function viewerZone(epoch) {
+    try {
+      var parts = new Intl.DateTimeFormat('en-US', {timeZoneName: 'short'})
+        .formatToParts(new Date(epoch * 1000));
+      for (var i = 0; i < parts.length; i++) if (parts[i].type === 'timeZoneName') return parts[i].value;
+    } catch (e) { /* no Intl: the offset in words */ }
+    return offsetWords(viewerOffset(epoch));
+  }
+
   /* The hover readout's time: the date and minute in the viewer's time, as the axis draws. */
   function tipTime(epoch) {
     var d = new Date(epoch * 1000);
     function pad(n) { return (n < 10 ? '0' : '') + n; }
     return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' +
       pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
+  /* PURE: the hover readout's time lines, [the viewer's, UTC's or null]. A History › Query
+     answer (`hover_utc`) names the viewer's zone and gives UTC under it (one zone per view, the
+     other on hover, the operator, 2026-10-26); a count per window (`window_close`, its *t* the
+     window's start once `windowData` has moved it) names the whole window it counts. Any other
+     panel keeps its one line. *offOf(t)* is the zone's offset east of UTC in minutes at t,
+     *zoneOf(t)* its name. */
+  function tipWhen(t, p, offOf, zoneOf) {
+    if (windowed(p)) {
+      var e = t + p.step;
+      return [spanWords(t, e, offOf(t), offOf(e)) + ' ' + zoneOf(e),
+              spanWords(t, e, 0, 0) + ' UTC'];
+    }
+    if (p.hover_utc === true) {
+      return [whenWords(t, offOf(t), 'dt') + ' ' + zoneOf(t), whenWords(t, 0, 'dt') + ' UTC'];
+    }
+    return [tipTime(t), null];
   }
 
   /* C707: the readout under the cursor, redrawn as it moves, hidden when it leaves the chart. */
@@ -258,7 +359,9 @@
         return;
       }
       clear(tip);
-      tip.appendChild(el('div', 'chart-tip-time', tipTime(got.time)));
+      var when = tipWhen(got.time, p, viewerOffset, viewerZone);
+      tip.appendChild(el('div', 'chart-tip-time', when[0]));
+      if (when[1]) tip.appendChild(el('div', 'chart-tip-utc', when[1]));
       for (var r = 0; r < got.rows.length && r < 12; r++) {
         var row = el('div', 'chart-tip-row');
         row.appendChild(el('span', 'swatch s' + (got.rows[r].i % COLOURS.length)));
@@ -299,7 +402,12 @@
     }
     var holder = el('div', 'chart');
     body.appendChild(holder);
-    var data = alignSeries(p.series);
+    var data = drawnData(p);
+    // A count per window is drawn over the window it counts, and the pointer reads the window
+    // it is in (`windowData`, `windowIdx`).
+    if (windowed(p)) {
+      opts.cursor.dataIdx = function (u, seriesIdx, closest, x) { return windowIdx(u.data[0], x); };
+    }
     opts.hooks = {setCursor: [hoverTip(holder, p, unit, data)]};
     var chart = new root.uPlot(opts, data, holder);
     section.__nmasChart = chart;
@@ -489,5 +597,9 @@
 
   root.NMAS_PANELS = {statText: statText, palette: palette, duration: duration, emptyWords: emptyWords, mapValue: mapValue, colourKind: colourKind, formatValue: formatValue, alignSeries: alignSeries, thresholdKind: thresholdKind,
                       chartHeight: chartHeight, hoverRows: hoverRows,
+                      windowData: windowData, windowIdx: windowIdx, whenWords: whenWords,
+                      windowed: windowed, drawnData: drawnData,
+                      spanWords: spanWords, offsetWords: offsetWords, tipWhen: tipWhen,
+                      viewerOffset: viewerOffset, viewerZone: viewerZone,
                       footWords: footWords, emptyWords: emptyWords, emptyHover: emptyHover, scan: scan};
 })(typeof window !== 'undefined' ? window : this);

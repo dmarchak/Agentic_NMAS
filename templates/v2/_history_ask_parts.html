@@ -12,7 +12,36 @@
     - range_chips: the range chips and From… to… (relative, or absolute UTC with the viewer's
       local time beside, the fit line, the limits the caller draws, Apply and Cancel);
     - actions: Ask (busy on itself), Save this view…, Copy the link, and the (i);
-    - state: one of the answer's states (refused, the store not answering, nothing in range). -#}
+    - state: one of the answer's states (refused, the store not answering, nothing in range);
+    - when and zone: a time in the viewer's zone, UTC on hover;
+    - left: the mark on a builder Ask in words did not fill (the operator's walk of
+      2026-10-26: Ask answered the previous question), with the one click that keeps its
+      choices as they are;
+    - unseen: a chosen value the range's lists no longer hold, kept and marked;
+    - clashes: filters no line can match together, each with the one click that drops the
+      leftover. -#}
+
+{#- when: an instant, or the span *ts* to *to*, written in UTC and named so, which
+    static/js/nmas_logq.js writes again in the viewer's zone, named, the UTC on hover (one zone
+    per view, the operator, 2026-10-26); *bare* leaves the zone's name to a column's head
+    (`zone()`). -#}
+{%- macro when(ts, fmt='dt', to=none, bare=false) -%}
+{%- set w = ts | utc_when(fmt, to) -%}
+<time datetime="{{ w.iso }}"{% if to is not none %} data-lq-to="{{ w.to_iso }}"{% endif %} data-lq-when="{{ 'span' if to is not none else fmt }}"{% if bare %} data-lq-bare{% endif %}>{{ w.words }}{% if not bare %} UTC{% endif %}</time>
+{%- endmacro %}
+
+{%- macro zone() -%}<span class="lq-zone" data-lq-zone>UTC</span>{%- endmacro %}
+
+{%- macro unseen() -%}<span class="lq-unseen">not seen in this range</span>{%- endmacro %}
+
+{#- clashes: filters no line can match together (`history_logq.clashes`), each said with its
+    fixes, the first dropping the leftover. -#}
+{%- macro clashes(q, here, region, list, change) -%}
+{%- for words, fixes in list %}
+<div class="notice notice-warn lq-clash" role="status">{{ icon('warn', 16) }}<div><p><strong>These filters cannot match together.</strong> {{ words }}.</p>
+  <div class="lq-line">{% for label, over in fixes %}{{ go(q, here, region, dict(change, **over), label, 'btn btn-small' ~ (' btn-primary' if loop.first)) }}{% endfor %}</div></div></div>
+{%- endfor %}
+{%- endmacro %}
 
 {%- macro go(q, here, region, over, words, cls='lq-chip', pressed=none, label='', current=false) -%}
 <a class="{{ cls }}" href="{{ here }}{{ q.qs(over) }}" hx-get="{{ region }}{{ q.qs(over) }}" hx-target="#lq" hx-swap="outerHTML"{% if pressed is not none %} aria-pressed="{{ 'true' if pressed else 'false' }}"{% endif %}{% if current %} aria-current="true"{% endif %}{% if label %} aria-label="{{ label }}"{% endif %}>{{ words }}</a>
@@ -20,7 +49,8 @@
 
 {%- macro query_box(b, hl, code_href, tail='') -%}
 {%- set marked = (b.parts | selectattr(1, 'equalto', hl) | map(attribute=0) | map('trim') | list) if hl else [] %}
-    <pre class="lq-q">{% for text, key in b.parts %}{% if key and key == hl %}{{ ' ' if text.startswith(' ') }}<mark>{{ text.lstrip(' ') }}</mark>{% else %}{{ text }}{% endif %}{% endfor %}{% if marked %}
+    {%- if q.left %}<span class="lq-leftmark">{{ 'left from your previous question' if q.left.previous else "the builder's defaults, not your words" }}</span>{% endif %}
+    <pre class="lq-q{{ ' lq-q-left' if q.left }}">{% for text, key in b.parts %}{% if key and key == hl %}{{ ' ' if text.startswith(' ') }}<mark>{{ text.lstrip(' ') }}</mark>{% else %}{{ text }}{% endif %}{% endfor %}{% if marked %}
 <span class="lq-dim">the last choice:</span> <mark>{{ marked | join(' … ') }}</mark>{% endif %}</pre>
     <p class="lq-say">{% if hl and b.explain[hl] %}<strong>{{ marked | join(' … ') if marked else 'The range' if hl == 'range' else 'Start from' }}</strong> {{ b.explain[hl] }}. {% endif %}The whole query reads: {{ b.reads }}.</p>
     <span class="lq-hint">Formed as you choose; <a href="{{ code_href }}">Edit as code</a> hands it to Code mode{{ tail }}</span>
@@ -53,7 +83,7 @@
 {%- endmacro %}
 
 {%- macro actions(q, here, busy, address_over, section, label) -%}
-    <span class="op-act"><button id="lq-ask" type="submit" form="lq-form" class="btn btn-primary"><span class="op-idle">Ask</span><span class="op-busy">{{ busy }}</span></button></span>
+    <span class="op-act"><button id="lq-ask" type="submit" form="lq-form" class="btn btn-primary"{% if q.left %} disabled aria-describedby="lq-left" title="Off: the choices are left from before your words; keep them, or change one"{% endif %}><span class="op-idle">Ask</span><span class="op-busy">{{ busy }}</span></button></span>
     {%- with op={'address': here ~ q.qs(address_over)} %}{% include "v2/_history_save.html" %}{% endwith %}
     <button type="button" class="btn" x-data="copy" data-copy="{{ request.url_root.rstrip('/') }}{{ here }}{{ q.qs(address_over) }}" data-label="Copy the link" x-on:click="copy" x-text="label">Copy the link</button>
     {{ info('history', section, label) }}

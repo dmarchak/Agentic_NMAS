@@ -1021,6 +1021,33 @@ def _alert_evidence(client, _lab, _mp):
         shutil.rmtree(folder, ignore_errors=True)
 
 
+def _logs_builder_leftovers(client, _lab, _mp):
+    """History › Query's logs builder (the operator's walk of 2026-10-26) with Loki answering
+    as the lab's did (tests/test_history_ask_logs.py's stand-in over its captures): a kind
+    chosen that the range does not hold, kept and marked "not seen in this range", and a
+    mnemonic chosen while the text names another, said as filters that cannot match together
+    with the click that drops the leftover. Its patches are undone before the next provider."""
+    import pytest
+
+    from modules import history_logq as Q
+    from tests import test_history_ask_logs as T
+
+    mp = pytest.MonkeyPatch()
+    try:
+        loki = T.FakeLoki()
+        mp.setattr(Q, "_client", lambda *a, **k: loki)
+        mp.setattr(Q, "_now", lambda: T.NOW)
+        Q.forget()
+        r = client.get("/v2/history/query/ask/logs?list=Lab&job=no-such-kind"
+                       "&mn=%25LINK-3-UPDOWN&has=OSPF-5-ADJCHG", headers={"Accept": "text/html"})
+        html = r.get_data(as_text=True)
+        assert r.status_code == 200 and "not seen in this range" in html \
+            and "cannot match together" in html, r.status_code
+    finally:
+        mp.undo()
+        Q.forget()
+
+
 def _save_no_golden(client, _lab, _mp):
     """Devices › Save's no-golden scope (C1232) on the lab as it is: r3 holds a committed
     golden and is left out, named; r9 holds none and is planned."""
@@ -1471,7 +1498,7 @@ def _oob_onboard(client, _lab, _mp):
 #: a state the lab's walk does not hold. In order: `_deploy` changes r3, so it is last.
 PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _drift,
                    _in_progress, _pending, _netbox_source, _netbox_lag, _silenced_alert,
-                   _alert_evidence,
+                   _alert_evidence, _logs_builder_leftovers,
                    _save_no_golden, _profile_versions,
                    _no_change_window, _update_owed, _lease_release, _ip_sla_retunes, _ip_sla_unsent,
                    _console_ztp, _console_servers, _oob_onboard, _deploy,

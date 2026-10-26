@@ -53,6 +53,15 @@ class _Boards:
         return self
 
     def url(self, name):
+        # A board the folder lacks would be shot as the server's 404 page and pass, so a
+        # record could call a 404 its board (2026-10-26: QueryBuilderLogs3 and
+        # QueryBuilderMetrics3 were missing from the copy, and two "compared again" paragraphs
+        # rested on 404 shots). Refused here, naming the file.
+        path = os.path.join(BOARDS, name.split("?", 1)[0].split("#", 1)[0])
+        if not os.path.isfile(path):
+            raise AssertionError(f"board {name} is not in NMAS_BOARDS_DIR ({BOARDS}): a shot "
+                                 "of it would be the server's 404 page; copy the canvas's "
+                                 "project/ folder whole")
         return f"http://127.0.0.1:{self.port}/{name}"
 
     def __exit__(self, *exc):
@@ -412,6 +421,11 @@ def test_history_ask_logs(tmp_path, monkeypatch):
                widths=((1440, 1.0), (390, 2.0)))
         _shoot("history-ask-logs-refused", "", lambda w: base + "&range=custom&from=2026-08-31"
                "%2008:25&to=2026-10-15%2008:25&ask=1", served, widths=((1440, 1.0),))
+        # The operator's walk of 2026-10-26: a kind and a device the range does not hold, kept
+        # and marked; a mnemonic chosen while the text names another, warned with its drop.
+        _shoot("history-ask-logs-leftovers", "", lambda w: base + "&job=no-such-kind&dev=r99"
+               "&mn=%25LINK-3-UPDOWN&has=OSPF-5-ADJCHG", served, widths=((1440, 1.0),
+                                                                         (390, 2.0)))
         loki.empty = True
         _shoot("history-ask-logs-empty", "", lambda w: base + "&range=1h&has=Neighbor&ask=1",
                served, widths=((1440, 1.0),))
@@ -509,6 +523,10 @@ def test_history_ask_metrics(tmp_path, monkeypatch):
                settled=opened, widths=((1440, 1.0), (1280, 1.0)))
         _shoot("history-ask-metrics", "QueryBuilderMetrics3Phone.dc.html", lambda w: asked,
                served, settled=settled, widths=((390, 2.0),))
+        # The operator's walk of 2026-10-26: a device chosen that the range does not hold,
+        # kept and marked.
+        _shoot("history-ask-metrics-unseen", "", lambda w: base + history_promq.qs(
+            dict(spec, dev=["r99"]), "Lab", {}), served, widths=((1440, 1.0),))
         refused = copy.deepcopy(prom.config)
         prom.config["data"]["yaml"] = prom.config["data"]["yaml"].replace(
             "scrape_interval: 30s", "scrape_interval: 1m")
@@ -603,7 +621,13 @@ def test_history_ask_words_logs(tmp_path, monkeypatch):
                 ("row", None, "!!document.getElementById('lq-words')"),
                 ("filled", _words_step(w, L._choices(range="7d"),
                                        "OSPF adjacency changes per device, last 7 days"),
-                 f"/Filled from your words/.test({_W_NOTE})")],
+                 f"/Filled from your words/.test({_W_NOTE})"),
+                # The operator's walk of 2026-10-26: not filled, the builder is marked left
+                # from the previous question and Ask is off until kept.
+                ("left", _words_step(w, L._choices(outcome="refuse", mnemonics=[],
+                                                   why_not="logs do not hold CPU"),
+                                     "the CPU from the logs"),
+                 "!!document.getElementById('lq-left')")],
                 widths=((1440, 1.0), (390, 2.0)))
     finally:
         next(webs, None)
