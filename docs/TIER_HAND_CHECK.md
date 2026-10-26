@@ -1294,3 +1294,51 @@ equivalent.
 | 27 | `- out[name[:-len(".json")]] = pin`<br>`+ out[name[:-len(".json")]] = None` | killed | `tests/test_ai_gateway_ask.py` |
 | 28 | `- out[name[:-len(".json")]] = pin`<br>`+ out[name[:+len(".json")]] = pin` | killed | `tests/test_ai_gateway_ask.py` |
 
+## 2026-10-26: History's AI-call record (15.14 part A), changed lines only, at 16c65d1b
+
+**What changed in the tier since b06d8046** (the last proved commit, the section above):
+`gateway.ask` takes `subject` (what the call is about: the device, the alert or the query)
+and writes it on the call's row, sent or refused (PHASE8_PLAN 15.14: "recorded at the source").
+The signature (lines 132 to 133), its docstring (140 to 142) and the row (149 to 150); no
+other function of the tier changed (`git diff b06d8046 16c65d1b` over `gateway.py`,
+`profiles.py`, `connection.py` and `redact.py`: 7 lines added, 3 removed, all in `ask`).
+
+**The method**, as the section above (the operator's sprint ruling of 2026-10-25): the mutants
+on the changed lines only, plus a must-die canary, in a clean checkout of 16c65d1b, one at a
+time, the aimed tests `tests/test_ai_gateway_ask.py` (the subject written with the call, sent
+or refused) and `tests/test_ai_gateway.py`, the file restored from its copy and compared.
+
+**The result: no survivor.** The deploy that carries it waited for this.
+
+| function | mutants | killed | survived | canary | baseline | file restored |
+|---|---|---|---|---|---|---|
+| `modules.ai.gateway.ask` | 18 | 18 | 0 | killed | passed | identical |
+| **all 1** | **18** | **18** | **0** | | | |
+
+### `modules.ai.gateway.ask`
+
+- Baseline: the tests passed on the committed file (1.5 s).
+- Canary: the body replaced by `raise RuntimeError("the tier hand check's canary: this function must not pass")`, **killed** by `tests/test_ai_gateway_ask.py::test_hosted_ai_off_is_refused_whole_and_logged`.
+- Mutants: 18, killed 18, survived 0.
+
+| # | change (− committed, + mutant) | outcome | killed by |
+|---|---|---|---|
+| 13 | `- row = {"id": call_id, "feature": feature, "actor": actor, "model": model,`<br>`- "prompt": f"{prompt[0]}.v{prompt[1]}", "schema": "", "detail": "", "cost_usd": 0.0,`<br>`- "subject": dict(subject or {})}`<br>`+ row = None` | killed | `tests/test_ai_gateway_ask.py::test_hosted_ai_off_is_refused_whole_and_logged` |
+| 22 | `- "prompt": f"{prompt[0]}.v{prompt[1]}", "schema": "", "detail": "", "cost_usd": 0.0,`<br>`+ "XXpromptXX": f"{prompt[0]}.v{prompt[1]}", "schema": "", "detail": "", "cost_usd": 0.0,` | killed | `tests/test_ai_gateway_ask.py::test_hosted_ai_off_is_refused_whole_and_logged` |
+| 23 | `- "prompt": f"{prompt[0]}.v{prompt[1]}", "schema": "", "detail": "", "cost_usd": 0.0,`<br>`+ "PROMPT": f"{prompt[0]}.v{prompt[1]}", "schema": "", "detail": "", "cost_usd": 0.0,` | killed | `tests/test_ai_gateway_ask.py::test_hosted_ai_off_is_refused_whole_and_logged` |
+| 24 | `- "prompt": f"{prompt[0]}.v{prompt[1]}", "schema": "", "detail": "", "cost_usd": 0.0,`<br>`+ "prompt": f"{prompt[1]}.v{prompt[1]}", "schema": "", "detail": "", "cost_usd": 0.0,` | killed | `tests/test_ai_gateway_ask.py::test_hosted_ai_off_is_refused_whole_and_logged` |
+| 25 | `- "prompt": f"{prompt[0]}.v{prompt[1]}", "schema": "", "detail": "", "cost_usd": 0.0,`<br>`+ "prompt": f"{prompt[0]}.v{prompt[2]}", "schema": "", "detail": "", "cost_usd": 0.0,` | killed | `tests/test_ai_gateway_ask.py::test_hosted_ai_off_is_refused_whole_and_logged` |
+| 26 | `- "prompt": f"{prompt[0]}.v{prompt[1]}", "schema": "", "detail": "", "cost_usd": 0.0,`<br>`+ "prompt": f"{prompt[0]}.v{prompt[1]}", "XXschemaXX": "", "detail": "", "cost_usd": 0.0,` | killed | `tests/test_ai_gateway_ask.py::test_hosted_ai_off_is_refused_whole_and_logged` |
+| 27 | `- "prompt": f"{prompt[0]}.v{prompt[1]}", "schema": "", "detail": "", "cost_usd": 0.0,`<br>`+ "prompt": f"{prompt[0]}.v{prompt[1]}", "SCHEMA": "", "detail": "", "cost_usd": 0.0,` | killed | `tests/test_ai_gateway_ask.py::test_hosted_ai_off_is_refused_whole_and_logged` |
+| 28 | `- "prompt": f"{prompt[0]}.v{prompt[1]}", "schema": "", "detail": "", "cost_usd": 0.0,`<br>`+ "prompt": f"{prompt[0]}.v{prompt[1]}", "schema": "XXXX", "detail": "", "cost_usd": 0.0,` | killed | `tests/test_ai_gateway_ask.py::test_hosted_ai_off_is_refused_whole_and_logged` |
+| 29 | `- "prompt": f"{prompt[0]}.v{prompt[1]}", "schema": "", "detail": "", "cost_usd": 0.0,`<br>`+ "prompt": f"{prompt[0]}.v{prompt[1]}", "schema": "", "XXdetailXX": "", "cost_usd": 0.0,` | killed | `tests/test_ai_gateway_ask.py::test_hosted_ai_off_is_refused_whole_and_logged` |
+| 30 | `- "prompt": f"{prompt[0]}.v{prompt[1]}", "schema": "", "detail": "", "cost_usd": 0.0,`<br>`+ "prompt": f"{prompt[0]}.v{prompt[1]}", "schema": "", "DETAIL": "", "cost_usd": 0.0,` | killed | `tests/test_ai_gateway_ask.py::test_hosted_ai_off_is_refused_whole_and_logged` |
+| 31 | `- "prompt": f"{prompt[0]}.v{prompt[1]}", "schema": "", "detail": "", "cost_usd": 0.0,`<br>`+ "prompt": f"{prompt[0]}.v{prompt[1]}", "schema": "", "detail": "XXXX", "cost_usd": 0.0,` | killed | `tests/test_ai_gateway_ask.py::test_an_answer_is_returned_and_recorded_whole` |
+| 32 | `- "prompt": f"{prompt[0]}.v{prompt[1]}", "schema": "", "detail": "", "cost_usd": 0.0,`<br>`+ "prompt": f"{prompt[0]}.v{prompt[1]}", "schema": "", "detail": "", "XXcost_usdXX": 0.0,` | killed | `tests/test_ai_gateway_ask.py::test_hosted_ai_off_is_refused_whole_and_logged` |
+| 33 | `- "prompt": f"{prompt[0]}.v{prompt[1]}", "schema": "", "detail": "", "cost_usd": 0.0,`<br>`+ "prompt": f"{prompt[0]}.v{prompt[1]}", "schema": "", "detail": "", "COST_USD": 0.0,` | killed | `tests/test_ai_gateway_ask.py::test_hosted_ai_off_is_refused_whole_and_logged` |
+| 34 | `- "prompt": f"{prompt[0]}.v{prompt[1]}", "schema": "", "detail": "", "cost_usd": 0.0,`<br>`+ "prompt": f"{prompt[0]}.v{prompt[1]}", "schema": "", "detail": "", "cost_usd": 1.0,` | killed | `tests/test_ai_gateway_ask.py::test_hosted_ai_off_is_refused_whole_and_logged` |
+| 35 | `- "subject": dict(subject or {})}`<br>`+ "XXsubjectXX": dict(subject or {})}` | killed | `tests/test_ai_gateway_ask.py::test_hosted_ai_off_is_refused_whole_and_logged` |
+| 36 | `- "subject": dict(subject or {})}`<br>`+ "SUBJECT": dict(subject or {})}` | killed | `tests/test_ai_gateway_ask.py::test_hosted_ai_off_is_refused_whole_and_logged` |
+| 37 | `- "subject": dict(subject or {})}`<br>`+ "subject": dict(None)}` | killed | `tests/test_ai_gateway_ask.py::test_hosted_ai_off_is_refused_whole_and_logged` |
+| 38 | `- "subject": dict(subject or {})}`<br>`+ "subject": dict(subject and {})}` | killed | `tests/test_ai_gateway_ask.py::test_hosted_ai_off_is_refused_whole_and_logged` |
+
