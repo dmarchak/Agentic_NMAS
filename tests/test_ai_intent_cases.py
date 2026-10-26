@@ -124,6 +124,20 @@ def test_ask_and_refuse_pass_on_the_outcome():
     assert cases.intent_misses(ipv6, {"ok": False, "error": "unanswerable"}) == []
 
 
+def test_a_case_naming_what_an_outcome_says_misses_the_same_outcome_for_another_reason():
+    """C1770's corrected premises: "bring Gi0/1 back up" on an interface already up passes as
+    Mercury's "changes no device", never as a refusal of something else."""
+    up = RECORDED["cases"][2]["expect"]                         # case 3
+    assert cases.intent_misses(up, {"ok": False, "error": "couldnt_change", "detail": (
+        "the answer changes no device; nothing is previewed")}) == []
+    misses = cases.intent_misses(up, {"ok": False, "error": "couldnt_change", "detail": (
+        "s1's operation 0 (shutdown) changes the interface 'GigabitEthernet0/2', which the "
+        "request does not name; nothing is previewed")})
+    assert misses and "expected it to say 'the answer changes no device'" in misses[0]
+    assert cases.intent_misses(up, _got(_op("no_shutdown", interface="GigabitEthernet0/1"))) \
+        == []
+
+
 # ── the recorder ─────────────────────────────────────────────────────────────
 
 def _script():
@@ -152,8 +166,10 @@ def test_the_recorder_reports_passes_consistency_cost_and_latency(monkeypatch, t
     def answer(sentence):
         exp = by_sentence[sentence]["expect"]
         if exp["outcome"][0] != "answer":
-            return {"ok": False, "error": {"ask": "ask", "refuse": "unanswerable"}[
-                exp["outcome"][0]], "detail": "planted"}
+            first = exp["outcome"][0]
+            return {"ok": False, "error": {"ask": "ask", "refuse": "unanswerable",
+                                           "refused_after": "intent"}[first],
+                    "detail": (exp.get("said") or {}).get(first) or "planted"}
         ops = []
         for o in exp["ops"]:
             ops.append(_op(o["op"], **{("vlan_name" if k == "name" else k): v

@@ -2406,8 +2406,11 @@ it: "any change outside the devices/keys the request names is refused before pre
   names in their written forms (`ifnames.canonical`: Gi0/1, GigabitEthernet 0/1), VLAN numbers
   after "vlan" ("Vlan10" is an interface), network prefixes (an address and wildcard or mask
   read as its prefix; an IPv6 prefix kept, for the patch to refuse by name).
-- **Scope:** on a device's Intent tab, that device alone, and a sentence naming another device
-  is Mercury's own refusal; elsewhere, the devices the sentence names.
+- **Scope:** on a device's Intent tab, that device alone; another device's name in the sentence
+  is only words (a description names its neighbour, "uplink to r1"), and an answer changing
+  that device is refused by the scope check before any preview. Elsewhere, the devices the
+  sentence names. (Until 2026-10-26 a sentence naming another device was refused before any
+  call; the first measurement showed it refusing two valid descriptions every run, C1770.)
 
 **It never sends:** the intent document; any section the sentence does not touch; any key
 outside the allowlist (`READS`), so no address, account, AAA, SNMP, NTP, logging, banner or

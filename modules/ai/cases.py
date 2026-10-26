@@ -344,8 +344,7 @@ def explain_misses(expect: dict, answer, pack: dict, error: str = "") -> list:
 #: ("answer"), one question back ("ask"), a refusal of the change ("refuse"), a draft refused
 #: by Mercury after the model answered, by the scope check, the patch's rules or the intent
 #: ("refused_after"), or Mercury's own answer with no call ("mercury").
-MERCURY_ERRORS = ("empty", "too_long", "no_device", "other_device", "nothing_named",
-                  "no_intent")
+MERCURY_ERRORS = ("empty", "too_long", "no_device", "nothing_named", "no_intent")
 
 
 def intent_outcome(got: dict) -> str:
@@ -397,13 +396,18 @@ def _op_key(op: dict) -> tuple:
 
 def intent_misses(expect: dict, got: dict) -> list:
     """What *got* (`intent_words.change`'s answer) does that *expect* does not allow: ``[]``
-    is a pass. The outcome must be one the case allows; an answer's operations must be
-    exactly the expected ones, order aside."""
+    is a pass. The outcome must be one the case allows; where the case names what an outcome
+    says (``said``: outcome to words), its detail must hold those words, so a refusal for
+    another reason misses; an answer's operations must be exactly the expected ones, order
+    aside."""
     outcome = intent_outcome(got)
+    why = got.get("detail") or got.get("error") or ""
     if outcome not in expect["outcome"]:
-        why = got.get("detail") or got.get("error") or ""
         return [f"outcome {outcome}, expected one of {expect['outcome']}"
                 + (f" ({why[:160]})" if why else "")]
+    said = (expect.get("said") or {}).get(outcome)
+    if said and said not in why:
+        return [f"outcome {outcome} says {why[:160]!r}, expected it to say {said!r}"]
     if outcome != "answer" or "ops" not in expect:
         return []
     want = sorted(_op_key(o) for o in expect["ops"])

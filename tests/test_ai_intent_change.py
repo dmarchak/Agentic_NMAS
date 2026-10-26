@@ -156,10 +156,8 @@ def test_what_is_not_an_answer_previews_nothing_and_says_why(world, sentence, an
     ("shut Gi2 on the core switch", None, "no_device", "the sentence names no device of Lab"),
     ("shut the uplink on s1", None, "nothing_named",
      "the sentence names no interface, VLAN or OSPF network to change"),
-    ("shut Gi0/1 on s1 and r2", ["s1"], "other_device",
-     "the sentence names r2 too; a change in words on s1's Intent tab changes s1 only"),
     ("", None, "empty", "type the change first"),
-], ids=["no-device", "nothing-named", "other-device-on-a-tab", "empty"])
+], ids=["no-device", "nothing-named", "empty"])
 def test_mercury_answers_what_needs_no_model(world, sentence, devices, error, said):
     got = intent_words.change("Lab", sentence, actor="operator@example.com", send=world.send,
                               today="2026-10-26", devices=devices)
@@ -173,6 +171,33 @@ def test_on_a_device_s_tab_the_device_needs_no_naming(world):
                               actor="operator@example.com", send=world.send,
                               today="2026-10-26", devices=["s1"])
     assert got["ok"] is True, got
+
+
+def test_on_a_tab_a_description_naming_another_device_is_drafted(world):
+    """C1770: the first measurement's cases 11 and 12 ("uplink to r1") were refused before any
+    call, every run, because the sentence named a device of the network. On a device's tab
+    another device's name is only words: the call is made and the draft previewed."""
+    world.answer = _answer(("s1", [_op("set_description", interface="GigabitEthernet0/1",
+                                       description="uplink to r2")]))
+    got = intent_words.change("Lab", "describe GigabitEthernet0/1 as uplink to r2",
+                              actor="operator@example.com", send=world.send,
+                              today="2026-10-26", devices=["s1"])
+    assert got["ok"] is True, got
+    assert len(world.sent) == 1
+    (p,) = got["previews"]
+    assert p["hostname"] == "s1" and "description uplink to r2" in p["vs_intent"]
+
+
+def test_on_a_tab_an_answer_changing_the_device_named_in_words_is_refused(world):
+    """The control beside it: on s1's tab, a sentence naming r2 and an answer changing r2 is
+    refused by the scope check before any preview, naming r2, and nothing is previewed."""
+    world.answer = _answer(("r2", [_op("shutdown", interface="GigabitEthernet3")]))
+    before = _committed("s1")
+    got = intent_words.change("Lab", "shut Gi0/1 on s1 and r2", actor="operator@example.com",
+                              send=world.send, today="2026-10-26", devices=["s1"])
+    assert got["ok"] is False and got["error"] == "couldnt_change", got
+    assert "the answer changes 'r2', a device outside the request" in got["detail"], got
+    assert not got.get("previews") and _committed("s1") == before
 
 
 def test_the_intent_tab_draws_the_row_and_its_draft_in_the_editor_s_preview(world, host):  # noqa: F811

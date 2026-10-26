@@ -33,8 +33,9 @@ Anything else (an address, a speed, a route, a hostname) is refused, saying why;
 
 ## The steps {#steps}
 
-1. `scope`: on a device's tab the change is that device's alone; a sentence naming another
-   device of the network stops here, with nothing sent, and says so. {{product}} then reads, by
+1. `scope`: on a device's tab the change is that device's alone. Another device's name in your
+   sentence is only words (a description may name a neighbour, "uplink to edge2"); a draft
+   that changes that device is refused at `check`, naming it. {{product}} then reads, by
    code, what the sentence names: interfaces in any of their written forms (Gi0/1,
    GigabitEthernet 0/1), VLANs after the word "vlan" ("Vlan10" is an interface), and network
    prefixes (an address with a wildcard or mask is read as its prefix). A sentence naming no

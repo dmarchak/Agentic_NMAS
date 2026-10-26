@@ -282,19 +282,14 @@ def parts(sentence: str, named: list, given: dict) -> dict:
 
 def scope_of(list_name: str, sentence: str, devices: list = None) -> dict:
     """``{"ok", "error", "detail", "named"}``: the devices a change may touch. On a device's
-    tab (*devices*), those alone, and a sentence naming another device of the network is
-    refused; else the devices the sentence names."""
+    tab (*devices*), those alone: another device's name in the sentence is only words (a
+    description names its neighbour: "uplink to edge1"), and an answer changing that device is
+    refused by the scope check after it (`to_patches`). Else the devices the sentence names."""
     from modules.ai.nl_query import _inventory, named_devices
 
-    said = named_devices(sentence, _inventory(list_name))
     if devices:
-        others = [d for d in said if d not in devices]
-        if others:
-            return {"ok": False, "error": "other_device", "detail": (
-                f"the sentence names {', '.join(others)} too; a change in words on "
-                f"{', '.join(devices)}'s Intent tab changes {', '.join(devices)} only; nothing "
-                "was sent"), "named": list(devices)}
         return {"ok": True, "named": list(devices)}
+    said = named_devices(sentence, _inventory(list_name))
     if not said:
         return {"ok": False, "error": "no_device", "detail": (
             f"the sentence names no device of {list_name}; name each device to change, as its "
@@ -308,7 +303,7 @@ def change(list_name: str, sentence: str, *, actor: str, send=None, today: str =
     patch per device it changes, each previewed by the intent editor (nothing written); or one
     question back, or a refusal naming why, with nothing previewed. *devices* limits the scope
     (a device's Intent tab). Mercury answers itself, with no call and nothing spent, when the
-    sentence names no device in scope, another device than the tab's, or nothing to change."""
+    sentence names no device in scope or nothing to change."""
     from modules.ai import calls, gateway
     from modules.ai.nl_query import QUESTION_MAX
     from modules.nsot import intent_patch
