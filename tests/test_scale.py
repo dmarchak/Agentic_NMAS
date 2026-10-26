@@ -24,6 +24,7 @@ path under it, and these tests build in `tmp_path`.
 """
 
 import os
+import re
 import sys
 
 import pytest
@@ -285,6 +286,11 @@ def measured(tmp_path_factory):
                 runs = [measure(client, page, os.path.dirname(lab["repo"]), loads)
                         for _ in range(3)]
                 out[page][size] = {k: min(r[k] for r in runs) for k in runs[0]}
+                # C1562: what the page drew at this size, so a count that moved with the
+                # worker's state names that state when it fires (each recurrence so far, #1162
+                # and #1194, failed in CI alone and passed in three local runs of its shard).
+                out[page][size]["drawn"] = sorted(re.findall(
+                    r'data-attention-row="([^"]+)"', client.get(page).get_data(as_text=True)))
     finally:
         mp.undo()
         _store_back(aside)
@@ -418,7 +424,10 @@ class TestWhatMovesWithTheFleetIsPinned:
         marginal = (cost[SIZES[-1]]["calls"] - cost[SIZES[0]]["calls"]) / (SIZES[-1] - SIZES[0])
         assert abs(marginal - per_device) <= max(per_device * TOLERANCE, 2), (
             f"{page}: {marginal:.1f} Python calls per device, pinned at {per_device}. "
-            "A page that stopped passing over every device: record the new number.")
+            "A page that stopped passing over every device: record the new number. "
+            f"C1562: {cost[SIZES[0]]['calls']} calls at {SIZES[0]} devices drawing "
+            f"{cost[SIZES[0]]['drawn']}; {cost[SIZES[-1]]['calls']} at {SIZES[-1]} drawing "
+            f"{cost[SIZES[-1]]['drawn']}")
 
 
 # TestTheExtractedScript (Stage 7 §0b's acceptance: today's pages' inline script extracted to
