@@ -2015,7 +2015,8 @@ Sat 31 Oct).**
 - **Its cost:** C1724 (held-out set 2 below its floor) and C1750 stay open past the sprint.
 - **The defect class it prevents:** the sprint's days spent chasing a floor while the
   features behind it wait.
-- **The order from 2026-10-26 (tomorrow):**
+- **The order, started as soon as those two measurements are scored** (the operator's
+  correction, 2026-10-26: not a day, but after the measurements):
   1. Explain's recorded cases on the adopted prompt, five runs each. That closes C1744 and
      item 9's baselines.
   2. History's record of AI calls (15.14).
