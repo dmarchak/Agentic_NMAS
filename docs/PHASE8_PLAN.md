@@ -2442,6 +2442,35 @@ any code. The order is the operator's.
 Every Analyst task's recorded cases include healthy baselines that must report nothing wrong,
 measured for consistency like the rest; P1 Explain's first (15.12).
 
+**Measured 2026-10-26, 03:23 to 03:42 UTC** (Explain's recorded cases on prompt v4, five runs
+each, Claude Sonnet 5.5, under the provisional `max_tokens` of 8,192; v5 beside it on cases 2
+to 7, the re-proof; 65 calls, $2.40; none stopped at the bound, the largest output 2,286
+tokens, so the pin is now 5,760, C1754):
+
+| Case | Kind | v4 pass | v5 pass | Outcome the same every run (v4) |
+|---|---|---|---|---|
+| 1 (C1547) | incident | 5/5 | not run (v5 was written after it) | yes, answer |
+| 2 | baseline | 5/5 | 5/5 | yes, no fault found |
+| 3 | baseline | 5/5 | 5/5 | yes, no fault found |
+| 4 | baseline | 5/5 | 5/5 | yes, no fault found |
+| 5 | incident | 3/5 | 4/5 | no: answer 3, no fault found 2 |
+| 6 | incident | 5/5 | 5/5 | yes, answer |
+| 7 | control | 5/5 | 5/5 | yes, answer |
+| **all** | | **33/35** | **29/30** | **6 of 7 cases** |
+
+- **Item 9's baselines:** all three reported nothing wrong, five times of five, with the same
+  answer every run under 11.12's Analyst consistency (outcome, needs_human, evidence). The
+  recording is in `tests/fixtures/ai_cases/explain/recorded.json`, held by
+  tests/test_ai_explain_cases.py.
+- **Consistency under 11.12's whole definition:** 3 of 7 cases on v4, 3 of 6 on v5. The
+  baselines are exact; the incidents keep their outcome but vary in which evidence each
+  hypothesis cites.
+- **Case 5** is the one miss, on both prompts: twice on v4 (once on v5) it found no fault in an
+  SNMP-unreachable incident.
+- **v5's re-proof, scored, not adopted (the operator decides):** on cases 2 to 7, v5 29/30
+  against v4's 28/30, the same consistency on both measures, and about the same cost
+  ($1.11 against $1.10 for the same 30 calls).
+
 ### 16.6 Linked from the register
 
 - **Item 5 (event-driven detection):** C93, C1547 and C1682, the lab's load and cadence

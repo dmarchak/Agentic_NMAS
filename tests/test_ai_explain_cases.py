@@ -288,3 +288,38 @@ def test_a_baseline_with_a_cause_fails(ctx):  # noqa: F811
                checked=[_ref(ctx.pack, "health:r1:cpu")])
     assert cases.explain_misses(BY[2]["expect"], ans, ctx.pack) == [
         "2 hypotheses, at most 0 expected (a healthy window reports nothing wrong)"]
+
+
+# ── the recording (2026-10-26: prompt v4, five runs a case; the order's item 1) ──
+
+def test_every_case_is_recorded_five_times_on_the_file_s_model_and_prompt():
+    for c in SET["cases"]:
+        rec = c["recorded"]
+        assert rec["model"] == SET["model"] == profiles.TASKS["explain"]["model"], c["n"]
+        assert rec["prompt"] == f"explain.v{explain.PROMPT[1]}", (c["n"], rec["prompt"])
+        assert [r["round"] for r in rec["runs"]] == [1, 2, 3, 4, 5], c["n"]
+        assert rec["passed"] == sum(r["pass"] for r in rec["runs"]), c["n"]
+        assert all(r["pass"] == (r["misses"] == []) for r in rec["runs"]), c["n"]
+        assert len(rec["pack_sha256"]) == 64, c["n"]
+
+
+def test_item_9_every_healthy_baseline_reported_nothing_wrong_every_time():
+    """The sprint's item 9 (PHASE8_PLAN 16.5): every Analyst task's cases include healthy
+    baselines that report nothing wrong, measured for consistency. Recorded: each of P1
+    Explain's three baselines answered no fault found five times of five, checked, the same
+    answer every time (11.12's Analyst consistency: outcome, needs_human, evidence)."""
+    baselines = [c for c in SET["cases"] if c["kind"] == "baseline"]
+    assert len(baselines) >= 3, "the floor: the case file's three baselines"
+    for c in baselines:
+        runs = c["recorded"]["runs"]
+        assert all(r["pass"] and r["verdict"] == "checked" for r in runs), c["n"]
+        assert {r["answer"]["outcome"] for r in runs} == {"no_fault_found"}, c["n"]
+        assert all(r["answer"]["evidence"] == [] for r in runs), c["n"]
+
+
+def test_no_recorded_call_stopped_at_the_bound_and_the_pin_holds_2_5x_the_largest():
+    """C1754, C1757's rule: the pin's max_tokens is about 2.5x the largest output recorded."""
+    largest = max(r["output_tokens"] for c in SET["cases"] for r in c["recorded"]["runs"])
+    assert all("max_tokens" not in r["verdict"] for c in SET["cases"]
+               for r in c["recorded"]["runs"])
+    assert 2.3 * largest <= profiles.TASKS["explain"]["max_tokens"] <= 2.7 * largest, largest

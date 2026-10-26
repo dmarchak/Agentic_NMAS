@@ -2,11 +2,11 @@
   "words": "Explain an alert (Monitoring › Alerts)",
   "model": "claude-sonnet-5-5",
   "max_prompt_tokens": 20000,
-  "max_tokens": 8192,
+  "max_tokens": 5760,
   "thinking": "adaptive",
   "temperature": null,
   "why": {
     "model": "Starts on Sonnet 5.5; its cases then run on Haiku 5.5, pinned there if it meets its 90% floor (the operator's ruling, 2026-10-25).",
-    "max_tokens": "PROVISIONAL (C1754, 2026-10-26): 1,024 truncated 50 of 60 calls in Explain v5's proof (Sonnet 5.5's output counts its adaptive thinking; the 10 that answered used 837 to 1,000). 8,192 lets every answer finish; it is sized again to about 2.5x the largest output the next recorded runs measure (the bounds rule). A call is billed for what it uses; the bound sets only the per-call cap ($0.132)."
+    "max_tokens": "Measured (C1754, C1757's rule): about 2.5x the largest output of 65 calls, 2,286 tokens (Sonnet 5.5, adaptive thinking included; the recorded cases 1 to 7 on v4 and 2 to 7 on v5, five runs each, 2026-10-26 03:23 to 03:42 UTC, under the provisional 8,192, none stopped at it). 1,024 had truncated 50 of 60 calls in v5's first proof. A call is billed for what it uses; the bound sets only the per-call cap."
   }
 }
