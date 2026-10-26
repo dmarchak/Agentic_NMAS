@@ -1064,3 +1064,229 @@ workflow as the proof after the sprint.
 | 18 | `- text = pattern.sub(_sub(label), text)`<br>`+ text = pattern.sub(text)` | killed | `tests/test_sealed_values_masked.py::test_a_sealed_settings_value_keeps_its_prefix_and_loses_its_token` |
 | 19 | `- text = pattern.sub(_sub(label), text)`<br>`+ text = pattern.sub(_sub(label), )` | killed | `tests/test_sealed_values_masked.py::test_a_sealed_settings_value_keeps_its_prefix_and_loses_its_token` |
 | 20 | `- text = pattern.sub(_sub(label), text)`<br>`+ text = pattern.sub(_sub(None), text)` | killed | `tests/test_sealed_values_masked.py::test_a_sealed_settings_value_keeps_its_prefix_and_loses_its_token` |
+
+## 2026-10-26: the batched gateway change and the pin files, changed lines only, at b06d8046
+
+**Why only the changed lines.** The operator's sprint ruling of 2026-10-25 (PHASE8_PLAN 15.12,
+the same expiry): for a change to tier code, the hand check covers the mutants on the lines
+changed since the last proved commit, plus a must-die canary per changed function, logged as
+before. cfa0822b's full check (the section above) stands for every other line while their
+tests are unchanged.
+
+**What changed in the tier since cfa0822b.**
+- `gateway.build_request` reads the request's settings from the task's pin: model,
+  `max_tokens`, `thinking` (sent in the model's own form only when off) and `temperature`
+  (sent only when named).
+- `gateway.ask` builds the effective pin, with a measurement's thinking replacing the file's.
+  It refuses a thinking or a temperature the model cannot take, records the thinking asked,
+  and passes the pin on.
+- `profiles.load_pins` is new: the pin files read, a file whose keys are not exactly
+  `PIN_KEYS` refused.
+- The changes to `profiles.MODELS` (`thinking_off`, `temperatures`) are data, read by the
+  functions above, and no function of `connection` or `redact` changed.
+
+**The method**, as the section above, with one step added:
+- Step 3's mutants are only those altering a line in `git diff -U0 cfa0822b <commit>`'s added
+  ranges.
+- A mutant's lines are found by comparing the committed function's text with the mutant's,
+  from the function's def line. mutmut's own diff costs about 5 s a mutant, and agreed on
+  every one of 17 sampled across `build_request` and `ask`.
+- The aimed tests are the section above's six files.
+
+**The first run, at 222c3686.** 146 mutants on changed lines: 134 killed, 12 survived, and
+all three canaries killed.
+- 4 survivors in `ask` lay in a dead default (`asked.get("thinking", "adaptive")`): every pin
+  names its thinking, so the default could never run. It was removed, and temperature is
+  read the same way.
+- 4 survivors in `ask` were on a model profile listing no temperatures, a case never asked.
+  A test was added: a pin's temperature there is refused, saying "none".
+- 1 survivor in `load_pins` (`continue` made `break`) was a file that is not a pin, never
+  asked. A test was added: it is passed over and every pin after it loads.
+- 3 survivors in `load_pins` change `encoding="utf-8"` to the platform's default or to
+  "UTF-8".
+
+The fix is b06d8046, and the check was run again on it.
+
+**The result, at b06d8046.** 139 mutants on changed lines: 136 killed, 3 survived. All
+three canaries killed, every baseline passed, and every file restored identical; the
+checkout was clean by `git status` at the end.
+
+**Listed for the operator's ruling, not marked equivalent here.** The 3 survivors are
+`load_pins` 10, 12 and 18: `encoding="utf-8"` made `encoding=None`, made absent, and made
+`"UTF-8"`. On this host and in CI, Python reads files as UTF-8 by default, so each opens the
+pin files the same way, and no test can tell them apart there. They read the pin files, not
+egress, masking or a secret.
+
+| function | mutants | killed | survived | canary | baseline | file restored |
+|---|---|---|---|---|---|---|
+| `modules.ai.gateway.build_request` | 32 | 32 | 0 | killed | passed | identical |
+| `modules.ai.gateway.ask` | 79 | 79 | 0 | killed | passed | identical |
+| `modules.ai.profiles.load_pins` | 28 | 25 | 3 | killed | passed | identical |
+| **all 3** | **139** | **136** | **3** | | | |
+
+### `modules.ai.gateway.build_request`
+
+- Baseline: the tests passed on the committed file (3.1 s).
+- Canary: the body replaced by `raise RuntimeError("the tier hand check's canary: this function must not pass")`, **killed** by `tests/test_ai_gateway_ask.py::test_a_stored_secret_left_after_masking_is_refused_before_the_request_is_kept`.
+- Mutants: 32, killed 32, survived 0.
+
+| # | change (− committed, + mutant) | outcome | killed by |
+|---|---|---|---|
+| 32 | `- body = {`<br>`- "model": pin["model"],`<br>`- "max_tokens": int(pin["max_tokens"]),`<br>`- "system": system,`<br>`- "messages": [{"role": "user", "content": _delimited("data", parts) or "(no data)"}],`<br>`- "output_config": {"format": {"type": "json_schema",`<br>`- "schema": schemas.schema_for(schema_model)}},`<br>`- }`<br>`+ body = None` | killed | `tests/test_ai_gateway_ask.py::test_a_prompt_over_its_bound_is_refused_with_its_estimate_and_the_long_tier` |
+| 33 | `- "model": pin["model"],`<br>`+ "XXmodelXX": pin["model"],` | killed | `tests/test_ai_gateway_ask.py::test_a_task_naming_no_thinking_sends_none_and_its_request_is_unchanged` |
+| 34 | `- "model": pin["model"],`<br>`+ "MODEL": pin["model"],` | killed | `tests/test_ai_gateway_ask.py::test_a_task_naming_no_thinking_sends_none_and_its_request_is_unchanged` |
+| 35 | `- "model": pin["model"],`<br>`+ "model": pin["XXmodelXX"],` | killed | `tests/test_ai_gateway_ask.py::test_a_stored_secret_left_after_masking_is_refused_before_the_request_is_kept` |
+| 36 | `- "model": pin["model"],`<br>`+ "model": pin["MODEL"],` | killed | `tests/test_ai_gateway_ask.py::test_a_stored_secret_left_after_masking_is_refused_before_the_request_is_kept` |
+| 37 | `- "max_tokens": int(pin["max_tokens"]),`<br>`+ "XXmax_tokensXX": int(pin["max_tokens"]),` | killed | `tests/test_ai_gateway_ask.py::test_a_prompt_at_its_bound_is_sent` |
+| 38 | `- "max_tokens": int(pin["max_tokens"]),`<br>`+ "MAX_TOKENS": int(pin["max_tokens"]),` | killed | `tests/test_ai_gateway_ask.py::test_a_prompt_at_its_bound_is_sent` |
+| 39 | `- "max_tokens": int(pin["max_tokens"]),`<br>`+ "max_tokens": int(None),` | killed | `tests/test_ai_gateway_ask.py::test_a_stored_secret_left_after_masking_is_refused_before_the_request_is_kept` |
+| 40 | `- "max_tokens": int(pin["max_tokens"]),`<br>`+ "max_tokens": int(pin["XXmax_tokensXX"]),` | killed | `tests/test_ai_gateway_ask.py::test_a_stored_secret_left_after_masking_is_refused_before_the_request_is_kept` |
+| 41 | `- "max_tokens": int(pin["max_tokens"]),`<br>`+ "max_tokens": int(pin["MAX_TOKENS"]),` | killed | `tests/test_ai_gateway_ask.py::test_a_stored_secret_left_after_masking_is_refused_before_the_request_is_kept` |
+| 72 | `- if pin.get("thinking") == "off":`<br>`+ if pin.get(None) == "off":` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_sends_the_model_s_own_form_and_records_it` |
+| 73 | `- if pin.get("thinking") == "off":`<br>`+ if pin.get("XXthinkingXX") == "off":` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_sends_the_model_s_own_form_and_records_it` |
+| 74 | `- if pin.get("thinking") == "off":`<br>`+ if pin.get("THINKING") == "off":` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_sends_the_model_s_own_form_and_records_it` |
+| 75 | `- if pin.get("thinking") == "off":`<br>`+ if pin.get("thinking") != "off":` | killed | `tests/test_ai_gateway_ask.py::test_a_model_with_no_long_tier_says_none` |
+| 76 | `- if pin.get("thinking") == "off":`<br>`+ if pin.get("thinking") == "XXoffXX":` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_sends_the_model_s_own_form_and_records_it` |
+| 77 | `- if pin.get("thinking") == "off":`<br>`+ if pin.get("thinking") == "OFF":` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_sends_the_model_s_own_form_and_records_it` |
+| 78 | `- body["thinking"] = dict((profile or {})["thinking_off"])`<br>`+ body["thinking"] = None` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_sends_the_model_s_own_form_and_records_it` |
+| 79 | `- body["thinking"] = dict((profile or {})["thinking_off"])`<br>`+ body["XXthinkingXX"] = dict((profile or {})["thinking_off"])` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_sends_the_model_s_own_form_and_records_it` |
+| 80 | `- body["thinking"] = dict((profile or {})["thinking_off"])`<br>`+ body["THINKING"] = dict((profile or {})["thinking_off"])` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_sends_the_model_s_own_form_and_records_it` |
+| 81 | `- body["thinking"] = dict((profile or {})["thinking_off"])`<br>`+ body["thinking"] = dict(None)` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_sends_the_model_s_own_form_and_records_it` |
+| 82 | `- body["thinking"] = dict((profile or {})["thinking_off"])`<br>`+ body["thinking"] = dict((profile and {})["thinking_off"])` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_sends_the_model_s_own_form_and_records_it` |
+| 83 | `- body["thinking"] = dict((profile or {})["thinking_off"])`<br>`+ body["thinking"] = dict((profile or {})["XXthinking_offXX"])` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_sends_the_model_s_own_form_and_records_it` |
+| 84 | `- body["thinking"] = dict((profile or {})["thinking_off"])`<br>`+ body["thinking"] = dict((profile or {})["THINKING_OFF"])` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_sends_the_model_s_own_form_and_records_it` |
+| 85 | `- if pin.get("temperature") is not None:`<br>`+ if pin.get(None) is not None:` | killed | `tests/test_ai_gateway_ask.py::test_build_request_sends_the_pin_s_settings_only_when_it_names_them` |
+| 86 | `- if pin.get("temperature") is not None:`<br>`+ if pin.get("XXtemperatureXX") is not None:` | killed | `tests/test_ai_gateway_ask.py::test_build_request_sends_the_pin_s_settings_only_when_it_names_them` |
+| 87 | `- if pin.get("temperature") is not None:`<br>`+ if pin.get("TEMPERATURE") is not None:` | killed | `tests/test_ai_gateway_ask.py::test_build_request_sends_the_pin_s_settings_only_when_it_names_them` |
+| 88 | `- if pin.get("temperature") is not None:`<br>`+ if pin.get("temperature") is None:` | killed | `tests/test_ai_gateway_ask.py::test_a_task_naming_no_thinking_sends_none_and_its_request_is_unchanged` |
+| 89 | `- body["temperature"] = pin["temperature"]`<br>`+ body["temperature"] = None` | killed | `tests/test_ai_gateway_ask.py::test_build_request_sends_the_pin_s_settings_only_when_it_names_them` |
+| 90 | `- body["temperature"] = pin["temperature"]`<br>`+ body["XXtemperatureXX"] = pin["temperature"]` | killed | `tests/test_ai_gateway_ask.py::test_build_request_sends_the_pin_s_settings_only_when_it_names_them` |
+| 91 | `- body["temperature"] = pin["temperature"]`<br>`+ body["TEMPERATURE"] = pin["temperature"]` | killed | `tests/test_ai_gateway_ask.py::test_build_request_sends_the_pin_s_settings_only_when_it_names_them` |
+| 92 | `- body["temperature"] = pin["temperature"]`<br>`+ body["temperature"] = pin["XXtemperatureXX"]` | killed | `tests/test_ai_gateway_ask.py::test_build_request_sends_the_pin_s_settings_only_when_it_names_them` |
+| 93 | `- body["temperature"] = pin["temperature"]`<br>`+ body["temperature"] = pin["TEMPERATURE"]` | killed | `tests/test_ai_gateway_ask.py::test_build_request_sends_the_pin_s_settings_only_when_it_names_them` |
+
+### `modules.ai.gateway.ask`
+
+- Baseline: the tests passed on the committed file (3.1 s).
+- Canary: the body replaced by `raise RuntimeError("the tier hand check's canary: this function must not pass")`, **killed** by `tests/test_ai_gateway_ask.py::test_hosted_ai_off_is_refused_whole_and_logged`.
+- Mutants: 79, killed 79, survived 0.
+
+| # | change (− committed, + mutant) | outcome | killed by |
+|---|---|---|---|
+| 127 | `- asked = dict(pin, thinking=thinking) if thinking is not None else pin`<br>`+ asked = None` | killed | `tests/test_ai_gateway_ask.py::test_a_schema_that_is_not_the_registered_one_is_refused_naming_it[unregistered]` |
+| 128 | `- asked = dict(pin, thinking=thinking) if thinking is not None else pin`<br>`+ asked = dict(pin, thinking=thinking) if (thinking is not None) and False else pin` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_sends_the_model_s_own_form_and_records_it` |
+| 129 | `- asked = dict(pin, thinking=thinking) if thinking is not None else pin`<br>`+ asked = dict(pin, thinking=thinking) if (thinking is not None) or True else pin` | killed | `tests/test_ai_gateway_ask.py::test_a_schema_that_is_not_the_registered_one_is_refused_naming_it[unregistered]` |
+| 130 | `- asked = dict(pin, thinking=thinking) if thinking is not None else pin`<br>`+ asked = dict(None, thinking=thinking) if thinking is not None else pin` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_sends_the_model_s_own_form_and_records_it` |
+| 131 | `- asked = dict(pin, thinking=thinking) if thinking is not None else pin`<br>`+ asked = dict(pin, thinking=None) if thinking is not None else pin` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_sends_the_model_s_own_form_and_records_it` |
+| 132 | `- asked = dict(pin, thinking=thinking) if thinking is not None else pin`<br>`+ asked = dict(thinking=thinking) if thinking is not None else pin` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_sends_the_model_s_own_form_and_records_it` |
+| 133 | `- asked = dict(pin, thinking=thinking) if thinking is not None else pin`<br>`+ asked = dict(pin, ) if thinking is not None else pin` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_sends_the_model_s_own_form_and_records_it` |
+| 134 | `- asked = dict(pin, thinking=thinking) if thinking is not None else pin`<br>`+ asked = dict(pin, thinking=thinking) if thinking is None else pin` | killed | `tests/test_ai_gateway_ask.py::test_a_schema_that_is_not_the_registered_one_is_refused_naming_it[unregistered]` |
+| 135 | `- mode = asked["thinking"]                    # every pin names it (profiles.PIN_KEYS)`<br>`+ mode = None                    # every pin names it (profiles.PIN_KEYS)` | killed | `tests/test_ai_gateway_ask.py::test_a_schema_that_is_not_the_registered_one_is_refused_naming_it[unregistered]` |
+| 136 | `- mode = asked["thinking"]                    # every pin names it (profiles.PIN_KEYS)`<br>`+ mode = asked["XXthinkingXX"]                    # every pin names it (profiles.PIN_KEYS)` | killed | `tests/test_ai_gateway_ask.py::test_a_schema_that_is_not_the_registered_one_is_refused_naming_it[unregistered]` |
+| 137 | `- mode = asked["thinking"]                    # every pin names it (profiles.PIN_KEYS)`<br>`+ mode = asked["THINKING"]                    # every pin names it (profiles.PIN_KEYS)` | killed | `tests/test_ai_gateway_ask.py::test_a_schema_that_is_not_the_registered_one_is_refused_naming_it[unregistered]` |
+| 138 | `- row["thinking"] = mode`<br>`+ row["thinking"] = None` | killed | `tests/test_ai_gateway_ask.py::test_a_schema_that_is_not_the_registered_one_is_refused_naming_it[unregistered]` |
+| 139 | `- row["thinking"] = mode`<br>`+ row["XXthinkingXX"] = mode` | killed | `tests/test_ai_gateway_ask.py::test_a_schema_that_is_not_the_registered_one_is_refused_naming_it[unregistered]` |
+| 140 | `- row["thinking"] = mode`<br>`+ row["THINKING"] = mode` | killed | `tests/test_ai_gateway_ask.py::test_a_schema_that_is_not_the_registered_one_is_refused_naming_it[unregistered]` |
+| 141 | `- if mode not in profiles.THINKING:`<br>`+ if mode in profiles.THINKING:` | killed | `tests/test_ai_gateway_ask.py::test_a_schema_that_is_not_the_registered_one_is_refused_naming_it[unregistered]` |
+| 142 | `- return refuse("thinking", f"thinking {mode!r} is not one of "`<br>`+ return refuse(None, f"thinking {mode!r} is not one of "` | killed | `tests/test_ai_gateway_ask.py::test_a_thinking_not_known_is_refused_before_anything_is_sent` |
+| 143 | `- return refuse("thinking", f"thinking {mode!r} is not one of "`<br>`- f"{', '.join(profiles.THINKING)}; nothing was sent")`<br>`+ return refuse("thinking", None)` | killed | `tests/test_ai_gateway_ask.py::test_a_thinking_not_known_is_refused_before_anything_is_sent` |
+| 144 | `- return refuse("thinking", f"thinking {mode!r} is not one of "`<br>`+ return refuse(f"thinking {mode!r} is not one of "` | killed | `tests/test_ai_gateway_ask.py::test_a_thinking_not_known_is_refused_before_anything_is_sent` |
+| 145 | `- return refuse("thinking", f"thinking {mode!r} is not one of "`<br>`- f"{', '.join(profiles.THINKING)}; nothing was sent")`<br>`+ return refuse("thinking", )` | killed | `tests/test_ai_gateway_ask.py::test_a_thinking_not_known_is_refused_before_anything_is_sent` |
+| 146 | `- return refuse("thinking", f"thinking {mode!r} is not one of "`<br>`+ return refuse("XXthinkingXX", f"thinking {mode!r} is not one of "` | killed | `tests/test_ai_gateway_ask.py::test_a_thinking_not_known_is_refused_before_anything_is_sent` |
+| 147 | `- return refuse("thinking", f"thinking {mode!r} is not one of "`<br>`+ return refuse("THINKING", f"thinking {mode!r} is not one of "` | killed | `tests/test_ai_gateway_ask.py::test_a_thinking_not_known_is_refused_before_anything_is_sent` |
+| 148 | `- f"{', '.join(profiles.THINKING)}; nothing was sent")`<br>`+ f"{', '.join(None)}; nothing was sent")` | killed | `tests/test_ai_gateway_ask.py::test_a_thinking_not_known_is_refused_before_anything_is_sent` |
+| 149 | `- f"{', '.join(profiles.THINKING)}; nothing was sent")`<br>`+ f"{'XX, XX'.join(profiles.THINKING)}; nothing was sent")` | killed | `tests/test_ai_gateway_ask.py::test_a_thinking_not_known_is_refused_before_anything_is_sent` |
+| 150 | `- if mode == "off" and not profile.get("thinking_off"):`<br>`+ if mode == "off" or not profile.get("thinking_off"):` | killed | `tests/test_ai_gateway_ask.py::test_a_model_with_no_long_tier_says_none` |
+| 151 | `- if mode == "off" and not profile.get("thinking_off"):`<br>`+ if mode != "off" and not profile.get("thinking_off"):` | killed | `tests/test_ai_gateway_ask.py::test_a_model_with_no_long_tier_says_none` |
+| 152 | `- if mode == "off" and not profile.get("thinking_off"):`<br>`+ if mode == "XXoffXX" and not profile.get("thinking_off"):` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_on_a_model_with_no_way_to_turn_it_off_is_refused` |
+| 153 | `- if mode == "off" and not profile.get("thinking_off"):`<br>`+ if mode == "OFF" and not profile.get("thinking_off"):` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_on_a_model_with_no_way_to_turn_it_off_is_refused` |
+| 154 | `- if mode == "off" and not profile.get("thinking_off"):`<br>`+ if mode == "off" and profile.get("thinking_off"):` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_sends_the_model_s_own_form_and_records_it` |
+| 155 | `- if mode == "off" and not profile.get("thinking_off"):`<br>`+ if mode == "off" and not profile.get(None):` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_sends_the_model_s_own_form_and_records_it` |
+| 156 | `- if mode == "off" and not profile.get("thinking_off"):`<br>`+ if mode == "off" and not profile.get("XXthinking_offXX"):` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_sends_the_model_s_own_form_and_records_it` |
+| 157 | `- if mode == "off" and not profile.get("thinking_off"):`<br>`+ if mode == "off" and not profile.get("THINKING_OFF"):` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_sends_the_model_s_own_form_and_records_it` |
+| 158 | `- return refuse("thinking", f"{model}'s profile names no way to turn thinking off; "`<br>`+ return refuse(None, f"{model}'s profile names no way to turn thinking off; "` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_on_a_model_with_no_way_to_turn_it_off_is_refused` |
+| 159 | `- return refuse("thinking", f"{model}'s profile names no way to turn thinking off; "`<br>`- "nothing was sent")`<br>`+ return refuse("thinking", None)` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_on_a_model_with_no_way_to_turn_it_off_is_refused` |
+| 160 | `- return refuse("thinking", f"{model}'s profile names no way to turn thinking off; "`<br>`+ return refuse(f"{model}'s profile names no way to turn thinking off; "` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_on_a_model_with_no_way_to_turn_it_off_is_refused` |
+| 161 | `- return refuse("thinking", f"{model}'s profile names no way to turn thinking off; "`<br>`- "nothing was sent")`<br>`+ return refuse("thinking", )` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_on_a_model_with_no_way_to_turn_it_off_is_refused` |
+| 162 | `- return refuse("thinking", f"{model}'s profile names no way to turn thinking off; "`<br>`+ return refuse("XXthinkingXX", f"{model}'s profile names no way to turn thinking off; "` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_on_a_model_with_no_way_to_turn_it_off_is_refused` |
+| 163 | `- return refuse("thinking", f"{model}'s profile names no way to turn thinking off; "`<br>`+ return refuse("THINKING", f"{model}'s profile names no way to turn thinking off; "` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_on_a_model_with_no_way_to_turn_it_off_is_refused` |
+| 164 | `- "nothing was sent")`<br>`+ "XXnothing was sentXX")` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_on_a_model_with_no_way_to_turn_it_off_is_refused` |
+| 165 | `- "nothing was sent")`<br>`+ "NOTHING WAS SENT")` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_on_a_model_with_no_way_to_turn_it_off_is_refused` |
+| 166 | `- temperature = asked["temperature"]`<br>`+ temperature = None` | killed | `tests/test_ai_gateway_ask.py::test_a_pin_s_temperature_its_model_refuses_is_refused_before_anything_is_sent` |
+| 167 | `- temperature = asked["temperature"]`<br>`+ temperature = asked["XXtemperatureXX"]` | killed | `tests/test_ai_gateway_ask.py::test_a_schema_that_is_not_the_registered_one_is_refused_naming_it[unregistered]` |
+| 168 | `- temperature = asked["temperature"]`<br>`+ temperature = asked["TEMPERATURE"]` | killed | `tests/test_ai_gateway_ask.py::test_a_schema_that_is_not_the_registered_one_is_refused_naming_it[unregistered]` |
+| 169 | `- if temperature is not None and temperature not in profile.get("temperatures", ()):`<br>`+ if temperature is not None or temperature not in profile.get("temperatures", ()):` | killed | `tests/test_ai_gateway_ask.py::test_a_schema_that_is_not_the_registered_one_is_refused_naming_it[unregistered]` |
+| 170 | `- if temperature is not None and temperature not in profile.get("temperatures", ()):`<br>`+ if temperature is None and temperature not in profile.get("temperatures", ()):` | killed | `tests/test_ai_gateway_ask.py::test_a_schema_that_is_not_the_registered_one_is_refused_naming_it[unregistered]` |
+| 171 | `- if temperature is not None and temperature not in profile.get("temperatures", ()):`<br>`+ if temperature is not None and temperature in profile.get("temperatures", ()):` | killed | `tests/test_ai_gateway_ask.py::test_a_pin_s_temperature_its_model_takes_is_sent` |
+| 172 | `- if temperature is not None and temperature not in profile.get("temperatures", ()):`<br>`+ if temperature is not None and temperature not in profile.get(None, ()):` | killed | `tests/test_ai_gateway_ask.py::test_a_pin_s_temperature_its_model_takes_is_sent` |
+| 173 | `- if temperature is not None and temperature not in profile.get("temperatures", ()):`<br>`+ if temperature is not None and temperature not in profile.get("temperatures", None):` | killed | `tests/test_ai_gateway_ask.py::test_a_temperature_on_a_model_that_lists_none_is_refused_saying_none` |
+| 174 | `- if temperature is not None and temperature not in profile.get("temperatures", ()):`<br>`+ if temperature is not None and temperature not in profile.get(()):` | killed | `tests/test_ai_gateway_ask.py::test_a_pin_s_temperature_its_model_takes_is_sent` |
+| 175 | `- if temperature is not None and temperature not in profile.get("temperatures", ()):`<br>`+ if temperature is not None and temperature not in profile.get("temperatures", ):` | killed | `tests/test_ai_gateway_ask.py::test_a_temperature_on_a_model_that_lists_none_is_refused_saying_none` |
+| 176 | `- if temperature is not None and temperature not in profile.get("temperatures", ()):`<br>`+ if temperature is not None and temperature not in profile.get("XXtemperaturesXX", ()):` | killed | `tests/test_ai_gateway_ask.py::test_a_pin_s_temperature_its_model_takes_is_sent` |
+| 177 | `- if temperature is not None and temperature not in profile.get("temperatures", ()):`<br>`+ if temperature is not None and temperature not in profile.get("TEMPERATURES", ()):` | killed | `tests/test_ai_gateway_ask.py::test_a_pin_s_temperature_its_model_takes_is_sent` |
+| 178 | `- return refuse("temperature", f"the pin's temperature {temperature!r} is not one "`<br>`+ return refuse(None, f"the pin's temperature {temperature!r} is not one "` | killed | `tests/test_ai_gateway_ask.py::test_a_pin_s_temperature_its_model_refuses_is_refused_before_anything_is_sent` |
+| 179 | `- return refuse("temperature", f"the pin's temperature {temperature!r} is not one "`<br>`- f"{model} takes ({profile.get('temperatures') or 'none'}); nothing "`<br>`- "was sent")`<br>`+ return refuse("temperature", None)` | killed | `tests/test_ai_gateway_ask.py::test_a_pin_s_temperature_its_model_refuses_is_refused_before_anything_is_sent` |
+| 180 | `- return refuse("temperature", f"the pin's temperature {temperature!r} is not one "`<br>`+ return refuse(f"the pin's temperature {temperature!r} is not one "` | killed | `tests/test_ai_gateway_ask.py::test_a_pin_s_temperature_its_model_refuses_is_refused_before_anything_is_sent` |
+| 181 | `- return refuse("temperature", f"the pin's temperature {temperature!r} is not one "`<br>`- f"{model} takes ({profile.get('temperatures') or 'none'}); nothing "`<br>`- "was sent")`<br>`+ return refuse("temperature", )` | killed | `tests/test_ai_gateway_ask.py::test_a_pin_s_temperature_its_model_refuses_is_refused_before_anything_is_sent` |
+| 182 | `- return refuse("temperature", f"the pin's temperature {temperature!r} is not one "`<br>`+ return refuse("XXtemperatureXX", f"the pin's temperature {temperature!r} is not one "` | killed | `tests/test_ai_gateway_ask.py::test_a_pin_s_temperature_its_model_refuses_is_refused_before_anything_is_sent` |
+| 183 | `- return refuse("temperature", f"the pin's temperature {temperature!r} is not one "`<br>`+ return refuse("TEMPERATURE", f"the pin's temperature {temperature!r} is not one "` | killed | `tests/test_ai_gateway_ask.py::test_a_pin_s_temperature_its_model_refuses_is_refused_before_anything_is_sent` |
+| 184 | `- f"{model} takes ({profile.get('temperatures') or 'none'}); nothing "`<br>`+ f"{model} takes ({profile.get('temperatures') and 'none'}); nothing "` | killed | `tests/test_ai_gateway_ask.py::test_a_pin_s_temperature_its_model_refuses_is_refused_before_anything_is_sent` |
+| 185 | `- f"{model} takes ({profile.get('temperatures') or 'none'}); nothing "`<br>`+ f"{model} takes ({profile.get(None) or 'none'}); nothing "` | killed | `tests/test_ai_gateway_ask.py::test_a_pin_s_temperature_its_model_refuses_is_refused_before_anything_is_sent` |
+| 186 | `- f"{model} takes ({profile.get('temperatures') or 'none'}); nothing "`<br>`+ f"{model} takes ({profile.get('XXtemperaturesXX') or 'none'}); nothing "` | killed | `tests/test_ai_gateway_ask.py::test_a_pin_s_temperature_its_model_refuses_is_refused_before_anything_is_sent` |
+| 187 | `- f"{model} takes ({profile.get('temperatures') or 'none'}); nothing "`<br>`+ f"{model} takes ({profile.get('TEMPERATURES') or 'none'}); nothing "` | killed | `tests/test_ai_gateway_ask.py::test_a_pin_s_temperature_its_model_refuses_is_refused_before_anything_is_sent` |
+| 188 | `- f"{model} takes ({profile.get('temperatures') or 'none'}); nothing "`<br>`+ f"{model} takes ({profile.get('temperatures') or 'XXnoneXX'}); nothing "` | killed | `tests/test_ai_gateway_ask.py::test_a_temperature_on_a_model_that_lists_none_is_refused_saying_none` |
+| 189 | `- f"{model} takes ({profile.get('temperatures') or 'none'}); nothing "`<br>`+ f"{model} takes ({profile.get('temperatures') or 'NONE'}); nothing "` | killed | `tests/test_ai_gateway_ask.py::test_a_temperature_on_a_model_that_lists_none_is_refused_saying_none` |
+| 190 | `- "was sent")`<br>`+ "XXwas sentXX")` | killed | `tests/test_ai_gateway_ask.py::test_a_pin_s_temperature_its_model_refuses_is_refused_before_anything_is_sent` |
+| 191 | `- "was sent")`<br>`+ "WAS SENT")` | killed | `tests/test_ai_gateway_ask.py::test_a_pin_s_temperature_its_model_refuses_is_refused_before_anything_is_sent` |
+| 239 | `- body = redact.egress_payload(build_request(prompt_file, schema_model, parts, asked,`<br>`- context=context, profile=profile))`<br>`+ body = None` | killed | `tests/test_ai_gateway_ask.py::test_a_prompt_over_its_bound_is_refused_with_its_estimate_and_the_long_tier` |
+| 240 | `- body = redact.egress_payload(build_request(prompt_file, schema_model, parts, asked,`<br>`- context=context, profile=profile))`<br>`+ body = redact.egress_payload(None)` | killed | `tests/test_ai_gateway_ask.py::test_a_prompt_over_its_bound_is_refused_with_its_estimate_and_the_long_tier` |
+| 241 | `- body = redact.egress_payload(build_request(prompt_file, schema_model, parts, asked,`<br>`+ body = redact.egress_payload(build_request(None, schema_model, parts, asked,` | killed | `tests/test_ai_gateway_ask.py::test_a_stored_secret_left_after_masking_is_refused_before_the_request_is_kept` |
+| 242 | `- body = redact.egress_payload(build_request(prompt_file, schema_model, parts, asked,`<br>`+ body = redact.egress_payload(build_request(prompt_file, None, parts, asked,` | killed | `tests/test_ai_gateway_ask.py::test_a_stored_secret_left_after_masking_is_refused_before_the_request_is_kept` |
+| 243 | `- body = redact.egress_payload(build_request(prompt_file, schema_model, parts, asked,`<br>`+ body = redact.egress_payload(build_request(prompt_file, schema_model, None, asked,` | killed | `tests/test_ai_gateway_ask.py::test_a_stored_secret_left_after_masking_is_refused_before_the_request_is_kept` |
+| 244 | `- body = redact.egress_payload(build_request(prompt_file, schema_model, parts, asked,`<br>`+ body = redact.egress_payload(build_request(prompt_file, schema_model, parts, None,` | killed | `tests/test_ai_gateway_ask.py::test_a_stored_secret_left_after_masking_is_refused_before_the_request_is_kept` |
+| 245 | `- context=context, profile=profile))`<br>`+ context=None, profile=profile))` | killed | `tests/test_ai_gateway.py::test_the_stable_prefix_is_cached_and_the_calls_own_data_is_not` |
+| 246 | `- context=context, profile=profile))`<br>`+ context=context, profile=None))` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_sends_the_model_s_own_form_and_records_it` |
+| 247 | `- body = redact.egress_payload(build_request(prompt_file, schema_model, parts, asked,`<br>`+ body = redact.egress_payload(build_request(schema_model, parts, asked,` | killed | `tests/test_ai_gateway_ask.py::test_a_stored_secret_left_after_masking_is_refused_before_the_request_is_kept` |
+| 248 | `- body = redact.egress_payload(build_request(prompt_file, schema_model, parts, asked,`<br>`+ body = redact.egress_payload(build_request(prompt_file, parts, asked,` | killed | `tests/test_ai_gateway_ask.py::test_a_stored_secret_left_after_masking_is_refused_before_the_request_is_kept` |
+| 249 | `- body = redact.egress_payload(build_request(prompt_file, schema_model, parts, asked,`<br>`+ body = redact.egress_payload(build_request(prompt_file, schema_model, asked,` | killed | `tests/test_ai_gateway_ask.py::test_a_stored_secret_left_after_masking_is_refused_before_the_request_is_kept` |
+| 250 | `- body = redact.egress_payload(build_request(prompt_file, schema_model, parts, asked,`<br>`- context=context, profile=profile))`<br>`+ body = redact.egress_payload(build_request(prompt_file, schema_model, parts, context=context, profile=profile))` | killed | `tests/test_ai_gateway_ask.py::test_a_stored_secret_left_after_masking_is_refused_before_the_request_is_kept` |
+| 251 | `- context=context, profile=profile))`<br>`+ profile=profile))` | killed | `tests/test_ai_gateway.py::test_the_stable_prefix_is_cached_and_the_calls_own_data_is_not` |
+| 252 | `- context=context, profile=profile))`<br>`+ context=context, ))` | killed | `tests/test_ai_gateway_ask.py::test_thinking_off_sends_the_model_s_own_form_and_records_it` |
+
+### `modules.ai.profiles.load_pins`
+
+- Baseline: the tests passed on the committed file (3.1 s).
+- Canary: the body replaced by `raise RuntimeError("the tier hand check's canary: this function must not pass")`, **killed** by `tests/test_ai_gateway_ask.py`.
+- Mutants: 28, killed 25, survived 3 (modules.ai.profiles.x_load_pins__mutmut_10, modules.ai.profiles.x_load_pins__mutmut_12, modules.ai.profiles.x_load_pins__mutmut_18).
+
+| # | change (− committed, + mutant) | outcome | killed by |
+|---|---|---|---|
+| 1 | `- out = {}`<br>`+ out = None` | killed | `tests/test_ai_gateway_ask.py` |
+| 2 | `- for name in sorted(os.listdir(folder)):`<br>`+ for name in sorted(None):` | killed | `tests/test_ai_gateway_ask.py` |
+| 3 | `- for name in sorted(os.listdir(folder)):`<br>`+ for name in sorted(os.listdir(None)):` | killed | `tests/test_ai_gateway_ask.py` |
+| 4 | `- if not name.endswith(".json"):`<br>`+ if name.endswith(".json"):` | killed | `tests/test_ai_gateway_ask.py` |
+| 5 | `- if not name.endswith(".json"):`<br>`+ if not name.endswith(None):` | killed | `tests/test_ai_gateway_ask.py` |
+| 6 | `- if not name.endswith(".json"):`<br>`+ if not name.endswith("XX.jsonXX"):` | killed | `tests/test_ai_gateway_ask.py` |
+| 7 | `- if not name.endswith(".json"):`<br>`+ if not name.endswith(".JSON"):` | killed | `tests/test_ai_gateway_ask.py` |
+| 8 | `- continue`<br>`+ break` | killed | `tests/test_ai_gateway_ask.py::test_a_file_that_is_not_a_pin_is_passed_over_and_the_rest_still_load` |
+| 9 | `- with open(os.path.join(folder, name), encoding="utf-8") as fh:`<br>`+ with open(None, encoding="utf-8") as fh:` | killed | `tests/test_ai_gateway_ask.py` |
+| 10 | `- with open(os.path.join(folder, name), encoding="utf-8") as fh:`<br>`+ with open(os.path.join(folder, name), encoding=None) as fh:` | survived |  |
+| 11 | `- with open(os.path.join(folder, name), encoding="utf-8") as fh:`<br>`+ with open(encoding="utf-8") as fh:` | killed | `tests/test_ai_gateway_ask.py` |
+| 12 | `- with open(os.path.join(folder, name), encoding="utf-8") as fh:`<br>`+ with open(os.path.join(folder, name), ) as fh:` | survived |  |
+| 13 | `- with open(os.path.join(folder, name), encoding="utf-8") as fh:`<br>`+ with open(os.path.join(None, name), encoding="utf-8") as fh:` | killed | `tests/test_ai_gateway_ask.py` |
+| 14 | `- with open(os.path.join(folder, name), encoding="utf-8") as fh:`<br>`+ with open(os.path.join(folder, None), encoding="utf-8") as fh:` | killed | `tests/test_ai_gateway_ask.py` |
+| 15 | `- with open(os.path.join(folder, name), encoding="utf-8") as fh:`<br>`+ with open(os.path.join(name), encoding="utf-8") as fh:` | killed | `tests/test_ai_gateway_ask.py` |
+| 16 | `- with open(os.path.join(folder, name), encoding="utf-8") as fh:`<br>`+ with open(os.path.join(folder, ), encoding="utf-8") as fh:` | killed | `tests/test_ai_gateway_ask.py` |
+| 17 | `- with open(os.path.join(folder, name), encoding="utf-8") as fh:`<br>`+ with open(os.path.join(folder, name), encoding="XXutf-8XX") as fh:` | killed | `tests/test_ai_gateway_ask.py` |
+| 18 | `- with open(os.path.join(folder, name), encoding="utf-8") as fh:`<br>`+ with open(os.path.join(folder, name), encoding="UTF-8") as fh:` | survived |  |
+| 19 | `- pin = json.load(fh)`<br>`+ pin = None` | killed | `tests/test_ai_gateway_ask.py` |
+| 20 | `- pin = json.load(fh)`<br>`+ pin = json.load(None)` | killed | `tests/test_ai_gateway_ask.py` |
+| 21 | `- if sorted(pin) != sorted(PIN_KEYS):`<br>`+ if sorted(None) != sorted(PIN_KEYS):` | killed | `tests/test_ai_gateway_ask.py` |
+| 22 | `- if sorted(pin) != sorted(PIN_KEYS):`<br>`+ if sorted(pin) == sorted(PIN_KEYS):` | killed | `tests/test_ai_gateway_ask.py` |
+| 23 | `- if sorted(pin) != sorted(PIN_KEYS):`<br>`+ if sorted(pin) != sorted(None):` | killed | `tests/test_ai_gateway_ask.py` |
+| 24 | `- raise ValueError(f"pin {name}: keys {sorted(pin)}, expected {sorted(PIN_KEYS)}")`<br>`+ raise ValueError(None)` | killed | `tests/test_ai_gateway_ask.py::test_every_pin_file_is_exactly_its_keys_and_every_task_has_one` |
+| 25 | `- raise ValueError(f"pin {name}: keys {sorted(pin)}, expected {sorted(PIN_KEYS)}")`<br>`+ raise ValueError(f"pin {name}: keys {sorted(None)}, expected {sorted(PIN_KEYS)}")` | killed | `tests/test_ai_gateway_ask.py::test_every_pin_file_is_exactly_its_keys_and_every_task_has_one` |
+| 26 | `- raise ValueError(f"pin {name}: keys {sorted(pin)}, expected {sorted(PIN_KEYS)}")`<br>`+ raise ValueError(f"pin {name}: keys {sorted(pin)}, expected {sorted(None)}")` | killed | `tests/test_ai_gateway_ask.py::test_every_pin_file_is_exactly_its_keys_and_every_task_has_one` |
+| 27 | `- out[name[:-len(".json")]] = pin`<br>`+ out[name[:-len(".json")]] = None` | killed | `tests/test_ai_gateway_ask.py` |
+| 28 | `- out[name[:-len(".json")]] = pin`<br>`+ out[name[:+len(".json")]] = pin` | killed | `tests/test_ai_gateway_ask.py` |
+
