@@ -12,6 +12,11 @@ everything after it:
                     Edit and Write tools did not touch (the edit ledger, `<git dir>/
                     nmas-edited-paths`, written by scripts/hooks/claude-record-edits: a change
                     made through the shell or by another session is named, never refused);
+  1c. with --only:  the list is built from the files the work changed, never from the
+                    working tree's status (a list read from status is `git add -A` by
+                    another name: the operator, 2026-10-26); so each tracked file modified
+                    and left out of the commit is named, and each named file the edit ledger
+                    did not see (a shell edit, an applied patch, another session's);
   2. stage guard:   scripts/nmas-stage-guard refuses a secret or a stray, and lists new files;
   2b. the snapshot: the staged tree (`git write-tree`) checked out in a worktree of its own,
                     where every step after this one runs and the commit is made, so the
@@ -548,6 +553,22 @@ def main(argv=None):
                 say(f"1b. swept in, modified and not touched by this session's Edit or Write "
                     f"tools: {', '.join(unseen)} (a shell edit or another session's; check "
                     "it belongs here, or commit with --only)")
+    else:
+        # An --only list is the work's own files, never the working tree's status (the
+        # operator, 2026-10-26: a list read from status is git add -A by another name). So
+        # both ways it can be wrong are named: a tracked file modified and left out of the
+        # commit, and a named file this session's Edit and Write tools never touched.
+        left = sorted(p for p in git(repo, "diff", "--name-only").stdout.split() if p)
+        if left:
+            say(f"1c. modified and left out of this commit: {', '.join(left)} (check none of "
+                "them belongs to it)")
+        ledger = edited(gitdir)
+        if ledger is not None:
+            unseen = [p for s, p in files if p not in ledger]
+            if unseen:
+                say(f"1c. named, and not touched by this session's Edit or Write tools: "
+                    f"{', '.join(unseen)} (a shell edit, an applied patch or another "
+                    "session's; check each belongs here)")
     say("2. the stage guard")
     guard = subprocess.run([sys.executable, os.path.join(HERE, "nmas-stage-guard"),
                             "--repo", repo], capture_output=True, text=True)

@@ -669,7 +669,9 @@ class TestOnlyNamedPaths:
         assert r.returncode == 0, r.stdout + r.stderr
         assert "1. git add -A -- docs/a.md" in r.stdout
         assert ("nmas-gate: 1b. the commit will contain 1 file(s):\n"
-                "nmas-gate:      M docs/a.md\nnmas-gate: 2. the stage guard\n") in r.stdout
+                "nmas-gate:      M docs/a.md\n"
+                "nmas-gate: 1c. modified and left out of this commit: docs/b.md (check none of "
+                "them belongs to it)\nnmas-gate: 2. the stage guard\n") in r.stdout
         assert _commits(two) == before + 1
         assert _git(two, "show", "--name-only", "--format=", "HEAD") == "docs/a.md"
         assert _git(two, "status", "--porcelain") == "M docs/b.md", "left as it was"
@@ -695,6 +697,25 @@ class TestOnlyNamedPaths:
                 "nmas-gate:      M docs/a.md\nnmas-gate:      M docs/b.md\n") in r.stdout
         assert "not touched by this session's Edit or Write tools: docs/b.md (" in r.stdout
         assert ledger.read_text() == "", "a committed path leaves the ledger"
+
+    def test_with_only_a_named_path_the_ledger_did_not_see_is_named(self, two, tmp_path):
+        """The operator, 2026-10-26: an --only list is built from the files the work changed
+        and checked against the edit ledger; a named file no Edit or Write touched is said,
+        and a modified file left out of the commit is said."""
+        ledger = two / ".git" / "nmas-edited-paths"
+        ledger.write_text("docs/b.md\n")
+        r = _gate(two, tmp_path, extra=("--only", "docs/a.md"))
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert ("1c. named, and not touched by this session's Edit or Write tools: docs/a.md "
+                "(") in r.stdout
+        assert "1c. modified and left out of this commit: docs/b.md" in r.stdout
+        ledger.write_text("docs/a.md\n")
+        (two / "docs" / "a.md").write_text("a three\n")
+        r = _gate(two, tmp_path, extra=("--only", "docs/a.md", "docs/b.md"))
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "left out of this commit" not in r.stdout
+        assert "named, and not touched by this session's Edit or Write tools: docs/b.md (" \
+            in r.stdout
 
     def test_without_a_ledger_nothing_is_named(self, two, tmp_path):
         r = _gate(two, tmp_path)

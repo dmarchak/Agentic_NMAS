@@ -14,11 +14,28 @@ its previous and new state, and its time in milliseconds; `api/v1/rules/history`
 (`GrafanaIntegration()._get`, as `scripts/nmas-capture-grafana-alerts` does), and never prints a
 token.
 
-**How far back.** A day at a time, newest first. A day answering the page limit (5,000) is
-split in halves until each half answers less, and a window of one minute still full is refused
-naming it (rule 5: a full page is a truncated read). At the first empty day it asks once for
-the newest row before that day's start, from the epoch: none means Grafana holds nothing older,
-which covers all time (rule 6); one means a quiet stretch, and the walk jumps to that row's day.
+**The estimate, first.** Before it reads a day it finds the oldest row Grafana holds, to the
+minute, by halving the span from the epoch (or `--since`) to now, one row asked each time
+(about 25 asks for all time), and prints how many days that is, the time per ask it just
+measured, and so about how long the walk takes, then the request timeout. That minute is the
+walk's end, so the end is known before it starts (rule 6: the asks cover all time).
+
+**How far back.** A day at a time, newest first, a line for each day as it is read (flushed, so
+a run that stalls says where). A day answering the page limit (5,000) is split in halves until
+each half answers less, and a window of one minute still full is refused naming it (rule 5: a
+full page is a truncated read). At an empty day it asks once for the newest row before that
+day's start: one means a quiet stretch, and the walk jumps to that row's day.
+
+**Grafana's window.** Grafana applies `from` and `to` only when both are above zero (measured
+2026-10-26: an ask from 0 answered the newest row of all, after the window's end, and the
+first form of this script jumped back to it and walked the same days again without end), so
+the earliest it asks from is 1 ms. A page holding a row after the window it asked for is
+refused, naming the row and the window, never followed.
+
+**What it does not do.** It reads only Grafana's annotations (each GET bound by the
+integration's timeout, `modules/integrations/base.py`), and touches no device, Loki or
+Prometheus. It builds no evidence pack: a past alert's pack is built when a person presses
+Build evidence on it (`evidence_pack.build_for_episode`), one alert at a time.
 
 **Idempotent.** Each transition is keyed as the reader keys it (`alert_history.transition_key`:
 the configuration's store, the rule's title, its labels, the state and the second it began), so
@@ -46,10 +63,16 @@ LIMIT = 5000
 DAY_MS = 86_400_000
 #: The narrowest window a full page is split to before the read is refused.
 MIN_SPAN_MS = 60_000
+#: The earliest time asked from: Grafana ignores the window when `from` is 0 (the docstring).
+FLOOR_MS = 1
 
 
 class Truncated(RuntimeError):
     """A window of the narrowest span still answered a full page."""
+
+
+class OutsideWindow(RuntimeError):
+    """Grafana answered a row after the end of the window asked for."""
 
 
 def _iso(ms) -> str:
@@ -58,8 +81,9 @@ def _iso(ms) -> str:
 
 def page(client, frm: int, to: int, limit: int = LIMIT) -> list:
     """One page of alert annotations between *frm* and *to* (ms, inclusive). Raises naming the
-    window when Grafana does not answer."""
-    path = f"{ANNOTATIONS}?type=alert&from={int(frm)}&to={int(to)}&limit={int(limit)}"
+    window when Grafana does not answer, or answers a row after *to*."""
+    frm = max(int(frm), FLOOR_MS)
+    path = f"{ANNOTATIONS}?type=alert&from={frm}&to={int(to)}&limit={int(limit)}"
     got = client._get(path)
     if not got.get("ok"):
         raise ConnectionError(f"{ANNOTATIONS} from {_iso(frm)} to {_iso(to)}: "
@@ -67,7 +91,32 @@ def page(client, frm: int, to: int, limit: int = LIMIT) -> list:
     body = got["response"].json()
     if not isinstance(body, list):
         raise ValueError(f"{ANNOTATIONS}: the answer is not a list")
+    late = [r for r in body if int(r.get("time") or 0) > to]
+    if late:
+        raise OutsideWindow(f"{ANNOTATIONS} asked from {_iso(frm)} to {_iso(to)} answered "
+                            f"annotation {late[0].get('id')} at {_iso(late[0]['time'])}, after "
+                            "the window's end: Grafana did not apply the window, and the walk "
+                            "stops rather than follow it")
     return body
+
+
+def oldest(client, since_ms: int, now_ms: int, stats: dict):
+    """A time at most a minute before the oldest row in [*since_ms*, *now_ms*], or None: the
+    span halved until a minute wide, one row asked each time. Grafana answers newest first, so
+    [lo, mid] answers a row exactly when one is in it; none below *lo* holds throughout."""
+    lo = max(int(since_ms), FLOOR_MS)
+    stats["probes"] += 1
+    if not page(client, lo, now_ms, limit=1):
+        return None
+    hi = now_ms
+    while hi - lo > MIN_SPAN_MS:
+        mid = lo + (hi - lo) // 2
+        stats["probes"] += 1
+        if page(client, lo, mid, limit=1):
+            hi = mid
+        else:
+            lo = mid + 1
+    return lo
 
 
 def window(client, frm: int, to: int, stats: dict) -> list:
@@ -87,7 +136,8 @@ def window(client, frm: int, to: int, stats: dict) -> list:
 
 def walk(client, now_ms: int, since_ms: int = 0, stats: dict = None):
     """Yield each day's annotations, newest day first, back to the oldest Grafana holds (or
-    *since_ms*). See the module's docstring for how the end is known."""
+    *since_ms*), and a quiet stretch jumped as (the older row's time, the empty day's start,
+    None). See the module's docstring for how the end is known."""
     stats = stats if stats is not None else {"pages": 0, "split": 0, "days": 0, "jumps": 0}
     to = now_ms
     while to > since_ms:
@@ -98,12 +148,15 @@ def walk(client, now_ms: int, since_ms: int = 0, stats: dict = None):
             yield frm, to, rows
             to = frm - 1
             continue
+        if frm <= since_ms:
+            return
         older = page(client, since_ms, frm - 1, limit=1)
         stats["pages"] += 1
         if not older:
             return
         stats["jumps"] += 1
-        to = int(older[0].get("time") or frm - 1)
+        to = int(older[0]["time"])
+        yield to, frm, None
 
 
 def store_for(network: str) -> str:
@@ -122,7 +175,11 @@ def store_for(network: str) -> str:
     return IG.store_name(G.READER.name, gid)
 
 
-def main(argv=None, client=None, now_ms: int = None, out=print) -> int:
+def _say(line: str) -> None:
+    print(line, flush=True)
+
+
+def main(argv=None, client=None, now_ms: int = None, out=_say) -> int:
     from modules import alert_history as H
 
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
@@ -144,11 +201,34 @@ def main(argv=None, client=None, now_ms: int = None, out=print) -> int:
     store = store_for(args.network)
     networks = H._networks().get(store) or ([args.network] if args.network else [])
     now_ms = int(time.time() * 1000) if now_ms is None else now_ms
-    stats = {"pages": 0, "split": 0, "days": 0, "jumps": 0}
+    stats = {"pages": 0, "split": 0, "days": 0, "jumps": 0, "probes": 0}
     total = {"rows": 0, "transitions": 0, "not_transitions": 0, "added": 0, "held": 0}
-    oldest = None
+    oldest_at = None
+    timeout = getattr(client, "timeout", None)
     try:
-        for _frm, _to, rows in walk(client, now_ms, since_ms, stats):
+        began = time.monotonic()
+        end = oldest(client, since_ms, now_ms, stats)
+        per_ask = (time.monotonic() - began) / stats["probes"]
+        if end is None:
+            out(f"estimate: Grafana's {store} holds no alert annotations from "
+                f"{_iso(max(since_ms, FLOOR_MS))} to {_iso(now_ms)} ({stats['probes']} ask); "
+                "nothing to read")
+            out("dry run: nothing recorded" if args.dry_run else "recorded 0, already held 0")
+            return 0
+        days = -(-(now_ms - end) // DAY_MS)
+        out(f"estimate: Grafana's {store} holds alert annotations back to {_iso(end)} (found in "
+            f"{stats['probes']} asks of one row, {per_ask:.2f} s each): at most {days} days to "
+            f"read, a page each (more where a day is full, fewer across a quiet stretch), about "
+            f"{days * per_ask:.0f} s at that rate; every request bound at "
+            f"{timeout if timeout is not None else 'the client'}"
+            f"{' s' if timeout is not None else ''}; the source is Grafana's annotations only, "
+            "no device, Loki or Prometheus; no evidence pack is built")
+        n = 0
+        for frm, to, rows in walk(client, now_ms, end, stats):
+            if rows is None:
+                out(f"quiet from {_iso(frm)} to {_iso(to)}: no annotations, jumped")
+                continue
+            n += 1
             total["rows"] += len(rows)
             batch = []
             for a in rows:
@@ -157,17 +237,20 @@ def main(argv=None, client=None, now_ms: int = None, out=print) -> int:
                     total["not_transitions"] += 1
                     continue
                 batch.append(row)
-                oldest = min(oldest or row["at"], row["at"])
+                oldest_at = min(oldest_at or row["at"], row["at"])
             total["transitions"] += len(batch)
-            if args.dry_run or not batch:
-                continue
-            got = H.record(batch)
-            if not got["ok"]:
-                out(f"nmas-alert-backfill: STOPPED: {got['error']}; {total['added']} added "
-                    "before it")
-                return 1
-            total["added"] += got["added"]
-            total["held"] += got["held"]
+            if not args.dry_run and batch:
+                got = H.record(batch)
+                if not got["ok"]:
+                    out(f"nmas-alert-backfill: STOPPED: {got['error']}; {total['added']} added "
+                        "before it")
+                    return 1
+                total["added"] += got["added"]
+                total["held"] += got["held"]
+            out(f"day {n} of at most {days}, {_iso(frm)} to {_iso(to)}: "
+                f"{len(rows)} annotations, {len(batch)} transitions; so far {total['rows']} "
+                f"annotations, {total['transitions']} transitions"
+                + ("" if args.dry_run else f", {total['added']} recorded"))
     except (ConnectionError, ValueError, H.Refused) as exc:
         out(f"nmas-alert-backfill: STOPPED: {exc}; {total['added']} added before it")
         return 1
@@ -177,7 +260,7 @@ def main(argv=None, client=None, now_ms: int = None, out=print) -> int:
     out(f"read {total['rows']} annotations in {stats['pages']} pages ({stats['days']} days, "
         f"{stats['split']} split, {stats['jumps']} quiet stretches skipped) from {store}: "
         f"{total['transitions']} transitions, {total['not_transitions']} moves between normal "
-        f"states left out; oldest {oldest or 'none'}")
+        f"states left out; oldest {oldest_at or 'none'}")
     if args.dry_run:
         out("dry run: nothing recorded")
     else:

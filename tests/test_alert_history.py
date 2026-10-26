@@ -241,7 +241,11 @@ def _script():
 
 class Grafana:
     """Grafana's annotations API over the captured rows: from and to in ms, inclusive, the
-    newest first, at most `limit`."""
+    newest first, at most `limit`. The window applies only when both ends are above zero, as
+    Grafana's does (measured on the host 2026-10-26: an ask from 0 answered the newest row of
+    all, after the window's end)."""
+
+    timeout = 5.0
 
     def __init__(self, rows):
         self.rows, self.asked = rows, []
@@ -251,8 +255,12 @@ class Grafana:
         q = {k: int(v[0]) if k != "type" else v[0] for k, v in parse_qs(
             urlparse(path).query).items()}
         self.asked.append(q)
-        got = sorted((r for r in self.rows if q["from"] <= r["time"] <= q["to"]),
-                     key=lambda r: -r["time"])[:q["limit"]]
+        if q["from"] > 0 and q["to"] > 0:
+            inside = [r for r in self.rows
+                      if r["time"] <= q["to"] and r.get("timeEnd", r["time"]) >= q["from"]]
+        else:
+            inside = list(self.rows)
+        got = sorted(inside, key=lambda r: -r["time"])[:q["limit"]]
 
         class Resp:
             def json(self):
@@ -261,6 +269,10 @@ class Grafana:
 
 
 NOW_MS = H.epoch("2026-10-26T19:22:48Z") * 1000
+
+
+def _summary(out):
+    return next(line for line in out if line.startswith("read "))
 
 
 class TestTheBackfill:
@@ -275,17 +287,56 @@ class TestTheBackfill:
         rows = load("annotations_firing") + load("annotations_72h")
         code, out, _c = self._run(rows)
         assert code == 0 and "recorded 121" in out[-1], out
-        assert "oldest 2026-10-21T01:" in out[0]
+        assert "oldest 2026-10-21T01:" in _summary(out)
         code, out, _c = self._run(rows)
         assert code == 0 and "recorded 0, already held 121" in out[-1]
 
-    def test_a_quiet_stretch_is_jumped_and_the_end_is_proved(self, store):
-        """Five quiet days between the 21 Oct slice and the 72 hours: one ask from the epoch
-        finds the older row, and at the end one finds none."""
+    def test_a_quiet_stretch_is_jumped_and_the_end_is_known_first(self, store):
+        """Five quiet days between the 21 Oct slice and the 72 hours: one ask finds the older
+        row and the walk jumps to it; the oldest day, found before the walk, is its end."""
         rows = load("annotations_firing") + load("annotations_72h")
         code, out, client = self._run(rows)
-        ends = [q for q in client.asked if q["from"] == 0 and q["limit"] == 1]
-        assert len(ends) == 2 and "1 quiet stretches skipped" in out[0]
+        assert code == 0 and "1 quiet stretches skipped" in _summary(out)
+        assert [line for line in out if line.startswith("quiet from ")], out
+        assert out[0].startswith("estimate: ") and "back to 2026-10-21T01:" in out[0], out[0]
+
+    def test_it_never_asks_from_zero_and_reads_each_row_once(self, store):
+        """The first form asked from 0, which Grafana answers without the window: it jumped
+        back to the newest row and walked the same days again without end (2026-10-26)."""
+        rows = load("annotations_firing") + load("annotations_72h")
+        code, out, client = self._run(rows, "--dry-run")
+        assert code == 0 and all(q["from"] > 0 for q in client.asked)
+        assert f"read {len(rows)} annotations" in _summary(out)
+
+    def test_a_row_after_the_window_is_refused_never_followed(self, store):
+        """A Grafana that answers the newest rows whatever the window (the measured answer to
+        an ask from 0): the walk stops naming the row and the window, rather than loop."""
+        class Unwindowed(Grafana):
+            def _get(self, path):
+                return super()._get(path.replace("from=", "from=-"))
+        rows = load("annotations_firing") + load("annotations_72h")
+        code, out, _c = self._run(rows, client=Unwindowed(rows))
+        assert code == 2 and "REFUSED" in out[-1] and "after the window's end" in out[-1], out
+
+    def test_the_estimate_comes_first_and_each_day_says_its_progress(self, store):
+        rows = load("annotations_firing") + load("annotations_72h")
+        code, out, _c = self._run(rows)
+        est = out[0]
+        assert est.startswith("estimate: ") and "at most 6 days" in est, est
+        assert "bound at 5.0 s" in est and "no evidence pack is built" in est
+        days = [line for line in out if line.startswith("day ")]
+        assert len(days) == 4 and all(" of at most 6, " in d for d in days), days
+        assert days[-1].endswith("121 recorded"), days[-1]
+
+    def test_each_line_is_flushed_as_it_is_said(self, monkeypatch):
+        """A run that stalls says where: the default output flushes every line."""
+        import builtins
+        mod = _script()
+        said = []
+        monkeypatch.setattr(builtins, "print", lambda *a, **k: said.append(k))
+        assert mod.main.__defaults__[-1] is mod._say
+        mod._say("x")
+        assert said == [{"flush": True}]
 
     def test_a_full_page_is_split_until_each_half_answers_less(self, store, monkeypatch):
         """The limit set just above the slice's busiest minute (one evaluation tick fires
@@ -297,7 +348,7 @@ class TestTheBackfill:
         monkeypatch.setattr(mod, "LIMIT", busiest + 1)
         out = []
         assert mod.main([], client=Grafana(rows), now_ms=NOW_MS, out=out.append) == 0, out
-        assert "recorded 93" in out[-1] and " 0 split" not in out[0]
+        assert "recorded 93" in out[-1] and " 0 split" not in _summary(out)
 
     def test_a_window_still_full_at_a_minute_is_refused(self, store, monkeypatch):
         """Edit: eleven copies of one real row in the same second, the limit set to ten."""
