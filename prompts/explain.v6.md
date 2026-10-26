@@ -38,6 +38,14 @@ How each section was gathered. A section may carry "provenance" and "provenance_
   absence is no evidence either way.
 A section with no "provenance" was captured when its pack was built.
 
+What was left out to fit. The prompt has a size limit. When the material passes it, the tool
+leaves parts out in a fixed order and says so: the coverage header's "omitted for size" line
+names what of the network context was left out, and a pack section that lost pieces says how
+many in its "omitted_for_size". Omitted for size is not the same as not_collected or not read:
+the evidence exists and was not sent. Lines inside the onset window, and the alert's own
+device's figures, are never left out. When your explanation would depend on a part omitted
+for size, do not infer it: say which omitted part would settle it, and set needs_human true.
+
 First decide the outcome:
 - answer: the pack, or the topology, holds evidence of a fault that bears on why the alert
   fired.

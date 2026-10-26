@@ -367,6 +367,75 @@ def test_v6_sends_nothing_looked_up_first_and_a_need_is_looked_up_once(world, mo
     assert "neighbour r1: fulfilled" in got["needs_said"]
 
 
+def _sent_refs(sel, name):
+    return [p["ref"] for s in sel["sections"] if s.get("name") == name
+            for p in s.get("pieces") or []]
+
+
+def test_v6_under_the_budget_drops_in_order_and_never_the_onset_window(world, monkeypatch):
+    """The operator, 2026-10-26: v6 under the context budget rule. The network context's
+    parts in their order, then the pack's (History older than the onset window, oldest first;
+    log lines outside it, farthest first; health of devices two hops out, then one), one
+    piece at a time, each layer's source last; never a log line inside the onset window,
+    never the alert's own device's figures; what was dropped said and kept."""
+    from modules.ai import profiles
+    pack = world.pack
+    topo = explain.topology(pack)
+    schema = explain.SCHEMA_OF[6]
+    whole = explain.budgeted(pack, topo, V6_PROMPT, schema)
+    assert whole["said"]["dropped"] == [] and whole["said"]["pack_dropped"] == {}
+    full = whole["said"]["estimate"]
+    order = explain._pack_drop_order(pack, explain.sent_sections(pack, topo))
+    assert order, "the world's pack holds droppable pieces"
+    classes = [c for c, _n, _r in order]
+    assert classes == sorted(classes), "History, then log lines, then health"
+    onset = explain._epoch(pack["onset"])
+    sections = {s["name"]: s for s in explain.sent_sections(pack, topo)}
+    # The onset window: the health figures' own, 15 minutes before the onset to the alert's
+    # time (the pack's log lines run 15 minutes past the onset; those after the alert fired
+    # are the least relevant).
+    fired = max(onset, explain._epoch(sections["alert"]["pieces"][0].get("starts_at")))
+    inside = {p["ref"] for p in sections.get("logs", {}).get("pieces") or []
+              if onset - explain.ONSET_WINDOW_S <= explain._epoch(p.get("at")) <= fired}
+    own = {p["ref"] for p in sections.get("health", {}).get("pieces") or [] if not p.get("hop")}
+    assert not ({r for _c, _n, r in order} & (inside | own))
+    for budget in (full - 50, full - 400, full // 2, 10):
+        monkeypatch.setitem(profiles.TASKS, "explain",
+                            dict(profiles.TASKS["explain"], max_prompt_tokens=budget))
+        sel = explain.budgeted(pack, topo, V6_PROMPT, schema)
+        said = sel["said"]
+        assert said["budget"] == budget and said["dropped"], budget
+        if topo["sent"]:
+            from modules.ai import nl_query
+            assert said["dropped"][0] == nl_query.CONTEXT_DROPS[0], "the device index first"
+            if said["pack_dropped"]:
+                assert said["dropped"][:4] == list(nl_query.CONTEXT_DROPS[:4]), \
+                    "the network context's four parts before any pack piece"
+        assert set(_sent_refs(sel, "logs")) >= (inside & {p["ref"] for p in sections.get(
+            "logs", {}).get("pieces") or []}), "never a line inside the onset window"
+        assert set(_sent_refs(sel, "health")) >= own, "never the alert's own device"
+        if said["estimate"] > budget:
+            # Nothing fits: everything droppable was dropped, the source last.
+            assert sum(said["pack_dropped"].values()) == len(order), budget
+            assert said["dropped"][-1] == "each layer's source", budget
+        else:
+            assert said["estimate"] <= budget
+
+
+def test_v6_s_answer_carries_its_level_and_the_prompt_says_omitted_for_size(world):
+    from modules.ai import prompts
+    world.answer = dict(_answer(world.pack), needs=[])
+    got = explain.explain_pack(world.pack, actor="operator@example.com", send=world.send,
+                               today="2026-10-25", prompt=V6_PROMPT)
+    assert got["ok"] is True and got["context"]["level"] == 0, got
+    assert got["context"]["budget"] == 20000 and got["context"]["dropped"] == []
+    text = " ".join(prompts.load(*V6_PROMPT)["text"].split())
+    for said in ('"omitted for size"', "is not the same as not_collected or not read",
+                 "Lines inside the onset window, and the alert's own device's figures, are "
+                 "never left out", "set needs_human true"):
+        assert said in text, said
+
+
 def test_v4_sends_no_looked_up_block(world):
     world.answer = _answer(world.pack)
     assert _explain(world)["ok"] is True

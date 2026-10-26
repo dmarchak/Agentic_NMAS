@@ -151,6 +151,13 @@ def explain_twice(pack: dict, actor: str, out=print, ask=None, versions=None) ->
                 + (f", {len(topo.get('devices') or [])} devices, observed "
                    f"{topo.get('observed')}" if topo.get("sent") else
                    f" ({topo.get('why')})"))
+        ctx = got.get("context")
+        if ctx:
+            # The context budget rule (v6): the level sent, and what was left out to fit.
+            out(f"   context: level {ctx['level']}, estimate {ctx['estimate']} of "
+                f"{ctx['budget']}; omitted for size: "
+                + ("; ".join(ctx["dropped"]) or "nothing")
+                + (f" (pack pieces: {ctx['pack_dropped']})" if ctx.get("pack_dropped") else ""))
         out("   answer as the model wrote it (masked as recorded):")
         out("   " + (row.get("response") or "(none: no answer was recorded)"))
         if got.get("error") in STOPS:

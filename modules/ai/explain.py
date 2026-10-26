@@ -376,6 +376,142 @@ def explain(pack_id: str, *, actor: str, send=None, today: str = None) -> dict:
     return explain_pack(pack, actor=actor, send=send, today=today)
 
 
+#: The pack's parts in the order v6's budget DROPS them (the operator, 2026-10-26): the oldest
+#: and least relevant first; never a log line inside the onset window (`ONSET_WINDOW_S` before
+#: the onset to the alert's time), never the alert's own device's figures, and never the
+#: alert, device or Intent sections.
+PACK_DROPS = (
+    "History older than the onset window, oldest first",
+    "log lines outside the onset window, farthest from the onset first",
+    "the health figures of devices two hops away, then one hop away",
+)
+#: The onset window's start before the onset: the health figures' own window (15 minutes).
+ONSET_WINDOW_S = 900
+
+
+def _epoch(text) -> float:
+    import calendar
+    import time as _t
+
+    try:
+        return float(calendar.timegm(_t.strptime(str(text)[:19], "%Y-%m-%dT%H:%M:%S")))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _pack_drop_order(pack: dict, sections: list) -> list:
+    """``[(class, section name, ref)]``: the pieces of the sections as sent v6's budget may
+    drop, in `PACK_DROPS`' order, each class's least relevant first."""
+    onset = _epoch(pack.get("onset")) or _epoch(pack.get("built_at"))
+    start = onset - ONSET_WINDOW_S
+    end = max(onset, _epoch(next((p.get("starts_at") for s in sections
+                                  if s.get("name") == "alert" for p in s.get("pieces") or []),
+                                 "")))
+    by = {s.get("name"): s.get("pieces") or [] for s in sections}
+    out = []
+    old = [p for p in by.get("history", ()) if _epoch(p.get("at")) < start]
+    out += [(0, "history", p["ref"]) for p in sorted(old, key=lambda p: _epoch(p.get("at")))]
+    outside = [p for p in by.get("logs", ())
+               if not start <= _epoch(p.get("at")) <= end]
+    out += [(1, "logs", p["ref"]) for p in sorted(
+        outside, key=lambda p: -abs(_epoch(p.get("at")) - onset))]
+    far = [p for p in by.get("health", ()) if (p.get("hop") or 0) > 0]
+    out += [(2, "health", p["ref"]) for p in sorted(far, key=lambda p: -(p.get("hop") or 0))]
+    return out
+
+
+def _without(sections: list, gone: set, counts: dict) -> list:
+    """*sections* with the pieces *gone* (refs) left out, each section that lost some saying
+    how many, "omitted for size"."""
+    out = []
+    for s in sections:
+        pieces = s.get("pieces") or []
+        kept = [p for p in pieces if p.get("ref") not in gone]
+        if len(kept) < len(pieces):
+            s = dict(s, pieces=kept, omitted_for_size=(
+                f"{len(pieces) - len(kept)} of its {len(pieces)} pieces left out to fit the "
+                "prompt's size (not the same as not read)"))
+            counts[s.get("name")] = len(pieces) - len(kept)
+        out.append(s)
+    return out
+
+
+def _topology_yaml(topo: dict, why: bool, source: bool, omitted: list) -> str:
+    """The topology as sent, its coverage header kept whole but for each layer's why or source
+    where dropped, and what the budget left out said on it, "omitted for size"."""
+    import yaml
+
+    from modules import network_model as NM
+
+    doc = yaml.safe_load(topo["yaml"]) or {}
+    cov = doc.get("coverage") or {}
+    for layer, c in list(cov.items()):
+        if isinstance(c, dict):
+            cov[layer] = {k: v for k, v in c.items()
+                          if (why or k != "why") and (source or k != "source")}
+    if omitted:
+        cov["omitted for size (not the same as not_collected)"] = "; ".join(omitted)
+    doc["coverage"] = cov
+    return NM._yaml(doc)
+
+
+def budgeted(pack: dict, topo: dict, prompt: tuple, schema) -> dict:
+    """v6 under the context budget rule (PHASE8_PLAN 10.6; the operator, 2026-10-26), the
+    task's `max_prompt_tokens` its budget: the network context's parts dropped in
+    `nl_query.CONTEXT_DROPS`' order (the device index, the summary's links and counts, each
+    layer's why, the whole summary), then the pack's in `PACK_DROPS`' order, one piece at a
+    time, then each layer's source last; each layer's status and age always kept. ``{"data",
+    "ctx", "sections", "said"}``: what is sent, and what was dropped to fit."""
+    from modules import network_model as NM
+    from modules.ai import nl_query, prompts, profiles
+
+    loaded, pin = prompts.load(*prompt), profiles.TASKS[FEATURE]
+    budget = pin["max_prompt_tokens"]
+    base_sections = sent_sections(pack, topo)
+    model = NM.model_for(topo["network"])[0] if topo.get("sent") else None
+    order = _pack_drop_order(pack, base_sections)
+
+    def build(net_level: int, n_pieces: int, source: bool):
+        dropped = list(nl_query.CONTEXT_DROPS[:min(net_level, 4)])
+        counts = {}
+        gone = {ref for _c, _n, ref in order[:n_pieces]}
+        sections = _without(base_sections, gone, counts)
+        classes = sorted({c for c, _n, _r in order[:n_pieces]})
+        omitted = dropped + [PACK_DROPS[c] for c in classes] + \
+            ([] if source else [nl_query.CONTEXT_DROPS[4]])
+        ctx = context(topo)
+        data = {"pack": json.dumps([as_sent(s) for s in sections], sort_keys=True,
+                                   ensure_ascii=False, separators=(",", ":")),
+                "the_alert": f"{pack.get('rule', '')} on {pack.get('device') or 'no one device'}"}
+        if topo.get("sent") and model is not None and (net_level or n_pieces or not source):
+            if net_level == 1:
+                ctx["network"] = nl_query._summary_text(model, False, True)
+            elif net_level in (2, 3):
+                ctx["network"] = nl_query._summary_text(model, False, False)
+            elif net_level >= 4:
+                ctx["network"] = "omitted for size: the network's summary"
+            data["network_topology"] = _topology_yaml(topo, net_level < 3, source, omitted)
+        elif topo.get("yaml"):
+            data["network_topology"] = topo["yaml"]          # level 0: as v4 sends it
+        body = gateway.build_request(loaded, schema, dict(data, looked_up="(nothing looked up)"),
+                                     pin, ctx)
+        said = {"level": net_level + (0 if source else 1), "dropped": omitted,
+                "pack_dropped": counts, "estimate": gateway.prompt_tokens(body),
+                "budget": budget}
+        return {"data": data, "ctx": ctx, "sections": sections, "said": said}
+
+    steps = [(lv, 0, True) for lv in range(0, 5)] + \
+        [(4, n, True) for n in range(1, len(order) + 1)] + [(4, len(order), False)]
+    if not topo.get("sent"):
+        steps = [(0, n, True) for n in range(0, len(order) + 1)]
+    chosen = None
+    for net_level, n, source in steps:
+        chosen = build(net_level, n, source)
+        if chosen["said"]["estimate"] <= budget:
+            break
+    return chosen
+
+
 def _ask_round(prompt, schema, data, ctx, network, *, actor, send, today, subject) -> dict:
     """v6's call and its needs round (at most one follow-up, `needs.run`), as Ask in words'
     (`nl_query._ask_round`): the follow-up's answer in place of the first's when there was one,
@@ -443,18 +579,24 @@ def explain_pack(pack: dict, *, actor: str, send=None, today: str = None,
     # What the call is about, written with it (15.14): the alert's pack and its device.
     subject = {"kind": "alert", "id": pack_id, "rule": pack.get("rule") or "",
                "devices": [pack["device"]] if pack.get("device") else []}
+    kept = {}
     if int(prompt[1]) >= 6:
+        # The context budget rule: what is sent fits the task's bound, what was dropped said
+        # in the prompt ("omitted for size") and kept with the answer.
+        sel = budgeted(pack, topo, tuple(prompt), schema)
+        data, ctx, sections, kept = sel["data"], sel["ctx"], sel["sections"], {
+            "context": sel["said"]}
         got = _ask_round(tuple(prompt), schema, data, ctx, pack.get("network") or "",
                          actor=actor, send=send, today=today, subject=subject)
     else:
         got = gateway.ask(FEATURE, tuple(prompt), schema, data, actor=actor, context=ctx,
                           send=send, today=today, subject=subject)
     if not got["ok"]:
-        return dict(got, pack_id=pack_id, topology=said)
+        return dict(got, pack_id=pack_id, topology=said, **kept)
     answer, base = got["output"], {"pack_id": pack_id, "call_id": got["call_id"],
                                    "cost_usd": got["cost_usd"], "topology": said,
                                    **{k: got[k] for k in ("parent_call_id", "needs_said")
-                                      if got.get(k)}}
+                                      if got.get(k)}, **kept}
     links = {"page": f"/v2/monitoring/alerts/pack/{pack_id}", "anchor": f"explain-{pack_id}"}
     why = check(answer, pack, topo["ids"] if topo["sent"] else (), sections=sections)
     if why:

@@ -1036,8 +1036,16 @@ def _filled_links(links: dict, page: str, view: dict) -> dict:
 #: of 20 consistent against 12, nothing v2 passed failing; its 85% is under the 95% floor, so
 #: the logs half is live but not done.
 PROMPT_LOGS = ("nl_logs", 3)
-#: The logs candidate, as `CANDIDATE`; the current version until the next is built.
-CANDIDATE_LOGS = PROMPT_LOGS
+#: The logs candidate, as `CANDIDATE`. v4 (the operator's ruling, 2026-10-26, on v3's four
+#: inconsistent cases over five runs each): a mnemonic that records the event asked about
+#: takes no word for the event, only the one direction word no chosen mnemonic expresses
+#: ("down", cased as the line writes it); an interface flap is both LINK and LINEPROTO, a BGP
+#: neighbour up or down %BGP-5-ADJCHANGE alone (measured: the choices changed the lines
+#: matched, 90 against 31 or 59, and 5 against up to 16, over 30 days); and one device meant by
+#: its role alone ("the switch") among several of that role is Mercury's own question back,
+#: asked before any call (`ambiguous_role`), the prompt saying the same for what Python's
+#: rule does not catch.
+CANDIDATE_LOGS = ("nl_logs", 4)
 #: At most this many mnemonics are offered for one question.
 OFFERED_MNEMONICS = 20
 
@@ -1120,7 +1128,51 @@ class LogsChoicesV2(StrictModel):
     needs: list[Need]
 
 
-SCHEMA_OF_LOGS = {3: LogsChoicesV2}
+SCHEMA_OF_LOGS = {3: LogsChoicesV2, 4: LogsChoicesV2}
+
+#: At most this many candidates are named in Mercury's own question back; more are counted.
+AMBIGUOUS_NAMED = 6
+
+
+def _natural(name: str) -> list:
+    """A name's numbers compared as numbers (9 before 10)."""
+    return [(0, int(p), "") if p.isdigit() else (1, 0, p.lower())
+            for p in re.findall(r"\d+|\D+", name)]
+
+
+def ambiguous_role(question: str, rows: list) -> dict:
+    """One device meant by its role alone, among several of that role (logs v4; the operator's
+    ruling, 2026-10-26: an ambiguous device reference is always a question back, resolved
+    before any call, as feature 7's references are). By property, never by wording: a role's
+    noun in the singular, right after "the", "that" or "this" ("the switch", "that router",
+    "the switch's"), naming a role more than one device of the network has, in a question
+    that names no device. A plural ("the switches", "all switches"), the role itself ("the
+    switch role"), a device named ("the switch edge1") or a role one device has is not one.
+    ``{"said", "role", "candidates", "question"}`` for the first such reference, else None."""
+    if named_devices(question, rows):
+        return None
+    by_role = {}
+    for d in rows:
+        if d.get("hostname") and d.get("role"):
+            by_role.setdefault(d["role"], []).append(d["hostname"])
+    hits = []
+    for role, names in by_role.items():
+        if len(names) < 2:
+            continue
+        m = re.search(r"\b(?:the|that|this)\s+" + re.escape(role) + r"(?![\w-])(?!\s+roles?\b)",
+                      question or "", re.I)
+        if m:
+            hits.append((m.start(), m.group(0), role, sorted(names, key=_natural)))
+    if not hits:
+        return None
+    _at, said, role, names = min(hits)
+    shown = names[:AMBIGUOUS_NAMED]
+    if len(names) > len(shown):
+        listed = f"{', '.join(shown)} or one of the {len(names) - len(shown)} more"
+    else:
+        listed = f"{', '.join(shown[:-1])} or {shown[-1]}"
+    return {"said": said, "role": role, "candidates": names,
+            "question": f"Which {role}: {listed}?"}
 
 
 def offer_events(question: str, seen: list, events: list) -> list:
@@ -1245,6 +1297,14 @@ def logs(list_name: str, question: str, *, actor: str, send=None, client=None,
         return {"ok": False, "error": "not_configured",
                 "detail": "no log store is configured for this network (its Loki card in "
                           "Settings)"}
+    rows = _inventory(list_name)
+    vague = ambiguous_role(question, rows) if prompt[1] >= 4 else None
+    if vague:
+        # Mercury asks this itself, no model asked and nothing spent, as the metrics half's
+        # no-match guide answers (C1700): which device of the role is meant.
+        return {"ok": False, "error": "ask", "by": "mercury", "call_id": "", "cost_usd": 0.0,
+                "offered": [], "clarify": vague["question"][:200], "ambiguous": vague,
+                "detail": f"which one is meant: {_sentence(vague['question'])}"}
     rng = lq.window(dict(lq.DEFAULTS, range="7d"), now)
     disc = lq.discover(list_name, rng["start"], rng["end"], client=probe, now=now)
     if disc["state"] != "ok":
@@ -1252,7 +1312,6 @@ def logs(list_name: str, question: str, *, actor: str, send=None, client=None,
     kinds = list(disc["values"].get("job") or [])
     seen = lq.mnemonics(list_name, rng, []).get("rows") or []
     labels = [l for l in disc["labels"] if l not in ("job", "device")]
-    rows = _inventory(list_name)
     roles = sorted({d["role"] for d in rows if d.get("role")})
     named = named_devices(question, rows)
     # What the call is about, written with it (15.14): the network's query, its named devices.

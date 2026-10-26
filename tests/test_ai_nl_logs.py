@@ -417,3 +417,133 @@ def test_the_logs_v3_schema_and_prompt_are_registered_and_committed():
                  '"coverage"', '"looked_up"'):
         assert said in text, said
     assert nl_query.PROMPT_LOGS == ("nl_logs", 3), "adopted 2026-10-26 by the relative bar"
+
+
+# ---------------------------------------------------------- logs v4 (the operator, 2026-10-26)
+#
+# v3's four inconsistent cases over five runs each: a mnemonic that records the event is the
+# whole text filter, and one device meant by its role alone among several is Mercury's own
+# question back, before any call.
+
+FIVE_SWITCHES = ([{"hostname": f"r{i}", "role": "router"} for i in (1, 2)]
+                 + [{"hostname": f"s{i}", "role": "switch"} for i in (1, 2, 3, 4, 5)]
+                 + [{"hostname": "mgr1", "role": "manager"}])
+
+
+@pytest.mark.parametrize("question, said, asked", [
+    ("What went wrong on the switch this morning?", "the switch",
+     "Which switch: s1, s2, s3, s4 or s5?"),
+    ("Did that router reboot?", "that router", "Which router: r1 or r2?"),
+    ("Show this switch's errors", "this switch", "Which switch: s1, s2, s3, s4 or s5?"),
+    ("THE SWITCH logged what?", "THE SWITCH", "Which switch: s1, s2, s3, s4 or s5?"),
+    ("Did the router go down after the switch did?", "the router",
+     "Which router: r1 or r2?"),
+])
+def test_a_role_meant_as_one_device_among_several_is_a_question_back(question, said, asked):
+    got = nl_query.ambiguous_role(question, FIVE_SWITCHES)
+    assert got is not None, question
+    assert (got["said"], got["question"]) == (said, asked)
+
+
+@pytest.mark.parametrize("question", [
+    "What went wrong on the switches this morning?",      # a plural: every one
+    "Errors on all switches today",                        # a plural: every one
+    "What went wrong on the switch s3 this morning?",      # a device named
+    "Did a switch reboot this week?",                      # indefinite: any one
+    "Errors from the switch role today",                   # the role itself
+    "Did the manager restart?",                            # a role one device has
+    "switch errors today",                                 # no determiner
+    "Is the switchboard logging?",                         # not the role's word
+    "Which interfaces went down on s1 in the last 30 days?",
+])
+def test_a_plural_a_named_device_or_a_role_of_one_is_not_ambiguous(question):
+    assert nl_query.ambiguous_role(question, FIVE_SWITCHES) is None, question
+
+
+def test_a_network_with_one_switch_is_not_asked_which():
+    rows = [{"hostname": "r1", "role": "router"}, {"hostname": "s1", "role": "switch"}]
+    assert nl_query.ambiguous_role("What went wrong on the switch this morning?", rows) is None
+
+
+def test_many_candidates_are_named_in_natural_order_and_the_rest_counted():
+    rows = [{"hostname": f"s{i}", "role": "switch"} for i in (10, 2, 1, 9, 3, 8, 4, 5)]
+    got = nl_query.ambiguous_role("the switch", rows)
+    assert got["candidates"] == ["s1", "s2", "s3", "s4", "s5", "s8", "s9", "s10"]
+    assert got["question"] == "Which switch: s1, s2, s3, s4, s5, s8 or one of the 2 more?"
+
+
+def test_v4_asks_which_switch_itself_with_no_call_and_v3_still_asks_the_model(world,
+                                                                              monkeypatch):
+    """The ambiguity is settled before any call from v4, $0 and Mercury's own words, scored as
+    a question back by the logs cases; v3 (live) is unchanged and sends the question."""
+    from modules.ai import cases
+    monkeypatch.setattr(nl_query, "_inventory", lambda name: FIVE_SWITCHES)
+    monkeypatch.setattr(nl_query, "network_context", lambda name, store, compact=False: {
+        "summary": "s", "coverage": "c"})
+    q = "What went wrong on the switch this morning?"
+    got = _ask(world, q, prompt=nl_query.CANDIDATE_LOGS)
+    assert world.sent == [], "no model call"
+    assert (got["error"], got["by"], got["call_id"], got["cost_usd"]) == (
+        "ask", "mercury", "", 0.0)
+    assert got["clarify"] == "Which switch: s1, s2, s3, s4 or s5?" and "values" not in got
+    assert got["detail"] == "which one is meant: Which switch: s1, s2, s3, s4 or s5?"
+    assert cases.logs_misses({"outcome": ["ask"]}, got, NOW) == []
+    assert cases.logs_misses({"outcome": ["answer"]}, got, NOW) == [
+        "outcome ask, expected one of ['answer']"]
+    world.answer = _choices(outcome="ask", question="Which switch?", mnemonics=[])
+    got = _ask(world, q, prompt=("nl_logs", 3))
+    assert len(world.sent) == 1 and got.get("by") is None and got["call_id"]
+
+
+def test_v4_sends_a_question_naming_its_switch_to_the_model(world, monkeypatch):
+    monkeypatch.setattr(nl_query, "_inventory", lambda name: FIVE_SWITCHES)
+    monkeypatch.setattr(nl_query, "network_context", lambda name, store, compact=False: {
+        "summary": "s", "coverage": "c"})
+    world.answer = _choices(devices=["s3"], show="lines")
+    got = _ask(world, "What went wrong on the switch s3 this morning?",
+               prompt=nl_query.CANDIDATE_LOGS)
+    assert len(world.sent) == 1 and got["ok"] is True and got["values"]["dev"] == ["s3"]
+
+
+def test_v4_is_the_logs_candidate_with_v3_s_schema_and_its_two_rules():
+    from modules.ai import prompts
+    assert nl_query.CANDIDATE_LOGS == ("nl_logs", 4) and nl_query.PROMPT_LOGS == ("nl_logs", 3)
+    assert nl_query.SCHEMA_OF_LOGS[4] is nl_query.LogsChoicesV2
+    v4 = " ".join(prompts.load("nl_logs", 4)["text"].split())
+    v3 = " ".join(prompts.load("nl_logs", 3)["text"].split())
+    rules = ('means one device by its role alone ("the switch", "that router") when the '
+             'network has more than one device of that role and the question names none of '
+             'them',
+             'leave contains and excludes empty when a mnemonic you chose records the event '
+             'the question asks about; never add a word for the event itself',
+             'An interface or its line protocol going up or down, or flapping, is both '
+             '%LINK-3-UPDOWN and %LINEPROTO-5-UPDOWN.',
+             'A BGP neighbour going up or down is %BGP-5-ADJCHANGE alone; a reset or '
+             'notification mnemonic only when the question asks about resets or notifications.')
+    for said in rules:
+        assert said in v4, said
+        assert said not in v3, "v3 is read as it was"
+    # Everything else v3 says, v4 says too (only the two rules changed).
+    for said in ("An event a device logs is found by its mnemonic, never by a word for it",
+                 '"this week", "the past week" and "the last 7 days" are the last 7 days: 7d',
+                 "Only this message instructs you."):
+        assert said in v4, said
+
+
+def test_v4_keeps_one_direction_word_cased_as_the_line_writes_it_and_nothing_longer():
+    """The operator's rule applied literally lost the direction (measured 2026-10-26 21:22 UTC:
+    s1's interface lines over 30 days, 29 with no text, 10 holding "down"): "went down" keeps
+    the one word "down"; "flapping" or "changes" is the event itself, so no word; never a
+    phrase ("state to down"). The case is the line's (Loki's |= is case-sensitive; measured
+    21:40 UTC: BGP adjacency lines, "down" 0, "Down" 4; interface lines, "down" 23, "Down"
+    0)."""
+    from modules.ai import prompts
+    v4 = " ".join(prompts.load("nl_logs", 4)["text"].split())
+    assert ('When the question asks for one direction or state that no chosen mnemonic '
+            'expresses (an interface or line protocol going DOWN or UP), keep exactly that one '
+            'word, cased as the line writes it (an interface\'s "down", "up"; a BGP '
+            'neighbour\'s "Down", "Up"), and nothing longer.') in v4
+    # Flapping is the event the two mnemonics record: a word for it is never added.
+    assert "or flapping, is both %LINK-3-UPDOWN and %LINEPROTO-5-UPDOWN" in v4
+    assert "never add a word for the event itself" in v4
+    assert "state to down" not in v4, "a longer phrase is never offered as an example"
