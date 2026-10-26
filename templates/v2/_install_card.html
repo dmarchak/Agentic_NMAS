@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{%- from "v2/_macros.html" import icon, badge, how, stamp, resets -%}
 {%- import "v2/_ai.html" as ai -%}
 {#- Board F3 (signed off 2026-10-09): one of Settings › Installation's cards (NetBox
     connection, Proxmox, Commit author, Server), every setting a control, in the board's order
@@ -93,7 +93,7 @@
       {%- endif %}</div>
     <span class="set-label">Spent today</span>
     <div>{%- if k.spent.state == 'unreadable' %}{{ badge('unreadable', 'danger') }} <span class="set-origin">the record of AI calls could not be read ({{ k.spent.error }}), so every call is refused</span>
-      {%- else %}<span class="mono">${{ '%.4f' % k.spent.usd }}</span> <span class="set-origin">in {{ k.spent.calls }} call{{ '' if k.spent.calls == 1 else 's' }} today (UTC), against the day cap</span>{% endif %}</div>
+      {%- else %}<span class="mono">${{ '%.4f' % k.spent.usd }}</span> <span class="set-origin">in {{ k.spent.calls }} call{{ '' if k.spent.calls == 1 else 's' }} today, against the day cap; {{ resets(k.resets) }}</span>{% endif %}</div>
     {%- endif %}
     <div class="set-foot set-form-note">
       <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="installation-settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('installation-settings', 'save', op='saving ' ~ named) }}</span>

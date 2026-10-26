@@ -297,6 +297,27 @@
     }
   }
 
+  /* The AI day cap's reset (`calls.reset_info`, `resets()` in _macros.html): the one instant
+     the counter turns over at, in the viewer's own time and zone ("18:00 MDT"); the server's
+     words (the boundary zone's time) stay until this runs. */
+  function clockWords(t) {
+    try {
+      return new Intl.DateTimeFormat('en-US', {hour: '2-digit', minute: '2-digit',
+        hour12: false, timeZoneName: 'short'}).format(new Date(t)).replace(',', '');
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function drawClock(scope) {
+    var list = (scope || root.document).querySelectorAll('time[data-clock]');
+    for (var i = 0; i < list.length; i++) {
+      var t = Date.parse(list[i].getAttribute('datetime'));
+      var words = t === t ? clockWords(t) : null;
+      if (words) list[i].textContent = words;
+    }
+  }
+
   function drawLive() {
     var dot = root.document.getElementById('nmas-live');
     if (!dot || !root.NMAS || !root.NMAS.live) return;
@@ -955,12 +976,13 @@
       if (root.location) checkServedPage(root.document, root.location.origin);
       wireAnnouncements();
       drawAges();
+      drawClock();
       drawLive();
       drawBadge();
       root.setInterval(function () { drawLive(); drawBadge(); releaseHeld(); }, 1000);
       root.setInterval(function () { drawAges(); }, 15000);
     });
-    root.document.addEventListener('htmx:afterSettle', function (e) { drawAges(e.target); catchUpMissed(e); reopenKept(); });
+    root.document.addEventListener('htmx:afterSettle', function (e) { drawAges(e.target); drawClock(e.target); catchUpMissed(e); reopenKept(); });
     root.document.addEventListener('htmx:beforeSwap', rememberOpen);
     root.document.addEventListener('htmx:beforeRequest', noteAsked);
     root.document.addEventListener('htmx:beforeRequest', markTab);

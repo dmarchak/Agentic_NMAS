@@ -171,7 +171,9 @@ _HEAD = _FIELD.join(["%H", "%cI", "%(trailers:key=Source,valueonly)",
                      "%(trailers:key=Device-Name,valueonly,separator=%x2c)",
                      "%(trailers:key=Devices-Measured,valueonly,separator=%x2c)",
                      "%(trailers:key=Baseline,valueonly)", "%s",
-                     "%(trailers:key=Actor-Verified,valueonly)", "%D"])
+                     "%(trailers:key=Actor-Verified,valueonly)", "%D",
+                     # Feature 7's part 2: an intent commit drafted in words names its call.
+                     "%(trailers:key=AI-Call,valueonly)"])
 _PATH = re.compile(r"^(golden|host_vars)/([^/]+)\.(cfg|yml)$")
 
 
@@ -228,7 +230,8 @@ def _log(ctx, paths, *extra, follow=False, count=None):
                      "who": _who(parts[3].strip(), parts[9].strip()),
                      "verified": parts[9].strip(),
                      "tags": [d.strip()[len("tag: "):] for d in parts[10].split(",")
-                              if d.strip().startswith("tag: ")]})
+                              if d.strip().startswith("tag: ")],
+                     "ai_call": parts[11].strip() if len(parts) > 11 else ""})
     return rows, ""
 
 
@@ -381,6 +384,10 @@ def _from_commit(r, kind, what, devices, **kw):
     e["verified"] = r.get("verified", "")
     if why:
         e["exception"] = why
+    # A change drafted in words (feature 7, part 2) links back to the AI call that drafted it,
+    # as the call's row links to what it produced: one id, read from the commit's own trailer.
+    if r.get("ai_call") and re.fullmatch(r"ai-[0-9a-f]{16}", r["ai_call"]):
+        e["from_call"] = r["ai_call"]
     return e
 
 

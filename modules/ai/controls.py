@@ -23,7 +23,6 @@ being an AI control of its own, with why. tests/test_ai_controls.py fails on a r
 reaches the gateway and is in neither, and on a template that posts to a registered endpoint
 without the mark.
 """
-import datetime
 import logging
 
 from modules.ai import calls, gateway, profiles
@@ -96,8 +95,8 @@ def _spent(day: str) -> dict:
 
 
 def _today() -> str:
-    # The gateway's day: UTC, asked for by name.
-    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+    # The gateway's day: its one home (calls.today, the stated boundary's midnight).
+    return calls.today()
 
 
 def mark_title(task: str) -> str:
@@ -133,10 +132,11 @@ def readiness(task: str, today: str = None, spent=None) -> dict:
                     f"({spent.get('error') or 'no reason given'}), so today's spend is unknown")
     usd = float(spent.get("usd") or 0.0)
     if usd + cap["per_call"] > cap["per_day"]:
-        return dict(out, kind="day_cap", spent=usd,
+        # When the day starts again is drawn by the reason's macro from `resets` (calls'
+        # one answer), in the viewer's time and in UTC.
+        return dict(out, kind="day_cap", spent=usd, resets=calls.reset_info(),
                     reason=f"today's AI spend ${usd:.4f} plus this task's per-call cap "
-                           f"${cap['per_call']:.4f} is over the day cap ${cap['per_day']:.4f}; "
-                           "the day starts again at 00:00 UTC")
+                           f"${cap['per_call']:.4f} is over the day cap ${cap['per_day']:.4f}")
     return dict(out, ready=True, spent=usd)
 
 

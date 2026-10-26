@@ -73,6 +73,12 @@ NOT_AN_OPERATION = {
     ("_attention.html", "Acknowledge…"): "opens the reason field; the Acknowledge beside it carries the link",
     ("_attention.html", "Cancel"): "closes the reason field, recording nothing",
     ("_dhcp_reserve.html", "Cancel"): "puts the Reservations tab back, writing nothing",
+    ("_intent_words.html", "Discard draft"): "reopens the Intent tab without the draft, which "
+                                             "lived on the page only; nothing was written",
+    ("_intent_words.html", "btn btn-small iw-choice"):"answers Mercury's own question (which "
+                                                       "interface a reference or a name means) "
+                                                       "and continues the same draft; Draft the "
+                                                       "change in the row carries the link",
     ("_dhcp_reserve.html", "Close"): "puts the Reservations tab back after a change, a read",
     ("_dhcp_subnet.html", "Cancel"): "puts the Subnets tab back, writing nothing",
     ("_dhcp_subnet.html", "Close"): "puts the Subnets tab back after a change, a read",

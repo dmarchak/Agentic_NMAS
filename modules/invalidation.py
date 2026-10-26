@@ -219,6 +219,7 @@ DECLARED = {
     "v2.decline_confirm": ("intent", "remote"),
     "v2.heartbeat_apply": Nothing("writes the generated heartbeat rules file, which no panel reads; the page redraws itself, and nothing alerts differently until a person installs it on the host"),
     "intent_v2.commit": ("intent", "remote"),
+    "intent_v2.words_commit": ("intent", "remote", "ai_calls"),
     # A read writes only its run's record; its end is the job's announcement (`reads`).
     "reads_v2.ask_run": ("reads",),
     "reads_v2.show_commands_run": ("reads",),

@@ -343,16 +343,18 @@ def explain_misses(expect: dict, answer, pack: dict, error: str = "") -> list:
 #: What `intent_words.change` answered, in a case's words: the model's draft previewed
 #: ("answer"), one question back ("ask"), a refusal of the change ("refuse"), a draft refused
 #: by Mercury after the model answered, by the scope check, the patch's rules or the intent
-#: ("refused_after"), or Mercury's own answer with no call ("mercury").
-MERCURY_ERRORS = ("empty", "too_long", "no_device", "nothing_named", "no_intent")
+#: ("refused_after"), Mercury's own question about which interface a reference means, with
+#: no call ("choose", part 1), or Mercury's own answer with no call ("mercury").
+MERCURY_ERRORS = ("empty", "too_long", "no_device", "nothing_named", "no_intent",
+                  "no_such_interface")
 
 
 def intent_outcome(got: dict) -> str:
     if got.get("ok"):
         return "answer"
     error = got.get("error") or ""
-    if error == "ask":
-        return "ask"
+    if error in ("ask", "choose"):
+        return error
     if error == "unanswerable":
         return "refuse"
     if error in ("couldnt_change", "intent"):

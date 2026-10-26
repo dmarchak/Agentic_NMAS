@@ -773,6 +773,43 @@ class TestIntentEditCards(_Cards):
         return html
 
 
+# ── Change it in words (feature 7, part 2), on the host's real committed s1 ─
+
+class TestIntentWordsCards(_Cards):
+    from tests import test_ai_intent_change as _aw, test_committed_before_p1 as _cb
+    host, world = hosted(_cb.host), hosted(_aw.world)
+
+    CASES = {
+        "words_commit": ("_intent_words.html", "Commit this draft", r"Commit this draft",
+                         "data: the draft changes no configuration line, so it offers no commit"),
+        "words_commit_plan": ("_intent_words.html", "Commit and plan deploy",
+                              r"Commit and plan deploy",
+                              "data: the draft changes no configuration line, so it offers no "
+                              "commit"),
+    }
+
+    def _draft(self, request, op, interface, **fields):
+        from tests.test_ai_intent_change import _answer, _op
+        world, host = request.getfixturevalue("world"), request.getfixturevalue("host")
+        world.answer = _answer(("s1", [_op(op, interface=interface, **fields)]))
+        return _text(host["client"].post("/v2/device/s1/intent/words?list=Lab",
+                                         data={"words": f"change {interface}"},
+                                         headers={"HX-Request": "true"}))
+
+    def drawn_words_commit(self, request):
+        return self._draft(request, "set_description", "GigabitEthernet1/0",
+                           description="drafted in words")
+
+    def blocked_words_commit(self, request, monkeypatch):
+        # Already so: a draft that changes no configuration line offers no commit (C1771).
+        html = self._draft(request, "no_shutdown", "GigabitEthernet0/1")
+        assert "Already so:" in html, "floor: the draft is drawn, changing nothing"
+        return html
+
+    drawn_words_commit_plan = drawn_words_commit
+    blocked_words_commit_plan = blocked_words_commit
+
+
 # ── Bulk intent, on test_bulk_intent's lab (s1, s2, r1 with logging intent) ─
 
 class TestBulkIntentCards(_Cards):
@@ -1602,9 +1639,10 @@ class TestThePopulation:
         C1403's Release lease… joined, 53 until C1491's IP SLA frequency commit, 54 until
         C1504's Free <address> on NetBox's job card, 55 until out-of-band ZTP's survey,
         kick-start and a console server's re-key, 2026-10-22; 58 until the one-decision
-        out-of-band onboarding's button, 2026-10-23)."""
+        out-of-band onboarding's button, 2026-10-23; 59 until feature 7's Commit this draft and
+        Commit and plan deploy, 2026-10-26)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 59, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 61, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

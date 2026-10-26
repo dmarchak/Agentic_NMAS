@@ -141,6 +141,9 @@ DEFAULTS: dict = {
     # (modules/ai/profiles.py); declared one more release, read by nothing (expand, contract).
     "ai_cap_usd_per_call":      0.05,
     "ai_cap_usd_per_day":       1.50,
+    # The day the day cap counts begins at midnight here: UTC (the gateway's day until it was
+    # stated, 2026-10-26), or a time zone's name; modules/ai/calls.py owns the day.
+    "ai_cap_day_boundary":      "UTC",
     "wf_read_first":            True,
     "wf_auto_backup":           True,
     "wf_run_jenkins":           True,
@@ -716,6 +719,7 @@ SCHEMA: dict = {
                       "properties": {"by": _STR, "at": _STR, "reason": _STR}},
         "ai_cap_usd_per_call": {"type": "number", "minimum": 0, "maximum": 5},
         "ai_cap_usd_per_day": {"type": "number", "minimum": 0, "maximum": 50},
+        "ai_cap_day_boundary": {"type": "string", "minLength": 1, "maxLength": 64},
         "wf_read_first": _BOOL,
         "wf_auto_backup": _BOOL,
         "wf_run_jenkins": _BOOL,

@@ -295,6 +295,7 @@ KINDS = {
     "text": "text on one line",
     "email": "an email address",
     "usd": "an amount in US dollars, up to four decimals",
+    "zone": "UTC, or a time zone's name such as America/Denver",
 }
 
 
@@ -352,7 +353,10 @@ CARDS = {
         "group": "ai_gateway", "title": "AI (hosted)", "tab": "connections",
         "fields": (_f("ai_cap_usd_per_day", "Cap per day", "usd",
                       "today's spend plus a call's worst case, refused before it is sent; "
-                      "each call's own cap is its task's, below"),),
+                      "each call's own cap is its task's, below"),
+                   _f("ai_cap_day_boundary", "The day begins at", "zone",
+                      "midnight in this zone, UTC unless set: when the day cap's count starts "
+                      "again (a zone follows its daylight-saving changes)")),
         "secret": ("anthropic_api_key", "API key"), "secret_at": 0, "with_id": None,
         "integration": None, "test": "ai",
         "note": "Test sends one small call to the model, through the mask and the caps, and "
@@ -445,7 +449,8 @@ def card(name: str, ai_state: bool = True) -> dict:
         from modules.ai import calls, gateway, profiles
         out["hosted"] = gateway.hosted_allowed()
         out["prices"] = profiles.table()
-        out["spent"] = calls.spent_usd(time.strftime("%Y-%m-%d", time.gmtime()))
+        out["spent"] = calls.spent_usd(calls.today())
+        out["resets"] = calls.reset_info()
         out["reason_bounds"] = (AI_REASON_MIN, AI_REASON_MAX)
     return out
 
@@ -509,6 +514,11 @@ def _value(f: dict, raw):
         if not re.fullmatch(r"\d{1,3}(\.\d{1,4})?", text):
             raise no()
         return float(text)
+    if kind == "zone":
+        from modules.ai import calls
+        if not re.fullmatch(r"[A-Za-z0-9_+/-]{1,64}", text) or not calls.valid_boundary(text):
+            raise no()
+        return text
     if "\n" in text or "\r" in text or not text:
         raise no()
     return text

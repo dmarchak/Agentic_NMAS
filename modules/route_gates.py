@@ -166,6 +166,7 @@ GATES = {
     "reads_v2.show_commands_save_set": _g(K, "commits a saved command set to the network's "
                                              "repository as the person (R3); sends nothing"),
     "intent_v2.commit": _g(A,"commits an edit to a device's intent (board H), bound to the version opened"),
+    "intent_v2.words_commit": _g(A, "commits a change drafted in words to a device's intent (feature 7, part 2), as Source: ai-draft with its AI-Call:, bound to the drafted patch and the version it was previewed on; with plan, the deploy preview opens next, never confirmed for the person"),
     "bulk_intent_v2.apply": _g(A, "commits one change to the ticked devices' intent, from "
                                   "Devices (board D; routes.templatize.bulk_apply_of)"),
     "device_v2.revert_confirm": _g(A, "commits the inverse of one intent commit's change from the v2 device page (7.3, board 11; intent_ops.revert_apply, in the list its card carries)"),

@@ -32,7 +32,7 @@ the fixture's counts unfiltered); the Baselines tab (`history-baselines`, 1280 a
 real records (`history-real`, 1280).
 Compared 2026-10-16.
 Templates compared: templates/v2/history.html, templates/v2/_history_body.html, templates/v2/_history_remote.html, templates/v2/_history_timeline.html, templates/v2/_timeline.html
-Templates sha256: `a0d4d6854fb30fe0bb8e5b4f8d153807e1665a1c507d80ad3f6c30cd0f383683`
+Templates sha256: `9c14e0f3676722b4540f3ef2954553a814a48fcc1bb2084e6dc5569e9f83cfb5`
 
 Compared again 2026-10-16 (C522) after `_history_body.html`'s Baselines card gained a heading
 row: the count of baselines ("2 baselines") and "How does this work?" in words (to the restore's
@@ -212,6 +212,16 @@ these." at the end, the place pushed into the address and Back returning to it, 
 horizontal scroll at 390 px. "The count" amended and a region added, Load more and Jump to;
 no other region's verdict changed.
 Templates sha256 before: `476c427c7071d5b88678e04045e8954423620a7c0b85d75224812b5613d9b35a`.
+
+Compared again 2026-10-26 (feature 7's part 2, links both ways): `_timeline.html` draws, on an
+opened commit row whose commit carries an `AI-Call:` trailer (an intent change drafted in words
+and committed by a person), "Open the AI call that drafted it", to that call's own row
+(`/v2/history?call=<id>`), before Show the change. Board F7 draws it (1d, canvas version 146);
+History's own boards draw no AI-drafted commit. Its test is tests/test_ai_intent_change.py's
+`test_a_draft_commits_with_its_trailers_and_the_links_both_ways` (the device's History tab,
+the link and the call's id drawn). No shot retaken: the link is one anchor in the row's links
+line, as drawn on F7; no other region moved. The hash written again.
+Templates sha256 before: `a0d4d6854fb30fe0bb8e5b4f8d153807e1665a1c507d80ad3f6c30cd0f383683`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).

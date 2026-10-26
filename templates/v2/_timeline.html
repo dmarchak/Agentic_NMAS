@@ -72,6 +72,8 @@
         {%- set others = e.devices | reject('equalto', '*') | reject('equalto', here) | list %}
         {%- if others or e.sha or e.call %}<p class="small tl-links">
           {%- for d in others %}<a href="{{ url_for('device_v2.device', name=d, tab='history') }}">Open {{ d }}'s History</a>{% if not loop.last or e.sha or e.produced %} · {% endif %}{% endfor %}
+          {#- A change drafted in words (feature 7, part 2): the AI call that drafted it, from the commit's AI-Call trailer. -#}
+          {%- if e.from_call %}<a href="{{ url_for('v2.history_page', call=e.from_call) }}">Open the AI call that drafted it</a> · {% endif %}
           {#- What an AI call's answer produced (15.14's links both ways): its last use row's page and anchor. -#}
           {%- if e.produced %}<a href="{{ e.produced }}">Open what it produced</a>{% endif %}
           {#- An AI call's prompt as sent and answer as received (15.14), drawn when opened, as a commit's change is. -#}

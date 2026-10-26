@@ -584,10 +584,12 @@ def preview(list_name: str, hostname: str, patch) -> dict:
     return {**shown, "changed": True, **carried}
 
 
-def commit(list_name: str, hostname: str, patch, summary: str, base: str, actor: str) -> dict:
+def commit(list_name: str, hostname: str, patch, summary: str, base: str, actor: str, *,
+           source: str = "", extra_trailers: list = None) -> dict:
     """Commit *patch* to *hostname*'s intent as *actor*: the patch applied to the version at
     *base* (the one previewed) and handed to `intent_edit.commit`, which refuses when intent
-    moved since and requires the person's one-line *summary*."""
+    moved since and requires the person's one-line *summary*. *source* and *extra_trailers*
+    name the workflow, as `intent_edit.commit` takes them (its own when empty)."""
     from modules.nsot import hostvars, intent_edit
 
     base = (base or "").strip()
@@ -604,5 +606,7 @@ def commit(list_name: str, hostname: str, patch, summary: str, base: str, actor:
     got = patched_text(hostname, text, patch, list_name)
     if not got["ok"]:
         return got
-    out = intent_edit.commit(list_name, hostname, got["text"], summary, base, actor)
+    out = intent_edit.commit(list_name, hostname, got["text"], summary, base, actor,
+                             source=source or intent_edit.SOURCE,
+                             extra_trailers=extra_trailers)
     return {**out, "changes": got["changes"], "device_keeps": _kept_words(got["changes"])}

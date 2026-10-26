@@ -639,13 +639,30 @@ def _intent_words(client, lab, _mp):
                               "stop_reason": "end_turn",
                               "usage": {"input_tokens": 1500, "output_tokens": 120}},
             attempts=1, latency_s=0.4))
+        # Part 1: the interface named in its short form, so the draft lists how it was read;
+        # then a reference two uplinks match (planted neighbours), which Mercury asks about;
+        # then a name r3 does not hold, said with its interfaces.
+        from modules.ai import intent_names
+        from modules.nsot import ifnames
         r = client.post("/v2/device/r3/intent/words",
-                        data={"words": f"describe {iface} as drafted in words"},
+                        data={"words": f"describe {ifnames.abbreviate(iface)} as drafted in "
+                                       "words"},
                         headers={"HX-Request": "true", "Accept": "text/html"})
         html = r.get_data(as_text=True)
         import re
-        assert r.status_code == 200 and "Drafted from your words" in html, \
+        assert r.status_code == 200 and "Drafted from your words" in html \
+            and "How your words were read" in html, \
             re.sub(r"<svg.*?</svg>", "", html.split("</form>", 1)[-1], flags=re.S)[:600]
+        ports = [i["name"] for i in doc.get("interfaces") or []
+                 if str(i.get("name", "")).startswith("GigabitEthernet")][:2]
+        mp.setattr(intent_names, "neighbours_of", lambda network, device: {"ports": {
+            p: [{"name": f"edge{n}", "role": "router", "by": "observed (LLDP)"}]
+            for n, p in enumerate(ports, 1)}, "said": []})
+        for words, said in (("shut the uplink", "which one?"),
+                            ("shut Gi9/9", "has no interface Gi9/9")):
+            r = client.post("/v2/device/r3/intent/words", data={"words": words},
+                            headers={"HX-Request": "true", "Accept": "text/html"})
+            assert r.status_code == 200 and said in r.get_data(as_text=True), words
     finally:
         mp.undo()
         shutil.rmtree(folder, ignore_errors=True)

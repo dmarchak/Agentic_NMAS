@@ -2036,6 +2036,21 @@ Sat 31 Oct).**
      - pinned to Sonnet;
      - its recorded cases, and a held-out set written before its first measurement.
 
+**Explain v4 against v5, decided by the operator's rule (2026-10-26 ~07:4x UTC: "adopt v5 only
+if it fails no case that v4 passes AND costs no more per call than v4; otherwise keep v4"):
+v4 kept, and Explain's tuning closed for the sprint.**
+- **The measurement:** the six shared packs (three replays including the one-device control,
+  three healthy baselines). Both prompts were asked on the same pack in each of five rounds, on
+  2026-10-26 (explain-v4.sh's run).
+- **Where they differ:** case 5 only, the 8-device scrape stall. v4 missed rounds 2 and 5
+  ("no fault found" where an answer is expected); v5 missed round 3. So v5 fails a run v4
+  passes.
+- **Totals:** v4 28 of 30, v5 29 of 30. Outcome consistency is 5 of 6 for both; analyst
+  consistency 3 of 6 for both.
+- **Cost per call:** v4 $0.0365 with 1,492 output tokens on average; v5 $0.0370 with 1,512. So
+  v5 costs more.
+- Either condition alone keeps v4. Explain stays pinned to v4.
+
 ### 15.13 AI controls: one mark, and shown disabled when AI cannot answer (the operator, 2026-10-25)
 
 A design rule built in the sprint, holding for every AI surface (docs/NSOT_GUI_BRIEF.md
@@ -2379,6 +2394,45 @@ tab alike:**
     as on any shared-host incident. It would also drop the healthy evidence a no fault found
     answer must cite (C1742), so it is not proposed.
 
+**Gaps made explicit, and the endpoint layer (the operator, 2026-10-26 ~06:5x UTC; after
+feature 7's parts 1 and 2, by the operator's ruling the same morning).** Industry need:
+endpoint location is a core NetOps capability, the "where is this host?" question every
+NetOps platform answers from the MAC and ARP tables. Flows remain roadmap. In this order:
+1. **Coverage.** Every `context_for()` bundle carries a coverage header listing each layer
+   (inventory, intent, adjacency, performance, events, endpoints, flows) as present, partial or
+   not_collected, with its source and age. The prompts tell the model to say when an answer
+   depends on a layer that is not_collected, rather than infer it.
+2. **The endpoint layer.**
+   - Per device, the MAC table and ARP, read through the drivers (platform-pack entries, not
+     IOS-only code).
+   - DHCP leases through an optional integration (Kea first, the interface generic).
+   - Each entry with its last seen.
+   - Observed endpoints are stored as MAC, IP, hostname if leased, device, interface, VLAN and
+     last seen, versioned like the rest of the model.
+   - Entries learned on trunks or uplinks are ignored for location.
+   - Feature 7's "port to X" then prefers observation over description, and reports a
+     disagreement between them as drift (C1772, pulled forward).
+3. **Needs.**
+   - Each AI answer schema gains an optional `needs` list, its kinds from a fixed enum
+     (endpoint_location, interface_state, neighbour, route).
+   - **The round lives once, in a shared module (`modules/ai/needs.py`), which every feature
+     calls; features never loop themselves.** It owns the enum's validation, the read-only
+     lookups through the existing readers, the hard cap of one follow-up, and the parent and
+     child link.
+   - The follow-up is a second, ordinary `gateway.ask`; the gateway is untouched (frozen this
+     sprint). An unknown kind and a second round are refused. A lookup that fails is reported
+     as unfulfilled, never retried.
+   - Lookup results enter the follow-up prompt through the context builder, so their egress
+     class applies. Endpoints (MAC, IP, hostname) are the topology class, so with a network's
+     topology switch off the need is unfulfilled (egress), and the answer says so.
+   - Needs, fulfilled or not, are recorded in ai_calls. History shows the two rows linked, the
+     round's combined cost on the parent, with a filter and a "context gaps" count by kind.
+4. **Tests:** the coverage header present and accurate per layer; a needs round capped, and
+   refused for an unknown kind; endpoint location ignoring trunk-learned MACs; drift reported
+   on a mismatch. Recorded cases for Ask in words and Explain with endpoints present and with
+   them not_collected; the stale-expectation check first. Read path only: no device changes,
+   nothing on s3 beyond reads, nothing in 08:30 to 09:10 UTC.
+
 ### 15.16 Feature 7's egress: the touched sections' current values, never the intent document (the operator, 2026-10-26)
 
 The order's item 4 asked first: does feature 7 send a device's **full intent**, or **only the
@@ -2488,6 +2542,30 @@ expectation validated against the committed intent and the network model, run fi
 recording; a stale one stops the run before any call. Then parts 1 and 2's new cases, five
 runs each, reported for pass, consistency and cost. When both parts are live, the operator
 walks it on s1.
+
+- **Built 2026-10-26 (the stale-expectation check, a0165710):** `intent_words.stale`, each
+  case's expected change put through the real path with no call; first in every recording
+  (exit 5), alone with `--check`.
+- **Built 2026-10-26 (parts 1 and 2):**
+  - **Part 1:** `modules/ai/intent_names.py` resolves shorthand and references on the tab's
+    device before any call. A port's neighbours are the model's point-to-point subnets and the
+    Topology read's physical links; a shared segment names no neighbour. References mean
+    ports, never an SVI, loopback or tunnel. The resolution step is the operation's `resolve`
+    step. The draft lists how the words were read; Mercury's own question carries the
+    candidates and Both; a name the device lacks lists its interfaces and links Neighbours.
+  - **Part 2:** `intent_words.commit_draft` and `intent_v2.words_commit`. Each draft's digest
+    (device, patch, base) is on its call's use row, and a commit handed anything else is
+    refused. The commit goes through `intent_patch.commit`, with `Source: ai-draft` and
+    `AI-Call:`. Commit and plan deploy opens the deploy preview. A draft that changes no
+    configuration line offers no commit (C1771).
+  - **History:** the call's use row "committed to intent" names the commit, and the commit's
+    row links the call (its `AI-Call:` trailer).
+  - Board F7 was redrawn (canvas versions 146 and 147); 16 part 1 cases are in
+    `tests/fixtures/ai_cases/intent_patch/names.json`.
+- **Not yet:**
+  - the deploy receipt's link to the intent commit (C1775, B, next);
+  - part 1's cases measured live (after the deploy);
+  - observed endpoints (C1772, after parts 1 and 2, with the network context's order above).
 
 ## 16. Industry-readiness roadmap (2026-10-25)
 

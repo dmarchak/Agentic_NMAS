@@ -202,12 +202,15 @@ def test_a_test_allowed_and_keyed_is_one_recorded_call_as_the_person(networks, m
 def test_the_day_cap_saves_as_a_number_and_refuses_a_word_or_too_much(networks, no_send):
     from modules.settings_schema import get_setting
     r, html = _post(networks, "/v2/settings/installation/card/ai/save",
-                    {"ai_cap_usd_per_day": "0.75", "loaded": _loaded(networks)})
+                    {"ai_cap_usd_per_day": "0.75", "ai_cap_day_boundary": "UTC",
+                     "loaded": _loaded(networks)})
     assert r.status_code == 200 and "Saved</strong>" in _card(html)
     assert get_setting("ai_cap_usd_per_day") == 0.75
     r, html = _post(networks, "/v2/settings/installation/card/ai/save",
-                    {"ai_cap_usd_per_day": "lots", "loaded": _loaded(networks)})
+                    {"ai_cap_usd_per_day": "lots", "ai_cap_day_boundary": "UTC",
+                     "loaded": _loaded(networks)})
     assert r.status_code == 409 and "is not an amount in US dollars" in html
     r, html = _post(networks, "/v2/settings/installation/card/ai/save",
-                    {"ai_cap_usd_per_day": "99", "loaded": _loaded(networks)})
+                    {"ai_cap_usd_per_day": "99", "ai_cap_day_boundary": "UTC",
+                     "loaded": _loaded(networks)})
     assert r.status_code == 409 and get_setting("ai_cap_usd_per_day") == 0.75

@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon -%}
+{%- from "v2/_macros.html" import icon, resets -%}
 {#- The AI controls' one mark and their state when hosted AI cannot answer (PHASE8_PLAN 15.13;
     NSOT_GUI_BRIEF section 6, "AI controls"). *c* is `ai_control('<name>')`, a control
     modules/ai/controls.CONTROLS registers: its readiness, whether the viewer may configure and
@@ -26,5 +26,5 @@
 {%- endmacro %}
 
 {%- macro reason(c) -%}
-{%- if not c.ready %}<p class="ai-off" role="note" data-ai-off-reason="{{ c.name }}">{{ icon('info', 14) }} <span>Not available now: {{ c.reason }}.{% if c.may_configure %} <a href="{{ c.settings_url }}">Open Settings › Installation, AI (hosted)</a>{% endif %}</span></p>{% endif -%}
+{%- if not c.ready %}<p class="ai-off" role="note" data-ai-off-reason="{{ c.name }}">{{ icon('info', 14) }} <span>Not available now: {{ c.reason }}{% if c.resets %}; the day's spend {{ resets(c.resets) }}{% endif %}.{% if c.may_configure %} <a href="{{ c.settings_url }}">Open Settings › Installation, AI (hosted)</a>{% endif %}</span></p>{% endif -%}
 {%- endmacro %}

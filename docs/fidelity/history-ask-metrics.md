@@ -17,7 +17,7 @@ desktop board at 1440 and 1280 beside the page; the phone board at 390 beside th
 Compared 2026-10-15. History's own page (heading, remote line) is board D's; the board's Code
 mode panel is today's Ask your own box, Code on the Mode switch.
 Templates compared: templates/v2/history_ask_metrics.html, templates/v2/_history_body.html, templates/v2/_history_ask_metrics.html, templates/v2/_history_ask_parts.html, templates/v2/_history_ask_head.html, templates/v2/_history_ask_words.html, templates/v2/_ai.html, templates/v2/_history_ask_chips.html
-Templates sha256: `94a252f672da1286af07698c19a651d40dc8f641a97bca7c482b56ac2af60533`
+Templates sha256: `d18c51cf3a8a68efe8ad28dc9c2bbdbdaa00e83c3728df837c81f3c72e26047e`
 
 Compared again 2026-10-15 (P7-03): `_history_body.html` gained a `data-concept` marker and one
 sentence inside a Baselines row's detail (the block drawing each baseline's Re-apply… link); this
@@ -146,6 +146,12 @@ beside its name. The busy state is not shot (it lasts as long as the call);
 tests/test_v2_busy_on_itself.py holds it. "Today"'s sentence is compared from the rendered
 page by tests/test_ai_nl_query.py's "today" section, not a shot. No template changed; the
 hash stands.
+
+Changed 2026-10-26 (the AI day cap's stated boundary): `_macros.html` gained `resets()`, the
+AI cap's reset time drawn on Settings' AI card and an AI control's day-cap reason; this page
+draws neither (the Ask in words row's reason is `_ai.html`'s, which draws it only when the cap
+refuses). No region changed; the hash written again.
+Templates sha256 before: `94a252f672da1286af07698c19a651d40dc8f641a97bca7c482b56ac2af60533`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).

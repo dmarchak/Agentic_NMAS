@@ -15,15 +15,49 @@
   <span class="op-act"><button type="submit" class="btn btn-small" data-op="intent-in-words" hx-disabled-elt="this"{{ ai.attrs(aic, 'configure') }} title="One recorded AI call, capped: it drafts a change to {{ host }}'s intent and previews it; nothing is written"><span class="op-idle">Draft the change</span><span class="op-busy">Drafting…</span></button>{{ how('intent-in-words', compact=True) }}</span>
   {{- ai.reason(aic) }}</div>
 </form>
-{%- if w and w.ok %}
+{%- if w and w.committed %}
+{#- Part 2's answer: committed (its commit, how it is recorded, Plan deploy… next), nothing to
+    commit, or why not (the intent moved, the patch is not the drafted one). -#}
+{%- set c = w.committed %}
+{%- if c.ok and c.commit %}
+<div class="notice notice-ok" role="status">{{ icon('check', 16) }}<p><strong>Committed to {{ host }}'s intent:</strong> commit <span class="mono">{{ c.commit[:10] }}</span>, as {{ w.actor }} (Source: ai-draft, with <a href="{{ url_for('v2.history_page', call=w.call_id) }}">the AI call</a>). Nothing was sent to {{ host }}. <a class="btn btn-small" data-op="deploy" href="{{ url_for('device_v2.device', name=host, tab='intent', op='deploy') }}">Plan deploy…</a>{{ how('deploy', compact=True, op='deploy') }}</p></div>
+{%- elif c.ok %}
+<div class="notice" role="status">{{ icon('info', 16) }}<p>{{ c.message or 'Nothing to commit.' }}</p></div>
+{%- else %}
+<div class="notice notice-warn" role="alert">{{ icon('warn', 16) }}<p><strong>Not committed:</strong> {{ c.error }}.</p></div>
+{%- endif %}
+{%- elif w and w.ok %}
 {%- set p = w.previews[0] %}
-<div class="notice" role="status">{{ icon('info', 16) }}<p>Drafted from your words ({{ w.model }}, ${{ '%.4f' | format(w.cost_usd) }}): {{ p.changes | length }} change{{ '' if p.changes | length == 1 else 's' }} to {{ host }}'s intent. Check them below. The draft is not committed: committing a drafted change is feature 7's next step, so to make it now, Edit the document.</p></div>
+<div class="notice" role="status">{{ icon('info', 16) }}<p>Drafted from your words ({{ w.model }}, ${{ '%.4f' | format(w.cost_usd) }}): {{ p.changes | length }} change{{ '' if p.changes | length == 1 else 's' }} to {{ host }}'s intent. Check them below, then commit this draft; nothing is written until you do.</p></div>
 <div class="iw-draft">
   <h3 class="ie-k">The changes, as Mercury would make them</h3>
   <ol class="iw-ops">{% for c in p.changes %}<li>{{ c.summary }}</li>{% endfor %}</ol>
+  {%- if w.resolutions or w.resolution_said %}
+  <h3 class="ie-k">How your words were read</h3>
+  <ul class="iw-read">{% for r in w.resolutions %}<li><q>{{ r.said }}</q> → <span class="mono">{{ r.to | join(', ') }}</span> <span class="muted">({{ r.by | join('; ') }})</span></li>{% endfor %}
+  {%- for s in w.resolution_said %}<li class="muted">{{ s[:1] | upper }}{{ s[1:] }}.</li>{% endfor %}</ul>
+  {%- endif %}
   {%- if p.device_keeps %}<p class="muted small">{{ p.device_keeps }}</p>{% endif %}
-  {%- if p.changed %}
+  {%- if p.changed and p.vs_intent_changed %}
   {%- with p=p, host=host, text=p.yaml %}{% include "v2/_intent_check.html" %}{% endwith %}
+  {%- if p.draft %}
+  {#- Part 2: the draft committed by the person, exactly as drafted (its patch, the version it
+      was previewed on and the call that drafted it posted back; a commit handed anything else
+      is refused), or committed and the deploy preview opened next. Discard keeps nothing: the
+      draft lives on this page only. -#}
+  <form class="iw-commit" method="post" action="{{ url_for('intent_v2.words_commit', name=host) }}" hx-post="{{ url_for('intent_v2.words_commit', name=host) }}" hx-target="#intent-words" hx-swap="outerHTML" autocomplete="off">
+    <input type="hidden" name="call_id" value="{{ w.call_id }}"><input type="hidden" name="base" value="{{ p.base }}"><input type="hidden" name="patch" value="{{ p.patch_json }}"><input type="hidden" name="words" value="{{ w.sentence }}">
+    <label class="lq-lab" for="iw-why">Why, in one line</label>
+    <div class="lq-line"><input id="iw-why" class="lq-words-in" type="text" name="summary" maxlength="200" required value="{{ w.sentence }}" title="The commit's subject; it starts from your words">
+    <span class="op-act"><button type="submit" class="btn btn-small btn-primary" data-op="intent-in-words" hx-disabled-elt="this"{{ gate('approve') }} title="Commits the drafted change to {{ host }}'s intent as you (Source: ai-draft, with the AI call); nothing reaches the device"><span class="op-idle">Commit this draft</span><span class="op-busy">Committing…</span></button>{{ how('intent-in-words', compact=True) }}</span>
+    <span class="op-act"><button type="submit" class="btn btn-small" name="plan" value="1" data-op="intent-in-words" hx-disabled-elt="this"{{ gate('approve') }} title="Commits it, then opens the deploy preview for {{ host }}: you still confirm the deploy by its hash"><span class="op-idle">Commit and plan deploy</span><span class="op-busy">Committing…</span></button>{{ how('intent-in-words', compact=True) }}</span>
+    <a class="btn btn-small" href="{{ url_for('device_v2.device', name=host, tab='intent') }}" title="Drops the draft; nothing was written, and the AI call stays in History">Discard draft</a></div>
+  </form>
+  {%- endif %}
+  {%- elif p.changed %}
+  {#- C1771: the patch changes how the document says it (an explicit `no shutdown` on an
+      interface already up, C1401), and no line of the configuration: already so. -#}
+  <p class="notice" role="status">{{ icon('info', 16) }} <span><strong>Already so:</strong> {{ host }}'s committed intent already gives this; no line of its configuration would change, so there is nothing to commit.</span></p>
   {%- else %}
   <p class="muted">{{ p.message }}</p>
   {%- endif %}
@@ -31,6 +65,22 @@
 </div>
 {%- elif w and w.error == 'ask' %}
 <div class="notice" role="status">{{ icon('info', 16) }}<p><strong>One question first:</strong> {{ w.clarify }} Add the answer to your words, then draft again. <span class="faint">({{ w.model }}, ${{ '%.4f' | format(w.cost_usd) }})</span></p></div>
+{%- elif w and w.error == 'choose' %}
+{#- Part 1: a reference with several matches, asked before any call; each candidate a button
+    naming its neighbour or its description, and "Both" or "All N"; the choice continues the
+    same draft (the same words, the phrase and the pick). -#}
+<div class="notice" role="status">{{ icon('info', 16) }}<div><p><strong>One question first</strong>, from {{ host }}'s own intent (no AI call, $0): {{ w.choose.question }}</p>
+<form class="iw-pick" method="post" action="{{ url_for('intent_v2.words', name=host) }}" hx-post="{{ url_for('intent_v2.words', name=host) }}" hx-target="#intent-words" hx-swap="outerHTML">
+<input type="hidden" name="words" value="{{ w.sentence }}"><input type="hidden" name="phrase" value="{{ w.choose.phrase }}">
+{%- for c in w.choose.candidates %}<button type="submit" class="btn btn-small iw-choice" name="pick" value="{{ c.name }}" hx-disabled-elt="this"{{ ai.attrs(aic, 'configure') }}><span class="op-idle">{{ c.label }}</span><span class="op-busy">Drafting…</span></button>{% endfor %}
+<button type="submit" class="btn btn-small iw-choice" name="pick" value="*" hx-disabled-elt="this"{{ ai.attrs(aic, 'configure') }}><span class="op-idle">{{ w.choose.all }}</span><span class="op-busy">Drafting…</span></button>
+</form></div></div>
+{%- elif w and w.error == 'no_such_interface' %}
+<div class="notice notice-warn" role="alert">{{ icon('warn', 16) }}<div><p><strong>Not found:</strong> {{ w.unknown.why }} (no AI call, $0). Choose one of its interfaces for <q>{{ w.unknown.said }}</q>, or see <a href="{{ url_for('device_v2.device', name=host, tab='neighbours') }}">{{ host }}'s neighbours</a>.</p>
+<form class="iw-pick" method="post" action="{{ url_for('intent_v2.words', name=host) }}" hx-post="{{ url_for('intent_v2.words', name=host) }}" hx-target="#intent-words" hx-swap="outerHTML">
+<input type="hidden" name="words" value="{{ w.sentence }}"><input type="hidden" name="phrase" value="{{ w.unknown.said }}">
+{%- for c in w.unknown.interfaces %}<button type="submit" class="btn btn-small iw-choice" name="pick" value="{{ c.name }}" hx-disabled-elt="this"{{ ai.attrs(aic, 'configure') }}><span class="op-idle">{{ c.label }}</span><span class="op-busy">Drafting…</span></button>{% endfor %}
+</form></div></div>
 {%- elif w and w.by == 'mercury' %}
 <div class="notice" role="status">{{ icon('info', 16) }}<p>{{ w.detail[:1] | upper }}{{ w.detail[1:] }}.</p></div>
 {%- elif w and w.error == 'unanswerable' %}

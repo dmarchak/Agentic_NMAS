@@ -24,7 +24,6 @@ and every call, sent or refused, is one `ai_calls` row. In order, before anythin
 Then the adapter sends it; a refusal, a `max_tokens` stop, an answer that is not the schema,
 and each provider failure are each their own kind, never a parser's crash (13.5).
 """
-import datetime
 import json
 import logging
 
@@ -218,8 +217,9 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
     if worst > cap["per_call"]:
         return refuse("over_cap", f"this call's worst case ${worst:.4f} is over the "
                       f"{feature} task's per-call cap ${cap['per_call']:.4f}", worst_usd=worst)
-    # The UTC day, from a clock asked for UTC by name (never a local time read by default).
-    day = today or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+    # The cap's day: its midnight the stated boundary's (calls.today; UTC by default), from a
+    # clock asked for UTC by name (never a local time read by default).
+    day = today or calls.today()
     spent = calls.spent_usd(day)
     if spent["state"] == "unreadable":
         return refuse("over_cap", "the record of AI calls cannot be read, so today's spend "

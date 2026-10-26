@@ -254,7 +254,9 @@ def test_a_days_spend_reaching_the_cap_exactly_is_sent(world, monkeypatch):
 
 
 def test_with_no_day_given_the_utc_day_is_counted(world, monkeypatch):
-    """A clock whose local day is a day behind UTC's (19:00 the day before) is not read."""
+    """A clock whose local day is a day behind UTC's (19:00 the day before) is not read: the
+    cap's day (UTC by default, its one home `calls.today` since 2026-10-26) comes from a clock
+    asked for UTC by name."""
     import datetime
     import types
     utc_now = datetime.datetime(2026, 10, 26, 1, 0, tzinfo=datetime.timezone.utc)
@@ -265,8 +267,9 @@ def test_with_no_day_given_the_utc_day_is_counted(world, monkeypatch):
             if tz is datetime.timezone.utc:
                 return utc_now
             return (utc_now - datetime.timedelta(hours=6)).replace(tzinfo=None)
-    monkeypatch.setattr(gateway, "datetime", types.SimpleNamespace(
-        datetime=Clock, timezone=datetime.timezone))
+    monkeypatch.setattr(calls, "datetime", types.SimpleNamespace(
+        datetime=Clock, timezone=datetime.timezone, timedelta=datetime.timedelta,
+        date=datetime.date, time=datetime.time))
     days = _spent(monkeypatch, 0.0)
     world.answer = _answer('{"echo": "w"}')
     _ask(world, today=None)

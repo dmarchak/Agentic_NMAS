@@ -90,11 +90,12 @@ intent is only onboarding's bootstrap has no Edit: seed it first. See
 [Edit a device's intent](edit-intent).
 
 **Change it in words** (marked **AI**), above the document, drafts a change from a sentence
-("shut GigabitEthernet4", "add VLAN 40 named LAB") and shows it in the editor's own preview:
-the changes in words, what they change, what a deploy would send, the checks. Nothing is
-written: the draft is not committed yet, so make the change with **Edit**. It changes this
-device only, and only the interfaces, VLANs and networks your sentence names. See
-[Change it in words](intent-in-words).
+("shut G4", "describe the host port as desk 4", "add VLAN 40 named LAB") and shows it in the
+editor's own preview: how your words were read, the changes, what a deploy would send, the
+checks. When a name could mean several ports, it asks which first. Nothing is written until
+you press **Commit this draft** (or **Commit and plan deploy**, which opens the deploy
+preview next); **Discard draft** drops it. It changes this device only, and only the
+interfaces, VLANs and networks your sentence names. See [Change it in words](intent-in-words).
 
 ## History {#history-tab}
 

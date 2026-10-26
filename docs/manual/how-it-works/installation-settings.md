@@ -102,7 +102,11 @@ refused, saying so. It is off
 until a person allows it. Every call goes through one gateway, which masks what leaves the
 host, refuses a call over a cap before sending it, and records it under **History › AI calls**
 (the feature, the model, the verdict, the cost, who asked). **Spent today** is the day's total
-from that record (UTC); a record that cannot be read refuses every call. The card's **Test**
+from that record; a record that cannot be read refuses every call. The day begins at midnight
+in the zone **The day begins at** names, beside the cap: UTC unless set, or a time zone's name
+such as America/Denver, its daylight-saving changes followed. **Spent today** says when the
+count starts again, "resets 18:00 MDT (00:00 UTC)": your own time first, from your browser,
+and UTC's beside it. It is the same instant the gateway counts by. The card's **Test**
 is one small, real call: the model is given a word Mercury chose and must give it back, so a
 passing Test means the allowance, the key, the mask, the caps, the model and the record all
 held. It costs a fraction of a cent and is recorded like any call.
@@ -123,7 +127,8 @@ hidden, but disabled, its box not fillable, and the reason is written under it:
 - **hosted AI is off**: allow it on this card, with a reason;
 - **no Anthropic API key is set**: a person types it with **Replace…** on this card;
 - **today's AI spend plus this task's cap per call is over the day cap**: both amounts and the
-  cap are named; the day starts again at 00:00 UTC, or the cap per day can be raised here;
+  cap are named, with when the day's count resets (your time, and UTC's), or the cap per day
+  can be raised here;
 - **the record of AI calls cannot be read**: today's spend is unknown, so no call is made.
 
 A person who may change settings also sees a link to this card. The path beside each control

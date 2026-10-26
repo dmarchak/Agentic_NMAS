@@ -89,7 +89,8 @@ SCOPES: dict = {
              "records_store_interrupted_holds", "records_store_reader_values",
              "records_store_ai_calls", "records_store_evidence_packs"),
     # Phase 8's gateway (modules/ai): one key, one allowance and two caps for the installation.
-    **_group(HOST, "ai_gateway", "anthropic_api_key", "ai_hosted", "ai_cap_usd_per_day"),
+    **_group(HOST, "ai_gateway", "anthropic_api_key", "ai_hosted", "ai_cap_usd_per_day",
+           "ai_cap_day_boundary"),
     # Retiring by expand, then contract (the operator, 2026-10-25: a call's cap is its task's,
     # derived from its pinned model): read by nothing from this release, declared for one
     # more so the previous release still reads it, then removed.

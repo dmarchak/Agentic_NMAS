@@ -529,8 +529,10 @@ def moved(repo: str, hostname: str, base: str, current: str, text: str) -> dict:
 
 
 def commit(list_name: str, hostname: str, text: str, summary: str, base: str,
-           actor: str) -> dict:
-    """Commit an edit to *hostname*'s intent as *actor*, bound to the version opened."""
+           actor: str, *, source: str = SOURCE, extra_trailers: list = None) -> dict:
+    """Commit an edit to *hostname*'s intent as *actor*, bound to the version opened.
+    *source* and *extra_trailers* name the workflow (feature 7's draft commits as
+    ``ai-draft`` with its ``AI-Call:``); a typed edit is ``intent-edit``."""
     from modules.nsot import hostvars, repo as repo_service
 
     repo = _repo_for(list_name)
@@ -571,8 +573,9 @@ def commit(list_name: str, hostname: str, text: str, summary: str, base: str,
             return {"status": 400, "ok": False, "error": str(exc)}
         except ValueError as exc:
             return {"status": 400, "ok": False, "error": str(exc)}
-        result = repo_service.save_host_vars(list_name, [hostname], actor=actor, source=SOURCE,
-                                             message=f"host_vars: {hostname} {summary}")
+        result = repo_service.save_host_vars(list_name, [hostname], actor=actor, source=source,
+                                             message=f"host_vars: {hostname} {summary}",
+                                             extra_trailers=extra_trailers)
         after = hostvars.committed_blob(repo, hostname)
     return {"status": 200, "ok": result.get("ok", False), "hostname": hostname,
             "changed": bool(result.get("commit")), "commit": result.get("commit", ""),

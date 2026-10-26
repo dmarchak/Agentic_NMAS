@@ -27,7 +27,7 @@ Shots: each board at 1440; the page at 1440, 1280 and 390 in six states (`tab-in
 `tab-intent-departs` (C884) at 1440.
 Compared 2026-10-16.
 Templates compared: templates/v2/_intent.html, templates/v2/_intent_edit.html, templates/v2/_intent_check.html, templates/v2/_intent_words.html
-Templates sha256: `91ee38590f13ff5f43224862e60ebe3b5d999643989b1730e746cafb31d93162`
+Templates sha256: `83d13c05b9150e6145fd0e0df0f2da0705ddfe03d867747cdbf83b56f7aa9862`
 
 Compared again 2026-10-17 (C1023) after "Open (commit) with your edit on it" (`_intent_edit.html`)
 and Write the ticked lines into the document (`_intent_check.html`) became busy on themselves
@@ -64,6 +64,33 @@ row drawn and then a sentence drafted (hosted AI allowed, the adapter answering 
 - Every other region of this record rendered as before; the row adds no control to the
   editor's own card. No other region's verdict changed.
 Templates sha256 before: `5f031cd1606d366b6d41d2f97beeda3250dc19fd44cee44a1a584f56e26451b7`.
+
+Compared again 2026-10-26 (feature 7's parts 1 and 2; board F7 redrawn under the Phase 7 mode,
+canvas versions 146 and 147). `_intent_words.html` gained how the names were read, Mercury's
+question with its candidates, a name the device lacks with its interfaces, "Already so"
+(C1771), and the commit: Why, in one line; Commit this draft; Commit and plan deploy; Discard
+draft; and the committed and refused results. Shots: `tests/test_board_shots.py::
+test_tab_intent_words` on the host's real committed s1 (its walk: drafted from shorthand, a
+name s1 lacks, which host port, the choice drafted, committed), at 1440, 1280 and 390, beside
+F7 at 1440.
+- **How your words were read** (F7 1): each phrase, the name it resolved to and how; and when
+  the Topology read could not be used, that sentence too. **same**.
+- **Which one** (F7 7): the question from s1's own intent, no call, the candidates as buttons
+  named by their descriptions, and Both. **same**.
+- **Not found** (F7 8): a name s1 lacks, its interfaces as buttons (every one, where F7 draws
+  four and "…"), and s1's neighbours linked. **same**.
+- **The footer** (F7 1): Why, in one line, starting from the sentence; Commit this draft and
+  Commit and plan deploy, each with its (i); Discard draft. **same**; the earlier **later**
+  closes.
+- **Committed** (F7 1b): the commit, as whom, Source ai-draft with the call linked, nothing
+  sent, Plan deploy… and its (i). The row keeps your words in the box, where F7 draws it
+  empty. **deviation** (log: F7 committed: the words kept).
+- **Not committed** (F7 1c), **Already so** (F7 1e): their tests are
+  tests/test_ai_intent_change.py's (moved intent, a differing patch, the no-op draft); not
+  shot. **same** by their rendered text.
+- Board 5 now draws C1770's behaviour (another device's name is words; a draft changing it is
+  refused, naming it). **same**.
+Templates sha256 before: `91ee38590f13ff5f43224862e60ebe3b5d999643989b1730e746cafb31d93162`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).

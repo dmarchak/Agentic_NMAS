@@ -787,6 +787,11 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .iw-row input.lq-words-in { flex: 1 1 18rem; min-width: 0; }
 .iw-draft { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 12px; }
 .iw-ops { margin: 0; padding-left: 20px; font-size: 13px; }
+.iw-read { margin: 0; padding-left: 20px; font-size: 13px; overflow-wrap: anywhere; }
+.iw-pick { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.iw-commit { display: flex; flex-direction: column; gap: 6px; padding-top: 10px; border-top: 1px solid var(--line-2); }
+.iw-commit .lq-line { flex-wrap: wrap; }
+.iw-commit .lq-words-in { flex: 1 1 100%; }
 /* An AI call opened (15.14): its own full line under the row's links, never wider than the
    row (a flex item grows to its content, and one long line of a prompt widened the page to
    10,634 px); the prompt's prose wraps, the bytes unchanged. */

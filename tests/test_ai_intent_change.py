@@ -200,6 +200,162 @@ def test_on_a_tab_an_answer_changing_the_device_named_in_words_is_refused(world)
     assert not got.get("previews") and _committed("s1") == before
 
 
+# ── part 1 on the tab: names resolved before any call ───────────────────────────────────
+
+WALK = "Set the description on the host port to 'walk F7 test'"
+
+
+def _post(host, data):  # noqa: F811
+    from html import unescape
+    r = host["client"].post("/v2/device/s1/intent/words?list=Lab", data=data,
+                            headers={"HX-Request": "true"})
+    return r, unescape(r.get_data(as_text=True))
+
+
+def test_the_walk_s_sentence_asks_which_host_port_before_any_call(world, host):  # noqa: F811
+    r, html = _post(host, {"words": WALK})
+    assert r.status_code == 200
+    assert "s1 has 2 host ports (an access port, enabled, with no managed neighbour); which one?" \
+        in html
+    for label in ("GigabitEthernet1/0 (h1 - VLAN 10)", "GigabitEthernet1/1 (h2 - VLAN 20)",
+                  "Both"):
+        assert f'<span class="op-idle">{label}</span>' in html, label
+    assert 'name="phrase" value="the host port"' in html and f'value="{WALK}"' in html
+    assert world.sent == [] and calls.read()["rows"] == [], "no call, nothing spent"
+
+
+def test_the_choice_continues_the_draft_and_the_model_gets_resolved_names_only(world, host):  # noqa: F811
+    world.answer = _answer(("s1", [_op("set_description", interface="GigabitEthernet1/0",
+                                       description="walk F7 test")]))
+    r, html = _post(host, {"words": WALK, "phrase": "the host port",
+                           "pick": "GigabitEthernet1/0"})
+    assert "Drafted from your words" in html, html[:800]
+    assert "How your words were read" in html
+    assert ('<q>the host port</q> → <span class="mono">GigabitEthernet1/0</span> '
+            '<span class="muted">(by role)</span>') in html
+    sent = world.sent[-1]["bytes"]
+    assert "GigabitEthernet1/0" in sent and "host port" not in sent, "resolved names only"
+    assert "description walk F7 test" in html, "the editor's preview of the change"
+
+
+def test_a_name_the_device_lacks_lists_its_interfaces_and_links_neighbours(world, host):  # noqa: F811
+    r, html = _post(host, {"words": "shut Gi9/9"})
+    assert "Not found:</strong> s1 has no interface Gi9/9" in html
+    assert '<span class="op-idle">GigabitEthernet1/0 (h1 - VLAN 10)</span>' in html
+    assert "/v2/device/s1?tab=neighbours" in html
+    assert world.sent == []
+
+
+def test_a_draft_that_changes_no_configuration_line_says_already_so(world, host):  # noqa: F811
+    """C1771: "bring Gi0/1 up" on an interface already up drafts an explicit `no shutdown`,
+    which no configuration line shows: already so, and no check offered."""
+    world.answer = _answer(("s1", [_op("no_shutdown", interface="GigabitEthernet0/1")]))
+    r, html = _post(host, {"words": "bring Gi0/1 up"})
+    assert "Already so:" in html and "nothing to commit" in html, html[:800]
+    assert 'class="ie-col"' not in html, "the editor's check is not offered"
+
+
+# ── part 2: commit a drafted change ──────────────────────────────────────────────────────
+
+def _drafted(world, host):  # noqa: F811
+    """The walk's draft through the tab's own routes (Gi1/0 chosen): the commit form's hidden
+    fields, read from the raw page and unescaped."""
+    import html as H
+    import re
+    world.answer = _answer(("s1", [_op("set_description", interface="GigabitEthernet1/0",
+                                       description="walk F7 test")]))
+    r = host["client"].post("/v2/device/s1/intent/words?list=Lab", data={
+        "words": WALK, "phrase": "the host port", "pick": "GigabitEthernet1/0"},
+        headers={"HX-Request": "true"})
+    raw = r.get_data(as_text=True)
+    form = raw.split('class="iw-commit"', 1)[1].split("</form>", 1)[0]
+    fields = {m.group(1): H.unescape(m.group(2))
+              for m in re.finditer(r'<input type="hidden" name="([a-z_]+)" value="([^"]*)"', form)}
+    assert set(fields) == {"call_id", "base", "patch", "words"}, fields
+    return dict(fields, summary="walk F7 test on the host port")
+
+
+def _commit(host, fields, **headers):  # noqa: F811
+    from html import unescape
+    r = host["client"].post("/v2/device/s1/intent/words/commit?list=Lab", data=fields,
+                            headers=dict({"HX-Request": "true"}, **headers))
+    return r, unescape(r.get_data(as_text=True))
+
+
+def _git(host, *args):  # noqa: F811
+    import subprocess
+    return subprocess.run(["git", "-C", host["repo"], *args], capture_output=True, text=True,
+                          check=True).stdout
+
+
+def test_a_draft_commits_with_its_trailers_and_the_links_both_ways(world, host):  # noqa: F811
+    fields = _drafted(world, host)
+    before = _committed("s1")
+    r, html = _commit(host, fields)
+    assert r.status_code == 200 and "Committed to s1's intent:" in html, html[:800]
+    assert _committed("s1") != before
+    assert "description: walk F7 test" in intent_words_doc("s1")
+    message = _git(host, "log", "-1", "--format=%B")
+    for trailer in ("Source: ai-draft", f"AI-Call: {fields['call_id']}", "Actor: "):
+        assert trailer in message, (trailer, message)
+    assert message.startswith("host_vars: s1 walk F7 test on the host port")
+    sha = _git(host, "rev-parse", "HEAD").strip()
+    (use,) = [u for u in calls.uses()[fields["call_id"]] if u["use"] == "committed to intent"]
+    assert use["detail"] == f"commit {sha[:12]} to s1's intent", use
+    assert f"/v2/history?call={fields['call_id']}" in html, "the result links its call"
+    page = host["client"].get("/v2/device/s1?tab=history&list=Lab").get_data(as_text=True)
+    assert "Open the AI call that drafted it" in page, "the commit's row links back"
+    assert f"call={fields['call_id']}" in page
+
+
+def test_commit_and_plan_deploy_opens_the_deploy_preview_and_confirms_nothing(world, host):  # noqa: F811
+    fields = dict(_drafted(world, host), plan="1")
+    r, _html = _commit(host, fields)
+    assert r.status_code == 204
+    assert r.headers["HX-Redirect"] == "/v2/device/s1?tab=intent&op=deploy&list=Lab"
+
+
+def test_a_patch_other_than_the_drafted_one_is_refused_writing_nothing(world, host):  # noqa: F811
+    fields = _drafted(world, host)
+    before = _committed("s1")
+    fields["patch"] = fields["patch"].replace("walk F7 test", "something else")
+    r, html = _commit(host, fields)
+    assert r.status_code == 409 and "this is not the drafted change" in html, html[:800]
+    assert _committed("s1") == before
+
+
+def test_intent_moved_since_the_draft_is_refused_naming_it(world, host):  # noqa: F811
+    from modules.nsot import intent_patch
+    fields = _drafted(world, host)
+    moved = intent_patch.commit("Lab", "s1", {"hostname": "s1", "operations": [
+        {"op": "set_description", "interface": "GigabitEthernet0/1",
+         "description": "moved meanwhile"}]}, "a change made meanwhile",
+        _committed("s1"), "someone@example.com")
+    assert moved["ok"] and moved["commit"]
+    after = _committed("s1")
+    r, html = _commit(host, fields)
+    assert r.status_code == 409 and "Not committed:" in html, html[:800]
+    assert _committed("s1") == after, "nothing written over the change made meanwhile"
+
+
+def test_a_service_cannot_commit_a_draft(world, host, monkeypatch):  # noqa: F811
+    from modules import identity
+    fields = _drafted(world, host)
+    svc = identity.Identity(actor="service:abc.access", kind="service", service_id="abc.access",
+                            verified=True, outcome="ok", peer="198.51.100.7", peer_trusted=True,
+                            header_present=True)
+    before = _committed("s1")
+    monkeypatch.setattr(identity, "identify", lambda _r: svc)
+    r = host["client"].post("/v2/device/s1/intent/words/commit?list=Lab", json={})
+    assert r.status_code == 403 and (r.get_json(silent=True) or {}).get("requires_person")
+    assert _committed("s1") == before
+
+
+def intent_words_doc(name):
+    from modules.nsot import intent_edit
+    return intent_edit.open_doc("Lab", name)["yaml"]
+
+
 # ── the stale-expectation check (the operator, 2026-10-26; C1770's premises) ─────────────
 
 def _case(sentence, outcome, ops, said=None, device="s1"):
@@ -230,6 +386,28 @@ def test_a_stale_expectation_is_found_by_the_real_path_with_no_call(world, case,
     got = intent_words.stale("Lab", case)
     assert len(got) == 1 and words in got[0], got
     assert world.sent == [] and calls.read()["rows"] == [], "no call, nothing spent"
+
+
+def test_part_1_s_cases_hold_on_the_real_s1_with_its_measured_neighbours(world, monkeypatch):
+    """Every case of names.json is fresh against s1 as committed, its neighbours as the host's
+    Topology read measured them (tests/test_ai_intent_names.py's NEIGHBOURS): the cases agree
+    with the resolver before any call is spent. Control: a case expecting the wrong port."""
+    import os
+    from modules.ai import cases, intent_names
+    from tests.test_ai_intent_names import NEIGHBOURS
+    monkeypatch.setattr(intent_names, "neighbours_of", lambda network, device: NEIGHBOURS)
+    monkeypatch.setattr(intent_names, "_devices", lambda network: {
+        "r1": "router", "s1": "switch", "s2": "switch"})
+    data = cases.load(os.path.join(os.path.dirname(__file__), "fixtures", "ai_cases",
+                                   "intent_patch", "names.json"))
+    assert [p for c in data["cases"] for p in intent_words.stale("Lab", c)] == []
+    wrong = dict(data["cases"][5], resolves={"the uplink": ["GigabitEthernet0/3"]})
+    (problem,) = intent_words.stale("Lab", wrong)
+    assert "expects 'the uplink' to resolve to ['GigabitEthernet0/3']" in problem
+    asks = dict(data["cases"][9], expect={"outcome": ["choose"],
+                                          "candidates": ["GigabitEthernet1/0"]})
+    assert "the case expects Mercury to ask which of" in intent_words.stale("Lab", asks)[0]
+    assert world.sent == []
 
 
 @pytest.mark.parametrize("case", [

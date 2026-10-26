@@ -102,6 +102,13 @@
 </form>
 {%- endmacro %}
 
+{#- When the AI day cap's counter turns over (`calls.reset_info`): the viewer's own time, drawn
+    from the instant in the browser (nmas_v2.js `drawClock`; the boundary zone's time until it
+    runs), and UTC's beside it. One instant, the one the counter uses. -#}
+{% macro resets(r) -%}
+resets <time class="clock" datetime="{{ r.at }}" data-clock title="the cap's day begins at midnight {{ r.zone }} (Settings › Installation, AI (hosted))">{{ r.zone_hm }} {{ r.zone }}</time> ({{ r.utc }} UTC)
+{%- endmacro %}
+
 {% macro stamp(iso, words='', note='') -%}
 {%- if iso %}<time class="stamp" datetime="{{ iso }}" title="{{ iso }}{{ ' · ' ~ note if note }}" data-age="{{ iso }}">{{ words or (iso | age_words) }}</time>{% else %}<span class="stamp">not recorded</span>{% endif -%}
 {%- endmacro %}

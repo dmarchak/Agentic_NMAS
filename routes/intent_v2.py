@@ -9,6 +9,7 @@ with its reason, bound to the version opened. Every step is `modules/nsot/intent
 path carries its list), never the installation's active one. Nothing here contacts a device.
 """
 
+import json
 import logging
 
 from flask import Blueprint, render_template, request
@@ -65,7 +66,8 @@ def edit(name):
 
 #: A draft's preview keys the row draws: `_intent_words.html`'s and the intent editor's check
 #: partial's (`_intent_check.html`), and no others.
-_DRAFT_DRAWN = ("changed", "changes", "device_keeps", "message", "yaml", "blocking_reasons",
+_DRAFT_DRAWN = ("changed", "changes", "device_keeps", "message", "yaml", "vs_intent_changed",
+                "blocking_reasons",
                 "column", "deployable", "diffs", "document_changed", "error", "intent_note",
                 "line", "masked_not_compared", "ok", "rendered", "template", "unmodelled")
 #: Of its `diffs`, what the check partial reads (`d.*`), with the golden's sha and time and each
@@ -105,17 +107,67 @@ def words(name):
     ref, dev = found
     host = dev.get("hostname", "")
     sentence = request.form.get("words", "")
+    # The person's answer to Mercury's own question (part 1): which of the candidates a
+    # reference or an unknown name means, "*" for every one; it continues the same draft.
+    phrase, chosen = request.form.get("phrase", ""), request.form.getlist("pick")
+    picks = {phrase: "*" if "*" in chosen else chosen} if phrase and chosen else None
     got = intent_words.change(ref.name, sentence, actor=identity.request_actor(),
-                              devices=[host])
+                              devices=[host], picks=picks)
     pin = profiles.TASKS.get(intent_words.FEATURE) or {}
     model = f"{profiles.profile(pin['model'])['words']}, {pin['model']}" if pin else ""
     # What the row draws, and only that (every carried field is drawn): the answer in words,
-    # and each preview as the editor's check partial reads it (the patch and its base, which
-    # a commit will carry, are not drawn here).
-    w = {k: got[k] for k in ("ok", "error", "detail", "clarify", "by", "cost_usd") if k in got}
+    # how the names were read, Mercury's question or the unknown name with the device's
+    # interfaces, and each preview as the editor's check partial reads it (the patch and its
+    # base, which a commit will carry, are not drawn here).
+    w = {k: got[k] for k in ("ok", "error", "detail", "clarify", "by", "cost_usd",
+                             "resolutions", "resolution_said", "choose", "unknown", "call_id")
+         if k in got}
     w["previews"] = [_drawn(p) for p in got.get("previews") or []]
+    for drawn, p in zip(w["previews"], got.get("previews") or []):
+        if p.get("draft"):
+            # Part 2: what Commit this draft posts back, exactly as drafted (its digest is on
+            # the call's use row, so a commit handed anything else is refused).
+            drawn.update(draft=p["draft"], base=p.get("base", ""),
+                         patch_json=json.dumps(p.get("patch"), sort_keys=True))
     return _strict(render_template("v2/_intent_words.html", host=host,
                                    w=dict(w, sentence=sentence, model=model)))
+
+
+@bp.route("/<name>/intent/words/commit", methods=["POST"])
+def words_commit(name):
+    """Commit this draft (feature 7's part 2): the drafted patch committed to THIS device's
+    intent by the verified person, through the intent editor's write path, as ``Source:
+    ai-draft`` with the call's ``AI-Call:`` (`intent_words.commit_draft`): refused when the
+    intent moved since the draft or the patch is not the one drafted. With ``plan``, the deploy
+    preview opens next (the existing path: preview, confirm by hash, apply, verify, rollback),
+    never confirmed for the person. Nothing reaches the device here."""
+    from modules import identity
+    from modules.ai import intent_words
+
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    host = dev.get("hostname", "")
+    actor = identity.request_actor()
+    call_id = request.form.get("call_id", "")
+    got = intent_words.commit_draft(ref.name, host, call_id, request.form.get("patch", ""),
+                                    request.form.get("base", ""), request.form.get("summary", ""),
+                                    actor)
+    if got.get("ok") and got.get("commit") and request.form.get("plan") == "1":
+        from flask import make_response, redirect, url_for
+        plan = url_for("device_v2.device", name=host, tab="intent", op="deploy", list=ref.name)
+        if request.headers.get("HX-Request"):
+            resp = make_response("", 204)
+            resp.headers["HX-Redirect"] = plan
+            return resp
+        return redirect(plan)
+    # The row again, saying what happened: the commit (and Plan deploy… next), or why not.
+    w = {"committed": {k: got.get(k) for k in ("ok", "commit", "changed", "error", "stage",
+                                                "message") if k in got},
+         "call_id": call_id, "actor": actor, "sentence": request.form.get("words", "")}
+    return _strict(render_template("v2/_intent_words.html", host=host, w=w),
+                   200 if got.get("ok") else got.get("status", 400))
 
 
 @bp.route("/<name>/intent/check", methods=["POST"])

@@ -253,12 +253,18 @@ PROMPT = ("intent_change", 1)
 STEPS = (
     ("scope", "the device, and the interfaces, VLANs and networks the sentence names, read by "
               "code; a sentence naming none stops there with nothing sent"),
-    ("ask", "one recorded, capped call through the AI gateway, as the person who asked, with "
+    ("resolve", "the names as people say them, resolved by code against the device's intent "
+                "and neighbours (G1/0, the host port, the uplink to edge1); several matches ask "
+                "which, none says so with the device's interfaces, all before any call"),
+    ("ask","one recorded, capped call through the AI gateway, as the person who asked, with "
             "only the named parts' current values"),
     ("check", "the draft refused before any preview if it changes what the sentence did not "
               "name; the patch's own rules then hold"),
     ("preview", "the intent editor's own preview: what the change does, what a deploy would "
                 "send, its checks; nothing is written"),
+    ("commit", "the person commits the draft exactly as drafted (refused if the intent moved "
+               "or the patch differs), as Source: ai-draft with its AI-Call; Commit and plan "
+               "deploy opens the deploy preview, never confirmed for them"),
 )
 
 
@@ -299,15 +305,18 @@ def scope_of(list_name: str, sentence: str, devices: list = None) -> dict:
 
 
 def change(list_name: str, sentence: str, *, actor: str, send=None, today: str = None,
-           devices: list = None) -> dict:
-    """``{"ok", "error", "detail", "previews", "call_id", "cost_usd", ...}``: *sentence* made a
-    patch per device it changes, each previewed by the intent editor (nothing written); or one
-    question back, or a refusal naming why, with nothing previewed. *devices* limits the scope
-    (a device's Intent tab). Mercury answers itself, with no call and nothing spent, when the
-    sentence names no device in scope or nothing to change."""
-    from modules.ai import calls, gateway
+           devices: list = None, picks: dict = None) -> dict:
+    """``{"ok", "error", "detail", "previews", "call_id", "cost_usd", "resolutions", ...}``:
+    *sentence* made a patch per device it changes, each previewed by the intent editor
+    (nothing written); or one question back, or a refusal naming why, with nothing previewed.
+    *devices* limits the scope (a device's Intent tab). On a tab the device's names are
+    resolved first (`intent_names.resolve`: shorthand and references), so the model is given
+    the device's own names only; *picks* is the person's answer to Mercury's own question
+    about which one. Mercury answers itself, with no call and nothing spent, when the sentence
+    names no device in scope or nothing to change, when a reference matches several and the
+    person must choose ("choose"), or when it matches nothing or names an interface the device
+    lacks ("no_such_interface")."""
     from modules.ai.nl_query import QUESTION_MAX
-    from modules.nsot import intent_patch
 
     sentence = " ".join((sentence or "").split())
     if not sentence:
@@ -319,7 +328,56 @@ def change(list_name: str, sentence: str, *, actor: str, send=None, today: str =
     scope = scope_of(list_name, sentence, devices)
     if not scope["ok"]:
         return dict(scope, by="mercury", call_id="", cost_usd=0.0)
-    named, t = scope["named"], touched(sentence)
+    named = scope["named"]
+    resolved = {"sentence": sentence, "resolutions": [], "said": []}
+    if devices and len(named) == 1:
+        resolved = resolve_names(list_name, named[0], sentence, picks)
+        if resolved.get("refusal"):
+            return resolved["refusal"]
+    extra = {"words": sentence, "sent": resolved["sentence"],
+             "resolutions": resolved["resolutions"], "resolution_said": resolved["said"]}
+    return dict(_drafted(list_name, resolved["sentence"], named, actor=actor, send=send,
+                         today=today), **extra)
+
+
+def resolve_names(list_name: str, device: str, sentence: str, picks: dict = None) -> dict:
+    """*sentence*'s names on *device* resolved against its committed intent and neighbours:
+    ``{"sentence", "resolutions", "said"}``, or ``{"refusal": <change's answer>}`` when the
+    person must choose or a name resolves to nothing. A device with no committed intent is
+    left as written: the slice says so after (`slices`)."""
+    from modules.ai import intent_names
+    from modules.nsot import hostvars, intent_edit
+
+    opened = intent_edit.open_doc(list_name, device)
+    if not opened["ok"]:
+        return {"sentence": sentence, "resolutions": [], "said": []}
+    try:
+        doc = hostvars.from_yaml(opened["yaml"]) or {}
+    except Exception:                                   # noqa: BLE001 (`slices` says it)
+        return {"sentence": sentence, "resolutions": [], "said": []}
+    got = intent_names.resolve(list_name, device, doc, sentence, picks)
+    mercury = {"ok": False, "by": "mercury", "call_id": "", "cost_usd": 0.0, "words": sentence,
+               "resolutions": got["resolutions"], "resolution_said": got["said"]}
+    if got["ask"]:
+        a = got["ask"]
+        return {"refusal": dict(mercury, error="choose", choose=a, detail=(
+            f"one question first, from {device}'s own intent: {a['question']}"))}
+    if got["unknown"]:
+        u = got["unknown"]
+        return {"refusal": dict(mercury, error="no_such_interface", unknown=u, detail=(
+            f"{u['why']}; choose one of its interfaces, or see its neighbours; nothing was "
+            "sent"))}
+    return {"sentence": got["sentence"], "resolutions": got["resolutions"],
+            "said": got["said"]}
+
+
+def _drafted(list_name: str, sentence: str, named: list, *, actor: str, send, today) -> dict:
+    """`change` from the resolved *sentence* on: the touched sections, the call, and the
+    answer converted, scope-checked and previewed."""
+    from modules.ai import calls, gateway
+    from modules.nsot import intent_patch
+
+    t = touched(sentence)
     if nothing_named(t):
         return {"ok": False, "error": "nothing_named", "by": "mercury", "call_id": "",
                 "cost_usd": 0.0, "named": named, "detail": (
@@ -365,12 +423,74 @@ def change(list_name: str, sentence: str, *, actor: str, send=None, today: str =
     previews = [dict(intent_patch.preview(list_name, p.hostname, p), hostname=p.hostname)
                 for p in made["patches"]]
     refused = [p for p in previews if not p.get("ok")]
+    for p in previews:
+        # What a commit of this draft must be handed exactly (part 2): its digest is on the
+        # call's use row, so a commit of any other patch, or on any other version, is refused.
+        if p.get("ok") and p.get("changed") and p.get("vs_intent_changed", True):
+            p["draft"] = draft_digest(p["hostname"], p.get("patch"), p.get("base"))
     calls.record_use(asked["call_id"], "refused by the intent" if refused else
                      "previewed in the intent editor", actor=actor,
                      detail="; ".join(f"{p['hostname']}: {p.get('error', '')}"
-                                      for p in refused)[:200], links=links)
+                                      for p in refused)[:200], links=links,
+                     drafts=[p["draft"] for p in previews if p.get("draft")])
     return dict(base, ok=not refused, error="intent" if refused else "", previews=previews,
                 detail="; ".join(f"{p['hostname']}: {p.get('error', '')}" for p in refused))
+
+
+#: The Source: of an intent commit made from a draft (part 2); the call is its AI-Call:.
+DRAFT_SOURCE = "ai-draft"
+
+
+def draft_digest(hostname: str, patch, base: str) -> str:
+    """What a draft offers to commit, as one digest: the device, the patch exactly (its JSON,
+    keys sorted) and the version of the intent it was previewed on."""
+    import hashlib
+    text = json.dumps({"hostname": hostname, "patch": patch, "base": base or ""},
+                      sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def commit_draft(list_name: str, hostname: str, call_id: str, patch_text: str, base: str,
+                 summary: str, actor: str) -> dict:
+    """Commit a drafted change (part 2) as *actor*, through the intent editor's own write path
+    (`intent_patch.commit`: refused when the intent moved since the draft, and without the
+    person's one line), as ``Source: ai-draft`` with ``AI-Call: <call_id>``. Refused before
+    anything is written unless *patch_text* and *base* are exactly a draft that call offered
+    (its digest on the call's use row), naming both digests. Its use row records the commit,
+    so the call's History row links to it, and the commit's trailer links back."""
+    from modules.ai import calls
+    from modules.nsot import intent_patch
+
+    def refused(status, stage, why):
+        return {"ok": False, "status": status, "stage": stage, "error": why}
+
+    try:
+        patch = json.loads(patch_text or "")
+    except ValueError:
+        return refused(400, "patch", "the draft's patch could not be read; draft it again")
+    found = calls.find(call_id or "")
+    if found["state"] != "ok":
+        return refused(404 if found["state"] == "absent" else 503, "call", (
+            f"the AI call {call_id[:40]!r} that drafted this is not in the record of AI calls"
+            + (f" ({found['error']})" if found.get("error") else "") + "; nothing was written"))
+    if hostname not in ((found["row"].get("subject") or {}).get("devices") or []):
+        return refused(409, "call", f"the AI call {call_id} drafted no change to {hostname}; "
+                                    "nothing was written")
+    handed = draft_digest(hostname, patch, base)
+    drafted = [d for u in found["uses"] for d in u.get("drafts") or []]
+    if handed not in drafted:
+        return refused(409, "differs", (
+            f"this is not the drafted change: the call {call_id} drafted "
+            + (", ".join(d[:12] for d in drafted) or "nothing to commit")
+            + f", and this commit was handed {handed[:12]} (the patch or the version of "
+            f"{hostname}'s intent differs); nothing was written. Draft it again"))
+    got = intent_patch.commit(list_name, hostname, patch, summary, base, actor,
+                              source=DRAFT_SOURCE, extra_trailers=[f"AI-Call: {call_id}"])
+    if got.get("ok") and got.get("commit"):
+        calls.record_use(call_id, "committed to intent", actor=actor,
+                         detail=f"commit {got['commit'][:12]} to {hostname}'s intent",
+                         links={"page": f"/v2/device/{hostname}?tab=history"})
+    return got
 
 
 def stale(list_name: str, case: dict) -> list:
@@ -392,6 +512,27 @@ def stale(list_name: str, case: dict) -> list:
     opened = intent_edit.open_doc(list_name, device)
     if not opened["ok"]:
         return [f"{where}: no committed intent to judge it against: {opened['error']}"]
+    # Part 1: the names resolved now, as the recording will resolve them (the case's own
+    # choice given); a reference expects the current resolution.
+    resolved = resolve_names(list_name, device, case.get("sentence") or "", case.get("picks"))
+    refusal = resolved.get("refusal") or {}
+    if "choose" in allowed:
+        got = [c["name"] for c in (refusal.get("choose") or {}).get("candidates") or []]
+        if refusal.get("error") != "choose" or got != expect.get("candidates", got):
+            return [f"{where}: the case expects Mercury to ask which of "
+                    f"{expect.get('candidates')}, and the names now resolve to "
+                    f"{got or [r['to'] for r in resolved.get('resolutions') or []]}"]
+        return []
+    if refusal:
+        if "mercury" in allowed and said.get("mercury", "") in refusal.get("detail", ""):
+            return []
+        return [f"{where}: the names do not resolve as the case expects: "
+                f"{refusal.get('detail', '')[:200]}"]
+    for phrase, names in (case.get("resolves") or {}).items():
+        now = next((r["to"] for r in resolved["resolutions"] if r["said"] == phrase), None)
+        if now != names:
+            return [f"{where}: the case expects {phrase!r} to resolve to {names}, and it now "
+                    f"resolves to {now}"]
     if not expect.get("ops") or not ({"answer", "refused_after"} & set(allowed)):
         return []
     blank = {k: (0 if f.annotation is int else "")
@@ -403,7 +544,7 @@ def stale(list_name: str, case: dict) -> list:
     answer = IntentChange.model_validate_json(json.dumps({
         "outcome": "answer", "question": "", "why_not": "",
         "patches": [{"hostname": device, "operations": ops}]}))
-    made = to_patches(answer, {device: touched(case.get("sentence") or "")})
+    made = to_patches(answer, {device: touched(resolved["sentence"])})
     if not made["ok"]:
         return [f"{where}: the expected operations are outside what the sentence names: "
                 f"{made['error']}"]

@@ -17,7 +17,7 @@ Compared again 2026-10-15: each `<details>` keyed (`data-keep`, C472) so a redra
 Compared again 2026-10-15 (board E3): the go links, the query box, the range chips and picker, the actions and the three states moved into `_history_ask_parts.html`, which the metrics builder shares (the rendered page the same but for whitespace, every state rendered before and after and compared); the head's Metrics switch now opens the metrics builder, and Code mode's Builder is a link. The shots at 1440, 1280 and 390 retaken; nothing drawn moved. Two fixes found on the way, neither a region's verdict: the bounds line says no log store is configured where none is (it raised an error page before, reading Loki's unread limits), and the heartbeat stage writes the marker as an RE2 literal, `NMAS-HEARTBEAT` (Python's escape wrote `NMAS\\-HEARTBEAT`, the same lines matched).
 Compared again 2026-10-15 (C818, C819; the operator's decisions of that day): Reveal… built as the board draws it, and Edit as code from Counts ending in Code mode's chart. The page shot at 1440, 1280 and 390 as before, and two more states beside the board's Lines view: `history-ask-logs-reveal-ask-page-<width>` (the box open with a reason) and `history-ask-logs-revealed-page-<width>` (the line revealed), at 1440 and 390, fed by the lines capture with one planted secret-bearing line (tests/test_log_reveal.py). Each masked value is now marked as the board marks it; the bounds line says revealing is recorded, as the board's does.
 Templates compared: templates/v2/history_ask_logs.html, templates/v2/_history_body.html, templates/v2/_history_ask_logs.html, templates/v2/_history_ask_head.html, templates/v2/_history_ask_parts.html, templates/v2/_history_ask_words.html, templates/v2/_ai.html
-Templates sha256: `349c79d5fc231b26e745688fe88c841469002b80489f4da916c422becd603324`
+Templates sha256: `55c06cb14689dd3673f9703d1e011c0920df4a35f828e48f9f4edadff08ae26a`
 
 Compared again 2026-10-15 (P7-03): `_history_body.html` gained a `data-concept` marker and one
 sentence inside a Baselines row's detail (the block drawing each baseline's Re-apply… link); this
@@ -106,6 +106,12 @@ The row's other states are the metrics builder's, the same template, compared in
 docs/fidelity/history-ask-metrics.md. Drawn as the board draws it but the one deviation
 there: the notice spans the card's width, and names the model's id. No template changed; the
 hash stands.
+
+Changed 2026-10-26 (the AI day cap's stated boundary): `_macros.html` gained `resets()`, the
+AI cap's reset time drawn on Settings' AI card and an AI control's day-cap reason; this page
+draws neither (the Ask in words row's reason is `_ai.html`'s, which draws it only when the cap
+refuses). No region changed; the hash written again.
+Templates sha256 before: `349c79d5fc231b26e745688fe88c841469002b80489f4da916c422becd603324`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).

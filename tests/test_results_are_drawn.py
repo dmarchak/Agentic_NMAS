@@ -126,6 +126,10 @@ PAGE_RECORD = {
     # deploy would send now), and the committed intent read back by the Intent tab.
     "intent_v2.commit": ("templates/v2/_intent_edit.html",
                          ("c.state == 'done'", "c.r.commit", "c.actor"), "device_v2.intent"),
+    # Feature 7's part 2: a drafted change committed, drawn in place in the row (the commit,
+    # who, Source ai-draft and its call), and the committed intent read back by the Intent tab.
+    "intent_v2.words_commit": ("templates/v2/_intent_words.html",
+                               ("w.committed", "c.commit", "w.actor"), "device_v2.intent"),
     # Templates on v2 (7.6, boards B and C): the approval and the revocation drawn in place
     # (who, the commit, the evidence or the reason), and the row's approval read back from the
     # committed record by the page.

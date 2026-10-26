@@ -201,6 +201,10 @@ STAGES = {
         "intent_v2.check",
         "base",   # the blob the editor opened; a moved intent is refused naming both
         NO_DEVICE, FORWARD, "modules.nsot.repo.save_host_vars"),
+    # Feature 7's part 2: the draft's digest (device, patch, base) is on its call's use row,
+    # and a commit handed anything else is refused before it writes.
+    "intent_v2.words_commit": Stages(
+        "intent_v2.words", "patch", NO_DEVICE, FORWARD, "modules.nsot.repo.save_host_vars"),
     # The v2 device page's Revert and Retry (7.3, board 11): intent_ops' applies, the list carried.
     "device_v2.revert_confirm": Stages(
         "device_v2.revert", "hash", NO_DEVICE, FORWARD, "modules.nsot.intent_ops.revert_apply"),
@@ -340,6 +344,7 @@ HISTORY = {
     "device_v2.capture_confirm": ("golden", "measured"),
     "onboard_v2.create": ("intent",),
     "intent_v2.commit": ("intent",),
+    "intent_v2.words_commit": ("intent", "ai_calls"),
     "bulk_intent_v2.apply": ("intent",),
     "device_v2.revert_confirm": ("intent",),
     "device_v2.retry_confirm": ("retries",),

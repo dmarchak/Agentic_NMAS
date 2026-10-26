@@ -98,7 +98,7 @@ def record(checkout: str, list_name: str, actor: str, out: str, case_file: str,
         for case in data["cases"]:
             t0 = time.monotonic()
             got = intent_words.change(list_name, case["sentence"], actor=actor,
-                                      devices=[case["device"]])
+                                      devices=[case["device"]], picks=case.get("picks"))
             took = time.monotonic() - t0
             spent += float(got.get("cost_usd") or 0)
             if got.get("error") in STOPS:

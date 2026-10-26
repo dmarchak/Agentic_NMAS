@@ -25,6 +25,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DIR = os.path.join(ROOT, "tests", "fixtures", "ai_cases", "intent_patch")
 RECORDED = cases.load(os.path.join(DIR, "recorded.json"))
 HELD_OUT = cases.load(os.path.join(DIR, "held_out.json"))
+NAMES = cases.load(os.path.join(DIR, "names.json"))
 
 
 def _op(op, **fields):
@@ -42,14 +43,14 @@ def _got(*ops, ok=True, error=""):
 
 # ── the case files ───────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("data,count", [(RECORDED, 20), (HELD_OUT, 10)],
-                         ids=["recorded", "held-out"])
+@pytest.mark.parametrize("data,count", [(RECORDED, 20), (HELD_OUT, 10), (NAMES, 16)],
+                         ids=["recorded", "held-out", "names"])
 def test_each_file_holds_its_cases_on_the_pin_and_the_prompt(data, count):
     assert len(data["cases"]) == count
     assert [c["n"] for c in data["cases"]] == list(range(1, count + 1))
     assert data["model"] == profiles.TASKS[intent_words.FEATURE]["model"]
     assert data["prompt"] == f"{intent_words.PROMPT[0]}.v{intent_words.PROMPT[1]}"
-    allowed = {"answer", "ask", "refuse", "refused_after", "mercury"}
+    allowed = {"answer", "ask", "choose", "refuse", "refused_after", "mercury"}
     for c in data["cases"]:
         assert c["device"] and c["sentence"], c["n"]
         assert set(c["expect"]["outcome"]) <= allowed, c["n"]
@@ -71,7 +72,7 @@ def test_the_recorded_set_holds_each_kind_of_case():
 
 def test_no_case_file_is_recorded_before_its_first_measurement():
     """Written before the first measurement: neither file says it was recorded."""
-    for data in (RECORDED, HELD_OUT):
+    for data in (RECORDED, HELD_OUT, NAMES):
         assert "not yet recorded" in data["about"].lower()
         assert all("recorded" not in c for c in data["cases"])
 

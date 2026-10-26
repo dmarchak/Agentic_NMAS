@@ -1909,17 +1909,41 @@ def test_tab_intent_words(tmp_path, monkeypatch):
     world = F.world.__wrapped__(host, monkeypatch, tmp_path)
     world.answer = F.DESCRIBE
     row = "document.getElementById('intent-words')"
-    draft = ("var i = document.getElementById('iw-words'); "
-             "i.value = 'describe GigabitEthernet0/1 as uplink to edge1'; "
-             "i.form.querySelector('button[type=submit]').click()")
+
+    def words(text):
+        return ("var i = document.getElementById('iw-words'); i.value = " + _json.dumps(text)
+                + "; i.form.querySelector('button[type=submit]').click()")
+
+    def drafted(b):
+        world.answer = F.DESCRIBE
+        b.js(words("describe Gi0/1 as uplink to edge1") + "; return 1")
+
+    def choose(width):
+        def step(b):
+            # Part 1's question answered: the first candidate (GigabitEthernet1/0), drafted;
+            # each width its own words, as the width before committed its own.
+            world.answer = F._answer(("s1", [F._op("set_description",
+                                                   interface="GigabitEthernet1/0",
+                                                   description=f"walk F7 test {width}")]))
+            b.js("document.querySelector('.iw-pick .iw-choice').click(); return 1")
+        return step
+
+    def said(words_):
+        return f"/{words_}/.test({row}.textContent)"
+
     _d_walk("tab-intent-words", None, "", [], boards=(
         ("IntentWords.dc.html", 1440),), widths=((1440, 1.0),))
     with browser.Served(host["app"]) as served:
-        _d_walk("tab-intent-words", served, "/v2/device/s1?tab=intent&list=Lab", [
+        _d_walk("tab-intent-words", served, "/v2/device/s1?tab=intent&list=Lab", lambda w: [
             ("row", None, f"!!{row}"),
-            ("drafted", draft, f"/Drafted from your words/.test({row}.textContent)")],
+            ("drafted", drafted, said("How your words were read")),
+            ("unknown", words("shut Gi9/9"), said("has no interface Gi9\\/9")),
+            ("choose", words(F.WALK), said("which one\\?")),
+            ("picked", choose(w), said("Commit this draft")),
+            ("committed", "document.querySelector('.iw-commit button[type=submit]').click()",
+             said("Committed to s1's intent"))],
             widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
-    assert _json.dumps(world.sent[-1]["body"]).count("uplink to edge1") >= 1
+    assert _json.dumps(world.sent[0]["body"]).count("uplink to edge1") >= 1
 
 
 def test_tab_history(tmp_path, monkeypatch):
