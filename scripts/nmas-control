@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""Run a control, canary or mutation command against the CURRENT state of the checkout, in a
+throwaway worktree, never in the working tree (the operator, 2026-10-26; CLAUDE.md, "Control,
+canary and mutation runs never write to the working tree").
+
+    nmas-control [--keep] -- COMMAND [ARG ...]
+
+1. The current state is snapshotted with `git stash create`: a commit holding the index and the
+   working tree's tracked files, uncommitted edits included, made without touching either (no
+   stash entry is recorded; with nothing changed, HEAD is the snapshot).
+2. `git worktree add --detach <tmp> <snapshot>`, in a fresh temporary folder outside the
+   checkout.
+3. Every untracked file git does not ignore (`git ls-files --others --exclude-standard`) is
+   copied in, so a new file under test is there too.
+4. COMMAND runs there (its working directory the worktree), with PYTHONDONTWRITEBYTECODE=1. A
+   control edits the worktree's copy, never the checkout's.
+5. The worktree is removed (`git worktree remove --force`), whatever COMMAND did; --keep
+   leaves it for reading and says where.
+
+**It never writes to the working tree, and refuses if it would.** An argument naming the
+checkout's own path (a command aimed at the working tree) is refused before anything runs. The
+working tree's state is fingerprinted before and after: every tracked and untracked
+non-ignored file's bytes, and `git status --porcelain`. A difference is said, naming the files,
+and the exit is 3, never 0.
+
+Cost: seconds per run (a worktree of this repository is made and removed in about 2 s).
+Prevents: source overwritten by a restore (2026-10-26: two files named endpoints.py shared one
+backup, and the restore wrote one over the other) and edits discarded by a git restore.
+
+Exit: COMMAND's own exit code; 2 refused before running (no command, an argument naming the
+working tree, not a git checkout); 3 the working tree changed during the run.
+"""
+
+import hashlib
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+sys.path.insert(0, os.path.dirname(HERE))
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+
+def git(root, *args, check=True):
+    r = subprocess.run(["git", "-C", root, *args], capture_output=True, text=True)
+    if check and r.returncode != 0:
+        raise RuntimeError(f"git {' '.join(args)}: {r.stderr.strip() or r.returncode}")
+    return r.stdout
+
+
+def files_of(root) -> list:
+    """Tracked and untracked non-ignored files, relative to *root*."""
+    out = git(root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+    return sorted({p for p in out.split("\0") if p})
+
+
+def fingerprint(root) -> dict:
+    """``{path: sha256 or "absent"}`` over every tracked and untracked non-ignored file, and
+    ``git status --porcelain`` under the key ``:status``."""
+    out = {}
+    for rel in files_of(root):
+        full = os.path.join(root, rel)
+        if os.path.islink(full):
+            out[rel] = "link:" + os.readlink(full)
+        elif os.path.isfile(full):
+            with open(full, "rb") as fh:
+                out[rel] = hashlib.sha256(fh.read()).hexdigest()
+        else:
+            out[rel] = "absent"
+    out[":status"] = git(root, "status", "--porcelain=v1", "--untracked-files=all")
+    return out
+
+
+def snapshot(root) -> str:
+    """The current state as a commit (`git stash create`), or HEAD when nothing changed."""
+    made = git(root, "stash", "create", "nmas-control snapshot").strip()
+    return made or git(root, "rev-parse", "HEAD").strip()
+
+
+def run(argv, root=None, keep=False) -> int:
+    if not argv:
+        print("nmas-control: no command: nmas-control [--keep] -- COMMAND [ARG ...]",
+              file=sys.stderr)
+        return 2
+    try:
+        root = root or git(os.getcwd(), "rev-parse", "--show-toplevel").strip()
+    except RuntimeError as exc:
+        print(f"nmas-control: not in a git checkout ({exc})", file=sys.stderr)
+        return 2
+    real = os.path.realpath(root)
+    # Only an argument that names the checkout itself: a relative path is the worktree's.
+    aimed = [a for a in argv if root in a or real in a]
+    if aimed:
+        print(f"nmas-control: refused: {aimed} names the working tree ({root}); a control "
+              "runs on the worktree's copy, given as a path relative to it", file=sys.stderr)
+        return 2
+    before = fingerprint(root)
+    sha = snapshot(root)
+    tmp = tempfile.mkdtemp(prefix="nmas-control-")
+    tree = os.path.join(tmp, "tree")
+    git(root, "worktree", "add", "--detach", tree, sha)
+    try:
+        for rel in git(root, "ls-files", "-z", "--others", "--exclude-standard").split("\0"):
+            if rel and os.path.isfile(os.path.join(root, rel)):
+                os.makedirs(os.path.dirname(os.path.join(tree, rel)), exist_ok=True)
+                shutil.copy2(os.path.join(root, rel), os.path.join(tree, rel))
+        print(f"nmas-control: running in {tree} (snapshot {sha[:10]}), the working tree "
+              "untouched", file=sys.stderr)
+        code = subprocess.run(argv, cwd=tree,
+                              env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1")).returncode
+    finally:
+        if keep:
+            print(f"nmas-control: kept {tree}; remove it with "
+                  f"`git worktree remove --force {tree}`", file=sys.stderr)
+        else:
+            git(root, "worktree", "remove", "--force", tree, check=False)
+            shutil.rmtree(tmp, ignore_errors=True)
+            git(root, "worktree", "prune", check=False)
+    after = fingerprint(root)
+    if after != before:
+        moved = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
+        print(f"nmas-control: THE WORKING TREE CHANGED during the run: {moved}",
+              file=sys.stderr)
+        return 3
+    return code
+
+
+def main(argv=None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv[:1] in (["-h"], ["--help"]):
+        print(__doc__)
+        return 0
+    keep = False
+    if argv[:1] == ["--keep"]:
+        keep, argv = True, argv[1:]
+    if argv[:1] == ["--"]:
+        argv = argv[1:]
+    return run(argv, keep=keep)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

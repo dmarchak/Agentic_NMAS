@@ -71,6 +71,8 @@ DECLARED = {
     ("scripts/nmas-shards", "changed_paths"): "the APPLICATION's checkout (a pushed range)",
     ("scripts/nmas-rollback", "git"): "the APPLICATION's checkout (a rollback's revert)",
     ("scripts/nmas-rollback", "main"): "the APPLICATION's checkout (the ancestry check)",
+    ("scripts/nmas-control", "git"): "the APPLICATION's checkout (a control's snapshot and "
+                                      "throwaway worktree)",
     ("scripts/nmas-deploy", "git"): "the APPLICATION's checkout on the host",
     ("scripts/nmas-deploy", "read"): "the APPLICATION's checkout on the host",
     ("scripts/nmas-deploy", "offline_verdict"): "the APPLICATION's checkout on the host",

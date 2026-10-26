@@ -6,6 +6,24 @@ the operator sets it back to $1.50. If it is still above $1.50 after Sat 31 Oct,
 thing: Mercury cannot raise that reminder itself (C1751). Report AI spend in every status
 update meanwhile.**
 
+## DUE: Fri 2026-10-30 12:00 UTC: has nmas-heartbeat-check's INSEPARABLE s3 cleared?
+
+The operator's ruling (2026-10-26): if the CRITICAL row "nmas-heartbeat-check failing (INSEPARABLE
+s3)" has not cleared by **2026-10-30 12:00 UTC**, report that. The cause is s3's clock at 0.703 of
+real time and unsynchronised (C535, C1791). The last 48 h alone would separate; the loaded days
+10-19 to 10-22 leave the 7-day window about 10-29. Read job health (`nmas-heartbeat-check`'s last
+run) read-only and report either way. Change nothing on s3.
+
+## THE OPERATOR'S RULINGS, 2026-10-26 ~15:3x to ~16:2x UTC
+
+- **Deploy approved: 006838c0** (C1779's last location and stale age; the endpoint read interval
+  per network), outside 08:30 to 09:10 UTC.
+- **`scripts/nmas-control`** built: control, canary and mutation runs go through it. The CLAUDE.md
+  lines are the operator's to apply, with `~/Documents/nmas-reports/claude-md-nmas-control.py`
+  (it checks lines 347-349 byte for byte, then runs test_claude_md.py). Commit CLAUDE.md after
+  they have run it.
+- **Registered:** C1782 to C1793; C924, C535 and C1784 amended.
+
 ## THE SECOND OVERNIGHT ORDER, 2026-10-26 ~07:0x to ~09:3x UTC (the operator away)
 
 The operator's order: land what was in flight, deploy, measure Part 1, close Explain, then the
