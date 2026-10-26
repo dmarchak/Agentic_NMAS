@@ -212,18 +212,33 @@ def _observed(port="Gi1/0", device="s1"):
     return got["endpoints"]
 
 
+#: Three hours after `_observed`'s read: fresh against the default 24 h.
+LATER = 1000 + 3 * 3600
+
+
 def test_the_port_to_h1_prefers_observation_with_its_last_seen():
     got = intent_names.resolve("Lab", "s1", S1, "shut the port to h1", neighbours=NEIGHBOURS,
-                               endpoints=_observed())
+                               endpoints=_observed(), now=LATER)
     assert got["ok"] and got["resolutions"][0] == {
         "said": "the port to h1", "to": ["GigabitEthernet1/0"],
-        "by": ["observed: h1 seen there 1970-01-01T00:16:40Z"]}
+        "by": ["observed: h1, last seen s1 GigabitEthernet1/0, 3 h ago"]}
     assert got["said"] == []
+
+
+def test_a_stale_observation_yields_to_the_description_and_is_said():
+    """C1779's ruling: past the network's age (24 h by default) a kept location is a
+    history; a description naming the host is used, and the stale observation said."""
+    got = intent_names.resolve("Lab", "s1", S1, "shut the port to h1", neighbours=NEIGHBOURS,
+                               endpoints=_observed("Gi1/1"), now=1000 + 3 * 86400)
+    assert got["resolutions"][0]["to"] == ["GigabitEthernet1/0"], "the description"
+    assert got["said"] == [
+        "h1's observation is stale (last seen s1 GigabitEthernet1/1, 3 days ago, stale (older "
+        "than 24 h)); the description of GigabitEthernet1/0 is used; they disagree: drift"]
 
 
 def test_an_observation_disagreeing_with_the_description_is_drift():
     got = intent_names.resolve("Lab", "s1", S1, "shut the port to h1", neighbours=NEIGHBOURS,
-                               endpoints=_observed("Gi1/1"))
+                               endpoints=_observed("Gi1/1"), now=LATER)
     assert got["resolutions"][0]["to"] == ["GigabitEthernet1/1"], "the observation is used"
     assert got["said"] == [
         "drift: h1 was observed on GigabitEthernet1/1, but the description of "

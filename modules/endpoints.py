@@ -13,8 +13,14 @@ trunk (committed intent) nor an uplink (a port with a managed neighbour: the net
 point-to-point links and the Topology read's cables, `intent_names.neighbours_of`). A MAC learned
 on a trunk or an uplink is everywhere upstream of it, so it locates nothing. Each endpoint keeps
 where it was last located and when (`last_seen`) across reads: a switch forgets an idle host's
-MAC in minutes (measured 2026-10-26: a lab switch's host ports held none while its hosts sat idle), so a
-location older than the last read is said with its age, never as now.
+MAC in minutes (measured 2026-10-26: a lab switch's host ports held none while its hosts sat
+idle), so a location older than the last read is said with its age, never as now (`seen`:
+"last seen edge1 GigabitEthernet1/0, 3 h ago").
+
+**Kept, never dropped for its age** (the operator's ruling on C1779, 2026-10-26): passive, so a
+last location stays until the endpoint is located elsewhere or its device leaves the network
+(a retired device's name carries nothing forward). Past the network's
+`endpoint_stale_after_hours` it is said to be stale: a history, not a location.
 
 **What it holds,** per endpoint: its MAC, its addresses, its hostname when leased, the device,
 interface and VLAN it was located on, when it was last seen there, and the sources that said so;
@@ -33,9 +39,48 @@ log = logging.getLogger(__name__)
 
 PACK = os.path.join(os.path.dirname(os.path.abspath(__file__)), "nsot", "platform_reads.json")
 READS = ("mac_table", "arp", "ipv6_neighbors")
-#: How long an endpoint's last location is kept after it was last seen.
-RETAIN_SECONDS = 30 * 86400
+#: The setting naming when a kept location is stale, per network, and its schema default.
+STALE_SETTING, STALE_DEFAULT_HOURS = "endpoint_stale_after_hours", 24
 _MAC = re.compile(r"^[0-9a-f]{12}$")
+
+
+def stale_after_hours(network: str) -> int:
+    """The network's `endpoint_stale_after_hours`; the default when it cannot be read (logged),
+    since a stale mark is a word on a screen, never a gate."""
+    from modules import list_settings
+    try:
+        return int(list_settings.value(network, STALE_SETTING, STALE_DEFAULT_HOURS))
+    except Exception as exc:                            # noqa: BLE001 (the default, logged)
+        log.warning("endpoints: %s's %s could not be read (%s); %s h is used", network,
+                    STALE_SETTING, exc, STALE_DEFAULT_HOURS)
+        return STALE_DEFAULT_HOURS
+
+
+def _ago(seconds: float) -> str:
+    s = max(0, int(seconds))
+    if s < 120:
+        return "just now"
+    if s < 7200:
+        return f"{s // 60} min ago"
+    if s < 2 * 86400:
+        return f"{s // 3600} h ago"
+    return f"{s // 86400} days ago"
+
+
+def seen(e: dict, now: float = None, stale_hours: int = STALE_DEFAULT_HOURS) -> dict:
+    """How an endpoint's location is said: ``{"located", "age", "stale", "said"}``, e.g. "last
+    seen edge1 GigabitEthernet1/0, 3 h ago" (and ", stale" past *stale_hours*); one never
+    located says so."""
+    if not e.get("device"):
+        return {"located": False, "age": "", "stale": False,
+                "said": "not located: its MAC was in no access port's table at any read"}
+    at = _epoch(e.get("last_seen", ""))
+    age = (time.time() if now is None else now) - at if at else None
+    stale = age is None or age > stale_hours * 3600
+    words = _ago(age) if age is not None else "at an unknown time"
+    return {"located": True, "age": words, "stale": stale,
+            "said": f"last seen {e['device']} {e.get('interface', '')}, {words}"
+                    + (f", stale (older than {stale_hours} h)" if stale else "")}
 
 
 def entries() -> dict:
@@ -97,7 +142,8 @@ def locate(reads: dict, leases: list, ports: dict, previous: list = None,
     (`parse`'s rows). *leases*: the lease source's rows (``mac``, ``address``, ``hostname``).
     *ports*: ``{device: {"trunks": set, "uplinks": set}}``, the ports that locate nothing.
     *previous*: the last value's endpoints, whose locations are carried forward with their
-    last_seen when not seen now (and dropped after `RETAIN_SECONDS`)."""
+    last_seen when not seen now, whatever their age, while their device is still one this
+    read covers (a device gone from the network carries nothing forward)."""
     from modules.nsot import ifnames
 
     now = time.time() if now is None else now
@@ -150,12 +196,12 @@ def locate(reads: dict, leases: list, ports: dict, previous: list = None,
     for old in previous or []:
         mac = old.get("mac", "")
         e = by_mac.get(mac)
-        seen = _epoch(old.get("last_seen", ""))
+        kept = old.get("device") in reads           # its device is still the network's
         if e is None:
-            if old.get("device") and now - seen <= RETAIN_SECONDS:
+            if kept:
                 by_mac[mac] = dict(old)            # not seen in this read: kept, its age said
             continue
-        if not e["device"] and old.get("device") and now - seen <= RETAIN_SECONDS:
+        if not e["device"] and kept:
             e.update(device=old["device"], interface=old.get("interface", ""),
                      vlan=old.get("vlan", ""), last_seen=old.get("last_seen", ""))
         if not e["hostname"] and old.get("hostname"):

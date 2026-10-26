@@ -174,13 +174,14 @@ def _interface_shaped(token: str, names: list) -> bool:
 
 
 def resolve(network: str, device: str, doc: dict, sentence: str, picks: dict = None,
-            neighbours: dict = None, endpoints: list = None) -> dict:
+            neighbours: dict = None, endpoints: list = None, now: float = None) -> dict:
     """*sentence* on *device*'s Intent tab, its names resolved against *doc* (the committed
     intent) and the device's neighbours: ``{"ok", "sentence", "resolutions", "ask",
     "unknown", "said"}``. *sentence* comes back with each reference and shorthand replaced by
     the device's own names, which is all the model is given. *picks* is the person's answer to
     an earlier question (``{phrase: [names]}``, or ``"*"`` for every candidate), so a choice
-    continues the same draft. *neighbours* is `neighbours_of`'s answer, read when absent."""
+    continues the same draft. *neighbours* is `neighbours_of`'s answer, read when absent;
+    *endpoints* the endpoint layer's, each said by its age at *now* (`endpoints.seen`)."""
     picks = {k.lower(): v for k, v in (picks or {}).items()}
     ifaces = interfaces_of(doc)
     names = [i["name"] for i in ifaces]
@@ -192,6 +193,8 @@ def resolve(network: str, device: str, doc: dict, sentence: str, picks: dict = N
     # drift between an observation and a description is said beside the resolutions.
     from modules import endpoints as E
     observed = endpoints if endpoints is not None else E.stored(network).get("endpoints") or []
+    hours = E.stale_after_hours(network)
+    observed = [dict(e, seen=E.seen(e, now=now, stale_hours=hours)) for e in observed]
     nb = dict(nb, said=list(nb.get("said") or []))
     notes = nb["said"]                  # the same list: every answer below carries the notes
     quoted = [m.span() for m in _QUOTED.finditer(sentence)] + [
@@ -318,7 +321,9 @@ def _matches(kind: str, m, ifaces: list, ports: dict, devices: dict, device: str
     described = [(i["name"], f"by description {i['description']!r}") for i in ifaces
                  if _word(x, i["description"])]
     # An endpoint: observation first (the endpoint layer, C1772), a description second, and a
-    # disagreement between them said as drift (the operator's order of 2026-10-26).
+    # disagreement between them said as drift (the operator's order of 2026-10-26). A stale
+    # observation (past the network's endpoint_stale_after_hours) is a history: a description
+    # naming X is used before it, and the observation said beside.
     from modules import endpoints as E
     from modules.nsot import ifnames
     seen = [e for e in E.find(endpoints or [], x) if e.get("device")]
@@ -326,9 +331,17 @@ def _matches(kind: str, m, ifaces: list, ports: dict, devices: dict, device: str
     if here:
         found = sorted({ifnames.canonical(e["interface"]) for e in here})
         names = {i["name"] for i in ifaces}
-        observed = [(n, f"observed: {x} seen there {here[0].get('last_seen') or 'in the last read'}")
-                    for n in found if n in names]
-        if observed and described and {n for n, _b in described} != {n for n, _b in observed}:
+        said = (here[0].get("seen") or {}).get("said") or (
+            f"seen there {here[0].get('last_seen') or 'in the last read'}")
+        observed = [(n, f"observed: {x}, {said}") for n in found if n in names]
+        differs = bool(observed and described
+                       and {n for n, _b in described} != {n for n, _b in observed})
+        if observed and described and all((e.get("seen") or {}).get("stale") for e in here):
+            notes.append(f"{x}'s observation is stale ({said}); the description of "
+                         f"{', '.join(n for n, _b in described)} is used"
+                         + ("; they disagree: drift" if differs else ""))
+            return described
+        if differs:
             notes.append(f"drift: {x} was observed on {', '.join(n for n, _b in observed)}, "
                          f"but the description of {', '.join(n for n, _b in described)} names "
                          f"{x}; the observation is used")

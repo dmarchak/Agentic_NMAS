@@ -46,6 +46,9 @@ SCOPES: dict = {
              "syslog_origin_id", "syslog_source_interface", "syslog_heartbeat_seconds",
              "ntp_servers", "telemetry_receiver", "snmp_trap_host", "snmp_exporter_config",
              "snmp_exporter_auth"),
+    # C1772: the endpoint layer's schedule and when a kept location is stale, one network's.
+    **_group(NETWORK, "endpoints", "endpoint_read_interval_minutes",
+             "endpoint_stale_after_hours"),
     **_group(NETWORK, "s3_archive", "s3_endpoint", "s3_bucket", "s3_access_key",
              "s3_secret_key", "s3_region", "s3_prefix", "s3_verify_tls"),
     # ── Per network: each a group of one ─────────────────────────────────────────────────
@@ -151,6 +154,7 @@ GROUP_LABELS: dict = {
     "reads_max_workers": "Show commands: devices read at once",
     "reads_retention_days": "Show commands: answers kept (days)",
     "ai_topology_class": "AI: the topology class",
+    "endpoints": "Endpoints",
 }
 
 #: The key whose value says a group's outside service is configured at all: with it empty

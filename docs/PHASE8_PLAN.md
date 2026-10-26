@@ -2463,6 +2463,23 @@ NetOps platform answers from the MAC and ARP tables. Flows remain roadmap. In th
     lookups through the context builder. Each is a new prompt version, the operator's decision
     while Explain's tuning is closed. History's link, combined cost, filter and "context gaps"
     count need a board.
+- **The operator's rulings on the morning's decisions (2026-10-26 ~15:3x UTC):**
+  1. The coverage prompt line and C1780's needs wiring ship as **one prompt version after
+     Oct 31**, measured as usual.
+  2. Endpoint search goes in the **global search bar** ("Go to device or endpoint": a MAC in
+     any common format, an IP, v4 or v6, or a hostname). An endpoint result shows device,
+     interface, VLAN and last-seen and links to that interface. After the sprint unless it
+     fits today without touching the frozen gateway (C1783).
+  3. C1779: **stay passive**, retaining each endpoint's last-known location after it ages out
+     of the MAC table ("last seen s1 Gi1/0, 3 h ago"; stale after a configurable age), never
+     dropping it. Active refresh is an opt-in for later (C1782). **Built:**
+     `endpoints.seen`, the per-network `endpoint_stale_after_hours` (24); a location is
+     carried while its device is the network's.
+  4. C1562: the per-function call profile at each size in the failure message, now. Not a
+     weakening.
+  5. **No backup-window awareness** in the reader (Mercury does not know the installation's
+     environment). The read interval is a per-network setting, `endpoint_read_interval_minutes`
+     (15); the reader looks every 5 minutes. One read's cost on s3 is measured and reported.
 - **Not yet (1):** the prompt line ("say when an answer depends on a layer that is
   not_collected"). It is a new Explain prompt version, so it waits on the operator: Explain's
   tuning is closed for the sprint by the operator's rule of the same day.

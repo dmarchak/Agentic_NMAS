@@ -7,7 +7,9 @@ modules/lease_sources.py), on the real captures of s1 and r1 (tests/fixtures/end
   neighbours).
 - Location: a MAC learned on a trunk or an uplink locates nothing; one learned on an access port
   locates its endpoint there, named by its lease and addressed by ARP; a location not seen in
-  this read is kept with its last-seen, and dropped after the retention.
+  this read is kept with its last-seen whatever its age (C1779's ruling), said with its age and
+  stale past the network's age, and carried only while its device is the network's.
+- Its schedule: each network read at its own interval, the rest kept as read.
 - The reader: a pack command the allowlist refuses is never sent, and said; a device that could
   not be read is said, never empty; the value per network joins the reads, the leases and the
   last value.
@@ -103,18 +105,47 @@ def test_a_mac_on_an_uplink_locates_nothing():
     assert h1["device"] == "" and got["ignored"] == 6
 
 
-def test_a_location_not_seen_now_is_kept_with_its_age_then_dropped():
+def test_an_aged_out_mac_keeps_its_last_location_and_its_last_seen_time():
+    """C1779, the operator's ruling of 2026-10-26: passive, and a last location retained after
+    its MAC ages out of the switch's table, whatever its age, never dropped for it."""
     first = E.locate({"s1": _reads("s1", "cisco_ios", H1_ON_GI10)}, LEASES, S1_PORTS, now=1000)
-    later = E.locate({"s1": _reads("s1", "cisco_ios")}, LEASES, S1_PORTS,
-                     previous=first["endpoints"], now=1000 + 3600)
-    (h1,) = E.find(later["endpoints"], "h1")
-    assert (h1["device"], h1["interface"]) == ("s1", "GigabitEthernet1/0")
-    assert h1["last_seen"] == "1970-01-01T00:16:40Z", "its last-seen, never now"
-    gone = E.locate({"s1": _reads("s1", "cisco_ios")}, LEASES, S1_PORTS,
-                    previous=first["endpoints"], now=1000 + E.RETAIN_SECONDS + 1)
-    (h1,) = E.find(gone["endpoints"], "h1")
-    assert h1["device"] == "", "past the retention, its location is no longer kept"
-    assert first["version"] != later["version"] or first["endpoints"] != later["endpoints"]
+    for later_by in (3600, 90 * 86400):
+        later = E.locate({"s1": _reads("s1", "cisco_ios")}, LEASES, S1_PORTS,
+                         previous=first["endpoints"], now=1000 + later_by)
+        (h1,) = E.find(later["endpoints"], "h1")
+        assert (h1["device"], h1["interface"]) == ("s1", "GigabitEthernet1/0"), later_by
+        assert h1["last_seen"] == "1970-01-01T00:16:40Z", "its last-seen, never now"
+
+
+def test_a_location_on_a_device_gone_from_the_network_is_not_carried():
+    """A retired device's name carries nothing forward: a location is kept only while its
+    device is one the read covers (readable or not)."""
+    first = E.locate({"s1": _reads("s1", "cisco_ios", H1_ON_GI10)}, LEASES, S1_PORTS, now=1000)
+    unread = E.locate({"s1": {"error": "timed out"}, "r1": {}}, LEASES, S1_PORTS,
+                      previous=first["endpoints"], now=2000)
+    assert [e["device"] for e in E.find(unread["endpoints"], "aa:c1:ab:99:f6:e2")] == ["s1"]
+    gone = E.locate({"r1": {}}, LEASES, S1_PORTS, previous=first["endpoints"], now=2000)
+    assert E.find(gone["endpoints"], "aa:c1:ab:99:f6:e2") == []
+
+
+def test_a_kept_location_is_said_with_its_age_and_stale_past_the_network_s_age():
+    (h1,) = E.find(E.locate({"s1": _reads("s1", "cisco_ios", H1_ON_GI10)}, LEASES, S1_PORTS,
+                            now=1000)["endpoints"], "h1")
+    three_h = E.seen(h1, now=1000 + 3 * 3600, stale_hours=24)
+    assert three_h == {"located": True, "age": "3 h ago", "stale": False,
+                       "said": "last seen s1 GigabitEthernet1/0, 3 h ago"}
+    two_days = E.seen(h1, now=1000 + 2 * 86400, stale_hours=24)
+    assert two_days["stale"] and two_days["said"] == (
+        "last seen s1 GigabitEthernet1/0, 2 days ago, stale (older than 24 h)")
+    assert not E.seen(h1, now=1000 + 2 * 86400, stale_hours=72)["stale"], "the network's age"
+    assert E.seen({"mac": "aac1ab99f6e2", "device": ""})["located"] is False
+
+
+def test_the_stale_age_is_the_network_s_setting(monkeypatch):
+    from modules import list_settings
+    monkeypatch.setattr(list_settings, "value", lambda net, key, default: {
+        ("Lab", "endpoint_stale_after_hours"): 6}.get((net, key), default))
+    assert E.stale_after_hours("Lab") == 6 and E.stale_after_hours("Other") == 24
 
 
 # ── the reader ───────────────────────────────────────────────────────────────
@@ -186,6 +217,44 @@ def test_the_read_joins_reads_leases_and_the_last_value():
     assert (h1["device"], h1["interface"]) == ("s1", "GigabitEthernet1/0")
     assert lab["devices"]["r1"]["error"] == "could not ask: OSError: timed out"
     assert lab["devices"]["s1"]["read"] == {"mac_table": 6, "arp": 12, "ipv6_neighbors": 0}
+
+
+def test_each_network_is_read_at_its_own_interval():
+    """The operator's ruling of 2026-10-26: the read interval is the network's setting. A
+    network whose interval has not passed is not asked, and keeps its value as read."""
+    items = [("Lab", {"hostname": "s1"}, "cisco_ios"), ("Edge", {"hostname": "e1"},
+                                                          "cisco_ios")]
+    asked = []
+    last = {"Lab": {"state": "read", "why": "", "read_at": "1970-01-01T00:16:40Z",
+                    "endpoints": [{"mac": "x"}], "devices": {}},
+            "Edge": {"state": "read", "why": "", "read_at": "1970-01-01T00:16:40Z",
+                     "endpoints": [], "devices": {}}}
+
+    def go(at):
+        asked.clear()
+        return R.read(population_fn=lambda: items,
+                      read_fn=lambda row, d: asked.append(row["hostname"]) or {
+                          "error": "", "not_supported": []},
+                      clock=lambda: at, stored_fn=lambda n: last[n],
+                      interval_fn=lambda n: {"Lab": 15, "Edge": 60}[n],
+                      leases_fn=lambda n: {"leases": [], "said": []},
+                      ports_fn=lambda n, hosts: {})
+    got = go(1000 + 10 * 60)
+    assert asked == [] and got["not_due"] == {"Lab": 15, "Edge": 60}
+    assert got["lists"]["Lab"] == {k: v for k, v in last["Lab"].items()
+                                   if k not in ("state", "why")}, "kept as read"
+    got = go(1000 + 15 * 60)
+    assert asked == ["s1"] and got["not_due"] == {"Edge": 60}
+    assert got["lists"]["Lab"]["read_at"] == "1970-01-01T00:31:40Z"
+    assert go(1000 + 60 * 60)["not_due"] == {} and sorted(asked) == ["e1", "s1"]
+
+
+def test_a_network_never_read_is_read_and_the_interval_is_the_network_s_setting(monkeypatch):
+    from modules import list_settings
+    assert R.due("", 15, 0) and not R.due("1970-01-01T00:16:40Z", 15, 1000 + 600)
+    monkeypatch.setattr(list_settings, "value", lambda net, key, default: {
+        ("Lab", "endpoint_read_interval_minutes"): 30}.get((net, key), default))
+    assert R.interval_minutes("Lab") == 30 and R.interval_minutes("Other") == 15
 
 
 def test_the_endpoint_store_states_its_coverage(monkeypatch):

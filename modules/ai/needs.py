@@ -79,8 +79,11 @@ def _endpoint(network, subject):
     got = E.stored(network)
     if got["state"] != "read":
         return None, f"no endpoint read for {network} ({got['why']})"
-    found = [{k: e.get(k) for k in ("mac", "addresses", "hostname", "device", "interface",
-                                    "vlan", "last_seen")}
+    hours = E.stale_after_hours(network)
+    found = [dict({k: e.get(k) for k in ("mac", "addresses", "hostname", "device", "interface",
+                                         "vlan", "last_seen")},
+                  **{k: v for k, v in E.seen(e, stale_hours=hours).items()
+                     if k in ("said", "stale")})
              for e in E.find(got.get("endpoints") or [], subject)]
     return (found, "") if found else (None, f"{subject} is not observed (read "
                                             f"{got.get('read_at') or 'never'})")

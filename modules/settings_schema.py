@@ -557,6 +557,17 @@ DEFAULTS: dict = {
     # it off per network (modules/ai/egress_classes.py). No measurement can decide it: it is
     # a person's decision about what leaves the host.
     "ai_topology_class": True,
+    # The endpoint layer (C1772; the operator's rulings of 2026-10-26), per network:
+    # - how often each device's MAC table, ARP and IPv6 neighbours are read: 15 minutes, the
+    #   reader's first schedule (three show commands a device, every device); the network's
+    #   own, since Mercury cannot know which devices a read loads or when (no backup-window
+    #   awareness, as ruled);
+    # - when an endpoint's kept last location is said to be stale: 24 hours, a working day
+    #   and its night, past which "last seen there" is a history, not a location. Its last
+    #   location and last-seen are kept either way (C1779's ruling). No measurement can say
+    #   how old a location may be and still be trusted on a given network.
+    "endpoint_read_interval_minutes": 15,
+    "endpoint_stale_after_hours": 24,
 
     # ── Jenkins ─────────────────────────────────────────────────────────────
     # Every generated pipeline emitted Windows `bat` steps; that stays the
@@ -923,6 +934,8 @@ SCHEMA: dict = {
         "reads_max_workers": {"type": "integer", "minimum": 1, "maximum": 16},
         "reads_retention_days": {"type": "integer", "minimum": 1},
         "ai_topology_class": _BOOL,
+        "endpoint_read_interval_minutes": {"type": "integer", "minimum": 5, "maximum": 1440},
+        "endpoint_stale_after_hours": {"type": "integer", "minimum": 1},
         "deploy_max_workers": {"type": "integer", "minimum": 1, "maximum": 16},
         "deploy_verify_failure_limit": {"type": "integer", "minimum": 1},
         "verify_settle_windows": {
