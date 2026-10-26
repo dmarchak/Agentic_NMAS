@@ -345,8 +345,14 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
 - **Test data reaches every column and state a check photographs, clicks or asserts.** Fixtures are
   real captures with minimal edits, never typed from memory. [partly: tests/test_v2_layout_in_a_browser.py] [why](docs/LESSONS.md#fixtures-that-reach-the-case)
 - **Every new check is shown able to fail:** remove the property, see the aimed tests fail (not
-  crash), read WHICH failed, restore from a copy (never git); a passing control is a missing test.
+  crash), read WHICH failed, then discard the worktree it ran in; a passing control is a missing test.
   [no bytecode: `PYTHONDONTWRITEBYTECODE` in scripts/nmas-test; the rest not mechanised] [why](docs/LESSONS.md#every-check-shown-able-to-fail)
+- **Control, canary and mutation runs never write to the working tree:** they run through
+  `scripts/nmas-control`, in a throwaway worktree made from a snapshot of the current state
+  (uncommitted and untracked edits included), removed afterwards. Never `git checkout`/
+  `git restore` in the working tree, and never copy files onto it. Cost: seconds per run.
+  Prevents: source overwritten by a restore (2026-10-26: two files named endpoints.py shared one
+  backup) and edits discarded by a git restore. [mechanised: scripts/nmas-control]
 - **A test may be deleted, skipped or loosened only with a registered row and a stated reason
   in the commit; a ceiling, allowlist, known-gap or excused list only goes down.** A commit that
   removes a test, adds a skip, xfail or `pragma: no cover`, weakens an assertion, or raises a
