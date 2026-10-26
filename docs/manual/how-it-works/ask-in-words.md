@@ -144,8 +144,17 @@ none that rests on a text filter says so: "no line contains 'reboot', which may 
 platform logs it". A device logs an event by its mnemonic (a reload is `%SYS-5-RELOAD`, a
 restart `%SYS-5-RESTART`), not by the word a person uses for it, so an empty answer to a text
 filter is never called an answer; the answer's own card says the same and offers to drop the
-text. Nothing reads
-the lines until you press **Ask**. Periods are read as people mean them: "this week", "the
+text.
+- **A mnemonic carries the event.** When a mnemonic records the event asked about, no word
+  for the event is added. Only a direction no chosen mnemonic expresses stays, cased as the
+  line writes it ("down" on an interface's line).
+- **An interface flap** is both its link and its line protocol mnemonics.
+- **A BGP neighbour going up or down** is `%BGP-5-ADJCHANGE` alone.
+- **One device meant by its role alone** ("what went wrong on the switch") among several of
+  that role is answered by {{product}}'s own question back, which device, before anything is
+  sent and with nothing spent.
+
+Nothing reads the lines until you press **Ask**. Periods are read as people mean them: "this week", "the
 past week" and "the last 7 days" are the last 7 days; "since Monday" or "so far this week" is
 the calendar week. "Today", "yesterday" and "last week" are the calendar's, counted from
 midnight in your browser's timezone as on the metrics builder (see

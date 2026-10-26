@@ -1,7 +1,8 @@
 """Ask in words' recorded cases (PHASE8_PLAN 13.6; the operator's 20 questions, 2026-10-25;
 tests/fixtures/ai_cases/nl_query/metrics.json; modules/ai/cases.py).
 
-- The set: 22 cases (the operator's 20 and the walk's two), numbered, on the task's pinned
+- The set: 23 cases (the operator's 20, the walk's two, and metrics v10's low-ranked right
+  metric, C1830), numbered, on the task's pinned
   model; the operator's ASK cases expect a question back, the device that does not exist and
   the injection a question or a refusal. The logs set (C1762): 20 cases, its judge
   (`cases.logs_misses`) and its stale check (`cases.stale_logs`).
@@ -49,7 +50,8 @@ assert len(CAPTURED_DEVICES) >= 8, CAPTURED_DEVICES
 def test_twenty_numbered_cases_on_the_pinned_model():
     # The operator's 20, and the two the walk of 2026-10-26 added (C1803's Logs route, C1805's
     # "since Monday"); the name kept, as the weakening check counts a renamed test as deleted.
-    assert [c["n"] for c in SET["cases"]] == list(range(1, 23))
+    # Case 23 (2026-10-26, C1830): a question whose right metric ranks 15th of the 20 offered.
+    assert [c["n"] for c in SET["cases"]] == list(range(1, 24))
     assert SET["model"] == profiles.TASKS["nl_query"]["model"]
     assert profiles.cases_off_pin(CASES_DIR) == []
 
@@ -343,7 +345,7 @@ def test_the_recorder_records_each_case_and_judges_it(world, tmp_path, capsys, m
     out = tmp_path / "rec.json"
     assert _recorder().record(ROOT, "Lab", "evaluation:test-run", str(out)) == 0
     recs = json.loads(out.read_text())["recordings"]
-    assert len(recs) == 22 and len(world.sent) <= 22
+    assert len(recs) == 23 and len(world.sent) <= 23
     assert recs[0]["misses"] == [] and recs[0]["choices"]["metric"] == "cpmCPUTotal5minRev"
     assert recs[2]["misses"] and recs[2]["misses"][0].startswith("outcome "), \
         "case 3 expects a question back: an answer, or a metric not offered, misses"
@@ -403,7 +405,7 @@ def test_every_recorded_case_passes_and_the_rest_wait_for_their_recording():
         assert r["model"] == SET["model"], (c["n"], r["model"])
         assert cases.misses(c["expect"], cases.result_of(r["choices"]), r["now"]) == [], c["n"]
     waiting = [c["n"] for c in SET["cases"] if not c["recorded"]]
-    assert len(recorded) + len(waiting) == len(SET["cases"]) == 22 and all(
+    assert len(recorded) + len(waiting) == len(SET["cases"]) == 23 and all(
         c["recorded"] is None for c in SET["cases"] if c["n"] in waiting)
 
 

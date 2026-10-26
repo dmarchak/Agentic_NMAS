@@ -1,0 +1,198 @@
+{
+  "$defs": {
+    "Filter": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "op": {
+          "$ref": "#/$defs/FilterOp"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "op",
+        "value"
+      ],
+      "type": "object"
+    },
+    "FilterOp": {
+      "enum": [
+        "=",
+        "!=",
+        "=~",
+        "!~"
+      ],
+      "type": "string"
+    },
+    "Need": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/NeedKind"
+        },
+        "subject": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "subject"
+      ],
+      "type": "object"
+    },
+    "NeedKind": {
+      "enum": [
+        "endpoint_location",
+        "interface_state",
+        "neighbour",
+        "route"
+      ],
+      "type": "string"
+    },
+    "OpKindV3": {
+      "enum": [
+        "rate",
+        "increase",
+        "changes",
+        "resets",
+        "bits",
+        "per_min",
+        "sum",
+        "avg",
+        "min",
+        "max",
+        "count",
+        "ne",
+        "eq",
+        "gt",
+        "lt"
+      ],
+      "type": "string"
+    },
+    "OperationV3": {
+      "additionalProperties": false,
+      "properties": {
+        "arg": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/OpKindV3"
+        }
+      },
+      "required": [
+        "kind",
+        "arg"
+      ],
+      "type": "object"
+    },
+    "Outcome": {
+      "enum": [
+        "answer",
+        "ask",
+        "refuse"
+      ],
+      "type": "string"
+    },
+    "Range": {
+      "enum": [
+        "1h",
+        "24h",
+        "7d",
+        "30d",
+        "90d",
+        "custom"
+      ],
+      "type": "string"
+    },
+    "Top": {
+      "enum": [
+        "none",
+        "5",
+        "10"
+      ],
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "devices": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "filters": {
+      "items": {
+        "$ref": "#/$defs/Filter"
+      },
+      "type": "array"
+    },
+    "from_utc": {
+      "type": "string"
+    },
+    "interfaces": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "metric": {
+      "type": "string"
+    },
+    "needs": {
+      "items": {
+        "$ref": "#/$defs/Need"
+      },
+      "type": "array"
+    },
+    "operations": {
+      "items": {
+        "$ref": "#/$defs/OperationV3"
+      },
+      "type": "array"
+    },
+    "outcome": {
+      "$ref": "#/$defs/Outcome"
+    },
+    "question": {
+      "type": "string"
+    },
+    "range": {
+      "$ref": "#/$defs/Range"
+    },
+    "role": {
+      "type": "string"
+    },
+    "to_utc": {
+      "type": "string"
+    },
+    "top": {
+      "$ref": "#/$defs/Top"
+    },
+    "why_not": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "outcome",
+    "question",
+    "why_not",
+    "metric",
+    "devices",
+    "role",
+    "interfaces",
+    "filters",
+    "operations",
+    "top",
+    "range",
+    "from_utc",
+    "to_utc",
+    "needs"
+  ],
+  "type": "object"
+}

@@ -528,6 +528,20 @@ never a weaker model.
   - Each layer's status and age are never dropped. A dropped part is marked "omitted for
     size" in the coverage header, distinct from not_collected.
   - The answer carries the level sent and what was dropped.
+  - **Metrics v10 (2026-10-26, C1830): the prompt is cut first, and the offer is trimmed only
+    as a last resort** (the operator's order of levers).
+    - v9 could not fit recorded cases 7 and 16 with every context part dropped.
+    - v10's prompt text is 11,797 characters (v9 13,442; v7 10,770), its v8 and v9 rules merged.
+    - Its schema (`MetricsChoicesV4`) has v3's fields, as strict, with no titles or
+      descriptions sent.
+    - Cases 7 and 16 then fit whole at level 0 (7,581 and 7,686 estimated tokens). No measured
+      case trims.
+    - Past the context levels, the offer's lowest-ranked metrics go one at a time, never below
+      `OFFER_FLOOR` (15, the deepest rank measured for a right metric); the "metrics" block
+      says how many were left out.
+    - An answer resting on an omitted metric asks for a narrower question.
+  - **The bound stays the local tier's** (13.1): the prompt and then the offer are cut rather
+    than the task's `max_prompt_tokens` raised.
   - Explain and the local tier do not use it yet.
 - **Isolation:** CPU and memory caps on the service; one request at a time (a second is refused
   by name, naming the request that holds it); the model unloaded when idle. It must never starve
@@ -1922,6 +1936,12 @@ fields only (section 6's table), never redefined to pass.
 - **Applied the same evening:** logs v3 adopted. On the 20 it passed 99 of 100 against v2's
   81, with 17 of 20 consistent against 12, and nothing v2 passed failing. Its 85% is under the
   floor, so Ask in words' logs half stays not done until a later version reaches 95%.
+- **Then logs v4 (C1827), the same night,** measured on the 20, the used blind set and a new
+  blind set (blind set 2):
+  - on the 20: 100 of 100, 20 of 20 consistent, against v3's 100 and 18;
+  - on blind set 2: 50 of 50, 9 of 10 consistent, against v3's 48 and 8;
+  - nothing v3 passed failing, so v4 was adopted.
+  - Its blind set's 90% is under the floor (C1834), so the logs half is live and not done.
 - **A blind set is used once to decide.** The next version is measured on a new one, written
   the same way: blind to the prompts and to every result.
 - **Its cost:** a feature can be live while not done, so "done" is read from the floor, never
@@ -3146,3 +3166,182 @@ person's approval before it takes effect).
 - the adoption and done bars of 15.12.
 
 Registered: C1833 (this roadmap; nothing in it is built in Phase 8).
+
+## 17. SDN controller support, its first slice for CSCI 5280 Lab 8 (the operator, 2026-10-26)
+
+**Why now.** The operator's order of 2026-10-26 ~23:2x UTC, under the rule that a course lab's
+due date is a dependency (CLAUDE.md, "Sequence by dependency"):
+- **The lab:** Lab 8, Closed-Loop AI (threat detection and response), is due Sun 2 Nov 23:59
+  Denver (Mon 3 Nov 06:59 UTC).
+- **The target:** the lab slice working by Fri 30 Oct.
+- **New work goes here first.** Phase 8's open items continue behind it and keep their bars:
+  - the metrics v10, logs v4 and Explain v6 measurements;
+  - the alert-history backfill;
+  - the Mode B fix.
+
+**The industry need** (MERCURY_CHARTER, "The test for every feature"):
+- **The problem:** an SDN fabric's forwarding lives in a controller's flow tables, not in device
+  configuration. A team that manages its routers and switches through Mercury still has to:
+  - read flows in the controller's own UI;
+  - spot a flow nobody authorised;
+  - answer a scan or a flood by hand.
+- **What commercial tools do:**
+  - controllers (ONOS, OpenDaylight) and fabric managers (ACI, NSX, Apstra, CloudVision) show
+    their own state;
+  - security tools (NDR, SIEM) detect;
+  - response is a separate playbook.
+- **What Mercury adds:** one place for intent, departures and gated changes. A controller's flows
+  become intent that is checked: Mercury's flows carry its cookie, and anything else is a
+  departure. A response is a previewed, confirmed, verified, rolled-back operation, like every
+  device change. The AI advises; validation decides; Python executes.
+
+### 17.1 The slice
+
+**In the slice:** what the lab needs, plus the minimum that makes it Mercury's, not a lab script.
+
+| # | Item | Size (focused hours) |
+|---|---|---|
+| S1 | `ControllerDriver` interface and its registry (17.2); the Ryu driver (`ofctl_rest`), every call bounded and answering `{"ok", "error", ...}`; fakes captured from a real Ryu | 5 |
+| S2 | Controller connections in Settings, per network, with the integrations: driver, northbound URL, credentials (typed by the operator, stored as device credentials are, never printed or read back), TLS verify, southbound address (informational), Test connection; more than one per network; counted in the header's integrations total | 5 |
+| S3 | Boards: Controllers, Flows, Responses, a switch's Flows tab, the connection card in Settings, the response preview and its result (17.5), drawn on the mockups canvas, each pinned by its fidelity record | 6 |
+| S4 | `collect_threat_data(network)` (deterministic): flows per switch; per-port packet rates from two samples a stated interval apart; active flows per switch; drop flows (empty actions); coverage naming the flow granularity found (L2-only flows cannot show a per-port scan) | 4 |
+| S5 | Flow intent: every flow Mercury installs carries a Mercury cookie, recorded with its expected match and actions. A flow with a cookie that is neither Mercury's nor declared as the controller application's own is unauthorised, reported like an intent departure. No AI | 4 |
+| S6 | Detection rules in code, thresholds per network: scan (distinct destination ports per source over the window where flows are L4, else packet-rate based and marked lower confidence), flood (rate against a baseline), unauthorised flow. Each detection is an alert in Mercury's alert stream with an evidence pack, so Explain works unchanged | 6 |
+| S7 | `classify_threat` (AI, through the gateway, Pydantic v2 strict). Output: the lab's schema (`threat_detected`, `threat_type`, `severity`, `affected_devices`, `recommended_action`, `reasoning`), plus `action_id` from the response catalogue with validated parameters and cited evidence ids. Egress: flow and port data are the topology class. Recorded cases (each threat, normal traffic five times), expectations from evidence before any run, and a blind held-out set | 6 |
+| S8 | `respond_to_threat` as gated operations, each with a preview of the exact REST bodies, a History record, Verify (the table read back, the threat's metric falling, unaffected host pairs still passing) and rollback; every response flow and meter carries a hard timeout (a per-network default): rate-limit (a meter and its flow; OVS queues if meters are unsupported, which the operator is checking), drop (a drop flow for the source), remove an unauthorised flow (`OFPFC_DELETE_STRICT`, then the expected flow reinstalled where one should exist) | 10 |
+| S9 | Modes: HITL by default (detect, classify, show the assessment and the action, wait for a person's confirm); AUTO off by default, enabled per network by an admin with a recorded reason and an expiry, only catalogue actions within an allowed risk class, each autonomous action recorded as such. This is the Phase 9 autonomy design in miniature (17.4) | 4 |
+| S10 | The continuous loop: a job per network (an interval setting) running detect, classify and respond in the current mode, with a live log; stoppable | 4 |
+| S11 | Screens built against S3's boards: SDN › Controllers, Flows and Responses; the OpenFlow switch's device page with Flows in place of Intent; Needs attention rows (controller unreachable, unauthorised flows, a response awaiting approval); History's controller kind; manual pages for each | 12 |
+| S12 | Management authority per device: direct (Mercury configures it) or controller (only through its controller). Every direct-configuration action on a controller-managed device is refused, naming the controller; tested across every device-changing route | 3 |
+| S13 | Lab deliverable fit: `collect_threat_data`, `classify_threat` and `respond_to_threat` as named functions in one module (`modules/sdn/closed_loop.py`), so the report can show their code | in S4, S7, S8 |
+
+**The slice's total:** about 69 focused hours. To land by Fri 30 Oct, items run in parallel where
+nothing depends on them (17.3), with at most two code agents at a time (the laptop's memory).
+
+**Integrated, after the slice** (each in its existing home; registered, sized when it is next):
+- OpenFlow switches as devices, platform "openflow via <controller>", the DPID an identifier.
+  Controller-discovered switches read "discovered via controller" until adopted; adoption
+  writes them to NetBox, and ephemeral (Mininet) switches never are automatically. In the
+  slice, the switches are the controller's, drawn under SDN with their own Flows tab.
+- Port and flow statistics exported to Prometheus, so Query and Ask in words cover SDN.
+- Controller logs to Loki.
+- The controller's links as a Topology layer.
+- DPIDs in Credentials and the search bar.
+- The ONOS driver second, if time allows.
+- OpenDaylight and the fabric controllers (ACI, NSX, Apstra, CloudVision) registered as later,
+  read-first drivers; Floodlight as unmaintained.
+
+**Later, register only:**
+- AI explains a flow table in words.
+- Flows drafted from a sentence, previewed as feature 7's drafts are.
+- Cross-switch anomaly notes.
+
+### 17.2 The driver interface
+
+Drivers are code, like platform packs (`modules/sdn/drivers/`). A driver declares what it can do,
+and Mercury offers only that.
+- **Its declaration:**
+  - `kind` (`"ryu"`) and `label`;
+  - `capabilities`, a subset of `read_topology`, `read_flows`, `read_port_stats`,
+    `read_meters`, `write_flows`, `write_meters` and `delete_flows`;
+  - `status`: built, later (read-first) or unmaintained.
+- **Its calls** take a connection (Settings, 17.1 S2). Every call is bounded by the
+  connection's timeout and answers `{"ok", "error", ...}`, never raising:
+  - `test()`: the version, and whether it answers;
+  - `switches()`, `links()`;
+  - `flows(dpid)`, `port_stats(dpid)`, `meters(dpid)`, `meter_features(dpid)`;
+  - `add_flow`, `delete_flow_strict`, `add_meter` and `delete_meter`, each taking a spec.
+- **A write's REST body is a value before it is a call.** Each write has a `render_*` twin
+  answering the exact method, path and body. The preview shows that body, the confirm hashes
+  it, and the apply sends exactly the hashed body (CLAUDE.md, "What is confirmed is what is
+  sent").
+- **Flows are one shape across drivers:** `table_id`, `priority`, `cookie`, `match` (OpenFlow
+  1.3 field names), `actions` and instructions, timeouts and counters. Each driver translates
+  its controller's form both ways.
+- **No product code names Ryu, Mininet or an address.** The Ryu application and its container
+  are lab environment (`lab/sdn/`), and the URL is the operator's value in Settings.
+
+### 17.3 The order, by dependency
+
+1. **First report:** this section, the controller's container and firewall steps (the
+   operator's), the driver interface, the Ryu application, and the board list.
+2. **In parallel:**
+   - **S1:** the driver, against a Ryu run on the laptop (the same image) and captured
+     fixtures;
+   - **S3:** the boards.
+3. **After S1:**
+   - **S2:** the connection;
+   - **S4 and S5:** collect, and flow intent.
+4. **After S4 and S5:** S6, detection, and S7, classify (its cases are written from evidence
+   first, needing a Mininet run with a scan and a flood: **the operator's**).
+5. **After S2 and S6:** S8, respond; then S9, the modes, and S10, the loop.
+6. **After S3, with each backend:** S11, the screens, and S12, the authority refusal.
+7. **The operator's walk:** a scan, a flood and an unauthorised flow in Mininet, each detected,
+   classified and answered in HITL, then once in AUTO.
+
+**The operator's steps** (each a stop):
+- installing and firewalling the controller (17.6);
+- typing the controller's credentials, if it has any (Ryu's `ofctl_rest` has none);
+- the meter check on the Mininet VM's Open vSwitch;
+- running the Mininet topology and the attack traffic;
+- the walk.
+
+### 17.4 HITL and AUTO: Phase 9's autonomy in miniature
+
+- **HITL (the default).** A detection is classified, then shown with its assessment and the
+  proposed catalogue action, and waits for a person's confirm by hash, as every operation does.
+  A response awaiting approval is a Needs attention row, cleared by the confirm, by its
+  dismissal with a reason, or when the threat is no longer seen.
+- **AUTO (off by default).** An admin enables it per network with a recorded reason and an
+  expiry. While it is on, the loop applies only catalogue actions within the allowed risk class:
+  - rate-limit and drop are low risk;
+  - removing a flow is medium, and stays HITL unless allowed.
+  Each autonomous action is recorded as autonomous, naming the setting and its reason. At the
+  expiry the mode returns to HITL, and the History says so.
+- **Where it lives:** under SDN › Responses for the lab. It moves to a general automation area
+  when Phase 9 covers every action.
+
+### 17.5 Boards (drawn first; signed off under Phase 7 mode; hashes pinned by fidelity records)
+
+1. **SDN › Controllers:** each connection's operating state (connected, version, cluster role,
+   switches, last read), with "Edit connection" linking to Settings.
+2. **SDN › Flows:** per-switch tables, expected against installed, unauthorised flows
+   highlighted, meters.
+3. **SDN › Responses:**
+   - the detection rules and their thresholds;
+   - HITL or AUTO, with the admin's reason and expiry;
+   - a response awaiting approval;
+   - the loop's live log, and Stop.
+4. **A response's preview and result:** the exact REST bodies, confirm by hash, Verify's three
+   checks, rollback.
+5. **An OpenFlow switch's device page:** the Flows tab in place of Intent.
+6. **Settings › Integrations:** the controller connection card, and Test connection.
+7. **Phone width** for each of 1 to 3.
+
+### 17.6 The controller on the NMAS host (lab environment; the operator's steps)
+
+Ryu 4.34 needs Python 3.9; Ubuntu 24.04's 3.12 breaks its dependencies. The image (in
+`lab/sdn/ryu/`) is `python:3.9-slim` with these pins:
+- `setuptools<58`;
+- `pip<24`;
+- `eventlet==0.30.2` (0.31 removed `ALREADY_HANDLED`, which Ryu imports);
+- `ryu==4.34`.
+
+The build checks the pins itself. Built and run on the laptop 2026-10-26 ~23:3x UTC:
+`ryu-manager 4.34`, `ofctl_rest` and the L4 application loaded, REST answering `[]` on
+127.0.0.1:8080 only, OpenFlow listening on 0.0.0.0:6653.
+- **Host networking.** The container uses `--network host`, so ufw's rules apply to it. Ports
+  Docker publishes are not filtered by ufw.
+- **No port conflicts.** Read on the host 2026-10-26 ~23:3x UTC: neither 6653 nor 8080 is in
+  use.
+- **The firewall:** ufw's default for incoming traffic is allow. So OpenFlow is allowed from the
+  Mininet VM alone and denied to every other address. REST is bound to loopback, so it needs no
+  rule.
+- **The Ryu application, a lab-side choice:** `lab/sdn/ryu/l4_switch_13.py`.
+  - Ryu's `simple_switch_13` learns at L2, one flow per MAC pair, so a scan is one flow and
+    invisible.
+  - This one installs a flow per (in port, IPv4 source, destination, protocol, TCP or UDP
+    destination port), idle-timed at 30 s, and learns everything else at L2.
+  - A scan then leaves one flow per probed port for at least one read interval.
+
+Registered: C1837 (this section's slice, open until the operator's walk).

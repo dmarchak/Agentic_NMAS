@@ -28,6 +28,8 @@ import time
 from enum import Enum
 from zoneinfo import ZoneInfo
 
+from pydantic.json_schema import DEFAULT_REF_TEMPLATE, GenerateJsonSchema
+
 from modules.ai import calls, gateway
 from modules.ai.needs import Need
 from modules.ai.schemas import StrictModel, register
@@ -64,8 +66,19 @@ PROMPT = ("nl_metrics", 7)
 #: until the prompt fits the task's bound; the coverage header marks what was dropped
 #: `OMITTED`, and what was dropped is kept with the answer. Its text is v8's but for saying
 #: parts may be left out to fit, and that an answer resting on one asks for a narrower
-#: question. Measured once, in this form.
-CANDIDATE = ("nl_metrics", 9)
+#: question. Measured once, in this form (2026-10-26, C1830): not adopted, its prompt over the
+#: bound on recorded cases 7 and 16 with every context part dropped, the 20 metrics offered.
+#: v10 (the operator's order, 2026-10-26: cut first): v9's rules in less text, 13,442
+#: characters to 11,797 (v8's and v9's additions merged and tightened, ten worked examples
+#: merged into six, nothing dropped but restatements), and its answer's schema without titles
+#: or descriptions (`MetricsChoicesV4`, 3,158 characters to 1,956); every recorded case's
+#: request then fits the 8,000 at level 0, the whole network context and every metric offered
+#: (cases 7 and 16: 7,581 and 7,686 estimated, against v9's 8,046 and 8,150 at level 5). The
+#: offer stays the last thing dropped (`select_context(offered=...)`): its lowest-ranked
+#: metrics, never below `OFFER_FLOOR`, the count left out said, and the text saying an
+#: answer that depends on them asks for a narrower question. An aggregation with no label on
+#: one named device is read as the same aggregation by device (`canonical`).
+CANDIDATE = ("nl_metrics", 10)
 #: The operation's steps, named on its manual page (docs/manual/how-it-works/ask-in-words.md).
 STEPS = (
     ("offer", "the metrics sharing a word with the question, never the whole catalogue"),
@@ -76,6 +89,13 @@ STEPS = (
 )
 #: At most this many metrics are offered for one question.
 OFFERED = 20
+#: The fewest the context budget rule leaves of an offer when it trims one (metrics v10): the
+#: deepest rank a case's right metric was measured at, on the live catalogue, 2026-10-26 (15 of
+#: 20: recorded case 3, "Average CPU usage over the past 7 days", behind the monitoring host's
+#: own CPU metrics, and case 23, "Which devices have the most interfaces up?", behind the
+#: IF-MIB's shorter names). A trim below it could drop the right metric unsaid; a request
+#: still over the bound there is the gateway's refusal, naming both numbers.
+OFFER_FLOOR = 15
 #: The test run's bound, seconds: a count at one instant answers in well under a second on the
 #: lab's Prometheus; 10 s is the bound for a slow store, and a run past it says so.
 TEST_WAIT = 10.0
@@ -247,9 +267,42 @@ class MetricsChoicesV3(StrictModel):
     needs: list[Need]
 
 
+def _lean(node, keyword: bool = True):
+    """*node*, a JSON schema, without its titles and descriptions: what the model is told of
+    each field is the prompt's, never repeated beside it. A mapping of names (``properties``,
+    ``$defs``) keeps its keys, so a field named "title" would survive."""
+    if isinstance(node, list):
+        return [_lean(v) for v in node]
+    if not isinstance(node, dict):
+        return node
+    if not keyword:
+        return {k: _lean(v) for k, v in node.items()}
+    return {k: _lean(v, keyword=k not in ("properties", "$defs"))
+            for k, v in node.items() if k not in ("title", "description")}
+
+
+class _LeanSchema(GenerateJsonSchema):
+    def generate(self, schema, mode="validation"):
+        return _lean(super().generate(schema, mode=mode))
+
+
+@register("nl_metrics", 4)
+class MetricsChoicesV4(MetricsChoicesV3):
+    """Prompt v10's answer (C1830, the operator, 2026-10-26: v9's request passed the task's
+    8,000 estimated tokens on recorded cases 7 and 16): v3's fields exactly, its JSON schema
+    sent without a title or description anywhere (`_lean`), 3,158 characters to 1,956 (each
+    field is the prompt's to describe). v3 stays as v8 and v9 were measured with it."""
+
+    @classmethod
+    def model_json_schema(cls, by_alias=True, ref_template=DEFAULT_REF_TEMPLATE,
+                          schema_generator=_LeanSchema, mode="validation", **kw):
+        return super().model_json_schema(by_alias=by_alias, ref_template=ref_template,
+                                         schema_generator=schema_generator, mode=mode, **kw)
+
+
 #: Each prompt version's answer schema: v1 to v7 answer `MetricsChoices` (v2), so a recorded
 #: case replays as it was asked.
-SCHEMA_OF = {8: MetricsChoicesV3, 9: MetricsChoicesV3}
+SCHEMA_OF = {8: MetricsChoicesV3, 9: MetricsChoicesV3, 10: MetricsChoicesV4}
 
 
 def _words(text: str) -> set:
@@ -460,22 +513,42 @@ def context_levels(list_name: str, store: str) -> list:
 
 
 def select_context(prompt: tuple, schema, data: dict, base_ctx: dict, levels: list,
-                   budget: int) -> dict:
+                   budget: int, offered: list = None) -> dict:
     """The richest of *levels* whose request fits *budget* (the task's `max_prompt_tokens`,
     estimated as the gateway estimates it), ``dict(level, ctx, data, estimate, budget)``; the
-    leanest when none fits, so the gateway's own refusal names both numbers."""
+    leanest when none fits, so the gateway's own refusal names both numbers.
+
+    With *offered* (metrics v10, C1830: v9's 20-metric offers passed the bound with every
+    context part dropped), the offer is the next to go once the leanest level does not fit:
+    its lowest-ranked metrics one at a time, never below `OFFER_FLOOR` (an offer of fewer is
+    never trimmed), the "metrics" block saying how many were left out (`offer_text`); the
+    answer gets ``offered``, what was sent, which the answer is then held to."""
     from modules.ai import prompts, profiles
 
     loaded, pin = prompts.load(*prompt), profiles.TASKS[FEATURE]
+
+    def estimate(d, ctx):
+        d = dict(d, looked_up=looked_up([]))
+        return gateway.prompt_tokens(gateway.build_request(loaded, schema, d, pin, ctx))
+
     chosen = None
     for lv in levels:
         ctx = dict(base_ctx, network=lv["summary"])
-        d = dict(data, coverage=lv["coverage"], looked_up=looked_up([]))
-        est = gateway.prompt_tokens(gateway.build_request(loaded, schema, d, pin, ctx))
-        chosen = dict(lv, ctx=ctx, data=dict(data, coverage=lv["coverage"]), estimate=est,
-                      budget=budget)
-        if est <= budget:
+        d = dict(data, coverage=lv["coverage"])
+        chosen = dict(lv, ctx=ctx, data=d, estimate=estimate(d, ctx), budget=budget)
+        if chosen["estimate"] <= budget:
             break
+    if offered is None:
+        return chosen
+    chosen["offered"] = list(offered)
+    keep = len(offered)
+    while chosen["estimate"] > budget and keep > OFFER_FLOOR:
+        keep -= 1
+        d = dict(chosen["data"], metrics=offer_text(offered[:keep], len(offered)))
+        chosen.update(data=d, estimate=estimate(d, chosen["ctx"]), offered=offered[:keep])
+    if keep < len(offered):
+        chosen["dropped"] = list(chosen["dropped"]) + [
+            f"the offer's {len(offered) - keep} lowest-ranked metrics"]
     return chosen
 
 
@@ -831,6 +904,17 @@ def _event_hit(event: dict, question: str) -> bool:
     return bool(words & set(event["words"]))
 
 
+def offer_text(offered: list, of: int = None) -> str:
+    """The offer as the "metrics" block holds it, one line each; when *of* says more matched
+    than are listed, a last line says how many lower-ranked ones were left out (`OMITTED`)."""
+    lines = [f"{n} | {k} | {u or 'no unit'} | {' '.join(h.split())[:HELP_MAX]}"
+             for n, k, u, h in offered]
+    if of and of > len(offered):
+        lines.append(f"{OMITTED}: the {of - len(offered)} lower-ranked of the {of} metrics "
+                     "matching the question")
+    return "\n".join(lines)
+
+
 def parts(question: str, offered: list, devices: list, roles: list, now: float,
           z: dict = None) -> dict:
     """The call's own data, in the user turn (the time too: it moves every call, so it is
@@ -845,11 +929,33 @@ def parts(question: str, offered: list, devices: list, roles: list, now: float,
         "week_start_utc": s["this week"],
         "last_week_start_utc": s["last week"],
         "today_zone": z["name"],
-        "metrics": "\n".join(f"{n} | {k} | {u or 'no unit'} | {' '.join(h.split())[:HELP_MAX]}"
-                             for n, k, u, h in offered),
+        "metrics": offer_text(offered),
         "devices_named": "\n".join(devices) or "(none)",
         "roles": "\n".join(roles) or "(none)",
     }
+
+
+def canonical(c, held: set):
+    """*c*, an answer, in its one form where two forms ask the same (metrics v10, the operator,
+    2026-10-26: consistency compares one form, never a prompt rule for it): on exactly one
+    named device the network holds, and no role, an aggregation with no label (``count:``)
+    is the same aggregation by device (``count:device``). The builder's selector is then
+    ``device="<name>"``, an equality, so every series reaching any operation has that one
+    device value: a group by device is one group holding every series, the same set the
+    unlabelled aggregation takes, the same values at every step; only the result's label set
+    differs (``{device="<name>"}`` against ``{}``). By device is the form kept: it stays one
+    line per device if the person adds a device in the builder, where the unlabelled one
+    would add different devices into one line. Any other answer is returned as it is."""
+    from modules import history_promq as pq
+
+    devices = set(c.devices)
+    if len(devices) != 1 or c.role or not devices <= set(held):
+        return c
+    ops = [o.model_copy(update={"arg": pq.DEVICE_LABEL})
+           if o.kind.value in pq.AGGS and not o.arg else o for o in c.operations]
+    if ops == list(c.operations):
+        return c
+    return c.model_copy(update={"operations": ops})
 
 
 def values(c: MetricsChoices) -> dict:
@@ -936,8 +1042,13 @@ def metrics(list_name: str, question: str, *, actor: str, send=None, client=None
         from modules.ai import profiles
         sel = select_context(prompt, schema, data, {"builder": vocabulary()},
                              context_levels(list_name, "metrics"),
-                             profiles.TASKS[FEATURE]["max_prompt_tokens"])
+                             profiles.TASKS[FEATURE]["max_prompt_tokens"],
+                             offered=offered if prompt[1] >= 10 else None)
         context_said = {k: sel[k] for k in ("level", "dropped", "estimate", "budget")}
+        if "offered" in sel:
+            # v10: the answer is held to the metrics sent, the offer's own count said.
+            context_said["offered"] = f"{len(sel['offered'])} of {len(offered)}"
+            offered = sel["offered"]
         got = _ask_round(schema, prompt, sel["data"], list_name=list_name, actor=actor,
                          ctx=sel["ctx"], send=send, today=today, thinking=thinking,
                          subject=subject)
@@ -954,12 +1065,18 @@ def metrics(list_name: str, question: str, *, actor: str, send=None, client=None
     kept = {"context": context_said} if context_said else {}
     if not got["ok"]:
         return dict(got, offered=[o[0] for o in offered], **kept)
-    c, base = got["output"], {"call_id": got["call_id"], "cost_usd": got["cost_usd"],
-                              "offered": [o[0] for o in offered],
-                              # The model's own answer, as recorded cases keep it.
-                              "choices": got["output"].model_dump(mode="json"),
-                              **{k: got[k] for k in ("parent_call_id", "needs_said")
-                                 if got.get(k)}, **kept}
+    held = {d["hostname"] for d in rows if d.get("hostname")}
+    c = got["output"]
+    if prompt[1] >= 10 and c.outcome is Outcome.answer:
+        # One form where two ask the same (`canonical`); the model's own words kept beside.
+        c = canonical(c, held)
+        if c is not got["output"]:
+            kept["answered"] = got["output"].model_dump(mode="json")
+    base = {"call_id": got["call_id"], "cost_usd": got["cost_usd"],
+            "offered": [o[0] for o in offered],
+            # The answer as recorded cases keep it (from v10, in its canonical form).
+            "choices": c.model_dump(mode="json"),
+            **{k: got[k] for k in ("parent_call_id", "needs_said") if got.get(k)}, **kept}
     links = {"page": f"/v2/history/query/ask/metrics?list={list_name}"}
     if c.outcome is Outcome.ask:
         # One question back, never a guess (the operator's cases, 2026-10-25): the person
@@ -982,7 +1099,6 @@ def metrics(list_name: str, question: str, *, actor: str, send=None, client=None
                     detail=f"the answer chose {c.metric[:80]!r}, which was not one of the "
                            f"{len(names)} metrics offered; nothing was filled")
     v, said = values(c), []
-    held = {d["hostname"] for d in rows if d.get("hostname")}
     unknown = [d for d in v["dev"] if d not in held]
     if unknown:
         said.append(f"left out {', '.join(unknown[:3])}: not a device of {list_name}")
@@ -1035,8 +1151,13 @@ def _filled_links(links: dict, page: str, view: dict) -> dict:
 #: say since Monday (the operator's walk). On the 20 it passed 99 of 100 against v2's 81, 17
 #: of 20 consistent against 12, nothing v2 passed failing; its 85% is under the 95% floor, so
 #: the logs half is live but not done.
-PROMPT_LOGS = ("nl_logs", 3)
-#: The logs candidate, as `CANDIDATE`. v4 (the operator's ruling, 2026-10-26, on v3's four
+#: v4, adopted 2026-10-26 (C1827; the relative bar, PHASE8_PLAN 15.12): on the 20, 100 of 100
+#: and 20 of 20 consistent against v3's 100 and 18; on a new blind set (logs blind set 2,
+#: written before any run), 50 of 50 and 9 of 10 against v3's 48 and 8; nothing v3 passed
+#: failing. Its blind set's 90% is under the 95% floor, so the logs half is live but not done.
+PROMPT_LOGS = ("nl_logs", 4)
+#: The logs candidate, as `CANDIDATE`: the live version until the next is built. v4 (the
+#: operator's ruling, 2026-10-26, on v3's four
 #: inconsistent cases over five runs each): a mnemonic that records the event asked about
 #: takes no word for the event, only the one direction word no chosen mnemonic expresses
 #: ("down", cased as the line writes it); an interface flap is both LINK and LINEPROTO, a BGP
@@ -1045,7 +1166,7 @@ PROMPT_LOGS = ("nl_logs", 3)
 #: its role alone ("the switch") among several of that role is Mercury's own question back,
 #: asked before any call (`ambiguous_role`), the prompt saying the same for what Python's
 #: rule does not catch.
-CANDIDATE_LOGS = ("nl_logs", 4)
+CANDIDATE_LOGS = PROMPT_LOGS
 #: At most this many mnemonics are offered for one question.
 OFFERED_MNEMONICS = 20
 

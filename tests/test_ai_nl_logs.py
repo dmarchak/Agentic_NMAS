@@ -326,7 +326,7 @@ def test_the_words_form_sends_the_zone_and_the_notice_says_whose_midnight(world)
 def test_v2_says_the_named_spans_and_stays_for_its_record():
     """v2 was the prompt until v3's adoption (2026-10-26); its file stays, read as it was."""
     from modules.ai import prompts
-    assert nl_query.PROMPT_LOGS == ("nl_logs", 3)
+    assert nl_query.PROMPT_LOGS == ("nl_logs", 4)
     # Refuses a prompt naming JSON; the words compared as read, the text's wrapping aside.
     text = " ".join(prompts.load("nl_logs", 2)["text"].split())
     for said in ('"yesterday_start_utc"', '"week_start_utc"', '"last_week_start_utc"',
@@ -416,7 +416,8 @@ def test_the_logs_v3_schema_and_prompt_are_registered_and_committed():
                  '"this week", "the past week" and "the last 7 days" are the last 7 days: 7d',
                  '"coverage"', '"looked_up"'):
         assert said in text, said
-    assert nl_query.PROMPT_LOGS == ("nl_logs", 3), "adopted 2026-10-26 by the relative bar"
+    # v3 was adopted 2026-10-26 by the relative bar, and v4 after it the same evening (C1827).
+    assert nl_query.PROMPT_LOGS == ("nl_logs", 4), "adopted 2026-10-26 by the relative bar"
 
 
 # ---------------------------------------------------------- logs v4 (the operator, 2026-10-26)
@@ -507,7 +508,8 @@ def test_v4_sends_a_question_naming_its_switch_to_the_model(world, monkeypatch):
 
 def test_v4_is_the_logs_candidate_with_v3_s_schema_and_its_two_rules():
     from modules.ai import prompts
-    assert nl_query.CANDIDATE_LOGS == ("nl_logs", 4) and nl_query.PROMPT_LOGS == ("nl_logs", 3)
+    # Adopted 2026-10-26 (C1827): the candidate is the live version.
+    assert nl_query.CANDIDATE_LOGS == ("nl_logs", 4) and nl_query.PROMPT_LOGS == ("nl_logs", 4)
     assert nl_query.SCHEMA_OF_LOGS[4] is nl_query.LogsChoicesV2
     v4 = " ".join(prompts.load("nl_logs", 4)["text"].split())
     v3 = " ".join(prompts.load("nl_logs", 3)["text"].split())

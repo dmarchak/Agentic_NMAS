@@ -154,6 +154,7 @@ RATCHETS = (
 #: (a ratchet excused here is a ratchet unwatched).
 NOT_RATCHETS = {
     # The product's own thresholds and data, whose name only shares a stem.
+    ("modules/ai/nl_query.py", "OFFER_FLOOR"): "a product threshold: the fewest metrics the context budget rule trims an offer to, the deepest rank a case's right metric was measured at (C1830); a better ranking may lower it",
     ("modules/attention.py", "INCIDENT_GAP_SECONDS"): "a product setting: the gap that splits incidents",
     ("modules/config_read.py", "SIZE_FLOOR"): "a product threshold on a config's size, not a test's",
     ("modules/drained.py", "FLOOR_PPS"): "a product threshold: the packet rate read as drained",

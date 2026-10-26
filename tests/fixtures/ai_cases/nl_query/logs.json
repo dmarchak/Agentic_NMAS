@@ -166,8 +166,8 @@
       "flag": "",
       "recorded": {
         "model": "claude-sonnet-5-5",
-        "now": 1793047593.0978894,
-        "recorded_at": "2026-10-26T20:46:33Z",
+        "now": 1793053455.0889578,
+        "recorded_at": "2026-10-26T22:24:15Z",
         "choices": {
           "outcome": "answer",
           "question": "",
@@ -227,8 +227,8 @@
       "flag": "",
       "recorded": {
         "model": "claude-sonnet-5-5",
-        "now": 1793047597.90635,
-        "recorded_at": "2026-10-26T20:46:37Z",
+        "now": 1793053462.8642836,
+        "recorded_at": "2026-10-26T22:24:22Z",
         "choices": {
           "outcome": "answer",
           "question": "",
@@ -291,8 +291,8 @@
       "flag": "",
       "recorded": {
         "model": "claude-sonnet-5-5",
-        "now": 1793047602.6782732,
-        "recorded_at": "2026-10-26T20:46:42Z",
+        "now": 1793053466.0628953,
+        "recorded_at": "2026-10-26T22:24:26Z",
         "choices": {
           "outcome": "answer",
           "question": "",
@@ -358,8 +358,8 @@
       "flag": "'down' as text is the Start-from chip's own choice (PRESETS links: has down), so with or without it is right: 10 lines with, 29 without",
       "recorded": {
         "model": "claude-sonnet-5-5",
-        "now": 1793047608.2935524,
-        "recorded_at": "2026-10-26T20:46:48Z",
+        "now": 1793053472.3846283,
+        "recorded_at": "2026-10-26T22:24:32Z",
         "choices": {
           "outcome": "answer",
           "question": "",
@@ -417,8 +417,8 @@
       "flag": "%OSPFv3-5-ADJCHG (45 lines over 7 days) cannot be chosen: the logs builder refuses its lower-case v (C1813), so the case expects IPv4's mnemonic alone",
       "recorded": {
         "model": "claude-sonnet-5-5",
-        "now": 1793047614.0052972,
-        "recorded_at": "2026-10-26T20:46:54Z",
+        "now": 1793053477.965638,
+        "recorded_at": "2026-10-26T22:24:37Z",
         "choices": {
           "outcome": "answer",
           "question": "",
@@ -478,8 +478,8 @@
       "flag": "Loki's text filter is case-sensitive (C1814): the line's own case is expected",
       "recorded": {
         "model": "claude-sonnet-5-5",
-        "now": 1793047618.04906,
-        "recorded_at": "2026-10-26T20:46:58Z",
+        "now": 1793053482.0115578,
+        "recorded_at": "2026-10-26T22:24:42Z",
         "choices": {
           "outcome": "answer",
           "question": "",
@@ -553,8 +553,8 @@
       "flag": "logs v2 offers only the mnemonics the reader's stored 7 days hold, and the BGP lines are from 19 Oct, so from 27 Oct it is offered none; logs v3 offers the platform pack's events, %BGP-5-ADJCHANGE among them, whatever the range holds",
       "recorded": {
         "model": "claude-sonnet-5-5",
-        "now": 1793047623.517737,
-        "recorded_at": "2026-10-26T20:47:03Z",
+        "now": 1793053487.4446414,
+        "recorded_at": "2026-10-26T22:24:47Z",
         "choices": {
           "outcome": "answer",
           "question": "",
@@ -564,12 +564,9 @@
           "role": "",
           "severity": "any",
           "mnemonics": [
-            "%BGP-5-ADJCHANGE",
-            "%BGP_SESSION-5-ADJCHANGE",
-            "%BGP-5-NBR_RESET",
-            "%BGP-3-NOTIFICATION"
+            "%BGP-5-ADJCHANGE"
           ],
-          "contains": "",
+          "contains": "Down",
           "excludes": "",
           "show": "lines",
           "by": "device",
@@ -616,8 +613,8 @@
       "flag": "%GRUB-5-CONFIG_WRITING and %GRUB-5-CONFIG_WRITTEN share the word config and are offered (C1815); they are the boot loader's, so choosing them misses",
       "recorded": {
         "model": "claude-sonnet-5-5",
-        "now": 1793047629.2051294,
-        "recorded_at": "2026-10-26T20:47:09Z",
+        "now": 1793053492.6666646,
+        "recorded_at": "2026-10-26T22:24:52Z",
         "choices": {
           "outcome": "answer",
           "question": "",
@@ -796,8 +793,8 @@
       "flag": "",
       "recorded": {
         "model": "claude-sonnet-5-5",
-        "now": 1793047641.8812277,
-        "recorded_at": "2026-10-26T20:47:21Z",
+        "now": 1793053502.676353,
+        "recorded_at": "2026-10-26T22:25:02Z",
         "choices": {
           "outcome": "answer",
           "question": "",
@@ -834,11 +831,11 @@
       "flag": "r5 is not a device of the network: the prompt's rule is a question back, never a guess (an answer with no device would read every device's lines)",
       "recorded": {
         "model": "claude-sonnet-5-5",
-        "now": 1793047647.3769577,
-        "recorded_at": "2026-10-26T20:47:27Z",
+        "now": 1793053507.9715493,
+        "recorded_at": "2026-10-26T22:25:07Z",
         "choices": {
           "outcome": "ask",
-          "question": "There is no device r5 in this network. Which device do you want logs from (for example r1, r2, r3, r4, r6, r7, r8, s1, s2, s3, s4 or s5)?",
+          "question": "r5 is not a device in this network. Which device do you mean? The routers are r1, r2, r3, r4, r6, r7 and r8.",
           "why_not": "",
           "kinds": [],
           "devices": [],
@@ -876,7 +873,7 @@
         "choices": {
           "outcome": "refuse",
           "question": "",
-          "why_not": "CPU percentage is a performance metric, which is not collected here (it belongs to the Metrics builder), so the logs cannot answer it.",
+          "why_not": "CPU percentage is a performance metric, and the performance layer is not collected here; metrics are the Metrics builder's, not the logs builder's.",
           "kinds": [],
           "devices": [],
           "role": "",
@@ -922,8 +919,8 @@
       "flag": "an interface name is no mnemonic: text is the right filter",
       "recorded": {
         "model": "claude-sonnet-5-5",
-        "now": 1793047656.9215941,
-        "recorded_at": "2026-10-26T20:47:36Z",
+        "now": 1793053514.4197273,
+        "recorded_at": "2026-10-26T22:25:14Z",
         "choices": {
           "outcome": "answer",
           "question": "",
@@ -982,8 +979,8 @@
       "flag": "the role, not five named devices; the GRUB CONFIG mnemonics are a miss as in case 10",
       "recorded": {
         "model": "claude-sonnet-5-5",
-        "now": 1793047660.5539138,
-        "recorded_at": "2026-10-26T20:47:40Z",
+        "now": 1793053518.1257577,
+        "recorded_at": "2026-10-26T22:25:18Z",
         "choices": {
           "outcome": "answer",
           "question": "",
@@ -1036,8 +1033,8 @@
       "flag": "",
       "recorded": {
         "model": "claude-sonnet-5-5",
-        "now": 1793047664.5440567,
-        "recorded_at": "2026-10-26T20:47:44Z",
+        "now": 1793053523.9489367,
+        "recorded_at": "2026-10-26T22:25:23Z",
         "choices": {
           "outcome": "answer",
           "question": "",
@@ -1089,8 +1086,8 @@
       "flag": "",
       "recorded": {
         "model": "claude-sonnet-5-5",
-        "now": 1793047668.9679818,
-        "recorded_at": "2026-10-26T20:47:48Z",
+        "now": 1793053527.240702,
+        "recorded_at": "2026-10-26T22:25:27Z",
         "choices": {
           "outcome": "answer",
           "question": "",
@@ -1125,8 +1122,8 @@
       "flag": "the builder leaves Mercury's heartbeat lines out of every query, so any answer counts 0 while s3 sent 8; logs v3's vocabulary says so (C1817), and a refusal is the only outcome that does not mislead",
       "recorded": {
         "model": "claude-sonnet-5-5",
-        "now": 1793047672.0266206,
-        "recorded_at": "2026-10-26T20:47:52Z",
+        "now": 1793053530.987133,
+        "recorded_at": "2026-10-26T22:25:30Z",
         "choices": {
           "outcome": "refuse",
           "question": "",
