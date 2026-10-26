@@ -17,7 +17,7 @@ desktop board at 1440 and 1280 beside the page; the phone board at 390 beside th
 Compared 2026-10-15. History's own page (heading, remote line) is board D's; the board's Code
 mode panel is today's Ask your own box, Code on the Mode switch.
 Templates compared: templates/v2/history_ask_metrics.html, templates/v2/_history_body.html, templates/v2/_history_ask_metrics.html, templates/v2/_history_ask_parts.html, templates/v2/_history_ask_head.html, templates/v2/_history_ask_words.html, templates/v2/_ai.html, templates/v2/_history_ask_chips.html
-Templates sha256: `d18c51cf3a8a68efe8ad28dc9c2bbdbdaa00e83c3728df837c81f3c72e26047e`
+Templates sha256: `99af8181cc6bbd6f4df3e92de102e8ffc95c3f450d406aea489fdcfd742bfc7f`
 
 Compared again 2026-10-15 (P7-03): `_history_body.html` gained a `data-concept` marker and one
 sentence inside a Baselines row's detail (the block drawing each baseline's Re-apply… link); this
@@ -152,6 +152,16 @@ AI cap's reset time drawn on Settings' AI card and an AI control's day-cap reaso
 draws neither (the Ask in words row's reason is `_ai.html`'s, which draws it only when the cap
 refuses). No region changed; the hash written again.
 Templates sha256 before: `94a252f672da1286af07698c19a651d40dc8f641a97bca7c482b56ac2af60533`.
+
+Compared again 2026-10-26 (the operator's Ask-in-words walk, C1805): `_history_ask_words.html`'s
+filled notice says how the words' period was read, every time: "Read as Wed 14 Oct 03:48 to
+Thu 15 Oct 03:48 America/Denver (24 hours; 2026-10-14 09:48 to 2026-10-15 09:48 UTC)", before a
+named span's midnight when there is one. The shots at 1440, 1280 and 390 retaken
+(`tests/test_board_shots.py::test_history_ask_words`): the notice is one sentence longer and
+wraps inside its box at 390; nothing else moved. A deviation (log: 8.1 Ask in words: the period
+read). `_history_ask_logs.html`'s empty state changed too, which this page never draws
+(docs/fidelity/history-ask-logs.md).
+Templates sha256 before: `d18c51cf3a8a68efe8ad28dc9c2bbdbdaa00e83c3728df837c81f3c72e26047e`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).

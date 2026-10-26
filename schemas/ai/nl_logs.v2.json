@@ -1,0 +1,189 @@
+{
+  "$defs": {
+    "Every": {
+      "description": "A count's window (history_logq.WINDOWS).",
+      "enum": [
+        "1m",
+        "5m",
+        "1h",
+        "1d"
+      ],
+      "title": "Every",
+      "type": "string"
+    },
+    "LogsRange": {
+      "enum": [
+        "1h",
+        "24h",
+        "7d",
+        "30d",
+        "custom"
+      ],
+      "title": "LogsRange",
+      "type": "string"
+    },
+    "Need": {
+      "additionalProperties": false,
+      "description": "One thing an answer lacked: its kind, and what it is about (an endpoint's name, address\nor MAC; a device; a device and an interface as ``device interface``).",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/NeedKind"
+        },
+        "subject": {
+          "title": "Subject",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "subject"
+      ],
+      "title": "Need",
+      "type": "object"
+    },
+    "NeedKind": {
+      "enum": [
+        "endpoint_location",
+        "interface_state",
+        "neighbour",
+        "route"
+      ],
+      "title": "NeedKind",
+      "type": "string"
+    },
+    "Outcome": {
+      "description": "What the answer is: the builder's choices; one question back, when the words leave\nthe choice to the person (which device, or per device); or a refusal, saying why.",
+      "enum": [
+        "answer",
+        "ask",
+        "refuse"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "Severity": {
+      "description": "At this severity or worse (the logs builder's `sev`; device_logs.SEVERITY's names).",
+      "enum": [
+        "any",
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "title": "Severity",
+      "type": "string"
+    },
+    "Show": {
+      "enum": [
+        "lines",
+        "counts"
+      ],
+      "title": "Show",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Logs prompt v3's answer: v1's choices, and `needs` (C1780), as `MetricsChoicesV3`.",
+  "properties": {
+    "by": {
+      "title": "By",
+      "type": "string"
+    },
+    "contains": {
+      "title": "Contains",
+      "type": "string"
+    },
+    "devices": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Devices",
+      "type": "array"
+    },
+    "every": {
+      "$ref": "#/$defs/Every"
+    },
+    "excludes": {
+      "title": "Excludes",
+      "type": "string"
+    },
+    "from_utc": {
+      "title": "From Utc",
+      "type": "string"
+    },
+    "kinds": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Kinds",
+      "type": "array"
+    },
+    "mnemonics": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Mnemonics",
+      "type": "array"
+    },
+    "needs": {
+      "items": {
+        "$ref": "#/$defs/Need"
+      },
+      "title": "Needs",
+      "type": "array"
+    },
+    "outcome": {
+      "$ref": "#/$defs/Outcome"
+    },
+    "question": {
+      "title": "Question",
+      "type": "string"
+    },
+    "range": {
+      "$ref": "#/$defs/LogsRange"
+    },
+    "role": {
+      "title": "Role",
+      "type": "string"
+    },
+    "severity": {
+      "$ref": "#/$defs/Severity"
+    },
+    "show": {
+      "$ref": "#/$defs/Show"
+    },
+    "to_utc": {
+      "title": "To Utc",
+      "type": "string"
+    },
+    "why_not": {
+      "title": "Why Not",
+      "type": "string"
+    }
+  },
+  "required": [
+    "outcome",
+    "question",
+    "why_not",
+    "kinds",
+    "devices",
+    "role",
+    "severity",
+    "mnemonics",
+    "contains",
+    "excludes",
+    "show",
+    "by",
+    "every",
+    "range",
+    "from_utc",
+    "to_utc",
+    "needs"
+  ],
+  "title": "LogsChoicesV2",
+  "type": "object"
+}

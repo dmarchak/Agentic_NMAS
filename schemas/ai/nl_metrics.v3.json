@@ -1,0 +1,227 @@
+{
+  "$defs": {
+    "Filter": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "op": {
+          "$ref": "#/$defs/FilterOp"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "op",
+        "value"
+      ],
+      "title": "Filter",
+      "type": "object"
+    },
+    "FilterOp": {
+      "enum": [
+        "=",
+        "!=",
+        "=~",
+        "!~"
+      ],
+      "title": "FilterOp",
+      "type": "string"
+    },
+    "Need": {
+      "additionalProperties": false,
+      "description": "One thing an answer lacked: its kind, and what it is about (an endpoint's name, address\nor MAC; a device; a device and an interface as ``device interface``).",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/NeedKind"
+        },
+        "subject": {
+          "title": "Subject",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "subject"
+      ],
+      "title": "Need",
+      "type": "object"
+    },
+    "NeedKind": {
+      "enum": [
+        "endpoint_location",
+        "interface_state",
+        "neighbour",
+        "route"
+      ],
+      "title": "NeedKind",
+      "type": "string"
+    },
+    "OpKindV3": {
+      "description": "v3: the builder's `resets` beside `changes` (a device's uptime falling is its restart).",
+      "enum": [
+        "rate",
+        "increase",
+        "changes",
+        "resets",
+        "bits",
+        "per_min",
+        "sum",
+        "avg",
+        "min",
+        "max",
+        "count",
+        "ne",
+        "eq",
+        "gt",
+        "lt"
+      ],
+      "title": "OpKindV3",
+      "type": "string"
+    },
+    "OperationV3": {
+      "additionalProperties": false,
+      "properties": {
+        "arg": {
+          "title": "Arg",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/OpKindV3"
+        }
+      },
+      "required": [
+        "kind",
+        "arg"
+      ],
+      "title": "OperationV3",
+      "type": "object"
+    },
+    "Outcome": {
+      "description": "What the answer is: the builder's choices; one question back, when the words leave\nthe choice to the person (which device, or per device); or a refusal, saying why.",
+      "enum": [
+        "answer",
+        "ask",
+        "refuse"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "Range": {
+      "enum": [
+        "1h",
+        "24h",
+        "7d",
+        "30d",
+        "90d",
+        "custom"
+      ],
+      "title": "Range",
+      "type": "string"
+    },
+    "Top": {
+      "enum": [
+        "none",
+        "5",
+        "10"
+      ],
+      "title": "Top",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Prompt v8's answer (the network-context version, the operator, 2026-10-26): v2's\nchoices, `resets` among the operations, and `needs`, what the answer lacked that Mercury\nlooks up once (`modules/ai/needs.py`, C1780).",
+  "properties": {
+    "devices": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Devices",
+      "type": "array"
+    },
+    "filters": {
+      "items": {
+        "$ref": "#/$defs/Filter"
+      },
+      "title": "Filters",
+      "type": "array"
+    },
+    "from_utc": {
+      "title": "From Utc",
+      "type": "string"
+    },
+    "interfaces": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Interfaces",
+      "type": "array"
+    },
+    "metric": {
+      "title": "Metric",
+      "type": "string"
+    },
+    "needs": {
+      "items": {
+        "$ref": "#/$defs/Need"
+      },
+      "title": "Needs",
+      "type": "array"
+    },
+    "operations": {
+      "items": {
+        "$ref": "#/$defs/OperationV3"
+      },
+      "title": "Operations",
+      "type": "array"
+    },
+    "outcome": {
+      "$ref": "#/$defs/Outcome"
+    },
+    "question": {
+      "title": "Question",
+      "type": "string"
+    },
+    "range": {
+      "$ref": "#/$defs/Range"
+    },
+    "role": {
+      "title": "Role",
+      "type": "string"
+    },
+    "to_utc": {
+      "title": "To Utc",
+      "type": "string"
+    },
+    "top": {
+      "$ref": "#/$defs/Top"
+    },
+    "why_not": {
+      "title": "Why Not",
+      "type": "string"
+    }
+  },
+  "required": [
+    "outcome",
+    "question",
+    "why_not",
+    "metric",
+    "devices",
+    "role",
+    "interfaces",
+    "filters",
+    "operations",
+    "top",
+    "range",
+    "from_utc",
+    "to_utc",
+    "needs"
+  ],
+  "title": "MetricsChoicesV3",
+  "type": "object"
+}

@@ -17,7 +17,7 @@ Compared again 2026-10-15: each `<details>` keyed (`data-keep`, C472) so a redra
 Compared again 2026-10-15 (board E3): the go links, the query box, the range chips and picker, the actions and the three states moved into `_history_ask_parts.html`, which the metrics builder shares (the rendered page the same but for whitespace, every state rendered before and after and compared); the head's Metrics switch now opens the metrics builder, and Code mode's Builder is a link. The shots at 1440, 1280 and 390 retaken; nothing drawn moved. Two fixes found on the way, neither a region's verdict: the bounds line says no log store is configured where none is (it raised an error page before, reading Loki's unread limits), and the heartbeat stage writes the marker as an RE2 literal, `NMAS-HEARTBEAT` (Python's escape wrote `NMAS\\-HEARTBEAT`, the same lines matched).
 Compared again 2026-10-15 (C818, C819; the operator's decisions of that day): Reveal… built as the board draws it, and Edit as code from Counts ending in Code mode's chart. The page shot at 1440, 1280 and 390 as before, and two more states beside the board's Lines view: `history-ask-logs-reveal-ask-page-<width>` (the box open with a reason) and `history-ask-logs-revealed-page-<width>` (the line revealed), at 1440 and 390, fed by the lines capture with one planted secret-bearing line (tests/test_log_reveal.py). Each masked value is now marked as the board marks it; the bounds line says revealing is recorded, as the board's does.
 Templates compared: templates/v2/history_ask_logs.html, templates/v2/_history_body.html, templates/v2/_history_ask_logs.html, templates/v2/_history_ask_head.html, templates/v2/_history_ask_parts.html, templates/v2/_history_ask_words.html, templates/v2/_ai.html
-Templates sha256: `55c06cb14689dd3673f9703d1e011c0920df4a35f828e48f9f4edadff08ae26a`
+Templates sha256: `a972426cedf78abb2e1b8e5bb6c5789b242f54442a13515215ddfe87abaf0ffd`
 
 Compared again 2026-10-15 (P7-03): `_history_body.html` gained a `data-concept` marker and one
 sentence inside a Baselines row's detail (the block drawing each baseline's Re-apply… link); this
@@ -112,6 +112,18 @@ AI cap's reset time drawn on Settings' AI card and an AI control's day-cap reaso
 draws neither (the Ask in words row's reason is `_ai.html`'s, which draws it only when the cap
 refuses). No region changed; the hash written again.
 Templates sha256 before: `349c79d5fc231b26e745688fe88c841469002b80489f4da916c422becd603324`.
+
+Compared again 2026-10-26 (the operator's Ask-in-words walk, C1804 and C1805): the "No lines in
+range" state, when a text filter is set, gains one muted line, "No line contains “<text>”: this
+may not match how the platform logs it. A mnemonic names an event as the device logs it.", and
+no longer calls the empty answer "an answer, not a gap" (its range line keeps what Loki keeps);
+with no text filter it reads as before. `_history_ask_words.html`'s filled notice says how the
+words' period was read ("Read as … (7 days; … UTC)"), before the named span's midnight when
+there is one. The shots at 1440, 1280 and 390 retaken
+(`tests/test_board_shots.py::test_history_ask_logs`), the empty state's (`has=Neighbor`) beside
+the board's: the line sits under the state's first, as its others do; nothing else moved. The
+empty state's new line is a deviation (log: F3 logs builder: a zero resting on text).
+Templates sha256 before: `55c06cb14689dd3673f9703d1e011c0920df4a35f828e48f9f4edadff08ae26a`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).

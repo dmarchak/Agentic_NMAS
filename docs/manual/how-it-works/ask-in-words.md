@@ -25,7 +25,8 @@ itself, its choices and **Ask**, stays as usable as ever (see
    the metrics your network's devices carry (their series hold the device label) come before
    the monitoring stack's own, so "CPU" means the routers' CPU before the monitoring host's. A
    few network words are read as SNMP's ("traffic" as octets, "interface" as if, "up" as
-   uptime). A question that names devices, or a role ("all switches"), is offered only the
+   uptime, and "rebooted", "reloaded" or "restarted" as uptime too: a device restarting is its
+   uptime falling, which the builder's **resets** counts). A question that names devices, or a role ("all switches"), is offered only the
    metrics those devices carry, from one read of Prometheus for each; if a read fails, the
    offer is the whole catalogue's. It is
    never the whole catalogue sent. A question that matches no metric stops here: nothing is
@@ -54,8 +55,12 @@ itself, its choices and **Ask**, stays as usable as ever (see
    **A question back**, when your words leave a choice no default settles (which interface,
    or a device this network does not have): it is shown as "One question first", your words
    stay in the box, and nothing is filled; add the answer and fill again.
-   **A refusal**, when no offered metric answers the question or the builder cannot express it
-   (counting restarts, for one): it says why, and nothing is filled. Any other named period no
+   **A refusal**, when no offered metric answers the question or the builder cannot express it:
+   it says why, and nothing is filled. When the question is about an event a device logs (a
+   reload, an interface or adjacency going down, a configuration change), the refusal adds
+   where the logs answer it, with the mnemonics: "the logs can answer it: ask in Logs
+   (%SYS-5-CONFIG_I)". Those words are {{product}}'s, from the platform's event mnemonics,
+   not the model's. Any other named period no
    range fits becomes the builder's From… to…, in UTC, worked out from the time the question
    was asked.
 3. `read_back`: the choices become the builder's address, and the builder checks them as it
@@ -65,8 +70,10 @@ itself, its choices and **Ask**, stays as usable as ever (see
 4. `test_run`: Prometheus is asked once to count the query's series at the range's end,
    within 10 seconds. The note says how many series it answers now, or that the test run did
    not answer.
-5. `fill`: the builder is drawn with the choices, and its address is the page's. Check the
-   choices and the query, change any of them, then press **Ask**.
+5. `fill`: the builder is drawn with the choices, and its address is the page's. The note
+   says how your words' period was read, every time: "Read as Mon 19 Oct 13:20 to Mon 26 Oct
+   13:20 America/Denver (7 days; 2026-10-19 19:20 to 2026-10-26 19:20 UTC)". Check the choices
+   and the query, change any of them, then press **Ask**.
 
 ## What "today" means {#today}
 
@@ -121,7 +128,12 @@ share a word with your question (the Start-from chips' and those the logs reader
 "OSPF adjacency changes" offers `%OSPF-5-ADJCHG`); a question about severity or a word in the
 line is offered none, and is answered by the severity and text filters. `ask`, `read_back`
 and `fill` are as above: a kind or mnemonic that was not offered is left out and said.
-`test_run` counts the lines the query matches over the range, within 10 seconds. Nothing reads
+`test_run` counts the lines the query matches over the range, within 10 seconds. A count of
+none that rests on a text filter says so: "no line contains 'reboot', which may not be how the
+platform logs it". A device logs an event by its mnemonic (a reload is `%SYS-5-RELOAD`, a
+restart `%SYS-5-RESTART`), not by the word a person uses for it, so an empty answer to a text
+filter is never called an answer; the answer's own card says the same and offers to drop the
+text. Nothing reads
 the lines until you press **Ask**. "Today", "yesterday", "this week" and "last week" are the
 calendar's, counted from midnight in your browser's timezone as on the metrics builder (see
 [What "today" means](#today)), and the note under the question says whose midnight it was.

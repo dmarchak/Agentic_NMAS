@@ -419,10 +419,22 @@ class TestTheAnswer:
 
     def test_an_empty_answer_is_said_against_what_was_sent(self, web):
         web.loki.empty = True
-        html = _page(web, ask="1", has="Neighbor", range="1h")
+        html = _page(web, ask="1", range="1h")
         assert "No lines match over the last 1 h." in html
-        assert "Drop the text filter" in html
         assert "inside what Loki keeps (2 years), so this is an answer, not a gap" in html
+
+    def test_an_empty_answer_resting_on_free_text_is_never_called_an_answer(self, web):
+        """C1804 (the operator's walk, 2026-10-26): "reboot", which IOS never logs, read as no
+        reboots. A zero resting on a text filter says the text may not be how the platform
+        logs it, and offers to drop it."""
+        web.loki.empty = True
+        html = unescape(_page(web, ask="1", has="Neighbor", range="1h"))
+        assert "No lines match over the last 1 h." in html
+        assert ("No line contains “Neighbor”: this may not match how the platform logs it."
+                in html)
+        assert "Drop the text filter" in html
+        assert "inside what Loki keeps (2 years)." in html
+        assert "an answer, not a gap" not in html
 
     def test_older_pages_carry_where_they_start(self, web):
         html = _page(web, ask="1", range="1h")

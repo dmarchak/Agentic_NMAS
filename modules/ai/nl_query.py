@@ -29,6 +29,7 @@ from enum import Enum
 from zoneinfo import ZoneInfo
 
 from modules.ai import calls, gateway
+from modules.ai.needs import Need
 from modules.ai.schemas import StrictModel, register
 
 log = logging.getLogger(__name__)
@@ -49,6 +50,14 @@ FEATURE = "nl_query"
 #: "last week" as calendar spans in the same timezone, each start given as data; the per-CPU
 #: MIB over the older average when both are offered. Earlier versions stay for their record.
 PROMPT = ("nl_metrics", 7)
+#: The candidate, asked only when a measurement names it (`metrics(prompt=...)`,
+#: scripts/nmas-nl-cases --prompt) until it meets the adoption bar (the operator, 2026-10-26:
+#: no case the current version passes may fail, consistency at the floor, cost reported).
+#: v8, the network-context version: the network's summary in the cached prefix, the coverage
+#: of its layers with the question, `needs` (C1780), the builder's `resets` (a reboot is the
+#: uptime falling), and "this week" as the last 7 days unless the words say since Monday (the
+#: operator's walk, 2026-10-26).
+CANDIDATE = ("nl_metrics", 8)
 #: The operation's steps, named on its manual page (docs/manual/how-it-works/ask-in-words.md).
 STEPS = (
     ("offer", "the metrics sharing a word with the question, never the whole catalogue"),
@@ -91,7 +100,12 @@ _ALSO = {"traffic": ("octets",), "bandwidth": ("octets",), "throughput": ("octet
          "status": ("oper", "status"), "state": ("state", "status"), "drops": ("discards",),
          "dropped": ("discards",), "temperature": ("temp", "temperature"),
          "neighbour": ("peer",), "neighbor": ("peer",), "uptime": ("uptime", "up"),
-         "up": ("up",)}
+         "up": ("up",),
+         # A restart is the uptime falling (the operator's walk, 2026-10-26): "rebooted"
+         # shares no word with sysUpTime, so the question was never offered it.
+         **{w: ("uptime", "up", "time") for w in (
+             "reboot", "reboots", "rebooted", "rebooting", "reload", "reloads", "reloaded",
+             "restart", "restarts", "restarted", "crashed", "crash", "crashes")}}
 _SPLIT = re.compile(r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|\d+")
 
 
@@ -178,6 +192,56 @@ class MetricsChoices(StrictModel):
     range: Range
     from_utc: str
     to_utc: str
+
+
+class OpKindV3(str, Enum):
+    """v3: the builder's `resets` beside `changes` (a device's uptime falling is its restart)."""
+    rate = "rate"
+    increase = "increase"
+    changes = "changes"
+    resets = "resets"
+    bits = "bits"
+    per_min = "per_min"
+    sum = "sum"
+    avg = "avg"
+    min = "min"
+    max = "max"
+    count = "count"
+    ne = "ne"
+    eq = "eq"
+    gt = "gt"
+    lt = "lt"
+
+
+class OperationV3(StrictModel):
+    kind: OpKindV3
+    arg: str
+
+
+@register("nl_metrics", 3)
+class MetricsChoicesV3(StrictModel):
+    """Prompt v8's answer (the network-context version, the operator, 2026-10-26): v2's
+    choices, `resets` among the operations, and `needs`, what the answer lacked that Mercury
+    looks up once (`modules/ai/needs.py`, C1780)."""
+    outcome: Outcome
+    question: str
+    why_not: str
+    metric: str
+    devices: list[str]
+    role: str
+    interfaces: list[str]
+    filters: list[Filter]
+    operations: list[OperationV3]
+    top: Top
+    range: Range
+    from_utc: str
+    to_utc: str
+    needs: list[Need]
+
+
+#: Each prompt version's answer schema: v1 to v7 answer `MetricsChoices` (v2), so a recorded
+#: case replays as it was asked.
+SCHEMA_OF = {8: MetricsChoicesV3}
 
 
 def _words(text: str) -> set:
@@ -270,9 +334,13 @@ def vocabulary() -> str:
     lines += [f"- {k}: {w}; its argument is a window, one of "
               + ", ".join(pq.WINDOWS) + "; it applies to a counter, and only first"
               for k, w in pq.RANGE_OPS.items()]
-    lines += [f"- {k}: how many times a gauge's value changed in the window before each "
-              "point (a state such as an interface's up or down), never by how much; its "
-              "argument is a window, one of " + ", ".join(pq.CHANGES_WINDOWS)
+    lines += [f"- {k}: how many times a gauge's value "
+              + ("fell in the window before each point (a device's uptime falling is its "
+                 "restart)" if k == "resets" else
+                 "changed in the window before each point (a state such as an interface's up "
+                 "or down)")
+              + ", never by how much; its argument is a window, one of "
+              + ", ".join(pq.CHANGES_WINDOWS)
               + "; over a whole range, the window is the range's own length ("
               + ", ".join(f"{r} = {pq.changes_window(s)}" for r, (_w, s) in pq.RANGES.items())
               + "); it applies to a gauge, never a counter, and only first"
@@ -288,6 +356,93 @@ def vocabulary() -> str:
               + " or ".join(pq.INTERFACE_LABELS) + " (interfaces)",
               "Top (top): none, or " + " or ".join(pq.TOPS) + " highest series at each step"]
     return "\n".join(lines)
+
+
+def network_context(list_name: str, store: str) -> dict:
+    """What of the network goes with a question (metrics v8, logs v3; PHASE8_PLAN 15.15):
+    ``{"summary", "coverage"}``, text. The summary (the devices by name and role, platforms,
+    sites: the topology class, 15.11) only when the network allows that class, else why not;
+    the coverage of every layer always, so a question resting on a layer not collected is
+    said, never inferred (with the class off, each layer's state alone: a why can name a
+    device). *store* is the builder's own (``metrics`` or ``logs``): its layer is present,
+    the other builder's is said to be there."""
+    from modules import endpoints as E
+    from modules import network_model as NM
+    from modules.ai import egress_classes
+
+    gate = egress_classes.topology_allowed(list_name)
+    model, err = NM.model_for(list_name)
+    if model is None:
+        said = f"could not read: the network model ({err})"
+        return {"summary": said, "coverage": said}
+    here = {"state": "present", "age": "", "why": ""}
+    there = {"state": "not_collected", "source": "", "age": ""}
+    carried = {
+        "performance": (dict(here, source="this network's metrics store (Prometheus), the "
+                                          "builder's own") if store == "metrics" else
+                        dict(there, why="metrics are the Metrics builder's, not this one's")),
+        "events": (dict(here, source="this network's log store (Loki), the builder's own")
+                   if store == "logs" else
+                   dict(there, why="log lines are the Logs builder's, not this one's")),
+        "endpoints": E.coverage_layer(list_name)}
+    obs = NM.unread("Ask in words reads no observed adjacency; the builders read metrics and "
+                    "logs")
+    cov = NM.coverage(model, obs, dict(model["nodes"]), carried)
+    lines = []
+    for layer, c in cov.items():
+        if not gate["allowed"]:
+            lines.append(f"{layer}: {c['state']}")
+            continue
+        lines.append(f"{layer}: {c['state']}" + "".join(
+            f"; {k} {c[k]}" for k in ("source", "age", "why") if c.get(k)))
+    return {"summary": (NM.summary(model) if gate["allowed"] else
+                        f"withheld: {gate['why']} (the topology class, 15.11)"),
+            "coverage": "\n".join(lines)}
+
+
+def looked_up(results: list) -> str:
+    """The needs round's results as the follow-up's data (`modules/ai/needs.py`): each need,
+    fulfilled with what was found, or unfulfilled with why."""
+    import json
+
+    return "\n".join(
+        f"{r['kind']} {r['subject']}: "
+        + (json.dumps(r["data"], sort_keys=True, ensure_ascii=False)
+           if r["state"] == "fulfilled" else f"unfulfilled ({r['why']})")
+        for r in results) or "(nothing looked up)"
+
+
+def _ask_round(schema, prompt, data: dict, *, list_name, actor, ctx, send, today, thinking,
+               subject) -> dict:
+    """One question's call, and its needs round when the answer names needs (at most one
+    follow-up, `needs.run`): the gateway's answer, the follow-up's in place of the first's
+    when there was one, ``cost_usd`` the round's combined, ``parent_call_id`` the first
+    call's."""
+    from modules.ai import needs as N
+
+    kw = {"actor": actor, "context": ctx, "send": send, "today": today, "thinking": thinking}
+    got = gateway.ask(FEATURE, prompt, schema, dict(data, looked_up=looked_up([])),
+                      subject=subject, **kw)
+    wanted = list(getattr(got.get("output"), "needs", None) or []) if got.get("ok") else []
+    if not wanted:
+        return got
+    held = {}
+
+    def follow(results, link):
+        held["got"] = gateway.ask(FEATURE, prompt, schema,
+                                  dict(data, looked_up=looked_up(results)),
+                                  subject=dict(subject, **link), **kw)
+        return held["got"]
+
+    rnd = N.run(got["call_id"], list_name, [n.model_dump(mode="json") for n in wanted],
+                actor=actor, follow=follow)
+    second = held.get("got")
+    if not rnd["ok"] or second is None:
+        return dict(got, needs_said=rnd["error"] or "nothing could be looked up")
+    total = round((got.get("cost_usd") or 0) + (second.get("cost_usd") or 0), 6)
+    return dict(second, cost_usd=total, parent_call_id=got["call_id"],
+                needs_said="; ".join(f"{r['kind']} {r['subject']}: {r['state']}"
+                                     for r in rnd["results"]))
 
 
 def _inventory(list_name: str) -> list:
@@ -433,6 +588,87 @@ def span_words(z: dict, span: str) -> str:
     return f"'{span[0].upper()}{span[1:]}' is counted from {start} {z['name']} ({words}"
 
 
+def range_said(rng: dict, z: dict, span: str = None) -> str:
+    """How the words' period was read, said in the fill's notice every time (the operator's
+    walk, 2026-10-26: "this week" on a Monday read as today, and nothing said so): the range
+    the builder holds, from and to, in the viewer's timezone with UTC beside it; a named span's
+    start in its words."""
+    start, end = rng.get("start"), rng.get("end")
+    if not isinstance(start, (int, float)) or not isinstance(end, (int, float)):
+        return ""
+
+    def at(epoch):
+        local = dt.datetime.fromtimestamp(epoch, z["tz"])
+        return local.strftime("%a %d %b %H:%M")
+
+    hours = (end - start) / 3600
+    length = (f"{hours:.0f} hours" if hours < 48 else f"{hours / 24:.1f} days".replace(
+        ".0 days", " days"))
+    named = f" ('{span}')" if span else ""
+    return (f"Read as{named} {at(start)} to {at(end)} {z['name']} ({length}; "
+            f"{_stamp(start)} to {_stamp(end)} UTC)")
+
+
+def _sentence(text: str) -> str:
+    """*text* as the end of a sentence the screen closes with its own full stop (the
+    operator's walk, 2026-10-26: a refusal ended in ".."), at most 200 characters."""
+    return (text or "")[:200].rstrip().rstrip(".")
+
+
+def logs_route(list_name: str, question: str) -> str:
+    """When a metrics question is about an event the device logs (a reload, an interface or
+    adjacency going down, a configuration change), where the logs answer it: "; the logs can
+    answer it: ask in History › Query's Logs (%SYS-5-RELOAD, %SYS-5-RESTART)"; else "" (the
+    operator's walk, 2026-10-26: a refusal offers the logs route). Mercury's own words: the
+    platform pack's event mnemonics whose words the question holds, no call."""
+    mns = [e["mnemonic"] for e in events_for(list_name) if _event_hit(e, question)]
+    return (f"; the logs can answer it: ask in Logs ({', '.join(mns[:4])})" if mns else "")
+
+
+#: The platform pack's event mnemonics (modules/nsot/platform_events.json), per dialect.
+EVENTS_PACK = None
+
+
+def _events_pack() -> dict:
+    global EVENTS_PACK
+    if EVENTS_PACK is None:
+        import json
+        import os
+
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            "nsot", "platform_events.json")
+        with open(path, encoding="utf-8") as fh:
+            EVENTS_PACK = json.load(fh)["events"]
+    return EVENTS_PACK
+
+
+def events_for(list_name: str, rows: list = None) -> list:
+    """The event mnemonics of the dialects *list_name*'s devices speak, each once, in the
+    pack's order: ``[{"mnemonic", "records", "words"}]``."""
+    from modules.nsot.platform import platform_for_device
+
+    pack, out, seen = _events_pack(), [], set()
+    dialects = []
+    for row in rows if rows is not None else _inventory(list_name):
+        try:
+            d = platform_for_device(row)
+        except Exception:                                # noqa: BLE001 (a device skipped)
+            continue
+        if d not in dialects:
+            dialects.append(d)
+    for d in dialects:
+        for e in pack.get(d) or []:
+            if e["mnemonic"] not in seen:
+                seen.add(e["mnemonic"])
+                out.append(e)
+    return out
+
+
+def _event_hit(event: dict, question: str) -> bool:
+    words = {w.lower() for w in re.findall(r"[A-Za-z0-9]+", question or "")}
+    return bool(words & set(event["words"]))
+
+
 def parts(question: str, offered: list, devices: list, roles: list, now: float,
           z: dict = None) -> dict:
     """The call's own data, in the user turn (the time too: it moves every call, so it is
@@ -467,16 +703,20 @@ def values(c: MetricsChoices) -> dict:
 
 def metrics(list_name: str, question: str, *, actor: str, send=None, client=None,
             now: float = None, today: str = None, viewer_zone: dict = None,
-            thinking: str = None) -> dict:
+            thinking: str = None, prompt: tuple = None) -> dict:
     """``{"ok", "error", "detail", "values", "view", "series", "call_id", "cost_usd",
-    "offered", "today"}``: the builder filled from *question*, read back by the builder, and
-    its test run; or a refusal naming why, with nothing filled. *viewer_zone* is `zone`'s answer
-    for the viewer (none: UTC, said); *today* is the gateway's spend day, not this. A filled
-    range that starts at today's midnight carries ``today``, the words saying which midnight.
-    *thinking* is a measurement's (scripts/nmas-nl-cases --thinking); the screen never sends
-    one, so the task's pin holds."""
+    "offered", "today", "range_said"}``: the builder filled from *question*, read back by the
+    builder, and its test run; or a refusal naming why, with nothing filled. *viewer_zone* is
+    `zone`'s answer for the viewer (none: UTC, said); *today* is the gateway's spend day, not
+    this. A filled range that starts at today's midnight carries ``today``, the words saying
+    which midnight; every filled range carries ``range_said``, how the words' period was read
+    (the operator's walk, 2026-10-26: always shown). *thinking* and *prompt* are a
+    measurement's (scripts/nmas-nl-cases --thinking, --prompt); the screen sends neither, so
+    the task's pin and `PROMPT` hold."""
     from modules import history_promq as pq
 
+    prompt = tuple(prompt or PROMPT)
+    schema = SCHEMA_OF.get(prompt[1], MetricsChoices)
     z = viewer_zone or zone()
 
     question = " ".join((question or "").split())
@@ -522,19 +762,29 @@ def metrics(list_name: str, question: str, *, actor: str, send=None, client=None
                           "searched": len(pool["names"]), "among": among},
                 "detail": f"no metric of the {len(pool['names'])} {among} shares a "
                           "word with the question; nothing was sent (try the metric's own "
-                          "words, or search the builder's Metric box)"}
+                          "words, or search the builder's Metric box)"
+                          + logs_route(list_name, question)}
     # What the call is about, written with it (15.14): the network's query, its named devices.
     subject = {"kind": "query", "id": list_name, "devices": list(named)}
-    got = gateway.ask(FEATURE, PROMPT, MetricsChoices,
-                      parts(question, offered, named, roles, now, z),
-                      actor=actor, context={"builder": vocabulary()}, send=send, today=today,
-                      thinking=thinking, subject=subject)
+    data = parts(question, offered, named, roles, now, z)
+    if prompt[1] >= 8:
+        net = network_context(list_name, "metrics")
+        got = _ask_round(schema, prompt, dict(data, coverage=net["coverage"]),
+                         list_name=list_name, actor=actor,
+                         ctx={"builder": vocabulary(), "network": net["summary"]}, send=send,
+                         today=today, thinking=thinking, subject=subject)
+    else:
+        got = gateway.ask(FEATURE, prompt, schema, data,
+                          actor=actor, context={"builder": vocabulary()}, send=send,
+                          today=today, thinking=thinking, subject=subject)
     if not got["ok"]:
         return dict(got, offered=[o[0] for o in offered])
     c, base = got["output"], {"call_id": got["call_id"], "cost_usd": got["cost_usd"],
                               "offered": [o[0] for o in offered],
                               # The model's own answer, as recorded cases keep it.
-                              "choices": got["output"].model_dump(mode="json")}
+                              "choices": got["output"].model_dump(mode="json"),
+                              **{k: got[k] for k in ("parent_call_id", "needs_said")
+                                 if got.get(k)}}
     links = {"page": f"/v2/history/query/ask/metrics?list={list_name}"}
     if c.outcome is Outcome.ask:
         # One question back, never a guess (the operator's cases, 2026-10-25): the person
@@ -542,12 +792,13 @@ def metrics(list_name: str, question: str, *, actor: str, send=None, client=None
         calls.record_use(got["call_id"], "asked a question back", actor=actor,
                          detail=c.question[:200], links=links)
         return dict(base, ok=False, error="ask", clarify=c.question[:200],
-                    detail=f"which one is meant: {c.question[:200]}")
+                    detail=f"which one is meant: {_sentence(c.question)}")
     if c.outcome is Outcome.refuse:
         calls.record_use(got["call_id"], "shown: the builder cannot answer", actor=actor,
                          detail=c.why_not[:200], links=links)
         return dict(base, ok=False, error="unanswerable",
-                    detail=f"the builder cannot answer this: {c.why_not[:200]}")
+                    detail=f"the builder cannot answer this: {_sentence(c.why_not)}"
+                           + logs_route(list_name, question))
     names = {o[0] for o in offered}
     if c.metric not in names:
         calls.record_use(got["call_id"], "refused by validation", actor=actor,
@@ -572,7 +823,8 @@ def metrics(list_name: str, question: str, *, actor: str, send=None, client=None
     span = started.get(v.get("from")) if c.range is Range.custom else None
     out = dict(base, ok=True, error="", values=v, view=view,
                errors=said + list(view["errors"]), series=None, test="",
-               today=span_words(z, span) if span else "")
+               today=span_words(z, span) if span else "",
+               range_said=range_said(view.get("range") or {}, z, span))
     built = view.get("built")
     if built and view["state"] == "ok":
         n = pq.instant_count(client or pq._client(list_name, TEST_WAIT), built["query"],
@@ -603,6 +855,11 @@ def _filled_links(links: dict, page: str, view: dict) -> dict:
 #: timezone, given as data as v7 of the metrics half gives them; v1 worked "yesterday" out
 #: from now_utc, in UTC.
 PROMPT_LOGS = ("nl_logs", 2)
+#: The logs candidate, as `CANDIDATE`: v3 is the network-context version, the platform pack's
+#: event mnemonics offered with every question (each with what it records), `needs`, and
+#: "this week" as the last 7 days unless the words say since Monday (the operator's walk,
+#: 2026-10-26).
+CANDIDATE_LOGS = ("nl_logs", 3)
 #: At most this many mnemonics are offered for one question.
 OFFERED_MNEMONICS = 20
 
@@ -663,6 +920,47 @@ class LogsChoices(StrictModel):
     to_utc: str
 
 
+@register("nl_logs", 2)
+class LogsChoicesV2(StrictModel):
+    """Logs prompt v3's answer: v1's choices, and `needs` (C1780), as `MetricsChoicesV3`."""
+    outcome: Outcome
+    question: str
+    why_not: str
+    kinds: list[str]
+    devices: list[str]
+    role: str
+    severity: Severity
+    mnemonics: list[str]
+    contains: str
+    excludes: str
+    show: Show
+    by: str
+    every: Every
+    range: LogsRange
+    from_utc: str
+    to_utc: str
+    needs: list[Need]
+
+
+SCHEMA_OF_LOGS = {3: LogsChoicesV2}
+
+
+def offer_events(question: str, seen: list, events: list) -> list:
+    """Logs v3's offer: ``[(mnemonic, what)]``, the platform pack's *events* first, each with
+    what it records, whether or not the range holds one (the operator's walk, 2026-10-26: a
+    reload the range happens not to hold is still named); then `offer_mnemonics`' own, each
+    with how often the reader counted it, at most `OFFERED_MNEMONICS` in all."""
+    counted = dict(seen)
+    out = [(e["mnemonic"], e["records"] + (f"; seen {counted[e['mnemonic']]} times in 7 days"
+                                           if counted.get(e["mnemonic"]) else ""))
+           for e in events]
+    have = {m for m, _w in out}
+    for mn in offer_mnemonics(question, seen):
+        if mn not in have and len(out) < OFFERED_MNEMONICS:
+            out.append((mn, f"seen {counted.get(mn, 0)} times in 7 days"))
+    return out[:max(OFFERED_MNEMONICS, len(events))]
+
+
 def _mnemonic_words(mn: str) -> set:
     return {w.lower() for w in re.split(r"[%_\-]+", mn) if w and not w.isdigit()}
 
@@ -684,12 +982,18 @@ def offer_mnemonics(question: str, seen: list) -> list:
     return [mn for _n, mn in sorted(hits)[:OFFERED_MNEMONICS]]
 
 
-def vocabulary_logs() -> str:
-    """The logs builder's vocabulary, the same bytes on every call (the cached prefix)."""
+def vocabulary_logs(version: int = 2) -> str:
+    """The logs builder's vocabulary, the same bytes on every call (the cached prefix). From
+    prompt v3 it says what every query leaves out (Mercury's own heartbeat lines: a question
+    about them answered 0 while the switch sent 8, the logs case set's evidence, 2026-10-26,
+    C1817)."""
     from modules import history_logq as lq
     from modules.device_logs import SEVERITY
 
-    return "\n".join([
+    left_out = (["Left out of every query: Mercury's own heartbeat lines (NMAS-HEARTBEAT); a "
+                 "question about them cannot be answered here (a device's Logs tab counts "
+                 "them)"] if version >= 3 else [])
+    return "\n".join(left_out + [
         "Ranges (range): " + ", ".join(f"{k} = {w}" for k, (w, _s) in lq.RANGES.items())
         + ", or custom (from_utc to to_utc, YYYY-MM-DD HH:MM, UTC)",
         "Kinds (kinds): the log streams' job label values offered; empty for every kind",
@@ -738,13 +1042,17 @@ def values_logs(c: LogsChoices) -> dict:
 
 
 def logs(list_name: str, question: str, *, actor: str, send=None, client=None,
-         now: float = None, today: str = None, viewer_zone: dict = None) -> dict:
-    """``{"ok", "error", "detail", "values", "view", "lines", ..., "today"}``: the logs builder
-    filled from *question*, read back by the builder, and its test run (one count over the
-    range); or a refusal, or one question back, with nothing filled. *viewer_zone* is `zone`'s
-    answer for the viewer (none: UTC, said), as `metrics` takes it (C1740)."""
+         now: float = None, today: str = None, viewer_zone: dict = None,
+         prompt: tuple = None) -> dict:
+    """``{"ok", "error", "detail", "values", "view", "lines", ..., "today", "range_said"}``: the
+    logs builder filled from *question*, read back by the builder, and its test run (one count
+    over the range); or a refusal, or one question back, with nothing filled. *viewer_zone* is
+    `zone`'s answer for the viewer (none: UTC, said), as `metrics` takes it (C1740); *prompt*
+    a measurement's, as `metrics` takes it."""
     from modules import history_logq as lq
 
+    prompt = tuple(prompt or PROMPT_LOGS)
+    schema = SCHEMA_OF_LOGS.get(prompt[1], LogsChoices)
     z = viewer_zone or zone()
     question = " ".join((question or "").split())
     if not question:
@@ -765,33 +1073,46 @@ def logs(list_name: str, question: str, *, actor: str, send=None, client=None,
         return {"ok": False, "error": "catalogue", "detail": disc["error"]}
     kinds = list(disc["values"].get("job") or [])
     seen = lq.mnemonics(list_name, rng, []).get("rows") or []
-    mns = offer_mnemonics(question, seen)
     labels = [l for l in disc["labels"] if l not in ("job", "device")]
     rows = _inventory(list_name)
     roles = sorted({d["role"] for d in rows if d.get("role")})
     named = named_devices(question, rows)
     # What the call is about, written with it (15.14): the network's query, its named devices.
     subject = {"kind": "query", "id": list_name, "devices": list(named)}
-    got = gateway.ask(FEATURE, PROMPT_LOGS, LogsChoices,
-                      parts_logs(question, kinds, mns, labels, named, roles, now, z),
-                      actor=actor, context={"builder": vocabulary_logs()}, send=send,
-                      today=today, subject=subject)
+    if prompt[1] >= 3:
+        offered_ = offer_events(question, seen, events_for(list_name, rows))
+        mns = [m for m, _w in offered_]
+        data = parts_logs(question, kinds, mns, labels, named, roles, now, z)
+        net = network_context(list_name, "logs")
+        got = _ask_round(schema, prompt,
+                         dict(data, mnemonics="\n".join(f"{m} | {w}" for m, w in offered_),
+                              coverage=net["coverage"]),
+                         list_name=list_name, actor=actor,
+                         ctx={"builder": vocabulary_logs(prompt[1]), "network": net["summary"]},
+                         send=send, today=today, thinking=None, subject=subject)
+    else:
+        mns = offer_mnemonics(question, seen)
+        got = gateway.ask(FEATURE, prompt, schema,
+                          parts_logs(question, kinds, mns, labels, named, roles, now, z),
+                          actor=actor, context={"builder": vocabulary_logs()}, send=send,
+                          today=today, subject=subject)
     if not got["ok"]:
         return dict(got, offered=mns)
     c = got["output"]
     base = {"call_id": got["call_id"], "cost_usd": got["cost_usd"], "offered": mns,
-            "choices": c.model_dump(mode="json")}
+            "choices": c.model_dump(mode="json"),
+            **{k: got[k] for k in ("parent_call_id", "needs_said") if got.get(k)}}
     links = {"page": f"/v2/history/query/ask/logs?list={list_name}"}
     if c.outcome is Outcome.ask:
         calls.record_use(got["call_id"], "asked a question back", actor=actor,
                          detail=c.question[:200], links=links)
         return dict(base, ok=False, error="ask", clarify=c.question[:200],
-                    detail=f"which one is meant: {c.question[:200]}")
+                    detail=f"which one is meant: {_sentence(c.question)}")
     if c.outcome is Outcome.refuse:
         calls.record_use(got["call_id"], "shown: the builder cannot answer", actor=actor,
                          detail=c.why_not[:200], links=links)
         return dict(base, ok=False, error="unanswerable",
-                    detail=f"the builder cannot answer this: {c.why_not[:200]}")
+                    detail=f"the builder cannot answer this: {_sentence(c.why_not)}")
     v, said = values_logs(c), []
     for key, allowed, what in (("job", set(kinds), "kind"), ("mn", set(mns), "mnemonic")):
         out_ = [x for x in v[key] if x not in allowed]
@@ -813,7 +1134,8 @@ def logs(list_name: str, question: str, *, actor: str, send=None, client=None,
     span = started.get(v.get("from")) if c.range is LogsRange.custom else None
     out = dict(base, ok=True, error="", values=v, view=view,
                errors=said + list(view["errors"]), lines=None, test="",
-               today=span_words(z, span) if span else "")
+               today=span_words(z, span) if span else "",
+               range_said=range_said(view.get("range") or {}, z, span))
     built = view.get("built") or {}
     if built.get("log_query"):
         n = lq._count(client or lq._client(list_name, TEST_WAIT), built["log_query"],
@@ -822,6 +1144,11 @@ def logs(list_name: str, question: str, *, actor: str, send=None, client=None,
         out["test"] = (f"Loki did not answer the test run within {TEST_WAIT:.0f} s, or "
                        "refused it" if n is None else
                        f"the test run matches {n} line(s) over the range")
+        if n == 0 and v.get("has"):
+            # A zero that rests on free text says so, never "an answer" (the operator's walk,
+            # 2026-10-26: "reboot", which IOS never logs, read as no reboots).
+            out["test"] += (f"; no line contains '{v['has']}', which may not be how the "
+                            "platform logs it")
     calls.record_use(got["call_id"], "filled the builder", actor=actor,
                      detail="; ".join(out["errors"])[:200],
                      links=_filled_links(links, "/v2/history/query/ask/logs", view))

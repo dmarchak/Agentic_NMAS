@@ -64,7 +64,9 @@ def result_of(choices: dict) -> dict:
     DECISION with this; the read-back against Prometheus's live labels is the recording's."""
     from modules.ai import nl_query
 
-    c = nl_query.MetricsChoices.model_validate_json(json.dumps(choices))
+    # Prompt v8's answer carries `needs` (schema v3), v1 to v7's never.
+    model = nl_query.MetricsChoicesV3 if "needs" in choices else nl_query.MetricsChoices
+    c = model.model_validate_json(json.dumps(choices))
     if c.outcome is nl_query.Outcome.ask:
         return {"ok": False, "error": "ask", "clarify": c.question}
     if c.outcome is nl_query.Outcome.refuse:
@@ -127,6 +129,80 @@ def misses(expect: dict, got: dict, now: float) -> list:
                    f"{_yesterday(now)}")
     if expect.get("span"):
         out += _span_misses(expect["span"], v, now)
+    return out
+
+
+def result_of_logs(choices: dict) -> dict:
+    """A recorded logs answer (`LogsChoices`, or v3's `LogsChoicesV2`) as nl_query.logs says
+    it, without the builder's read-back, as `result_of` is for the metrics half."""
+    from modules.ai import nl_query
+
+    model = nl_query.LogsChoicesV2 if "needs" in choices else nl_query.LogsChoices
+    c = model.model_validate_json(json.dumps(choices))
+    if c.outcome is nl_query.Outcome.ask:
+        return {"ok": False, "error": "ask", "clarify": c.question}
+    if c.outcome is nl_query.Outcome.refuse:
+        return {"ok": False, "error": "unanswerable", "detail": c.why_not}
+    return {"ok": True, "error": "", "values": nl_query.values_logs(c)}
+
+
+def logs_misses(expect: dict, got: dict, now: float) -> list:
+    """What *got* (nl_query.logs's result) does that *expect* does not allow (C1762, the logs
+    half's cases): the outcome first, as `misses`; then, for an answer, the mnemonics one of
+    the allowed sets (order aside; ``[]`` none), devices exactly, the role, the text (empty
+    when `contains_empty`, else one of `contains`), the severity (``any`` for none), lines or
+    counts, what counts are by and their window (counts only), the range and a named span."""
+    error = got.get("error", "")
+    outcome = ("answer" if got.get("ok") else "ask" if error == "ask"
+               else "refuse" if error == "unanswerable" else f"not the model's: {error}")
+    if outcome not in expect.get("outcome", ()):
+        return [f"outcome {outcome}, expected one of {expect.get('outcome')}"]
+    if outcome != "answer":
+        return []
+    v, out = got.get("values") or {}, []
+    if "mnemonics" in expect and sorted(v.get("mn") or []) not in [
+            sorted(s) for s in expect["mnemonics"]]:
+        out.append(f"mnemonics {v.get('mn')}, expected one of {expect['mnemonics']}")
+    if "devices" in expect and sorted(v.get("dev") or []) != sorted(expect["devices"]):
+        out.append(f"devices {v.get('dev')}, expected {expect['devices']}")
+    if "role" in expect and (v.get("role") or "") != expect["role"]:
+        out.append(f"role {v.get('role')!r}, expected {expect['role']!r}")
+    if expect.get("contains_empty") and v.get("has"):
+        out.append(f"text {v.get('has')!r}, expected none (a mnemonic or severity says it)")
+    if "contains" in expect and (v.get("has") or "") not in expect["contains"]:
+        out.append(f"text {v.get('has')!r}, expected one of {expect['contains']}")
+    if "severity" in expect and (v.get("sev") or "any") not in expect["severity"]:
+        out.append(f"severity {v.get('sev') or 'any'!r}, expected one of {expect['severity']}")
+    if "show" in expect and v.get("show") not in expect["show"]:
+        out.append(f"show {v.get('show')!r}, expected one of {expect['show']}")
+    if v.get("show") == "counts":
+        if "by" in expect and v.get("by") not in expect["by"]:
+            out.append(f"counted by {v.get('by')!r}, expected one of {expect['by']}")
+        if "every" in expect and v.get("every") not in expect["every"]:
+            out.append(f"every {v.get('every')!r}, expected one of {expect['every']}")
+    if "range" in expect and v.get("range") not in expect["range"]:
+        out.append(f"range {v.get('range')!r}, expected one of {expect['range']}")
+    if expect.get("span"):
+        out += _span_misses(expect["span"], v, now)
+    return out
+
+
+def stale_logs(data: dict, offered) -> list:
+    """The logs cases whose expected mnemonics the offer no longer holds, before anything is
+    asked: *offered(question)* answers the mnemonics the question would be offered (None when
+    they cannot be read, itself a problem). A case expecting mnemonics is stale when no
+    allowed set is within the offer, so the model could never choose it."""
+    out = []
+    for c in data["cases"]:
+        e = c["expect"]
+        sets = [s for s in e.get("mnemonics", ()) if s]
+        if "answer" not in e.get("outcome", ()) or not sets or [] in e.get("mnemonics", ()):
+            continue
+        names = offered(c["question"])
+        if names is None:
+            out.append(f"case {c['n']}: what the question is offered could not be read")
+        elif not any(set(s) <= set(names) for s in sets):
+            out.append(f"case {c['n']}: no expected set of {sets} is offered ({names})")
     return out
 
 
@@ -329,12 +405,29 @@ def explain_misses(expect: dict, answer, pack: dict, error: str = "") -> list:
         lead = set(hyps[0].get("evidence_refs") or [])
         if lead and lead <= _refs(pack, expect["lead_not_only"]):
             out.append(f"the leading hypothesis rests on {expect['lead_not_only']} alone")
+    text = " ".join([answer.get("rationale") or "", answer.get("why_not") or ""]
+                    + [h.get("claim") or "" for h in hyps])
     if expect.get("figures_from_pack"):
-        text = " ".join([answer.get("rationale") or "", answer.get("why_not") or ""]
-                        + [h.get("claim") or "" for h in hyps])
         bad = invented_percents(text, pack)
         if bad:
             out.append(f"states {', '.join(bad)}, which the pack does not hold")
+    # The clock-skew case (the operator, 2026-10-26): a switch whose clock is far off stamps
+    # its log lines with its own wrong time; an answer that names that time as when something
+    # happened blames the wrong window. `no_text` names what the answer must never say.
+    said = [w for w in expect.get("no_text", ()) if w.lower() in text.lower()]
+    if said:
+        out.append(f"says {said[0]!r}, which the case rules out ("
+                   f"{expect.get('no_text_why') or 'not the evidence'})")
+    # The clock-drift cases (the operator's correction, 2026-10-26: a switch's heartbeat alert is
+    # its clock at 0.703 of real time stretching the 300 s watchdog, not no fault): a cause
+    # the pack does not hold can only be a hypothesis, so `says_any` asks that a hypothesis's
+    # claim or its confirming read names it, in any of the words given.
+    named = " ".join((h.get("claim") or "") + " " + (h.get("confirm_with") or "")
+                     for h in hyps).lower()
+    words = expect.get("says_any") or ()
+    if words and not any(w.lower() in named for w in words):
+        out.append(f"no hypothesis names {' or '.join(words)} ("
+                   f"{expect.get('says_why') or 'the evidence'})")
     return out
 
 

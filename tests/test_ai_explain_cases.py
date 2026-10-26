@@ -290,6 +290,37 @@ def test_a_baseline_with_a_cause_fails(ctx):  # noqa: F811
         "2 hypotheses, at most 0 expected (a healthy window reports nothing wrong)"]
 
 
+def test_an_answer_naming_a_skewed_clock_s_time_misses(ctx):  # noqa: F811
+    """The clock-skew case (the operator, 2026-10-26): a switch's own clock far off stamps its
+    log lines with a wrong time; naming that time as when something happened blames the wrong
+    window. `no_text` rules the words out, whatever else the answer does right."""
+    expect = {"outcome": ["no_fault_found"], "no_text": ["Oct 25"],
+              "no_text_why": "s3's own clock, 34 h behind"}
+    ans = dict(_no_fault(ctx.pack), rationale="Nothing is wrong: s3's last heartbeat at Oct 25 "
+                                              "05:56 was on time.")
+    assert cases.explain_misses(expect, ans, ctx.pack) == [
+        "says 'Oct 25', which the case rules out (s3's own clock, 34 h behind)"]
+    assert cases.explain_misses(expect, _no_fault(ctx.pack), ctx.pack) == []
+
+
+def test_a_drift_case_passes_only_when_a_hypothesis_names_the_clock(ctx):  # noqa: F811
+    """The operator's correction (2026-10-26, cases 8 and 19): a heartbeat late because the
+    switch's clock runs slow is a cause the pack does not hold, so a hypothesis must name it,
+    in its claim or its confirming read (`says_any`)."""
+    expect = {"outcome": ["answer"], "says_any": ["clock", "ntp"],
+              "says_why": "s3's clock at 0.703 of real time"}
+    ans = _honest(ctx.pack)
+    ans["hypotheses"] = [dict(h, claim="the heartbeat is late", confirm_with="show logging")
+                         for h in ans["hypotheses"]]
+    assert cases.explain_misses(expect, ans, ctx.pack) == [
+        "no hypothesis names clock or ntp (s3's clock at 0.703 of real time)"]
+    ans["hypotheses"][-1]["confirm_with"] = "show ntp status"
+    assert cases.explain_misses(expect, ans, ctx.pack) == []
+    ans["hypotheses"][-1]["confirm_with"] = "show logging"
+    ans["hypotheses"][0]["claim"] = "s3's clock runs slow, stretching its watchdog"
+    assert cases.explain_misses(expect, ans, ctx.pack) == []
+
+
 # ── the recording (2026-10-26: prompt v4, five runs a case; the order's item 1) ──
 
 def test_every_case_is_recorded_five_times_on_the_file_s_model_and_prompt():

@@ -172,7 +172,8 @@
 {%- set c = a.context or {} %}
 {%- call part.state('', 'No lines in range', 'status') %}
   <p><strong>No lines match over {{ rng.words }}.</strong>{% if c.sent is not none and c.sent is defined %} {{ (q.devices | join(' and ')) if q.devices and q.devices | length <= 3 else 'The devices asked' if q.devices else 'Every device' }} sent {{ '{:,}'.format(c.sent) }} line{{ 's' if c.sent != 1 }} in the range{% if c.filtered %}; none passed the filters{% endif %}.{% endif %}</p>
-  {%- if a.kept %}<p class="muted">{% if a.inside_kept %}The range is inside what Loki keeps ({{ a.kept_words }}), so this is an answer, not a gap.{% else %}Part of the range is older than Loki keeps ({{ a.kept_words }}): nothing there is held.{% endif %}</p>{% endif %}
+  {%- if s.has %}<p class="muted">No line contains “{{ s.has }}”: this may not match how the platform logs it. A mnemonic names an event as the device logs it.</p>{% endif %}
+  {%- if a.kept %}<p class="muted">{% if a.inside_kept and not s.has %}The range is inside what Loki keeps ({{ a.kept_words }}), so this is an answer, not a gap.{% elif a.inside_kept %}The range is inside what Loki keeps ({{ a.kept_words }}).{% else %}Part of the range is older than Loki keeps ({{ a.kept_words }}): nothing there is held.{% endif %}</p>{% endif %}
   {%- if s.has %}<div>{{ go({'has': '', 'ask': '1', 'hl': 'has'}, 'Drop the text filter', 'btn btn-small') }}</div>{% endif %}
 {% endcall %}
 {%- elif s.show == 'counts' %}

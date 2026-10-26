@@ -772,3 +772,136 @@ def test_the_timezone_is_filled_and_sent_in_a_browser(site):
     assert f'<data name="today_zone">\n{got["name"]}\n</data>' in sent, sent[-400:]
     assert f"'Today' runs from midnight {got['name']} (your browser's timezone" in note, note
     assert refilled == got["name"], "the redrawn form's timezone was not filled again"
+
+
+# ---------------------------------------------------- the operator's walk, 2026-10-26 (C1803)
+
+IOS_ROWS = [{"hostname": "r1", "role": "core", "platform": "cisco_iosxe"},
+            {"hostname": "s1", "role": "access", "platform": "cisco_ios"}]
+
+
+def test_a_reboot_question_is_offered_the_uptime(world):
+    """C1803 (item 1): "rebooted" shares no word with sysUpTime, so it was never offered, and
+    the answer refused as if no metric recorded a reboot."""
+    from modules import history_promq as pq
+    cat = pq.catalogue("Lab", world.prom, pq.window(dict(pq.DEFAULTS), NOW), NOW)
+    for q in ("Which devices rebooted this week?", "Has r1 reloaded?", "restarts per device"):
+        assert "sysUpTime" in [o[0] for o in nl_query.retrieve(q, cat)], q
+
+
+def test_resets_counts_the_times_the_uptime_fell(world):
+    """The builder's `resets` (C1803): PromQL's resets() over the token's own window, first
+    in the chain as changes is, with its own words."""
+    from modules import history_promq as pq
+    assert pq.parse_op("resets:7d") == ("resets", "7d")
+    assert pq.parse_op("resets:5s") is None
+    # The stand-in's sysUpTime carries no series labels (ask_names.json holds only its name),
+    # so no group: resets and the comparison.
+    v = pq.view("Lab", {"m": "sysUpTime", "op": ["resets:7d", "gt:0"], "range": "7d"},
+                now=NOW, client=world.prom)
+    q = v["built"]["query"]
+    assert q == "resets(sysUpTime[7d]) > 0", (q, v["errors"])
+    assert "fell in the 7 days before each point" in " ".join(v["built"]["explain"].values())
+    assert "resets:" in nl_query.vocabulary() and "uptime falling is its restart" in \
+        nl_query.vocabulary()
+
+
+def test_a_refusal_ends_in_one_full_stop_and_names_the_logs_route(world, monkeypatch):
+    """C1803 (items 2 and 5): a refusal of an event the device logs names where the logs
+    answer it, from the platform pack's events, and the screen's own full stop is the only
+    one."""
+    monkeypatch.setattr(nl_query, "_inventory", lambda name: IOS_ROWS)
+    world.answer = _choices(outcome="refuse", why_not="No metric offered records reboots.",
+                            metric="", operations=[], top="none")
+    got = _ask(world, "Which devices rebooted this week?")
+    assert got["error"] == "unanswerable"
+    assert got["detail"] == ("the builder cannot answer this: No metric offered records "
+                             "reboots; the logs can answer it: ask in Logs (%SYS-5-RELOAD, "
+                             "%SYS-5-RESTART)"), got["detail"]
+    world.answer = _choices(outcome="refuse", why_not="No metric holds CPU temperatures.",
+                            metric="", operations=[], top="none")
+    got = _ask(world, "cpu temperature")
+    assert got["detail"].endswith("holds CPU temperatures"), "no logs route for a non-event"
+
+
+def test_every_fill_says_how_its_period_was_read(world):
+    """C1805 (item 7): the range the builder holds, from and to in the viewer's zone, UTC
+    beside it, on every fill, not only a named span's."""
+    world.answer = _choices(range="7d")
+    got = _ask(world, viewer_zone=nl_query.zone("America/Denver"))
+    assert got["ok"] is True
+    said = got["range_said"]
+    assert said.startswith("Read as ") and "America/Denver (7 days; " in said, said
+    assert said.endswith(" UTC)"), said
+
+
+def _v8(world, question, **kw):
+    return _ask(world, question, prompt=nl_query.CANDIDATE, **kw)
+
+
+def _v8_choices(**over):
+    c = _choices(**over)
+    c.setdefault("needs", [])
+    return c
+
+
+def test_v8_sends_the_network_and_its_coverage_and_v7_does_not(world, monkeypatch):
+    """The network-context version (the operator, 2026-10-26): the network's summary in the
+    cached prefix, each layer's coverage with the question, and nothing looked up yet."""
+    monkeypatch.setattr(nl_query, "network_context", lambda name, store: {
+        "summary": "network: Lab\ndevices: 2", "coverage": "flows: not_collected"})
+    world.answer = _v8_choices()
+    assert _v8(world, "input errors per interface, the top 5")["ok"] is True
+    body = world.sent[-1]["body"]
+    system = " ".join(b["text"] for b in body["system"])
+    user = body["messages"][0]["content"]
+    assert "network: Lab" in system and "network: Lab" not in user
+    assert '<data name="coverage">\nflows: not_collected\n</data>' in user
+    assert '<data name="looked_up">\n(nothing looked up)\n</data>' in user
+    from modules.ai import prompts
+    assert body["system"][0]["text"] == prompts.load("nl_metrics", 8)["text"]
+    world.answer = _choices()
+    _ask(world)
+    assert "coverage" not in world.sent[-1]["body"]["messages"][0]["content"]
+
+
+def test_v8_s_needs_round_looks_up_once_and_asks_once_more(world, monkeypatch):
+    """C1780: an answer naming a need is looked up once (`needs.run`), and the follow-up's
+    answer, given what was found, is the one filled; the cost is the round's."""
+    from modules.ai import needs
+    monkeypatch.setattr(nl_query, "network_context", lambda name, store: {
+        "summary": "s", "coverage": "c"})
+    monkeypatch.setitem(needs._LOOKUPS, needs.NeedKind.endpoint_location,
+                        lambda net, subject: ({"device": "s1", "interface": "Gi1/1"}, ""))
+    monkeypatch.setattr("modules.ai.egress_classes.topology_allowed",
+                        lambda net: {"allowed": True, "why": ""})
+    answers = [_v8_choices(outcome="ask", question="Which port is the printer on?", metric="",
+                           operations=[], top="none",
+                           needs=[{"kind": "endpoint_location", "subject": "printer"}]),
+               _v8_choices()]
+    plain = world.send
+
+    def send(body, key):
+        world.answer = answers.pop(0)
+        return plain(body, key)
+    got = nl_query.metrics("Lab", "input errors on the printer's port", actor="operator@x",
+                           send=send, client=world.prom, now=NOW, today="2026-10-25",
+                           prompt=nl_query.CANDIDATE)
+    assert got["ok"] is True and len(world.sent) == 2, got
+    second = world.sent[1]["body"]["messages"][0]["content"]
+    assert 'endpoint_location printer: {"device": "s1", "interface": "Gi1/1"}' in second
+    assert got["parent_call_id"] and got["parent_call_id"] != got["call_id"]
+    assert got["cost_usd"] > 0 and "endpoint_location printer: fulfilled" in got["needs_said"]
+
+
+def test_the_v8_schema_and_prompt_are_registered_and_committed():
+    from modules.ai import prompts
+    assert schemas.REGISTRY[("nl_metrics", 3)] is nl_query.MetricsChoicesV3
+    assert nl_query.SCHEMA_OF[nl_query.CANDIDATE[1]] is nl_query.MetricsChoicesV3
+    with open(schemas.committed_path("nl_metrics", 3), encoding="utf-8") as fh:
+        assert fh.read() == schemas.committed_text(nl_query.MetricsChoicesV3)
+    text = " ".join(prompts.load(*nl_query.CANDIDATE)["text"].split())
+    for said in ('"This week", "the past week" and "the last 7 days" are the last 7 days: 7d',
+                 "the operation resets", '"coverage"', '"looked_up"'):
+        assert said in text, said
+    assert nl_query.PROMPT == ("nl_metrics", 7), "the candidate is adopted only by its bar"

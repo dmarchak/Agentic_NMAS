@@ -9,8 +9,8 @@
     {"n": 2, "question": "Which routers had the highest CPU this week?",
      "expect": {"outcome": ["answer"], "metric": ["cpmCPUTotal1minRev", "cpmCPUTotal5minRev"],
                 "role": "router", "group_any": ["max:device", "avg:device"],
-                "top": ["5", "10", ""], "range": ["custom"], "span": "this week"},
-     "flag": "this week is the calendar week from Monday's midnight, in today's timezone (the operator's C1740 ruling, 2026-10-25); it was 7d through v6", "recorded": null},
+                "top": ["5", "10", ""], "range": ["7d"]},
+     "flag": "this week is the last 7 days (the operator's ruling, 2026-10-26, C1805: relative ranges as people mean them, \"this week\" 7d unless the words say since Monday); it was the calendar week under C1740's ruling of 2026-10-25 (v7), and 7d through v6", "recorded": null},
     {"n": 3, "question": "Average CPU usage over the past 7 days",
      "expect": {"outcome": ["ask", "answer"],
                 "metric": ["cpmCPUTotal1minRev", "cpmCPUTotal5minRev"],
@@ -56,8 +56,9 @@
      "flag": "the switches carry no memory series: of the 75 metric names the switch role carries in the lab's Prometheus, none is memory (cempMemPoolUsed and ciscoMemoryPoolUsed exist only on the routers; measured 2026-10-25 after v4's runs), so Mercury's own no-match answer is right; v3 had answered with the monitoring host's mem_used, or a router's pool, which would draw nothing for a switch",
      "recorded": null},
     {"n": 12, "question": "Which devices rebooted this week?",
-     "expect": {"outcome": ["refuse", "ask"]},
-     "flag": "REFUSE: the builder cannot count restarts (it has no resets()); Mercury's Restarts record answers it (History)",
+     "expect": {"outcome": ["answer"], "metric": ["sysUpTime"], "first_op": ["resets"],
+                "range": ["7d"]},
+     "flag": "a reboot is the uptime falling: sysUpTime's resets over 7 days (the operator's walk, 2026-10-26, C1803: every device's sysUpTime is in Prometheus, measured 19:2x UTC, so the earlier refusal was wrong; it was REFUSE while the builder had no resets()); 7d by C1805's ruling",
      "recorded": null},
     {"n": 13, "question": "Interface status changes on s1 today",
      "expect": {"outcome": ["answer"], "metric": ["ifOperStatus"], "devices": ["s1"],
@@ -96,6 +97,14 @@
      "expect": {"outcome": ["answer"], "metric": ["ifInErrors", "ifOutErrors"],
                 "first_op": ["rate", "increase"], "group_any": ["sum:role"],
                 "range": ["90d"]},
-     "flag": "", "recorded": null}
+     "flag": "", "recorded": null},
+    {"n": 21, "question": "Who changed the configuration on s1 this week?",
+     "expect": {"outcome": ["refuse", "guide"]},
+     "flag": "no metric records who changed a configuration; the logs do (%SYS-5-CONFIG_I). Added 2026-10-26 by the operator's walk (C1803, item 2): the refusal names the Logs route, Mercury's own words beside the model's (`nl_query.logs_route`; tests/test_ai_nl_query.py test_a_refusal_ends_in_one_full_stop_and_names_the_logs_route)", "recorded": null},
+    {"n": 22, "question": "Average CPU on the routers since Monday",
+     "expect": {"outcome": ["answer"], "metric": ["cpmCPUTotal1minRev", "cpmCPUTotal5minRev"],
+                "role": "router", "group_any": ["avg:device"], "range": ["custom"],
+                "span": "this week"},
+     "flag": "\"since Monday\" names the calendar week (the operator's ruling, 2026-10-26, C1805): from Monday's midnight to now", "recorded": null}
   ]
 }

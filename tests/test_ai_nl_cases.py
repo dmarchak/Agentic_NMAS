@@ -1,8 +1,10 @@
 """Ask in words' recorded cases (PHASE8_PLAN 13.6; the operator's 20 questions, 2026-10-25;
 tests/fixtures/ai_cases/nl_query/metrics.json; modules/ai/cases.py).
 
-- The set: 20 cases, numbered, on the task's pinned model; the operator's ASK cases expect a
-  question back, the device that does not exist and the injection a question or a refusal.
+- The set: 22 cases (the operator's 20 and the walk's two), numbered, on the task's pinned
+  model; the operator's ASK cases expect a question back, the device that does not exist and
+  the injection a question or a refusal. The logs set (C1762): 20 cases, its judge
+  (`cases.logs_misses`) and its stale check (`cases.stale_logs`).
 - Filled from the real catalogue: every metric a case expects is one the lab's Prometheus
   held (the 2026-10-15 capture), every operation it names parses as the builder's, every role
   is the network's, every device is the network's, and one the capture predates says so in
@@ -45,7 +47,9 @@ assert len(CAPTURED_DEVICES) >= 8, CAPTURED_DEVICES
 
 
 def test_twenty_numbered_cases_on_the_pinned_model():
-    assert [c["n"] for c in SET["cases"]] == list(range(1, 21))
+    # The operator's 20, and the two the walk of 2026-10-26 added (C1803's Logs route, C1805's
+    # "since Monday"); the name kept, as the weakening check counts a renamed test as deleted.
+    assert [c["n"] for c in SET["cases"]] == list(range(1, 23))
     assert SET["model"] == profiles.TASKS["nl_query"]["model"]
     assert profiles.cases_off_pin(CASES_DIR) == []
 
@@ -307,7 +311,7 @@ def test_the_recorder_stops_at_a_stale_expectation_spending_nothing(world, tmp_p
         return plain(path, **params)
     world.prom._get = _get
     out = tmp_path / "rec.json"
-    assert _recorder().record(ROOT, "Lab", "operator@example.com", str(out)) == 3
+    assert _recorder().record(ROOT, "Lab", "evaluation:test-run", str(out)) == 3
     assert world.sent == [] and not out.exists()
     err = capsys.readouterr().err
     assert "stale expectation: case 1: none of cpmCPUTotal1minRev, cpmCPUTotal5minRev" in err
@@ -318,7 +322,7 @@ def test_the_recorder_stops_at_hosted_ai_off_spending_nothing(world, monkeypatch
     from modules import settings_schema
     monkeypatch.setattr(settings_schema, "get_setting", lambda k, d=None: d)
     out = tmp_path / "rec.json"
-    assert _recorder().record(ROOT, "Lab", "operator@example.com", str(out)) == 0
+    assert _recorder().record(ROOT, "Lab", "evaluation:test-run", str(out)) == 0
     assert json.loads(out.read_text())["recordings"] == [] and world.sent == []
 
 
@@ -326,7 +330,7 @@ def test_the_recorder_stops_at_the_provider_s_failure(world, tmp_path):
     """No send planted: the adapter is reached and the network guard refuses it, so the
     first case is the provider's failure, not the model's answer, and the run stops."""
     out = tmp_path / "rec.json"
-    assert _recorder().record(ROOT, "Lab", "operator@example.com", str(out)) == 0
+    assert _recorder().record(ROOT, "Lab", "evaluation:test-run", str(out)) == 0
     assert json.loads(out.read_text())["recordings"] == []
 
 
@@ -337,9 +341,9 @@ def test_the_recorder_records_each_case_and_judges_it(world, tmp_path, capsys, m
     world.answer = _choices(metric="cpmCPUTotal5minRev", devices=["r1"], operations=[],
                             top="none", range="1h")
     out = tmp_path / "rec.json"
-    assert _recorder().record(ROOT, "Lab", "operator@example.com", str(out)) == 0
+    assert _recorder().record(ROOT, "Lab", "evaluation:test-run", str(out)) == 0
     recs = json.loads(out.read_text())["recordings"]
-    assert len(recs) == 20 and len(world.sent) <= 20
+    assert len(recs) == 22 and len(world.sent) <= 22
     assert recs[0]["misses"] == [] and recs[0]["choices"]["metric"] == "cpmCPUTotal5minRev"
     assert recs[2]["misses"] and recs[2]["misses"][0].startswith("outcome "), \
         "case 3 expects a question back: an answer, or a metric not offered, misses"
@@ -359,7 +363,7 @@ def test_a_comparison_on_another_model_asks_it_and_leaves_the_pin(world, tmp_pat
     world.answer = _choices(metric="cpmCPUTotal5minRev", devices=["r1"], operations=[],
                             top="none", range="1h")
     out = tmp_path / "rec.json"
-    assert _recorder().record(ROOT, "Lab", "operator@example.com", str(out),
+    assert _recorder().record(ROOT, "Lab", "evaluation:test-run", str(out),
                               model="claude-sonnet-5-5") == 0
     got = json.loads(out.read_text())
     assert got["model"] == "claude-sonnet-5-5" and world.sent
@@ -367,7 +371,7 @@ def test_a_comparison_on_another_model_asks_it_and_leaves_the_pin(world, tmp_pat
     assert profiles.load_pins()["nl_query"] == pinned, "the pin file is never written"
     assert "a comparison on claude-sonnet-5-5, the pin file unchanged" in capsys.readouterr().out
     sent = len(world.sent)
-    assert _recorder().record(ROOT, "Lab", "operator@example.com", str(out),
+    assert _recorder().record(ROOT, "Lab", "evaluation:test-run", str(out),
                               model="no-such-model") == 2
     assert len(world.sent) == sent
 
@@ -399,5 +403,93 @@ def test_every_recorded_case_passes_and_the_rest_wait_for_their_recording():
         assert r["model"] == SET["model"], (c["n"], r["model"])
         assert cases.misses(c["expect"], cases.result_of(r["choices"]), r["now"]) == [], c["n"]
     waiting = [c["n"] for c in SET["cases"] if not c["recorded"]]
-    assert len(recorded) + len(waiting) == 20 and all(
+    assert len(recorded) + len(waiting) == len(SET["cases"]) == 22 and all(
         c["recorded"] is None for c in SET["cases"] if c["n"] in waiting)
+
+
+def test_a_measurement_is_never_recorded_as_a_person(world, tmp_path, capsys):
+    """C1784: a recording's actor names the run (evaluation:<run id>), never an address."""
+    out = tmp_path / "rec.json"
+    assert _recorder().record(ROOT, "Lab", "operator@example.com", str(out)) == 2
+    assert world.sent == [] and not out.exists()
+    assert "a measurement is recorded as evaluation:<run id>" in capsys.readouterr().err
+
+
+# ------------------------------------------------------------------- the logs half (C1762)
+
+LOGS = cases.load(os.path.join(CASES_DIR, "nl_query", "logs.json"))
+
+
+def test_the_logs_set_is_twenty_numbered_cases_on_the_pinned_model():
+    from modules.ai import nl_query
+    from modules import history_logq as lq
+    assert LOGS["kind"] == "logs" and [c["n"] for c in LOGS["cases"]] == list(range(1, 21))
+    assert LOGS["model"] == profiles.TASKS["nl_query"]["model"]
+    for c in LOGS["cases"]:
+        e = c["expect"]
+        for s in e.get("mnemonics", ()):
+            for mn in s:
+                assert lq._MN.match(mn), (c["n"], mn)
+        for r in e.get("range", ()):
+            assert r in [x.value for x in nl_query.LogsRange], (c["n"], r)
+        for d in e.get("devices", ()):
+            assert d in NETWORK, (c["n"], d)
+        assert c["recorded"] is None or c["recorded"]["model"] == LOGS["model"]
+    # The walk's cases (C1804): reboots over 7 days, and since Monday.
+    by = {c["n"]: c["expect"] for c in LOGS["cases"]}
+    assert ["%SYS-5-RELOAD"] in by[1]["mnemonics"] and by[1]["range"] == ["7d"]
+    assert by[2]["span"] == "this week" and by[2]["range"] == ["custom"]
+
+
+def _logs_got(**v):
+    base = {"job": [], "dev": [], "role": "", "sev": "", "mn": [], "has": "", "not": "",
+            "show": "lines", "by": "device", "every": "5m", "range": "24h"}
+    return {"ok": True, "error": "", "values": dict(base, **v)}
+
+
+def test_the_logs_judge_passes_the_right_answer_and_names_each_miss():
+    e = {"outcome": ["answer"], "mnemonics": [["%SYS-5-RELOAD"],
+                                              ["%SYS-5-RELOAD", "%SYS-5-RESTART"]],
+         "contains_empty": True, "show": ["lines", "counts"], "range": ["7d"]}
+    ok = _logs_got(mn=["%SYS-5-RESTART", "%SYS-5-RELOAD"], range="7d")
+    assert cases.logs_misses(e, ok, NOW) == []
+    walk = _logs_got(has="reboot", range="custom", **{"from": "2026-10-26 00:00",
+                                                      "to": "2026-10-26 19:00"})
+    got = cases.logs_misses(e, walk, NOW)
+    assert "mnemonics [], expected one of" in got[0]
+    assert any("text 'reboot', expected none" in m for m in got)
+    assert any("range 'custom', expected one of ['7d']" in m for m in got)
+    assert cases.logs_misses({"outcome": ["refuse"]}, {"ok": False, "error": "ask"},
+                             NOW) == ["outcome ask, expected one of ['refuse']"]
+
+
+def test_a_recorded_logs_answer_replays_through_its_schema():
+    choices = {"outcome": "answer", "question": "", "why_not": "", "kinds": [],
+               "devices": [], "role": "", "severity": "any",
+               "mnemonics": ["%SYS-5-RELOAD"], "contains": "", "excludes": "",
+               "show": "lines", "by": "device", "every": "5m", "range": "7d",
+               "from_utc": "", "to_utc": ""}
+    assert cases.result_of_logs(choices)["values"]["mn"] == ["%SYS-5-RELOAD"]
+    assert cases.result_of_logs(dict(choices, needs=[]))["values"]["range"] == "7d"
+
+
+def test_a_logs_case_whose_mnemonics_are_no_longer_offered_is_stale():
+    data = {"cases": [
+        {"n": 1, "question": "q", "expect": {"outcome": ["answer"],
+                                             "mnemonics": [["%BGP-5-ADJCHANGE"]]}},
+        {"n": 2, "question": "q", "expect": {"outcome": ["answer"], "mnemonics": [[]]}},
+        {"n": 3, "question": "q", "expect": {"outcome": ["refuse"]}}]}
+    assert cases.stale_logs(data, lambda q: ["%BGP-5-ADJCHANGE"]) == []
+    got = cases.stale_logs(data, lambda q: ["%OSPF-5-ADJCHG"])
+    assert got == ["case 1: no expected set of [['%BGP-5-ADJCHANGE']] is offered "
+                   "(['%OSPF-5-ADJCHG'])"]
+    assert cases.stale_logs(data, lambda q: None) == [
+        "case 1: what the question is offered could not be read"]
+
+
+def test_every_recorded_logs_case_passes_and_the_rest_wait():
+    for c in LOGS["cases"]:
+        if c["recorded"]:
+            r = c["recorded"]
+            assert cases.logs_misses(c["expect"], cases.result_of_logs(r["choices"]),
+                                     r["now"]) == [], c["n"]

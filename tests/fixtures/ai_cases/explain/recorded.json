@@ -6,7 +6,7 @@
     4
   ],
   "network": "Default",
-  "about": "P1 Explain's recorded cases (PHASE8_PLAN 13.6 and the sprint's item 9: every Analyst task's cases include healthy baselines that must report nothing wrong, P1 Explain's first). Each case is a replay of a past window (scripts/nmas-pack-replay, the product's own pack as of the alert's time); cases.explain_unready says first whether the pack holds what the case is judged on, then cases.explain_misses judges the answer on structured fields. A healthy baseline passes on Explain's no fault found assessment, citing the healthy evidence it checked (C1742, the operator's ruling of 2026-10-25). What only a person can judge in the prose is the case's flag, read on the recording. Recorded 2026-10-26 on prompt v4, five runs a case (each run's structured answer, verdict, misses, tokens and cost; the pack's sha256, the pack itself kept off the repository).",
+  "about": "P1 Explain's recorded cases (PHASE8_PLAN 13.6 and the sprint's item 9: every Analyst task's cases include healthy baselines that must report nothing wrong, P1 Explain's first). Each case is a replay of a past window (scripts/nmas-pack-replay, the product's own pack as of the alert's time); cases.explain_unready says first whether the pack holds what the case is judged on, then cases.explain_misses judges the answer on structured fields. A healthy baseline passes on Explain's no fault found assessment, citing the healthy evidence it checked (C1742, the operator's ruling of 2026-10-25). What only a person can judge in the prose is the case's flag, read on the recording. Recorded 2026-10-26 on prompt v4, five runs a case (each run's structured answer, verdict, misses, tokens and cost; the pack's sha256, the pack itself kept off the repository): cases 1 to 7 at 03:23 to 03:42 UTC, cases 8 to 20 at 18:5x to 19:26 UTC as evaluation:explain-cases-20261026 (C1784), each expectation set from its pack before any run. Cases 8 and 19 were corrected by the operator after the run, from evidence, never from an answer: s3's and s4's clocks run at 0.703 and 0.775 of real time, so their heartbeat alerts have a cause, the drift, which an answer must name as a hypothesis (`says_any`); each keeps what it was under `was`. A case's text checks (`no_text`, `says_any`) are judged at the recording on the answer's prose and kept as its misses; CI keeps the structured answer.",
   "cases": [
     {
       "n": 1,
@@ -1716,6 +1716,3113 @@
             "input_tokens": 8618,
             "output_tokens": 1996,
             "cost_usd": 0.0376
+          }
+        ],
+        "passed": 5
+      }
+    },
+    {
+      "n": 8,
+      "name": "s3's heartbeat alert is its clock: at 0.703 of real time its 300 s watchdog fires about every 424 s, so beats arrive late while the switch is up (the operator's correction, 2026-10-26; C535)",
+      "kind": "drift",
+      "replay": {
+        "device": "s3",
+        "onset": "2026-10-20T05:51:00Z",
+        "at": "2026-10-20T06:02:00Z",
+        "rule": "NMAS heartbeat missing: s3"
+      },
+      "found": "the pack (built 2026-10-26, no call): s3 1 beat in the window, the last at 05:44:10 (about 1,070 s before the alert time); 0 of 104 scrapes failed; CPU 62 to 63%; discards at most 3.4/s; no other device failed a scrape or missed a beat; no log lines. s3's clock runs at about 0.70 of real time (C535), which stretches its 300 s heartbeat timer; that rate is not in the pack.",
+      "needs": [
+        "health:s3:cpu",
+        "health:s3:heartbeat",
+        "health:s3:scrapes"
+      ],
+      "expect": {
+        "outcome": [
+          "answer"
+        ],
+        "cites": [
+          [
+            "health:s3:heartbeat"
+          ]
+        ],
+        "says_any": [
+          "clock",
+          "timer",
+          "ntp",
+          "drift",
+          "time source"
+        ],
+        "says_why": "s3's clock runs at 0.703 of real time (read-only, 2026-10-26 morning: unsynchronised, stratum 16), so its watchdog's 300 s is about 424 s; the pack does not hold the rate, so it can only be a hypothesis, with the read that confirms it",
+        "figures_from_pack": true
+      },
+      "flag": "A person reads the recording: the heartbeat is late while the switch answers every scrape at its ordinary CPU; the answer names the clock or timer drift as the likely cause, confirmed by a read of the clock or NTP, never s3 down or overloaded.",
+      "was": {
+        "name": "No fault found on s3's heartbeat: one late beat while the switch answers every scrape at its ordinary CPU (the operator's case: the device is fine)",
+        "kind": "no_fault",
+        "expect": {
+          "outcome": [
+            "no_fault_found"
+          ],
+          "hypotheses_max": 0,
+          "checked": [
+            [
+              "health:s3:scrapes"
+            ]
+          ],
+          "figures_from_pack": true
+        }
+      },
+      "corrected": "2026-10-26, the operator, from evidence: was no_fault_found; s3's clock at 0.703 of real time stretches its heartbeat watchdog (C535), so the alert has a cause, the drift, which the answer names as a hypothesis",
+      "recorded": {
+        "prompt": "explain.v4",
+        "model": "claude-sonnet-5-5",
+        "at": "2026-10-26T19:03Z to 19:21Z",
+        "actor": "evaluation:explain-cases-20261026",
+        "pack_sha256": "c6a62dc5102eb7a4e7e0a9302405909b4ca2775cb430663ed4c944ae9c34f1ce",
+        "runs": [
+          {
+            "round": 1,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": true,
+              "evidence": [
+                [
+                  "health:dev:u38e76896:cpu",
+                  "health:dev:u38e76896:heartbeat",
+                  "health:dev:u38e76896:scrapes",
+                  "logs"
+                ],
+                [
+                  "cable:dev:u38e76896/Gi1/1~mercury/enp6s19",
+                  "health:dev:u38e76896:discards",
+                  "health:dev:u38e76896:heartbeat"
+                ]
+              ],
+              "checked": [
+                "cable:dev:u38e76896/Gi1/1~mercury/enp6s19",
+                "health:dev:u38e76896:cpu",
+                "health:dev:u38e76896:scrapes",
+                "health:dev:u66688a5c:scrapes",
+                "health:dev:uc038a8be:scrapes",
+                "intent:1",
+                "neighbours:2",
+                "neighbours:3",
+                "neighbours:4",
+                "neighbours:5",
+                "neighbours:6"
+              ]
+            },
+            "misses": [
+              "no hypothesis names clock or timer or ntp or drift or time source (s3's clock runs at 0.703 of real time (read-only, 2026-10-26 morning: unsynchronised, stratum 16), so its watchdog's 300 s is about 424 s; the pack does not hold the rate, so it can only be a hypothesis, with the read that confirms it)"
+            ],
+            "pass": false,
+            "input_tokens": 6749,
+            "output_tokens": 1271,
+            "cost_usd": 0.0372
+          },
+          {
+            "round": 2,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": true,
+              "evidence": [
+                [
+                  "health:dev:u38e76896:cpu",
+                  "health:dev:u38e76896:heartbeat",
+                  "health:dev:u38e76896:scrapes"
+                ],
+                [
+                  "cable:dev:u38e76896/Gi1/1~mercury/enp6s19",
+                  "health:dev:u38e76896:heartbeat"
+                ]
+              ],
+              "checked": [
+                "cable:dev:u38e76896/Gi1/1~mercury/enp6s19",
+                "health:dev:u38e76896:cpu",
+                "health:dev:u38e76896:scrapes",
+                "health:dev:u5f6ab452:scrapes",
+                "health:dev:u66688a5c:scrapes",
+                "health:dev:ub937e1ed:scrapes",
+                "intent:1",
+                "neighbours:2",
+                "neighbours:3",
+                "neighbours:4",
+                "neighbours:5",
+                "neighbours:6"
+              ]
+            },
+            "misses": [
+              "no hypothesis names clock or timer or ntp or drift or time source (s3's clock runs at 0.703 of real time (read-only, 2026-10-26 morning: unsynchronised, stratum 16), so its watchdog's 300 s is about 424 s; the pack does not hold the rate, so it can only be a hypothesis, with the read that confirms it)"
+            ],
+            "pass": false,
+            "input_tokens": 6749,
+            "output_tokens": 1467,
+            "cost_usd": 0.0286
+          },
+          {
+            "round": 3,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": true,
+              "evidence": [
+                [
+                  "alert:1",
+                  "health:dev:u38e76896:cpu",
+                  "health:dev:u38e76896:heartbeat",
+                  "health:dev:u38e76896:scrapes"
+                ],
+                [
+                  "cable:dev:u38e76896/Gi1/1~mercury/enp6s19",
+                  "health:dev:u38e76896:heartbeat",
+                  "logs"
+                ]
+              ],
+              "checked": [
+                "adj:ospf:dev:u38e76896~dev:u5f6ab452:10.255.3.0/24",
+                "adj:ospf:dev:u38e76896~dev:ub937e1ed:10.255.3.0/24",
+                "health:dev:u38e76896:cpu",
+                "health:dev:u38e76896:discards",
+                "health:dev:u38e76896:scrapes",
+                "health:dev:u66688a5c:scrapes",
+                "health:dev:uc038a8be:scrapes",
+                "intent:1",
+                "neighbours:2",
+                "neighbours:3",
+                "neighbours:4",
+                "neighbours:5",
+                "neighbours:6"
+              ]
+            },
+            "misses": [
+              "no hypothesis names clock or timer or ntp or drift or time source (s3's clock runs at 0.703 of real time (read-only, 2026-10-26 morning: unsynchronised, stratum 16), so its watchdog's 300 s is about 424 s; the pack does not hold the rate, so it can only be a hypothesis, with the read that confirms it)"
+            ],
+            "pass": false,
+            "input_tokens": 6749,
+            "output_tokens": 1453,
+            "cost_usd": 0.0285
+          },
+          {
+            "round": 4,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": true,
+              "evidence": [
+                [
+                  "alert:1",
+                  "health:dev:u38e76896:cpu",
+                  "health:dev:u38e76896:heartbeat",
+                  "health:dev:u38e76896:scrapes",
+                  "neighbours:2",
+                  "neighbours:4"
+                ],
+                [
+                  "cable:dev:u38e76896/Gi1/1~mercury/enp6s19",
+                  "health:dev:u38e76896:heartbeat",
+                  "logs"
+                ]
+              ],
+              "checked": [
+                "adj:ospf:dev:u38e76896~dev:u5f6ab452:10.255.3.0/24",
+                "adj:ospf:dev:u38e76896~dev:ub937e1ed:10.255.3.0/24",
+                "health:dev:u38e76896:cpu",
+                "health:dev:u38e76896:discards",
+                "health:dev:u38e76896:scrapes",
+                "health:dev:u66688a5c:scrapes",
+                "intent:1",
+                "neighbours:2",
+                "neighbours:3",
+                "neighbours:4",
+                "neighbours:5",
+                "neighbours:6"
+              ]
+            },
+            "misses": [
+              "no hypothesis names clock or timer or ntp or drift or time source (s3's clock runs at 0.703 of real time (read-only, 2026-10-26 morning: unsynchronised, stratum 16), so its watchdog's 300 s is about 424 s; the pack does not hold the rate, so it can only be a hypothesis, with the read that confirms it)"
+            ],
+            "pass": false,
+            "input_tokens": 6749,
+            "output_tokens": 1516,
+            "cost_usd": 0.0291
+          },
+          {
+            "round": 5,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": true,
+              "evidence": [
+                [
+                  "health:dev:u38e76896:cpu",
+                  "health:dev:u38e76896:heartbeat",
+                  "health:dev:u38e76896:scrapes",
+                  "neighbours:4",
+                  "neighbours:5"
+                ],
+                [
+                  "cable:dev:u38e76896/Gi1/1~mercury/enp6s19",
+                  "health:dev:u38e76896:heartbeat",
+                  "logs"
+                ]
+              ],
+              "checked": [
+                "adj:ospf:dev:u38e76896~dev:u5f6ab452:10.255.3.0/24",
+                "adj:ospf:dev:u38e76896~dev:ub937e1ed:10.255.3.0/24",
+                "health:dev:u38e76896:cpu",
+                "health:dev:u38e76896:discards",
+                "health:dev:u38e76896:scrapes",
+                "health:dev:u66688a5c:scrapes",
+                "intent:1",
+                "neighbours:2",
+                "neighbours:3",
+                "neighbours:4",
+                "neighbours:5",
+                "neighbours:6"
+              ]
+            },
+            "misses": [
+              "no hypothesis names clock or timer or ntp or drift or time source (s3's clock runs at 0.703 of real time (read-only, 2026-10-26 morning: unsynchronised, stratum 16), so its watchdog's 300 s is about 424 s; the pack does not hold the rate, so it can only be a hypothesis, with the read that confirms it)"
+            ],
+            "pass": false,
+            "input_tokens": 6749,
+            "output_tokens": 1459,
+            "cost_usd": 0.0285
+          }
+        ],
+        "passed": 0
+      }
+    },
+    {
+      "n": 9,
+      "name": "Two hops: r4's OSPF neighbour r6 dropped, r4 itself fine, r6 silent (its scrapes and CPU absent, its last beat 14 minutes before)",
+      "kind": "incident",
+      "replay": {
+        "device": "r4",
+        "onset": "2026-10-21T22:35:16Z",
+        "at": "2026-10-21T22:45:00Z",
+        "rule": "Replayed: OSPF adjacency drops"
+      },
+      "found": "the pack: r4's log, OSPF and OSPFv3 Nbr 10.255.1.16 (r6) on Gi5 FULL to DOWN, dead timer, 22:35:17; r4 0 of 222 scrapes failed, CPU 44 to 62%, beats every 300 s; r6's scrapes, CPU and discards absent from Prometheus, its last beat at 22:30:57. r6's own reload line (22:34:33, 'Reload requested by console') is r6's log, not r4's, so it is not in this pack.",
+      "needs": [
+        "health:r4:scrapes",
+        "health:r6:heartbeat"
+      ],
+      "expect": {
+        "outcome": [
+          "answer"
+        ],
+        "together": [
+          [
+            [
+              "logs:*"
+            ],
+            [
+              "health:r6:heartbeat",
+              "health:r6:scrapes",
+              "health:r6:cpu"
+            ]
+          ]
+        ],
+        "lead_not_only": [
+          "health:r4:cpu",
+          "health:r4:heartbeat",
+          "health:r4:scrapes",
+          "health:r4:discards"
+        ],
+        "figures_from_pack": true
+      },
+      "flag": "A person reads the recording: the drop is r6 going silent (its figures absent, its beats stopped), r4 being fine; why r6 went silent is offered as a hypothesis (a reload, a crash, its link), never as fact, since r6's own log is not here.",
+      "recorded": {
+        "prompt": "explain.v4",
+        "model": "claude-sonnet-5-5",
+        "at": "2026-10-26T19:04Z to 19:21Z",
+        "actor": "evaluation:explain-cases-20261026",
+        "pack_sha256": "24589ac5fc85591cb78cac98f5722311e9a3fa1366cb24f645791485e3a61f2e",
+        "runs": [
+          {
+            "round": 1,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": true,
+              "evidence": [
+                [
+                  "health:dev:24:cpu",
+                  "health:dev:24:heartbeat",
+                  "health:dev:24:scrapes",
+                  "logs:1",
+                  "logs:2",
+                  "neighbours:14",
+                  "neighbours:8"
+                ],
+                [
+                  "adj:ospf:dev:24~dev:u5f6ab452:10.255.4.0/30",
+                  "adj:ospfv3:dev:24~dev:u5f6ab452:2001:db8:2:46::/64",
+                  "history:11",
+                  "history:14"
+                ],
+                [
+                  "health:dev:24:heartbeat",
+                  "health:dev:25:heartbeat",
+                  "health:dev:26:heartbeat"
+                ]
+              ],
+              "checked": [
+                "health:dev:u342aff19:scrapes",
+                "health:dev:u38e76896:scrapes",
+                "health:dev:u5f6ab452:cpu",
+                "health:dev:u5f6ab452:discards",
+                "health:dev:u5f6ab452:heartbeat",
+                "health:dev:u5f6ab452:scrapes",
+                "health:dev:u66688a5c:scrapes",
+                "health:dev:ub937e1ed:scrapes",
+                "health:dev:uc038a8be:cpu",
+                "health:dev:uc038a8be:scrapes",
+                "neighbours:16",
+                "neighbours:17",
+                "neighbours:2",
+                "neighbours:3",
+                "neighbours:4",
+                "neighbours:7"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 13536,
+            "output_tokens": 1811,
+            "cost_usd": 0.0456
+          },
+          {
+            "round": 2,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": true,
+              "evidence": [
+                [
+                  "adj:ospf:dev:24~dev:u5f6ab452:10.255.4.0/30",
+                  "health:dev:24:heartbeat",
+                  "health:dev:24:scrapes",
+                  "logs:1",
+                  "logs:2",
+                  "neighbours:14",
+                  "neighbours:8"
+                ],
+                [
+                  "history:11",
+                  "history:14",
+                  "link:10.255.4.0/30",
+                  "neighbours:8"
+                ]
+              ],
+              "checked": [
+                "health:dev:u342aff19:scrapes",
+                "health:dev:u38e76896:scrapes",
+                "health:dev:u5f6ab452:cpu",
+                "health:dev:u5f6ab452:discards",
+                "health:dev:u5f6ab452:scrapes",
+                "health:dev:u66688a5c:scrapes",
+                "health:dev:ub937e1ed:scrapes",
+                "health:dev:uc038a8be:scrapes",
+                "neighbours:16",
+                "neighbours:17",
+                "neighbours:2",
+                "neighbours:7"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 13536,
+            "output_tokens": 1761,
+            "cost_usd": 0.0451
+          },
+          {
+            "round": 3,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": true,
+              "evidence": [
+                [
+                  "adj:ospf:dev:24~dev:u5f6ab452:10.255.4.0/30",
+                  "adj:ospfv3:dev:24~dev:u5f6ab452:2001:db8:2:46::/64",
+                  "health:dev:24:heartbeat",
+                  "health:dev:24:scrapes",
+                  "logs:1",
+                  "logs:2",
+                  "neighbours:14",
+                  "neighbours:8"
+                ],
+                [
+                  "link:10.255.4.0/30",
+                  "logs:1",
+                  "logs:2",
+                  "neighbours:8"
+                ]
+              ],
+              "checked": [
+                "health:dev:u342aff19:scrapes",
+                "health:dev:u5f6ab452:cpu",
+                "health:dev:u5f6ab452:discards",
+                "health:dev:u5f6ab452:scrapes",
+                "health:dev:ub937e1ed:scrapes",
+                "health:dev:uc038a8be:scrapes",
+                "intent:1",
+                "neighbours:2",
+                "neighbours:7"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 13536,
+            "output_tokens": 1650,
+            "cost_usd": 0.044
+          },
+          {
+            "round": 4,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": true,
+              "evidence": [
+                [
+                  "adj:ospf:dev:24~dev:u5f6ab452:10.255.4.0/30",
+                  "adj:ospfv3:dev:24~dev:u5f6ab452:2001:db8:2:46::/64",
+                  "health:dev:24:heartbeat",
+                  "health:dev:24:scrapes",
+                  "logs:1",
+                  "logs:2",
+                  "neighbours:14",
+                  "neighbours:8"
+                ],
+                [
+                  "health:dev:25:heartbeat",
+                  "link:10.255.4.0/30",
+                  "neighbours:8"
+                ]
+              ],
+              "checked": [
+                "adj:ospf:dev:u5f6ab452~dev:ub937e1ed:10.255.2.14/31",
+                "health:dev:u5f6ab452:cpu",
+                "health:dev:u5f6ab452:discards",
+                "health:dev:u5f6ab452:scrapes",
+                "health:dev:ub937e1ed:cpu",
+                "health:dev:uc038a8be:cpu",
+                "neighbours:16",
+                "neighbours:17",
+                "neighbours:2",
+                "neighbours:4",
+                "neighbours:7"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 13536,
+            "output_tokens": 1947,
+            "cost_usd": 0.047
+          },
+          {
+            "round": 5,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": true,
+              "evidence": [
+                [
+                  "adj:ospf:dev:24~dev:u5f6ab452:10.255.4.0/30",
+                  "adj:ospfv3:dev:24~dev:u5f6ab452:2001:db8:2:46::/64",
+                  "health:dev:24:heartbeat",
+                  "logs:1",
+                  "logs:2",
+                  "neighbours:14",
+                  "neighbours:8"
+                ],
+                [
+                  "history:11",
+                  "history:14",
+                  "link:10.255.4.0/30",
+                  "logs:1",
+                  "neighbours:8"
+                ],
+                [
+                  "history:11",
+                  "intent:1",
+                  "logs:1"
+                ]
+              ],
+              "checked": [
+                "adj:ospf:dev:u5f6ab452~dev:ub937e1ed:10.255.2.14/31",
+                "health:dev:u5f6ab452:cpu",
+                "health:dev:u5f6ab452:discards",
+                "health:dev:u5f6ab452:scrapes",
+                "health:dev:ub937e1ed:cpu",
+                "health:dev:uc038a8be:cpu",
+                "neighbours:16",
+                "neighbours:17",
+                "neighbours:2",
+                "neighbours:7"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 13536,
+            "output_tokens": 1634,
+            "cost_usd": 0.0439
+          }
+        ],
+        "passed": 5
+      }
+    },
+    {
+      "n": 10,
+      "name": "Two hops on a slow clock: r1's OSPF neighbour s3 dropped by dead timer while s3 answered every scrape at ordinary CPU, its heartbeat stretched",
+      "kind": "incident",
+      "replay": {
+        "device": "r1",
+        "onset": "2026-10-20T10:14:38Z",
+        "at": "2026-10-20T10:25:00Z",
+        "rule": "Replayed: OSPF adjacency drops"
+      },
+      "found": "the pack: r1's log, OSPF Nbr 10.255.1.23 (s3) on Gi2 2WAY to DOWN, dead timer, 10:14:39; r1 0 of 178 failed, CPU 42 to 62%; s3 0 of 102 failed, CPU 62 to 64%, longest heartbeat gap 542 s against 300 nominal, discards at most 2.5/s; no other device failed a scrape. s3's slow clock (C535) stretches its OSPF hellos as it does its heartbeat; the rate is not in the pack.",
+      "needs": [
+        "health:r1:scrapes",
+        "health:s3:heartbeat"
+      ],
+      "expect": {
+        "outcome": [
+          "answer"
+        ],
+        "together": [
+          [
+            [
+              "logs:*"
+            ],
+            [
+              "health:s3:heartbeat",
+              "health:s3:scrapes",
+              "health:s3:cpu",
+              "health:s3:discards"
+            ]
+          ]
+        ],
+        "lead_not_only": [
+          "health:s3:cpu"
+        ],
+        "figures_from_pack": true
+      },
+      "flag": "A person reads the recording: the drop is tied to s3's side (its stretched heartbeat, the dead timer on the link to it), r1 being fine; 's3 overloaded' is not the evidence (its CPU was ordinary). A slow or stalled s3 timer offered as a hedged hypothesis is right.",
+      "recorded": {
+        "prompt": "explain.v4",
+        "model": "claude-sonnet-5-5",
+        "at": "2026-10-26T19:04Z to 19:22Z",
+        "actor": "evaluation:explain-cases-20261026",
+        "pack_sha256": "54e05d302b158534ccb8bd2784a3e25fdbc6f67ec179c6d180a25ad6ca98aef8",
+        "runs": [
+          {
+            "round": 1,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": true,
+              "evidence": [
+                [
+                  "adj:ospf:dev:u38e76896~dev:uc038a8be:10.255.3.0/24",
+                  "cable:dev:u38e76896/Gi1/0~dev:uc038a8be/Gi2",
+                  "logs:6",
+                  "neighbours:5"
+                ],
+                [
+                  "health:dev:u38e76896:cpu",
+                  "health:dev:u38e76896:heartbeat",
+                  "logs:6"
+                ]
+              ],
+              "checked": [
+                "health:dev:u342aff19:scrapes",
+                "health:dev:u38e76896:scrapes",
+                "health:dev:u5f6ab452:scrapes",
+                "health:dev:u66688a5c:scrapes",
+                "health:dev:ub937e1ed:scrapes",
+                "health:dev:uc038a8be:cpu",
+                "health:dev:uc038a8be:discards",
+                "health:dev:uc038a8be:scrapes",
+                "neighbours:10",
+                "neighbours:3",
+                "neighbours:4",
+                "neighbours:6",
+                "neighbours:9"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 10652,
+            "output_tokens": 1711,
+            "cost_usd": 0.0389
+          },
+          {
+            "round": 2,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": true,
+              "evidence": [
+                [
+                  "adj:ospf:dev:u38e76896~dev:uc038a8be:10.255.3.0/24",
+                  "alert:1",
+                  "health:dev:u38e76896:cpu",
+                  "health:dev:u38e76896:heartbeat",
+                  "logs:6",
+                  "neighbours:5"
+                ],
+                [
+                  "cable:dev:u38e76896/Gi1/0~dev:uc038a8be/Gi2",
+                  "health:dev:u38e76896:discards",
+                  "logs:6"
+                ]
+              ],
+              "checked": [
+                "adj:ospf:dev:u5f6ab452~dev:uc038a8be:10.255.3.0/24",
+                "adj:ospf:dev:ub937e1ed~dev:uc038a8be:10.255.3.0/24",
+                "health:dev:u38e76896:scrapes",
+                "health:dev:uc038a8be:cpu",
+                "health:dev:uc038a8be:discards",
+                "health:dev:uc038a8be:scrapes",
+                "neighbours:2",
+                "neighbours:3",
+                "neighbours:4",
+                "neighbours:6"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 10652,
+            "output_tokens": 1666,
+            "cost_usd": 0.0384
+          },
+          {
+            "round": 3,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": true,
+              "evidence": [
+                [
+                  "adj:ospf:dev:u38e76896~dev:uc038a8be:10.255.3.0/24",
+                  "health:dev:u38e76896:cpu",
+                  "health:dev:u38e76896:heartbeat",
+                  "logs:6",
+                  "neighbours:5"
+                ],
+                [
+                  "cable:dev:u38e76896/Gi1/0~dev:uc038a8be/Gi2",
+                  "health:dev:u38e76896:heartbeat",
+                  "logs:6"
+                ]
+              ],
+              "checked": [
+                "health:dev:u342aff19:scrapes",
+                "health:dev:u5f6ab452:scrapes",
+                "health:dev:u66688a5c:scrapes",
+                "health:dev:ub937e1ed:scrapes",
+                "health:dev:uc038a8be:cpu",
+                "health:dev:uc038a8be:discards",
+                "health:dev:uc038a8be:scrapes",
+                "intent:1",
+                "neighbours:2",
+                "neighbours:3",
+                "neighbours:4",
+                "neighbours:6"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 10652,
+            "output_tokens": 1623,
+            "cost_usd": 0.038
+          },
+          {
+            "round": 4,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": true,
+              "evidence": [
+                [
+                  "adj:ospf:dev:u38e76896~dev:uc038a8be:10.255.3.0/24",
+                  "health:dev:u38e76896:cpu",
+                  "health:dev:u38e76896:heartbeat",
+                  "logs:6"
+                ],
+                [
+                  "cable:dev:u38e76896/Gi1/0~dev:uc038a8be/Gi2",
+                  "health:dev:uc038a8be:discards",
+                  "logs:6"
+                ]
+              ],
+              "checked": [
+                "adj:ospf:dev:u5f6ab452~dev:uc038a8be:10.255.3.0/24",
+                "adj:ospf:dev:ub937e1ed~dev:uc038a8be:10.255.3.0/24",
+                "health:dev:u342aff19:scrapes",
+                "health:dev:u5f6ab452:scrapes",
+                "health:dev:u66688a5c:scrapes",
+                "health:dev:ub937e1ed:scrapes",
+                "health:dev:uc038a8be:cpu",
+                "health:dev:uc038a8be:discards",
+                "health:dev:uc038a8be:scrapes",
+                "intent:1",
+                "neighbours:3",
+                "neighbours:4"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 10510,
+            "output_tokens": 1826,
+            "cost_usd": 0.0397
+          },
+          {
+            "round": 5,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": true,
+              "evidence": [
+                [
+                  "adj:ospf:dev:u38e76896~dev:uc038a8be:10.255.3.0/24",
+                  "health:dev:u38e76896:cpu",
+                  "health:dev:u38e76896:heartbeat",
+                  "logs:6",
+                  "neighbours:5"
+                ],
+                [
+                  "cable:dev:u38e76896/Gi1/0~dev:uc038a8be/Gi2",
+                  "health:dev:u38e76896:discards",
+                  "logs:6"
+                ]
+              ],
+              "checked": [
+                "health:dev:u342aff19:scrapes",
+                "health:dev:u38e76896:scrapes",
+                "health:dev:u5f6ab452:scrapes",
+                "health:dev:ub937e1ed:scrapes",
+                "health:dev:uc038a8be:cpu",
+                "health:dev:uc038a8be:discards",
+                "health:dev:uc038a8be:scrapes",
+                "neighbours:3",
+                "neighbours:4"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 10510,
+            "output_tokens": 1785,
+            "cost_usd": 0.0393
+          }
+        ],
+        "passed": 5
+      }
+    },
+    {
+      "n": 11,
+      "name": "Clock skew: a CPU hog logged on s3, whose own clock was about 20 h behind; the answer works in receive time and never names the switch's date",
+      "kind": "skew",
+      "replay": {
+        "device": "s3",
+        "onset": "2026-10-24T15:36:18Z",
+        "at": "2026-10-24T15:40:00Z",
+        "rule": "Replayed: CPU hog logged"
+      },
+      "found": "the pack: one log line, %SYS-3-CPUHOG (1,999 ms, process IOSv e1000), received 15:36:18 (the device stamped it *Oct 23 19:45:08, 19 h 51 m behind; the pack keeps the receive time and drops the device's); s3 0 of 76 failed, CPU 48 to 53%, longest heartbeat gap 450 s; no other device failed a scrape.",
+      "needs": [
+        "health:s3:cpu",
+        "health:s3:heartbeat",
+        "health:s3:scrapes"
+      ],
+      "expect": {
+        "outcome": [
+          "no_fault_found",
+          "answer"
+        ],
+        "hypotheses_max": 1,
+        "no_text": [
+          "Oct 23"
+        ],
+        "no_text_why": "s3's own clock, about 20 h behind; the line arrived on Oct 24",
+        "figures_from_pack": true
+      },
+      "flag": "A person reads the recording: events placed in receive time (Oct 24, 15:36); the one-off hog under 2 s with ordinary CPU and every scrape answered is at most a transient; it never blames another day's window.",
+      "recorded": {
+        "prompt": "explain.v4",
+        "model": "claude-sonnet-5-5",
+        "at": "2026-10-26T19:04Z to 19:22Z",
+        "actor": "evaluation:explain-cases-20261026",
+        "pack_sha256": "f712a31153b5e143a7d442ee505f70116f411fcc5520f140cb9c842b22c2f093",
+        "runs": [
+          {
+            "round": 1,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": false,
+              "evidence": [
+                [
+                  "alert:1",
+                  "health:dev:u38e76896:cpu",
+                  "logs:1"
+                ],
+                [
+                  "health:dev:u342aff19:cpu",
+                  "health:dev:u38e76896:cpu",
+                  "health:dev:u5f6ab452:cpu",
+                  "health:dev:ub937e1ed:cpu",
+                  "health:dev:uc038a8be:cpu",
+                  "logs:1"
+                ]
+              ],
+              "checked": [
+                "health:dev:u38e76896:discards",
+                "health:dev:u38e76896:scrapes",
+                "health:dev:u66688a5c:cpu",
+                "health:dev:u66688a5c:discards",
+                "health:dev:u66688a5c:scrapes",
+                "intent:1",
+                "neighbours:2",
+                "neighbours:3",
+                "neighbours:4",
+                "neighbours:5",
+                "neighbours:6"
+              ]
+            },
+            "misses": [
+              "2 hypotheses, at most 1 expected (a healthy window reports nothing wrong)"
+            ],
+            "pass": false,
+            "input_tokens": 8687,
+            "output_tokens": 1673,
+            "cost_usd": 0.0345
+          },
+          {
+            "round": 2,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": false,
+              "evidence": [
+                [
+                  "alert:1",
+                  "health:dev:u38e76896:cpu",
+                  "logs:1"
+                ]
+              ],
+              "checked": [
+                "adj:ospf:dev:u38e76896~dev:u5f6ab452:10.255.3.0/24",
+                "adj:ospf:dev:u38e76896~dev:ub937e1ed:10.255.3.0/24",
+                "health:dev:u38e76896:discards",
+                "health:dev:u38e76896:scrapes",
+                "neighbours:2",
+                "neighbours:3",
+                "neighbours:4",
+                "neighbours:5",
+                "neighbours:6"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 8687,
+            "output_tokens": 1224,
+            "cost_usd": 0.0301
+          },
+          {
+            "round": 3,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": false,
+              "evidence": [
+                [
+                  "alert:1",
+                  "health:dev:u38e76896:cpu",
+                  "logs:1"
+                ],
+                [
+                  "health:dev:u38e76896:cpu",
+                  "health:dev:u38e76896:heartbeat",
+                  "health:dev:u66688a5c:heartbeat"
+                ]
+              ],
+              "checked": [
+                "health:dev:u342aff19:cpu",
+                "health:dev:u38e76896:discards",
+                "health:dev:u38e76896:scrapes",
+                "health:dev:u5f6ab452:cpu",
+                "health:dev:u66688a5c:cpu",
+                "health:dev:ub937e1ed:cpu",
+                "health:dev:uc038a8be:cpu",
+                "intent:1",
+                "neighbours:2",
+                "neighbours:3",
+                "neighbours:4",
+                "neighbours:5",
+                "neighbours:6"
+              ]
+            },
+            "misses": [
+              "2 hypotheses, at most 1 expected (a healthy window reports nothing wrong)"
+            ],
+            "pass": false,
+            "input_tokens": 8687,
+            "output_tokens": 1428,
+            "cost_usd": 0.0321
+          },
+          {
+            "round": 4,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": true,
+              "evidence": [
+                [
+                  "alert:1",
+                  "health:dev:u38e76896:cpu",
+                  "logs:1"
+                ],
+                [
+                  "health:dev:u38e76896:cpu",
+                  "logs:1"
+                ]
+              ],
+              "checked": [
+                "health:dev:u342aff19:scrapes",
+                "health:dev:u38e76896:discards",
+                "health:dev:u38e76896:scrapes",
+                "health:dev:u5f6ab452:scrapes",
+                "health:dev:u66688a5c:scrapes",
+                "health:dev:ub937e1ed:scrapes",
+                "health:dev:uc038a8be:scrapes",
+                "intent:1",
+                "neighbours:2",
+                "neighbours:3",
+                "neighbours:4",
+                "neighbours:5",
+                "neighbours:6"
+              ]
+            },
+            "misses": [
+              "2 hypotheses, at most 1 expected (a healthy window reports nothing wrong)"
+            ],
+            "pass": false,
+            "input_tokens": 8687,
+            "output_tokens": 1500,
+            "cost_usd": 0.0328
+          },
+          {
+            "round": 5,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": false,
+              "evidence": [
+                [
+                  "alert:1",
+                  "health:dev:u38e76896:cpu",
+                  "logs:1"
+                ],
+                [
+                  "health:dev:u38e76896:cpu",
+                  "health:dev:u38e76896:heartbeat",
+                  "logs:1"
+                ]
+              ],
+              "checked": [
+                "adj:ospf:dev:u38e76896~dev:u5f6ab452:10.255.3.0/24",
+                "adj:ospf:dev:u38e76896~dev:ub937e1ed:10.255.3.0/24",
+                "health:dev:u38e76896:cpu",
+                "health:dev:u38e76896:discards",
+                "health:dev:u38e76896:heartbeat",
+                "health:dev:u38e76896:scrapes",
+                "health:dev:u66688a5c:cpu",
+                "health:dev:ub937e1ed:cpu",
+                "health:dev:uc038a8be:cpu",
+                "neighbours:2",
+                "neighbours:3",
+                "neighbours:4",
+                "neighbours:5",
+                "neighbours:6"
+              ]
+            },
+            "misses": [
+              "2 hypotheses, at most 1 expected (a healthy window reports nothing wrong)"
+            ],
+            "pass": false,
+            "input_tokens": 8687,
+            "output_tokens": 1474,
+            "cost_usd": 0.0326
+          }
+        ],
+        "passed": 1
+      }
+    },
+    {
+      "n": 12,
+      "name": "A deliberate change: s1's Gi0/1 shut administratively by configuration from the management host, then the link down; no fault",
+      "kind": "incident",
+      "replay": {
+        "device": "s1",
+        "onset": "2026-10-15T04:00:10Z",
+        "at": "2026-10-15T04:03:00Z",
+        "rule": "Replayed: Interface down"
+      },
+      "found": "the pack: s1's log, SYS-5-CONFIG_I 'Configured from console by admin on vty1 (10.255.0.10)' at 04:00:09, then LINK-5-CHANGED Gi0/1 'administratively down' and LINEPROTO down at 04:00:10 (the device stamped them *Oct 14, 19 h behind; the pack keeps receive time); s1 0 of 36 failed, CPU 52 to 58%; no history piece (the deploy's receipt is not in this pack).",
+      "needs": [
+        "health:s1:cpu",
+        "health:s1:heartbeat",
+        "health:s1:scrapes"
+      ],
+      "expect": {
+        "outcome": [
+          "answer",
+          "no_fault_found"
+        ],
+        "checked": [
+          [
+            "logs:*"
+          ]
+        ],
+        "no_text": [
+          "Oct 14"
+        ],
+        "no_text_why": "s1's own clock, about 19 h behind; the lines arrived on Oct 15",
+        "figures_from_pack": true
+      },
+      "flag": "A person reads the recording: 'administratively down' right after a configuration session is a deliberate shut, not a failure; it reads the log lines and says so; a hardware or cable cause is a fail.",
+      "recorded": {
+        "prompt": "explain.v4",
+        "model": "claude-sonnet-5-5",
+        "at": "2026-10-26T19:05Z to 19:22Z",
+        "actor": "evaluation:explain-cases-20261026",
+        "pack_sha256": "2a52361abfa07c9ad5adc3ddd0ee8551d9ce8b28aeb48e45a7efb614a8ced5ed",
+        "runs": [
+          {
+            "round": 1,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": false,
+              "evidence": [
+                [
+                  "alert:1",
+                  "logs:1",
+                  "logs:2",
+                  "logs:3",
+                  "logs:4"
+                ],
+                [
+                  "intent:1",
+                  "logs:2"
+                ]
+              ],
+              "checked": [
+                "cable:dev:u654297ae/Gi0/2~dev:uc038a8be/Gi3",
+                "cable:dev:u654297ae/Gi0/3~dev:u9cc83d5c/Gi0/3",
+                "health:dev:u654297ae:cpu",
+                "health:dev:u654297ae:discards",
+                "health:dev:u654297ae:scrapes"
+              ]
+            },
+            "misses": [
+              "checked none of ['logs:*']"
+            ],
+            "pass": false,
+            "input_tokens": 6279,
+            "output_tokens": 1222,
+            "cost_usd": 0.0252
+          },
+          {
+            "round": 2,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": false,
+              "evidence": [
+                [
+                  "alert:1",
+                  "logs:1",
+                  "logs:2",
+                  "logs:3",
+                  "logs:4"
+                ]
+              ],
+              "checked": [
+                "cable:dev:u654297ae/Gi0/2~dev:uc038a8be/Gi3",
+                "cable:dev:u654297ae/Gi0/3~dev:u9cc83d5c/Gi0/3",
+                "health:dev:u654297ae:cpu",
+                "health:dev:u654297ae:scrapes",
+                "health:dev:u9cc83d5c:scrapes",
+                "health:dev:uc038a8be:scrapes"
+              ]
+            },
+            "misses": [
+              "checked none of ['logs:*']"
+            ],
+            "pass": false,
+            "input_tokens": 6279,
+            "output_tokens": 999,
+            "cost_usd": 0.023
+          },
+          {
+            "round": 3,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": false,
+              "evidence": [
+                [
+                  "alert:1",
+                  "logs:1",
+                  "logs:2",
+                  "logs:3",
+                  "logs:4"
+                ]
+              ],
+              "checked": [
+                "cable:dev:u654297ae/Gi0/2~dev:uc038a8be/Gi3",
+                "cable:dev:u654297ae/Gi0/3~dev:u9cc83d5c/Gi0/3",
+                "health:dev:u654297ae:cpu",
+                "health:dev:u654297ae:discards",
+                "health:dev:u654297ae:scrapes",
+                "health:dev:u9cc83d5c:scrapes",
+                "health:dev:uc038a8be:scrapes",
+                "neighbours:2",
+                "neighbours:5"
+              ]
+            },
+            "misses": [
+              "checked none of ['logs:*']"
+            ],
+            "pass": false,
+            "input_tokens": 6279,
+            "output_tokens": 1193,
+            "cost_usd": 0.0249
+          },
+          {
+            "round": 4,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": false,
+              "evidence": [
+                [
+                  "alert:1",
+                  "logs:1",
+                  "logs:2",
+                  "logs:3",
+                  "logs:4"
+                ]
+              ],
+              "checked": [
+                "cable:dev:u654297ae/Gi0/2~dev:uc038a8be/Gi3",
+                "cable:dev:u654297ae/Gi0/3~dev:u9cc83d5c/Gi0/3",
+                "health:dev:u654297ae:cpu",
+                "health:dev:u654297ae:discards",
+                "health:dev:u654297ae:scrapes",
+                "health:dev:u9cc83d5c:scrapes",
+                "health:dev:uc038a8be:scrapes"
+              ]
+            },
+            "misses": [
+              "checked none of ['logs:*']"
+            ],
+            "pass": false,
+            "input_tokens": 6279,
+            "output_tokens": 975,
+            "cost_usd": 0.0227
+          },
+          {
+            "round": 5,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": false,
+              "evidence": [
+                [
+                  "alert:1",
+                  "logs:1",
+                  "logs:2",
+                  "logs:3",
+                  "logs:4"
+                ]
+              ],
+              "checked": [
+                "cable:dev:u654297ae/Gi0/2~dev:uc038a8be/Gi3",
+                "cable:dev:u654297ae/Gi0/3~dev:u9cc83d5c/Gi0/3",
+                "health:dev:u654297ae:cpu",
+                "health:dev:u654297ae:discards",
+                "health:dev:u654297ae:scrapes",
+                "neighbours:2",
+                "neighbours:4",
+                "neighbours:5",
+                "neighbours:6",
+                "neighbours:7"
+              ]
+            },
+            "misses": [
+              "checked none of ['logs:*']"
+            ],
+            "pass": false,
+            "input_tokens": 6279,
+            "output_tokens": 1168,
+            "cost_usd": 0.0247
+          }
+        ],
+        "passed": 0
+      }
+    },
+    {
+      "n": 13,
+      "name": "A requested reload: r6 reloaded by admin from the management host; its scrapes failed through the reload, its boot lines (one critical) after",
+      "kind": "incident",
+      "replay": {
+        "device": "r6",
+        "onset": "2026-10-17T00:14:44Z",
+        "at": "2026-10-17T00:15:30Z",
+        "rule": "Critical syslog received"
+      },
+      "found": "the pack: r6's log, SYS-5-RELOAD 'Reload requested by admin on vty0 (10.255.0.10)' at 00:06:41, then its boot lines from 00:14:25; r6 24 scrapes failed 00:07:12 to 00:14:42, CPU 68 to 86% while booting; no history piece (the planned-restart window is not in this pack).",
+      "needs": [
+        "health:r6:scrapes"
+      ],
+      "expect": {
+        "outcome": [
+          "answer"
+        ],
+        "together": [
+          [
+            [
+              "logs:*"
+            ],
+            [
+              "health:r6:scrapes"
+            ]
+          ]
+        ],
+        "figures_from_pack": true
+      },
+      "flag": "A person reads the recording: the reload requested at 00:06 explains the failed scrapes and the boot messages, the critical line among them; whether it was planned is not in the pack, so it does not claim so.",
+      "recorded": {
+        "prompt": "explain.v4",
+        "model": "claude-sonnet-5-5",
+        "at": "2026-10-26T19:05Z to 19:23Z",
+        "actor": "evaluation:explain-cases-20261026",
+        "pack_sha256": "e38c65ce666fe342aba7b0ab197b0cb34c191eee6060b446ddab14c6e55abab7",
+        "runs": [
+          {
+            "round": 1,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": false,
+              "evidence": [
+                [
+                  "alert:1",
+                  "logs:3",
+                  "logs:45",
+                  "logs:47",
+                  "logs:49"
+                ],
+                [
+                  "health:dev:24:cpu",
+                  "health:dev:24:heartbeat",
+                  "health:dev:24:scrapes",
+                  "logs:3",
+                  "logs:45"
+                ],
+                [
+                  "logs:49"
+                ]
+              ],
+              "checked": [
+                "health:dev:24:discards",
+                "health:dev:u5f6ab452:discards",
+                "health:dev:u5f6ab452:scrapes",
+                "intent:1",
+                "neighbours:6",
+                "neighbours:8"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 11329,
+            "output_tokens": 677,
+            "cost_usd": 0.0299
+          },
+          {
+            "round": 2,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": false,
+              "evidence": [
+                [
+                  "alert:1",
+                  "logs:3",
+                  "logs:45",
+                  "logs:47",
+                  "logs:49"
+                ],
+                [
+                  "health:dev:24:heartbeat",
+                  "health:dev:24:scrapes",
+                  "logs:3",
+                  "logs:45"
+                ],
+                [
+                  "adj:ospf:dev:24~dev:u5f6ab452:10.255.4.0/30",
+                  "logs:22",
+                  "logs:4",
+                  "logs:41",
+                  "neighbours:2",
+                  "neighbours:4"
+                ]
+              ],
+              "checked": [
+                "health:dev:u5f6ab452:cpu",
+                "health:dev:u5f6ab452:discards",
+                "health:dev:u5f6ab452:scrapes",
+                "intent:1",
+                "neighbours:6",
+                "neighbours:8"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 11329,
+            "output_tokens": 777,
+            "cost_usd": 0.0309
+          },
+          {
+            "round": 3,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": false,
+              "evidence": [
+                [
+                  "alert:1",
+                  "logs:3",
+                  "logs:45",
+                  "logs:47",
+                  "logs:49"
+                ],
+                [
+                  "health:dev:24:cpu",
+                  "health:dev:24:heartbeat",
+                  "health:dev:24:scrapes",
+                  "logs:20",
+                  "logs:3"
+                ],
+                [
+                  "adj:ospf:dev:24~dev:u5f6ab452:10.255.4.0/30",
+                  "logs:4",
+                  "logs:41",
+                  "neighbours:2",
+                  "neighbours:4"
+                ]
+              ],
+              "checked": [
+                "health:dev:u342aff19:scrapes",
+                "health:dev:u38e76896:scrapes",
+                "health:dev:u5f6ab452:discards",
+                "health:dev:u5f6ab452:scrapes",
+                "health:dev:u66688a5c:scrapes",
+                "health:dev:ub937e1ed:scrapes",
+                "health:dev:uc038a8be:scrapes",
+                "intent:1",
+                "neighbours:6",
+                "neighbours:8"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 11329,
+            "output_tokens": 872,
+            "cost_usd": 0.0318
+          },
+          {
+            "round": 4,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": false,
+              "evidence": [
+                [
+                  "alert:1",
+                  "logs:3",
+                  "logs:45",
+                  "logs:47",
+                  "logs:49"
+                ],
+                [
+                  "health:dev:24:cpu",
+                  "health:dev:24:heartbeat",
+                  "health:dev:24:scrapes",
+                  "logs:3",
+                  "logs:45"
+                ],
+                [
+                  "adj:ospf:dev:24~dev:u5f6ab452:10.255.4.0/30",
+                  "logs:22",
+                  "logs:4",
+                  "logs:41",
+                  "neighbours:2",
+                  "neighbours:4"
+                ]
+              ],
+              "checked": [
+                "health:dev:24:discards",
+                "health:dev:u5f6ab452:discards",
+                "health:dev:u5f6ab452:scrapes",
+                "intent:1",
+                "neighbours:6",
+                "neighbours:8"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 11329,
+            "output_tokens": 744,
+            "cost_usd": 0.0305
+          },
+          {
+            "round": 5,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": false,
+              "evidence": [
+                [
+                  "alert:1",
+                  "logs:3",
+                  "logs:45",
+                  "logs:47",
+                  "logs:49"
+                ],
+                [
+                  "health:dev:24:cpu",
+                  "health:dev:24:heartbeat",
+                  "health:dev:24:scrapes",
+                  "logs:3",
+                  "logs:45"
+                ],
+                [
+                  "adj:ospf:dev:24~dev:u5f6ab452:10.255.4.0/30",
+                  "logs:22",
+                  "logs:41",
+                  "neighbours:2"
+                ]
+              ],
+              "checked": [
+                "health:dev:u5f6ab452:discards",
+                "health:dev:u5f6ab452:scrapes",
+                "intent:1",
+                "neighbours:6",
+                "neighbours:8"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 11329,
+            "output_tokens": 733,
+            "cost_usd": 0.0304
+          }
+        ],
+        "passed": 5
+      }
+    },
+    {
+      "n": 14,
+      "name": "A reload from the console: r6 reloaded with no request from the management host, silent since; a person should confirm it was meant",
+      "kind": "incident",
+      "replay": {
+        "device": "r6",
+        "onset": "2026-10-21T22:43:30Z",
+        "at": "2026-10-21T22:47:00Z",
+        "rule": "NMAS heartbeat missing: r6"
+      },
+      "found": "the pack: r6's log, SYS-5-RELOAD 'Reload requested by console' at 22:34:34, boot lines from 22:45:59, CONFIG_I by admin from 10.255.0.10 at 22:46:04; r6's scrapes, CPU and discards absent from Prometheus; its last beat 22:30:57; no history piece.",
+      "needs": [
+        "health:r6:heartbeat"
+      ],
+      "expect": {
+        "outcome": [
+          "answer"
+        ],
+        "cites": [
+          [
+            "logs:*"
+          ]
+        ],
+        "needs_human": true,
+        "figures_from_pack": true
+      },
+      "flag": "A person reads the recording: the missing heartbeat is the console reload at 22:34 and the boot after it; a reload from the console is a person's action to confirm, so it asks for one.",
+      "recorded": {
+        "prompt": "explain.v4",
+        "model": "claude-sonnet-5-5",
+        "at": "2026-10-26T19:05Z to 19:24Z",
+        "actor": "evaluation:explain-cases-20261026",
+        "pack_sha256": "0770f17ee421051e81ed1d829801df909a7d788a05544cccbf6e844f8ae4357c",
+        "runs": [
+          {
+            "round": 1,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": false,
+              "evidence": [
+                [
+                  "alert:1",
+                  "health:dev:24:heartbeat",
+                  "logs:1",
+                  "logs:2",
+                  "logs:8"
+                ],
+                [
+                  "health:dev:24:heartbeat",
+                  "intent:1",
+                  "logs:8"
+                ],
+                [
+                  "health:dev:25:heartbeat",
+                  "health:dev:25:scrapes",
+                  "link:10.255.4.4/30"
+                ]
+              ],
+              "checked": [
+                "health:dev:u5f6ab452:cpu",
+                "health:dev:u5f6ab452:discards",
+                "health:dev:u5f6ab452:scrapes",
+                "intent:1"
+              ]
+            },
+            "misses": [
+              "needs_human False, expected True"
+            ],
+            "pass": false,
+            "input_tokens": 6937,
+            "output_tokens": 1742,
+            "cost_usd": 0.0317
+          },
+          {
+            "round": 2,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": true,
+              "evidence": [
+                [
+                  "alert:1",
+                  "health:dev:24:heartbeat",
+                  "logs:1",
+                  "logs:2",
+                  "logs:8"
+                ],
+                [
+                  "health:dev:24:heartbeat",
+                  "intent:1",
+                  "logs:8",
+                  "logs:9"
+                ]
+              ],
+              "checked": [
+                "cable:dev:24/Gi2~dev:u5f6ab452/Gi5",
+                "health:dev:u5f6ab452:cpu",
+                "health:dev:u5f6ab452:discards",
+                "health:dev:u5f6ab452:heartbeat",
+                "health:dev:u5f6ab452:scrapes",
+                "intent:1"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 6937,
+            "output_tokens": 617,
+            "cost_usd": 0.0205
+          },
+          {
+            "round": 3,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": false,
+              "evidence": [
+                [
+                  "alert:1",
+                  "health:dev:24:heartbeat",
+                  "logs:1",
+                  "logs:8"
+                ],
+                [
+                  "health:dev:24:heartbeat",
+                  "logs:2",
+                  "logs:8"
+                ]
+              ],
+              "checked": [
+                "health:dev:u5f6ab452:cpu",
+                "health:dev:u5f6ab452:discards",
+                "health:dev:u5f6ab452:scrapes"
+              ]
+            },
+            "misses": [
+              "needs_human False, expected True"
+            ],
+            "pass": false,
+            "input_tokens": 6937,
+            "output_tokens": 1476,
+            "cost_usd": 0.0291
+          },
+          {
+            "round": 4,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": false,
+              "evidence": [
+                [
+                  "alert:1",
+                  "health:dev:24:heartbeat",
+                  "logs:1"
+                ],
+                [
+                  "health:dev:24:heartbeat",
+                  "logs:2",
+                  "logs:8"
+                ]
+              ],
+              "checked": [
+                "health:dev:u5f6ab452:cpu",
+                "health:dev:u5f6ab452:discards",
+                "health:dev:u5f6ab452:heartbeat",
+                "health:dev:u5f6ab452:scrapes"
+              ]
+            },
+            "misses": [
+              "needs_human False, expected True"
+            ],
+            "pass": false,
+            "input_tokens": 6937,
+            "output_tokens": 1439,
+            "cost_usd": 0.0287
+          },
+          {
+            "round": 5,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": true,
+              "evidence": [
+                [
+                  "alert:1",
+                  "health:dev:24:heartbeat",
+                  "logs:1",
+                  "logs:2",
+                  "logs:8"
+                ],
+                [
+                  "health:dev:24:heartbeat",
+                  "intent:1",
+                  "logs:8"
+                ],
+                [
+                  "health:dev:25:heartbeat",
+                  "health:dev:25:scrapes",
+                  "neighbours:6"
+                ]
+              ],
+              "checked": [
+                "health:dev:u5f6ab452:cpu",
+                "health:dev:u5f6ab452:discards",
+                "health:dev:u5f6ab452:heartbeat",
+                "health:dev:u5f6ab452:scrapes",
+                "intent:1",
+                "neighbours:6",
+                "neighbours:8"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 6937,
+            "output_tokens": 1465,
+            "cost_usd": 0.029
+          }
+        ],
+        "passed": 2
+      }
+    },
+    {
+      "n": 15,
+      "name": "Thin evidence: an interface down on r7 with no link line in its log and three devices failing scrapes; the pack cannot say why",
+      "kind": "incident",
+      "replay": {
+        "device": "r7",
+        "onset": "2026-10-22T07:03:50Z",
+        "at": "2026-10-22T07:05:00Z",
+        "rule": "Interface down"
+      },
+      "found": "the pack: no LINK or LINEPROTO line from r7 before the alert time; r7 4 scrapes failed (06:56:56 to 07:02:56), r6 5 and r4 6 also; r7 CPU 45 to 61%, beats every 300 s. (Gi3 came up after a deploy at 07:16, after this window.)",
+      "needs": [
+        "health:r7:scrapes"
+      ],
+      "expect": {
+        "outcome": [
+          "answer"
+        ],
+        "needs_human": true,
+        "figures_from_pack": true
+      },
+      "flag": "A person reads the recording: it says the pack holds no line explaining the interface and asks a person to look, rather than inventing a cause.",
+      "recorded": {
+        "prompt": "explain.v4",
+        "model": "claude-sonnet-5-5",
+        "at": "2026-10-26T19:06Z to 19:24Z",
+        "actor": "evaluation:explain-cases-20261026",
+        "pack_sha256": "351eb97159794636190ff9ba9c386c4c87f3e5c1109069be9ecf77a6af710ad9",
+        "runs": [
+          {
+            "round": 1,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": true,
+              "evidence": [
+                [
+                  "alert:1",
+                  "dev:25"
+                ],
+                [
+                  "health:dev:24:heartbeat",
+                  "health:dev:24:scrapes",
+                  "health:dev:25:heartbeat",
+                  "health:dev:25:scrapes",
+                  "health:dev:u5f6ab452:heartbeat",
+                  "health:dev:u5f6ab452:scrapes"
+                ]
+              ],
+              "checked": [
+                "cable:dev:24/Gi3~dev:25/Gi2",
+                "health:dev:24:cpu",
+                "health:dev:24:discards",
+                "health:dev:25:cpu",
+                "health:dev:25:discards",
+                "intent:1"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 5203,
+            "output_tokens": 1592,
+            "cost_usd": 0.0268
+          },
+          {
+            "round": 2,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": true,
+              "evidence": [
+                [
+                  "alert:1",
+                  "cable:dev:24/Gi3~dev:25/Gi2",
+                  "dev:25"
+                ],
+                [
+                  "health:dev:24:heartbeat",
+                  "health:dev:25:cpu",
+                  "health:dev:25:heartbeat",
+                  "health:dev:25:scrapes",
+                  "health:dev:u5f6ab452:heartbeat"
+                ]
+              ],
+              "checked": [
+                "cable:dev:24/Gi3~dev:25/Gi2",
+                "health:dev:24:discards",
+                "health:dev:25:cpu",
+                "health:dev:25:discards",
+                "link:10.255.4.4/30"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 5203,
+            "output_tokens": 1581,
+            "cost_usd": 0.0267
+          },
+          {
+            "round": 3,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": true,
+              "evidence": [
+                [
+                  "alert:1",
+                  "dev:25"
+                ],
+                [
+                  "health:dev:24:heartbeat",
+                  "health:dev:24:scrapes",
+                  "health:dev:25:heartbeat",
+                  "health:dev:25:scrapes",
+                  "health:dev:u5f6ab452:heartbeat",
+                  "health:dev:u5f6ab452:scrapes"
+                ]
+              ],
+              "checked": [
+                "cable:dev:24/Gi3~dev:25/Gi2",
+                "health:dev:25:cpu",
+                "health:dev:25:discards",
+                "intent:1"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 5203,
+            "output_tokens": 1580,
+            "cost_usd": 0.0266
+          },
+          {
+            "round": 4,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": true,
+              "evidence": [
+                [
+                  "health:dev:24:heartbeat",
+                  "health:dev:24:scrapes",
+                  "health:dev:25:cpu",
+                  "health:dev:25:heartbeat",
+                  "health:dev:25:scrapes",
+                  "health:dev:u5f6ab452:heartbeat"
+                ],
+                [
+                  "alert:1",
+                  "dev:25"
+                ]
+              ],
+              "checked": [
+                "cable:dev:24/Gi3~dev:25/Gi2",
+                "health:dev:24:discards",
+                "health:dev:25:cpu",
+                "health:dev:25:discards",
+                "intent:1"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 5203,
+            "output_tokens": 1493,
+            "cost_usd": 0.0258
+          },
+          {
+            "round": 5,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": true,
+              "evidence": [
+                [
+                  "alert:1",
+                  "dev:25"
+                ],
+                [
+                  "health:dev:24:heartbeat",
+                  "health:dev:24:scrapes",
+                  "health:dev:25:cpu",
+                  "health:dev:25:heartbeat",
+                  "health:dev:25:scrapes",
+                  "health:dev:u5f6ab452:heartbeat",
+                  "health:dev:u5f6ab452:scrapes"
+                ]
+              ],
+              "checked": [
+                "cable:dev:24/Gi3~dev:25/Gi2",
+                "health:dev:24:discards",
+                "health:dev:25:cpu",
+                "health:dev:25:discards",
+                "intent:1",
+                "neighbours:2",
+                "neighbours:4"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 5203,
+            "output_tokens": 1450,
+            "cost_usd": 0.0253
+          }
+        ],
+        "passed": 5
+      }
+    },
+    {
+      "n": 16,
+      "name": "Healthy baseline: device unreachable (snmp) on r3, a quiet window",
+      "kind": "baseline",
+      "replay": {
+        "device": "r3",
+        "onset": "2026-10-23T14:50:00Z",
+        "at": "2026-10-23T15:00:00Z",
+        "rule": "Device unreachable (SNMP)"
+      },
+      "found": "the pack: no device failed a scrape; r3 CPU 42 to 54%, beats every 300 s; one login line.",
+      "needs": [
+        "health:r3:cpu",
+        "health:r3:heartbeat",
+        "health:r3:scrapes"
+      ],
+      "quiet": {
+        "failed_scrapes": 0,
+        "max_gap_s": 450,
+        "no_log_text": [
+          "ADJCHG",
+          "UPDOWN"
+        ],
+        "why": "none of case 1's symptoms: no failed scrape, no missed heartbeat (450 s is 1.5 beats of syslog_heartbeat_seconds' 300), no adjacency or link change in the device's log lines"
+      },
+      "expect": {
+        "outcome": [
+          "no_fault_found"
+        ],
+        "hypotheses_max": 0,
+        "checked": [
+          [
+            "health:r3:cpu",
+            "health:r3:heartbeat",
+            "health:r3:scrapes"
+          ]
+        ],
+        "figures_from_pack": true
+      },
+      "flag": "A person reads the recording: nothing wrong is said, each healthy figure it checked named; no cause offered.",
+      "recorded": {
+        "prompt": "explain.v4",
+        "model": "claude-sonnet-5-5",
+        "at": "2026-10-26T19:06Z to 19:25Z",
+        "actor": "evaluation:explain-cases-20261026",
+        "pack_sha256": "cbfbc5765555efe3945f93d8c4953e585d6d4e77b6e825af90d45d4cbf80031d",
+        "runs": [
+          {
+            "round": 1,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "no_fault_found",
+              "needs_human": false,
+              "evidence": [],
+              "checked": [
+                "adj:bgp:dev:ub937e1ed~ext:198.51.100.1:ipv4",
+                "adj:bgp:dev:ub937e1ed~ext:2001:db8:51::2:ipv6",
+                "adj:ospf:dev:u342aff19~dev:ub937e1ed:10.255.3.0/24",
+                "adj:ospf:dev:u5f6ab452~dev:ub937e1ed:10.255.2.14/31",
+                "adj:ospf:dev:ub937e1ed~dev:uc038a8be:10.255.3.0/24",
+                "cable:dev:u5f6ab452/Gi4~dev:ub937e1ed/Gi4",
+                "health:dev:u342aff19:scrapes",
+                "health:dev:u38e76896:scrapes",
+                "health:dev:u5f6ab452:scrapes",
+                "health:dev:u66688a5c:scrapes",
+                "health:dev:ub937e1ed:cpu",
+                "health:dev:ub937e1ed:discards",
+                "health:dev:ub937e1ed:heartbeat",
+                "health:dev:ub937e1ed:scrapes",
+                "health:dev:uc038a8be:scrapes",
+                "intent:1",
+                "logs:1",
+                "neighbours"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 11868,
+            "output_tokens": 1112,
+            "cost_usd": 0.0353
+          },
+          {
+            "round": 2,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "no_fault_found",
+              "needs_human": false,
+              "evidence": [],
+              "checked": [
+                "adj:bgp:dev:ub937e1ed~ext:198.51.100.1:ipv4",
+                "adj:bgp:dev:ub937e1ed~ext:2001:db8:51::2:ipv6",
+                "adj:ospf:dev:u342aff19~dev:ub937e1ed:10.255.3.0/24",
+                "adj:ospf:dev:u5f6ab452~dev:ub937e1ed:10.255.2.14/31",
+                "health:dev:u342aff19:cpu",
+                "health:dev:u342aff19:scrapes",
+                "health:dev:u38e76896:scrapes",
+                "health:dev:u5f6ab452:cpu",
+                "health:dev:u5f6ab452:scrapes",
+                "health:dev:u66688a5c:scrapes",
+                "health:dev:ub937e1ed:cpu",
+                "health:dev:ub937e1ed:discards",
+                "health:dev:ub937e1ed:heartbeat",
+                "health:dev:ub937e1ed:scrapes",
+                "health:dev:uc038a8be:cpu",
+                "health:dev:uc038a8be:scrapes",
+                "intent:1",
+                "logs:1",
+                "neighbours"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 11868,
+            "output_tokens": 1356,
+            "cost_usd": 0.0377
+          },
+          {
+            "round": 3,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "no_fault_found",
+              "needs_human": false,
+              "evidence": [],
+              "checked": [
+                "adj:bgp:dev:ub937e1ed~ext:198.51.100.1:ipv4",
+                "adj:bgp:dev:ub937e1ed~ext:2001:db8:51::2:ipv6",
+                "adj:ospf:dev:u5f6ab452~dev:ub937e1ed:10.255.2.14/31",
+                "health:dev:u342aff19:scrapes",
+                "health:dev:u38e76896:scrapes",
+                "health:dev:u5f6ab452:scrapes",
+                "health:dev:u66688a5c:scrapes",
+                "health:dev:ub937e1ed:cpu",
+                "health:dev:ub937e1ed:discards",
+                "health:dev:ub937e1ed:heartbeat",
+                "health:dev:ub937e1ed:scrapes",
+                "health:dev:uc038a8be:scrapes",
+                "logs:1",
+                "neighbours:14",
+                "neighbours:15",
+                "neighbours:2",
+                "neighbours:3",
+                "neighbours:4",
+                "neighbours:5",
+                "neighbours:6",
+                "neighbours:7"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 11868,
+            "output_tokens": 1323,
+            "cost_usd": 0.0374
+          },
+          {
+            "round": 4,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "no_fault_found",
+              "needs_human": false,
+              "evidence": [],
+              "checked": [
+                "adj:bgp:dev:ub937e1ed~ext:198.51.100.1:ipv4",
+                "adj:bgp:dev:ub937e1ed~ext:2001:db8:51::2:ipv6",
+                "adj:ospf:dev:u5f6ab452~dev:ub937e1ed:10.255.2.14/31",
+                "health:dev:u342aff19:scrapes",
+                "health:dev:u38e76896:scrapes",
+                "health:dev:u5f6ab452:scrapes",
+                "health:dev:u66688a5c:scrapes",
+                "health:dev:ub937e1ed:cpu",
+                "health:dev:ub937e1ed:discards",
+                "health:dev:ub937e1ed:heartbeat",
+                "health:dev:ub937e1ed:scrapes",
+                "health:dev:uc038a8be:scrapes",
+                "intent:1",
+                "logs:1",
+                "neighbours:14",
+                "neighbours:15",
+                "neighbours:2",
+                "neighbours:3",
+                "neighbours:4"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 11726,
+            "output_tokens": 1162,
+            "cost_usd": 0.0355
+          },
+          {
+            "round": 5,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "no_fault_found",
+              "needs_human": false,
+              "evidence": [],
+              "checked": [
+                "adj:bgp:dev:ub937e1ed~ext:198.51.100.1:ipv4",
+                "adj:bgp:dev:ub937e1ed~ext:2001:db8:51::2:ipv6",
+                "adj:ospf:dev:u342aff19~dev:ub937e1ed:10.255.3.0/24",
+                "adj:ospf:dev:u5f6ab452~dev:ub937e1ed:10.255.2.14/31",
+                "health:dev:u342aff19:scrapes",
+                "health:dev:u38e76896:heartbeat",
+                "health:dev:u38e76896:scrapes",
+                "health:dev:u5f6ab452:cpu",
+                "health:dev:u5f6ab452:scrapes",
+                "health:dev:u66688a5c:scrapes",
+                "health:dev:ub937e1ed:cpu",
+                "health:dev:ub937e1ed:discards",
+                "health:dev:ub937e1ed:heartbeat",
+                "health:dev:ub937e1ed:scrapes",
+                "health:dev:uc038a8be:scrapes",
+                "intent:1",
+                "logs:1",
+                "neighbours"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 11726,
+            "output_tokens": 978,
+            "cost_usd": 0.0337
+          }
+        ],
+        "passed": 5
+      }
+    },
+    {
+      "n": 17,
+      "name": "Healthy baseline: ip sla probe failing on r4, a quiet window",
+      "kind": "baseline",
+      "replay": {
+        "device": "r4",
+        "onset": "2026-10-25T13:50:00Z",
+        "at": "2026-10-25T14:00:00Z",
+        "rule": "IP SLA probe failing"
+      },
+      "found": "the pack: no device failed a scrape; r4 CPU 40 to 67%, beats every 300 s; no log lines.",
+      "needs": [
+        "health:r4:cpu",
+        "health:r4:heartbeat",
+        "health:r4:scrapes"
+      ],
+      "quiet": {
+        "failed_scrapes": 0,
+        "max_gap_s": 450,
+        "no_log_text": [
+          "ADJCHG",
+          "UPDOWN"
+        ],
+        "why": "none of case 1's symptoms: no failed scrape, no missed heartbeat (450 s is 1.5 beats of syslog_heartbeat_seconds' 300), no adjacency or link change in the device's log lines"
+      },
+      "expect": {
+        "outcome": [
+          "no_fault_found"
+        ],
+        "hypotheses_max": 0,
+        "checked": [
+          [
+            "health:r4:cpu",
+            "health:r4:heartbeat",
+            "health:r4:scrapes"
+          ]
+        ],
+        "figures_from_pack": true
+      },
+      "flag": "A person reads the recording: nothing wrong is said, each healthy figure it checked named; no cause offered.",
+      "recorded": {
+        "prompt": "explain.v4",
+        "model": "claude-sonnet-5-5",
+        "at": "2026-10-26T19:06Z to 19:25Z",
+        "actor": "evaluation:explain-cases-20261026",
+        "pack_sha256": "a814178ab77f4b2bc27ffb437a22d7d0a26357d2bc4f6cc512d33312bf1286e6",
+        "runs": [
+          {
+            "round": 1,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "no_fault_found",
+              "needs_human": false,
+              "evidence": [],
+              "checked": [
+                "adj:ospf:dev:u5f6ab452~dev:ub937e1ed:10.255.2.14/31",
+                "adj:ospf:dev:u5f6ab452~dev:uc038a8be:10.255.3.0/24",
+                "adj:ospfv3:dev:u5f6ab452~dev:uc038a8be:2001:db8:3::/64",
+                "health:dev:24:scrapes",
+                "health:dev:u342aff19:scrapes",
+                "health:dev:u5f6ab452:cpu",
+                "health:dev:u5f6ab452:discards",
+                "health:dev:u5f6ab452:heartbeat",
+                "health:dev:u5f6ab452:scrapes",
+                "health:dev:ub937e1ed:scrapes",
+                "health:dev:uc038a8be:cpu",
+                "health:dev:uc038a8be:discards",
+                "health:dev:uc038a8be:heartbeat",
+                "health:dev:uc038a8be:scrapes",
+                "intent:1",
+                "neighbours:2",
+                "neighbours:7"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 13311,
+            "output_tokens": 1625,
+            "cost_usd": 0.0433
+          },
+          {
+            "round": 2,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "no_fault_found",
+              "needs_human": false,
+              "evidence": [],
+              "checked": [
+                "adj:ospf:dev:24~dev:u5f6ab452:10.255.4.0/30",
+                "adj:ospf:dev:u5f6ab452~dev:ub937e1ed:10.255.2.14/31",
+                "adj:ospf:dev:u5f6ab452~dev:uc038a8be:10.255.3.0/24",
+                "health:dev:u38e76896:scrapes",
+                "health:dev:u5f6ab452:cpu",
+                "health:dev:u5f6ab452:discards",
+                "health:dev:u5f6ab452:heartbeat",
+                "health:dev:u5f6ab452:scrapes",
+                "health:dev:u66688a5c:scrapes",
+                "health:dev:ub937e1ed:scrapes",
+                "health:dev:uc038a8be:cpu",
+                "health:dev:uc038a8be:discards",
+                "health:dev:uc038a8be:heartbeat",
+                "health:dev:uc038a8be:scrapes",
+                "intent:1",
+                "neighbours:16",
+                "neighbours:17",
+                "neighbours:2",
+                "neighbours:8"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 13311,
+            "output_tokens": 1549,
+            "cost_usd": 0.0426
+          },
+          {
+            "round": 3,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "no_fault_found",
+              "needs_human": false,
+              "evidence": [],
+              "checked": [
+                "adj:bgp:dev:u5f6ab452~ext:198.51.100.3:ipv4",
+                "adj:ospf:dev:u5f6ab452~dev:ub937e1ed:10.255.2.14/31",
+                "adj:ospf:dev:u5f6ab452~dev:uc038a8be:10.255.3.0/24",
+                "health:dev:24:scrapes",
+                "health:dev:u342aff19:scrapes",
+                "health:dev:u38e76896:scrapes",
+                "health:dev:u5f6ab452:cpu",
+                "health:dev:u5f6ab452:discards",
+                "health:dev:u5f6ab452:heartbeat",
+                "health:dev:u5f6ab452:scrapes",
+                "health:dev:u66688a5c:scrapes",
+                "health:dev:ub937e1ed:scrapes",
+                "health:dev:uc038a8be:cpu",
+                "health:dev:uc038a8be:discards",
+                "health:dev:uc038a8be:scrapes",
+                "intent:1",
+                "logs",
+                "neighbours:17",
+                "neighbours:2",
+                "neighbours:8"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 13311,
+            "output_tokens": 1508,
+            "cost_usd": 0.0421
+          },
+          {
+            "round": 4,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "no_fault_found",
+              "needs_human": false,
+              "evidence": [],
+              "checked": [
+                "adj:bgp:dev:u5f6ab452~ext:198.51.100.3:ipv4",
+                "adj:bgp:dev:u5f6ab452~ext:2001:db8:51:1::2:ipv6",
+                "adj:ospf:dev:24~dev:u5f6ab452:10.255.4.0/30",
+                "adj:ospf:dev:u5f6ab452~dev:ub937e1ed:10.255.2.14/31",
+                "adj:ospf:dev:u5f6ab452~dev:uc038a8be:10.255.3.0/24",
+                "health:dev:24:scrapes",
+                "health:dev:u342aff19:scrapes",
+                "health:dev:u5f6ab452:cpu",
+                "health:dev:u5f6ab452:discards",
+                "health:dev:u5f6ab452:heartbeat",
+                "health:dev:u5f6ab452:scrapes",
+                "health:dev:ub937e1ed:cpu",
+                "health:dev:ub937e1ed:scrapes",
+                "health:dev:uc038a8be:cpu",
+                "health:dev:uc038a8be:discards",
+                "health:dev:uc038a8be:heartbeat",
+                "health:dev:uc038a8be:scrapes",
+                "intent:1",
+                "logs",
+                "neighbours:16",
+                "neighbours:17",
+                "neighbours:2",
+                "neighbours:7",
+                "neighbours:8"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 13311,
+            "output_tokens": 1275,
+            "cost_usd": 0.0398
+          },
+          {
+            "round": 5,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "no_fault_found",
+              "needs_human": false,
+              "evidence": [],
+              "checked": [
+                "adj:bgp:dev:u5f6ab452~ext:198.51.100.3:ipv4",
+                "adj:ospf:dev:u5f6ab452~dev:uc038a8be:10.255.3.0/24",
+                "adj:ospfv3:dev:u5f6ab452~dev:uc038a8be:2001:db8:3::/64",
+                "health:dev:24:scrapes",
+                "health:dev:u342aff19:scrapes",
+                "health:dev:u5f6ab452:cpu",
+                "health:dev:u5f6ab452:discards",
+                "health:dev:u5f6ab452:heartbeat",
+                "health:dev:u5f6ab452:scrapes",
+                "health:dev:ub937e1ed:scrapes",
+                "health:dev:uc038a8be:cpu",
+                "health:dev:uc038a8be:discards",
+                "health:dev:uc038a8be:scrapes",
+                "intent:1",
+                "logs",
+                "neighbours:17",
+                "neighbours:2",
+                "neighbours:7",
+                "neighbours:8"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 13311,
+            "output_tokens": 1304,
+            "cost_usd": 0.0401
+          }
+        ],
+        "passed": 5
+      }
+    },
+    {
+      "n": 18,
+      "name": "Healthy baseline: nmas heartbeat missing: r8 on r8, a quiet window",
+      "kind": "baseline",
+      "replay": {
+        "device": "r8",
+        "onset": "2026-10-25T21:50:00Z",
+        "at": "2026-10-25T22:00:00Z",
+        "rule": "NMAS heartbeat missing: r8"
+      },
+      "found": "the pack: no device failed a scrape; r8 0 of 150, CPU 40 to 62%, beats every 300 s; one login line.",
+      "needs": [
+        "health:r8:cpu",
+        "health:r8:heartbeat",
+        "health:r8:scrapes"
+      ],
+      "quiet": {
+        "failed_scrapes": 0,
+        "max_gap_s": 450,
+        "no_log_text": [
+          "ADJCHG",
+          "UPDOWN"
+        ],
+        "why": "none of case 1's symptoms: no failed scrape, no missed heartbeat (450 s is 1.5 beats of syslog_heartbeat_seconds' 300), no adjacency or link change in the device's log lines"
+      },
+      "expect": {
+        "outcome": [
+          "no_fault_found"
+        ],
+        "hypotheses_max": 0,
+        "checked": [
+          [
+            "health:r8:cpu",
+            "health:r8:heartbeat",
+            "health:r8:scrapes"
+          ]
+        ],
+        "figures_from_pack": true
+      },
+      "flag": "A person reads the recording: nothing wrong is said, each healthy figure it checked named; no cause offered.",
+      "recorded": {
+        "prompt": "explain.v4",
+        "model": "claude-sonnet-5-5",
+        "at": "2026-10-26T19:07Z to 19:25Z",
+        "actor": "evaluation:explain-cases-20261026",
+        "pack_sha256": "06a1c16f5d14218b1875242c7250fb1c1ab49aa5ffb8cbd467babf815c8fb64f",
+        "runs": [
+          {
+            "round": 1,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "no_fault_found",
+              "needs_human": false,
+              "evidence": [],
+              "checked": [
+                "adj:ospf:dev:26~dev:u342aff19:10.255.4.8/30",
+                "adj:ospfv3:dev:26~dev:u342aff19:2001:db8:2:28::/64",
+                "cable:dev:26/Gi2~dev:u342aff19/Gi4",
+                "cable:dev:26/Gi3~dev:28/Gi0/1",
+                "health:dev:26:cpu",
+                "health:dev:26:discards",
+                "health:dev:26:heartbeat",
+                "health:dev:26:scrapes",
+                "health:dev:28:cpu",
+                "health:dev:28:discards",
+                "health:dev:28:scrapes",
+                "health:dev:u342aff19:cpu",
+                "health:dev:u342aff19:discards",
+                "health:dev:u342aff19:scrapes",
+                "intent:1",
+                "logs:1",
+                "neighbours:2",
+                "neighbours:4"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 5593,
+            "output_tokens": 1134,
+            "cost_usd": 0.023
+          },
+          {
+            "round": 2,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "no_fault_found",
+              "needs_human": false,
+              "evidence": [],
+              "checked": [
+                "adj:ospf:dev:26~dev:u342aff19:10.255.4.8/30",
+                "adj:ospfv3:dev:26~dev:u342aff19:2001:db8:2:28::/64",
+                "cable:dev:26/Gi2~dev:u342aff19/Gi4",
+                "cable:dev:26/Gi3~dev:28/Gi0/1",
+                "health:dev:26:cpu",
+                "health:dev:26:discards",
+                "health:dev:26:heartbeat",
+                "health:dev:26:scrapes",
+                "health:dev:28:cpu",
+                "health:dev:28:heartbeat",
+                "health:dev:28:scrapes",
+                "health:dev:u342aff19:cpu",
+                "health:dev:u342aff19:heartbeat",
+                "health:dev:u342aff19:scrapes",
+                "intent:1",
+                "logs:1",
+                "neighbours:2",
+                "neighbours:4"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 5593,
+            "output_tokens": 993,
+            "cost_usd": 0.0216
+          },
+          {
+            "round": 3,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "no_fault_found",
+              "needs_human": false,
+              "evidence": [],
+              "checked": [
+                "adj:ospf:dev:26~dev:u342aff19:10.255.4.8/30",
+                "adj:ospfv3:dev:26~dev:u342aff19:2001:db8:2:28::/64",
+                "cable:dev:26/Gi2~dev:u342aff19/Gi4",
+                "cable:dev:26/Gi3~dev:28/Gi0/1",
+                "health:dev:26:cpu",
+                "health:dev:26:discards",
+                "health:dev:26:heartbeat",
+                "health:dev:26:scrapes",
+                "health:dev:28:cpu",
+                "health:dev:28:heartbeat",
+                "health:dev:28:scrapes",
+                "health:dev:u342aff19:cpu",
+                "health:dev:u342aff19:heartbeat",
+                "health:dev:u342aff19:scrapes",
+                "intent:1",
+                "logs:1",
+                "neighbours:2",
+                "neighbours:4"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 5593,
+            "output_tokens": 1027,
+            "cost_usd": 0.0219
+          },
+          {
+            "round": 4,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "no_fault_found",
+              "needs_human": false,
+              "evidence": [],
+              "checked": [
+                "adj:ospf:dev:26~dev:u342aff19:10.255.4.8/30",
+                "adj:ospfv3:dev:26~dev:u342aff19:2001:db8:2:28::/64",
+                "cable:dev:26/Gi2~dev:u342aff19/Gi4",
+                "cable:dev:26/Gi3~dev:28/Gi0/1",
+                "health:dev:26:cpu",
+                "health:dev:26:discards",
+                "health:dev:26:heartbeat",
+                "health:dev:26:scrapes",
+                "health:dev:28:cpu",
+                "health:dev:28:discards",
+                "health:dev:28:heartbeat",
+                "health:dev:28:scrapes",
+                "health:dev:u342aff19:cpu",
+                "health:dev:u342aff19:discards",
+                "health:dev:u342aff19:heartbeat",
+                "health:dev:u342aff19:scrapes",
+                "intent:1",
+                "logs:1",
+                "neighbours:2",
+                "neighbours:4"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 5593,
+            "output_tokens": 1098,
+            "cost_usd": 0.0226
+          },
+          {
+            "round": 5,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "no_fault_found",
+              "needs_human": false,
+              "evidence": [],
+              "checked": [
+                "adj:ospf:dev:26~dev:u342aff19:10.255.4.8/30",
+                "adj:ospfv3:dev:26~dev:u342aff19:2001:db8:2:28::/64",
+                "cable:dev:26/Gi2~dev:u342aff19/Gi4",
+                "cable:dev:26/Gi3~dev:28/Gi0/1",
+                "health:dev:26:cpu",
+                "health:dev:26:discards",
+                "health:dev:26:heartbeat",
+                "health:dev:26:scrapes",
+                "health:dev:28:cpu",
+                "health:dev:28:discards",
+                "health:dev:28:heartbeat",
+                "health:dev:28:scrapes",
+                "health:dev:u342aff19:cpu",
+                "health:dev:u342aff19:discards",
+                "health:dev:u342aff19:heartbeat",
+                "health:dev:u342aff19:scrapes",
+                "intent:1",
+                "logs:1",
+                "neighbours:2",
+                "neighbours:4"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 5593,
+            "output_tokens": 1061,
+            "cost_usd": 0.0222
+          }
+        ],
+        "passed": 5
+      }
+    },
+    {
+      "n": 19,
+      "name": "s4's heartbeat beats every 392 s: its clock at 0.775 of real time stretches the 300 s watchdog (the operator's correction, 2026-10-26; C535)",
+      "kind": "drift",
+      "replay": {
+        "device": "s4",
+        "onset": "2026-10-26T11:50:00Z",
+        "at": "2026-10-26T12:00:00Z",
+        "rule": "NMAS heartbeat missing: s4"
+      },
+      "found": "the pack: no device failed a scrape; s4 CPU 32 to 36%, longest beat gap 392 s (its slow clock, C535; under the 450 s quiet bound); no log lines.",
+      "needs": [
+        "health:s4:cpu",
+        "health:s4:heartbeat",
+        "health:s4:scrapes"
+      ],
+      "expect": {
+        "outcome": [
+          "answer"
+        ],
+        "cites": [
+          [
+            "health:s4:heartbeat"
+          ]
+        ],
+        "says_any": [
+          "clock",
+          "timer",
+          "ntp",
+          "drift",
+          "time source"
+        ],
+        "says_why": "s4's clock runs at 0.775 of real time (read-only, 2026-10-26), so its 300 s watchdog fires about every 387 s, the 392 s the pack's heartbeat figure holds",
+        "figures_from_pack": true
+      },
+      "flag": "A person reads the recording: the beats are regular but slow (392 s); the answer names the clock or timer drift, confirmed by a read of the clock or NTP.",
+      "was": {
+        "name": "Healthy baseline: nmas heartbeat missing: s4 on s4, a quiet window",
+        "kind": "baseline",
+        "expect": {
+          "outcome": [
+            "no_fault_found"
+          ],
+          "hypotheses_max": 0,
+          "checked": [
+            [
+              "health:s4:cpu",
+              "health:s4:heartbeat",
+              "health:s4:scrapes"
+            ]
+          ],
+          "figures_from_pack": true
+        }
+      },
+      "corrected": "2026-10-26, the operator, from the same evidence as case 8: was a healthy baseline expecting no_fault_found; s4's clock at 0.775 of real time stretches its beats to 392 s apart",
+      "recorded": {
+        "prompt": "explain.v4",
+        "model": "claude-sonnet-5-5",
+        "at": "2026-10-26T19:07Z to 19:26Z",
+        "actor": "evaluation:explain-cases-20261026",
+        "pack_sha256": "b05eb57998e3ad81ae2fd18cdffbddcb2b3a14e641e106dbb57a7d10feef57f8",
+        "runs": [
+          {
+            "round": 1,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "no_fault_found",
+              "needs_human": false,
+              "evidence": [],
+              "checked": [
+                "adj:ospf:dev:u342aff19~dev:u66688a5c:10.255.3.0/24",
+                "adj:ospf:dev:u38e76896~dev:u66688a5c:10.255.3.0/24",
+                "adj:ospf:dev:u5f6ab452~dev:u66688a5c:10.255.3.0/24",
+                "adj:ospf:dev:u66688a5c~dev:ub937e1ed:10.255.3.0/24",
+                "adj:ospf:dev:u66688a5c~dev:uc038a8be:10.255.3.0/24",
+                "cable:dev:u342aff19/Gi2~dev:u66688a5c/Gi1/0",
+                "cable:dev:u38e76896/Gi0/3~dev:u66688a5c/Gi0/3",
+                "cable:dev:u5f6ab452/Gi3~dev:u66688a5c/Gi0/2",
+                "health:dev:u342aff19:discards",
+                "health:dev:u342aff19:scrapes",
+                "health:dev:u38e76896:discards",
+                "health:dev:u38e76896:scrapes",
+                "health:dev:u5f6ab452:discards",
+                "health:dev:u5f6ab452:scrapes",
+                "health:dev:u66688a5c:cpu",
+                "health:dev:u66688a5c:discards",
+                "health:dev:u66688a5c:scrapes",
+                "health:dev:ub937e1ed:discards",
+                "health:dev:ub937e1ed:scrapes",
+                "health:dev:uc038a8be:discards",
+                "health:dev:uc038a8be:scrapes",
+                "intent:1",
+                "logs",
+                "neighbours:2",
+                "neighbours:3",
+                "neighbours:4",
+                "neighbours:5",
+                "neighbours:6"
+              ]
+            },
+            "misses": [
+              "outcome no_fault_found, expected one of ['answer']"
+            ],
+            "pass": false,
+            "input_tokens": 7705,
+            "output_tokens": 1508,
+            "cost_usd": 0.0309
+          },
+          {
+            "round": 2,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "answer",
+              "needs_human": true,
+              "evidence": [
+                [
+                  "alert:1",
+                  "health:dev:u66688a5c:cpu",
+                  "health:dev:u66688a5c:heartbeat",
+                  "health:dev:u66688a5c:scrapes"
+                ],
+                [
+                  "health:dev:u38e76896:heartbeat",
+                  "health:dev:u66688a5c:heartbeat"
+                ]
+              ],
+              "checked": [
+                "adj:ospf:dev:u5f6ab452~dev:u66688a5c:10.255.3.0/24",
+                "adj:ospf:dev:u66688a5c~dev:ub937e1ed:10.255.3.0/24",
+                "health:dev:u38e76896:scrapes",
+                "health:dev:u66688a5c:cpu",
+                "health:dev:u66688a5c:discards",
+                "health:dev:u66688a5c:scrapes",
+                "health:dev:uc038a8be:scrapes",
+                "intent:1",
+                "neighbours:2",
+                "neighbours:3",
+                "neighbours:4",
+                "neighbours:5",
+                "neighbours:6"
+              ]
+            },
+            "misses": [
+              "no hypothesis names clock or timer or ntp or drift or time source (s4's clock runs at 0.775 of real time (read-only, 2026-10-26), so its 300 s watchdog fires about every 387 s, the 392 s the pack's heartbeat figure holds)"
+            ],
+            "pass": false,
+            "input_tokens": 7705,
+            "output_tokens": 1595,
+            "cost_usd": 0.0318
+          },
+          {
+            "round": 3,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "no_fault_found",
+              "needs_human": false,
+              "evidence": [],
+              "checked": [
+                "adj:ospf:dev:u342aff19~dev:u66688a5c:10.255.3.0/24",
+                "adj:ospf:dev:u38e76896~dev:u66688a5c:10.255.3.0/24",
+                "adj:ospf:dev:u5f6ab452~dev:u66688a5c:10.255.3.0/24",
+                "adj:ospf:dev:u66688a5c~dev:ub937e1ed:10.255.3.0/24",
+                "adj:ospf:dev:u66688a5c~dev:uc038a8be:10.255.3.0/24",
+                "health:dev:u342aff19:scrapes",
+                "health:dev:u38e76896:cpu",
+                "health:dev:u38e76896:scrapes",
+                "health:dev:u5f6ab452:scrapes",
+                "health:dev:u66688a5c:cpu",
+                "health:dev:u66688a5c:discards",
+                "health:dev:u66688a5c:scrapes",
+                "health:dev:ub937e1ed:scrapes",
+                "health:dev:uc038a8be:scrapes",
+                "intent:1",
+                "neighbours:2",
+                "neighbours:3",
+                "neighbours:4",
+                "neighbours:5",
+                "neighbours:6"
+              ]
+            },
+            "misses": [
+              "outcome no_fault_found, expected one of ['answer']"
+            ],
+            "pass": false,
+            "input_tokens": 7705,
+            "output_tokens": 1429,
+            "cost_usd": 0.0301
+          },
+          {
+            "round": 4,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "no_fault_found",
+              "needs_human": false,
+              "evidence": [],
+              "checked": [
+                "adj:ospf:dev:u342aff19~dev:u66688a5c:10.255.3.0/24",
+                "adj:ospf:dev:u38e76896~dev:u66688a5c:10.255.3.0/24",
+                "adj:ospf:dev:u5f6ab452~dev:u66688a5c:10.255.3.0/24",
+                "adj:ospf:dev:u66688a5c~dev:ub937e1ed:10.255.3.0/24",
+                "adj:ospf:dev:u66688a5c~dev:uc038a8be:10.255.3.0/24",
+                "cable:dev:u342aff19/Gi2~dev:u66688a5c/Gi1/0",
+                "cable:dev:u38e76896/Gi0/3~dev:u66688a5c/Gi0/3",
+                "cable:dev:u5f6ab452/Gi3~dev:u66688a5c/Gi0/2",
+                "health:dev:u342aff19:cpu",
+                "health:dev:u342aff19:scrapes",
+                "health:dev:u38e76896:cpu",
+                "health:dev:u38e76896:scrapes",
+                "health:dev:u5f6ab452:cpu",
+                "health:dev:u5f6ab452:scrapes",
+                "health:dev:u66688a5c:cpu",
+                "health:dev:u66688a5c:discards",
+                "health:dev:u66688a5c:scrapes",
+                "health:dev:ub937e1ed:cpu",
+                "health:dev:ub937e1ed:scrapes",
+                "health:dev:uc038a8be:cpu",
+                "health:dev:uc038a8be:scrapes",
+                "intent:1",
+                "neighbours:2",
+                "neighbours:3",
+                "neighbours:4",
+                "neighbours:5",
+                "neighbours:6"
+              ]
+            },
+            "misses": [
+              "outcome no_fault_found, expected one of ['answer']"
+            ],
+            "pass": false,
+            "input_tokens": 7563,
+            "output_tokens": 1535,
+            "cost_usd": 0.0309
+          },
+          {
+            "round": 5,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "no_fault_found",
+              "needs_human": false,
+              "evidence": [],
+              "checked": [
+                "adj:ospf:dev:u342aff19~dev:u66688a5c:10.255.3.0/24",
+                "adj:ospf:dev:u38e76896~dev:u66688a5c:10.255.3.0/24",
+                "adj:ospf:dev:u5f6ab452~dev:u66688a5c:10.255.3.0/24",
+                "adj:ospf:dev:u66688a5c~dev:ub937e1ed:10.255.3.0/24",
+                "adj:ospf:dev:u66688a5c~dev:uc038a8be:10.255.3.0/24",
+                "cable:dev:u342aff19/Gi2~dev:u66688a5c/Gi1/0",
+                "cable:dev:u38e76896/Gi0/3~dev:u66688a5c/Gi0/3",
+                "cable:dev:u5f6ab452/Gi3~dev:u66688a5c/Gi0/2",
+                "health:dev:u342aff19:scrapes",
+                "health:dev:u38e76896:cpu",
+                "health:dev:u38e76896:scrapes",
+                "health:dev:u5f6ab452:scrapes",
+                "health:dev:u66688a5c:cpu",
+                "health:dev:u66688a5c:discards",
+                "health:dev:u66688a5c:scrapes",
+                "health:dev:ub937e1ed:scrapes",
+                "health:dev:uc038a8be:scrapes",
+                "intent:1",
+                "neighbours:2",
+                "neighbours:3",
+                "neighbours:4",
+                "neighbours:5",
+                "neighbours:6"
+              ]
+            },
+            "misses": [
+              "outcome no_fault_found, expected one of ['answer']"
+            ],
+            "pass": false,
+            "input_tokens": 7398,
+            "output_tokens": 1489,
+            "cost_usd": 0.0301
+          }
+        ],
+        "passed": 0
+      }
+    },
+    {
+      "n": 20,
+      "name": "Healthy baseline: interface error rate elevated on s5, a quiet window",
+      "kind": "baseline",
+      "replay": {
+        "device": "s5",
+        "onset": "2026-10-25T15:50:00Z",
+        "at": "2026-10-25T16:00:00Z",
+        "rule": "Interface error rate elevated"
+      },
+      "found": "the pack: no device failed a scrape; s5 0 of 50, CPU 27 to 30%, longest beat gap 326 s, discards 0; no log lines (error counters are not in the pack).",
+      "needs": [
+        "health:s5:cpu",
+        "health:s5:heartbeat",
+        "health:s5:scrapes"
+      ],
+      "quiet": {
+        "failed_scrapes": 0,
+        "max_gap_s": 450,
+        "no_log_text": [
+          "ADJCHG",
+          "UPDOWN"
+        ],
+        "why": "none of case 1's symptoms: no failed scrape, no missed heartbeat (450 s is 1.5 beats of syslog_heartbeat_seconds' 300), no adjacency or link change in the device's log lines"
+      },
+      "expect": {
+        "outcome": [
+          "no_fault_found"
+        ],
+        "hypotheses_max": 0,
+        "checked": [
+          [
+            "health:s5:cpu",
+            "health:s5:heartbeat",
+            "health:s5:scrapes"
+          ]
+        ],
+        "figures_from_pack": true
+      },
+      "flag": "A person reads the recording: nothing wrong is said, each healthy figure it checked named; no cause offered.",
+      "recorded": {
+        "prompt": "explain.v4",
+        "model": "claude-sonnet-5-5",
+        "at": "2026-10-26T19:07Z to 19:26Z",
+        "actor": "evaluation:explain-cases-20261026",
+        "pack_sha256": "37634fc01ef6be3cea11428b6edb8dc43616e8bab4da0937951bc735abc50c48",
+        "runs": [
+          {
+            "round": 1,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "no_fault_found",
+              "needs_human": false,
+              "evidence": [],
+              "checked": [
+                "cable:dev:26/Gi3~dev:28/Gi0/1",
+                "health:dev:26:cpu",
+                "health:dev:26:discards",
+                "health:dev:26:heartbeat",
+                "health:dev:26:scrapes",
+                "health:dev:28:cpu",
+                "health:dev:28:discards",
+                "health:dev:28:heartbeat",
+                "health:dev:28:scrapes",
+                "health:dev:u342aff19:cpu",
+                "health:dev:u342aff19:discards",
+                "health:dev:u342aff19:heartbeat",
+                "health:dev:u342aff19:scrapes",
+                "intent:1",
+                "logs"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 5157,
+            "output_tokens": 928,
+            "cost_usd": 0.02
+          },
+          {
+            "round": 2,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "no_fault_found",
+              "needs_human": false,
+              "evidence": [],
+              "checked": [
+                "cable:dev:26/Gi3~dev:28/Gi0/1",
+                "health:dev:26:cpu",
+                "health:dev:26:discards",
+                "health:dev:26:heartbeat",
+                "health:dev:26:scrapes",
+                "health:dev:28:cpu",
+                "health:dev:28:discards",
+                "health:dev:28:heartbeat",
+                "health:dev:28:scrapes",
+                "health:dev:u342aff19:cpu",
+                "health:dev:u342aff19:discards",
+                "health:dev:u342aff19:heartbeat",
+                "health:dev:u342aff19:scrapes",
+                "intent:1",
+                "logs"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 5157,
+            "output_tokens": 957,
+            "cost_usd": 0.0203
+          },
+          {
+            "round": 3,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "no_fault_found",
+              "needs_human": false,
+              "evidence": [],
+              "checked": [
+                "cable:dev:26/Gi3~dev:28/Gi0/1",
+                "health:dev:26:cpu",
+                "health:dev:26:discards",
+                "health:dev:26:scrapes",
+                "health:dev:28:cpu",
+                "health:dev:28:discards",
+                "health:dev:28:scrapes",
+                "health:dev:u342aff19:cpu",
+                "health:dev:u342aff19:discards",
+                "health:dev:u342aff19:scrapes",
+                "intent:1",
+                "logs"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 5157,
+            "output_tokens": 1008,
+            "cost_usd": 0.0208
+          },
+          {
+            "round": 4,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "no_fault_found",
+              "needs_human": false,
+              "evidence": [],
+              "checked": [
+                "cable:dev:26/Gi3~dev:28/Gi0/1",
+                "health:dev:26:cpu",
+                "health:dev:26:discards",
+                "health:dev:26:heartbeat",
+                "health:dev:26:scrapes",
+                "health:dev:28:cpu",
+                "health:dev:28:discards",
+                "health:dev:28:heartbeat",
+                "health:dev:28:scrapes",
+                "health:dev:u342aff19:cpu",
+                "health:dev:u342aff19:discards",
+                "health:dev:u342aff19:heartbeat",
+                "health:dev:u342aff19:scrapes",
+                "intent:1",
+                "logs"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 5157,
+            "output_tokens": 835,
+            "cost_usd": 0.0191
+          },
+          {
+            "round": 5,
+            "verdict": "checked",
+            "answer": {
+              "outcome": "no_fault_found",
+              "needs_human": false,
+              "evidence": [],
+              "checked": [
+                "cable:dev:26/Gi3~dev:28/Gi0/1",
+                "health:dev:26:cpu",
+                "health:dev:26:discards",
+                "health:dev:26:scrapes",
+                "health:dev:28:cpu",
+                "health:dev:28:discards",
+                "health:dev:28:scrapes",
+                "health:dev:u342aff19:cpu",
+                "health:dev:u342aff19:discards",
+                "health:dev:u342aff19:scrapes",
+                "intent:1",
+                "logs"
+              ]
+            },
+            "misses": [],
+            "pass": true,
+            "input_tokens": 5157,
+            "output_tokens": 1040,
+            "cost_usd": 0.0212
           }
         ],
         "passed": 5

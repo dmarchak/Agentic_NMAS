@@ -444,20 +444,21 @@ class TestChanges:
 
     def test_a_metric_of_no_stated_type_is_offered_both_first_steps(self, web):
         """A metric Prometheus gives no type (one of the capture's YANG states) may be a
-        counter or a gauge: its first step may be a rate, an increase or changes, and once
-        one is first the menu offers no other first step."""
+        counter or a gauge: its first step may be a rate, an increase, changes or resets
+        (C1803), and once one is first the menu offers no other first step."""
         name = "Cisco_IOS_XE_interfaces_oper:interfaces_interface_ether_state_auto_negotiate"
         q = P.view("Lab", {"m": name, "op": ["changes:1h"]}, now=NOW, client=web.prom)
         assert q["kind"] == "unknown" and q["errors"] == [], (q["kind"], q["errors"])
         assert q["built"]["query"] == f"changes({name}[1h])"
-        assert q["op_rows"][0]["kinds"] == ["rate", "increase", "changes"]
+        assert q["op_rows"][0]["kinds"] == ["rate", "increase", "changes", "resets"]
         assert not q["menu"]["range"] and not q["menu"]["changes"]
         rows, menu = P.op_rows(["rate:5m"], "unknown", "", [])
-        assert rows[0]["kinds"] == ["rate", "increase", "changes"] and not menu["changes"]
+        assert rows[0]["kinds"] == ["rate", "increase", "changes", "resets"]
+        assert not menu["changes"]
         _rows, menu = P.op_rows([], "unknown", "", [])
         assert menu["range"] and menu["changes"]
         rows, menu = P.op_rows(["changes:1d"], "gauge", "", [])
-        assert rows[0]["kinds"] == ["changes"] and rows[0]["removable"]
+        assert rows[0]["kinds"] == ["changes", "resets"] and rows[0]["removable"]
 
     def test_ask_in_words_is_told_what_it_counts_and_where_it_applies(self):
         """The vocabulary Ask in words is given (modules/ai/nl_query.vocabulary, generated from

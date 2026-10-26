@@ -63,13 +63,30 @@ def _checkout(given: str) -> str:
     return os.path.abspath(os.path.expanduser(given)) if given else ROOT
 
 
-def check(checkout: str, list_name: str, case_file: str = CASES) -> list:
+def check(checkout: str, list_name: str, case_file: str = CASES, prompt: int = None) -> list:
     """The stale expectations (`cases.stale`) against the network's live Prometheus: what the
-    named devices, the role or the network's devices carry, one read each."""
+    named devices, the role or the network's devices carry, one read each. A logs case file
+    (``"kind": "logs"``, C1762) is checked by `cases.stale_logs`: the mnemonics each question
+    would be offered now, by the prompt version *prompt* names (the platform pack's events
+    from v3), one read of the logs reader's counts."""
     from modules import history_promq as pq
     from modules.ai import cases, nl_query
 
     data = cases.load(os.path.join(checkout, case_file))
+    if data.get("kind") == "logs":
+        from modules import history_logq as lq
+        rng = lq.window(dict(lq.DEFAULTS, range="7d"), time.time())
+        seen = lq.mnemonics(list_name, rng, []).get("rows")
+        version = prompt or nl_query.PROMPT_LOGS[1]
+
+        def offered(question):
+            if seen is None:
+                return None
+            if version >= 3:
+                return [m for m, _w in nl_query.offer_events(
+                    question, seen, nl_query.events_for(list_name))]
+            return nl_query.offer_mnemonics(question, seen)
+        return cases.stale_logs(data, offered)
     client = pq._client(list_name, 15.0)
     rng = pq.window(dict(pq.DEFAULTS), time.time())
 
@@ -83,14 +100,22 @@ def check(checkout: str, list_name: str, case_file: str = CASES) -> list:
 
 
 def record(checkout: str, list_name: str, actor: str, out: str, case_file: str = CASES,
-           thinking: str = None, model: str = None) -> int:
+           thinking: str = None, model: str = None, prompt: int = None) -> int:
     from modules.ai import cases, nl_query, profiles
 
     if os.path.realpath(out).startswith(os.path.realpath(checkout) + os.sep):
         print(f"nmas-nl-cases: --out {out} is inside the checkout; write it elsewhere",
               file=sys.stderr)
         return 2
+    if "@" in actor:
+        # A measurement is never recorded as a person (C1784): its actor names the run.
+        print(f"nmas-nl-cases: --actor {actor!r} reads as a person's address; a measurement "
+              "is recorded as evaluation:<run id>", file=sys.stderr)
+        return 2
     data = cases.load(os.path.join(checkout, case_file))
+    logs = data.get("kind") == "logs"
+    feature_prompt = (nl_query.PROMPT_LOGS if logs else nl_query.PROMPT)[0]
+    asked = (feature_prompt, prompt) if prompt else None
     if model:
         # A comparison on another model (the operator, 2026-10-26: Sonnet 5.5 beside the
         # pinned Haiku 5.5): this process's pin alone is replaced, never the pin file; its
@@ -110,7 +135,7 @@ def record(checkout: str, list_name: str, actor: str, out: str, case_file: str =
         return 2
     # Every measurement starts with the expectations checked against the live catalogue: a
     # stale one fails here, before anything is asked or spent, never as the model's miss.
-    problems = check(checkout, list_name, case_file)
+    problems = check(checkout, list_name, case_file, prompt)
     if problems:
         for p in problems:
             print(f"nmas-nl-cases: stale expectation: {p}", file=sys.stderr)
@@ -120,7 +145,11 @@ def record(checkout: str, list_name: str, actor: str, out: str, case_file: str =
     got_all, spent = [], 0.0
     for case in data["cases"]:
         now = time.time()
-        got = nl_query.metrics(list_name, case["question"], actor=actor, thinking=thinking)
+        if logs:
+            got = nl_query.logs(list_name, case["question"], actor=actor, prompt=asked)
+        else:
+            got = nl_query.metrics(list_name, case["question"], actor=actor, thinking=thinking,
+                                   prompt=asked)
         spent += float(got.get("cost_usd") or 0)
         if got.get("error") in STOPS:
             print(f"nmas-nl-cases: case {case['n']} refused by Mercury ({got['error']}: "
@@ -131,7 +160,10 @@ def record(checkout: str, list_name: str, actor: str, out: str, case_file: str =
                "recorded_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
                "choices": got.get("choices"), "call_id": got.get("call_id", ""),
                "cost_usd": got.get("cost_usd", 0), "error": got.get("error", ""),
-               "misses": cases.misses(case["expect"], got, now)}
+               "prompt": list(asked or (feature_prompt, (nl_query.PROMPT_LOGS if logs
+                                                          else nl_query.PROMPT)[1])),
+               "misses": (cases.logs_misses if logs else cases.misses)(case["expect"], got,
+                                                                       now)}
         got_all.append(rec)
         verdict = "pass" if not rec["misses"] else "MISS: " + "; ".join(rec["misses"])
         print(f"case {case['n']:2d}: {verdict}")
@@ -186,6 +218,10 @@ def main(argv=None) -> int:
                     help="ask on this model in place of the pin, for this run only: a "
                          "comparison; its recordings are never merged into a file pinned "
                          "to another")
+    ap.add_argument("--prompt", type=int, default=None,
+                    help="ask with this prompt version of the case file's feature in place of "
+                         "the current one (a candidate measured against the adoption bar: "
+                         "metrics 8, logs 3)")
     args = ap.parse_args(argv)
     checkout = _checkout(args.checkout)
     sys.path.insert(0, checkout)
@@ -195,7 +231,7 @@ def main(argv=None) -> int:
     if args.check:
         if not args.list:
             ap.error("--check needs --list")
-        problems = check(checkout, args.list, args.cases)
+        problems = check(checkout, args.list, args.cases, args.prompt)
         for p in problems:
             print(f"stale expectation: {p}")
         print(f"{len(problems)} stale expectation(s)")
@@ -204,7 +240,7 @@ def main(argv=None) -> int:
         if not (args.list and args.actor and args.out):
             ap.error("--record needs --list, --actor and --out")
         return record(checkout, args.list, args.actor, args.out, args.cases, args.thinking,
-                      args.model)
+                      args.model, args.prompt)
     ap.error("--record or --merge")
     return 2
 

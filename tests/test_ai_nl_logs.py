@@ -309,3 +309,66 @@ def test_an_answer_stopped_at_max_tokens_fills_nothing(world):
     assert "values" not in got and "view" not in got and "choices" not in got
     (row,) = calls.read()["rows"]
     assert row["verdict"] == "max_tokens" and "output" not in row
+
+
+# ---------------------------------------------------- the operator's walk, 2026-10-26 (C1804)
+
+IOS_ROWS = [{"hostname": "r1", "role": "router", "platform": "cisco_iosxe"},
+            {"hostname": "s1", "role": "switch", "platform": "cisco_ios"},
+            {"hostname": "s2", "role": "switch", "platform": "cisco_ios"}]
+
+
+def test_v3_offers_the_platform_s_events_whether_or_not_the_range_holds_one(world, monkeypatch):
+    """C1804 (6a): the reload and restart mnemonics are offered for "rebooted", with what each
+    records, though no word of the question is in them and the range need not hold one."""
+    monkeypatch.setattr(nl_query, "_inventory", lambda name: IOS_ROWS)
+    monkeypatch.setattr(nl_query, "network_context", lambda name, store: {
+        "summary": "s", "coverage": "c"})
+    world.answer = dict(_choices(mnemonics=["%SYS-5-RELOAD", "%SYS-5-RESTART"], range="7d"),
+                        needs=[])
+    got = _ask(world, "Which devices rebooted this week?", prompt=nl_query.CANDIDATE_LOGS)
+    assert got["ok"] is True, got
+    assert got["values"]["mn"] == ["%SYS-5-RELOAD", "%SYS-5-RESTART"]
+    user = world.sent[-1]["body"]["messages"][0]["content"]
+    assert ("%SYS-5-RELOAD | a reload was requested (the device is about to restart)" in user)
+    assert "%SYS-5-RESTART | the system restarted" in user
+    assert '<data name="coverage">' in user and '<data name="looked_up">' in user
+
+
+def test_the_platform_s_events_are_the_dialects_the_network_speaks():
+    assert nl_query.events_for("Lab", rows=[]) == []
+    names = [e["mnemonic"] for e in nl_query.events_for("Lab", rows=IOS_ROWS)]
+    assert names[:2] == ["%SYS-5-RELOAD", "%SYS-5-RESTART"] and len(names) == len(set(names))
+    for want in ("%LINK-3-UPDOWN", "%OSPF-5-ADJCHG", "%BGP-5-ADJCHANGE", "%SYS-5-CONFIG_I"):
+        assert want in names, want
+    assert nl_query.events_for("Lab", rows=[{"hostname": "x", "platform": "unknown_os"}]) == []
+
+
+def test_a_zero_resting_on_free_text_says_so(world, monkeypatch):
+    """C1804 (6b): the fill's test run says the text may not be how the platform logs it."""
+    from modules import history_logq as lq
+    monkeypatch.setattr(lq, "_count", lambda client, q, rng: 0)
+    world.answer = _choices(mnemonics=[], contains="reboot", show="lines", range="7d")
+    got = _ask(world, "Which devices rebooted this week?")
+    assert got["ok"] is True and got["lines"] == 0
+    assert got["test"] == ("the test run matches 0 line(s) over the range; no line contains "
+                           "'reboot', which may not be how the platform logs it"), got["test"]
+
+
+def test_a_logs_refusal_ends_in_one_full_stop(world):
+    world.answer = _choices(outcome="refuse", why_not="The logs do not hold CPU.", mnemonics=[])
+    got = _ask(world, "the CPU from the logs")
+    assert got["detail"] == "the builder cannot answer this: The logs do not hold CPU"
+
+
+def test_the_logs_v3_schema_and_prompt_are_registered_and_committed():
+    from modules.ai import prompts, schemas
+    assert schemas.REGISTRY[("nl_logs", 2)] is nl_query.LogsChoicesV2
+    with open(schemas.committed_path("nl_logs", 2), encoding="utf-8") as fh:
+        assert fh.read() == schemas.committed_text(nl_query.LogsChoicesV2)
+    text = " ".join(prompts.load(*nl_query.CANDIDATE_LOGS)["text"].split())
+    for said in ("An event a device logs is found by its mnemonic, never by a word for it",
+                 '"this week", "the past week" and "the last 7 days" are the last 7 days: 7d',
+                 '"coverage"', '"looked_up"'):
+        assert said in text, said
+    assert nl_query.PROMPT_LOGS == ("nl_logs", 2), "the candidate is adopted only by its bar"

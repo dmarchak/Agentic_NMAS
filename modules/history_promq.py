@@ -72,7 +72,11 @@ RANGE_OPS = {"rate": "rate per second", "increase": "increase over the window"}
 #: (a state such as ifOperStatus's 1 up, 2 down). A counter's value moves at nearly every
 #: scrape, so it is refused there (`check_ops`). First in the chain, as a rate is: it applies
 #: to the metric itself (a range vector).
-CHANGES_OPS = {"changes": "changes: times the value changed"}
+#: PromQL's resets(): how many times the value FELL in the window, the same rules as changes.
+#: A device's uptime (sysUpTime) falling is its restart, never its clock (the operator's walk,
+#: 2026-10-26: "Which devices rebooted this week?" was refused as no metric records reboots).
+CHANGES_OPS = {"changes": "changes: times the value changed",
+               "resets": "resets: times the value fell"}
 UNIT_OPS = {"bits": "× 8, bytes to bits", "per_min": "per minute (× 60)"}
 AGGS = {"sum": "sum", "avg": "avg", "min": "min", "max": "max", "count": "count"}
 #: What a group does, said under the query, and in the whole query's sentence.
@@ -680,10 +684,15 @@ def build(spec: dict, kind: str, unit: str, iface: str, ops: list, meta_help: st
         elif k in CHANGES_OPS:
             parts = [(f"{k}(", key)] + parts + [(f"[{arg}])", key)]
             w = CHANGES_WINDOWS[arg][0]
-            explain[key] = (f"counts how many times the value changed in the {w} before each "
-                            "point (a state moving, up to down or back, counts once each "
-                            "time), never by how much")
-            words.append(f"as how many times it changed in the {w} before each point")
+            if k == "resets":
+                explain[key] = (f"counts how many times the value fell in the {w} before each "
+                                "point (an uptime falling is a restart), never by how much")
+                words.append(f"as how many times it fell in the {w} before each point")
+            else:
+                explain[key] = (f"counts how many times the value changed in the {w} before "
+                                "each point (a state moving, up to down or back, counts once "
+                                "each time), never by how much")
+                words.append(f"as how many times it changed in the {w} before each point")
             prec = 9
         elif k in UNIT_OPS:
             if prec < 5:
