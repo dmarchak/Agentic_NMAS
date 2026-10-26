@@ -17,7 +17,7 @@ desktop board at 1440 and 1280 beside the page; the phone board at 390 beside th
 Compared 2026-10-15. History's own page (heading, remote line) is board D's; the board's Code
 mode panel is today's Ask your own box, Code on the Mode switch.
 Templates compared: templates/v2/history_ask_metrics.html, templates/v2/_history_body.html, templates/v2/_history_ask_metrics.html, templates/v2/_history_ask_parts.html, templates/v2/_history_ask_head.html, templates/v2/_history_ask_words.html, templates/v2/_ai.html, templates/v2/_history_ask_chips.html
-Templates sha256: `1e69029e69320f998cfa45dd1080705a932d6905312e0d09de738ecd332739a2`
+Templates sha256: `2724e7ee9f0a0f96951c790c101037d33dee6f462bcdb4c31799b674459ef356`
 
 Compared again 2026-10-15 (P7-03): `_history_body.html` gained a `data-concept` marker and one
 sentence inside a Baselines row's detail (the block drawing each baseline's Re-apply… link); this
@@ -119,6 +119,11 @@ row's verdict stays **later** with 8.1's board (Saturday). Its tests are
 tests/test_ai_nl_query.py's "today" section, in Firefox
 `test_the_timezone_is_filled_and_sent_in_a_browser`. The hash written again.
 Templates sha256 before: `65002398e8dd65f73e7a2ca9c12e2d7ea4b1de399a313796d1e4cc4bfed83bc2`.
+
+Changed 2026-10-26 (C1740's logs half): `_history_ask_words.html`'s comment now says both
+builders set `words_tz`. Only the comment changed, and it renders nothing: this page draws the
+same bytes. No region changed; the hash written again.
+Templates sha256 before: `1e69029e69320f998cfa45dd1080705a932d6905312e0d09de738ecd332739a2`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).

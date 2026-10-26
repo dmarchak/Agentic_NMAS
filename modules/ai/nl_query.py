@@ -588,7 +588,10 @@ def metrics(list_name: str, question: str, *, actor: str, send=None, client=None
 
 # ---------------------------------------------------------------------------- the logs half
 
-PROMPT_LOGS = ("nl_logs", 1)
+#: v2 (C1740's logs half, 2026-10-26): the named days and weeks counted in the viewer's
+#: timezone, given as data as v7 of the metrics half gives them; v1 worked "yesterday" out
+#: from now_utc, in UTC.
+PROMPT_LOGS = ("nl_logs", 2)
 #: At most this many mnemonics are offered for one question.
 OFFERED_MNEMONICS = 20
 
@@ -692,10 +695,19 @@ def vocabulary_logs() -> str:
 
 
 def parts_logs(question: str, kinds: list, mns: list, labels: list, devices: list,
-               roles: list, now: float) -> dict:
+               roles: list, now: float, z: dict = None) -> dict:
+    """The logs call's own data, the named spans' starts with it, as `parts` gives them. *z*
+    is `zone`'s answer; none, UTC."""
+    z = z or zone()
+    s = spans(now, z["tz"])
     return {
         "question": question,
-        "now_utc": time.strftime("%Y-%m-%d %H:%M", time.gmtime(now)),
+        "now_utc": _stamp(now),
+        "today_start_utc": s["today"],
+        "yesterday_start_utc": s["yesterday"],
+        "week_start_utc": s["this week"],
+        "last_week_start_utc": s["last week"],
+        "today_zone": z["name"],
         "kinds": "\n".join(kinds) or "(none)",
         "mnemonics": "\n".join(mns) or "(none)",
         "labels": "\n".join(labels) or "(none)",
@@ -715,12 +727,14 @@ def values_logs(c: LogsChoices) -> dict:
 
 
 def logs(list_name: str, question: str, *, actor: str, send=None, client=None,
-         now: float = None, today: str = None) -> dict:
-    """``{"ok", "error", "detail", "values", "view", "lines", ...}``: the logs builder filled
-    from *question*, read back by the builder, and its test run (one count over the range);
-    or a refusal, or one question back, with nothing filled."""
+         now: float = None, today: str = None, viewer_zone: dict = None) -> dict:
+    """``{"ok", "error", "detail", "values", "view", "lines", ..., "today"}``: the logs builder
+    filled from *question*, read back by the builder, and its test run (one count over the
+    range); or a refusal, or one question back, with nothing filled. *viewer_zone* is `zone`'s
+    answer for the viewer (none: UTC, said), as `metrics` takes it (C1740)."""
     from modules import history_logq as lq
 
+    z = viewer_zone or zone()
     question = " ".join((question or "").split())
     if not question:
         return {"ok": False, "error": "empty", "detail": "type a question first"}
@@ -748,7 +762,7 @@ def logs(list_name: str, question: str, *, actor: str, send=None, client=None,
     # What the call is about, written with it (15.14): the network's query, its named devices.
     subject = {"kind": "query", "id": list_name, "devices": list(named)}
     got = gateway.ask(FEATURE, PROMPT_LOGS, LogsChoices,
-                      parts_logs(question, kinds, mns, labels, named, roles, now),
+                      parts_logs(question, kinds, mns, labels, named, roles, now, z),
                       actor=actor, context={"builder": vocabulary_logs()}, send=send,
                       today=today, subject=subject)
     if not got["ok"]:
@@ -782,8 +796,13 @@ def logs(list_name: str, question: str, *, actor: str, send=None, client=None,
         said.append(f"left out the role {v['role'][:40]!r}: no device of {list_name} has it")
         v["role"] = ""
     view = lq.view(list_name, v, now=now, client=probe)
+    # Whose midnight a named span ran from, said beside the filled range, as the metrics half
+    # says it (C1740).
+    started = {v_: k for k, v_ in reversed(spans(now, z["tz"]).items())}
+    span = started.get(v.get("from")) if c.range is LogsRange.custom else None
     out = dict(base, ok=True, error="", values=v, view=view,
-               errors=said + list(view["errors"]), lines=None, test="")
+               errors=said + list(view["errors"]), lines=None, test="",
+               today=span_words(z, span) if span else "")
     built = view.get("built") or {}
     if built.get("log_query"):
         n = lq._count(client or lq._client(list_name, TEST_WAIT), built["log_query"],

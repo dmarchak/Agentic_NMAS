@@ -703,16 +703,18 @@ def test_a_range_not_today_s_says_nothing_of_midnight(site):
     assert "Filled from your words" in html and "'Today' runs" not in html
 
 
-def test_the_words_form_draws_the_timezone_inputs_on_the_metrics_builder_only(site):
+def test_the_words_form_draws_the_timezone_inputs_on_both_builders(site):
+    """Both halves count the named days and weeks in the viewer's zone (C1740; the logs half
+    since nl_logs v2), so both forms carry the inputs."""
     import re
     from html import unescape
-    html = unescape(site.get("/v2/history/query/ask/metrics?list=Lab").get_data(as_text=True))
-    form = re.search(r'<form class="lq-row lq-words".*?</form>', html, re.S).group(0)
-    assert '<input type="hidden" name="tz" value="" data-lq-tz="name">' in form
-    assert '<input type="hidden" name="tz_off" value="" data-lq-tz="offset">' in form
-    # The logs half's "today" is not this ruling's (nl_logs v1, C1740): no inputs it ignores.
-    logs = site.get("/v2/history/query/ask/logs?list=Lab").get_data(as_text=True)
-    assert 'name="words"' in logs and "data-lq-tz" not in logs
+    for builder in ("metrics", "logs"):
+        html = unescape(site.get(f"/v2/history/query/ask/{builder}?list=Lab").get_data(
+            as_text=True))
+        form = re.search(r'<form class="lq-row lq-words".*?</form>', html, re.S).group(0)
+        assert '<input type="hidden" name="tz" value="" data-lq-tz="name">' in form, builder
+        assert '<input type="hidden" name="tz_off" value="" data-lq-tz="offset">' in form, \
+            builder
 
 
 def _logq(expr):

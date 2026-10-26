@@ -80,7 +80,7 @@ def test_the_offer_is_the_question_s_mnemonics_and_none_for_a_severity_question(
         "%LINEPROTO-5-UPDOWN", "%LINK-3-UPDOWN"], "the most seen first, the chips' after"
 
 
-def test_the_request_holds_its_prompt_vocabulary_and_seven_data_blocks(world):
+def test_the_request_holds_its_prompt_vocabulary_and_twelve_data_blocks(world):
     from modules.ai import prompts
     world.answer = _choices()
     _ask(world)
@@ -90,8 +90,10 @@ def test_the_request_holds_its_prompt_vocabulary_and_seven_data_blocks(world):
     assert a["system"][0]["text"] == prompts.load(*nl_query.PROMPT_LOGS)["text"]
     assert "Severity (severity)" in a["system"][1]["text"]
     data = re.findall(r'<data name="([^"]+)">', a["messages"][0]["content"])
-    assert set(data) == {"question", "now_utc", "kinds", "mnemonics", "labels",
-                         "devices_named", "roles"} and len(data) == 7
+    # The named spans' starts and their zone (C1740, nl_logs v2), as the metrics half's.
+    assert set(data) == {"question", "now_utc", "today_start_utc", "yesterday_start_utc",
+                         "week_start_utc", "last_week_start_utc", "today_zone", "kinds",
+                         "mnemonics", "labels", "devices_named", "roles"} and len(data) == 12
     assert "network_syslog" in a["messages"][0]["content"]
     assert "%OSPF-5-ADJCHG" in a["messages"][0]["content"]
 
@@ -204,6 +206,89 @@ def test_ask_in_words_on_the_logs_builder_in_a_browser(world):
         b.go("about:blank")
     assert "Filled from your words" in note, note
     assert wide is True and narrow, (wide, narrow)
+
+
+# ------------------------------------------- C1740's logs half: the named spans in the zone
+
+#: NOW is Thursday 2026-10-15 08:25 UTC, 04:25 in New York (EDT, UTC-4): worked by hand, the
+#: midnights there are these UTC times (an expectation by a path independent of `spans`).
+NEW_YORK = {"today_start_utc": "2026-10-15 04:00", "yesterday_start_utc": "2026-10-14 04:00",
+            "week_start_utc": "2026-10-12 04:00", "last_week_start_utc": "2026-10-05 04:00"}
+
+
+def test_the_named_spans_ride_as_data_in_the_viewer_s_zone(world):
+    world.answer = _choices()
+    _ask(world, viewer_zone=nl_query.zone("America/New_York"))
+    user = world.sent[-1]["body"]["messages"][0]["content"]
+    for name, value in dict(NEW_YORK, today_zone="America/New_York").items():
+        assert f'<data name="{name}">\n{value}\n</data>' in user, name
+
+
+def test_with_no_zone_the_spans_are_utc_s():
+    """No zone given (the screen sends one; a measurement may not): UTC's midnights."""
+    sent = nl_query.parts_logs("q", [], [], [], [], [], NOW)
+    assert (sent["today_start_utc"], sent["yesterday_start_utc"], sent["today_zone"]) == (
+        "2026-10-15 00:00", "2026-10-14 00:00", "UTC")
+
+
+@pytest.mark.parametrize("frm,to,said", [
+    ("2026-10-15 04:00", "2026-10-15 08:25",
+     "'Today' runs from midnight America/New_York (your browser's timezone; no installation "
+     "timezone is set)"),
+    ("2026-10-14 04:00", "2026-10-15 04:00",
+     "'Yesterday' is counted from midnight America/New_York (your browser's timezone; no "
+     "installation timezone is set)"),
+    ("2026-10-12 04:00", "2026-10-15 08:25",
+     "'This week' is counted from midnight on Monday America/New_York (your browser's "
+     "timezone; no installation timezone is set)"),
+    ("2026-10-05 04:00", "2026-10-12 04:00",
+     "'Last week' is counted from midnight on Monday America/New_York (your browser's "
+     "timezone; no installation timezone is set)"),
+], ids=["today", "yesterday", "this-week", "last-week"])
+def test_a_range_from_a_named_span_says_whose_midnight(world, frm, to, said):
+    world.answer = _choices(range="custom", from_utc=frm, to_utc=to)
+    got = _ask(world, viewer_zone=nl_query.zone("America/New_York"))
+    assert got["ok"] is True and got["today"] == said, got
+
+
+def test_a_range_from_no_named_span_says_nothing_of_midnight(world):
+    world.answer = _choices(range="custom", from_utc="2026-10-14 06:00",
+                            to_utc="2026-10-14 09:00")
+    got = _ask(world, viewer_zone=nl_query.zone("America/New_York"))
+    assert got["ok"] is True and got["today"] == ""
+    world.answer = _choices()
+    assert _ask(world, viewer_zone=nl_query.zone("America/New_York"))["today"] == ""
+
+
+def test_the_words_form_sends_the_zone_and_the_notice_says_whose_midnight(world):
+    """The route: the logs form draws the timezone inputs and posts them, and the filled
+    notice names the zone (the metrics half's own test is tests/test_ai_nl_query.py's)."""
+    html = unescape(world.web.get("/v2/history/query/ask/logs?list=Lab").get_data(
+        as_text=True))
+    form = re.search(r'<form class="lq-row lq-words".*?</form>', html, re.S).group(0)
+    assert '<input type="hidden" name="tz" value="" data-lq-tz="name">' in form
+    assert '<input type="hidden" name="tz_off" value="" data-lq-tz="offset">' in form
+    world.answer = _choices(range="custom", from_utc=NEW_YORK["yesterday_start_utc"],
+                            to_utc=NEW_YORK["today_start_utc"])
+    r = world.web.post("/v2/history/query/ask/logs/words", data={
+        "list": "Lab", "words": "OSPF adjacency changes yesterday", "tz": "America/New_York",
+        "tz_off": "-240"}, headers={"HX-Request": "true"})
+    note = unescape(r.get_data(as_text=True)).split("Filled from your words", 1)[1]
+    assert "'Yesterday' is counted from midnight America/New_York" in note.split("</p>")[0]
+    user = world.sent[-1]["body"]["messages"][0]["content"]
+    assert '<data name="today_zone">\nAmerica/New_York\n</data>' in user
+
+
+def test_v2_is_the_prompt_and_says_the_named_spans():
+    from modules.ai import prompts
+    assert nl_query.PROMPT_LOGS == ("nl_logs", 2)
+    # Refuses a prompt naming JSON; the words compared as read, the text's wrapping aside.
+    text = " ".join(prompts.load("nl_logs", 2)["text"].split())
+    for said in ('"yesterday_start_utc"', '"week_start_utc"', '"last_week_start_utc"',
+                 '"today_zone"', '"yesterday" from yesterday_start_utc to today_start_utc',
+                 '"the past week" is a span of time, not a calendar week: 7d'):
+        assert said in text, said
+    assert prompts.load("nl_logs", 1)["version"] == 1, "the earlier version stays"
 
 
 def test_the_logs_schema_is_registered_and_committed():

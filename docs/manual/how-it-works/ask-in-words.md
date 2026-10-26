@@ -122,4 +122,6 @@ share a word with your question (the Start-from chips' and those the logs reader
 line is offered none, and is answered by the severity and text filters. `ask`, `read_back`
 and `fill` are as above: a kind or mnemonic that was not offered is left out and said.
 `test_run` counts the lines the query matches over the range, within 10 seconds. Nothing reads
-the lines until you press **Ask**.
+the lines until you press **Ask**. "Today", "yesterday", "this week" and "last week" are the
+calendar's, counted from midnight in your browser's timezone as on the metrics builder (see
+[What "today" means](#today)), and the note under the question says whose midnight it was.

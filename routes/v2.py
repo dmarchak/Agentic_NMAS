@@ -716,7 +716,12 @@ def history_ask_logs_words():
     from modules import history_logq
     from modules.ai import nl_query
 
-    return _ask_words(nl_query.logs, history_logq.view, "v2/_history_ask_logs.html",
+    def fill(name, question, actor):
+        # The named days and weeks in the viewer's browser's timezone, as the metrics
+        # builder's (C1740).
+        return nl_query.logs(name, question, actor=actor, viewer_zone=nl_query.zone(
+            request.form.get("tz", ""), request.form.get("tz_off", "")))
+    return _ask_words(fill, history_logq.view, "v2/_history_ask_logs.html",
                       _ask_logs_ctx, "v2.history_ask_logs")
 
 

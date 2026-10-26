@@ -17,7 +17,7 @@ Compared again 2026-10-15: each `<details>` keyed (`data-keep`, C472) so a redra
 Compared again 2026-10-15 (board E3): the go links, the query box, the range chips and picker, the actions and the three states moved into `_history_ask_parts.html`, which the metrics builder shares (the rendered page the same but for whitespace, every state rendered before and after and compared); the head's Metrics switch now opens the metrics builder, and Code mode's Builder is a link. The shots at 1440, 1280 and 390 retaken; nothing drawn moved. Two fixes found on the way, neither a region's verdict: the bounds line says no log store is configured where none is (it raised an error page before, reading Loki's unread limits), and the heartbeat stage writes the marker as an RE2 literal, `NMAS-HEARTBEAT` (Python's escape wrote `NMAS\\-HEARTBEAT`, the same lines matched).
 Compared again 2026-10-15 (C818, C819; the operator's decisions of that day): Reveal… built as the board draws it, and Edit as code from Counts ending in Code mode's chart. The page shot at 1440, 1280 and 390 as before, and two more states beside the board's Lines view: `history-ask-logs-reveal-ask-page-<width>` (the box open with a reason) and `history-ask-logs-revealed-page-<width>` (the line revealed), at 1440 and 390, fed by the lines capture with one planted secret-bearing line (tests/test_log_reveal.py). Each masked value is now marked as the board marks it; the bounds line says revealing is recorded, as the board's does.
 Templates compared: templates/v2/history_ask_logs.html, templates/v2/_history_body.html, templates/v2/_history_ask_logs.html, templates/v2/_history_ask_head.html, templates/v2/_history_ask_parts.html, templates/v2/_history_ask_words.html, templates/v2/_ai.html
-Templates sha256: `abb2651183ddb8ab878259ae909a6899e3c8f40ab39dad50ae5609cac8231684`
+Templates sha256: `2f07e4738a293a07888e1575b4e542b29041ba8e1029ec100de39b8009bf8be2`
 
 Compared again 2026-10-15 (P7-03): `_history_body.html` gained a `data-concept` marker and one
 sentence inside a Baselines row's detail (the block drawing each baseline's Re-apply… link); this
@@ -80,6 +80,15 @@ The logs builder sets no `words_tz` and its answers carry no `today`, so neither
 here: the page rendered from the templates as they were and as they are is the same bytes.
 No region here changed; the hash written again.
 Templates sha256 before: `62b52a7e20d7effeeafeadbfe8a5c53c7e5dbff6a738ab28bd2a8f22943b715f`.
+
+Changed 2026-10-26 (C1740's logs half, nl_logs v2): `_history_ask_logs.html` sets
+`words_tz`, so the Ask in words row now carries the two hidden timezone inputs the metrics
+builder's has. When an answer's range starts at a named span's midnight, the filled notice
+gains its sentence ("'Yesterday' is counted from midnight America/New_York (…)"), as it does
+on the metrics builder. `_history_ask_words.html`'s own change is its comment. The inputs
+draw nothing; the sentence is inside the notice the row already draws. The row's verdict
+stays **later** with 8.1's board; no other region changed. The hash written again.
+Templates sha256 before: `abb2651183ddb8ab878259ae909a6899e3c8f40ab39dad50ae5609cac8231684`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
