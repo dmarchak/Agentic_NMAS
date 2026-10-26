@@ -935,6 +935,10 @@ def _alert_evidence(client, _lab, _mp):
                         headers={"HX-Request": "true", "Accept": "text/html"})
         assert r.status_code == 200 and "Every figure of the alert is steady." in \
             r.get_data(as_text=True)
+        # History's window on that call (15.14): the prompt as sent, the answer as received.
+        newest = calls.read()["rows"][0]["id"]
+        r = client.get(f"/v2/history/ai-call/{newest}", headers={"Accept": "text/html"})
+        assert r.status_code == 200 and "Sent to the model" in r.get_data(as_text=True)
     finally:
         mp.undo()
         shutil.rmtree(folder, ignore_errors=True)

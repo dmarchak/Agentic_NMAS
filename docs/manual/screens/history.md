@@ -56,7 +56,19 @@ Open a line for the full record underneath. It shows:
 - the reason and each step with its result;
 - how the person was identified;
 - for a commit, **Show the change**: its diff, with every secret masked;
-- **Open (device)'s History** for each device the record names.
+- for an AI call, what it was about (the alert, the question's network, or the installation),
+  the model, the tokens in and out, the cache's write and read, the cost, and what became of
+  the answer (filled the builder, shown, asked a question back, or refused by validation, with
+  why). **Show the prompt and the answer** draws two windows:
+  - **Sent to the model:** the instructions, then each context block and each data block by
+    its name, exactly as they left the host, with the model, the most tokens out, the
+    thinking and the answer's schema. A large part is folded, its size said.
+  - **Received:** the answer, laid out for reading.
+
+  Secrets show only as their masks: the prompt was masked before it left the host, and the
+  unmasked form is never stored. A call refused before it was sent says so;
+- **Open (device)'s History** for each device the record names. A device's own History tab
+  shows the AI calls about that device.
 
 The Baselines tab works the same way, with each baseline's reasons under its line.
 

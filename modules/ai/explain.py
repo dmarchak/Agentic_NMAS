@@ -41,7 +41,7 @@ import json
 import logging
 from enum import Enum
 
-from modules.ai import gateway
+from modules.ai import calls, gateway
 from modules.ai.schemas import StrictModel, register
 
 log = logging.getLogger(__name__)
@@ -363,19 +363,29 @@ def explain_pack(pack: dict, *, actor: str, send=None, today: str = None,
             "subject": topo["subject"], "hops": HOPS, "version": topo["version"],
             "devices": sorted(topo["reached"]), "observed": topo["observed"]}
     schema = SCHEMA_OF.get(int(prompt[1]), ExplanationV2)
+    # What the call is about, written with it (15.14): the alert's pack and its device.
+    subject = {"kind": "alert", "id": pack_id, "rule": pack.get("rule") or "",
+               "devices": [pack["device"]] if pack.get("device") else []}
     got = gateway.ask(FEATURE, tuple(prompt), schema, data, actor=actor, context=ctx,
-                      send=send, today=today)
+                      send=send, today=today, subject=subject)
     if not got["ok"]:
         return dict(got, pack_id=pack_id, topology=said)
     answer, base = got["output"], {"pack_id": pack_id, "call_id": got["call_id"],
                                    "cost_usd": got["cost_usd"], "topology": said}
+    links = {"page": f"/v2/monitoring/alerts/pack/{pack_id}", "anchor": f"explain-{pack_id}"}
     why = check(answer, pack, topo["ids"] if topo["sent"] else (), sections=sections)
     if why:
+        calls.record_use(got["call_id"], "refused by validation", actor=actor, detail=why,
+                         links=links)
         return dict(base, ok=False, error="couldnt_analyse",
                     detail=f"couldn't analyse: {why}; nothing is shown")
     if answer.outcome.value == "refuse":
+        calls.record_use(got["call_id"], "shown: the pack cannot say", actor=actor,
+                         detail=answer.why_not[:200], links=links)
         return dict(base, ok=False, error="unanswerable",
                     detail=f"the pack cannot say: {answer.why_not[:200]}")
+    calls.record_use(got["call_id"], "shown: " + answer.outcome.value.replace("_", " "),
+                     actor=actor, links=links)
     # What is drawn (an answer or no fault found by now, its why_not empty); the whole answer
     # is in the call's record. Each citation says where it resolves: a pack piece is a link to
     # it on the card, a topology id is drawn as text.

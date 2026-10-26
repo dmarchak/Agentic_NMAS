@@ -1801,6 +1801,43 @@ def test_history(tmp_path, monkeypatch):
         next(gen, None)
 
 
+def test_history_ai_call(tmp_path, monkeypatch):
+    """15.14 (the operator, 2026-10-26): an AI call's row on History, opened, and "Show the
+    prompt and the answer" pressed, the window drawn as a commit's "Show the change" is. No
+    board draws an AI call (the kind is later than board D). Fed by tests/test_ai_explain's
+    world (the real builder's pack, Explain's real request, a planted answer, recorded by the
+    gateway), its fixtures chained by hand: this module's `lab` is test_save_v2's."""
+    from tests import browser
+    from tests import test_ai_explain as X
+    from tests import test_device_v2 as DV
+    from tests import test_evidence_pack as EP
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    gen = DV.lab.__wrapped__(tmp_path, monkeypatch)
+    packs = EP.pack_lab.__wrapped__(next(gen), tmp_path, monkeypatch)
+    w = X.world.__wrapped__(next(packs), monkeypatch, tmp_path)
+    w.answer = X._answer(w.pack)
+    assert X._explain(w)["ok"] is True
+    row = "document.querySelector('.hist-tl details.tl-row[data-kind=\"ai_call\"]')"
+    try:
+        import app as A
+        with browser.Served(A.app) as served:
+            _d_walk("history-ai-call", served, "/v2/history?kind=ai_calls&since=", [
+                ("rows", None, f"!!{row}"),
+                ("open", f"{row}.open = true; {row}.querySelector('[id^=\"ai-\"] button').click()",
+                 f"!!{row}.querySelector('.hist-ai')")],
+                widths=((1280, 1.0), (390, 2.0)))
+            # The device's History tab: the same rows, the calls whose subject names it.
+            _d_walk("tab-history-ai-call", served, "/v2/device/r1?tab=history", [
+                ("open", f"{row}.open = true; {row}.querySelector('[id^=\"ai-\"] button').click()",
+                 f"!!{row} && !!{row}.querySelector('.hist-ai')")],
+                widths=((1280, 1.0),))
+    finally:
+        next(packs, None)
+        next(gen, None)
+
+
 # --- C650 group E2: credentials ---
 
 _E2_SETTLED = "!document.querySelector('.htmx-swapping, .htmx-settling, .htmx-request')"

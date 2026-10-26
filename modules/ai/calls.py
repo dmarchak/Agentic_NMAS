@@ -48,14 +48,50 @@ def record(entry: dict) -> dict:
     return dict(row, recorded=recorded)
 
 
-def read() -> dict:
-    """Every call, newest first: ``{"state": "ok"|"absent"|"unreadable", "rows", "error"}``."""
+def record_use(call_id: str, use: str, *, actor: str = "", detail: str = "",
+               links: dict = None) -> dict:
+    """Append what became of a call's answer, its own row keyed by the call's id (PHASE8_PLAN
+    15.14: the use is recorded at the source, append-only, never an edit of the call's row):
+    *use* is the feature's own word ("filled", "shown", "refused by validation"), *detail*
+    why, *links* where what it produced is (a page and its anchor). Never raises."""
+    return record({"use_of": call_id, "use": use, "actor": actor, "detail": detail,
+                   "links": dict(links or {})})
+
+
+def _all() -> dict:
     from modules import records_migrate
 
     got = records_migrate.store_rows(STORE, _path(), skip_unparsable=True)
     if got["state"] == "unreadable":
         log.error("ai_calls: unreadable (%s)", got["error"])
-    return dict(got, rows=list(reversed(got["rows"])))
+    return got
+
+
+def read() -> dict:
+    """Every call, newest first: ``{"state": "ok"|"absent"|"unreadable", "rows", "error"}``.
+    Calls only: a use row (`record_use`) is no call, so it neither counts nor costs."""
+    got = _all()
+    return dict(got, rows=[r for r in reversed(got["rows"]) if "use_of" not in r])
+
+
+def uses() -> dict:
+    """``{call id: [its use rows, oldest first]}``; an unreadable record reads as none (the
+    calls' own reader says so)."""
+    out = {}
+    for r in _all().get("rows") or []:
+        if "use_of" in r:
+            out.setdefault(r["use_of"], []).append(r)
+    return out
+
+
+def find(call_id: str) -> dict:
+    """``{"state", "row", "uses", "error"}``: one call by its id, and what became of it."""
+    got = _all()
+    if got["state"] == "unreadable":
+        return {"state": "unreadable", "row": None, "uses": [], "error": got["error"]}
+    row = next((r for r in got["rows"] if r.get("id") == call_id and "use_of" not in r), None)
+    return {"state": "ok" if row else "absent", "row": row, "error": "",
+            "uses": [r for r in got["rows"] if r.get("use_of") == call_id]}
 
 
 def cache_summary(day: str, feature: str = None) -> dict:

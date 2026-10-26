@@ -781,6 +781,14 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .hist-diff { font-family: var(--mono); font-size: 12px; background: var(--surface-2); border: 1px solid var(--line-2);
   border-radius: var(--r); padding: 8px 10px; max-height: 420px; overflow: auto; white-space: pre; }
 .nowrap { white-space: nowrap; }
+/* An AI call opened (15.14): its own full line under the row's links, never wider than the
+   row (a flex item grows to its content, and one long line of a prompt widened the page to
+   10,634 px); the prompt's prose wraps, the bytes unchanged. */
+.tl-window { flex: 1 1 100%; min-width: 0; max-width: 100%; }
+.hist-ai .hist-diff { white-space: pre-wrap; overflow-wrap: anywhere; }
+.hist-ai-head { margin: 12px 0 4px; font-size: 13px; font-weight: 600; color: var(--ink); }
+.hist-ai-name { margin: 6px 0 2px; color: var(--ink-2); }
+.hist-ai-part > summary { cursor: pointer; margin: 6px 0 2px; color: var(--ink-2); font-size: 12.5px; }
 
 /* The Update page (modules/update_op.py). */
 .stack { display: flex; flex-direction: column; gap: 14px; }

@@ -129,21 +129,25 @@ def _text_of(reply_body: dict) -> str:
 
 
 def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
-        context: dict = None, send=None, today: str = None, thinking: str = None) -> dict:
+        context: dict = None, send=None, today: str = None, thinking: str = None,
+        subject: dict = None) -> dict:
     """One schema-bound call of the task *feature* (the module's docstring has the order): its
     model and bounds are its pin in `profiles.TASKS`, never an argument. *context* is the
     stable prefix every call of the task shares, cached; *parts* the call's own data,
     uncached. *send* replaces the adapter (tests); *today* the UTC day the caps count.
     *thinking* (one of `profiles.THINKING`) replaces the task's for this call alone, as a
     measurement of both asks; by default the task's pin, "adaptive" when it names none. The
-    row records which was sent."""
+    row records which was sent. *subject* is what the call is about, written with it (15.14:
+    the device, the alert or the query, ``{"kind", "id", "devices"}``), on every row, sent or
+    refused."""
     call_id = calls.new_id()
     pin = profiles.TASKS.get(feature) or {}
     model = pin.get("model", "")
     # No verdict here: every path that records the row sets its own (a refusal's kind,
     # `_answered`'s, or "ok").
     row = {"id": call_id, "feature": feature, "actor": actor, "model": model,
-           "prompt": f"{prompt[0]}.v{prompt[1]}", "schema": "", "detail": "", "cost_usd": 0.0}
+           "prompt": f"{prompt[0]}.v{prompt[1]}", "schema": "", "detail": "", "cost_usd": 0.0,
+           "subject": dict(subject or {})}
 
     def refuse(kind, detail, **extra):
         out = calls.record(dict(row, verdict=kind, detail=detail, **extra))

@@ -2218,6 +2218,19 @@ kind filter. There is no separate tab.
   who, feature, subject, model, tokens, cost, verdict and use. The request and response bodies
   are pruned after 90 days by default, a setting. The pruning ships in a release later than
   the field (expand, then contract).
+- **Built 2026-10-26 (part A):**
+  - the subject written with the call (`gateway.ask(subject=)`) and the use rows
+    (`calls.record_use`, from Explain and Ask in words);
+  - the row, its record and the device tab's filter;
+  - Show the prompt and the answer, with its window. The window gives the request's bound,
+    thinking and why the answer stopped, then each part sent and the answer received (shots
+    and fidelity records: docs/fidelity/history.md, tab-history.md);
+  - a failed call, or one whose answer its feature refused, is drawn in danger.
+
+  **Not yet:**
+  - the links both ways (a feature's line to its row; the row to what it produced);
+  - the bodies' retention setting and its pruning (a later release, as above);
+  - the paging below (part B).
 
 **The timeline's paging (the operator, 2026-10-25), for History and for a device's History
 tab alike:**

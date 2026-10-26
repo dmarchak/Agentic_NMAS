@@ -20,7 +20,7 @@ Shots: the board at 1280; the tab at 1280, 1440 and 390, its rows closed (`tab-h
 and the newest opened (`tab-history-open`).
 Compared 2026-10-16.
 Templates compared: templates/v2/_history.html, templates/v2/_timeline.html
-Templates sha256: `e7d401c1a170eb7175b634fd212b32b48daa3281ac70e612c4c96179b585b80c`
+Templates sha256: `2934e519314ab53e8176939aaa571d6213519f0fb52d0cac0e41f1b17ebb0da2`
 
 Compared again 2026-10-16 (C957) after `_timeline.html` gained one state: on a network with no
 repository yet, the tab draws one muted notice above the rows, "No repository yet: the
@@ -63,6 +63,19 @@ stylesheet's, not measured. One region added, The Kind choices; Nothing's Built 
 other region's verdict changed.
 Templates sha256 before: `f31a10073c4d25bda457f183ae439b3ae1f1860d9a8b290e25bda3504ff17756`.
 
+**Compared again 2026-10-26 (PHASE8_PLAN 15.14):** `_timeline.html`, which this tab draws as
+History does, gained an AI call's "Show the prompt and the answer" and its window, the kind in
+words ("AI call"), and danger for a call that failed or whose answer its feature refused.
+docs/fidelity/history.md's comparison of the same date holds the detail and the width defect
+the first shot found and fixed.
+- The tab shows the calls whose subject names the device (`history_sources.ai_calls`), with
+  no "Open r1's History" link, since the tab is r1's own.
+- Shot `tab-history-ai-call` at 1280 (r1's tab, the call opened and pressed): 1,268 px wide,
+  the window inside the row.
+
+Rows without a call render as before, but for the separator after a row's last device link.
+Templates sha256 before: `e7d401c1a170eb7175b634fd212b32b48daa3281ac70e612c4c96179b585b80c`.
+
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
 
@@ -76,7 +89,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Device | the record's device, "fleet" for none, "r1–r4" for several | the device; a record of several says how many ("9 devices", capture 05) | **same** |
 | What | the record in words, its detail faint after " · " | the record in words, its marks faint after " · ", its detail in the opened row; an intent edit made on v2 reads "Intent committed (extraction)", the extraction's words, not the edit's (C895) | **deviation** (log: History: an intent edit on v2 reads as an extraction (C895)) |
 | Who | the person, shortened | the person; how they were identified only in the opened row | **same** |
-| An opened row | under the row at full width: "By operator@example.com, verified by Access · via the device page · 58 s"; the run's stages; Open r3's History · The commit | under the row at full width: the detail and the commit's sha, "By" the person as identified, the record's fields (Program, Commit), Show the change; on a golden row the sentence "A golden is a record of what the device ran when it was captured, not a target" and Reveal r3's version…; other devices' History links on a record of several | **deviation** (log: History: an opened row's links) |
+| An opened row | under the row at full width: "By operator@example.com, verified by Access · via the device page · 58 s"; the run's stages; Open r3's History · The commit | under the row at full width: the detail and the commit's sha, "By" the person as identified, the record's fields (Program, Commit), Show the change; on a golden row the sentence "A golden is a record of what the device ran when it was captured, not a target" and Reveal r3's version…; other devices' History links on a record of several; on an AI call whose subject names the device (15.14), the call's record and Show the prompt and the answer, its window as on History (`tab-history-ai-call`) | **deviation** (log: History: an opened row's links) |
 | The fleet's rows | choosing a device keeps its rows and drops the fleet's | none on the tab: the fleet's own commits are read only without a device (`history_sources.fleet_commits`); records of several devices that include this one stay (the Save All's "measured" and the break-glass rows in capture 05) | **same** |
 | Show more | "Showing the newest 12 of 41 · Show more" | "Showing the newest N of M · Show more on the History page" when cut, all time (the template; tests/test_device_history_v2.py's `test_a_cut_timeline_says_where`) | **same** |
 | The Kind choices | none: the tab is the timeline's rows, filtered to the device only | under the tab's (i), one segmented row of links: All, Goldens, Intent, Deploys and restores, Measured, unchanged, Restarts, each the device page's address with its `kind`, the chosen one pressed; kept by the reader before its newest-30 cut, carried by the live redraw, the link to the History page and Show more (the operator's walk, 2026-10-18, B; tests/test_history_kind_filter.py) | **deviation** (log: History tab: Kind choices one click away, Goldens first, the operator's walk of 2026-10-18) |

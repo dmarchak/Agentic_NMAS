@@ -185,6 +185,8 @@ NOT_AN_OPERATION = {
     ("_coverage_deploy_preview.html", "Leave out"): "leaves a device out of the deploy the confirm carries",
     ("_coverage_deploy_preview.html", "Back"): "returns to Coverage, sending nothing",
     ("_timeline.html", "Show the change"): "reads one commit's masked change",
+    ("_timeline.html", "Show the prompt and the answer"): "reads one AI call's masked prompt "
+                                                          "and its answer (15.14)",
     ("_actions_menu.html", "Actions"): "opens the actions menu; each row carries its own link",
     ("_devices.html", "Actions"): "opens the Devices selection's actions menu; each row carries "
                                   "its own link (C593, board A)",

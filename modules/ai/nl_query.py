@@ -28,7 +28,7 @@ import time
 from enum import Enum
 from zoneinfo import ZoneInfo
 
-from modules.ai import gateway
+from modules.ai import calls, gateway
 from modules.ai.schemas import StrictModel, register
 
 log = logging.getLogger(__name__)
@@ -523,26 +523,35 @@ def metrics(list_name: str, question: str, *, actor: str, send=None, client=None
                 "detail": f"no metric of the {len(pool['names'])} {among} shares a "
                           "word with the question; nothing was sent (try the metric's own "
                           "words, or search the builder's Metric box)"}
+    # What the call is about, written with it (15.14): the network's query, its named devices.
+    subject = {"kind": "query", "id": list_name, "devices": list(named)}
     got = gateway.ask(FEATURE, PROMPT, MetricsChoices,
                       parts(question, offered, named, roles, now, z),
                       actor=actor, context={"builder": vocabulary()}, send=send, today=today,
-                      thinking=thinking)
+                      thinking=thinking, subject=subject)
     if not got["ok"]:
         return dict(got, offered=[o[0] for o in offered])
     c, base = got["output"], {"call_id": got["call_id"], "cost_usd": got["cost_usd"],
                               "offered": [o[0] for o in offered],
                               # The model's own answer, as recorded cases keep it.
                               "choices": got["output"].model_dump(mode="json")}
+    links = {"page": f"/v2/history/query/ask/metrics?list={list_name}"}
     if c.outcome is Outcome.ask:
         # One question back, never a guess (the operator's cases, 2026-10-25): the person
         # answers it in their words and asks again.
+        calls.record_use(got["call_id"], "asked a question back", actor=actor,
+                         detail=c.question[:200], links=links)
         return dict(base, ok=False, error="ask", clarify=c.question[:200],
                     detail=f"which one is meant: {c.question[:200]}")
     if c.outcome is Outcome.refuse:
+        calls.record_use(got["call_id"], "shown: the builder cannot answer", actor=actor,
+                         detail=c.why_not[:200], links=links)
         return dict(base, ok=False, error="unanswerable",
                     detail=f"the builder cannot answer this: {c.why_not[:200]}")
     names = {o[0] for o in offered}
     if c.metric not in names:
+        calls.record_use(got["call_id"], "refused by validation", actor=actor,
+                         detail=f"{c.metric[:80]!r} was not offered", links=links)
         return dict(base, ok=False, error="not_offered",
                     detail=f"the answer chose {c.metric[:80]!r}, which was not one of the "
                            f"{len(names)} metrics offered; nothing was filled")
@@ -572,6 +581,8 @@ def metrics(list_name: str, question: str, *, actor: str, send=None, client=None
         out["test"] = (f"Prometheus did not answer the test run within {TEST_WAIT:.0f} s, or "
                        "refused it" if n is None else
                        f"the test run answers {n} series now")
+    calls.record_use(got["call_id"], "filled the builder", actor=actor,
+                     detail="; ".join(out["errors"])[:200], links=links)
     return out
 
 
@@ -733,20 +744,27 @@ def logs(list_name: str, question: str, *, actor: str, send=None, client=None,
     labels = [l for l in disc["labels"] if l not in ("job", "device")]
     rows = _inventory(list_name)
     roles = sorted({d["role"] for d in rows if d.get("role")})
+    named = named_devices(question, rows)
+    # What the call is about, written with it (15.14): the network's query, its named devices.
+    subject = {"kind": "query", "id": list_name, "devices": list(named)}
     got = gateway.ask(FEATURE, PROMPT_LOGS, LogsChoices,
-                      parts_logs(question, kinds, mns, labels,
-                                 named_devices(question, rows), roles, now),
+                      parts_logs(question, kinds, mns, labels, named, roles, now),
                       actor=actor, context={"builder": vocabulary_logs()}, send=send,
-                      today=today)
+                      today=today, subject=subject)
     if not got["ok"]:
         return dict(got, offered=mns)
     c = got["output"]
     base = {"call_id": got["call_id"], "cost_usd": got["cost_usd"], "offered": mns,
             "choices": c.model_dump(mode="json")}
+    links = {"page": f"/v2/history/query/ask/logs?list={list_name}"}
     if c.outcome is Outcome.ask:
+        calls.record_use(got["call_id"], "asked a question back", actor=actor,
+                         detail=c.question[:200], links=links)
         return dict(base, ok=False, error="ask", clarify=c.question[:200],
                     detail=f"which one is meant: {c.question[:200]}")
     if c.outcome is Outcome.refuse:
+        calls.record_use(got["call_id"], "shown: the builder cannot answer", actor=actor,
+                         detail=c.why_not[:200], links=links)
         return dict(base, ok=False, error="unanswerable",
                     detail=f"the builder cannot answer this: {c.why_not[:200]}")
     v, said = values_logs(c), []
@@ -774,4 +792,6 @@ def logs(list_name: str, question: str, *, actor: str, send=None, client=None,
         out["test"] = (f"Loki did not answer the test run within {TEST_WAIT:.0f} s, or "
                        "refused it" if n is None else
                        f"the test run matches {n} line(s) over the range")
+    calls.record_use(got["call_id"], "filled the builder", actor=actor,
+                     detail="; ".join(out["errors"])[:200], links=links)
     return out

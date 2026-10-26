@@ -20,7 +20,8 @@ CALL_ID = "ai-planted00000001"
 ACTOR = "operator@example.com"
 MODEL = profiles.TASKS["connection_check"]["model"]
 BASE = {"id": CALL_ID, "feature": "connection_check", "actor": ACTOR, "model": MODEL,
-        "prompt": "ping.v1", "schema": "", "verdict": "", "detail": "", "cost_usd": 0.0}
+        "prompt": "ping.v1", "schema": "", "verdict": "", "detail": "", "cost_usd": 0.0,
+        "subject": {}}
 SHA = prompts.load("ping", 1)["sha256"]
 #: A row once the task's model is known: it records the thinking asked (the batched gateway
 #: change, 2026-10-25), the model's default when the task names none.
@@ -371,6 +372,21 @@ def test_thinking_off_on_a_model_with_no_way_to_turn_it_off_is_refused(world, mo
                       actor=ACTOR, send=world.send, today="2026-10-25", thinking="off")
     words = f"{MODEL}'s profile names no way to turn thinking off; nothing was sent"
     assert got == _refused("thinking", words) and world.sent == []
+
+
+def test_the_subject_is_written_with_the_call_sent_or_refused(world):
+    """15.14: what the call is about is recorded at the source, on its own row, whether it was
+    answered or refused before anything was sent."""
+    subject = {"kind": "alert", "id": "ep-1", "devices": ["r1"]}
+    send, _ = _sending(_answer('{"echo": "w"}'))
+    assert gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
+                       actor=ACTOR, send=send, today="2026-10-25", subject=subject)["ok"]
+    assert _row()["subject"] == subject
+    open(calls._path(), "w").close()
+    world.settings.pop("ai_hosted")
+    gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
+                actor=ACTOR, send=send, today="2026-10-25", subject=subject)
+    assert _row()["subject"] == subject and _row()["verdict"] == "ai_off"
 
 
 def test_every_model_s_thinking_off_is_its_documented_form():

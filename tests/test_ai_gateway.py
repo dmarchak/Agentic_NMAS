@@ -488,7 +488,10 @@ def test_history_draws_each_call(world):
     from modules import history_sources as HS
     got = HS.ai_calls({"device": None, "limit": 10})
     assert got["errors"] == [] and got["events"][0]["kind"] == "ai_call"
-    assert got["events"][0]["what"].startswith("AI call, connection_check: answered")
+    # 15.14: the row names what the call was about; a call with no subject is the
+    # installation's.
+    assert got["events"][0]["what"].startswith(
+        "AI call, connection_check on the installation: answered")
     assert got["events"][0]["who"] == "operator@example.com"
     assert HS.ai_calls({"device": "r1", "limit": 10})["events"] == []
     assert "ai_call" in HS.KIND_FILTERS["ai_calls"]

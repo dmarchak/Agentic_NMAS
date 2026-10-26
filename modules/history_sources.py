@@ -54,11 +54,13 @@ def epoch(value) -> float:
 
 
 def _event(at, kind, what, devices, *, who="", detail="", sha="", outcome="", marks=None,
-           record=None):
+           record=None, call=""):
+    """One row. *call*: an AI call's id, whose prompt and answer the opened row fetches."""
     return {"at": iso(at), "kind": kind, "what": what,
             "devices": sorted({d for d in devices if d}), "who": who or "", "detail": detail,
             "sha": sha or "", "outcome": outcome, "marks": list(marks or []),
-            "record": [(k, v) for k, v in (record or []) if v not in (None, "", [], {})]}
+            "record": [(k, v) for k, v in (record or []) if v not in (None, "", [], {})],
+            "call": call or ""}
 
 
 def _out(events=None, errors=None, cut=None, unborn=None):
@@ -269,6 +271,74 @@ def diff(repo: str, sha: str, max_lines: int = 400, git=None) -> dict:
     lines = redact_text(out or "").splitlines()
     return {"ok": True, "error": "", "text": "\n".join(lines[:max_lines]),
             "cut": len(lines) > max_lines, "stat": ""}
+
+
+#: A block larger than this is drawn folded, its size said (15.14: "a large prompt is
+#: collapsed, with a note of its size").
+AI_BLOCK_FOLD = 4000
+_BLOCK = re.compile(r'<(context|data) name="([^"]+)">\n(.*?)\n</\1>', re.S)
+
+
+STOP_WORDS = {"end_turn": "the model finished its answer",
+              "max_tokens": "cut off at the most tokens out: the answer is incomplete",
+              "refusal": "the model declined"}
+
+
+def ai_call(call_id: str) -> dict:
+    """One AI call's prompt as it was sent and its answer as received, for the row a person
+    opens (15.14; the operator, 2026-10-26: "the exact wording of the prompt that was given
+    and the exact structured response", as a commit's change window): ``{"ok", "error",
+    "meta", "sent", "received", "raw"}``. *sent* is each part of the request in the order it
+    left the host (the instructions, then each context and data block by its name), each
+    ``{"name", "text", "size", "fold"}``; *received* the answer, laid out for reading when it
+    is JSON, else as it came; *raw* the answer's bytes as recorded. All of it is the record's
+    own masked text, masked again here on the way out: the unmasked prompt never left the host
+    and is never stored."""
+    import json as _json
+
+    from modules.ai import calls
+    from modules.redact import redact_text
+
+    if not re.fullmatch(r"ai-[0-9a-f]{16}", call_id or ""):
+        return {"ok": False, "error": f"{call_id[:40]!r} is not an AI call's id"}
+    got = calls.find(call_id)
+    if got["state"] != "ok":
+        return {"ok": False, "error": ("the record of AI calls could not be read: "
+                                       f"{got['error']}" if got["state"] == "unreadable" else
+                                       f"no AI call {call_id} is recorded")}
+    r = got["row"]
+    body = r.get("request") or {}
+
+    def part(name, text):
+        text = redact_text(text or "")
+        return {"name": name, "text": text, "size": len(text), "fold": len(text) > AI_BLOCK_FOLD}
+    sent = []
+    for block in body.get("system") or []:
+        text = block.get("text") or ""
+        blocks = _BLOCK.findall(text)
+        if blocks:
+            sent += [part(f"{kind}: {name}", inner) for kind, name, inner in blocks]
+        else:
+            sent.append(part(f"the instructions ({r.get('prompt', '?')})", text))
+    for m in body.get("messages") or []:
+        content = m.get("content") if isinstance(m.get("content"), str) else ""
+        blocks = _BLOCK.findall(content)
+        sent += ([part(f"{kind}: {name}", inner) for kind, name, inner in blocks]
+                 or [part(m.get("role", "user"), content)])
+    raw = redact_text(r.get("response") or "")
+    try:
+        received = _json.dumps(_json.loads(raw), indent=2, ensure_ascii=False)
+    except ValueError:
+        received = raw
+    # Only what the row's record above does not already say (its model, prompt, schema,
+    # tokens, cost and verdict): the request's bound and thinking, and why the answer ended.
+    stop = r.get("stop_reason") or ""
+    meta = [("Most tokens out", body.get("max_tokens")),
+            ("Thinking", (r.get("thinking") or "the model's default") if body else ""),
+            ("Stopped", STOP_WORDS.get(stop, stop))]
+    return {"ok": True, "error": "", "meta": [(k, v) for k, v in meta if v not in (None, "")],
+            "sent": sent, "received": received, "raw": raw,
+            "not_sent": not body, "verdict": r.get("verdict") or "", "id": call_id}
 
 
 def _who(actor: str, verified: str) -> str:
@@ -922,28 +992,75 @@ def updates(ctx):
                  for o in got.get("rows") or []])
 
 
+#: A subject's words (15.14): what the call was about, from the row's own `subject`.
+SUBJECT_WORDS = {"alert": "the alert", "query": "a question on", "device": "the device",
+                 "": "the installation"}
+
+
+def subject_words(subject: dict) -> str:
+    """What a call was about, in words: an older row with no subject (before 15.14) and the
+    installation's own calls (Test connection) read as the installation."""
+    s = subject or {}
+    kind = s.get("kind") or ""
+    head = SUBJECT_WORDS.get(kind, kind)
+    if kind == "alert":
+        return f"{head} {s.get('rule') or s.get('id') or ''}".strip()
+    if kind == "query":
+        return f"{head} {s.get('id') or 'the network'}"
+    return head
+
+
 def ai_calls(ctx):
-    """Each call to a model through Phase 8's gateway (modules/ai/calls.py): the feature, the
-    model, the verdict, the cost and who asked; the record holds the masked request and the
-    answer, never a key. The installation's, never one device's."""
+    """Each call to a model through Phase 8's gateway (modules/ai/calls.py), as 15.14 draws
+    it: when, who, the feature and its subject (written with the call), the model, the tokens
+    in and out, the cache's write and read, the cost, and the outcome (the gateway's verdict,
+    then what became of the answer, its own use row). Opened, the row fetches the prompt as
+    sent and the answer as received (`/v2/history/ai-call/<id>`). A device's tab shows the
+    calls whose subject names the device; the installation's own calls are no device's."""
     from modules.ai import calls
-    if ctx["device"]:
-        return _out()
     got = calls.read()
     if got["state"] == "unreadable":
         return _out(errors=[f"the record of AI calls could not be read: {got.get('error', '')}"])
+    used = calls.uses()
+    rows = got.get("rows") or []
+    if ctx["device"]:
+        rows = [r for r in rows if ctx["device"] in ((r.get("subject") or {}).get("devices")
+                                                     or [])]
 
     def what(r):
         verdict = r.get("verdict") or "?"
-        head = f"AI call, {r.get('feature', '?')}: "
-        head += "answered" if verdict == "ok" else verdict.replace("_", " ")
+        last = (used.get(r.get("id")) or [{}])[-1].get("use", "")
+        head = f"AI call, {r.get('feature', '?')} on {subject_words(r.get('subject'))}: "
+        head += (last or "answered") if verdict == "ok" else verdict.replace("_", " ")
         return head + f" ({r.get('model', '?')}, ${float(r.get('cost_usd') or 0):.4f})"
-    return _out([_event(r.get("at"), "ai_call", what(r), [], who=r.get("actor", ""),
+
+    def outcome(r):
+        # The gateway's verdict; an answer it passed that its feature then refused showed the
+        # person nothing, so it is no success either (drawn as a failure, as every kind's is).
+        last = (used.get(r.get("id")) or [{}])[-1].get("use", "")
+        return ("refused_by_validation" if r.get("verdict") == "ok"
+                and last.startswith("refused") else r.get("verdict", ""))
+
+    def tokens(r):
+        t = r.get("tokens") or {}
+        return (f"{int(t.get('input_tokens') or 0)} in, {int(t.get('output_tokens') or 0)} "
+                f"out, cache {int(t.get('cache_creation_input_tokens') or 0)} written, "
+                f"{int(t.get('cache_read_input_tokens') or 0)} read") if t else "none (not sent)"
+    return _out([_event(r.get("at"), "ai_call", what(r),
+                        list((r.get("subject") or {}).get("devices") or []),
+                        who=r.get("actor", ""),
                         detail=r.get("detail", "") or f"prompt {r.get('prompt', '?')}",
-                        outcome=r.get("verdict", ""),
-                        record=[("Call", r.get("id")), ("Prompt", r.get("prompt")),
-                                ("Schema", r.get("schema")), ("Verdict", r.get("verdict"))])
-                 for r in (got.get("rows") or [])[:ctx["limit"]]])
+                        outcome=outcome(r), call=r.get("id", ""),
+                        record=[("Call", r.get("id")), ("About", subject_words(r.get("subject"))),
+                                ("Prompt", r.get("prompt")), ("Schema", r.get("schema")),
+                                ("Model", r.get("model")), ("Tokens", tokens(r)),
+                                ("Cost", f"${float(r.get('cost_usd') or 0):.4f}"),
+                                ("Verdict", r.get("verdict")),
+                                ("Then", "; ".join(u.get("use", "") + (f" ({u['detail']})"
+                                                                       if u.get("detail") else "")
+                                                   for u in used.get(r.get("id")) or [])
+                                 or "nothing recorded")])
+                 for r in rows[:ctx["limit"]]])
 
 
 def credential_profiles(ctx):

@@ -32,7 +32,7 @@ the fixture's counts unfiltered); the Baselines tab (`history-baselines`, 1280 a
 real records (`history-real`, 1280).
 Compared 2026-10-16.
 Templates compared: templates/v2/history.html, templates/v2/_history_body.html, templates/v2/_history_remote.html, templates/v2/_history_timeline.html, templates/v2/_timeline.html
-Templates sha256: `5da74570cc50f940ed61bf6c098fcf28cb900e83af3272c0d135a809e8abf9c8`
+Templates sha256: `476c427c7071d5b88678e04045e8954423620a7c0b85d75224812b5613d9b35a`
 
 Compared again 2026-10-16 (C522) after `_history_body.html`'s Baselines card gained a heading
 row: the count of baselines ("2 baselines") and "How does this work?" in words (to the restore's
@@ -140,6 +140,44 @@ fragment render the same bytes but that attribute. The new kind, AI calls, is da
 (`history_sources.KIND_GROUPS`), drawn as every kind is. No region's verdict changed.
 Templates sha256 before: `cdffbb36d100c038f4ab2da4ed517c128a34e590facd3d74e5b8629b5e0afd3c`.
 
+**Compared again 2026-10-26 (PHASE8_PLAN 15.14, the operator, 2026-10-26: "the exact wording
+of the prompt that was given and the exact structured response from the AI when expanded,
+similar to how device configuration changes have a window in their history record"):**
+`_timeline.html` changed in three ways:
+- An AI call's opened row gains "Show the prompt and the answer". It fetches
+  `/v2/history/ai-call/<id>` (`_history_ai_call.html`, new) into its own full-width line
+  under the row's links.
+- The window shows only what the row's record lacks: Most tokens out, Thinking, and why the
+  answer stopped, in words. Under "Sent to the model" it shows each part of the request as it
+  left the host:
+  - the instructions;
+  - each context and data block, by its name, in the commit change's `pre.hist-diff` box,
+    wrapped (`.hist-ai .hist-diff`), the bytes unchanged;
+  - a part over 4,000 characters folded, with its size.
+
+  Under "Received" it shows the answer, laid out for reading.
+- The kind is drawn as "AI call" in words, no longer its code name `ai_call`. A call whose
+  verdict is not ok (cut off at max_tokens, refused, or not in its schema), or whose answer
+  its feature refused, is drawn in danger, as every kind's failure is.
+
+No board draws an AI call: the kind is later than board D.
+
+Shot `history-ai-call` (`tests/test_board_shots.py::test_history_ai_call`, on
+tests/test_ai_explain's world: Explain's real request and a planted answer) at 1280 and phone
+width, the row closed and then opened and pressed.
+- The first shot measured the opened page at 10,634 px wide. The window was a flex item of
+  the links row, which grows to its content, so one long line of a context block widened the
+  page. It is now `.tl-window` (full width, `min-width: 0`).
+- The page then measured 1,268 px at 1280 and 488 CSS px at phone width, with no horizontal
+  scroll.
+- The commit change's window sits in the same kind of span, and a long diff line would widen
+  the page the same way: registered, not changed here.
+
+Rows without a call render as before, but for the separator after a row's last device link,
+which is drawn only when a commit follows (a call's window now starts its own line).
+"An opened row" amended; no other region's verdict changed.
+Templates sha256 before: `5da74570cc50f940ed61bf6c098fcf28cb900e83af3272c0d135a809e8abf9c8`.
+
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
 
@@ -160,7 +198,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | An update's colour | an "update" chip in the kind's own colour; red only for a failure | a successful update ("The app updated to <sha>: updated") is drawn red: `_timeline.html` reads any update outcome but "confirmed", "done" and "ok" as a failure; it was the sitting's only red row (capture 35; C901) | **deviation** (log: History: a successful update drawn red (C901)) |
 | What | the record in words, its detail faint after " · " | the same; an intent edit made on v2 reads "Intent committed (extraction)" (C895), a rotation writes "rotated persistence not attempted" before "rotated and persisted" (C896), and a Save All adds a "persist" row per device under its own (C898; captures 34 and 35) | **deviation** (log: History: an intent edit on v2 reads as an extraction (C895)) |
 | A decision and a known-wrong record | "decision", "baseline earned" with its tag; "corrected" on a persist | "decision" with the decision's words, its Baseline field in the opened row; " · record known wrong", its note in the opened row | **same** |
-| An opened row | under the row at full width: who and how identified, via what, how long; the run's stages; Open r3's History · The commit | the detail and the commit's sha, By the person as identified, the record's fields (Run, Devices, Outcome for the logging test in capture 08), Show the change, Open <device>'s History for each device of several, and on a golden row "A golden is a record of what the device ran …" and Reveal <device>'s version… | **deviation** (log: History: an opened row's links) |
+| An opened row | under the row at full width: who and how identified, via what, how long; the run's stages; Open r3's History · The commit | the detail and the commit's sha, By the person as identified, the record's fields (Run, Devices, Outcome for the logging test in capture 08), Show the change, Open <device>'s History for each device of several, and on a golden row "A golden is a record of what the device ran …" and Reveal <device>'s version…; on an AI call (15.14), the call's record (About, Prompt, Schema, Model, Tokens, Cost, Verdict, Then) and Show the prompt and the answer, which opens its window on its own line: the request's bound, thinking and why the answer stopped, each part sent and the answer received (`history-ai-call`) | **deviation** (log: History: an opened row's links) |
 | How a row's person was identified | the identity board's table puts "host login" as a chip after the person in Who | in the opened row ("By … (host login, not verified)"), as the board's note says ("as today, in the expanded row") | **deviation** (log: History: how a row's person was identified) |
 | The fleet's own records | rows with no device read "fleet"; a commit is one row naming its devices | the same; but a golden commit that also writes a path outside `golden/` and `host_vars/` (here r3's first, which adopts it into the manifest) is drawn twice, as r3's golden and again as a fleet commit, "golden: 1 device(s) via capture" (`history-real`) | **deviation** (log: History: a device's first golden drawn again as a fleet commit (a defect, register C650 follow-up)) |
 | The earlier board (History.dc.html) | a Commits tab; a Workflow filter; a Baseline column; Re-apply this baseline… under a Save All | superseded by board D: Commits a kind (Commits only), Workflow folded into Kind, a baseline decision its own row; Re-apply… on the Baselines tab | **same** |

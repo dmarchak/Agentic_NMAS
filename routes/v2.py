@@ -884,6 +884,14 @@ def history_timeline():
                                    kind_groups=HS.KIND_GROUPS))
 
 
+@bp.route("/history/ai-call/<call_id>", methods=["GET"])
+def history_ai_call(call_id):
+    """One AI call's prompt as sent and answer as received, masked (15.14), drawn when a
+    person opens its row, as a commit's change is."""
+    from modules import history_sources as HS
+    return _strict(render_template("v2/_history_ai_call.html", c=HS.ai_call(call_id)))
+
+
 @bp.route("/history/commit/<sha>", methods=["GET"])
 def history_commit(sha):
     """One commit's change, masked (C77), drawn when a person opens its row."""

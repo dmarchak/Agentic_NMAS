@@ -1,0 +1,27 @@
+{%- from "v2/_macros.html" import icon -%}
+{#- One AI call, masked (15.14): the prompt exactly as it left the host, part by part, and the
+    answer as received, drawn when a person opens its row, as a commit's change is. -#}
+{%- if not c.ok %}
+<p class="notice notice-warn">{{ icon('warn') }} {{ c.error }}.</p>
+{%- else %}
+<div class="hist-ai">
+  <dl class="tl-record">{% for k, v in c.meta %}<dt>{{ k }}</dt><dd>{{ v }}</dd>{% endfor %}</dl>
+  {%- if c.not_sent %}
+  <p class="muted small">Nothing was sent: the call was refused ({{ c.verdict | replace('_', ' ') }}) before its request was built.</p>
+  {%- else %}
+  <h4 class="hist-ai-head">Sent to the model</h4>
+  {%- for p in c.sent %}
+  {%- if p.fold %}
+  <details class="hist-ai-part"><summary>{{ p.name }} <span class="muted small">({{ p.size }} characters, folded)</span></summary><pre class="hist-diff">{{ p.text }}</pre></details>
+  {%- else %}
+  <p class="hist-ai-name small">{{ p.name }}</p><pre class="hist-diff">{{ p.text }}</pre>
+  {%- endif %}
+  {%- endfor %}
+  {%- endif %}
+  <h4 class="hist-ai-head">Received</h4>
+  {%- if c.raw %}<pre class="hist-diff">{{ c.received }}</pre>
+  {%- if c.received != c.raw %}<p class="muted small">Laid out for reading; the answer's bytes as received are kept in the record.</p>{% endif %}
+  {%- else %}<p class="muted small">No answer was received.</p>{% endif %}
+  <p class="muted small">Secrets are masked: this is the prompt as it left the host. The unmasked form never left it and is never stored.</p>
+</div>
+{%- endif %}
