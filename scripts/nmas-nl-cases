@@ -181,6 +181,8 @@ def record(checkout: str, list_name: str, actor: str, out: str, case_file: str =
                "cost_usd": got.get("cost_usd", 0), "error": got.get("error", ""),
                "prompt": list(asked or (feature_prompt, (nl_query.PROMPT_LOGS if logs
                                                           else nl_query.PROMPT)[1])),
+               # The context budget rule's level, and what it dropped (metrics v9).
+               "context": got.get("context"),
                "misses": (cases.logs_misses if logs else cases.misses)(case["expect"], got,
                                                                        now)}
         got_all.append(rec)

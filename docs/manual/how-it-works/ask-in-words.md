@@ -127,10 +127,17 @@ come from Prometheus; nothing is read from or sent to a device.
 ## On the logs builder {#logs}
 
 **History › Query › Ask your own › Logs** has the same row, and the same steps fill the logs
-builder: `offer` gives the kinds of log Loki holds, its other labels, and the mnemonics that
-share a word with your question (the Start-from chips' and those the logs reader counted:
-"OSPF adjacency changes" offers `%OSPF-5-ADJCHG`); a question about severity or a word in the
-line is offered none, and is answered by the severity and text filters. `ask`, `read_back`
+builder: `offer` gives the kinds of log Loki holds, its other labels, the events your
+devices' platforms log, each with what it records (a reload, a restart, an interface or line
+protocol going up or down, an OSPF or BGP adjacency changing, a configuration change),
+whether or not the range holds one, and the mnemonics that share a word with your question
+(the Start-from chips' and those the logs reader counted: "OSPF adjacency changes" offers
+`%OSPF-5-ADJCHG`). So "which devices rebooted?" is answered by the reload and restart
+mnemonics, never by the word "reboot", which no device logs. With the question go the
+network's devices by role and what {{product}} collects about it (each layer present or not
+collected), so a question resting on something not collected is said to be, not guessed.
+{{product}}'s own heartbeat lines are left out of every query, and a question about them is
+answered on the device's Logs tab. `ask`, `read_back`
 and `fill` are as above: a kind or mnemonic that was not offered is left out and said.
 `test_run` counts the lines the query matches over the range, within 10 seconds. A count of
 none that rests on a text filter says so: "no line contains 'reboot', which may not be how the
@@ -138,6 +145,8 @@ platform logs it". A device logs an event by its mnemonic (a reload is `%SYS-5-R
 restart `%SYS-5-RESTART`), not by the word a person uses for it, so an empty answer to a text
 filter is never called an answer; the answer's own card says the same and offers to drop the
 text. Nothing reads
-the lines until you press **Ask**. "Today", "yesterday", "this week" and "last week" are the
-calendar's, counted from midnight in your browser's timezone as on the metrics builder (see
-[What "today" means](#today)), and the note under the question says whose midnight it was.
+the lines until you press **Ask**. Periods are read as people mean them: "this week", "the
+past week" and "the last 7 days" are the last 7 days; "since Monday" or "so far this week" is
+the calendar week. "Today", "yesterday" and "last week" are the calendar's, counted from
+midnight in your browser's timezone as on the metrics builder (see
+[What "today" means](#today)), and the note under the question says how the period was read.

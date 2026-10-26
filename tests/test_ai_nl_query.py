@@ -907,6 +907,94 @@ def test_the_v8_schema_and_prompt_are_registered_and_committed():
     assert nl_query.PROMPT == ("nl_metrics", 7), "the candidate is adopted only by its bar"
 
 
+def test_the_context_budget_rule_keeps_the_richest_level_that_fits():
+    """The context budget rule (PHASE8_PLAN 10.6; v9, 2026-10-26): levels in one fixed order,
+    each dropping the next part of `CONTEXT_DROPS`; the selector keeps the richest whose
+    request fits the budget, and the leanest when none does, its estimate said."""
+    levels = [{"level": i, "dropped": list(nl_query.CONTEXT_DROPS[:i]),
+               "summary": "s" * (4000 - 700 * i), "coverage": "c" * (1500 - 250 * i)}
+              for i in range(6)]
+    data = nl_query.parts("cpu on r1", [], ["r1"], ["router"], 1_793_000_000.0)
+    base = {"builder": nl_query.vocabulary()}
+    whole = nl_query.select_context(nl_query.CANDIDATE, nl_query.MetricsChoicesV3, data, base,
+                                    levels, 10 ** 6)
+    assert whole["level"] == 0 and whole["dropped"] == []
+    assert whole["data"]["coverage"] == "c" * 1500 and whole["ctx"]["network"] == "s" * 4000
+    sizes = [nl_query.select_context(nl_query.CANDIDATE, nl_query.MetricsChoicesV3, data, base,
+                                     [lv], 10 ** 6)["estimate"] for lv in levels]
+    assert sizes == sorted(sizes, reverse=True), "each level is leaner than the one before"
+    mid = nl_query.select_context(nl_query.CANDIDATE, nl_query.MetricsChoicesV3, data, base,
+                                  levels, sizes[3])
+    assert mid["level"] == 3 and mid["dropped"] == list(nl_query.CONTEXT_DROPS[:3])
+    none = nl_query.select_context(nl_query.CANDIDATE, nl_query.MetricsChoicesV3, data, base,
+                                   levels, 10)
+    assert none["level"] == 5 and none["estimate"] > none["budget"] == 10
+
+
+def test_the_levels_drop_bulk_first_and_the_coverage_header_survives(monkeypatch):
+    """The operator's order (2026-10-26): the device index, the summary's links and counts,
+    each layer's why, the whole summary, and each layer's source last; each layer's status
+    and age in every level; a dropped part said "omitted for size", never not_collected."""
+    from modules import endpoints as E
+    from modules import network_model as NM
+    model = {"network": "Lab", "nodes": {
+        "dev:1": {"id": "dev:1", "name": "edge1", "role": "router", "platform": "cisco_iosxe",
+                  "site": "hq"},
+        "dev:2": {"id": "dev:2", "name": "acc1", "role": "switch", "platform": "cisco_ios",
+                  "site": "hq"}},
+        "built_at": "2026-10-26T20:00:00Z", "version": {"key": "k"},
+        "links": {"link:192.0.2.0/30": {"members": []}}, "adjacencies": {},
+        "counts": {"adjacencies": {"ospf": 1}}, "errors": []}
+    monkeypatch.setattr(NM, "model_for", lambda name: (model, ""))
+    monkeypatch.setattr(E, "coverage_layer", lambda name: {
+        "state": "present", "source": "the endpoint reader", "age": "2026-10-26T19:00:00Z",
+        "why": ""})
+    monkeypatch.setattr("modules.ai.egress_classes.topology_allowed",
+                        lambda net: {"allowed": True, "why": ""})
+    levels = nl_query.context_levels("Lab", "metrics")
+    assert [lv["level"] for lv in levels] == [0, 1, 2, 3, 4, 5]
+    assert levels[0]["dropped"] == [] and "omitted for size" not in levels[0]["coverage"]
+    assert "device_index" in levels[0]["summary"]
+    assert "device_index" not in levels[1]["summary"] and "links: 1" in levels[1]["summary"]
+    assert "links" not in levels[2]["summary"] and "ids" not in levels[2]["summary"]
+    assert "by_role" in levels[2]["summary"]
+    assert "why flows are not collected" in levels[2]["coverage"]
+    assert "why" not in levels[3]["coverage"].split("omitted for size")[0]
+    assert levels[4]["summary"] == "omitted for size: the network's summary"
+    assert "source the endpoint reader" in levels[4]["coverage"]
+    assert "source" not in levels[5]["coverage"].split("omitted for size")[0]
+    for lv in levels:
+        assert "endpoints: present" in lv["coverage"] and "flows: not_collected" in \
+            lv["coverage"], lv["level"]
+        assert "age 2026-10-26T19:00:00Z" in lv["coverage"], lv["level"]
+        # Source goes last: every level but the last keeps it.
+        assert ("source the endpoint reader" in lv["coverage"]) == (lv["level"] < 5), \
+            lv["level"]
+        if lv["level"]:
+            assert lv["dropped"] == list(nl_query.CONTEXT_DROPS[:lv["level"]])
+            assert lv["coverage"].endswith(
+                "omitted for size (not the same as not_collected): "
+                + "; ".join(lv["dropped"])), lv["level"]
+    assert nl_query.CONTEXT_DROPS[0] == "the summary's device index"
+    assert nl_query.CONTEXT_DROPS[-1] == "each layer's source"
+    text = " ".join(__import__("modules.ai.prompts", fromlist=["load"]).load(
+        *nl_query.CANDIDATE)["text"].split())
+    assert "ask for a narrower question (outcome ask) rather than infer it" in text
+
+
+def test_v9_says_which_level_it_sent_and_what_it_dropped(world, monkeypatch):
+    monkeypatch.setattr(nl_query, "context_levels", lambda name, store: [
+        {"level": i, "dropped": list(nl_query.CONTEXT_DROPS[:i]), "summary": "x" * n,
+         "coverage": "flows: not_collected"} for i, n in enumerate((60000, 50000, 200, 100,
+                                                                    50, 10))])
+    world.answer = _v8_choices()
+    got = _ask(world, prompt=nl_query.CANDIDATE)
+    assert got["ok"] is True, got
+    assert got["context"]["level"] == 2 and got["context"]["budget"] == 8000
+    assert got["context"]["dropped"] == list(nl_query.CONTEXT_DROPS[:2])
+    assert "x" * 200 in world.sent[-1]["body"]["system"][-1]["text"]
+
+
 def test_v9_s_context_is_the_compact_one_and_v8_s_is_as_it_was(monkeypatch):
     """v9 (2026-10-26: v8's prompt passed the task's 8,000 estimated tokens on 9 of the 22):
     each layer's state, its why only where it is not present, and the builders' summary

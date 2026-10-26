@@ -519,7 +519,16 @@ never a weaker model.
 - **Mercury preselects the tools for each request**, up to the profile's `max_tools`, from the
   role's tools (never widening them).
 - **A context budget from the profile**, filled by 8.0's context selector (IBN_DESIGN section 8,
-  step 2; it does not exist yet: the removed AI family's context code is not carried forward).
+  step 2; the removed AI family's context code is not carried forward).
+  - **The first selector is Ask in words' (metrics v9, 2026-10-26):** `nl_query.context_levels`
+    and `select_context`. The budget is the task's `max_prompt_tokens`.
+  - The network context's parts are dropped in one fixed order, the operator's: the device
+    index, the summary's links, adjacency counts, sites and citation ids, each layer's why,
+    the whole summary, and each layer's source last.
+  - Each layer's status and age are never dropped. A dropped part is marked "omitted for
+    size" in the coverage header, distinct from not_collected.
+  - The answer carries the level sent and what was dropped.
+  - Explain and the local tier do not use it yet.
 - **Isolation:** CPU and memory caps on the service; one request at a time (a second is refused
   by name, naming the request that holds it); the model unloaded when idle. It must never starve
   Loki, Prometheus or Mercury.
@@ -1894,6 +1903,26 @@ when every item is done and walked, not on a date.** These replace the dated sch
     feature's completion;
   - Explain's tuning stays closed (cases set the bar, not the prompt).
 - Its cost: none in work. Its defect class: a feature held "done" without its cases or a walk.
+
+**Adoption is relative; done is absolute (the operator, 2026-10-26 ~21:2x UTC, adopting logs
+v3).** A candidate prompt version replaces the current one when:
+- no case the current version passes fails under it;
+- and its consistency on the main set is not below the current version's.
+
+That is **adoption**, measured on the main set and a blind held-out set written before any
+run. **Done** is absolute: 11.1's floor, 95% consistency (Translator, Decision-maker) or 90%
+(Analyst; Explain). A candidate that passes adoption but not the floor goes live, and its
+feature stays not done until a later version meets the floor. Consistency compares the card's
+fields only (section 6's table), never redefined to pass.
+- **Applied the same evening:** logs v3 adopted. On the 20 it passed 99 of 100 against v2's
+  81, with 17 of 20 consistent against 12, and nothing v2 passed failing. Its 85% is under the
+  floor, so Ask in words' logs half stays not done until a later version reaches 95%.
+- **A blind set is used once to decide.** The next version is measured on a new one, written
+  the same way: blind to the prompts and to every result.
+- **Its cost:** a feature can be live while not done, so "done" is read from the floor, never
+  from what is live. **The defect class it prevents:** the better version held back by an
+  absolute floor the current version fails too, leaving known wrong answers live (the walk's
+  reboots and "this week" stayed in v2 while v3 waited).
 
 **The sprint's rulings:**
 1. **Findings freeze:** a finding is registered, and worked only if it blocks a sprint feature.

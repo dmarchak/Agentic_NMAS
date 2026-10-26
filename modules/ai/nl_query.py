@@ -58,8 +58,13 @@ PROMPT = ("nl_metrics", 7)
 #: uptime falling), and "this week" as the last 7 days unless the words say since Monday (the
 #: operator's walk, 2026-10-26). v8 could not be measured: its prompt passed the task's 8,000
 #: estimated tokens (the local tier's context too) on 9 of the 22, refused before any call.
-#: v9 is v8 with its network context compacted (`network_context(compact=True)`: each layer's
-#: state and why, the builders' summary) and its needs section tightened; measured once.
+#: v9 is v8 under the context budget rule (`context_levels`, `select_context`, PHASE8_PLAN
+#: 10.6): the network context's parts dropped in `CONTEXT_DROPS`' fixed order (the
+#: operator's: bulk first; each layer's status and age never; its source last), per question,
+#: until the prompt fits the task's bound; the coverage header marks what was dropped
+#: `OMITTED`, and what was dropped is kept with the answer. Its text is v8's but for saying
+#: parts may be left out to fit, and that an answer resting on one asks for a narrower
+#: question. Measured once, in this form.
 CANDIDATE = ("nl_metrics", 9)
 #: The operation's steps, named on its manual page (docs/manual/how-it-works/ask-in-words.md).
 STEPS = (
@@ -361,6 +366,119 @@ def vocabulary() -> str:
     return "\n".join(lines)
 
 
+#: The context budget rule (PHASE8_PLAN 10.6: a budget from the profile, filled by a selector;
+#: Ask in words' metrics v9 is the first to use it, 2026-10-26). The network context's parts
+#: in the order they are DROPPED when a prompt passes the task's bound, the least useful to a
+#: builder's choice first: each level keeps everything the next drops. Level 0 is all of it.
+#: The order is the operator's (2026-10-26): bulk first, and the coverage header survives.
+#: Each layer's status (present, partial, not_collected) and age are small and never dropped;
+#: its source goes last, if anything does.
+CONTEXT_DROPS = (
+    "the summary's device index",
+    "the summary's links, adjacency counts, sites and citation ids",
+    "each layer's why",
+    "the network's summary",
+    "each layer's source",
+)
+#: What the coverage header says of a part the budget dropped: distinct from not_collected,
+#: which is a layer Mercury does not gather at all.
+OMITTED = "omitted for size"
+
+
+def _summary_text(model: dict, index: bool, detail: bool) -> str:
+    """The network's summary as `network_model.summary` gives it, its device index kept only
+    with *index*, its links, adjacency counts, sites, devices without intent and citation ids
+    only with *detail*; the devices' count and their roles and platforms always."""
+    from modules import network_model as NM
+
+    nodes = list(model["nodes"].values())
+
+    def tally(key):
+        out = {}
+        for n in nodes:
+            v = n.get(key) or "not recorded"
+            out[v] = out.get(v, 0) + 1
+        return out
+    doc = {"network": model["network"], "devices": len(nodes), "by_role": tally("role"),
+           "by_platform": tally("platform")}
+    if detail:
+        doc.update({"by_site": tally("site"), "links": len(model["links"]),
+                    "segments_not_walked": sum(1 for l in model["links"].values()
+                                               if l.get("expanded") is False),
+                    "adjacencies_expected": dict(model["counts"]["adjacencies"]),
+                    "devices_without_intent": sum(1 for n in nodes if "intent" in n),
+                    "ids": list(NM.ID_WORDS)})
+    if index:
+        doc["device_index"] = {n["id"]: f"{n['name']} ({n.get('role') or 'no role'})"
+                               for n in nodes}
+    return NM._yaml(doc)
+
+
+def _coverage_text(cov: dict, gate: dict, why: bool, source: bool, omitted: list) -> str:
+    """Each layer's status and age always; its source and why where kept (and the topology
+    class allows: a why can name a device); then what the budget left out, as `OMITTED`."""
+    lines = []
+    for layer, c in cov.items():
+        parts = [f"{layer}: {c['state']}"]
+        if gate["allowed"]:
+            if source and c.get("source"):
+                parts.append(f"source {c['source']}")
+            if c.get("age"):
+                parts.append(f"age {c['age']}")
+            if why and c.get("why"):
+                parts.append(f"why {c['why']}")
+        lines.append("; ".join(parts))
+    if omitted:
+        lines.append(f"{OMITTED} (not the same as not_collected): " + "; ".join(omitted))
+    return "\n".join(lines)
+
+
+def context_levels(list_name: str, store: str) -> list:
+    """``[{"level", "dropped", "summary", "coverage"}]``: level 0 the whole network context
+    (as `network_context` gives it), each next one with `CONTEXT_DROPS`' next part dropped
+    and the coverage header saying so; one read of the model. With the topology class off,
+    or the model unreadable, one level, `network_context`'s own."""
+    full = network_context(list_name, store)
+    parts = _context_parts(list_name, store)
+    if parts is None or not parts[0]["allowed"]:
+        return [{"level": 0, "dropped": [], "summary": full["summary"],
+                 "coverage": full["coverage"]}]
+    gate, model, cov = parts
+    out = [{"level": 0, "dropped": [], "summary": full["summary"],
+            "coverage": full["coverage"]}]
+    shapes = [  # (index, detail, summary kept, why, source)
+        (False, True, True, True, True), (False, False, True, True, True),
+        (False, False, True, False, True), (False, False, False, False, True),
+        (False, False, False, False, False)]
+    for i, (index, detail, keep, why, source) in enumerate(shapes, 1):
+        dropped = list(CONTEXT_DROPS[:i])
+        summary = (_summary_text(model, index, detail) if keep
+                   else f"{OMITTED}: the network's summary")
+        out.append({"level": i, "dropped": dropped, "summary": summary,
+                    "coverage": _coverage_text(cov, gate, why, source, dropped)})
+    return out
+
+
+def select_context(prompt: tuple, schema, data: dict, base_ctx: dict, levels: list,
+                   budget: int) -> dict:
+    """The richest of *levels* whose request fits *budget* (the task's `max_prompt_tokens`,
+    estimated as the gateway estimates it), ``dict(level, ctx, data, estimate, budget)``; the
+    leanest when none fits, so the gateway's own refusal names both numbers."""
+    from modules.ai import prompts, profiles
+
+    loaded, pin = prompts.load(*prompt), profiles.TASKS[FEATURE]
+    chosen = None
+    for lv in levels:
+        ctx = dict(base_ctx, network=lv["summary"])
+        d = dict(data, coverage=lv["coverage"], looked_up=looked_up([]))
+        est = gateway.prompt_tokens(gateway.build_request(loaded, schema, d, pin, ctx))
+        chosen = dict(lv, ctx=ctx, data=dict(data, coverage=lv["coverage"]), estimate=est,
+                      budget=budget)
+        if est <= budget:
+            break
+    return chosen
+
+
 def network_context(list_name: str, store: str, compact: bool = False) -> dict:
     """What of the network goes with a question (metrics v8, logs v3; PHASE8_PLAN 15.15):
     ``{"summary", "coverage"}``, text. The summary (the devices by name and role, platforms,
@@ -369,33 +487,16 @@ def network_context(list_name: str, store: str, compact: bool = False) -> dict:
     said, never inferred (with the class off, each layer's state alone: a why can name a
     device). *store* is the builder's own (``metrics`` or ``logs``): its layer is present,
     the other builder's is said to be there."""
-    from modules import endpoints as E
     from modules import network_model as NM
-    from modules.ai import egress_classes
 
-    gate = egress_classes.topology_allowed(list_name)
-    model, err = NM.model_for(list_name)
-    if model is None:
-        said = f"could not read: the network model ({err})"
+    parts = _context_parts(list_name, store)
+    if parts is None:
+        said = f"could not read: the network model ({NM.model_for(list_name)[1]})"
         return {"summary": said, "coverage": said}
-    here = {"state": "present", "age": "", "why": ""}
-    there = {"state": "not_collected", "source": "", "age": ""}
-    carried = {
-        "performance": (dict(here, source="this network's metrics store (Prometheus), the "
-                                          "builder's own") if store == "metrics" else
-                        dict(there, why="metrics are the Metrics builder's, not this one's")),
-        "events": (dict(here, source="this network's log store (Loki), the builder's own")
-                   if store == "logs" else
-                   dict(there, why="log lines are the Logs builder's, not this one's")),
-        "endpoints": E.coverage_layer(list_name)}
-    obs = NM.unread("Ask in words reads no observed adjacency; the builders read metrics and "
-                    "logs")
-    cov = NM.coverage(model, obs, dict(model["nodes"]), carried)
+    gate, model, cov = parts
     if compact:
-        # Metrics v9 (2026-10-26): each layer's state, and why where it is not present, and
-        # the builders' summary: v8's sources, ages and Explain's summary took its largest
-        # prompt to 8,531 estimated tokens against the task's 8,000, the local tier's context
-        # too, and nine of its 22 cases were refused before any call.
+        # The levels' leaner shapes (`context_levels`): each layer's state, and why where it
+        # is not present; the builders' summary.
         lines = [f"{layer}: {c['state']}" + (f" ({c['why']})" if c.get("why")
                                              and gate["allowed"] and c["state"] != "present"
                                              else "")
@@ -413,6 +514,33 @@ def network_context(list_name: str, store: str, compact: bool = False) -> dict:
     return {"summary": (summary if gate["allowed"] else
                         f"withheld: {gate['why']} (the topology class, 15.11)"),
             "coverage": "\n".join(lines)}
+
+
+def _context_parts(list_name: str, store: str):
+    """``(gate, model, coverage)`` for *list_name*'s network context, or None when its model
+    cannot be read: the topology class's gate, the network model, and each layer's coverage
+    as `network_model.coverage` states it, the builder's own store present."""
+    from modules import endpoints as E
+    from modules import network_model as NM
+    from modules.ai import egress_classes
+
+    gate = egress_classes.topology_allowed(list_name)
+    model, _err = NM.model_for(list_name)
+    if model is None:
+        return None
+    here = {"state": "present", "age": "", "why": ""}
+    there = {"state": "not_collected", "source": "", "age": ""}
+    carried = {
+        "performance": (dict(here, source="this network's metrics store (Prometheus), the "
+                                          "builder's own") if store == "metrics" else
+                        dict(there, why="metrics are the Metrics builder's, not this one's")),
+        "events": (dict(here, source="this network's log store (Loki), the builder's own")
+                   if store == "logs" else
+                   dict(there, why="log lines are the Logs builder's, not this one's")),
+        "endpoints": E.coverage_layer(list_name)}
+    obs = NM.unread("Ask in words reads no observed adjacency; the builders read metrics and "
+                    "logs")
+    return gate, model, NM.coverage(model, obs, dict(model["nodes"]), carried)
 
 
 def summary_for_builders(model: dict) -> str:
@@ -801,8 +929,20 @@ def metrics(list_name: str, question: str, *, actor: str, send=None, client=None
     # What the call is about, written with it (15.14): the network's query, its named devices.
     subject = {"kind": "query", "id": list_name, "devices": list(named)}
     data = parts(question, offered, named, roles, now, z)
-    if prompt[1] >= 8:
-        net = network_context(list_name, "metrics", compact=prompt[1] >= 9)
+    context_said = None
+    if prompt[1] >= 9:
+        # The context budget rule: the richest level the task's bound allows, what was
+        # dropped kept with the answer.
+        from modules.ai import profiles
+        sel = select_context(prompt, schema, data, {"builder": vocabulary()},
+                             context_levels(list_name, "metrics"),
+                             profiles.TASKS[FEATURE]["max_prompt_tokens"])
+        context_said = {k: sel[k] for k in ("level", "dropped", "estimate", "budget")}
+        got = _ask_round(schema, prompt, sel["data"], list_name=list_name, actor=actor,
+                         ctx=sel["ctx"], send=send, today=today, thinking=thinking,
+                         subject=subject)
+    elif prompt[1] >= 8:
+        net = network_context(list_name, "metrics")
         got = _ask_round(schema, prompt, dict(data, coverage=net["coverage"]),
                          list_name=list_name, actor=actor,
                          ctx={"builder": vocabulary(), "network": net["summary"]}, send=send,
@@ -811,14 +951,15 @@ def metrics(list_name: str, question: str, *, actor: str, send=None, client=None
         got = gateway.ask(FEATURE, prompt, schema, data,
                           actor=actor, context={"builder": vocabulary()}, send=send,
                           today=today, thinking=thinking, subject=subject)
+    kept = {"context": context_said} if context_said else {}
     if not got["ok"]:
-        return dict(got, offered=[o[0] for o in offered])
+        return dict(got, offered=[o[0] for o in offered], **kept)
     c, base = got["output"], {"call_id": got["call_id"], "cost_usd": got["cost_usd"],
                               "offered": [o[0] for o in offered],
                               # The model's own answer, as recorded cases keep it.
                               "choices": got["output"].model_dump(mode="json"),
                               **{k: got[k] for k in ("parent_call_id", "needs_said")
-                                 if got.get(k)}}
+                                 if got.get(k)}, **kept}
     links = {"page": f"/v2/history/query/ask/metrics?list={list_name}"}
     if c.outcome is Outcome.ask:
         # One question back, never a guess (the operator's cases, 2026-10-25): the person
@@ -888,12 +1029,15 @@ def _filled_links(links: dict, page: str, view: dict) -> dict:
 #: v2 (C1740's logs half, 2026-10-26): the named days and weeks counted in the viewer's
 #: timezone, given as data as v7 of the metrics half gives them; v1 worked "yesterday" out
 #: from now_utc, in UTC.
-PROMPT_LOGS = ("nl_logs", 2)
-#: The logs candidate, as `CANDIDATE`: v3 is the network-context version, the platform pack's
-#: event mnemonics offered with every question (each with what it records), `needs`, and
-#: "this week" as the last 7 days unless the words say since Monday (the operator's walk,
-#: 2026-10-26).
-CANDIDATE_LOGS = ("nl_logs", 3)
+#: v3, adopted 2026-10-26 (the operator; adoption is relative, PHASE8_PLAN 15.12): the
+#: network-context version, the platform pack's event mnemonics offered with every question
+#: (each with what it records), `needs`, and "this week" as the last 7 days unless the words
+#: say since Monday (the operator's walk). On the 20 it passed 99 of 100 against v2's 81, 17
+#: of 20 consistent against 12, nothing v2 passed failing; its 85% is under the 95% floor, so
+#: the logs half is live but not done.
+PROMPT_LOGS = ("nl_logs", 3)
+#: The logs candidate, as `CANDIDATE`; the current version until the next is built.
+CANDIDATE_LOGS = PROMPT_LOGS
 #: At most this many mnemonics are offered for one question.
 OFFERED_MNEMONICS = 20
 

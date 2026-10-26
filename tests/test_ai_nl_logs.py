@@ -60,7 +60,7 @@ def _choices(**over):
     c = {"outcome": "answer", "question": "", "why_not": "", "kinds": [], "devices": [],
          "role": "", "severity": "any", "mnemonics": ["%OSPF-5-ADJCHG"], "contains": "",
          "excludes": "", "show": "counts", "by": "device", "every": "5m", "range": "24h",
-         "from_utc": "", "to_utc": ""}
+         "from_utc": "", "to_utc": "", "needs": []}   # logs v3's schema (nl_logs v2) is live
     c.update(over)
     return c
 
@@ -80,7 +80,7 @@ def test_the_offer_is_the_question_s_mnemonics_and_none_for_a_severity_question(
         "%LINEPROTO-5-UPDOWN", "%LINK-3-UPDOWN"], "the most seen first, the chips' after"
 
 
-def test_the_request_holds_its_prompt_vocabulary_and_twelve_data_blocks(world):
+def test_the_request_holds_its_prompt_vocabulary_network_and_fourteen_data_blocks(world):
     from modules.ai import prompts
     world.answer = _choices()
     _ask(world)
@@ -89,11 +89,15 @@ def test_the_request_holds_its_prompt_vocabulary_and_twelve_data_blocks(world):
     assert a["system"] == b["system"] and a["system"][-1]["cache_control"]
     assert a["system"][0]["text"] == prompts.load(*nl_query.PROMPT_LOGS)["text"]
     assert "Severity (severity)" in a["system"][1]["text"]
+    # v3 (adopted 2026-10-26): the network's summary in the cached prefix too.
+    assert "network: Lab" in a["system"][-1]["text"]
     data = re.findall(r'<data name="([^"]+)">', a["messages"][0]["content"])
-    # The named spans' starts and their zone (C1740, nl_logs v2), as the metrics half's.
+    # The named spans' starts and their zone (C1740, nl_logs v2), as the metrics half's; the
+    # coverage and what was looked up (v3, the network-context version).
     assert set(data) == {"question", "now_utc", "today_start_utc", "yesterday_start_utc",
                          "week_start_utc", "last_week_start_utc", "today_zone", "kinds",
-                         "mnemonics", "labels", "devices_named", "roles"} and len(data) == 12
+                         "mnemonics", "labels", "devices_named", "roles", "coverage",
+                         "looked_up"} and len(data) == 14
     assert "network_syslog" in a["messages"][0]["content"]
     assert "%OSPF-5-ADJCHG" in a["messages"][0]["content"]
 
@@ -319,9 +323,10 @@ def test_the_words_form_sends_the_zone_and_the_notice_says_whose_midnight(world)
     assert '<data name="today_zone">\nAmerica/New_York\n</data>' in user
 
 
-def test_v2_is_the_prompt_and_says_the_named_spans():
+def test_v2_says_the_named_spans_and_stays_for_its_record():
+    """v2 was the prompt until v3's adoption (2026-10-26); its file stays, read as it was."""
     from modules.ai import prompts
-    assert nl_query.PROMPT_LOGS == ("nl_logs", 2)
+    assert nl_query.PROMPT_LOGS == ("nl_logs", 3)
     # Refuses a prompt naming JSON; the words compared as read, the text's wrapping aside.
     text = " ".join(prompts.load("nl_logs", 2)["text"].split())
     for said in ('"yesterday_start_utc"', '"week_start_utc"', '"last_week_start_utc"',
@@ -411,4 +416,4 @@ def test_the_logs_v3_schema_and_prompt_are_registered_and_committed():
                  '"this week", "the past week" and "the last 7 days" are the last 7 days: 7d',
                  '"coverage"', '"looked_up"'):
         assert said in text, said
-    assert nl_query.PROMPT_LOGS == ("nl_logs", 2), "the candidate is adopted only by its bar"
+    assert nl_query.PROMPT_LOGS == ("nl_logs", 3), "adopted 2026-10-26 by the relative bar"
