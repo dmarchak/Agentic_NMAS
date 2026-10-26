@@ -241,6 +241,11 @@ KNOWN_UNHELD = {
 NOT_A_DEVICE = {
     # (routes/settings_integrations.py:save_integration left with today's Integrations card,
     # 7.8, 2026-10-15.)
+    # C1772: its commands are the platform pack's (data), so the scan cannot read them; each
+    # is sent only when the read-only allowlist takes it whole (`readonly_commands.refusal`
+    # before the send; tests/test_endpoints.py, its control).
+    "modules/readers/endpoints.py:read_device": "sends only the platform pack's reads, each "
+                                                "refused unless the read-only allowlist takes it",
 }
 
 

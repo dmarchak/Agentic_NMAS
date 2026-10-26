@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "what": "Platform-pack read entries, as data (PHASE8_PLAN 15.15's endpoint layer; packs are data choosing a driver, the operator's ruling of 2026-10-26, C1753): per config dialect, each read's show command and the pattern one line of its output fills (Python regular expression, named groups). The reader sends a command only when the read-only allowlist takes it whole (modules/readonly_commands.py), so an entry can never be a write. A dialect with no entry for a read is said as not supported, never read with another dialect's.",
+  "how": "Patterns were written against the real captures in tests/fixtures/endpoints/ (a vIOS-L2 switch and a C8000v router, 2026-10-26); tests/test_endpoints.py parses them.",
+  "reads": {
+    "cisco_ios": {
+      "mac_table": {
+        "command": "show mac address-table dynamic",
+        "line": "^\\s*(?P<vlan>\\d+)\\s+(?P<mac>[0-9a-fA-F]{4}\\.[0-9a-fA-F]{4}\\.[0-9a-fA-F]{4})\\s+(?P<type>DYNAMIC)\\s+(?P<port>\\S+)\\s*$"
+      },
+      "arp": {
+        "command": "show ip arp",
+        "line": "^Internet\\s+(?P<address>\\d+\\.\\d+\\.\\d+\\.\\d+)\\s+(?P<age>\\S+)\\s+(?P<mac>[0-9a-fA-F]{4}\\.[0-9a-fA-F]{4}\\.[0-9a-fA-F]{4})\\s+ARPA\\s+(?P<interface>\\S+)\\s*$"
+      },
+      "ipv6_neighbors": {
+        "command": "show ipv6 neighbors",
+        "line": "^(?P<address>[0-9A-Fa-f:]+)\\s+(?P<age>\\S+)\\s+(?P<mac>[0-9a-fA-F]{4}\\.[0-9a-fA-F]{4}\\.[0-9a-fA-F]{4})\\s+(?P<state>\\S+)\\s+(?P<interface>\\S+)\\s*$"
+      }
+    },
+    "cisco_iosxe": {
+      "mac_table": {
+        "command": "show mac address-table dynamic",
+        "line": "^\\s*(?P<vlan>\\d+)\\s+(?P<mac>[0-9a-fA-F]{4}\\.[0-9a-fA-F]{4}\\.[0-9a-fA-F]{4})\\s+(?P<type>DYNAMIC)\\s+(?P<port>\\S+)\\s*$"
+      },
+      "arp": {
+        "command": "show ip arp",
+        "line": "^Internet\\s+(?P<address>\\d+\\.\\d+\\.\\d+\\.\\d+)\\s+(?P<age>\\S+)\\s+(?P<mac>[0-9a-fA-F]{4}\\.[0-9a-fA-F]{4}\\.[0-9a-fA-F]{4})\\s+ARPA\\s+(?P<interface>\\S+)\\s*$"
+      },
+      "ipv6_neighbors": {
+        "command": "show ipv6 neighbors",
+        "line": "^(?P<address>[0-9A-Fa-f:]+)\\s+(?P<age>\\S+)\\s+(?P<mac>[0-9a-fA-F]{4}\\.[0-9a-fA-F]{4}\\.[0-9a-fA-F]{4})\\s+(?P<state>\\S+)\\s+(?P<interface>\\S+)\\s*$"
+      }
+    }
+  }
+}

@@ -169,7 +169,7 @@ def test_the_bytes_sent_carry_a_coverage_header_naming_every_layer(topo):
     _b, user, _ctx = _sent(topo)
     cov = yaml.safe_load(_block(user, "data", "network_topology"))["coverage"]
     assert sorted(cov) == sorted(NM.LAYERS), "every layer, keys sorted as the bundle sorts them"
-    assert cov["endpoints"]["state"] == "not_collected" and "C1772" in cov["endpoints"]["why"]
+    assert cov["endpoints"]["state"] == "not_collected" and "C1772" in cov["endpoints"]["why"], "no endpoint read in this test"
     assert cov["flows"]["state"] == "not_collected" and "roadmap" in cov["flows"]["why"]
     sections = {s["name"]: s for s in topo.pack["sections"]}
     for section, layer in (("health", "performance"), ("logs", "events")):

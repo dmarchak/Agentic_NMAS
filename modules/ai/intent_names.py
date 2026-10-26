@@ -174,7 +174,7 @@ def _interface_shaped(token: str, names: list) -> bool:
 
 
 def resolve(network: str, device: str, doc: dict, sentence: str, picks: dict = None,
-            neighbours: dict = None) -> dict:
+            neighbours: dict = None, endpoints: list = None) -> dict:
     """*sentence* on *device*'s Intent tab, its names resolved against *doc* (the committed
     intent) and the device's neighbours: ``{"ok", "sentence", "resolutions", "ask",
     "unknown", "said"}``. *sentence* comes back with each reference and shorthand replaced by
@@ -188,6 +188,12 @@ def resolve(network: str, device: str, doc: dict, sentence: str, picks: dict = N
     nb = neighbours if neighbours is not None else neighbours_of(network, device)
     ports = nb.get("ports") or {}
     devices = _devices(network)
+    # The endpoint layer's observations (C1772), read from its stored value when not given; a
+    # drift between an observation and a description is said beside the resolutions.
+    from modules import endpoints as E
+    observed = endpoints if endpoints is not None else E.stored(network).get("endpoints") or []
+    nb = dict(nb, said=list(nb.get("said") or []))
+    notes = nb["said"]                  # the same list: every answer below carries the notes
     quoted = [m.span() for m in _QUOTED.finditer(sentence)] + [
         m.span(1) for m in _VALUE.finditer(sentence)]
     spans, resolutions = [], []
@@ -207,7 +213,7 @@ def resolve(network: str, device: str, doc: dict, sentence: str, picks: dict = N
             if inside(a, b):
                 continue
             phrase = m.group(0).strip()
-            got = _matches(kind, m, ifaces, ports, devices)
+            got = _matches(kind, m, ifaces, ports, devices, device, observed, notes)
             chosen = picks.get(phrase.lower())
             if chosen:
                 pool = {n for n, _b in got} if got else set(names)
@@ -280,7 +286,8 @@ def _what(kind: str, m, plural: bool = False) -> str:
             }.get(kind, f"port{s} to {x}")
 
 
-def _matches(kind: str, m, ifaces: list, ports: dict, devices: dict) -> list:
+def _matches(kind: str, m, ifaces: list, ports: dict, devices: dict, device: str = "",
+             endpoints: list = None, notes: list = None) -> list:
     """``[(name, by)]``: the ports *m* refers to (never an SVI, loopback or tunnel), each
     with how it was found."""
     x = (m.groupdict().get("x") or "")
@@ -308,8 +315,30 @@ def _matches(kind: str, m, ifaces: list, ports: dict, devices: dict) -> list:
             p["name"].lower() == x.lower() for ps in ports.values() for p in ps):
         return [(i["name"], f"toward {x} ({p['by']})") for i in ifaces
                 for p in (ports.get(i["name"]) or []) if p["name"].lower() == x.lower()]
-    return [(i["name"], f"by description {i['description']!r}") for i in ifaces
-            if _word(x, i["description"])]
+    described = [(i["name"], f"by description {i['description']!r}") for i in ifaces
+                 if _word(x, i["description"])]
+    # An endpoint: observation first (the endpoint layer, C1772), a description second, and a
+    # disagreement between them said as drift (the operator's order of 2026-10-26).
+    from modules import endpoints as E
+    from modules.nsot import ifnames
+    seen = [e for e in E.find(endpoints or [], x) if e.get("device")]
+    here = [e for e in seen if e["device"] == device]
+    if here:
+        found = sorted({ifnames.canonical(e["interface"]) for e in here})
+        names = {i["name"] for i in ifaces}
+        observed = [(n, f"observed: {x} seen there {here[0].get('last_seen') or 'in the last read'}")
+                    for n in found if n in names]
+        if observed and described and {n for n, _b in described} != {n for n, _b in observed}:
+            notes.append(f"drift: {x} was observed on {', '.join(n for n, _b in observed)}, "
+                         f"but the description of {', '.join(n for n, _b in described)} names "
+                         f"{x}; the observation is used")
+        if observed:
+            return observed
+    elif seen:
+        where = ", ".join(f"{e['device']} {e['interface']}" for e in seen)
+        notes.append(f"{x} was observed on {where}, not on {device}"
+                     + ("; the description is used, and disagrees: drift" if described else ""))
+    return described
 
 
 def _unknown(said: str, ifaces: list, nb: dict, resolutions: list,

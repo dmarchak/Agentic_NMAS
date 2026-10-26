@@ -51,6 +51,9 @@ SCANNED = {
     ("modules/nsot/reload_op.py", "read_device.read"): (
         "one_device", "the image files ONE device's `show version` and `show boot` name, each "
                       "a `dir` on that device's one session (Reload's preview, P.14)"),
+    ("modules/readers/endpoints.py", "read_device"): (
+        "one_device", "the platform pack's reads on ONE device's session; the reader reads the "
+                      "devices concurrently by `fanout.read_each` (C1772)"),
     ("modules/pipeline.py", "_stage_pre_snapshot"): ("sequential", _ONE_RUN),
     ("modules/pipeline.py", "_stage_post_snapshot"): ("sequential", _ONE_RUN),
     ("modules/pipeline.py", "_read_vlans"): (

@@ -88,6 +88,10 @@ WOKEN_BY = {
     # Create, Verify and Abandon add or end a pending onboarding; a reservation moves a ZTP
     # device's stage (C1193).
     "onboarding-progress": ("pending", "settings", "dhcp"),
+    # C1772: who is where, from each device's MAC table and ARP (inventory, credentials), the
+    # trunks that locate nothing (intent), a deploy changing a port, and the leases that name
+    # each host (dhcp).
+    "endpoints": ("intent", "inventory", "credentials", "deploy_job", "dhcp"),
     # HEAD against the remote: also re-read by its own post-commit hook.
     "remote-publication": ("goldens", "intent", "templates", "remote"),
 }

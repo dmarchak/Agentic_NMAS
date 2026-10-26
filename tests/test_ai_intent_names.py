@@ -199,6 +199,45 @@ def test_neighbours_name_one_device_and_a_shared_segment_names_none(monkeypatch,
         else ["GigabitEthernet0/2"]), "a shared segment is never an uplink"
 
 
+# ── the endpoint layer: observation first, drift said (C1772) ───────────────
+
+def _observed(port="Gi1/0", device="s1"):
+    """h1 located from the real captures plus the one line an active h1 adds to the table."""
+    from tests import test_endpoints as T
+    from modules import endpoints as E
+    line = f"\n  10    aac1.ab99.f6e2    DYNAMIC     {port}\n"
+    got = E.locate({device: T._reads("s1", "cisco_ios", line)}, T.LEASES,
+                   {device: {"trunks": {"GigabitEthernet0/3"},
+                             "uplinks": {"GigabitEthernet0/2"}}}, now=1000)
+    return got["endpoints"]
+
+
+def test_the_port_to_h1_prefers_observation_with_its_last_seen():
+    got = intent_names.resolve("Lab", "s1", S1, "shut the port to h1", neighbours=NEIGHBOURS,
+                               endpoints=_observed())
+    assert got["ok"] and got["resolutions"][0] == {
+        "said": "the port to h1", "to": ["GigabitEthernet1/0"],
+        "by": ["observed: h1 seen there 1970-01-01T00:16:40Z"]}
+    assert got["said"] == []
+
+
+def test_an_observation_disagreeing_with_the_description_is_drift():
+    got = intent_names.resolve("Lab", "s1", S1, "shut the port to h1", neighbours=NEIGHBOURS,
+                               endpoints=_observed("Gi1/1"))
+    assert got["resolutions"][0]["to"] == ["GigabitEthernet1/1"], "the observation is used"
+    assert got["said"] == [
+        "drift: h1 was observed on GigabitEthernet1/1, but the description of "
+        "GigabitEthernet1/0 names h1; the observation is used"]
+
+
+def test_an_endpoint_observed_on_another_device_is_said():
+    got = intent_names.resolve("Lab", "s1", S1, "shut the port to h1", neighbours=NEIGHBOURS,
+                               endpoints=_observed(device="s2"))
+    assert got["resolutions"][0]["to"] == ["GigabitEthernet1/0"], "the description, here"
+    assert got["said"] == ["h1 was observed on s2 GigabitEthernet1/0, not on s1; the "
+                           "description is used, and disagrees: drift"]
+
+
 # ── values stay words ────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("sentence", [

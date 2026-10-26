@@ -2437,6 +2437,32 @@ NetOps platform answers from the MAC and ARP tables. Flows remain roadmap. In th
   `context_for()` bundle and its answer: each layer present, partial or not_collected, with
   source, age and why. Performance and events are as the caller carries them (Explain: the
   pack's health and logs). Endpoints are not collected until 2 lands; flows are roadmap.
+- **Built 2026-10-26 (2, the endpoint layer; C1772):** `modules/endpoints.py`,
+  `modules/readers/endpoints.py`, `modules/lease_sources.py`, the platform-pack entries
+  `modules/nsot/platform_reads.json`. MAC table, ARP and IPv6 neighbours are read per device
+  through its dialect's entries, each command only when the read-only allowlist takes it.
+  Leases come through the generic source (Kea's first). A trunk's or uplink's MAC locates
+  nothing; each endpoint keeps its last location and when. Feature 7's "the port to X" prefers
+  observation and says drift.
+  - **Measured first:** an idle host's MAC is forgotten in minutes (s1, 2026-10-26), so
+    location is passive with last-seen. Active refresh is the operator's decision (C1779).
+  - **Not yet:** the evidence pack's capture of endpoints, and the endpoint cases (C1778).
+- **Built 2026-10-26 (3, the needs helper):** `modules/ai/needs.py`, outside the gateway.
+  - `validate`: a kind not in `NeedKind`, or a malformed need, is refused, naming it, and never
+    looked up.
+  - `lookup`, read-only, once: endpoint_location from the endpoint store (with last-seen),
+    neighbour from the network's neighbours, interface_state from committed intent. Route is
+    unfulfilled ("the route layer is not collected"). A lookup that raises is unfulfilled,
+    "not retried". With the topology class off, every need is unfulfilled, "egress: <why>",
+    and nothing is looked up.
+  - `run`: refused for a call that is itself a follow-up (its subject names a parent) or that
+    had its round already. Otherwise the needs, fulfilled or not, are recorded on the parent's
+    use row (`calls.record_use(..., needs=...)`), and the feature's own `gateway.ask` is called
+    once, its subject linked `{"parent": <call id>}`.
+  - **Not yet (C1780):** no answer schema carries `needs` and no follow-up prompt takes the
+    lookups through the context builder. Each is a new prompt version, the operator's decision
+    while Explain's tuning is closed. History's link, combined cost, filter and "context gaps"
+    count need a board.
 - **Not yet (1):** the prompt line ("say when an answer depends on a layer that is
   not_collected"). It is a new Explain prompt version, so it waits on the operator: Explain's
   tuning is closed for the sprint by the operator's rule of the same day.

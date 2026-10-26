@@ -31,8 +31,13 @@ given the device's own names, and the draft lists how your words were read.
 - **The host port(s):** an access port, enabled in intent, with no managed neighbour. This is
   read from the port's role, never its description; a shut access port is not one unless you
   name it.
-- **The port to desk7:** a device of the network, by its neighbour; otherwise the port whose
-  description names desk7 as a whole word (desk7 never matches desk70). The draft says it was matched
+- **The port to desk7:** a device of the network, by its neighbour; an endpoint, first where
+  {{product}} observed it (the endpoint layer: a switch's MAC table on an access port, named
+  by its DHCP lease, with when it was last seen there), and otherwise the port whose
+  description names desk7 as a whole word (desk7 never matches desk70). When the observation
+  and a description disagree, the observation is used and the draft says "drift". A host that
+  has been idle for longer than the switch remembers MACs (minutes) is located only by where
+  it was last seen. The draft says it was matched
   by description, because a description can be out of date.
 - **The uplink(s):** ports toward a router or the management path; "the uplink to edge1"
   toward edge1. **The trunk(s):** trunk ports. **The VLAN 10 ports:** access ports in VLAN 10. A

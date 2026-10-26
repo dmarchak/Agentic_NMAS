@@ -475,8 +475,12 @@ def coverage(model: dict, obs: dict, devices: dict, carried: dict = None) -> dic
         out[layer] = (dict(carried[layer]) if layer in carried else {
             "state": NOT_COLLECTED, "source": "", "age": "",
             "why": f"{words} are not in this bundle"})
-    out["endpoints"] = {"state": NOT_COLLECTED, "source": "", "age": "",
-                        "why": "Mercury reads no endpoints (MAC, ARP, leases) yet (C1772)"}
+    # Endpoints are observed state: as performance and events, only as the caller captured
+    # them (C1712: a bundle reads no observed state itself, so a past alert's never describes
+    # the network now); `endpoints.coverage_layer` is the endpoint store's own answer.
+    out["endpoints"] = (dict(carried["endpoints"]) if "endpoints" in carried else {
+        "state": NOT_COLLECTED, "source": "", "age": "",
+        "why": "no endpoint state was captured with this bundle (the endpoint layer, C1772)"})
     out["flows"] = {"state": NOT_COLLECTED, "source": "", "age": "",
                     "why": "flows are not collected (roadmap)"}
     return {layer: out[layer] for layer in LAYERS}

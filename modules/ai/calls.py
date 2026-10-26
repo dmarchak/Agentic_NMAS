@@ -135,17 +135,20 @@ def record(entry: dict) -> dict:
 
 
 def record_use(call_id: str, use: str, *, actor: str = "", detail: str = "",
-               links: dict = None, drafts: list = None) -> dict:
+               links: dict = None, drafts: list = None, needs: list = None) -> dict:
     """Append what became of a call's answer, its own row keyed by the call's id (PHASE8_PLAN
     15.14: the use is recorded at the source, append-only, never an edit of the call's row):
     *use* is the feature's own word ("filled", "shown", "refused by validation"), *detail*
     why, *links* where what it produced is (a page and its anchor). *drafts* are the digests
     of what a draft offered to commit (feature 7's part 2: a commit is refused unless what it
-    is handed is one of them). Never raises."""
+    is handed is one of them). *needs* are a needs round's lookups, each with its state
+    (`needs.run`). Never raises."""
     row = {"use_of": call_id, "use": use, "actor": actor, "detail": detail,
            "links": dict(links or {})}
     if drafts:
         row["drafts"] = list(drafts)
+    if needs:
+        row["needs"] = list(needs)
     return record(row)
 
 

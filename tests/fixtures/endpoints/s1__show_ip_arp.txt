@@ -1,0 +1,13 @@
+Protocol  Address          Age (min)  Hardware Addr   Type   Interface
+Internet  192.0.2.2              135   5255.0a00.0002  ARPA   GigabitEthernet0/0
+Internet  192.0.2.18               -   0c00.6ce9.b700  ARPA   GigabitEthernet0/0
+Internet  10.10.10.1              -   0000.5e00.010a  ARPA   Vlan10
+Internet  10.10.10.2              -   0c00.6ce9.800a  ARPA   Vlan10
+Internet  10.10.10.3             92   0c00.6f31.800a  ARPA   Vlan10
+Internet  10.10.10.100           20   aac1.ab99.f6e2  ARPA   Vlan10
+Internet  10.10.10.102           80   aac1.abb0.8565  ARPA   Vlan10
+Internet  10.10.20.2              -   0c00.6ce9.8014  ARPA   Vlan20
+Internet  10.10.20.3            103   0c00.6f31.8014  ARPA   Vlan20
+Internet  10.10.20.101           86   aac1.ab3e.1170  ARPA   Vlan20
+Internet  10.255.2.10            64   aac1.ab93.3623  ARPA   GigabitEthernet0/2
+Internet  10.255.2.11             -   aac1.ab68.f679  ARPA   GigabitEthernet0/2

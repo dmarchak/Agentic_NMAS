@@ -1,0 +1,5 @@
+IPv6 Address                              Age Link-layer Addr State Interface
+FE80::A8C1:ABFF:FE7A:F5F6                 205 aac1.ab7a.f5f6  STALE Gi2
+FE80::A8C1:ABFF:FE7B:A0DB                  43 aac1.ab7b.a0db  STALE Gi2
+FE80::A8C1:ABFF:FEB2:A130                  70 aac1.abb2.a130  STALE Gi2
+FE80::A8C1:ABFF:FE68:F679                  30 aac1.ab68.f679  STALE Gi3

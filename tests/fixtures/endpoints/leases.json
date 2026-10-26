@@ -1,0 +1,6 @@
+[
+  {"address": "10.10.10.100", "by": "MAC", "ends": "2026-10-29T06:07:53Z", "family": "IPv4", "hostname": "h1", "iaid": null, "identity": "aa:c1:ab:99:f6:e2", "mac": "aa:c1:ab:99:f6:e2", "prefix_len": null, "state": "active", "subnet_id": 10, "type": "", "valid": 604800},
+  {"address": "10.10.10.102", "by": "MAC", "ends": "2026-10-29T06:07:52Z", "family": "IPv4", "hostname": "h3", "iaid": null, "identity": "aa:c1:ab:b0:85:65", "mac": "aa:c1:ab:b0:85:65", "prefix_len": null, "state": "active", "subnet_id": 10, "type": "", "valid": 604800},
+  {"address": "10.10.20.101", "by": "MAC", "ends": "2026-10-29T06:07:52Z", "family": "IPv4", "hostname": "h2", "iaid": null, "identity": "aa:c1:ab:3e:11:70", "mac": "aa:c1:ab:3e:11:70", "prefix_len": null, "state": "active", "subnet_id": 20, "type": "", "valid": 604800},
+  {"address": "10.255.4.2", "by": "MAC", "ends": "2026-11-01T18:25:00Z", "family": "IPv4", "hostname": "r6", "iaid": null, "identity": "aa:bb:cc:00:04:06", "mac": "aa:bb:cc:00:04:06", "prefix_len": null, "state": "active", "subnet_id": 256, "type": "", "valid": 604800}
+]
