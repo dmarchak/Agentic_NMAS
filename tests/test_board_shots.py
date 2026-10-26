@@ -1917,6 +1917,59 @@ def test_monitoring_alerts_explain(tmp_path, monkeypatch):
         next(gen, None)
 
 
+def test_monitoring_alerts_history(tmp_path, monkeypatch):
+    """Monitoring › Alerts › History (board P1-H, `AlertsHistory.dc.html`, 1440; the alert
+    history, 2026-10-26) on test_device_v2's lab with tests/test_evidence_pack.py's inventory
+    (r1, r2, r3): the captured state history of 21 Oct, 01:00 to 03:00 UTC, backfilled by the
+    real recorder; the tab; the heartbeat group opened on r2's past alert (no pack); and Build
+    evidence pressed, its rebuilt pack drawn in place over the Loki and Prometheus captures."""
+    import tempfile
+
+    from modules import alert_history as H
+    from modules import evidence_pack as EP
+    from modules import history_logq as Q
+    from tests import browser
+    from tests import test_device_v2 as DV
+    from tests import test_evidence_pack as T
+    from tests.test_alert_history import _backfill, load
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    gen = DV.lab.__wrapped__(tmp_path, monkeypatch)
+    next(gen)
+    folder = tempfile.mkdtemp(prefix="nmas-shots-history-", dir=str(tmp_path))
+    monkeypatch.setattr("modules.device.load_saved_devices",
+                        lambda path=None: [dict(d) for d in T.DEVICES])
+    monkeypatch.setattr(EP, "_path", lambda: os.path.join(folder, "evidence_packs.jsonl"))
+    monkeypatch.setattr(H, "_path", lambda: os.path.join(folder, "alert_history.jsonl"))
+    monkeypatch.setattr(H, "_networks", lambda: {"grafana-alerts": ["Lab"]})
+    monkeypatch.setattr(H, "_firing_now", lambda: set())
+    monkeypatch.setattr(Q, "_client", lambda *a, **k: T.DeviceLoki())
+    T._prometheus(monkeypatch)
+    assert _backfill(load("annotations_firing"))["added"] == 93
+    group = ("[...document.querySelectorAll('details.ah-group')].find(g => "
+             "/NMAS heartbeat missing/.test(g.querySelector('summary').textContent))")
+    row = f"[...{group}.querySelectorAll('details.ah-row')].find(r => /r2/.test(r.textContent))"
+    try:
+        import app as A
+        _d_walk("alerts-history", None, "", [], boards=(("AlertsHistory.dc.html", 1440),),
+                widths=((1440, 1.0),))
+        with browser.Served(A.app) as served:
+            _d_walk("alerts-history", served, "/v2/monitoring/alerts/history?range=all&show=all", [
+                ("tab", None, "!!document.querySelector('details.ah-group')"),
+                # At 1440 r2's alert has no pack: Build evidence is drawn, then pressed. At the
+                # later widths the pack it built is kept (frozen), so the row opens on it.
+                ("open", f"{group}.open = true; {row}.open = true",
+                 f"!!({row}.querySelector('[data-op=\"alert-history\"]') || "
+                 f"/rebuilt afterwards/.test({row}.textContent))"),
+                ("built", f"const b = {row}.querySelector('[data-op=\"alert-history\"]'); "
+                          "if (b) b.click()",
+                 f"/rebuilt afterwards/.test({row}.textContent)")],
+                widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
+    finally:
+        next(gen, None)
+
+
 def test_tab_intent_words(tmp_path, monkeypatch):
     """Feature 7 (PHASE8_PLAN 15.16): board F7 (`IntentWords.dc.html`, 1440) beside s1's Intent
     tab on the host's real committed lab (tests/test_committed_before_p1's `host`): the row

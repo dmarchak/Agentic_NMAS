@@ -51,7 +51,11 @@ SIGNED_OFF = {
                                       "built ahead of its board (the operator's ruling of "
                                       "2026-10-25, 15.12); its board P1 drawn and signed off "
                                       "under the Phase 7 mode 2026-10-26 and compared, "
-                                      "docs/fidelity/alerts-explain.md"),
+                                      "docs/fidelity/alerts-explain.md. Its History view (the "
+                                      "alert history, the operator's order of 2026-10-26): "
+                                      "board P1-H, AlertsHistory.dc.html, signed off under the "
+                                      "Phase 7 mode 2026-10-26 before it was built, compared, "
+                                      "docs/fidelity/alerts-history.md"),
     "history.html": ("2026-10-03", "board D, History as one timeline (C369), signed off "
                                    "2026-10-03 by the operator: one reader (modules/"
                                    "history_sources.timeline) across every device and the fleet's "

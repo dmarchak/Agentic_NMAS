@@ -83,6 +83,17 @@ below.
    for a smaller structure, and a `golden/<device>/<time>` tag per changed golden. Each golden
    is checked again as it is written; a device that fails is left out of the commit and named
    with its own reason, never another device's.
+
+   A device whose golden changes to something that departs from its intent by a line no rule
+   explains took in a change made outside Mercury (by hand at its console, say), and the
+   commit says how: before it is made, that device's own log is read (Loki, one ask per such
+   device, all at once) for its `%SYS-5-CONFIG_I` lines since its previous golden, and the
+   commit carries `Out-Of-Band: <device>: by console per SYS-5-CONFIG_I, received <time>:
+   <the line, masked>`. A log with no such line says so, and a log that could not be read
+   (Loki not configured, or not answering) says that, never "no change". The golden's history
+   marks the commit "captured, departs from intent (+1 -1); changed out-of-band, by console
+   per SYS-5-CONFIG_I", and the device page's **Since last capture** check says the capture
+   took the change in, never "unchanged" as a pass (see [Drift](drift#out-of-band)).
 4. **Decide the baseline.** Recorded: for a whole-fleet save, a `Baseline:` trailer. Every
    inventory device read and recorded (or unchanged), and every one at its committed intent,
    earns `Baseline: earned` and the tag `baseline/<time>`; anything less records
@@ -102,7 +113,8 @@ below.
 - It sends nothing to a device: no configuration mode, no `write memory`. Saving the running
   configuration to the device's startup is [Persist](persist).
 - It does not change intent. A device that departs from intent is recorded as it is, marked
-  `Intent-Match: no`, and cannot be part of a baseline; deciding which side is right is yours.
+  `Intent-Match: no` (and `Out-Of-Band:` when no rule explains the departure), and cannot be
+  part of a baseline; deciding which side is right is yours.
 - It does not compare the startup configuration, only what the device runs now.
 
 ## Why it works this way

@@ -1760,6 +1760,24 @@ its output is accepted only by a deterministic check.
 | Relation | AI_ANTHROPIC_PLAN's F2 ("Explain a Needs attention row") is the same machinery on a different record; P1's Explain reuses F2's prompt registry entry shape and schema rules. |
 | Test plan | The addendum's 7.3: the pack from real stored captures and History, IPv4 and IPv6; a planted secret in every input never in the adapter's outbound bytes; an injection line planted in an interface description changes nothing, and no tool is offered; with AI off, the pack and every screen work; a schema failure and a missing reference refused as "couldn't analyse"; the recorded-response evaluation; a browser test of the card. |
 
+**P1's alert history (the operator's order of 2026-10-26).** **Industry need:** an alert that
+resolved before anyone looked is the common case, and the question afterwards is the same:
+what happened, on which device, when, and why. Monitoring tools keep an alert's state history
+(Grafana's own, or Alertmanager's notifications in a ticketing or on-call system such as
+PagerDuty or ServiceNow). But that history is the alert's states only, often held for a short
+retention, and it holds no evidence about the device. Commercial AIOps and NMS products (event
+correlation in the monitoring vendors' suites) keep events longer and correlate them, but they
+rebuild context from whatever their collectors hold, without saying which parts were observed
+then and which were reconstructed later. Mercury keeps every transition itself, timed by
+Grafana, never a device's clock (`modules/alert_history.py`). Each transition is recorded once,
+whether the reader or Grafana's own history saw it, held for each network's retention, then
+moved to the data lake. A past alert's evidence pack is rebuilt only from what keeps its past (History cut at
+the alert's time, the Intent check at the commit current then, time series asked over its
+window), each section marked captured at the time, rebuilt afterwards, or cannot be rebuilt.
+The pack is frozen for Explain, so neither a person nor the model reads a later state as the
+state the alert fired in. It scales as the alerts reader does: one store read when a read
+changed, and grouped, collapsed views with summary counts.
+
 #### Card P2: the "differs" explainer
 
 | Field | P2 |

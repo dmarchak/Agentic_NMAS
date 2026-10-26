@@ -173,7 +173,11 @@ _HEAD = _FIELD.join(["%H", "%cI", "%(trailers:key=Source,valueonly)",
                      "%(trailers:key=Baseline,valueonly)", "%s",
                      "%(trailers:key=Actor-Verified,valueonly)", "%D",
                      # Feature 7's part 2: an intent commit drafted in words names its call.
-                     "%(trailers:key=AI-Call,valueonly)"])
+                     "%(trailers:key=AI-Call,valueonly)",
+                     # C1819: whether each device's capture matched its intent, and how the
+                     # device's log says a departing one was changed (one value per device).
+                     "%(trailers:key=Intent-Match,valueonly)",
+                     "%(trailers:key=Out-Of-Band,valueonly,separator=%x1c)"])
 _PATH = re.compile(r"^(golden|host_vars)/([^/]+)\.(cfg|yml)$")
 
 
@@ -231,7 +235,10 @@ def _log(ctx, paths, *extra, follow=False, count=None):
                      "verified": parts[9].strip(),
                      "tags": [d.strip()[len("tag: "):] for d in parts[10].split(",")
                               if d.strip().startswith("tag: ")],
-                     "ai_call": parts[11].strip() if len(parts) > 11 else ""})
+                     "ai_call": parts[11].strip() if len(parts) > 11 else "",
+                     "intent_match": parts[12].strip() if len(parts) > 12 else "",
+                     "out_of_band": [v.strip() for v in parts[13].split("\x1c") if v.strip()]
+                     if len(parts) > 13 else []})
     return rows, ""
 
 
@@ -462,6 +469,28 @@ def _named(rows, folder, renames):
     return rows
 
 
+def _departure_marks(r: dict, devices, device: str) -> list:
+    """A golden commit that recorded a device departing from its intent, marked (C1819, the
+    operator's Walk 3: a capture that took in an out-of-band change read as any other):
+    "captured, departs from intent (+1 -1); changed out-of-band, by console per SYS-5-CONFIG_I".
+    From the commit's own `Intent-Match:` and `Out-Of-Band:` trailers (`out_of_band`), so
+    nothing is read per row. A device's view marks that device; the fleet's names each."""
+    from modules.nsot import out_of_band as OOB
+
+    off = OOB.departures(r.get("intent_match", ""))
+    how = OOB.named(r.get("out_of_band") or [])
+    verb = "captured" if r.get("source") in OOB.CAPTURE_SOURCES else "recorded"
+    marks = []
+    for d in sorted(devices):
+        if d not in off or (device and d != device):
+            continue
+        mark = f"{verb}, departs from intent ({off[d]})"
+        if d in how:
+            mark += f"; changed out-of-band, {OOB.short(how[d])}"
+        marks.append(mark if device else f"{d} {mark}")
+    return marks
+
+
 def _commit_source(folder, kind, words):
     def source(ctx):
         unborn = _unborn(ctx, f"the {words} history")
@@ -487,9 +516,15 @@ def _commit_source(folder, kind, words):
                 continue
             what = (f"Golden recorded ({r['source'] or 'no Source: trailer'})" if kind == "golden"
                     else "Intent committed" + (f" ({r['source']})" if r["source"] else ""))
-            events.append(_from_commit(r, kind, what, devices,
-                                     record=[("Commit", r["sha"][:12]), ("Source", r["source"]),
-                                             ("By", r["who"])]))
+            marks = _departure_marks(r, devices, ctx["device"]) if kind == "golden" else []
+            e = _from_commit(r, kind, what, devices,
+                             record=[("Commit", r["sha"][:12]), ("Source", r["source"]),
+                                     ("By", r["who"])]
+                             + ([("Intent-Match", r.get("intent_match", "")),
+                                 ("Out-of-band", "; ".join(r.get("out_of_band") or []))]
+                                if marks else []))
+            e["marks"] += marks
+            events.append(e)
         return _out(events, cut=[f"the {words} history's newest {ctx['limit']}"]
                     if len(rows) > ctx["limit"] else [])
     source.__name__ = folder

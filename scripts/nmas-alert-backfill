@@ -1,0 +1,189 @@
+#!/usr/bin/env python3
+"""Read Grafana's alert state history into Mercury's alert history, as far back as Grafana
+holds it (the operator's order of 2026-10-26; modules/alert_history.py).
+
+    # on the host, the deployed copy run as a file, as the app's user (it adopts the app's
+    # interpreter and writes the app's data folder): count first, then record
+    nmas-host nmas -- sudo -u <app user> <checkout>/scripts/nmas-alert-backfill --dry-run
+    nmas-host nmas -- sudo -u <app user> <checkout>/scripts/nmas-alert-backfill
+
+**What it reads.** Grafana keeps its alert state history in annotations (measured 2026-10-26:
+`GET api/annotations?type=alert` answers each transition with its rule, its labels as tags,
+its previous and new state, and its time in milliseconds; `api/v1/rules/history` answered HTTP
+500 on this Grafana). It only GETs, through the network's configured Grafana integration
+(`GrafanaIntegration()._get`, as `scripts/nmas-capture-grafana-alerts` does), and never prints a
+token.
+
+**How far back.** A day at a time, newest first. A day answering the page limit (5,000) is
+split in halves until each half answers less, and a window of one minute still full is refused
+naming it (rule 5: a full page is a truncated read). At the first empty day it asks once for
+the newest row before that day's start, from the epoch: none means Grafana holds nothing older,
+which covers all time (rule 6); one means a quiet stretch, and the walk jumps to that row's day.
+
+**Idempotent.** Each transition is keyed as the reader keys it (`alert_history.transition_key`:
+the configuration's store, the rule's title, its labels, the state and the second it began), so
+a rerun, or a transition the reader already recorded, adds nothing. A move between two normal
+states is not a transition and is not kept. It writes only Mercury's alert history store.
+"""
+import os
+import sys
+
+sys.dont_write_bytecode = True
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+import argparse  # noqa: E402
+import calendar  # noqa: E402
+import time  # noqa: E402
+
+ANNOTATIONS = "api/annotations"
+#: Grafana's page limit, asked for on every page; a page answering exactly this is truncated.
+LIMIT = 5000
+DAY_MS = 86_400_000
+#: The narrowest window a full page is split to before the read is refused.
+MIN_SPAN_MS = 60_000
+
+
+class Truncated(RuntimeError):
+    """A window of the narrowest span still answered a full page."""
+
+
+def _iso(ms) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(int(ms) // 1000))
+
+
+def page(client, frm: int, to: int, limit: int = LIMIT) -> list:
+    """One page of alert annotations between *frm* and *to* (ms, inclusive). Raises naming the
+    window when Grafana does not answer."""
+    path = f"{ANNOTATIONS}?type=alert&from={int(frm)}&to={int(to)}&limit={int(limit)}"
+    got = client._get(path)
+    if not got.get("ok"):
+        raise ConnectionError(f"{ANNOTATIONS} from {_iso(frm)} to {_iso(to)}: "
+                              f"{got.get('error') or 'no answer'}")
+    body = got["response"].json()
+    if not isinstance(body, list):
+        raise ValueError(f"{ANNOTATIONS}: the answer is not a list")
+    return body
+
+
+def window(client, frm: int, to: int, stats: dict) -> list:
+    """Every annotation in [*frm*, *to*]: one page, or two halves of it while a page is full."""
+    rows = page(client, frm, to)
+    stats["pages"] += 1
+    if len(rows) < LIMIT:
+        return rows
+    if to - frm <= MIN_SPAN_MS:
+        raise Truncated(f"{ANNOTATIONS} answered {len(rows)} rows, its page limit, for the "
+                        f"{(to - frm) // 1000} s from {_iso(frm)}: the read is truncated, and "
+                        "nothing narrower is asked")
+    stats["split"] += 1
+    mid = frm + (to - frm) // 2
+    return window(client, frm, mid, stats) + window(client, mid + 1, to, stats)
+
+
+def walk(client, now_ms: int, since_ms: int = 0, stats: dict = None):
+    """Yield each day's annotations, newest day first, back to the oldest Grafana holds (or
+    *since_ms*). See the module's docstring for how the end is known."""
+    stats = stats if stats is not None else {"pages": 0, "split": 0, "days": 0, "jumps": 0}
+    to = now_ms
+    while to > since_ms:
+        frm = max(since_ms, to - DAY_MS + 1)
+        rows = window(client, frm, to, stats)
+        stats["days"] += 1
+        if rows:
+            yield frm, to, rows
+            to = frm - 1
+            continue
+        older = page(client, since_ms, frm - 1, limit=1)
+        stats["pages"] += 1
+        if not older:
+            return
+        stats["jumps"] += 1
+        to = int(older[0].get("time") or frm - 1)
+
+
+def store_for(network: str) -> str:
+    """The alerts reader's configuration store for *network* ("" or Default: the reader's
+    own), which the reader's rows name too."""
+    from modules import integration_groups as IG
+    from modules.list_settings import is_default
+    from modules.readers import grafana_alerts as G
+
+    if not network or is_default(network):
+        return G.READER.name
+    gid = IG.combined_id(tuple(G.READER.per_group), network)
+    if gid is None:
+        raise SystemExit(f"nmas-alert-backfill: {network} declared Grafana not applicable; "
+                         "nothing to read")
+    return IG.store_name(G.READER.name, gid)
+
+
+def main(argv=None, client=None, now_ms: int = None, out=print) -> int:
+    from modules import alert_history as H
+
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
+    ap.add_argument("--network", default="",
+                    help="read this network's Grafana (default: Default's)")
+    ap.add_argument("--since", default="",
+                    help="stop at this UTC day (YYYY-MM-DD); default: all Grafana holds")
+    ap.add_argument("--dry-run", action="store_true", help="read and count; record nothing")
+    args = ap.parse_args(argv)
+    since_ms = 0
+    if args.since:
+        try:
+            since_ms = calendar.timegm(time.strptime(args.since, "%Y-%m-%d")) * 1000
+        except ValueError:
+            ap.error(f"--since {args.since!r} is not a day (YYYY-MM-DD)")
+    if client is None:
+        from modules.integrations.grafana import GrafanaIntegration
+        client = GrafanaIntegration(list_name=args.network)
+    store = store_for(args.network)
+    networks = H._networks().get(store) or ([args.network] if args.network else [])
+    now_ms = int(time.time() * 1000) if now_ms is None else now_ms
+    stats = {"pages": 0, "split": 0, "days": 0, "jumps": 0}
+    total = {"rows": 0, "transitions": 0, "not_transitions": 0, "added": 0, "held": 0}
+    oldest = None
+    try:
+        for _frm, _to, rows in walk(client, now_ms, since_ms, stats):
+            total["rows"] += len(rows)
+            batch = []
+            for a in rows:
+                row = H.from_annotation(a, store, networks)
+                if row is None:
+                    total["not_transitions"] += 1
+                    continue
+                batch.append(row)
+                oldest = min(oldest or row["at"], row["at"])
+            total["transitions"] += len(batch)
+            if args.dry_run or not batch:
+                continue
+            got = H.record(batch)
+            if not got["ok"]:
+                out(f"nmas-alert-backfill: STOPPED: {got['error']}; {total['added']} added "
+                    "before it")
+                return 1
+            total["added"] += got["added"]
+            total["held"] += got["held"]
+    except (ConnectionError, ValueError, H.Refused) as exc:
+        out(f"nmas-alert-backfill: STOPPED: {exc}; {total['added']} added before it")
+        return 1
+    except RuntimeError as exc:
+        out(f"nmas-alert-backfill: REFUSED: {exc}; {total['added']} added before it")
+        return 2
+    out(f"read {total['rows']} annotations in {stats['pages']} pages ({stats['days']} days, "
+        f"{stats['split']} split, {stats['jumps']} quiet stretches skipped) from {store}: "
+        f"{total['transitions']} transitions, {total['not_transitions']} moves between normal "
+        f"states left out; oldest {oldest or 'none'}")
+    if args.dry_run:
+        out("dry run: nothing recorded")
+    else:
+        out(f"recorded {total['added']}, already held {total['held']}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

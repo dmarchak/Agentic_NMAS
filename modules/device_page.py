@@ -269,27 +269,74 @@ def _drift_last(ref) -> dict:
     return state.get("last_result") or {}
 
 
-def drift_row(ref, host: str) -> dict:
-    """The Overview's Drift row: the network's last run's word on *host*. A drifted row carries
-    ``open``: the row opens onto its lines, its log and the three choices (C342, fetched by
-    `drift_detail` when opened). Unreadable is ``unreadable`` with its reason, drawn apart from
-    a clean run and from a network never checked."""
+#: The drift check's row, named for what it measures (C1819, the operator's Walk 3, 2026-10-26:
+#: "Drift: clean at the last run" sat above "Intent: departs (+1 -1)" after a Capture took in a
+#: console change). The drift check compares the device with its golden, the record of its
+#: last capture, so a change made by hand and then captured is no change since that capture:
+#: never "clean". The row says what it compared, and flags a capture that took one in.
+SINCE_CAPTURE = "Since last capture"
+
+
+def drift_row(ref, host: str, taken_in: str = "") -> dict:
+    """The Overview's Since last capture row: the network's last drift run's word on *host*,
+    the device against its golden. A changed row carries ``open``: the row opens onto its
+    lines, its log and the three choices (C342, fetched by `drift_detail` when opened).
+    Unreadable is ``unreadable`` with its reason, drawn apart from a run that found no change
+    and from a network never checked. *taken_in* (`capture_taken_in`): the last capture took in
+    a change made outside Mercury that departs from intent, said on the row, and a row that
+    would read unchanged is a warning, never a pass (C1819)."""
+    name = SINCE_CAPTURE
     last = _drift_last(ref)
     if last.get("_error"):
-        return {"name": "Drift", "state": "unknown", "unreadable": True,
-                "text": last["_error"] + f"; whether {host} is at its golden is not known"}
+        return {"name": name, "state": "unknown", "unreadable": True,
+                "text": last["_error"] + f"; whether {host} is at its golden is not known"
+                        + (f"; {taken_in}" if taken_in else "")}
     if not last:
-        return {"name": "Drift", "state": "unknown", "text": "no drift run recorded for this list"}
+        return {"name": name, "state": "unknown",
+                "text": "no drift run recorded for this list" + (f"; {taken_in}" if taken_in
+                                                                 else "")}
     drifted = {d.get("hostname"): d.get("diff_lines") for d in last.get("drifted_devices") or []}
     skipped = [s if isinstance(s, str) else (s or {}).get("hostname") for s in last.get("skipped") or []]
     if host in drifted:
-        return {"name": "Drift", "state": "warn", "at": last.get("timestamp"), "open": True,
-                "text": f"differs from its golden by {drifted[host]} line(s)"}
+        return {"name": name, "state": "warn", "at": last.get("timestamp"), "open": True,
+                "text": f"changed: differs from its golden by {drifted[host]} line(s)"}
     if host in skipped:
-        return {"name": "Drift", "state": "unknown", "at": last.get("timestamp"),
-                "text": "skipped by the last run"}
-    return {"name": "Drift", "state": "ok", "at": last.get("timestamp"),
-            "text": "clean at the last run"}
+        return {"name": name, "state": "unknown", "at": last.get("timestamp"),
+                "text": "skipped by the last run" + (f"; {taken_in}" if taken_in else "")}
+    if taken_in:
+        return {"name": name, "state": "warn", "at": last.get("timestamp"),
+                "text": f"unchanged at the last run, but {taken_in}"}
+    return {"name": name, "state": "ok", "at": last.get("timestamp"),
+            "text": "unchanged at the last run"}
+
+
+def capture_taken_in(ref, host: str, intent_result: dict) -> str:
+    """The words for a device whose last golden is a capture that took in a change made outside
+    Mercury that departs from intent (`out_of_band`: a capture's Source, its `Intent-Match:`
+    naming the device, and a line no rule explains in the Intent check's comparison NOW, so a
+    departure intent has since adopted, or one a rule explains, is never flagged), with how
+    the device's log says it changed when the capture kept that; or ``""``. One `git log` of
+    the device's golden (its last commit's trailers): no per-device work."""
+    from modules.nsot import out_of_band as OOB
+    from modules.nsot import repo as R
+
+    if not OOB.unexplained(intent_result):
+        return ""
+    rc, out, _ = R.git(ref.repo_dir, "log", "-1",
+                       "--format=%h%x1f%(trailers:key=Source,valueonly)%x1f"
+                       "%(trailers:key=Intent-Match,valueonly)%x1f"
+                       "%(trailers:key=Out-Of-Band,valueonly,separator=%x1c)",
+                       "--", f"golden/{R._safe_name(host)}.cfg")          # noqa: SLF001
+    parts = (out or "").strip().split("\x1f") if rc == 0 else []
+    if len(parts) < 3 or parts[1].strip() not in OOB.CAPTURE_SOURCES:
+        return ""
+    off = OOB.departures(parts[2]).get(host)
+    if off is None:
+        return ""
+    how = OOB.named((parts[3] if len(parts) > 3 else "").split("\x1c")).get(host, "")
+    return (f"its last capture ({parts[0]}) took in a change made outside Mercury that departs "
+            f"from intent ({off})" + (f": changed out-of-band, {OOB.short(how)}" if how else "")
+            + "; it is not at its intent (see Intent)")
 
 
 #: The drift item's action type (`drift_check` queues one per drifted device).
@@ -406,16 +453,19 @@ def checks(ref, dev: dict) -> list:
     host, ip = dev.get("hostname"), dev.get("ip")
     out = []
 
-    # Drift: this list's last run. An unreadable record is its own state (C342), never "no run"
-    # and never clean: `_load_state` answers ``{UNREADABLE: why}`` for a file it cannot read.
-    out.append(drift_row(ref, host))
-
     # Intent: does the committed golden match what the device SHOULD run (its
-    # own intent and what it inherits from the profile)? Drift says device
+    # own intent and what it inherits from the profile)? Since last capture says device
     # against golden; this says golden against intent, and the two together
     # are the difference plan 1c promises (the operator, 2026-09-30: r6 read
     # "Drift: clean" while carrying `cdp run` its intent no longer has).
-    out.append(intent_check(ref, dev))
+    intent_row, intent_result = _intent_check(ref, dev)
+
+    # Since last capture: this list's last drift run. An unreadable record is its own state
+    # (C342), never "no run" and never clean: `_load_state` answers ``{UNREADABLE: why}`` for a
+    # file it cannot read. A last capture that took in an out-of-band change departing from
+    # intent is said on it, and it is never a pass (C1819).
+    out.append(drift_row(ref, host, capture_taken_in(ref, host, intent_result)))
+    out.append(intent_row)
 
     # Reboot-safe: the startup check's last run.
     try:
@@ -525,6 +575,12 @@ def intent_check(ref, dev: dict) -> dict:
     (`intent_match`) of the COMMITTED golden against effective intent: each
     line on the device that intent lacks, and each in intent the device lacks,
     masked on the way out."""
+    return _intent_check(ref, dev)[0]
+
+
+def _intent_check(ref, dev: dict) -> tuple:
+    """``(the Intent row, the comparison's result or {})``: the row, and the result the
+    Since last capture row judges a capture by (C1819)."""
     from modules import redact
     from modules.nsot import manifest
     from modules.nsot import repo as R
@@ -536,10 +592,10 @@ def intent_check(ref, dev: dict) -> dict:
         golden = R.committed_golden_for(ref.repo_dir, entry) if entry else {}
     except Exception as exc:                     # noqa: BLE001
         return {"name": "Intent", "state": "unknown",
-                "text": f"the committed golden could not be read ({type(exc).__name__})"}
+                "text": f"the committed golden could not be read ({type(exc).__name__})"}, {}
     if not golden.get("text"):
         return {"name": "Intent", "state": "unknown",
-                "text": "no committed golden to compare with its intent"}
+                "text": "no committed golden to compare with its intent"}, {}
     r = intent_match(ref.repo_dir, ref.name, host, golden["text"],
                      platform=(dev.get("platform") or "").strip())
     from modules.nsot.intent_match import first_boot, first_boot_words
@@ -547,7 +603,7 @@ def intent_check(ref, dev: dict) -> dict:
         # Its intent is onboarding's bootstrap (C1188): the next step, never the template's
         # exception (W4: `_common.j2` line 6 and the intent's 34 keys, as the row's words).
         return {"name": "Intent", "state": "unknown", "text": first_boot_words(host),
-                "on_device": [], "in_intent": [], "commit": (golden.get("commit") or "")[:7]}
+                "on_device": [], "in_intent": [], "commit": (golden.get("commit") or "")[:7]}, r
     on_device =[redact.redact_text(l[2:]) for l in r["lines"] if l.startswith("- ")]
     in_intent = [redact.redact_text(l[2:]) for l in r["lines"] if l.startswith("+ ")]
     # P2's rules (`differs`): each class's count and its few words, after the departure's own,
@@ -559,7 +615,7 @@ def intent_check(ref, dev: dict) -> dict:
     return {"name": "Intent", "state": {"match": "ok", "differs": "warn"}.get(r["state"], "unknown"),
             "text": redact.redact_text(explain(r) + (f". {by_rule}" if by_rule else "")),
             "on_device": on_device, "in_intent": in_intent,
-            "commit": (golden.get("commit") or "")[:7]}
+            "commit": (golden.get("commit") or "")[:7]}, r
 
 
 # ---------------------------------------------------------------- Monitoring

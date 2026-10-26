@@ -89,7 +89,7 @@ def intent_match(repo: str, list_name: str, hostname: str, config_text: str,
 def _classes(details: dict, config_text: str, intent: dict, stored: str, platform: str):
     """``(classes, vtp mode)``: P2's rules over the difference (`differs.classify`), the VTP
     mode read from the golden as captured (its `! VTP:` header or its `vtp mode` line), the
-    not-modelled lines from intent and from the golden's own parse. Every line, never only the
+    not-modelled lines from intent and, apart, from the golden's own parse. Every line, never only the
     capped ones. A rule that cannot be applied leaves its lines unexplained, never a guess."""
     from modules.nsot import differs
     from modules.nsot.parsers import get_parser
@@ -100,8 +100,10 @@ def _classes(details: dict, config_text: str, intent: dict, stored: str, platfor
     except Exception as exc:                   # noqa: BLE001
         log.warning("intent_match: the golden's parse for its not-modelled lines failed: %s", exc)
         captured = {}
-    return differs.classify(details, vtp_mode=mode,
-                            unmodelled=differs.unmodelled_of(intent, captured)), mode
+    # Intent's not-modelled lines and the golden's apart, so a line only the device carries is
+    # never said as carried in intent (C1812).
+    return differs.classify(details, vtp_mode=mode, unmodelled=differs.unmodelled_of(intent),
+                            golden_unmodelled=differs.unmodelled_of(captured)), mode
 
 
 def first_boot(repo: str, hostname: str) -> bool:

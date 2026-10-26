@@ -78,11 +78,11 @@ def test_build_captures_the_alert_s_device_and_those_one_hop_from_it(ctx):  # no
     sec = _section(pack, "endpoints")
     assert sec["state"] == "ok"
     assert sorted(p["device"] for p in sec["pieces"]) == sorted([alert_dev, one])
-    assert pack["schema"] == 3
+    assert pack["schema"] == 4   # 3 brought the endpoints; 4 (the marks) keeps them
 
 
 def test_the_pack_holds_it_after_observed_on_schema_3():
-    assert EP.SCHEMA == 3
+    assert EP.SCHEMA == 4   # 3 brought the endpoints; 4, the sections' marks, keeps them
     assert EP.SECTIONS.index("endpoints") == EP.SECTIONS.index("observed") + 1
 
 

@@ -331,8 +331,15 @@ def run(list_name: str, hostnames: list, actor: str, confirmed_hash: str, *, job
         # one only when two goldens changed, so an in-sync network never got its restore point
         # (the operator, 2026-10-09: "v2 save all devices needs to add a new baseline"). Earned
         # or denied by measurement there: coverage of the inventory and every device at intent.
+        # A save that takes in a change no rule explains, made outside Mercury (C1819): how the
+        # device's own log says it changed, kept in the commit (one Loki ask per such device).
+        from modules.nsot import out_of_band
+        departing = [inventory[it.hostname] for it in items
+                     if read[it.hostname][0].get("changed")
+                     and out_of_band.unexplained(read[it.hostname][0].get("intent"))]
         save = (save_golden or R.save_golden)(
             list_name, items, source=SOURCE_FLEET if p["fleet"] else SOURCE, actor=actor,
+            extra_trailers=out_of_band.trailers(repo_dir, departing),
             allow_new=False, inventory_size=len(inventory) if p["fleet"] else 0,
             baseline=None if p["fleet"] else False)
         commit = (save.get("commit") or "")[:12]

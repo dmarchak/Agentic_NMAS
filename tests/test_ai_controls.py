@@ -248,7 +248,9 @@ def test_every_template_drawing_an_ai_control_draws_its_mark_state_and_reason():
         if c["template"] is None:
             assert drawn == [], f"{name} is registered as not drawn, and {drawn} draw it"
         else:
-            assert drawn == [os.path.basename(c["template"])], (name, drawn)
+            # The template that draws it, and each other one the registry names (`also`).
+            want = [c["template"]] + list(c.get("also") or ())
+            assert drawn == sorted(os.path.basename(t) for t in want), (name, drawn)
 
 
 def test_a_template_posting_to_an_ai_endpoint_without_the_mark_is_found():

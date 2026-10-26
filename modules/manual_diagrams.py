@@ -1235,6 +1235,38 @@ def alert_evidence():
     ])
 
 
+def alert_history():
+    return svg(470, (
+        "The alert history: after each read of Grafana's alerts, every transition it shows "
+        "(pending, firing, resolved, no data, error), timed by Grafana, is recorded once in the "
+        "alert history; Grafana's own state history is read in once by the backfill, the same "
+        "transition never recorded twice; History groups them into past alerts by rule; Build "
+        "evidence rebuilds a past alert's pack as of its time, each section marked captured, "
+        "rebuilt or cannot be rebuilt, and keeps it frozen for Explain; past its network's "
+        "retention a transition moves to the data lake."), [
+        lanes(20, 464, right="THE SOURCES"),
+        svc(250, 36, 130, 36, "Grafana", "its alerts, each read"),
+        arrow("read", 248, 56, 202, 56),
+        doc("box", 14, 40, 186, 36, "Each transition", "Grafana's time, once"),
+        num(14, 40, 1),
+        svc(250, 96, 130, 36, "State history", "read in once"),
+        arrow("read", 248, 116, 202, 116),
+        store(14, 100, 186, 36, "The alert history", "one line a transition"),
+        num(14, 100, 2),
+        doc("box", 14, 160, 186, 36, "History", "past alerts, by rule"),
+        num(14, 160, 3),
+        band(214, 110, "Build evidence · as of the alert's time"),
+        svc(250, 242, 130, 30, "Repository", "at the commit then"),
+        svc(250, 284, 130, 30, "Prometheus, Loki", "over its window"),
+        *rows([(256, "read", 4, "Rebuilt, each marked", "or said it cannot be")],
+              dev_x=250),
+        store(14, 340, 186, 40, "The evidence pack record", "frozen for Explain"),
+        num(14, 340, 5),
+        t(14, 402, "Past its retention: the data lake.", "sm"),
+        t(14, 444, "No device is asked or changed.", "sm"),
+    ])
+
+
 def ask_in_words():
     return svg(470, (
         "Ask in words: the question's words choose the metrics to offer, never the whole "
@@ -1609,6 +1641,7 @@ DIAGRAMS = {
     "logging-path": logging_path,
     "reveal-log-line": reveal_log_line,
     "alert-evidence": alert_evidence,
+    "alert-history": alert_history,
     "ask-in-words": ask_in_words,
     "intent-in-words": intent_in_words,
     "path-trace": path_trace,

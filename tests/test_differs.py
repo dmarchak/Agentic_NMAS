@@ -288,15 +288,41 @@ class TestUnmodelled:
             '+ action 1.0 syslog msg "peer 10.255.1.13 down"', "+ carrier-delay msec 0",
             '- action 1.0 syslog msg "peer 2001:DB8:1::13 down"'])
         assert "does not model" in by["unmodelled"]["why"]
+        # C1812: the two `+` lines are intent's not-modelled list's; the `-` line (the device's
+        # IPv6 peer) intent does not carry: only the device's golden does, and the words say so.
+        assert by["unmodelled"]["carried"] == {"intent": 2, "golden": 1}
+        assert differs.words(got["classes"]) == (
+            "By rule: 3 lines: lines Mercury does not model: 2 carried verbatim in intent's "
+            "not-modelled list, 1 only in the device's golden (intent does not carry them)")
 
     def test_a_not_modelled_line_only_the_device_has_is_unmodelled_by_its_own_parse(self, lab):
-        """Intent without the applet; the golden holds it: the golden's own parse names it."""
+        """Intent without the applet; the golden holds it: the golden's own parse names it, and
+        the words say the device's golden carries it, never intent (C1812: they said "carried
+        verbatim in intent")."""
         intent = _fleet("r2")
         golden = _r2_unmodelled(intent)
         got = _check(lab, "r2", "cisco_iosxe", intent, golden)
         by = _by_class(got)
         assert list(by) == ["unmodelled"], got["classes"]
         assert "- event manager applet PEER-DOWN" in by["unmodelled"]["lines"]
+        n = len(by["unmodelled"]["lines"])
+        assert by["unmodelled"]["carried"] == {"intent": 0, "golden": n}
+        words = differs.words(got["classes"])
+        assert words == (f"By rule: {n} lines: lines Mercury does not model, carried only in "
+                         "the device's golden: intent does not carry them"), words
+        assert "in intent's not-modelled list" not in words
+        assert "intent carries" not in by["unmodelled"]["why"]
+        assert "only the device's golden carries" in by["unmodelled"]["why"]
+
+    def test_a_line_intents_list_carries_is_said_as_intents(self):
+        pairs = differs.unmodelled_of({"unmodeled": [{"line": "event manager applet A",
+                                                      "children": [" action 1.0 x"]}]})
+        got = differs.classify({"extra": [{"section": "event manager applet A",
+                                           "line": "action 1.0 x", "kind": "child"}]},
+                               unmodelled=pairs, golden_unmodelled=pairs)
+        assert got[0]["carried"] == {"intent": 1, "golden": 0}
+        assert differs.words(got) == ("By rule: 1 line: lines Mercury does not model, carried "
+                                      "verbatim in intent's not-modelled list")
 
     def test_an_acknowledged_line_at_column_0_is_unmodelled_an_indented_one_names_no_block(self):
         hv = {"unmodeled_ack": {"lines": ["quantum-tunnel profile ALPHA", " action 9 x"]}}
@@ -380,10 +406,15 @@ class TestTheResult:
             "By rule: 2 lines: VLANs a VTP server switch keeps in vlan.dat, never in its "
             "configuration; 1 line: not explained by a rule")
 
-    def test_no_rule_no_words(self):
+    def test_no_rule_says_so_and_no_classes_no_words(self):
+        """C1821 (the operator, Walk 3, 2026-10-26): a departure no rule explains said nothing,
+        so it was not told apart from an explained one; it says "No rule explains this
+        difference" now. The premise "no rule, no words" was the defect, corrected here, not
+        loosened: no classes at all (a match) still adds nothing."""
         classes = differs.classify({"extra": [{"section": "", "line": "ip cef",
                                                "kind": "child"}]})
-        assert differs.explained(classes) is False and differs.words(classes) == ""
+        assert differs.explained(classes) is False
+        assert differs.words(classes) == "No rule explains this difference" == differs.NO_RULE
         assert differs.classify({}) == [] and differs.words([]) == ""
 
 
@@ -408,12 +439,21 @@ class TestTheIntentRow:
         assert row["text"].endswith(". By rule: 2 lines: VLANs a VTP server switch keeps in "
                                     "vlan.dat, never in its configuration"), row["text"]
 
-    def test_a_difference_no_rule_explains_adds_nothing(self, lab, monkeypatch):
+    def test_a_difference_no_rule_explains_says_so(self, lab, monkeypatch):
+        """C1821: the row says "No rule explains this difference" after the departure's own
+        words (it added nothing, so it read as an explained one's would), IPv6 and IPv4 beside
+        each other; and the walk's own shape, a description changed by hand."""
         golden = _fleet("s3")
-        intent = _replace(golden, " ipv6 address 2001:DB8:1::23/128\n",
-                          " ipv6 address 2001:DB8:1::23/128\n ipv6 address 2001:DB8:1::99/128\n")
-        row = self._row(lab, monkeypatch, "s3", "cisco_ios", intent, golden)
-        assert row["state"] == "warn" and "By rule" not in row["text"], row["text"]
+        for old, new in ((" ipv6 address 2001:DB8:1::23/128\n",
+                          " ipv6 address 2001:DB8:1::23/128\n ipv6 address 2001:DB8:1::99/128\n"),
+                         (" ip address 10.255.1.23 255.255.255.255\n",
+                          " ip address 10.255.1.23 255.255.255.255\n"
+                          " ip address 192.0.2.23 255.255.255.255 secondary\n"),
+                         (" description mgmt identity\n", " description drift walk\n")):
+            row = self._row(lab, monkeypatch, "s3", "cisco_ios", _replace(golden, old, new),
+                            golden)
+            assert row["state"] == "warn" and "By rule" not in row["text"], row["text"]
+            assert row["text"].endswith(". No rule explains this difference"), row["text"]
 
     def test_the_rows_text_is_masked_as_the_lines_beside_it(self, lab, monkeypatch):
         """The departure's words name up to three of its lines: a changed credential line's

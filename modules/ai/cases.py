@@ -188,10 +188,12 @@ def logs_misses(expect: dict, got: dict, now: float) -> list:
 
 
 def stale_logs(data: dict, offered) -> list:
-    """The logs cases whose expected mnemonics the offer no longer holds, before anything is
-    asked: *offered(question)* answers the mnemonics the question would be offered (None when
-    they cannot be read, itself a problem). A case expecting mnemonics is stale when no
-    allowed set is within the offer, so the model could never choose it."""
+    """The logs cases whose expected mnemonics the evidence no longer holds, before anything
+    is asked: *offered(question)* answers the mnemonics the evidence holds for it (the logs
+    reader's counts and the platform pack's events; scripts/nmas-nl-cases), or None when they
+    cannot be read, itself a problem. A case expecting mnemonics is stale when no allowed set
+    is within them. What one prompt version offers is that version's, measured as its misses,
+    never a stale case (2026-10-26)."""
     out = []
     for c in data["cases"]:
         e = c["expect"]

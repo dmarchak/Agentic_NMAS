@@ -322,7 +322,7 @@ class TestOverview:
 
     def test_each_check_is_drawn_and_an_absent_source_is_unknown_never_a_pass(self, lab):
         _, html = _get(lab, "/v2/device/r3/overview")
-        for name in ("Drift", "Reboot-safe", "Alerts"):
+        for name in ("Since last capture", "Reboot-safe", "Alerts"):
             assert f"<strong>{name}</strong>" in html
         # Oxidized freshness was switched off (2026-10-08, reader_job.RETIRED): not drawn.
         assert "<strong>Freshness</strong>" not in html

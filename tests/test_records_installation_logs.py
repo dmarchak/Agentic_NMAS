@@ -1,7 +1,8 @@
-"""Five of the installation's own logs on the records database (K31 part 2b), through the one
+"""Six of the installation's own logs on the records database (K31 part 2b), through the one
 line-store seam `records_migrate.store_rows` / `store_append`: the reveal record, the host steps
 said done, the heartbeat windows' re-measures, NetBox's removals, and the alerts' evidence packs
-(PHASE8_PLAN 15.9, P1; `evidence_pack.record` and `evidence_pack.read`), against a REAL PostgreSQL
+(PHASE8_PLAN 15.9, P1; `evidence_pack.record` and `evidence_pack.read`), and the alert history
+(`alert_history.record` and `alert_history.read`, 2026-10-26), against a REAL PostgreSQL
 shaped as host step 6a makes it (tests/pg_instance.py; skipped with its reason here, a failure in
 CI).
 
@@ -17,7 +18,8 @@ import stat
 
 import pytest
 
-from modules import evidence_pack, heartbeat_windows, host_steps, netbox_guard, records_db
+from modules import alert_history, evidence_pack, heartbeat_windows, host_steps, netbox_guard
+from modules import records_db
 from modules import records_migrate as RM
 from modules import reveal_audit
 from tests.test_records_restarts import pg  # noqa: F401 (the module's real server)
@@ -68,8 +70,21 @@ def _pack(n):
     assert EP.record(pack)["ok"]
 
 
+def _transition(n):
+    """A transition from Grafana's captured state history (tests/fixtures/grafana/
+    alert_history/), its time moved n minutes so each is its own, kept through its owner's
+    recorder (`alert_history.record`, the store's lock across its read and append)."""
+    from modules import alert_history
+    from tests.test_alert_history import ann, load
+
+    a = dict(ann(load("annotations_72h"), 17895), time=1792950000000 + n * 60000)
+    assert alert_history.record([alert_history.from_annotation(a, "grafana-alerts")])["added"]
+
+
 #: Each store: its writer, its owner's read as a list of rows, and its file.
 CASES = {
+    "alert_history": (_transition, lambda: alert_history.read()["rows"],
+                      lambda: alert_history._path()),
     "evidence_packs": (_pack, lambda: evidence_pack.read()["rows"],
                        lambda: evidence_pack._path()),
     "reveals": (_reveal, lambda: reveal_audit.read()["rows"], lambda: reveal_audit._path()),
@@ -154,6 +169,13 @@ class TestEachOwnerSaysAFailedRecord:
     def test_a_heartbeat_record_says_it_cannot_be_read(self, down):
         assert heartbeat_windows.records()["error"].startswith("the record cannot be read")
         assert "error" in heartbeat_windows.last_written()
+
+    def test_the_alert_history_records_nothing_and_says_why(self, down):
+        from tests.test_alert_history import ann, load
+        got = alert_history.record([alert_history.from_annotation(
+            ann(load("annotations_72h"), 17895), "grafana-alerts")])
+        assert got["ok"] is False and "cannot be read" in got["error"] and got["added"] == 0
+        assert alert_history.read()["state"] == "unreadable"
 
     def test_a_pack_says_it_was_not_kept_and_none_is_built_blind(self, down):
         _write, _read, _path = CASES["evidence_packs"]

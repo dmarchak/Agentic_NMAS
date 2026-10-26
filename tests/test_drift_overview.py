@@ -80,9 +80,9 @@ def _detail(lab):  # noqa: F811
 
 
 def _drift_row(html):
-    m = re.search(r'<li class="check[^"]*">\s*<span class="check-ico">.*?<strong>Drift</strong>'
+    m = re.search(r'<li class="check[^"]*">\s*<span class="check-ico">.*?<strong>Since last capture</strong>'
                   r'(.*?)</li>', html, re.S)
-    assert m, "the Overview draws no Drift row"
+    assert m, "the Overview draws no Since last capture row (the drift check's, C1819)"
     return m.group(0)
 
 
@@ -175,14 +175,14 @@ class TestTheRow:
         result = _drift(monkeypatch, running=_golden())
         assert result["clean"] == 1 and not result["drifted_devices"], result
         row = _drift_row(_overview(lab))
-        assert "clean at the last run" in row and "check-ok" in row
+        assert "unchanged at the last run" in row and "check-ok" in row
         assert "<details" not in row and "/drift" not in row
 
     def test_drifted_the_row_is_closed_and_asks_for_its_lines_once(self, lab, monkeypatch):  # noqa: F811
         result = _drift(monkeypatch)
         n = result["drifted_devices"][0]["diff_lines"]
         row = _drift_row(_overview(lab))
-        assert f"differs from its golden by {n} line(s)" in row and "check-warn" in row
+        assert f"changed: differs from its golden by {n} line(s)" in row and "check-warn" in row
         details = re.search(r"<details [^>]*>", row)
         assert details, "a drifted row draws nothing to open"
         details = details.group(0)
@@ -203,7 +203,7 @@ class TestTheRow:
         assert "check-unreadable" in row and 'class="check-unread"' in row
         assert "unreadable" in text and "the drift record could not be read" in text
         assert "whether r3 is at its golden is not known" in text
-        assert "no drift run recorded" not in text and "clean at the last run" not in text
+        assert "no drift run recorded" not in text and "unchanged at the last run" not in text
         assert "check-ok" not in row and "<details" not in row
 
     def test_a_network_never_checked_says_so(self, lab):  # noqa: F811

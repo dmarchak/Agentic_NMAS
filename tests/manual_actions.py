@@ -62,6 +62,11 @@ NOT_AN_OPERATION = {
     ("_logs_tail.html", "Show"): "applies the live tail's filters to the stored window, a read",
     ("_alert_evidence.html", "Show"): "narrows Monitoring › Alerts' cards to a rule, device or "
                                       "label, a read of the stored alerts and packs",
+    ("_alert_history.html", "Show"): "narrows Monitoring › Alerts › History to words, a rule, a "
+                                     "device and a time, a read of the alert history",
+    ("_alert_history.html", "Explain"): "drawn disabled beside Build evidence on a past alert "
+                                        "with no pack (Explain reads a pack); the pack Build "
+                                        "evidence draws carries the live one, linked",
     ("devices.html", "Discovered"): "opens Onboard devices › Discovered, a page of its own",
     ("_onboard_discovered.html", "Search"): "narrows the discovered devices to a MAC, client-id "
                                             "or hostname, a read of the reader's stored value",

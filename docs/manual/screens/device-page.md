@@ -34,19 +34,27 @@ off for now (see [Devices](devices#drained)).
 What the tool knows about the device, each fact with where it came from: its last golden, its
 intent state (the state the Devices list shows for it, from its last measurement, or "intent
 changed since measured" when its intent, the profile or the template library has moved since),
-whether it is answering, the monitoring profile it inherits, and its checks: **Drift**,
-**Intent** (whether its golden matches its intent now), **Reboot-safe** (whether the hourly
+whether it is answering, the monitoring profile it inherits, and its checks: **Since last
+capture** (the drift check's), **Intent** (whether its golden matches its intent now), **Reboot-safe** (whether the hourly
 startup check found its startup config carrying its credential), **Credential** (how long since
 Mercury last rotated it, or "never rotated by Mercury", and when its profile's rotation policy
 next makes it due; see [on a schedule](rotate#scheduled)) and **Alerts**. For a network that
 takes Default's monitoring profile, the profile line does not yet name Default's (a gap,
 registered, C1362).
 
-**Drift** is the network's last drift run's word on the device: clean at the last run, skipped,
-or how many lines it differs from its golden by. A drift record that cannot be read says
-**unreadable** with the reason: whether the device is at its golden is then not known, which is
-neither clean nor "no drift run recorded". A drifted row opens, in place, onto three parts,
-read when you open it (nothing is read from the device):
+**Since last capture** is the network's last drift run's word on the device, the device
+against its golden, named for what it compares (a golden is the record of its last capture):
+unchanged at the last run, skipped, or changed, with how many lines it differs from its golden
+by. It never says whether the device is right: that is **Intent**. When its last capture took
+in a change made outside Mercury that departs from intent by a line no rule explains, the row
+says so and is a warning, never a pass: "unchanged at the last run, but its last capture
+(`<commit>`) took in a change made outside Mercury that departs from intent (+1 -1): changed
+out-of-band, by console per SYS-5-CONFIG_I; it is not at its intent (see Intent)" (how it was
+changed is the device's own log line, kept with the capture; see
+[Drift](drift#out-of-band)). A drift record that cannot be read says **unreadable** with the
+reason: whether the device is at its golden is then not known, which is neither unchanged nor
+"no drift run recorded". A changed row opens, in place, onto three parts, read when you open it
+(nothing is read from the device):
 
 - **The lines**: the difference the drift run kept, its golden (`-`) against what it ran (`+`),
   every line masked as every other screen masks configuration (a value in a secret's position
@@ -69,13 +77,17 @@ read when you open it (nothing is read from the device):
 **Intent** names the lines on the device that intent lacks and the lines in intent the device
 lacks, masked. Where a rule explains some of them, the row says so after its lines, each class
 with its count ("By rule: 2 lines: VLANs a VTP server switch keeps in vlan.dat, never in its
-configuration; 1 line: not explained by a rule"). The rules: VLAN lines intent has on a switch
+configuration; 1 line: not explained by a rule"). Where no rule explains any of them, the row
+says **No rule explains this difference**, so a departure nothing accounts for is never read as
+one a rule does. The rules: VLAN lines intent has on a switch
 whose VTP mode is server or client (such a switch keeps its VLANs in its VLAN database and never
 prints them, so its golden cannot hold them; the mode is read from the golden's capture header
 or its `vtp mode` line, and when neither says, the VLAN lines stay unexplained); a section
 holding the same lines in another order (in an access list or route map that order is a real
-change); a line Mercury does not model, carried as it is in intent; and the device's own
-self-signed certificate. A class explains a difference and never clears it: the row stays a
+change); a line Mercury does not model, said with where it is carried: verbatim in intent's
+not-modelled list, or only in the device's golden (a line on the device that intent does not
+carry at all, kept by adding it to intent's not-modelled list or removed in a Mode B plan); and
+the device's own self-signed certificate. A class explains a difference and never clears it: the row stays a
 departure until the golden matches intent. Whether a VTP switch has a VLAN is read with
 `show vlan id <N>` in [Show commands](show-commands).
 

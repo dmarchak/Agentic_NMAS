@@ -1,0 +1,2477 @@
+[
+ {
+  "alertId": 6,
+  "alertName": "Interface output discards",
+  "created": 1792551473601,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0.7958333333333333,
+    "C": 1
+   }
+  },
+  "id": 15111,
+  "newState": "Pending",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:Interface output discards",
+   "grafana_folder:RCN Lab",
+   "ifDescr:GigabitEthernet1/1",
+   "instance:10.255.1.23"
+  ],
+  "text": "Interface output discards {alertname=Interface output discards, grafana_folder=RCN Lab, ifDescr=GigabitEthernet1/1, instance=10.255.1.23} - A=0.795833, C=1.000000",
+  "time": 1792551470000,
+  "timeEnd": 1792551470000,
+  "updated": 1792551473601
+ },
+ {
+  "alertId": 6,
+  "alertName": "Interface output discards",
+  "created": 1792551233601,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0.3333333333333333,
+    "C": 0
+   }
+  },
+  "id": 15110,
+  "newState": "Normal",
+  "prevState": "Alerting",
+  "tags": [
+   "alertname:Interface output discards",
+   "grafana_folder:RCN Lab",
+   "ifDescr:GigabitEthernet1/1",
+   "instance:10.255.1.23"
+  ],
+  "text": "Interface output discards {alertname=Interface output discards, grafana_folder=RCN Lab, ifDescr=GigabitEthernet1/1, instance=10.255.1.23} - A=0.333333, C=0.000000",
+  "time": 1792551230000,
+  "timeEnd": 1792551230000,
+  "updated": 1792551233601
+ },
+ {
+  "alertId": 6,
+  "alertName": "Interface output discards",
+  "created": 1792550873602,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0.11666666666666667,
+    "C": 0
+   }
+  },
+  "id": 15109,
+  "newState": "Normal",
+  "prevState": "Alerting",
+  "tags": [
+   "alertname:Interface output discards",
+   "grafana_folder:RCN Lab",
+   "ifDescr:GigabitEthernet1/0",
+   "instance:10.255.1.23"
+  ],
+  "text": "Interface output discards {alertname=Interface output discards, grafana_folder=RCN Lab, ifDescr=GigabitEthernet1/0, instance=10.255.1.23} - A=0.116667, C=0.000000",
+  "time": 1792550870000,
+  "timeEnd": 1792550870000,
+  "updated": 1792550873602
+ },
+ {
+  "alertId": 6,
+  "alertName": "Interface output discards",
+  "created": 1792550813606,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0.6166718055983799,
+    "C": 1
+   }
+  },
+  "id": 15108,
+  "newState": "Alerting",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:Interface output discards",
+   "grafana_folder:RCN Lab",
+   "ifDescr:GigabitEthernet1/0",
+   "instance:10.255.1.23"
+  ],
+  "text": "Interface output discards {alertname=Interface output discards, grafana_folder=RCN Lab, ifDescr=GigabitEthernet1/0, instance=10.255.1.23} - A=0.616672, C=1.000000",
+  "time": 1792550810000,
+  "timeEnd": 1792550810000,
+  "updated": 1792550813606
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1792550632181,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": -1,
+    "C": -1
+   }
+  },
+  "id": 15107,
+  "newState": "Normal (NoData)",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:r4",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.14",
+   "job:cisco_ipsla",
+   "role:router",
+   "rttMonCtrlAdminIndex:1"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=r4, grafana_folder=RCN Lab, instance=10.255.1.14, job=cisco_ipsla, role=router, rttMonCtrlAdminIndex=1} - A=-1.000000, C=-1.000000",
+  "time": 1792550630000,
+  "timeEnd": 1792550630000,
+  "updated": 1792550632181
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792550630022,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 1,
+    "C": 0
+   }
+  },
+  "id": 15106,
+  "newState": "Normal",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:r4",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.14",
+   "job:cisco_8000v",
+   "role:router"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=r4, grafana_folder=RCN Lab, instance=10.255.1.14, job=cisco_8000v, role=router} - A=1.000000, C=0.000000",
+  "time": 1792550630000,
+  "timeEnd": 1792550630000,
+  "updated": 1792550630022
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792550630022,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 1,
+    "C": 0
+   }
+  },
+  "id": 15105,
+  "newState": "Normal",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_8000v",
+   "role:router"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_8000v, role=router} - A=1.000000, C=0.000000",
+  "time": 1792550630000,
+  "timeEnd": 1792550630000,
+  "updated": 1792550630022
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1792550572163,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 4,
+    "C": 1
+   }
+  },
+  "id": 15104,
+  "newState": "Pending",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:r4",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.14",
+   "job:cisco_ipsla",
+   "role:router",
+   "rttMonCtrlAdminIndex:1"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=r4, grafana_folder=RCN Lab, instance=10.255.1.14, job=cisco_ipsla, role=router, rttMonCtrlAdminIndex=1} - A=4.000000, C=1.000000",
+  "time": 1792550570000,
+  "timeEnd": 1792550570000,
+  "updated": 1792550572163
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792550570059,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0,
+    "C": 1
+   }
+  },
+  "id": 15103,
+  "newState": "Pending",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:r4",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.14",
+   "job:cisco_8000v",
+   "role:router"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=r4, grafana_folder=RCN Lab, instance=10.255.1.14, job=cisco_8000v, role=router} - A=0.000000, C=1.000000",
+  "time": 1792550570000,
+  "timeEnd": 1792550570000,
+  "updated": 1792550570059
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792550570059,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0,
+    "C": 1
+   }
+  },
+  "id": 15102,
+  "newState": "Pending",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_8000v",
+   "role:router"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_8000v, role=router} - A=0.000000, C=1.000000",
+  "time": 1792550570000,
+  "timeEnd": 1792550570000,
+  "updated": 1792550570059
+ },
+ {
+  "alertId": 6,
+  "alertName": "Interface output discards",
+  "created": 1792550513610,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0.5666666666666667,
+    "C": 1
+   }
+  },
+  "id": 15101,
+  "newState": "Pending",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:Interface output discards",
+   "grafana_folder:RCN Lab",
+   "ifDescr:GigabitEthernet1/0",
+   "instance:10.255.1.23"
+  ],
+  "text": "Interface output discards {alertname=Interface output discards, grafana_folder=RCN Lab, ifDescr=GigabitEthernet1/0, instance=10.255.1.23} - A=0.566667, C=1.000000",
+  "time": 1792550510000,
+  "timeEnd": 1792550510000,
+  "updated": 1792550513610
+ },
+ {
+  "alertId": 6,
+  "alertName": "Interface output discards",
+  "created": 1792550453602,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0.5,
+    "C": 0
+   }
+  },
+  "id": 15100,
+  "newState": "Normal",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:Interface output discards",
+   "grafana_folder:RCN Lab",
+   "ifDescr:GigabitEthernet1/0",
+   "instance:10.255.1.23"
+  ],
+  "text": "Interface output discards {alertname=Interface output discards, grafana_folder=RCN Lab, ifDescr=GigabitEthernet1/0, instance=10.255.1.23} - A=0.500000, C=0.000000",
+  "time": 1792550450000,
+  "timeEnd": 1792550450000,
+  "updated": 1792550453602
+ },
+ {
+  "alertId": 6,
+  "alertName": "Interface output discards",
+  "created": 1792550393609,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0.6416666666666666,
+    "C": 1
+   }
+  },
+  "id": 15099,
+  "newState": "Pending",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:Interface output discards",
+   "grafana_folder:RCN Lab",
+   "ifDescr:GigabitEthernet1/0",
+   "instance:10.255.1.23"
+  ],
+  "text": "Interface output discards {alertname=Interface output discards, grafana_folder=RCN Lab, ifDescr=GigabitEthernet1/0, instance=10.255.1.23} - A=0.641667, C=1.000000",
+  "time": 1792550390000,
+  "timeEnd": 1792550390000,
+  "updated": 1792550393609
+ },
+ {
+  "alertId": 6,
+  "alertName": "Interface output discards",
+  "created": 1792550273614,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0.45416666666666666,
+    "C": 0
+   }
+  },
+  "id": 15098,
+  "newState": "Normal",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:Interface output discards",
+   "grafana_folder:RCN Lab",
+   "ifDescr:GigabitEthernet1/0",
+   "instance:10.255.1.23"
+  ],
+  "text": "Interface output discards {alertname=Interface output discards, grafana_folder=RCN Lab, ifDescr=GigabitEthernet1/0, instance=10.255.1.23} - A=0.454167, C=0.000000",
+  "time": 1792550270000,
+  "timeEnd": 1792550270000,
+  "updated": 1792550273614
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1792550092173,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": -1,
+    "C": -1
+   }
+  },
+  "id": 15097,
+  "newState": "Normal (NoData)",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_ipsla",
+   "role:router",
+   "rttMonCtrlAdminIndex:2"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_ipsla, role=router, rttMonCtrlAdminIndex=2} - A=-1.000000, C=-1.000000",
+  "time": 1792550090000,
+  "timeEnd": 1792550090000,
+  "updated": 1792550092173
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1792550032186,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 4,
+    "C": 1
+   }
+  },
+  "id": 15096,
+  "newState": "Pending",
+  "prevState": "Normal (NoData)",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_ipsla",
+   "role:router",
+   "rttMonCtrlAdminIndex:2"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_ipsla, role=router, rttMonCtrlAdminIndex=2} - A=4.000000, C=1.000000",
+  "time": 1792550030000,
+  "timeEnd": 1792550030000,
+  "updated": 1792550032186
+ },
+ {
+  "alertId": 6,
+  "alertName": "Interface output discards",
+  "created": 1792549973591,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0.6541666666666667,
+    "C": 1
+   }
+  },
+  "id": 15095,
+  "newState": "Pending",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:Interface output discards",
+   "grafana_folder:RCN Lab",
+   "ifDescr:GigabitEthernet1/0",
+   "instance:10.255.1.23"
+  ],
+  "text": "Interface output discards {alertname=Interface output discards, grafana_folder=RCN Lab, ifDescr=GigabitEthernet1/0, instance=10.255.1.23} - A=0.654167, C=1.000000",
+  "time": 1792549970000,
+  "timeEnd": 1792549970000,
+  "updated": 1792549973591
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1792549972173,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": -1,
+    "C": -1
+   }
+  },
+  "id": 15094,
+  "newState": "Normal (NoData)",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:s2",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.22",
+   "job:cisco_ipsla",
+   "role:switch",
+   "rttMonCtrlAdminIndex:1"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=s2, grafana_folder=RCN Lab, instance=10.255.1.22, job=cisco_ipsla, role=switch, rttMonCtrlAdminIndex=1} - A=-1.000000, C=-1.000000",
+  "time": 1792549970000,
+  "timeEnd": 1792549970000,
+  "updated": 1792549972173
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1792549912173,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 4,
+    "C": 1
+   }
+  },
+  "id": 15093,
+  "newState": "Pending",
+  "prevState": "Normal (NoData)",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:s2",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.22",
+   "job:cisco_ipsla",
+   "role:switch",
+   "rttMonCtrlAdminIndex:1"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=s2, grafana_folder=RCN Lab, instance=10.255.1.22, job=cisco_ipsla, role=switch, rttMonCtrlAdminIndex=1} - A=4.000000, C=1.000000",
+  "time": 1792549910000,
+  "timeEnd": 1792549910000,
+  "updated": 1792549912173
+ },
+ {
+  "alertId": 6,
+  "alertName": "Interface output discards",
+  "created": 1792549673601,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 2.4166666666666665,
+    "C": 1
+   }
+  },
+  "id": 15092,
+  "newState": "Alerting",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:Interface output discards",
+   "grafana_folder:RCN Lab",
+   "ifDescr:GigabitEthernet1/1",
+   "instance:10.255.1.23"
+  ],
+  "text": "Interface output discards {alertname=Interface output discards, grafana_folder=RCN Lab, ifDescr=GigabitEthernet1/1, instance=10.255.1.23} - A=2.416667, C=1.000000",
+  "time": 1792549670000,
+  "timeEnd": 1792549670000,
+  "updated": 1792549673601
+ },
+ {
+  "alertId": 6,
+  "alertName": "Interface output discards",
+  "created": 1792549373616,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0.9125,
+    "C": 1
+   }
+  },
+  "id": 15091,
+  "newState": "Pending",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:Interface output discards",
+   "grafana_folder:RCN Lab",
+   "ifDescr:GigabitEthernet1/1",
+   "instance:10.255.1.23"
+  ],
+  "text": "Interface output discards {alertname=Interface output discards, grafana_folder=RCN Lab, ifDescr=GigabitEthernet1/1, instance=10.255.1.23} - A=0.912500, C=1.000000",
+  "time": 1792549370000,
+  "timeEnd": 1792549370000,
+  "updated": 1792549373616
+ },
+ {
+  "alertId": 6,
+  "alertName": "Interface output discards",
+  "created": 1792549253602,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0.10416666666666667,
+    "C": 0
+   }
+  },
+  "id": 15090,
+  "newState": "Normal",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:Interface output discards",
+   "grafana_folder:RCN Lab",
+   "ifDescr:GigabitEthernet1/1",
+   "instance:10.255.1.23"
+  ],
+  "text": "Interface output discards {alertname=Interface output discards, grafana_folder=RCN Lab, ifDescr=GigabitEthernet1/1, instance=10.255.1.23} - A=0.104167, C=0.000000",
+  "time": 1792549250000,
+  "timeEnd": 1792549250000,
+  "updated": 1792549253602
+ },
+ {
+  "alertId": 6,
+  "alertName": "Interface output discards",
+  "created": 1792549193594,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0.5083333333333333,
+    "C": 1
+   }
+  },
+  "id": 15089,
+  "newState": "Pending",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:Interface output discards",
+   "grafana_folder:RCN Lab",
+   "ifDescr:GigabitEthernet1/1",
+   "instance:10.255.1.23"
+  ],
+  "text": "Interface output discards {alertname=Interface output discards, grafana_folder=RCN Lab, ifDescr=GigabitEthernet1/1, instance=10.255.1.23} - A=0.508333, C=1.000000",
+  "time": 1792549190000,
+  "timeEnd": 1792549190000,
+  "updated": 1792549193594
+ },
+ {
+  "alertId": 6,
+  "alertName": "Interface output discards",
+  "created": 1792548833616,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0.31666666666666665,
+    "C": 0
+   }
+  },
+  "id": 15088,
+  "newState": "Normal",
+  "prevState": "Alerting",
+  "tags": [
+   "alertname:Interface output discards",
+   "grafana_folder:RCN Lab",
+   "ifDescr:GigabitEthernet1/1",
+   "instance:10.255.1.23"
+  ],
+  "text": "Interface output discards {alertname=Interface output discards, grafana_folder=RCN Lab, ifDescr=GigabitEthernet1/1, instance=10.255.1.23} - A=0.316667, C=0.000000",
+  "time": 1792548830000,
+  "timeEnd": 1792548830000,
+  "updated": 1792548833616
+ },
+ {
+  "alertId": 6,
+  "alertName": "Interface output discards",
+  "created": 1792548773618,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0.5541666666666667,
+    "C": 1
+   }
+  },
+  "id": 15087,
+  "newState": "Alerting",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:Interface output discards",
+   "grafana_folder:RCN Lab",
+   "ifDescr:GigabitEthernet1/1",
+   "instance:10.255.1.23"
+  ],
+  "text": "Interface output discards {alertname=Interface output discards, grafana_folder=RCN Lab, ifDescr=GigabitEthernet1/1, instance=10.255.1.23} - A=0.554167, C=1.000000",
+  "time": 1792548770000,
+  "timeEnd": 1792548770000,
+  "updated": 1792548773618
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1792548712164,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": -1,
+    "C": -1
+   }
+  },
+  "id": 15086,
+  "newState": "Normal (NoData)",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_ipsla",
+   "role:router",
+   "rttMonCtrlAdminIndex:2"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_ipsla, role=router, rttMonCtrlAdminIndex=2} - A=-1.000000, C=-1.000000",
+  "time": 1792548710000,
+  "timeEnd": 1792548710000,
+  "updated": 1792548712164
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1792548712164,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": -1,
+    "C": -1
+   }
+  },
+  "id": 15085,
+  "newState": "Normal (NoData)",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:s2",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.22",
+   "job:cisco_ipsla",
+   "role:switch",
+   "rttMonCtrlAdminIndex:1"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=s2, grafana_folder=RCN Lab, instance=10.255.1.22, job=cisco_ipsla, role=switch, rttMonCtrlAdminIndex=1} - A=-1.000000, C=-1.000000",
+  "time": 1792548710000,
+  "timeEnd": 1792548710000,
+  "updated": 1792548712164
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1792548652165,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 4,
+    "C": 1
+   }
+  },
+  "id": 15084,
+  "newState": "Pending",
+  "prevState": "Normal (NoData)",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:s2",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.22",
+   "job:cisco_ipsla",
+   "role:switch",
+   "rttMonCtrlAdminIndex:1"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=s2, grafana_folder=RCN Lab, instance=10.255.1.22, job=cisco_ipsla, role=switch, rttMonCtrlAdminIndex=1} - A=4.000000, C=1.000000",
+  "time": 1792548650000,
+  "timeEnd": 1792548650000,
+  "updated": 1792548652165
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1792548652165,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 4,
+    "C": 1
+   }
+  },
+  "id": 15083,
+  "newState": "Pending",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_ipsla",
+   "role:router",
+   "rttMonCtrlAdminIndex:2"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_ipsla, role=router, rttMonCtrlAdminIndex=2} - A=4.000000, C=1.000000",
+  "time": 1792548650000,
+  "timeEnd": 1792548650000,
+  "updated": 1792548652165
+ },
+ {
+  "alertId": 6,
+  "alertName": "Interface output discards",
+  "created": 1792548473628,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 1.2729147777777778,
+    "C": 1
+   }
+  },
+  "id": 15082,
+  "newState": "Pending",
+  "prevState": "Normal (NoData)",
+  "tags": [
+   "alertname:Interface output discards",
+   "grafana_folder:RCN Lab",
+   "ifDescr:GigabitEthernet1/1",
+   "instance:10.255.1.23"
+  ],
+  "text": "Interface output discards {alertname=Interface output discards, grafana_folder=RCN Lab, ifDescr=GigabitEthernet1/1, instance=10.255.1.23} - A=1.272915, C=1.000000",
+  "time": 1792548470000,
+  "timeEnd": 1792548470000,
+  "updated": 1792548473628
+ },
+ {
+  "alertId": 11,
+  "alertName": "NMAS heartbeat missing: r4",
+  "created": 1792548363783,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 1,
+    "B": 1,
+    "C": 0
+   }
+  },
+  "id": 15081,
+  "newState": "Normal",
+  "prevState": "Alerting (NoData)",
+  "tags": [
+   "alertname:NMAS heartbeat missing_ r4",
+   "device:r4",
+   "grafana_folder:NMAS",
+   "nmas:heartbeat",
+   "window_basis:measured",
+   "window_seconds:749"
+  ],
+  "text": "NMAS heartbeat missing: r4 {alertname=NMAS heartbeat missing: r4, device=r4, grafana_folder=NMAS, nmas=heartbeat, window_basis=measured, window_seconds=749} - A=1.000000, B=1.000000, C=0.000000",
+  "time": 1792548360000,
+  "timeEnd": 1792548360000,
+  "updated": 1792548363783
+ },
+ {
+  "alertId": 9,
+  "alertName": "NMAS heartbeat missing: r2",
+  "created": 1792548361291,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 1,
+    "B": 1,
+    "C": 0
+   }
+  },
+  "id": 15080,
+  "newState": "Normal",
+  "prevState": "Alerting (NoData)",
+  "tags": [
+   "alertname:NMAS heartbeat missing_ r2",
+   "device:r2",
+   "grafana_folder:NMAS",
+   "nmas:heartbeat",
+   "window_basis:measured",
+   "window_seconds:750"
+  ],
+  "text": "NMAS heartbeat missing: r2 {alertname=NMAS heartbeat missing: r2, device=r2, grafana_folder=NMAS, nmas=heartbeat, window_basis=measured, window_seconds=750} - A=1.000000, B=1.000000, C=0.000000",
+  "time": 1792548360000,
+  "timeEnd": 1792548360000,
+  "updated": 1792548361291
+ },
+ {
+  "alertId": 8,
+  "alertName": "NMAS heartbeat missing: r1",
+  "created": 1792548360049,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 1,
+    "B": 1,
+    "C": 0
+   }
+  },
+  "id": 15079,
+  "newState": "Normal",
+  "prevState": "Alerting (NoData)",
+  "tags": [
+   "alertname:NMAS heartbeat missing_ r1",
+   "device:r1",
+   "grafana_folder:NMAS",
+   "nmas:heartbeat",
+   "window_basis:measured",
+   "window_seconds:750"
+  ],
+  "text": "NMAS heartbeat missing: r1 {alertname=NMAS heartbeat missing: r1, device=r1, grafana_folder=NMAS, nmas=heartbeat, window_basis=measured, window_seconds=750} - A=1.000000, B=1.000000, C=0.000000",
+  "time": 1792548360000,
+  "timeEnd": 1792548360000,
+  "updated": 1792548360049
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792548350032,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 1,
+    "C": 0
+   }
+  },
+  "id": 15078,
+  "newState": "Normal",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:r4",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.14",
+   "job:cisco_8000v",
+   "role:router"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=r4, grafana_folder=RCN Lab, instance=10.255.1.14, job=cisco_8000v, role=router} - A=1.000000, C=0.000000",
+  "time": 1792548350000,
+  "timeEnd": 1792548350000,
+  "updated": 1792548350032
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792548350032,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 1,
+    "C": 0
+   }
+  },
+  "id": 15077,
+  "newState": "Normal",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_8000v",
+   "role:router"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_8000v, role=router} - A=1.000000, C=0.000000",
+  "time": 1792548350000,
+  "timeEnd": 1792548350000,
+  "updated": 1792548350032
+ },
+ {
+  "alertId": 11,
+  "alertName": "NMAS heartbeat missing: r4",
+  "created": 1792548303791,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": -1,
+    "B": -1,
+    "C": -1
+   }
+  },
+  "id": 15076,
+  "newState": "Alerting (NoData)",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:NMAS heartbeat missing_ r4",
+   "device:r4",
+   "grafana_folder:NMAS",
+   "nmas:heartbeat",
+   "window_basis:measured",
+   "window_seconds:749"
+  ],
+  "text": "NMAS heartbeat missing: r4 {alertname=NMAS heartbeat missing: r4, device=r4, grafana_folder=NMAS, nmas=heartbeat, window_basis=measured, window_seconds=749} - A=-1.000000, B=-1.000000, C=-1.000000",
+  "time": 1792548300000,
+  "timeEnd": 1792548300000,
+  "updated": 1792548303791
+ },
+ {
+  "alertId": 9,
+  "alertName": "NMAS heartbeat missing: r2",
+  "created": 1792548301287,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": -1,
+    "B": -1,
+    "C": -1
+   }
+  },
+  "id": 15075,
+  "newState": "Alerting (NoData)",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:NMAS heartbeat missing_ r2",
+   "device:r2",
+   "grafana_folder:NMAS",
+   "nmas:heartbeat",
+   "window_basis:measured",
+   "window_seconds:750"
+  ],
+  "text": "NMAS heartbeat missing: r2 {alertname=NMAS heartbeat missing: r2, device=r2, grafana_folder=NMAS, nmas=heartbeat, window_basis=measured, window_seconds=750} - A=-1.000000, B=-1.000000, C=-1.000000",
+  "time": 1792548300000,
+  "timeEnd": 1792548300000,
+  "updated": 1792548301287
+ },
+ {
+  "alertId": 8,
+  "alertName": "NMAS heartbeat missing: r1",
+  "created": 1792548300035,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": -1,
+    "B": -1,
+    "C": -1
+   }
+  },
+  "id": 15074,
+  "newState": "Alerting (NoData)",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:NMAS heartbeat missing_ r1",
+   "device:r1",
+   "grafana_folder:NMAS",
+   "nmas:heartbeat",
+   "window_basis:measured",
+   "window_seconds:750"
+  ],
+  "text": "NMAS heartbeat missing: r1 {alertname=NMAS heartbeat missing: r1, device=r1, grafana_folder=NMAS, nmas=heartbeat, window_basis=measured, window_seconds=750} - A=-1.000000, B=-1.000000, C=-1.000000",
+  "time": 1792548300000,
+  "timeEnd": 1792548300000,
+  "updated": 1792548300035
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792548290023,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0,
+    "C": 1
+   }
+  },
+  "id": 15073,
+  "newState": "Pending",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:r4",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.14",
+   "job:cisco_8000v",
+   "role:router"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=r4, grafana_folder=RCN Lab, instance=10.255.1.14, job=cisco_8000v, role=router} - A=0.000000, C=1.000000",
+  "time": 1792548290000,
+  "timeEnd": 1792548290000,
+  "updated": 1792548290023
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792548290023,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0,
+    "C": 1
+   }
+  },
+  "id": 15072,
+  "newState": "Pending",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_8000v",
+   "role:router"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_8000v, role=router} - A=0.000000, C=1.000000",
+  "time": 1792548290000,
+  "timeEnd": 1792548290000,
+  "updated": 1792548290023
+ },
+ {
+  "alertId": 24,
+  "alertName": "NMAS telemetry stream lost: r4 subscription 102",
+  "created": 1792548179320,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 276,
+    "B": 276,
+    "C": 0
+   }
+  },
+  "id": 15071,
+  "newState": "Normal",
+  "prevState": "Alerting (NoData)",
+  "tags": [
+   "alertname:NMAS telemetry stream lost_ r4 subscription 102",
+   "device:r4",
+   "grafana_folder:NMAS",
+   "nmas:telemetry",
+   "subscription:102"
+  ],
+  "text": "NMAS telemetry stream lost: r4 subscription 102 {alertname=NMAS telemetry stream lost: r4 subscription 102, device=r4, grafana_folder=NMAS, nmas=telemetry, subscription=102} - A=276.000000, B=276.000000, C=0.000000",
+  "time": 1792548170000,
+  "timeEnd": 1792548170000,
+  "updated": 1792548179320
+ },
+ {
+  "alertId": 23,
+  "alertName": "NMAS telemetry stream lost: r4 subscription 101",
+  "created": 1792548178588,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 12,
+    "B": 12,
+    "C": 0
+   }
+  },
+  "id": 15070,
+  "newState": "Normal",
+  "prevState": "Alerting (NoData)",
+  "tags": [
+   "alertname:NMAS telemetry stream lost_ r4 subscription 101",
+   "device:r4",
+   "grafana_folder:NMAS",
+   "nmas:telemetry",
+   "subscription:101"
+  ],
+  "text": "NMAS telemetry stream lost: r4 subscription 101 {alertname=NMAS telemetry stream lost: r4 subscription 101, device=r4, grafana_folder=NMAS, nmas=telemetry, subscription=101} - A=12.000000, B=12.000000, C=0.000000",
+  "time": 1792548170000,
+  "timeEnd": 1792548170000,
+  "updated": 1792548178588
+ },
+ {
+  "alertId": 22,
+  "alertName": "NMAS telemetry stream lost: r3 subscription 102",
+  "created": 1792548177885,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 115,
+    "B": 115,
+    "C": 0
+   }
+  },
+  "id": 15069,
+  "newState": "Normal",
+  "prevState": "Alerting (NoData)",
+  "tags": [
+   "alertname:NMAS telemetry stream lost_ r3 subscription 102",
+   "device:r3",
+   "grafana_folder:NMAS",
+   "nmas:telemetry",
+   "subscription:102"
+  ],
+  "text": "NMAS telemetry stream lost: r3 subscription 102 {alertname=NMAS telemetry stream lost: r3 subscription 102, device=r3, grafana_folder=NMAS, nmas=telemetry, subscription=102} - A=115.000000, B=115.000000, C=0.000000",
+  "time": 1792548170000,
+  "timeEnd": 1792548170000,
+  "updated": 1792548177885
+ },
+ {
+  "alertId": 21,
+  "alertName": "NMAS telemetry stream lost: r3 subscription 101",
+  "created": 1792548177159,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 12,
+    "B": 12,
+    "C": 0
+   }
+  },
+  "id": 15068,
+  "newState": "Normal",
+  "prevState": "Alerting (NoData)",
+  "tags": [
+   "alertname:NMAS telemetry stream lost_ r3 subscription 101",
+   "device:r3",
+   "grafana_folder:NMAS",
+   "nmas:telemetry",
+   "subscription:101"
+  ],
+  "text": "NMAS telemetry stream lost: r3 subscription 101 {alertname=NMAS telemetry stream lost: r3 subscription 101, device=r3, grafana_folder=NMAS, nmas=telemetry, subscription=101} - A=12.000000, B=12.000000, C=0.000000",
+  "time": 1792548170000,
+  "timeEnd": 1792548170000,
+  "updated": 1792548177159
+ },
+ {
+  "alertId": 20,
+  "alertName": "NMAS telemetry stream lost: r2 subscription 102",
+  "created": 1792548176454,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 230,
+    "B": 230,
+    "C": 0
+   }
+  },
+  "id": 15067,
+  "newState": "Normal",
+  "prevState": "Alerting (NoData)",
+  "tags": [
+   "alertname:NMAS telemetry stream lost_ r2 subscription 102",
+   "device:r2",
+   "grafana_folder:NMAS",
+   "nmas:telemetry",
+   "subscription:102"
+  ],
+  "text": "NMAS telemetry stream lost: r2 subscription 102 {alertname=NMAS telemetry stream lost: r2 subscription 102, device=r2, grafana_folder=NMAS, nmas=telemetry, subscription=102} - A=230.000000, B=230.000000, C=0.000000",
+  "time": 1792548170000,
+  "timeEnd": 1792548170000,
+  "updated": 1792548176454
+ },
+ {
+  "alertId": 19,
+  "alertName": "NMAS telemetry stream lost: r2 subscription 101",
+  "created": 1792548175750,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 12,
+    "B": 12,
+    "C": 0
+   }
+  },
+  "id": 15066,
+  "newState": "Normal",
+  "prevState": "Alerting (NoData)",
+  "tags": [
+   "alertname:NMAS telemetry stream lost_ r2 subscription 101",
+   "device:r2",
+   "grafana_folder:NMAS",
+   "nmas:telemetry",
+   "subscription:101"
+  ],
+  "text": "NMAS telemetry stream lost: r2 subscription 101 {alertname=NMAS telemetry stream lost: r2 subscription 101, device=r2, grafana_folder=NMAS, nmas=telemetry, subscription=101} - A=12.000000, B=12.000000, C=0.000000",
+  "time": 1792548170000,
+  "timeEnd": 1792548170000,
+  "updated": 1792548175750
+ },
+ {
+  "alertId": 18,
+  "alertName": "NMAS telemetry stream lost: r1 subscription 102",
+  "created": 1792548175041,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 115,
+    "B": 115,
+    "C": 0
+   }
+  },
+  "id": 15065,
+  "newState": "Normal",
+  "prevState": "Alerting (NoData)",
+  "tags": [
+   "alertname:NMAS telemetry stream lost_ r1 subscription 102",
+   "device:r1",
+   "grafana_folder:NMAS",
+   "nmas:telemetry",
+   "subscription:102"
+  ],
+  "text": "NMAS telemetry stream lost: r1 subscription 102 {alertname=NMAS telemetry stream lost: r1 subscription 102, device=r1, grafana_folder=NMAS, nmas=telemetry, subscription=102} - A=115.000000, B=115.000000, C=0.000000",
+  "time": 1792548170000,
+  "timeEnd": 1792548170000,
+  "updated": 1792548175041
+ },
+ {
+  "alertId": 17,
+  "alertName": "NMAS telemetry stream lost: r1 subscription 101",
+  "created": 1792548174327,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 12,
+    "B": 12,
+    "C": 0
+   }
+  },
+  "id": 15064,
+  "newState": "Normal",
+  "prevState": "Alerting (NoData)",
+  "tags": [
+   "alertname:NMAS telemetry stream lost_ r1 subscription 101",
+   "device:r1",
+   "grafana_folder:NMAS",
+   "nmas:telemetry",
+   "subscription:101"
+  ],
+  "text": "NMAS telemetry stream lost: r1 subscription 101 {alertname=NMAS telemetry stream lost: r1 subscription 101, device=r1, grafana_folder=NMAS, nmas=telemetry, subscription=101} - A=12.000000, B=12.000000, C=0.000000",
+  "time": 1792548170000,
+  "timeEnd": 1792548170000,
+  "updated": 1792548174327
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1792548172168,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": -1,
+    "C": -1
+   }
+  },
+  "id": 15063,
+  "newState": "Normal (NoData)",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:s3",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.23",
+   "job:cisco_ipsla",
+   "role:switch",
+   "rttMonCtrlAdminIndex:1"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=s3, grafana_folder=RCN Lab, instance=10.255.1.23, job=cisco_ipsla, role=switch, rttMonCtrlAdminIndex=1} - A=-1.000000, C=-1.000000",
+  "time": 1792548170000,
+  "timeEnd": 1792548170000,
+  "updated": 1792548172168
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1792548172168,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": -1,
+    "C": -1
+   }
+  },
+  "id": 15062,
+  "newState": "Normal (NoData)",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:s2",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.22",
+   "job:cisco_ipsla",
+   "role:switch",
+   "rttMonCtrlAdminIndex:1"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=s2, grafana_folder=RCN Lab, instance=10.255.1.22, job=cisco_ipsla, role=switch, rttMonCtrlAdminIndex=1} - A=-1.000000, C=-1.000000",
+  "time": 1792548170000,
+  "timeEnd": 1792548170000,
+  "updated": 1792548172168
+ },
+ {
+  "alertId": 5,
+  "alertName": "Interface error rate elevated",
+  "created": 1792548112901,
+  "dashboardUID": "",
+  "data": {
+   "values": {}
+  },
+  "id": 15061,
+  "newState": "Normal (MissingSeries)",
+  "prevState": "Pending (NoData)",
+  "tags": [
+   "alertname:Interface error rate elevated",
+   "datasource_uid:efwpn8hr7sfeob",
+   "grafana_folder:RCN Lab",
+   "ref_id:A"
+  ],
+  "text": "Interface error rate elevated {alertname=Interface error rate elevated, datasource_uid=efwpn8hr7sfeob, grafana_folder=RCN Lab, ref_id=A} - ",
+  "time": 1792548110000,
+  "timeEnd": 1792548110000,
+  "updated": 1792548112901
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1792548112172,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 4,
+    "C": 1
+   }
+  },
+  "id": 15060,
+  "newState": "Pending",
+  "prevState": "Normal (NoData)",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:s2",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.22",
+   "job:cisco_ipsla",
+   "role:switch",
+   "rttMonCtrlAdminIndex:1"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=s2, grafana_folder=RCN Lab, instance=10.255.1.22, job=cisco_ipsla, role=switch, rttMonCtrlAdminIndex=1} - A=4.000000, C=1.000000",
+  "time": 1792548110000,
+  "timeEnd": 1792548110000,
+  "updated": 1792548112172
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792548110047,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 1,
+    "C": 0
+   }
+  },
+  "id": 15059,
+  "newState": "Normal",
+  "prevState": "Alerting",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:s4",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.24",
+   "job:cisco_vios_l2",
+   "role:switch"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=s4, grafana_folder=RCN Lab, instance=10.255.1.24, job=cisco_vios_l2, role=switch} - A=1.000000, C=0.000000",
+  "time": 1792548110000,
+  "timeEnd": 1792548110000,
+  "updated": 1792548110047
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792548110047,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 1,
+    "C": 0
+   }
+  },
+  "id": 15058,
+  "newState": "Normal",
+  "prevState": "Alerting",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:s2",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.22",
+   "job:cisco_vios_l2",
+   "role:switch"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=s2, grafana_folder=RCN Lab, instance=10.255.1.22, job=cisco_vios_l2, role=switch} - A=1.000000, C=0.000000",
+  "time": 1792548110000,
+  "timeEnd": 1792548110000,
+  "updated": 1792548110047
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792548110047,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 1,
+    "C": 0
+   }
+  },
+  "id": 15057,
+  "newState": "Normal",
+  "prevState": "Alerting",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:s1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.21",
+   "job:cisco_vios_l2",
+   "role:switch"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=s1, grafana_folder=RCN Lab, instance=10.255.1.21, job=cisco_vios_l2, role=switch} - A=1.000000, C=0.000000",
+  "time": 1792548110000,
+  "timeEnd": 1792548110000,
+  "updated": 1792548110047
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792548110047,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 1,
+    "C": 0
+   }
+  },
+  "id": 15056,
+  "newState": "Normal",
+  "prevState": "Alerting",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:r4",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.14",
+   "job:cisco_8000v",
+   "role:router"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=r4, grafana_folder=RCN Lab, instance=10.255.1.14, job=cisco_8000v, role=router} - A=1.000000, C=0.000000",
+  "time": 1792548110000,
+  "timeEnd": 1792548110000,
+  "updated": 1792548110047
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792548110047,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 1,
+    "C": 0
+   }
+  },
+  "id": 15055,
+  "newState": "Normal",
+  "prevState": "Alerting",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:r3",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.13",
+   "job:cisco_8000v",
+   "role:router"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=r3, grafana_folder=RCN Lab, instance=10.255.1.13, job=cisco_8000v, role=router} - A=1.000000, C=0.000000",
+  "time": 1792548110000,
+  "timeEnd": 1792548110000,
+  "updated": 1792548110047
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792548110047,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 1,
+    "C": 0
+   }
+  },
+  "id": 15054,
+  "newState": "Normal",
+  "prevState": "Alerting",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:r2",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.12",
+   "job:cisco_8000v",
+   "role:router"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=r2, grafana_folder=RCN Lab, instance=10.255.1.12, job=cisco_8000v, role=router} - A=1.000000, C=0.000000",
+  "time": 1792548110000,
+  "timeEnd": 1792548110000,
+  "updated": 1792548110047
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792548110047,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 1,
+    "C": 0
+   }
+  },
+  "id": 15053,
+  "newState": "Normal",
+  "prevState": "Alerting",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_8000v",
+   "role:router"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_8000v, role=router} - A=1.000000, C=0.000000",
+  "time": 1792548110000,
+  "timeEnd": 1792548110000,
+  "updated": 1792548110047
+ },
+ {
+  "alertId": 24,
+  "alertName": "NMAS telemetry stream lost: r4 subscription 102",
+  "created": 1792548059325,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": -1,
+    "B": -1,
+    "C": -1
+   }
+  },
+  "id": 15052,
+  "newState": "Alerting (NoData)",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:NMAS telemetry stream lost_ r4 subscription 102",
+   "device:r4",
+   "grafana_folder:NMAS",
+   "nmas:telemetry",
+   "subscription:102"
+  ],
+  "text": "NMAS telemetry stream lost: r4 subscription 102 {alertname=NMAS telemetry stream lost: r4 subscription 102, device=r4, grafana_folder=NMAS, nmas=telemetry, subscription=102} - A=-1.000000, B=-1.000000, C=-1.000000",
+  "time": 1792548050000,
+  "timeEnd": 1792548050000,
+  "updated": 1792548059325
+ },
+ {
+  "alertId": 23,
+  "alertName": "NMAS telemetry stream lost: r4 subscription 101",
+  "created": 1792548058608,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": -1,
+    "B": -1,
+    "C": -1
+   }
+  },
+  "id": 15051,
+  "newState": "Alerting (NoData)",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:NMAS telemetry stream lost_ r4 subscription 101",
+   "device:r4",
+   "grafana_folder:NMAS",
+   "nmas:telemetry",
+   "subscription:101"
+  ],
+  "text": "NMAS telemetry stream lost: r4 subscription 101 {alertname=NMAS telemetry stream lost: r4 subscription 101, device=r4, grafana_folder=NMAS, nmas=telemetry, subscription=101} - A=-1.000000, B=-1.000000, C=-1.000000",
+  "time": 1792548050000,
+  "timeEnd": 1792548050000,
+  "updated": 1792548058608
+ },
+ {
+  "alertId": 22,
+  "alertName": "NMAS telemetry stream lost: r3 subscription 102",
+  "created": 1792548057887,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": -1,
+    "B": -1,
+    "C": -1
+   }
+  },
+  "id": 15050,
+  "newState": "Alerting (NoData)",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:NMAS telemetry stream lost_ r3 subscription 102",
+   "device:r3",
+   "grafana_folder:NMAS",
+   "nmas:telemetry",
+   "subscription:102"
+  ],
+  "text": "NMAS telemetry stream lost: r3 subscription 102 {alertname=NMAS telemetry stream lost: r3 subscription 102, device=r3, grafana_folder=NMAS, nmas=telemetry, subscription=102} - A=-1.000000, B=-1.000000, C=-1.000000",
+  "time": 1792548050000,
+  "timeEnd": 1792548050000,
+  "updated": 1792548057887
+ },
+ {
+  "alertId": 21,
+  "alertName": "NMAS telemetry stream lost: r3 subscription 101",
+  "created": 1792548057178,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": -1,
+    "B": -1,
+    "C": -1
+   }
+  },
+  "id": 15049,
+  "newState": "Alerting (NoData)",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:NMAS telemetry stream lost_ r3 subscription 101",
+   "device:r3",
+   "grafana_folder:NMAS",
+   "nmas:telemetry",
+   "subscription:101"
+  ],
+  "text": "NMAS telemetry stream lost: r3 subscription 101 {alertname=NMAS telemetry stream lost: r3 subscription 101, device=r3, grafana_folder=NMAS, nmas=telemetry, subscription=101} - A=-1.000000, B=-1.000000, C=-1.000000",
+  "time": 1792548050000,
+  "timeEnd": 1792548050000,
+  "updated": 1792548057178
+ },
+ {
+  "alertId": 20,
+  "alertName": "NMAS telemetry stream lost: r2 subscription 102",
+  "created": 1792548056449,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": -1,
+    "B": -1,
+    "C": -1
+   }
+  },
+  "id": 15048,
+  "newState": "Alerting (NoData)",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:NMAS telemetry stream lost_ r2 subscription 102",
+   "device:r2",
+   "grafana_folder:NMAS",
+   "nmas:telemetry",
+   "subscription:102"
+  ],
+  "text": "NMAS telemetry stream lost: r2 subscription 102 {alertname=NMAS telemetry stream lost: r2 subscription 102, device=r2, grafana_folder=NMAS, nmas=telemetry, subscription=102} - A=-1.000000, B=-1.000000, C=-1.000000",
+  "time": 1792548050000,
+  "timeEnd": 1792548050000,
+  "updated": 1792548056449
+ },
+ {
+  "alertId": 19,
+  "alertName": "NMAS telemetry stream lost: r2 subscription 101",
+  "created": 1792548055766,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": -1,
+    "B": -1,
+    "C": -1
+   }
+  },
+  "id": 15047,
+  "newState": "Alerting (NoData)",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:NMAS telemetry stream lost_ r2 subscription 101",
+   "device:r2",
+   "grafana_folder:NMAS",
+   "nmas:telemetry",
+   "subscription:101"
+  ],
+  "text": "NMAS telemetry stream lost: r2 subscription 101 {alertname=NMAS telemetry stream lost: r2 subscription 101, device=r2, grafana_folder=NMAS, nmas=telemetry, subscription=101} - A=-1.000000, B=-1.000000, C=-1.000000",
+  "time": 1792548050000,
+  "timeEnd": 1792548050000,
+  "updated": 1792548055766
+ },
+ {
+  "alertId": 18,
+  "alertName": "NMAS telemetry stream lost: r1 subscription 102",
+  "created": 1792548055028,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": -1,
+    "B": -1,
+    "C": -1
+   }
+  },
+  "id": 15046,
+  "newState": "Alerting (NoData)",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:NMAS telemetry stream lost_ r1 subscription 102",
+   "device:r1",
+   "grafana_folder:NMAS",
+   "nmas:telemetry",
+   "subscription:102"
+  ],
+  "text": "NMAS telemetry stream lost: r1 subscription 102 {alertname=NMAS telemetry stream lost: r1 subscription 102, device=r1, grafana_folder=NMAS, nmas=telemetry, subscription=102} - A=-1.000000, B=-1.000000, C=-1.000000",
+  "time": 1792548050000,
+  "timeEnd": 1792548050000,
+  "updated": 1792548055028
+ },
+ {
+  "alertId": 17,
+  "alertName": "NMAS telemetry stream lost: r1 subscription 101",
+  "created": 1792548054315,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": -1,
+    "B": -1,
+    "C": -1
+   }
+  },
+  "id": 15045,
+  "newState": "Alerting (NoData)",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:NMAS telemetry stream lost_ r1 subscription 101",
+   "device:r1",
+   "grafana_folder:NMAS",
+   "nmas:telemetry",
+   "subscription:101"
+  ],
+  "text": "NMAS telemetry stream lost: r1 subscription 101 {alertname=NMAS telemetry stream lost: r1 subscription 101, device=r1, grafana_folder=NMAS, nmas=telemetry, subscription=101} - A=-1.000000, B=-1.000000, C=-1.000000",
+  "time": 1792548050000,
+  "timeEnd": 1792548050000,
+  "updated": 1792548054315
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1792548052164,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 4,
+    "C": 1
+   }
+  },
+  "id": 15044,
+  "newState": "Pending",
+  "prevState": "Normal (NoData)",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:s3",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.23",
+   "job:cisco_ipsla",
+   "role:switch",
+   "rttMonCtrlAdminIndex:1"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=s3, grafana_folder=RCN Lab, instance=10.255.1.23, job=cisco_ipsla, role=switch, rttMonCtrlAdminIndex=1} - A=4.000000, C=1.000000",
+  "time": 1792548050000,
+  "timeEnd": 1792548050000,
+  "updated": 1792548052164
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792548050039,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 1,
+    "C": 0
+   }
+  },
+  "id": 15043,
+  "newState": "Normal",
+  "prevState": "Alerting",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:s3",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.23",
+   "job:cisco_vios_l2",
+   "role:switch"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=s3, grafana_folder=RCN Lab, instance=10.255.1.23, job=cisco_vios_l2, role=switch} - A=1.000000, C=0.000000",
+  "time": 1792548050000,
+  "timeEnd": 1792548050000,
+  "updated": 1792548050039
+ },
+ {
+  "alertId": 5,
+  "alertName": "Interface error rate elevated",
+  "created": 1792547932900,
+  "dashboardUID": "",
+  "data": {
+   "values": {}
+  },
+  "id": 15042,
+  "newState": "Pending (NoData)",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:Interface error rate elevated",
+   "datasource_uid:efwpn8hr7sfeob",
+   "grafana_folder:RCN Lab",
+   "ref_id:A"
+  ],
+  "text": "Interface error rate elevated {alertname=Interface error rate elevated, datasource_uid=efwpn8hr7sfeob, grafana_folder=RCN Lab, ref_id=A} - ",
+  "time": 1792547930000,
+  "timeEnd": 1792547930000,
+  "updated": 1792547932900
+ },
+ {
+  "alertId": 6,
+  "alertName": "Interface output discards",
+  "created": 1792547873615,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": -1,
+    "C": -1
+   }
+  },
+  "id": 15041,
+  "newState": "Normal (NoData)",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:Interface output discards",
+   "grafana_folder:RCN Lab",
+   "ifDescr:GigabitEthernet1/1",
+   "instance:10.255.1.23"
+  ],
+  "text": "Interface output discards {alertname=Interface output discards, grafana_folder=RCN Lab, ifDescr=GigabitEthernet1/1, instance=10.255.1.23} - A=-1.000000, C=-1.000000",
+  "time": 1792547870000,
+  "timeEnd": 1792547870000,
+  "updated": 1792547873615
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792547870038,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0,
+    "C": 1
+   }
+  },
+  "id": 15040,
+  "newState": "Alerting",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:s4",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.24",
+   "job:cisco_vios_l2",
+   "role:switch"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=s4, grafana_folder=RCN Lab, instance=10.255.1.24, job=cisco_vios_l2, role=switch} - A=0.000000, C=1.000000",
+  "time": 1792547870000,
+  "timeEnd": 1792547870000,
+  "updated": 1792547870038
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792547870038,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0,
+    "C": 1
+   }
+  },
+  "id": 15039,
+  "newState": "Alerting",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:s3",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.23",
+   "job:cisco_vios_l2",
+   "role:switch"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=s3, grafana_folder=RCN Lab, instance=10.255.1.23, job=cisco_vios_l2, role=switch} - A=0.000000, C=1.000000",
+  "time": 1792547870000,
+  "timeEnd": 1792547870000,
+  "updated": 1792547870038
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792547870038,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0,
+    "C": 1
+   }
+  },
+  "id": 15038,
+  "newState": "Alerting",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:s2",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.22",
+   "job:cisco_vios_l2",
+   "role:switch"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=s2, grafana_folder=RCN Lab, instance=10.255.1.22, job=cisco_vios_l2, role=switch} - A=0.000000, C=1.000000",
+  "time": 1792547870000,
+  "timeEnd": 1792547870000,
+  "updated": 1792547870038
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792547870038,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0,
+    "C": 1
+   }
+  },
+  "id": 15037,
+  "newState": "Alerting",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:s1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.21",
+   "job:cisco_vios_l2",
+   "role:switch"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=s1, grafana_folder=RCN Lab, instance=10.255.1.21, job=cisco_vios_l2, role=switch} - A=0.000000, C=1.000000",
+  "time": 1792547870000,
+  "timeEnd": 1792547870000,
+  "updated": 1792547870038
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792547810043,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0,
+    "C": 1
+   }
+  },
+  "id": 15036,
+  "newState": "Alerting",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:r4",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.14",
+   "job:cisco_8000v",
+   "role:router"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=r4, grafana_folder=RCN Lab, instance=10.255.1.14, job=cisco_8000v, role=router} - A=0.000000, C=1.000000",
+  "time": 1792547810000,
+  "timeEnd": 1792547810000,
+  "updated": 1792547810043
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792547810043,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0,
+    "C": 1
+   }
+  },
+  "id": 15035,
+  "newState": "Alerting",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:r3",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.13",
+   "job:cisco_8000v",
+   "role:router"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=r3, grafana_folder=RCN Lab, instance=10.255.1.13, job=cisco_8000v, role=router} - A=0.000000, C=1.000000",
+  "time": 1792547810000,
+  "timeEnd": 1792547810000,
+  "updated": 1792547810043
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792547810043,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0,
+    "C": 1
+   }
+  },
+  "id": 15034,
+  "newState": "Alerting",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:r2",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.12",
+   "job:cisco_8000v",
+   "role:router"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=r2, grafana_folder=RCN Lab, instance=10.255.1.12, job=cisco_8000v, role=router} - A=0.000000, C=1.000000",
+  "time": 1792547810000,
+  "timeEnd": 1792547810000,
+  "updated": 1792547810043
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792547810043,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0,
+    "C": 1
+   }
+  },
+  "id": 15033,
+  "newState": "Alerting",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_8000v",
+   "role:router"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_8000v, role=router} - A=0.000000, C=1.000000",
+  "time": 1792547810000,
+  "timeEnd": 1792547810000,
+  "updated": 1792547810043
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792547750025,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0,
+    "C": 1
+   }
+  },
+  "id": 15032,
+  "newState": "Pending",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:s4",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.24",
+   "job:cisco_vios_l2",
+   "role:switch"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=s4, grafana_folder=RCN Lab, instance=10.255.1.24, job=cisco_vios_l2, role=switch} - A=0.000000, C=1.000000",
+  "time": 1792547750000,
+  "timeEnd": 1792547750000,
+  "updated": 1792547750025
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792547750025,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0,
+    "C": 1
+   }
+  },
+  "id": 15031,
+  "newState": "Pending",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:s3",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.23",
+   "job:cisco_vios_l2",
+   "role:switch"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=s3, grafana_folder=RCN Lab, instance=10.255.1.23, job=cisco_vios_l2, role=switch} - A=0.000000, C=1.000000",
+  "time": 1792547750000,
+  "timeEnd": 1792547750000,
+  "updated": 1792547750025
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792547750025,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0,
+    "C": 1
+   }
+  },
+  "id": 15030,
+  "newState": "Pending",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:s2",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.22",
+   "job:cisco_vios_l2",
+   "role:switch"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=s2, grafana_folder=RCN Lab, instance=10.255.1.22, job=cisco_vios_l2, role=switch} - A=0.000000, C=1.000000",
+  "time": 1792547750000,
+  "timeEnd": 1792547750000,
+  "updated": 1792547750025
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792547750025,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0,
+    "C": 1
+   }
+  },
+  "id": 15029,
+  "newState": "Pending",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:s1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.21",
+   "job:cisco_vios_l2",
+   "role:switch"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=s1, grafana_folder=RCN Lab, instance=10.255.1.21, job=cisco_vios_l2, role=switch} - A=0.000000, C=1.000000",
+  "time": 1792547750000,
+  "timeEnd": 1792547750000,
+  "updated": 1792547750025
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792547690035,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0,
+    "C": 1
+   }
+  },
+  "id": 15028,
+  "newState": "Pending",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:r4",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.14",
+   "job:cisco_8000v",
+   "role:router"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=r4, grafana_folder=RCN Lab, instance=10.255.1.14, job=cisco_8000v, role=router} - A=0.000000, C=1.000000",
+  "time": 1792547690000,
+  "timeEnd": 1792547690000,
+  "updated": 1792547690035
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792547690035,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0,
+    "C": 1
+   }
+  },
+  "id": 15027,
+  "newState": "Pending",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:r3",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.13",
+   "job:cisco_8000v",
+   "role:router"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=r3, grafana_folder=RCN Lab, instance=10.255.1.13, job=cisco_8000v, role=router} - A=0.000000, C=1.000000",
+  "time": 1792547690000,
+  "timeEnd": 1792547690000,
+  "updated": 1792547690035
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792547690035,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0,
+    "C": 1
+   }
+  },
+  "id": 15026,
+  "newState": "Pending",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:r2",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.12",
+   "job:cisco_8000v",
+   "role:router"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=r2, grafana_folder=RCN Lab, instance=10.255.1.12, job=cisco_8000v, role=router} - A=0.000000, C=1.000000",
+  "time": 1792547690000,
+  "timeEnd": 1792547690000,
+  "updated": 1792547690035
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792547690035,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0,
+    "C": 1
+   }
+  },
+  "id": 15025,
+  "newState": "Pending",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_8000v",
+   "role:router"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_8000v, role=router} - A=0.000000, C=1.000000",
+  "time": 1792547690000,
+  "timeEnd": 1792547690000,
+  "updated": 1792547690035
+ },
+ {
+  "alertId": 6,
+  "alertName": "Interface output discards",
+  "created": 1792547633600,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0.8125,
+    "C": 1
+   }
+  },
+  "id": 15024,
+  "newState": "Pending",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:Interface output discards",
+   "grafana_folder:RCN Lab",
+   "ifDescr:GigabitEthernet1/1",
+   "instance:10.255.1.23"
+  ],
+  "text": "Interface output discards {alertname=Interface output discards, grafana_folder=RCN Lab, ifDescr=GigabitEthernet1/1, instance=10.255.1.23} - A=0.812500, C=1.000000",
+  "time": 1792547630000,
+  "timeEnd": 1792547630000,
+  "updated": 1792547633600
+ },
+ {
+  "alertId": 6,
+  "alertName": "Interface output discards",
+  "created": 1792547453615,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0.475,
+    "C": 0
+   }
+  },
+  "id": 15023,
+  "newState": "Normal",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:Interface output discards",
+   "grafana_folder:RCN Lab",
+   "ifDescr:GigabitEthernet1/1",
+   "instance:10.255.1.23"
+  ],
+  "text": "Interface output discards {alertname=Interface output discards, grafana_folder=RCN Lab, ifDescr=GigabitEthernet1/1, instance=10.255.1.23} - A=0.475000, C=0.000000",
+  "time": 1792547450000,
+  "timeEnd": 1792547450000,
+  "updated": 1792547453615
+ },
+ {
+  "alertId": 6,
+  "alertName": "Interface output discards",
+  "created": 1792547393592,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0.6083333333333333,
+    "C": 1
+   }
+  },
+  "id": 15022,
+  "newState": "Pending",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:Interface output discards",
+   "grafana_folder:RCN Lab",
+   "ifDescr:GigabitEthernet1/1",
+   "instance:10.255.1.23"
+  ],
+  "text": "Interface output discards {alertname=Interface output discards, grafana_folder=RCN Lab, ifDescr=GigabitEthernet1/1, instance=10.255.1.23} - A=0.608333, C=1.000000",
+  "time": 1792547390000,
+  "timeEnd": 1792547390000,
+  "updated": 1792547393592
+ },
+ {
+  "alertId": 6,
+  "alertName": "Interface output discards",
+  "created": 1792546913626,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0.3833333333333333,
+    "C": 0
+   }
+  },
+  "id": 15021,
+  "newState": "Normal",
+  "prevState": "Alerting",
+  "tags": [
+   "alertname:Interface output discards",
+   "grafana_folder:RCN Lab",
+   "ifDescr:GigabitEthernet1/1",
+   "instance:10.255.1.23"
+  ],
+  "text": "Interface output discards {alertname=Interface output discards, grafana_folder=RCN Lab, ifDescr=GigabitEthernet1/1, instance=10.255.1.23} - A=0.383333, C=0.000000",
+  "time": 1792546910000,
+  "timeEnd": 1792546910000,
+  "updated": 1792546913626
+ },
+ {
+  "alertId": 6,
+  "alertName": "Interface output discards",
+  "created": 1792546733607,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0.8166666666666667,
+    "C": 1
+   }
+  },
+  "id": 15020,
+  "newState": "Alerting",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:Interface output discards",
+   "grafana_folder:RCN Lab",
+   "ifDescr:GigabitEthernet1/1",
+   "instance:10.255.1.23"
+  ],
+  "text": "Interface output discards {alertname=Interface output discards, grafana_folder=RCN Lab, ifDescr=GigabitEthernet1/1, instance=10.255.1.23} - A=0.816667, C=1.000000",
+  "time": 1792546730000,
+  "timeEnd": 1792546730000,
+  "updated": 1792546733607
+ },
+ {
+  "alertId": 6,
+  "alertName": "Interface output discards",
+  "created": 1792546433602,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0.875,
+    "C": 1
+   }
+  },
+  "id": 15019,
+  "newState": "Pending",
+  "prevState": "Normal (NoData)",
+  "tags": [
+   "alertname:Interface output discards",
+   "grafana_folder:RCN Lab",
+   "ifDescr:GigabitEthernet1/1",
+   "instance:10.255.1.23"
+  ],
+  "text": "Interface output discards {alertname=Interface output discards, grafana_folder=RCN Lab, ifDescr=GigabitEthernet1/1, instance=10.255.1.23} - A=0.875000, C=1.000000",
+  "time": 1792546430000,
+  "timeEnd": 1792546430000,
+  "updated": 1792546433602
+ }
+]

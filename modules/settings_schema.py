@@ -479,6 +479,7 @@ DEFAULTS: dict = {
     "records_store_reader_values": "file",
     "records_store_ai_calls": "file",
     "records_store_evidence_packs": "file",
+    "records_store_alert_history": "file",
 
     # ── Platform map (NetBox platform slug → how NMAS treats the device) ────
     # This map is what makes multi-vendor support a configuration change rather
@@ -551,6 +552,9 @@ DEFAULTS: dict = {
     "reads_answer_cap_kib": 32,
     "reads_max_workers": 6,
     "reads_retention_days": 30,
+    # The alert history (modules/alert_history.py; the operator, 2026-10-26): transitions kept
+    # 90 days, as Loki keeps logs by default, then moved to the network's S3/MinIO archive.
+    "alert_history_retention_days": 90,
     # The topology class (PHASE8_PLAN 15.11, the operator's egress ruling of 2026-10-25): a
     # network's model slice (devices, links, subnets, adjacencies; no configuration line, no
     # secret) may go with a hosted AI call about it. ON by default, as ruled; an admin turns
@@ -911,6 +915,7 @@ SCHEMA: dict = {
         "records_store_reader_values": {"type": "string", "enum": ["file", "postgres"]},
         "records_store_ai_calls": {"type": "string", "enum": ["file", "postgres"]},
         "records_store_evidence_packs": {"type": "string", "enum": ["file", "postgres"]},
+        "records_store_alert_history": {"type": "string", "enum": ["file", "postgres"]},
 
         "platform_map": {
             "type": "object",
@@ -933,6 +938,7 @@ SCHEMA: dict = {
         "reads_answer_cap_kib": {"type": "integer", "minimum": 1, "maximum": 4096},
         "reads_max_workers": {"type": "integer", "minimum": 1, "maximum": 16},
         "reads_retention_days": {"type": "integer", "minimum": 1},
+        "alert_history_retention_days": {"type": "integer", "minimum": 1},
         "ai_topology_class": _BOOL,
         "endpoint_read_interval_minutes": {"type": "integer", "minimum": 5, "maximum": 1440},
         "endpoint_stale_after_hours": {"type": "integer", "minimum": 1},

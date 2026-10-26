@@ -13,8 +13,11 @@ this order, the first that applies winning:
 - ``vtp_database``: a VLAN line (``vlan <N>`` and what is under it) that intent has and the
   golden lacks, on a switch whose VTP mode is server or client, so it keeps the VLAN in its
   VLAN database and its configuration never prints it;
-- ``unmodelled``: a line the extractor does not model, which intent carries verbatim in its
-  not-modelled list (``unmodeled``, the parse of the golden's, or ``unmodeled_ack``);
+- ``unmodelled``: a line the extractor does not model, carried verbatim either in intent's
+  not-modelled list (``unmodeled`` or ``unmodeled_ack``) or only in the device's golden (its
+  own parse's not-modelled list: a line on the device that intent does not carry at all); the
+  class's words say which, line by line (C1812: they said "carried verbatim in intent" for a
+  line intent does not carry);
 - ``order_only``: a section holding the same lines in a different order (the comparison's
   ``reordered``: the same lines as a set);
 - ``unexplained``: everything else.
@@ -64,10 +67,26 @@ _VTP_MODE_LINE = re.compile(r"vtp mode (\S+)\s*$", re.I)
 SHORT = {
     CERTIFICATE: "the device's own self-signed certificate, regenerated at boot",
     VTP_DATABASE: "VLANs a VTP {mode} keeps in vlan.dat, never in its configuration",
-    UNMODELLED: "lines Mercury does not model, carried verbatim in intent",
+    UNMODELLED: "lines Mercury does not model, carried verbatim in intent's not-modelled list",
     ORDER_ONLY: "the same lines in a different order",
     UNEXPLAINED: "not explained by a rule",
 }
+
+#: An ``unmodelled`` class whose lines are all carried only in the device's golden, and one
+#: whose lines are carried in both places (C1812): where each line is carried, said.
+UNMODELLED_GOLDEN = ("lines Mercury does not model, carried only in the device's golden: "
+                     "intent does not carry them")
+UNMODELLED_BOTH = ("lines Mercury does not model: {intent} carried verbatim in intent's "
+                   "not-modelled list, {golden} only in the device's golden (intent does not "
+                   "carry them)")
+
+#: The Intent row's words when no rule explains any line of the departure (C1821, the
+#: operator's words, Walk 3 2026-10-26): said, so it is told apart from a rule-explained one.
+NO_RULE = "No rule explains this difference"
+
+#: Where an ``unmodelled`` line is carried.
+IN_INTENT = "intent"
+IN_GOLDEN = "golden"
 
 
 def vtp_mode(text) -> str:
@@ -142,36 +161,50 @@ def _order_significant(section: str) -> bool:
                for rule in roundtrip.ORDER_SIGNIFICANT_SECTIONS)
 
 
-def _line_class(sign: str, entry: dict, mode: str, unmodelled: set) -> str:
+def _line_class(sign: str, entry: dict, mode: str, unmodelled: set, golden_unmodelled: set):
+    """``(class, where)``: *where* is :data:`IN_INTENT` or :data:`IN_GOLDEN` for an
+    ``unmodelled`` line (intent's not-modelled list first), ``""`` for every other class."""
     top = _top(entry)
     if _self_signed(top):
-        return CERTIFICATE
+        return CERTIFICATE, ""
     if sign == "+" and mode in DATABASE_MODES and VLAN_LINE.fullmatch(top):
-        return VTP_DATABASE
-    if (_norm(top), _norm(entry.get("line", ""))) in unmodelled:
-        return UNMODELLED
-    return UNEXPLAINED
+        return VTP_DATABASE, ""
+    pair = (_norm(top), _norm(entry.get("line", "")))
+    if pair in unmodelled:
+        return UNMODELLED, IN_INTENT
+    if pair in golden_unmodelled:
+        return UNMODELLED, IN_GOLDEN
+    return UNEXPLAINED, ""
 
 
-def classify(difference: dict, vtp_mode: str = "", unmodelled=()) -> list:
-    """``[{"class", "lines", "why"}]``, one per class found, in :data:`CLASSES` order.
+def classify(difference: dict, vtp_mode: str = "", unmodelled=(),
+             golden_unmodelled=()) -> list:
+    """``[{"class", "lines", "why"}]``, one per class found, in :data:`CLASSES` order; the
+    ``unmodelled`` class also carries ``carried``, ``{"intent": n, "golden": m}``: how many of
+    its lines intent's not-modelled list carries and how many only the device's golden does.
 
     *difference* is the comparison's ``details`` (`roundtrip.compare`): ``extra`` (in intent,
     not in the golden: a ``+`` line), ``missing`` (in the golden, not in intent: ``-``) and
     ``reordered``, each entry with its ``section`` path and ``line``. *vtp_mode* is the switch's
-    (:func:`vtp_mode`), ``""`` when not read; *unmodelled* is :func:`unmodelled_of`'s set.
+    (:func:`vtp_mode`), ``""`` when not read; *unmodelled* is :func:`unmodelled_of`'s set of
+    intent's, *golden_unmodelled* the same of the golden's own parse (a line only it carries is
+    said as carried in the device's golden, never in intent: C1812).
     Each class's ``lines`` are signed as the Intent check signs them (``+ line``, ``- line``);
     ``order_only``'s are its sections. The lines are as the comparison holds them, unmasked:
     whoever draws them masks them on the way out, as every configuration line is."""
     difference = difference or {}
     mode = (vtp_mode or "").lower()
     unmodelled = set(unmodelled or ())
+    golden_unmodelled = set(golden_unmodelled or ())
     found = {c: [] for c in CLASSES}
+    carried = {IN_INTENT: 0, IN_GOLDEN: 0}
     vlans_unread = 0
     for sign, key in (("+", "extra"), ("-", "missing")):
         for entry in difference.get(key) or []:
-            cls = _line_class(sign, entry, mode, unmodelled)
+            cls, where = _line_class(sign, entry, mode, unmodelled, golden_unmodelled)
             found[cls].append(f"{sign} {entry.get('line', '')}")
+            if where:
+                carried[where] += 1
             if cls == UNEXPLAINED and sign == "+" and not mode \
                     and VLAN_LINE.fullmatch(_top(entry)):
                 vlans_unread += 1
@@ -185,9 +218,7 @@ def classify(difference: dict, vtp_mode: str = "", unmodelled=()) -> list:
                        "database (vlan.dat) and never prints them in its configuration, so its "
                        "golden cannot hold them (C1646, C1649); whether the switch has each is "
                        "read with `show vlan id <N>`"),
-        UNMODELLED: ("lines Mercury's extractor does not model: intent carries them verbatim in "
-                     "its not-modelled list (unmodeled), never rendered from a setting, so a "
-                     "change to one is edited there"),
+        UNMODELLED: _unmodelled_why(carried),
         ORDER_ONLY: _order_why(reordered),
         UNEXPLAINED: ("no rule explains these lines: a departure until shown otherwise"
                       + (f"; {vlans_unread} of them are VLAN lines, and the switch's VTP mode "
@@ -195,7 +226,28 @@ def classify(difference: dict, vtp_mode: str = "", unmodelled=()) -> list:
                          "`vtp mode` line), so whether it keeps them in vlan.dat is not known"
                          if vlans_unread else "")),
     }
-    return [{"class": c, "lines": found[c], "why": whys[c]} for c in CLASSES if found[c]]
+    out = []
+    for c in CLASSES:
+        if found[c]:
+            out.append({"class": c, "lines": found[c], "why": whys[c]})
+            if c == UNMODELLED:
+                out[-1]["carried"] = dict(carried)
+    return out
+
+
+def _unmodelled_why(carried: dict) -> str:
+    """Where the not-modelled lines are carried, in the class's longer words (C1812)."""
+    parts = []
+    if carried.get(IN_INTENT):
+        parts.append(f"{carried[IN_INTENT]} of them intent carries verbatim in its not-modelled "
+                     "list (unmodeled), never rendered from a setting, so a change to one is "
+                     "edited there")
+    if carried.get(IN_GOLDEN):
+        parts.append(f"{carried[IN_GOLDEN]} of them only the device's golden carries (its own "
+                     "parse's not-modelled list): intent does not carry them at all, so each is "
+                     "a line on the device that intent lacks, kept by adding it to intent's "
+                     "not-modelled list (Edit intent) or removed in a Mode B plan")
+    return "lines Mercury's extractor does not model: " + "; ".join(parts)
 
 
 def _order_why(sections: list) -> str:
@@ -217,15 +269,29 @@ def explained(classes: list) -> bool:
 
 
 def words(classes: list, mode: str = "") -> str:
-    """The classes in one short line for the Intent check's row, or ``""`` when no rule
-    classified anything (nothing to add to the lines the row already names): each class's
-    count and its few words, the unexplained rest counted too, so a subset says it is one."""
-    if not explained(classes):
+    """The classes in one short line for the Intent check's row: each class's count and its few
+    words, the unexplained rest counted too, so a subset says it is one; and when no rule
+    classified any line, :data:`NO_RULE`, said, so an unexplained departure is told apart from
+    an explained one (C1821, the operator: it added no words). ``""`` only for no classes at
+    all (a match, or a comparison not made)."""
+    if not classes:
         return ""
+    if not explained(classes):
+        return NO_RULE
     parts = []
     for c in classes:
         n = len(c["lines"])
         unit = ("section" if c["class"] == ORDER_ONLY else "line") + ("" if n == 1 else "s")
-        what = SHORT[c["class"]].format(mode=f"{mode} switch" if mode else "switch")
-        parts.append(f"{n} {unit}: {what}")
+        parts.append(f"{n} {unit}: {_short(c, mode)}")
     return "By rule: " + "; ".join(parts)
+
+
+def _short(c: dict, mode: str) -> str:
+    """A class's few words; a not-modelled class's name where its lines are carried (C1812)."""
+    if c["class"] == UNMODELLED:
+        carried = c.get("carried") or {IN_INTENT: len(c["lines"]), IN_GOLDEN: 0}
+        if carried.get(IN_GOLDEN) and carried.get(IN_INTENT):
+            return UNMODELLED_BOTH.format(intent=carried[IN_INTENT], golden=carried[IN_GOLDEN])
+        if carried.get(IN_GOLDEN):
+            return UNMODELLED_GOLDEN
+    return SHORT[c["class"]].format(mode=f"{mode} switch" if mode else "switch")

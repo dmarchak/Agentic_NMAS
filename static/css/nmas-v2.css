@@ -615,6 +615,18 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .pack-pieces li { overflow-wrap: anywhere; }
 .pack-ref { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-right: 6px; }
 .pack-text { white-space: pre-wrap; }
+/* Each pack section's mark (schema 4): captured at the time, rebuilt afterwards, cannot be rebuilt. */
+.pack-prov { font-size: 11.5px; color: var(--ink-3); }
+/* Monitoring › Alerts › Firing and History (board P1-H): the two views, and History's groups. */
+.seg.alerts-views { align-self: flex-start; margin: 0 0 12px; }
+.alert-history { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.ah-outcomes { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0; font-size: 13px; color: var(--ink-2); }
+.ah-filter { flex-wrap: wrap; }
+.ah-filter .ah-device { width: 9rem; max-width: 100%; }
+.ah-group > summary { cursor: pointer; list-style: none; flex-wrap: wrap; gap: 8px; }
+.ah-group > summary::-webkit-details-marker { display: none; }
+.ah-group .ah-row { padding: 6px 16px; }
+.ah-more { margin: 0; padding: 6px 16px 10px; }
 .row-warn td { color: var(--warn); }
 .recent { list-style: none; margin: 0; padding: 0; }
 .recent li { display: flex; gap: 12px; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--line-2); font-size: 13px; }

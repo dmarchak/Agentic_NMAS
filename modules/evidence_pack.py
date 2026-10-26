@@ -56,8 +56,10 @@ log = logging.getLogger(__name__)
 #: The pack's own shape; a reader of a later shape says it cannot read this one. 2 (C1712,
 #: C1714, 2026-10-25) adds the `observed` and `health` sections; a pack of 1 stays readable
 #: and says it holds neither (expand, then contract). 3 (C1778, 2026-10-26) adds `endpoints`;
-#: a pack of 2 stays readable and holds none.
-SCHEMA = 3
+#: a pack of 2 stays readable and holds none. 4 (the alert history, 2026-10-26) marks every
+#: section `provenance` (`PROVENANCE`) and the pack its own; a pack of 3 stays readable and is
+#: drawn as not marked.
+SCHEMA = 4
 #: The records store (`records_db.STORES`) and its file.
 STORE = "evidence_packs"
 FILE_NAME = "evidence_packs.jsonl"
@@ -75,6 +77,26 @@ SECTION_WORDS = {"alert": "The alert", "device": "The device", "history": "Recen
 REPLAY_SLACK_SECONDS = 300
 #: A section's states. `empty` is a source read that held nothing; `absent`, nothing to read.
 STATES = ("ok", "empty", "absent", "not_configured", "unreadable")
+#: Where a section's evidence came from (schema 4), on every section as `provenance`, with its
+#: words as `provenance_words`: read when the alert was found firing; rebuilt afterwards from
+#: what keeps its past (a store filtered to the alert's time, a time series asked as of it, the
+#: repository at the commit current then); or missing, because what it reads keeps only its
+#: latest value, which is never put in its place. The pack carries its own (`captured` when
+#: every section was, else `rebuilt`).
+PROVENANCE = ("captured", "rebuilt", "missing")
+PROVENANCE_WORDS = {"captured": "captured at the time", "rebuilt": "rebuilt afterwards",
+                    "missing": "cannot be rebuilt"}
+#: A pack built from the alert history (Monitoring › Alerts › History, Build evidence): the
+#: sections that read a store keeping only its latest value, each with why it cannot be rebuilt.
+NOT_REBUILT = {
+    "neighbours": "the Neighbours view compares committed intent with the routing tables and "
+                  "the RIP reader as they are now; the adjacencies as they were then were not "
+                  "captured when the alert fired",
+    "observed": "the Topology reader keeps only its latest read; the network as observed then "
+                "was not captured when the alert fired",
+    "endpoints": "the endpoint store keeps only its latest read (no endpoint history is kept "
+                 "yet, C1793); who was attached then was not captured when the alert fired",
+}
 #: The log window around the onset: 15 minutes each side (the reader's alerts fire from 1 to
 #: 13 minutes after their onset, a heartbeat window being up to 1337 s: the capture of
 #: 2026-09-28), ended at the build when that is sooner.
@@ -337,6 +359,51 @@ def intent_section(ref, dev: dict) -> dict:
     return _section("intent", source, at, "ok", pieces=[piece])
 
 
+def intent_section_at(ref, dev: dict, at: float) -> dict:
+    """The Intent check as it stood at *at* (a pack rebuilt for a past alert): the same check
+    (`intent_section`) run over the network's repository at the commit current then (the
+    newest commit no later than *at*), checked out in a throwaway clone, so the golden, the
+    intent, the templates and the profile are all of that commit. The repository itself is
+    only read."""
+    import shutil
+    import tempfile
+    import types
+
+    from modules.nsot import repo as R
+
+    host = dev.get("hostname") or ""
+    source = f"the Intent check (intent_match) of {host}'s committed golden"
+    rc, sha, err = R.git(ref.repo_dir, "rev-list", "-1", f"--before=@{int(at)}", "HEAD")
+    if rc != 0:
+        return _section("intent", source, _now(), "unreadable",
+                        f"the commit current at {_iso(at)} could not be found "
+                        f"({(err or sha or 'git rev-list failed').splitlines()[0]})")
+    if not sha:
+        return _section("intent", source, _now(), "absent",
+                        f"{ref.name}'s repository holds no commit as of {_iso(at)}")
+    folder = tempfile.mkdtemp(prefix="nmas-intent-at-")
+    try:
+        clone = os.path.join(folder, "repo")
+        rc, out, err = R.git(ref.repo_dir, "clone", "--quiet", "--shared", "--no-checkout",
+                             ref.repo_dir, clone)
+        if rc == 0:
+            # --force: the repository helper writes its hygiene files into the empty clone
+            # first (ensure_repo_hygiene); the commit's own copies replace them.
+            rc, out, err = R.git(clone, "checkout", "--quiet", "--force", "--detach", sha)
+        if rc != 0:
+            return _section("intent", source, _now(), "unreadable",
+                            f"the repository at {sha[:12]} could not be read "
+                            f"({(err or out or 'git failed').splitlines()[0]})")
+        sec = intent_section(types.SimpleNamespace(repo_dir=clone, name=ref.name), dev)
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+    sec["source"] = (f"the Intent check (intent_match) of {host}'s golden and intent as "
+                     f"committed at {sha[:12]}, the commit current at the alert's time "
+                     f"{_iso(at)}")
+    sec["as_of_commit"] = sha[:12]
+    return sec
+
+
 def neighbours_section(ref, dev: dict, as_of: float = None) -> dict:
     """The device's expected and reported neighbours: `neighbours.for_device`, the Neighbours
     tab's own view (committed intent against what Prometheus last scraped, and RIP from its
@@ -563,7 +630,8 @@ def health_section(ref, host: str, capture: dict, onset, now: float, built: floa
              "devices_total": total, "devices_kept": len(devices),
              "figures": {k: H.FIGURE_WORDS[k] for k in H.FIGURES}}
     if not capture.get("ok"):
-        extra["errors"] = [f"the network model could not be read ({capture.get('error')}), "
+        extra["errors"] = [capture.get("words") or
+                           f"the network model could not be read ({capture.get('error')}), "
                            "so only the alert's device is read"] + extra["errors"]
     pieces = [{k: v for k, v in p.items() if k != "ref"} for p in got["pieces"]]
     states = {p["state"] for p in pieces}
@@ -586,16 +654,80 @@ def health_section(ref, host: str, capture: dict, onset, now: float, built: floa
 
 # ----------------------------------------------------------------------------- the pack
 
+#: Each section's provenance when a pack is NOT built as its alert was found firing: a replay
+#: (`scripts/nmas-pack-replay`, its alert synthesized, its time series and topology read as of
+#: then) and a pack built from the alert history (`mode="history"`, its alert recorded at the
+#: time by Grafana or the reader). The endpoints are captured whenever the store's read was
+#: made as of the alert's time (`endpoints_section`), else missing.
+REBUILT_MARKS = {
+    "replay": {"alert": "rebuilt", "device": "rebuilt", "history": "rebuilt",
+               "intent": "rebuilt", "neighbours": "rebuilt", "observed": "rebuilt",
+               "health": "rebuilt", "logs": "rebuilt"},
+    "history": {"alert": "captured", "device": "rebuilt", "history": "rebuilt",
+                "intent": "rebuilt", "neighbours": "missing", "observed": "missing",
+                "endpoints": "missing", "health": "rebuilt", "logs": "rebuilt"},
+}
+#: Each mark's words for a section, beyond `PROVENANCE_WORDS`: what it was rebuilt from.
+REBUILT_FROM = {
+    "alert": "the alert's transitions, as Grafana timed them, from the alert history",
+    "device": "every network's inventory as it is now",
+    "history": "History as it is now, less what it recorded after the alert's time",
+    "intent": "the repository at the commit current at the alert's time",
+    "neighbours": "Prometheus's routing tables asked as of the alert's time",
+    "observed": "the Topology reader's own read over Prometheus as of the alert's time",
+    "health": "Prometheus and Loki asked over the alert's window",
+    "logs": "Loki asked over the window around the onset",
+}
+
+
+def mark(section: dict, provenance: str, words: str = "") -> dict:
+    """Set *section*'s `provenance` (one of PROVENANCE) and `provenance_words`."""
+    assert provenance in PROVENANCE, provenance
+    section["provenance"] = provenance
+    section["provenance_words"] = PROVENANCE_WORDS[provenance] + (f": {words}" if words else "")
+    return section
+
+
+def provenance_of(section: dict) -> str:
+    """A section's mark, or "" for a pack built before schema 4 (not marked)."""
+    return section.get("provenance") or ""
+
+
+def _marks(sections: list, mode: str, clock: float) -> None:
+    """Mark every section by *mode* (`live`, `replay`, `history`)."""
+    for s in sections:
+        name = s.get("name")
+        if mode == "live":
+            mark(s, "captured", "read when the alert was found firing")
+            continue
+        got = REBUILT_MARKS[mode].get(name)
+        if name == "endpoints" and got is None:
+            got = "captured" if s.get("state") in ("ok", "empty") else "missing"
+        if got == "missing":
+            mark(s, "missing", NOT_REBUILT.get(name) or s.get("why") or "")
+        elif got == "captured":
+            mark(s, "captured", REBUILT_FROM["alert"] if name == "alert" else
+                 "the store's read was made as of the alert's time")
+        elif name == "alert" and mode == "replay":
+            mark(s, "rebuilt", "synthesized by the replay, no Grafana rule alerting on it")
+        else:
+            mark(s, "rebuilt", f"at {_iso(clock)}, from {REBUILT_FROM.get(name, 'its source')}")
+
+
 def build(inst: dict, *, store: str, value_at: str, now: float = None, loki=None,
           prometheus=None, observed_read: dict = None, trigger: str = "",
-          endpoints_read: dict = None) -> dict:
+          endpoints_read: dict = None, mode: str = "") -> dict:
     """One alert instance's pack, masked and hashed. Never raises: a source that fails is
     its section saying so. *now* is the alert's time, when it was found firing: every read of
     a time series (the neighbours, the observed topology, the health figures, the log lines)
     is as of it. *loki* and *prometheus* stand in for the network's clients (tests);
     *observed_read* for the Topology reader's stored read, in its store's shape (a replay of
     a past alert, `scripts/nmas-pack-replay`, gives the read made as of that time), and
-    *trigger* for what made the pack (the replay's own words)."""
+    *trigger* for what made the pack (the replay's own words). *mode* ``"history"`` builds a
+    past alert's pack from the alert history (`build_for_episode`): History cut at the alert's
+    time, the Intent check at the commit current then, and the sections that read a store
+    keeping only its latest value said to be missing, never read now. Every section is marked
+    (`provenance`)."""
     from modules import attention as A
     from modules import network_model as NM
     from modules import redact
@@ -603,6 +735,8 @@ def build(inst: dict, *, store: str, value_at: str, now: float = None, loki=None
     clock = _now()
     now = clock if now is None else now
     replay = clock - now > REPLAY_SLACK_SECONDS
+    mode = "history" if mode == "history" else "replay" if replay else "live"
+    past = mode != "live"
     onset, basis = A._onset(inst)
     sections = [_alert_section(inst, store, value_at, onset, basis)]
     try:
@@ -617,6 +751,30 @@ def build(inst: dict, *, store: str, value_at: str, now: float = None, loki=None
         for name in ("history", "intent", "neighbours", "observed", "endpoints", "health",
                      "logs"):
             sections.append(_absent(name, "", why))
+    elif mode == "history":
+        sections.append(history_section(ref, host, until=now))
+        try:
+            sections.append(intent_section_at(ref, dev, now))
+        except Exception as exc:                      # noqa: BLE001 (said, never raised)
+            sections.append(_section("intent", "the Intent check at the commit then", clock,
+                                     "unreadable", _failed(exc)))
+        # Said missing (`_marks` gives each its reason, NOT_REBUILT): never an as-of time, so
+        # nothing draws it as a capture.
+        for name in ("neighbours", "observed", "endpoints"):
+            sections.append(_section(name, "nothing read: not captured when the alert fired",
+                                     clock, "absent", "cannot be rebuilt; a later read is never "
+                                     "put in its place"))
+        cap = {"ok": False, "error": "not rebuilt",
+               "words": ("the devices around it as they were then are not rebuilt (the "
+                         "network as observed then was not captured), so only the alert's "
+                         "device is read")}
+        try:
+            sections.append(health_section(ref, host, cap, onset, now, clock,
+                                           prometheus=prometheus, loki=loki))
+        except Exception as exc:                      # noqa: BLE001
+            sections.append(_section("health", "Prometheus and Loki", clock, "unreadable",
+                                     _failed(exc)))
+        sections.append(logs_section(ref, host, onset, now, client=loki))
     else:
         sections.append(history_section(ref, host, until=now if replay else None))
         intent = intent_section(ref, dev)
@@ -649,16 +807,57 @@ def build(inst: dict, *, store: str, value_at: str, now: float = None, loki=None
             sections.append(_section("health", "Prometheus and Loki", clock, "unreadable",
                                      _failed(exc)))
         sections.append(logs_section(ref, host, onset, now, client=loki))
+    _marks(sections, mode, clock)
     key = alert_key(inst)
     pack = {"schema": SCHEMA, "id": pack_id(key), "alert_key": key, "built_at": _iso(now),
             "store": store, "rule": inst.get("rule") or "", "device": host,
             "network": ref.name if ref is not None else "", "onset": _iso(onset),
             "trigger": trigger or (f"the {store} reader stored this alert as firing (its "
                                    f"value of {value_at or 'an unrecorded time'})"),
+            "provenance": "rebuilt" if past else "captured",
             "sections": sections}
-    if replay:
+    if past:
         pack["replayed_at"] = _iso(clock)
     # Masked BEFORE it is hashed or kept: what is hashed is what is stored and shown.
+    pack = redact.redact_payload(pack)
+    pack["hash"] = digest(pack)
+    return pack
+
+
+def episode_instance(e: dict) -> dict:
+    """An alert history episode (`alert_history.episodes`) as a firing instance in the alerts
+    reader's shape: its rule and labels, its condition first holding when the episode began,
+    alerting from when it fired, both Grafana's times."""
+    labels = dict(e.get("labels") or {})
+    window = labels.get("window_seconds")
+    return {"rule": e.get("rule") or "", "rule_uid": e.get("rule_uid") or "",
+            "kind": "condition", "state": "Alerting", "value": "", "labels": labels,
+            "device": e.get("device") or "", "address": e.get("address") or "",
+            "device_from": e.get("device_from") or ("label" if e.get("device") else "address"),
+            "active_at": e.get("started_at") or "", "starts_at": e.get("fired_at") or "",
+            "fingerprint": "", "for_seconds": 0,
+            "window_seconds": int(window) if str(window or "").isdigit() else 0,
+            "silences": []}
+
+
+def build_for_episode(e: dict, *, actor: str, loki=None, prometheus=None) -> dict:
+    """A past alert's pack, rebuilt from the alert history (Monitoring › Alerts › History,
+    Build evidence): as of the alert's time (when it fired, else when it began), its window
+    from 15 minutes before the onset to that time, each section marked. Frozen once kept:
+    Explain reads it by id and checks its hash, never building it again."""
+    from modules import alert_history as H
+
+    at = H.epoch(e.get("fired_at")) or H.epoch(e.get("started_at"))
+    pack = build(episode_instance(e), store=e.get("store") or "", value_at="", now=at,
+                 loki=loki, prometheus=prometheus, mode="history",
+                 trigger=(f"built from the alert history by {actor} at {_iso(_now())}: "
+                          f"{e.get('rule') or 'an alert'} fired at {_iso(at)}, resolved at "
+                          f"{e.get('resolved_at') or 'a time Grafana did not record'}; "
+                          "nothing was captured when it fired"))
+    from modules import redact
+    pack.pop("hash", None)
+    pack["episode"] = e.get("id") or ""
+    pack["resolved_at"] = e.get("resolved_at") or ""
     pack = redact.redact_payload(pack)
     pack["hash"] = digest(pack)
     return pack

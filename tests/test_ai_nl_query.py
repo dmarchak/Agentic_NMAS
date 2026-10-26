@@ -848,7 +848,7 @@ def _v8_choices(**over):
 def test_v8_sends_the_network_and_its_coverage_and_v7_does_not(world, monkeypatch):
     """The network-context version (the operator, 2026-10-26): the network's summary in the
     cached prefix, each layer's coverage with the question, and nothing looked up yet."""
-    monkeypatch.setattr(nl_query, "network_context", lambda name, store: {
+    monkeypatch.setattr(nl_query, "network_context", lambda name, store, compact=False: {
         "summary": "network: Lab\ndevices: 2", "coverage": "flows: not_collected"})
     world.answer = _v8_choices()
     assert _v8(world, "input errors per interface, the top 5")["ok"] is True
@@ -859,7 +859,7 @@ def test_v8_sends_the_network_and_its_coverage_and_v7_does_not(world, monkeypatc
     assert '<data name="coverage">\nflows: not_collected\n</data>' in user
     assert '<data name="looked_up">\n(nothing looked up)\n</data>' in user
     from modules.ai import prompts
-    assert body["system"][0]["text"] == prompts.load("nl_metrics", 8)["text"]
+    assert body["system"][0]["text"] == prompts.load(*nl_query.CANDIDATE)["text"]
     world.answer = _choices()
     _ask(world)
     assert "coverage" not in world.sent[-1]["body"]["messages"][0]["content"]
@@ -869,7 +869,7 @@ def test_v8_s_needs_round_looks_up_once_and_asks_once_more(world, monkeypatch):
     """C1780: an answer naming a need is looked up once (`needs.run`), and the follow-up's
     answer, given what was found, is the one filled; the cost is the round's."""
     from modules.ai import needs
-    monkeypatch.setattr(nl_query, "network_context", lambda name, store: {
+    monkeypatch.setattr(nl_query, "network_context", lambda name, store, compact=False: {
         "summary": "s", "coverage": "c"})
     monkeypatch.setitem(needs._LOOKUPS, needs.NeedKind.endpoint_location,
                         lambda net, subject: ({"device": "s1", "interface": "Gi1/1"}, ""))
@@ -905,3 +905,34 @@ def test_the_v8_schema_and_prompt_are_registered_and_committed():
                  "the operation resets", '"coverage"', '"looked_up"'):
         assert said in text, said
     assert nl_query.PROMPT == ("nl_metrics", 7), "the candidate is adopted only by its bar"
+
+
+def test_v9_s_context_is_the_compact_one_and_v8_s_is_as_it_was(monkeypatch):
+    """v9 (2026-10-26: v8's prompt passed the task's 8,000 estimated tokens on 9 of the 22):
+    each layer's state, its why only where it is not present, and the builders' summary
+    (devices by role and platform, each with its role); v8's context stays as it was asked."""
+    from modules import endpoints as E
+    from modules import network_model as NM
+    model = {"network": "Lab", "nodes": {
+        "dev:1": {"id": "dev:1", "name": "edge1", "role": "router", "platform": "cisco_iosxe"},
+        "dev:2": {"id": "dev:2", "name": "acc1", "role": "switch", "platform": "cisco_ios"}},
+        "built_at": "2026-10-26T20:00:00Z", "version": {"key": "k"}, "links": {},
+        "adjacencies": {}, "counts": {"adjacencies": {}}, "errors": []}
+    monkeypatch.setattr(NM, "model_for", lambda name: (model, ""))
+    monkeypatch.setattr(E, "coverage_layer", lambda name: {
+        "state": "present", "source": "the endpoint reader", "age": "2026-10-26T19:00:00Z",
+        "why": ""})
+    monkeypatch.setattr("modules.ai.egress_classes.topology_allowed",
+                        lambda net: {"allowed": True, "why": ""})
+    v9 = nl_query.network_context("Lab", "metrics", compact=True)
+    assert v9["summary"] == ("network Lab: 2 devices; by role: router 1, switch 1; by "
+                             "platform: cisco_ios 1, cisco_iosxe 1; devices: acc1 switch; "
+                             "edge1 router")
+    lines = v9["coverage"].splitlines()
+    assert "endpoints: present" in lines and "performance: present" in lines
+    assert "flows: not_collected (flows are not collected (roadmap))" in lines
+    assert "source" not in v9["coverage"] and "2026-10-26" not in v9["coverage"]
+    v8 = nl_query.network_context("Lab", "metrics")
+    assert "source the endpoint reader" in v8["coverage"] and "device_index" in v8["summary"]
+    assert nl_query.CANDIDATE == ("nl_metrics", 9)
+    assert nl_query.SCHEMA_OF[9] is nl_query.MetricsChoicesV3

@@ -58,7 +58,14 @@ pattern's, each from a finding on 2026-09-28:
 
 History (`api/v1/rules/history`) is NOT read here: it is capped at 100 rows
 and a claim about all time needs a window that covers all time (rule 6).
-It is 8.6's, read uncapped by splitting the window.
+It is 8.6's, read uncapped by splitting the window. What this reader DOES
+keep of history (the operator, 2026-10-26): its after-store step records
+every transition each read shows into Mercury's alert history
+(`modules/alert_history.py`), and the value carries the normal instances
+whose state began within the last hour (`recently_normal`), each a resolve
+timed by Grafana. Grafana's own past (its alert annotations; this Grafana's
+`api/v1/rules/history` answered HTTP 500 on 2026-10-26) is read once by
+`scripts/nmas-alert-backfill`.
 """
 
 import logging
@@ -85,6 +92,11 @@ ORIGIN_ID_PATTERN = r"\d+: (?P<device>[A-Za-z][A-Za-z0-9._-]*): "
 #: evaluator is called stalled. Three, like the reader's own staleness: one
 #: late evaluation is not a stop.
 STALLED_AFTER_INTERVALS = 3
+#: A normal instance whose state began within this long before the read is kept on the value
+#: (`recently_normal`): its ``activeAt`` is when it resolved, Grafana's time, which the alert
+#: history records (`modules/alert_history.py`). An hour covers a reader that missed reads
+#: (a restart, a slow Grafana) without keeping every quiet series on every stored value.
+RECENTLY_NORMAL_SECONDS = 3600
 
 _DURATION = re.compile(r"(\d+)(ms|s|m|h|d)")
 _UNIT = {"ms": 0.001, "s": 1, "m": 60, "h": 3600, "d": 86400}
@@ -224,7 +236,7 @@ def parse(ruler: dict, view: dict, alerts: list, read_at: float, silences=None,
     if data.get("groupNextToken"):
         raise PartialAnswer("the rules view returned a next-page token: it listed one page of "
                             "several")
-    rules, instances, stalled = [], [], []
+    rules, instances, stalled, recently_normal = [], [], [], []
     counts = {"rules": 0, "normal": 0, "normal_no_data": 0, "pending": 0,
               "condition": 0, "no_data": 0, "error": 0, "unknown_state": 0}
     for grp in data.get("groups") or []:
@@ -265,6 +277,13 @@ def parse(ruler: dict, view: dict, alerts: list, read_at: float, silences=None,
                 if kind == "normal":
                     counts["normal_no_data" if "nodata" in (a.get("state") or "").lower()
                            else "normal"] += 1
+                    began = reader_job._parse_iso((a.get("activeAt") or "")[:19] + "Z")
+                    if began is not None and 0 <= read_at - began <= RECENTLY_NORMAL_SECONDS:
+                        labels = _public(a.get("labels"))
+                        recently_normal.append({
+                            "rule_uid": uid, "rule": r.get("name"), "state": a.get("state"),
+                            "labels": labels, "active_at": a.get("activeAt"),
+                            **_instance_device(labels, source)})
                     continue
                 counts[kind] += 1
                 labels = _public(a.get("labels"))
@@ -323,7 +342,10 @@ def parse(ruler: dict, view: dict, alerts: list, read_at: float, silences=None,
             # alert it matches is firing now: an expired one decides nothing.
             "silences": [s for s in silence_by_id.values()
                          if s.get("state") in ("active", "pending")],
-            "silences_read": silences is not None}
+            "silences_read": silences is not None,
+            # The normal instances whose state began within RECENTLY_NORMAL_SECONDS: each a
+            # resolve's time, as Grafana timed it, for the alert history.
+            "recently_normal": recently_normal}
 
 
 def read(client=None, list_name: str = "") -> dict:
@@ -393,12 +415,14 @@ def band_readings(value: dict, acks=None, prom=None) -> dict:
     return out
 
 
-def _evidence_packs() -> bool:
-    """After each stored read: a pack for each alert newly stored as firing (PHASE8_PLAN 15.9,
-    P1; `modules/evidence_pack.py`), before the announcement, so the Alerts tab that redraws on
-    it shows the pack. True when one was built."""
-    from modules import evidence_pack
-    return evidence_pack.after_alerts_read()
+def _after_store() -> bool:
+    """After each stored read, before the announcement: every transition the read shows that
+    the alert history does not hold, recorded (`modules/alert_history.py`), then a pack for
+    each alert newly stored as firing (PHASE8_PLAN 15.9, P1; `modules/evidence_pack.py`), so
+    the Alerts tab that redraws on it shows both. True when either added something."""
+    from modules import alert_history, evidence_pack
+    recorded = alert_history.after_alerts_read()
+    return evidence_pack.after_alerts_read() or recorded
 
 
 READER = reader_job.register(reader_job.Reader(
@@ -416,7 +440,7 @@ READER = reader_job.register(reader_job.Reader(
     remedy=("Check Grafana's URL and token in Settings › Default, the Grafana card (or the "
             "network's own); the error names the endpoint that refused"),
     window="the state at the read; history is not read here (8.6 reads it uncapped)",
-    after_store=_evidence_packs,
+    after_store=_after_store,
     # P.8 step 5: each network's Grafana (and the Prometheus its bands read), once each.
     per_group=("grafana", "prometheus"),
     read_for=lambda list_name: read(list_name=list_name),

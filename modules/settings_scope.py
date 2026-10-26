@@ -56,7 +56,8 @@ SCOPES: dict = {
         "verify_settle_windows", "deploy_max_workers", "deploy_verify_failure_limit",
         "nsot_device_tag_retention", "nsot_config_read_timeout", "netbox_excluded_vrfs",
         "settings_not_applicable", "reads_answer_cap_kib",
-        "reads_max_workers", "reads_retention_days", "ai_topology_class")},
+        "reads_max_workers", "reads_retention_days", "ai_topology_class",
+        "alert_history_retention_days")},
     # ── Host-wide ─────────────────────────────────────────────────────────────────────────
     **_group(HOST, "netbox_connection", "netbox_url", "netbox_token", "netbox_auth_scheme",
              "netbox_verify_tls", "netbox_allow_writes"),
@@ -90,7 +91,8 @@ SCOPES: dict = {
              "records_store_retry_log", "records_store_netbox_created",
              "records_store_netbox_modified", "records_store_netbox_adopted",
              "records_store_interrupted_holds", "records_store_reader_values",
-             "records_store_ai_calls", "records_store_evidence_packs"),
+             "records_store_ai_calls", "records_store_evidence_packs",
+             "records_store_alert_history"),
     # Phase 8's gateway (modules/ai): one key, one allowance and two caps for the installation.
     **_group(HOST, "ai_gateway", "anthropic_api_key", "ai_hosted", "ai_cap_usd_per_day",
            "ai_cap_day_boundary"),
@@ -154,6 +156,7 @@ GROUP_LABELS: dict = {
     "reads_max_workers": "Show commands: devices read at once",
     "reads_retention_days": "Show commands: answers kept (days)",
     "ai_topology_class": "AI: the topology class",
+    "alert_history_retention_days": "Alert history: transitions kept (days)",
     "endpoints": "Endpoints",
 }
 

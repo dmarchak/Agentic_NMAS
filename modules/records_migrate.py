@@ -488,6 +488,18 @@ LINE_STORES["evidence_packs"] = _installation_store("evidence_packs", "Alert evi
                                                     "packs", _evidence_packs_path)
 
 
+def _alert_history_path() -> str:
+    from modules import alert_history
+    return alert_history._path()
+
+
+# Every alert's state transitions, as Grafana timed them (the operator, 2026-10-26): one file
+# for the installation, one line per transition, through `store_append` and `store_rows`
+# (`modules/alert_history.py`).
+LINE_STORES["alert_history"] = _installation_store("alert_history", "Alert history",
+                                                   "transitions", _alert_history_path)
+
+
 # ── The files ────────────────────────────────────────────────────────────────────────────────
 
 def file_networks(store: str = STORE) -> dict:

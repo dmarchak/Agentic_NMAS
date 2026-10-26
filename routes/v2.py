@@ -1524,6 +1524,79 @@ def monitoring_alert_explain(pack_id):
 
 
 # ---------------------------------------------------------------------------
+# Monitoring > Alerts > History: the alerts that fired and resolved, from Mercury's alert
+# history (modules/alert_history.py; the operator, 2026-10-26), each with its evidence pack or
+# Build evidence. Reads only: the history store, the pack store and the alerts reader's stores,
+# once each.
+# ---------------------------------------------------------------------------
+
+_ALERT_HISTORY_ARGS = ("q", "rule", "device", "range", "show")
+
+
+def _alert_history_ctx() -> dict:
+    from modules import alert_history
+
+    return {"h": alert_history.tab({k: request.args.get(k, "") for k in _ALERT_HISTORY_ARGS})}
+
+
+@bp.route("/monitoring/alerts/history", methods=["GET"])
+def monitoring_alerts_history():
+    """Monitoring > Alerts > History: resolved alerts, grouped by rule and collapsed."""
+    return _page("v2/monitoring.html", active_nav="monitoring", monitoring_tab="alerts",
+                 alerts_view="history", **_alert_history_ctx())
+
+
+@bp.route("/monitoring/alerts/history/list", methods=["GET"])
+def monitoring_alerts_history_list():
+    """The history alone, re-fetched when the alerts reader announces."""
+    return _strict(render_template("v2/_alert_history.html", **_alert_history_ctx()))
+
+
+@bp.route("/monitoring/alerts/history/<episode_id>/evidence", methods=["POST"])
+def monitoring_alert_history_evidence(episode_id):
+    """Build evidence for a past alert that has no pack (modules/evidence_pack.
+    build_for_episode): its pack rebuilt as of its time, each section marked captured,
+    rebuilt or missing, kept frozen, as the person who pressed it; drawn in place with Explain.
+    A pack already kept for it is drawn, never built again."""
+    from modules import alert_history, evidence_pack, identity
+    from modules.filestore import PathLock
+
+    eid = episode_id[:40]
+    if not _PACK_KEY.match(eid):
+        return _strict('<p class="refusal">Couldn\'t load: no alert in the history is named '
+                       f'{escape(eid)}.</p>', 404)
+    actor = identity.request_actor()
+    # One build at a time across processes (two tabs pressing it build one pack); its own lock,
+    # so a build reading Loki never holds the pack store the reader appends to.
+    with PathLock(alert_history.build_lock_path):
+        e, state, error = alert_history.find(eid)
+        if e is None:
+            why = (f"the alert history cannot be read ({error})" if state == "unreadable"
+                   else f"no alert {eid} is in the alert history")
+            return _strict(f'<p class="refusal">Couldn\'t load: {escape(why)}; nothing was '
+                           'built.</p>', 404)
+        packs = evidence_pack.read()
+        if packs["state"] == "unreadable":
+            return _strict('<p class="refusal">Couldn\'t load: the evidence packs cannot be '
+                           f'read ({escape(packs["error"])}); nothing was built.</p>', 503)
+        kept = alert_history.pack_for(e, alert_history._pack_index(packs["rows"]))
+        if kept:
+            pack = evidence_pack.find(kept["id"])[0]
+        else:
+            pack = evidence_pack.build_for_episode(e, actor=actor)
+            got = evidence_pack.record(pack)
+            if not got["ok"]:
+                return _strict('<p class="refusal">Couldn\'t keep the evidence pack: '
+                               f'{escape(got["error"])}; nothing was kept.</p>', 503)
+            log.info("alert history: %s built the evidence pack %s for %s on %s", actor,
+                     pack["id"], e["rule"], e["device"] or e["address"] or "no one device")
+    html = render_template("v2/_evidence_pack.html", pack=pack, state="ok", error="",
+                           pid=pack["id"], intact=evidence_pack.intact(pack),
+                           explain_model=_explain_model())
+    return _strict(html)
+
+
+# ---------------------------------------------------------------------------
 # Monitoring > Coverage's batch Apply (P.9 step d2): the preview, the confirm
 # and the result, drawn server-side from the six-part contract (today's
 # renderer emits inline handlers, which the strict policy refuses). The

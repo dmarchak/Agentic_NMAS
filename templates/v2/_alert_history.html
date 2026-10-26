@@ -1,0 +1,81 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{%- import "v2/_ai.html" as ai -%}
+{#- Monitoring › Alerts › History (modules/alert_history.tab; the operator's order of
+    2026-10-26; board P1-H, AlertsHistory.dc.html, signed off under the Phase 7 mode): the
+    alerts that fired and resolved, from Mercury's alert history, each transition timed by
+    Grafana. The summary first (counts by outcome in the range), the filter, then one closed group
+    per rule with a row per past alert; a row opens its evidence pack (a read) or offers Build
+    evidence (POST, gated, recorded). Redrawn when the alerts reader announces. -#}
+{%- set c = h.counts -%}
+{%- set OK = {'fired': 'danger', 'pending_only': 'muted', 'no_data': 'warn', 'error': 'warn'} -%}
+<div class="alert-history" id="alert-history" hx-get="{{ url_for('v2.monitoring_alerts_history_list', q=h.q or none, rule=h.rule or none, device=h.device or none, range=h.range, show=h.show) }}"
+     hx-trigger="nmas:alerts from:body" hx-swap="outerHTML">
+  {%- if h.store.state == 'unreadable' %}
+  <div class="notice notice-danger">{{ icon('warn', 16) }}<div><strong>The alert history cannot be read.</strong> {{ h.store.error }}. Nothing is listed until it can be: an empty list here would read as a quiet network.</div></div>
+  {%- else %}
+  <p class="att-summary">
+    <strong>{{ c.outcomes.fired }} alert{{ '' if c.outcomes.fired == 1 else 's' }} fired and resolved</strong> in {{ h.range_words }}
+    · {{ c.devices }} device{{ '' if c.devices == 1 else 's' }}{% if h.show == 'all' %} in the {{ c.shown }} shown{% endif %}
+    · {{ c.packed }} with an evidence pack
+  </p>
+  <p class="ah-outcomes">
+    {%- for o, n in c.outcomes.items() %}<span>{{ badge(n, OK[o]) }} {{ h.outcome_words[o] }}</span>{% endfor -%}
+  </p>
+  <p class="limits">{% if c.transitions %}Transitions as Grafana timed them, never a device's clock: {{ c.transitions }} kept{% if h.first_reader %}, recorded by the alerts reader since {{ stamp(h.first_reader) }}{% endif %}{% if h.oldest %}, the oldest from {{ stamp(h.oldest) }}{% endif %}{% if c.moved %}; {{ c.moved }} older than their network's retention moved to the data lake{% endif %}.{% else %}No transition is kept yet: the alerts reader records each one it sees from now, and Grafana's own state history is read in once (scripts/nmas-alert-backfill).{% endif %}</p>
+  {%- endif %}
+  {%- if h.packs_store.state == 'unreadable' %}
+  <div class="notice notice-warn">{{ icon('warn', 16) }}<div><strong>The evidence packs cannot be read.</strong> {{ h.packs_store.error }}. Which past alert has a pack is not known, so none is built until they can be read.</div></div>
+  {%- endif %}
+  <form class="dev-filters ah-filter" method="get" action="{{ url_for('v2.monitoring_alerts_history') }}" role="search">
+    <label class="sr-only" for="ah-q">Search rule, device or label</label>
+    <input id="ah-q" name="q" type="search" value="{{ h.q }}" maxlength="80" placeholder="Search rule, device or label">
+    <label class="sr-only" for="ah-rule">Rule</label>
+    <select id="ah-rule" name="rule"><option value="">Every rule</option>{% for f in h.families %}<option value="{{ f }}"{% if f == h.rule %} selected{% endif %}>{{ f }}</option>{% endfor %}</select>
+    <label class="sr-only" for="ah-device">Device</label>
+    <input id="ah-device" name="device" value="{{ h.device }}" maxlength="80" placeholder="Device" class="ah-device">
+    <label class="sr-only" for="ah-range">Time</label>
+    <select id="ah-range" name="range">{% for r in h.ranges %}<option value="{{ r.value }}"{% if r.value == h.range %} selected{% endif %}>{{ r.words[0]|upper }}{{ r.words[1:] }}</option>{% endfor %}</select>
+    <label class="sr-only" for="ah-show">Which</label>
+    <select id="ah-show" name="show"><option value="fired"{% if h.show == 'fired' %} selected{% endif %}>Fired</option><option value="all"{% if h.show == 'all' %} selected{% endif %}>All</option></select>
+    <button type="submit" class="btn btn-small btn-outline">Show</button>
+    {%- if h.q or h.rule or h.device %}<span class="muted small">{{ c.shown }} of {{ c.in_range }} in {{ h.range_words }} match</span>{% endif %}
+  </form>
+  {%- if h.store.state != 'unreadable' and not h.groups %}
+  <p class="att-clear">{{ icon('check', 16) }} No alert {{ 'fired and resolved' if h.show == 'fired' else 'ended' }} in {{ h.range_words }}{% if h.q or h.rule or h.device %} that matches{% endif %}.</p>
+  {%- endif %}
+  {%- for g in h.groups %}
+  <details class="card ah-group" data-keep="ah-group-{{ loop.index }}-{{ g.family|length }}">
+    <summary class="card-head"><h2>{{ g.family }}</h2>{{ badge(g.count ~ (' resolved' if h.show == 'fired' else ' ended'), 'danger' if h.show == 'fired' else 'muted') }} <span class="muted small">{{ g.devices }} device{{ '' if g.devices == 1 else 's' }}</span></summary>
+    {%- for e in g.episodes %}
+    {%- set p = e.pack %}
+    <details class="pack-card ah-row" data-keep="ah-{{ e.id }}"{% if p %} hx-get="{{ url_for('v2.monitoring_alert_pack', pack_id=p.id) }}" hx-trigger="toggle once" hx-target="find .pack-body" hx-swap="innerHTML" data-what="the evidence pack"{% endif %}>
+      <summary><strong>{{ e.device or e.address or 'no one device' }}</strong>{% if e.networks %} <span class="muted">in {{ e.networks|join(', ') }}</span>{% endif %}
+        · {% if e.fired_at %}fired {{ stamp(e.fired_at, note="Grafana's time") }}{% else %}began {{ stamp(e.started_at, note="Grafana's time") }}{% endif %}
+        · {% if e.resolved_at %}resolved {{ stamp(e.resolved_at, note="Grafana's time; " ~ e.resolved_state) }}{% if e.duration_words %} ({{ e.duration_words }}){% endif %}{% else %}<span title="no normal state was recorded after it, and the alerts reader no longer holds it">ended, its resolve not recorded</span>{% endif %}
+        {%- if e.outcome != 'fired' %} {{ badge(h.outcome_words[e.outcome], OK[e.outcome]) }}{% endif %}
+        {%- if p %} {{ badge(p.pieces ~ ' pieces', 'info', title='pack ' ~ p.id ~ ', built ' ~ p.built_at ~ ', sha256 ' ~ p.hash) }}
+          {%- if p.not_read %} {{ badge(p.not_read|length ~ ' not read', 'warn', title='could not be read: ' ~ p.not_read|join(', ')) }}{% endif %}
+          {%- if not p.intact %} {{ badge('changed since built', 'danger', title='its stored hash is not its digest now') }}{% endif %}
+        {%- else %} {{ badge('no evidence pack', 'muted') }}{% endif %}
+        <span class="muted small" title="{{ e.rule }}{% if e.rule_uid %} (rule {{ e.rule_uid }}){% endif %}; read from {{ e.store }}; recorded by {{ e.sources|join(' and ') }}; device by {{ e.device_from }}; alert {{ e.identity }}">{{ e.summary_labels }}</span>
+      </summary>
+      <div class="pack-body">
+        <p class="pack-source">{% for s in e.states %}{{ s.state }} at {{ stamp(s.at, s.at[11:19] ~ ' UTC') }}{{ '; ' if not loop.last }}{% endfor %}{% if e.resolved_at %}; {{ e.resolved_state }} at {{ stamp(e.resolved_at, e.resolved_at[11:19] ~ ' UTC') }}{% endif %}.</p>
+        {%- if p %}<p class="muted small">Reading the pack for {{ p.rule }} on {{ p.device or 'no one device' }}, built {{ stamp(p.built_at) }}…</p>
+        {%- else %}
+        <p class="pack-source">No evidence was captured when this alert fired. <strong>Build evidence</strong> rebuilds its pack as of {{ stamp(e.fired_at or e.started_at, (e.fired_at or e.started_at)[:16]|replace('T', ' ') ~ ' UTC') }}: History up to then, the Intent check at the commit current then, the health figures and log lines over its window. The neighbours, the network as observed and the endpoints cannot be rebuilt, and will say so.</p>
+        {%- set aic = ai_control('explain') %}
+        <form class="explain-ask" method="post" action="{{ url_for('v2.monitoring_alert_history_evidence', episode_id=e.id) }}" hx-post="{{ url_for('v2.monitoring_alert_history_evidence', episode_id=e.id) }}" hx-target="closest .pack-body" hx-swap="innerHTML">
+          <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="alert-history" hx-disabled-elt="this"{{ gate('configure') }} title="Rebuilds this alert's evidence pack as of its time and keeps it; reaches no device"><span class="op-idle">Build evidence</span><span class="op-busy">Building the evidence…</span></button>{{ how('alert-history', 'build') }}</span>
+          <span class="op-act">{{ ai.mark(aic) }} <button type="button" class="btn btn-small" disabled aria-disabled="true" title="Explain reads the alert's evidence pack">Explain</button></span>
+          <span class="muted small">Explain reads the alert's evidence pack: build it first.</span>
+          {{- ai.reason(aic) }}
+        </form>
+        {%- endif %}
+      </div>
+    </details>
+    {%- endfor %}
+    {%- if g.count > g.episodes|length %}<p class="muted small ah-more">The newest {{ h.group_shown }} of {{ g.count }} are drawn: filter above to find the rest.</p>{% endif %}
+  </details>
+  {%- endfor %}
+</div>

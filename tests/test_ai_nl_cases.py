@@ -407,6 +407,54 @@ def test_every_recorded_case_passes_and_the_rest_wait_for_their_recording():
         c["recorded"] is None for c in SET["cases"] if c["n"] in waiting)
 
 
+_RELATIVE = re.compile(r"\b(today|yesterday|this week|last week|since monday|so far)\b", re.I)
+
+
+def test_every_date_relative_case_carries_its_own_clock():
+    """The operator, 2026-10-26: a case whose answer depends on the day it is asked ("this
+    week" on a Monday) carries "now", so it tests the same thing on every day it is recorded;
+    a scan of every case file, its floor the walk's four."""
+    seen = 0
+    for name in ("metrics.json", "logs.json", "held_out_2.json"):
+        for c in cases.load(os.path.join(CASES_DIR, "nl_query", name))["cases"]:
+            if _RELATIVE.search(c["question"]) or c["expect"].get("span"):
+                seen += 1
+                assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", c.get("now") or ""), (
+                    name, c["n"], c["question"])
+    assert seen >= 4
+
+
+def test_a_case_with_its_own_clock_is_asked_and_judged_as_of_it(world, tmp_path, monkeypatch):
+    """The recorder asks such a case with its "now" (the prompt's now and the range's), and
+    records that time, so the replay judges it as of it."""
+    import calendar
+    from modules.ai import anthropic_adapter
+    from modules.ai import nl_query
+    from tests.test_ai_nl_query import _choices
+    monkeypatch.setattr(anthropic_adapter, "send", world.send)
+    world.answer = _choices(metric="cpmCPUTotal5minRev", devices=["r1"], operations=[],
+                            top="none", range="1h")
+    asked = []
+    plain = nl_query.metrics
+
+    def metrics(*a, **kw):
+        asked.append(kw.get("now"))
+        return plain(*a, **kw)
+    monkeypatch.setattr(nl_query, "metrics", metrics)
+    data = {"about": "", "model": SET["model"], "cases": [
+        dict(SET["cases"][0], now="2026-10-26T20:00:00Z"), SET["cases"][1]]}
+    path = tmp_path / "frozen.json"
+    path.write_text(json.dumps(data))
+    out = tmp_path / "rec.json"
+    rc = _recorder().record(ROOT, "Lab", "evaluation:t", str(out), case_file=str(path),
+                            only=(1,))
+    assert rc == 0
+    frozen = calendar.timegm((2026, 10, 26, 20, 0, 0, 0, 0, 0))
+    assert asked == [frozen], "only case 1, asked as of its clock"
+    (rec,) = json.loads(out.read_text())["recordings"]
+    assert rec["now"] == frozen and rec["recorded_at"] == "2026-10-26T20:00:00Z"
+
+
 def test_a_measurement_is_never_recorded_as_a_person(world, tmp_path, capsys):
     """C1784: a recording's actor names the run (evaluation:<run id>), never an address."""
     out = tmp_path / "rec.json"

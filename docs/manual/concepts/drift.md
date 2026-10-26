@@ -14,7 +14,9 @@ different question:
 
 - **The device against its golden** is *drift*: the device changed since the tool last
   recorded it. The [drift check](drift-check) asks this on a schedule, and the device page's
-  Drift row shows its last answer.
+  **Since last capture** row shows its last answer, named for what it compares: a golden is
+  the record of the device's last capture, so this says whether it changed since then, never
+  whether it is right.
 - **The golden against intent** is a *departure from intent*: what the tool recorded is not
   what the device should be. Every capture computes it, every golden commit carries it as an
   `Intent-Match:` trailer, and the device page's Intent row shows it.
@@ -24,6 +26,23 @@ different question:
 
 A device can be clean on one comparison and not on another. A device at its golden can still
 depart from intent, and a device whose drift check is clean says nothing about intent at all.
+
+## A captured out-of-band change is never clean {#out-of-band}
+
+A change made by hand (at the device's console, say) and then captured is part of the golden,
+so the drift check finds nothing changed since that capture. That is never drawn as a pass.
+When a device's last golden is a capture (Capture, Save, Save All) whose commit recorded it
+departing from intent, and a line of that departure is one no rule explains now (see the
+Intent row on the [device page](device-page#overview)), the **Since last capture** row is a
+warning: "unchanged at the last run, but its last capture (`<commit>`) took in a change made
+outside Mercury that departs from intent (+1 -1): changed out-of-band, by console per
+SYS-5-CONFIG_I; it is not at its intent (see Intent)". How it was changed is the device's own
+word, read from its log when the capture was recorded and kept in the commit's `Out-Of-Band:`
+line ([Capture and Save All](capture)); the golden's history marks the commit the same way. The
+warning clears when the departure does: intent adopting the line, or a deploy or Mode B removal
+bringing the device back and a capture recording it. A departure only rules explain (a VTP
+switch's VLANs, order only, a line Mercury does not model, the device's own certificate) is not
+an out-of-band change and is not flagged.
 
 ## What counts as drift {#what-counts}
 
@@ -71,7 +90,7 @@ change to it is real drift. The golden itself still records the certificate verb
 ## Two ways to resolve drift {#resolve}
 
 Each way moves one record toward the other, and each asserts something different. Both are on
-the device page. The Overview's Drift row opens in place: the lines the check kept (masked,
+the device page. The Overview's Since last capture row, when it has changed, opens in place: the lines the check kept (masked,
 cut at 200 lines), what the device's log says about the change, and three choices: **Keep
 it** (**Capture**, the first way), **Put intent back** (**Plan a deploy…**, which sends what
 intent holds and the device lacks) and **Remove lines (Mode B)…** (the lines the device holds
@@ -81,7 +100,8 @@ Actions menu.
 1. **Capture the running config as the golden** ([Capture and Save All](capture)). Asserts:
    *the device is right, and the record was behind it.* The device is read now, the change is
    previewed against the golden and against intent, and the confirm records it as you.
-   Capturing a change nobody made on purpose makes it part of the record.
+   Capturing a change nobody made on purpose makes it part of the record; one that departs
+   from intent is marked as taken in out-of-band ([above](#out-of-band)).
 2. **Restore the device from its golden** ([Restore and re-apply a baseline](restore)).
    Asserts: *the record is right, and the device moved away from it.* The golden is re-applied
    through the deploy path. It is merge-only: it sends back lines the device lost or changed,

@@ -1048,6 +1048,43 @@ def _logs_builder_leftovers(client, _lab, _mp):
         Q.forget()
 
 
+def _alert_history(client, _lab, _mp):
+    """Monitoring › Alerts › History (the alert history, 2026-10-26): the captured state
+    history of 21 Oct, 01:00 to 03:00 UTC (tests/fixtures/grafana/alert_history/), backfilled
+    by the real recorder; the tab with every alert shown, Build evidence pressed on one (its
+    rebuilt pack drawn in place), and the tab again with that pack. Its patches and stores are
+    undone before the next provider."""
+    import shutil
+    import tempfile
+
+    import pytest
+
+    from modules import alert_history as H
+    from modules import evidence_pack as EP
+    from tests.test_alert_history import _backfill, load
+
+    mp = pytest.MonkeyPatch()
+    folder = tempfile.mkdtemp(prefix="nmas-v2-context-history-")
+    try:
+        mp.setattr(EP, "_path", lambda: os.path.join(folder, "evidence_packs.jsonl"))
+        mp.setattr(H, "_path", lambda: os.path.join(folder, "alert_history.jsonl"))
+        mp.setattr(H, "_networks", lambda: {"grafana-alerts": ["Lab"]})
+        mp.setattr(H, "_firing_now", lambda: set())
+        assert _backfill(load("annotations_firing"))["added"] == 93
+        url = "/v2/monitoring/alerts/history?range=all&show=all"
+        r = client.get(url, headers={"Accept": "text/html"})
+        assert r.status_code == 200 and "Build evidence" in r.get_data(as_text=True)
+        e = next(e for e in H.episodes(H.read()["rows"]) if e["outcome"] == "fired")
+        r = client.post(f"/v2/monitoring/alerts/history/{e['id']}/evidence",
+                        headers={"HX-Request": "true", "Accept": "text/html"})
+        assert r.status_code == 200 and "rebuilt afterwards" in r.get_data(as_text=True)
+        r = client.get(url, headers={"Accept": "text/html"})
+        assert r.status_code == 200 and EP.read()["rows"][0]["id"] in r.get_data(as_text=True)
+    finally:
+        mp.undo()
+        shutil.rmtree(folder, ignore_errors=True)
+
+
 def _save_no_golden(client, _lab, _mp):
     """Devices › Save's no-golden scope (C1232) on the lab as it is: r3 holds a committed
     golden and is left out, named; r9 holds none and is planned."""
@@ -1498,7 +1535,7 @@ def _oob_onboard(client, _lab, _mp):
 #: a state the lab's walk does not hold. In order: `_deploy` changes r3, so it is last.
 PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _drift,
                    _in_progress, _pending, _netbox_source, _netbox_lag, _silenced_alert,
-                   _alert_evidence, _logs_builder_leftovers,
+                   _alert_evidence, _logs_builder_leftovers, _alert_history,
                    _save_no_golden, _profile_versions,
                    _no_change_window, _update_owed, _lease_release, _ip_sla_retunes, _ip_sla_unsent,
                    _console_ztp, _console_servers, _oob_onboard, _deploy,

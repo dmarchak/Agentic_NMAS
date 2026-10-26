@@ -179,3 +179,14 @@ answer it is disabled with the reason under it, and the pack is drawn whole (see
 The list redraws when the alert reader finishes a read, after any new pack is built. If the
 reader has not read Grafana, or the pack record cannot be read, the tab says so instead of
 listing nothing.
+
+The tab has two views, **Firing** (above) and **History**: the alerts that fired and resolved,
+from {{product}}'s alert history, every time Grafana's own (see
+[Alert history: past alerts and their evidence](alert-history)). History leads with a summary
+(how many fired and resolved in the range, on how many devices, how many have a pack, and the
+counts of those that only went pending, read no data or could not evaluate), then the filter
+(words, rule, device, time, and **Fired** or **All**), then each rule as a closed group with its
+count. A past alert with its pack opens it, with Explain; one without offers **Build evidence**,
+which rebuilds its pack as of its time and marks each section captured, rebuilt or cannot be
+rebuilt (see [Build evidence](alert-history#build)). Explain beside it stays disabled until the
+pack is built.

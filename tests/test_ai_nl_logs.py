@@ -362,7 +362,7 @@ def test_v3_offers_the_platform_s_events_whether_or_not_the_range_holds_one(worl
     """C1804 (6a): the reload and restart mnemonics are offered for "rebooted", with what each
     records, though no word of the question is in them and the range need not hold one."""
     monkeypatch.setattr(nl_query, "_inventory", lambda name: IOS_ROWS)
-    monkeypatch.setattr(nl_query, "network_context", lambda name, store: {
+    monkeypatch.setattr(nl_query, "network_context", lambda name, store, compact=False: {
         "summary": "s", "coverage": "c"})
     world.answer = dict(_choices(mnemonics=["%SYS-5-RELOAD", "%SYS-5-RESTART"], range="7d"),
                         needs=[])

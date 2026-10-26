@@ -9,12 +9,18 @@
 <div class="page-head">
   <div class="page-title">
     <h1>Monitoring · Alerts {{ info('alert-evidence') }}</h1>
-    <p class="sub">Every network's firing alerts, each with the evidence gathered when it began: its device's recent History, Intent check, neighbours and log lines.</p>
+    <p class="sub">Every network's alerts: those firing now, each with the evidence gathered when it began, and those that fired and resolved.</p>
   </div>
 </div>
 {% include "v2/_monitoring_tabs.html" %}
+{#- Firing and History (the operator's order of 2026-10-26; board P1-H, AlertsHistory.dc.html,
+    signed off under the Phase 7 mode): two views of one tab, each its own address. -#}
+<nav class="seg alerts-views" aria-label="Alerts">
+  <a class="seg-btn{% if alerts_view != 'history' %} on{% endif %}" href="{{ url_for('v2.monitoring_alerts') }}"{% if alerts_view != 'history' %} aria-current="page"{% endif %}>Firing{% if e %} · {{ e.counts.firing }}{% endif %}</a>
+  <a class="seg-btn{% if alerts_view == 'history' %} on{% endif %}" href="{{ url_for('v2.monitoring_alerts_history') }}"{% if alerts_view == 'history' %} aria-current="page"{% endif %}>History</a>
+</nav>
 <div class="tab-body" id="tab-body">
-{% include "v2/_alert_evidence.html" %}
+{% if alerts_view == 'history' %}{% include "v2/_alert_history.html" %}{% else %}{% include "v2/_alert_evidence.html" %}{% endif %}
 </div>
 {%- else %}
 <div class="page-head">

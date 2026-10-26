@@ -8,11 +8,15 @@
               'unreadable': 'danger'} -%}
 {%- set ST = {'ok': 'read', 'empty': 'read, nothing found', 'absent': 'nothing to read',
               'not_configured': 'not configured', 'unreadable': 'could not be read'} -%}
+{#- Each section's mark (schema 4, evidence_pack.PROVENANCE): captured at the time is quiet text;
+    rebuilt afterwards and cannot be rebuilt are chips, each with its words in full below. -#}
+{%- set PW = {'rebuilt': 'rebuilt', 'missing': 'cannot be rebuilt'} -%}
+{%- set PK = {'rebuilt': 'warn', 'missing': 'muted'} -%}
 {%- if not pack %}
 <p class="refusal">Couldn't load: {% if state == 'unreadable' %}the evidence packs cannot be read ({{ error }}){% else %}no evidence pack {{ pid }} is kept{% endif %}.</p>
 {%- else %}
 <div class="pack" data-pack="{{ pack.id }}">
-  <p class="pack-meta">Built {{ stamp(pack.built_at) }}{% if pack.replayed_at %} (as of then; replayed {{ stamp(pack.replayed_at) }}){% endif %}: {{ pack.trigger }}.
+  <p class="pack-meta">{% if pack.provenance == 'rebuilt' %}{{ badge('rebuilt afterwards', 'warn', title='built after the alert, as of its time: each section says whether it was captured, rebuilt or cannot be rebuilt') }} {% elif not pack.provenance %}<span class="pack-prov" title="built before each section was marked (schema {{ pack.schema }})">parts not marked</span> {% endif %}Built {{ stamp(pack.built_at) }}{% if pack.replayed_at %} (as of then; {{ 'rebuilt' if pack.episode else 'replayed' }} {{ stamp(pack.replayed_at) }}){% endif %}: {{ pack.trigger }}.{% if pack.resolved_at %} Resolved {{ stamp(pack.resolved_at, note="Grafana's time") }}.{% endif %}
     {{ pack.rule }} on {{ pack.device or 'no one device' }}{% if pack.network %} in {{ pack.network }}{% endif %}{% if pack.onset %}, onset {{ stamp(pack.onset) }}{% endif %}.
     <span class="mono small" title="sha256 over the pack's canonical JSON; schema {{ pack.schema }}; alert {{ pack.alert_key }}; read from {{ pack.store }}">{{ pack.hash[:12] }}</span>
     {%- if not intact %} {{ badge('its hash does not match: changed since it was built', 'danger') }}{% endif %}</p>
@@ -27,7 +31,10 @@
   <div class="explain" id="explain-{{ pack.id }}"></div>
   {%- for s in pack.sections %}
   <section class="pack-section" data-ref="{{ s.ref }}" id="{{ pack.id }}-{{ s.ref }}">
-    <h3>{{ s.words }} <span class="pack-ref">{{ s.ref }}</span> {{ badge(ST.get(s.state, s.state), SK.get(s.state, 'muted')) }}</h3>
+    <h3>{{ s.words }} <span class="pack-ref">{{ s.ref }}</span> {{ badge(ST.get(s.state, s.state), SK.get(s.state, 'muted')) }}
+      {%- if s.provenance == 'captured' %} <span class="pack-prov" data-provenance="captured" title="{{ s.provenance_words }}">captured at the time</span>
+      {%- elif s.provenance %} {{ badge(PW.get(s.provenance, s.provenance), PK.get(s.provenance, 'muted'), title=s.provenance_words) }}{% endif %}</h3>
+    {%- if s.provenance and s.provenance != 'captured' %}<p class="pack-source" data-provenance="{{ s.provenance }}">{{ s.provenance_words[:1]|upper }}{{ s.provenance_words[1:] }}{% if s.as_of_commit %} (the Intent check at <span class="mono">{{ s.as_of_commit }}</span>){% endif %}.</p>{% endif %}
     <p class="pack-source">{{ s.source or s.name }}{% if s.read_at %}, read {{ stamp(s.read_at) }}{% endif %}{% if s.why %}: {{ s.why }}{% endif %}</p>
     {%- if s.window %}<p class="pack-source">From {{ stamp(s.window.from, s.window.from[11:16] ~ ' UTC') }} to {{ stamp(s.window.to, s.window.to[11:16] ~ ' UTC') }} ({{ s.window.words }}){% if s.window.query %}, asked as <code>{{ s.window.query }}</code>{% endif %}</p>{% endif %}
     {%- if s.subset %}<p class="pack-source">{{ s.pieces|length }} of {{ s.total }} kept{% if s.name == 'logs' %}, those nearest the onset{% endif %}.</p>{% endif %}

@@ -46,6 +46,9 @@ CONTROLS = {
         "words": "Explain",
         "endpoints": ("v2.monitoring_alert_explain",),
         "template": "v2/_evidence_pack.html",
+        # A past alert with no pack yet draws it too, disabled beside Build evidence, its mark
+        # and reason as ever (Monitoring › Alerts › History, C1808).
+        "also": ("v2/_alert_history.html",),
         "screen": "Monitoring › Alerts, an alert's card",
         "beside": "the evidence pack",
     },

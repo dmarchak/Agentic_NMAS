@@ -64,7 +64,10 @@ COMPONENTS = {"_run_stepper.html": "stepper.md",
               "_in_progress.html": "in-progress.md",
               # P1's Alerts tab, an alert's evidence pack and Explain (canvas page "P1,
               # Monitoring › Alerts", signed off under the Phase 7 mode 2026-10-26).
-              "_evidence_pack.html": "alerts-explain.md"}
+              "_evidence_pack.html": "alerts-explain.md",
+              # Monitoring › Alerts › History (board P1-H, AlertsHistory.dc.html, signed off
+              # under the Phase 7 mode 2026-10-26): past alerts, Build evidence.
+              "_alert_history.html": "alerts-history.md"}
 
 #: Signed-off screens built before the fidelity step and not yet compared with their boards
 #: (C650). Each is compared, and its differences fixed or logged, before it leaves this list.

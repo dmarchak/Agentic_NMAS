@@ -406,7 +406,7 @@ class TestBuiltWhenTheReaderStoresItFiring:
         from modules import reader_job
         from modules.readers import grafana_alerts as G
 
-        assert G.READER.after_store is G._evidence_packs
+        assert G.READER.after_store is G._after_store
         said = []
         reader = dataclasses.replace(G.READER, read=lambda: _alerts(V4), per_group=(),
                                      read_for=None)

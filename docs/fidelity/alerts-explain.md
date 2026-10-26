@@ -15,7 +15,7 @@ instance and a silenced syslog instance firing, each pack built by the real trig
 Loki and Prometheus captures; the first card opened; Explain pressed with hosted AI allowed and
 an answer planted (a hypothesis citing `alert`, needing a person).
 Templates compared: templates/v2/_alert_evidence.html, templates/v2/_evidence_pack.html, templates/v2/_explain.html
-Templates sha256: `c89f41c4bf11bad922fb68bb46e9a87531daeb85a2d68a3a94fc6bbccc70dd0d`
+Templates sha256: `d8af8ca8c582be32c31087731006eb42e1338fd31de266dbec3081c23f07446f`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
@@ -49,3 +49,18 @@ name, MAC and addresses, where it was last seen and its VLAN.
   section. Its line is in docs/STANDING_APPROVAL_LOG.md. No other region's verdict changed.
 
 Templates sha256 before: `0f6077ca63250f9e09b5e169c2757681d0d88e94a4a56d37f2e375ce0f2c76a2`.
+
+**Compared again 2026-10-26 (the alert history: each section's mark, pack schema 4):**
+`_evidence_pack.html` draws each section's provenance after its state chip. On a pack built
+when its alert fired, that is "captured at the time" in quiet text. On a rebuilt pack it is a
+chip, "rebuilt" or "cannot be rebuilt", with its words in full under the heading. The pack line
+leads with "rebuilt afterwards" on a rebuilt pack, and with "parts not marked" on one built
+before schema 4.
+- **Shots:** `test_monitoring_alerts_explain` (a live pack: each section's quiet "captured at
+  the time"), and `test_monitoring_alerts_history` for a rebuilt pack (docs/fidelity/
+  alerts-history.md), at 1440, 1280 and 390.
+- **Verdict:** a **deviation** on the live pack: the board (version 143) draws no mark on a
+  section. Its line is in docs/STANDING_APPROVAL_LOG.md ("P1 Alerts: each section's mark"). The
+  rebuilt pack's marks are drawn on board P1-H and compared there.
+
+Templates sha256 before: `c89f41c4bf11bad922fb68bb46e9a87531daeb85a2d68a3a94fc6bbccc70dd0d`.

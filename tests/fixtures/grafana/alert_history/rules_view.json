@@ -1,0 +1,3230 @@
+{
+ "data": {
+  "groups": [
+   {
+    "evaluationTime": 0.017379689,
+    "file": "NMAS",
+    "folderUid": "afzcug3ughc74a",
+    "interval": 60,
+    "lastEvaluation": "2026-10-26T19:22:00Z",
+    "name": "nmas-heartbeat",
+    "rules": [
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-22T16:12:00Z",
+        "annotations": {
+         "description": "r1 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 750 s, measured from this device's own 61 heartbeat gaps (299.8-300.3 s; clock rate 1.0). None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+         "summary": "No syslog heartbeat from r1 for 750 s"
+        },
+        "labels": {
+         "alertname": "NMAS heartbeat missing: r1",
+         "device": "r1",
+         "grafana_folder": "NMAS",
+         "nmas": "heartbeat",
+         "window_basis": "measured",
+         "window_seconds": "750"
+        },
+        "state": "Normal",
+        "value": ""
+       }
+      ],
+      "annotations": {
+       "description": "r1 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 750 s, measured from this device's own 61 heartbeat gaps (299.8-300.3 s; clock rate 1.0). None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+       "summary": "No syslog heartbeat from r1 for 750 s"
+      },
+      "evaluationTime": 0.016412588,
+      "folderUid": "afzcug3ughc74a",
+      "health": "ok",
+      "isPaused": false,
+      "labels": {
+       "device": "r1",
+       "nmas": "heartbeat",
+       "window_basis": "measured",
+       "window_seconds": "750"
+      },
+      "lastEvaluation": "2026-10-26T19:22:00Z",
+      "name": "NMAS heartbeat missing: r1",
+      "provenance": "file",
+      "queriedDatasourceUIDs": [
+       "efxk88ulvh3pcf"
+      ],
+      "query": "sum(count_over_time({job=\"network_syslog\"} |= \"NMAS-HEARTBEAT\" |~ `%HA_EM-\\d-LOG: NMAS\\-HEARTBEAT: NMAS\\-HEARTBEAT` |~ `\\sr1:\\s` [750s]))",
+      "state": "inactive",
+      "totals": {
+       "normal": 1
+      },
+      "totalsFiltered": {
+       "normal": 1
+      },
+      "type": "alerting",
+      "uid": "nmas-hb-r1"
+     },
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-22T06:12:00Z",
+        "annotations": {
+         "description": "r2 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 750 s, measured from this device's own 71 heartbeat gaps (299.6-300.5 s; clock rate 1.0). None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+         "summary": "No syslog heartbeat from r2 for 750 s"
+        },
+        "labels": {
+         "alertname": "NMAS heartbeat missing: r2",
+         "device": "r2",
+         "grafana_folder": "NMAS",
+         "nmas": "heartbeat",
+         "window_basis": "measured",
+         "window_seconds": "750"
+        },
+        "state": "Normal",
+        "value": ""
+       }
+      ],
+      "annotations": {
+       "description": "r2 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 750 s, measured from this device's own 71 heartbeat gaps (299.6-300.5 s; clock rate 1.0). None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+       "summary": "No syslog heartbeat from r2 for 750 s"
+      },
+      "evaluationTime": 0.017493676,
+      "folderUid": "afzcug3ughc74a",
+      "health": "ok",
+      "isPaused": false,
+      "labels": {
+       "device": "r2",
+       "nmas": "heartbeat",
+       "window_basis": "measured",
+       "window_seconds": "750"
+      },
+      "lastEvaluation": "2026-10-26T19:22:00Z",
+      "name": "NMAS heartbeat missing: r2",
+      "provenance": "file",
+      "queriedDatasourceUIDs": [
+       "efxk88ulvh3pcf"
+      ],
+      "query": "sum(count_over_time({job=\"network_syslog\"} |= \"NMAS-HEARTBEAT\" |~ `%HA_EM-\\d-LOG: NMAS\\-HEARTBEAT: NMAS\\-HEARTBEAT` |~ `\\sr2:\\s` [750s]))",
+      "state": "inactive",
+      "totals": {
+       "normal": 1
+      },
+      "totalsFiltered": {
+       "normal": 1
+      },
+      "type": "alerting",
+      "uid": "nmas-hb-r2"
+     },
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-22T09:52:00Z",
+        "annotations": {
+         "description": "r3 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 767 s, measured from this device's own 61 heartbeat gaps (299.3-317.0 s; clock rate 1.0). None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+         "summary": "No syslog heartbeat from r3 for 767 s"
+        },
+        "labels": {
+         "alertname": "NMAS heartbeat missing: r3",
+         "device": "r3",
+         "grafana_folder": "NMAS",
+         "nmas": "heartbeat",
+         "window_basis": "measured",
+         "window_seconds": "767"
+        },
+        "state": "Normal",
+        "value": ""
+       }
+      ],
+      "annotations": {
+       "description": "r3 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 767 s, measured from this device's own 61 heartbeat gaps (299.3-317.0 s; clock rate 1.0). None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+       "summary": "No syslog heartbeat from r3 for 767 s"
+      },
+      "evaluationTime": 0.019030689,
+      "folderUid": "afzcug3ughc74a",
+      "health": "ok",
+      "isPaused": false,
+      "labels": {
+       "device": "r3",
+       "nmas": "heartbeat",
+       "window_basis": "measured",
+       "window_seconds": "767"
+      },
+      "lastEvaluation": "2026-10-26T19:22:00Z",
+      "name": "NMAS heartbeat missing: r3",
+      "provenance": "file",
+      "queriedDatasourceUIDs": [
+       "efxk88ulvh3pcf"
+      ],
+      "query": "sum(count_over_time({job=\"network_syslog\"} |= \"NMAS-HEARTBEAT\" |~ `%HA_EM-\\d-LOG: NMAS\\-HEARTBEAT: NMAS\\-HEARTBEAT` |~ `\\sr3:\\s` [767s]))",
+      "state": "inactive",
+      "totals": {
+       "normal": 1
+      },
+      "totalsFiltered": {
+       "normal": 1
+      },
+      "type": "alerting",
+      "uid": "nmas-hb-r3"
+     },
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-22T16:42:00Z",
+        "annotations": {
+         "description": "r4 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 749 s, measured from this device's own 61 heartbeat gaps (296.8-303.1 s; clock rate 1.0). None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+         "summary": "No syslog heartbeat from r4 for 749 s"
+        },
+        "labels": {
+         "alertname": "NMAS heartbeat missing: r4",
+         "device": "r4",
+         "grafana_folder": "NMAS",
+         "nmas": "heartbeat",
+         "window_basis": "measured",
+         "window_seconds": "749"
+        },
+        "state": "Normal",
+        "value": ""
+       }
+      ],
+      "annotations": {
+       "description": "r4 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 749 s, measured from this device's own 61 heartbeat gaps (296.8-303.1 s; clock rate 1.0). None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+       "summary": "No syslog heartbeat from r4 for 749 s"
+      },
+      "evaluationTime": 0.026370295,
+      "folderUid": "afzcug3ughc74a",
+      "health": "ok",
+      "isPaused": false,
+      "labels": {
+       "device": "r4",
+       "nmas": "heartbeat",
+       "window_basis": "measured",
+       "window_seconds": "749"
+      },
+      "lastEvaluation": "2026-10-26T19:22:00Z",
+      "name": "NMAS heartbeat missing: r4",
+      "provenance": "file",
+      "queriedDatasourceUIDs": [
+       "efxk88ulvh3pcf"
+      ],
+      "query": "sum(count_over_time({job=\"network_syslog\"} |= \"NMAS-HEARTBEAT\" |~ `%HA_EM-\\d-LOG: NMAS\\-HEARTBEAT: NMAS\\-HEARTBEAT` |~ `\\sr4:\\s` [749s]))",
+      "state": "inactive",
+      "totals": {
+       "normal": 1
+      },
+      "totalsFiltered": {
+       "normal": 1
+      },
+      "type": "alerting",
+      "uid": "nmas-hb-r4"
+     },
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-22T14:10:00Z",
+        "annotations": {
+         "description": "s1 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 818 s, measured from this device's own 59 heartbeat gaps (316.3-342.7 s; clock rate 0.941). None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+         "summary": "No syslog heartbeat from s1 for 818 s"
+        },
+        "labels": {
+         "alertname": "NMAS heartbeat missing: s1",
+         "device": "s1",
+         "grafana_folder": "NMAS",
+         "nmas": "heartbeat",
+         "window_basis": "measured",
+         "window_seconds": "818"
+        },
+        "state": "Normal",
+        "value": ""
+       }
+      ],
+      "annotations": {
+       "description": "s1 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 818 s, measured from this device's own 59 heartbeat gaps (316.3-342.7 s; clock rate 0.941). None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+       "summary": "No syslog heartbeat from s1 for 818 s"
+      },
+      "evaluationTime": 0.02933185,
+      "folderUid": "afzcug3ughc74a",
+      "health": "ok",
+      "isPaused": false,
+      "labels": {
+       "device": "s1",
+       "nmas": "heartbeat",
+       "window_basis": "measured",
+       "window_seconds": "818"
+      },
+      "lastEvaluation": "2026-10-26T19:22:00Z",
+      "name": "NMAS heartbeat missing: s1",
+      "provenance": "file",
+      "queriedDatasourceUIDs": [
+       "efxk88ulvh3pcf"
+      ],
+      "query": "sum(count_over_time({job=\"network_syslog\"} |= \"NMAS-HEARTBEAT\" |~ `%HA_EM-\\d-LOG: NMAS\\-HEARTBEAT: NMAS\\-HEARTBEAT` |~ `\\ss1:\\s` [818s]))",
+      "state": "inactive",
+      "totals": {
+       "normal": 1
+      },
+      "totalsFiltered": {
+       "normal": 1
+      },
+      "type": "alerting",
+      "uid": "nmas-hb-s1"
+     },
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-22T13:07:00Z",
+        "annotations": {
+         "description": "s2 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 828 s, measured from this device's own 59 heartbeat gaps (307.8-365.5 s; clock rate 0.941). None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+         "summary": "No syslog heartbeat from s2 for 828 s"
+        },
+        "labels": {
+         "alertname": "NMAS heartbeat missing: s2",
+         "device": "s2",
+         "grafana_folder": "NMAS",
+         "nmas": "heartbeat",
+         "window_basis": "measured",
+         "window_seconds": "828"
+        },
+        "state": "Normal",
+        "value": ""
+       }
+      ],
+      "annotations": {
+       "description": "s2 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 828 s, measured from this device's own 59 heartbeat gaps (307.8-365.5 s; clock rate 0.941). None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+       "summary": "No syslog heartbeat from s2 for 828 s"
+      },
+      "evaluationTime": 0.015554583,
+      "folderUid": "afzcug3ughc74a",
+      "health": "ok",
+      "isPaused": false,
+      "labels": {
+       "device": "s2",
+       "nmas": "heartbeat",
+       "window_basis": "measured",
+       "window_seconds": "828"
+      },
+      "lastEvaluation": "2026-10-26T19:22:00Z",
+      "name": "NMAS heartbeat missing: s2",
+      "provenance": "file",
+      "queriedDatasourceUIDs": [
+       "efxk88ulvh3pcf"
+      ],
+      "query": "sum(count_over_time({job=\"network_syslog\"} |= \"NMAS-HEARTBEAT\" |~ `%HA_EM-\\d-LOG: NMAS\\-HEARTBEAT: NMAS\\-HEARTBEAT` |~ `\\ss2:\\s` [828s]))",
+      "state": "inactive",
+      "totals": {
+       "normal": 1
+      },
+      "totalsFiltered": {
+       "normal": 1
+      },
+      "type": "alerting",
+      "uid": "nmas-hb-s2"
+     },
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-22T23:57:00Z",
+        "annotations": {
+         "description": "s3 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 1571 s, INSEPARABLE: this device's gaps run 400.8-747.8 s, so one miss (2 x longest) overlaps two (3 x shortest). The window avoids a false alarm on one miss, and a double miss may go unseen. None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+         "summary": "No syslog heartbeat from s3 for 1571 s"
+        },
+        "labels": {
+         "alertname": "NMAS heartbeat missing: s3",
+         "device": "s3",
+         "grafana_folder": "NMAS",
+         "nmas": "heartbeat",
+         "window_basis": "inseparable",
+         "window_seconds": "1571"
+        },
+        "state": "Normal",
+        "value": ""
+       }
+      ],
+      "annotations": {
+       "description": "s3 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 1571 s, INSEPARABLE: this device's gaps run 400.8-747.8 s, so one miss (2 x longest) overlaps two (3 x shortest). The window avoids a false alarm on one miss, and a double miss may go unseen. None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+       "summary": "No syslog heartbeat from s3 for 1571 s"
+      },
+      "evaluationTime": 0.020885887,
+      "folderUid": "afzcug3ughc74a",
+      "health": "ok",
+      "isPaused": false,
+      "labels": {
+       "device": "s3",
+       "nmas": "heartbeat",
+       "window_basis": "inseparable",
+       "window_seconds": "1571"
+      },
+      "lastEvaluation": "2026-10-26T19:22:00Z",
+      "name": "NMAS heartbeat missing: s3",
+      "provenance": "file",
+      "queriedDatasourceUIDs": [
+       "efxk88ulvh3pcf"
+      ],
+      "query": "sum(count_over_time({job=\"network_syslog\"} |= \"NMAS-HEARTBEAT\" |~ `%HA_EM-\\d-LOG: NMAS\\-HEARTBEAT: NMAS\\-HEARTBEAT` |~ `\\ss3:\\s` [1571s]))",
+      "state": "inactive",
+      "totals": {
+       "normal": 1
+      },
+      "totalsFiltered": {
+       "normal": 1
+      },
+      "type": "alerting",
+      "uid": "nmas-hb-s3"
+     },
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-22T23:57:00Z",
+        "annotations": {
+         "description": "s4 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 1056 s, measured from this device's own 1412 heartbeat gaps (361.8-513.1 s; clock rate 0.755); the band is the 0.5th to 99.5th percentile over 7 days (8 gap(s) shorter, down to 358.2 s, and 8 longer, up to 573.8 s): one miss never fires even at the longest, and a double miss inside a burst of the shortest may go unseen. None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+         "summary": "No syslog heartbeat from s4 for 1056 s"
+        },
+        "labels": {
+         "alertname": "NMAS heartbeat missing: s4",
+         "device": "s4",
+         "grafana_folder": "NMAS",
+         "nmas": "heartbeat",
+         "window_basis": "measured",
+         "window_seconds": "1056"
+        },
+        "state": "Normal",
+        "value": ""
+       }
+      ],
+      "annotations": {
+       "description": "s4 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 1056 s, measured from this device's own 1412 heartbeat gaps (361.8-513.1 s; clock rate 0.755); the band is the 0.5th to 99.5th percentile over 7 days (8 gap(s) shorter, down to 358.2 s, and 8 longer, up to 573.8 s): one miss never fires even at the longest, and a double miss inside a burst of the shortest may go unseen. None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+       "summary": "No syslog heartbeat from s4 for 1056 s"
+      },
+      "evaluationTime": 0.01470286,
+      "folderUid": "afzcug3ughc74a",
+      "health": "ok",
+      "isPaused": false,
+      "labels": {
+       "device": "s4",
+       "nmas": "heartbeat",
+       "window_basis": "measured",
+       "window_seconds": "1056"
+      },
+      "lastEvaluation": "2026-10-26T19:22:00Z",
+      "name": "NMAS heartbeat missing: s4",
+      "provenance": "file",
+      "queriedDatasourceUIDs": [
+       "efxk88ulvh3pcf"
+      ],
+      "query": "sum(count_over_time({job=\"network_syslog\"} |= \"NMAS-HEARTBEAT\" |~ `%HA_EM-\\d-LOG: NMAS\\-HEARTBEAT: NMAS\\-HEARTBEAT` |~ `\\ss4:\\s` [1056s]))",
+      "state": "inactive",
+      "totals": {
+       "normal": 1
+      },
+      "totalsFiltered": {
+       "normal": 1
+      },
+      "type": "alerting",
+      "uid": "nmas-hb-s4"
+     },
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-22T17:57:00Z",
+        "annotations": {
+         "description": "r6 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 750 s, measured from this device's own 8 heartbeat gaps (299.8-300.1 s; clock rate 1.0). None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+         "summary": "No syslog heartbeat from r6 for 750 s"
+        },
+        "labels": {
+         "alertname": "NMAS heartbeat missing: r6",
+         "device": "r6",
+         "grafana_folder": "NMAS",
+         "nmas": "heartbeat",
+         "window_basis": "measured",
+         "window_seconds": "750"
+        },
+        "state": "Normal",
+        "value": ""
+       }
+      ],
+      "annotations": {
+       "description": "r6 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 750 s, measured from this device's own 8 heartbeat gaps (299.8-300.1 s; clock rate 1.0). None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+       "summary": "No syslog heartbeat from r6 for 750 s"
+      },
+      "evaluationTime": 0.036392458,
+      "folderUid": "afzcug3ughc74a",
+      "health": "ok",
+      "isPaused": false,
+      "labels": {
+       "device": "r6",
+       "nmas": "heartbeat",
+       "window_basis": "measured",
+       "window_seconds": "750"
+      },
+      "lastEvaluation": "2026-10-26T19:22:00Z",
+      "name": "NMAS heartbeat missing: r6",
+      "provenance": "file",
+      "queriedDatasourceUIDs": [
+       "efxk88ulvh3pcf"
+      ],
+      "query": "sum(count_over_time({job=\"network_syslog\"} |= \"NMAS-HEARTBEAT\" |~ `%HA_EM-\\d-LOG: NMAS\\-HEARTBEAT: NMAS\\-HEARTBEAT` |~ `\\sr6:\\s` [750s]))",
+      "state": "inactive",
+      "totals": {
+       "normal": 1
+      },
+      "totalsFiltered": {
+       "normal": 1
+      },
+      "type": "alerting",
+      "uid": "nmas-hb-r6"
+     },
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-22T14:07:00Z",
+        "annotations": {
+         "description": "r7 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 750 s, measured from this device's own 53 heartbeat gaps (299.8-300.3 s; clock rate 1.0). None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+         "summary": "No syslog heartbeat from r7 for 750 s"
+        },
+        "labels": {
+         "alertname": "NMAS heartbeat missing: r7",
+         "device": "r7",
+         "grafana_folder": "NMAS",
+         "nmas": "heartbeat",
+         "window_basis": "measured",
+         "window_seconds": "750"
+        },
+        "state": "Normal",
+        "value": ""
+       }
+      ],
+      "annotations": {
+       "description": "r7 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 750 s, measured from this device's own 53 heartbeat gaps (299.8-300.3 s; clock rate 1.0). None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+       "summary": "No syslog heartbeat from r7 for 750 s"
+      },
+      "evaluationTime": 0.020545578,
+      "folderUid": "afzcug3ughc74a",
+      "health": "ok",
+      "isPaused": false,
+      "labels": {
+       "device": "r7",
+       "nmas": "heartbeat",
+       "window_basis": "measured",
+       "window_seconds": "750"
+      },
+      "lastEvaluation": "2026-10-26T19:22:00Z",
+      "name": "NMAS heartbeat missing: r7",
+      "provenance": "file",
+      "queriedDatasourceUIDs": [
+       "efxk88ulvh3pcf"
+      ],
+      "query": "sum(count_over_time({job=\"network_syslog\"} |= \"NMAS-HEARTBEAT\" |~ `%HA_EM-\\d-LOG: NMAS\\-HEARTBEAT: NMAS\\-HEARTBEAT` |~ `\\sr7:\\s` [750s]))",
+      "state": "inactive",
+      "totals": {
+       "normal": 1
+      },
+      "totalsFiltered": {
+       "normal": 1
+      },
+      "type": "alerting",
+      "uid": "nmas-hb-r7"
+     },
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-22T23:57:00Z",
+        "annotations": {
+         "description": "r8 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 757 s, measured from this device's own 17 heartbeat gaps (299.8-307.0 s; clock rate 1.0). None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+         "summary": "No syslog heartbeat from r8 for 757 s"
+        },
+        "labels": {
+         "alertname": "NMAS heartbeat missing: r8",
+         "device": "r8",
+         "grafana_folder": "NMAS",
+         "nmas": "heartbeat",
+         "window_basis": "measured",
+         "window_seconds": "757"
+        },
+        "state": "Normal",
+        "value": ""
+       }
+      ],
+      "annotations": {
+       "description": "r8 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 757 s, measured from this device's own 17 heartbeat gaps (299.8-307.0 s; clock rate 1.0). None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+       "summary": "No syslog heartbeat from r8 for 757 s"
+      },
+      "evaluationTime": 0.039148617,
+      "folderUid": "afzcug3ughc74a",
+      "health": "ok",
+      "isPaused": false,
+      "labels": {
+       "device": "r8",
+       "nmas": "heartbeat",
+       "window_basis": "measured",
+       "window_seconds": "757"
+      },
+      "lastEvaluation": "2026-10-26T19:22:00Z",
+      "name": "NMAS heartbeat missing: r8",
+      "provenance": "file",
+      "queriedDatasourceUIDs": [
+       "efxk88ulvh3pcf"
+      ],
+      "query": "sum(count_over_time({job=\"network_syslog\"} |= \"NMAS-HEARTBEAT\" |~ `%HA_EM-\\d-LOG: NMAS\\-HEARTBEAT: NMAS\\-HEARTBEAT` |~ `\\sr8:\\s` [757s]))",
+      "state": "inactive",
+      "totals": {
+       "normal": 1
+      },
+      "totalsFiltered": {
+       "normal": 1
+      },
+      "type": "alerting",
+      "uid": "nmas-hb-r8"
+     },
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-24T01:30:00Z",
+        "annotations": {
+         "description": "s5 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 808 s, measured from this device's own 12 heartbeat gaps (320.9-326.4 s; clock rate 0.927). None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+         "summary": "No syslog heartbeat from s5 for 808 s"
+        },
+        "labels": {
+         "alertname": "NMAS heartbeat missing: s5",
+         "device": "s5",
+         "grafana_folder": "NMAS",
+         "nmas": "heartbeat",
+         "window_basis": "measured",
+         "window_seconds": "808"
+        },
+        "state": "Normal",
+        "value": ""
+       }
+      ],
+      "annotations": {
+       "description": "s5 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 808 s, measured from this device's own 12 heartbeat gaps (320.9-326.4 s; clock rate 0.927). None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+       "summary": "No syslog heartbeat from s5 for 808 s"
+      },
+      "evaluationTime": 0.017379689,
+      "folderUid": "afzcug3ughc74a",
+      "health": "ok",
+      "isPaused": false,
+      "labels": {
+       "device": "s5",
+       "nmas": "heartbeat",
+       "window_basis": "measured",
+       "window_seconds": "808"
+      },
+      "lastEvaluation": "2026-10-26T19:22:00Z",
+      "name": "NMAS heartbeat missing: s5",
+      "provenance": "file",
+      "queriedDatasourceUIDs": [
+       "efxk88ulvh3pcf"
+      ],
+      "query": "sum(count_over_time({job=\"network_syslog\"} |= \"NMAS-HEARTBEAT\" |~ `%HA_EM-\\d-LOG: NMAS\\-HEARTBEAT: NMAS\\-HEARTBEAT` |~ `\\ss5:\\s` [808s]))",
+      "state": "inactive",
+      "totals": {
+       "normal": 1
+      },
+      "totalsFiltered": {
+       "normal": 1
+      },
+      "type": "alerting",
+      "uid": "nmas-hb-s5"
+     }
+    ],
+    "totals": {
+     "inactive": 12
+    }
+   },
+   {
+    "evaluationTime": 0.005382553,
+    "file": "NMAS",
+    "folderUid": "afzcug3ughc74a",
+    "interval": 60,
+    "lastEvaluation": "2026-10-26T19:21:50Z",
+    "name": "nmas-telemetry",
+    "rules": [
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {
+         "description": "r1's committed configuration declares `telemetry ietf subscription 101`, and Prometheus holds no sample of it in the last 90 s (three scrapes of telemetry_mdt). The device, its subscription, the gRPC path to Telegraf, Telegraf or the scrape has stopped; the rule cannot say which.",
+         "summary": "r1 has stopped streaming telemetry subscription 101"
+        },
+        "labels": {
+         "alertname": "NMAS telemetry stream lost: r1 subscription 101",
+         "device": "r1",
+         "grafana_folder": "NMAS",
+         "nmas": "telemetry",
+         "subscription": "101"
+        },
+        "state": "Normal",
+        "value": ""
+       }
+      ],
+      "annotations": {
+       "description": "r1's committed configuration declares `telemetry ietf subscription 101`, and Prometheus holds no sample of it in the last 90 s (three scrapes of telemetry_mdt). The device, its subscription, the gRPC path to Telegraf, Telegraf or the scrape has stopped; the rule cannot say which.",
+       "summary": "r1 has stopped streaming telemetry subscription 101"
+      },
+      "evaluationTime": 0.004289824,
+      "folderUid": "afzcug3ughc74a",
+      "health": "ok",
+      "isPaused": false,
+      "labels": {
+       "device": "r1",
+       "nmas": "telemetry",
+       "subscription": "101"
+      },
+      "lastEvaluation": "2026-10-26T19:21:50Z",
+      "name": "NMAS telemetry stream lost: r1 subscription 101",
+      "provenance": "file",
+      "queriedDatasourceUIDs": [
+       "efwpn8hr7sfeob"
+      ],
+      "query": "count(last_over_time({device=\"r1\", subscription=\"101\"}[90s]))",
+      "state": "inactive",
+      "totals": {
+       "normal": 1
+      },
+      "totalsFiltered": {
+       "normal": 1
+      },
+      "type": "alerting",
+      "uid": "nmas-tel-r1-101"
+     },
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {
+         "description": "r1's committed configuration declares `telemetry ietf subscription 102`, and Prometheus holds no sample of it in the last 90 s (three scrapes of telemetry_mdt). The device, its subscription, the gRPC path to Telegraf, Telegraf or the scrape has stopped; the rule cannot say which.",
+         "summary": "r1 has stopped streaming telemetry subscription 102"
+        },
+        "labels": {
+         "alertname": "NMAS telemetry stream lost: r1 subscription 102",
+         "device": "r1",
+         "grafana_folder": "NMAS",
+         "nmas": "telemetry",
+         "subscription": "102"
+        },
+        "state": "Normal",
+        "value": ""
+       }
+      ],
+      "annotations": {
+       "description": "r1's committed configuration declares `telemetry ietf subscription 102`, and Prometheus holds no sample of it in the last 90 s (three scrapes of telemetry_mdt). The device, its subscription, the gRPC path to Telegraf, Telegraf or the scrape has stopped; the rule cannot say which.",
+       "summary": "r1 has stopped streaming telemetry subscription 102"
+      },
+      "evaluationTime": 0.008995539,
+      "folderUid": "afzcug3ughc74a",
+      "health": "ok",
+      "isPaused": false,
+      "labels": {
+       "device": "r1",
+       "nmas": "telemetry",
+       "subscription": "102"
+      },
+      "lastEvaluation": "2026-10-26T19:21:50Z",
+      "name": "NMAS telemetry stream lost: r1 subscription 102",
+      "provenance": "file",
+      "queriedDatasourceUIDs": [
+       "efwpn8hr7sfeob"
+      ],
+      "query": "count(last_over_time({device=\"r1\", subscription=\"102\"}[90s]))",
+      "state": "inactive",
+      "totals": {
+       "normal": 1
+      },
+      "totalsFiltered": {
+       "normal": 1
+      },
+      "type": "alerting",
+      "uid": "nmas-tel-r1-102"
+     },
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {
+         "description": "r2's committed configuration declares `telemetry ietf subscription 101`, and Prometheus holds no sample of it in the last 90 s (three scrapes of telemetry_mdt). The device, its subscription, the gRPC path to Telegraf, Telegraf or the scrape has stopped; the rule cannot say which.",
+         "summary": "r2 has stopped streaming telemetry subscription 101"
+        },
+        "labels": {
+         "alertname": "NMAS telemetry stream lost: r2 subscription 101",
+         "device": "r2",
+         "grafana_folder": "NMAS",
+         "nmas": "telemetry",
+         "subscription": "101"
+        },
+        "state": "Normal",
+        "value": ""
+       }
+      ],
+      "annotations": {
+       "description": "r2's committed configuration declares `telemetry ietf subscription 101`, and Prometheus holds no sample of it in the last 90 s (three scrapes of telemetry_mdt). The device, its subscription, the gRPC path to Telegraf, Telegraf or the scrape has stopped; the rule cannot say which.",
+       "summary": "r2 has stopped streaming telemetry subscription 101"
+      },
+      "evaluationTime": 0.005045892,
+      "folderUid": "afzcug3ughc74a",
+      "health": "ok",
+      "isPaused": false,
+      "labels": {
+       "device": "r2",
+       "nmas": "telemetry",
+       "subscription": "101"
+      },
+      "lastEvaluation": "2026-10-26T19:21:50Z",
+      "name": "NMAS telemetry stream lost: r2 subscription 101",
+      "provenance": "file",
+      "queriedDatasourceUIDs": [
+       "efwpn8hr7sfeob"
+      ],
+      "query": "count(last_over_time({device=\"r2\", subscription=\"101\"}[90s]))",
+      "state": "inactive",
+      "totals": {
+       "normal": 1
+      },
+      "totalsFiltered": {
+       "normal": 1
+      },
+      "type": "alerting",
+      "uid": "nmas-tel-r2-101"
+     },
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {
+         "description": "r2's committed configuration declares `telemetry ietf subscription 102`, and Prometheus holds no sample of it in the last 90 s (three scrapes of telemetry_mdt). The device, its subscription, the gRPC path to Telegraf, Telegraf or the scrape has stopped; the rule cannot say which.",
+         "summary": "r2 has stopped streaming telemetry subscription 102"
+        },
+        "labels": {
+         "alertname": "NMAS telemetry stream lost: r2 subscription 102",
+         "device": "r2",
+         "grafana_folder": "NMAS",
+         "nmas": "telemetry",
+         "subscription": "102"
+        },
+        "state": "Normal",
+        "value": ""
+       }
+      ],
+      "annotations": {
+       "description": "r2's committed configuration declares `telemetry ietf subscription 102`, and Prometheus holds no sample of it in the last 90 s (three scrapes of telemetry_mdt). The device, its subscription, the gRPC path to Telegraf, Telegraf or the scrape has stopped; the rule cannot say which.",
+       "summary": "r2 has stopped streaming telemetry subscription 102"
+      },
+      "evaluationTime": 0.005316481,
+      "folderUid": "afzcug3ughc74a",
+      "health": "ok",
+      "isPaused": false,
+      "labels": {
+       "device": "r2",
+       "nmas": "telemetry",
+       "subscription": "102"
+      },
+      "lastEvaluation": "2026-10-26T19:21:50Z",
+      "name": "NMAS telemetry stream lost: r2 subscription 102",
+      "provenance": "file",
+      "queriedDatasourceUIDs": [
+       "efwpn8hr7sfeob"
+      ],
+      "query": "count(last_over_time({device=\"r2\", subscription=\"102\"}[90s]))",
+      "state": "inactive",
+      "totals": {
+       "normal": 1
+      },
+      "totalsFiltered": {
+       "normal": 1
+      },
+      "type": "alerting",
+      "uid": "nmas-tel-r2-102"
+     },
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {
+         "description": "r3's committed configuration declares `telemetry ietf subscription 101`, and Prometheus holds no sample of it in the last 90 s (three scrapes of telemetry_mdt). The device, its subscription, the gRPC path to Telegraf, Telegraf or the scrape has stopped; the rule cannot say which.",
+         "summary": "r3 has stopped streaming telemetry subscription 101"
+        },
+        "labels": {
+         "alertname": "NMAS telemetry stream lost: r3 subscription 101",
+         "device": "r3",
+         "grafana_folder": "NMAS",
+         "nmas": "telemetry",
+         "subscription": "101"
+        },
+        "state": "Normal",
+        "value": ""
+       }
+      ],
+      "annotations": {
+       "description": "r3's committed configuration declares `telemetry ietf subscription 101`, and Prometheus holds no sample of it in the last 90 s (three scrapes of telemetry_mdt). The device, its subscription, the gRPC path to Telegraf, Telegraf or the scrape has stopped; the rule cannot say which.",
+       "summary": "r3 has stopped streaming telemetry subscription 101"
+      },
+      "evaluationTime": 0.003566683,
+      "folderUid": "afzcug3ughc74a",
+      "health": "ok",
+      "isPaused": false,
+      "labels": {
+       "device": "r3",
+       "nmas": "telemetry",
+       "subscription": "101"
+      },
+      "lastEvaluation": "2026-10-26T19:21:50Z",
+      "name": "NMAS telemetry stream lost: r3 subscription 101",
+      "provenance": "file",
+      "queriedDatasourceUIDs": [
+       "efwpn8hr7sfeob"
+      ],
+      "query": "count(last_over_time({device=\"r3\", subscription=\"101\"}[90s]))",
+      "state": "inactive",
+      "totals": {
+       "normal": 1
+      },
+      "totalsFiltered": {
+       "normal": 1
+      },
+      "type": "alerting",
+      "uid": "nmas-tel-r3-101"
+     },
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {
+         "description": "r3's committed configuration declares `telemetry ietf subscription 102`, and Prometheus holds no sample of it in the last 90 s (three scrapes of telemetry_mdt). The device, its subscription, the gRPC path to Telegraf, Telegraf or the scrape has stopped; the rule cannot say which.",
+         "summary": "r3 has stopped streaming telemetry subscription 102"
+        },
+        "labels": {
+         "alertname": "NMAS telemetry stream lost: r3 subscription 102",
+         "device": "r3",
+         "grafana_folder": "NMAS",
+         "nmas": "telemetry",
+         "subscription": "102"
+        },
+        "state": "Normal",
+        "value": ""
+       }
+      ],
+      "annotations": {
+       "description": "r3's committed configuration declares `telemetry ietf subscription 102`, and Prometheus holds no sample of it in the last 90 s (three scrapes of telemetry_mdt). The device, its subscription, the gRPC path to Telegraf, Telegraf or the scrape has stopped; the rule cannot say which.",
+       "summary": "r3 has stopped streaming telemetry subscription 102"
+      },
+      "evaluationTime": 0.008691184,
+      "folderUid": "afzcug3ughc74a",
+      "health": "ok",
+      "isPaused": false,
+      "labels": {
+       "device": "r3",
+       "nmas": "telemetry",
+       "subscription": "102"
+      },
+      "lastEvaluation": "2026-10-26T19:21:50Z",
+      "name": "NMAS telemetry stream lost: r3 subscription 102",
+      "provenance": "file",
+      "queriedDatasourceUIDs": [
+       "efwpn8hr7sfeob"
+      ],
+      "query": "count(last_over_time({device=\"r3\", subscription=\"102\"}[90s]))",
+      "state": "inactive",
+      "totals": {
+       "normal": 1
+      },
+      "totalsFiltered": {
+       "normal": 1
+      },
+      "type": "alerting",
+      "uid": "nmas-tel-r3-102"
+     },
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {
+         "description": "r4's committed configuration declares `telemetry ietf subscription 101`, and Prometheus holds no sample of it in the last 90 s (three scrapes of telemetry_mdt). The device, its subscription, the gRPC path to Telegraf, Telegraf or the scrape has stopped; the rule cannot say which.",
+         "summary": "r4 has stopped streaming telemetry subscription 101"
+        },
+        "labels": {
+         "alertname": "NMAS telemetry stream lost: r4 subscription 101",
+         "device": "r4",
+         "grafana_folder": "NMAS",
+         "nmas": "telemetry",
+         "subscription": "101"
+        },
+        "state": "Normal",
+        "value": ""
+       }
+      ],
+      "annotations": {
+       "description": "r4's committed configuration declares `telemetry ietf subscription 101`, and Prometheus holds no sample of it in the last 90 s (three scrapes of telemetry_mdt). The device, its subscription, the gRPC path to Telegraf, Telegraf or the scrape has stopped; the rule cannot say which.",
+       "summary": "r4 has stopped streaming telemetry subscription 101"
+      },
+      "evaluationTime": 0.006617316,
+      "folderUid": "afzcug3ughc74a",
+      "health": "ok",
+      "isPaused": false,
+      "labels": {
+       "device": "r4",
+       "nmas": "telemetry",
+       "subscription": "101"
+      },
+      "lastEvaluation": "2026-10-26T19:21:50Z",
+      "name": "NMAS telemetry stream lost: r4 subscription 101",
+      "provenance": "file",
+      "queriedDatasourceUIDs": [
+       "efwpn8hr7sfeob"
+      ],
+      "query": "count(last_over_time({device=\"r4\", subscription=\"101\"}[90s]))",
+      "state": "inactive",
+      "totals": {
+       "normal": 1
+      },
+      "totalsFiltered": {
+       "normal": 1
+      },
+      "type": "alerting",
+      "uid": "nmas-tel-r4-101"
+     },
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {
+         "description": "r4's committed configuration declares `telemetry ietf subscription 102`, and Prometheus holds no sample of it in the last 90 s (three scrapes of telemetry_mdt). The device, its subscription, the gRPC path to Telegraf, Telegraf or the scrape has stopped; the rule cannot say which.",
+         "summary": "r4 has stopped streaming telemetry subscription 102"
+        },
+        "labels": {
+         "alertname": "NMAS telemetry stream lost: r4 subscription 102",
+         "device": "r4",
+         "grafana_folder": "NMAS",
+         "nmas": "telemetry",
+         "subscription": "102"
+        },
+        "state": "Normal",
+        "value": ""
+       }
+      ],
+      "annotations": {
+       "description": "r4's committed configuration declares `telemetry ietf subscription 102`, and Prometheus holds no sample of it in the last 90 s (three scrapes of telemetry_mdt). The device, its subscription, the gRPC path to Telegraf, Telegraf or the scrape has stopped; the rule cannot say which.",
+       "summary": "r4 has stopped streaming telemetry subscription 102"
+      },
+      "evaluationTime": 0.005697258,
+      "folderUid": "afzcug3ughc74a",
+      "health": "ok",
+      "isPaused": false,
+      "labels": {
+       "device": "r4",
+       "nmas": "telemetry",
+       "subscription": "102"
+      },
+      "lastEvaluation": "2026-10-26T19:21:50Z",
+      "name": "NMAS telemetry stream lost: r4 subscription 102",
+      "provenance": "file",
+      "queriedDatasourceUIDs": [
+       "efwpn8hr7sfeob"
+      ],
+      "query": "count(last_over_time({device=\"r4\", subscription=\"102\"}[90s]))",
+      "state": "inactive",
+      "totals": {
+       "normal": 1
+      },
+      "totalsFiltered": {
+       "normal": 1
+      },
+      "type": "alerting",
+      "uid": "nmas-tel-r4-102"
+     },
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {
+         "description": "r6's committed configuration declares `telemetry ietf subscription 101`, and Prometheus holds no sample of it in the last 90 s (three scrapes of telemetry_mdt). The device, its subscription, the gRPC path to Telegraf, Telegraf or the scrape has stopped; the rule cannot say which.",
+         "summary": "r6 has stopped streaming telemetry subscription 101"
+        },
+        "labels": {
+         "alertname": "NMAS telemetry stream lost: r6 subscription 101",
+         "device": "r6",
+         "grafana_folder": "NMAS",
+         "nmas": "telemetry",
+         "subscription": "101"
+        },
+        "state": "Normal",
+        "value": ""
+       }
+      ],
+      "annotations": {
+       "description": "r6's committed configuration declares `telemetry ietf subscription 101`, and Prometheus holds no sample of it in the last 90 s (three scrapes of telemetry_mdt). The device, its subscription, the gRPC path to Telegraf, Telegraf or the scrape has stopped; the rule cannot say which.",
+       "summary": "r6 has stopped streaming telemetry subscription 101"
+      },
+      "evaluationTime": 0.00434542,
+      "folderUid": "afzcug3ughc74a",
+      "health": "ok",
+      "isPaused": false,
+      "labels": {
+       "device": "r6",
+       "nmas": "telemetry",
+       "subscription": "101"
+      },
+      "lastEvaluation": "2026-10-26T19:21:50Z",
+      "name": "NMAS telemetry stream lost: r6 subscription 101",
+      "provenance": "file",
+      "queriedDatasourceUIDs": [
+       "efwpn8hr7sfeob"
+      ],
+      "query": "count(last_over_time({device=\"r6\", subscription=\"101\"}[90s]))",
+      "state": "inactive",
+      "totals": {
+       "normal": 1
+      },
+      "totalsFiltered": {
+       "normal": 1
+      },
+      "type": "alerting",
+      "uid": "nmas-tel-r6-101"
+     },
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {
+         "description": "r6's committed configuration declares `telemetry ietf subscription 102`, and Prometheus holds no sample of it in the last 90 s (three scrapes of telemetry_mdt). The device, its subscription, the gRPC path to Telegraf, Telegraf or the scrape has stopped; the rule cannot say which.",
+         "summary": "r6 has stopped streaming telemetry subscription 102"
+        },
+        "labels": {
+         "alertname": "NMAS telemetry stream lost: r6 subscription 102",
+         "device": "r6",
+         "grafana_folder": "NMAS",
+         "nmas": "telemetry",
+         "subscription": "102"
+        },
+        "state": "Normal",
+        "value": ""
+       }
+      ],
+      "annotations": {
+       "description": "r6's committed configuration declares `telemetry ietf subscription 102`, and Prometheus holds no sample of it in the last 90 s (three scrapes of telemetry_mdt). The device, its subscription, the gRPC path to Telegraf, Telegraf or the scrape has stopped; the rule cannot say which.",
+       "summary": "r6 has stopped streaming telemetry subscription 102"
+      },
+      "evaluationTime": 0.004869542,
+      "folderUid": "afzcug3ughc74a",
+      "health": "ok",
+      "isPaused": false,
+      "labels": {
+       "device": "r6",
+       "nmas": "telemetry",
+       "subscription": "102"
+      },
+      "lastEvaluation": "2026-10-26T19:21:50Z",
+      "name": "NMAS telemetry stream lost: r6 subscription 102",
+      "provenance": "file",
+      "queriedDatasourceUIDs": [
+       "efwpn8hr7sfeob"
+      ],
+      "query": "count(last_over_time({device=\"r6\", subscription=\"102\"}[90s]))",
+      "state": "inactive",
+      "totals": {
+       "normal": 1
+      },
+      "totalsFiltered": {
+       "normal": 1
+      },
+      "type": "alerting",
+      "uid": "nmas-tel-r6-102"
+     },
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {
+         "description": "r7's committed configuration declares `telemetry ietf subscription 101`, and Prometheus holds no sample of it in the last 90 s (three scrapes of telemetry_mdt). The device, its subscription, the gRPC path to Telegraf, Telegraf or the scrape has stopped; the rule cannot say which.",
+         "summary": "r7 has stopped streaming telemetry subscription 101"
+        },
+        "labels": {
+         "alertname": "NMAS telemetry stream lost: r7 subscription 101",
+         "device": "r7",
+         "grafana_folder": "NMAS",
+         "nmas": "telemetry",
+         "subscription": "101"
+        },
+        "state": "Normal",
+        "value": ""
+       }
+      ],
+      "annotations": {
+       "description": "r7's committed configuration declares `telemetry ietf subscription 101`, and Prometheus holds no sample of it in the last 90 s (three scrapes of telemetry_mdt). The device, its subscription, the gRPC path to Telegraf, Telegraf or the scrape has stopped; the rule cannot say which.",
+       "summary": "r7 has stopped streaming telemetry subscription 101"
+      },
+      "evaluationTime": 0.004646225,
+      "folderUid": "afzcug3ughc74a",
+      "health": "ok",
+      "isPaused": false,
+      "labels": {
+       "device": "r7",
+       "nmas": "telemetry",
+       "subscription": "101"
+      },
+      "lastEvaluation": "2026-10-26T19:21:50Z",
+      "name": "NMAS telemetry stream lost: r7 subscription 101",
+      "provenance": "file",
+      "queriedDatasourceUIDs": [
+       "efwpn8hr7sfeob"
+      ],
+      "query": "count(last_over_time({device=\"r7\", subscription=\"101\"}[90s]))",
+      "state": "inactive",
+      "totals": {
+       "normal": 1
+      },
+      "totalsFiltered": {
+       "normal": 1
+      },
+      "type": "alerting",
+      "uid": "nmas-tel-r7-101"
+     },
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {
+         "description": "r7's committed configuration declares `telemetry ietf subscription 102`, and Prometheus holds no sample of it in the last 90 s (three scrapes of telemetry_mdt). The device, its subscription, the gRPC path to Telegraf, Telegraf or the scrape has stopped; the rule cannot say which.",
+         "summary": "r7 has stopped streaming telemetry subscription 102"
+        },
+        "labels": {
+         "alertname": "NMAS telemetry stream lost: r7 subscription 102",
+         "device": "r7",
+         "grafana_folder": "NMAS",
+         "nmas": "telemetry",
+         "subscription": "102"
+        },
+        "state": "Normal",
+        "value": ""
+       }
+      ],
+      "annotations": {
+       "description": "r7's committed configuration declares `telemetry ietf subscription 102`, and Prometheus holds no sample of it in the last 90 s (three scrapes of telemetry_mdt). The device, its subscription, the gRPC path to Telegraf, Telegraf or the scrape has stopped; the rule cannot say which.",
+       "summary": "r7 has stopped streaming telemetry subscription 102"
+      },
+      "evaluationTime": 0.005039097,
+      "folderUid": "afzcug3ughc74a",
+      "health": "ok",
+      "isPaused": false,
+      "labels": {
+       "device": "r7",
+       "nmas": "telemetry",
+       "subscription": "102"
+      },
+      "lastEvaluation": "2026-10-26T19:21:50Z",
+      "name": "NMAS telemetry stream lost: r7 subscription 102",
+      "provenance": "file",
+      "queriedDatasourceUIDs": [
+       "efwpn8hr7sfeob"
+      ],
+      "query": "count(last_over_time({device=\"r7\", subscription=\"102\"}[90s]))",
+      "state": "inactive",
+      "totals": {
+       "normal": 1
+      },
+      "totalsFiltered": {
+       "normal": 1
+      },
+      "type": "alerting",
+      "uid": "nmas-tel-r7-102"
+     },
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-22T23:50:50Z",
+        "annotations": {
+         "description": "r8's committed configuration declares `telemetry ietf subscription 101`, and Prometheus holds no sample of it in the last 90 s (three scrapes of telemetry_mdt). The device, its subscription, the gRPC path to Telegraf, Telegraf or the scrape has stopped; the rule cannot say which.",
+         "summary": "r8 has stopped streaming telemetry subscription 101"
+        },
+        "labels": {
+         "alertname": "NMAS telemetry stream lost: r8 subscription 101",
+         "device": "r8",
+         "grafana_folder": "NMAS",
+         "nmas": "telemetry",
+         "subscription": "101"
+        },
+        "state": "Normal",
+        "value": ""
+       }
+      ],
+      "annotations": {
+       "description": "r8's committed configuration declares `telemetry ietf subscription 101`, and Prometheus holds no sample of it in the last 90 s (three scrapes of telemetry_mdt). The device, its subscription, the gRPC path to Telegraf, Telegraf or the scrape has stopped; the rule cannot say which.",
+       "summary": "r8 has stopped streaming telemetry subscription 101"
+      },
+      "evaluationTime": 0.004747496,
+      "folderUid": "afzcug3ughc74a",
+      "health": "ok",
+      "isPaused": false,
+      "labels": {
+       "device": "r8",
+       "nmas": "telemetry",
+       "subscription": "101"
+      },
+      "lastEvaluation": "2026-10-26T19:21:50Z",
+      "name": "NMAS telemetry stream lost: r8 subscription 101",
+      "provenance": "file",
+      "queriedDatasourceUIDs": [
+       "efwpn8hr7sfeob"
+      ],
+      "query": "count(last_over_time({device=\"r8\", subscription=\"101\"}[90s]))",
+      "state": "inactive",
+      "totals": {
+       "normal": 1
+      },
+      "totalsFiltered": {
+       "normal": 1
+      },
+      "type": "alerting",
+      "uid": "nmas-tel-r8-101"
+     },
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-22T23:50:50Z",
+        "annotations": {
+         "description": "r8's committed configuration declares `telemetry ietf subscription 102`, and Prometheus holds no sample of it in the last 90 s (three scrapes of telemetry_mdt). The device, its subscription, the gRPC path to Telegraf, Telegraf or the scrape has stopped; the rule cannot say which.",
+         "summary": "r8 has stopped streaming telemetry subscription 102"
+        },
+        "labels": {
+         "alertname": "NMAS telemetry stream lost: r8 subscription 102",
+         "device": "r8",
+         "grafana_folder": "NMAS",
+         "nmas": "telemetry",
+         "subscription": "102"
+        },
+        "state": "Normal",
+        "value": ""
+       }
+      ],
+      "annotations": {
+       "description": "r8's committed configuration declares `telemetry ietf subscription 102`, and Prometheus holds no sample of it in the last 90 s (three scrapes of telemetry_mdt). The device, its subscription, the gRPC path to Telegraf, Telegraf or the scrape has stopped; the rule cannot say which.",
+       "summary": "r8 has stopped streaming telemetry subscription 102"
+      },
+      "evaluationTime": 0.005382553,
+      "folderUid": "afzcug3ughc74a",
+      "health": "ok",
+      "isPaused": false,
+      "labels": {
+       "device": "r8",
+       "nmas": "telemetry",
+       "subscription": "102"
+      },
+      "lastEvaluation": "2026-10-26T19:21:50Z",
+      "name": "NMAS telemetry stream lost: r8 subscription 102",
+      "provenance": "file",
+      "queriedDatasourceUIDs": [
+       "efwpn8hr7sfeob"
+      ],
+      "query": "count(last_over_time({device=\"r8\", subscription=\"102\"}[90s]))",
+      "state": "inactive",
+      "totals": {
+       "normal": 1
+      },
+      "totalsFiltered": {
+       "normal": 1
+      },
+      "type": "alerting",
+      "uid": "nmas-tel-r8-102"
+     }
+    ],
+    "totals": {
+     "inactive": 14
+    }
+   },
+   {
+    "evaluationTime": 0.003913682,
+    "file": "RCN Lab",
+    "folderUid": "efy1xsik6ja4gc",
+    "interval": 60,
+    "lastEvaluation": "2026-10-26T19:21:50Z",
+    "name": "1m",
+    "rules": [
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-22T07:17:50Z",
+        "annotations": {
+         "datasource_uid": "efwpn8hr7sfeob",
+         "description": "No data is the healthy state (no admin-up interface is down), so no-data reads OK. It read NoData, and a healthy network looked blind for days (C166, C168).",
+         "ref_id": "A",
+         "summary": "10.255.4.6 GigabitEthernet3.10 is down"
+        },
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "__name__": "ifOperStatus",
+         "alertname": "Interface down",
+         "device": "r7",
+         "grafana_folder": "RCN Lab",
+         "ifAlias": "VLAN 10 - H5, 10.70.10.0/24 (DHCP through Kea, SLAAC)",
+         "ifDescr": "GigabitEthernet3.10",
+         "ifIndex": "7",
+         "ifName": "Gi3.10",
+         "instance": "10.255.4.6",
+         "job": "cisco_8000v",
+         "role": "router"
+        },
+        "state": "Normal (NoData)",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T07:17:50Z",
+        "annotations": {
+         "datasource_uid": "efwpn8hr7sfeob",
+         "description": "No data is the healthy state (no admin-up interface is down), so no-data reads OK. It read NoData, and a healthy network looked blind for days (C166, C168).",
+         "ref_id": "A",
+         "summary": "10.255.4.6 GigabitEthernet3 is down"
+        },
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "__name__": "ifOperStatus",
+         "alertname": "Interface down",
+         "device": "r7",
+         "grafana_folder": "RCN Lab",
+         "ifAlias": "VLAN 10 trunk to H5",
+         "ifDescr": "GigabitEthernet3",
+         "ifIndex": "3",
+         "ifName": "Gi3",
+         "instance": "10.255.4.6",
+         "job": "cisco_8000v",
+         "role": "router"
+        },
+        "state": "Normal (NoData)",
+        "value": ""
+       }
+      ],
+      "annotations": {
+       "description": "No data is the healthy state (no admin-up interface is down), so no-data reads OK. It read NoData, and a healthy network looked blind for days (C166, C168).",
+       "summary": "{{ $labels.instance }} {{ $labels.ifDescr }} is down"
+      },
+      "duration": 60,
+      "evaluationTime": 0.005650907,
+      "folderUid": "efy1xsik6ja4gc",
+      "health": "ok",
+      "isPaused": false,
+      "lastEvaluation": "2026-10-26T19:21:50Z",
+      "name": "Interface down",
+      "notificationSettings": {
+       "receiver": "lab-noop"
+      },
+      "queriedDatasourceUIDs": [
+       "efwpn8hr7sfeob"
+      ],
+      "query": "ifOperStatus{job=~\"cisco_8000v|cisco_vios_l2\"} > 1\n  and on(instance, ifDescr) ifAdminStatus == 1",
+      "state": "inactive",
+      "totals": {
+       "normal": 2
+      },
+      "totalsFiltered": {
+       "normal": 2
+      },
+      "type": "alerting",
+      "uid": "bfy1zttkzn8xsa"
+     },
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-17T06:03:50Z",
+        "annotations": {
+         "datasource_uid": "efxk88ulvh3pcf",
+         "description": "Fires per DEVICE on a syslog message of severity 0-2 (emergencies, alerts, critical): IOS writes severity as the digit in the mnemonic. Severity 3 is not alerted: SMART_LIC-3-COMM_FAILED recurs by design (D4 gives the lab no route to Cisco). The device is the origin-id after the sequence number, as the heartbeat rules read it; the stream's host label is the collector. No data is the healthy state (C166, C168).",
+         "ref_id": "A",
+         "summary": "Critical syslog received from a network device in the last 5 minutes"
+        },
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Critical syslog received",
+         "device": "r6",
+         "grafana_folder": "RCN Lab"
+        },
+        "state": "Normal (NoData)",
+        "value": ""
+       }
+      ],
+      "annotations": {
+       "description": "Fires per DEVICE on a syslog message of severity 0-2 (emergencies, alerts, critical): IOS writes severity as the digit in the mnemonic. Severity 3 is not alerted: SMART_LIC-3-COMM_FAILED recurs by design (D4 gives the lab no route to Cisco). The device is the origin-id after the sequence number, as the heartbeat rules read it; the stream's host label is the collector. No data is the healthy state (C166, C168).",
+       "summary": "Critical syslog received from a network device in the last 5 minutes"
+      },
+      "evaluationTime": 0.017986532,
+      "folderUid": "efy1xsik6ja4gc",
+      "health": "ok",
+      "isPaused": false,
+      "lastEvaluation": "2026-10-26T19:21:50Z",
+      "name": "Critical syslog received",
+      "notificationSettings": {
+       "receiver": "lab-noop"
+      },
+      "queriedDatasourceUIDs": [
+       "efxk88ulvh3pcf"
+      ],
+      "query": "sum by (device) (count_over_time({job=~\".*network_syslog\"} |~ \"%[A-Z0-9_]+-[0-2]-[A-Z0-9_]+\" | regexp \"\\\\d+: (?P<device>[A-Za-z][A-Za-z0-9._-]*): \" [5m]))",
+      "state": "inactive",
+      "totals": {
+       "normal": 1
+      },
+      "totalsFiltered": {
+       "normal": 1
+      },
+      "type": "alerting",
+      "uid": "cfy204mmubdogd"
+     },
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-22T18:27:50Z",
+        "annotations": {
+         "summary": "10.255.1.21 is not responding to SNMP polls"
+        },
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "__name__": "up",
+         "alertname": "Device unreachable (SNMP)",
+         "device": "s1",
+         "grafana_folder": "RCN Lab",
+         "instance": "10.255.1.21",
+         "job": "cisco_vios_l2",
+         "role": "switch"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:34:50Z",
+        "annotations": {
+         "summary": "10.255.1.11 is not responding to SNMP polls"
+        },
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "__name__": "up",
+         "alertname": "Device unreachable (SNMP)",
+         "device": "r1",
+         "grafana_folder": "RCN Lab",
+         "instance": "10.255.1.11",
+         "job": "cisco_8000v",
+         "role": "router"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:32:50Z",
+        "annotations": {
+         "summary": "10.255.1.22 is not responding to SNMP polls"
+        },
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "__name__": "up",
+         "alertname": "Device unreachable (SNMP)",
+         "device": "s2",
+         "grafana_folder": "RCN Lab",
+         "instance": "10.255.1.22",
+         "job": "cisco_vios_l2",
+         "role": "switch"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:34:50Z",
+        "annotations": {
+         "summary": "10.255.1.12 is not responding to SNMP polls"
+        },
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "__name__": "up",
+         "alertname": "Device unreachable (SNMP)",
+         "device": "r2",
+         "grafana_folder": "RCN Lab",
+         "instance": "10.255.1.12",
+         "job": "cisco_8000v",
+         "role": "router"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:34:50Z",
+        "annotations": {
+         "summary": "10.255.1.13 is not responding to SNMP polls"
+        },
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "__name__": "up",
+         "alertname": "Device unreachable (SNMP)",
+         "device": "r3",
+         "grafana_folder": "RCN Lab",
+         "instance": "10.255.1.13",
+         "job": "cisco_8000v",
+         "role": "router"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:34:50Z",
+        "annotations": {
+         "summary": "10.255.1.14 is not responding to SNMP polls"
+        },
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "__name__": "up",
+         "alertname": "Device unreachable (SNMP)",
+         "device": "r4",
+         "grafana_folder": "RCN Lab",
+         "instance": "10.255.1.14",
+         "job": "cisco_8000v",
+         "role": "router"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:34:50Z",
+        "annotations": {
+         "summary": "10.255.4.2 is not responding to SNMP polls"
+        },
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "__name__": "up",
+         "alertname": "Device unreachable (SNMP)",
+         "device": "r6",
+         "grafana_folder": "RCN Lab",
+         "instance": "10.255.4.2",
+         "job": "cisco_8000v",
+         "role": "router"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:34:50Z",
+        "annotations": {
+         "summary": "10.255.4.6 is not responding to SNMP polls"
+        },
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "__name__": "up",
+         "alertname": "Device unreachable (SNMP)",
+         "device": "r7",
+         "grafana_folder": "RCN Lab",
+         "instance": "10.255.4.6",
+         "job": "cisco_8000v",
+         "role": "router"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T22:20:50Z",
+        "annotations": {
+         "summary": "10.255.4.10 is not responding to SNMP polls"
+        },
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "__name__": "up",
+         "alertname": "Device unreachable (SNMP)",
+         "device": "r8",
+         "grafana_folder": "RCN Lab",
+         "instance": "10.255.4.10",
+         "job": "cisco_8000v",
+         "role": "router"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T21:04:50Z",
+        "annotations": {
+         "summary": "10.255.1.24 is not responding to SNMP polls"
+        },
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "__name__": "up",
+         "alertname": "Device unreachable (SNMP)",
+         "device": "s4",
+         "grafana_folder": "RCN Lab",
+         "instance": "10.255.1.24",
+         "job": "cisco_vios_l2",
+         "role": "switch"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-24T00:09:50Z",
+        "annotations": {
+         "summary": "10.255.4.14 is not responding to SNMP polls"
+        },
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "__name__": "up",
+         "alertname": "Device unreachable (SNMP)",
+         "device": "s5",
+         "grafana_folder": "RCN Lab",
+         "instance": "10.255.4.14",
+         "job": "cisco_vios_l2",
+         "role": "switch"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-26T17:34:50Z",
+        "annotations": {
+         "summary": "10.255.1.23 is not responding to SNMP polls"
+        },
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "__name__": "up",
+         "alertname": "Device unreachable (SNMP)",
+         "device": "s3",
+         "grafana_folder": "RCN Lab",
+         "instance": "10.255.1.23",
+         "job": "cisco_vios_l2",
+         "role": "switch"
+        },
+        "state": "Normal",
+        "value": ""
+       }
+      ],
+      "annotations": {
+       "summary": "{{ $labels.instance }} is not responding to SNMP polls"
+      },
+      "duration": 120,
+      "evaluationTime": 0.009670967,
+      "folderUid": "efy1xsik6ja4gc",
+      "health": "ok",
+      "isPaused": false,
+      "lastEvaluation": "2026-10-26T19:21:50Z",
+      "name": "Device unreachable (SNMP)",
+      "notificationSettings": {
+       "receiver": "lab-noop"
+      },
+      "queriedDatasourceUIDs": [
+       "efwpn8hr7sfeob"
+      ],
+      "query": "up{job=~\"cisco_8000v|cisco_vios_l2\"}",
+      "state": "inactive",
+      "totals": {
+       "normal": 12
+      },
+      "totalsFiltered": {
+       "normal": 12
+      },
+      "type": "alerting",
+      "uid": "afy1y3yecuyv4d"
+     },
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet0/0",
+         "instance": "10.255.1.22"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet0/0",
+         "instance": "10.255.1.24"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet0/1",
+         "instance": "10.255.1.22"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:08:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet1",
+         "instance": "10.255.1.12"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:08:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet1",
+         "instance": "10.255.1.13"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T17:02:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet0/0",
+         "instance": "10.255.1.21"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet0/1",
+         "instance": "10.255.1.24"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T17:02:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet0/1",
+         "instance": "10.255.1.21"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T17:02:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet0/2",
+         "instance": "10.255.1.21"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:08:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet1",
+         "instance": "10.255.1.14"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:08:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet2",
+         "instance": "10.255.1.12"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:08:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet2",
+         "instance": "10.255.1.13"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:08:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet2",
+         "instance": "10.255.1.14"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:08:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet3",
+         "instance": "10.255.1.12"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:08:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet3",
+         "instance": "10.255.1.13"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:08:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet3",
+         "instance": "10.255.1.14"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:08:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet4",
+         "instance": "10.255.1.12"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:08:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet4",
+         "instance": "10.255.1.13"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:08:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet4",
+         "instance": "10.255.1.14"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:08:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet5",
+         "instance": "10.255.1.14"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:08:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Loopback0",
+         "instance": "10.255.1.12"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:08:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Loopback0",
+         "instance": "10.255.1.13"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:08:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Loopback0",
+         "instance": "10.255.1.14"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:08:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Null0",
+         "instance": "10.255.1.12"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:08:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Null0",
+         "instance": "10.255.1.13"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:08:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Null0",
+         "instance": "10.255.1.14"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:08:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "VoIP-Null0",
+         "instance": "10.255.1.12"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:08:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "VoIP-Null0",
+         "instance": "10.255.1.13"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:08:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "VoIP-Null0",
+         "instance": "10.255.1.14"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet0/2",
+         "instance": "10.255.1.22"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet0/2",
+         "instance": "10.255.1.24"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T17:02:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet0/3",
+         "instance": "10.255.1.21"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet0/3",
+         "instance": "10.255.1.22"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet0/3",
+         "instance": "10.255.1.24"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet1",
+         "instance": "10.255.4.2"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet1/0",
+         "instance": "10.255.1.22"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T17:02:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet1/0",
+         "instance": "10.255.1.21"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet1/0",
+         "instance": "10.255.1.24"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet1/1",
+         "instance": "10.255.1.22"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet2",
+         "instance": "10.255.4.2"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet3",
+         "instance": "10.255.4.2"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Loopback0",
+         "instance": "10.255.1.22"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Loopback0",
+         "instance": "10.255.1.24"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Loopback0",
+         "instance": "10.255.4.2"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Null0",
+         "instance": "10.255.1.22"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Null0",
+         "instance": "10.255.1.24"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:04:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet0/0",
+         "instance": "10.255.1.23"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:04:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet0/1",
+         "instance": "10.255.1.23"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:04:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet0/2",
+         "instance": "10.255.1.23"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:04:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet0/3",
+         "instance": "10.255.1.23"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:05:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet1",
+         "instance": "10.255.1.11"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:04:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet1/0",
+         "instance": "10.255.1.23"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-24T00:10:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet0/0",
+         "instance": "10.255.4.14"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-24T00:10:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet0/1",
+         "instance": "10.255.4.14"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-24T00:10:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet0/2",
+         "instance": "10.255.4.14"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-24T00:10:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet0/3",
+         "instance": "10.255.4.14"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:05:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet1",
+         "instance": "10.255.4.6"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T22:21:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet1",
+         "instance": "10.255.4.10"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T17:02:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet1/1",
+         "instance": "10.255.1.21"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:04:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet1/1",
+         "instance": "10.255.1.23"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:05:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet2",
+         "instance": "10.255.1.11"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T22:21:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet2",
+         "instance": "10.255.4.10"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:05:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet2",
+         "instance": "10.255.4.6"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:05:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet3",
+         "instance": "10.255.1.11"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:05:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet3",
+         "instance": "10.255.4.6"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:05:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Loopback0",
+         "instance": "10.255.1.11"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T22:21:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet3",
+         "instance": "10.255.4.10"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T17:02:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Loopback0",
+         "instance": "10.255.1.21"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:04:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Loopback0",
+         "instance": "10.255.1.23"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T22:21:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Loopback0",
+         "instance": "10.255.4.10"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-24T00:10:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Loopback0",
+         "instance": "10.255.4.14"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T17:02:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Null0",
+         "instance": "10.255.1.21"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:04:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Null0",
+         "instance": "10.255.1.23"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:05:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Loopback0",
+         "instance": "10.255.4.6"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:05:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Null0",
+         "instance": "10.255.1.11"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T22:21:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Null0",
+         "instance": "10.255.4.10"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-24T00:10:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Null0",
+         "instance": "10.255.4.14"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Null0",
+         "instance": "10.255.4.2"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T17:02:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Vlan10",
+         "instance": "10.255.1.21"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:05:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Null0",
+         "instance": "10.255.4.6"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-24T00:10:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Vlan1",
+         "instance": "10.255.4.14"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Vlan10",
+         "instance": "10.255.1.22"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Vlan100",
+         "instance": "10.255.1.24"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:04:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Vlan100",
+         "instance": "10.255.1.23"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T17:02:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Vlan20",
+         "instance": "10.255.1.21"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Vlan20",
+         "instance": "10.255.1.22"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T17:02:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Vlan30",
+         "instance": "10.255.1.21"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Vlan30",
+         "instance": "10.255.1.22"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T06:09:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "VoIP-Null0",
+         "instance": "10.255.4.2"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:04:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "Vlan99",
+         "instance": "10.255.1.23"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:05:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "VoIP-Null0",
+         "instance": "10.255.1.11"
+        },
+        "state": "Normal",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:05:50Z",
+        "annotations": {},
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface error rate elevated",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "VoIP-Null0",
+         "instance": "10.255.4.6"
+        },
+        "state": "Normal",
+        "value": ""
+       }
+      ],
+      "duration": 300,
+      "evaluationTime": 0.023572794,
+      "folderUid": "efy1xsik6ja4gc",
+      "health": "ok",
+      "isPaused": false,
+      "lastEvaluation": "2026-10-26T19:21:50Z",
+      "name": "Interface error rate elevated",
+      "notificationSettings": {
+       "receiver": "lab-noop"
+      },
+      "queriedDatasourceUIDs": [
+       "efwpn8hr7sfeob"
+      ],
+      "query": "max by (instance, ifDescr) (rate(ifInErrors{job=~\"cisco_8000v|cisco_vios_l2\"}[5m]))",
+      "state": "inactive",
+      "totals": {
+       "normal": 92
+      },
+      "totalsFiltered": {
+       "normal": 92
+      },
+      "type": "alerting",
+      "uid": "efy219zm7dclcb"
+     },
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-22T18:49:50Z",
+        "annotations": {
+         "datasource_uid": "efwpn8hr7sfeob",
+         "ref_id": "A"
+        },
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface output discards",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet1/0",
+         "instance": "10.255.1.23"
+        },
+        "state": "Normal (NoData)",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:51:50Z",
+        "annotations": {
+         "datasource_uid": "efwpn8hr7sfeob",
+         "ref_id": "A"
+        },
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "alertname": "Interface output discards",
+         "grafana_folder": "RCN Lab",
+         "ifDescr": "GigabitEthernet1/1",
+         "instance": "10.255.1.23"
+        },
+        "state": "Normal (NoData)",
+        "value": ""
+       }
+      ],
+      "duration": 300,
+      "evaluationTime": 0.007346013,
+      "folderUid": "efy1xsik6ja4gc",
+      "health": "ok",
+      "isPaused": false,
+      "lastEvaluation": "2026-10-26T19:21:50Z",
+      "name": "Interface output discards",
+      "notificationSettings": {
+       "receiver": "lab-noop"
+      },
+      "queriedDatasourceUIDs": [
+       "efwpn8hr7sfeob"
+      ],
+      "query": "max by (instance, ifDescr) (rate(ifOutDiscards{job=~\"cisco_8000v|cisco_vios_l2\"}[5m])) > 0.1",
+      "state": "inactive",
+      "totals": {
+       "normal": 2
+      },
+      "totalsFiltered": {
+       "normal": 2
+      },
+      "type": "alerting",
+      "uid": "efy220zs97xtse"
+     },
+     {
+      "alerts": [
+       {
+        "activeAt": "2026-10-22T18:32:50Z",
+        "annotations": {
+         "datasource_uid": "efwpn8hr7sfeob",
+         "ref_id": "A",
+         "summary": "10.255.1.11 probe 1 is failing"
+        },
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "__name__": "rttMonLatestRttOperSense",
+         "alertname": "IP SLA probe failing",
+         "device": "r1",
+         "grafana_folder": "RCN Lab",
+         "instance": "10.255.1.11",
+         "job": "cisco_ipsla",
+         "role": "router",
+         "rttMonCtrlAdminIndex": "1"
+        },
+        "state": "Normal (NoData)",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-26T17:04:50Z",
+        "annotations": {
+         "datasource_uid": "efwpn8hr7sfeob",
+         "ref_id": "A",
+         "summary": "10.255.1.11 probe 2 is failing"
+        },
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "__name__": "rttMonLatestRttOperSense",
+         "alertname": "IP SLA probe failing",
+         "device": "r1",
+         "grafana_folder": "RCN Lab",
+         "instance": "10.255.1.11",
+         "job": "cisco_ipsla",
+         "role": "router",
+         "rttMonCtrlAdminIndex": "2"
+        },
+        "state": "Normal (NoData)",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:38:50Z",
+        "annotations": {
+         "datasource_uid": "efwpn8hr7sfeob",
+         "ref_id": "A",
+         "summary": "10.255.1.14 probe 1 is failing"
+        },
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "__name__": "rttMonLatestRttOperSense",
+         "alertname": "IP SLA probe failing",
+         "device": "r4",
+         "grafana_folder": "RCN Lab",
+         "instance": "10.255.1.14",
+         "job": "cisco_ipsla",
+         "role": "router",
+         "rttMonCtrlAdminIndex": "1"
+        },
+        "state": "Normal (NoData)",
+        "value": ""
+       },
+       {
+        "activeAt": "2026-10-22T18:29:50Z",
+        "annotations": {
+         "datasource_uid": "efwpn8hr7sfeob",
+         "ref_id": "A",
+         "summary": "10.255.1.22 probe 1 is failing"
+        },
+        "labels": {
+         "__grafana_autogenerated__": "true",
+         "__grafana_receiver__": "lab-noop",
+         "__name__": "rttMonLatestRttOperSense",
+         "alertname": "IP SLA probe failing",
+         "device": "s2",
+         "grafana_folder": "RCN Lab",
+         "instance": "10.255.1.22",
+         "job": "cisco_ipsla",
+         "role": "switch",
+         "rttMonCtrlAdminIndex": "1"
+        },
+        "state": "Normal (NoData)",
+        "value": ""
+       }
+      ],
+      "annotations": {
+       "summary": "{{ $labels.instance }} probe {{ $labels.rttMonCtrlAdminIndex }} is failing"
+      },
+      "duration": 120,
+      "evaluationTime": 0.003913682,
+      "folderUid": "efy1xsik6ja4gc",
+      "health": "ok",
+      "isPaused": false,
+      "lastEvaluation": "2026-10-26T19:21:50Z",
+      "name": "IP SLA probe failing",
+      "notificationSettings": {
+       "receiver": "lab-noop"
+      },
+      "queriedDatasourceUIDs": [
+       "efwpn8hr7sfeob"
+      ],
+      "query": "rttMonLatestRttOperSense != 1",
+      "state": "inactive",
+      "totals": {
+       "normal": 4
+      },
+      "totalsFiltered": {
+       "normal": 4
+      },
+      "type": "alerting",
+      "uid": "dfy23aj5fpfy8f"
+     }
+    ],
+    "totals": {
+     "inactive": 6
+    }
+   }
+  ],
+  "totals": {
+   "inactive": 32
+  }
+ },
+ "status": "success"
+}

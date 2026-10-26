@@ -1,0 +1,780 @@
+[
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1793036090040,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 1,
+    "C": 0
+   }
+  },
+  "id": 17896,
+  "newState": "Normal",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:s3",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.23",
+   "job:cisco_vios_l2",
+   "role:switch"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=s3, grafana_folder=RCN Lab, instance=10.255.1.23, job=cisco_vios_l2, role=switch} - A=1.000000, C=0.000000",
+  "time": 1793036090000,
+  "timeEnd": 1793036090000,
+  "updated": 1793036090040
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1793036030043,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0,
+    "C": 1
+   }
+  },
+  "id": 17895,
+  "newState": "Pending",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:s3",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.23",
+   "job:cisco_vios_l2",
+   "role:switch"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=s3, grafana_folder=RCN Lab, instance=10.255.1.23, job=cisco_vios_l2, role=switch} - A=0.000000, C=1.000000",
+  "time": 1793036030000,
+  "timeEnd": 1793036030000,
+  "updated": 1793036030043
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1793034291534,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": -1,
+    "C": -1
+   }
+  },
+  "id": 17894,
+  "newState": "Normal (NoData)",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_ipsla",
+   "role:router",
+   "rttMonCtrlAdminIndex:2"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_ipsla, role=router, rttMonCtrlAdminIndex=2} - A=-1.000000, C=-1.000000",
+  "time": 1793034290000,
+  "timeEnd": 1793034290000,
+  "updated": 1793034291534
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1793034231533,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 4,
+    "C": 1
+   }
+  },
+  "id": 17893,
+  "newState": "Pending",
+  "prevState": "Normal (NoData)",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_ipsla",
+   "role:router",
+   "rttMonCtrlAdminIndex:2"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_ipsla, role=router, rttMonCtrlAdminIndex=2} - A=4.000000, C=1.000000",
+  "time": 1793034230000,
+  "timeEnd": 1793034230000,
+  "updated": 1793034231533
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1793029311532,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": -1,
+    "C": -1
+   }
+  },
+  "id": 17892,
+  "newState": "Normal (NoData)",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_ipsla",
+   "role:router",
+   "rttMonCtrlAdminIndex:2"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_ipsla, role=router, rttMonCtrlAdminIndex=2} - A=-1.000000, C=-1.000000",
+  "time": 1793029310000,
+  "timeEnd": 1793029310000,
+  "updated": 1793029311532
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1793029251532,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 4,
+    "C": 1
+   }
+  },
+  "id": 17891,
+  "newState": "Pending",
+  "prevState": "Normal (NoData)",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_ipsla",
+   "role:router",
+   "rttMonCtrlAdminIndex:2"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_ipsla, role=router, rttMonCtrlAdminIndex=2} - A=4.000000, C=1.000000",
+  "time": 1793029250000,
+  "timeEnd": 1793029250000,
+  "updated": 1793029251532
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1793029071535,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": -1,
+    "C": -1
+   }
+  },
+  "id": 17890,
+  "newState": "Normal (NoData)",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_ipsla",
+   "role:router",
+   "rttMonCtrlAdminIndex:2"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_ipsla, role=router, rttMonCtrlAdminIndex=2} - A=-1.000000, C=-1.000000",
+  "time": 1793029070000,
+  "timeEnd": 1793029070000,
+  "updated": 1793029071535
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1793029011553,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 4,
+    "C": 1
+   }
+  },
+  "id": 17889,
+  "newState": "Pending",
+  "prevState": "Normal (NoData)",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_ipsla",
+   "role:router",
+   "rttMonCtrlAdminIndex:2"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_ipsla, role=router, rttMonCtrlAdminIndex=2} - A=4.000000, C=1.000000",
+  "time": 1793029010000,
+  "timeEnd": 1793029010000,
+  "updated": 1793029011553
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1793028891527,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": -1,
+    "C": -1
+   }
+  },
+  "id": 17888,
+  "newState": "Normal (NoData)",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_ipsla",
+   "role:router",
+   "rttMonCtrlAdminIndex:2"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_ipsla, role=router, rttMonCtrlAdminIndex=2} - A=-1.000000, C=-1.000000",
+  "time": 1793028890000,
+  "timeEnd": 1793028890000,
+  "updated": 1793028891527
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1793028831538,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 4,
+    "C": 1
+   }
+  },
+  "id": 17887,
+  "newState": "Pending",
+  "prevState": "Normal (NoData)",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_ipsla",
+   "role:router",
+   "rttMonCtrlAdminIndex:2"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_ipsla, role=router, rttMonCtrlAdminIndex=2} - A=4.000000, C=1.000000",
+  "time": 1793028830000,
+  "timeEnd": 1793028830000,
+  "updated": 1793028831538
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1793023371530,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": -1,
+    "C": -1
+   }
+  },
+  "id": 17886,
+  "newState": "Normal (NoData)",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_ipsla",
+   "role:router",
+   "rttMonCtrlAdminIndex:2"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_ipsla, role=router, rttMonCtrlAdminIndex=2} - A=-1.000000, C=-1.000000",
+  "time": 1793023370000,
+  "timeEnd": 1793023370000,
+  "updated": 1793023371530
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1793023311538,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 4,
+    "C": 1
+   }
+  },
+  "id": 17885,
+  "newState": "Pending",
+  "prevState": "Normal (NoData)",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_ipsla",
+   "role:router",
+   "rttMonCtrlAdminIndex:2"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_ipsla, role=router, rttMonCtrlAdminIndex=2} - A=4.000000, C=1.000000",
+  "time": 1793023310000,
+  "timeEnd": 1793023310000,
+  "updated": 1793023311538
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1793013291527,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": -1,
+    "C": -1
+   }
+  },
+  "id": 17884,
+  "newState": "Normal (NoData)",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_ipsla",
+   "role:router",
+   "rttMonCtrlAdminIndex:2"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_ipsla, role=router, rttMonCtrlAdminIndex=2} - A=-1.000000, C=-1.000000",
+  "time": 1793013290000,
+  "timeEnd": 1793013290000,
+  "updated": 1793013291527
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1793013231536,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 4,
+    "C": 1
+   }
+  },
+  "id": 17883,
+  "newState": "Pending",
+  "prevState": "Normal (NoData)",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_ipsla",
+   "role:router",
+   "rttMonCtrlAdminIndex:2"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_ipsla, role=router, rttMonCtrlAdminIndex=2} - A=4.000000, C=1.000000",
+  "time": 1793013230000,
+  "timeEnd": 1793013230000,
+  "updated": 1793013231536
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1792994631536,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": -1,
+    "C": -1
+   }
+  },
+  "id": 17882,
+  "newState": "Normal (NoData)",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_ipsla",
+   "role:router",
+   "rttMonCtrlAdminIndex:2"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_ipsla, role=router, rttMonCtrlAdminIndex=2} - A=-1.000000, C=-1.000000",
+  "time": 1792994630000,
+  "timeEnd": 1792994630000,
+  "updated": 1792994631536
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1792994571528,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 4,
+    "C": 1
+   }
+  },
+  "id": 17881,
+  "newState": "Pending",
+  "prevState": "Normal (NoData)",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_ipsla",
+   "role:router",
+   "rttMonCtrlAdminIndex:2"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_ipsla, role=router, rttMonCtrlAdminIndex=2} - A=4.000000, C=1.000000",
+  "time": 1792994570000,
+  "timeEnd": 1792994570000,
+  "updated": 1792994571528
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1792983831551,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": -1,
+    "C": -1
+   }
+  },
+  "id": 17880,
+  "newState": "Normal (NoData)",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_ipsla",
+   "role:router",
+   "rttMonCtrlAdminIndex:2"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_ipsla, role=router, rttMonCtrlAdminIndex=2} - A=-1.000000, C=-1.000000",
+  "time": 1792983830000,
+  "timeEnd": 1792983830000,
+  "updated": 1792983831551
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1792983771548,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 4,
+    "C": 1
+   }
+  },
+  "id": 17879,
+  "newState": "Pending",
+  "prevState": "Normal (NoData)",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_ipsla",
+   "role:router",
+   "rttMonCtrlAdminIndex:2"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_ipsla, role=router, rttMonCtrlAdminIndex=2} - A=4.000000, C=1.000000",
+  "time": 1792983770000,
+  "timeEnd": 1792983770000,
+  "updated": 1792983771548
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792884410038,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 1,
+    "C": 0
+   }
+  },
+  "id": 17878,
+  "newState": "Normal",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:s3",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.23",
+   "job:cisco_vios_l2",
+   "role:switch"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=s3, grafana_folder=RCN Lab, instance=10.255.1.23, job=cisco_vios_l2, role=switch} - A=1.000000, C=0.000000",
+  "time": 1792884410000,
+  "timeEnd": 1792884410000,
+  "updated": 1792884410038
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792884350052,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0,
+    "C": 1
+   }
+  },
+  "id": 17877,
+  "newState": "Pending",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:s3",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.23",
+   "job:cisco_vios_l2",
+   "role:switch"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=s3, grafana_folder=RCN Lab, instance=10.255.1.23, job=cisco_vios_l2, role=switch} - A=0.000000, C=1.000000",
+  "time": 1792884350000,
+  "timeEnd": 1792884350000,
+  "updated": 1792884350052
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792880810059,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 1,
+    "C": 0
+   }
+  },
+  "id": 17876,
+  "newState": "Normal",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:s3",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.23",
+   "job:cisco_vios_l2",
+   "role:switch"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=s3, grafana_folder=RCN Lab, instance=10.255.1.23, job=cisco_vios_l2, role=switch} - A=1.000000, C=0.000000",
+  "time": 1792880810000,
+  "timeEnd": 1792880810000,
+  "updated": 1792880810059
+ },
+ {
+  "alertId": 1,
+  "alertName": "Device unreachable (SNMP)",
+  "created": 1792880750039,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 0,
+    "C": 1
+   }
+  },
+  "id": 17875,
+  "newState": "Pending",
+  "prevState": "Normal",
+  "tags": [
+   "alertname:Device unreachable (SNMP)",
+   "device:s3",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.23",
+   "job:cisco_vios_l2",
+   "role:switch"
+  ],
+  "text": "Device unreachable (SNMP) {alertname=Device unreachable (SNMP), device=s3, grafana_folder=RCN Lab, instance=10.255.1.23, job=cisco_vios_l2, role=switch} - A=0.000000, C=1.000000",
+  "time": 1792880750000,
+  "timeEnd": 1792880750000,
+  "updated": 1792880750039
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1792861491535,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": -1,
+    "C": -1
+   }
+  },
+  "id": 17874,
+  "newState": "Normal (NoData)",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_ipsla",
+   "role:router",
+   "rttMonCtrlAdminIndex:2"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_ipsla, role=router, rttMonCtrlAdminIndex=2} - A=-1.000000, C=-1.000000",
+  "time": 1792861490000,
+  "timeEnd": 1792861490000,
+  "updated": 1792861491535
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1792861431524,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 4,
+    "C": 1
+   }
+  },
+  "id": 17873,
+  "newState": "Pending",
+  "prevState": "Normal (NoData)",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_ipsla",
+   "role:router",
+   "rttMonCtrlAdminIndex:2"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_ipsla, role=router, rttMonCtrlAdminIndex=2} - A=4.000000, C=1.000000",
+  "time": 1792861430000,
+  "timeEnd": 1792861430000,
+  "updated": 1792861431524
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1792850691552,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": -1,
+    "C": -1
+   }
+  },
+  "id": 17872,
+  "newState": "Normal (NoData)",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_ipsla",
+   "role:router",
+   "rttMonCtrlAdminIndex:2"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_ipsla, role=router, rttMonCtrlAdminIndex=2} - A=-1.000000, C=-1.000000",
+  "time": 1792850690000,
+  "timeEnd": 1792850690000,
+  "updated": 1792850691552
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1792850631526,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 4,
+    "C": 1
+   }
+  },
+  "id": 17871,
+  "newState": "Pending",
+  "prevState": "Normal (NoData)",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_ipsla",
+   "role:router",
+   "rttMonCtrlAdminIndex:2"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_ipsla, role=router, rttMonCtrlAdminIndex=2} - A=4.000000, C=1.000000",
+  "time": 1792850630000,
+  "timeEnd": 1792850630000,
+  "updated": 1792850631526
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1792828971528,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": -1,
+    "C": -1
+   }
+  },
+  "id": 17870,
+  "newState": "Normal (NoData)",
+  "prevState": "Pending",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_ipsla",
+   "role:router",
+   "rttMonCtrlAdminIndex:2"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_ipsla, role=router, rttMonCtrlAdminIndex=2} - A=-1.000000, C=-1.000000",
+  "time": 1792828970000,
+  "timeEnd": 1792828970000,
+  "updated": 1792828971528
+ },
+ {
+  "alertId": 7,
+  "alertName": "IP SLA probe failing",
+  "created": 1792828911529,
+  "dashboardUID": "",
+  "data": {
+   "values": {
+    "A": 4,
+    "C": 1
+   }
+  },
+  "id": 17869,
+  "newState": "Pending",
+  "prevState": "Normal (NoData)",
+  "tags": [
+   "alertname:IP SLA probe failing",
+   "device:r1",
+   "grafana_folder:RCN Lab",
+   "instance:10.255.1.11",
+   "job:cisco_ipsla",
+   "role:router",
+   "rttMonCtrlAdminIndex:2"
+  ],
+  "text": "IP SLA probe failing {alertname=IP SLA probe failing, device=r1, grafana_folder=RCN Lab, instance=10.255.1.11, job=cisco_ipsla, role=router, rttMonCtrlAdminIndex=2} - A=4.000000, C=1.000000",
+  "time": 1792828910000,
+  "timeEnd": 1792828910000,
+  "updated": 1792828911529
+ }
+]

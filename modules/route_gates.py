@@ -206,6 +206,7 @@ GATES = {
     "v2.history_ask_metrics_words": _g(K, "Ask in words: one recorded, capped AI call as the person who asked, turning a question into the metrics builder's choices (modules/ai/nl_query.py); reads Prometheus, changes nothing else"),
     "intent_v2.words": _g(K, "Change it in words on a device's Intent tab: one recorded, capped AI call as the person who asked, drafting a patch to that device's intent and previewing it (modules/ai/intent_words.py); writes nothing, reaches no device"),
     "v2.monitoring_alert_explain": _g(K, "Explain an alert: one recorded, capped AI call as the person who pressed it, reading the alert's stored evidence pack (modules/ai/explain.py); changes nothing, runs nothing"),
+    "v2.monitoring_alert_history_evidence": _g(K, "Build evidence for a past alert from the alert history: its evidence pack rebuilt as of its time, each section marked captured, rebuilt or missing, kept frozen in the pack store as the person who pressed it (modules/evidence_pack.build_for_episode); reaches no device, changes nothing else"),
     "settings_v2.install_test": _g(K,"tests an Installation card's service (NetBox, Proxmox) with its saved settings; changes nothing"),
     "settings_v2.install_replace": _g(K, "replaces an Installation card's token (a secret; Proxmox's with its id), recorded, then tests it"),
     "settings_v2.platforms_preview": _g(K, "previews a platform or role map change: every device it moves, from each NetBox list's last inventory; writes nothing (board F4)"),

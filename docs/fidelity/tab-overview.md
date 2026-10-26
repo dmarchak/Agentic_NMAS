@@ -48,6 +48,19 @@ s3's real syslog lines as r3's): `tab-overview-drift-board-C342Drift-1440` besid
 golden, is the Checks: Drift row above, unchanged. The Drift regions below were added; no other
 region's verdict changed.
 
+Compared again 2026-10-26 (C1819, the operator's Walk 3: "Drift: clean at the last run" sat
+above "Intent: departs (+1 -1)" after a Capture took in a console change) after the Drift row
+was renamed for what it measures, **Since last capture** ("unchanged at the last run",
+"changed: differs from its golden by N line(s)"), and gained a warning when the last capture
+took in a change made outside Mercury that departs from intent. No template changed (the row's
+name and words come from `device_page.drift_row`), so the hash stands. Shots
+(`tests/test_board_shots.py::test_tab_overview_drift`): `tab-overview-drift-board-C342Drift-1440`
+(opened, and it is board C342Drift: boards (a) to (e) under its sign-off note) beside
+`tab-overview-drift-closed-page-1440`, `-1280`, `-390`, `-open-`, `-unreadable-`. The flagged
+state has no shot: it is read from the page as the route draws it
+(`tests/test_out_of_band_capture.py`, `TestNoCheckReadsClean`). The Checks: Drift and Drift,
+closed regions' verdicts moved to deviation; no other region's verdict changed.
+
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
 
@@ -60,8 +73,8 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | The difference | "None: r3 is at its intent", compared on the capture of 28 min ago | the Intent row of Checks: "matches its committed intent", or warn naming each line on the device and not in intent (r6's `cdp run`) and the reverse | **deviation** (log: Device Overview: the difference drawn as the Intent check) |
 | Intent state (C532) | "None: r3 is at its intent", compared on the capture of 28 min ago, inside The difference; the header's "At intent" chip (the device page's own record) | a row of its own: the state's chip (the Devices list's, the same function), when intent moved and what the measurement read where it has moved, and the words saying the Intent check compares now | **deviation** (log: Device Overview: the recorded intent state is a row of its own (C532)) |
 | Address, model, platform | in the page's header only | also as rows here, each with its source (the golden's Chassis type line, the inventory) | **same** |
-| Checks: Drift | clean, against its golden, and when | the drift record's word for this device, with its time; "no drift run recorded for this list" where none is (the lab) | **same** |
-| Drift, closed (C342, board b) | the row's words and time, and "The lines, what r3's log says, and what to do" to open | the same, the disclosure opening in place and asking once (a read); kept open across a redraw | **same** |
+| Checks: Drift | "Drift: clean at the last run", against its golden, and when | "Since last capture: unchanged at the last run" with its time; "no drift run recorded for this list" where none is (the lab); a warning, never a pass, when the last capture took in a change made outside Mercury that departs from intent, naming the capture's commit and how the device's log says it changed (C1819) | **deviation** (log: Device Overview: the Drift check is named Since last capture (C1819)) |
+| Drift, closed (C342, board b) | the row's words and time, and "The lines, what r3's log says, and what to do" to open | the same, its words "Since last capture: changed: differs from its golden by N line(s)", the disclosure opening in place and asking once (a read); kept open across a redraw | **deviation** (log: Device Overview: the Drift check is named Since last capture (C1819)) |
 | Drift, open: the lines (C342, board c) | the counts only on r3 and only in its golden, the run that kept them and whether the last run counted the same; the diff masked; how many lines masked; the golden's sha | the same words and parts; the run's times as ages with the time on hover; the diff drawn whole as the run kept it (its own row below) | **deviation** (log: Device Overview drift: the run's times are ages, the clock time on hover) |
 | Drift, open: the diff's extent (C342, board c) | two hunks, one context line each | the unified diff as the run kept it: its header, three context lines each side, the run's own note when comment lines differ | **deviation** (log: Device Overview drift: the kept diff is drawn whole) |
 | Drift, open: the log (C342, board c) | each configuration or restart line at its receive time, the device's own time on hover; the window's words; Every line from r3: its Logs tab | the same; each receive time with its date | **deviation** (log: Device Overview drift: each log line's receive time carries its date) |

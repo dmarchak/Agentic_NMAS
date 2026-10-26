@@ -56,8 +56,11 @@ PROMPT = ("nl_metrics", 7)
 #: v8, the network-context version: the network's summary in the cached prefix, the coverage
 #: of its layers with the question, `needs` (C1780), the builder's `resets` (a reboot is the
 #: uptime falling), and "this week" as the last 7 days unless the words say since Monday (the
-#: operator's walk, 2026-10-26).
-CANDIDATE = ("nl_metrics", 8)
+#: operator's walk, 2026-10-26). v8 could not be measured: its prompt passed the task's 8,000
+#: estimated tokens (the local tier's context too) on 9 of the 22, refused before any call.
+#: v9 is v8 with its network context compacted (`network_context(compact=True)`: each layer's
+#: state and why, the builders' summary) and its needs section tightened; measured once.
+CANDIDATE = ("nl_metrics", 9)
 #: The operation's steps, named on its manual page (docs/manual/how-it-works/ask-in-words.md).
 STEPS = (
     ("offer", "the metrics sharing a word with the question, never the whole catalogue"),
@@ -241,7 +244,7 @@ class MetricsChoicesV3(StrictModel):
 
 #: Each prompt version's answer schema: v1 to v7 answer `MetricsChoices` (v2), so a recorded
 #: case replays as it was asked.
-SCHEMA_OF = {8: MetricsChoicesV3}
+SCHEMA_OF = {8: MetricsChoicesV3, 9: MetricsChoicesV3}
 
 
 def _words(text: str) -> set:
@@ -358,7 +361,7 @@ def vocabulary() -> str:
     return "\n".join(lines)
 
 
-def network_context(list_name: str, store: str) -> dict:
+def network_context(list_name: str, store: str, compact: bool = False) -> dict:
     """What of the network goes with a question (metrics v8, logs v3; PHASE8_PLAN 15.15):
     ``{"summary", "coverage"}``, text. The summary (the devices by name and role, platforms,
     sites: the topology class, 15.11) only when the network allows that class, else why not;
@@ -388,16 +391,47 @@ def network_context(list_name: str, store: str) -> dict:
     obs = NM.unread("Ask in words reads no observed adjacency; the builders read metrics and "
                     "logs")
     cov = NM.coverage(model, obs, dict(model["nodes"]), carried)
-    lines = []
-    for layer, c in cov.items():
-        if not gate["allowed"]:
-            lines.append(f"{layer}: {c['state']}")
-            continue
-        lines.append(f"{layer}: {c['state']}" + "".join(
-            f"; {k} {c[k]}" for k in ("source", "age", "why") if c.get(k)))
-    return {"summary": (NM.summary(model) if gate["allowed"] else
+    if compact:
+        # Metrics v9 (2026-10-26): each layer's state, and why where it is not present, and
+        # the builders' summary: v8's sources, ages and Explain's summary took its largest
+        # prompt to 8,531 estimated tokens against the task's 8,000, the local tier's context
+        # too, and nine of its 22 cases were refused before any call.
+        lines = [f"{layer}: {c['state']}" + (f" ({c['why']})" if c.get("why")
+                                             and gate["allowed"] and c["state"] != "present"
+                                             else "")
+                 for layer, c in cov.items()]
+        summary = summary_for_builders(model)
+    else:
+        lines = []
+        for layer, c in cov.items():
+            if not gate["allowed"]:
+                lines.append(f"{layer}: {c['state']}")
+                continue
+            lines.append(f"{layer}: {c['state']}" + "".join(
+                f"; {k} {c[k]}" for k in ("source", "age", "why") if c.get(k)))
+        summary = NM.summary(model)
+    return {"summary": (summary if gate["allowed"] else
                         f"withheld: {gate['why']} (the topology class, 15.11)"),
             "coverage": "\n".join(lines)}
+
+
+def summary_for_builders(model: dict) -> str:
+    """The network as a builder's choice reads it: its devices by role and by platform, and
+    each device's name with its role (a role or a device named in the words), never the links,
+    adjacencies or citation ids Explain's summary carries (`network_model.summary`)."""
+    nodes = list(model["nodes"].values())
+
+    def tally(key):
+        out = {}
+        for n in nodes:
+            v = n.get(key) or "not recorded"
+            out[v] = out.get(v, 0) + 1
+        return ", ".join(f"{k} {n}" for k, n in sorted(out.items()))
+    index = ("; ".join(f"{n['name']} {n.get('role') or 'no role'}"
+                       for n in sorted(nodes, key=lambda n: n["name"]))
+             if len(nodes) <= 50 else f"not listed: {len(nodes)} devices")
+    return (f"network {model['network']}: {len(nodes)} devices; by role: {tally('role')}; "
+            f"by platform: {tally('platform')}; devices: {index}")
 
 
 def looked_up(results: list) -> str:
@@ -768,7 +802,7 @@ def metrics(list_name: str, question: str, *, actor: str, send=None, client=None
     subject = {"kind": "query", "id": list_name, "devices": list(named)}
     data = parts(question, offered, named, roles, now, z)
     if prompt[1] >= 8:
-        net = network_context(list_name, "metrics")
+        net = network_context(list_name, "metrics", compact=prompt[1] >= 9)
         got = _ask_round(schema, prompt, dict(data, coverage=net["coverage"]),
                          list_name=list_name, actor=actor,
                          ctx={"builder": vocabulary(), "network": net["summary"]}, send=send,

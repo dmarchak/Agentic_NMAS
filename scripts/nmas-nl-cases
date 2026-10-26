@@ -77,15 +77,16 @@ def check(checkout: str, list_name: str, case_file: str = CASES, prompt: int = N
         from modules import history_logq as lq
         rng = lq.window(dict(lq.DEFAULTS, range="7d"), time.time())
         seen = lq.mnemonics(list_name, rng, []).get("rows")
-        version = prompt or nl_query.PROMPT_LOGS[1]
 
+        # Stale is the EVIDENCE's: an expected mnemonic neither the logs reader counted nor
+        # the platform pack names. What one prompt version happens to offer is that version's
+        # answer, measured as its misses, never a stale case (2026-10-26: logs v2 offers no
+        # reload mnemonic for "rebooted", the walk's own finding, C1804).
         def offered(question):
             if seen is None:
                 return None
-            if version >= 3:
-                return [m for m, _w in nl_query.offer_events(
-                    question, seen, nl_query.events_for(list_name))]
-            return nl_query.offer_mnemonics(question, seen)
+            return sorted({m for m, _n in seen}
+                          | {e["mnemonic"] for e in nl_query.events_for(list_name)})
         return cases.stale_logs(data, offered)
     client = pq._client(list_name, 15.0)
     rng = pq.window(dict(pq.DEFAULTS), time.time())
@@ -99,8 +100,20 @@ def check(checkout: str, list_name: str, case_file: str = CASES, prompt: int = N
     return cases.stale(data, carried)
 
 
+def frozen(case: dict):
+    """A case's own clock (``"now"``, ISO 8601 UTC, ``2026-10-26T20:00:00Z``) as epoch seconds,
+    or None for a case that has none."""
+    import calendar
+
+    text = (case.get("now") or "").strip()
+    if not text:
+        return None
+    return float(calendar.timegm(time.strptime(text.replace("Z", ""), "%Y-%m-%dT%H:%M:%S")))
+
+
 def record(checkout: str, list_name: str, actor: str, out: str, case_file: str = CASES,
-           thinking: str = None, model: str = None, prompt: int = None) -> int:
+           thinking: str = None, model: str = None, prompt: int = None,
+           only=()) -> int:
     from modules.ai import cases, nl_query, profiles
 
     if os.path.realpath(out).startswith(os.path.realpath(checkout) + os.sep):
@@ -144,12 +157,18 @@ def record(checkout: str, list_name: str, actor: str, out: str, case_file: str =
         return 3
     got_all, spent = [], 0.0
     for case in data["cases"]:
-        now = time.time()
+        if only and case["n"] not in only:
+            continue
+        # A case that names its own "now" is asked as of it (the operator, 2026-10-26): a
+        # date-relative question ("this week" asked on a Monday) then tests the same thing on
+        # every day it is recorded, and its recording is judged as of it.
+        now = frozen(case) or time.time()
         if logs:
-            got = nl_query.logs(list_name, case["question"], actor=actor, prompt=asked)
+            got = nl_query.logs(list_name, case["question"], actor=actor, prompt=asked,
+                                now=now)
         else:
             got = nl_query.metrics(list_name, case["question"], actor=actor, thinking=thinking,
-                                   prompt=asked)
+                                   prompt=asked, now=now)
         spent += float(got.get("cost_usd") or 0)
         if got.get("error") in STOPS:
             print(f"nmas-nl-cases: case {case['n']} refused by Mercury ({got['error']}: "
@@ -222,6 +241,8 @@ def main(argv=None) -> int:
                     help="ask with this prompt version of the case file's feature in place of "
                          "the current one (a candidate measured against the adoption bar: "
                          "metrics 8, logs 3)")
+    ap.add_argument("--case", action="append", type=int, default=None,
+                    help="record only this case number (repeatable): a follow-on round")
     args = ap.parse_args(argv)
     checkout = _checkout(args.checkout)
     sys.path.insert(0, checkout)
@@ -240,7 +261,7 @@ def main(argv=None) -> int:
         if not (args.list and args.actor and args.out):
             ap.error("--record needs --list, --actor and --out")
         return record(checkout, args.list, args.actor, args.out, args.cases, args.thinking,
-                      args.model, args.prompt)
+                      args.model, args.prompt, tuple(args.case or ()))
     ap.error("--record or --merge")
     return 2
 

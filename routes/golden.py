@@ -451,7 +451,15 @@ def apply_captures(list_name: str, confirmations: dict, *, fleet: bool, acknowle
                                         netbox_id=d.get("_netbox_id"),
                                         device_uid=d.get("device_uid", ""),
                                         platform=o["platform"]))
+            # A capture that takes in a change no rule explains, made outside Mercury (C1819):
+            # how the device's own log says it changed, kept in the commit for the golden's
+            # history and the device page (one Loki ask per such device, at once).
+            from modules.nsot import out_of_band
+            departing = [by_host[o["device"]] for o in pending
+                         if read_by_host[o["device"]][0].get("changed")
+                         and out_of_band.unexplained(o["intent"])]
             save = save_golden(list_name, items, source="save_all" if fleet else "capture",
+                               extra_trailers=out_of_band.trailers(repo, departing),
                                actor=request_actor(), allow_new=False,
                                inventory_size=len(inventory) if fleet else 0,
                                skipped=skipped, baseline=None if fleet else False,
