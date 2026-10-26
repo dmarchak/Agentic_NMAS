@@ -2007,6 +2007,26 @@ features included):**
   exporter or a device wrote, and a stored secret's value in the person's words) is masked in
   the bytes sent. A feature's change needs no tier run.
 
+**Tuning pauses for the rest of the sprint (the operator, 2026-10-26; expires with the sprint,
+Sat 31 Oct).**
+- **The pause.** After Explain v5's proof and the Sonnet comparison, no more tuning of Ask in
+  words or Explain in the sprint. Their floors gate the release (sprint ruling 3), not the
+  sprint. The one exception is a pin change the Sonnet comparison decides.
+- **Its cost:** C1724 (held-out set 2 below its floor) and C1750 stay open past the sprint.
+- **The defect class it prevents:** the sprint's days spent chasing a floor while the
+  features behind it wait.
+- **The order from 2026-10-26 (tomorrow):**
+  1. Explain's recorded cases on the adopted prompt, five runs each. That closes C1744 and
+     item 9's baselines.
+  2. History's record of AI calls (15.14).
+  3. C1740's logs half: the logs builder's named days in the viewer's timezone, as the
+     metrics half's.
+  4. **Feature 7 begins:**
+     - its card's egress-class question answered first: full intent, or changed keys only;
+     - C1471's patch step reused;
+     - pinned to Sonnet;
+     - its recorded cases, and a held-out set written before its first measurement.
+
 ### 15.13 AI controls: one mark, and shown disabled when AI cannot answer (the operator, 2026-10-25)
 
 A design rule built in the sprint, holding for every AI surface (docs/NSOT_GUI_BRIEF.md

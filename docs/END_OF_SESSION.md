@@ -5,6 +5,16 @@ for 2026-10-26 only, for Explain v5's proof and the Sonnet comparison. The opera
 back to $1.50. If it is still above $1.50 on 2026-10-27, say so first thing: Mercury cannot
 raise that reminder itself (C1751).**
 
+**NEXT, from 2026-10-26 (PHASE8_PLAN 15.12, "Tuning pauses"):** after Explain v5's proof and
+the Sonnet comparison, no more tuning of Ask in words or Explain this sprint, except a pin
+change the Sonnet result decides. Then, in order:
+1. Explain's recorded cases on the adopted prompt (closes C1744 and item 9's baselines);
+2. History's AI-call record (15.14);
+3. C1740's logs half;
+4. feature 7: its card's egress-class question first (full intent or changed keys only),
+   C1471's patch step reused, the Sonnet pin, recorded cases and a held-out set written before
+   its first measurement.
+
 ## THE OVERNIGHT RUN, 2026-10-23 ~23:0x to 2026-10-24 ~10:0x UTC (the operator asleep)
 
 The operator's brief: CI speed, then the mutation workflow, then the register's triage and
