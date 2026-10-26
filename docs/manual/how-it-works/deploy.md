@@ -55,9 +55,12 @@ the server answers from git and the credential store. Planning opens no device s
    often each flagged line was authorised on this device before), the rolled-back record and
    the device lock. Sent: nothing. Recorded: nothing. Each gate is drawn by name: template
    approved; committed intent; the template reproduces the device; every line modelled or
-   acknowledged; printable ASCII; dangerous lines (`shutdown`, `no ip address`,
-   `no router ospf|bgp|eigrp|isis`, `reload`, `erase nvram`, `crypto key zeroize`), each
-   authorised by its exact text with your reason; blocked change (the program does not re-send
+   acknowledged; printable ASCII; lines needing a reason: the dangerous ones (`shutdown`,
+   `no ip address`, `no router ospf|bgp|eigrp|isis`, `reload`, `erase nvram`,
+   `crypto key zeroize`), each authorised by its exact text with your reason, and every line
+   ticked for removal (Mode B), whose reason is the one you type beside its tick. While a line
+   still needs its reason, the Deploy button is not offered, and the card names the line;
+   blocked change (the program does not re-send
    a change that was rolled back); and no other operation holds the device. Two more are
    checked at apply: the device and its stored capture are unchanged since the preview (the
    capture by its hash, the device by reading it before anything is sent; see `pre_snapshot`

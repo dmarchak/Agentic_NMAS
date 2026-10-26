@@ -608,6 +608,16 @@ def deploy_card(ref, host: str, entry: dict, preview: dict, viewer: dict, *,
     dangerous = [{"index": i, "line": line, "reason": danger_reasons.get(i, "")}
                  for i, line in enumerate(entry.get("dangerous") or [])]
     waiting = entry.get("authorisation_ok") is False
+    # Each line still waiting on its reason, and where that reason is typed (C1434): a ticked
+    # removal's in its own Why box, any other line's in its reason box.
+    from modules.nsot.authorisation import valid_keys
+    from modules.preview_confirm import needs_reason
+    given = set(valid_keys(entry.get("authorised") or []))
+    ticked = set((entry.get("removals") or {}).get("keys") or [])
+    waiting_for = [{"line": k, "where": "its Why box, beside the tick" if k in ticked
+                    else "its reason box"}
+                   for k in dict.fromkeys(needs_reason(entry)) if k not in given] \
+        if waiting else []
     blocking = list(entry.get("blocking_reasons") or [])
     refused = entry.get("refused") or entry.get("error") or ""
     lines = list(program.get("lines") or [])
@@ -629,7 +639,8 @@ def deploy_card(ref, host: str, entry: dict, preview: dict, viewer: dict, *,
             # What the program is meant to do, derived (C506 phase 2), and declared (phase 3).
             "expected": program.get("expected") or {},
             "declare": _declare_part(ref, entry, pending),
-            "waiting": waiting, "authorisation_error": entry.get("authorisation_error", ""),
+            "waiting": waiting, "waiting_for": waiting_for,
+            "authorisation_error": entry.get("authorisation_error", ""),
             "blocking": blocking, "refused": refused,
             "what_not": t["what_not"], "operands": list(t["target"].get("operands") or []),
             "gates": t["gates"], "failing": t["failing"], "may": may,

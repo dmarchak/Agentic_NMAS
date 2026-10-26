@@ -1914,6 +1914,11 @@ run. **Done** is absolute: 11.1's floor, 95% consistency (Translator, Decision-m
 (Analyst; Explain). A candidate that passes adoption but not the floor goes live, and its
 feature stays not done until a later version meets the floor. Consistency compares the card's
 fields only (section 6's table), never redefined to pass.
+- **A run refused before it was sent fails for pass and for consistency** (the operator,
+  2026-10-26 ~22:4x UTC). This covers a request over the prompt budget or a cap. A case
+  holding one is never consistent, five identical refusals included. Restated by it: metrics
+  v9 on the main 22 was 20 of 22 consistent (91%), not 22 of 22. Its cases 7 and 16 were
+  refused over the budget in every run (C1830).
 - **Applied the same evening:** logs v3 adopted. On the 20 it passed 99 of 100 against v2's
   81, with 17 of 20 consistent against 12, and nothing v2 passed failing. Its 85% is under the
   floor, so Ask in words' logs half stays not done until a later version reaches 95%.
@@ -3094,3 +3099,50 @@ implementation.**
   - a request involving a secret.
 
 Registered: C1798 (its open design questions).
+
+### 16.11 AI opportunities, by one rule (a roadmap; register only; the operator, 2026-10-26)
+
+**The rule:** code for facts and actions, AI for judgement and language. Each item says
+whether its output makes Mercury's checks stricter (safe to offer) or looser (it needs a
+person's approval before it takes effect).
+
+**Tier 1, after Phase 8, in this order:**
+1. **"Was this right?" on every AI answer.** A no opens a candidate recorded case for review.
+   - Stricter: it adds cases, and loosens nothing.
+2. **AI-proposed expected effects in the deploy preview.** It pre-fills "declare an effect"
+   (C506 phase 3), and the person accepts or rejects each.
+   - Stricter: an accepted effect is one more thing Verify checks.
+3. **A change record and rollback plan drafted** from the program and the preview, in a change
+   board's format.
+   - Neither: it is a document, and the program and the preview stay what is confirmed.
+4. **Incident correlation and an incident timeline.**
+   - The grouping is deterministic code, by topology.
+   - AI drafts the timeline and a root cause, on the alert history and Explain.
+   - Looser if taken as fact: the root cause is a draft, never an alert explained away.
+5. **A daily digest.** Its statistics are computed in code, and AI writes the summary:
+   - configuration changes, and who made them;
+   - new mnemonics;
+   - departures from intent;
+   - trends past normal.
+   - Neither: a summary of facts already measured.
+6. **The toolbar assistant** (P7, 16.10, already registered).
+
+**Tier 2:**
+- **Compliance findings** explained, with fix drafts from feature 7.
+- **Capacity questions** answered over forecasts computed in code.
+- **Brownfield modelling suggestions.** Looser: excusing a line needs a person's approval.
+- **Ticket and email intake** into feature 7 drafts.
+- **Runbook-to-procedure drafting.**
+- **Site documentation.**
+
+**Never AI:**
+- secrets;
+- approvals and deploy decisions;
+- anything a deterministic check answers;
+- explaining away a departure or an alert without a person's approval.
+
+**Each item, when built:**
+- recorded cases and a blind held-out set;
+- the adoption and done bars of 15.12.
+
+Registered: C1833 (this roadmap; nothing in it is built in Phase 8).

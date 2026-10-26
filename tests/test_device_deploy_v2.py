@@ -292,6 +292,98 @@ class TestTheAttribution:
         assert _pre(groups["pending"]) == ["lldp run"]
 
 
+@pytest.fixture
+def out_of_band(lab, monkeypatch):  # noqa: F811
+    """The operator's Walk 3 (2026-10-26, C1434): `load-interval 30` typed on the device out
+    of band and taken in by a Capture (the golden holds it), intent otherwise the device's own,
+    so the only line to send is the removal and no line is dangerous."""
+    from modules.nsot.repo import GoldenItem, save_golden
+    real = lab["captured"]
+    golden = real.replace("\ninterface GigabitEthernet2\n",
+                          "\ninterface GigabitEthernet2\n load-interval 30\n")
+    assert golden != real
+    out = save_golden("Lab", [GoldenItem("r2", golden, "203.0.113.12", platform="cisco_iosxe")],
+                      source="capture", actor="t", baseline=False)
+    assert out.get("commit"), out
+    # Intent stays the lab's own, committed from this same capture (the device's config): the
+    # program being the removal alone, asserted below, is what shows nothing else differs.
+    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
+    devices = [{"hostname": "r2", "ip": "203.0.113.12", "device_type": "cisco_xe",
+                "platform": "cisco_iosxe", "username": "admin"}]
+    monkeypatch.setattr("modules.device.load_saved_devices",
+                        lambda path=None: [dict(d) for d in devices])
+    return lab
+
+
+class TestTheWalksRemoval:
+    """C1434, found again on the operator's Walk 3 (2026-10-26): a removal with no dangerous
+    line read "not applicable" on the reason check, so Deploy was offered before the Why was
+    given, and the apply refused "1 line(s) need an authorisation with a reason"."""
+
+    def _spy_pipeline(self, monkeypatch):
+        """The real apply (`routes.deploy._deploy_one`: the program computed again with its
+        removals, every removal's reason checked on the path that connects), with only the
+        pipeline, the part that reaches a device, replaced by a recorder that succeeds."""
+        import modules.pipeline as P
+        import routes.deploy as rd
+        seen = []
+
+        class _Runner:
+            def __init__(self, ctx):
+                self.ctx = ctx
+                seen.append(ctx)
+
+            def run(self):
+                # As `PipelineRunner.run` answers: its own context, here every stage a pass.
+                self.ctx.final_status = "success"
+                return self.ctx
+        monkeypatch.setattr(P, "PipelineRunner", _Runner)
+        monkeypatch.setattr(rd, "_commit_batch_golden", lambda *a, **k: {})
+        return seen
+
+    def test_ticked_without_its_why_offers_no_deploy_and_names_the_line(self, out_of_band):
+        _r, plain = _get(out_of_band, "/v2/device/r2/deploy?focus=removal")
+        rid = _residue_id(plain, "load-interval 30")
+        assert 'name="dz::' not in plain, "no dangerous line in this program"
+        _r, ticked = _get(out_of_band, f"/v2/device/r2/deploy?rm={rid}")
+        assert "op-confirm" not in ticked, "no Deploy for a program the apply would refuse"
+        assert "waits on your stated reason for <code>no load-interval 30</code> (in its Why " \
+               "box, beside the tick)" in ticked, ticked[ticked.find("Not available"):][:400]
+        assert "<strong>lines needing a reason</strong>" in ticked
+        button = re.search(r"<button[^>]*>Deploy \d+ line\(s\) to r2</button>", ticked)
+        assert button and " disabled" in button.group(0) and "hx-post" not in button.group(0), \
+            "Deploy drawn disabled, never offered"
+
+    def test_the_why_alone_authorises_it_and_only_the_removal_is_sent(self, out_of_band,
+                                                                      monkeypatch):
+        from modules.nsot import capture_job
+        seen = self._spy_pipeline(monkeypatch)
+        _r, plain = _get(out_of_band, "/v2/device/r2/deploy?focus=removal")
+        rid = _residue_id(plain, "load-interval 30")
+        _r, card = _get(out_of_band, f"/v2/device/r2/deploy?rm={rid}"
+                        f"&why::{rid}=left+over+from+the+old+design")
+        assert "op-confirm" in card, card[card.find("Not available"):][:400]
+        vals = _vals(card)
+        assert json.loads(vals["authorise"]) == [{"line": "no load-interval 30",
+                                                   "reason": "left over from the old design"}]
+        r = out_of_band["client"].post("/v2/device/r2/deploy/confirm", data=vals)
+        waiting = r.get_data(as_text=True)
+        assert r.status_code == 200 and "Deploying to r2" in waiting, waiting[:400]
+        job = re.search(r"/deploy/job/([0-9a-f]+)", waiting).group(1)
+        assert capture_job.wait(job, 20)
+        assert len(seen) == 1, ("the apply refused before the pipeline",
+                                capture_job.get(job))
+        ctx = seen[0]
+        sent = ctx.confirmed_commands["203.0.113.12"]
+        assert [l.strip() for l in sent if l.strip() not in ("exit", "end")] == \
+            ["interface GigabitEthernet2", "no load-interval 30"], sent
+        assert ctx.removals["203.0.113.12"]["units"][0]["line"].strip() == "load-interval 30"
+        assert "no load-interval 30" in ctx.params["allowed_dangerous"]
+        _r, out = _get(out_of_band, f"/v2/device/r2/deploy/job/{job}")
+        assert "op-ok" in out, {k: v for k, v in capture_job.get(job).items()
+                                if k in ("error", "detail", "result", "reason")}
+
+
 class TestTheConfirm:
     def _confirm(self, lab, vals, **change):
         return lab["client"].post("/v2/device/r2/deploy/confirm", data=dict(vals, **change))

@@ -71,7 +71,7 @@ which `preview_confirm.capture_result` already calls "partial". A capture at its
 drawn as the board drew it. The deviation is a line in STANDING_APPROVAL_LOG.md. No template
 changed: the level and chip come from `device_actions.capture_result_card`.
 Templates compared: templates/v2/device.html, templates/v2/_actions_menu.html, templates/v2/_status.html, templates/v2/_drained_badge.html, templates/v2/_capture.html, templates/v2/_deploy.html, templates/v2/_attribution.html, templates/v2/_rotate.html, templates/v2/_persist.html, templates/v2/_persist_effect.html, templates/v2/_startup_effect.html, templates/v2/_seed.html, templates/v2/_restore.html, templates/v2/_revert.html, templates/v2/_retry.html, templates/v2/_retire.html
-Templates sha256: `7dbf73e139c967c7dc143312b7a7a4953669ec56d4ac7d5b35cd8f9b1a53b251`
+Templates sha256: `bfa9ba2b2c9e47a7b0da69d32f05e1ef7f358be9d8125d886c21d597f64afe92`
 
 Compared again 2026-10-16 (C537, C540) after `device.html` gained the line a reopened card
 carries and `_rotate.html` its running card's and held preview's changes (C540's words, and
@@ -111,6 +111,31 @@ and `device` again. At 390 the long chip ran past the screen's edge; `.status` n
 badge may break its line, inside the page, and a short chip draws as before (`device` at 390 the
 same as before). One region added below; no other region's verdict changed.
 
+Compared again 2026-10-26 (C1434, the operator's Walk 3) after `_deploy.html` gained the
+board's disabled primary for a card waiting on a reason and its note gained each waiting line
+by name, and the plan's reason check became one check, "lines needing a reason", covering a
+line ticked for removal as well as a dangerous one (it read not applicable on a removal with
+no dangerous line, and Deploy was offered). Shots: `device-deploy` at 1440 beside
+`DevDeployPreview` at 1440 (tests/test_board_shots.py `test_device_deploy`), the card's foot
+and Checks region by region.
+- **The foot:** the same parts as the board. The primary is drawn disabled, "Deploy 7 line(s)
+  to r2", and the note says what it waits on and that Deploy is offered once every reason is
+  given. Two differences:
+  - the note names the line and where its reason is typed ("waits on your stated reason for
+    `shutdown` (in its reason box)"), where the board says "Waits on one reason";
+  - the disabled button is at the left, where the live Deploy button stands, with "Preview it
+    again" at the right; the board draws the button at the right and no second button.
+- **Checks:** the board draws two checks, "Every dangerous line has a stated reason" and
+  "Every ticked removal is a measured shape, with a reason". The page draws one, "lines needing
+  a reason", failing with the line named. It is one check because the apply refuses on one
+  list, dangerous lines and removals together (`assert_authorised`); the removal's measured
+  shape stays its own refusal at the tick.
+- **The row "A card that cannot be confirmed yet"** now reads **same** for the deploy card;
+  the other cards it names are unchanged.
+
+Deviations, each a line in STANDING_APPROVAL_LOG.md: "Device: the deploy card's waiting note
+names each line" and "Device: one reason check for dangerous lines and removals".
+
 The running cards draw the one stepper, compared with its boards in docs/fidelity/stepper.md.
 Reload… (`_reload.html`; the walk's section I, capture 30) and Run a privileged command…
 (`_privileged.html`, compared in tab-ask.md) are cards of later sign-offs: Reload has no board
@@ -139,7 +164,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Capture: The difference | from the golden now, the section and its one added line | a unified diff of the golden against this read (hunk header and context lines), then the comparison with committed intent in a sentence; "None: s2's running configuration equals its golden …" when equal (capture 09) | **deviation** (log: Device: a card's difference is a unified diff with context) |
 | Capture: Operands | golden now with its time, this read, committed intent with "departs (+1)" | golden now, this read, committed intent at its commit (capture 09; its departure said in the difference) | **same** |
 | Checks, on every card | each check in plain words ("The device was read reliably: one configuration, its own hostname, no echoed command", "No other operation holds r3") | each card's own gates by name, with its detail ("device read"; "no other operation holds this device: nothing holds it now; the apply takes the device…"), more of them, the at-confirm ones marked "at confirm" (captures 09, 28, 31) | **deviation** (log: Device: each card's checks are its operation's gates by name) |
-| A card that cannot be confirmed yet | its primary button drawn disabled, with the note ("Waits on one reason…", "Not available while the deploy holds r3…") | the note ("Nothing to confirm: s2 matches its golden, so nothing would be recorded.", capture 09; "Not available: …, Nothing is queued.") and a "Preview it again" button where one helps; no disabled primary (capture, deploy, rotate held, restore, retry, retire) | **deviation** (log: Device: a card that cannot be confirmed draws no disabled button) |
+| A card that cannot be confirmed yet | its primary button drawn disabled, with the note ("Waits on one reason…", "Not available while the deploy holds r3…") | the note ("Nothing to confirm: s2 matches its golden, so nothing would be recorded.", capture 09; "Not available: …, Nothing is queued.") and a "Preview it again" button where one helps; no disabled primary (capture, rotate held, restore, retry, retire); the deploy card waiting on a reason draws its disabled primary since 2026-10-26 (C1434) | **deviation** for the other cards (log: Device: a card that cannot be confirmed draws no disabled button); **same** for the deploy card waiting on a reason |
 | Capture: result | Captured, Recorded; What happened with the commit linked, as the verified person, the time with the read on hover; Still true; What next: Edit intent…, Remove the line (Mode B)…; Open in History | the same, What next with two more: Deploy intent… and Restore from…, each with its (i) | **deviation** (log: Device: Capture's result offers four ways on) |
 | Capture: result's colour | green, "Recorded", over r3 departing from intent by one line | amber, "Recorded; departs from intent" ("Recorded; intent not compared" where it was not compared); green "Recorded" only at intent (C1273) | **deviation** (log: Device: Capture's result is amber for a device departing from intent) |
 | Prose naming code | code in its own type ("load-interval 30", "Source: seed") | raw backticks around it in the capture card's intent sentence, the capture result, persist, the seed result, the revert footer and result, the retire result ("(`load-interval 30`)") | **deviation** (log: Device: card prose shows raw backticks around code (a defect, register C650 follow-up)) |

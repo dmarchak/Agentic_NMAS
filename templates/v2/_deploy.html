@@ -156,8 +156,13 @@
             hx-post="{{ url_for('device_v2.deploy_confirm', name=c.host) }}" hx-target="#device-op" hx-swap="outerHTML"
             hx-disabled-elt="this" hx-vals='{{ {"list": c.list, "back": c.back, "capture_hash": c.confirm.capture_hash, "command_hash": c.confirm.command_hash, "remove": c.confirm.remove | tojson, "authorise": c.confirm.authorise | tojson, "declare": c.confirm.declare | tojson} | tojson }}'{{ gate('confirm') }}><span class="op-idle">Deploy {{ c.sent | length }} line(s) to {{ c.host }}</span><span class="op-busy">Computing the program again and starting the deploy…</span></button>{{ how('deploy', compact=True, op='deploy') }}</span>
     {%- else %}
-    <p class="op-note">Not available:
-      {%- if c.waiting %} waits on your stated reason on every dangerous or ticked line; give it above and the plan is computed again.
+    {%- if c.waiting and c.sent %}
+    {#- The board's disabled primary (C1434): Deploy is drawn, never offered, while a line
+        still waits on its reason; the note under it names each line and where it is given. #}
+    <span class="op-act"><button type="button" class="btn btn-primary" data-op="deploy" disabled aria-describedby="deploy-waits">Deploy {{ c.sent | length }} line(s) to {{ c.host }}</button>{{ how('deploy', compact=True, op='deploy') }}</span>
+    {%- endif %}
+    <p class="op-note" id="deploy-waits">Not available:
+      {%- if c.waiting %} waits on your stated reason for {% for w in c.waiting_for %}<code>{{ w.line }}</code> (in {{ w.where }}){{ '; ' if not loop.last }}{% else %}every dangerous or ticked line{% endfor %}. Give it above and the plan is computed again; Deploy is offered once every reason is given.
       {%- elif not c.sent %} nothing to send.
       {%- else %} {% for g in c.failing %}{{ g.name }}{% if g.detail %} ({{ g.detail }}){% endif %}{{ '; ' if not loop.last }}{% else %}{{ c.refused or (c.blocking | join('; ')) or 'nothing can be deployed' }}{% endfor %}.{% endif %}
       {%- if c.held %} This preview reads again when that operation finishes, if the tool runs it.{% endif %} Nothing is queued.</p>

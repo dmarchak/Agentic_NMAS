@@ -217,6 +217,19 @@ BUSY_GATE = "no other operation holds this device"
 #: C118: what a rollback leaves behind blocks the CHANGE that failed (its
 #: lines, while a program would re-send them), never the device.
 BLOCKED_CHANGE = "blocked change"
+#: The check on every line that must carry a stated reason before it is sent: a dangerous one,
+#: a secret re-added, and a line ticked for removal (Mode B). It was "dangerous lines", which
+#: read not applicable on a removal with no dangerous line, so Deploy was offered for a
+#: program the apply refuses (C1434, the operator's Walk 3, 2026-10-26).
+REASON_GATE = "lines needing a reason"
+
+
+def needs_reason(d: dict) -> list:
+    """Every line of plan entry *d* that needs an authorisation with a reason, as the apply's
+    `assert_authorised` counts them (`routes.deploy`): its dangerous lines, the secret lines a
+    restore re-adds, and the keys of its Mode B removals."""
+    return (list(d.get("dangerous") or []) + list(d.get("secret_readded") or [])
+            + list((d.get("removals") or {}).get("keys") or []))
 
 
 def busy_gate(d: dict) -> dict:
@@ -240,7 +253,7 @@ def _deploy_gates(d: dict, failed: str) -> list:
             gate(n, "not_reached", "nothing was built to check")
             for n in ("template approved", "committed intent", "template reproduces the device",
                       "every line modelled or acknowledged", "printable ASCII",
-                      "dangerous lines", BLOCKED_CHANGE)]
+                      REASON_GATE, BLOCKED_CHANGE)]
         # No busy gate: a device that cannot be built reaches no apply, so
         # "the apply takes the device" would be a claim about nothing.
     gaps = d.get("template_gaps") or {}
@@ -257,7 +270,7 @@ def _deploy_gates(d: dict, failed: str) -> list:
     unacked = d.get("unacknowledged") or []
     stale = d.get("stale_acknowledgements") or []
     unsendable = d.get("unsendable") or []
-    dangerous = d.get("dangerous") or []
+    needing = needs_reason(d)
     rolled = d.get("rolled_back")
     built = [
         gate("template approved", "pass" if d.get("template_approved") else "fail",
@@ -276,11 +289,11 @@ def _deploy_gates(d: dict, failed: str) -> list:
                  if unmodeled and not unacked else ""]))),
         gate("printable ASCII", "fail" if unsendable else "pass",
              "; ".join(unsendable[:2])),
-        gate("dangerous lines",
-             "not_applicable" if not dangerous
+        gate(REASON_GATE,
+             "not_applicable" if not needing
              else "pass" if d.get("authorisation_ok") else "fail",
-             "" if not dangerous else (d.get("authorisation_error")
-                                       or f"{len(dangerous)} authorised")),
+             "" if not needing else (d.get("authorisation_error")
+                                     or f"{len(needing)} given, each with a stated reason")),
         # Named for what it blocks (C118): a CHANGE, never a device. It was
         # "rollback block", and the operator read it as a device block.
         gate(BLOCKED_CHANGE, "fail" if rolled else "pass",
@@ -431,8 +444,7 @@ def deploy_preview(devices: list, request, scope: str = "") -> dict:
     for d in devices:
         name = d.get("device", "?")
         blocked = not d.get("deployable")
-        unauthorised = (bool(d.get("dangerous")) or bool(d.get("secret_readded"))) \
-            and d.get("authorisation_ok") is False
+        unauthorised = bool(needs_reason(d)) and d.get("authorisation_ok") is False
         failed = d.get("refused") or d.get("error") or ""
         state = ("blocked" if blocked else "refused" if failed
                  else "not_authorised" if unauthorised else "deployable")
@@ -667,8 +679,7 @@ def restore_preview(devices: list, skipped: list, *, ref: str, summary: str,
     for d in devices:
         name = d.get("device", "?")
         blocked = not d.get("deployable")
-        unauthorised = (bool(d.get("dangerous")) or bool(d.get("secret_readded"))) \
-            and d.get("authorisation_ok") is False
+        unauthorised = bool(needs_reason(d)) and d.get("authorisation_ok") is False
         failed = "" if blocked else (d.get("error") or "")
         state = ("blocked" if blocked else "refused" if failed
                  else "not_authorised" if unauthorised else "deployable")
