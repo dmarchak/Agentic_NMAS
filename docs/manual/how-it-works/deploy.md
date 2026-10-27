@@ -60,8 +60,11 @@ the server answers from git and the credential store. Planning opens no device s
    `crypto key zeroize`), each authorised by its exact text with your reason, and every line
    ticked for removal (Mode B), whose reason is the one you type beside its tick. While a line
    still needs its reason, the Deploy button is drawn disabled, and the card names the line;
-   once every reason box holds text it is offered, and pressing it plans again with your
-   reasons as typed (below);
+   as you type, this check reads "checking" and, a moment after your last key, the card's
+   checks are planned again with your reasons, so it reads pass (and Authorised lines counts
+   the line) or fails naming why; Deploy is offered only while every reason box holds text
+   and no check is drawn failing, and pressing it plans again with your reasons as typed
+   (below);
    blocked change (the program does not re-send
    a change that was rolled back); and no other operation holds the device. Two more are
    checked at apply: the device and its stored capture are unchanged since the preview (the
@@ -69,8 +72,9 @@ the server answers from git and the credential store. Planning opens no device s
    below), and no credential changes.
 
 To authorise a dangerous line you tick its box and type a reason (at least three words, not a
-copy of the line); typing it redraws nothing, so you can type one reason after another, and
-the device is planned again with them when you press Deploy, so its hash covers each reason.
+copy of the line); typing it redraws only the card's checks, operands and authorisation note,
+never the box you type in, so you can type one reason after another, and the device is
+planned again with them when you press Deploy, so its hash covers each reason.
 The confirm is bound to a hash of the program and its authorisations. The apply recomputes it, and if the
 stored golden, the intent or the template moved before you confirm, it refuses that device
 with nothing sent, saying which side moved. **The device itself is compared only at apply**,

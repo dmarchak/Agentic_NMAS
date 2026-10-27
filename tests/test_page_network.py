@@ -498,6 +498,9 @@ SCRIPT_REQUESTS = {
         "the jump box: its base path, the typed name, and its form's drawn address's query "
         "(jumpTarget's third argument)"),
     ("nmas_v2.js", "root.fetch(el.getAttribute('data-url')"): "drawn: data-url",
+    ("nmas_v2.js", "root.fetch(url + (url.indexOf('?') >= 0 ? '&' : '?') + q"): (
+        "drawn: the deploy card form's own hx-get (its list= written in), the form's values "
+        "joined to its query (C1847's re-plan of the reasons)"),
 }
 
 

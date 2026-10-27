@@ -557,6 +557,12 @@
   function offerDeploy(b) {
     b.classList.add('op-confirm');
   }
+  /* PURE over the DOM: whether *card* draws a check that blocks its Deploy: one failing, or
+     one that could not be read again (C1847: a failing check and an enabled Deploy never
+     appear together). */
+  function checksBlock(card) {
+    return !!card.querySelector('#deploy-checks [data-gate="fail"], #deploy-checks [data-gate="unread"]');
+  }
   function drawDeploys(scope) {
     if (!scope || !scope.querySelectorAll) return;
     var list = scope.querySelectorAll('button[data-needs]');
@@ -564,16 +570,134 @@
       var b = list[i], card = b.closest('.op-card');
       if (!card || b.classList.contains('htmx-request')) continue;
       var typed = reasonsTyped(b, card), waits = b.hasAttribute('data-waits');
-      if (typed && waits) offerDeploy(b);
-      if (!typed && waits) b.classList.remove('op-confirm');
-      if (waits || !b.hasAttribute('data-refused')) b.disabled = !typed;
+      var offered = typed && !checksBlock(card);
+      if (offered && waits) offerDeploy(b);
+      if (!offered && waits) b.classList.remove('op-confirm');
+      if (waits || !b.hasAttribute('data-refused')) b.disabled = !offered;
       var ready = card.querySelector('#deploy-ready'), wait = card.querySelector('#deploy-waits');
       if (waits && ready && wait) {
-        ready.hidden = !typed;
-        wait.hidden = typed;
-        b.setAttribute('aria-describedby', typed ? 'deploy-ready' : 'deploy-waits');
+        ready.hidden = !offered;
+        wait.hidden = offered;
+        b.setAttribute('aria-describedby', offered ? 'deploy-ready' : 'deploy-waits');
       }
     }
+  }
+
+  /* The checks follow the reasons as they are typed (C1847, the operator's Mode B re-walk of
+     2026-10-27: "lines needing a reason: fail" and "Authorised lines 0" were drawn beside an
+     enabled Deploy). A reason typed plans the card again REPLAN_MS after the last key, and
+     only what the reasons decide is drawn again: the checks, the operands and the
+     authorisation note. The fields keep their focus and caret and Deploy stays the same
+     element, so a press is never lost (C1434). Until that plan answers, the reason's check
+     and "authorised lines" read "checking", never the fail or pass drawn before the key: a
+     press then plans again with the reasons as typed and sends only the program drawn (the
+     guard, routes/device_v2.py `deploy_confirm`). A plan whose program moved since the card
+     drew it, or that is not this card's shape, draws the whole card again, as a ticked box
+     does. A plan that does not answer says so on the check, and Deploy waits. */
+  var REPLAN_MS = 300;
+  var REPLAN_REGIONS = ['deploy-checks', 'deploy-operands', 'deploy-auth-note'];
+  var replans = [];
+  function replanOf(card) {
+    for (var i = 0; i < replans.length; i++) if (replans[i].card === card) return replans[i];
+    var r = {card: card, timer: null, ctl: null, seq: 0};
+    replans.push(r);
+    return r;
+  }
+  function stopReplan(card) {
+    for (var i = 0; i < replans.length; i++) {
+      var r = replans[i];
+      if (card && r.card !== card) continue;
+      if (r.timer) root.clearTimeout(r.timer);
+      if (r.ctl) r.ctl.abort();
+      r.timer = null; r.ctl = null; r.seq++;
+    }
+    replans = replans.filter(function (r) { return r.card.isConnected && r.card !== card; });
+  }
+  function drawGate(li, state, kind, words, why) {
+    li.setAttribute('data-gate', state);
+    var badge = li.querySelector('.badge');
+    if (badge) { badge.className = 'badge badge-' + kind; badge.textContent = words; }
+    if (why !== undefined) li.title = why;
+  }
+  function markChecking(card) {
+    var li = card.querySelector('#deploy-checks [data-reason-gate]');
+    if (li) drawGate(li, 'checking', 'info', 'checking', 'Checked again with your reasons as typed');
+    var dd = card.querySelector('#deploy-operands [data-operand="authorised lines"]');
+    if (dd) dd.textContent = 'checking';
+    var note = card.querySelector('#deploy-auth-note');
+    if (note) note.hidden = true;
+  }
+  function programOf(card) {
+    var b = card && card.querySelector('button[data-op="deploy"][hx-vals]');
+    try {
+      var shown = JSON.parse(JSON.parse(b.getAttribute('hx-vals')).shown || '{}');
+      return shown.program_hash || '';
+    } catch (x) { return ''; }
+  }
+  function replanReasons(card) {
+    var form = card.querySelector('.op-form'), r = replanOf(card);
+    if (!form || !root.fetch) return;
+    var seq = ++r.seq, ctl = root.AbortController ? new root.AbortController() : null;
+    r.ctl = ctl;
+    // The form's own values joined to its URL's query as htmx joins them for a GET.
+    var url = form.getAttribute('hx-get'), q = new root.URLSearchParams(new root.FormData(form)).toString();
+    root.fetch(url + (url.indexOf('?') >= 0 ? '&' : '?') + q, {
+      headers: {'HX-Request': 'true', 'HX-Target': 'device-op', 'Accept': 'text/html'},
+      signal: ctl ? ctl.signal : undefined
+    }).then(function (resp) {
+      return resp.text().then(function (body) { return [resp, body]; });
+    }).then(function (got) {
+      if (seq !== r.seq || !card.isConnected) return;
+      r.ctl = null;
+      var resp = got[0], body = got[1];
+      if (!resp.ok || !isFragment(body, resp.headers.get('Content-Type'))) {
+        throw new Error(failWords(resp.status, resp.statusText, body, resp.headers.get('Content-Type')) ||
+                        ('the server answered ' + resp.status));
+      }
+      var next = new root.DOMParser().parseFromString(body, 'text/html').getElementById('device-op');
+      var whole = !next || REPLAN_REGIONS.some(function (id) {
+        return !card.querySelector('#' + id) || !next.querySelector('#' + id);
+      });
+      var was = programOf(card), now = programOf(next);
+      if (whole || (was && now && was !== now)) {
+        // Not this card's shape, or its program moved: the whole card, as a ticked box plans.
+        if (root.htmx) root.htmx.trigger(form, 'change');
+        return;
+      }
+      REPLAN_REGIONS.forEach(function (id) {
+        card.querySelector('#' + id).replaceWith(card.ownerDocument.importNode(next.querySelector('#' + id), true));
+      });
+      drawDeploys(card);
+    }).catch(function (e) {
+      if (seq !== r.seq || !card.isConnected || (e && e.name === 'AbortError')) return;
+      r.ctl = null;
+      var li = card.querySelector('#deploy-checks [data-reason-gate]');
+      if (li) {
+        drawGate(li, 'unread', 'warn', "couldn't check");
+        var span = li.querySelector('span:not(.badge)');
+        if (span) span.textContent = "Couldn't load: the checks with your reasons (" +
+          ((e && e.message) || 'no answer') + '). Type again to check again.';
+      }
+      drawDeploys(card);
+    });
+  }
+  function reasonTyped(e) {
+    var t = e && e.target;
+    if (!t || !t.hasAttribute || !t.hasAttribute('data-sent-by-deploy')) return;
+    var card = t.closest && t.closest('.op-card');
+    if (!card || !card.querySelector('#deploy-checks')) return;
+    var r = replanOf(card);
+    if (r.timer) root.clearTimeout(r.timer);
+    if (r.ctl) { r.ctl.abort(); r.ctl = null; }
+    r.seq++;
+    markChecking(card);
+    r.timer = root.setTimeout(function () { r.timer = null; replanReasons(card); }, REPLAN_MS);
+  }
+  /* Deploy pressed, or the card replaced: a plan of the reasons still to come is dropped, so
+     it never draws over the press's own answer. */
+  function replanStops(e) {
+    var elt = e && e.detail && e.detail.elt, card = elt && elt.closest && elt.closest('.op-card');
+    if (card) stopReplan(card);
   }
   function drawDeployOf(e) {
     var card = e && e.target && e.target.closest && e.target.closest('.op-card');
@@ -1040,7 +1164,9 @@
     });
     root.document.addEventListener('htmx:afterSettle', function (e) { drawAges(e.target); drawClock(e.target); drawDeploys(e.target); catchUpMissed(e); reopenKept(); });
     root.document.addEventListener('htmx:confirm', reasonPlansAtDeploy);
+    root.document.addEventListener('input', reasonTyped);   // before: it marks the checks drawDeployOf reads
     root.document.addEventListener('input', drawDeployOf);
+    root.document.addEventListener('htmx:beforeRequest', replanStops);
     root.document.addEventListener('change', drawDeployOf);
     root.document.addEventListener('htmx:beforeSwap', rememberOpen);
     root.document.addEventListener('htmx:beforeRequest', noteAsked);

@@ -71,7 +71,7 @@ which `preview_confirm.capture_result` already calls "partial". A capture at its
 drawn as the board drew it. The deviation is a line in STANDING_APPROVAL_LOG.md. No template
 changed: the level and chip come from `device_actions.capture_result_card`.
 Templates compared: templates/v2/device.html, templates/v2/_actions_menu.html, templates/v2/_status.html, templates/v2/_drained_badge.html, templates/v2/_capture.html, templates/v2/_deploy.html, templates/v2/_attribution.html, templates/v2/_rotate.html, templates/v2/_persist.html, templates/v2/_persist_effect.html, templates/v2/_startup_effect.html, templates/v2/_seed.html, templates/v2/_restore.html, templates/v2/_revert.html, templates/v2/_retry.html, templates/v2/_retire.html
-Templates sha256: `652a54807d6247cfc625b37257994ab9b85eeae848a63728fc76dec8359ef6be`
+Templates sha256: `d33226f1c5dcfd1480130867aeb6b874a88b21b8498264c6c72db31eee13b94d`
 
 Compared again 2026-10-16 (C537, C540) after `device.html` gained the line a reopened card
 carries and `_rotate.html` its running card's and held preview's changes (C540's words, and
@@ -156,6 +156,22 @@ plan again with the reasons as typed. Shots: `device-deploy` and `device-deploy-
 - **The waiting Deploy is the one confirm pattern from the start,** drawn disabled
   (tests/test_v2_one_confirm.py refused a confirm route named any other way). It holds the
   same words as before, so nothing drawn moved.
+No other region's verdict changed.
+
+Compared again 2026-10-27 (C1847, the operator's Mode B re-walk) after `_deploy.html` gave
+the checks, the operands and the authorisation note ids the page draws again as a reason is
+typed, and marked the reason's check. Shots: `device-deploy` and `device-deploy-ready` at
+1440 beside `DevDeployPreview`, the Program, Operands, Checks and foot regions.
+- **At rest:** the same as compared on 2026-10-27 (C1434): the dangerous line's note, the
+  Operands, the failing "lines needing a reason" and the disabled Deploy with its note. The
+  note under The program is now always in the card, hidden when it is empty, so nothing drawn
+  moved.
+- **A state the shots do not reach, read in the template, the script and the browser tests**
+  (tests/test_device_deploy_v2.py, `test_the_checks_follow_the_why_and_deploy_follows_the_checks`):
+  while a typed reason is planned again, the reason's check reads "checking" and Authorised
+  lines "checking", then the plan's answer; a check that cannot be read again says
+  "Couldn't load" on it and Deploy waits. The board draws checks only as pass or fail; this is
+  the check's own region, so it is **same** in kind.
 No other region's verdict changed.
 
 The running cards draw the one stepper, compared with its boards in docs/fidelity/stepper.md.

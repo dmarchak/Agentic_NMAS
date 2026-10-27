@@ -8,9 +8,12 @@
     screen; the confirm starts the deploy as a job (`deploy_job`), whose card draws the
     pipeline's stages as they run, then the result from the receipt. Cancel and Close put back
     the tab it replaced. On a card Deploy can be offered from, a reason field
-    (`data-sent-by-deploy`) plans nothing as it changes: Deploy carries the form and plans
-    again with every reason as typed, sending only the program the card drew (C1434, one
-    click; nmas_v2.js `drawDeploys`). -#}
+    (`data-sent-by-deploy`) never redraws the card: 300 ms after the last key the page plans
+    again and draws only the checks, the operands and the authorisation note (their ids
+    below), the reason's check reading "checking" until then, so a failing check and an
+    enabled Deploy never appear together (C1847); Deploy carries the form and plans again
+    with every reason as typed, sending only the program the card drew (C1434, one click;
+    nmas_v2.js `reasonTyped`, `drawDeploys`). -#}
 {%- set back_url = url_for('device_v2.' ~ (c.back or 'overview'), name=c.host) -%}
 {%- macro close_button(words) -%}
 <button type="button" class="btn" hx-get="{{ back_url }}" hx-target="#tab-body" hx-swap="innerHTML">{{ words }}</button>
@@ -48,7 +51,7 @@
     <label class="op-reason"><code>{{ d.line }}</code> is a dangerous line. Why (your stated reason, recorded with the change and in the hash):
       <input type="text" name="dz::{{ d.index }}" value="{{ d.reason }}" placeholder="the link is being retired"{% if c.may or c.reasons_only %} data-sent-by-deploy{% endif %}></label>
     {%- endfor %}
-    {%- if c.authorisation_error %}<p class="op-note">{{ c.authorisation_error }}</p>{% endif %}
+    <p class="op-note" id="deploy-auth-note"{% if not c.authorisation_error %} hidden{% endif %}>{{ c.authorisation_error }}</p>
   </div></div>
   {%- if c.sent %}
   {#- C506 (board approved 2026-10-06): what the program is MEANT to do, derived from it and
@@ -143,14 +146,14 @@
   <div class="op-part"><h3>What will not happen</h3><div>
     {%- for n in c.what_not %}<p>{{ n[0] | upper }}{{ n[1:] }}{{ '' if n.endswith('.') else '.' }}</p>{% else %}<p>No line is removed that you did not tick.</p>{% endfor %}</div></div>
   <div class="op-part"><h3>Operands</h3><div>
-    <dl class="op-ops">
-      {%- for o in c.operands %}<dt>{{ o.name[0] | upper }}{{ o.name[1:] }}</dt><dd class="mono">{{ o.value }}</dd>{% endfor %}
+    <dl class="op-ops" id="deploy-operands">
+      {%- for o in c.operands %}<dt>{{ o.name[0] | upper }}{{ o.name[1:] }}</dt><dd class="mono" data-operand="{{ o.name }}">{{ o.value }}</dd>{% endfor %}
     </dl></div></div>
   <div class="op-part"><h3>Checks</h3><div>
-    <ul class="op-gates">
+    <ul class="op-gates" id="deploy-checks">
       {%- for g in c.gates %}
       {%- set gs = GATE.get(g.state, (g.state, 'muted')) %}
-      <li>{{ badge(gs[0], gs[1]) }}<span>{% if g.state == 'fail' %}<strong>{{ g.name }}</strong>{% else %}{{ g.name }}{% endif %}{% if g.detail %}: {{ g.detail }}{% endif %}</span></li>
+      <li data-gate="{{ g.state }}"{% if g.name == c.reason_gate %} data-reason-gate{% endif %}>{{ badge(gs[0], gs[1]) }}<span>{% if g.state == 'fail' %}<strong>{{ g.name }}</strong>{% else %}{{ g.name }}{% endif %}{% if g.detail %}: {{ g.detail }}{% endif %}</span></li>
       {%- endfor %}
     </ul></div></div>
   </form>

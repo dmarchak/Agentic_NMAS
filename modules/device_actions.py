@@ -651,6 +651,9 @@ def deploy_card(ref, host: str, entry: dict, preview: dict, viewer: dict, *,
             "declare": _declare_part(ref, entry, pending),
             "waiting": waiting, "waiting_for": waiting_for,
             "needs": needs, "reasons_only": reasons_only,
+            # The check the reasons decide: the page draws it "checking" while a reason
+            # typed is planned again (C1847; nmas_v2.js `reasonTyped`).
+            "reason_gate": REASON_GATE,
             "authorisation_error": entry.get("authorisation_error", ""),
             "blocking": blocking, "refused": refused,
             "what_not": t["what_not"], "operands": list(t["target"].get("operands") or []),

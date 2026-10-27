@@ -536,6 +536,32 @@ class TestTheWalksRemoval:
             and re.search(r"Deploy \d+ line\(s\) to r2", ticked), \
             "Deploy drawn disabled, never offered"
 
+    def test_the_regions_the_why_decides_are_drawn_for_the_page_to_draw_again(self,
+                                                                              out_of_band):
+        """C1847 (the operator's Mode B re-walk, 2026-10-27): the page plans again as a Why is
+        typed and draws again only the checks, the operands and the authorisation note, so
+        each is drawn with its id in both plans, the reason's check marked: failing with
+        "authorised lines 0" before the Why, passing with 1 after it, the note gone."""
+        _r, plain = _get(out_of_band, "/v2/device/r2/deploy?focus=removal")
+        rid = _residue_id(plain, "load-interval 30")
+        _r, waiting = _get(out_of_band, f"/v2/device/r2/deploy?rm={rid}")
+        _r, given = _get(out_of_band, f"/v2/device/r2/deploy?rm={rid}"
+                         f"&why::{rid}=left+over+from+the+old+design")
+
+        def drawn(card):
+            gate = re.search(r'<li data-gate="(\w+)" data-reason-gate>', card)
+            auth = re.search(r'<dd class="mono" data-operand="authorised lines">([^<]*)</dd>',
+                             card)
+            note = re.search(r'<p class="op-note" id="deploy-auth-note"( hidden)?>', card)
+            return (gate and gate.group(1), auth and auth.group(1),
+                    note and not note.group(1),
+                    [i for i in ("deploy-checks", "deploy-operands", "deploy-auth-note")
+                     if f'id="{i}"' in card])
+        every = ["deploy-checks", "deploy-operands", "deploy-auth-note"]
+        assert drawn(waiting)[:2] == ("fail", "0") and drawn(waiting)[3] == every, \
+            drawn(waiting)
+        assert drawn(given) == ("pass", "1", False, every), drawn(given)
+
     def test_the_why_alone_authorises_it_and_only_the_removal_is_sent(self, out_of_band,
                                                                       monkeypatch):
         from modules.nsot import capture_job
@@ -803,6 +829,101 @@ class TestInARealBrowser:
             b.go("about:blank")
             browser.close_socketio_sessions()
 
+
+    def test_the_checks_follow_the_why_and_deploy_follows_the_checks(self, walk_s1,
+                                                                     live_browser,
+                                                                     monkeypatch):
+        """C1847, the operator's Mode B re-walk (2026-10-27): with the Why typed, the card
+        drew "lines needing a reason: fail" and "Authorised lines 0" beside an enabled
+        Deploy. On the walk's switch: the Why typed with real keys, the card plans again
+        once after the last key, and the check reads pass with "authorised lines" 1, Deploy
+        offered; the Why cleared, the check fails again and Deploy is disabled; typed again
+        and pressed, the job succeeds with that Why. Throughout, a watcher on every change
+        of the page counts any moment a failing check is drawn beside an enabled Deploy:
+        none. The operator's bar is 1 s from the last key to the check reading pass; the
+        test asserts the work (one plan per pause in typing, REPLAN_MS 300 ms after the
+        last key) and prints the time it took, never a wall-clock bound (CLAUDE.md,
+        performance tests)."""
+        import time as _time
+        browser, srv, b = live_browser
+        seen, authorised = _spy_pipeline(monkeypatch)
+        why = "Mode B test"
+        gate = "#device-op #deploy-checks [data-reason-gate]"
+        auth = '#device-op #deploy-operands [data-operand="authorised lines"]'
+        press = "#device-op button[data-needs]"
+        try:
+            b._call("POST", f"/session/{b.session}/window/rect", {"width": 1280, "height": 1000})
+            b.go(srv.url("/v2/device/s1?op=deploy"))
+            b.wait_for("return !!window.Alpine && window.NMAS && "
+                       f"NMAS.live().state === 'connected' && {CARD} && " + SETTLED, 15)
+            rid = _residue_box(b)
+            b.click(f"#rm-{rid}")
+            field = f'#device-op input[name="why::{rid}"]'
+            b.wait_for(f"return document.querySelector('{field}') && {SETTLED}", 15)
+            b.js("window.__both = 0; window.__plans = 0;"
+                 "var f = window.fetch; window.fetch = function (u) {"
+                 "  if (String(u).indexOf('/deploy?') >= 0) window.__plans++;"
+                 "  return f.apply(this, arguments); };"
+                 "var look = function () { var c = document.getElementById('device-op');"
+                 "  var d = c && c.querySelector('button[data-needs]');"
+                 "  if (d && !d.disabled && c.querySelector('#deploy-checks [data-gate=\"fail\"]'))"
+                 "    window.__both++; };"
+                 "new MutationObserver(look).observe(document.body, {subtree: true,"
+                 "  childList: true, attributes: true, characterData: true}); return 1")
+
+            def state():
+                return b.js(f"var g = document.querySelector('{gate}'),"
+                            f" a = document.querySelector('{auth}'),"
+                            f" d = document.querySelector('{press}');"
+                            "return [g && g.getAttribute('data-gate'), a && a.textContent.trim(),"
+                            " d && !d.disabled, window.__plans, window.__both]")
+            assert state() == ["fail", "0", False, 0, 0], state()
+            b.type(field, why)
+            typed = _time.monotonic()
+            b.wait_for(f"var g = document.querySelector('{gate}');"
+                       "return g && g.getAttribute('data-gate') === 'pass'", 10)
+            took = _time.monotonic() - typed
+            print(f"C1847: the check read pass {took:.2f} s after the last key")
+            s = state()
+            assert s[:3] == ["pass", "1", True] and s[3] >= 1 and s[4] == 0, s
+            plans = s[3]
+            assert b.js(f"return document.activeElement === document.querySelector('{field}')"), \
+                "the field kept its focus"
+            # Cleared: the check fails again and Deploy is disabled.
+            b.js(f"var w = document.querySelector('{field}'); w.value = '';"
+                 "w.dispatchEvent(new Event('input', {bubbles: true})); return 1")
+            assert b.js(f"return document.querySelector('{press}').disabled") is True
+            b.wait_for(f"var g = document.querySelector('{gate}');"
+                       "return g && g.getAttribute('data-gate') === 'fail'", 10)
+            s = state()
+            assert s[:3] == ["fail", "0", False] and s[3] > plans and s[4] == 0, s
+            plans = s[3]
+            # Text the server refuses (a reason is at least three words): the box holds text,
+            # the drawn check fails, and Deploy follows the check, not the box.
+            b.type(field, "x")
+            b.wait_for(f"return window.__plans > {plans} && document.querySelector('{gate}')"
+                       ".getAttribute('data-gate') === 'fail'", 10)
+            s = state()
+            assert s[0] == "fail" and s[2] is False and s[4] == 0, s
+            plans = s[3]
+            b.js(f"var w = document.querySelector('{field}'); w.value = '';"
+                 "w.dispatchEvent(new Event('input', {bubbles: true})); return 1")
+            b.type(field, why)
+            b.wait_for(f"var g = document.querySelector('{gate}');"
+                       "return g && g.getAttribute('data-gate') === 'pass'", 10)
+            s = state()
+            assert s[:3] == ["pass", "1", True] and s[3] > plans and s[4] == 0, s
+            b.click(press)
+            b.wait_for(f"return {CARD} && /op-(ok|warn|danger)/.test({CARD}.className) "
+                       f"&& {SETTLED}", 30)
+            assert "op-ok" in b.js(f"return {CARD}.className"), b.js(f"return {CARD}.textContent")
+            assert b.js("return window.__both") == 0
+            assert authorised == [{"s1": [{"line": "no load-interval 30", "reason": why}]}]
+            assert len(seen) == 1 and _program(seen[0], S1_IP) == [
+                "interface GigabitEthernet1/1", " no load-interval 30"]
+        finally:
+            b.go("about:blank")
+            browser.close_socketio_sessions()
 
     def test_one_reason_then_another_typed_keeps_the_focus_and_every_key(
             self, deploy, live_browser, monkeypatch):
