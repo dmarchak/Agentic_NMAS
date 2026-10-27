@@ -11,8 +11,9 @@ flows. The lab's own run of each threat on Open vSwitch is tests/test_sdn_lab8.p
 - **drop_source**: one flow dropping the source (IPv4 or IPv6), above every flow not Mercury's,
   with the network's hard timeout; applied, verified and recorded with the detection it answers;
 - **rate_limit_source**: one meter with a single drop band (an id no flow points at), then the
-  source's flow to each destination the evidence saw, its forwarding read from the controller's
-  own flow, through the meter;
+  source's flow to every destination the controller's own flows forward it to (the evidence's
+  targets first), its forwarding read from the controller's own flow, through the meter; a
+  destination with no single port not metered and said, as is the gap for later destinations;
 - **remove_flow**: the unauthorised flow the detection names, by delete-strict, and Mercury's
   recorded flow put back where it displaced it;
 - **refusals** before any request: an action not in the catalogue, one for another rule, a
@@ -112,6 +113,60 @@ def test_a_flood_is_answered_by_one_meter_and_the_source_s_flows_through_it():
     assert confirm(fake, preview)["outcome"] == "verified"
     (m,) = F.meters("Default")["meters"]
     assert m["meter_id"] == 2 and m["expires_at"] is not None
+
+
+def _to(flow, dst, port):
+    """*flow* (a captured L4 flow, Ryu's shape) copied to destination *dst* as an L3 flow (no
+    transport port, so the scan rule does not count it), out of *port*."""
+    import copy
+    out = copy.deepcopy(flow)
+    out["match"]["nw_dst"] = dst
+    for k in ("tp_dst", "tp_src", "nw_proto"):
+        out["match"].pop(k, None)
+    out["actions"] = [f"OUTPUT:{port}"]
+    return out
+
+
+@pytest.mark.usefixtures("lab")
+def test_a_scan_s_rate_limit_meters_all_the_source_s_forwarding_on_the_switch():
+    """The operator's order for Lab 8's objective 3.1 (the rate limit "limits traffic from the
+    scanning source"): one meter, and a metered flow for every destination the switch's own
+    flows forward the source to, the scan's target first, so the meter caps the source's
+    total; a destination whose flows disagree on a port is not metered and the preview says
+    so, with the gap for destinations set up later. The data: the capture's scan (25 copies of
+    its L4 flow) and three copies of that flow to other destinations, two agreeing on a port
+    and one pair disagreeing."""
+    from tests.test_sdn_detect import V4_L4, l4_copy
+    base = l4_copy(V4_L4, 22)
+    mine = dict(_to(base, "192.0.2.11", 7), cookie=F.mercury_cookie(5))   # Mercury's own
+    flows = scan_flows(25) + [_to(base, "192.0.2.9", 4), _to(base, "192.0.2.10", 5),
+                              _to(base, "192.0.2.10", 6), mine]
+    d = scan_detection(flows)
+    # The premise: the evidence names only the scan's target, not the other destinations.
+    assert not {"192.0.2.9", "192.0.2.10"} & set(d["targets"])
+    fake = switch_with(flows)
+    preview = CL.respond_to_threat("Default", d, "rate_limit_source", driver=fake.driver)
+    assert preview["ok"], preview["error"]
+    meter, *metered = preview["plan"]["steps"]
+    meter_id = json.loads(meter["request"]["body"])["meter_id"]
+    bodies = [json.loads(s["request"]["body"]) for s in metered]
+    dsts = [b["match"]["ipv4_dst"] for b in bodies]
+    assert dsts[0] == d["targets"][0] and "192.0.2.9" in dsts and "192.0.2.10" not in dsts
+    assert len(dsts) == len(set(dsts)) == 2
+    for b in bodies:
+        assert b["match"]["ipv4_src"] == d["source"]
+        assert b["actions"][0] == {"meter_id": meter_id, "type": "METER"}
+        assert b["actions"][1]["type"] == "OUTPUT"
+    assert {"type": "OUTPUT", "port": 4} in next(
+        b["actions"] for b in bodies if b["match"]["ipv4_dst"] == "192.0.2.9")
+    # Only the controller's own flows say where the source goes: Mercury's flow names no
+    # destination to meter.
+    assert preview["params"]["not_metered"] == ["192.0.2.10"] and "192.0.2.11" not in dsts
+    (gap,) = [w for w in preview["plan"]["will_not"] if "not metered" in w]
+    assert (f"Traffic from {d['source']} to a destination the controller sets up after this "
+            "response is not metered") in gap
+    assert "no flow here forwards with NORMAL" in gap and "Not metered now: 192.0.2.10" in gap
+    assert confirm(fake, preview)["outcome"] == "verified"
 
 
 @pytest.mark.usefixtures("lab")

@@ -63,8 +63,11 @@ the rest of the specification's table. An address of the wrong family is refused
 
 A detection (a scan, a flood or an unauthorised flow) is answered by an action from the
 response catalogue, chosen in code: **drop the source** (one flow dropping the source's packets,
-risk low), **rate-limit the source** (one meter with a single drop band, and the source's flows to
-each destination the evidence saw through it, risk low), or **remove the unauthorised flow**
+risk low), **rate-limit the source** (one meter with a single drop band, and a flow through it
+for every destination the switch's own flows send the source to, so the meter caps all the
+source's traffic on that switch; a destination the controller sets up after the response is not
+metered, and the preview says so under What will not happen; risk low), or **remove the
+unauthorised flow**
 (delete-strict, and Mercury's own flow put back where it displaced one, risk medium). Every flow a
 response adds carries a hard timeout (600 seconds unless you set another in the preview, at most
 the network's ceiling), so a mistaken response expires by itself; its meter is removed by Mercury

@@ -11,10 +11,12 @@ apply. The actions:
   (IPv4 or IPv6) with no actions, above every flow not Mercury's (`flow_ops.
   response_priority`), with the network's hard timeout;
 - ``rate_limit_source`` (risk low): one meter with a single drop band (kbps or pktps, with a
-  burst), then, for each destination the evidence saw the source reach, a flow matching the
-  pair whose actions are the meter and the controller's own forwarding for it read from the
-  switch's table; the meter is removed by Mercury once its flows expire (`flow_ops.
-  expire_meters`);
+  burst), then, for every destination the controller's own flows on the switch forward the
+  source to (the evidence's targets first), a flow matching the pair whose actions are the
+  meter and the controller's own forwarding for it read from the switch's table, so the one
+  meter caps the source's total; a destination the controller sets up afterwards is not
+  metered, and the preview says so (`rate_limit_gap`); the meter is removed by Mercury once its
+  flows expire (`flow_ops.expire_meters`);
 - ``remove_flow`` (risk medium): the unauthorised flow the detection names, by delete-strict
   (its table, priority, match and cookie), then Mercury's own recorded flow put back where the
   unauthorised one displaced it, if one should be there.
@@ -1088,6 +1090,37 @@ def _forwarding(flows: list, source: str, target: str) -> list:
     return sorted(ports, key=str)
 
 
+def _destinations(flows: list, source: str) -> list:
+    """Every destination the controller's own flows on the switch forward *source*'s traffic
+    to (its flows not Mercury's whose match names the source and a destination), in address
+    order."""
+    from modules.sdn.flow_intent import is_mercury
+
+    out = set()
+    for f in flows or []:
+        if is_mercury(f.get("cookie")):
+            continue
+        m = f.get("match") or {}
+        if m.get("ipv4_src", m.get("ipv6_src")) != source:
+            continue
+        dst = m.get("ipv4_dst", m.get("ipv6_dst"))
+        if dst:
+            out.add(dst)
+    return sorted(out, key=str)
+
+
+def rate_limit_gap(source: str, params: dict) -> str:
+    """What a rate limit leaves unmetered, in words, for its preview's will-not list."""
+    metered = ", ".join(params.get("targets") or [])
+    words = (f"Traffic from {source} to a destination the controller sets up after this "
+             f"response is not metered: the meter caps {source}'s forwarding to {metered}, as "
+             "the switch's table holds it now, and no flow here forwards with NORMAL.")
+    if params.get("not_metered"):
+        words += (f" Not metered now: {', '.join(params['not_metered'])} (no single "
+                  "forwarding port for it in the table).")
+    return words
+
+
 def _hard_timeout(network: str, params: dict) -> int:
     from modules.sdn import flow_ops
 
@@ -1203,8 +1236,13 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
                     raise ResponseRefused("the evidence names no destination of the source's "
                                           "traffic, so there is no forwarding to meter: drop "
                                           "it instead")
+                # The source's whole forwarding on this switch, the evidence's targets first, so
+                # the one meter caps the source's total (the operator's order for Lab 8's
+                # objective 3.1: "limits traffic from the scanning source"). A destination the
+                # controller sets up after this read is not metered; the preview says so.
+                dests = list(dict.fromkeys(targets + _destinations(read["flows"], source)))
                 pairs = []
-                for target in targets:
+                for target in dests:
                     ports = _forwarding(read["flows"], source, target)
                     if len(ports) != 1:
                         continue
@@ -1218,9 +1256,10 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
                 if not pairs:
                     raise ResponseRefused(
                         f"no single forwarding port for {source}'s traffic to "
-                        f"{', '.join(targets)} is in switch {dpid}'s table, so there is "
+                        f"{', '.join(dests)} is in switch {dpid}'s table, so there is "
                         "nothing to meter: drop it instead")
                 out["params"]["targets"] = pairs
+                out["params"]["not_metered"] = [t for t in dests if t not in pairs]
         else:
             ref = (detection.get("subject") or {}).get("value")
             found = _flow_by_ref(read["flows"], conn, dpid, ref)
@@ -1270,6 +1309,10 @@ def respond_to_threat(network: str, detection: dict, action_id: str = None,
         if not built["ok"]:
             return dict(built, plan=None)
         p = flow_ops.plan(network, built["ask"], driver=driver)
+        if p["ok"] and built["action"] == "rate_limit_source":
+            p["will_not"].append(rate_limit_gap(
+                built["params"].get("source") or (detection or {}).get("source") or "",
+                built["params"]))
         return dict(built, plan=p, ok=p["ok"], error=p["error"])
     ask = (confirm or {}).get("ask")
     if not isinstance(ask, dict):
