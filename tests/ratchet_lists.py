@@ -52,6 +52,7 @@ RATCHETS = (
     ("tests/mutation_equivalent.py", "EQUIVALENT", "shrinks"),
     ("tests/publication_exemptions.py", "EXEMPT", "shrinks"),
     ("tests/signed_off_screens.py", "UNSIGNED", "shrinks"),
+    ("tests/test_ai_explain_cases.py", "AWAITING", "shrinks"),
     ("tests/test_app_interpreter.py", "EXEMPT", "shrinks"),
     ("tests/test_blueprint_reachability.py", "KNOWN_UNREACHABLE", "shrinks"),
     ("tests/test_board_fidelity.py", "UNCHECKED", "shrinks"),

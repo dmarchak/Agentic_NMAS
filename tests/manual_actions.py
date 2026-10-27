@@ -67,6 +67,9 @@ NOT_AN_OPERATION = {
     ("_alert_history.html", "Explain"): "drawn disabled beside Build evidence on a past alert "
                                         "with no pack (Explain reads a pack); the pack Build "
                                         "evidence draws carries the live one, linked",
+    ("_evidence_pack.html", "Show it"): "opens the other kept pack of the same alert (the one "
+                                        "built again, or the one it was built from) in the "
+                                        "card, a read of the pack record (C1862)",
     ("devices.html", "Discovered"): "opens Onboard devices › Discovered, a page of its own",
     ("_onboard_discovered.html", "Search"): "narrows the discovered devices to a MAC, client-id "
                                             "or hostname, a read of the reader's stored value",

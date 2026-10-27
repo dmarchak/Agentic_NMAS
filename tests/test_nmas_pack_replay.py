@@ -19,6 +19,10 @@ the time it was asked for.
 - `--explain` prints each call's four token counts, its cost and the answer as recorded, v1's
   request the six sections alone, the current one the topology and the health figures; a
   refusal stops the run with nothing more asked.
+- `--episode` (C1849 to C1851) rebuilds a past alert's pack from the alert history with Build
+  evidence's own builder (tests/test_evidence_pack_ids.py's planted history): written
+  owner-only to `--out`, never kept, its schema the current one; one the history does not hold
+  is refused, and `--out` inside the checkout too.
 """
 import importlib.machinery
 import importlib.util
@@ -34,6 +38,7 @@ from tests.test_ai_explain import _answer, world  # noqa: F401 (fixtures)
 from tests.test_device_v2 import lab  # noqa: F401 (the fixture)
 from tests.test_evidence_pack import pack_lab  # noqa: F401 (the fixture)
 from tests.test_evidence_pack_context import _Resp, _section, ctx  # noqa: F401
+from tests.test_evidence_pack_ids import kinds  # noqa: F401 (the fixture)
 from tests.test_history_ask_logs import NOW
 from tests.test_network_model import store_observed
 from tests.test_topology_graph import _capture
@@ -261,3 +266,37 @@ def test_a_refusal_stops_the_run(replay):
     assert lines[0].startswith("== explain.v1: ai_off")
     assert "stopped at ai_off" in lines[-1] and replay.sent == []
     assert not any("explain.v4" in line for line in lines)
+
+
+def test_an_episode_s_pack_is_rebuilt_to_a_file_never_kept(kinds, tmp_path, capsys):  # noqa: F811
+    """`--episode` (C1849 to C1851): r3's past alert in the planted history, rebuilt as Build
+    evidence rebuilds it, written owner-only, never kept; the history's unknown episode and an
+    --out inside the checkout refused."""
+    from modules import alert_history as AH
+    from tests.test_evidence_pack_ids import RULE
+    d = _driver()
+    e = next(e for e in AH.episodes(AH.read()["rows"])
+             if e["device"] == "r3" and e["rule"] == RULE)
+    before = EP.read()["rows"]
+    out = tmp_path / "rebuilt" / "pack.json"
+    assert d.main(["--episode", e["id"], "--actor", "evaluation:t", "--out", str(out)]) == 0
+    pack = json.loads(out.read_text(encoding="utf-8"))
+    assert EP.intact(pack) and pack["schema"] == EP.SCHEMA and pack["episode"] == e["id"]
+    assert pack["provenance"] == "rebuilt" and "evaluation:t" in pack["trigger"]
+    others = {p.get("device") for p in _section(pack, "concurrent")["pieces"]}
+    assert "r4" in others and "r3" not in others, others
+    assert stat.S_IMODE(os.stat(out).st_mode) == 0o600
+    assert EP.read()["rows"] == before, "never kept in the pack record"
+    assert f"written to {out}" in capsys.readouterr().out
+    assert d.main(["--episode", "0123456789abcdef0123", "--actor", "evaluation:t",
+                   "--out", str(tmp_path / "x.json")]) == 1
+    assert "no past alert 0123456789abcdef0123" in capsys.readouterr().err
+    inside = os.path.join(ROOT, "nmas-pack-replay-episode-test.json")
+    try:
+        assert d.main(["--episode", e["id"], "--actor", "evaluation:t", "--out", inside]) == 2
+        assert not os.path.exists(inside)
+    finally:
+        if os.path.exists(inside):
+            os.remove(inside)
+    with pytest.raises(SystemExit):
+        d.main(["--episode", e["id"], "--out", str(out)])

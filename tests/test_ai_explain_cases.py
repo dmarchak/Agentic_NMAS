@@ -20,6 +20,7 @@ Explain's first; tests/fixtures/ai_cases/explain/recorded.json; modules/ai/cases
 """
 import copy
 import os
+import re
 
 import pytest
 
@@ -28,11 +29,20 @@ from tests.test_ai_explain import world  # noqa: F401 (the fixture)
 from tests.test_device_v2 import lab  # noqa: F401 (the fixture)
 from tests.test_evidence_pack import pack_lab  # noqa: F401 (the fixture)
 from tests.test_evidence_pack_context import ctx  # noqa: F401 (the fixture)
+from tests.test_evidence_pack_ids import kinds  # noqa: F401 (the fixture)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FILE = os.path.join(ROOT, "tests", "fixtures", "ai_cases", "explain", "recorded.json")
 SET = cases.load(FILE)
 BY = {c["n"]: c for c in SET["cases"]}
+#: The blind held-out set (2026-10-27, C1849 to C1851): written before any run, never tuned on.
+HELD = cases.load(os.path.join(ROOT, "tests", "fixtures", "ai_cases", "explain",
+                               "held_out.json"))
+#: Main-set cases written and not yet recorded, each with why. Only shrinks: a case leaves when
+#: its five runs are recorded (C1849: the walk's rebuilt pack, its expectation set before any
+#: run, recorded by the session that runs Explain on it).
+AWAITING = {21: "Walk 2's alert, its pack rebuilt with schema 5 (C1849 to C1851), written "
+                "2026-10-27 before any run"}
 RULE = ("judge Explain on honest reasoning at the edge of its evidence, not on naming the "
         "host's 96%: it must tie the routers' OSPF drops to s3's symptoms (heartbeat gaps, "
         "failed scrapes, discards), note s3's own CPU peaked at 57% so the device doesn't "
@@ -98,9 +108,11 @@ def test_the_set_is_c1547_and_healthy_baselines_on_the_pin():
 
 def test_every_window_is_outside_the_nightly_backup():
     """A replay of a window the backup loaded measures the backup (CLAUDE.md's standing
-    facts: 08:30 to 09:10 UTC). Case 1 ends at 08:20, before it."""
-    for c in SET["cases"]:
-        onset, at = c["replay"]["onset"], c["replay"]["at"]
+    facts: 08:30 to 09:10 UTC). Case 1 ends at 08:20, before it. A pack rebuilt from the alert
+    history (`rebuilt`, C1849) is held to the same."""
+    for c in SET["cases"] + HELD["cases"]:
+        w = c.get("replay") or c["rebuilt"]
+        onset, at = w["onset"], w["at"]
         assert onset[:10] == at[:10] and onset <= at, c["n"]
         hhmm = (onset[11:16], at[11:16])
         assert not any("08:30" <= t <= "09:10" for t in hhmm), c["n"]
@@ -324,7 +336,11 @@ def test_a_drift_case_passes_only_when_a_hypothesis_names_the_clock(ctx):  # noq
 # ── the recording (2026-10-26: prompt v4, five runs a case; the order's item 1) ──
 
 def test_every_case_is_recorded_five_times_on_the_file_s_model_and_prompt():
+    assert set(AWAITING) <= set(BY), "an awaited case is in the set"
     for c in SET["cases"]:
+        if c["n"] in AWAITING:
+            assert "recorded" not in c, f"case {c['n']} is recorded: take it off AWAITING"
+            continue
         rec = c["recorded"]
         assert rec["model"] == SET["model"] == profiles.TASKS["explain"]["model"], c["n"]
         assert rec["prompt"] == f"explain.v{explain.PROMPT[1]}", (c["n"], rec["prompt"])
@@ -350,7 +366,72 @@ def test_item_9_every_healthy_baseline_reported_nothing_wrong_every_time():
 
 def test_no_recorded_call_stopped_at_the_bound_and_the_pin_holds_2_5x_the_largest():
     """C1754, C1757's rule: the pin's max_tokens is about 2.5x the largest output recorded."""
-    largest = max(r["output_tokens"] for c in SET["cases"] for r in c["recorded"]["runs"])
-    assert all("max_tokens" not in r["verdict"] for c in SET["cases"]
+    recorded = [c for c in SET["cases"] if c["n"] not in AWAITING]
+    largest = max(r["output_tokens"] for c in recorded for r in c["recorded"]["runs"])
+    assert all("max_tokens" not in r["verdict"] for c in recorded
                for r in c["recorded"]["runs"])
     assert 2.3 * largest <= profiles.TASKS["explain"]["max_tokens"] <= 2.7 * largest, largest
+
+
+# ── packs rebuilt from the alert history (C1849 to C1851; the operator's Walk 2) ──
+
+#: A rebuilt case names its pack and its episode by the ids the store gives them.
+_PACK_ID = re.compile(r"^ep-[0-9a-f]{20}$")
+_EPISODE = re.compile(r"^[0-9a-f]{20}$")
+
+
+def test_rebuilt_cases_are_in_the_main_and_the_held_out_set_each_written_before_any_run():
+    """The rebuilt path is measured on both sets (the main set's case 21, the held-out set's
+    case 1): each names its pack and episode, says why its expectation is what it is, and
+    holds no recording yet; the held-out set is on the main set's model and prompt."""
+    assert HELD["task"] == SET["task"] and HELD["model"] == SET["model"]
+    assert HELD["prompt"] == SET["prompt"]
+    assert [c["n"] for c in HELD["cases"]] == list(range(1, len(HELD["cases"]) + 1))
+    rebuilt = [c for c in SET["cases"] if "rebuilt" in c]
+    held = [c for c in HELD["cases"] if "rebuilt" in c]
+    assert [c["n"] for c in rebuilt] == [21] and held, (rebuilt, held)
+    for c in rebuilt + held:
+        r = c["rebuilt"]
+        assert _PACK_ID.match(r["pack"]) and _EPISODE.match(r["episode"]), r
+        assert "replay" not in c and c["why"].startswith("Set from the evidence before any run")
+        assert c["expect"]["figures_from_pack"] is True and c["flag"]
+    assert not any("recorded" in c for c in HELD["cases"]), "a held-out set is blind"
+    assert {r["rebuilt"]["device"] for r in rebuilt + held} == {"r1", "s1"}
+
+
+def test_case_21_cites_r3_r4_and_r7_together_and_never_rests_on_r1_alone():
+    """The walk's expectation, set before any run: one hypothesis citing r3, r4 and r7 (their
+    alerts in the window, or r3's and r4's failed scrapes); a lead resting on r1's own
+    evidence misses."""
+    e = BY[21]["expect"]
+    (groups,) = e["together"]
+    assert [g[0] for g in groups] == [f"concurrent:{d}@Device unreachable (SNMP)"
+                                      for d in ("r3", "r4", "r7")]
+    assert e["needs_human"] is True and "health:r1:scrapes" in e["lead_not_only"]
+
+
+def test_a_concurrent_selector_names_a_device_s_alerts_by_rule(kinds):  # noqa: F811
+    from tests.test_evidence_pack_ids import RULE, V6_ADDR
+    pack = kinds.packs["history"]
+    assert [p["device"] for p in cases.select(pack, f"concurrent:r3@{RULE}")] == ["r3"]
+    assert cases.select(pack, "concurrent:r3@Interface output discards") == []
+    assert [p["address"] for p in cases.select(pack, f"concurrent:{V6_ADDR}")] == [V6_ADDR]
+    assert cases.select(pack, "concurrent:r9") == []
+    # Read: the section was, whatever the alert's own state (firing) says.
+    assert cases.explain_unready({"needs": [f"concurrent:r4@{RULE}"]}, pack) == []
+    assert cases.explain_unready({"needs": ["concurrent:r9"]}, pack) == [
+        "concurrent:r9: not in the pack"]
+
+
+def test_a_shared_cause_by_three_devices_alerts_passes_and_by_two_misses(kinds):  # noqa: F811
+    from tests.test_evidence_pack_ids import RULE, V4_ADDR
+    pack = kinds.packs["history"]
+    expect = {"outcome": ["answer"], "common_alerts": {"min_devices": 3}}
+    three = [_ref(pack, f"concurrent:{d}") for d in ("r3", "r4", V4_ADDR)]
+    ans = {"outcome": "answer", "rationale": "", "why_not": "", "needs_human": True,
+           "hypotheses": [{"claim": "a shared cause", "evidence_refs": three,
+                           "confirm_with": "show logging"}]}
+    assert cases.explain_misses(expect, ans, pack) == []
+    ans["hypotheses"][0]["evidence_refs"] = three[:2] + [_ref(pack, f"concurrent:r4@{RULE}")]
+    assert cases.explain_misses(expect, ans, pack) == [
+        "no one hypothesis cites other alerts of 3 or more devices"]

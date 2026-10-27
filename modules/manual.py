@@ -202,6 +202,7 @@ OPERATIONS = {
     "reveal-log-line": ("modules.log_reveal", "STEPS"),
     "alert-explain": ("modules.ai.explain", "STEPS"),
     "alert-history": ("modules.alert_history", "BUILD_STEPS"),
+    "alert-rebuild": ("modules.alert_history", "REBUILD_STEPS"),
     "ask-in-words": ("modules.ai.nl_query", "STEPS"),
     "intent-in-words": ("modules.ai.intent_words", "STEPS"),
     "privileged": ("modules.nsot.privileged", "STEPS"),
@@ -220,6 +221,7 @@ OPERATIONS = {
 #: declared sequences on one page: onboarding's two phases and its ZTP form).
 OPERATION_PAGE = {"onboard-phase-two": "onboard", "onboard-ztp": "onboard",
                   "alert-explain": "alert-evidence",
+                  "alert-rebuild": "alert-evidence",
                   "scheduled-rotation": "rotate",
                   "records-database-test": "records-database",
                   "records-database-replace": "records-database",

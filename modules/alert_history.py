@@ -92,14 +92,32 @@ BUILD_STEPS = (
     ("find", "the past alert, from the alert history, and any pack already kept for it: one "
              "kept is drawn, never built again"),
     ("rebuild", "its pack as of the alert's time (when it fired), from 15 minutes before the "
-                "onset: History up to then, the Intent check at the commit current then, the "
-                "health figures and log lines over the window; the neighbours, the network as "
+                "onset: the other alerts of its network in the window as they stood then, "
+                "History up to then, the Intent check at the commit current then, the health "
+                "figures of the devices within two hops in the network model as it is now "
+                "(said so) and the log lines over the window; the neighbours, the network as "
                 "observed and the endpoints said to be missing, never read now"),
     ("mark", "every section marked captured at the time, rebuilt afterwards (from what), or "
              "cannot be rebuilt (why); the pack itself marked rebuilt"),
     ("keep", "masked, hashed and kept in the evidence pack record as the person who pressed "
              "it: frozen, so Explain reads this pack each time"),
     ("show", "the pack drawn in place of the button, with Explain"),
+)
+#: Build again's steps (C1862; an evidence pack's card, routes/v2.monitoring_alert_pack_rebuild),
+#: as the manual names them (docs/manual/how-it-works/alert-evidence.md, #rebuild).
+REBUILD_STEPS = (
+    ("find", "the kept pack, and any pack already built again from it: one is drawn, never "
+             "built twice"),
+    ("check", "the kept pack's schema against this release's: one of this release's is never "
+              "built again; and its past alert in the alert history: one the history does not "
+              "hold, or still firing, is not built again, and says why"),
+    ("rebuild", "a new pack as Build evidence builds one, as of the alert's time, with this "
+                "release's evidence (the other alerts, the health of every device within two "
+                "hops, one id per device), naming the kept pack it was built from"),
+    ("keep", "kept beside the kept pack in the evidence pack record under its own id, as the "
+             "person who pressed it; the kept pack is never rewritten or deleted"),
+    ("show", "the new pack drawn in place, naming the kept one with Show it; History and "
+             "Explain read the new one from now"),
 )
 
 _ISO = re.compile(r"^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.\d+)?(Z|[+-]\d\d:?\d\d)?$")
@@ -673,6 +691,21 @@ def find(eid: str):
     """``(episode or None, store state, error)``: the episode with id *eid*."""
     got = read()
     match = [e for e in episodes(got["rows"], _firing_now()) if e["id"] == eid]
+    return (match[0] if match else None), got["state"], got["error"]
+
+
+def episode_of(pack: dict):
+    """``(episode or None, store state, error)``: the past alert a kept *pack* is of: the
+    episode it names (one built from the history), else the one `pack_for` matches it to (one
+    built as its alert fired: its alert's instance, begun within the episode's span). One still
+    firing is no past alert, and is not returned."""
+    if pack.get("episode"):
+        e, state, error = find(pack["episode"])
+        return (e if e is not None and not e["ongoing"] else None), state, error
+    got = read()
+    index = _pack_index([pack])
+    match = [e for e in episodes(got["rows"], _firing_now())
+             if not e["ongoing"] and pack_for(e, index)]
     return (match[0] if match else None), got["state"], got["error"]
 
 

@@ -52,13 +52,21 @@ person who pressed it.
 1. `find`: the alert, from the alert history, and any pack already kept for it; one that is
    kept is drawn, never built again.
 2. `rebuild`: its pack as of the alert's time (when it fired), its window from 15 minutes before
-   the onset: History up to then, the Intent check at the repository's commit current then (the
-   golden, intent, templates and profile all of that commit, read from a throwaway copy), the
-   health figures of the alert's device and its log lines over the window.
+   the onset: the other alerts of its network in the window, each as it stood at the alert's
+   time (see [Other alerts](alert-evidence#concurrent)); History up to then; the Intent check
+   at the repository's commit current then (the golden, intent, templates and profile all of
+   that commit, read from a throwaway copy); the health figures of the alert's device and of
+   every device within two hops of it in the network model **as it is now**; and its log
+   lines over the window.
 3. `mark`: each section marked (below), and the pack marked **rebuilt afterwards**.
 4. `keep`: masked, hashed and kept in the evidence pack record: frozen, so every Explain of it
    reads the same pack.
 5. `show`: the pack drawn in place of the button, with Explain.
+
+A row whose kept pack is of an older schema than this release builds (kept before 27 Oct 2026)
+opens on that pack, which offers **Build again**: the pack built again with this release's
+evidence, kept beside the old one, which stays (see
+[Build again](alert-evidence#rebuild)). The row then opens on the new pack.
 
 ## What each section says it is {#marks}
 
@@ -67,13 +75,22 @@ Every pack built since 26 Oct 2026 marks each section:
 - **captured at the time:** read when the alert was found firing. Every section of a pack built
   by the reader, and the alert itself in a rebuilt pack (its transitions were recorded when they
   happened);
-- **rebuilt afterwards:** built later from what keeps its past, saying from what (History less
-  what it recorded after the alert's time; the Intent check at the commit then; Prometheus and
-  Loki asked over the alert's window; the device's inventory row as it is now);
+- **rebuilt afterwards:** built later from what keeps its past, saying from what (the other
+  alerts from the alert history, cut at the alert's time; History less what it recorded after
+  the alert's time; the Intent check at the commit then; Prometheus and Loki asked over the
+  alert's window; the device's inventory row as it is now);
 - **cannot be rebuilt:** what reads a store keeping only its latest value: the neighbours, the
   network as observed, and the endpoints attached around the device. They say so, and why; a
-  later read is never put in their place. The health figures of the devices around it go with
-  them: only the alert's own device is read.
+  later read is never put in their place.
+
+**Which devices are around it is the network model as it is now.** The network as it was
+observed then was not captured, so a rebuilt pack finds the devices within two hops of the
+alert's device in {{product}}'s network model (the inventory and committed intent, read when
+the pack is built) and reads their health figures over the alert's window. The health section
+says so ("the network model as it is now ... may differ from then"), and so does the topology
+Explain sends with the pack: it carries the same words (`as_now`), and its observed half says
+"could not read", because nothing observed then was kept. A device added, removed or recabled
+since the alert may make the two-hop set differ from the one at the time.
 
 The marks are in the pack, and in what Explain sends, so a rebuilt or missing part is never
 read as observed. A pack built before the marks says "parts not marked".

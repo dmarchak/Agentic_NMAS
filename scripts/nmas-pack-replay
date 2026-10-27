@@ -34,6 +34,14 @@ rule `--rule` (by default "Replayed: OSPF adjacency drops"), its `device` label 
 default `--at`), alerting from `--at`, no pending time and no window, so its onset is the
 onset given. The pack's trigger says it was replayed, and when.
 
+**`--episode <id>`** rebuilds a past alert's pack from the alert history instead (Monitoring ›
+Alerts › History's Build evidence, its own builder, `evidence_pack.build_for_episode`), named
+as built by `--actor`: the pack a case of a rebuilt alert is asked on (C1849 to C1851), had
+even where the pack record already keeps one of an earlier schema, which stays frozen.
+
+    nmas-host nmas -- <checkout>/scripts/nmas-pack-replay --episode <episode id> \\
+        --actor evaluation:<run> --out /tmp/pack.json [--explain --prompt 4]
+
 **Where the pack goes:** `--out` only, never inside the checkout, and never Mercury's pack store:
 Explain takes the pack in hand (`explain.explain_pack`), the same checks as a stored one (its
 hash, the classification seam, the topology class).
@@ -166,6 +174,47 @@ def explain_twice(pack: dict, actor: str, out=print, ask=None, versions=None) ->
     return 0
 
 
+def _out_path(out: str):
+    """*out* made absolute, or None when it lies inside the checkout (said)."""
+    path = os.path.abspath(os.path.expanduser(out))
+    if os.path.realpath(path).startswith(os.path.realpath(ROOT) + os.sep):
+        print(f"nmas-pack-replay: --out {out} is inside the checkout; write it elsewhere",
+              file=sys.stderr)
+        return None
+    return path
+
+
+def rebuild_episode(ap, args) -> int:
+    """`--episode`: the past alert's pack rebuilt from the alert history by Build evidence's
+    builder (`evidence_pack.build_for_episode`), written to --out (owner-only) and never kept in
+    the pack record; with --explain, asked as `explain_twice` asks."""
+    from modules import alert_history as AH
+    from modules import config
+    from modules import evidence_pack as EP
+
+    if not (args.out and args.actor):
+        ap.error("--episode needs --out and --actor (who the rebuilt pack names as building it)")
+    out = _out_path(args.out)
+    if out is None:
+        return 2
+    e, state, error = AH.find(args.episode[:40])
+    if e is None:
+        print(f"nmas-pack-replay: no past alert {args.episode[:40]} is in the alert history"
+              + (f" (it cannot be read: {error})" if state == "unreadable" else ""),
+              file=sys.stderr)
+        return 1
+    pack = EP.build_for_episode(e, actor=args.actor)
+    with config.open_secure(out, "w") as fh:
+        json.dump(pack, fh, indent=1, sort_keys=True)
+    print(f"pack {pack['id']} (schema {pack['schema']}) of {e['rule']} on "
+          f"{e['device'] or e['address'] or 'no one device'}, as of {pack['built_at']}, hash "
+          f"{pack['hash'][:12]}, written to {out}: "
+          + ", ".join(f"{s['name']} {s['state']}" for s in pack["sections"]))
+    if not args.explain:
+        return 0
+    return explain_twice(pack, args.actor, versions=args.prompt)
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
     ap.add_argument("--network", default="")
@@ -187,6 +236,12 @@ def main(argv=None) -> int:
     ap.add_argument("--model", default="",
                     help="ask Explain on this model in place of its pin, in this process "
                          "alone (a comparison: Haiku, Sonnet, Opus)")
+    ap.add_argument("--episode", default="",
+                    help="rebuild this past alert's pack from the alert history (its episode "
+                         "id, as Monitoring › Alerts › History names it), with Build "
+                         "evidence's own builder, as --actor: written to --out, never kept in "
+                         "the pack record (a pack kept there is frozen, so a pack of a later "
+                         "schema for a kept alert is had only this way)")
     args = ap.parse_args(argv)
     if args.explain:
         from modules.ai import cases
@@ -198,6 +253,8 @@ def main(argv=None) -> int:
             return 2
         print(f"nmas-pack-replay: recorded as {args.actor}"
               + (f", on {args.model} (the pin file unchanged)" if args.model else ""))
+    if args.episode:
+        return rebuild_episode(ap, args)
     if args.pack:
         if not args.explain:
             ap.error("--pack explains a saved pack: it needs --explain")
@@ -221,10 +278,8 @@ def main(argv=None) -> int:
         ap.error(f"--at {args.at} is in the future")
     if onset > at:
         ap.error("--onset is after --at")
-    out = os.path.abspath(os.path.expanduser(args.out))
-    if os.path.realpath(out).startswith(os.path.realpath(ROOT) + os.sep):
-        print(f"nmas-pack-replay: --out {args.out} is inside the checkout; write it elsewhere",
-              file=sys.stderr)
+    out = _out_path(args.out)
+    if out is None:
         return 2
     try:
         observed = observed_then(args.network, at)

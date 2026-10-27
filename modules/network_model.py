@@ -16,6 +16,17 @@ read-only: no model is asked to build it, and nothing here writes.
   line, and never a description.
 - *The committed manifest* (`leased_address.committed_manifest`, one git read): each device's
   NetBox id, so its id is stable across a rename.
+- *NetBox's cables* (C1863), for a network whose inventory is NetBox: each documented cable
+  between two interfaces of devices the model knows (by their NetBox ids) is a link, read
+  through the NetBox integration client (`netbox_cables`: one paged read of ``dcim/cables``,
+  at most `CABLE_PAGES` pages, kept in this process's memory for the network's own inventory
+  refresh interval, read only by `model_for`). A cable whose two devices share an intent
+  subnet joins that subnet's link, which then says it came from both; one that joins none is
+  its own link, ``link:netbox-cable:<NetBox cable id>``. Every link says its ``source``
+  (``intent``, ``netbox_cable`` or ``both``). A cable whose ends are not two interfaces of
+  devices the model knows (a console port, an end in another network, a cable with no ends)
+  is counted, by why, and not drawn. A network on a local CSV inventory has no cables, and the
+  model says so; a read that fails is said, never raised, and intent's links stand alone.
 - **Observed**, never compiled into the model: the Topology reader's stored read
   (`topology-graph`: LLDP's links and the routing tables, the whole fleet per read, from
   Prometheus), each observed item with the read's time. **It is CAPTURED, never read when a
@@ -35,9 +46,10 @@ device; the OSPF area is Topology's (`topology_graph._area`). The expected islan
 
 **Its version** is the committed intent's tree (`HEAD:host_vars`) and manifest blob, and a
 digest of the inventory's copied fields, which is NetBox's change as it reaches this
-installation: the inventory reads no changelog id or change time (C1710). The model is rebuilt
-only when one of them moves: a golden committed alone moves HEAD and not the intent's tree, so
-it rebuilds nothing.
+installation: the inventory reads no changelog id or change time (C1710); for a network on
+NetBox, a digest of its cables' drawn fields joins them (C1863), so a recabling moves it once
+it is read. The model is rebuilt only when one of them moves: a golden committed alone moves
+HEAD and not the intent's tree, so it rebuilds nothing.
 
 **Where it is kept:** in this process's memory (`_CACHE`), one model per network, replaced
 whole under a lock; never on disk, so a read writes nothing (tests/test_reads_write_nothing.py)
@@ -47,6 +59,7 @@ digest; a build, two more git calls and one pass over the fleet.
 **Its ids** (`ID_WORDS`), deterministic and stable while the network is: ``dev:<NetBox id>``
 (``dev:u<8 hex>`` from a local device's manifest identity, ``dev:@<name>`` for a device no
 manifest records); ``link:<subnet>`` (``link:<vrf>/<subnet>`` inside a VRF);
+``link:netbox-cable:<id>`` for a cable NetBox documents that joins no intent subnet;
 ``adj:<protocol>:<a>~<b>:<subnet or address family>``; ``cable:<a>/<port>~<b>/<port>`` for an
 observed LLDP link; ``ext:<address or name>`` for a peer outside management.
 """
@@ -86,18 +99,35 @@ LATER_SLACK_SECONDS = 60
 ROUTING = ("ospf", "ospfv3", "bgp")
 #: Mercury's own host on the observed map (topology_graph.MANAGER): an end, never a way through.
 MANAGER_ID = "mercury"
+#: NetBox's cables (C1863): one read of ``dcim/cables`` is at most this many pages of this many
+#: cables; past them the read says it is truncated. The lab's NetBox held 17 cables, one page,
+#: read in 0.37 s (2026-10-27); 5000 cables is several sites of a large fleet.
+CABLE_PAGE = 1000
+CABLE_PAGES = 5
+#: A link's source (C1863), and a cable left out of the links, by why.
+LINK_SOURCES = ("intent", "netbox_cable", "both")
+NOT_DRAWN_WORDS = {
+    "not_two_interfaces": "not between two interfaces (a console or power port, a circuit, "
+                          "or a side with no end or several)",
+    "unknown_device": "an end is on a device this network's model does not know",
+    "one_device": "both ends are on one device",
+}
 
 ID_WORDS = (
     "dev:<NetBox id> is a managed device (dev:u<hex> a local one, dev:@<name> one no manifest "
     "records); ext:<address or name> a peer outside management; mercury is this tool's own "
     "host, where it attaches",
     "link:<subnet> is a subnet two or more devices' interfaces share by intent "
-    "(link:<vrf>/<subnet> inside a VRF)",
+    "(link:<vrf>/<subnet> inside a VRF); link:netbox-cable:<id> a cable NetBox documents "
+    "between two devices that no intent subnet joins; a link's source says which: intent, "
+    "netbox_cable or both",
     "adj:<protocol>:<a>~<b>:<subnet or ipv4/ipv6> is an adjacency between two ends",
     "cable:<a>/<port>~<b>/<port> is a physical link LLDP reports",
 )
 
 _CACHE: dict = {}
+#: NetBox's cables, by network: ``{"at": monotonic time read, "doc": netbox_cables' answer}``.
+_CABLES: dict = {}
 _LOCK = threading.Lock()
 #: Builds run in this process, by network (tests count them: a rebuild only when the version
 #: moves).
@@ -156,16 +186,189 @@ def _intent_marker(repo: str) -> tuple:
     return out, ""
 
 
-def version_of(repo: str, inventory) -> tuple:
-    """``(version, error)``: ``{"intent", "manifest", "inventory", "key"}``, the key a short
-    sha256 over the three."""
+def version_of(repo: str, inventory, cables: dict = None) -> tuple:
+    """``(version, error)``: ``{"intent", "manifest", "inventory", "cables", "key"}``, the key a
+    short sha256 over them. *cables* is `netbox_cables`' answer: a network with none (a local
+    CSV inventory) keeps the key it had before cables were a source."""
     marker, err = _intent_marker(repo)
     if err:
         return None, err
-    ver = dict(marker, inventory=inventory_digest(inventory))
-    ver["key"] = "nm-" + hashlib.sha256(
-        f"{ver['intent']} {ver['manifest']} {ver['inventory']}".encode()).hexdigest()[:12]
+    ver = dict(marker, inventory=inventory_digest(inventory),
+               cables=(cables or {}).get("digest") or "none")
+    text = f"{ver['intent']} {ver['manifest']} {ver['inventory']}"
+    if ver["cables"] != "none":
+        text += f" {ver['cables']}"
+    ver["key"] = "nm-" + hashlib.sha256(text.encode()).hexdigest()[:12]
     return ver, ""
+
+
+# ----------------------------------------------------------------------------- NetBox's cables
+
+def _clock() -> float:
+    """The clock the cable read's age is judged by (one seam, so a test moves it)."""
+    return time.monotonic()
+
+
+def _cable_end(t: dict) -> dict:
+    o = (t or {}).get("object") or {}
+    dev = o.get("device") or {}
+    return {"type": (t or {}).get("object_type") or "", "device_id": dev.get("id"),
+            "device": dev.get("name") or "", "port": o.get("name") or ""}
+
+
+def _cable(c: dict) -> dict:
+    """One NetBox cable in the fields the model draws: its id, status and each side's ends
+    (type, device id and name, port). Its label, NetBox free text, is never kept."""
+    status = c.get("status")
+    return {"id": c.get("id"),
+            "status": (status.get("value") if isinstance(status, dict) else status) or "",
+            "a": [_cable_end(t) for t in c.get("a_terminations") or []],
+            "b": [_cable_end(t) for t in c.get("b_terminations") or []]}
+
+
+def read_cables(network: str, client=None) -> dict:
+    """NetBox's cables, as *network*'s NetBox integration client reads them (read-only: GETs of
+    ``dcim/cables``, at most `CABLE_PAGES` pages, the network's site filter passed when its
+    inventory has one): ``{"state": "read"|"could not read", "why", "read_at", "cables",
+    "count", "truncated", "digest"}``. Never raises."""
+    from modules.integrations import get_integration
+    from modules.inventory import source_config
+
+    at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time()))
+    out = {"state": "could not read", "why": "", "read_at": at, "cables": [], "count": 0,
+           "truncated": "", "digest": "unreadable",
+           "source": "NetBox's cables (dcim/cables), through the NetBox integration"}
+    try:
+        nb = client or get_integration("netbox", list_name=network)
+        if not nb.is_configured():
+            out["why"] = "NetBox is not configured (Settings › Installation, NetBox)"
+            return out
+        params = {"limit": CABLE_PAGE}
+        site = ((source_config.load(network).get("filters") or {}).get("site") or "").strip()
+        if site:
+            params["site"] = site
+        path, raw, count, pages = "api/dcim/cables/", [], 0, 0
+        while path and pages < CABLE_PAGES:
+            got = nb._get(path, **params)
+            pages += 1
+            if not got["ok"]:
+                out["why"] = (f"NetBox's cables could not be read ({got.get('error')}"
+                              + (f": {got['detail']}" if got.get("detail") else "") + ")")
+                return out
+            data = got["response"].json()
+            count = int(data.get("count") or 0)
+            raw += list(data.get("results") or [])
+            nxt = data.get("next") or ""
+            base = nb.url + "/"
+            path, params = (nxt[len(base):], {}) if nxt.startswith(base) else ("", {})
+            if nxt and not path:
+                out["truncated"] = (f"NetBox named a next page outside its own address, so "
+                                    f"{len(raw)} of {count} cables were read")
+        if path:
+            out["truncated"] = (f"{len(raw)} of {count} cables read, the most one read takes "
+                                f"({CABLE_PAGES} pages of {CABLE_PAGE})")
+    except Exception as exc:                            # noqa: BLE001 (said, never raised)
+        out["why"] = f"NetBox's cables could not be read ({type(exc).__name__}: {exc})"
+        log.warning("network model: %s", out["why"])
+        return out
+    cables = sorted((_cable(c) for c in raw), key=lambda c: (str(c["id"])))
+    out.update(state="read", cables=cables, count=count or len(cables),
+               digest=hashlib.sha256(repr([sorted((k, repr(v)) for k, v in c.items())
+                                           for c in cables]).encode()).hexdigest()[:16])
+    return out
+
+
+def no_cables(network: str) -> dict:
+    """What a network on a local CSV inventory says of cables: it has none to read."""
+    return {"state": "none", "read_at": "", "cables": [], "count": 0, "truncated": "",
+            "digest": "none", "source": "none",
+            "why": (f"{network}'s inventory is a local CSV, which holds no cables: its links "
+                    "are intent's subnets alone")}
+
+
+def netbox_cables(network: str, refresh_s: float = None, read=None) -> dict:
+    """*network*'s cables: `no_cables` for a network not on NetBox; else the last read, kept in
+    this process's memory while it is younger than the network's own inventory refresh
+    interval (`source_config`'s ``refresh_interval``, 300 s by default; *refresh_s* in its
+    place), read again past it. A read that failed is kept as long, so NetBox down is asked
+    once an interval, never once per question. *read* stands in for `read_cables` (tests)."""
+    from modules.inventory import source_config
+
+    try:
+        cfg = source_config.load(network)
+    except Exception as exc:                            # noqa: BLE001 (said, never raised)
+        return dict(no_cables(network), state="could not read", digest="unreadable",
+                    why=f"{network}'s inventory source could not be read ({exc})")
+    if cfg.get("source") != source_config.SOURCE_NETBOX:
+        return no_cables(network)
+    ttl = float(refresh_s if refresh_s is not None else cfg.get("refresh_interval") or 300)
+    with _LOCK:
+        hit = _CABLES.get(network)
+    if hit and _clock() - hit["at"] < ttl:
+        return hit["doc"]
+    doc = (read or read_cables)(network)
+    with _LOCK:
+        _CABLES[network] = {"at": _clock(), "doc": doc}
+    return doc
+
+
+def _cable_links(network: str, cables: dict, nodes: dict, links: dict) -> dict:
+    """Join *cables* (`netbox_cables`' answer) to the model's *links*, in place: a cable between
+    two interfaces of devices the model knows (by NetBox id) joins each intent link both
+    devices are members of where one end's interface is the member's (its source then
+    ``both``), else is its own link ``link:netbox-cable:<id>``. ``{"state", "why", "read_at",
+    "count", "drawn", "joined", "own", "not_drawn": {why: n}, "truncated"}``."""
+    from modules.nsot.ifnames import abbreviate
+
+    said = {"state": cables.get("state") or "none", "why": cables.get("why") or "",
+            "read_at": cables.get("read_at") or "", "count": len(cables.get("cables") or []),
+            "drawn": 0, "joined": 0, "own": 0, "not_drawn": {},
+            "truncated": cables.get("truncated") or "", "source": cables.get("source") or ""}
+
+    def skip(why):
+        said["not_drawn"][why] = said["not_drawn"].get(why, 0) + 1
+
+    at, devs = {}, {}
+    for lid, link in links.items():
+        devs[lid] = {m["dev"] for m in link["members"]}
+        for m in link["members"]:
+            at.setdefault((m["dev"], m.get("interface")), []).append(lid)
+    for c in cables.get("cables") or []:
+        a, b = c.get("a") or [], c.get("b") or []
+        if len(a) != 1 or len(b) != 1 or any(e["type"] != "dcim.interface" for e in a + b):
+            skip("not_two_interfaces")
+            continue
+        (ea,), (eb,) = a, b
+        da, db = f"dev:{ea['device_id']}", f"dev:{eb['device_id']}"
+        if da not in nodes or db not in nodes:
+            skip("unknown_device")
+            continue
+        if da == db:
+            skip("one_device")
+            continue
+        pa, pb = abbreviate(ea["port"]), abbreviate(eb["port"])
+        said["drawn"] += 1
+        # The intent links either end's interface is a member of, and the other device too:
+        # one lookup per end, never a pass over every link per cable.
+        joined = sorted({lid for lid in at.get((da, pa), []) + at.get((db, pb), [])
+                         if {da, db} <= devs[lid]})
+        for lid in joined:
+            links[lid]["source"] = "both"
+            links[lid].setdefault("netbox_cables", []).append(c["id"])
+        if joined:
+            said["joined"] += 1
+            continue
+        lid = f"link:netbox-cable:{c['id']}"
+        # The cable's label is NetBox free text and is never carried (the model copies no free
+        # text); its status is NetBox's enumerated value.
+        links[lid] = {"id": lid, "source": "netbox_cable", "netbox_cable": c["id"],
+                      "members": sorted([{"dev": da, "interface": pa},
+                                         {"dev": db, "interface": pb}],
+                                        key=lambda m: (m["dev"], m["interface"]))}
+        if c.get("status") and c["status"] != "connected":
+            links[lid]["status"] = c["status"]
+        said["own"] += 1
+    return said
 
 
 # ----------------------------------------------------------------------------- the build
@@ -299,10 +502,11 @@ def _adj_id(proto: str, a: str, b: str, where: str) -> str:
 
 
 def build(network: str, inventory, intents: dict, manifest: dict = None, version: dict = None,
-          errors=()) -> dict:
+          errors=(), cables: dict = None) -> dict:
     """The model of *network*: pure, from the inventory's rows, committed intent
-    (``{name: host_vars}``) and the committed manifest. Never raises on a device's intent: one
-    that cannot be read is named in ``errors``."""
+    (``{name: host_vars}``), the committed manifest and *cables* (`netbox_cables`' answer,
+    C1863; None is a network with none). Never raises on a device's intent: one that cannot be
+    read is named in ``errors``."""
     from modules import neighbours as N
     from modules.nsot.ifnames import abbreviate
 
@@ -346,7 +550,7 @@ def build(network: str, inventory, intents: dict, manifest: dict = None, version
         if len(members) < 2:
             continue
         lid = f"link:{vrf}/{net}" if vrf else f"link:{net}"
-        links[lid] = {"id": lid, "subnet": str(net), "members": [
+        links[lid] = {"id": lid, "subnet": str(net), "source": "intent", "members": [
             {"dev": ids[h], "interface": p, "address": a} for h, (p, a) in sorted(members.items())]}
         if vrf:
             links[lid]["vrf"] = vrf
@@ -364,6 +568,10 @@ def build(network: str, inventory, intents: dict, manifest: dict = None, version
                                   "separate segments or an address conflict, so it is not "
                                   "walked through")
         link_of[(vrf, str(net))] = lid
+
+    # NetBox's documented cables (C1863): each joins the intent link it carries, or is a link
+    # of its own; one whose ends the model does not know is counted, never drawn.
+    cabled = _cable_links(network, cables or no_cables(network), nodes, links)
 
     # Expected adjacencies: each device's own links once, grouped by subnet.
     adjs = {}
@@ -419,12 +627,14 @@ def build(network: str, inventory, intents: dict, manifest: dict = None, version
         if isinstance(a["between"], list) and "link" not in a:
             edge(a["between"][0], a["between"][1], aid)
     counts = {"devices": len(nodes), "links": len(links),
+              "links_by_source": {s: sum(1 for x in links.values() if x.get("source") == s)
+                                  for s in LINK_SOURCES},
               "adjacencies": {p: sum(1 for a in adjs.values() if a["proto"] == p)
                               for p in ROUTING}}
     BUILDS[network] = BUILDS.get(network, 0) + 1
     return {"schema": SCHEMA, "network": network, "version": dict(version or {}),
             "nodes": nodes, "links": links, "adjacencies": adjs, "names": ids,
-            "edges": edges, "counts": counts, "errors": errors,
+            "edges": edges, "counts": counts, "errors": errors, "netbox_cables": cabled,
             # When the inventory and committed intent were read into it: the age the coverage
             # header gives those two layers.
             "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(_now()))}
@@ -500,7 +710,10 @@ def model_for(network: str) -> tuple:
         inventory = load_saved_devices(ref.csv_path)
     except Exception as exc:                            # noqa: BLE001 (said, never raised)
         return None, f"{network}'s inventory could not be read ({type(exc).__name__}: {exc})"
-    ver, err = version_of(ref.repo_dir, inventory)
+    # NetBox's cables (C1863): read at most once per the network's inventory refresh interval,
+    # kept in memory between; their digest is part of the version, so a recabling rebuilds.
+    cables = netbox_cables(ref.name)
+    ver, err = version_of(ref.repo_dir, inventory, cables)
     if ver is None:
         return None, err
     with _LOCK:
@@ -510,7 +723,7 @@ def model_for(network: str) -> tuple:
     intents, ierr = committed_intents(ref.repo_dir)
     manifest, merr = leased_address.committed_manifest(ref.repo_dir)
     model = build(ref.name, inventory, intents, manifest, version=ver,
-                  errors=[e for e in (ierr, merr) if e])
+                  errors=[e for e in (ierr, merr) if e], cables=cables)
     with _LOCK:
         _CACHE[ref.name] = model
     return model, ""
@@ -521,8 +734,10 @@ def forget(network: str = "") -> None:
     with _LOCK:
         if network:
             _CACHE.pop(network, None)
+            _CABLES.pop(network, None)
         else:
             _CACHE.clear()
+            _CABLES.clear()
 
 
 # ----------------------------------------------------------------------------- observed
@@ -708,15 +923,31 @@ def unread(why: str) -> dict:
             "routing": {}, "cables": {}, "source": "none"}
 
 
+#: What a walk of the model as it is now says of itself, when nothing observed then can be had
+#: (a pack rebuilt from the alert history, C1851): the model's own sources, read now.
+AS_NOW_WORDS = ("the network model as it is now (the inventory and committed intent, read "
+                "{built}), not as it was at the alert's time {at}: it may differ from then")
+
+
+def as_now_words(model: dict, at: str) -> str:
+    """`AS_NOW_WORDS` for *model*, the alert's time *at*."""
+    return AS_NOW_WORDS.format(built=model.get("built_at") or "now", at=at or "not recorded")
+
+
 def capture(network: str, subject: str, hops: int = CAPTURE_HOPS, now: float = None,
-            stored: dict = None) -> dict:
+            stored: dict = None, observe: bool = True) -> dict:
     """The observed overlay around *subject*, read ONCE, for an evidence pack to keep (C1712):
-    ``{"ok", "error", "overlay", "reached", "nodes", "subject", "version"}``. *overlay* is
-    `observed`'s answer kept to the items touching a device within *hops* (walked with the
-    overlay's own cables, as `context_for` walks); *reached* each device's ``{"hop", "via"}``;
-    *nodes* each reached managed device's ``{"name", "role", "platform"}`` (who the health
-    figures are read for, C1714). *now* is the time it is captured for (the alert's); *stored*
-    a read in the store's shape given in place of the store's (a replay)."""
+    ``{"ok", "error", "overlay", "reached", "nodes", "subject", "version", "names"}``.
+    *overlay* is `observed`'s answer kept to the items touching a device within *hops* (walked
+    with the overlay's own cables, as `context_for` walks); *reached* each device's ``{"hop",
+    "via"}``; *nodes* each reached managed device's ``{"name", "role", "platform"}`` (who the
+    health figures are read for, C1714); *names* every device's id by name (C1849: one id per
+    device in everything a pack names). *now* is the time it is captured for (the alert's);
+    *stored* a read in the store's shape given in place of the store's (a replay).
+
+    *observe* False (a pack rebuilt from the alert history, C1851) reads no observed state:
+    the walk is the model's own, intent and inventory as they are now, the overlay says it
+    could not be read, and ``as_now`` says the walk is of now, which may differ from then."""
     try:
         hops = max(0, min(int(hops), MAX_HOPS))
     except (TypeError, ValueError):
@@ -727,7 +958,14 @@ def capture(network: str, subject: str, hops: int = CAPTURE_HOPS, now: float = N
     sid, seeds, err = _seeds(network, model, subject)
     if err:
         return {"ok": False, "error": err}
-    obs = observed(network, model, now=now, stored=stored)
+    as_now = ""
+    if observe:
+        obs = observed(network, model, now=now, stored=stored)
+    else:
+        at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)) if now is not None else ""
+        as_now = as_now_words(model, at)
+        obs = unread("the network as observed then was not captured when the alert fired; "
+                     "a later read is never put in its place")
     reached = _walk(model, _extra(obs), seeds, hops)
     near = set(reached)
     kept = dict(obs, routing={}, cables={})
@@ -745,11 +983,12 @@ def capture(network: str, subject: str, hops: int = CAPTURE_HOPS, now: float = N
              for n in reached if n in model["nodes"]}
     return {"ok": True, "error": "", "overlay": kept, "subject": sid,
             "reached": {n: {"hop": h, "via": v} for n, (h, v) in reached.items()},
-            "nodes": nodes, "version": model["version"].get("key", "")}
+            "nodes": nodes, "version": model["version"].get("key", ""),
+            "names": dict(model["names"]), "as_now": as_now}
 
 
 def context_for(network: str, subject: str, hops: int = 1, overlay: dict = None,
-                carried: dict = None) -> dict:
+                carried: dict = None, as_now: str = "") -> dict:
     """The subgraph of *network* around *subject* (a device by its NetBox id, its model id or
     its name; or a link by its id), within *hops*, *overlay* overlaid: the observed state
     `capture` kept (C1712: this reads no observed state itself, so a subgraph of a past alert
@@ -758,7 +997,10 @@ def context_for(network: str, subject: str, hops: int = 1, overlay: dict = None,
     (sorted keys, no anchors), *ids* every id it holds (what a citation may name), *reached*
     each device's ``(hop, via)``. Its ``coverage`` (`coverage`), in the bundle and the
     answer, lists every layer as present, partial or not_collected, with its source and age;
-    *carried* the layers the caller holds beside it (an evidence pack's health and logs)."""
+    *carried* the layers the caller holds beside it (an evidence pack's health and logs).
+    *as_now* (C1851), when the subgraph stands for a past network it is not of (a pack rebuilt
+    afterwards), is said in it as ``as_now``, so it is never read as the network then; the
+    answer's ``names`` is every device's id by name (C1849)."""
     try:
         hops = max(0, min(int(hops), MAX_HOPS))
     except (TypeError, ValueError):
@@ -841,6 +1083,9 @@ def context_for(network: str, subject: str, hops: int = 1, overlay: dict = None,
                         "state": "read" if obs["state"] == "read" else could_not}}
     if obs.get("as_of"):
         doc["observed"]["as_of"] = obs["as_of"]
+    doc["netbox_cables"] = cables_said(model)
+    if as_now:
+        doc["as_now"] = as_now
     doc["coverage"] = coverage(model, obs, devices, carried)
     if model["errors"]:
         doc["model_errors"] = list(model["errors"])
@@ -849,7 +1094,29 @@ def context_for(network: str, subject: str, hops: int = 1, overlay: dict = None,
             "ids": sorted(ids), "reached": {n: {"hop": h, "via": v}
                                             for n, (h, v) in reached.items()},
             "version": model["version"].get("key", ""), "observed": obs["state"],
-            "coverage": doc["coverage"]}
+            "coverage": doc["coverage"], "names": dict(model["names"])}
+
+
+def cables_said(model: dict) -> object:
+    """What a subgraph says of the network's NetBox cables (C1863): for a network on NetBox,
+    when they were read, how many, how many are links and how many were left out, by why; else
+    why there are none, or why they could not be read. Every link's own ``source`` says which
+    of its links came from them."""
+    c = model.get("netbox_cables") or {}
+    if c.get("state") == "read":
+        out = {"source": c.get("source") or "NetBox", "read_at": c.get("read_at") or "",
+               "cables": c.get("count", 0), "drawn": c.get("drawn", 0),
+               "joined_to_an_intent_subnet": c.get("joined", 0),
+               "links_of_their_own": c.get("own", 0)}
+        if c.get("not_drawn"):
+            out["not_drawn"] = [{"count": n, "why": NOT_DRAWN_WORDS.get(k, k)}
+                                for k, n in sorted(c["not_drawn"].items())]
+        if c.get("truncated"):
+            out["truncated"] = c["truncated"]
+        return out
+    if c.get("state") == "could not read":
+        return f"could not read ({c.get('why') or 'no reason given'}): links are intent's alone"
+    return c.get("why") or "none: links are intent's subnets alone"
 
 
 def reach(network: str, subject: str, hops: int = 1, overlay: dict = None) -> list:
@@ -881,6 +1148,7 @@ def summary(model: dict) -> str:
     doc = {"network": model["network"], "devices": len(model["nodes"]),
            "by_role": tally("role"), "by_platform": tally("platform"), "by_site": tally("site"),
            "links": len(model["links"]),
+           "links_by_source": dict(model["counts"].get("links_by_source") or {}),
            "segments_not_walked": sum(1 for l in model["links"].values()
                                       if l.get("expanded") is False),
            "adjacencies_expected": dict(model["counts"]["adjacencies"]),
@@ -898,8 +1166,10 @@ def summary(model: dict) -> str:
 #: What a prompt's context says of the subgraph's layout, the same bytes on every call.
 FORMAT = "\n".join([
     "The topology is compact YAML from the tool's network model: devices, links (subnets two "
-    "or more devices share by intent), adjacencies (what intent implies, each with what was "
-    "observed) and cables (what LLDP reports).",
+    "or more devices share by intent, and cables NetBox documents; each link's source says "
+    "which: intent, netbox_cable or both), adjacencies (what intent implies, each with what "
+    "was observed) and cables (what LLDP reports). netbox_cables says when NetBox's cables "
+    "were read and how many were left out, or why there are none.",
     "Ids: " + "; ".join(ID_WORDS) + ". Cite an item by its id exactly as written.",
     "Each device has its hop from the subject and the item it was reached by (via); devices "
     "at the last hop carry identity only.",

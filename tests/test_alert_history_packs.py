@@ -57,8 +57,9 @@ def _marks(pack):
 class TestEachSectionIsMarked:
     def test_a_pack_built_as_its_alert_fired_is_captured_throughout(self, pack_lab):
         pack = _build(_alerts(V4))
-        assert pack["provenance"] == "captured" and pack["schema"] == 4
-        assert set(_marks(pack).values()) == {"captured"}
+        # Schema 5 (C1849 to C1851) keeps schema 4's marks, on its new section too.
+        assert pack["provenance"] == "captured" and pack["schema"] == 5
+        assert set(_marks(pack).values()) == {"captured"} and "concurrent" in _marks(pack)
         assert all(s["provenance_words"].startswith("captured at the time")
                    for s in pack["sections"])
 
@@ -67,7 +68,8 @@ class TestEachSectionIsMarked:
         pack = EP.build_for_episode(e, actor="operator@example.com")
         assert pack["provenance"] == "rebuilt" and pack["episode"] == e["id"]
         assert pack["built_at"] == e["fired_at"] and pack["device"] == "r2"
-        assert _marks(pack) == {"alert": "captured", "device": "rebuilt", "history": "rebuilt",
+        assert _marks(pack) == {"alert": "captured", "concurrent": "rebuilt",
+                                "device": "rebuilt", "history": "rebuilt",
                                 "intent": "rebuilt", "neighbours": "missing",
                                 "observed": "missing", "endpoints": "missing",
                                 "health": "rebuilt", "logs": "rebuilt"}
@@ -77,7 +79,13 @@ class TestEachSectionIsMarked:
             assert "cannot be rebuilt" in s["why"] and "as_of" not in s
             assert s["provenance_words"] == f"cannot be rebuilt: {EP.NOT_REBUILT[name]}"
         assert "operator@example.com" in pack["trigger"]
-        assert "the alert's device is read" in " ".join(_section(pack, "health")["errors"])
+        # C1851 (the operator's Walk 2, 2026-10-27): the health figures are read for the
+        # devices within two hops in the network model as it is now, said so, where they were
+        # read for the alert's device alone ("0 of 0 devices"); tests/test_evidence_pack_ids.py
+        # holds the two-hop reach on a fleet with intent.
+        health = _section(pack, "health")
+        assert "the network model as it is now" in health["devices_from"]
+        assert "may differ from then" in health["provenance_words"]
         assert EP.intact(pack)
 
     def test_the_window_is_the_onset_to_the_alerts_time(self, history):

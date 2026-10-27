@@ -15,7 +15,7 @@ the Loki and Prometheus captures. At 1280 and 390 the pack built at 1440 is kept
 row opens on the pack and not on Build evidence. The Loki capture is answered whatever the
 window, so the shot's log lines are 15 Oct's, not 21 Oct's.
 Templates compared: templates/v2/_alert_history.html, templates/v2/_evidence_pack.html, templates/v2/monitoring.html
-Templates sha256: `884ffcabec64bcb6ea029b2f008a329b7e9cfae2749988ba450f708e05f96e38`
+Templates sha256: `a925cd86203963b4018366e10c65bb932ad196e7d81abe616a267ad9a07caef8`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
@@ -40,3 +40,36 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Nothing in range; unreadable | "No alert fired and resolved…" with counts; a danger notice naming why | compared by the template and tests/test_alert_history_packs.py (`test_an_unreadable_history_is_said_never_a_quiet_list`), not shot | **same** |
 | The group's cap | "the newest 100 of a group are drawn: filter above" | the same words, at the group's foot | **same** |
 | Phone | not drawn | at 390 the filter wraps, rows and the pack stack; no sideways scroll | **same** |
+
+**Compared again 2026-10-27 (C1849 to C1851, pack schema 5):** `_evidence_pack.html`, which this
+record compares for the rebuilt pack drawn in its row, gained the other alerts section and the
+health line's "network model as it is now" words; the regions above are unchanged, the pack's
+own regions compared in docs/fidelity/alerts-explain.md ("Compared again 2026-10-27"), its
+deviation logged there. Shot by `tests/test_board_shots.py::test_monitoring_alerts_history` at
+1440, 1280 and 390: the rebuilt pack in r2's row draws both, and stacks at 390.
+
+Templates sha256 before: `884ffcabec64bcb6ea029b2f008a329b7e9cfae2749988ba450f708e05f96e38`.
+
+**Compared again 2026-10-27 (C1862, Build again):** `_evidence_pack.html`, drawn in a row's
+body, offers Build again on a pack of an older schema and names the other pack of the same
+alert (the regions are described in docs/fidelity/alerts-explain.md, "Compared again
+2026-10-27 (C1862 ...)"); `_alert_history.html`'s pack chip names the pack's schema and when it
+was built on hover.
+- **Shots:** `tests/test_board_shots.py::test_monitoring_alerts_history_rebuild` (2026-10-27
+  02:45 UTC, the list's redraw after the press waited for; `alerts-history-rebuild-older`, `-offered`, `-rebuilt` and `-kept` at 1440, 1280
+  and 390, beside `alerts-history-rebuild-board` at 1440), on this record's lab with r2's past
+  alert keeping a pack of schema 4. Offered: the row opens on the schema-4 pack, "Kept with
+  schema 4; this release builds schema 5. It holds no other alerts around the onset, ..." then
+  Build again, its (i) and its words, above Explain. Rebuilt: the pack built again in place,
+  "built again from the alert history by test-person@example.invalid ... in place of pack
+  ep-… (schema 4), which stays kept", "Built again from pack ep-… (schema 4, built just now),
+  which stays kept" and Show it, and the other alerts section second. Kept: Show it draws the
+  schema-4 pack again, "built again" and "Built again as pack ep-…-s5 (schema 5 ...)", no other
+  alerts section. At 390 each stacks, no sideways scroll. `::test_monitoring_alerts_history`
+  shot again at the same time: unchanged but the chip's hover.
+- **Verdict:** **deviation** for the two new regions (the board draws no pack of an older
+  schema and no second pack of one alert); their lines are in docs/STANDING_APPROVAL_LOG.md
+  ("P1 Alerts and P1-H: Build again on a pack of an older schema", "P1 Alerts and P1-H: the two
+  packs of one alert"). No other region's verdict changed.
+
+Templates sha256 before: `b7fba315b8648fb0ecde6d529dd9b76ee31a43b7f5fc37cdab68f2dca52717e9`.

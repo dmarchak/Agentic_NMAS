@@ -6,7 +6,7 @@
     4
   ],
   "network": "Default",
-  "about": "P1 Explain's recorded cases (PHASE8_PLAN 13.6 and the sprint's item 9: every Analyst task's cases include healthy baselines that must report nothing wrong, P1 Explain's first). Each case is a replay of a past window (scripts/nmas-pack-replay, the product's own pack as of the alert's time); cases.explain_unready says first whether the pack holds what the case is judged on, then cases.explain_misses judges the answer on structured fields. A healthy baseline passes on Explain's no fault found assessment, citing the healthy evidence it checked (C1742, the operator's ruling of 2026-10-25). What only a person can judge in the prose is the case's flag, read on the recording. Recorded 2026-10-26 on prompt v4, five runs a case (each run's structured answer, verdict, misses, tokens and cost; the pack's sha256, the pack itself kept off the repository): cases 1 to 7 at 03:23 to 03:42 UTC, cases 8 to 20 at 18:5x to 19:26 UTC as evaluation:explain-cases-20261026 (C1784), each expectation set from its pack before any run. Cases 8 and 19 were corrected by the operator after the run, from evidence, never from an answer: s3's and s4's clocks run at 0.703 and 0.775 of real time, so their heartbeat alerts have a cause, the drift, which an answer must name as a hypothesis (`says_any`); each keeps what it was under `was`. A case's text checks (`no_text`, `says_any`) are judged at the recording on the answer's prose and kept as its misses; CI keeps the structured answer.",
+  "about": "P1 Explain's recorded cases (PHASE8_PLAN 13.6 and the sprint's item 9: every Analyst task's cases include healthy baselines that must report nothing wrong, P1 Explain's first). Each case is a replay of a past window (scripts/nmas-pack-replay, the product's own pack as of the alert's time); cases.explain_unready says first whether the pack holds what the case is judged on, then cases.explain_misses judges the answer on structured fields. A healthy baseline passes on Explain's no fault found assessment, citing the healthy evidence it checked (C1742, the operator's ruling of 2026-10-25). What only a person can judge in the prose is the case's flag, read on the recording. Recorded 2026-10-26 on prompt v4, five runs a case (each run's structured answer, verdict, misses, tokens and cost; the pack's sha256, the pack itself kept off the repository): cases 1 to 7 at 03:23 to 03:42 UTC, cases 8 to 20 at 18:5x to 19:26 UTC as evaluation:explain-cases-20261026 (C1784), each expectation set from its pack before any run. Cases 8 and 19 were corrected by the operator after the run, from evidence, never from an answer: s3's and s4's clocks run at 0.703 and 0.775 of real time, so their heartbeat alerts have a cause, the drift, which an answer must name as a hypothesis (`says_any`); each keeps what it was under `was`. A case's text checks (`no_text`, `says_any`) are judged at the recording on the answer's prose and kept as its misses; CI keeps the structured answer. Case 21 (2026-10-27, C1849 to C1851) is the operator's Walk 2 alert, its pack rebuilt from the alert history with pack schema 5 (`rebuilt` names it in place of `replay`), its expectation set from that pack before any run; it awaits its five runs, and held_out.json holds the walk's second alert the same way.",
   "cases": [
     {
       "n": 1,
@@ -4827,6 +4827,60 @@
         ],
         "passed": 5
       }
+    },
+    {
+      "n": 21,
+      "name": "Walk 2's alert, its pack rebuilt from the alert history: r1 unreachable by SNMP in the same minute as r3, r4 and r7 (2026-10-22 ~18:00); a cause shared beneath them, never r1's own (C1849 to C1851)",
+      "kind": "incident",
+      "rebuilt": {
+        "device": "r1",
+        "rule": "Device unreachable (SNMP)",
+        "onset": "2026-10-22T17:59:50Z",
+        "at": "2026-10-22T18:01:50Z",
+        "episode": "96671faee6a201ade8de",
+        "pack": "ep-7607ab655cee9cd2e37c",
+        "how": "evidence_pack.build_for_episode (Build evidence), pack schema 5: the other alerts in the window, every id the network model's, the health figures for the devices within two hops in the model as it is now. The walk's stored pack (schema 4, hash a51f8d639f2d) stays frozen; a case's runs ask a pack rebuilt with schema 5 and saved by scripts/nmas-pack-replay --episode."
+      },
+      "found": "the pack rebuilt with schema 5 on the host (2026-10-27 01:39 UTC, read-only, nothing kept, no call): r1 CPU 47 to 57%, 4 heartbeats 300 s apart (the last 3 s before the alert), 7 of 119 scrapes failed 17:47:43 to 18:01:13, discards 0, 4 notice lines in its log; within two hops in the model as now r2 failed 4 scrapes, r3 6, r4 5, r6 5, s1 3, s3 3, s4 3, s2 1, r8 holds no series; the other alerts (16 in the window): Device unreachable (SNMP) firing on r3, r4 and r7, each begun 17:59:50 and fired 18:01:50, the same minute as r1, and pending on r2, s1, s4 and s3; IP SLA probe failing pending on r1, r4, s2 and s3; output discards on one polled address, firing. The walk's own answer was couldn't analyse (C1849).",
+      "needs": [
+        "health:r1:scrapes",
+        "health:r1:heartbeat",
+        "concurrent:r3@Device unreachable (SNMP)",
+        "concurrent:r4@Device unreachable (SNMP)",
+        "concurrent:r7@Device unreachable (SNMP)"
+      ],
+      "expect": {
+        "outcome": [
+          "answer"
+        ],
+        "needs_human": true,
+        "figures_from_pack": true,
+        "together": [
+          [
+            [
+              "concurrent:r3@Device unreachable (SNMP)",
+              "health:r3:scrapes"
+            ],
+            [
+              "concurrent:r4@Device unreachable (SNMP)",
+              "health:r4:scrapes"
+            ],
+            [
+              "concurrent:r7@Device unreachable (SNMP)"
+            ]
+          ]
+        ],
+        "lead_not_only": [
+          "health:r1:cpu",
+          "health:r1:heartbeat",
+          "health:r1:scrapes",
+          "health:r1:discards",
+          "alert:*",
+          "logs:*"
+        ]
+      },
+      "why": "Set from the evidence before any run (2026-10-27, the walk's case): r1 sent every heartbeat on time at ordinary CPU, so its own figures do not explain an SNMP outage; r3, r4 and r7 went unreachable by SNMP in the same minute and scrapes failed on every device within two hops, so a cause shared beneath them (the polling path, or the host they share) is the evidence's, offered as a hypothesis a person must confirm. One hypothesis citing r3, r4 and r7 (each by its alert in the window, or r3 and r4 by their failed scrapes; r7 is beyond two hops, so only its alert is in the pack) is the parent session's expectation for the walk, set before any run.",
+      "flag": "A person reads the recording: the shared cause is placed beneath the devices (the poller, the management path or the host they share), hedged as not in the evidence; r1 is not blamed on its own figures; no figure is stated the pack does not hold."
     }
   ]
 }

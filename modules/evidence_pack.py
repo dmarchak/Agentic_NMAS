@@ -2,13 +2,15 @@
 (docs/PHASE8_PLAN.md 15.9, Card P1, its deterministic part; 15.1: built beside 8.0, it calls no
 model and needs no 8.0 piece).
 
-When an alert fires, a person gathers the evidence by hand: the alert, the device's recent
+When an alert fires, a person gathers the evidence by hand: the alert, the other alerts in its
+network around the onset (`concurrent`, C1850, from the alert history), the device's recent
 History, its Intent check, its expected and reported neighbours, the network around it as it
 was observed (`observed`, C1712: captured here, so Explain never reads the network as it is
 later), the health of the devices within two hops (`health`, C1714, `evidence_health`), and
 the log lines around the onset, every time series read as of the alert's time (`build`'s
-*now*). The pack gathers exactly those, once, when the `grafana-alerts` reader first stores the
-alert as firing, and keeps them: one pack per firing alert, readable while it fires and after it
+*now*). One device has one id in all of it: the network model's, wherever the model knows the
+device (C1849). The pack gathers exactly those, once, when the `grafana-alerts` reader first
+stores the alert as firing, and keeps them: one pack per firing alert, readable while it fires and after it
 resolves (Monitoring › Alerts draws them). With AI off it is the answer on its own; Phase 8's
 Explain call (P1's second half) cites its pieces, and a citation is checked against it.
 
@@ -45,6 +47,14 @@ string in the pack is masked by `redact.redact_text` before it is hashed or stor
 planted in an interface description or a log line is carried as data, unchanged by anything it
 says: nothing here reads a piece's text to decide what to do.
 
+**A pack of an older schema can be built again, never rewritten** (C1862, Build again on its
+card, routes/v2.monitoring_alert_pack_rebuild): a past alert's pack built from the alert history
+as `build_for_episode` builds one, with this release's evidence, kept BESIDE the old pack under
+its own id (`rebuilt_id`: the alert's id ending ``-s<schema>``) and naming it
+(``rebuilt_from``). Both stay findable by id (`find`); where one pack stands for its alert (the
+Alerts tab's list, History's row), the newest wins (`superseded`; History's own matching takes
+the newest pack naming the episode), and Explain reads the pack it is pressed on.
+
 **Where it is kept:** the records store `evidence_packs` (`records_db.STORES`, the setting
 `records_store_evidence_packs`, `file` by default: ``evidence_packs.jsonl`` in the data folder,
 one line per pack). It cannot be computed on demand: the alert leaves the reader's value when it
@@ -65,15 +75,23 @@ log = logging.getLogger(__name__)
 #: and says it holds neither (expand, then contract). 3 (C1778, 2026-10-26) adds `endpoints`;
 #: a pack of 2 stays readable and holds none. 4 (the alert history, 2026-10-26) marks every
 #: section `provenance` (`PROVENANCE`) and the pack its own; a pack of 3 stays readable and is
-#: drawn as not marked.
-SCHEMA = 4
+#: drawn as not marked. 5 (C1849 to C1851, 2026-10-27) adds `concurrent`, the other alerts in
+#: the network around the onset; names every device by the network model's id wherever the
+#: model knows it (the health figures, the other alerts), so one device has one id in all a
+#: call sends; and reads a rebuilt pack's health figures for the devices within two hops in
+#: the model as it is now, said so. A pack of 4 stays readable: it holds no `concurrent`, and
+#: Explain names its devices by the model's ids as it sends it (`explain.one_id`), never
+#: rewriting the pack.
+SCHEMA = 5
 #: The records store (`records_db.STORES`) and its file.
 STORE = "evidence_packs"
 FILE_NAME = "evidence_packs.jsonl"
 #: The sections, in the order a person reads them.
-SECTIONS = ("alert", "device", "history", "intent", "neighbours", "observed", "endpoints",
-            "health", "logs")
-SECTION_WORDS = {"alert": "The alert", "device": "The device", "history": "Recent History",
+SECTIONS = ("alert", "concurrent", "device", "history", "intent", "neighbours", "observed",
+            "endpoints", "health", "logs")
+SECTION_WORDS = {"alert": "The alert",
+                 "concurrent": "Other alerts in the network around the onset",
+                 "device": "The device", "history": "Recent History",
                  "intent": "Intent check", "neighbours": "Neighbours",
                  "observed": "The network around it, as observed",
                  "endpoints": "What is attached around it, as observed",
@@ -106,7 +124,9 @@ NOT_REBUILT = {
                   "the RIP reader as they are now; the adjacencies as they were then were not "
                   "captured when the alert fired",
     "observed": "the Topology reader keeps only its latest read; the network as observed then "
-                "was not captured when the alert fired",
+                "was not captured when the alert fired. The health figures' devices and the "
+                "topology Explain sends are the network model as it is now, said so, which "
+                "may differ from then",
     "endpoints": "the endpoint store keeps only its latest read (no endpoint history is kept "
                  "yet, C1793); who was attached then was not captured when the alert fired",
 }
@@ -145,6 +165,57 @@ def alert_key(inst: dict) -> str:
 
 def pack_id(key: str) -> str:
     return f"ep-{key}"
+
+
+def rebuilt_id(key: str, schema: int = None) -> str:
+    """A pack BUILT AGAIN for an alert whose kept pack is of an older schema (C1862): the
+    alert's id with the schema it is built in, so the pack kept before keeps its own id and
+    both stay findable (`find`), each by its id."""
+    return f"{pack_id(key)}-s{SCHEMA if schema is None else int(schema)}"
+
+
+#: A pack id as a route takes it: the alert's, or the alert's built again in a later schema.
+PACK_ID = r"^ep-[0-9a-f]{20}(-s[0-9]{1,3})?$"
+
+
+def schema_of(pack: dict) -> int:
+    """The schema a kept pack was built in (1 for a pack that predates the field)."""
+    try:
+        return int((pack or {}).get("schema") or 1)
+    except (TypeError, ValueError):
+        return 1
+
+
+def built_when(pack: dict) -> str:
+    """When *pack* was built: a pack built after its alert (replayed or rebuilt) carries the
+    alert's time as ``built_at`` (what it is as of) and when it was built as ``replayed_at``;
+    one built as its alert fired, ``built_at`` alone."""
+    return (pack or {}).get("replayed_at") or (pack or {}).get("built_at") or ""
+
+
+def older_schema(pack: dict) -> bool:
+    """Whether *pack* was built in a schema older than this release's (`SCHEMA`): what it holds
+    is less than a pack built now would (no other alerts before 5, one device's health)."""
+    return schema_of(pack) < SCHEMA
+
+
+def superseded(rows) -> dict:
+    """``{pack id: the newest pack built again from it}`` over the kept *rows* (oldest first):
+    a pack built again names the one it was built from (``rebuilt_from``), and a chain is
+    followed to its newest, so the newest wins wherever one pack per alert is drawn."""
+    after = {}
+    for r in rows or []:
+        old = (r.get("rebuilt_from") or {}).get("id")
+        if old and old != r.get("id"):
+            after[old] = r
+    out = {}
+    for old in after:
+        seen, cur = {old}, after[old]
+        while cur.get("id") in after and cur.get("id") not in seen:
+            seen.add(cur["id"])
+            cur = after[cur["id"]]
+        out[old] = cur
+    return out
 
 
 def firing(value: dict) -> list:
@@ -641,7 +712,8 @@ def health_section(ref, host: str, capture: dict, onset, now: float, built: floa
     extra = {"window": got["window"], "as_of": _iso(now), "asked_at": _iso(built),
              "questions": got["asked"], "errors": got["errors"],
              "devices_total": total, "devices_kept": len(devices),
-             "figures": {k: H.FIGURE_WORDS[k] for k in H.FIGURES}}
+             "figures": {k: H.FIGURE_WORDS[k] for k in H.FIGURES},
+             "devices_from": devices_from(capture)}
     if not capture.get("ok"):
         extra["errors"] = [capture.get("words") or
                            f"the network model could not be read ({capture.get('error')}), "
@@ -665,6 +737,128 @@ def health_section(ref, host: str, capture: dict, onset, now: float, built: floa
     return sec
 
 
+def devices_from(capture: dict) -> str:
+    """Whose figures the health section holds, in words: the walk the capture made (C1851: a
+    pack rebuilt from the alert history walks the model as it is now, and says so)."""
+    if not capture.get("ok"):
+        return "the alert's device alone: no walk of the network model was made"
+    if capture.get("as_now"):
+        return ("the devices within two hops in " + capture["as_now"] + "; the network as "
+                "observed then was not captured")
+    return ("the devices within two hops in the network model, walked with the observed "
+            "overlay captured with the pack")
+
+
+#: The most other alerts a pack keeps (`concurrent_section`): those whose start is nearest the
+#: onset, the rest counted and said. Measured on the host's alert history (2026-10-27 01:35
+#: UTC, read-only, 7,917 episodes): over the 1,982 alerts that fired in Default, each one's
+#: window (15 minutes before its onset to when it fired) held a median of 4 other alerts, 23 at
+#: the 95th percentile and 67 at most (2026-10-21 04:09 UTC, a storm of discards and
+#: unreachable devices). Walk 2's first alert held 16 (about 1,400 tokens). 40 keeps 95% of windows
+#: whole and the section near 3,500 tokens of Explain's 20,000-token prompt bound
+#: (modules/ai/pins/explain.json), beside the health figures and the log lines; a storm past it
+#: is counted, nearest the onset kept, never dropped silently.
+MAX_CONCURRENT = 40
+CONCURRENT_MEASURED = {"median": 4, "p95": 23, "max": 67, "walk_first": 16, "walk_second": 26}
+
+
+def concurrent_section(network: str, store: str, own: str, onset, at: float, built: float,
+                       ids: dict = None, rows=None) -> dict:
+    """Every OTHER alert in the alert's network active from 15 minutes before its onset to its
+    time (C1850; `evidence_health.window`, the health figures' own window), from the alert
+    history (`alert_history.episodes`, Grafana's own times): each episode's rule, device (its
+    model id where the model knows it, *ids* by name: C1849) or address, its state at the
+    alert's time and its times, never what happened after the alert's time. A piece's
+    reference is ``concurrent:<episode id>``, the history's own id for it. *own* is this
+    alert's identity (`alert_history.identity`): its episode spanning *at* is the alert itself,
+    left out; its earlier episodes in the window stay, marked ``same_alert``. An episode begun
+    before the window whose resolve was never recorded is counted, not listed (its state in
+    the window is not known). At most `MAX_CONCURRENT`, those nearest the onset. *rows* stand
+    in for the store's (tests)."""
+    from modules import alert_history as AH
+    from modules import evidence_health as H
+
+    win = H.window(onset, at)
+    start, end = win["start"], win["end"]
+    window = {"from": _iso(start), "to": _iso(end), "words": f"the {win['seconds'] // 60} "
+              f"minutes {win['basis']}" + (f"; {win['bounded']}" if win["bounded"] else "")}
+    where = f"the network {network}" if network else f"the alerts read from {store}"
+    source = (f"the alert history (Grafana's transitions as it timed them), every other alert "
+              f"of {where} active in the window, each as it stood at the alert's time")
+    if rows is None:
+        got = AH.read()
+        if got["state"] == "unreadable":
+            return _section("concurrent", source, built, "unreadable",
+                            f"the alert history cannot be read ({got['error']})", window=window)
+        if got["state"] == "absent":
+            return _section("concurrent", source, built, "absent",
+                            "the alert history holds nothing yet: no transition was recorded",
+                            window=window)
+        rows = got["rows"]
+
+    def mine(e):
+        nets = e.get("networks") or []
+        return network in nets if (network and nets) else e.get("store") == store
+
+    pieces, unknown, total = [], 0, 0
+    for e in AH.episodes(rows):
+        if not mine(e):
+            continue
+        began, ended = AH.epoch(e.get("started_at")), AH.epoch(e.get("resolved_at"))
+        if began is None or began > end:
+            continue
+        if ended is not None and ended < start:
+            continue
+        if e.get("identity") == own and (ended is None or ended >= end):
+            continue                                  # the alert itself
+        if ended is None and began < start:
+            unknown += 1
+            continue
+        total += 1
+        states = [s for s in e.get("states") or [] if (AH.epoch(s.get("at")) or 0) <= end]
+        over = ended is not None and ended <= end
+        last = states[-1]["to"] if states else ""
+        piece = {"rule": e.get("rule") or "", "device": e.get("device") or "",
+                 "state": "resolved" if over else AH.KIND_WORDS.get(last, last or "unknown"),
+                 "started_at": e.get("started_at") or "",
+                 "fired_at": e["fired_at"] if (AH.epoch(e.get("fired_at")) or end + 1) <= end
+                 else "",
+                 "resolved_at": e["resolved_at"] if over else "",
+                 "_episode": e.get("id") or "", "_began": began}
+        if not piece["device"]:
+            piece["address"] = e.get("address") or ""
+        if piece["device"] and (ids or {}).get(piece["device"]):
+            piece["dev"] = ids[piece["device"]]
+        if e.get("identity") == own:
+            piece["same_alert"] = True
+        pieces.append(piece)
+    centre = onset if onset is not None else end
+    kept = sorted(pieces, key=lambda p: (abs(p["_began"] - centre), p["started_at"],
+                                         p["rule"], p["device"]))[:MAX_CONCURRENT]
+    kept.sort(key=lambda p: (p["started_at"], p["rule"], p["device"] or p.get("address", "")))
+    for p in kept:
+        p.pop("_began")
+        p["ref"] = p.pop("_episode")
+    # Those begun before the window with no resolve recorded are counted, never listed: their
+    # state in the window is not known (the card and the pack format say so).
+    extra = {"window": window, "total": total, "subset": total > len(kept),
+             "unknown_state": unknown}
+    if not kept:
+        return _section("concurrent", source, built, "empty",
+                        f"no other alert of {where} was active between {window['from']} and "
+                        f"{window['to']}", **extra)
+    episodes = [p.pop("ref") for p in kept]
+    sec = _section("concurrent", source, built, "ok", pieces=kept, **extra)
+    seen = set()
+    for p, eid in zip(sec["pieces"], episodes):
+        ref = f"concurrent:{eid}"
+        while ref in seen:                            # one reference, one piece, always
+            ref += "+"
+        seen.add(ref)
+        p["ref"] = ref
+    return sec
+
+
 # ----------------------------------------------------------------------------- the pack
 
 #: Each section's provenance when a pack is NOT built as its alert was found firing: a replay
@@ -673,16 +867,19 @@ def health_section(ref, host: str, capture: dict, onset, now: float, built: floa
 #: time by Grafana or the reader). The endpoints are captured whenever the store's read was
 #: made as of the alert's time (`endpoints_section`), else missing.
 REBUILT_MARKS = {
-    "replay": {"alert": "rebuilt", "device": "rebuilt", "history": "rebuilt",
-               "intent": "rebuilt", "neighbours": "rebuilt", "observed": "rebuilt",
-               "health": "rebuilt", "logs": "rebuilt"},
-    "history": {"alert": "captured", "device": "rebuilt", "history": "rebuilt",
-                "intent": "rebuilt", "neighbours": "missing", "observed": "missing",
-                "endpoints": "missing", "health": "rebuilt", "logs": "rebuilt"},
+    "replay": {"alert": "rebuilt", "concurrent": "rebuilt", "device": "rebuilt",
+               "history": "rebuilt", "intent": "rebuilt", "neighbours": "rebuilt",
+               "observed": "rebuilt", "health": "rebuilt", "logs": "rebuilt"},
+    "history": {"alert": "captured", "concurrent": "rebuilt", "device": "rebuilt",
+                "history": "rebuilt", "intent": "rebuilt", "neighbours": "missing",
+                "observed": "missing", "endpoints": "missing", "health": "rebuilt",
+                "logs": "rebuilt"},
 }
 #: Each mark's words for a section, beyond `PROVENANCE_WORDS`: what it was rebuilt from.
 REBUILT_FROM = {
     "alert": "the alert's transitions, as Grafana timed them, from the alert history",
+    "concurrent": ("the alert history (Grafana's own times), each other alert as it stood at "
+                   "the alert's time"),
     "device": "every network's inventory as it is now",
     "history": "History as it is now, less what it recorded after the alert's time",
     "intent": "the repository at the commit current at the alert's time",
@@ -690,6 +887,12 @@ REBUILT_FROM = {
     "observed": "the Topology reader's own read over Prometheus as of the alert's time",
     "health": "Prometheus and Loki asked over the alert's window",
     "logs": "Loki asked over the window around the onset",
+}
+#: A pack rebuilt from the alert history reads its health figures for the devices within two
+#: hops in the network model AS IT IS NOW (C1851): its mark says so, never a capture.
+REBUILT_FROM_HISTORY = {
+    "health": ("Prometheus and Loki asked over the alert's window, for the devices within two "
+               "hops in the network model as it is now, which may differ from then"),
 }
 
 
@@ -724,7 +927,9 @@ def _marks(sections: list, mode: str, clock: float) -> None:
         elif name == "alert" and mode == "replay":
             mark(s, "rebuilt", "synthesized by the replay, no Grafana rule alerting on it")
         else:
-            mark(s, "rebuilt", f"at {_iso(clock)}, from {REBUILT_FROM.get(name, 'its source')}")
+            words = ((REBUILT_FROM_HISTORY if mode == "history" else {}).get(name)
+                     or REBUILT_FROM.get(name, "its source"))
+            mark(s, "rebuilt", f"at {_iso(clock)}, from {words}")
 
 
 def build(inst: dict, *, store: str, value_at: str, now: float = None, loki=None,
@@ -738,9 +943,13 @@ def build(inst: dict, *, store: str, value_at: str, now: float = None, loki=None
     a past alert, `scripts/nmas-pack-replay`, gives the read made as of that time), and
     *trigger* for what made the pack (the replay's own words). *mode* ``"history"`` builds a
     past alert's pack from the alert history (`build_for_episode`): History cut at the alert's
-    time, the Intent check at the commit current then, and the sections that read a store
-    keeping only its latest value said to be missing, never read now. Every section is marked
-    (`provenance`)."""
+    time, the Intent check at the commit current then, the sections that read a store keeping
+    only its latest value said to be missing, never read now, and the health figures read for
+    the devices within two hops in the network model as it is now, said so (C1851). Every pack
+    holds the other alerts of its network around the onset (`concurrent_section`, C1850), and
+    names each device by the network model's id wherever the model knows it (C1849). Every
+    section is marked (`provenance`)."""
+    from modules import alert_history as AH
     from modules import attention as A
     from modules import network_model as NM
     from modules import redact
@@ -757,8 +966,31 @@ def build(inst: dict, *, store: str, value_at: str, now: float = None, loki=None
     except Exception as exc:                          # noqa: BLE001
         dev_section, ref, dev = (_section("device", "every network's inventory", now,
                                           "unreadable", _failed(exc)), None, None)
-    sections.append(dev_section)
     host = (dev or {}).get("hostname") or ""
+    cap = {"ok": False, "error": "no device"}
+    if ref is not None:
+        # One walk of the network model per pack (C1849): its ids name every device the pack
+        # names. A pack rebuilt from the alert history walks the model as it is now, reading
+        # no observed state (C1851); one built as its alert fires, or replayed, walks it with
+        # the observed overlay as of the alert's time (C1712).
+        try:
+            cap = NM.capture(ref.name, host, hops=NM.CAPTURE_HOPS, now=now,
+                             stored=observed_read, observe=mode != "history")
+        except Exception as exc:                      # noqa: BLE001 (said, never raised)
+            cap = {"ok": False, "error": _failed(exc)}
+        if not cap.get("ok") and mode == "history":
+            cap["words"] = (f"the network model could not be read ({cap.get('error')}), so "
+                            "only the alert's device is read")
+    ids = cap.get("names") or {}
+    try:
+        sections.append(concurrent_section(
+            ref.name if ref is not None else "", store,
+            AH.identity(store, inst.get("rule") or "", inst.get("labels")), onset, now, clock,
+            ids=ids))
+    except Exception as exc:                          # noqa: BLE001 (said, never raised)
+        sections.append(_section("concurrent", "the alert history", clock, "unreadable",
+                                 _failed(exc)))
+    sections.append(dev_section)
     if ref is None:
         why = f"no device to read for: {dev_section['why']}"
         for name in ("history", "intent", "neighbours", "observed", "endpoints", "health",
@@ -777,10 +1009,6 @@ def build(inst: dict, *, store: str, value_at: str, now: float = None, loki=None
             sections.append(_section(name, "nothing read: not captured when the alert fired",
                                      clock, "absent", "cannot be rebuilt; a later read is never "
                                      "put in its place"))
-        cap = {"ok": False, "error": "not rebuilt",
-               "words": ("the devices around it as they were then are not rebuilt (the "
-                         "network as observed then was not captured), so only the alert's "
-                         "device is read")}
         try:
             sections.append(health_section(ref, host, cap, onset, now, clock,
                                            prometheus=prometheus, loki=loki))
@@ -796,11 +1024,6 @@ def build(inst: dict, *, store: str, value_at: str, now: float = None, loki=None
                                  f"{_iso(clock)}, not as of the alert's time {_iso(now)}")
         sections.append(intent)
         sections.append(neighbours_section(ref, dev, as_of=now))
-        try:
-            cap = NM.capture(ref.name, host, hops=NM.CAPTURE_HOPS, now=now,
-                             stored=observed_read)
-        except Exception as exc:                      # noqa: BLE001 (said, never raised)
-            cap = {"ok": False, "error": _failed(exc)}
         sections.append(observed_section(cap, now, clock))
         # The alert's device and those one hop from it, by name (the endpoint store's key);
         # the capture keys its walk by node id, named in its `nodes`.
@@ -913,24 +1136,42 @@ def episode_instance(e: dict) -> dict:
             "silences": []}
 
 
-def build_for_episode(e: dict, *, actor: str, loki=None, prometheus=None) -> dict:
+def build_for_episode(e: dict, *, actor: str, loki=None, prometheus=None,
+                      rebuild_of: dict = None) -> dict:
     """A past alert's pack, rebuilt from the alert history (Monitoring › Alerts › History,
     Build evidence): as of the alert's time (when it fired, else when it began), its window
     from 15 minutes before the onset to that time, each section marked. Frozen once kept:
-    Explain reads it by id and checks its hash, never building it again."""
+    Explain reads it by id and checks its hash, never building it again.
+
+    *rebuild_of* is a kept pack of an older schema this one is built AGAIN for (C1862, Build
+    again): the new pack takes `rebuilt_id` (its own id, so the kept one keeps its), names the
+    one it was built from (``rebuilt_from``: its id, schema, built time and hash) and says so
+    in its trigger. The kept pack is never rewritten."""
     from modules import alert_history as H
 
     at = H.epoch(e.get("fired_at")) or H.epoch(e.get("started_at"))
+    words = (f"built from the alert history by {actor} at {_iso(_now())}: "
+             f"{e.get('rule') or 'an alert'} fired at {_iso(at)}, resolved at "
+             f"{e.get('resolved_at') or 'a time Grafana did not record'}; "
+             "nothing was captured when it fired")
+    if rebuild_of:
+        words = (f"built again from the alert history by {actor} at {_iso(_now())}, with this "
+                 f"release's evidence (schema {SCHEMA}), in place of pack {rebuild_of.get('id')} "
+                 f"(schema {schema_of(rebuild_of)}), which stays kept: "
+                 f"{e.get('rule') or 'an alert'} fired at {_iso(at)}, resolved at "
+                 f"{e.get('resolved_at') or 'a time Grafana did not record'}")
     pack = build(episode_instance(e), store=e.get("store") or "", value_at="", now=at,
-                 loki=loki, prometheus=prometheus, mode="history",
-                 trigger=(f"built from the alert history by {actor} at {_iso(_now())}: "
-                          f"{e.get('rule') or 'an alert'} fired at {_iso(at)}, resolved at "
-                          f"{e.get('resolved_at') or 'a time Grafana did not record'}; "
-                          "nothing was captured when it fired"))
+                 loki=loki, prometheus=prometheus, mode="history", trigger=words)
     from modules import redact
     pack.pop("hash", None)
     pack["episode"] = e.get("id") or ""
     pack["resolved_at"] = e.get("resolved_at") or ""
+    if rebuild_of:
+        pack["id"] = rebuilt_id(pack["alert_key"])
+        pack["rebuilt_from"] = {"id": rebuild_of.get("id") or "",
+                                "schema": schema_of(rebuild_of),
+                                "built_at": built_when(rebuild_of),
+                                "hash": rebuild_of.get("hash") or ""}
     pack = redact.redact_payload(pack)
     pack["hash"] = digest(pack)
     return pack
@@ -1066,7 +1307,8 @@ def pack_summary(pack: dict) -> dict:
             "not_read": [s.get("words") or s.get("name") for s in sections
                          if s.get("state") == "unreadable"],
             "device": pack.get("device") or "", "network": pack.get("network") or "",
-            "onset": pack.get("onset") or "", "rule": pack.get("rule") or ""}
+            "onset": pack.get("onset") or "", "rule": pack.get("rule") or "",
+            "schema": schema_of(pack), "built": built_when(pack)}
 
 
 def tab(q: str = "") -> dict:
@@ -1108,8 +1350,11 @@ def tab(q: str = "") -> dict:
     groups = {}
     for c in shown:
         groups.setdefault(family(c["rule"], c["device"]), []).append(c)
+    # A pack built again (C1862) is drawn in place of the one it was built from, which stays
+    # kept and opens from it: one pack per alert here, the newest.
+    gone = superseded(store["rows"])
     earlier_all = [pack_summary(p) for p in reversed(store["rows"])
-                   if p.get("alert_key") not in keys]
+                   if p.get("alert_key") not in keys and p.get("id") not in gone]
     earlier_all = [e for e in earlier_all if matches(e["rule"], e["device"])]
     return {"q": q, "sources": sources, "store": {"state": store["state"],
                                                   "error": store["error"]},

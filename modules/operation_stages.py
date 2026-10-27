@@ -423,6 +423,9 @@ HISTORY = {
     "v2.monitoring_alert_history_evidence": "n/a: a past alert's evidence pack, rebuilt and "
                                             "kept in the evidence pack record; reaches no "
                                             "device",
+    "v2.monitoring_alert_pack_rebuild": "n/a: a past alert's evidence pack built again and "
+                                        "kept beside the one it replaces in the evidence pack "
+                                        "record; reaches no device",
     "v2.history_ask_metrics_words": "n/a: one AI call, kept in the fleet's ai_calls record, "
                                     "never one device's record",
     "v2.history_ask_logs_words": "n/a: one AI call, kept in the fleet's ai_calls record, "

@@ -2022,6 +2022,80 @@ def test_monitoring_alerts_history(tmp_path, monkeypatch):
         next(gen, None)
 
 
+def test_monitoring_alerts_history_rebuild(tmp_path, monkeypatch):
+    """Build again (C1862) on History, beside board P1-H (`AlertsHistory.dc.html`, 1440), which
+    draws no such control: test_monitoring_alerts_history's lab, with r2's past alert keeping a
+    pack of schema 4 (tests/test_evidence_pack_rebuild.py's `_as_schema_4`: Build evidence's own
+    pack less the section schema 5 added). The row opened on it (Build again offered), Build
+    again pressed (the pack built again drawn in place, naming the one it was built from), and
+    Show it pressed (the kept pack, saying it was built again). At each later width the pack is
+    put back as schema 4 alone, so each width draws the three states."""
+    import tempfile
+
+    from modules import alert_history as H
+    from modules import evidence_pack as EP
+    from modules import history_logq as Q
+    from tests import browser
+    from tests import test_device_v2 as DV
+    from tests import test_evidence_pack as T
+    from tests.test_alert_history import _backfill, load
+    from tests.test_evidence_pack_rebuild import _as_schema_4
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    gen = DV.lab.__wrapped__(tmp_path, monkeypatch)
+    next(gen)
+    folder = tempfile.mkdtemp(prefix="nmas-shots-rebuild-", dir=str(tmp_path))
+    store = os.path.join(folder, "evidence_packs.jsonl")
+    monkeypatch.setattr("modules.device.load_saved_devices",
+                        lambda path=None: [dict(d) for d in T.DEVICES])
+    monkeypatch.setattr(EP, "_path", lambda: store)
+    monkeypatch.setattr(H, "_path", lambda: os.path.join(folder, "alert_history.jsonl"))
+    monkeypatch.setattr(H, "_networks", lambda: {"grafana-alerts": ["Lab"]})
+    monkeypatch.setattr(H, "_firing_now", lambda: set())
+    monkeypatch.setattr(Q, "_client", lambda *a, **k: T.DeviceLoki())
+    T._prometheus(monkeypatch)
+    assert _backfill(load("annotations_firing"))["added"] == 93
+    e = next(x for x in H.episodes(H.read()["rows"])
+             if x["rule"] == "NMAS heartbeat missing: r2")
+    old = _as_schema_4(EP.build_for_episode(dict(e, fired_at=e["started_at"]),
+                                            actor="operator@example.com"))
+
+    url = "/v2/monitoring/alerts/history?range=all&show=all"
+    group = ("[...document.querySelectorAll('details.ah-group')].find(g => "
+             "/NMAS heartbeat missing/.test(g.querySelector('summary').textContent))")
+    row = f"[...{group}.querySelectorAll('details.ah-row')].find(r => /r2/.test(r.textContent))"
+    try:
+        import app as A
+        _d_walk("alerts-history-rebuild", None, "", [],
+                boards=(("AlertsHistory.dc.html", 1440),), widths=((1440, 1.0),))
+        with browser.Served(A.app) as served:
+            def older(b):
+                # The schema-4 pack alone, then the tab drawn again over it.
+                if os.path.exists(store):
+                    os.remove(store)
+                assert EP.record(old)["ok"]
+                b.go(served.url(url))
+            _d_walk("alerts-history-rebuild", served, url, [
+                        ("older", older, "!!document.querySelector('details.ah-group')"),
+                        ("offered", f"{group}.open = true; {row}.open = true",
+                         f"!!{row}.querySelector('form.pack-rebuild button')"),
+                        # Its response names `alerts`, so the list redraws after the answer:
+                        # shot once it has, nothing in flight.
+                        ("rebuilt", "window.__list = document.getElementById('alert-history'); "
+                                    f"{row}.querySelector('form.pack-rebuild button').click()",
+                         "document.getElementById('alert-history') !== window.__list && "
+                         f"({row}.querySelector('.pack') || {{}}).getAttribute && "
+                         f"{row}.querySelector('.pack').getAttribute('data-pack') === "
+                         f"'{old['id']}-s5'"),
+                        ("kept", f"{row}.querySelector('.pack-lineage button').click()",
+                         f"{row}.querySelector('.pack').getAttribute('data-pack') === "
+                         f"'{old['id']}'")],
+                    widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
+    finally:
+        next(gen, None)
+
+
 def test_tab_intent_words(tmp_path, monkeypatch):
     """Feature 7 (PHASE8_PLAN 15.16): board F7 (`IntentWords.dc.html`, 1440) beside s1's Intent
     tab on the host's real committed lab (tests/test_committed_before_p1's `host`): the row

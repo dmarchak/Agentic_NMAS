@@ -53,7 +53,7 @@
         · {% if e.fired_at %}fired {{ stamp(e.fired_at, note="Grafana's time") }}{% else %}began {{ stamp(e.started_at, note="Grafana's time") }}{% endif %}
         · {% if e.resolved_at %}resolved {{ stamp(e.resolved_at, note="Grafana's time; " ~ e.resolved_state) }}{% if e.duration_words %} ({{ e.duration_words }}){% endif %}{% else %}<span title="no normal state was recorded after it, and the alerts reader no longer holds it">ended, its resolve not recorded</span>{% endif %}
         {%- if e.outcome != 'fired' %} {{ badge(h.outcome_words[e.outcome], OK[e.outcome]) }}{% endif %}
-        {%- if p %} {{ badge(p.pieces ~ ' pieces', 'info', title='pack ' ~ p.id ~ ', built ' ~ p.built_at ~ ', sha256 ' ~ p.hash) }}
+        {%- if p %} {{ badge(p.pieces ~ ' pieces', 'info', title='pack ' ~ p.id ~ ', schema ' ~ p.schema ~ ', built ' ~ p.built ~ ', as of ' ~ p.built_at ~ ', sha256 ' ~ p.hash) }}
           {%- if p.not_read %} {{ badge(p.not_read|length ~ ' not read', 'warn', title='could not be read: ' ~ p.not_read|join(', ')) }}{% endif %}
           {%- if not p.intact %} {{ badge('changed since built', 'danger', title='its stored hash is not its digest now') }}{% endif %}
         {%- else %} {{ badge('no evidence pack', 'muted') }}{% endif %}

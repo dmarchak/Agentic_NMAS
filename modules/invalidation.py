@@ -408,6 +408,7 @@ DECLARED = {
     "settings_v2.install_test": ("ai_calls",),
     "v2.monitoring_alert_explain": ("ai_calls",),
     "v2.monitoring_alert_history_evidence": ("alerts",),
+    "v2.monitoring_alert_pack_rebuild": ("alerts",),
     "v2.history_ask_metrics_words": ("ai_calls",),
     "v2.history_ask_logs_words": ("ai_calls",),
     "intent_v2.words": ("ai_calls",),

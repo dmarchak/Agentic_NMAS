@@ -283,12 +283,20 @@ def _section(pack: dict, name: str) -> dict:
 
 def select(pack: dict, selector: str) -> list:
     """The pack's pieces a case's selector names: ``health:<device name>:<figure>`` (the
-    figure's id carries the device's id, which a case cannot know before the pack is built), or
-    ``<section>:*``, every piece of that section and the section itself."""
+    figure's id carries the device's id, which a case cannot know before the pack is built);
+    ``concurrent:<device name or address>``, every other alert of that device (C1850), or
+    ``concurrent:<device>@<rule>``, that rule's alone (an address may hold colons, so the rule
+    follows an ``@``); or ``<section>:*``, every piece of that section and the section
+    itself."""
     parts = selector.split(":")
     if parts[0] == "health" and len(parts) == 3:
         return [p for p in _section(pack, "health").get("pieces") or []
                 if p.get("device") == parts[1] and p.get("figure") == parts[2]]
+    if parts[0] == "concurrent" and selector != "concurrent:*":
+        who, _at, rule = selector[len("concurrent:"):].partition("@")
+        return [p for p in _section(pack, "concurrent").get("pieces") or []
+                if who in (p.get("device"), p.get("address")) and (not rule
+                                                                   or p.get("rule") == rule)]
     if len(parts) == 2 and parts[1] == "*":
         s = _section(pack, parts[0])
         return ([s] if s else []) + list(s.get("pieces") or [])
@@ -340,6 +348,14 @@ def explain_unready(case: dict, pack: dict) -> list:
     `needs` must name a piece that was measured (state ok); a `quiet` case (a healthy
     baseline) must show none of the symptoms it names anywhere in its health figures or its
     log lines, else the window was not healthy and the case is not one."""
+    from modules import evidence_pack as EP
+
+    def read(p):
+        # Whether it was read is its section's state (a health figure's own, C1761); a piece's
+        # own `state` may be what it describes (another alert's "firing", C1850).
+        return (EP.read_state(pack, p.get("ref")) if p.get("ref") else "") or p.get("state",
+                                                                                   "ok")
+
     out = []
     if not _section(pack, "health"):
         out.append("the pack holds no health section (built before C1714)")
@@ -347,7 +363,7 @@ def explain_unready(case: dict, pack: dict) -> list:
         got = select(pack, sel)
         if not got:
             out.append(f"{sel}: not in the pack")
-        elif not any(p.get("state", "ok") == "ok" for p in got):
+        elif not any(read(p) == "ok" for p in got):
             out.append(f"{sel}: not measured ({got[0].get('state')}: {got[0].get('why', '')})")
     alone = case.get("alone")
     if alone:
@@ -401,6 +417,16 @@ def _reasoning(expect: dict, hyps: list, pack: dict) -> list:
                           for h in hyps):
         out.append(f"no one hypothesis cites {' or '.join(common['figures'])} figures of "
                    f"{common['min_devices']} or more devices")
+    # A cause shared beneath several devices, cited by their alerts in the window (C1850, the
+    # pack's `concurrent` section): one hypothesis citing other alerts of that many devices.
+    alerts = expect.get("common_alerts")
+    if alerts:
+        by_alert = {p.get("ref"): (p.get("device") or p.get("address"))
+                    for p in _section(pack, "concurrent").get("pieces") or []}
+        if not any(len({by_alert[r] for r in h.get("evidence_refs") or [] if r in by_alert})
+                   >= alerts["min_devices"] for h in hyps):
+            out.append(f"no one hypothesis cites other alerts of {alerts['min_devices']} or "
+                       "more devices")
     # The control's other side: where one device alone shows the symptom, a cause shared
     # beneath several is not the evidence's (Explain v5's proof, the operator, 2026-10-26).
     alone = expect.get("no_common")

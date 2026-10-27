@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import badge, icon -%}
+{%- from "v2/_macros.html" import badge, icon, stamp -%}
 {#- Explain's answer, in its pack (modules/ai/explain.py; PHASE8_PLAN 15.9, P1): the rationale,
     then each hypothesis with what it cites (a pack piece a link to it, an id of the topology
     sent drawn as text, 15.15) and the read that would confirm it; or why there is none; and,
@@ -14,6 +14,7 @@
   {%- if a.needs_human %}<p class="small">{{ badge('needs a person', 'warn') }} Something in the pack could not be read.</p>{% endif %}
   <p class="muted small" title="{{ explain_model }}; ${{ '%.4f' | format(x.cost_usd) }}; recorded as {{ x.call_id }}{% if t.sent %}; sent with the network around {{ t.subject }} in {{ t.network }}: {{ t.devices | length }} devices within {{ t.hops }} hop (model {{ t.version }}), observed {{ t.observed }}{% endif %}">An assessment of the pack, not of the network: only what the pack holds was checked. Nothing was run.</p>
   {%- if t and not t.sent %}<p class="muted small topo-not-sent">No topology was sent with the pack: {{ t.why }}.</p>{% endif %}
+  {%- if t.as_now %}<p class="muted small topo-as-now">The network sent with the pack is {{ t.as_now }}.</p>{% endif %}
 {%- elif x.ok %}
   {%- set a = x.answer %}
   <p class="explain-why">{{ a.rationale }}</p>
@@ -27,10 +28,16 @@
   {%- set t = x.topology or {} %}
   <p class="muted small" title="{{ explain_model }}; ${{ '%.4f' | format(x.cost_usd) }}; recorded as {{ x.call_id }}{% if t.sent %}; sent with the network around {{ t.subject }} in {{ t.network }}: {{ t.devices | length }} devices within {{ t.hops }} hop (model {{ t.version }}), observed {{ t.observed }}{% endif %}">A hypothesis, not a finding: each cites the pack above{% if t.sent %} or the network around {{ t.subject }}{% endif %}. Nothing was run.</p>
   {%- if t and not t.sent %}<p class="muted small topo-not-sent">No topology was sent with the pack: {{ t.why }}.</p>{% endif %}
+  {%- if t.as_now %}<p class="muted small topo-as-now">The network sent with the pack is {{ t.as_now }}.</p>{% endif %}
 {%- elif x.error == 'ai_off' %}
   <p class="muted small">{{ icon('info', 14) }} Not explained: hosted AI is off until it is allowed (Settings › Installation › AI). The pack above is the whole of what Mercury gathered.</p>
 {%- else %}
   <p class="refusal" role="alert">Not explained: {{ x.detail }}.</p>
+{%- endif %}
+{%- if x.pack_read and x.call_id %}
+  {#- Which pack the call read (C1862): an alert may keep two, the one built again and the one
+      it was built from. -#}
+  <p class="muted small explain-pack" data-pack-read="{{ x.pack_read.id }}">Read pack <span class="mono">{{ x.pack_read.id }}</span>, schema {{ x.pack_read.schema }}, built {{ stamp(x.pack_read.built_at) }}{% if x.pack_read.as_of and x.pack_read.as_of != x.pack_read.built_at %} as of {{ stamp(x.pack_read.as_of) }}{% endif %}.</p>
 {%- endif %}
 {%- if x.recorded is defined and not x.recorded %}
   <p class="warn-text small">The record of AI calls could not be written, so History will not show this call.</p>

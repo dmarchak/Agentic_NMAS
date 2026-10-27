@@ -1,0 +1,884 @@
+{
+ "_capture": "The lab NetBox's dcim/cables/?limit=1000, read 2026-10-27 through Mercury's NetBox integration client on the NMAS host (one page, 17 cables, 0.37 s). Kept per cable: id, label, type, status, last_updated and each termination's object_type, object_id and object (id, name, device id and name, cable, _occupied); NetBox's url and display_url fields left out but in a cable end's cable object, its address moved to netbox.example.test. Nothing else edited: device and port names are the lab's, NetBox ids NetBox's.",
+ "count": 17,
+ "next": null,
+ "previous": null,
+ "results": [
+  {
+   "a_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "#1",
+       "id": 1,
+       "label": "",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/1/"
+      },
+      "device": {
+       "id": 1,
+       "name": "s1"
+      },
+      "id": 5,
+      "name": "GigabitEthernet0/3"
+     },
+     "object_id": 5,
+     "object_type": "dcim.interface"
+    }
+   ],
+   "b_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "#1",
+       "id": 1,
+       "label": "",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/1/"
+      },
+      "device": {
+       "id": 2,
+       "name": "s2"
+      },
+      "id": 15,
+      "name": "GigabitEthernet0/3"
+     },
+     "object_id": 15,
+     "object_type": "dcim.interface"
+    }
+   ],
+   "id": 1,
+   "label": "",
+   "last_updated": "2026-08-30T02:35:14.179106Z",
+   "status": {
+    "label": "Connected",
+    "value": "connected"
+   },
+   "type": null
+  },
+  {
+   "a_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "#2",
+       "id": 2,
+       "label": "",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/2/"
+      },
+      "device": {
+       "id": 3,
+       "name": "s3"
+      },
+      "id": 25,
+      "name": "GigabitEthernet0/3"
+     },
+     "object_id": 25,
+     "object_type": "dcim.interface"
+    }
+   ],
+   "b_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "#2",
+       "id": 2,
+       "label": "",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/2/"
+      },
+      "device": {
+       "id": 4,
+       "name": "s4"
+      },
+      "id": 33,
+      "name": "GigabitEthernet0/3"
+     },
+     "object_id": 33,
+     "object_type": "dcim.interface"
+    }
+   ],
+   "id": 2,
+   "label": "",
+   "last_updated": "2026-08-30T23:28:03.089704Z",
+   "status": {
+    "label": "Connected",
+    "value": "connected"
+   },
+   "type": null
+  },
+  {
+   "a_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "#3",
+       "id": 3,
+       "label": "",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/3/"
+      },
+      "device": {
+       "id": 3,
+       "name": "s3"
+      },
+      "id": 26,
+      "name": "GigabitEthernet1/0"
+     },
+     "object_id": 26,
+     "object_type": "dcim.interface"
+    }
+   ],
+   "b_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "#3",
+       "id": 3,
+       "label": "",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/3/"
+      },
+      "device": {
+       "id": 5,
+       "name": "r1"
+      },
+      "id": 37,
+      "name": "GigabitEthernet2"
+     },
+     "object_id": 37,
+     "object_type": "dcim.interface"
+    }
+   ],
+   "id": 3,
+   "label": "",
+   "last_updated": "2026-08-30T23:28:04.514642Z",
+   "status": {
+    "label": "Connected",
+    "value": "connected"
+   },
+   "type": null
+  },
+  {
+   "a_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "#4",
+       "id": 4,
+       "label": "",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/4/"
+      },
+      "device": {
+       "id": 3,
+       "name": "s3"
+      },
+      "id": 24,
+      "name": "GigabitEthernet0/2"
+     },
+     "object_id": 24,
+     "object_type": "dcim.interface"
+    }
+   ],
+   "b_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "#4",
+       "id": 4,
+       "label": "",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/4/"
+      },
+      "device": {
+       "id": 7,
+       "name": "r3"
+      },
+      "id": 46,
+      "name": "GigabitEthernet3"
+     },
+     "object_id": 46,
+     "object_type": "dcim.interface"
+    }
+   ],
+   "id": 4,
+   "label": "",
+   "last_updated": "2026-08-30T23:28:05.094237Z",
+   "status": {
+    "label": "Connected",
+    "value": "connected"
+   },
+   "type": null
+  },
+  {
+   "a_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "#5",
+       "id": 5,
+       "label": "",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/5/"
+      },
+      "device": {
+       "id": 4,
+       "name": "s4"
+      },
+      "id": 34,
+      "name": "GigabitEthernet1/0"
+     },
+     "object_id": 34,
+     "object_type": "dcim.interface"
+    }
+   ],
+   "b_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "#5",
+       "id": 5,
+       "label": "",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/5/"
+      },
+      "device": {
+       "id": 6,
+       "name": "r2"
+      },
+      "id": 41,
+      "name": "GigabitEthernet2"
+     },
+     "object_id": 41,
+     "object_type": "dcim.interface"
+    }
+   ],
+   "id": 5,
+   "label": "",
+   "last_updated": "2026-08-30T23:28:06.109516Z",
+   "status": {
+    "label": "Connected",
+    "value": "connected"
+   },
+   "type": null
+  },
+  {
+   "a_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "#6",
+       "id": 6,
+       "label": "",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/6/"
+      },
+      "device": {
+       "id": 4,
+       "name": "s4"
+      },
+      "id": 32,
+      "name": "GigabitEthernet0/2"
+     },
+     "object_id": 32,
+     "object_type": "dcim.interface"
+    }
+   ],
+   "b_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "#6",
+       "id": 6,
+       "label": "",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/6/"
+      },
+      "device": {
+       "id": 8,
+       "name": "r4"
+      },
+      "id": 50,
+      "name": "GigabitEthernet3"
+     },
+     "object_id": 50,
+     "object_type": "dcim.interface"
+    }
+   ],
+   "id": 6,
+   "label": "",
+   "last_updated": "2026-08-30T23:28:06.840054Z",
+   "status": {
+    "label": "Connected",
+    "value": "connected"
+   },
+   "type": null
+  },
+  {
+   "a_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "#7",
+       "id": 7,
+       "label": "",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/7/"
+      },
+      "device": {
+       "id": 5,
+       "name": "r1"
+      },
+      "id": 38,
+      "name": "GigabitEthernet3"
+     },
+     "object_id": 38,
+     "object_type": "dcim.interface"
+    }
+   ],
+   "b_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "#7",
+       "id": 7,
+       "label": "",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/7/"
+      },
+      "device": {
+       "id": 1,
+       "name": "s1"
+      },
+      "id": 4,
+      "name": "GigabitEthernet0/2"
+     },
+     "object_id": 4,
+     "object_type": "dcim.interface"
+    }
+   ],
+   "id": 7,
+   "label": "",
+   "last_updated": "2026-08-30T23:28:07.685270Z",
+   "status": {
+    "label": "Connected",
+    "value": "connected"
+   },
+   "type": null
+  },
+  {
+   "a_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "#8",
+       "id": 8,
+       "label": "",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/8/"
+      },
+      "device": {
+       "id": 6,
+       "name": "r2"
+      },
+      "id": 42,
+      "name": "GigabitEthernet3"
+     },
+     "object_id": 42,
+     "object_type": "dcim.interface"
+    }
+   ],
+   "b_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "#8",
+       "id": 8,
+       "label": "",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/8/"
+      },
+      "device": {
+       "id": 2,
+       "name": "s2"
+      },
+      "id": 14,
+      "name": "GigabitEthernet0/2"
+     },
+     "object_id": 14,
+     "object_type": "dcim.interface"
+    }
+   ],
+   "id": 8,
+   "label": "",
+   "last_updated": "2026-08-30T23:28:08.584027Z",
+   "status": {
+    "label": "Connected",
+    "value": "connected"
+   },
+   "type": null
+  },
+  {
+   "a_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "#9",
+       "id": 9,
+       "label": "",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/9/"
+      },
+      "device": {
+       "id": 7,
+       "name": "r3"
+      },
+      "id": 45,
+      "name": "GigabitEthernet2"
+     },
+     "object_id": 45,
+     "object_type": "dcim.interface"
+    }
+   ],
+   "b_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "#9",
+       "id": 9,
+       "label": "",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/9/"
+      },
+      "device": {
+       "id": 9,
+       "name": "r5"
+      },
+      "id": 53,
+      "name": "GigabitEthernet2"
+     },
+     "object_id": 53,
+     "object_type": "dcim.interface"
+    }
+   ],
+   "id": 9,
+   "label": "",
+   "last_updated": "2026-08-30T23:28:09.703169Z",
+   "status": {
+    "label": "Connected",
+    "value": "connected"
+   },
+   "type": null
+  },
+  {
+   "a_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "#10",
+       "id": 10,
+       "label": "",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/10/"
+      },
+      "device": {
+       "id": 7,
+       "name": "r3"
+      },
+      "id": 56,
+      "name": "GigabitEthernet4"
+     },
+     "object_id": 56,
+     "object_type": "dcim.interface"
+    }
+   ],
+   "b_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "#10",
+       "id": 10,
+       "label": "",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/10/"
+      },
+      "device": {
+       "id": 8,
+       "name": "r4"
+      },
+      "id": 57,
+      "name": "GigabitEthernet4"
+     },
+     "object_id": 57,
+     "object_type": "dcim.interface"
+    }
+   ],
+   "id": 10,
+   "label": "",
+   "last_updated": "2026-08-30T23:28:10.605248Z",
+   "status": {
+    "label": "Connected",
+    "value": "connected"
+   },
+   "type": null
+  },
+  {
+   "a_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "#11",
+       "id": 11,
+       "label": "",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/11/"
+      },
+      "device": {
+       "id": 8,
+       "name": "r4"
+      },
+      "id": 49,
+      "name": "GigabitEthernet2"
+     },
+     "object_id": 49,
+     "object_type": "dcim.interface"
+    }
+   ],
+   "b_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "#11",
+       "id": 11,
+       "label": "",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/11/"
+      },
+      "device": {
+       "id": 9,
+       "name": "r5"
+      },
+      "id": 54,
+      "name": "GigabitEthernet3"
+     },
+     "object_id": 54,
+     "object_type": "dcim.interface"
+    }
+   ],
+   "id": 11,
+   "label": "",
+   "last_updated": "2026-08-30T23:28:11.740236Z",
+   "status": {
+    "label": "Connected",
+    "value": "connected"
+   },
+   "type": null
+  },
+  {
+   "a_terminations": [],
+   "b_terminations": [],
+   "id": 13,
+   "label": "r6 Gi3 to r7 Gi2",
+   "last_updated": "2026-10-21T05:22:25.306772Z",
+   "status": {
+    "label": "Connected",
+    "value": "connected"
+   },
+   "type": null
+  },
+  {
+   "a_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "r4 Gi5 to r6 Gi2",
+       "id": 14,
+       "label": "r4 Gi5 to r6 Gi2",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/14/"
+      },
+      "device": {
+       "id": 8,
+       "name": "r4"
+      },
+      "id": 88,
+      "name": "GigabitEthernet5"
+     },
+     "object_id": 88,
+     "object_type": "dcim.interface"
+    }
+   ],
+   "b_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "r4 Gi5 to r6 Gi2",
+       "id": 14,
+       "label": "r4 Gi5 to r6 Gi2",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/14/"
+      },
+      "device": {
+       "id": 24,
+       "name": "r6"
+      },
+      "id": 103,
+      "name": "GigabitEthernet2"
+     },
+     "object_id": 103,
+     "object_type": "dcim.interface"
+    }
+   ],
+   "id": 14,
+   "label": "r4 Gi5 to r6 Gi2",
+   "last_updated": "2026-10-22T01:13:13.582544Z",
+   "status": {
+    "label": "Connected",
+    "value": "connected"
+   },
+   "type": null
+  },
+  {
+   "a_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "r6 Gi3 to r7 Gi2",
+       "id": 15,
+       "label": "r6 Gi3 to r7 Gi2",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/15/"
+      },
+      "device": {
+       "id": 24,
+       "name": "r6"
+      },
+      "id": 104,
+      "name": "GigabitEthernet3"
+     },
+     "object_id": 104,
+     "object_type": "dcim.interface"
+    }
+   ],
+   "b_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "r6 Gi3 to r7 Gi2",
+       "id": 15,
+       "label": "r6 Gi3 to r7 Gi2",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/15/"
+      },
+      "device": {
+       "id": 25,
+       "name": "r7"
+      },
+      "id": 107,
+      "name": "GigabitEthernet2"
+     },
+     "object_id": 107,
+     "object_type": "dcim.interface"
+    }
+   ],
+   "id": 15,
+   "label": "r6 Gi3 to r7 Gi2",
+   "last_updated": "2026-10-22T01:21:40.585204Z",
+   "status": {
+    "label": "Connected",
+    "value": "connected"
+   },
+   "type": null
+  },
+  {
+   "a_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "r2 Gi4 to r8 Gi2",
+       "id": 16,
+       "label": "r2 Gi4 to r8 Gi2",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/16/"
+      },
+      "device": {
+       "id": 6,
+       "name": "r2"
+      },
+      "id": 84,
+      "name": "GigabitEthernet4"
+     },
+     "object_id": 84,
+     "object_type": "dcim.interface"
+    }
+   ],
+   "b_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "r2 Gi4 to r8 Gi2",
+       "id": 16,
+       "label": "r2 Gi4 to r8 Gi2",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/16/"
+      },
+      "device": {
+       "id": 26,
+       "name": "r8"
+      },
+      "id": 112,
+      "name": "GigabitEthernet2"
+     },
+     "object_id": 112,
+     "object_type": "dcim.interface"
+    }
+   ],
+   "id": 16,
+   "label": "r2 Gi4 to r8 Gi2",
+   "last_updated": "2026-10-22T22:41:18.535640Z",
+   "status": {
+    "label": "Connected",
+    "value": "connected"
+   },
+   "type": null
+  },
+  {
+   "a_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "s5 Console to clab-console clab-rcn-lab1-s5",
+       "id": 17,
+       "label": "s5 Console to clab-console clab-rcn-lab1-s5",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/17/"
+      },
+      "device": {
+       "id": 28,
+       "name": "s5"
+      },
+      "id": 1,
+      "name": "Console"
+     },
+     "object_id": 1,
+     "object_type": "dcim.consoleport"
+    }
+   ],
+   "b_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "s5 Console to clab-console clab-rcn-lab1-s5",
+       "id": 17,
+       "label": "s5 Console to clab-console clab-rcn-lab1-s5",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/17/"
+      },
+      "device": {
+       "id": 27,
+       "name": "clab-console"
+      },
+      "id": 1,
+      "name": "clab-rcn-lab1-s5"
+     },
+     "object_id": 1,
+     "object_type": "dcim.consoleserverport"
+    }
+   ],
+   "id": 17,
+   "label": "s5 Console to clab-console clab-rcn-lab1-s5",
+   "last_updated": "2026-10-23T01:49:07.731619Z",
+   "status": {
+    "label": "Connected",
+    "value": "connected"
+   },
+   "type": null
+  },
+  {
+   "a_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "r8 Gi3 to s5 Gi0/1",
+       "id": 18,
+       "label": "r8 Gi3 to s5 Gi0/1",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/18/"
+      },
+      "device": {
+       "id": 26,
+       "name": "r8"
+      },
+      "id": 113,
+      "name": "GigabitEthernet3"
+     },
+     "object_id": 113,
+     "object_type": "dcim.interface"
+    }
+   ],
+   "b_terminations": [
+    {
+     "object": {
+      "_occupied": true,
+      "cable": {
+       "description": "",
+       "display": "r8 Gi3 to s5 Gi0/1",
+       "id": 18,
+       "label": "r8 Gi3 to s5 Gi0/1",
+       "url": "http://netbox.example.test:8000/api/dcim/cables/18/"
+      },
+      "device": {
+       "id": 28,
+       "name": "s5"
+      },
+      "id": 118,
+      "name": "GigabitEthernet0/1"
+     },
+     "object_id": 118,
+     "object_type": "dcim.interface"
+    }
+   ],
+   "id": 18,
+   "label": "r8 Gi3 to s5 Gi0/1",
+   "last_updated": "2026-10-24T01:35:53.105984Z",
+   "status": {
+    "label": "Connected",
+    "value": "connected"
+   },
+   "type": null
+  }
+ ]
+}

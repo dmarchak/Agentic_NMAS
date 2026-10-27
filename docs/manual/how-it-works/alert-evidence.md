@@ -1,9 +1,9 @@
 # An alert's evidence pack
 
-When an alert fires, {{product}} gathers what a person would gather by hand: the alert, its
-device's recent History, the device's Intent check, its expected and reported neighbours, the
-network around it as it was observed, the health of the devices near it, and the log lines
-around the alert's onset. It does this once, when the alert is first seen firing, and keeps
+When an alert fires, {{product}} gathers what a person would gather by hand: the alert, the
+other alerts in its network around the same time, its device's recent History, the device's
+Intent check, its expected and reported neighbours, the network around it as it was observed,
+the health of the devices near it, and the log lines around the alert's onset. It does this once, when the alert is first seen firing, and keeps
 the result, the alert's **evidence pack**, so it reads the same while the alert fires and
 after it resolves: what it holds is as of the alert's time, never as of when it is read.
 **Monitoring › Alerts** draws one card per firing alert, and the packs of alerts no longer
@@ -22,31 +22,34 @@ reaches {{product}} from Grafana by a webhook: the reader asks.
 
 ## What it holds {#sections}
 
-Nine sections, each naming its source, when it was read, and its state: **read**, **read,
+Ten sections, each naming its source, when it was read, and its state: **read**, **read,
 nothing found**, **nothing to read** (no device, no committed golden, no onset), **not
 configured**, or **could not be read**, with why. A source that fails is a section saying so,
 never a shorter pack.
 
 1. **The alert:** its rule, state, value, labels, silences, and its onset (when the trouble
    began, as Needs attention works it out).
-2. **The device:** found the way Needs attention finds an alert's device (from the rule's
+2. **Other alerts in the network around the onset:** every other alert of the same network
+   that was active from 15 minutes before the onset to the alert's time, from the alert
+   history (see [below](#concurrent)).
+3. **The device:** found the way Needs attention finds an alert's device (from the rule's
    device label, the syslog line's origin, or the polled address), and its network. An address
    two networks share, or a name no inventory holds, is said, never guessed.
-3. **Recent History:** the device's deploys and restores, goldens, intent, restarts, reloads
+4. **Recent History:** the device's deploys and restores, goldens, intent, restarts, reloads
    and planned windows over the last 7 days, the newest 20, from the History tab's own reader.
-4. **Intent check:** whether the device's committed golden matches its intent (matches,
+5. **Intent check:** whether the device's committed golden matches its intent (matches,
    differs with how many lines, or cannot be compared, with why). Only the state: the lines
    are configuration, and stay on the device's Intent tab.
-5. **Neighbours:** the adjacencies its intent implies and what the device reports, from the
+6. **Neighbours:** the adjacencies its intent implies and what the device reports, from the
    Neighbours tab's own view, Prometheus asked as of the alert's time.
-6. **The network around it, as observed:** the adjacencies and cables the Topology reader last
+7. **The network around it, as observed:** the adjacencies and cables the Topology reader last
    read (LLDP and the routing tables), CAPTURED when the pack is built and kept with it, "as of"
    the alert's time: the items touching any device within two hops, each with its id and the
    read's own time. Explain uses this capture, never a later read, so an alert explained days
    later is explained against the network as it was. A read that cannot be used (never made,
    older than the reader's promise, or later than the alert) is said, with why. A pack built
    before captures existed says "observed state not captured with this pack".
-7. **What is attached around it, as observed:** the endpoints (hosts, phones, printers) the
+8. **What is attached around it, as observed:** the endpoints (hosts, phones, printers) the
    endpoint reader located on the alert's device and on each device one hop from it: name (from
    its DHCP lease), MAC, addresses, interface, VLAN, and when it was last seen there, in words
    ("last seen edge1 GigabitEthernet1/0, 3 h ago", "stale" past the network's age). CAPTURED
@@ -54,9 +57,11 @@ never a shorter pack.
    latest read, with no endpoint history yet, so an older alert's pack says the read is not its
    own, with why, never a later read in its place. Endpoints are the topology class: Explain
    sends them only when the network's topology switch is on.
-8. **Health of the devices around it:** a few figures for the alert's device and every device
+9. **Health of the devices around it:** a few figures for the alert's device and every device
    within two hops of it (a shared segment's members are one hop, as in the network model;
-   at most 24 devices, nearest first, the rest counted), each summarising the incident's
+   at most 24 devices, nearest first, the rest counted; in a pack rebuilt afterwards, two hops
+   in the network model as it is now, said so: see
+   [Alert history](alert-history#marks)), each summarising the incident's
    window, never one instant: from 15 minutes before the onset to the alert's time, so a
    spike during the trouble shows even when it has passed by the time the alert is found
    (an onset that is not recorded is said, and the window is the 15 minutes before the alert;
@@ -77,15 +82,50 @@ never a shorter pack.
    `health:dev:12:cpu`), and the time it was read. A figure that could not be read, whose
    source is not configured, or that the source holds nothing for says so, never a zero. Four
    questions are asked for all the devices together, never one per device.
-9. **Log lines around the onset:** the device's lines from 15 minutes before the onset to 15
+10. **Log lines around the onset:** the device's lines from 15 minutes before the onset to 15
    minutes after it (or until the pack was built, if sooner), asked through History › Query's
    logs builder with Mercury's heartbeat lines left out; the 50 nearest the onset are kept and
    the rest counted.
 
+## Other alerts around the onset {#concurrent}
+
+An alert rarely fires alone: when several devices stop answering in the same minute, the cause
+is usually beneath them all (a shared link, the host they run on), and an alert read on its own
+points at the wrong device. So the pack lists every **other** alert of the same network that
+was active in the incident's window (the health figures' own: from 15 minutes before the onset
+to the alert's time), from the [alert history](alert-history), each as it stood **at the
+alert's time**:
+
+- its rule, and its device (with the device's id where the network model knows it) or, for an
+  alert whose labels name no device, the address it was polled at (IPv4 or IPv6);
+- its state then (pending, firing, no data, error, or resolved), when it started, when it fired
+  and when it resolved, each in Grafana's time. A resolve after the alert's time is not in the
+  pack: it was not known then;
+- **same alert**, when it is an earlier episode of this very alert (the same rule and labels
+  flapping in the window). The alert's own episode is not listed.
+
+Each has its own reference, `concurrent:<episode id>`, the alert history's id for that
+episode. An alert begun before the window whose resolve was never recorded is counted and not
+listed: its state in the window is not known. At most 40 are kept, those whose start is nearest
+the onset, and the section says how many there were (in this lab's history, 95 windows in 100
+held 23 or fewer; the busiest held 67). In a pack built as the alert fired the
+section is captured at the time; in a replayed or rebuilt pack it is rebuilt afterwards from the
+alert history, cut at the alert's time. A history that cannot be read, or holds nothing yet,
+is said.
+
 ## References and the hash {#references}
 
 Every section has a reference (`logs`) and every piece in it one of its own (`logs:3`; a
-health figure's is its id, `health:dev:12:cpu`), drawn beside it. The pack is hashed: a sha256 over its canonical form, shown on the card, the same
+health figure's is its id, `health:dev:12:cpu`; another alert's, `concurrent:<episode id>`),
+drawn beside it.
+
+**One device has one id.** Every section that names a device by id (the health figures, the
+other alerts) names it by the id {{product}}'s network model gives it, the same id the
+topology Explain sends uses, so a figure is cited as `health:<that id>:<figure>`. A device the
+model does not know is `dev:@<name>`. A pack kept before 27 Oct 2026, or built while the model
+could not be read, may name a device `dev:@<name>` where the model now has another id: Explain
+names it by the model's id as it sends the pack, never changing the kept pack, checks the
+answer against what it sent, and links each citation to the piece on the card. The pack is hashed: a sha256 over its canonical form, shown on the card, the same
 for the same evidence and different if any piece differs. A card whose stored pack no longer
 matches its hash says so. An explanation that cites the pack (Phase 8's Explain) is checked
 against these references: a citation that names no piece is refused.
@@ -153,16 +193,36 @@ devices share by committed intent (the links), the adjacencies intent implies (O
 and BGP), each interface's addresses, VRF and VLANs, and OSPF and BGP membership (router id,
 areas, passive interfaces, AS and peers). It never holds a configuration line, a description
 or a credential: it holds what intent means for the topology, not the intent itself. It is
-rebuilt only when the committed intent or the inventory changes.
+rebuilt only when the committed intent, the inventory or (on NetBox) the cables change.
+
+**NetBox's cables.** For a network whose inventory is NetBox, the model also reads the cables
+NetBox documents, through the NetBox connection (Settings › Installation), read-only: at most
+once per the network's inventory refresh interval (five minutes unless the network's source
+says otherwise), the same read kept between. A cable between two interfaces of devices in the
+model (known by their NetBox ids) whose two devices share a subnet in intent joins that link,
+which then says it came from **both**; one that joins no subnet (a switch-to-switch trunk, a
+device with nothing committed) is a link of its own, `link:netbox-cable:<cable id>`, so the
+devices it joins are a hop apart. Every link says its source: **intent**, **netbox_cable** or
+**both**. A cable whose ends are not two interfaces of devices the model knows (a console
+cable, an end in another network, a cable with no ends) is counted, by why, and not drawn. A
+cable's label is NetBox free text and is never sent. The topology Explain sends says when the
+cables were read and how many were left out (`netbox_cables`). A network on a local CSV
+inventory has no cables, and the topology says so; a read that fails is said, and the links
+are intent's alone.
 
 Explain sends the alert's device and what is one hop from it: the devices on its links (a
 switch carrying its segment among them), each with its hop and what reached it, the links and
 the device's adjacencies, and the cables LLDP reports. What was observed rides on each item
 with the time it was read: the Topology reader's read the pack captured when the alert fired
-(its section 6), never a read made when Explain is pressed. A read that could not be used then
+(its section 7), never a read made when Explain is pressed. A read that could not be used then
 (never made, too old, later than the alert, or holding nothing for this network), or a pack
 that captured none, is written "could not read" with why, never left out. The expected half
-(devices, links, what intent implies) is the network model as it is when Explain is pressed. A segment of more than 16
+(devices, links, what intent implies) is the network model as it is when Explain is pressed.
+With a pack built after its alert (replayed, or rebuilt from the alert history) the topology
+says so itself, in its `as_now` line: "the network model as it is now ... not as it was at the
+alert's time: it may differ from then", and, for a rebuilt pack, that nothing observed then
+was captured. The answer says the same under it ("The network sent with the pack is the network
+model as it is now ..."). A segment of more than 16
 devices, or one whose devices share an address, is listed and not walked through. Each item
 has a stable id (`dev:<NetBox id>`, `link:<subnet>`, `adj:...`, `cable:...`) that a hypothesis
 may cite.
@@ -172,6 +232,39 @@ may cite.
 and a setting that cannot be read counts as off. No screen turns it off yet: its control on
 the network's Settings is registered to build (C1713). A classification marking that forces AI
 off is planned and not built yet: nothing reads one today.
+
+## Build again {#rebuild}
+
+A pack is frozen once kept, so a pack kept by an earlier release holds only what that release
+gathered: one kept before 27 Oct 2026 (schema 4 or older) holds no other alerts around the
+onset and the health of the alert's device alone. Its card says which schema it was kept with
+and which this release builds, and, for a past alert the alert history holds, offers **Build
+again**: "Build again with this release's evidence: other alerts, two-hop health, one id per
+device; the pack kept now stays". It is busy on itself until the new pack is drawn in its
+place, and is recorded as the person who pressed it. It reaches no device.
+
+1. `find`: the kept pack, and any pack already built again from it; one that is kept is drawn,
+   never built twice (two people pressing it at once get one pack).
+2. `check`: the kept pack's schema against this release's: a pack of this release's schema is
+   not built again (the refusal names both); and its past alert, from the alert history (the
+   one it names, or the one whose alert and time it matches). A pack whose alert the history
+   does not hold, or one still firing, cannot be built again, and the card says why in place of
+   the button.
+3. `rebuild`: a new pack as [Build evidence](alert-history#build) builds one, as of the alert's
+   time: the other alerts in the window, History up to then, the Intent check at the commit
+   then, the health figures of every device within two hops in the network model as it is now
+   (NetBox's cables among its links, on a NetBox network), and the log lines; one id per
+   device. It names the pack it was built from: its id, schema, when it was built and its hash.
+4. `keep`: kept beside the old pack in the evidence pack record, under its own id (the alert's,
+   ending `-s5` for schema 5). The old pack is never rewritten or deleted: it stays in the same
+   record, and opens from the new one's **Show it**.
+5. `show`: the new pack drawn in place, with Explain. From now on the alert's row on History,
+   and the Alerts tab's list, open the new pack, and Explain from it reads it. The old pack,
+   opened, says it was built again and offers **Show it** for the new one; Explain on it still
+   reads the old pack, as it was.
+
+Every Explain answer names the pack it read: its id, schema, and when it was built (and the
+alert's time it is as of), so two answers about one alert are never confused.
 
 ## Where it is kept {#kept}
 

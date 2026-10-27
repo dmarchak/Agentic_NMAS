@@ -25,6 +25,13 @@ The model only reasons over the pack. Everything else is Mercury's, deterministi
   series), each figure a piece cited by its id (``health:<device id>:<figure>``). With the
   topology class off, only the alert's device's own figures are sent: who sits within two hops
   of it is topology.
+- **The other alerts** (C1850): the pack's `concurrent` section, every other alert of the
+  network around the onset from the alert history, each cited ``concurrent:<episode id>``.
+- **One device, one id** (C1849, `one_id`): the pack as sent names each device the topology
+  names by the topology's id; a stored pack naming it otherwise (built before its ids were the
+  model's) is translated as it is sent, never rewritten, and the check takes what was sent.
+- **A rebuilt pack's topology is of now** (C1851, `as_now_of`): the subgraph sent with a pack
+  built after its alert says it is the network model as it is now, which may differ from then.
 - **The check** (`check`): every reference must resolve to what was SENT, a piece of the pack
   as sent or an id of the topology sent, and every `confirm_with` must be a read on the
   read-only allowlist (`readonly_commands`); one that does not is "couldn't analyse", naming
@@ -178,6 +185,18 @@ def vocabulary(sections=None) -> str:
             "topology gives the device. A figure whose state is not ok was not measured: it "
             "says why, and is not a zero. The section's lines hold the figures, "
             + H.LINE_FORMAT)
+    if "concurrent" in names:
+        lines.append(
+            "concurrent lists every other alert in the same network active in the section's "
+            "window (from 15 minutes before the onset to the alert's time), as it stood at the "
+            "alert's time: its rule, its device (with the device's id where the topology knows "
+            "it) or address, its state then, when it started, fired and resolved (blank when "
+            "not by then), and same_alert when it is an earlier episode of this alert; "
+            "Grafana's times, UTC. A piece's reference is concurrent:<episode id>, as written.")
+    if "health" in names or "concurrent" in names:
+        lines.append(
+            "One device has one id in everything sent (the pack and the topology): cite a "
+            "device's figures and items by the id given for it, exactly as written.")
     lines += [
         "A confirming read is one command a person may run on the device, read-only: it begins "
         "with one of " + ", ".join(R.READ_ONLY_VERBS) + "; a pipe may follow with "
@@ -199,7 +218,8 @@ def topology(pack: dict) -> dict:
 
     network, device = pack.get("network") or "", pack.get("device") or ""
     out = {"sent": False, "why": "", "summary": "", "yaml": "", "ids": [], "reached": {},
-           "version": "", "subject": device, "network": network, "observed": ""}
+           "version": "", "subject": device, "network": network, "observed": "",
+           "names": {}, "as_now": ""}
     gate = egress_classes.topology_allowed(network)
     if not gate["allowed"]:
         return dict(out, why=gate["why"])
@@ -207,14 +227,34 @@ def topology(pack: dict) -> dict:
         return dict(out, why="the alert is not one device's, so no part of the network is "
                              "picked out")
     overlay = EP.overlay_of(pack)
-    got = NM.context_for(network, device, hops=HOPS, overlay=overlay, carried=carried_layers(pack))
+    as_now = as_now_of(pack)
+    got = NM.context_for(network, device, hops=HOPS, overlay=overlay, carried=carried_layers(pack),
+                         as_now=as_now)
     if not got["ok"]:
         return dict(out, why=f"the network model could not be read ({got['error']})",
                     yaml=f"could not read: the network model ({got['error']})")
     observed = (f"as of {overlay['as_of']}" if overlay["state"] == "read" else
                 f"could not read ({overlay['why']})")
     return dict(out, sent=True, summary=got["summary"], yaml=got["yaml"], ids=got["ids"],
-                reached=got["reached"], version=got["version"], observed=observed)
+                reached=got["reached"], version=got["version"], observed=observed,
+                names=got.get("names") or {}, as_now=as_now)
+
+
+def as_now_of(pack: dict) -> str:
+    """What the topology sent with a pack built AFTER its alert says of itself (C1851): the
+    devices, links and expected adjacencies are the network model as it is when Explain is
+    pressed, never as they were then; "" for a pack captured as its alert fired."""
+    if pack.get("provenance") != "rebuilt":
+        return ""
+    from modules import network_model as NM
+    model, _err = NM.model_for(pack.get("network") or "")
+    if model is None:
+        return ""
+    words = NM.as_now_words(model, pack.get("built_at") or "")
+    obs = next((s for s in pack.get("sections") or [] if s.get("name") == "observed"), {})
+    if obs.get("provenance") == "missing" or obs.get("state") not in ("ok", "empty"):
+        words += "; nothing observed then was captured, so observed says could not read"
+    return words
 
 
 #: The pack's sections that are a layer of the network context's coverage header.
@@ -247,7 +287,8 @@ def sent_sections(pack: dict, topo: dict = None) -> list:
     flows and port rates, PHASE8_PLAN 17.1 S6) is the topology class: its pieces are sent only
     while the class is allowed for the pack's network (`egress_classes.topology_allowed`, asked
     of the class itself, since a controller's switch is no device the subgraph is drawn around),
-    else withheld, saying why."""
+    else withheld, saying why. With a topology sent, every device it knows is named by its id
+    (`one_id`, C1849)."""
     from modules import evidence_pack as EP
     from modules.ai import egress_classes
 
@@ -274,7 +315,45 @@ def sent_sections(pack: dict, topo: dict = None) -> list:
                     "the figures of the devices around it are not sent: who is near the "
                     "device is the topology class, and no topology was sent"))
         out.append(s)
+    # One device, one id, in the pack as sent and the topology sent (C1849).
+    if (topo or {}).get("sent"):
+        out, _back = one_id(out, topo.get("names") or {})
     return out
+
+
+#: The sections whose pieces name a device by id (``dev``, beside its name ``device``), and so
+#: carry it in their references (C1849).
+DEVICE_ID_SECTIONS = ("health", "concurrent")
+
+
+def one_id(sections: list, names: dict) -> tuple:
+    """*sections* with every device the network model knows named by the model's id (*names*,
+    the model's ids by name: the topology sent's), so one device has one id in all a call sends
+    (C1849): a pack built before its ids were the model's (schema 4 and earlier, or built while
+    the model could not be read) names a device ``dev:@<name>`` while the topology names it
+    ``dev:<NetBox id>``; a model's id may also move (a device given a NetBox id later). Copies,
+    never the stored pack (it is frozen and hashed): ``(sections, back)``, *back* each moved
+    reference's pack reference, so a citation of what was sent is linked to its piece."""
+    if not names:
+        return list(sections), {}
+    out, back = [], {}
+    for s in sections:
+        if s.get("name") not in DEVICE_ID_SECTIONS:
+            out.append(s)
+            continue
+        pieces = []
+        for p in s.get("pieces") or []:
+            want = names.get(p.get("device") or "")
+            have = p.get("dev") or ""
+            if want and want != have and (have or s.get("name") == "concurrent"):
+                ref = p.get("ref") or ""
+                moved = ref.replace(f":{have}:", f":{want}:", 1) if f":{have}:" in ref else ref
+                if moved != ref:
+                    back[moved] = ref
+                p = dict(p, dev=want, ref=moved)
+            pieces.append(p)
+        out.append(dict(s, pieces=pieces))
+    return out, back
 
 
 def as_sent(section: dict) -> dict:
@@ -566,6 +645,10 @@ def explain_pack(pack: dict, *, actor: str, send=None, today: str = None,
     from modules import evidence_pack as EP
 
     pack_id = pack.get("id") or ""
+    # Which pack an answer read (C1862): two packs of one alert are told apart by id, schema
+    # and when each was built, drawn with the answer.
+    read = {"id": pack_id, "schema": EP.schema_of(pack), "built_at": EP.built_when(pack),
+            "as_of": pack.get("built_at") or ""}
     if not EP.intact(pack):
         return {"ok": False, "error": "changed", "pack_id": pack_id,
                 "detail": "the pack's hash does not match: it changed since it was built, so "
@@ -587,7 +670,8 @@ def explain_pack(pack: dict, *, actor: str, send=None, today: str = None,
         data, ctx, sections = parts(pack, topo), context(topo), sent_sections(pack, topo)
     said = {"sent": topo["sent"], "why": topo["why"], "network": topo["network"],
             "subject": topo["subject"], "hops": HOPS, "version": topo["version"],
-            "devices": sorted(topo["reached"]), "observed": topo["observed"]}
+            "devices": sorted(topo["reached"]), "observed": topo["observed"],
+            "as_now": topo.get("as_now") or ""}
     schema = SCHEMA_OF.get(int(prompt[1]), ExplanationV2)
     # What the call is about, written with it (15.14): the alert's pack and its device.
     subject = {"kind": "alert", "id": pack_id, "rule": pack.get("rule") or "",
@@ -605,8 +689,9 @@ def explain_pack(pack: dict, *, actor: str, send=None, today: str = None,
         got = gateway.ask(FEATURE, tuple(prompt), schema, data, actor=actor, context=ctx,
                           send=send, today=today, subject=subject)
     if not got["ok"]:
-        return dict(got, pack_id=pack_id, topology=said, **kept)
-    answer, base = got["output"], {"pack_id": pack_id, "call_id": got["call_id"],
+        return dict(got, pack_id=pack_id, pack_read=read, topology=said, **kept)
+    answer, base = got["output"], {"pack_id": pack_id, "pack_read": read,
+                                   "call_id": got["call_id"],
                                    "cost_usd": got["cost_usd"], "topology": said,
                                    **{k: got[k] for k in ("parent_call_id", "needs_said")
                                       if got.get(k)}, **kept}
@@ -629,9 +714,16 @@ def explain_pack(pack: dict, *, actor: str, send=None, today: str = None,
     # it on the card, a topology id is drawn as text.
     shown = answer.model_dump(mode="json", include={"rationale", "hypotheses", "needs_human"})
     shown["outcome"] = answer.outcome.value
+    # A reference sent under the model's id for a device the pack names otherwise (C1849,
+    # `one_id`) is linked to the pack's own piece, the reference sent kept beside it.
+    back = one_id(pack.get("sections") or [], topo.get("names") or {})[1] \
+        if topo.get("sent") else {}
+
+    def cite(r):
+        mine = back.get(r, r)
+        return dict({"ref": mine, "in_pack": EP.resolve(pack, mine) is not None},
+                    **({"as_sent": r} if mine != r else {}))
     for h in shown["hypotheses"]:
-        h["cites"] = [{"ref": r, "in_pack": EP.resolve(pack, r) is not None}
-                      for r in h.pop("evidence_refs")]
-    shown["checked"] = [{"ref": r, "in_pack": EP.resolve(pack, r) is not None}
-                        for r in getattr(answer, "checked", None) or []]
+        h["cites"] = [cite(r) for r in h.pop("evidence_refs")]
+    shown["checked"] = [cite(r) for r in getattr(answer, "checked", None) or []]
     return dict(base, ok=True, error="", answer=shown)

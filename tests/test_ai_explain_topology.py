@@ -133,7 +133,11 @@ CLASS_KEYS = {
     "reported", "down_at", "mercury_attaches_here", "source", "as_of",
     # The coverage header (C1777, the operator's order of 2026-10-26): each layer's state,
     # source, age and why; metadata about what the bundle holds, no value of a device.
-    "coverage", "adjacency", "performance", "events", "endpoints", "flows", "age", "why"}
+    "coverage", "adjacency", "performance", "events", "endpoints", "flows", "age", "why",
+    # NetBox's documented cables (C1863): a link's source and cable id, its NetBox status when
+    # not connected, and what the subgraph says of the read (when, how many, left out by why).
+    "netbox_cables", "netbox_cable", "status", "drawn", "joined_to_an_intent_subnet",
+    "links_of_their_own", "not_drawn", "count", "truncated"}
 ID = re.compile(r"^(dev|link|adj|cable|ext):|^mercury$")
 
 

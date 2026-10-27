@@ -20,6 +20,27 @@
     {{ pack.rule }} on {{ pack.device or 'no one device' }}{% if pack.network %} in {{ pack.network }}{% endif %}{% if pack.onset %}, onset {{ stamp(pack.onset) }}{% endif %}.
     <span class="mono small" title="sha256 over the pack's canonical JSON; schema {{ pack.schema }}; alert {{ pack.alert_key }}; read from {{ pack.store }}">{{ pack.hash[:12] }}</span>
     {%- if not intact %} {{ badge('its hash does not match: changed since it was built', 'danger') }}{% endif %}</p>
+  {#- The packs of one alert (C1862): a pack built again names the one it was built from, which
+      stays kept; the one it was built from names the newer, which History and Explain read;
+      a pack of an older schema with none offers Build again, or says why it cannot. -#}
+  {%- if pack.rebuilt_from %}
+  <p class="pack-source pack-lineage" data-rebuilt-from="{{ pack.rebuilt_from.id }}">Built again from pack <span class="mono">{{ pack.rebuilt_from.id }}</span> (schema {{ pack.rebuilt_from.schema }}, built {{ stamp(pack.rebuilt_from.built_at) }}), which stays kept. <button type="button" class="btn btn-small btn-outline" hx-get="{{ url_for('v2.monitoring_alert_pack', pack_id=pack.rebuilt_from.id) }}" hx-target="closest .pack-body" hx-swap="innerHTML" hx-disabled-elt="this" data-what="the pack kept before"><span class="op-idle">Show it</span><span class="op-busy">Opening…</span></button></p>
+  {%- endif %}
+  {%- if successor %}
+  <p class="pack-source pack-lineage" data-successor="{{ successor.id }}">{{ badge('built again', 'info', title='schema ' ~ successor.schema ~ '; sha256 ' ~ successor.hash) }} Built again as pack <span class="mono">{{ successor.id }}</span> (schema {{ successor.schema }}, built {{ stamp(successor.built) }}): History and Explain read that one; this one stays kept as it was. <button type="button" class="btn btn-small btn-outline" hx-get="{{ url_for('v2.monitoring_alert_pack', pack_id=successor.id) }}" hx-target="closest .pack-body" hx-swap="innerHTML" hx-disabled-elt="this" data-what="the pack built again"><span class="op-idle">Show it</span><span class="op-busy">Opening…</span></button></p>
+  {%- elif rebuild %}
+  <div class="pack-older" data-schema="{{ pack.schema }}">
+    <p class="pack-source">Kept with schema {{ pack.schema or 1 }}; this release builds schema {{ schema_now }}. {% if (pack.schema or 1) < 5 %}It holds no other alerts around the onset, the health of the alert's device alone, and Explain names its devices by the network model's ids as it sends it.{% endif %}</p>
+    {%- if rebuild.offered %}
+    <form class="pack-rebuild" method="post" action="{{ url_for('v2.monitoring_alert_pack_rebuild', pack_id=pack.id) }}" hx-post="{{ url_for('v2.monitoring_alert_pack_rebuild', pack_id=pack.id) }}" hx-target="closest .pack-body" hx-swap="innerHTML">
+      <span class="op-act"><button type="submit" class="btn btn-small" data-op="alert-evidence" hx-disabled-elt="this"{{ gate('configure') }} title="Builds this alert's pack again as of its time, from the alert history, and keeps it beside this one; reaches no device"><span class="op-idle">Build again</span><span class="op-busy">Building again…</span></button>{{ how('alert-evidence', 'rebuild', compact=True) }}</span>
+      <span class="muted small">Build again with this release's evidence: other alerts, two-hop health, one id per device; the pack kept now stays.</span>
+    </form>
+    {%- else %}
+    <p class="muted small pack-rebuild-not">Cannot be built again: {{ rebuild.why }}.</p>
+    {%- endif %}
+  </div>
+  {%- endif %}
   {#- Explain (P1's one AI step, a button only, 15.6): the answer replaces the slot below. An
       AI control (PHASE8_PLAN 15.13): the AI mark; disabled with its reason while hosted AI
       cannot answer, the pack below drawn as ever. -#}
@@ -37,12 +58,13 @@
     {%- if s.provenance and s.provenance != 'captured' %}<p class="pack-source" data-provenance="{{ s.provenance }}">{{ s.provenance_words[:1]|upper }}{{ s.provenance_words[1:] }}{% if s.as_of_commit %} (the Intent check at <span class="mono">{{ s.as_of_commit }}</span>){% endif %}.</p>{% endif %}
     <p class="pack-source">{{ s.source or s.name }}{% if s.read_at %}, read {{ stamp(s.read_at) }}{% endif %}{% if s.why %}: {{ s.why }}{% endif %}</p>
     {%- if s.window %}<p class="pack-source">From {{ stamp(s.window.from, s.window.from[11:16] ~ ' UTC') }} to {{ stamp(s.window.to, s.window.to[11:16] ~ ' UTC') }} ({{ s.window.words }}){% if s.window.query %}, asked as <code>{{ s.window.query }}</code>{% endif %}</p>{% endif %}
-    {%- if s.subset %}<p class="pack-source">{{ s.pieces|length }} of {{ s.total }} kept{% if s.name == 'logs' %}, those nearest the onset{% endif %}.</p>{% endif %}
+    {%- if s.subset %}<p class="pack-source">{{ s.pieces|length }} of {{ s.total }} kept{% if s.name in ('logs', 'concurrent') %}, those nearest the onset{% endif %}.</p>{% endif %}
+    {%- if s.unknown_state %}<p class="pack-source">{{ s.unknown_state }} other alert{{ 's' if s.unknown_state != 1 else '' }} begun before the window with no resolve recorded {{ 'are' if s.unknown_state != 1 else 'is' }} not listed: {{ 'their' if s.unknown_state != 1 else 'its' }} state in the window is not known.</p>{% endif %}
     {%- if s.errors %}<p class="warn-text small">Also could not be read: {{ s.errors|join('; ') }}</p>{% endif %}
     {%- if s.counts %}<p class="pack-source">{% for k, n in s.counts|dictsort %}{{ n }} {{ k|replace('_', ' ') }}{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
     {%- if s.name == 'observed' and s.as_of %}<p class="pack-source" title="around {{ s.subject or 'the device' }}; network model {{ s.model or 'not read' }}">Captured {{ s.as_of_words }}{% if s.observed_at %}: the Topology reader's read of {{ stamp(s.observed_at) }}{% endif %}{% if s.hops %}, the items touching a device within {{ s.hops }} hops{% endif %}. Explain overlays this capture, never a later read.</p>{% endif %}
     {%- if s.name == 'endpoints' and s.as_of %}<p class="pack-source">Captured as of {{ stamp(s.as_of) }}, the alert's time{% if s.endpoints_read_at %}, from the endpoint reader's read of {{ stamp(s.endpoints_read_at) }}{% endif %}: who was attached to the device and those one hop from it. Explain reads this capture, never a later read.</p>{% endif %}
-    {%- if s.name == 'health' and s.as_of %}<p class="pack-source" title="{{ s.questions }} questions, asked {{ s.asked_at }}; the discards rate one point every {{ s.window.step_s }} s">The alert's device and {{ s.devices_kept - 1 }} of the {{ s.devices_total - 1 }} devices within two hops, nearest first{% if s.devices_kept < s.devices_total %} (the rest not read){% endif %}; each figure summarised over the window, {{ s.window.basis }}, evaluated at {{ stamp(s.as_of) }}{% if s.window.bounded %} ({{ s.window.bounded }}){% endif %}{% if s.figures %}: {% for k, w in s.figures|dictsort %}{{ k }}, {{ w }}{{ '; ' if not loop.last }}{% endfor %}{% endif %}.</p>{% endif %}
+    {%- if s.name == 'health' and s.as_of %}<p class="pack-source" title="{{ s.questions }} questions, asked {{ s.asked_at }}; the discards rate one point every {{ s.window.step_s }} s{% if s.devices_from %}; {{ s.devices_from }}{% endif %}">The alert's device and {{ s.devices_kept - 1 }} of the {{ s.devices_total - 1 }} devices within two hops, nearest first{% if s.devices_kept < s.devices_total %} (the rest not read){% endif %}{% if 'as it is now' in (s.devices_from or '') %} ({{ s.devices_from }}){% endif %}; each figure summarised over the window, {{ s.window.basis }}, evaluated at {{ stamp(s.as_of) }}{% if s.window.bounded %} ({{ s.window.bounded }}){% endif %}{% if s.figures %}: {% for k, w in s.figures|dictsort %}{{ k }}, {{ w }}{{ '; ' if not loop.last }}{% endfor %}{% endif %}.</p>{% endif %}
     {%- if s.pieces %}
     <ul class="pack-pieces">
       {%- for p in s.pieces %}
@@ -53,6 +75,8 @@
         <span class="muted small" title="rule {{ p.rule_uid }}; fingerprint {{ p.fingerprint or 'not recorded' }}">Labels:</span>
         {%- for k, v in p.labels|dictsort %} <span class="mono small">{{ k }}=<span class="pack-text">{{ v }}</span></span>{{ ',' if not loop.last }}{% endfor %}
         {%- for x in p.silences %}; silenced in Grafana {% if x.unresolved %}by silence {{ x.id }}, whose author and end were not returned{% else %}by {{ x.created_by or 'an unnamed account' }} until {{ x.ends_at or 'an unrecorded time' }}{% if x.comment %} (&ldquo;{{ x.comment }}&rdquo;){% endif %}{% endif %}{% endfor %}
+        {%- elif s.name == 'concurrent' %}
+        <strong>{{ p.rule }}</strong> on {% if p.device %}<span title="{{ p.dev or 'not in the network model' }}">{{ p.device }}</span>{% else %}<span class="mono">{{ p.address or 'no device named' }}</span>{% endif %}: {{ badge(p.state, {'firing': 'danger', 'pending': 'warn', 'resolved': 'ok'}.get(p.state, 'muted')) }} at the alert's time{% if p.same_alert %} <span class="muted small">an earlier episode of this alert</span>{% endif %}. Started {{ stamp(p.started_at) }}{% if p.fired_at %}, fired {{ stamp(p.fired_at) }}{% endif %}{% if p.resolved_at %}, resolved {{ stamp(p.resolved_at) }}{% endif %} <span class="muted small">(Grafana's times)</span>
         {%- elif s.name == 'device' %}
         <strong>{{ p.device }}</strong> in {{ p.network }}{% if p.address %}, <span class="mono">{{ p.address }}</span>{% endif %}{% if p.platform %}, {{ p.platform }}{% endif %}: {{ p.note }} <span class="muted small">(by {{ p.device_from }})</span>
         {%- elif s.name == 'history' %}

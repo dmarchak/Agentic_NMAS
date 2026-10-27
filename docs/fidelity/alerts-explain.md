@@ -15,7 +15,7 @@ instance and a silenced syslog instance firing, each pack built by the real trig
 Loki and Prometheus captures; the first card opened; Explain pressed with hosted AI allowed and
 an answer planted (a hypothesis citing `alert`, needing a person).
 Templates compared: templates/v2/_alert_evidence.html, templates/v2/_evidence_pack.html, templates/v2/_explain.html
-Templates sha256: `d8af8ca8c582be32c31087731006eb42e1338fd31de266dbec3081c23f07446f`
+Templates sha256: `3efa0c170da2bdd638f413cc4bae45c38c1d21ee46b1c36cdb5790863e74fe58`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
@@ -64,3 +64,50 @@ before schema 4.
   rebuilt pack's marks are drawn on board P1-H and compared there.
 
 Templates sha256 before: `c89f41c4bf11bad922fb68bb46e9a87531daeb85a2d68a3a94fc6bbccc70dd0d`.
+
+**Compared again 2026-10-27 (C1849 to C1851, pack schema 5; the operator's Walk 2):**
+`_evidence_pack.html` gained the pack's tenth section, **Other alerts in the network around the
+onset** (`concurrent`), second, under the alert: each other alert's rule, its device (its id on
+hover) or polled address, its state at the alert's time as a chip, when it started, fired and
+resolved, an earlier episode of the same alert said; "N of M kept, those nearest the onset" past
+the cap, and the alerts begun before the window with no resolve recorded counted. The health
+section's line names whose figures it holds, in words on a rebuilt pack ("the network model as
+it is now ... may differ from then") and on hover otherwise. `_explain.html` draws, under an
+answer on a pack built after its alert, "The network sent with the pack is the network model as
+it is now ...".
+- **Shots:** `tests/test_board_shots.py::test_monitoring_alerts_explain` and
+  `::test_monitoring_alerts_history` (2026-10-27 01:5x UTC, at 1440, 1280 and 390 beside the
+  boards at 1440). The opened card shows the new section "nothing to read: the alert history
+  holds nothing yet", the shot's lab keeping none; the rebuilt pack on History shows it "read,
+  nothing found" and the health line's words. At 390 both stack like the rest, no sideways
+  scroll.
+- **Verdict:** a **deviation**, the one new region: the board (version 143) has no other-alerts
+  section and no as-now line. Its line is in docs/STANDING_APPROVAL_LOG.md ("P1 Alerts: the
+  other alerts and the network as now"). No other region's verdict changed.
+
+Templates sha256 before: `d8af8ca8c582be32c31087731006eb42e1338fd31de266dbec3081c23f07446f`.
+
+**Compared again 2026-10-27 (C1862, Build again and the pack an answer read):**
+`_evidence_pack.html` draws, under the pack line, the packs of one alert: on a pack of an older
+schema than this release's, "Kept with schema 4; this release builds schema 5" and what it
+lacks, then **Build again** (busy on itself, its (i)) with "Build again with this release's
+evidence: other alerts, two-hop health, one id per device; the pack kept now stays", or "Cannot
+be built again: <why>"; on a pack built again, "Built again from pack <id> (schema 4, built
+<when>), which stays kept" and **Show it**; on the pack it was built from, a "built again" chip,
+"Built again as pack <id> (schema 5, built <when>): History and Explain read that one; this one
+stays kept as it was" and **Show it**. `_explain.html` draws, above the call's History link,
+"Read pack <id>, schema N, built <when> as of <the alert's time>".
+- **Shots:** `tests/test_board_shots.py::test_monitoring_alerts_explain` (2026-10-27 02:45 UTC,
+  `alerts-explain-explained` at 1440, 1280 and 390 beside the board at 1440): the answer's
+  "Read pack ep-…, schema 5, built just now as of 12 d ago." under "No topology was sent", above
+  "This call in History". The pack lineage regions are shot on History
+  (`::test_monitoring_alerts_history_rebuild`, docs/fidelity/alerts-history.md), the same
+  template. At 390 both stack, no sideways scroll.
+- **Verdict:** **deviation** for the two new regions: the board (version 143) draws neither a
+  pack of an older schema nor which pack an answer read. Their lines are in
+  docs/STANDING_APPROVAL_LOG.md ("P1 Alerts and P1-H: Build again on a pack of an older
+  schema", "P1 Alerts and P1-H: the two packs of one alert", "P1 Alerts: the answer names the
+  pack it read"). No other region's verdict changed: a pack of this release's schema built
+  once draws as before.
+
+Templates sha256 before: `fe9dc84abf22ba7879d554bf3de7004d535dd8e61e68e38273f12fd863f2e47f`.

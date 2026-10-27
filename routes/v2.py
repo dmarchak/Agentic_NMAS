@@ -1496,12 +1496,38 @@ def monitoring_alert_pack(pack_id):
     from modules import evidence_pack
 
     pid = pack_id[:64]
-    pack, state, error = (evidence_pack.find(pid) if pid.startswith("ep-")
-                          else (None, "ok", ""))
-    html = render_template("v2/_evidence_pack.html", pack=pack, state=state, error=error,
-                           pid=pid, intact=evidence_pack.intact(pack) if pack else False,
-                           explain_model=_explain_model())
+    got = (evidence_pack.read() if pid.startswith("ep-")
+           else {"state": "ok", "error": "", "rows": []})
+    match = [r for r in got["rows"] if r.get("id") == pid]
+    pack = match[-1] if match else None
+    html = render_template("v2/_evidence_pack.html", pack=pack, state=got["state"],
+                           error=got["error"], pid=pid,
+                           intact=evidence_pack.intact(pack) if pack else False,
+                           explain_model=_explain_model(),
+                           **_pack_lineage(pack, got["rows"]))
     return _strict(html, 200 if pack else 404)
+
+
+def _pack_lineage(pack, rows) -> dict:
+    """What a pack's card says of the packs of its alert (C1862): the pack built again from it
+    (``successor``, the newest), and, on a pack of an older schema with none, whether Build
+    again is offered (``rebuild``: its past alert found in the alert history) or why not.
+    Reads the alert history only for such a pack."""
+    from modules import alert_history, evidence_pack
+
+    out = {"schema_now": evidence_pack.SCHEMA, "successor": None, "rebuild": None}
+    if not pack:
+        return out
+    after = evidence_pack.superseded(rows).get(pack.get("id"))
+    if after:
+        out["successor"] = evidence_pack.pack_summary(after)
+    elif evidence_pack.older_schema(pack):
+        e, state, error = alert_history.episode_of(pack)
+        out["rebuild"] = {"offered": e is not None, "why": "" if e is not None else (
+            f"the alert history cannot be read ({error})" if state == "unreadable" else
+            "the alert history holds no past alert this pack is of (its alert began before "
+            "the history was kept, or it is still firing)")}
+    return out
 
 
 def _explain_model() -> str:
@@ -1580,8 +1606,9 @@ def monitoring_alert_history_evidence(episode_id):
             return _strict('<p class="refusal">Couldn\'t load: the evidence packs cannot be '
                            f'read ({escape(packs["error"])}); nothing was built.</p>', 503)
         kept = alert_history.pack_for(e, alert_history._pack_index(packs["rows"]))
+        rows = packs["rows"]
         if kept:
-            pack = evidence_pack.find(kept["id"])[0]
+            pack = next(r for r in reversed(rows) if r.get("id") == kept["id"])
         else:
             pack = evidence_pack.build_for_episode(e, actor=actor)
             got = evidence_pack.record(pack)
@@ -1590,9 +1617,66 @@ def monitoring_alert_history_evidence(episode_id):
                                f'{escape(got["error"])}; nothing was kept.</p>', 503)
             log.info("alert history: %s built the evidence pack %s for %s on %s", actor,
                      pack["id"], e["rule"], e["device"] or e["address"] or "no one device")
+            rows = rows + [pack]
     html = render_template("v2/_evidence_pack.html", pack=pack, state="ok", error="",
                            pid=pack["id"], intact=evidence_pack.intact(pack),
-                           explain_model=_explain_model())
+                           explain_model=_explain_model(), **_pack_lineage(pack, rows))
+    return _strict(html)
+
+
+@bp.route("/monitoring/alerts/pack/<pack_id>/rebuild", methods=["POST"])
+def monitoring_alert_pack_rebuild(pack_id):
+    """Build again (C1862): a kept pack of an older schema than this release's built again from
+    the alert history as of its alert's time, with this release's evidence, as the person who
+    pressed it (modules/evidence_pack.build_for_episode, *rebuild_of*). The kept pack is never
+    rewritten: the new one is kept beside it with its own id, names it, and is the one History
+    and Explain read from now. One already built again from it is drawn, never built twice."""
+    from modules import alert_history, evidence_pack, identity
+    from modules.filestore import PathLock
+
+    pid = pack_id[:64]
+    if not re.match(evidence_pack.PACK_ID, pid):
+        return _strict('<p class="refusal">Couldn\'t load: no evidence pack is named '
+                       f'{escape(pid)}; nothing was built.</p>', 404)
+    actor = identity.request_actor()
+    # Build evidence's lock, across processes: two tabs or two workers pressing it build one
+    # pack, and what is already kept is read only while the lock is held.
+    with PathLock(alert_history.build_lock_path):
+        packs = evidence_pack.read()
+        if packs["state"] == "unreadable":
+            return _strict('<p class="refusal">Couldn\'t load: the evidence packs cannot be '
+                           f'read ({escape(packs["error"])}); nothing was built.</p>', 503)
+        match = [r for r in packs["rows"] if r.get("id") == pid]
+        if not match:
+            return _strict(f'<p class="refusal">Couldn\'t load: no evidence pack {escape(pid)} '
+                           'is kept; nothing was built.</p>', 404)
+        old, rows = match[-1], packs["rows"]
+        pack = evidence_pack.superseded(rows).get(pid)
+        if pack is None:
+            if not evidence_pack.older_schema(old):
+                return _strict(
+                    f'<p class="refusal">Couldn\'t build again: pack {escape(pid)} is of schema '
+                    f'{evidence_pack.schema_of(old)}, this release\'s '
+                    f'({evidence_pack.SCHEMA}); nothing was built.</p>', 409)
+            e, state, error = alert_history.episode_of(old)
+            if e is None:
+                why = (f"the alert history cannot be read ({error})" if state == "unreadable"
+                       else "the alert history holds no past alert this pack is of")
+                return _strict(f'<p class="refusal">Couldn\'t build again: {escape(why)}; '
+                               'nothing was built.</p>', 404)
+            pack = evidence_pack.build_for_episode(e, actor=actor, rebuild_of=old)
+            got = evidence_pack.record(pack)
+            if not got["ok"]:
+                return _strict('<p class="refusal">Couldn\'t keep the evidence pack: '
+                               f'{escape(got["error"])}; nothing was kept.</p>', 503)
+            log.info("alert history: %s built the evidence pack %s again as %s (schema %s to "
+                     "%s) for %s on %s", actor, pid, pack["id"], evidence_pack.schema_of(old),
+                     evidence_pack.SCHEMA, e["rule"], e["device"] or e["address"]
+                     or "no one device")
+            rows = rows + [pack]
+    html = render_template("v2/_evidence_pack.html", pack=pack, state="ok", error="",
+                           pid=pack["id"], intact=evidence_pack.intact(pack),
+                           explain_model=_explain_model(), **_pack_lineage(pack, rows))
     return _strict(html)
 
 
