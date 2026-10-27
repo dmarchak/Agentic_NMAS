@@ -143,10 +143,12 @@ def neighbours_of(network: str, device: str, far: bool = False) -> dict:
     What could not be read is said, never left out. With *far*, each neighbour also carries
     ``port``, its own end of the link ("" when no read names it), for one draft of both ends
     (`ends`); off by default, so what other readers hold (and send, Explain's needs) is
-    unchanged."""
+    unchanged. *network* is its display name or its id, one network either way (C1903: the
+    id read no observed link); a name no network answers to raises `listref.UnknownList`."""
     from modules import network_model as M
-    from modules.nsot import ifnames
+    from modules.nsot import ifnames, listref
 
+    listref.network_id(network)
     ports, said = {}, []
     model, err = M.model_for(network)
     if model is None:

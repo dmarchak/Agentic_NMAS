@@ -1053,6 +1053,27 @@ device's page.
   the default where a v2 request names no network and its person has chosen none, and what
   today's index, the start-up template-secret migration and the host scripts given no list
   read; no scheduled job reads it (each runs every network, C491).
+- **A network has one id, and every key is it** (C1903, the operator's design of 2026-10-27).
+  A network has a display name (``Default``, what a person sees) and one canonical id, its
+  lower-case slug (``default``), from `listref.network_id`, which takes either spelling (or a
+  `ListRef`) and raises `listref.UnknownList` for a name no network answers to, creating
+  nothing. Every store or reader value holding something per network is keyed by the id, and
+  every lookup in one goes through `listref.keyed` (a reader's own function over it, such as
+  `topology_graph.network_of`), which reads the id's key first and, during the transition,
+  a key that is the same network by its slug (a value stored before C1903 is keyed by the
+  display name: expand, then contract, the contract its own register row). The defect it
+  removes: the Topology reader keyed its value ``Default``, `network_model.observed` was asked
+  ``default``, and every observed link was lost behind "holds nothing for default". Converted
+  at C1903: the Topology reader (written by id; read by Topology, its two routes, the network
+  model, NetBox's LLDP import and the pack replay), the network model's kept models and
+  cables, `network_model.context_for` and `capture`, `intent_names.neighbours_of`, the
+  endpoint store's read, an evidence pack's concurrent alerts, and the evaluation runners
+  (`cases.run_network`: scripts/nmas-intent-cases, nmas-nl-cases, nmas-sdn-cases and
+  nmas-pack-replay), whose case files carry the id. The other stores still keyed by the
+  display name are tests/test_network_keys.py's `KNOWN_GAPS`, which only shrink; that scan
+  cannot see a map handed through a return value, so one such read was converted by hand:
+  the RIP reader's ``lists``, returned by `topology_graph.rip_answer` and read by the Topology
+  reader through `listref.keyed`.
 - **Migration is one-directional and runs once.** `config_repo/golden/` is the
   golden store; `golden_configs/` survives as a deprecated **read-only**
   fallback, consulted by `_find_golden_config_file()` only when the manifest has

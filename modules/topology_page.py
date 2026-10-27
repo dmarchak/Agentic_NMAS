@@ -655,9 +655,13 @@ def what_if(phys: list, nodes: dict, out: str) -> dict:
 # ---------------------------------------------------------------------------- the view
 
 def view(list_name: str, values) -> dict:
-    """Everything the page draws for one network and question."""
-    from modules.readers.topology_graph import MANAGER
+    """Everything the page draws for one network and question. The network is named as a
+    person sees it, whichever spelling asked; a name no network answers to raises
+    `listref.UnknownList` (C1903), which the region draws as "Couldn't load", naming it."""
+    from modules.nsot import listref
+    from modules.readers.topology_graph import MANAGER, network_of
 
+    list_name = listref.display_name(list_name)
     s = ask(values)
     st = stored()
     out = {"list": list_name, "s": s, "qs": lambda over=None: qs(list_name, s, over),
@@ -672,7 +676,7 @@ def view(list_name: str, values) -> dict:
     if not value.get("configured"):
         out["state"] = "not_configured"
         return out
-    net = (value.get("networks") or {}).get(list_name)
+    net = network_of(value, list_name)
     if net is None:
         out["state"] = "not_read"
         return out

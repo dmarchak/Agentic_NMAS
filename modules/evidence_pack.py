@@ -820,7 +820,10 @@ def concurrent_section(network: str, store: str, own: str, onset, at: float, bui
     in for the store's (tests)."""
     from modules import alert_history as AH
     from modules import evidence_health as H
+    from modules.nsot import listref
 
+    # Named as a person sees it, whichever spelling asked (C1903; an unknown name raises).
+    network = listref.display_name(network) if network else ""
     win = H.window(onset, at)
     start, end = win["start"], win["end"]
     window = {"from": _iso(start), "to": _iso(end), "words": f"the {win['seconds'] // 60} "
@@ -840,8 +843,10 @@ def concurrent_section(network: str, store: str, own: str, onset, at: float, bui
         rows = got["rows"]
 
     def mine(e):
+        # The same network by its one id, whichever spelling the history recorded (C1903).
         nets = e.get("networks") or []
-        return network in nets if (network and nets) else e.get("store") == store
+        return listref.in_networks(nets, network) if (network and nets) \
+            else e.get("store") == store
 
     pieces, unknown, total = [], 0, 0
     for e in AH.episodes(rows):

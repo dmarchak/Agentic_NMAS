@@ -987,6 +987,7 @@ def read(source=None, population=None, clock=time.time, previous=None, expected=
     test's in place of the store's."""
     from modules import integration_groups as IG
     from modules.neighbours import committed_intents
+    from modules.nsot import listref
     from modules.readers.adjacencies import lists
     from modules.sdn import topology as SDN
 
@@ -1015,27 +1016,37 @@ def read(source=None, population=None, clock=time.time, previous=None, expected=
             errors.append(f"{list_name}: {declared['error']}")
         before, before_links = None, None
         if previous is not None:
-            was = (previous.get("networks") or {}).get(list_name) or {}
+            was = network_of(previous, ref) or {}
             before = {layer: a.get("island_state") or {}
                       for layer, a in (was.get("analysis") or {}).items()}
             before_links = {layer: {_link_key(layer, l): {k: l.get(k) for k in
                                                           ("state", "since", "since_seen")}
                                     for l in links}
                             for layer, links in (was.get("layers") or {}).items()}
-        networks[list_name] = network_graph(hosts, roles, intents, results, up,
-                                            expected=declared.get("islands") or {},
-                                            previous=before, now=now,
-                                            at_here=here() if at_here is None else at_here,
-                                            before_links=before_links,
-                                            rip=rip_lists.get(list_name) or {},
-                                            sdn=_sdn_of(sdn or SDN.stored, list_name,
-                                                        clock(), errors))
+        # Keyed by the network's one id (C1903), never its display name: a reader of this
+        # value finds it through `network_of`, by either spelling.
+        networks[listref.network_id(ref)] = network_graph(
+            hosts, roles, intents, results, up, expected=declared.get("islands") or {},
+            previous=before, now=now, at_here=here() if at_here is None else at_here,
+            before_links=before_links, rip=listref.keyed(rip_lists, ref) or {},
+            sdn=_sdn_of(sdn or SDN.stored, list_name, clock(), errors))
     if rip_error:
         errors.append(rip_error)
     return {"configured": True, "networks": networks, "errors": errors, "read_at": now}
 
 
 READER_NAME = "topology-graph"
+
+
+def network_of(value, network):
+    """*network*'s graph in the reader's value (`read`'s ``{"networks": {id: graph}}``), or
+    None when the read holds none for it. *network* is its display name, its id or a
+    `ListRef`; one no network answers to raises `listref.UnknownList` (C1903: the value was
+    keyed by the display name, so a caller with the id read nothing and said only "holds
+    nothing"). Every reader of this value asks here, never the mapping itself."""
+    from modules.nsot import listref
+
+    return listref.keyed((value or {}).get("networks"), network)
 
 
 def _sdn_of(fn, list_name: str, now: float, errors: list):

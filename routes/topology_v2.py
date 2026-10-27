@@ -28,6 +28,17 @@ def _list_name() -> str:
         listref.active().name
 
 
+def _graph(list_name: str) -> dict:
+    """*list_name*'s graph in the Topology reader's stored value (`topology_graph.network_of`,
+    by either spelling of the network, C1903), ``{}`` when the read holds none. A name no
+    network answers to raises `listref.UnknownList`, naming it: the region says "Couldn't
+    load" with that sentence (app.py's handler), never an empty map."""
+    from modules import topology_page
+    from modules.readers.topology_graph import network_of
+
+    return network_of(topology_page.stored().get("value"), list_name) or {}
+
+
 def _ctx(values=None, **extra) -> dict:
     from modules import topology_page
     from modules.preview_confirm import confirm_part
@@ -120,12 +131,10 @@ def positions_save():
     layout, for everyone, as the verified person, the device named in the record. Every place
     must be a device the map draws; a refusal names what it compared and redraws the map as
     saved."""
-    from modules import identity, topology_page, topology_positions
+    from modules import identity, topology_positions
 
     list_name = _list_name()
-    st = topology_page.stored()
-    net = ((st.get("value") or {}).get("networks") or {}).get(list_name) or {}
-    known = set(net.get("nodes") or {})
+    known = set(_graph(list_name).get("nodes") or {})
     moved = (request.form.get("moved") or "").strip()
     places, error = topology_positions.parse(request.form.get("positions", ""), known)
     if not error and moved not in places:
@@ -150,8 +159,7 @@ def path_run():
     from modules import identity, path_trace, topology_page
 
     list_name = _list_name()
-    st = topology_page.stored()
-    net = ((st.get("value") or {}).get("networks") or {}).get(list_name) or {}
+    net = _graph(list_name)
     nodes, bgp = net.get("nodes") or {}, (net.get("layers") or {}).get("bgp") or []
     a, b = (request.form.get("a") or "").strip(), (request.form.get("b") or "").strip()
     words = next((d["words"] for d in path_trace.destinations(nodes, bgp) if d["value"] == b),

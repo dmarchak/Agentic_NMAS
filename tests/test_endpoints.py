@@ -21,6 +21,7 @@ import pytest
 
 from modules import endpoints as E
 from modules.readers import endpoints as R
+from tests.registered_networks import register
 
 FIX = os.path.join(os.path.dirname(__file__), "fixtures", "endpoints")
 
@@ -203,7 +204,8 @@ def test_a_device_that_could_not_be_read_is_said(stored_credential):
     assert got["error"] == "could not ask: OSError: connection refused" and "mac_table" not in got
 
 
-def test_the_read_joins_reads_leases_and_the_last_value():
+def test_the_read_joins_reads_leases_and_the_last_value(monkeypatch, tmp_path):
+    register(monkeypatch, tmp_path, "Lab")     # its last value is read by Lab's id (C1903)
     items = [("Lab", {"hostname": "s1"}, "cisco_ios"), ("Lab", {"hostname": "r1"},
                                                           "cisco_iosxe")]
     reads = {"s1": dict(_reads("s1", "cisco_ios", H1_ON_GI10), error="", not_supported=[]),
@@ -257,8 +259,10 @@ def test_a_network_never_read_is_read_and_the_interval_is_the_network_s_setting(
     assert R.interval_minutes("Lab") == 30 and R.interval_minutes("Other") == 15
 
 
-def test_the_endpoint_store_states_its_coverage(monkeypatch):
+def test_the_endpoint_store_states_its_coverage(monkeypatch, tmp_path):
     from modules import reader_job
+
+    register(monkeypatch, tmp_path, "Lab")     # the store is read by Lab's id (C1903)
 
     def store(devices):
         return lambda name: {"state": "ok", "doc": {"last_good": {"value": {"lists": {"Lab": {

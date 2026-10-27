@@ -28,6 +28,7 @@ import time
 import pytest
 
 from tests.fake_netbox import FakeNetBox
+from tests.registered_networks import register
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FLEET = os.path.join(HERE, "fixtures", "configs", "fleet")
@@ -145,6 +146,7 @@ def world(monkeypatch, tmp_path):
     monkeypatch.setattr(nbc, "_managed_tag_ids", {})
     writes = {"on": True}
     monkeypatch.setattr(netbox_guard, "writes_allowed", lambda: writes["on"])
+    register(monkeypatch, tmp_path, LIST)     # the network the LLDP read is asked for (C1903)
     topo = {"doc": _capture()}
     real = reader_job.read_cached
     monkeypatch.setattr(reader_job, "read_cached",

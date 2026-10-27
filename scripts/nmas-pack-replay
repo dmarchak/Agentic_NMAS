@@ -105,11 +105,16 @@ def observed_then(network: str, at: float, source=None) -> dict:
     """The Topology reader's value as of *at*, in its store's shape: the reader's own `read`
     over Prometheus evaluated at that time, for *network* alone (RIP left out: its reader's
     stored answer is today's, and the model does not carry RIP, C1711)."""
+    from modules.nsot import listref
     from modules.readers import adjacencies
     from modules.readers import topology_graph as T
 
+    # The network by its one id (C1903): ``--network default`` matched no registered name
+    # ``Default`` and read an empty topology. An unknown name raises.
+    nid = listref.network_id(network)
     value = T.read(source=source or (lambda: T.prometheus_series(network, at=at)),
-                   population=lambda: [x for x in adjacencies.lists() if x[0] == network],
+                   population=lambda: [x for x in adjacencies.lists()
+                                       if listref.network_id(x[1]) == nid],
                    clock=lambda: at, previous={}, rip=lambda clock: ({}, ""))
     return {"value": value, "value_at": _iso(at)}
 
@@ -281,6 +286,11 @@ def main(argv=None) -> int:
         ap.error("--onset is after --at")
     out = _out_path(args.out)
     if out is None:
+        return 2
+    from modules.ai import cases
+    args.network, refusal = cases.run_network(args.network)
+    if refusal:
+        print(f"nmas-pack-replay: {refusal}; no pack is built", file=sys.stderr)
         return 2
     try:
         observed = observed_then(args.network, at)

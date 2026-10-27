@@ -44,6 +44,7 @@ import yaml
 from modules import evidence_health as H
 from modules import evidence_pack as EP
 from modules import network_model as NM
+from tests.registered_networks import register
 from tests.test_ai_explain import _answer, _explain, world  # noqa: F401 (fixtures)
 from tests.test_device_v2 import _store, _unstore, lab  # noqa: F401 (the fixture)
 from tests.test_evidence_pack import (DEVICES, INJECTION, V6, _alerts, _build,  # noqa: F401
@@ -550,9 +551,10 @@ def _captured(routers, monkeypatch):
     return cap, devices, total, got, list(asked), list(m["edges"].asked), len(ospf)
 
 
-def test_a_fleet_of_900_is_captured_by_work_that_does_not_grow_with_it(monkeypatch):
+def test_a_fleet_of_900_is_captured_by_work_that_does_not_grow_with_it(monkeypatch, tmp_path):
     """Machine-independent (the operator, 2026-10-25; CI #1177, C1741): the work counted at 90
     devices and at 900, never a wall-clock bound."""
+    register(monkeypatch, tmp_path, "Big")      # the scale fleet is a network (C1903)
     small = _captured(30, monkeypatch)
     cap, devices, total, got, asked, expanded, observed = _captured(300, monkeypatch)
     # Four questions for the whole set, at 90 devices and at 900.

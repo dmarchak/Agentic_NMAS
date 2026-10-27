@@ -257,6 +257,15 @@ def main(argv=None) -> int:
     os.chdir(checkout)
     if args.merge:
         return merge(checkout, args.merge, args.cases)
+    if args.list:
+        # The network through the one resolver (C1903): either spelling, else refused before
+        # anything is read or asked.
+        from modules.ai import cases
+        declared = cases.load(os.path.join(checkout, args.cases)).get("network") or ""
+        args.list, refusal = cases.run_network(args.list, declared)
+        if refusal:
+            print(f"nmas-nl-cases: {refusal}", file=sys.stderr)
+            return 2
     if args.check:
         if not args.list:
             ap.error("--check needs --list")

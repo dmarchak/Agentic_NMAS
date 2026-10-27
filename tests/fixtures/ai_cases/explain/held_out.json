@@ -5,7 +5,7 @@
     "explain",
     4
   ],
-  "network": "Default",
+  "network": "default",
   "about": "P1 Explain's blind held-out set (PHASE8_PLAN 15.12's adoption bar: measured on the main set and a blind held-out set written before any run; 18.3: held-out sets grow toward about 30 cases, written blind, never tuned on). Its first case is the second alert of the operator's Walk 2 (2026-10-27), its pack rebuilt from the alert history with pack schema 5 (C1849 to C1851), so the rebuilt path is measured on a set no prompt was written against; the main set's case 21 is the walk's first alert, rebuilt the same way. Each expectation is set from its pack's evidence before any run, and says why; cases.explain_unready says first whether the pack holds what the case is judged on, then cases.explain_misses judges the answer on structured fields. A case is recorded only when a version is measured on this set; none has been.",
   "cases": [
     {

@@ -3522,7 +3522,13 @@ def stored_lldp_links(list_name: str, clock=time.time, cached=None) -> dict:
         out["error"] = (f"the Topology reader's LLDP was last read at {good['value_at']}, more "
                         f"than {promise} s ago")
         return out
-    net = ((good.get("value") or {}).get("networks") or {}).get(list_name)
+    from modules.nsot import listref
+    try:
+        # By the network's one id, either spelling (C1903).
+        net = T.network_of(good.get("value"), list_name)
+    except listref.UnknownList as exc:
+        out["error"] = str(exc)
+        return out
     if net is None:
         out["error"] = f"the Topology reader's last read holds no network {list_name!r}"
         return out

@@ -56,8 +56,9 @@ NetBox, a digest of its cables' drawn fields joins them (C1863), so a recabling 
 it is read. The model is rebuilt only when one of them moves: a golden committed alone moves
 HEAD and not the intent's tree, so it rebuilds nothing.
 
-**Where it is kept:** in this process's memory (`_CACHE`), one model per network, replaced
-whole under a lock; never on disk, so a read writes nothing (tests/test_reads_write_nothing.py)
+**Where it is kept:** in this process's memory (`_CACHE`), one model per network, keyed by
+its one id (`listref.network_id`, C1903: ``Default`` and ``default`` are one network, and a
+name no network answers to is an error, never an empty model), replaced whole under a lock; never on disk, so a read writes nothing (tests/test_reads_write_nothing.py)
 and a second worker process builds its own. Asking costs one git call and the inventory's
 digest; a build, two more git calls and one pass over the fleet.
 
@@ -310,13 +311,20 @@ def netbox_cables(network: str, refresh_s: float = None, read=None) -> dict:
     if cfg.get("source") != source_config.SOURCE_NETBOX:
         return no_cables(network)
     ttl = float(refresh_s if refresh_s is not None else cfg.get("refresh_interval") or 300)
+    from modules.nsot import listref
+    try:
+        # Kept under the network's one id (C1903), whichever spelling asks.
+        nid = listref.network_id(network)
+    except listref.UnknownList as exc:
+        return dict(no_cables(network), state="could not read", digest="unreadable",
+                    why=str(exc))
     with _LOCK:
-        hit = _CABLES.get(network)
+        hit = _CABLES.get(nid)
     if hit and _clock() - hit["at"] < ttl:
         return hit["doc"]
     doc = (read or read_cables)(network)
     with _LOCK:
-        _CABLES[network] = {"at": _clock(), "doc": doc}
+        _CABLES[nid] = {"at": _clock(), "doc": doc}
     return doc
 
 
@@ -738,11 +746,18 @@ def controller_coverage(obs: dict, now: float = None) -> dict:
 
 def model_for(network: str) -> tuple:
     """``(model, error)``: *network*'s model, from this process's memory while its version
-    holds, else built and kept."""
+    holds, else built and kept. *network* is its display name or its id (C1903: one model,
+    kept under the network's one id, `listref.network_id`, whichever spelling asks); a name no
+    network answers to is the error, naming it, never an empty model (and the resolver is
+    asked before `listref.resolve`, which would make the folder it was asked about)."""
     from modules.device import load_saved_devices
     from modules.neighbours import committed_intents
     from modules.nsot import leased_address, listref
 
+    try:
+        nid = listref.network_id(network)
+    except listref.UnknownList as exc:
+        return None, str(exc)
     try:
         ref = listref.resolve(network)
         inventory = load_saved_devices(ref.csv_path)
@@ -755,7 +770,7 @@ def model_for(network: str) -> tuple:
     if ver is None:
         return None, err
     with _LOCK:
-        hit = _CACHE.get(ref.name)
+        hit = _CACHE.get(nid)
     if hit and hit["version"]["key"] == ver["key"]:
         return hit, ""
     intents, ierr = committed_intents(ref.repo_dir)
@@ -763,16 +778,22 @@ def model_for(network: str) -> tuple:
     model = build(ref.name, inventory, intents, manifest, version=ver,
                   errors=[e for e in (ierr, merr) if e], cables=cables)
     with _LOCK:
-        _CACHE[ref.name] = model
+        _CACHE[nid] = model
     return model, ""
 
 
 def forget(network: str = "") -> None:
     """Drop the kept model(s) (tests; nothing in the product needs it: the version decides)."""
+    from modules.nsot import listref
+
     with _LOCK:
         if network:
-            _CACHE.pop(network, None)
-            _CABLES.pop(network, None)
+            try:
+                nid = listref.network_id(network)
+            except listref.UnknownList:
+                return
+            _CACHE.pop(nid, None)
+            _CABLES.pop(nid, None)
         else:
             _CACHE.clear()
             _CABLES.clear()
@@ -789,9 +810,13 @@ def observed(network: str, model: dict, now: float = None, stored: dict = None) 
     pack's state for a read that could not be used: ``absent`` (never read),
     ``not_configured`` (no Prometheus) or ``unreadable`` (everything else)."""
     from modules import reader_job
+    from modules.nsot import listref
     from modules.readers import topology_graph as T
     from modules.sdn import topology as SDN
 
+    # The network first (C1903): a name no network answers to raises `listref.UnknownList`
+    # whatever the store holds, never "not read yet" or "holds nothing".
+    listref.network_id(network)
     now = _now() if now is None else now
     out = {"state": "could not read", "why": "", "cause": "unreadable", "read_at": "",
            "routing": {}, "cables": {},
@@ -831,9 +856,12 @@ def observed(network: str, model: dict, now: float = None, stored: dict = None) 
         out["why"] = "Prometheus is not configured, so nothing is observed"
         out["cause"] = "not_configured"
         return out
-    net = (value.get("networks") or {}).get(network)
+    # One key per network (C1903): the read was keyed by the display name and asked for by
+    # the id, and "holds nothing for default" lost every observed link. An unknown name raises.
+    net = T.network_of(value, network)
     if net is None:
-        out["why"] = f"the Topology reader's last read holds nothing for {network}"
+        out["why"] = ("the Topology reader's last read holds nothing for "
+                      f"{model.get('network') or network}")
         return out
     out["state"], out["why"], out["cause"] = "read", "", ""
     names = model["names"]
@@ -951,7 +979,9 @@ def _extra(obs: dict) -> dict:
 
 def _seeds(network: str, model: dict, subject: str) -> tuple:
     """``(subject id, seeds, error)``: a device by its NetBox id, its model id or its name; a
-    link by its id (its members are the seeds)."""
+    link by its id (its members are the seeds). The network is named as the model names it,
+    whichever spelling asked (C1903)."""
+    network = model.get("network") or network
     subject = str(subject or "").strip()
     if subject.startswith("link:"):
         link = model["links"].get(subject)
@@ -1125,7 +1155,7 @@ def context_for(network: str, subject: str, hops: int = 1, overlay: dict = None,
                                              if k not in ("between", "proto", "expected")}}
     cables = {cid: c for cid, c in obs["cables"].items()
               if touches([e["dev"] for e in c["ends"]])}
-    doc = {"network": network, "model": model["version"].get("key", ""),
+    doc = {"network": model["network"], "model": model["version"].get("key", ""),
            "subject": subject, "hops": hops, "devices": devices, "links": links,
            "adjacencies": adjacencies,
            "cables": cables or (could_not or "none reported for these devices"),

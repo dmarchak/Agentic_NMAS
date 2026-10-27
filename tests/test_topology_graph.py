@@ -506,16 +506,20 @@ class TestTheRead:
         assert got == {"configured": False, "networks": {}, "errors": []}
 
     def test_a_network_per_list(self):
-        from types import SimpleNamespace
+        from modules.nsot.listref import ListRef
         res, up = _capture()
-        ref = SimpleNamespace(repo_dir=os.path.join(ROOT, "no-such-repo"))
+        # The population's ref, as `adjacencies.lists` gives one: the network resolved.
+        nowhere = os.path.join(ROOT, "no-such-repo")
+        ref = ListRef(name="Lab", slug="lab", data_dir=nowhere, repo_dir=nowhere,
+                      csv_path=os.path.join(nowhere, "devices.csv"))
         got = T.read(source=lambda: (True, res, up),
                      population=lambda: [("Lab", ref, MANAGED)], clock=lambda: 0,
                      expected=lambda name: {"state": "absent", "islands": {}, "error": ""},
                      at_here=[])
-        assert got["configured"] and set(got["networks"]) == {"Lab"}
+        # Keyed by the network's one id, never its display name (C1903).
+        assert got["configured"] and set(got["networks"]) == {"lab"}
         assert got["read_at"] == "1970-01-01T00:00:00Z"
-        assert got["networks"]["Lab"]["nodes"]["r1"]["role"] == "router"
+        assert got["networks"]["lab"]["nodes"]["r1"]["role"] == "router"
 
     def test_the_change_test_ignores_the_read_time(self):
         a = {"configured": True, "networks": {"x": 1}, "read_at": "t1"}

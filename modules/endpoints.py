@@ -271,11 +271,15 @@ def coverage_layer(network: str) -> dict:
 
 def stored(network: str) -> dict:
     """The endpoint reader's stored value for *network*: ``{"state", "why", "endpoints",
-    "read_at", "devices"}``; "absent" before its first read, never "none"."""
+    "read_at", "devices"}``; "absent" before its first read, never "none". *network* is its
+    display name or its id (`listref.keyed`, C1903: the reader keys its value by the display
+    name, so the id read nothing); a name no network answers to raises `listref.UnknownList`."""
     from modules import reader_job
+    from modules.nsot import listref
+
     got = reader_job.read_cached("endpoints")
     good = (got.get("doc") or {}).get("last_good") or {}
-    value = (good.get("value") or {}).get("lists", {}).get(network)
+    value = listref.keyed((good.get("value") or {}).get("lists"), network)
     if value is None:
         return {"state": "absent" if got.get("state") in ("absent", "ok") else "unreadable",
                 "why": got.get("why") or "the endpoint reader has not read this network",

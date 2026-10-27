@@ -20,6 +20,7 @@ import pytest
 import yaml
 
 from modules.ai import intent_names, intent_words
+from tests.registered_networks import register
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 with open(os.path.join(ROOT, "tests", "fixtures", "committed", "s1.yml"), encoding="utf-8") as fh:
@@ -33,9 +34,11 @@ NEIGHBOURS = {"ports": {
 
 
 @pytest.fixture(autouse=True)
-def _inventory(monkeypatch):
+def _inventory(monkeypatch, tmp_path):
     monkeypatch.setattr(intent_names, "_devices", lambda network: {
         "r1": "router", "s1": "switch", "s2": "switch"})
+    # Lab is a network (C1903: a read naming no network raises).
+    register(monkeypatch, tmp_path, "Lab")
 
 
 def _resolve(sentence, picks=None, doc=None, neighbours=None):

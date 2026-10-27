@@ -51,6 +51,25 @@ def evaluation_actor(given: str, script: str, now: float = None) -> tuple:
     return given, ""
 
 
+def run_network(given: str, declared: str = "") -> tuple:
+    """``(network, refusal)`` for an evaluation script's ``--list`` or ``--network`` (C1903):
+    *given* through the one resolver (`listref.network_id`), either spelling, and the network
+    asked as its display name, the spelling every product path passes (`ListRef.name`), so a
+    recording runs the product's own path. A name no network answers to is refused by name;
+    so is a case file whose ``network`` (*declared*, its canonical id) is another network
+    than the one given, naming both."""
+    from modules.nsot import listref
+
+    try:
+        nid = listref.network_id(given)
+        if declared and listref.network_id(declared) != nid:
+            return "", (f"the case file is for the network {declared!r} and --list names "
+                        f"{given!r} ({nid}): one network per recording")
+        return listref.display_name(nid), ""
+    except listref.UnknownList as exc:
+        return "", str(exc)
+
+
 def measure_on(task: str, model: str) -> str:
     """A comparison on another model (PHASE8_PLAN 15.12, the operator, 2026-10-27): *task*'s pin
     replaced in this process alone, never the pin file. ``""`` when done (or *model* is empty),

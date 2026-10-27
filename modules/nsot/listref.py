@@ -160,6 +160,77 @@ def resolve(name: str) -> ListRef:
     return _build(text, derived)
 
 
+def network_id(name) -> str:
+    """The network's ONE canonical id (C1903, the operator's design): its slug, lower case,
+    separate from the display name a person sees. Every key into a store or a reader's value
+    that holds something per network is this id, and every lookup of one goes through here.
+
+    *name* may be the display name (``Default``) or the id (``default``), in any case, or a
+    `ListRef` (already resolved: its slug). A name no network answers to RAISES `UnknownList`,
+    naming it, never an empty answer: C1903's defect was a store keyed ``Default`` asked for
+    ``default``, which answered "holds nothing" and lost every observed link silently.
+    Creates nothing (register C51): unlike `resolve`, it builds no ref, so it makes no folder.
+    A network is one when `exists` says so: registered, by name or id, or on disk and not
+    deleted."""
+    from modules.config import list_slug
+
+    if isinstance(name, ListRef):
+        return name.slug
+    text = str(name or "").strip()
+    if not text:
+        raise UnknownList("no network named")
+    registry = _registry()
+    derived = list_slug(text)
+    for display, slug in registry.items():
+        if text in (display, slug) or derived in (list_slug(display), slug):
+            return list_slug(display)
+    if not exists(text):
+        known = sorted(registry, key=str.lower)
+        raise UnknownList(f"no network answers to {text[:60]!r}: the registered networks are "
+                          + (", ".join(known[:10]) + (f" and {len(known) - 10} more"
+                                                     if len(known) > 10 else "")
+                             if known else "none"))
+    return derived
+
+
+def display_name(name) -> str:
+    """The name a person sees for the network *name* (either spelling, or a `ListRef`): its
+    registered display name, found by its one id (`network_id`, which raises for a name no
+    network answers to); a network on disk and not yet registered is named as asked. Builds
+    nothing."""
+    from modules.config import list_slug
+
+    if isinstance(name, ListRef):
+        return name.name
+    nid = network_id(name)
+    return next((display for display in _registry() if list_slug(display) == nid),
+                str(name).strip())
+
+
+def keyed(mapping, name, default=None):
+    """*mapping*'s entry for the network *name*, through `network_id` (an unknown name raises
+    `UnknownList`). A value stored before C1903 is keyed by the display name: during the
+    transition the id's key is read first, then a key that is the same network by its slug
+    (expand, then contract: the contract step, dropping the display-name read once no stored
+    value holds one, is its own register row). A writer keys by `network_id` alone."""
+    from modules.config import list_slug
+
+    nid = network_id(name)
+    held = mapping or {}
+    if nid in held:
+        return held[nid]
+    for key, value in held.items():
+        if isinstance(key, str) and key.strip() and list_slug(key) == nid:
+            return value
+    return default
+
+
+def in_networks(names, name) -> bool:
+    """Is the network *name* among *names* (a stored list of networks, by id or by display
+    name)? `keyed`'s rule, so a membership and a lookup cannot disagree."""
+    return keyed(dict.fromkeys(names or (), True), name, False)
+
+
 def names() -> list:
     """Every registered network's display name, sorted. A deleted network is unregistered, so
     it is not one of them. Unlike :func:`_registry`, a registry that cannot be read RAISES:

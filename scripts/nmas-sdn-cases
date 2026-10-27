@@ -225,6 +225,14 @@ def main(argv=None) -> int:
         return 5 if problems else 0
     if not args.out or not args.list:
         ap.error("a recording needs --list and --out (--actor defaults to evaluation:<run>)")
+    # The network through the one resolver (C1903): either spelling, the case file's own
+    # network (its canonical id) the same one, else refused before anything is asked.
+    from modules.ai import cases
+    declared = cases.load(os.path.join(checkout, args.cases)).get("network") or ""
+    args.list, refusal = cases.run_network(args.list, declared)
+    if refusal:
+        print(f"nmas-sdn-cases: {refusal}", file=sys.stderr)
+        return 2
     return record(checkout, args.list, args.actor, args.out, args.cases, args.runs, args.model)
 
 
