@@ -87,9 +87,6 @@ NOT_AN_OPERATION = {
                                            "connection is changed: a page of its own",
     ("_sdn_view.html", "Show"): "narrows SDN › Flows to words and the controller's own flows, "
                                 "a read of the SDN reader's stored value",
-    ("_sdn_view.html", "Remove…"): "drawn disabled with its reason on an unauthorised flow: "
-                                   "removing a flow is a gated response, built with Responses "
-                                   "(PHASE8_PLAN 17.1 S8)",
     ("_intent_words.html", "Discard draft"): "reopens the Intent tab without the draft, which "
                                              "lived on the page only; nothing was written",
     ("_intent_words.html", "btn btn-small iw-choice"):"answers Mercury's own question (which "

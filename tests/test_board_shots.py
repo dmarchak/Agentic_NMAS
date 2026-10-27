@@ -177,6 +177,22 @@ def test_sdn(tmp_path, monkeypatch):
         _shoot("sdn-settings-edit", "",
                lambda w: "/v2/settings/network/Default/sdn/edit/lab-controller", served,
                widths=((1440, 1.0), (390, 2.0)))
+        # PHASE8_PLAN 17.1 S8 to S10: SDN › Responses beside SdnResponses (1440), one scan
+        # awaiting a person (the detection's words as the lab's run wrote them, 2026-10-27)
+        # and a loop log line.
+        from modules.sdn import loop as LP
+        LP.propose("Default", {
+            "key": "k-shot", "rule": "scan", "title": "SDN scan", "network": "Default",
+            "connection": "lab-controller", "dpid": 1, "dpid_hex": "0000000000000001",
+            "source": "192.0.2.1", "targets": ["192.0.2.3"], "confidence": "high",
+            "words": "192.0.2.1 reached 229 distinct destination ports on switch "
+                     "0000000000000001 (lab-controller) in the last 60 s, at or above the "
+                     "threshold of 20 (sdn_scan_ports)"}, "drop_source", "low",
+            why="HITL: a person confirms each response")
+        LP.say("Default", "detect", "scan from 192.0.2.1 on 0000000000000001")
+        _shoot("sdn-responses", "SdnResponses.dc.html",
+               lambda w: "/v2/sdn/responses?list=Default", served,
+               widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
     assert T0, "the lab's flow intent was recorded at T0"
 
 

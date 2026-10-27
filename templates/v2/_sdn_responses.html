@@ -1,0 +1,93 @@
+{%- from "v2/_macros.html" import badge, stamp, how -%}
+{#- SDN › Responses (board SdnResponses, signed off 2026-10-27 under the Phase 7 mode): what to
+    act on first (a response awaiting a person), then the mode, the loop and the rules.
+    Detection decides in code; no AI classifies until cost safety is live (C1843), and the card
+    says so; a response is a previewed, confirmed operation (modules/sdn/flow_ops.py).
+    modules/sdn_ops_page.responses_view builds `g`. Included by _sdn_view.html. -#}
+{%- set m = g.mode %}
+<p class="sdn-sum"><strong>{{ g.awaiting | length }} awaiting approval</strong> · mode {{ m.mode | upper }} · the loop {% if g.loop.running %}running every {{ g.loop.interval | int }} s{% else %}stopped{% endif %}</p>
+{%- if g.awaiting_state == 'unreadable' %}
+<div class="notice notice-danger" role="alert"><p>The responses awaiting a person cannot be read: {{ g.awaiting_error }}.</p></div>
+{%- endif %}
+{%- for r in g.awaiting %}
+<section class="card sdn-resp" aria-labelledby="sdn-r-{{ r.id }}">
+  <div class="sdn-ctl-hd"><h2 id="sdn-r-{{ r.id }}">{{ r.title }}{% if r.source %} from <span class="mono">{{ r.source }}</span>{% endif %} on <span class="mono">{{ r.dpid_hex }}</span></h2>{% if r.confidence %} {{ badge(r.confidence, 'danger' if r.confidence == 'high' else 'warn') }}{% endif %}</div>
+  <p class="small">Detected {{ stamp(r.at) }}: {{ r.words }} · an alert with its evidence pack</p>
+  <p class="small faint">{{ r.classified }}.</p>
+  <p class="small"><strong>Proposed:</strong> {{ r.label }} (catalogue action <span class="mono">{{ r.action }}</span>, risk {{ r.risk }}): {{ r.action_words }}.</p>
+  <div class="sdn-acts">
+    <form class="op-act" hx-post="{{ url_for('sdn_v2.response_preview', rid=r.id) }}" hx-target="#sdn-rp-{{ r.id }}" hx-swap="innerHTML" hx-disabled-elt="find button">
+      <input type="hidden" name="list" value="{{ g.network }}">
+      <input type="hidden" name="action" value="{{ r.action }}">
+      <label class="small">for <input type="number" name="hard_timeout" min="1" max="{{ g.limits['values'].sdn_response_max_seconds if g.limits.ok else 3600 }}" value="{{ g.limits['values'].sdn_response_hard_timeout_seconds if g.limits.ok else 600 }}"> s</label>
+      {%- if r.action == 'rate_limit_source' %}
+      <label class="small">above <input type="number" name="rate" min="1" value="1000"></label>
+      <label class="small"><select name="unit"><option value="kbps">kbit/s</option><option value="pktps">packets/s</option></select></label>
+      <label class="small">burst <input type="number" name="burst" min="0" value="100"></label>
+      {%- endif %}
+      <button class="btn btn-primary" type="submit" hx-disabled-elt="this" data-op="sdn-flows"{{ gate('confirm') }}><span class="op-idle">Preview the {{ r.label | lower }}…</span><span class="op-busy">Reading the switch…</span></button>{{ how('sdn-flows', compact=True, op='Preview a response') }}
+    </form>
+    <form class="op-act sdn-dismiss" hx-post="{{ url_for('sdn_v2.response_dismiss', rid=r.id) }}" hx-target="#sdn" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <input type="hidden" name="list" value="{{ g.network }}">
+      <label class="sr-only" for="sdn-why-{{ r.id }}">Reason</label>
+      <input id="sdn-why-{{ r.id }}" type="text" name="reason" placeholder="Why dismiss it" required>
+      <button class="btn" type="submit" hx-disabled-elt="this" data-op="sdn"{{ gate('configure') }}><span class="op-idle">Dismiss with this reason</span><span class="op-busy">Dismissing…</span></button>{{ how('sdn', 'responses', compact=True, op='Dismiss') }}
+    </form>
+  </div>
+  <p class="faint small">Nothing is sent until you confirm the previewed requests. {{ g.verify_limit }}.</p>
+  <div class="sdn-op-slot" id="sdn-rp-{{ r.id }}" role="region" aria-live="polite"></div>
+</section>
+{%- else %}
+<p class="muted sdn-none">No response is awaiting a person.</p>
+{%- endfor %}
+
+<section class="card sdn-mode" aria-labelledby="sdn-mode-h">
+  <div class="sdn-ctl-hd"><h2 id="sdn-mode-h">Mode {{ badge(m.mode | upper, 'warn' if m.mode == 'auto' else 'muted') }}</h2></div>
+  <p class="small">{{ m.words }}.</p>
+  {%- if m.mode == 'auto' %}
+  <form class="op-act" hx-post="{{ url_for('sdn_v2.mode_set') }}" hx-target="#sdn" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="list" value="{{ g.network }}"><input type="hidden" name="mode" value="hitl">
+    <button class="btn" type="submit" hx-disabled-elt="this" data-op="sdn"{{ gate('configure') }}><span class="op-idle">Turn AUTO off</span><span class="op-busy">Turning off…</span></button>{{ how('sdn', 'responses', compact=True, op='Turn AUTO off') }}
+  </form>
+  {%- else %}
+  <p class="small faint">AUTO is off. A verified person turns it on for this network with a reason and an expiry (at most {{ g.max_hours }} hours); at the expiry it returns to HITL, and History says so. While it is on, only catalogue actions within the allowed risk run unattended, each recorded as autonomous with this reason.</p>
+  <form class="sdn-mode-form" hx-post="{{ url_for('sdn_v2.mode_set') }}" hx-target="#sdn" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="list" value="{{ g.network }}"><input type="hidden" name="mode" value="auto">
+    <label>Reason <input type="text" name="reason" required></label>
+    <label>For (hours) <input type="number" name="hours" min="0.1" max="{{ g.max_hours }}" step="0.1" value="1" required></label>
+    <label>Allowed risk <select name="risk"><option value="low">low: rate-limit, drop</option><option value="medium">medium: also remove a flow</option></select></label>
+    <button class="btn" type="submit" hx-disabled-elt="this" data-op="sdn"{{ gate('configure') }}><span class="op-idle">Turn AUTO on</span><span class="op-busy">Turning on…</span></button>{{ how('sdn', 'responses', compact=True, op='Turn AUTO on') }}
+  </form>
+  {%- endif %}
+</section>
+
+<section class="card sdn-loop" aria-labelledby="sdn-loop-h">
+  <div class="sdn-ctl-hd"><h2 id="sdn-loop-h">The loop {{ badge('running' if g.loop.running else 'stopped', 'ok' if g.loop.running else 'muted') }}</h2>
+    <form class="op-act" hx-post="{{ url_for('sdn_v2.loop_set') }}" hx-target="#sdn" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <input type="hidden" name="list" value="{{ g.network }}">
+      {%- if g.loop.running %}<input type="hidden" name="run" value="stop"><button class="btn" type="submit" hx-disabled-elt="this" data-op="sdn"{{ gate('configure') }}><span class="op-idle">Stop</span><span class="op-busy">Stopping…</span></button>{{ how('sdn', 'responses', compact=True, op='Stop') }}
+      {%- else %}<input type="hidden" name="run" value="start"><label class="small">every <input type="number" name="interval" min="5" max="600" value="10"> s</label> <button class="btn" type="submit" hx-disabled-elt="this" data-op="sdn"{{ gate('configure') }}><span class="op-idle">Start</span><span class="op-busy">Starting…</span></button>{{ how('sdn', 'responses', compact=True, op='Start') }}{% endif %}
+    </form></div>
+  <p class="small faint">{% if g.loop.running %}Started by {{ g.loop.by }} {{ stamp(g.loop.since) }}: detect, classify (no AI call until cost safety is live, C1843), respond in the mode.{% elif g.loop.stopped %}{{ g.loop.stopped.words | capitalize }}, {{ stamp(g.loop.stopped.at) }}.{% else %}Not started on this network.{% endif %}</p>
+  {%- if g.log %}
+  <pre class="mono sdn-log">{% for l in g.log %}{{ l.at[11:19] }} {{ l.step }}: {{ l.words }}
+{% endfor %}</pre>
+  {%- endif %}
+</section>
+
+<section class="card sdn-rules" aria-labelledby="sdn-rules-h">
+  <div class="sdn-ctl-hd"><h2 id="sdn-rules-h">Detection rules</h2><span class="faint small">thresholds for this network · in code, never AI</span></div>
+  {%- if g.thresholds.ok %}{% set v = g.thresholds['values'] %}
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th scope="col">Rule</th><th scope="col">Fires when</th><th scope="col">Threshold</th><th scope="col">Needs</th></tr></thead>
+    <tbody>
+      <tr><td>Scan</td><td>distinct destination ports per source over the window</td><td>{{ v.sdn_scan_ports }} ports in {{ v.sdn_scan_window_seconds }} s</td><td>L4 flows; on L2-only flows, a packet-rate fallback ({{ v.sdn_scan_fallback_pps }} pps) marked lower confidence</td></tr>
+      <tr><td>Flood</td><td>a port's packet rate against its baseline</td><td>{{ v.sdn_flood_factor }} × baseline for {{ v.sdn_flood_window_seconds }} s</td><td>two port-stat samples a stated interval apart</td></tr>
+      <tr><td>Unauthorised flow</td><td>a cookie neither Mercury's nor the controller's own</td><td>any</td><td>flow tables</td></tr>
+    </tbody>
+  </table></div>
+  {%- else %}
+  <p class="small">The thresholds cannot be read: {{ g.thresholds.error }}.</p>
+  {%- endif %}
+  <p class="small faint">{% if g.limits.ok %}Every response flow expires at its hard timeout: {{ g.limits['values'].sdn_response_hard_timeout_seconds }} s on this network, at most {{ g.limits['values'].sdn_response_max_seconds }} s; a response's meter is removed once its flows have expired.{% else %}The response timeouts cannot be read: {{ g.limits.error }}.{% endif %}</p>
+</section>

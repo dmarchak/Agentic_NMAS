@@ -1,0 +1,54 @@
+[
+ {
+  "at": "2026-10-27T09:25:30Z",
+  "basis": "rate",
+  "confidence": "high",
+  "confidence_why": "the port's own counters, read twice a stated interval apart, against its own earlier collections",
+  "connection": "lab",
+  "dpid": 1,
+  "dpid_hex": "0000000000000001",
+  "evidence": [
+   "port:lab:0000000000000001:2",
+   "flow:lab:0000000000000001:t0:p2:d219a2c7a4"
+  ],
+  "key": "ed61beed81b4eb246ef6",
+  "measurement": {
+   "held_s": 41.0,
+   "sample_s": 2.016,
+   "since": "2026-10-27T09:24:49Z",
+   "unit": "pps",
+   "value": 1782.738,
+   "what": "packets received a second"
+  },
+  "network": "lab8",
+  "port": 2,
+  "rule": "flood",
+  "scope": "port:lab:0000000000000001:2",
+  "since": 1793093089.0,
+  "source": "192.0.2.2",
+  "sources": [
+   "192.0.2.2"
+  ],
+  "subject": {
+   "kind": "port",
+   "value": 2
+  },
+  "targets": [
+   "192.0.2.4"
+  ],
+  "threshold": {
+   "baseline_pps": 0.0,
+   "baseline_samples": 6,
+   "factor": 5,
+   "floor_pps": 10.0,
+   "setting": "sdn_flood_factor",
+   "unit": "pps",
+   "value": 50.0,
+   "what": "the factor times the port's baseline",
+   "window_s": 30,
+   "window_setting": "sdn_flood_window_seconds"
+  },
+  "title": "SDN flood",
+  "words": "port 2 of switch 0000000000000001 (lab) received 1782.74 packets a second, at or above 5x its baseline of 0 (50), for 41 s since 2026-10-27T09:24:49Z (the window is 30 s)"
+ }
+]

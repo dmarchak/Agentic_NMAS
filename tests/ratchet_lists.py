@@ -138,6 +138,7 @@ RATCHETS = (
     ("tests/test_probe_topologies.py", "MIN_TOPOLOGIES", "floor"),
     ("tests/test_probe_topologies.py", "MIN_C8000V_NODES", "floor"),
     ("tests/test_route_gates.py", "MUTATING_FLOOR", "floor"),
+    ("tests/test_sdn_authority.py", "POPULATION_FLOOR", "floor"),
     ("tests/test_v2_busy_on_itself.py", "MEMBERS_FLOOR", "floor"),
     ("tests/test_v2_busy_on_itself.py", "FORM_SUBMITS_FLOOR", "floor"),
     ("tests/test_v2_busy_on_itself.py", "SCRIPT_POSTERS_FLOOR", "floor"),
@@ -157,6 +158,7 @@ NOT_RATCHETS = {
     # The product's own thresholds and data, whose name only shares a stem.
     ("modules/ai/nl_query.py", "OFFER_FLOOR"): "a product threshold: the fewest metrics the context budget rule trims an offer to, the deepest rank a case's right metric was measured at (C1830); a better ranking may lower it",
     ("modules/sdn/detect.py", "BASELINE_FLOOR_PPS"): "a product threshold: the least packets a second an idle port's flood baseline counts as, so a quiet port is not flooded by its first ping; to be measured on the slice's first run (C1865), up or down",
+    ("modules/sdn/flow_ops.py", "RESPONSE_PRIORITY_FLOOR"): "a product constant: the lowest OpenFlow priority a response's flow takes (300, the boards' figure), a documented priority scheme, not a count any test holds; it moves with the scheme, up or down (C1837)",
     ("tests/test_sdn_drivers.py", "LEAK_PATHS"): "test data, not a ratchet: each way a controller's answer could carry a credential back, one parametrized case each; it only grows as paths are found (C1837)",
     ("modules/attention.py", "INCIDENT_GAP_SECONDS"): "a product setting: the gap that splits incidents",
     ("modules/config_read.py", "SIZE_FLOOR"): "a product threshold on a config's size, not a test's",

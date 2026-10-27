@@ -47,6 +47,7 @@ CALLS = {
     "test": (), "switches": (), "switch_desc": (1,), "links": (), "flows": (1,),
     "port_stats": (1,), "meters": (1,), "meter_features": (1,),
     "add_flow": (1, DROP), "render_add_flow": (1, DROP),
+    "modify_flow_strict": (1, DROP), "render_modify_flow_strict": (1, DROP),
     "delete_flow_strict": (1, DROP), "render_delete_flow_strict": (1, DROP),
     "add_meter": (1, METER), "render_add_meter": (1, METER),
     "delete_meter": (1, {"meter_id": 1}), "render_delete_meter": (1, {"meter_id": 1}),
@@ -144,7 +145,7 @@ def test_a_driver_not_built_refuses_every_call_naming_it(kind, call):
     driver = drivers.DRIVERS[kind](Connection("http://127.0.0.1:8080"), session=session)
     out = getattr(driver, call)(*CALLS[call])
     cls = drivers.DRIVERS[kind]
-    name = f"render_{call}" if call.startswith(("add_", "delete_")) else call
+    name = f"render_{call}" if call.startswith(("add_", "modify_", "delete_")) else call
     assert out == {"ok": False, "refused": True,
                    "error": f"the {cls.label} driver is not built (status: {cls.status}), so "
                             f"{name} is not available"}
@@ -169,6 +170,7 @@ class _ReadOnly(RyuDriver):
 
 @pytest.mark.parametrize("call,capability", [
     ("add_flow", "write_flows"), ("render_add_flow", "write_flows"),
+    ("modify_flow_strict", "write_flows"), ("render_modify_flow_strict", "write_flows"),
     ("delete_flow_strict", "delete_flows"), ("render_delete_flow_strict", "delete_flows"),
     ("add_meter", "write_meters"), ("render_add_meter", "write_meters"),
     ("delete_meter", "write_meters"), ("render_delete_meter", "write_meters")])

@@ -19,7 +19,7 @@ log = logging.getLogger(__name__)
 
 bp = Blueprint("sdn_v2", __name__, url_prefix="/v2/sdn")
 
-TABS = (("controllers", "Controllers"), ("flows", "Flows"))
+TABS = (("controllers", "Controllers"), ("flows", "Flows"), ("responses", "Responses"))
 
 
 def _list_name() -> str:
@@ -33,8 +33,13 @@ def _ctx(tab: str) -> dict:
     from modules import sdn_page
 
     network = _list_name()
-    g = (sdn_page.flows_view(network, request.args) if tab == "flows"
-         else sdn_page.controllers_view(network))
+    if tab == "responses":
+        from modules import sdn_ops_page
+
+        g = sdn_ops_page.responses_view(network)
+    else:
+        g = (sdn_page.flows_view(network, request.args) if tab == "flows"
+             else sdn_page.controllers_view(network))
     return {"g": g, "tabs": TABS}
 
 
@@ -60,6 +65,184 @@ def region():
     Writes nothing."""
     tab = request.args.get("tab") if request.args.get("tab") in dict(TABS) else "controllers"
     return _strict(render_template("v2/_sdn_view.html", **_ctx(tab)))
+
+
+@bp.route("/responses", methods=["GET"])
+def responses():
+    """SDN › Responses (board SdnResponses): what awaits a person, the mode, the loop, the
+    rules. A read."""
+    from routes.v2 import _page
+
+    return _page("v2/sdn.html", active_nav="sdn", list_name=_list_name(), **_ctx("responses"))
+
+
+# ───────────────────────────────────────────────────────────────────────────── operations
+# PHASE8_PLAN 17.1 S8 and S16 (C1912): every flow Mercury adds, edits or removes, and every
+# response, is ONE operation (modules/sdn/flow_ops.py): a preview of the exact requests, a
+# confirm bound to their hash as a verified person, the apply holding the switch, Verify,
+# rollback, and the record. The card (_sdn_op.html) is drawn in place of the control's slot.
+
+def _op_card(d: dict, status: int = 200):
+    return _strict(render_template("v2/_sdn_op.html", d=d)), status
+
+
+def _network_of_form() -> str:
+    from routes.list_param import submitted_list
+
+    name, _refusal = submitted_list(request)
+    return name or _list_name()
+
+
+@bp.route("/flow/form", methods=["GET"])
+def flow_form():
+    """The editor in place (board SdnFlowEdit): Add on a switch, Edit or Remove on a flow. A
+    read; the form posts its preview."""
+    return _strict(render_template("v2/_sdn_flow_form.html", f={
+        "do": request.args.get("do", "add"), "connection": request.args.get("connection", ""),
+        "dpid": request.args.get("dpid", ""), "target": request.args.get("target", ""),
+        "list": _list_name()}))
+
+
+@bp.route("/flow/preview", methods=["POST"])
+def flow_preview():
+    """The preview of a person's Add, Edit or Remove: the exact requests and their hash, read
+    from the switch now; writes nothing."""
+    from modules import sdn_ops_page
+    from modules.sdn import flow_form, flow_ops
+
+    network = _network_of_form()
+    try:
+        ask = flow_form.ask_from_form(request.form)
+    except flow_form.FormRefused as exc:
+        return _op_card(sdn_ops_page.refused(network, "flow", str(exc)), 400)
+    p = flow_ops.plan(network, ask)
+    return _op_card(sdn_ops_page.preview(network, "flow", ask, p), 200 if p["ok"] else 409)
+
+
+@bp.route("/flow/confirm", methods=["POST"])
+def flow_confirm():
+    """Apply the previewed change as the verified person, bound to the preview's hash."""
+    from modules import identity, sdn_ops_page
+    from modules.sdn import flow_ops
+
+    network = _network_of_form()
+    ask, refused = sdn_ops_page.carried_ask(request.form)
+    if refused:
+        return _op_card(sdn_ops_page.refused(network, "flow", refused), 400)
+    done = flow_ops.apply(network, ask, (request.form.get("hash") or "").strip(),
+                          actor=identity.request_actor(),
+                          actor_verified=identity.actor_verification(identity.request_actor()),
+                          typed=request.form.get("typed", ""))
+    return _op_card(sdn_ops_page.result(network, "flow", done),
+                    200 if done["outcome"] != "refused" else 409)
+
+
+@bp.route("/response/<rid>/preview", methods=["POST"])
+def response_preview(rid):
+    """The preview of a response awaiting a person: its catalogue action built from the
+    detection and checked against the evidence, the exact requests and their hash. Writes
+    nothing."""
+    from modules import sdn_ops_page
+    from modules.sdn import closed_loop, loop
+
+    network = _network_of_form()
+    row = next((r for r in loop.awaiting(network)["rows"] if r.get("id") == rid), None)
+    if row is None:
+        return _op_card(sdn_ops_page.refused(network, "response", f"no response {rid} is "
+                                                                  "awaiting a person"), 404)
+    action = (request.form.get("action") or row.get("action") or "").strip()
+    params = {k: request.form.get(k) for k in ("hard_timeout", "rate", "burst", "unit")
+              if (request.form.get(k) or "").strip()}
+    got = closed_loop.respond_to_threat(network, row["detection"], action, params)
+    return _op_card(sdn_ops_page.response_preview(network, row, got),
+                    200 if got["ok"] else 409)
+
+
+@bp.route("/response/confirm", methods=["POST"])
+def response_confirm():
+    """Apply the previewed response as the verified person (HITL), bound to its hash; the
+    awaiting response is closed as confirmed with the operation's id."""
+    from modules import identity, sdn_ops_page
+    from modules.sdn import closed_loop, loop
+
+    network = _network_of_form()
+    ask, refused = sdn_ops_page.carried_ask(request.form)
+    rid = (request.form.get("rid") or "").strip()
+    if refused:
+        return _op_card(sdn_ops_page.refused(network, "response", refused), 400)
+    actor = identity.request_actor()
+    done = closed_loop.respond_to_threat(
+        network, None, (request.form.get("action") or "").strip(),
+        confirm={"ask": ask, "hash": (request.form.get("hash") or "").strip()}, actor=actor,
+        actor_verified=identity.actor_verification(actor))
+    if done.get("outcome") == "verified" and rid:
+        try:
+            loop.resolve(network, rid, "confirmed", actor=actor, operation=done.get("id", ""))
+        except ValueError as exc:
+            done["note"] = str(exc)
+    return _op_card(sdn_ops_page.result(network, "response", done),
+                    200 if done.get("outcome") != "refused" else 409)
+
+
+@bp.route("/response/<rid>/dismiss", methods=["POST"])
+def response_dismiss(rid):
+    """Dismiss a response awaiting a person, with their reason; nothing is sent."""
+    from modules import identity
+    from modules.sdn import loop
+
+    network = _network_of_form()
+    try:
+        loop.resolve(network, rid, "dismissed", actor=identity.request_actor(),
+                     why=request.form.get("reason", ""))
+    except ValueError as exc:
+        return _strict(render_template("v2/_sdn_answer.html", refused=str(exc))), 409
+    return _strict(render_template("v2/_sdn_view.html", **_ctx("responses")))
+
+
+@bp.route("/mode", methods=["POST"])
+def mode_set():
+    """Turn AUTO on (a verified person, a reason, an expiry, the allowed risk) or off, for this
+    network (17.4). Recorded."""
+    import time
+
+    from modules import identity
+    from modules.sdn import modes
+
+    network = _network_of_form()
+    actor = identity.request_actor()
+    try:
+        if request.form.get("mode") == "auto":
+            hours = float(request.form.get("hours") or 0)
+            modes.turn_on(network, actor=actor,
+                          actor_verified=identity.actor_verification(actor),
+                          reason=request.form.get("reason", ""),
+                          until=time.time() + hours * 3600,
+                          allowed_risk=request.form.get("risk", "low"))
+        else:
+            modes.turn_off(network, actor=actor,
+                           actor_verified=identity.actor_verification(actor),
+                           why=request.form.get("reason", ""))
+    except (ValueError, modes.ModeRefused) as exc:
+        return _strict(render_template("v2/_sdn_answer.html", refused=str(exc))), 409
+    return _strict(render_template("v2/_sdn_view.html", **_ctx("responses")))
+
+
+@bp.route("/loop", methods=["POST"])
+def loop_set():
+    """Start or stop the loop on this network (S10). Recorded in its log."""
+    from modules import identity
+    from modules.sdn import loop
+
+    network = _network_of_form()
+    try:
+        if request.form.get("run") == "start":
+            loop.start(network, actor=identity.request_actor(),
+                       interval=float(request.form.get("interval") or loop.DEFAULT_INTERVAL))
+        else:
+            loop.stop(network, actor=identity.request_actor())
+    except ValueError as exc:
+        return _strict(render_template("v2/_sdn_answer.html", refused=str(exc))), 409
+    return _strict(render_template("v2/_sdn_view.html", **_ctx("responses")))
 
 
 @bp.route("/controller/<name>/test", methods=["POST"])

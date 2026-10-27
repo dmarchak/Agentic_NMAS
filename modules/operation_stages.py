@@ -171,6 +171,16 @@ STAGES = {
         "n/a: a lease Kea deleted cannot be put back (Kea keeps no copy of it); the client is "
         "answered afresh at its next request, and the preview says so",
         "modules.dhcp_leases.record"),
+    # SDN (PHASE8_PLAN 17.1 S8 and S16, C1912): the flow-operation core, one path for a
+    # person's flow change and a response. The apply plans again and compares the hash, sends
+    # each request holding the switch, reads the table back, rolls back what landed on a
+    # failure, and records the run in the network's flow intent.
+    "sdn_v2.flow_confirm": Stages(
+        "sdn_v2.flow_preview", "hash", "modules.sdn.flow_ops.verify_installed",
+        "modules.sdn.flow_ops._rollback", "modules.sdn.flow_intent.record_operation"),
+    "sdn_v2.response_confirm": Stages(
+        "sdn_v2.response_preview", "hash", "modules.sdn.flow_ops.verify_installed",
+        "modules.sdn.flow_ops._rollback", "modules.sdn.flow_intent.record_operation"),
     "update.apply": Stages(
         "v2.update", "hash",
         "n/a: the root-owned updater (deploy/update/nmas-update) confirms the new version by identity",
@@ -407,6 +417,14 @@ HISTORY = {
     "settings_v2.sdn_test": NOT_A_DEVICE,
     "settings_v2.sdn_saved_test": NOT_A_DEVICE,
     "sdn_v2.controller_test": NOT_A_DEVICE,
+    "sdn_v2.flow_confirm": ("sdn_operations",),
+    "sdn_v2.response_confirm": ("sdn_operations",),
+    "sdn_v2.response_dismiss": "n/a: a dismissal is kept with the network's SDN responses "
+                               "(modules/sdn/loop.py), never a device's record",
+    "sdn_v2.mode_set": "n/a: the network's SDN mode is kept in its own record "
+                       "(modules/sdn/modes.py), never a device's",
+    "sdn_v2.loop_set": "n/a: the loop's start and stop are kept in its log (modules/sdn/loop.py), "
+                       "never a device's record",
     "settings_v2.records_save": NOT_A_DEVICE,
     "settings_v2.records_test": NOT_A_DEVICE,
     "settings_v2.records_replace": NOT_A_DEVICE,

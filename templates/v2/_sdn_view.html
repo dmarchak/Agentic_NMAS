@@ -4,22 +4,23 @@
     value beside the network's connection list (modules/sdn_page.py); never a controller call
     per view. Redrawn when the reader announces `sdn`. -#}
 {%- set settings_url = url_for('settings_v2.network', list_name=g.network, tab='integrations') ~ '#sdn-card' -%}
-{%- set region_args = {'tab': g.tab} if g.tab == 'controllers' else {'tab': g.tab, 'q': g.s.q, 'own': g.s.own} -%}
+{%- set region_args = {'tab': g.tab, 'q': g.s.q, 'own': g.s.own} if g.tab == 'flows' else {'tab': g.tab} -%}
 <div id="sdn" class="sdn" hx-get="{{ url_for('sdn_v2.region', **region_args) }}" hx-trigger="nmas:sdn from:body" hx-swap="outerHTML">
 <div class="page-head">
   <div class="page-title">
-    <h1>SDN · {{ 'Flows' if g.tab == 'flows' else 'Controllers' }} {{ info('sdn', g.tab) }}</h1>
-    <p class="sub">{% if g.tab == 'flows' %}Each switch's flow table, Mercury's expected flows beside what is installed.{% else %}The network's SDN controllers, as Mercury last read them. Their switches' flows are on Flows; detection and responses on Responses.{% endif %}</p>
+    <h1>SDN · {{ {'flows': 'Flows', 'responses': 'Responses'}.get(g.tab, 'Controllers') }} {{ info('sdn', g.tab) }}</h1>
+    <p class="sub">{% if g.tab == 'flows' %}Each switch's flow table, Mercury's expected flows beside what is installed.{% elif g.tab == 'responses' %}Threats detected on the network's switches, and what Mercury does about them.{% else %}The network's SDN controllers, as Mercury last read them. Their switches' flows are on Flows; detection and responses on Responses.{% endif %}</p>
   </div>
 </div>
 <nav class="tabs sdn-tabs" aria-label="SDN">
   {%- for key, label in tabs %}
-  <a class="tab{% if g.tab == key %} on{% endif %}" href="{{ url_for('sdn_v2.flows') if key == 'flows' else url_for('sdn_v2.page') }}"{% if g.tab == key %} aria-current="page"{% endif %}>{{ label }}</a>
+  <a class="tab{% if g.tab == key %} on{% endif %}" href="{{ url_for('sdn_v2.flows') if key == 'flows' else (url_for('sdn_v2.responses') if key == 'responses' else url_for('sdn_v2.page')) }}"{% if g.tab == key %} aria-current="page"{% endif %}>{{ label }}</a>
   {%- endfor %}
-  <span class="tab off" aria-disabled="true" title="Built with Responses (PHASE8_PLAN 17.1 S8 to S10): detection rules, HITL or AUTO, and the loop">Responses</span>
 </nav>
 
-{%- if g.listed == 'unreadable' %}
+{%- if g.tab == 'responses' %}
+{% include "v2/_sdn_responses.html" %}
+{%- elif g.listed == 'unreadable' %}
 <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>{{ g.network }}'s controller connections could not be read: {{ g.listed_error }}. Nothing is drawn as known.</p></div>
 {%- elif not g.controllers %}
 <div class="notice notice-muted sdn-empty" role="status">{{ icon('info', 16) }}<p>No SDN controller is connected to this network. <a href="{{ settings_url }}">Add one in Settings › Integrations</a>.</p></div>
@@ -104,6 +105,8 @@
     {%- if sw.controller_state == 'not_answering' %} {{ badge('as last read', 'warn') }}{% elif sw.state != 'ok' %} {{ badge('partly read', 'warn') }}{% endif %}
     {%- if not sw.wrong %} {{ badge('as expected', 'ok') }}{% endif %}
     <span class="faint">{{ sw.total }} flow{{ 's' if sw.total != 1 }}{% if sw.n.mercury + sw.n.mercury_differs %}, {{ sw.n.mercury + sw.n.mercury_differs }} Mercury's{% endif %}{% if sw.n.controller_own %}, {{ sw.n.controller_own }} the controller's own{% if sw.hidden_own %} (hidden){% endif %}{% endif %}</span></summary>
+  <p class="sdn-sw-acts"><button class="btn btn-small" type="button" data-op="sdn-flows" hx-get="{{ url_for('sdn_v2.flow_form', do='add', connection=sw.controller, dpid=sw.dpid_hex) }}" hx-target="#sdn-add-{{ sw.dpid_hex }}" hx-swap="innerHTML" hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">Add flow…</span><span class="op-busy">Opening…</span></button>{{ how('sdn-flows', compact=True, op='Add flow') }}</p>
+  <div class="sdn-op-slot" id="sdn-add-{{ sw.dpid_hex }}" role="region" aria-live="polite"></div>
   {%- if sw.as_of %}<p class="muted small sdn-sw-note">Its controller is not answering: this table is as last read, {{ stamp(sw.as_of) }}.</p>{% endif %}
   {%- if sw.error %}<p class="muted small sdn-sw-note">Not read whole: {{ sw.error }}.</p>{% endif %}
   {%- if sw.flows or sw.records %}
@@ -119,8 +122,9 @@
       <td data-l="Packets">{{ '{:,}'.format(f.packets) if f.packets is not none else '–' }}</td>
       <td data-l="Timeouts">{{ f.timeouts }}</td>
       <td data-l="Cookie" class="mono">{{ f.cookie }}</td>
-      <td>{% if f.owner == 'unauthorised' %}<button class="btn btn-small" type="button" disabled aria-disabled="true" data-refused="Not yet: {{ g.remove_why }}">Remove…</button>{% endif %}</td>
+      <td class="sdn-acts">{%- if f.owner in ('mercury', 'mercury_differs') %}<button class="btn btn-small" type="button" data-op="sdn-flows" hx-get="{{ url_for('sdn_v2.flow_form', do='edit', connection=sw.controller, dpid=sw.dpid_hex, target=f.target) }}" hx-target="#{{ f.slot }}" hx-swap="innerHTML" hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">Edit…</span><span class="op-busy">Opening…</span></button>{{ how('sdn-flows', compact=True, op='Edit a flow') }} {% endif %}<button class="btn btn-small" type="button" data-op="sdn-flows" hx-get="{{ url_for('sdn_v2.flow_form', do='remove', connection=sw.controller, dpid=sw.dpid_hex, target=f.target) }}" hx-target="#{{ f.slot }}" hx-swap="innerHTML" hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">Remove…</span><span class="op-busy">Opening…</span></button>{{ how('sdn-flows', compact=True, op='Remove a flow') }}</td>
     </tr>
+    <tr class="sdn-op-row"><td colspan="8"><div class="sdn-op-slot" id="{{ f.slot }}" role="region" aria-live="polite"></div></td></tr>
     {%- endfor %}
     {%- for r in sw.records %}
     <tr class="sdn-r-{{ r.state }}">

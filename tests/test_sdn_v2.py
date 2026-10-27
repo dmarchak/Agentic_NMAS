@@ -26,6 +26,8 @@ drop recorded and never installed.
 import dataclasses
 import json
 import re
+from html import unescape as html_unescape
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -251,17 +253,24 @@ class TestFlows:
         _r, html = get(lab, "/v2/sdn/flows?own=show")
         assert "OUTPUT:CONTROLLER" in html and "(hidden)" not in html
 
-    def test_each_flow_s_owner_and_the_unauthorised_flow_s_remove_disabled(self, lab):
+    def test_each_flow_s_owner_and_its_remove_and_edit_open_the_editor(self, lab):
+        """S16 (C1912): Remove… on every flow and Edit… on Mercury's open the editor in place,
+        naming the flow by its table, priority, match and cookie; the unauthorised flow has no
+        Edit…, since edit is for Mercury's own flows."""
         store_read()
         _r, html = get(lab, "/v2/sdn/flows")
         row = re.search(r'<tr class="sdn-f-unauthorised">.*?</tr>', html, re.S).group(0)
         assert "unauthorised" in row and "0x4d45524300000001" in row
         assert "carries Mercury's prefix" in words(row)
-        assert re.search(r'<button class="btn btn-small" type="button" disabled '
-                         r'aria-disabled="true" data-refused="Not yet: removing a flow is built '
-                         r'with Responses, S8">Remove…</button>', row)
+        remove = re.search(r'hx-get="(/v2/sdn/flow/form\?do=remove[^"]*)"', row)
+        assert remove and "Remove…" in row and "Edit…" not in row
+        target = json.loads(parse_qs(urlsplit(html_unescape(remove.group(1))).query)
+                            ["target"][0])
+        assert target["cookie"] == 0x4d45524300000001 and set(target) == {
+            "table_id", "priority", "match", "cookie"}
         ours = re.search(r'<tr class="sdn-f-mercury">.*?</tr>', html, re.S).group(0)
         assert "installed as expected" in ours and "METER:1, OUTPUT:2" in ours
+        assert "do=edit" in ours and "do=remove" in ours
         missing = re.search(r'<tr class="sdn-r-missing">.*?</tr>', html, re.S).group(0)
         assert "Mercury&#39;s, missing" in missing and "not installed" in missing
 

@@ -88,6 +88,8 @@ PAGES = (
      "how-it-works/intent-in-words.md"),
     ("path-trace", "A path trace: the path packets take", H, "how-it-works/path-trace.md"),
     ("privileged", "Run a privileged command (Tier 2)", H, "how-it-works/privileged.md"),
+    ("sdn-flows", "Change an SDN switch's flows, and respond to a threat", H,
+     "how-it-works/sdn-flows.md"),
     ("settings-switch", "Inherit or stand alone: switch a network's settings", H,
      "how-it-works/settings-switch.md"),
     ("records-database", "The records database: save, test, replace its password", H,
@@ -206,6 +208,7 @@ OPERATIONS = {
     "ask-in-words": ("modules.ai.nl_query", "STEPS"),
     "intent-in-words": ("modules.ai.intent_words", "STEPS"),
     "privileged": ("modules.nsot.privileged", "STEPS"),
+    "sdn-flows": ("modules.sdn.flow_ops", "STEPS"),
     "save": ("modules.nsot.save_op", "STEPS"),
     "template-coverage": ("modules.nsot.template_coverage", "STEPS"),
     # Out-of-band ZTP (LAB9_PLAN.md section 8): the console survey and kick-start, on

@@ -487,6 +487,7 @@ CALL_CAPABILITY = {
     "port_stats": "read_port_stats",
     "meters": "read_meters", "meter_features": "read_meters",
     "add_flow": "write_flows", "render_add_flow": "write_flows",
+    "modify_flow_strict": "write_flows", "render_modify_flow_strict": "write_flows",
     "delete_flow_strict": "delete_flows", "render_delete_flow_strict": "delete_flows",
     "add_meter": "write_meters", "render_add_meter": "write_meters",
     "delete_meter": "write_meters", "render_delete_meter": "write_meters",
@@ -593,6 +594,13 @@ class ControllerDriver:
         return self._call("render_add_flow", self._render_add_flow, dpid, spec,
                           io=False, dpid_arg=True)
 
+    def render_modify_flow_strict(self, dpid, spec) -> dict:
+        """OFPFC_MODIFY_STRICT: the flow with exactly this match and priority in this table
+        has its instructions replaced; what else the switch keeps of it is the switch's (read
+        back: `flow_ops.MODIFY_KEEPS`)."""
+        return self._call("render_modify_flow_strict", self._render_modify_flow_strict, dpid,
+                          spec, io=False, dpid_arg=True)
+
     def render_delete_flow_strict(self, dpid, spec) -> dict:
         return self._call("render_delete_flow_strict", self._render_delete_flow_strict, dpid,
                           spec, io=False, dpid_arg=True)
@@ -607,6 +615,9 @@ class ControllerDriver:
 
     def add_flow(self, dpid, spec) -> dict:
         return self._write(self.render_add_flow(dpid, spec))
+
+    def modify_flow_strict(self, dpid, spec) -> dict:
+        return self._write(self.render_modify_flow_strict(dpid, spec))
 
     def delete_flow_strict(self, dpid, spec) -> dict:
         return self._write(self.render_delete_flow_strict(dpid, spec))
@@ -639,7 +650,7 @@ class ControllerDriver:
 
     _test = _switches = _switch_desc = _links = _flows = _port_stats = _not_implemented
     _meters = _meter_features = _not_implemented
-    _render_add_flow = _render_delete_flow_strict = _not_implemented
+    _render_add_flow = _render_modify_flow_strict = _render_delete_flow_strict = _not_implemented
     _render_add_meter = _render_delete_meter = _not_implemented
 
     def _apply(self, method, path, body) -> dict:

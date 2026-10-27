@@ -74,6 +74,8 @@ OPERATION_WORDS = {
     "console kick-start": "kick-started over its console",
     # The one-decision out-of-band onboarding (modules/nsot/oob_onboard.py: `OP`).
     "console onboard": "onboarded over its console",
+    # An SDN switch's flows changed through its controller (modules/sdn/flow_ops.py).
+    "sdn flows": "having its flows changed through its controller",
 }
 
 #: An operation whose RESULT differs from its kind's usual one, in words

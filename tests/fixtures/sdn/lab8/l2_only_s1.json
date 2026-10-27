@@ -1,0 +1,56 @@
+[
+ {
+  "at": "2026-10-27T09:14:22Z",
+  "body": "[1]",
+  "content_type": "application/json",
+  "method": "GET",
+  "path": "/stats/switches",
+  "request_body": null,
+  "status": 200
+ },
+ {
+  "at": "2026-10-27T09:14:22Z",
+  "body": "{\"1\": [{\"priority\": 65535, \"cookie\": 0, \"idle_timeout\": 0, \"hard_timeout\": 0, \"byte_count\": 11520, \"duration_sec\": 173, \"duration_nsec\": 121000000, \"packet_count\": 192, \"length\": 96, \"flags\": 0, \"actions\": [\"OUTPUT:CONTROLLER\"], \"match\": {\"dl_dst\": \"01:80:c2:00:00:0e\", \"dl_type\": 35020}, \"table_id\": 0}, {\"priority\": 1, \"cookie\": 0, \"idle_timeout\": 0, \"hard_timeout\": 0, \"byte_count\": 9265536, \"duration_sec\": 32, \"duration_nsec\": 99000000, \"packet_count\": 140378, \"length\": 104, \"flags\": 0, \"actions\": [\"OUTPUT:1\"], \"match\": {\"in_port\": 3, \"dl_src\": \"00:00:00:00:00:03\", \"dl_dst\": \"00:00:00:00:00:01\"}, \"table_id\": 0}, {\"priority\": 1, \"cookie\": 0, \"idle_timeout\": 0, \"hard_timeout\": 0, \"byte_count\": 9014466894, \"duration_sec\": 32, \"duration_nsec\": 95000000, \"packet_count\": 203989, \"length\": 104, \"flags\": 0, \"actions\": [\"OUTPUT:3\"], \"match\": {\"in_port\": 1, \"dl_src\": \"00:00:00:00:00:01\", \"dl_dst\": \"00:00:00:00:00:03\"}, \"table_id\": 0}, {\"priority\": 1, \"cookie\": 0, \"idle_timeout\": 0, \"hard_timeout\": 0, \"byte_count\": 7215946, \"duration_sec\": 15, \"duration_nsec\": 871000000, \"packet_count\": 109323, \"length\": 104, \"flags\": 0, \"actions\": [\"OUTPUT:2\"], \"match\": {\"in_port\": 3, \"dl_src\": \"00:00:00:00:00:04\", \"dl_dst\": \"00:00:00:00:00:02\"}, \"table_id\": 0}, {\"priority\": 1, \"cookie\": 0, \"idle_timeout\": 0, \"hard_timeout\": 0, \"byte_count\": 8206659012, \"duration_sec\": 15, \"duration_nsec\": 868000000, \"packet_count\": 184366, \"length\": 104, \"flags\": 0, \"actions\": [\"OUTPUT:3\"], \"match\": {\"in_port\": 2, \"dl_src\": \"00:00:00:00:00:02\", \"dl_dst\": \"00:00:00:00:00:04\"}, \"table_id\": 0}, {\"priority\": 0, \"cookie\": 0, \"idle_timeout\": 0, \"hard_timeout\": 0, \"byte_count\": 4878, \"duration_sec\": 173, \"duration_nsec\": 124000000, \"packet_count\": 63, \"length\": 80, \"flags\": 0, \"actions\": [\"OUTPUT:CONTROLLER\"], \"match\": {}, \"table_id\": 0}]}",
+  "content_type": "application/json",
+  "method": "GET",
+  "path": "/stats/flow/1",
+  "request_body": null,
+  "status": 200
+ },
+ {
+  "at": "2026-10-27T09:14:22Z",
+  "body": "{\"1\": [{\"rx_packets\": 0, \"tx_packets\": 0, \"rx_bytes\": 0, \"tx_bytes\": 0, \"rx_dropped\": 0, \"tx_dropped\": 0, \"rx_errors\": 0, \"tx_errors\": 0, \"rx_frame_err\": 0, \"rx_over_err\": 0, \"rx_crc_err\": 0, \"collisions\": 0, \"duration_sec\": 173, \"duration_nsec\": 154000000, \"port_no\": \"LOCAL\"}, {\"rx_packets\": 204006, \"tx_packets\": 140631, \"rx_bytes\": 9014468296, \"tx_bytes\": 9281804, \"rx_dropped\": 0, \"tx_dropped\": 0, \"rx_errors\": 0, \"tx_errors\": 0, \"rx_frame_err\": 0, \"rx_over_err\": 0, \"rx_crc_err\": 0, \"collisions\": 0, \"duration_sec\": 173, \"duration_nsec\": 163000000, \"port_no\": 1}, {\"rx_packets\": 184383, \"tx_packets\": 109575, \"rx_bytes\": 8206660410, \"tx_bytes\": 7232108, \"rx_dropped\": 0, \"tx_dropped\": 0, \"rx_errors\": 0, \"tx_errors\": 0, \"rx_frame_err\": 0, \"rx_over_err\": 0, \"rx_crc_err\": 0, \"collisions\": 0, \"duration_sec\": 173, \"duration_nsec\": 164000000, \"port_no\": 2}, {\"rx_packets\": 249931, \"tx_packets\": 388586, \"rx_bytes\": 16495912, \"tx_bytes\": 17221140470, \"rx_dropped\": 0, \"tx_dropped\": 0, \"rx_errors\": 0, \"tx_errors\": 0, \"rx_frame_err\": 0, \"rx_over_err\": 0, \"rx_crc_err\": 0, \"collisions\": 0, \"duration_sec\": 173, \"duration_nsec\": 163000000, \"port_no\": 3}]}",
+  "content_type": "application/json",
+  "method": "GET",
+  "path": "/stats/port/1",
+  "request_body": null,
+  "status": 200
+ },
+ {
+  "at": "2026-10-27T09:14:22Z",
+  "body": "{\"1\": []}",
+  "content_type": "application/json",
+  "method": "GET",
+  "path": "/stats/meterconfig/1",
+  "request_body": null,
+  "status": 200
+ },
+ {
+  "at": "2026-10-27T09:14:22Z",
+  "body": "{\"1\": []}",
+  "content_type": "application/json",
+  "method": "GET",
+  "path": "/stats/meter/1",
+  "request_body": null,
+  "status": 200
+ },
+ {
+  "at": "2026-10-27T09:14:22Z",
+  "body": "{\"1\": [{\"max_meter\": 200000, \"band_types\": [\"DROP\"], \"capabilities\": [\"KBPS\", \"PKTPS\", \"BURST\", \"STATS\"], \"max_bands\": 1, \"max_color\": 0}]}",
+  "content_type": "application/json",
+  "method": "GET",
+  "path": "/stats/meterfeatures/1",
+  "request_body": null,
+  "status": 200
+ }
+]

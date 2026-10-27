@@ -1,0 +1,67 @@
+{%- from "v2/_macros.html" import icon, badge, how -%}
+{#- An SDN operation's card in place of its control (boards SdnResponse and SdnFlowEdit, signed
+    off 2026-10-27 under the Phase 7 mode): the preview (what it does, exactly these requests,
+    what will not happen, the checks, the confirm bound to the requests' hash), a refusal with
+    its reason, or the result (the outcome first, Verify's checks, the counters, the rollback,
+    the record). modules/sdn_ops_page.py builds `d`. -#}
+<div class="card sdn-op sdn-op-{{ d.state }}">
+{%- if d.state == 'refused' %}
+<p class="sdn-ans sdn-ans-bad" role="alert">{{ icon('warn', 15) }}<span><strong>Nothing was sent:</strong> {{ d.error }}.</span></p>
+{%- elif d.state == 'preview' %}
+<div class="sdn-op-hd"><h3>{% if d.kind == 'response' %}{{ d.label }}{% if d.params.source %} from <span class="mono">{{ d.params.source }}</span>{% endif %} on <span class="mono">{{ d.dpid_hex }}</span>{% else %}Preview: {{ d.count }} request{{ 's' if d.count != 1 }} on <span class="mono">{{ d.dpid_hex }}</span>{% endif %}</h3> <span class="faint small">nothing sent yet</span> {{ how('sdn-flows', compact=True, op='Preview') }}</div>
+{%- if d.kind == 'response' %}
+<p class="small"><strong>Detected:</strong> {{ d.detection.words }}</p>
+<p class="small"><strong>Its parameters, checked against the evidence:</strong> the source <span class="mono">{{ d.params.source or 'named by the flow' }}</span>{% if d.params.targets %} to <span class="mono">{{ d.params.targets | join(', ') }}</span>{% endif %}{% if d.params.hard_timeout %}, for {{ d.params.hard_timeout }} s{% endif %}{% if d.params.priority %}, priority {{ d.params.priority }} (above every flow not Mercury's that could match it){% endif %}{% if d.params.rate %}, above {{ d.params.rate }} {{ d.params.unit }} with a burst of {{ d.params.burst }} (meter {{ d.params.meter_id }}){% endif %}{% if d.params.flow %}, the flow <span class="mono">{{ d.params.flow }}</span> (cookie {{ d.params.cookie }}){% endif %}.</p>
+<p class="small faint"><strong>Classified:</strong> {{ d.classified }}. Catalogue action <span class="mono">{{ d.action }}</span>, risk {{ d.risk }}.</p>
+{%- endif %}
+<h4 class="sdn-op-h">What it does</h4>
+<ul class="sdn-op-list">{% for w in d.words %}<li>{{ w }}</li>{% endfor %}</ul>
+<h4 class="sdn-op-h">Exactly these requests</h4>
+{%- for r in d.requests %}
+<pre class="mono sdn-op-req">{{ r.line }}
+{{ r.body }}</pre>
+{%- endfor %}
+<p class="faint small">{{ d.count }} request{{ 's' if d.count != 1 }} to {{ d.connection }}, as the driver renders {{ 'them' if d.count != 1 else 'it' }}; an empty actions list is a drop. Sent exactly so: the confirm below binds their hash.</p>
+<h4 class="sdn-op-h">What will not happen</h4>
+<ul class="sdn-op-list">{% for w in d.will_not %}<li>{{ w }}</li>{% endfor %}</ul>
+{%- if d.warnings %}
+<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<div>{% for w in d.warnings %}<p>{{ w }}</p>{% endfor %}</div></div>
+{%- endif %}
+<h4 class="sdn-op-h">Verify</h4>
+<ul class="sdn-op-list">{% for c in d.checks %}<li>{{ c }}</li>{% endfor %}</ul>
+<form class="sdn-op-confirm" {% if d.kind == 'response' %}hx-post="{{ url_for('sdn_v2.response_confirm') }}"{% else %}hx-post="{{ url_for('sdn_v2.flow_confirm') }}"{% endif %} hx-target="closest .sdn-op" hx-swap="outerHTML" hx-disabled-elt="find button">
+  <input type="hidden" name="list" value="{{ d.network }}">
+  <input type="hidden" name="ask" value="{{ d.ask }}">
+  <input type="hidden" name="hash" value="{{ d.hash }}">
+  {%- if d.kind == 'response' %}<input type="hidden" name="rid" value="{{ d.rid }}"><input type="hidden" name="action" value="{{ d.action }}">{% endif %}
+  {%- if d.needs_typed %}
+  <label class="small">Type <span class="mono">{{ d.needs_typed }}</span> to confirm <input type="text" name="typed" autocomplete="off" required></label>
+  {%- endif %}
+  <p class="small faint">Bound to requests <span class="mono" title="{{ d.hash }}">{{ d.short }}</span>: if the switch's table or the requests move before you confirm, nothing is sent.</p>
+  <button class="btn btn-primary" type="submit" hx-disabled-elt="this" data-op="sdn-flows"{{ gate('confirm') }}><span class="op-idle">Send {{ d.count }} request{{ 's' if d.count != 1 }} to {{ d.connection }}</span><span class="op-busy">Sending…</span></button>{{ how('sdn-flows', compact=True, op='Send') }}
+</form>
+{%- elif d.state == 'result' %}
+<div class="sdn-op-hd"><h3>{{ badge(d.outcome_words, d.tone) }}</h3>{% if d.id %} <span class="faint small mono">{{ d.id }}</span>{% endif %}</div>
+{%- if d.error %}<p class="small"><strong>Why:</strong> {{ d.error }}.</p>{% endif %}
+{%- if d.sent %}
+<h4 class="sdn-op-h">Sent</h4>
+<ul class="sdn-op-checks">{% for s in d.sent %}<li><span class="mono">{{ s.line }}</span>: {{ s.answer }}</li>{% endfor %}</ul>
+{%- endif %}
+{%- if d.checks %}
+<h4 class="sdn-op-h">Verify</h4>
+<ul class="sdn-op-checks">
+{%- for c in d.checks %}<li>{{ badge({'pass': 'pass', 'fail': 'fail', 'operator': 'yours', 'reported': 'reported'}.get(c.state, c.state), {'pass': 'ok', 'fail': 'danger'}.get(c.state, 'muted')) }} {{ c.words }}</li>{% endfor %}
+</ul>
+{%- endif %}
+{%- if d.counters %}
+<h4 class="sdn-op-h">Counters</h4>
+<ul class="sdn-op-checks">{% for c in d.counters %}<li>{{ badge('reported', 'muted') }} {{ c.words }}</li>{% endfor %}</ul>
+{%- endif %}
+{%- if d.rollback.ran %}
+<h4 class="sdn-op-h">Rollback</h4>
+<ul class="sdn-op-checks">{% for s in d.rollback.steps %}<li>{{ s.role }}: {{ s.state }}{% if s.words %}, {{ s.words }}{% endif %}{% if s.error %} ({{ s.error }}){% endif %}</li>{% endfor %}
+{%- for c in d.rollback.read_back or [] %}<li>{{ badge(c.state, 'ok' if c.state == 'pass' else 'danger') }} read back: {{ c.words }}</li>{% endfor %}</ul>
+{%- endif %}
+<p class="small faint">{% if d.record.ok %}Recorded in History, as you: the requests, their hash and Verify's results.{% else %}Not recorded: {{ d.record.error or 'nothing reached the record' }}.{% endif %}{% if d.note %} {{ d.note }}.{% endif %}</p>
+{%- endif %}
+</div>

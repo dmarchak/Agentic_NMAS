@@ -1,4 +1,13 @@
-# Fidelity: SDN › Controllers and SDN › Flows (2026-10-27)
+# Fidelity: SDN › Controllers, Flows and Responses (2026-10-27)
+
+**Compared again 2026-10-27 ~09:5x UTC (PHASE8_PLAN 17.1 S8 to S10, S16):** the Responses tab
+beside `SdnResponses.dc.html` (1440, 1280 and 390, from the same test's `sdn-responses` shots: one
+scan awaiting a person, a loop log line), and Flows again with Add flow…, Edit… and Remove…
+(SdnFlowEdit's controls on SdnFlows' rows). The operation card (`_sdn_op.html`, board
+SdnResponse) and the flow editor (`_sdn_flow_form.html`, board SdnFlowEdit) are drawn by a
+click in place, which the board-shot harness does not shoot (it shoots pages): their regions are
+**later**, compared when a click-driven shot exists; their behaviour is held by
+tests/test_sdn_ops_v2.py and the v2 walk's provider (tests/v2_context.py `_sdn_operations`).
 
 Boards: `SdnControllers.dc.html` (1440), `SdnFlows.dc.html` (1440) and `SdnPhone.dc.html` (390),
 PHASE8_PLAN 17.5 boards 1, 2 and 7, drawn in the agent's copy of the mockups canvas's project
@@ -15,8 +24,8 @@ and `branch-controller` at another address refusing every connection, read twice
 reader 12 minutes apart. The board's four switches, 61 flows and ONOS second controller are
 board data; the capture has one switch, and an ONOS connection cannot be saved (its driver is
 not built), so the second controller is a Ryu one that does not answer.
-Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html
-Templates sha256: `eba1923dd3b05731df0998af2f76c75b8cf4f94ee01ebda859565406057e038e`
+Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html
+Templates sha256: `ac13c1374c744b6934880052d931a9235fd3731d45c2fe50e54a3273d4628faa`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).
@@ -25,7 +34,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 |---|---|---|---|
 | Sidebar | SDN under OBSERVE, between Topology and Logs | SDN between Topology and Show commands (Show commands, absent on the board, stays before Logs), with its icon | **same** |
 | Heading and line | "SDN · Controllers" / "SDN · Flows" and the board's line | the same words, with the page's (i) to the manual's SDN page | **same** |
-| Tabs | Controllers, Flows, Responses, each a link | Controllers and Flows links; Responses drawn not yet open, its reason on hover | **deviation** (log: SDN S11: Responses drawn as a tab not yet open, until S8 to S10) |
+| Tabs | Controllers, Flows, Responses, each a link | Controllers, Flows and Responses, each a link (S8 to S10 built) | **same** |
 | Controllers' summary | "2 controllers · 1 connected · 1 not answering · 4 switches · read 18 s ago" | the same shape, counted from the read ("1 switch"); the age on hover too | **same** |
 | A connected card's head | name, connected chip, Test connection, Edit connection, (i) | the same; the (i) is beside Test connection, whose manual section it opens (the rule: "How does this work?" right after its control) | **deviation** (log: SDN S11: the card's info link beside Test connection) |
 | Driver, Northbound, Southbound | "Ryu (ofctl_rest) · built", the URL and "TLS not used", the southbound and "informational" | the same | **same** |
@@ -42,9 +51,21 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Granularity note | under the summary, once, when it limits a rule | under the summary, per switch whose flows are L2 or L3 only, in closed_loop's words (shot with the capture's L2 flows alone in tests/test_sdn_v2.py, not at 1440) | **same** |
 | Filter | text, "Hide the controller's own flows" ticked, Show | the same | **same** |
 | Switches folded | a `<details>` per switch, the wrong ones open, chips (unauthorised, missing, as expected), counts | the same, kept open across redraws (`data-keep`) | **same** |
-| A flow row | owner chip, priority, match, actions, packets, timeouts, cookie, Remove… | the same columns; the unauthorised row's why under its chip; Remove… drawn disabled with its reason, "removing a flow is built with Responses, S8" | **deviation** (log: SDN S11: an unauthorised flow's Remove… disabled until S8, its why drawn) |
-| Mercury's flow | "Mercury's installed as expected", "Its response" link | the same chip and words; no response link (Responses are S8) | **later** S8 (a flow's response) |
+| A flow row | owner chip, priority, match, actions, packets, timeouts, cookie, Remove… (SdnFlowEdit: Edit… and Remove… on each flow row) | the same columns; the unauthorised row's why under its chip; Remove… on every flow and Edit… on Mercury's, each with its (i), each opening the editor in a row under the flow | **same** |
+| Add flow… | SdnFlowEdit: "Add flow… sits on each switch in the list" | Add flow… with its (i) at the top of each opened switch | **same** |
+| Mercury's flow | "Mercury's installed as expected", "Its response" link | the same chip and words; no response link (a flow's operation is read on History, not yet linked from its row) | **later** S11 (a flow's response linked from its row) |
 | A record not installed | "Mercury's, missing" for one expired at its hard timeout, "nothing to do" | expired is "Mercury's, expired", neutral, not counted missing (S5's classify tells expired from missing); missing stays warn | **deviation** (log: SDN S11: an expired flow is "expired", never "missing") |
 | The board's departure note | the unauthorised flow a Needs attention row | not drawn: that row is a later S11 step | **later** S11's Needs attention rows (unauthorised flows) |
 | Meters | switch, meter, rate, packets in band, owner chip and "its response" | the same columns; the owner from the flows that use the meter; no response link | **same** |
 | Phone width | each tab stacked: summary, cards, a flow row a block, tables scrolling in their box | the same; a controller's card keeps its whole list, stacked, where SdnPhone draws a one-line card | **deviation** (log: SDN S11: the phone's controller card keeps its fields) |
+| Responses' summary | "1 awaiting approval · mode HITL · the loop running every 10 s · 3 responses in the last 24 h (2 expired …, 1 in force)" | "1 awaiting approval · mode HITL · the loop stopped": no count of the day's responses (they are read on History) | **deviation** (log: SDN S8: Responses' summary without the day's count) |
+| An awaiting response's head | "Port scan from <source> on <dpid>", the confidence chip, "Detected 40 s ago by the scan rule: …", "Open the alert" | the detection's title, source and switch, the confidence chip, "Detected <age>: <the rule's words> · an alert with its evidence pack"; no "Open the alert" link | **deviation** (log: SDN S8: an awaiting response without its alert link) |
+| The AI's classification | an AI-marked box: threat, severity, model and cost, evidence ids, the recommendation | not drawn: one line says no AI call was made (background AI is not allowed until cost safety is live, C1843) and the action is the catalogue's default, chosen in code | **deviation** (log: SDN S8: no AI classification until cost safety, C1843) |
+| Its actions | Preview the drop…, Choose another action…, Dismiss with a reason…, How does this work? | "for N s" (the response's hard timeout, editable), Preview the <action>…, a reason field and "Dismiss with this reason", each with its (i); no Choose another action… | **deviation** (log: SDN S8: the awaiting card's actions) |
+| Mode | HITL and AUTO as radio rows, Reason, Until (a date), Allowed risk, Turn AUTO on… | the mode chip and its words; Reason, For (hours, at most 24), Allowed risk, Turn AUTO on; while on, who, why and until when, and Turn AUTO off | **deviation** (log: SDN S9: AUTO for N hours, not until a date) |
+| The loop | its state chip, "every 10 s · detect, classify, respond", Stop, the log | the same; stopped, "every N s" and Start; the log newest first, each line's time, step and words | **same** |
+| Detection rules | the table with each threshold editable, Save thresholds…, the timeout line | the same table read-only, and the timeout line with the ceiling; no Save thresholds… | **later** S8's thresholds edited on this tab (until then written by `list_settings.write`) |
+| Needs attention | "a row on Needs attention until it is confirmed, dismissed …" | not said: that row is a later S11 step | **later** S11's Needs attention rows (a response awaiting approval) |
+| The response's preview and result (SdnResponse) | the card in place: what it does, exactly these requests, what will not happen, Verify, checks, bound hash, Send N requests | drawn in place by a click: what it does, the detection and its checked parameters, exactly these requests, what will not happen, the warnings, Verify (its limit said), the bound hash, Send N requests; the result: outcome, what was sent, Verify, counters, rollback, the record | **later** a click-driven shot (the harness shoots pages) |
+| The flow editor (SdnFlowEdit) | the form, the prerequisite refusal, the preview, Edit's and Remove's words, Explain this flow table (AI) | the form, the refusal naming the field, the preview card; Edit's and Remove's words; no Explain (S19, after cost safety) | **later** a click-driven shot; Explain is S19 |
+| Responses at phone width | stacked | the card's fields and buttons wrap inside it (390 shot) | **same** |

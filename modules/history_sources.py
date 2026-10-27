@@ -1651,6 +1651,43 @@ def privileged(ctx):
     return _out(events, errors)
 
 
+def sdn_operations(ctx):
+    """Each SDN flow operation (PHASE8_PLAN 17.1 S8 and S16, modules/sdn/flow_ops.py): a
+    person's flow change or a response, who confirmed it (or AUTO, with its reason), the
+    requests' hash, Verify's checks and the outcome. A switch is not an inventory device, so
+    these are the network's own rows, drawn on History, never on a device's tab."""
+    from modules.sdn import flow_intent
+    if ctx["device"]:
+        return _out()
+    got = flow_intent.operations(ctx["ref"].name)
+    if got["state"] == "unreadable":
+        return _out(errors=[f"the SDN operations could not be read: {got['error']}"])
+    events = []
+    for r in got["rows"]:
+        if not _recent(ctx, r.get("at")):
+            continue
+        response = r.get("response") or {}
+        what = ("Response" if response.get("kind") == "response" else
+                "Meter expiry" if response.get("kind") == "expiry" else "Flow change")
+        checks = "; ".join(f"{c.get('state')}: {c.get('words')}"
+                           for c in (r.get("verify") or {}).get("checks") or [])
+        who = r.get("actor", "")
+        if r.get("mode") == "auto":
+            auto = r.get("autonomous") or {}
+            who = f"{who} (autonomous: AUTO by {auto.get('by')}, {auto.get('reason')})"
+        events.append(_event(r.get("at"), "sdn",
+                             f"SDN {what.lower()} on {r.get('dpid_hex')}: {r.get('outcome')}",
+                             [], who=who, detail="; ".join(r.get("words") or []),
+                             outcome=r.get("outcome", ""),
+                             record=[("Operation", r.get("id")), ("Controller", r.get("connection")),
+                                     ("Requests' hash", r.get("hash")),
+                                     ("Action", response.get("action")),
+                                     ("Detection", (response.get("detection") or {}).get("words")),
+                                     ("Verify", checks), ("Error", r.get("error"))]))
+    events = events[-ctx["limit"]:]
+    return _out(events)
+
+
 def reloads(ctx):
     """Each Reload run from the device page (P.14, modules/nsot/reload_op.py): who, why, and
     how it ended, each step's outcome in the record. The restart and its window are their own
@@ -1903,6 +1940,7 @@ SOURCES = {
     "saved_views": saved_views, "reveals": reveals, "host_keys": host_keys,
     "netbox": netbox, "grafana_writes": grafana_writes, "heartbeat_windows": heartbeat_windows,
     "ai_calls": ai_calls, "installation_settings": installation_settings,
+    "sdn_operations": sdn_operations,
 }
 
 #: The kind filter (board D): each a group of event kinds, in the board's four headings.
@@ -1935,6 +1973,7 @@ KIND_GROUPS = (
                                ("decisions", "Baseline decisions", ("decision",)),
                                ("updates", "App updates", ("update",)),
                                ("ai_calls", "AI calls", ("ai_call",)),
+                               ("sdn", "SDN flow operations", ("sdn",)),
                                ("netbox", "NetBox imports and removals", ("netbox",)),
                                ("grafana", "Grafana writes", ("grafana", "heartbeat")),
                                ("show_commands", "Show commands", ("show_commands",)))),
@@ -2042,7 +2081,7 @@ SOURCE_KINDS = {
     "topology_expected": ("expected",), "topology_layout": ("layout",), "saved_views": ("view",),
     "reveals": ("reveal",), "host_keys": ("hostkey",), "netbox": ("netbox",),
     "grafana_writes": ("grafana",), "heartbeat_windows": ("heartbeat",), "ai_calls": ("ai_call",),
-    "installation_settings": ("setting",),
+    "installation_settings": ("setting",), "sdn_operations": ("sdn",),
 }
 
 #: The sources that cannot be asked for rows older than a page's place, each with why: their

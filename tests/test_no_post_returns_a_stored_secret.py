@@ -61,6 +61,11 @@ def _bodies(v):
                                          "refused naming the networks; it starts nothing"),
         "netbox_v2.preview": (404, ("form", {}), "no operation named: refused naming the three, "
                               "nothing started"),
+        "sdn_v2.flow_preview": (400, ("form", {"list": LIST, "do": "add"}),
+                                "no controller connection named: refused before any read"),
+        "sdn_v2.response_preview": (404, ("form", {"list": LIST}),
+                                    "no response by that id awaits a person: refused naming it, "
+                                    "nothing read"),
         "device_v2.reload_start": (400, ("form", {}),
                                    "no network named: refused before any job starts"),
         "device_v2.persist_read": (400, ("form", {}),

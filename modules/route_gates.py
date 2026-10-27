@@ -122,6 +122,9 @@ GATES = {
     "device_v2.rekey_confirm": _g(C, "keeps the SSH host key a device answers with now in place of the one Mercury holds (C906): every later session signs in to whatever presents it, so a person confirms it, bound to both keys"),
     "privileged_v2.confirm": _g(C, "sends one Tier 2 command (Run a privileged command…, NSOT_TIER2_PRIVILEGED) to a device, holding it, bound to the previewed plan and a stated reason; verified and recorded"),
     "update.apply": _g(C, "requests the Update: the root-owned updater moves the app to a CI-passed commit and restarts it"),
+    # PHASE8_PLAN 17.1 S8 and S16 (C1912): the flow-operation core, modules/sdn/flow_ops.py.
+    "sdn_v2.flow_confirm": _g(C, "adds, edits or removes a flow (or a meter) on an SDN switch through its controller, holding the switch, bound to the previewed requests' hash; verified by reading the table back, rolled back on failure, recorded", "sdn_flows"),
+    "sdn_v2.response_confirm": _g(C, "answers a detected threat on an SDN switch with a catalogue action (a drop, a rate-limit's meter and flow, or an unauthorised flow removed) through its controller, as a person's confirm (HITL), bound to the previewed requests' hash; verified, rolled back on failure, recorded", "sdn_response"),
     # Out-of-band ZTP (O6b, routes/console_ztp_v2.py; docs/LAB9_PLAN.md section 8).
     "console_ztp_v2.survey_confirm": _g(C, "types on a device's console (the wake, the prelude to the privileged prompt, the pager off for the session and two reads), holding the device and its console-server port, bound to the previewed program's hash; records the run and its masked transcript", "console_survey"),
     "console_ztp_v2.kickstart_confirm": _g(C, "types the kick-start's configuration lines on a factory-blank device's console, holding the device and its console-server port, bound to the previewed lines' hash, as a verified person; records the run and its masked transcript", "console_kickstart"),
@@ -196,6 +199,11 @@ GATES = {
     "settings_v2.sdn_test": _g(K, "tests an SDN controller connection with the values as typed, its credential among them, for the person configuring it; saves nothing"),
     "settings_v2.sdn_saved_test": _g(K, "tests a saved SDN controller connection with its stored credential, for the person configuring it; changes nothing"),
     "sdn_v2.controller_test": _g(K, "tests a saved SDN controller connection with its stored credential from SDN › Controllers; changes nothing"),
+    "sdn_v2.response_dismiss": _g(K, "dismisses an SDN response awaiting a person, with their reason; nothing is sent, recorded"),
+    "sdn_v2.mode_set": _g(K, "turns SDN responses' AUTO mode on (a verified person's reason, expiry and allowed risk) or off for one network (PHASE8_PLAN 17.4), recorded"),
+    "sdn_v2.loop_set": _g(K, "starts or stops the SDN closed loop's job on one network (PHASE8_PLAN 17.1 S10), recorded in its log"),
+    "sdn_v2.flow_preview": _g(N, "previews an SDN flow change: reads the switch's table and renders the exact requests and their hash; writes nothing"),
+    "sdn_v2.response_preview": _g(N, "previews a response awaiting a person: reads the switch's table and renders the exact requests and their hash; writes nothing"),
     "settings_v2.records_save": _g(K, "saves the installation's records database settings, recorded (board F2; works with the database down)"),
     "settings_v2.records_test": _g(K, "tests the records database (six checks, a temporary row rolled back) and keeps its answer"),
     "settings_v2.records_replace": _g(K, "replaces Mercury's copy of the records database password (a secret), recorded, then tests it"),
@@ -356,6 +364,14 @@ def enforce():
                  refusal.get("outcome"))
         return _refusal_response(refusal)
     g.nmas_identity = ident
+    # PHASE8_PLAN 17.1 S12: a route that configures a device directly refuses one its SDN
+    # controller manages, naming the controller (modules/sdn/authority.py).
+    from modules.sdn import authority
+    managed = authority.check_request(request)
+    if managed is not None:
+        log.info("route_gates: refused %s: %s is controller-managed", request.endpoint,
+                 managed.get("device"))
+        return _refusal_response(managed, 409)
     return None
 
 

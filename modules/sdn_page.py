@@ -41,7 +41,8 @@ CAPABILITY_WORDS = {"read_topology": "read topology", "read_flows": "read flows"
 CAPABILITY_ORDER = ("read_flows", "read_port_stats", "read_meters", "write_flows",
                     "write_meters", "delete_flows", "read_topology")
 STATUS_WORDS = {"built": "built", "later": "later", "unmaintained": "unmaintained"}
-REMOVE_FLOW_WHY = "removing a flow is built with Responses, S8"
+REMOVE_FLOW_WHY = ("a flow is removed by delete-strict through the flow-operation core, "
+                   "previewed and confirmed (modules/sdn/flow_ops.py)")
 
 
 # ───────────────────────────────────────────────────────────────────────────── the stored read
@@ -209,8 +210,17 @@ OWNER_ORDER = {"unauthorised": 0, "mercury_differs": 1, "mercury": 2, "controlle
 def _flow_row(f: dict) -> dict:
     from modules.sdn import flow_intent
 
+    import hashlib
+    import json
+
     owner = f.get("owner") or ""
-    return {"owner": owner or "none", "owner_words": OWNER_WORDS.get(owner, "not classified"),
+    # What Edit… and Remove… name (flow_form.target_of): OpenFlow's identity of the flow.
+    target = json.dumps({"table_id": f.get("table_id", 0), "priority": f.get("priority"),
+                         "match": f.get("match") or {}, "cookie": f.get("cookie")},
+                        sort_keys=True, default=str)
+    slot = "sdn-op-" + hashlib.sha256(f"{f.get('dpid')}|{target}".encode()).hexdigest()[:12]
+    return {"target": target, "slot": slot,
+            "owner": owner or "none", "owner_words": OWNER_WORDS.get(owner, "not classified"),
             "owner_kind": OWNER_KIND.get(owner, "muted"), "words": f.get("words", ""),
             "priority": f.get("priority"), "match": _match_words(f.get("match")),
             "actions": flow_intent.action_words(f.get("actions")),

@@ -56,6 +56,7 @@ _ONE_NUMBER = {"GOTO_TABLE": "table_id", "METER": "meter_id", "PUSH_VLAN": "ethe
                "GROUP": "group_id"}
 
 FLOW_ADD = "/stats/flowentry/add"
+FLOW_MODIFY_STRICT = "/stats/flowentry/modify_strict"
 FLOW_DELETE_STRICT = "/stats/flowentry/delete_strict"
 METER_ADD = "/stats/meterentry/add"
 METER_DELETE = "/stats/meterentry/delete"
@@ -156,6 +157,7 @@ class RyuDriver(ControllerDriver):
                                "(ryu.app.rest_topology, run with --observe-links) is a "
                                "separate application this driver does not read"}
     write_routes = {("POST", FLOW_ADD): "write_flows",
+                    ("POST", FLOW_MODIFY_STRICT): "write_flows",
                     ("POST", FLOW_DELETE_STRICT): "delete_flows",
                     ("POST", METER_ADD): "write_meters",
                     ("POST", METER_DELETE): "write_meters"}
@@ -319,6 +321,16 @@ class RyuDriver(ControllerDriver):
     def _render_add_flow(self, dpid, spec) -> dict:
         flow = flow_from_spec(dpid, spec)
         return self._rendered(FLOW_ADD, {
+            "dpid": flow.dpid, "table_id": flow.table_id, "priority": flow.priority,
+            "cookie": flow.cookie, "idle_timeout": flow.idle_timeout,
+            "hard_timeout": flow.hard_timeout, "match": dict(flow.match),
+            "actions": [dict(a) for a in flow.actions]})
+
+    def _render_modify_flow_strict(self, dpid, spec) -> dict:
+        """OFPFC_MODIFY_STRICT: the same body as an add, sent to modify_strict; the switch
+        replaces the instructions of the flow with exactly this table, priority and match."""
+        flow = flow_from_spec(dpid, spec)
+        return self._rendered(FLOW_MODIFY_STRICT, {
             "dpid": flow.dpid, "table_id": flow.table_id, "priority": flow.priority,
             "cookie": flow.cookie, "idle_timeout": flow.idle_timeout,
             "hard_timeout": flow.hard_timeout, "match": dict(flow.match),

@@ -1593,6 +1593,111 @@ class TestOobOnboardCard(_Cards):
 
 #: Sites no case above can draw from a real preview, each with why. Only shrinks (C1225:
 #: empty when written; every one of the 51 sites, 52 controls, is drawn above).
+# ── SDN (PHASE8_PLAN 17.1 S8 to S10, S16): Flows' editor openers, on test_sdn_v2's lab ───────
+
+class TestSdnFlowsCards(_Cards):
+    """SDN › Flows on tests/test_sdn_v2.py's lab (Ryu 4.34's captured table through the real
+    driver and the SDN reader, Mercury's meter flow recorded): Add flow… on the switch, Edit…
+    on Mercury's flow and Remove… on each flow, each opening the editor (a confirm-gated
+    control); blocked: a verified service, whom `may` refuses, draws each disabled."""
+    from tests import test_sdn_connections as _sc, test_sdn_v2 as _sv
+    networks, lab = hosted(_sc.networks), hosted(_sv.lab)
+
+    CASES = {
+        "add": ("_sdn_view.html", "Add flow…", r"Add flow…", "viewer"),
+        "edit": ("_sdn_view.html", "Edit…", r"Edit…", "viewer"),
+        "remove": ("_sdn_view.html", "Remove…", r"Remove…", "viewer"),
+    }
+
+    def _flows(self, request):
+        from tests.test_sdn_v2 import store_read
+        lab = request.getfixturevalue("lab")
+        store_read()
+        html = _text(lab["client"].get("/v2/sdn/flows?list=Default&own=show"))
+        assert "0000000000000001" in html and "installed as expected" in html, \
+            "floor: the switch and Mercury's flow are drawn"
+        return html
+
+    def drawn_add(self, request):
+        return self._flows(request)
+
+    def blocked_add(self, request, monkeypatch):
+        as_service(monkeypatch)
+        return self._flows(request)
+
+    drawn_edit = drawn_remove = drawn_add
+    blocked_edit = blocked_remove = blocked_add
+
+
+# ── SDN: the editor's Preview, the operation card's Send, a response's Preview ────────────────
+
+class TestSdnOperationCards(_Cards):
+    """On tests/test_sdn_ops_v2.py's lab (the real connection and Ryu driver over
+    `tests.sdn_fakes.FakeRyu` seeded with Ryu's captured table): the editor's form (Preview the
+    flow), the operation card drawn from the real plan (Send 1 request to lab-controller), and a
+    response awaiting a person on Responses (Preview the drop traffic from the source…).
+    Blocked: the form and the response by a verified service (`may` refuses); the card by its
+    own preview refusing (a match without the field it needs draws the refusal, no Send)."""
+    from tests import test_sdn_connections as _sc, test_sdn_ops_v2 as _so
+    networks, lab = hosted(_sc.networks), hosted(_so.lab)
+
+    CASES = {
+        "form": ("_sdn_flow_form.html", "Preview the {{ 'removal' if f.do == 'remove' else "
+                 "('change' if f.do == 'edit' else 'flow') }}", r"Preview the flow", "viewer"),
+        "send": ("_sdn_op.html", "Send {{ d.count }} request{{ 's' if d.count != 1 }} to "
+                 "{{ d.connection }}", r"Send 1 request to lab-controller",
+                 "data: the match lacks the field its prerequisite needs (tcp_dst without "
+                 "ip_proto 6)"),
+        "response": ("_sdn_responses.html", "Preview the {{ r.label | lower }}…",
+                     r"Preview the drop traffic from the source…", "viewer"),
+    }
+    FORM = "/v2/sdn/flow/form?list=Default&do=add&connection=lab-controller&dpid=0000000000000001"
+    ADD = {"list": "Default", "do": "add", "connection": "lab-controller",
+           "dpid": "0000000000000001", "priority": "250", "hard_timeout": "60",
+           "match": "eth_type=0x0800, ipv4_src=198.51.100.9", "actions": "drop"}
+
+    def drawn_form(self, request):
+        html = _text(request.getfixturevalue("lab")["client"].get(self.FORM))
+        assert "Add a flow" in html, "floor: the editor is drawn"
+        return html
+
+    def blocked_form(self, request, monkeypatch):
+        as_service(monkeypatch)
+        return self.drawn_form(request)
+
+    def drawn_send(self, request):
+        r = request.getfixturevalue("lab")["client"].post("/v2/sdn/flow/preview", data=self.ADD)
+        assert r.status_code == 200, "floor: the plan was made"
+        return _text(r)
+
+    def blocked_send(self, request, monkeypatch):
+        html = _text(request.getfixturevalue("lab")["client"].post(
+            "/v2/sdn/flow/preview", data=dict(self.ADD, match="eth_type=0x0800, tcp_dst=22")))
+        assert "tcp_dst needs ip_proto 6" in html_mod.unescape(html), \
+            "floor: the refusal is drawn"
+        return html
+
+    def _responses(self, request):
+        from modules.sdn import loop as LP
+        lab = request.getfixturevalue("lab")
+        LP.propose("Default", {
+            "key": "k-cb", "rule": "scan", "title": "SDN scan", "network": "Default",
+            "connection": "lab-controller", "dpid": 1, "dpid_hex": "0000000000000001",
+            "source": "192.0.2.1", "targets": ["192.0.2.2"], "confidence": "high",
+            "words": "192.0.2.1 reached 25 distinct destination ports"}, "drop_source", "low",
+            why="HITL")
+        html = _text(lab["client"].get("/v2/sdn/responses?list=Default"))
+        assert "1 awaiting approval" in html, "floor: the response awaiting a person is drawn"
+        return html
+
+    def drawn_response(self, request):
+        return self._responses(request)
+
+    def blocked_response(self, request, monkeypatch):
+        as_service(monkeypatch)
+        return self._responses(request)
+
+
 EXCUSED: dict = {}
 EXCUSED_CEILING = 0
 
@@ -1640,9 +1745,11 @@ class TestThePopulation:
         C1504's Free <address> on NetBox's job card, 55 until out-of-band ZTP's survey,
         kick-start and a console server's re-key, 2026-10-22; 58 until the one-decision
         out-of-band onboarding's button, 2026-10-23; 59 until feature 7's Commit this draft and
-        Commit and plan deploy, 2026-10-26)."""
+        Commit and plan deploy, 2026-10-26; 61 until SDN's six, 2026-10-27: Flows' Add flow…,
+        Edit… and Remove…, the editor's Preview, the operation card's Send and a response's
+        Preview)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 61, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 67, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

@@ -1,6 +1,31 @@
 """The SDN closed loop's named functions (PHASE8_PLAN 17.1 S13): what the loop reads, judges and
-does, in one module, so a report can show their code. `collect_threat_data` (S4) is here;
-`classify_threat` (S7) and `respond_to_threat` (S8) are later items.
+does, in one module, so a report can show their code. `collect_threat_data` (S4) and
+`respond_to_threat` (S8) are here; `classify_threat` (S7) is the AI's, and until the cost-safety
+rules are live (C1843) it is a stub that refuses (below).
+
+**`respond_to_threat(network, detection, ...)`** answers a detection (`detect`) with an action
+from the response catalogue (`CATALOGUE`), deterministic, through the flow-operation core
+(`flow_ops`): the same preview, confirm by hash, apply, Verify, rollback and record as every
+flow Mercury changes. Without a confirm it is the preview, writing nothing; with one it is the
+apply. The actions:
+- ``drop_source`` (risk low): one flow on the detection's switch matching the source address
+  (IPv4 or IPv6) with no actions, above every flow not Mercury's (`flow_ops.
+  response_priority`), with the network's hard timeout;
+- ``rate_limit_source`` (risk low): one meter with a single drop band (kbps or pktps, with a
+  burst), then, for each destination the evidence saw the source reach, a flow matching the
+  pair whose actions are the meter and the controller's own forwarding for it read from the
+  switch's table; the meter is removed by Mercury once its flows expire (`flow_ops.
+  expire_meters`);
+- ``remove_flow`` (risk medium): the unauthorised flow the detection names, by delete-strict
+  (its table, priority, match and cookie), then Mercury's own recorded flow put back where the
+  unauthorised one displaced it, if one should be there.
+Each action's parameters are checked against the evidence (the source is the detection's, the
+switch is the detection's, the timeout within the network's limit) before a request exists.
+
+**`classify_threat`** is a stub: background AI is not allowed until the cost-safety rules
+(C1843) give the gateway a trigger it can refuse, so it refuses, makes no call, and the loop
+(`loop.py`) proposes the catalogue's deterministic default for the rule instead
+(`DEFAULT_ACTION`), marked as such.
 
 **`collect_threat_data(network)`** is deterministic and asks no AI. For every controller
 connection of *network* (`connections.connections`) it reads:
@@ -310,3 +335,288 @@ def _summary(controllers: list) -> dict:
 
 def _iso(epoch: float) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
+
+
+# ───────────────────────────────────────────────────────────────────────────── classify (S7)
+
+#: Why the classifier makes no call yet: the gateway names no trigger (C1843).
+CLASSIFY_REFUSED = ("background AI is not allowed until cost safety is live (C1843): no AI call "
+                    "was made, and the response proposed is the catalogue's default for the "
+                    "rule, chosen in code")
+
+
+def classify_threat(detection: dict, *, trigger: str = "background") -> dict:
+    """S7's classifier, not yet built: it refuses and makes no call (see the module's
+    docstring). ``{"ok": False, "refused": True, "error", "trigger"}``."""
+    return {"ok": False, "refused": True, "error": CLASSIFY_REFUSED, "trigger": trigger,
+            "rule": (detection or {}).get("rule")}
+
+
+# ───────────────────────────────────────────────────────────────────────────── respond (S8)
+
+#: The response catalogue: each action, its risk class, the rules it answers and its words.
+CATALOGUE = {
+    "drop_source": {"risk": "low", "rules": ("scan", "flood"),
+                    "label": "Drop traffic from the source",
+                    "words": "one flow dropping every packet from the source on the switch, "
+                             "until its hard timeout"},
+    "rate_limit_source": {"risk": "low", "rules": ("flood", "scan"),
+                          "label": "Rate-limit the source",
+                          "words": "one meter with a single drop band, and the source's flows to "
+                                   "each destination through it, until their hard timeout"},
+    "remove_flow": {"risk": "medium", "rules": ("unauthorised_flow",),
+                    "label": "Remove the unauthorised flow",
+                    "words": "the flow removed by delete-strict, and Mercury's own flow put back "
+                             "where it displaced one"},
+}
+RISKS = ("low", "medium")
+#: The action proposed for each rule when no classifier advises (C1843: none may yet).
+DEFAULT_ACTION = {"scan": "drop_source", "flood": "rate_limit_source",
+                  "unauthorised_flow": "remove_flow"}
+#: The rate-limit's defaults: NOT measured, a starting point the person changes in the preview.
+RATE_LIMIT_DEFAULT = {"unit": "kbps", "rate": 1000, "burst": 100}
+RATE_UNITS = {"kbps": "KBPS", "pktps": "PKTPS"}
+
+
+class ResponseRefused(ValueError):
+    """A response's action or parameters refused, in words."""
+
+
+def _source_match(source: str) -> dict:
+    import ipaddress
+
+    from modules.sdn.match_rules import ETH_IPV4, ETH_IPV6
+
+    try:
+        addr = ipaddress.ip_address(str(source).strip())
+    except ValueError:
+        raise ResponseRefused(f"the source {source!r} is not one host's address") from None
+    if addr.version == 4:
+        return {"eth_type": ETH_IPV4, "ipv4_src": addr.compressed}
+    return {"eth_type": ETH_IPV6, "ipv6_src": addr.compressed}
+
+
+def _pair_match(source: str, target: str) -> dict:
+    import ipaddress
+
+    match = _source_match(source)
+    try:
+        dst = ipaddress.ip_address(str(target).strip())
+    except ValueError:
+        raise ResponseRefused(f"the destination {target!r} is not one host's address") from None
+    if ("ipv4_src" in match) != (dst.version == 4):
+        raise ResponseRefused(f"the source {source} and destination {target} are not one family")
+    match["ipv4_dst" if dst.version == 4 else "ipv6_dst"] = dst.compressed
+    return match
+
+
+def _sources(detection: dict) -> list:
+    out = [s for s in [detection.get("source")] + list(detection.get("sources") or []) if s]
+    return list(dict.fromkeys(out))
+
+
+def _forwarding(flows: list, source: str, target: str) -> list:
+    """The controller's own forwarding of *source*'s traffic to *target* on the switch: the
+    OUTPUT actions of the flows matching that pair, read from the table (one port, or none
+    when the flows disagree or none is there)."""
+    from modules.sdn.flow_intent import is_mercury
+
+    ports = set()
+    for f in flows or []:
+        if is_mercury(f.get("cookie")):
+            continue
+        m = f.get("match") or {}
+        src = m.get("ipv4_src", m.get("ipv6_src"))
+        dst = m.get("ipv4_dst", m.get("ipv6_dst"))
+        if src != source or dst != target:
+            continue
+        outs = [a.get("port") for a in f.get("actions") or [] if a.get("type") == "OUTPUT"]
+        if len(outs) == 1:
+            ports.add(outs[0])
+    return sorted(ports, key=str)
+
+
+def _hard_timeout(network: str, params: dict) -> int:
+    from modules.sdn import flow_ops
+
+    limits = flow_ops.settings_of(network)
+    if not limits["ok"]:
+        raise ResponseRefused(limits["error"])
+    v = limits["values"]
+    wanted = (params or {}).get("hard_timeout", v["sdn_response_hard_timeout_seconds"])
+    if isinstance(wanted, str) and wanted.strip().isdigit():
+        wanted = int(wanted.strip())
+    if isinstance(wanted, bool) or not isinstance(wanted, int) or \
+            not 1 <= wanted <= v["sdn_response_max_seconds"]:
+        raise ResponseRefused(f"a response lasts from 1 to {v['sdn_response_max_seconds']} s "
+                              f"(the network's sdn_response_max_seconds), not {wanted!r}")
+    return wanted
+
+
+def _flow_by_ref(flows: list, connection: str, dpid: int, ref: str):
+    for f in flows or []:
+        if flow_ref(connection, dpid, f) == ref:
+            return f
+    return None
+
+
+def build_response(network: str, detection: dict, action_id: str = None, params: dict = None,
+                   *, driver=None) -> dict:
+    """The ask for *detection*'s response (`flow_ops`' shape), its catalogue action and its
+    parameters checked against the evidence, reading the switch's table (and meters) once:
+    ``{"ok", "error", "action", "risk", "ask", "params"}``. Draws the cookies and meter id
+    here, so the preview and the apply send the same bodies."""
+    from modules.sdn import flow_intent, flow_ops
+    from modules.sdn.drivers.base import parse_dpid
+
+    out = {"ok": False, "error": "", "action": action_id, "risk": "", "ask": None,
+           "params": dict(params or {})}
+    try:
+        if not isinstance(detection, dict) or detection.get("rule") not in DEFAULT_ACTION:
+            raise ResponseRefused("a response answers one detection of the scan, flood or "
+                                  "unauthorised-flow rule")
+        if detection.get("network") not in (None, "", network):
+            raise ResponseRefused(f"the detection is {detection.get('network')!r}'s, not "
+                                  f"{network!r}'s")
+        action_id = action_id or DEFAULT_ACTION[detection["rule"]]
+        entry = CATALOGUE.get(action_id)
+        if entry is None:
+            raise ResponseRefused(f"{action_id!r} is not in the response catalogue "
+                                  f"({', '.join(CATALOGUE)})")
+        if detection["rule"] not in entry["rules"]:
+            raise ResponseRefused(f"{action_id} answers {', '.join(entry['rules'])}, not "
+                                  f"{detection['rule']}")
+        out.update(action=action_id, risk=entry["risk"])
+        conn, dpid = detection.get("connection") or "", parse_dpid(detection.get("dpid"))
+        made = flow_ops._driver(network, conn, driver)
+        if not made.get("ok"):
+            raise ResponseRefused(made.get("error") or f"no driver for {conn!r}")
+        drv = made["driver"]
+        read = flow_ops._read_switch(drv, dpid, action_id == "rate_limit_source")
+        if not read["ok"]:
+            raise ResponseRefused(read["error"])
+        intent = flow_intent.intent(network, conn)
+        if intent["state"] != "ok":
+            raise ResponseRefused(f"{network}'s flow intent could not be read "
+                                  f"({intent['error']})")
+        own = (made.get("connection") or {}).get("own_cookies") or [0]
+        recorded = [r.get("cookie") for r in intent["flows"]]
+        changes = []
+        if action_id in ("drop_source", "rate_limit_source"):
+            sources = _sources(detection)
+            source = out["params"].get("source") or (sources[0] if len(sources) == 1 else None)
+            if not source:
+                raise ResponseRefused("the detection names no single source to act on "
+                                      f"(it names {sources or 'none'}): choose one")
+            if source not in sources:
+                raise ResponseRefused(f"the source {source} is not one the evidence saw "
+                                      f"({', '.join(sources) or 'none'})")
+            hard = _hard_timeout(network, out["params"])
+            priority = flow_ops.response_priority(read["flows"], own, recorded,
+                                                  match=_source_match(source))
+            out["params"].update(source=source, hard_timeout=hard, priority=priority)
+            if action_id == "drop_source":
+                changes.append({"do": "add_flow", "flow": {
+                    "table_id": 0, "priority": priority, "cookie": flow_intent.new_cookie(),
+                    "idle_timeout": 0, "hard_timeout": hard, "match": _source_match(source),
+                    "actions": []}})
+            else:
+                unit = str(out["params"].get("unit") or RATE_LIMIT_DEFAULT["unit"]).lower()
+                if unit not in RATE_UNITS:
+                    raise ResponseRefused(f"a rate is in {' or '.join(RATE_UNITS)}, not {unit!r}")
+                try:
+                    rate = int(out["params"].get("rate", RATE_LIMIT_DEFAULT["rate"]))
+                    burst = int(out["params"].get("burst", RATE_LIMIT_DEFAULT["burst"]))
+                except (TypeError, ValueError):
+                    raise ResponseRefused("a rate and a burst are whole numbers") from None
+                if rate < 1 or burst < 0:
+                    raise ResponseRefused(f"a rate is 1 or more and a burst 0 or more, not "
+                                          f"{rate} and {burst}")
+                meter_id = flow_ops.free_meter_id(read["meters"], read["features"],
+                                                  flows=read["flows"])
+                flags = [RATE_UNITS[unit], "STATS"] + (["BURST"] if burst else [])
+                out["params"].update(unit=unit, rate=rate, burst=burst, meter_id=meter_id)
+                changes.append({"do": "add_meter", "meter": {
+                    "meter_id": meter_id, "flags": flags,
+                    "bands": [{"type": "DROP", "rate": rate, "burst_size": burst}]}})
+                targets = [t for t in detection.get("targets") or [] if t]
+                if not targets:
+                    raise ResponseRefused("the evidence names no destination of the source's "
+                                          "traffic, so there is no forwarding to meter: drop "
+                                          "it instead")
+                pairs = []
+                for target in targets:
+                    ports = _forwarding(read["flows"], source, target)
+                    if len(ports) != 1:
+                        continue
+                    pairs.append(target)
+                    changes.append({"do": "add_flow", "flow": {
+                        "table_id": 0, "priority": priority, "cookie": flow_intent.new_cookie(),
+                        "idle_timeout": 0, "hard_timeout": hard,
+                        "match": _pair_match(source, target),
+                        "actions": [{"type": "METER", "meter_id": meter_id},
+                                    {"type": "OUTPUT", "port": ports[0]}]}})
+                if not pairs:
+                    raise ResponseRefused(
+                        f"no single forwarding port for {source}'s traffic to "
+                        f"{', '.join(targets)} is in switch {dpid}'s table, so there is "
+                        "nothing to meter: drop it instead")
+                out["params"]["targets"] = pairs
+        else:
+            ref = (detection.get("subject") or {}).get("value")
+            found = _flow_by_ref(read["flows"], conn, dpid, ref)
+            if found is None:
+                raise ResponseRefused(f"the flow {ref} is no longer in switch {dpid}'s table: "
+                                      "nothing to remove")
+            target = {k: found.get(k) for k in ("table_id", "priority", "match", "cookie")}
+            changes.append({"do": "remove_flow", "target": target})
+            for r in intent["flows"]:
+                if r.get("dpid") == dpid and flow_ops._same_place(r, found) and not any(
+                        f.get("cookie") == r.get("cookie") for f in read["flows"]):
+                    changes.append({"do": "add_flow", "reinstall": True, "flow": {
+                        k: r.get(k) for k in ("table_id", "priority", "cookie", "match",
+                                              "actions", "idle_timeout", "hard_timeout")}})
+            out["params"].update(flow=ref, cookie=flow_intent.cookie_hex(found.get("cookie")))
+        out["ask"] = {"connection": conn, "dpid": dpid, "changes": changes,
+                      "response": action_id != "remove_flow",
+                      "detection": {k: detection.get(k) for k in
+                                    ("key", "rule", "title", "dpid_hex", "source", "words",
+                                     "at")}}
+        out["ok"] = True
+    except (ResponseRefused, flow_ops.Refused) as exc:
+        out["error"] = str(exc)
+    except Exception as exc:                          # noqa: BLE001 (said, never raised)
+        log.error("sdn respond: the response could not be built (%s)", type(exc).__name__)
+        out["error"] = f"the response could not be built: {type(exc).__name__}: {exc}"
+    return out
+
+
+def respond_to_threat(network: str, detection: dict, action_id: str = None,
+                      params: dict = None, *, confirm: dict = None, actor: str = "",
+                      actor_verified: str = "", mode: str = "hitl", autonomous: dict = None,
+                      driver=None, **apply_kwargs) -> dict:
+    """S8: answer *detection* with a catalogue action, through the flow-operation core.
+
+    Without *confirm*: the PREVIEW, writing nothing: ``{"ok", "error", "action", "risk",
+    "params", "ask", "plan"}``, the plan carrying the exact requests and their hash.
+    With *confirm* ``{"ask", "hash"}`` (the preview's ask, carried back unchanged, and the hash
+    the person confirmed): the APPLY (`flow_ops.apply`), as *actor*, in *mode* (``hitl``: a
+    person's confirm; ``auto``: *autonomous* names the setting and its reason), recorded with
+    the detection it answers."""
+    from modules.sdn import flow_ops
+
+    if confirm is None:
+        built = build_response(network, detection, action_id, params, driver=driver)
+        if not built["ok"]:
+            return dict(built, plan=None)
+        p = flow_ops.plan(network, built["ask"], driver=driver)
+        return dict(built, plan=p, ok=p["ok"], error=p["error"])
+    ask = (confirm or {}).get("ask")
+    if not isinstance(ask, dict):
+        return {"ok": False, "error": "a confirm carries the previewed ask", "outcome": "refused"}
+    response = {"kind": "response", "action": action_id, "risk": CATALOGUE.get(
+        action_id or "", {}).get("risk", ""), "detection": ask.get("detection") or {},
+        "classified_by": "the catalogue's default (no AI: C1843)"}
+    return flow_ops.apply(network, ask, (confirm or {}).get("hash", ""), actor=actor,
+                          actor_verified=actor_verified, mode=mode, autonomous=autonomous,
+                          response=response, driver=driver, **apply_kwargs)

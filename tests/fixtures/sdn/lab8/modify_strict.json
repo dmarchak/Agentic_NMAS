@@ -1,0 +1,83 @@
+{
+ "added": {
+  "digest": "85f97613d7f9b5722d114c791d0f9fe4c95f20d64a7747217e426af7c01a20cb",
+  "error": "",
+  "note": "the controller sent it to the switch; Ryu's ofctl_rest does not report the switch's own answer, so read the table back to verify",
+  "ok": true,
+  "request": {
+   "body": "{\"actions\": [], \"cookie\": 5567880371067469999, \"dpid\": 2, \"hard_timeout\": 300, \"idle_timeout\": 0, \"match\": {\"eth_type\": 2048, \"ipv4_src\": \"198.51.100.77\"}, \"priority\": 77, \"table_id\": 0}",
+   "method": "POST",
+   "path": "/stats/flowentry/add"
+  },
+  "sent": true,
+  "status": 200
+ },
+ "after_add": [
+  {
+   "actions": [],
+   "byte_count": 0,
+   "cookie": 5567880371067469999,
+   "dpid": 2,
+   "duration_sec": 1,
+   "hard_timeout": 300,
+   "idle_timeout": 0,
+   "match": {
+    "eth_type": 2048,
+    "ipv4_src": "198.51.100.77"
+   },
+   "packet_count": 0,
+   "priority": 77,
+   "table_id": 0
+  }
+ ],
+ "after_cleanup": [],
+ "after_modify": [
+  {
+   "actions": [
+    {
+     "port": "CONTROLLER",
+     "type": "OUTPUT"
+    }
+   ],
+   "byte_count": 0,
+   "cookie": 5567880371067469999,
+   "dpid": 2,
+   "duration_sec": 2,
+   "hard_timeout": 300,
+   "idle_timeout": 0,
+   "match": {
+    "eth_type": 2048,
+    "ipv4_src": "198.51.100.77"
+   },
+   "packet_count": 0,
+   "priority": 77,
+   "table_id": 0
+  }
+ ],
+ "cleanup": {
+  "digest": "4d6714ef879b255067e1d1ddca0a8223c3c4a5f5fbb0232d6f8789c9b11d00b0",
+  "error": "",
+  "note": "the controller sent it to the switch; Ryu's ofctl_rest does not report the switch's own answer, so read the table back to verify",
+  "ok": true,
+  "request": {
+   "body": "{\"cookie\": 5567880371067469999, \"cookie_mask\": 18446744073709551615, \"dpid\": 2, \"match\": {\"eth_type\": 2048, \"ipv4_src\": \"198.51.100.77\"}, \"priority\": 77, \"table_id\": 0}",
+   "method": "POST",
+   "path": "/stats/flowentry/delete_strict"
+  },
+  "sent": true,
+  "status": 200
+ },
+ "modify_sent": {
+  "digest": "814bdee185e1b9c451ce634b8eb8d60f960f7be675f4a212f3ce09d774aed63e",
+  "error": "",
+  "note": "the controller sent it to the switch; Ryu's ofctl_rest does not report the switch's own answer, so read the table back to verify",
+  "ok": true,
+  "request": {
+   "body": "{\"actions\": [{\"port\": \"CONTROLLER\", \"type\": \"OUTPUT\"}], \"cookie\": 5567891205700247316, \"dpid\": 2, \"hard_timeout\": 90, \"idle_timeout\": 40, \"match\": {\"eth_type\": 2048, \"ipv4_src\": \"198.51.100.77\"}, \"priority\": 77, \"table_id\": 0}",
+   "method": "POST",
+   "path": "/stats/flowentry/modify_strict"
+  },
+  "sent": true,
+  "status": 200
+ }
+}

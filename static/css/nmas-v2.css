@@ -2252,6 +2252,15 @@ summary.lq-chip::-webkit-details-marker { display: none; }
 .sdn-ctl > .notice, .sdn-ctl > .sdn-kv, .sdn-ctl > .sdn-unread, .sdn-ctl > .sdn-answer { margin: 0 18px; }
 .sdn-ctl > :last-child { margin-bottom: 14px; }
 .sdn-acts { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+/* PHASE8_PLAN 17.1 S8 to S10: the Responses tab's forms and the operation card wrap at phone
+   width, never past the card. */
+.sdn-acts form, .sdn-mode-form, .sdn-op-confirm { display: flex; flex-wrap: wrap; gap: 8px;
+  align-items: center; min-width: 0; max-width: 100%; }
+.sdn-acts .btn, .sdn-mode-form .btn, .sdn-op-confirm .btn { white-space: normal; max-width: 100%; }
+.sdn-op { padding: 12px 16px; margin: 8px 0; min-width: 0; }
+.sdn-op-req { white-space: pre-wrap; word-break: break-all; font-size: 12.5px; padding: 8px;
+  background: var(--surface-2); border-radius: var(--r); }
+.sdn-log { white-space: pre-wrap; word-break: break-word; font-size: 12.5px; margin: 0 18px 14px; }
 .sdn-kv { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 6px 16px; margin: 0; font-size: 13.5px; }
 .sdn-kv dt { color: var(--ink-2); }
 .sdn-kv dd { margin: 0; overflow-wrap: anywhere; }

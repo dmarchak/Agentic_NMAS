@@ -231,6 +231,15 @@ PAGE_RECORD = {
     "dhcp_v2.lease_confirm": ("templates/v2/_dhcp_lease.html",
                               ("lop.state == 'done'", "r.read_back", "r.commit"),
                               "v2.history_page"),
+    # SDN (PHASE8_PLAN 17.1 S8 and S16, C1912): the flow operation's and the response's result
+    # in place of their card (the outcome, Verify's checks, the rollback, the record), the run
+    # read again on History (the network's flow intent, `history_sources.sdn_operations`).
+    "sdn_v2.flow_confirm": ("templates/v2/_sdn_op.html",
+                            ("d.state == 'result'", "d.checks", "d.rollback", "d.record"),
+                            "v2.history_page"),
+    "sdn_v2.response_confirm": ("templates/v2/_sdn_op.html",
+                                ("d.state == 'result'", "d.checks", "d.rollback", "d.record"),
+                                "v2.history_page"),
     # DHCP › Subnets (C529 step 3, board C): the same, in dhcp/subnets.yml.
     "dhcp_v2.subnet_confirm": ("templates/v2/_dhcp_subnet.html",
                                ("sop.state == 'done'", "r.read_back", "r.commit"),

@@ -61,6 +61,10 @@ SCOPES: dict = {
     # Responses (17.5, board 3), not on a generic card (`CARDLESS`).
     **_group(NETWORK, "sdn_detection", "sdn_scan_ports", "sdn_scan_window_seconds",
              "sdn_scan_fallback_pps", "sdn_flood_factor", "sdn_flood_window_seconds"),
+    # PHASE8_PLAN 17.1 S8: a response's hard timeout and its ceiling, one network's together.
+    # Drawn on SDN › Responses beside the response they bound, not on a generic card.
+    **_group(NETWORK, "sdn_responses", "sdn_response_hard_timeout_seconds",
+             "sdn_response_max_seconds"),
     # ── Per network: each a group of one ─────────────────────────────────────────────────
     **{k: (NETWORK, k) for k in (
         "verify_settle_windows", "deploy_max_workers", "deploy_verify_failure_limit",
@@ -169,7 +173,7 @@ GROUP_LABELS: dict = {
     "ai_topology_class": "AI: the topology class",
     "alert_history_retention_days": "Alert history: transitions kept (days)",
     "endpoints": "Endpoints", "sdn_controllers": "SDN controllers",
-    "sdn_detection": "SDN detection thresholds",
+    "sdn_detection": "SDN detection thresholds", "sdn_responses": "SDN response timeouts",
 }
 
 #: Network groups no generic Settings card draws or saves, each with the one module that
@@ -178,8 +182,9 @@ GROUP_LABELS: dict = {
 #: drawn by its own card on a network's Integrations tab (board SdnSettings,
 #: `templates/v2/_sdn_settings.html`). `sdn_detection`: the thresholds belong on SDN ›
 #: Responses beside the rules they set (17.5, board 3); until that tab is built
-#: `list_settings.write` writes them, and `modules/sdn/detect.py` reads them.
-CARDLESS = ("sdn_controllers", "sdn_detection")
+#: `list_settings.write` writes them, and `modules/sdn/detect.py` reads them. `sdn_responses`:
+#: the same, read by `modules/sdn/flow_ops.py`.
+CARDLESS = ("sdn_controllers", "sdn_detection", "sdn_responses")
 
 #: Network groups that are each network's own and never inherited from Default, whatever the
 #: network's mode or choice: a network that sets none has none (the operator's decision of

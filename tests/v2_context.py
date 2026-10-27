@@ -1615,9 +1615,82 @@ def _sdn(client, _lab, _mp):
         session["now"] = Down()
         assert "Couldn't connect" in client.post(f"{card}/test", data=form)\
             .get_data(as_text=True)
+        _sdn_operations(client, mp, session)
         assert client.post(f"{card}/lab-controller/remove").status_code == 200
     finally:
         mp.undo()
+
+
+def _sdn_operations(client, mp, session):
+    """SDN's operations (PHASE8_PLAN 17.1 S8 to S10, S16) on Lab's connection, over
+    `tests.sdn_fakes.FakeRyu` seeded with Ryu's captured table: the editor's form, preview and
+    confirm (a verified result), a refused preview, the Responses tab with a response awaiting a
+    person and a log line, its preview and confirm, a dismissal, AUTO on and off, and the loop
+    started and stopped (its pass replaced, so no thread reads a controller)."""
+    import html
+    import re
+
+    from modules.sdn import loop as LP
+    from tests.sdn_fakes import FakeRyu
+    from tests.test_sdn_flow_ops import captured_table
+    from tests.test_sdn_v2 import BASE
+
+    session["now"] = FakeRyu(BASE, flows={1: captured_table()})
+    mp.setattr("modules.sdn.flow_ops.COUNTER_INTERVAL", 0)
+    mp.setattr(LP, "run_pass", lambda network, **kw: None)
+
+    def fields(text):
+        return {m.group(1): html.unescape(m.group(2)) for m in re.finditer(
+            r'<input type="hidden" name="([a-z]+)" value="([^"]*)"', text)}
+
+    sw = "0000000000000001"
+    assert client.get(f"/v2/sdn/flow/form?list=Lab&do=add&connection=lab-controller&dpid={sw}"
+                      ).status_code == 200
+    preview = client.post("/v2/sdn/flow/preview", data={
+        "list": "Lab", "do": "add", "connection": "lab-controller", "dpid": sw,
+        "priority": "250", "hard_timeout": "60", "match": "eth_type=0x0800, ipv4_src=198.51.100.9",
+        "actions": "drop"}).get_data(as_text=True)
+    assert "Done, verified" in client.post("/v2/sdn/flow/confirm", data=fields(preview))\
+        .get_data(as_text=True)
+    assert client.post("/v2/sdn/flow/preview", data={
+        "list": "Lab", "do": "add", "connection": "lab-controller", "dpid": sw,
+        "priority": "250", "match": "tcp_dst=22", "actions": "drop"}).status_code == 409
+    # The table-miss flow's removal, previewed: its warnings and the typed words (not sent).
+    warned = client.post("/v2/sdn/flow/preview", data={
+        "list": "Lab", "do": "remove", "connection": "lab-controller", "dpid": sw,
+        "target": '{"table_id": 0, "priority": 0, "match": {}, "cookie": 0}'})
+    assert "remove table-miss" in warned.get_data(as_text=True)
+    # A write the switch does not apply: Verify fails and the rollback is drawn.
+    session["now"].ignore = {"/stats/flowentry/add"}
+    preview = client.post("/v2/sdn/flow/preview", data={
+        "list": "Lab", "do": "add", "connection": "lab-controller", "dpid": sw,
+        "priority": "251", "match": "eth_type=0x86dd, ipv6_src=2001:db8::9",
+        "actions": "drop"}).get_data(as_text=True)
+    assert "Rolled back" in client.post("/v2/sdn/flow/confirm", data=fields(preview))\
+        .get_data(as_text=True)
+    session["now"].ignore = set()
+    d = {"key": "k-ctx", "rule": "scan", "title": "SDN scan", "network": "Lab",
+         "connection": "lab-controller", "dpid": 1, "dpid_hex": sw, "source": "192.0.2.1",
+         "targets": ["192.0.2.2"], "confidence": "high", "words": "192.0.2.1 reached 25 ports"}
+    row = LP.propose("Lab", d, "drop_source", "low", why="HITL")
+    other = LP.propose("Lab", dict(d, key="k-ctx-2", rule="flood"), "rate_limit_source", "low",
+                       why="HITL")
+    LP.say("Lab", "detect", "a scan from 192.0.2.1 on " + sw)
+    assert "2 awaiting approval" in client.get("/v2/sdn/responses?list=Lab")\
+        .get_data(as_text=True)
+    card = client.post(f"/v2/sdn/response/{row['id']}/preview",
+                       data={"list": "Lab", "hard_timeout": "90"}).get_data(as_text=True)
+    assert "Done, verified" in client.post("/v2/sdn/response/confirm", data=fields(card))\
+        .get_data(as_text=True)
+    assert client.post(f"/v2/sdn/response/{other['id']}/dismiss",
+                       data={"list": "Lab", "reason": "the lab's own test"}).status_code == 200
+    assert client.post("/v2/sdn/mode", data={"list": "Lab", "mode": "auto", "reason": "lab run",
+                                             "hours": "1", "risk": "low"}).status_code == 200
+    assert client.post("/v2/sdn/mode", data={"list": "Lab", "mode": "hitl"}).status_code == 200
+    assert client.post("/v2/sdn/loop", data={"list": "Lab", "run": "start",
+                                             "interval": "10"}).status_code == 200
+    assert client.post("/v2/sdn/loop", data={"list": "Lab", "run": "stop"}).status_code == 200
+    LP._jobs["Lab"]["thread"].join(10)
 
 
 #: What no followed GET reaches, each on the lab's own state: a POST's card, a script's GET,

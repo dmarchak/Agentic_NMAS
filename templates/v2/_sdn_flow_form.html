@@ -1,0 +1,35 @@
+{%- from "v2/_macros.html" import how -%}
+{#- SDN › Flows' editor in place (board SdnFlowEdit, signed off 2026-10-27 under the Phase 7
+    mode): Add a flow on a switch, Edit one of Mercury's (actions in place by modify-strict; a
+    change of match, priority or timeouts is a remove and an add as one action), or Remove one by
+    delete-strict. Each posts its preview (the exact requests and their hash), confirmed there.
+    modules/sdn/flow_form.py reads it. -#}
+<form class="card sdn-op sdn-flow-form" hx-post="{{ url_for('sdn_v2.flow_preview') }}" hx-target="this" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]">
+  <input type="hidden" name="list" value="{{ f.list }}">
+  <input type="hidden" name="do" value="{{ f.do }}">
+  <input type="hidden" name="connection" value="{{ f.connection }}">
+  <input type="hidden" name="dpid" value="{{ f.dpid }}">
+  {%- if f.target %}<input type="hidden" name="target" value="{{ f.target }}">{% endif %}
+  <div class="sdn-op-hd"><h3>{{ {'add': 'Add a flow', 'edit': "Edit Mercury's flow", 'remove': 'Remove a flow'}.get(f.do, f.do) }} · <span class="mono">{{ f.dpid }}</span> ({{ f.connection }})</h3> {{ how('sdn-flows', compact=True, op='Edit flows') }}</div>
+  {%- if f.do == 'remove' %}
+  <p class="small">Removed by <span class="mono">delete_strict</span>, matching its table, priority, match and cookie exactly: never a wildcard delete. The preview names the flow, and warns if it is the table-miss flow or the controller's own.</p>
+  <p class="mono small sdn-op-target">{{ f.target }}</p>
+  {%- else %}
+  {%- if f.do == 'edit' %}
+  <p class="small">Actions change in place (<span class="mono">modify_strict</span>, the match, priority and cookie unchanged). A change of the match, the priority or a timeout is a remove and an add as one action: <span class="mono">delete_strict</span> of the old flow, then <span class="mono">add</span> of the new one, previewed together; rollback restores the old flow.</p>
+  <p class="mono small sdn-op-target">{{ f.target }}</p>
+  {%- endif %}
+  <div class="sdn-ff-grid">
+    <label>Table <input type="number" name="table_id" value="0" min="0" max="254" required></label>
+    <label>Priority <input type="number" name="priority" min="0" max="65535" required></label>
+    <label>Idle timeout (s) <input type="number" name="idle_timeout" value="0" min="0" max="65535"></label>
+    <label>Hard timeout (s) <input type="number" name="hard_timeout" value="0" min="0" max="65535"></label>
+  </div>
+  <label class="sdn-ff-wide">Match <span class="faint small">field=value, comma-separated, OpenFlow 1.3's names (in_port, eth_type, ipv4_src, ipv6_dst, ip_proto, tcp_dst…); Mercury checks each field's prerequisites</span>
+    <textarea name="match" rows="2" class="mono" placeholder="in_port=1, eth_type=0x0800, ipv4_src=192.0.2.1, ip_proto=6, tcp_dst=22"></textarea></label>
+  <label class="sdn-ff-wide">Actions <span class="faint small">drop, or output:&lt;port&gt;, meter:&lt;id&gt;, group:&lt;id&gt;, goto_table:&lt;id&gt;, set_field:&lt;field&gt;=&lt;value&gt;</span>
+    <input type="text" name="actions" class="mono" value="drop"></label>
+  <p class="faint small">Mercury sets the cookie. Verify checks installation and counters; testing traffic from the hosts is yours (a probe feature is registered for later).</p>
+  {%- endif %}
+  <button class="btn btn-primary" type="submit" hx-disabled-elt="this" data-op="sdn-flows"{{ gate('confirm') }}><span class="op-idle">Preview the {{ 'removal' if f.do == 'remove' else ('change' if f.do == 'edit' else 'flow') }}</span><span class="op-busy">Reading the switch…</span></button>{{ how('sdn-flows', compact=True, op='Preview') }}
+</form>

@@ -2,8 +2,8 @@
 
 A network's SDN controllers and the flow tables of the switches they manage, under OBSERVE.
 The sidebar's SDN opens it for the network you are on (`/v2/sdn?list=<network>`). Its tabs are
-**Controllers** and **Flows**; **Responses** (detection rules, HITL or AUTO, and the loop) is
-drawn and not yet open: it is built with the responses themselves.
+**Controllers**, **Flows** and **Responses** (what awaits you, HITL or AUTO, the loop and the
+detection rules).
 
 The connections are the network's own, set in Settings › Integrations' SDN controllers card
 ([Settings](settings#sdn-controllers)): a network never takes Default's controllers. With none
@@ -84,14 +84,56 @@ Each switch's flow table, Mercury's expected flows beside what is installed.
     recorded** names each difference;
   - **the controller's own**: its cookie is one the connection declares as its application's;
   - **unauthorised**: anything else, named with why (an unknown cookie; Mercury's range with no
-    record; a record withdrawn; another connection's record). It is drawn red. Its
-    **Remove…** is drawn disabled, saying why: removing a flow is a gated response, built with
-    Responses.
+    record; a record withdrawn; another connection's record). It is drawn red, with
+    **Remove…** ([Add, edit and remove a flow](#flow-operations)).
   - **Mercury's, missing**: recorded and not installed. **Mercury's, expired**: its hard
     timeout, as set, has passed, so the switch removed it as asked: nothing to do.
 - **Meters**: each switch's meters (its id, its rate and what happens above it, the packets
   counted in that band) and whose each is, by the flows that use it; and on how many switches
   meters are supported, from each switch's meter features.
+
+## Add, edit and remove a flow {#flow-operations}
+
+Each switch on Flows has **Add flow…**; each flow has **Remove…**, and each of Mercury's flows
+**Edit…**. Each opens its form in place:
+
+- **Add**: the table, the priority, the idle and hard timeouts, the match as `field=value` pairs
+  (OpenFlow 1.3's names: `in_port`, `eth_type`, `ipv4_src`, `ipv6_dst`, `ip_proto`, `tcp_dst`…)
+  and the actions (`drop`, or `output:<port>`, `meter:<id>`, `group:<id>`, `goto_table:<id>`,
+  `set_field:<field>=<value>`). Mercury sets the cookie.
+- **Edit**: the same form for one of Mercury's flows. New actions change it in place; a new
+  match, priority or timeout is a remove and an add as one action, and the preview says so.
+- **Remove**: the flow named by its table, priority, match and cookie, removed by delete-strict.
+
+**Preview** reads the switch now and draws the card: what it does, exactly these requests, what
+will not happen, any warning (the table-miss flow, a flow of the controller's own), and Verify.
+**Send** confirms it, bound to the requests' hash; the result replaces the card: **Done,
+verified**, or **Rolled back** naming the check that failed. A match missing a field it needs is
+refused at the preview, naming both. How each step works:
+[Change an SDN switch's flows](sdn-flows).
+
+## Responses {#responses}
+
+What to act on first: **N awaiting approval**, the mode and whether the loop is running.
+
+- **A response awaiting you**: the detection (the rule, the source, the switch, its confidence
+  and its words, an alert with its evidence pack), why no AI classified it (background AI is not
+  allowed until cost safety is live), and the action proposed from the catalogue with its risk.
+  Its preview button, named for the action ("Preview the drop traffic from the source…"), builds its card as Flows' changes are (the action's parameters checked
+  against the evidence: the source is the detection's, the hard timeout within the network's
+  ceiling); **Send** applies it as you. **Dismiss with this reason** closes it, sending nothing.
+  A response clears by itself when its detection resolves before anyone acts.
+- **Mode**: **HITL**, a person confirms each response, is the default. **Turn AUTO on** takes a
+  reason, how many hours (at most 24) and the allowed risk (low: rate-limit and drop; medium:
+  also remove a flow). While AUTO is on the card names who turned it on, why and until when;
+  **Turn AUTO off** ends it at once. At its expiry the mode is HITL again, and the record says so.
+- **The loop**: **Start** runs detect, classify and respond on this network every N seconds (5 to
+  600); its log lists each pass's steps, newest first; **Stop** ends it after its current pass,
+  and the card says who stopped it and when.
+- **Detection rules**: each rule's threshold on this network, and the response timeouts: every
+  response flow expires at its hard timeout.
+
+Verify checks installation and counters; testing traffic between the hosts is yours.
 
 ## At phone width {#phone}
 

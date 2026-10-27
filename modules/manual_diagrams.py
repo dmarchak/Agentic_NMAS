@@ -1384,6 +1384,36 @@ def privileged():
     ])
 
 
+def sdn_flows():
+    return svg(520, (
+        "A change to an SDN switch's flows, a person's or a response's: the plan reads the "
+        "switch's flow table through its controller, checks OpenFlow 1.3's match "
+        "prerequisites and refuses before any request exists, and renders the exact REST "
+        "requests and the undo of each; you confirm, bound to their hash; holding the switch, "
+        "the plan is made again and a moved hash sends nothing; each request is sent through "
+        "the controller; Verify reads the table back, a meter's counters twice; a failed "
+        "request or check rolls back what landed, newest first, and reads the table back; the "
+        "run is recorded in the network's flow intent, and History shows it."), [
+        lanes(20, 514, right="THE CONTROLLER"),
+        doc("box", 14, 40, 186, 36, "The plan", "the table read; prerequisites"), num(14, 40, 1),
+        t(14, 92, "refused: nothing sent", "sm"),
+        doc("box", 14, 110, 186, 36, "Exactly these requests", "each with its undo"),
+        num(14, 110, 2),
+        person(14, 160, 186, 30, "You confirm, bound to their hash"), num(14, 160, 3),
+        band(206, 150, "The apply · the switch held"),
+        device(262, 226, 118, 140, "The controller", "and its switch", top=True),
+        *rows([
+            (240, None, 4, "Planned again", "a moved hash sends nothing"),
+            (282, None, 5, "Each request sent", "exactly the rendered body"),
+            (324, "read", 6, "Verified", "the table read back"),
+        ]),
+        t(14, 372, "A failure rolls back what landed.", "sm"),
+        store(14, 390, 186, 40, "The flow intent", "the flows, the run"), num(14, 390, 7),
+        t(14, 454, "History shows it.", "sm"),
+        t(14, 480, "Traffic between hosts is yours to test.", "sm"),
+    ])
+
+
 def settings_switch():
     return svg(470, (
         "Switching a network's settings: making it standalone or inheriting again, or one "
@@ -1646,6 +1676,7 @@ DIAGRAMS = {
     "intent-in-words": intent_in_words,
     "path-trace": path_trace,
     "privileged": privileged,
+    "sdn-flows": sdn_flows,
     "publish-remote": publish_remote,
     "breakglass-export": breakglass_export,
     "onboard-static": onboard_static,

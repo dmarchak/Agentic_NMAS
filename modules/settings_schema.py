@@ -594,6 +594,13 @@ DEFAULTS: dict = {
     "sdn_scan_fallback_pps": 100,
     "sdn_flood_factor": 5,
     "sdn_flood_window_seconds": 30,
+    # SDN responses (PHASE8_PLAN 17.1 S8, `modules/sdn/flow_ops.py`), per network: every flow a
+    # response installs carries a hard timeout, 600 s unless the person sets another in the
+    # preview, at most 3600 s, so a mistaken response expires by itself (the board's figures,
+    # SdnResponse and SdnResponses, signed off 2026-10-27). Not measured: how long a response
+    # should hold is the operator's decision about the network, which no measurement makes.
+    "sdn_response_hard_timeout_seconds": 600,
+    "sdn_response_max_seconds": 3600,
 
     # ── Jenkins ─────────────────────────────────────────────────────────────
     # Every generated pipeline emitted Windows `bat` steps; that stays the
@@ -997,6 +1004,9 @@ SCHEMA: dict = {
         "sdn_scan_fallback_pps": {"type": "number", "exclusiveMinimum": 0},
         "sdn_flood_factor": {"type": "number", "minimum": 1.5, "maximum": 1000},
         "sdn_flood_window_seconds": {"type": "integer", "minimum": 0, "maximum": 3600},
+        "sdn_response_hard_timeout_seconds": {"type": "integer", "minimum": 1,
+                                              "maximum": 65535},
+        "sdn_response_max_seconds": {"type": "integer", "minimum": 1, "maximum": 65535},
         "deploy_max_workers": {"type": "integer", "minimum": 1, "maximum": 16},
         "deploy_verify_failure_limit": {"type": "integer", "minimum": 1},
         "verify_settle_windows": {

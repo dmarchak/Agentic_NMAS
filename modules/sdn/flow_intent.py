@@ -14,7 +14,14 @@ database once moved; `records_store_flow_intent`): append-only, one line per eve
   (OpenFlow 1.3 OXM names), actions (the drivers' one shape) and timeouts, who installed it and
   when (``installed_at``, Mercury's clock at the install), and the response that installed it;
 - ``withdrawn``: Mercury removed it (a rollback, a removal), who, when and why; it is then no
-  longer expected.
+  longer expected;
+- ``amended``: Mercury edited it in place (modify-strict keeps the cookie): its new actions or
+  timeouts, who, when and why;
+- ``meter`` and ``meter_withdrawn``: a meter Mercury added on a switch (its id, flags and
+  bands, and when Mercury removes it: a meter has no timeout of its own), and its removal;
+- ``operation``: one flow operation's whole run (`flow_ops.apply`): its requests and their
+  hash, who confirmed it, each answer, Verify's checks, the rollback and the outcome, which
+  History reads.
 Each append holds the store's cross-process lock across its read (a cookie is recorded once)
 and its write (`records_migrate.store_append`, owner-only, a line at a time).
 
@@ -123,14 +130,25 @@ def read(network: str) -> dict:
 
 
 def _active(rows: list) -> dict:
-    """``{cookie: installed row}`` of every record installed and not withdrawn."""
+    """``{cookie: installed row}`` of every record installed and not withdrawn, each as its
+    last amendment left it (an edit by modify-strict keeps the cookie and changes the actions
+    or timeouts)."""
     out = {}
     for r in rows:
         if r.get("kind") == "installed":
             out[r.get("cookie")] = r
         elif r.get("kind") == "withdrawn":
             out.pop(r.get("cookie"), None)
+        elif r.get("kind") == "amended" and r.get("cookie") in out:
+            held = out[r.get("cookie")]
+            if held.get("connection") == r.get("connection"):
+                out[r.get("cookie")] = dict(held, **{k: r[k] for k in AMENDABLE if k in r},
+                                            amended_at=r.get("at"))
     return out
+
+
+#: What an amendment may change of a recorded flow (an edit by modify-strict).
+AMENDABLE = ("actions", "idle_timeout", "hard_timeout", "installed_at")
 
 
 def intent(network: str, connection: str = None) -> dict:
@@ -230,6 +248,122 @@ def record_withdrawn(network: str, cookie: int, *, connection: str, actor: str, 
                                 f"on {connection} and not withdrawn; nothing was recorded")
 
     return _append(network, row, held)
+
+
+def record_amended(network: str, cookie: int, *, connection: str, actor: str, why: str,
+                   changes: dict, actor_verified: str = "", at: float = None) -> dict:
+    """Record that Mercury edited its flow *cookie* in place (modify-strict keeps the cookie):
+    *changes* the new ``actions`` and timeouts. Refuses a cookie with no installed record on
+    that connection, a field an edit cannot change, or no reason."""
+    if not actor or not (why or "").strip():
+        raise IntentRefused("an amendment names who made it and why")
+    unknown = sorted(set(changes or {}) - set(AMENDABLE))
+    if unknown or not changes:
+        raise IntentRefused(f"an amendment changes {', '.join(AMENDABLE)} only, not "
+                            f"{', '.join(unknown) or 'nothing'}")
+    at = time.time() if at is None else float(at)
+    row = {"kind": "amended", "cookie": cookie, "cookie_hex": cookie_hex(cookie),
+           "network": network, "connection": connection, "at": _iso(at), "amended_at": at,
+           "actor": actor, "actor_verified": actor_verified, "why": why.strip(),
+           **{k: v for k, v in changes.items()}}
+
+    def held(rows):
+        active = _active(rows).get(cookie)
+        if active is None or active.get("connection") != connection:
+            raise IntentRefused(f"cookie {cookie_hex(cookie)} has no flow recorded as installed "
+                                f"on {connection} and not withdrawn; nothing was recorded")
+
+    return _append(network, row, held)
+
+
+# ───────────────────────────────────────────────────────────────────────────── meters
+
+def record_meter(network: str, *, connection: str, dpid: int, meter: dict, actor: str,
+                 response, expires_at: float = None, actor_verified: str = "",
+                 at: float = None) -> dict:
+    """Record a meter Mercury added on *connection*'s switch *dpid*: *meter* its id, flags and
+    bands; *expires_at* when Mercury removes it (a meter has no timeout of its own in OpenFlow,
+    so a response's meter is removed by Mercury once its flows have expired: `flow_ops.
+    expire_meters`). Refuses a meter id already recorded on that switch and not withdrawn."""
+    if not network or not connection or not actor:
+        raise IntentRefused("a meter is recorded for a network and its connection, by someone")
+    meter_id = (meter or {}).get("meter_id")
+    at = time.time() if at is None else float(at)
+    row = {"kind": "meter", "network": network, "connection": connection, "dpid": dpid,
+           "meter_id": meter_id, "flags": list(meter.get("flags") or []),
+           "bands": [dict(b) for b in meter.get("bands") or []], "at": _iso(at),
+           "installed_at": at, "expires_at": expires_at, "actor": actor,
+           "actor_verified": actor_verified, "response": dict(response or {})}
+
+    def unique(rows):
+        if _meter_key(row) in active_meters_of(rows):
+            raise IntentRefused(f"meter {meter_id} on switch {dpid} ({connection}) is already "
+                                "recorded as Mercury's")
+
+    return _append(network, row, unique)
+
+
+def record_meter_withdrawn(network: str, *, connection: str, dpid: int, meter_id: int,
+                           actor: str, why: str, actor_verified: str = "",
+                           at: float = None) -> dict:
+    """Record that Mercury removed its meter (a rollback, an expiry, a removal)."""
+    if not actor or not (why or "").strip():
+        raise IntentRefused("a meter's withdrawal names who made it and why")
+    at = time.time() if at is None else float(at)
+    row = {"kind": "meter_withdrawn", "network": network, "connection": connection,
+           "dpid": dpid, "meter_id": meter_id, "at": _iso(at), "withdrawn_at": at,
+           "actor": actor, "actor_verified": actor_verified, "why": why.strip()}
+
+    def held(rows):
+        if _meter_key(row) not in active_meters_of(rows):
+            raise IntentRefused(f"meter {meter_id} on switch {dpid} ({connection}) has no "
+                                "record as Mercury's; nothing was recorded")
+
+    return _append(network, row, held)
+
+
+def _meter_key(row: dict) -> tuple:
+    return (row.get("connection"), row.get("dpid"), row.get("meter_id"))
+
+
+def active_meters_of(rows: list) -> dict:
+    """``{(connection, dpid, meter_id): meter row}`` of Mercury's meters not withdrawn."""
+    out = {}
+    for r in rows:
+        if r.get("kind") == "meter":
+            out[_meter_key(r)] = r
+        elif r.get("kind") == "meter_withdrawn":
+            out.pop(_meter_key(r), None)
+    return out
+
+
+def meters(network: str) -> dict:
+    """Mercury's meters on *network*: ``{"state", "meters": [rows], "error"}``."""
+    got = read(network)
+    if got["state"] == "unreadable":
+        return {"state": "unreadable", "meters": [], "error": got["error"]}
+    return {"state": "ok", "meters": list(active_meters_of(got["rows"]).values()), "error": ""}
+
+
+# ───────────────────────────────────────────────────────────────────────────── operations
+
+def record_operation(network: str, row: dict) -> dict:
+    """Record one flow operation's whole run (`flow_ops.apply`): what was previewed, its hash,
+    who confirmed it and how, each request and its answer, Verify's checks, the rollback and
+    the outcome. History reads these (`history_sources.sdn_operations`)."""
+    row = dict(row, kind="operation", network=network)
+    if not row.get("id") or not row.get("actor"):
+        raise IntentRefused("an operation's record names its id and who confirmed it")
+    return _append(network, row, lambda rows: None)
+
+
+def operations(network: str) -> dict:
+    """*network*'s operation records, oldest first: ``{"state", "rows", "error"}``."""
+    got = read(network)
+    if got["state"] == "unreadable":
+        return {"state": "unreadable", "rows": [], "error": got["error"]}
+    return {"state": got["state"], "rows": [r for r in got["rows"]
+                                            if r.get("kind") == "operation"], "error": ""}
 
 
 # ───────────────────────────────────────────────────────────────────────────── comparing
