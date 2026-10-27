@@ -840,13 +840,15 @@ class TestTheCards:
 
     def test_the_ai_tab_left_with_the_ai_family(self, networks):
         """Board F4's AI and workflow tab (decisions C and D) left with the AI family (D15,
-        2026-10-14): no tab, no assistant or agent card, and an old `?tab=ai` link opens
-        Connections."""
+        2026-10-14): no assistant or agent card and no "AI and workflow". The premise that no
+        AI tab exists changed on 2026-10-27: board AI3 (signed off under the Phase 7 mode,
+        docs/STANDING_APPROVAL_LOG.md "Boards AI1 to AI5", decision 1) brings `?tab=ai` back as
+        Settings › AI, each network's background AI features (tests/test_settings_ai_v2.py)."""
         from modules import installation_settings as I
-        assert "ai" not in dict(I.TABS) and "ai" not in I.BUILT_TABS
+        assert dict(I.TABS)["ai"] == "AI" and "ai" in I.BUILT_TABS
         _r, html = _get(networks, "/v2/settings/installation?tab=ai")
         assert 'id="card-assistant"' not in html and 'id="card-agent"' not in html
-        assert 'id="card-netbox"' in html, "an unknown tab opens Connections"
+        assert 'id="ai-bg"' in html and 'id="card-netbox"' not in html, "the AI tab, not another"
         assert "AI and workflow" not in html
 
     def test_settings_place_names_the_v2_card(self):

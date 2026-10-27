@@ -1502,6 +1502,35 @@ def installation_settings():
     ])
 
 
+def ai_background():
+    return svg(470, (
+        "Turning a background AI feature on for one network. Turn on shows the estimate, labelled "
+        "as one, with its digest; you type the day and month caps and accept it. Mercury checks "
+        "you are a verified person and the caps are within the installation's day cap, measures "
+        "the estimate again and refuses if it moved, then writes the switch with who, when, the "
+        "estimate and the caps, and records the decision. The gateway reads the switch at every "
+        "call; Turn off removes it and the next call is refused. No provider call is made."), [
+        lanes(20, 464, left="IN THE TOOL", right="THE GATEWAY"),
+        band(20, 236, "Turn on"),
+        doc("box", 14, 44, 186, 34, "The estimate, shown", "calls, dollars, its digest"),
+        num(14, 44, 1),
+        person(14, 88, 186, 30, "You type caps and accept"), num(14, 88, 2),
+        store(14, 128, 186, 34, "The estimate, measured again", "same digest, or refused"),
+        num(14, 128, 3),
+        store(14, 172, 186, 34, "The switch, this network", "who, when, estimate, caps"),
+        num(14, 172, 4),
+        repo(14, 214, 186, 36, "The settings record", "History draws it"), num(14, 214, 5),
+        svc(232, 160, 156, 40, "Each background call", "reads the switch"),
+        arrow("read", 230, 189, 202, 189),
+        band(276, 180, "Turn off · Change caps"),
+        person(14, 300, 186, 30, "You press Turn off"),
+        store(14, 340, 186, 34, "The switch removed", "the next call refused"),
+        person(14, 386, 186, 30, "You change the caps"),
+        doc("box", 14, 424, 186, 30, "Recorded", "old and new caps"),
+        nosend(310, 420, ("no provider", "call is made")),
+    ])
+
+
 def publish_remote():
     return svg(500, (
         "Publishing the record to the remote. Every commit hands itself to the push hook, which "
@@ -1660,6 +1689,7 @@ DIAGRAMS = {
     "settings-switch": settings_switch,
     "records-database": records_database,
     "installation-settings": installation_settings,
+    "ai-background": ai_background,
     "edit-intent": edit_intent,
     "approve-template": approve_template,
     "bring-template": bring_template,

@@ -34,10 +34,19 @@ measured cost per call: the mean cost of the task's sent calls on its pinned mod
 30 cap days; with none measured, the task's per-call cap, its worst case, said as such). An
 unmeasured frequency is said as unknown, never guessed.
 
+**An approval lasts `APPROVAL_DAYS` days** (board AI3's decision 5, docs/STANDING_APPROVAL_LOG.md
+"Boards AI1 to AI5"): a switch is in force from its ``at`` until ``at`` plus 14 days, and after
+that it reads as off everywhere (`entry_of`, `enabled`, so the gateway's `admit` refuses its
+next call, naming the approval's end). Turning it on again is a new approval, after a new
+estimate. Changing its caps is not one, so it never extends an approval. The end is derived
+from ``at``, never stored beside it (one owner).
+
 **Mercury never raises a cap**: only `turn_on` and `set_caps` write one, each a person's
-action. The routes that call these are the Settings › AI screen's (not built: PHASE8_PLAN
-18.6), each gated as ``configure``.
+action. The routes that call these are Settings › Installation › AI's
+(`routes/settings_v2.py`, board AI3), each gated as ``configure`` and refused to anyone but a
+verified person.
 """
+import calendar
 import hashlib
 import json
 import logging
@@ -52,6 +61,8 @@ SETTING = "ai_background"
 COST_WINDOW_DAYS = 30
 #: A month in the estimate's words: 30 days.
 MONTH_DAYS = 30
+#: How long an admin's approval of a background feature lasts (board AI3's decision 5).
+APPROVAL_DAYS = 14
 
 #: Each background feature: ``{name: {"task", "words", "trigger_words", "findings",
 #: "calls_per_finding", "frequency"}}``. *findings* are the finding kinds a trigger may name;
@@ -97,16 +108,35 @@ def switches() -> dict:
             for n, fs in raw.items() if isinstance(fs, dict)}
 
 
+def approval_ends(entry: dict):
+    """When *entry*'s approval ends, as an epoch: its ``at`` plus `APPROVAL_DAYS` days; None
+    when ``at`` is not a time Mercury wrote (such an entry is never in force)."""
+    try:
+        at = calendar.timegm(time.strptime(str(entry.get("at") or ""), "%Y-%m-%dT%H:%M:%SZ"))
+    except ValueError:
+        return None
+    return at + APPROVAL_DAYS * 86400
+
+
+def in_force(entry) -> bool:
+    """Whether *entry* is on and its approval has not ended."""
+    if not isinstance(entry, dict) or entry.get("on") is not True:
+        return False
+    ends = approval_ends(entry)
+    return ends is not None and _now() < ends
+
+
 def entry_of(network: str, feature: str):
-    """The switch's entry for *feature* on *network* when it is ON, else None."""
+    """The switch's entry for *feature* on *network* when it is ON and its approval has not
+    ended, else None."""
     got = switches().get(network, {}).get(feature)
-    return got if isinstance(got, dict) and got.get("on") is True else None
+    return got if in_force(got) else None
 
 
 def enabled() -> list:
-    """``[(network, feature, entry)]`` for every switch on, sorted."""
+    """``[(network, feature, entry)]`` for every switch on and in force, sorted."""
     return sorted(((n, f, e) for n, fs in switches().items() for f, e in fs.items()
-                   if e.get("on") is True), key=lambda t: (t[0], t[1]))
+                   if in_force(e)), key=lambda t: (t[0], t[1]))
 
 
 def caps_of(entry: dict) -> dict:
@@ -127,6 +157,13 @@ def admit(trigger: dict) -> str:
         return (f"the background switches cannot be read ({type(exc).__name__}: {exc}), so "
                 f"whether {trigger.get('feature')} is on is unknown; nothing was sent")
     if entry is None:
+        raw = switches().get(trigger["network"], {}).get(trigger["feature"]) or {}
+        ends = approval_ends(raw) if raw.get("on") is True else None
+        if ends is not None:
+            return (f"the background feature {trigger['feature']}'s approval for the network "
+                    f"{trigger['network']} ended at {_iso(ends)} (now {_iso(_now())}; an "
+                    f"approval lasts {APPROVAL_DAYS} days): an admin turns it on again in "
+                    "Settings › AI, after its estimate; nothing was sent")
         return (f"the background feature {trigger['feature']} is off for the network "
                 f"{trigger['network']}: an admin turns it on in Settings › AI, after its "
                 "estimate; nothing was sent")
@@ -356,11 +393,12 @@ def turn_on(network: str, feature: str, *, day_cap_usd, month_cap_usd, shown: st
 def turn_off(network: str, feature: str, *, actor: str, verified: str) -> dict:
     """Turn *feature* off for *network*: one call, no confirm (turning it off spends nothing);
     its next call is refused in every worker at once, and a call already past the gateway's
-    switch finishes and is recorded. Off already: nothing written."""
+    switch finishes and is recorded. Off already: nothing written. A switch whose approval
+    ended is removed too, so the screen stops naming it."""
     _person(actor)
     slug = _network(network)
-    was = entry_of(slug, feature)
-    if was is None:
+    was = switches().get(slug, {}).get(feature)
+    if not isinstance(was, dict) or was.get("on") is not True:
         return {"ok": True, "nothing": True, "recorded": True}
     _write(slug, feature, None)
     rec = _record("ai_background_off", slug, feature, actor, verified, was_on_by=was.get("by"),

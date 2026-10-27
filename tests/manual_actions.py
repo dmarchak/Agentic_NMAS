@@ -115,6 +115,10 @@ NOT_AN_OPERATION = {
     ("_breakglass_done.html", "Close"): "puts back the record's card, recording nothing",
     ("_breakglass_export.html", "Cancel"): "closes the export, building nothing",
     ("_records_db_replace.html", "Cancel"): "puts the records database card back, replacing nothing",
+    ("_settings_ai_on.html", "Cancel"): "draws Settings › AI's background features again, "
+                                        "turning nothing on",
+    ("_settings_ai_caps.html", "Cancel"): "draws Settings › AI's background features again, "
+                                          "changing no cap",
     ("_install_card_replace.html", "Cancel"): "puts the Installation card back, replacing nothing",
     ("_install_card.html", "Cancel"): "puts the AI card back from the day cap's confirmation, "
                                       "saving nothing",

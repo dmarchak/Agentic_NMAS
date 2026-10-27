@@ -1553,6 +1553,78 @@ def _day_cap_confirm(client, _lab, _mp):
     assert gateway.day_cap() == before, "a confirmation writes nothing"
 
 
+def _settings_ai(client, _lab, _mp):
+    """Settings › Installation › AI (board AI3, C1843): a planted background feature with a
+    measured frequency turned on for Lab through Turn on…'s form, its caps changed (refused
+    over the installation's day cap, then saved), another network's switch stopped by its day
+    cap (a planted refusal row) drawn under the list, and both turned off; the settings it
+    changed put back. The lab reads settings from a dict (tests/test_device_v2.lab_setup), so
+    the two keys this writes are read from the settings file it writes to."""
+    import json as _json
+    import time as _time
+    from html import unescape
+
+    import pytest
+
+    from modules import config
+    from modules import settings_schema as S
+    from modules.ai import background as B
+    from modules.ai import calls
+    from modules.settings_schema import write_settings
+
+    mp = pytest.MonkeyPatch()
+    lab_reads = S.get_setting
+
+    def reads(key, default=None):
+        if key not in ("ai_hosted", "ai_background"):
+            return lab_reads(key, default)
+        try:
+            with open(config.USER_SETTINGS_FILE, encoding="utf-8") as fh:
+                return _json.load(fh).get(key, default)
+        except (OSError, ValueError):
+            return default
+    mp.setattr(S, "get_setting", reads)
+    before = {k: reads(k, {}) for k in ("ai_hosted", "ai_background")}
+    try:
+        mp.setitem(B.FEATURES, "fake_loop", {
+            "task": "connection_check", "words": "The planted loop", "findings": ("detection",),
+            "trigger_words": "a detection rule fires", "calls_per_finding": 1,
+            "frequency": lambda network: {"per_day": 2.0, "basis": "2 a day, planted"}})
+        at = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())
+        assert write_settings({"ai_hosted": {"by": "v2-context", "at": at,
+                                             "reason": "the walk's background feature"},
+                               "ai_background": {"elsewhere": {"fake_loop": {
+                                   "on": True, "by": "v2-context", "at": at,
+                                   "day_cap_usd": 0.0001, "month_cap_usd": 1.0}}}})["ok"]
+        assert calls.record({"id": calls.new_id(), "feature": "connection_check",
+                             "actor": "job:walk", "model": "m", "verdict": "feature_cap",
+                             "cap_kind": "day", "cost_usd": 0.0,
+                             "trigger": {"kind": "background", "feature": "fake_loop",
+                                         "job": "walk", "network": "elsewhere",
+                                         "finding": {"kind": "detection", "id": "d"}}}
+                            )["recorded"]
+        base = "/v2/settings/installation/ai/background/Lab/fake_loop"
+        hx = {"HX-Request": "true", "Accept": "text/html"}
+        form = unescape(client.get(f"{base}/on", headers=hx).get_data(as_text=True))
+        shown = re.search(r'name="shown" value="([0-9a-f]{64})"', form).group(1)
+        r = client.post(f"{base}/on", headers=hx, data={"shown": shown, "day_cap_usd": "0.50",
+                                                        "month_cap_usd": "5", "accept": "on"})
+        assert r.status_code == 200 and 'data-result="on"' in r.get_data(as_text=True)
+        html = client.get("/v2/settings/installation?tab=ai&network=Lab").get_data(as_text=True)
+        assert "was stopped by its day cap" in html, "another network's stopped feature"
+        assert client.get(f"{base}/caps", headers=hx).status_code == 200
+        assert client.post(f"{base}/caps", headers=hx, data={"day_cap_usd": "999",
+                                                             "month_cap_usd": "5"}
+                           ).status_code == 409
+        assert client.post(f"{base}/caps", headers=hx, data={"day_cap_usd": "0.25",
+                                                             "month_cap_usd": "5"}
+                           ).status_code == 200
+        assert client.post(f"{base}/off", headers=hx).status_code == 200
+    finally:
+        assert write_settings(before)["ok"]
+        mp.undo()
+
+
 def _console_servers(client, _lab, _mp):
     """Settings › Installation › Console servers (O8) with a port record, a NetBox port with
     none, a key, a held host key and the store's log: the tab, each card, each change and its
@@ -1857,7 +1929,8 @@ PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _dr
                    _alert_evidence, _logs_builder_leftovers, _alert_history,
                    _save_no_golden, _profile_versions,
                    _no_change_window, _update_owed, _lease_release, _ip_sla_retunes, _ip_sla_unsent,
-                   _console_ztp, _console_servers, _day_cap_confirm, _oob_onboard, _sdn,
+                   _console_ztp, _console_servers, _day_cap_confirm, _settings_ai,
+                   _oob_onboard, _sdn,
                    _sdn_no_topology,
                    _deploy,
                    # After _deploy: r3's intent is then a real device's (r2's capture,

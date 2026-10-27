@@ -382,7 +382,9 @@ def test_a_switch_stored_anything_but_on_true_admits_nothing(bg, entry):
 
 def test_the_switches_on_are_listed_by_network_then_feature(bg, monkeypatch):
     monkeypatch.setitem(B.FEATURES, "fake_digest", dict(B.FEATURES["fake_loop"]))
-    on = {"on": True, "day_cap_usd": 0.5, "month_cap_usd": 10.0}
+    # Turned on now: an approval lasts 14 days from its `at` (B.APPROVAL_DAYS), and a switch
+    # with no `at` is never in force.
+    on = {"on": True, "at": B._iso(B._now()), "day_cap_usd": 0.5, "month_cap_usd": 10.0}
     _store_switches({"lab": {"fake_loop": on, "fake_digest": on},
                      "branch": {"fake_loop": on, "fake_digest": dict(on, on=False)}})
     assert [(n, f) for n, f, _e in B.enabled()] == [

@@ -3751,9 +3751,9 @@ def console_ztp_source(found=None) -> dict:
 # Source: background AI features against their caps (PHASE8_PLAN 18.3 rule 4, C1843)
 # ---------------------------------------------------------------------------
 
-#: Where an admin changes a background feature (Settings › AI, PHASE8_PLAN 18.6, not built
-#: yet: the AI (hosted) card is where AI is set today).
-AI_SETTINGS_HREF = "/v2/settings/installation?tab=connections#card-ai"
+#: Where an admin changes a background feature: Settings › Installation › AI (board AI3,
+#: PHASE8_PLAN 18.6; routes/settings_v2.py).
+AI_SETTINGS_HREF = "/v2/settings/installation?tab=ai"
 
 
 def _ai_period_end(which: str, today: str, zone: str) -> float:

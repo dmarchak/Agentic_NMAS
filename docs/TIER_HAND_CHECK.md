@@ -1786,3 +1786,32 @@ tests/test_sdn_classify_cases.py (`scratchpad/s7_hm.py`).
 **The result: every mutant killed (the marking's first run survived; the test above was written
 and the mutant run again); the canary killed.**
 
+## 2026-10-27: a background feature's approval lasts 14 days (Settings › AI, C1843), by hand
+
+**What touches the tier:** `modules/ai/background.py`, the gateway's switch question. Board
+AI3's decision 5 (docs/STANDING_APPROVAL_LOG.md, "Boards AI1 to AI5") makes an approval last
+14 days: `approval_ends` (the switch's `at` plus `APPROVAL_DAYS` days; None for an `at` Mercury
+did not write) and `in_force` are new; `entry_of` and `enabled` answer only a switch in force,
+so `admit` refuses a call whose approval ended (`feature_off`, naming when it ended). Every
+change makes the gateway refuse more, never less. `turn_off` (sends nothing) now removes a
+switch whose approval ended.
+
+**The method:** the narrowed hand check (PHASE8_PLAN 15.12): each mutant applied as its exact
+line in a `scripts/nmas-control` throwaway worktree, then tests/test_settings_ai_v2.py and
+tests/test_ai_background.py (`scratchpad/settings_ai_controls.py`).
+
+| mutant | result | killed by |
+|---|---|---|
+| `in_force`: `<` made `<=` (in force at its end) | killed | `test_an_approval_ends_after_14_days_and_the_gateway_refuses_naming_its_end` |
+| `approval_ends`: `at - 14 days` | killed | 21 tests |
+| `approval_ends`: one day, not 14 | killed, by the test made independent of `approval_ends` | the same test (its first run survived: it counted the end with `approval_ends` itself) |
+| `approval_ends`: an unreadable `at` in force for ever | killed, by a test written for it | `test_a_switch_with_no_time_mercury_wrote_is_never_in_force` (4 cases) |
+| `entry_of` ignores the approval's end | killed | `test_an_approval_ends_after_14_days_and_the_gateway_refuses_naming_its_end` |
+| `enabled` ignores the approval's end | killed | the same test |
+| `admit`'s ended words dropped | killed | the same test |
+| `turn_off` reads only a switch in force | killed | `test_turn_off_removes_a_switch_whose_approval_ended` |
+| canary: `in_force` raises | killed | 31 tests |
+
+**The result: every mutant killed (two first survived; the test above was made independent and
+one written, and both run again); the canary killed.**
+

@@ -426,6 +426,10 @@ DECLARED = {
     "intent_v2.words": ("ai_calls",),
     "settings_v2.install_ai_allow": ("settings",),
     "settings_v2.install_ai_off": ("settings",),
+    # Settings › AI's background features (C1843): the switches are a setting.
+    "settings_v2.ai_on": ("settings",),
+    "settings_v2.ai_off": ("settings",),
+    "settings_v2.ai_caps": ("settings",),
     "settings_v2.platforms_preview": Nothing("previews a map change from each list's last inventory; writes nothing"),
     "settings_v2.network_source_preview": Nothing("reads NetBox with proposed filters for the preview; writes nothing"),
     "settings_v2.network_create_preview": Nothing("checks a new network's name and the folder it derives; writes nothing"),

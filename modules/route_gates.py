@@ -241,6 +241,16 @@ GATES = {
     "settings_v2.install_writes_off": _g(K, "turns NetBox's master write switch off for every network, recorded; never turns it on"),
     "settings_v2.install_ai_allow": _g(K, "allows hosted AI for the installation with the person's reason, recorded (PHASE8_PLAN 15.8)"),
     "settings_v2.install_ai_off": _g(K, "turns hosted AI off for the installation, recorded"),
+    # Settings › AI (board AI3, C1843): a background AI feature per network. The route refuses
+    # anyone but a verified person too, whatever configure's settings allow a service.
+    "settings_v2.ai_on": _g(K, "turns a background AI feature on for one network, bound to the "
+                               "estimate the person was shown and accepted, with its day and "
+                               "month caps; recorded with who, when and the estimate"),
+    "settings_v2.ai_off": _g(K, "turns a background AI feature off for one network, its next "
+                                "call refused at once; recorded"),
+    "settings_v2.ai_caps": _g(K, "changes an on background AI feature's day and month caps on "
+                                 "one network, within the installation's day cap; recorded with "
+                                 "both values"),
     "topology_v2.expected_declare": _g(K, "declares a device an expected island of its "
                                           "network, with a reason, recorded (P.11)"),
     "topology_v2.expected_withdraw": _g(K, "withdraws an expected-island declaration, "

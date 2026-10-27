@@ -34,14 +34,16 @@ log = logging.getLogger(__name__)
 
 #: The page's tabs (board F), in order. Server's one card is on Connections (C664: the operator,
 #: 2026-10-11, "we don't need an entire tab for one setting"); an old `?tab=server` link opens
-#: Connections. "AI and workflow" left with the AI family (D15, 2026-10-14); an old `?tab=ai`
-#: link opens Connections. Console servers (O8 of out-of-band ZTP, board A of
+#: Connections. "AI and workflow" left with the AI family (D15, 2026-10-14). AI came back as
+#: Settings › AI (board AI3, signed off under the Phase 7 mode 2026-10-27; C1843): each
+#: network's background AI features, turned on after their estimate (modules/ai/settings_view).
+#: Console servers (O8 of out-of-band ZTP, board A of
 #: docs/boards/console-ztp.html): the installation's console-server ports, their keys and host
 #: keys (routes/console_servers_v2.py).
 TABS = (("connections", "Connections"), ("access", "Access and identity"),
         ("platforms", "Platforms and roles"), ("console", "Console servers"),
-        ("diagnostics", "Diagnostics"))
-BUILT_TABS = ("connections", "access", "platforms", "console", "diagnostics")
+        ("diagnostics", "Diagnostics"), ("ai", "AI"))
+BUILT_TABS = ("connections", "access", "platforms", "console", "diagnostics", "ai")
 #: The records database card's fields, in the card's order (the password is a secret, drawn
 #: as set or unset and changed only by Replace…).
 FIELDS = ("records_db_host", "records_db_port", "records_db_name", "records_db_user")

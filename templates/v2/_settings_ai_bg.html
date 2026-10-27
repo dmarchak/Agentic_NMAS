@@ -1,0 +1,87 @@
+{%- from "v2/_macros.html" import icon, badge, how, info, stamp -%}
+{#- Board AI3 (`SettingsAi`, the mockups canvas's page "C1843: AI cost safety", signed off under
+    the Phase 7 mode 2026-10-27): Settings › AI's background features, one network at a time.
+    Each feature Mercury knows with its state (off, on until its approval ends, stopped by a
+    cap, approval ended), Turn on… (board AI3b, in place of the row), Change caps… and Turn off.
+    Every answer is drawn here, in place. From modules/ai/settings_view.view. -#}
+{%- macro usd(v) -%}{% if v is none %}unknown{% else %}${{ '%.2f' % v if v >= 0.1 else '%.4f' % v }}{% endif %}{%- endmacro -%}
+{%- macro pct(v) -%}{% if v is not none %} ({{ (v * 100) | round(0) | int }}%){% endif %}{%- endmacro -%}
+<section class="card set-card ai-bg" id="ai-bg" aria-labelledby="h-ai-bg" data-network="{{ ai.network }}">
+  <div class="card-head"><h2 id="h-ai-bg">Background features</h2>
+    <form class="ai-net" method="get" action="{{ url_for('settings_v2.installation') }}" hx-get="{{ url_for('settings_v2.ai_background') }}" hx-target="#ai-bg" hx-swap="outerHTML" hx-trigger="change">
+      <input type="hidden" name="tab" value="ai">
+      <label for="ai-net">Network</label>
+      <select id="ai-net" name="network">{% for n in ai.networks %}<option value="{{ n }}"{% if n == ai.network %} selected{% endif %}>{{ n }}</option>{% endfor %}</select>
+    </form>
+    <span class="card-head-how">{{ info('settings-ai', 'background-features', 'How background features work') }}</span>
+  </div>
+  <p class="muted small ai-lead">A background feature calls the model with no person pressing, only when Mercury's own checks have found something. Each is off on every network until an admin turns it on here, after its estimate, with its own day and month caps inside the installation's. An approval lasts {{ ai.approval_days }} days. Reaching a cap stops that feature and raises a Needs attention row; Mercury never raises a cap. A network never inherits another's switch.</p>
+  {%- if refused %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not changed:</strong> {{ refused }}</div></div>
+  {%- endif %}
+  {%- if turned_on %}
+  {%- set e = turned_on.entry %}
+  <div class="notice notice-ok set-result" role="status" data-result="on">{{ icon('tick', 16) }}<div>
+    <strong>{{ turned_on.feature }} is on for {{ ai.network }}</strong>, by {{ e.by }} {{ stamp(e.at) }}, with estimate <span class="mono">{{ e.estimate.digest[:8] }}</span> ({{ usd(e.estimate.usd_per_day) }} a day) and caps ${{ '%.2f' % e.day_cap_usd }} a day, ${{ '%.2f' % e.month_cap_usd }} a month. Recorded in History{% if not turned_on.recorded %}, and its record could not be written: {{ turned_on.record_error }}{% endif %}.</div></div>
+  {%- endif %}
+  {%- if turned_off %}
+  <div class="notice notice-muted set-result" role="status" data-result="off">{{ icon('tick', 16) }}<div>
+    {%- if turned_off.nothing %}<strong>Already off:</strong> {{ turned_off.feature }} was not on for {{ ai.network }}; nothing was written.
+    {%- else %}<strong>{{ turned_off.feature }} turned off for {{ ai.network }}</strong> by {{ turned_off.actor_label or turned_off.actor }} {{ stamp(turned_off.at_iso) }}: its next call is refused; a call already sent finishes and is recorded. Recorded in History{% if not turned_off.recorded %}, and its record could not be written: {{ turned_off.record_error }}{% endif %}.{% endif %}</div></div>
+  {%- endif %}
+  {%- if caps_set %}
+  {%- set e = caps_set.entry %}
+  <div class="notice notice-muted set-result" role="status" data-result="caps">{{ icon('tick', 16) }}<div>
+    <strong>{{ caps_set.feature }}'s caps on {{ ai.network }}</strong> are now ${{ '%.2f' % e.day_cap_usd }} a day and ${{ '%.2f' % e.month_cap_usd }} a month, by {{ e.caps_by }} {{ stamp(e.caps_at) }}; its approval still ends when it did. Recorded in History, old and new{% if not caps_set.recorded %}, and its record could not be written: {{ caps_set.record_error }}{% endif %}.</div></div>
+  {%- endif %}
+  {%- if not ai.hosted_allowed %}
+  <div class="notice notice-warn set-result">{{ icon('warn', 16) }}<div><strong>Hosted AI is off for the installation</strong>, so no AI call runs, background or pressed, whatever is on here. It is allowed, with a recorded reason, on <a href="{{ ai.card_href }}">Settings › Installation › Connections, AI (hosted)</a>.</div></div>
+  {%- endif %}
+  {%- if ai.spend_state == 'unreadable' %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>The record of AI calls could not be read</strong> ({{ ai.spend_error }}), so each feature's spend is unknown and the gateway refuses every background call until it can be read.</div></div>
+  {%- endif %}
+  <div class="ai-features" role="list" aria-label="Background features on network {{ ai.network }}">
+  {%- for f in ai.features %}
+  {%- set s = f.summary %}
+  {%- if open_on and open_on.feature == f.name %}
+  {%- with o = open_on %}{% include "v2/_settings_ai_on.html" %}{% endwith %}
+  {%- elif open_caps == f.name and f.state in ('on', 'stopped') %}
+  {%- include "v2/_settings_ai_caps.html" %}
+  {%- else %}
+  <div class="ai-feature" role="listitem" id="bg-{{ f.name }}" data-state="{{ f.state }}">
+    <div class="ai-f-name"><strong>{{ f.words }}</strong> <span class="mono small faint">{{ f.name }}</span>
+      <div class="ai-f-state">
+      {%- if f.state == 'off' %}{{ badge('off', 'neutral') }}
+      {%- elif f.state == 'ended' %}{{ badge('approval ended', 'warn') }} <span class="set-origin">turned on by {{ f.entry.by }} {{ stamp(f.entry.at) }}; its approval ended {{ stamp(f.ends_iso) }}, so its calls are refused until an admin turns it on again</span>
+      {%- else %}{% if f.state == 'stopped' %}{{ badge('stopped by its ' ~ ('month' if s.stopped.month else 'day') ~ ' cap', 'danger') }}{% else %}{{ badge('on', 'ok') }}{% endif %} <span class="set-origin">by {{ f.entry.by }} {{ stamp(f.entry.at) }}; approval until <time datetime="{{ f.ends_iso }}" title="{{ f.ends_iso }}">{{ f.ends_iso[:16] | replace("T", " ") }} UTC</time>{% if f.state == 'stopped' %}; stopped {{ stamp(s.stopped_at.month if s.stopped.month else s.stopped_at.day) }}: it makes no call until the {{ 'month' if s.stopped.month else 'day' }} ends, or an admin raises the cap{% endif %}</span>
+      {%- endif %}</div>
+    </div>
+    <div class="ai-f-trigger"><span class="set-label">Trigger</span> <span class="muted">{{ f.trigger_words | capitalize }}; {{ f.calls_per_finding }} call per finding</span></div>
+    <div class="ai-f-caps"><span class="set-label">Caps</span>
+      {%- if f.caps %} <span><span class="mono">{{ usd(f.caps.day) }}</span> a day · <span class="mono">{{ usd(f.caps.month) }}</span> a month</span>
+        {%- if f.state in ('on', 'stopped') %}<br><span class="set-origin">{% if s %}today {{ usd(s.spent.day_usd) }}{{ pct(s.fractions.day) }} · month {{ usd(s.spent.month_usd) }}{{ pct(s.fractions.month) }}{% else %}spend unknown: the record of AI calls could not be read{% endif %}</span>{% endif %}
+      {%- else %} <span class="faint">set when it is turned on</span>{% endif %}</div>
+    <div class="ai-f-est"><span class="set-label">Estimate against actual</span>
+      {%- if f.state in ('on', 'stopped') %}
+      {%- set est = f.entry.estimate or {} %}
+       <span><span class="mono">{{ usd(est.usd_per_day) }}</span> a day estimated{% if est.digest %} <span class="faint small mono" title="the estimate accepted when it was turned on">({{ est.digest[:8] }})</span>{% endif %} · {% if s and s.actual_usd_per_day is not none %}<span class="mono">{{ usd(s.actual_usd_per_day) }}</span> actual over {{ s.actual_days }} day{{ '' if s.actual_days == 1 else 's' }}{{ pct(s.ratio) }}{% else %}<span class="faint">no complete day since it was turned on</span>{% endif %}</span>
+      {%- else %} <span class="faint">an estimate is shown before it is turned on</span>{% endif %}</div>
+    <div class="ai-f-act">
+      {%- if f.state in ('off', 'ended') %}
+      <span class="op-act"><a class="btn btn-small" data-op="ai-background" href="{{ url_for('settings_v2.ai_on_form', network=ai.network, feature=f.name) }}" hx-get="{{ url_for('settings_v2.ai_on_form', network=ai.network, feature=f.name) }}" hx-target="#ai-bg" hx-swap="outerHTML" title="Opens the estimate in this row: nothing is turned on until you accept it">Turn on…</a>{{ how('ai-background', 'turn-on', compact=True, op='turning ' ~ f.name ~ ' on') }}</span>
+      {%- endif %}
+      {%- if f.state in ('on', 'stopped') %}
+      <span class="op-act"><a class="btn btn-small" data-op="ai-background" href="{{ url_for('settings_v2.ai_caps_form', network=ai.network, feature=f.name) }}" hx-get="{{ url_for('settings_v2.ai_caps_form', network=ai.network, feature=f.name) }}" hx-target="#ai-bg" hx-swap="outerHTML" title="Opens the caps in this row: nothing changes until you save">Change caps…</a>{{ how('ai-background', 'caps', compact=True, op="changing a feature's caps") }}</span>
+      {%- endif %}
+      {%- if f.state != 'off' %}
+      <span class="op-act"><button type="button" class="btn btn-small" data-op="ai-background" hx-post="{{ url_for('settings_v2.ai_off', network=ai.network, feature=f.name) }}" hx-target="#ai-bg" hx-swap="outerHTML" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Turn off</span><span class="op-busy">Turning off…</span></button>{{ how('ai-background', 'turn-off', compact=True, op='turning ' ~ f.name ~ ' off') }}</span>
+      {%- endif %}
+    </div>
+  </div>
+  {%- endif %}
+  {%- endfor %}
+  </div>
+  {%- for s in ai.elsewhere %}
+  <div class="notice notice-warn set-result">{{ icon('warn', 16) }}<div>On network {{ s.network_name }}, {{ s.words }} is on and was stopped by its {{ 'month' if s.stopped.month else 'day' }} cap {{ stamp(s.stopped_at.month if s.stopped.month else s.stopped_at.day) }}. Choose {{ s.network_name }} above to change its caps or turn it off.</div></div>
+  {%- endfor %}
+</section>

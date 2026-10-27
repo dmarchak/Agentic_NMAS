@@ -68,6 +68,10 @@ NETWORK_FREE = {
     "settings_v2.diag_*": "the installation's diagnostics: every network's, no one's",
     "settings_v2.platforms_*": "the installation's platforms: every network's, no one's",
     "settings_v2.records_*": "the installation's records stores: every network's, no one's",
+    # Settings › AI (C1843, board AI3): the tab's own Network selector names the network a
+    # background feature is turned on for, in the path or `?network=`, never the page's scope.
+    "settings_v2.ai_*": "Settings › AI's background features: each names its network itself, "
+                        "chosen in the tab, never the page's",
     "console_servers_v2.*": ("the installation's console servers (Settings › Installation › "
                              "Console servers): every network's, no one's"),
     "v2.help_page": "the manual: the same for every network",

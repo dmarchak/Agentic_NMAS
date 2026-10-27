@@ -3635,7 +3635,7 @@ A2 are in it.
 | **A2.4 incident correlation and AI timeline** | 16.11, section 6 ranks 2 and 5 | **in scope**; not built (background: 18.3) | 20 |
 | **A2.5 daily digest** | 16.11 | **in scope**; not built (background: 18.3) | 10 |
 | **A2 tier 2** (six items) | 16.11 | **in scope**; not built | about 90 |
-| SDN `classify_threat` | 17.1 S7 | built 2026-10-27 (a background feature, off until an admin turns it on in Settings › AI, not yet built; a person's Classify on an awaiting response); its recorded and held-out cases written, not yet measured | 6 |
+| SDN `classify_threat` | 17.1 S7 | built 2026-10-27 (a background feature, off until an admin turns it on in Settings › Installation › AI, built 2026-10-27 with its 14-day approval; a person's Classify on an awaiting response); its recorded and held-out cases written, not yet measured | 6 |
 | SDN later: a flow table in words; flows from a sentence; cross-switch anomaly notes | 17.1 | registered only (C1837) | 6, 16, 10 |
 | P5 plan with AI, and the action library | 16.7 | after the sprint; not built | about 40 |
 | P6 AI-assisted platform packs | 16.8 | after the sprint; not built | about 30 |
@@ -3839,8 +3839,19 @@ docs/boards/ holds a drawing for it.
 | 2026-10-27 | P.11 Topology | F, `TopoSdn.dc.html`, main canvas v170, drawn | An SDN fabric read from its controller (17.1 S14, C1910): the controller-managed switch symbol (`sdn-switch.svg`), links labelled by source, a hybrid LLDP-and-controller link, controller-learned hosts, the controller as a coverage layer | 2026-10-27, "Board F: Topology, an SDN fabric" |
 | 2026-10-27 | SDN (PHASE8_PLAN 17) | S8, `SdnFlowEdit.dc.html`, main canvas v171, drawn | Flows managed (17.1 S16, S19): Add with OpenFlow 1.3's prerequisites named, Edit by modify-strict (match or priority as delete-strict plus add), Remove by delete-strict with the table-miss flow's typed confirmation and the controller-owned warning, the REST preview, Explain this flow table | 2026-10-27, "Boards S8 and S9" |
 | 2026-10-27 | SDN (PHASE8_PLAN 17) | S9, `SdnPolicies.dc.html`, main canvas v171, drawn | SDN › Policies (17.1 S17, S18): policies as committed intent with departures and Reinstall, the priority scheme, Describe a policy with its pre-call question, the compiled flows, the conflict check and the effect in words | 2026-10-27, "Boards S8 and S9" |
+| 2026-10-27 | C1843: AI cost safety | AI3, `SettingsAi.dc.html`, deviation: AI is Settings › Installation's last tab, not a top-level tab beside Installation | Settings › AI's place | 2026-10-27, "Settings › AI built: the AI tab is a tab of Settings › Installation"; docs/fidelity/settings-ai.md |
+| 2026-10-27 | C1843: AI cost safety | AI3, `SettingsAi.dc.html`, deviation: the AI (hosted) card stays on Connections, named read-only with a link | The master switch, key, day cap and prices | 2026-10-27, "Settings › AI built: the AI (hosted) card not moved yet"; docs/fidelity/settings-ai.md |
+| 2026-10-27 | C1843: AI cost safety | AI3, `SettingsAi.dc.html`, deviation: no switches for the features a person presses | Features a person presses | 2026-10-27, "Settings › AI built: the features a person presses have no switches yet"; docs/fidelity/settings-ai.md |
+| 2026-10-27 | C1843: AI cost safety | AI3, `SettingsAi.dc.html`, deviation: who sees amounts not drawn | Who sees amounts | 2026-10-27, "Settings › AI built: who sees amounts not built"; docs/fidelity/settings-ai.md |
+| 2026-10-27 | C1843: AI cost safety | AI3, `SettingsAi.dc.html`, deviation: the spend history card and the first-install steps not drawn | Spend history; a fresh install | 2026-10-27, "Settings › AI built: the spend history card and the first-install steps not drawn"; docs/fidelity/settings-ai.md |
+| 2026-10-27 | C1843: AI cost safety | AI3b, `SettingsAiOn.dc.html`, deviation: the acceptance says the approval's end date; no row 3 days before | An approval's 14 days | 2026-10-27, "Settings › AI built: no Needs attention row before an approval ends"; docs/fidelity/settings-ai.md |
+| 2026-10-27 | C1843: AI cost safety | AI3b, `SettingsAiOn.dc.html`, deviation: a moved estimate's refusal names both digests, not the shown figures | The estimate moved | 2026-10-27, "Settings › AI built: a moved estimate's refusal names both digests, not the shown figures"; docs/fidelity/settings-ai.md |
+| 2026-10-27 | C1843: AI cost safety | AI3b, `SettingsAiOn.dc.html`, deviation: a cap out of range refused on press, not disabled before | A cap outside the installation's | 2026-10-27, "Settings › AI built: a cap out of range refused on press, not disabled before"; docs/fidelity/settings-ai.md |
+| 2026-10-27 | C1843: AI cost safety | AI3b, `SettingsAiOn.dc.html`, deviation: no caps offered with no measured estimate | An unknown estimate's caps | 2026-10-27, "Settings › AI built: no caps offered with no measured estimate"; docs/fidelity/settings-ai.md |
+| 2026-10-27 | C1843: AI cost safety | AI3b, `SettingsAiOn.dc.html`, deviation: the month hint names only the feature's own month | The month cap's hint | 2026-10-27, "Settings › AI built: the month hint names only the feature's own month"; docs/fidelity/settings-ai.md |
+| 2026-10-27 | C1843: AI cost safety | AI3, `SettingsAi.dc.html`, deviation: each feature a row of five parts, not a table | The background features' list | 2026-10-27, "Settings › AI built: each feature a row of five parts, stacked at phone width"; docs/fidelity/settings-ai.md |
 
-**Count:** 118 rows: 52 drawn, 12 revised, 17 no drawing, 37 deviation. Every row comes from
+**Count:** 129 rows: 52 drawn, 12 revised, 17 no drawing, 48 deviation. Every row comes from
 docs/STANDING_APPROVAL_LOG.md; the other sources supplied only these: the canvas indexes gave
 the S1 to S7 numbers against the SDN files, AI3b's label for `SettingsAiOn.dc.html`, the files
 for Topology board D (`TopoPathTrace.dc.html`), DHCP board C (`DhcpSubnets.dc.html`) and

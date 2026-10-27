@@ -2374,3 +2374,41 @@ summary.lq-chip::-webkit-details-marker { display: none; }
 @media (max-width: 640px) { .sdn-grid { grid-template-columns: minmax(0, 1fr); } }
 .sdn-meters .table { min-width: 560px; }
 .sdn-meters .table td { overflow-wrap: normal; }
+
+/* Settings › Installation › AI (board AI3 and AI3b, C1843): each background feature a row of
+   five parts (name and state, trigger, caps, estimate against actual, its controls), stacked
+   at phone width; Turn on… and Change caps… open in the row's place. */
+.ai-tab { grid-template-columns: minmax(0, 1180px); }
+.ai-hosted-line { margin: 0; }
+.ai-net { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); }
+.ai-net select { font: inherit; font-size: 13px; padding: 4px 8px; border: 1px solid var(--line); border-radius: var(--r);
+  background: var(--surface); color: var(--ink); }
+.ai-lead { margin: 0; }
+.ai-features { display: flex; flex-direction: column; border-top: 1px solid var(--line-2); }
+.ai-feature { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr) auto;
+  gap: 8px 16px; align-items: start; padding: 10px 0; border-bottom: 1px solid var(--line-2); font-size: 13px; }
+.ai-feature > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ai-f-name > .ai-f-state { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+.ai-feature > .ai-f-act { flex-direction: row; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.ai-feature-open { display: flex; flex-direction: column; gap: 10px; padding: 12px 0; min-width: 0; }
+.ai-features > *, .ai-feature-open > *, .ai-on-form > *, .ai-caps > * { min-width: 0; max-width: 100%; }
+.ai-open-act .op-act { flex-wrap: wrap; }
+.ai-open-head { margin: 0; font-size: 14px; font-weight: 600; }
+.ai-open-lead, .ai-open-note { margin: 0; }
+.ai-est { border: 1px dashed var(--accent); background: var(--accent-soft); border-radius: var(--r-card); padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 6px; max-width: 820px; }
+.ai-est-tag { font-size: 11px; letter-spacing: .08em; font-weight: 600; color: var(--accent-ink); }
+.ai-est-row { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 4px 14px; }
+.ai-fig { font-size: 17px; font-weight: 600; }
+.ai-on-form { display: flex; flex-direction: column; gap: 10px; }
+.ai-caps { display: flex; gap: 22px; flex-wrap: wrap; }
+.ai-cap { display: flex; flex-direction: column; gap: 4px; }
+.ai-cap input { font: inherit; font-size: 13px; padding: 6px 9px; border: 1px solid var(--line); border-radius: var(--r);
+  width: 140px; background: var(--surface); color: var(--ink); }
+.ai-accept { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; max-width: 820px; }
+.ai-open-act { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+@media (max-width: 900px) {
+  .ai-feature { grid-template-columns: minmax(0, 1fr); }
+  .ai-feature > .ai-f-act { justify-content: flex-start; }
+  .ai-est-row { grid-template-columns: minmax(0, 1fr); }
+}

@@ -196,6 +196,54 @@ def test_sdn(tmp_path, monkeypatch):
     assert T0, "the lab's flow intent was recorded at T0"
 
 
+from tests.test_settings_ai_v2 import ai as settings_ai  # noqa: E402,F401 (its world)
+from tests.test_settings_v2 import networks  # noqa: E402,F401 (the world's store)
+
+
+def test_settings_ai(settings_ai):
+    """Board AI3 (SettingsAi, 1440) beside Settings › Installation › AI on Branch, with the fake
+    feature on (turned on through the real route) and `sdn_classify` off; then Turn on… pressed
+    on `sdn_classify` (its frequency unknown: no detection in the test's alert history) beside
+    board AI3b (SettingsAiOn, 1440), and its refusal for a day cap over the installation's.
+    tests/test_settings_ai_v2.py's world: hosted AI allowed, a $1.50 day cap."""
+    from tests import browser
+    from tests.browser import Browser
+    from tests.test_settings_ai_v2 import _turn_on
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    _turn_on(settings_ai)
+    page = "/v2/settings/installation?tab=ai&network=Branch"
+    import app as A
+    with browser.Served(A.app) as served:
+        _shoot("settings-ai", "SettingsAi.dc.html", lambda w: page, served,
+               widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
+        with _Boards() as boards:
+            for width, scale in ((1440, 1.0), (390, 2.0)):
+                prefs = {"layout.css.devPixelsPerPx": str(scale)} if scale != 1.0 else {}
+                with Browser(prefs=prefs) as b:
+                    b._call("POST", f"/session/{b.session}/window/rect",
+                            {"width": width, "height": 1000})
+                    if width >= 480:
+                        b.go(boards.url("SettingsAiOn.dc.html"))
+                        _full(b, os.path.join(OUT, f"settings-ai-on-board-{width}.png"))
+                    b.go(served.url(page))
+                    if width < 480:
+                        b.js(f"document.documentElement.style.maxWidth = '{width}px'; "
+                             f"document.body.style.maxWidth = '{width}px'; return 1")
+                    b.js("document.querySelector('#bg-sdn_classify a.btn').click(); return 1")
+                    b.wait_for("return !!document.querySelector('#bg-sdn_classify .ai-est')")
+                    _full(b, os.path.join(OUT, f"settings-ai-on-page-{width}.png"))
+                    b.js("var f = document.querySelector('#bg-sdn_classify form');"
+                         "f.querySelector('[name=day_cap_usd]').value = '8.00';"
+                         "f.querySelector('[name=month_cap_usd]').value = '10.00';"
+                         "f.querySelector('[name=accept]').checked = true;"
+                         "f.querySelector('button[type=submit]').click(); return 1")
+                    b.wait_for("return !!document.querySelector('#bg-sdn_classify "
+                               ".notice-danger')")
+                    _full(b, os.path.join(OUT, f"settings-ai-on-refused-page-{width}.png"))
+
+
 def test_onboard_discovered(tmp_path, monkeypatch):
     """Board L (ZtpDiscovery, 1440) beside Onboard devices › Discovered, fed the discovery
     reader's value with all three groups (tests/test_onboard_discovered_v2.py's), and a Pick's

@@ -293,10 +293,14 @@ def _pass(world, c=SCAN):
 
 
 def _feature_on():
+    """Turned on now: an approval lasts 14 days from its time (background.APPROVAL_DAYS), so a
+    fixed date would turn this off by itself once the 14 days passed."""
+    import time
     from modules.settings_schema import write_settings
     assert write_settings({"ai_background": {"default": {"sdn_classify": {
         "on": True, "by": "admin@example.com", "verified": "access",
-        "at": "2026-10-27T00:00:00Z", "day_cap_usd": 0.5, "month_cap_usd": 5.0}}}})["ok"]
+        "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "day_cap_usd": 0.5,
+        "month_cap_usd": 5.0}}}})["ok"]
 
 
 def test_the_loop_s_classify_is_a_background_call_refused_while_the_feature_is_off(world):

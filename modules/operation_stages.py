@@ -458,6 +458,11 @@ HISTORY = {
     "settings_v2.install_writes_off": ("installation_settings",),
     "settings_v2.install_ai_allow": ("installation_settings",),
     "settings_v2.install_ai_off": ("installation_settings",),
+    # Settings › AI's background features (C1843): each change in the installation's settings
+    # record (`background._record`), drawn on History.
+    "settings_v2.ai_on": ("installation_settings",),
+    "settings_v2.ai_off": ("installation_settings",),
+    "settings_v2.ai_caps": ("installation_settings",),
     "settings_v2.install_ratify": NOT_A_DEVICE,
     "settings_v2.platforms_preview": NOT_A_DEVICE,
     "settings_v2.platforms_apply": NOT_A_DEVICE,

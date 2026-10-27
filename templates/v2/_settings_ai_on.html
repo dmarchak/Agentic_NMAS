@@ -1,0 +1,42 @@
+{%- from "v2/_macros.html" import icon, how -%}
+{#- Board AI3b (`SettingsAiOn`, signed off under the Phase 7 mode 2026-10-27): Turn on… open on
+    a background feature's row in Settings › AI. The estimate labelled as one, each number
+    with where it comes from (an unmeasured frequency said as unknown, never guessed), the day
+    and month caps within the installation's day cap, and the person's acceptance. The form
+    sends the digest of the estimate drawn here (`shown`); a moved one is refused naming both
+    digests, and this form is drawn again with the estimate now. From
+    modules/ai/settings_view.turn_on_form, included by _settings_ai_bg.html. -#}
+{%- set est = o.est -%}
+{%- set known = est.usd_per_day is not none -%}
+{%- macro usd(v, places=2) -%}{% if v is none %}unknown{% else %}${{ ('%.' ~ places ~ 'f') % v }}{% endif %}{%- endmacro -%}
+<div class="ai-feature ai-feature-open" role="listitem" id="bg-{{ o.feature }}" data-state="opening">
+  <h3 class="ai-open-head">Turn on <span class="mono">{{ o.feature }}</span>: {{ o.words }} · network {{ o.network }}</h3>
+  <p class="small muted ai-open-lead">Trigger: {{ o.trigger_words }}; {{ est.calls_per_finding }} call per finding, the task <span class="mono">{{ est.task }}</span> on <span class="mono">{{ est.model }}</span>. Nothing calls the model for this feature on {{ o.network }} until you turn it on.</p>
+  {%- if form_refused %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not turned on:</strong> {{ form_refused }}{% if 'estimate moved' in form_refused %} The estimate now is below.{% endif %}</div></div>
+  {%- endif %}
+  <div class="ai-est" aria-label="The estimate">
+    <span class="ai-est-tag">ESTIMATE{% if form_refused and 'estimate moved' in form_refused %}, NOW{% endif %}</span>
+    <div class="ai-est-row"><span class="set-label">Calls a day</span><span><strong class="ai-fig" title="{% if est.frequency.per_day is none %}the trigger's frequency is not measured{% else %}the trigger fired {{ est.frequency.per_day }} times a day{% endif %}">{% if est.calls_per_day is none %}unknown{% else %}{{ '%.1f' % est.calls_per_day }}{% endif %}</strong> <span class="set-origin">{{ est.frequency.basis[9:] if est.frequency.basis.startswith("unknown: ") else est.frequency.basis }}{% if est.calls_per_day is not none %}, times {{ est.calls_per_finding }} call per finding{% endif %}</span></span></div>
+    <div class="ai-est-row"><span class="set-label">Cost per call</span><span><span class="mono" title="from {{ est.cost.calls }} sent call(s)">{{ usd(est.cost.usd_per_call, 4) }}</span> <span class="set-origin">{% if est.cost.measured %}measured: {% else %}not measured: {% endif %}{{ est.cost.basis }}</span></span></div>
+    <div class="ai-est-row"><span class="set-label">Dollars</span><span>{% if known %}<strong class="ai-fig">{{ usd(est.usd_per_day) }}</strong> a day · <strong class="ai-fig">{{ usd(est.usd_per_month) }}</strong> a month <span class="set-origin">({{ est.month_days }} days)</span>{% else %}<span class="faint">unknown: the caps below are the bound</span>{% endif %}</span></div>
+    <span class="set-origin">{{ est.label | capitalize }}. Priced from Mercury's table as of {{ o.prices_as_of }}; the provider bills. Estimate <span class="mono" title="{{ est.digest }}">{{ est.digest[:8] }}</span>, measured <time datetime="{{ est.as_of }}">{{ est.as_of[11:16] }} UTC</time>.</span>
+  </div>
+  <form class="ai-on-form" method="post" action="{{ url_for('settings_v2.ai_on', network=o.network, feature=o.feature) }}" hx-post="{{ url_for('settings_v2.ai_on', network=o.network, feature=o.feature) }}" hx-target="#ai-bg" hx-swap="outerHTML">
+    <input type="hidden" name="shown" value="{{ est.digest }}">
+    <div class="ai-caps">
+      <label class="ai-cap"><span class="set-label">Day cap for this feature</span>
+        <input name="day_cap_usd" type="text" inputmode="decimal" class="mono" autocomplete="off" required value="{{ day_typed if day_typed else ('%.2f' % o.day_value if o.day_value is not none else '') }}"{% if o.day_value is none and not day_typed %} placeholder="type a cap"{% endif %}>
+        <span class="set-origin">{% if o.day_cap is none %}the installation has no day cap{% else %}within the installation's ${{ '%.2f' % o.day_cap }} a day{% endif %}{% if est.suggested %}; offered: twice the estimate{% else %}; nothing is offered with no measured estimate{% endif %}</span></label>
+      <label class="ai-cap"><span class="set-label">Month cap</span>
+        <input name="month_cap_usd" type="text" inputmode="decimal" class="mono" autocomplete="off" required value="{{ month_typed if month_typed else ('%.2f' % o.month_value if o.month_value is not none else '') }}"{% if o.month_value is none and not month_typed %} placeholder="type a cap"{% endif %}>
+        <span class="set-origin">US dollars in a month, this feature on {{ o.network }} only</span></label>
+    </div>
+    <label class="ai-accept"><input type="checkbox" name="accept" value="on"> I have read the estimate. An approval lasts {{ o.approval_days }} days: this one ends {{ o.ends_iso[:10] }}, and the feature then stops until an admin turns it on again.</label>
+    <div class="ai-open-act">
+      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="ai-background" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">{{ 'Turn on with this estimate' if known else 'Turn on with no measured estimate' }}</span><span class="op-busy">Turning on…</span></button>{{ how('ai-background', 'turn-on', op='turning ' ~ o.feature ~ ' on') }}</span>
+      <a class="btn btn-small" href="{{ url_for('settings_v2.installation', tab='ai', network=o.network) }}" hx-get="{{ url_for('settings_v2.ai_background', network=o.network) }}" hx-target="#ai-bg" hx-swap="outerHTML">Cancel</a>
+    </div>
+    <p class="set-origin ai-open-note">Records who you are, the time, estimate {{ est.digest[:8] }} and its figures, and the caps, in the installation's settings record (History). If the estimate moves before you press, nothing changes and both are named.</p>
+  </form>
+</div>

@@ -73,7 +73,10 @@ COMPONENTS = {"_run_stepper.html": "stepper.md",
               "_alert_history.html": "alerts-history.md",
               # Settings › Integrations' SDN controllers card (board SdnSettings, signed off
               # under the Phase 7 mode 2026-10-27).
-              "_sdn_settings.html": "sdn-settings.md"}
+              "_sdn_settings.html": "sdn-settings.md",
+              # Settings › Installation › AI, each network's background AI features (boards
+              # AI3 and AI3b, signed off under the Phase 7 mode 2026-10-27; C1843).
+              "_settings_ai.html": "settings-ai.md"}
 
 #: Signed-off screens built before the fidelity step and not yet compared with their boards
 #: (C650). Each is compared, and its differences fixed or logged, before it leaves this list.

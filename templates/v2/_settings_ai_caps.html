@@ -1,0 +1,27 @@
+{%- from "v2/_macros.html" import icon, how -%}
+{#- Board AI3 (`SettingsAi`, signed off under the Phase 7 mode 2026-10-27): Change caps… open on
+    an ON background feature's row in Settings › AI. The admin's day and month caps, the day
+    cap within the installation's; raising one is how a stopped feature runs again before its
+    period ends, and Mercury never raises one by itself. Changing caps never extends the
+    approval. Included by _settings_ai_bg.html with *f* the feature's row. -#}
+<div class="ai-feature ai-feature-open" role="listitem" id="bg-{{ f.name }}" data-state="caps">
+  <h3 class="ai-open-head">Change caps: {{ f.words }} · network {{ ai.network }}</h3>
+  {%- if form_refused %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not changed:</strong> {{ form_refused }}</div></div>
+  {%- endif %}
+  <form class="ai-on-form" method="post" action="{{ url_for('settings_v2.ai_caps', network=ai.network, feature=f.name) }}" hx-post="{{ url_for('settings_v2.ai_caps', network=ai.network, feature=f.name) }}" hx-target="#ai-bg" hx-swap="outerHTML">
+    <div class="ai-caps">
+      <label class="ai-cap"><span class="set-label">Day cap</span>
+        <input name="day_cap_usd" type="text" inputmode="decimal" class="mono" autocomplete="off" required value="{{ day_typed if day_typed else '%.2f' % f.caps.day }}">
+        <span class="set-origin">now ${{ '%.2f' % f.caps.day }}; {% if ai.day_cap is none %}the installation has no day cap{% else %}within the installation's ${{ '%.2f' % ai.day_cap }} a day{% endif %}</span></label>
+      <label class="ai-cap"><span class="set-label">Month cap</span>
+        <input name="month_cap_usd" type="text" inputmode="decimal" class="mono" autocomplete="off" required value="{{ month_typed if month_typed else '%.2f' % f.caps.month }}">
+        <span class="set-origin">now ${{ '%.2f' % f.caps.month }}</span></label>
+    </div>
+    <p class="set-origin ai-open-note">The approval still ends <time datetime="{{ f.ends_iso }}" title="{{ f.ends_iso }}">{{ f.ends_iso[:16] | replace("T", " ") }} UTC</time>: changing caps never extends it. Recorded with the old and new caps.</p>
+    <div class="ai-open-act">
+      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="ai-background" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save caps</span><span class="op-busy">Saving…</span></button>{{ how('ai-background', 'caps', op="saving a feature's caps") }}</span>
+      <a class="btn btn-small" href="{{ url_for('settings_v2.installation', tab='ai', network=ai.network) }}" hx-get="{{ url_for('settings_v2.ai_background', network=ai.network) }}" hx-target="#ai-bg" hx-swap="outerHTML">Cancel</a>
+    </div>
+  </form>
+</div>

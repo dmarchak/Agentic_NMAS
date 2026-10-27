@@ -167,7 +167,12 @@ SIGNED_OFF = {
                                    "log), Access and identity (read-only; Record this decision) "
                                    "and Platforms and roles (preview, Test, bound confirm); AI "
                                    "and workflow left with the AI family (D15, 2026-10-14). "
-                                   "Every tab is drawn"),
+                                   "Every tab is drawn. Its AI tab (each network's background "
+                                   "AI features, C1843): boards AI3 (SettingsAi) and AI3b "
+                                   "(SettingsAiOn) on the mockups canvas's page \"C1843: AI cost "
+                                   "safety\", signed off under the Phase 7 mode 2026-10-27 "
+                                   "(docs/STANDING_APPROVAL_LOG.md, \"Boards AI1 to AI5\"), "
+                                   "compared, docs/fidelity/settings-ai.md"),
     "netbox.html": ("2026-10-10", "Source of truth › NetBox (cutover blocker 2; the operator's "
                                   "decision 5 of 2026-10-05, a v2 board): drawn under the Phase "
                                   "7 operating mode and counted as signed off (docs/STANDING_"

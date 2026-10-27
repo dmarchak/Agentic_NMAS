@@ -97,6 +97,8 @@ PAGES = (
     ("installation-settings",
      "The installation's settings: save, test, replace a token, turn NetBox writes off", H,
      "how-it-works/installation-settings.md"),
+    ("ai-background", "Turn a background AI feature on or off for a network", H,
+     "how-it-works/ai-background.md"),
     ("drift", "Drift", "Concepts", "concepts/drift.md"),
     ("baselines", "How a baseline is earned", "Concepts", "concepts/baselines.md"),
     ("merge-and-mode-b", "Merge-only, and Mode B", "Concepts", "concepts/merge-and-mode-b.md"),
@@ -118,6 +120,7 @@ PAGES = (
     ("netbox", "NetBox", "Screens", "screens/netbox.md"),
     ("credentials", "Credentials", "Screens", "screens/credentials.md"),
     ("settings", "Settings", "Screens", "screens/settings.md"),
+    ("settings-ai", "Settings › AI", "Screens", "screens/settings-ai.md"),
     ("help", "Help", "Screens", "screens/help.md"),
 )
 GROUPS = ("Getting started", "How it works", "Concepts", "Screens")
@@ -221,6 +224,8 @@ OPERATIONS = {
     "console-server-port": ("modules.nsot.console_servers", "SAVE_STEPS"),
     "console-server-key": ("modules.nsot.console_keys", "STEPS"),
     "console-server-rekey": ("modules.nsot.console_rekey", "STEPS"),
+    # Settings › AI (board AI3b, C1843): turning a background AI feature on for a network.
+    "ai-background": ("modules.ai.settings_view", "TURN_ON_STEPS"),
 }
 #: The page each operation's steps are named on (an operation may have two
 #: declared sequences on one page: onboarding's two phases and its ZTP form).

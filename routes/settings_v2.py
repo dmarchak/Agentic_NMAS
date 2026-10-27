@@ -72,6 +72,10 @@ def installation():
     if tab == "console":
         from routes.console_servers_v2 import view as console_servers
         diag = {"cs": console_servers()}
+    if tab == "ai":
+        from modules.ai import gateway, settings_view
+        diag = {"ai": settings_view.view(request.args.get("network") or ""),
+                "hosted": gateway.hosted_allowed()}
     return _page("v2/settings_installation.html", tab=tab, tabs=I.TABS, built=I.BUILT_TABS,
                  v=v, r=I.records_card() if tab == "connections" else None, cards=cards,
                  **diag)
@@ -458,6 +462,148 @@ def install_ai_off():
     except I.Refused as exc:
         return _install("ai", 409, refused=str(exc))
     return _install("ai", ai_off=out)
+
+
+# ── Settings › AI: background features per network (board AI3 and AI3b; C1843) ─────────────
+
+def _ai_section(network: str, status: int = 200, **ctx):
+    """The background-features section of *network*, with an action's answer in place."""
+    from modules.ai import settings_view
+
+    return _fragment("v2/_settings_ai_bg.html", status, ai=settings_view.view(network), **ctx)
+
+
+def _ai_form(network: str, feature: str, status: int = 200, **ctx):
+    """The section with Turn on…'s form open on the feature's row (a refusal's answer): the
+    estimate measured now, so a moved one is drawn to accept again."""
+    from modules.ai import background, settings_view
+
+    try:
+        o = settings_view.turn_on_form(network, feature)
+    except background.Refused as exc:
+        return _ai_section(network, 404, refused=str(exc))
+    return _ai_section(network, status, open_on=o, **ctx)
+
+
+def _ai_person() -> str:
+    """"" when this request is a verified person's, else why not, naming what it is. Turning
+    a background feature on, off or changing its caps is an admin's decision; Mercury holds no
+    roles yet, so every verified person is an admin (NSOT_AUTHORIZATION section 6), and a
+    service or an unverified request never is, whatever `configure`'s settings allow."""
+    from modules import identity
+
+    ident = identity.verified_identity()
+    if ident is None:
+        return ("a background AI feature is changed by a verified person (an admin); this "
+                "request's identity is not verified")
+    if ident.kind != "person":
+        return ("a background AI feature is changed by a verified person (an admin); this "
+                f"request is a {ident.kind or 'requester of unknown kind'} "
+                f"({ident.actor}), not a person")
+    return ""
+
+
+@bp.route("/installation/ai/background", methods=["GET"])
+def ai_background():
+    """Board AI3: the background-features section on the network chosen (Network ▾, Cancel)."""
+    return _ai_section(request.args.get("network") or "")
+
+
+@bp.route("/installation/ai/background/<network>/<feature>/on", methods=["GET"])
+def ai_on_form(network, feature):
+    """Board AI3b: Turn on… opens the estimate in place of the feature's row; writes nothing."""
+    return _ai_form(network, feature)
+
+
+@bp.route("/installation/ai/background/<network>/<feature>/on", methods=["POST"])
+def ai_on(network, feature):
+    """Board AI3b: turn *feature* on for *network* with the estimate the person saw (its
+    digest, ``shown``), their acceptance and their caps; refused, naming why, with nothing
+    changed, when they are not a verified person, did not accept, gave a cap out of range, or
+    the estimate moved (both digests named, the estimate now drawn to accept again)."""
+    from modules import identity
+    from modules.ai import background
+    from modules.ai.settings_view import caps_value, drawn_entry, pick
+
+    form = request.form
+    kept = {"day_typed": form.get("day_cap_usd", ""), "month_typed": form.get("month_cap_usd", "")}
+    why = _ai_person()
+    if not why and form.get("accept") != "on":
+        why = ("the estimate was not accepted: tick “I have read the estimate” to turn it on; "
+               "nothing was changed")
+    if why:
+        return _ai_form(network, feature, 403 if "verified person" in why else 409,
+                        form_refused=why, **kept)
+    try:
+        out = background.turn_on(network, feature,
+                                 day_cap_usd=caps_value(form.get("day_cap_usd")),
+                                 month_cap_usd=caps_value(form.get("month_cap_usd")),
+                                 shown=form.get("shown", ""),
+                                 actor=identity.request_actor(), verified=_verified())
+    except background.Refused as exc:
+        return _ai_form(network, feature, 409, form_refused=str(exc), **kept)
+    return _ai_section(network, turned_on=dict(
+        pick(out, "recorded", "record_error"), feature=feature,
+        entry=drawn_entry(out["entry"], "day_cap_usd", "month_cap_usd")))
+
+
+@bp.route("/installation/ai/background/<network>/<feature>/off", methods=["POST"])
+def ai_off(network, feature):
+    """Board AI3: Turn off, one click, no confirm (it spends nothing); recorded."""
+    from modules import identity
+    from modules.ai import background
+    from modules.ai.settings_view import pick
+
+    why = _ai_person()
+    if why:
+        return _ai_section(network, 403, refused=why)
+    try:
+        out = background.turn_off(network, feature, actor=identity.request_actor(),
+                                  verified=_verified())
+    except background.Refused as exc:
+        return _ai_section(network, 409, refused=str(exc))
+    return _ai_section(network, turned_off=dict(
+        pick(out, "nothing", "actor_label", "at_iso", "recorded", "record_error"),
+        feature=feature))
+
+
+@bp.route("/installation/ai/background/<network>/<feature>/caps", methods=["GET"])
+def ai_caps_form(network, feature):
+    """Board AI3: Change caps… opens in place of the feature's row; writes nothing."""
+    from modules.ai import background
+
+    try:
+        background._spec(feature)
+    except background.Refused as exc:
+        return _ai_section(network, 404, refused=str(exc))
+    return _ai_section(network, open_caps=feature)
+
+
+@bp.route("/installation/ai/background/<network>/<feature>/caps", methods=["POST"])
+def ai_caps(network, feature):
+    """Board AI3: an on feature's caps changed by an admin, within the installation's day cap;
+    recorded with both values. Mercury never raises a cap by itself."""
+    from modules import identity
+    from modules.ai import background
+    from modules.ai.settings_view import caps_value, pick
+
+    form = request.form
+    why = _ai_person()
+    if not why:
+        try:
+            out = background.set_caps(network, feature,
+                                      day_cap_usd=caps_value(form.get("day_cap_usd")),
+                                      month_cap_usd=caps_value(form.get("month_cap_usd")),
+                                      actor=identity.request_actor(), verified=_verified())
+            return _ai_section(network, caps_set=dict(
+                pick(out, "recorded", "record_error"), feature=feature,
+                entry=pick(out["entry"], "day_cap_usd", "month_cap_usd", "caps_by",
+                           "caps_at")))
+        except background.Refused as exc:
+            why = str(exc)
+    return _ai_section(network, 403 if "verified person" in why else 409, open_caps=feature,
+                       form_refused=why, day_typed=form.get("day_cap_usd", ""),
+                       month_typed=form.get("month_cap_usd", ""))
 
 
 @bp.route("/installation/netbox/writes-off", methods=["POST"])
