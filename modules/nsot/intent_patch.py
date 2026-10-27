@@ -611,3 +611,36 @@ def commit(list_name: str, hostname: str, patch, summary: str, base: str, actor:
                              source=source or intent_edit.SOURCE,
                              extra_trailers=extra_trailers)
     return {**out, "changes": got["changes"], "device_keeps": _kept_words(got["changes"])}
+
+
+def commit_many(list_name: str, items: list, summary: str, actor: str, *, source: str = "",
+                extra_trailers: list = None) -> dict:
+    """Commit several devices' patches (``[(hostname, patch, base)]``) as ONE commit, each
+    applied to the version it was previewed on, through `intent_edit.commit_many` (its moved,
+    validator and secret refusals, nothing written on any): a two-ended change drafted in
+    words (C1908). Each patched text is made first, so a patch refused on either device
+    writes nothing on both."""
+    from modules.nsot import hostvars, intent_edit
+
+    edits, changes = [], []
+    for hostname, patch, base in items:
+        base = (base or "").strip()
+        if not base:
+            return _refusal(400, "base", (
+                f"Not saved: the patch did not say which version of {hostname}'s intent it was "
+                "previewed on, so the save could replace a commit made since. Nothing was "
+                "written. Preview the patch again"))
+        text = hostvars.blob_text(intent_edit._repo_for(list_name), base)
+        if text is None:
+            return _refusal(409, "base", (
+                f"Not saved: the version this patch was previewed on ({base[:12]}) is not in "
+                f"{hostname}'s repository. Nothing was written. Preview the patch again"))
+        got = patched_text(hostname, text, patch, list_name)
+        if not got["ok"]:
+            return got
+        edits.append((hostname, got["text"], base))
+        changes += [dict(c, hostname=hostname) for c in got["changes"]]
+    out = intent_edit.commit_many(list_name, edits, summary, actor,
+                                  source=source or intent_edit.SOURCE,
+                                  extra_trailers=extra_trailers)
+    return {**out, "changes": changes, "device_keeps": _kept_words(changes)}

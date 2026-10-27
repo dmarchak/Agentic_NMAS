@@ -19,16 +19,51 @@
 {#- Part 2's answer: committed (its commit, how it is recorded, Plan deploy… next), nothing to
     commit, or why not (the intent moved, the patch is not the drafted one). -#}
 {%- set c = w.committed %}
-{%- if c.ok and c.commit %}
+{%- if c.ok and c.commit and c.hostnames %}
+{#- C1908: both ends of a link, one intent commit. No deploy is offered for the two together:
+    the paired deploy (C1909) is not built, so each device is deployed from its own page. -#}
+<div class="notice notice-ok" role="status">{{ icon('check', 16) }}<p><strong>Committed to {{ c.hostnames | join(' and ') }}'s intent:</strong> one commit, <span class="mono">{{ c.commit[:10] }}</span>, as {{ w.actor }} (Source: ai-draft, with <a href="{{ url_for('v2.history_page', call=w.call_id) }}">the AI call</a>). Nothing was sent to either device. {{ c.deploy }}: {% for h in c.hostnames %}<a href="{{ url_for('device_v2.device', name=h, tab='intent') }}">{{ h }}</a>{{ ', ' if not loop.last }}{% endfor %}.</p></div>
+{%- elif c.ok and c.commit %}
 <div class="notice notice-ok" role="status">{{ icon('check', 16) }}<p><strong>Committed to {{ host }}'s intent:</strong> commit <span class="mono">{{ c.commit[:10] }}</span>, as {{ w.actor }} (Source: ai-draft, with <a href="{{ url_for('v2.history_page', call=w.call_id) }}">the AI call</a>). Nothing was sent to {{ host }}. <a class="btn btn-small" data-op="deploy" href="{{ url_for('device_v2.device', name=host, tab='intent', op='deploy') }}">Plan deploy…</a>{{ how('deploy', compact=True, op='deploy') }}</p></div>
 {%- elif c.ok %}
 <div class="notice" role="status">{{ icon('info', 16) }}<p>{{ c.message or 'Nothing to commit.' }}</p></div>
 {%- else %}
 <div class="notice notice-warn" role="alert">{{ icon('warn', 16) }}<p><strong>Not committed:</strong> {{ c.error }}.</p></div>
 {%- endif %}
+{%- elif w and w.ok and w.pair %}
+{#- C1908 (board F7-Q, Q1): one draft holding both ends of the link, side by side, the ends
+    checked to match before it was offered; one commit covers both. -#}
+<div class="notice notice-ok" role="status">{{ icon('check', 16) }}<p><strong>One draft, both ends</strong> of the link {{ w.pair.device }} {{ w.pair.port }} ↔ {{ w.pair.far }} {{ w.pair.far_port }}{% if w.pair.facts %} · the ends match: {{ w.pair.facts | join('; ') }}{% endif %} <span class="faint">({{ w.model }}, ${{ '%.4f' | format(w.cost_usd) }})</span></p></div>
+{%- if w.decided %}<p class="iw-decided muted">Your words, as decided: <q>{{ w.decided }}</q></p>{% endif %}
+<div class="iw-draft">
+  <div class="ie-split iw-pair">
+  {%- for p in w.previews %}
+  <div><p><strong>{{ p.hostname }}</strong> <span class="faint small">intent at <span class="mono">{{ (p.base or '')[:8] }}</span></span></p>
+    <ol class="iw-ops">{% for ch in p.changes %}<li>{{ ch.summary }}</li>{% endfor %}</ol>
+    {%- set d = p.diffs or {} %}
+    {%- if d.edit_rows %}<div class="ie-diff">{% for r in d.edit_rows %}<div class="dr dr-{{ r.kind }}">{% if r.kind == 'del' %}<span class="dr-sign" aria-label="removed">-</span>{% elif r.kind == 'add' %}<span class="dr-sign" aria-label="added">+</span>{% endif %}{{ r.text }}</div>{% endfor %}</div>
+    {%- elif not p.changed or not p.vs_intent_changed %}<p class="muted small">Already so: {{ p.hostname }}'s committed intent already gives this.</p>{% endif %}
+    {%- if p.device_keeps %}<p class="muted small">{{ p.device_keeps }}</p>{% endif %}</div>
+  {%- endfor %}
+  </div>
+  {%- if w.pair.draft %}
+  <form class="iw-commit" method="post" action="{{ url_for('intent_v2.words_commit', name=host) }}" hx-post="{{ url_for('intent_v2.words_commit', name=host) }}" hx-target="#intent-words" hx-swap="outerHTML" autocomplete="off">
+    <input type="hidden" name="call_id" value="{{ w.call_id }}"><input type="hidden" name="pair" value="1"><input type="hidden" name="patch" value="{{ w.pair.pair_json }}"><input type="hidden" name="words" value="{{ w.sentence }}">
+    <label class="lq-lab" for="iw-why">Why, in one line</label>
+    <div class="lq-line"><input id="iw-why" class="lq-words-in" type="text" name="summary" maxlength="200" required value="{{ w.sentence }}" title="The commit's subject; it starts from your words">
+    <span class="op-act"><button type="submit" class="btn btn-small btn-primary" data-op="intent-in-words" hx-disabled-elt="this"{{ gate('approve') }} title="Commits both devices' drafted changes as one intent commit, as you (Source: ai-draft, with the AI call); nothing reaches either device"><span class="op-idle">Commit both devices' intent</span><span class="op-busy">Committing…</span></button>{{ how('intent-in-words', compact=True) }}</span>
+    <a class="btn btn-small" href="{{ url_for('device_v2.device', name=host, tab='intent') }}" title="Drops the draft; nothing was written, and the AI call stays in History">Discard draft</a></div>
+    <p class="faint small">One commit covers both devices' intent. The paired deploy, with the link verified and both ends rolled back together (C1909), is not built yet: each device is deployed from its own page.</p>
+  </form>
+  {%- else %}
+  <p class="notice" role="status">{{ icon('info', 16) }} <span><strong>Already so</strong> on {{ w.previews | rejectattr('vs_intent_changed') | map(attribute='hostname') | join(' and ') or 'one end' }}: there is no change to both ends to commit.</span></p>
+  {%- endif %}
+  <p class="muted small">What left the host: your sentence, the keys a change may set, and the parts of {{ w.pair.device }}'s and {{ w.pair.far }}'s intent it names with their current values; never an intent document. The call is in History, its prompt and answer opened in place.</p>
+</div>
 {%- elif w and w.ok %}
 {%- set p = w.previews[0] %}
 <div class="notice" role="status">{{ icon('info', 16) }}<p>Drafted from your words ({{ w.model }}, ${{ '%.4f' | format(w.cost_usd) }}): {{ p.changes | length }} change{{ '' if p.changes | length == 1 else 's' }} to {{ host }}'s intent. Check them below, then commit this draft; nothing is written until you do.</p></div>
+{%- if w.decided %}<p class="iw-decided muted">Your words, as decided: <q>{{ w.decided }}</q></p>{% endif %}
 <div class="iw-draft">
   <h3 class="ie-k">The changes, as Mercury would make them</h3>
   <ol class="iw-ops">{% for c in p.changes %}<li>{{ c.summary }}</li>{% endfor %}</ol>
@@ -75,6 +110,24 @@
 {%- for c in w.choose.candidates %}<button type="submit" class="btn btn-small iw-choice" name="pick" value="{{ c.name }}" hx-disabled-elt="this"{{ ai.attrs(aic, 'configure') }}><span class="op-idle">{{ c.label }}</span><span class="op-busy">Drafting…</span></button>{% endfor %}
 <button type="submit" class="btn btn-small iw-choice" name="pick" value="*" hx-disabled-elt="this"{{ ai.attrs(aic, 'configure') }}><span class="op-idle">{{ w.choose.all }}</span><span class="op-busy">Drafting…</span></button>
 </form></div></div>
+{%- elif w and w.question %}
+{#- C1907 (board F7-Q, Q1c to Q5): Mercury's own question before any call, answered with
+    controls that continue the same draft (the words, the question's kind and the answer);
+    no retyping, and no AI call until the sentence is decided. Cancel keeps nothing. -#}
+{%- set q = w.question %}
+<div class="notice" role="status">{{ icon('info', 16) }}<div><p><strong>One question first</strong>, from {{ host }}'s own intent (no AI call, $0): {{ q.question }}{{ '' if q.question.endswith('?') else '.' }}</p>
+{%- if w.decided %}<p class="iw-decided muted">Your words, as decided so far: <q>{{ w.decided }}</q></p>{% endif %}
+<form class="iw-pick" method="post" action="{{ url_for('intent_v2.words', name=host) }}" hx-post="{{ url_for('intent_v2.words', name=host) }}" hx-target="#intent-words" hx-swap="outerHTML" autocomplete="off">
+<input type="hidden" name="words" value="{{ w.sentence }}"><input type="hidden" name="ask" value="{{ q.kind }}">
+{%- for c in q.choices %}<button type="submit" class="btn btn-small iw-choice" name="answer" value="{{ c.value }}" hx-disabled-elt="this"{{ ai.attrs(aic, 'configure') }}><span class="op-idle">{{ c.label }}</span><span class="op-busy">Drafting…</span></button>{% endfor %}
+{%- if q.field %}
+<label class="iw-field{{ ' iw-text' if q.field.kind == 'text' }}">{{ q.field.label }} <input type="text" name="answer_text" placeholder="{{ q.field.placeholder }}"{% if q.field.pattern %} pattern="{{ q.field.pattern }}" inputmode="numeric" title="a number (0 to 4294967295) or a dotted area, as 0.0.0.10"{% else %} maxlength="240"{% endif %}{% if not q.choices %} required{% endif %}></label>
+<button type="submit" class="btn btn-small iw-choice" name="field" value="1" hx-disabled-elt="this"{{ ai.attrs(aic, 'configure') }}><span class="op-idle">Continue</span><span class="op-busy">Drafting…</span></button>
+{%- endif %}
+<a class="btn btn-small" href="{{ url_for('device_v2.device', name=host, tab='intent') }}" title="Leaves nothing drafted; nothing was sent">Cancel</a>
+</form>
+{%- if q.field and q.field.kind == 'text' %}<p class="faint small">The text typed here is the value: it reaches the model as a placeholder, never as words to follow.</p>{% endif %}
+</div></div>
 {%- elif w and w.error == 'no_such_interface' %}
 <div class="notice notice-warn" role="alert">{{ icon('warn', 16) }}<div><p><strong>Not found:</strong> {{ w.unknown.why }} (no AI call, $0). Choose one of its interfaces for <q>{{ w.unknown.said }}</q>, or see <a href="{{ url_for('device_v2.device', name=host, tab='neighbours') }}">{{ host }}'s neighbours</a>.</p>
 <form class="iw-pick" method="post" action="{{ url_for('intent_v2.words', name=host) }}" hx-post="{{ url_for('intent_v2.words', name=host) }}" hx-target="#intent-words" hx-swap="outerHTML">
@@ -85,6 +138,10 @@
 <div class="notice" role="status">{{ icon('info', 16) }}<p>{{ w.detail[:1] | upper }}{{ w.detail[1:] }}.</p></div>
 {%- elif w and w.error == 'unanswerable' %}
 <div class="notice notice-warn" role="alert">{{ icon('warn', 16) }}<p><strong>This change cannot be drafted in words:</strong> {{ w.detail.split(': ', 1)[1] if ': ' in w.detail else w.detail }}. Edit the document to make it.</p></div>
+{%- elif w and w.error == 'ends_mismatch' %}
+{#- C1908 (board F7-Q, Q1b): the two ends would not match after the draft; refused before
+    any preview, naming the mismatch. -#}
+<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Not drafted: the two ends would not match.</strong> {{ w.detail.split(': ', 1)[1] if ': ' in w.detail else w.detail }}.</p></div>
 {%- elif w and w.error == 'intent' %}
 <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Nothing drafted:</strong> {{ w.detail }}.</p></div>
 {%- elif w %}

@@ -830,6 +830,43 @@ class TestIntentWordsCards(_Cards):
     blocked_words_commit_plan = blocked_words_commit
 
 
+class TestIntentWordsPairCards(_Cards):
+    """C1908: both ends of a link drafted as one change, on s1 and a committed s2 (tests/
+    test_ai_intent_change.py's `pair`)."""
+    from tests import test_ai_intent_change as _aw, test_committed_before_p1 as _cb
+    host, world = hosted(_cb.host), hosted(_aw.world)
+    reads, pair = hosted(_aw.reads), hosted(_aw.pair)
+
+    CASES = {
+        "words_commit_pair": ("_intent_words.html", "Commit both devices' intent",
+                              r"Commit both devices' intent",
+                              "data: one end already so, so there is no change to both ends to "
+                              "commit"),
+    }
+
+    def _draft(self, request, s2_description):
+        from tests.test_ai_intent_change import PAIR_WORDS, _answer, _op
+        world, host = request.getfixturevalue("world"), request.getfixturevalue("host")
+        request.getfixturevalue("pair")
+        world.answer = _answer(
+            ("s1", [_op("set_description", interface="GigabitEthernet0/3",
+                        description="s1-s2 trunk - VRRP rides this")]),
+            ("s2", [_op("set_description", interface="GigabitEthernet0/3",
+                        description=s2_description)]))
+        return _text(host["client"].post("/v2/device/s1/intent/words?list=Lab",
+                                         data={"words": PAIR_WORDS},
+                                         headers={"HX-Request": "true"}))
+
+    def drawn_words_commit_pair(self, request):
+        return self._draft(request, "s1-s2 trunk - VRRP rides this")
+
+    def blocked_words_commit_pair(self, request, monkeypatch):
+        html = self._draft(request, "trunk to s1 Gi0/3 - VRRP rides this")
+        assert "One draft, both ends" in html and "Already so" in html, \
+            "floor: the two-device draft is drawn, s2's end already so"
+        return html
+
+
 # ── Bulk intent, on test_bulk_intent's lab (s1, s2, r1 with logging intent) ─
 
 class TestBulkIntentCards(_Cards):
@@ -1768,9 +1805,10 @@ class TestThePopulation:
         Commit and plan deploy, 2026-10-26; 61 until SDN's six, 2026-10-27: Flows' Add flow…,
         Edit… and Remove…, the editor's Preview, the operation card's Send and a response's
         Preview; 67 until the intent editor's Commit drawn again by its check, C1693,
+        2026-10-27; 68 until feature 7's Commit both devices' intent, C1908,
         2026-10-27)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 68, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 69, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

@@ -1302,30 +1302,33 @@ def ask_in_words():
 
 def intent_in_words():
     return svg(470, (
-        "Change it in words: the device and the interfaces, VLANs and networks the sentence "
-        "names are read by code, and a sentence naming none stops there with nothing sent; the "
-        "names as people say them (G1/0, the host port, the uplink to edge1) are resolved by code "
-        "against the device's intent and neighbours, several matches asking which and none "
-        "saying so, before any call; one recorded, capped call through the AI gateway carries "
-        "only the resolved parts' current values and the keys a change may set, and answers "
-        "with a patch; the patch is refused before any preview if it changes what the sentence "
-        "did not name; the intent editor previews it, its diff and what a deploy would send; "
-        "nothing is written and no device is asked."),
+        "Change it in words: quoted text is held back as placeholders, and the device and the "
+        "interfaces, VLANs and networks the sentence names are read by code, a sentence naming "
+        "none or leaving a quote open stopping there with nothing sent; the names as people say "
+        "them (G1/0, the host port, the uplink to edge1) are resolved by code against the "
+        "device's intent and neighbours, several matches and alternatives asked about with "
+        "controls that continue the draft, both ends of a link made one draft of both devices, "
+        "and a change no operation makes refused, before any call; one recorded, "
+        "capped call through the AI gateway carries only the resolved parts' current values and "
+        "the keys a change may set, and answers with a patch; the patch is refused before any "
+        "preview if it changes what the sentence did not name or misuses a placeholder, and the "
+        "quoted text is put back; the intent editor previews it, its diff and what a deploy "
+        "would send; nothing is written and no device is asked."),
         [
         lanes(20, 464, right="THE SERVICES"),
-        doc("box", 14, 40, 186, 36, "The named parts", "read by code"),
+        doc("box", 14, 40, 186, 36, "The named parts", "quotes held, names read"),
         num(14, 40, 1),
-        t(14, 92, "none named: nothing sent", "sm"),
+        t(14, 92, "none named, a quote open: nothing sent", "sm"),
         doc("box", 14, 104, 186, 36, "Names resolved", "the host port: Gi1/0"),
         num(14, 104, 2),
-        t(14, 156, "several: which one? (no call)", "sm"),
+        t(14, 156, "several, 40 or 41: asked, then on", "sm"),
         svc(250, 182, 130, 36, "The AI gateway", "capped, recorded"),
         arrow("send", 202, 200, 248, 200),
         doc("box", 14, 182, 186, 36, "A patch", "a strict schema"),
         num(14, 182, 3),
         doc("box", 14, 246, 186, 40, "Checked", "only what was named"),
         num(14, 246, 4),
-        t(14, 300, "anything else: refused", "sm"),
+        t(14, 300, "anything else: refused; quotes put back", "sm"),
         doc("box", 14, 318, 186, 40, "The editor's preview", "what a deploy would send"),
         num(14, 318, 5),
         t(14, 386, "Nothing is written.", "sm"),

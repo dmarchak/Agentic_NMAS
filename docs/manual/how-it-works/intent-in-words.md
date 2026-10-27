@@ -18,7 +18,7 @@ mark; when hosted AI cannot answer, the box and **Draft the change** are disable
 is written under them, and **Edit** stays as usable as ever (see
 [The AI mark](installation-settings#ai-mark)).
 
-![Change it in words: the device and the interfaces, VLANs and networks the sentence names are read by code, and a sentence naming none stops there with nothing sent; the names as people say them (G1/0, the host port, the uplink to edge1) are resolved by code against the device's intent and neighbours, several matches asking which and none saying so, before any call; one recorded, capped call through the AI gateway carries only the resolved parts' current values and the keys a change may set, and answers with a patch; the patch is refused before any preview if it changes what the sentence did not name; the intent editor previews it, its diff and what a deploy would send; nothing is written and no device is asked.](diagrams/intent-in-words.svg)
+![Change it in words: quoted text is held back as placeholders, and the device and the interfaces, VLANs and networks the sentence names are read by code, a sentence naming none or leaving a quote open stopping there with nothing sent; the names as people say them (G1/0, the host port, the uplink to edge1) are resolved by code against the device's intent and neighbours, several matches and alternatives asked about with controls that continue the draft, both ends of a link made one draft of both devices, and a change no operation makes refused, before any call; one recorded, capped call through the AI gateway carries only the resolved parts' current values and the keys a change may set, and answers with a patch; the patch is refused before any preview if it changes what the sentence did not name or misuses a placeholder, and the quoted text is put back; the intent editor previews it, its diff and what a deploy would send; nothing is written and no device is asked.](diagrams/intent-in-words.svg)
 
 ## Naming an interface as you would say it {#names}
 
@@ -47,7 +47,83 @@ given the device's own names, and the draft lists how your words were read.
   description, with **Both** or **All N**; your choice continues the same draft. None, or a name
   the device does not hold: {{product}} says so and lists the device's interfaces to choose
   from, with a link to its neighbours.
-- A description's own words ("set Gi0/2's description to uplink to edge1") are never resolved.
+- **Only a definite reference is read:** "the trunk", "that uplink", "all host ports", "the port
+  to edge1", or the device's own name as a possessive on its tab ("edge2's trunk" on edge2).
+  "A trunk", "an access port", "as a trunk", "to a routed port" describe the state you want,
+  never a port, and stay as your words.
+- A description's own words ("set Gi0/2's description to uplink to edge1", "set the description
+  of Gi0/1 to uplink to edge1", "describe Gi0/1 as the trunk to edge2") are never resolved.
+
+## Quoted text {#quotes}
+
+Text you put in quotes is kept exactly and never read as anything but a value: {{product}}
+takes it out before anything else reads your sentence, and the model is sent a placeholder
+(`<<text_1>>`, `<<text_2>>`, in order) in its place, never the text itself. After the draft is
+checked, the placeholders are put back with your exact text, so the draft, its preview and the
+commit carry what you typed. Words inside quotes never name an interface, a VLAN or a device,
+and never widen what the change may touch.
+
+- Straight and curly double quotes ("…", “…”) always count. Single quotes ('…', ‘…’) count only
+  where they cannot be an apostrophe: "Gi0/2's" and "don't" are never quotes.
+- The first quote opens and its own kind closes; other quotes inside are part of the text
+  (“spare for 'rack 4'” keeps 'rack 4').
+- A quote left open, or text shaped like `<<text_1>>` outside quotes, is asked about before any
+  call: close the quote, or put the text in quotes.
+- A draft that leaves out a quoted text, uses a placeholder your sentence does not have, or puts
+  one where only a name or a number belongs (an interface, a prefix, an area) is refused at
+  `check`, naming it. History keeps the request and answer as sent (with the placeholders), and
+  says what each placeholder stood for.
+
+## When {{product}} asks or refuses before any call {#before}
+
+Where code can tell the words leave a choice only you can make, or ask for a change the
+operations do not make, {{product}} answers itself: no call, nothing spent, and never a choice
+made for you. Each question is answered with its own controls (buttons, or a field and
+**Continue**), each busy on itself; your answer continues the same draft with no retyping, and
+the sentence as decided is shown above what comes next. **Cancel** leaves nothing drafted.
+
+- **Alternatives** ("VLAN 40 or 41, whichever is free", "Gi0/1 or Gi0/2"): each is said with
+  what the committed intent holds of it, and for a VLAN to add or remove, which of them can be.
+  Each one that can is a button (when only one can, the question says so and it is the one
+  button: the choice is still yours); two interfaces are buttons with their state, and **Both**.
+- **An OSPF network to add with no area:** the device's processes and areas are said; each area
+  is a button, and **Another area** takes a number or a dotted area (checked before it is used).
+- **A description to set with no text** ("set a description on Gi0/1"): its current one is
+  said; you type the text, and it reaches the model as a placeholder, never as words to follow.
+- **A change no operation makes:** an interface made a trunk, an access port or a routed port,
+  its access VLAN or allowed VLANs, its MTU, speed or duplex, a static route, an OSPF cost. It
+  is refused naming the operations there are; make it with **Edit**. A word inside a
+  description ("describe Gi0/1 as trunk to edge2") never counts. Anything else outside the
+  operations (an address, a hostname) is the model's to refuse.
+
+## Both ends of a link {#both-ends}
+
+"Describe both ends of the link to edge2 as core" asks for a change on two devices. When the far
+end is a device of the network and the network model or the Topology read names the link (from
+either end), it is **one draft holding both devices' changes**, drawn side by side: the sentence
+the model is given names both ends ("edge1 GigabitEthernet4 and edge2 GigabitEthernet4"), and each
+device may change only its own end. A draft that changes one end only is refused: never half a
+change.
+
+Before the draft is offered, {{product}} checks that the two ends would still match: a trunk's
+allowed and native VLANs, a tunnel's source, destination and addressing, the OSPF area (OSPFv3's
+too) and the OSPF authentication type. A mismatch is refused, naming both ends' values, and
+nothing is offered to commit. The draft says what the ends share.
+
+**Commit both devices' intent** makes one commit holding both devices' changes, as you, with
+your one line: refused, writing nothing, if either device's intent moved since the draft, or if
+what is handed to it is not the pair the AI call drafted (either end alone included). The
+deploy that follows is each device's own, from its page: deploying both ends as one change,
+with the link verified and both ends rolled back together, is not built yet.
+
+When the far end is not a device {{product}} manages (a host), or no read names what the port
+links to, {{product}} asks first: **Draft <device>'s end only**, or, when the far end is unknown,
+the device at the far end as a button.
+- **A change no operation makes:** an interface made a trunk, an access port or a routed port,
+  its access VLAN or allowed VLANs, its MTU, speed or duplex, a static route, an OSPF cost. It
+  is refused naming the operations there are; make it with **Edit**. A word inside a
+  description ("describe Gi0/1 as trunk to edge2") never counts. Anything else outside the
+  operations (an address, a hostname) is the model's to refuse.
 
 ## What it can change {#what}
 
@@ -63,7 +139,10 @@ Anything else (an address, a speed, a route, a hostname) is refused, saying why;
 
 ## The steps {#steps}
 
-1. `scope`: on a device's tab the change is that device's alone. Another device's name in your
+1. `quote`: the text you quoted is taken out and a placeholder put in its place, before
+   anything else reads the sentence (see [Quoted text](#quotes)); a quote left open stops here,
+   with nothing sent.
+2. `scope`: on a device's tab the change is that device's alone. Another device's name in your
    sentence is only words (a description may name a neighbour, "uplink to edge2"); a draft
    that changes that device is refused at `check`, naming it. {{product}} then reads, by
    code, what the sentence names: interfaces in any of their written forms (Gi0/1,
@@ -71,36 +150,45 @@ Anything else (an address, a speed, a route, a hostname) is refused, saying why;
    prefixes (an address with a wildcard or mask is read as its prefix). A sentence naming no
    interface, VLAN or network stops here too: nothing is sent, nothing is spent, and
    {{product}} asks you to name what to change.
-2. `resolve`: the names as you said them are resolved by code (see
+3. `screen`: a change no operation makes is refused, and on a device's tab alternatives, an OSPF
+   network with no area and a description with no text are asked about, each before any call
+   and answered with controls that continue the draft (see
+   [When {{product}} asks or refuses before any call](#before)). Both ends of a link to a device
+   of the network become one draft of both devices' changes, and a far end that is not one is
+   asked about (see [Both ends of a link](#both-ends)).
+4. `resolve`: the names as you said them are resolved by code (see
    [Naming an interface as you would say it](#names)): shorthand to the device's own name, and
    a reference to the ports it means. Several matches ask which, and none says so with the
    device's interfaces, both before any call; the sentence the model is given holds the
    resolved names only.
-3. `ask`: one call through the AI gateway, as you. What leaves the host is your sentence, the
-   keys a change may set, and the CURRENT VALUES of only the parts of the device's intent your
+5. `ask`: one call through the AI gateway, as you. What leaves the host is your sentence (any
+   quoted text as its placeholder only), the keys a change may set, and the CURRENT VALUES of only the parts of the device's intent your
    sentence names (each named interface's description and whether it is shut, each named
    VLAN's name, each named network statement with its area and process), with the device's
    platform and role, and what you named that the device does not hold. Never the intent
    document, never any other part of it, never an address, an account or a secret reference.
    The answer must be a draft in a fixed shape, one question back when your words leave a
    choice only you can make, or a refusal saying why.
-4. `check`: before any preview, a draft that changes anything your sentence did not name (an
-   interface, a VLAN, a network, another device) is refused, naming it. The change's own rules
-   then hold, as for a typed change: a printable description of at most 240 characters, a VLAN
+6. `check`: before any preview, a draft that changes anything your sentence did not name (an
+   interface, a VLAN, a network, another device) is refused, naming it, and so is one that
+   leaves out, invents or misplaces a placeholder. Your quoted text is then put back exactly,
+   and the change's own rules hold, as for a typed change: a printable description of at most 240 characters, a VLAN
    the device may create, a network with its host bits clear.
-5. `preview`: the intent editor previews the draft against the committed intent: an interface,
+7. `preview`: the intent editor previews the draft against the committed intent: an interface,
    VLAN or process the intent does not hold is refused, naming both; otherwise you see the
    changes in words, what they change in the device's configuration, what a deploy would send,
    and the editor's checks. A removal a merge-only deploy would not carry is said, as for an
    edit. A draft that changes no line of the configuration (an interface already up) says
    "Already so" and offers no commit.
-6. `commit`: you commit the draft, with a one-line reason that starts from your words. It is
+8. `commit`: you commit the draft, with a one-line reason that starts from your words. It is
    committed exactly as drafted: {{product}} refuses it, writing nothing, if the device's intent
    moved since the draft, or if what is handed to the commit is not the patch the AI call
    drafted on that version. The commit is yours (its Actor), its Source is `ai-draft`, and its
    `AI-Call:` names the call, so History links the call and the commit both ways. **Commit and
    plan deploy** opens the deploy preview next; the deploy is unchanged from there (preview,
-   confirm by hash, apply, verify, roll back on failure), and nothing is confirmed for you.
+   confirm by hash, apply, verify, roll back on failure), and nothing is confirmed for you. A
+   draft of both ends of a link is committed as one commit holding both devices' changes, and
+   each device is then deployed from its own page.
 
 ## What it costs, and what is recorded {#cost}
 

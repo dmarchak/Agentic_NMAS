@@ -529,7 +529,16 @@ def explain_misses(expect: dict, answer, pack: dict, error: str = "") -> list:
 #: ("refused_after"), Mercury's own question about which interface a reference means, with
 #: no call ("choose", part 1), or Mercury's own answer with no call ("mercury").
 MERCURY_ERRORS = ("empty", "too_long", "no_device", "nothing_named", "no_intent",
-                  "no_such_interface")
+                  "no_such_interface", "unbalanced_quote", "placeholder_in_words", "not_an_answer",
+                  "not_an_operation", "two_ended", "alternatives", "no_area", "no_value")
+#: Mercury's own question before any call (`intent_names.questions`): judged also as a
+#: question back ("ask"), because a case's "ask" means the words leave a choice only the
+#: person can make, and who asks it (Mercury, with no call, or the model) is cost, not
+#: correctness (the operator's order of 2026-10-27, item b).
+MERCURY_ASKS = ("two_ended", "alternatives", "no_area", "no_value")
+#: Mercury's own refusal of a change no operation makes (`intent_words.not_an_operation`):
+#: judged also as a refusal ("refuse"), for the same reason.
+MERCURY_REFUSES = ("not_an_operation",)
 
 
 def intent_outcome(got: dict) -> str:
@@ -540,7 +549,7 @@ def intent_outcome(got: dict) -> str:
         return error
     if error == "unanswerable":
         return "refuse"
-    if error in ("couldnt_change", "intent"):
+    if error in ("couldnt_change", "intent", "ends_mismatch"):
         return "refused_after"
     if error in MERCURY_ERRORS:
         return "mercury"
@@ -584,19 +593,57 @@ def intent_misses(expect: dict, got: dict) -> list:
     is a pass. The outcome must be one the case allows; where the case names what an outcome
     says (``said``: outcome to words), its detail must hold those words, so a refusal for
     another reason misses; an answer's operations must be exactly the expected ones, order
-    aside."""
+    aside. Mercury's own question (`MERCURY_ASKS`) or refusal (`MERCURY_REFUSES`) is read as
+    "mercury" and also as "ask" or "refuse": it passes when either reading does."""
     outcome = intent_outcome(got)
     why = got.get("detail") or got.get("error") or ""
-    if outcome not in expect["outcome"]:
-        return [f"outcome {outcome}, expected one of {expect['outcome']}"
-                + (f" ({why[:160]})" if why else "")]
-    said = (expect.get("said") or {}).get(outcome)
-    if said and said not in why:
-        return [f"outcome {outcome} says {why[:160]!r}, expected it to say {said!r}"]
-    if outcome != "answer" or "ops" not in expect:
+    error = got.get("error") or ""
+    readings = [outcome] + (["ask"] if outcome == "mercury" and error in MERCURY_ASKS else
+                            ["refuse"] if outcome == "mercury" and error in MERCURY_REFUSES
+                            else [])
+    missed = []
+    for reading in readings:
+        if reading not in expect["outcome"]:
+            missed.append(f"outcome {outcome}" + (f" (read as {reading})" if reading != outcome
+                                                  else "")
+                          + f", expected one of {expect['outcome']}"
+                          + (f" ({why[:160]})" if why else ""))
+            continue
+        said = (expect.get("said") or {}).get(reading)
+        if said and said not in why:
+            missed.append(f"outcome {reading} says {why[:160]!r}, expected it to say {said!r}")
+            continue
+        outcome = reading
+        missed = []
+        break
+    if missed:
+        return missed[:1]
+    if outcome != "answer":
+        return []
+    if "patches" in expect:
+        # A two-device draft (C1908): each device's operations exactly, and no other device.
+        have_by = intent_patches(got.get("choices"))
+        out = []
+        for host in sorted(set(expect["patches"]) | set(have_by)):
+            want = sorted(_op_key(o) for o in expect["patches"].get(host, []))
+            have = sorted(_op_key(o) for o in have_by.get(host, []))
+            if want != have:
+                out.append(f"{host}'s operations {[dict(k) for k in have]}, expected "
+                           f"{[dict(k) for k in want]}")
+        return out[:1]
+    if "ops" not in expect:
         return []
     want = sorted(_op_key(o) for o in expect["ops"])
     have = sorted(_op_key(o) for o in intent_ops(got.get("choices")))
     if want == have:
         return []
     return [f"operations {[dict(k) for k in have]}, expected {[dict(k) for k in want]}"]
+
+
+def intent_patches(choices: dict) -> dict:
+    """``{hostname: operations}`` of the model's answer, each as `intent_ops` gives it."""
+    out = {}
+    for patch in (choices or {}).get("patches") or []:
+        out.setdefault(str(patch.get("hostname") or ""), []).extend(
+            intent_ops({"patches": [patch]}))
+    return out

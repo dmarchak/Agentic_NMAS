@@ -663,6 +663,45 @@ def _intent_words(client, lab, _mp):
             r = client.post("/v2/device/r3/intent/words", data={"words": words},
                             headers={"HX-Request": "true", "Accept": "text/html"})
             assert r.status_code == 200 and said in r.get_data(as_text=True), words
+        # C1907: Mercury's own question with its controls (board F7-Q, Q2), no call.
+        r = client.post("/v2/device/r3/intent/words",
+                        data={"words": "add VLAN 40 or 41, whichever is free"},
+                        headers={"HX-Request": "true", "Accept": "text/html"})
+        html = r.get_data(as_text=True)
+        assert 'name="ask" value="alternatives"' in html and ">VLAN 41<" in html, html[-800:]
+        # C1908: both ends of a link as one draft and one commit (board F7-Q, Q1): r4 committed
+        # as a copy of r3 (its intent and golden renamed), their first port linked.
+        import re as _re
+        r4_text = intent_edit.open_doc("Lab", "r3")["yaml"].replace("hostname: r3",
+                                                                    "hostname: r4", 1)
+        with open(os.path.join(lab["repo"], "host_vars", "r4.yml"), "w", encoding="utf-8") as fh:
+            fh.write(r4_text)
+        assert save_host_vars("Lab", ["r4"], actor="t", source="extraction")["ok"]
+        link = ports[0]
+        mp.setattr(intent_names, "neighbours_of", lambda network, device, far=False: {
+            "ports": {link: [{"name": "r4" if device == "r3" else "r3", "role": "router",
+                              "by": "observed (LLDP)", "port": link}]}, "said": []})
+        mp.setattr(intent_names, "_devices", lambda network: {"r3": "router", "r4": "router"})
+        answer = {"outcome": "answer", "question": "", "why_not": "", "patches": [
+            {"hostname": h, "operations": [
+                {"op": "set_description", "interface": link, "description": "both ends",
+                 "vlan": 0, "vlan_name": "", "process": 0, "prefix": "", "area": ""}]}
+            for h in ("r3", "r4")]}
+        r = client.post("/v2/device/r3/intent/words",
+                        data={"words": f"describe both ends of {ifnames.abbreviate(link)} as "
+                                       "both ends"},
+                        headers={"HX-Request": "true", "Accept": "text/html"})
+        html = r.get_data(as_text=True)
+        assert "One draft, both ends" in html, _re.sub(r"<svg.*?</svg>", "", html,
+                                                       flags=_re.S)[-1200:]
+        import html as _h
+        form = html.split('class="iw-commit"', 1)[1].split("</form>", 1)[0]
+        fields = {m.group(1): _h.unescape(m.group(2)) for m in _re.finditer(
+            r'<input type="hidden" name="([a-z_]+)" value="([^"]*)"', form)}
+        r = client.post("/v2/device/r3/intent/words/commit",
+                        data=dict(fields, summary="both ends of a link"),
+                        headers={"HX-Request": "true", "Accept": "text/html"})
+        assert "Committed to r3 and r4" in r.get_data(as_text=True), r.get_data(as_text=True)[-800:]
     finally:
         mp.undo()
         shutil.rmtree(folder, ignore_errors=True)

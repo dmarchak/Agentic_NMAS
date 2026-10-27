@@ -811,6 +811,14 @@ p.held-note { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; mar
 .iw-commit { display: flex; flex-direction: column; gap: 6px; padding-top: 10px; border-top: 1px solid var(--line-2); }
 .iw-commit .lq-line { flex-wrap: wrap; }
 .iw-commit .lq-words-in { flex: 1 1 100%; }
+/* Mercury's questions continue the draft (C1907, board F7-Q): a field beside its buttons; and
+   a two-ended draft's two devices side by side (C1908), one column each, stacked on a phone. */
+.iw-pick .iw-field { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; flex-wrap: wrap; }
+.iw-pick .iw-field input { font: inherit; font-size: 13px; padding: 5px 8px; border: 1px solid var(--line);
+  border-radius: var(--r); min-width: 0; }
+.iw-pick .iw-text { flex: 1 1 20rem; }
+.iw-pair { border: 1px solid var(--line-2); border-radius: var(--r); }
+.iw-decided { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
 /* An AI call opened (15.14): its own full line under the row's links, never wider than the
    row (a flex item grows to its content, and one long line of a prompt widened the page to
    10,634 px); the prompt's prose wraps, the bytes unchanged. */

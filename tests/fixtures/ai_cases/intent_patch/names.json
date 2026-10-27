@@ -1,7 +1,7 @@
 {
   "task": "intent_patch",
   "model": "claude-sonnet-5-5",
-  "prompt": "intent_change.v1",
+  "prompt": "intent_change.v2",
   "network": "default",
   "about": "Feature 7's part 1 cases (PHASE8_PLAN 15.16; the operator's order of 2026-10-26 ~06:4x UTC: shorthand in several forms, a one-match reference, a several-match singular that asks, a several-match plural that changes all, 'both' chosen, none matching, a name that does not exist, an injection inside a reference). Each is asked on s1's Intent tab against the lab's committed intent as read 2026-10-26 through scripts/nmas-config-read (GigabitEthernet1/0 'h1 - VLAN 10' and 1/1 'h2 - VLAN 20', access ports; 0/3 the trunk to s2; 0/2 toward r1), its neighbours as the Topology read measured them. A case's `resolves` is the resolution it expects and `picks` the person's choice; the stale-expectation check verifies both before any call. Judged as the recorded set is. Written before the first measurement; not yet recorded.",
   "cases": [

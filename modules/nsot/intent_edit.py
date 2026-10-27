@@ -565,77 +565,120 @@ def commit(list_name: str, hostname: str, text: str, summary: str, base: str,
            actor: str, *, source: str = SOURCE, extra_trailers: list = None) -> dict:
     """Commit an edit to *hostname*'s intent as *actor*, bound to the version opened.
     *source* and *extra_trailers* name the workflow (feature 7's draft commits as
-    ``ai-draft`` with its ``AI-Call:``); a typed edit is ``intent-edit``."""
+    ``ai-draft`` with its ``AI-Call:``); a typed edit is ``intent-edit``. One device's case of
+    `commit_many`, its answer in the one-device shape."""
+    got = commit_many(list_name, [(hostname, text, base)], summary, actor, source=source,
+                      extra_trailers=extra_trailers)
+    return {k: v for k, v in got.items() if k not in ("hostnames", "bases", "each")}
+
+
+def commit_many(list_name: str, edits: list, summary: str, actor: str, *,
+                source: str = SOURCE, extra_trailers: list = None) -> dict:
+    """Commit edits to several devices' intent (``[(hostname, text, base)]``) as ONE commit
+    (one `repo.save_host_vars`, so one `repo.commit()`), as *actor*, each bound to the version
+    it opened: refused, nothing written, when any document is missing or refused by the
+    editor's check, or any device's intent moved since (`moved`, naming that device). A
+    two-ended change drafted in words commits both ends this way (C1908). The answer carries
+    the first device's ``hostname`` and ``base`` (the one-device shape `commit` returns), and
+    ``hostnames`` and ``bases`` for all. Each device is written in Mercury's own formatting
+    (C1693, `hostvars.canonical`): one whose canonical text is what is committed changes
+    nothing; one whose change is formatting only must pass Normalise's proof under the lock
+    (409, stage "proof", naming the device), its trailer added to the one commit; and the
+    answer says, for the first device, ``formatting_only`` and ``reformatted`` (``each`` for
+    every device changed)."""
     from modules.nsot import hostvars, repo as repo_service
 
     repo = _repo_for(list_name)
     summary = (summary or "").strip()
-    base = (base or "").strip()
-    if not isinstance(text, str) or not text.strip():
+    if not edits:
         return {"status": 400, "ok": False, "error": "No host_vars document sent"}
+    for hostname, text, base in edits:
+        if not isinstance(text, str) or not text.strip():
+            return {"status": 400, "ok": False, "error": "No host_vars document sent"}
     if not summary:
         return {"status": 400, "ok": False, "error": (
             "A one-line summary is required — it becomes the commit subject, "
             "and 'host_vars: s4' on its own says nothing in a log.")}
-    if not base:
-        return {"status": 400, "ok": False, "stage": "base", "error": (
-            f"Not saved: this editor did not say which version of {hostname}'s intent it "
-            "opened, so the save could replace a commit made since. Nothing was written. "
-            "Reload the page, open the editor again and make the edit there.")}
-    checked = validate(hostname, text, list_name)
-    if not checked["ok"]:
-        return checked
+    for hostname, text, base in edits:
+        if not (base or "").strip():
+            return {"status": 400, "ok": False, "stage": "base", "error": (
+                f"Not saved: this editor did not say which version of {hostname}'s intent it "
+                "opened, so the save could replace a commit made since. Nothing was written. "
+                "Reload the page, open the editor again and make the edit there.")}
+        checked = validate(hostname, text, list_name)
+        if not checked["ok"]:
+            return checked
+    names = [h for h, _t, _b in edits]
+    first = names[0]
 
     with repo_service.repo_lock(repo):
-        current = hostvars.committed_blob(repo, hostname)
-        if current is None:
-            return {"status": 404, "ok": False, "error": (
-                f"'{hostname}' has no committed intent yet. Commit the extraction "
-                "first, so the edit has a reviewed baseline to diff against.")}
-        if current != base:
-            return moved(repo, hostname, base, current, text)
-        committed_text = hostvars.blob_text(repo, current) or ""
-        typed = text if text.endswith("\n") else text + "\n"
-        try:
-            # What is written (C1693): the document in Mercury's own formatting.
-            written = hostvars.canonical(typed, hostname)
-        except ValueError as exc:
-            return {"status": 400, "ok": False, "error": str(exc)}
-        if written == committed_text:
-            return {"status": 200, "ok": True, "hostname": hostname, "changed": False,
-                    "commit": "", "base": current, "message": (
-                        "Nothing to commit: the document is what is already committed."
-                        + ("" if typed == committed_text else
-                           " Intent is committed in Mercury's own formatting, so a change of "
-                           "comments or layout alone changes nothing."))}
-        trailers = list(extra_trailers or [])
+        changed, currents, trailers = [], {}, list(extra_trailers or [])
         from modules.nsot import intent_normalise
-        formatting = intent_normalise.formatting_only(committed_text, typed)
-        if formatting:
-            # Normalise (board H-N): refused unless the five lines prove it formatting only,
-            # whatever the button showed; proved against what is committed now, under the lock.
-            proved = intent_normalise.proof(list_name, hostname, typed, committed_text)
-            if not proved["ok"]:
-                return {"status": 409, "ok": False, "stage": "proof", "hostname": hostname,
-                        "proof": proved, "error": intent_normalise.refusal_words(proved)}
-            trailers.append(intent_normalise.trailer(proved))
+        for hostname, text, base in edits:
+            current = hostvars.committed_blob(repo, hostname)
+            if current is None:
+                return {"status": 404, "ok": False, "error": (
+                    f"'{hostname}' has no committed intent yet. Commit the extraction "
+                    "first, so the edit has a reviewed baseline to diff against.")}
+            if current != (base or "").strip():
+                return moved(repo, hostname, (base or "").strip(), current, text)
+            currents[hostname] = current
+            committed_text = hostvars.blob_text(repo, current) or ""
+            typed = text if text.endswith("\n") else text + "\n"
+            try:
+                # What is written (C1693): the document in Mercury's own formatting.
+                written = hostvars.canonical(typed, hostname)
+            except ValueError as exc:
+                return {"status": 400, "ok": False, "error": str(exc)}
+            if written == committed_text:
+                continue
+            formatting = intent_normalise.formatting_only(committed_text, typed)
+            if formatting:
+                # Normalise (board H-N): refused unless the five lines prove it formatting
+                # only, whatever the button showed; proved against what is committed now,
+                # under the lock, for each such document.
+                proved = intent_normalise.proof(list_name, hostname, typed, committed_text)
+                if not proved["ok"]:
+                    return {"status": 409, "ok": False, "stage": "proof", "hostname": hostname,
+                            "proof": proved, "error": intent_normalise.refusal_words(proved)}
+                trailers.append(intent_normalise.trailer(proved))
+            changed.append((hostname, typed, written, formatting))
+        if not changed:
+            layout = any((t if t.endswith("\n") else t + "\n")
+                         != (hostvars.blob_text(repo, currents[h]) or "") for h, t, _b in edits)
+            return {"status": 200, "ok": True, "hostname": first, "changed": False,
+                    "commit": "", "base": currents[first], "hostnames": names,
+                    "bases": dict(currents), "message": (
+                        ("Nothing to commit: the document is what is already committed."
+                         if len(edits) == 1 else
+                         "Nothing to commit: each document is what is already committed.")
+                        + (" Intent is committed in Mercury's own formatting, so a change of "
+                           "comments or layout alone changes nothing." if layout else ""))}
+        written_paths = []
         try:
-            hostvars.write_committed_text(repo, hostname, typed)
-        except hostvars.SecretLeak as exc:
-            log.error("intent edit: refused host_vars edit for %s: %s", hostname, exc)
+            for hostname, typed, _w, _f in changed:
+                written_paths.append(hostvars.write_committed_text(repo, hostname, typed))
+        except (hostvars.SecretLeak, ValueError) as exc:
+            # A later device refused after an earlier one was written: each written file is
+            # put back as committed, so nothing is left half done (C106's rule).
+            hostvars.put_back_committed(repo, written_paths)
+            if isinstance(exc, hostvars.SecretLeak):
+                log.error("intent edit: refused host_vars edit for %s: %s", hostname, exc)
             return {"status": 400, "ok": False, "error": str(exc)}
-        except ValueError as exc:
-            return {"status": 400, "ok": False, "error": str(exc)}
-        result = repo_service.save_host_vars(list_name, [hostname], actor=actor, source=source,
-                                             message=f"host_vars: {hostname} {summary}",
+        hosts = [h for h, _t, _w, _f in changed]
+        result = repo_service.save_host_vars(list_name, hosts, actor=actor, source=source,
+                                             message=f"host_vars: {', '.join(hosts)} {summary}",
                                              extra_trailers=trailers)
-        after = hostvars.committed_blob(repo, hostname)
-    return {"status": 200, "ok": result.get("ok", False), "hostname": hostname,
+        after = {h: hostvars.committed_blob(repo, h) or currents[h] for h in names}
+    each = {h: {"formatting_only": f, "reformatted": w != t} for h, t, w, f in changed}
+    mine = each.get(first, {"formatting_only": False, "reformatted": False})
+    return {"status": 200, "ok": result.get("ok", False), "hostname": first,
             "changed": bool(result.get("commit")), "commit": result.get("commit", ""),
-            "base": after or current, "message": result.get("message", ""),
+            "base": after[first], "message": result.get("message", ""),
             "error": result.get("error", ""),
             # Said on the result: what was typed is not byte for byte what was written.
-            "formatting_only": formatting, "reformatted": written != typed}
+            "formatting_only": mine["formatting_only"], "reformatted": mine["reformatted"],
+            "hostnames": names, "bases": after, "each": each}
 
 
 def acknowledge(text: str, lines) -> str:

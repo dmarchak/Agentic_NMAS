@@ -43,7 +43,7 @@ def _got(*ops, ok=True, error=""):
 
 # ── the case files ───────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("data,count", [(RECORDED, 20), (HELD_OUT, 10), (NAMES, 16)],
+@pytest.mark.parametrize("data,count", [(RECORDED, 51), (HELD_OUT, 10), (NAMES, 16)],
                          ids=["recorded", "held-out", "names"])
 def test_each_file_holds_its_cases_on_the_pin_and_the_prompt(data, count):
     assert len(data["cases"]) == count
@@ -54,10 +54,15 @@ def test_each_file_holds_its_cases_on_the_pin_and_the_prompt(data, count):
     for c in data["cases"]:
         assert c["device"] and c["sentence"], c["n"]
         assert set(c["expect"]["outcome"]) <= allowed, c["n"]
-        for o in c["expect"].get("ops", ()):
+        expected = list(c["expect"].get("ops", ())) + [
+            o for ops in (c["expect"].get("patches") or {}).values() for o in ops]
+        for o in expected:
             op = intent_words.Op(o["op"])
             used = {"name" if f == "vlan_name" else f for f in intent_words.FIELDS[op]}
             assert set(o) - {"op"} == used, (c["n"], o)
+        if c["expect"].get("patches"):
+            assert c["device"] in c["expect"]["patches"] and len(c["expect"]["patches"]) == 2, \
+                "a two-device draft names the tab's device and its far end"
 
 
 def test_the_recorded_set_holds_each_kind_of_case():
@@ -139,6 +144,22 @@ def test_a_case_naming_what_an_outcome_says_misses_the_same_outcome_for_another_
         == []
 
 
+def test_a_two_device_case_passes_on_both_devices_operations_and_a_half_fails():
+    """C1908: recorded case 33 expects one draft of r3 and r4; r3's end alone misses, naming
+    r4; an ends mismatch refused after the call is refused_after."""
+    expect = RECORDED["cases"][32]["expect"]                    # case 33
+    both = {"ok": True, "choices": {"outcome": "answer", "question": "", "why_not": "",
+                                    "patches": [{"hostname": h, "operations": [_op(
+                                        "set_description", interface="Gi4",
+                                        description="r3-r4 OSPFv3 core interlink")]}
+                                                for h in ("r3", "r4")]}}
+    assert cases.intent_misses(expect, both) == []
+    half = dict(both, choices=dict(both["choices"], patches=both["choices"]["patches"][:1]))
+    (miss,) = cases.intent_misses(expect, half)
+    assert miss.startswith("r4's operations [], expected"), miss
+    assert cases.intent_outcome({"ok": False, "error": "ends_mismatch"}) == "refused_after"
+
+
 # ── the recorder ─────────────────────────────────────────────────────────────
 
 def _script():
@@ -172,22 +193,29 @@ def test_the_recorder_reports_passes_consistency_cost_and_latency(monkeypatch, t
         if exp["outcome"][0] != "answer":
             first = exp["outcome"][0]
             return {"ok": False, "error": {"ask": "ask", "refuse": "unanswerable",
-                                           "refused_after": "intent"}[first],
+                                           "refused_after": "intent",
+                                           "mercury": "nothing_named"}[first],
                     "detail": (exp.get("said") or {}).get(first) or "planted"}
-        ops = []
-        for o in exp["ops"]:
-            ops.append(_op(o["op"], **{("vlan_name" if k == "name" else k): v
-                                      for k, v in o.items() if k != "op"}))
-        return _got(*ops)
+        def made(ops_):
+            return [_op(o["op"], **{("vlan_name" if k == "name" else k): v
+                                    for k, v in o.items() if k != "op"}) for o in ops_]
+        if "patches" in exp:                        # a two-device draft (C1908)
+            return {"ok": True, "error": "", "choices": {
+                "outcome": "answer", "question": "", "why_not": "",
+                "patches": [{"hostname": h, "operations": made(ops_)}
+                            for h, ops_ in exp["patches"].items()]}}
+        return _got(*made(exp["ops"]))
     asked = _planted(monkeypatch, answer)
     out = tmp_path / "rec.json"
     assert mod.record(ROOT, "default", "evaluation:test-run", str(out),
                       os.path.join("tests", "fixtures", "ai_cases", "intent_patch",
                                    "recorded.json"), 2) == 0
     rec = json.loads(out.read_text())
-    assert len(asked) == 40 and all(len(d) == 1 for _s, d in asked), "each case on its tab"
-    assert [s["passed"] for s in rec["report"]] == [2] * 20
-    assert all(s["consistent"] for s in rec["report"]) and rec["spent_usd"] == 0.4
+    n = len(RECORDED["cases"])
+    assert len(asked) == 2 * n and all(len(d) == 1 for _s, d in asked), "each case on its tab"
+    assert [s["passed"] for s in rec["report"]] == [2] * n
+    assert all(s["consistent"] for s in rec["report"])
+    assert rec["spent_usd"] == pytest.approx(0.02 * n)
 
 
 def test_a_recording_is_never_a_person_and_can_ask_another_model(monkeypatch, tmp_path, capsys):

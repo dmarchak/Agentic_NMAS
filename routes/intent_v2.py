@@ -144,9 +144,15 @@ def words(name):
     # reference or an unknown name means, "*" for every one; it continues the same draft.
     phrase, chosen = request.form.get("phrase", ""), request.form.getlist("pick")
     picks = {phrase: "*" if "*" in chosen else chosen} if phrase and chosen else None
+    # The person's answer to Mercury's other questions (C1907: both ends, alternatives, an
+    # area, a description's text): a button's value, or the field's text; the same draft
+    # continues from the sentence as decided.
+    kind = request.form.get("ask", "")
+    value = request.form.get("answer", "") or request.form.get("answer_text", "")
+    answer = {"kind": kind, "value": value} if kind else None
     actor = identity.request_actor()
     got = intent_words.change(ref.name, sentence, actor=actor, trigger=triggers.person(actor),
-                              devices=[host], picks=picks)
+                              devices=[host], picks=picks, answer=answer)
     pin = profiles.TASKS.get(intent_words.FEATURE) or {}
     model = f"{profiles.profile(pin['model'])['words']}, {pin['model']}" if pin else ""
     # What the row draws, and only that (every carried field is drawn): the answer in words,
@@ -154,17 +160,36 @@ def words(name):
     # interfaces, and each preview as the editor's check partial reads it (the patch and its
     # base, which a commit will carry, are not drawn here).
     w = {k: got[k] for k in ("ok", "error", "detail", "clarify", "by", "cost_usd",
-                             "resolutions", "resolution_said", "choose", "unknown", "call_id")
+                             "resolutions", "resolution_said", "choose", "unknown", "call_id",
+                             "decided")
          if k in got}
+    if got.get("question"):
+        q = got["question"]
+        w["question"] = {"kind": q["kind"], "question": q["question"],
+                         "choices": [{"label": c["label"], "value": str(c["value"])}
+                                     for c in q.get("choices") or []],
+                         "field": q.get("field")}
     w["previews"] = [_drawn(p) for p in got.get("previews") or []]
     for drawn, p in zip(w["previews"], got.get("previews") or []):
+        drawn["hostname"] = p.get("hostname", "")
         if p.get("draft"):
             # Part 2: what Commit this draft posts back, exactly as drafted (its digest is on
             # the call's use row, so a commit handed anything else is refused).
             drawn.update(draft=p["draft"], base=p.get("base", ""),
                          patch_json=json.dumps(p.get("patch"), sort_keys=True))
+    if got.get("pair"):
+        # C1908: one draft of both ends; Commit both devices' intent posts both patches back,
+        # exactly as drafted (the pair's digest is on the call's use row).
+        pr = got["pair"]
+        w["pair"] = {"device": pr["device"], "port": pr["port"], "far": pr["far"],
+                     "far_port": pr["far_port"], "facts": list(pr.get("facts") or []),
+                     "draft": pr.get("draft", ""), "pair_json": json.dumps(
+                         [{"hostname": p.get("hostname"), "patch": p.get("patch"),
+                           "base": p.get("base", "")} for p in got.get("previews") or []],
+                         sort_keys=True) if pr.get("draft") else ""}
     return _strict(render_template("v2/_intent_words.html", host=host,
-                                   w=dict(w, sentence=sentence, model=model)))
+                                   w=dict(w, sentence=got.get("decided") or sentence,
+                                          model=model)))
 
 
 @bp.route("/<name>/intent/words/commit", methods=["POST"])
@@ -185,6 +210,18 @@ def words_commit(name):
     host = dev.get("hostname", "")
     actor = identity.request_actor()
     call_id = request.form.get("call_id", "")
+    if request.form.get("pair") == "1":
+        # C1908: both ends of a link, one commit; no plan follows (the paired deploy, C1909,
+        # is not built: each device is deployed from its page). The pair's patches travel in
+        # `patch`, the field the confirm is bound to (operation_stages), as one device's does.
+        got = intent_words.commit_pair(ref.name, call_id, request.form.get("patch", ""),
+                                       request.form.get("summary", ""), actor)
+        w = {"committed": {k: got.get(k) for k in ("ok", "commit", "changed", "error", "stage",
+                                                    "message", "hostnames", "deploy")
+                           if k in got},
+             "call_id": call_id, "actor": actor, "sentence": request.form.get("words", "")}
+        return _strict(render_template("v2/_intent_words.html", host=host, w=w),
+                       200 if got.get("ok") else got.get("status", 400))
     got = intent_words.commit_draft(ref.name, host, call_id, request.form.get("patch", ""),
                                     request.form.get("base", ""), request.form.get("summary", ""),
                                     actor)

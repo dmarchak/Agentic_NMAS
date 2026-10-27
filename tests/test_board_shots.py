@@ -2158,10 +2158,12 @@ def test_tab_intent_words(tmp_path, monkeypatch):
     def choose(width):
         def step(b):
             # Part 1's question answered: the first candidate (GigabitEthernet1/0), drafted;
-            # each width its own words, as the width before committed its own.
+            # each width its own words, as the width before committed its own. The walk's
+            # quoted 'walk F7 test' reaches the model as <<text_1>> (prompt v2), so its
+            # answer carries the placeholder, and the draft shows "walk F7 test <width>".
             world.answer = F._answer(("s1", [F._op("set_description",
                                                    interface="GigabitEthernet1/0",
-                                                   description=f"walk F7 test {width}")]))
+                                                   description=f"<<text_1>> {width}")]))
             b.js("document.querySelector('.iw-pick .iw-choice').click(); return 1")
         return step
 

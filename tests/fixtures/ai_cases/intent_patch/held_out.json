@@ -1,7 +1,7 @@
 {
   "task": "intent_patch",
   "model": "claude-sonnet-5-5",
-  "prompt": "intent_change.v1",
+  "prompt": "intent_change.v2",
   "network": "default",
   "about": "Feature 7's held-out set (the overnight order of 2026-10-26: 10 cases written BEFORE the first measurement, measured beside the 20 and reported apart; never tuned on). Written 2026-10-26 with the recorded set, against the lab's committed intent as read then; judged as the recorded set is. Measured once, 2026-10-26 on dd68fa2d, and not yet recorded here; two premises the measurement disproved were corrected after it, each saying how (its `premise`; C1770). Never tuned on.",
   "cases": [

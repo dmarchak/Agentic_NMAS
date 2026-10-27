@@ -93,6 +93,12 @@ NOT_AN_OPERATION = {
                                                        "interface a reference or a name means) "
                                                        "and continues the same draft; Draft the "
                                                        "change in the row carries the link",
+    ("_intent_words.html", "Continue"): "answers Mercury's own question with the field's value "
+                                        "(an area, a description's text, C1907) and continues "
+                                        "the same draft; Draft the change in the row carries "
+                                        "the link",
+    ("_intent_words.html", "Cancel"): "reopens the Intent tab without the question: nothing was "
+                                      "drafted or sent",
     ("_dhcp_reserve.html", "Close"): "puts the Reservations tab back after a change, a read",
     ("_dhcp_subnet.html", "Cancel"): "puts the Subnets tab back, writing nothing",
     ("_dhcp_subnet.html", "Close"): "puts the Subnets tab back after a change, a read",

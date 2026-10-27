@@ -17,6 +17,47 @@ never a secret-bearing key.
   not name is refused.
 - :func:`change`: the call, and each patch handed to the intent editor's preview (nothing is
   written). Mercury answers itself, with no call, when the sentence names nothing to change.
+
+**Quoted text never reaches the model** (the operator's order of 2026-10-27, item a;
+:func:`hold_quotes`): each text the person quotes is taken out before anything else reads the
+sentence and an opaque placeholder (``<<text_1>>``, ``<<text_2>>``, in order) put in its place;
+after the answer is validated, the placeholders in its operations are put back with the exact
+text. So text a person types is never read by the model as an instruction, never names an
+interface, VLAN or device, and never widens the scope. The rules:
+- **Which quotes:** straight and curly double quotes ("…", “…”) always. Single quotes ('…',
+  ‘…’) only where they cannot be an apostrophe: the opening one at the start or after a space
+  or an opening bracket, the closing one before the end, a space or punctuation, neither
+  beside a space inside. An apostrophe inside a word (Gi0/2's, don't) never opens or closes
+  one, and a single quote with no such partner stays as written.
+- **Unbalanced:** a double quote with no partner (or a closing curly one with no opening) is
+  Mercury's question before any call: close it or remove it.
+- **Nested:** the first quote opens and its own kind closes; every other quote inside is part
+  of the text (“spare for 'rack 4'” keeps 'rack 4'). Curly quotes nest by depth; straight ones
+  cannot (the next " closes). Empty quotes ("") hold nothing and stay as written.
+- **A placeholder in the words:** text outside quotes shaped like one (``<<text_1>>``) is
+  Mercury's refusal before any call (quote it); inside quotes it is the person's text, kept.
+- **After the answer** (:func:`to_patches`): a placeholder the model invents or alters, one
+  it drops (each quoted text must be used), and one in a field that holds no free text (an
+  interface, a prefix, an area) are each refused, naming it; only a description and a VLAN's
+  name take one, among other words in a description. The patch's own rules then judge the real
+  text (printable ASCII, at most 240). The draft, the question back and the refusal shown to
+  the person carry the real text; History's call row keeps the request and answer as sent
+  (placeholders), and its use row says what each placeholder stood for (masked).
+
+**Requests Mercury answers itself, before any call** (item b and C1890): an operation outside
+the vocabulary (:func:`not_an_operation`: switchport mode or access VLAN, a routed port, MTU,
+speed, duplex, a static route, an OSPF cost), refused naming the operations there are; and on a
+device's tab the questions `intent_names.questions` asks (alternatives, an OSPF network with no
+area, a description with no text, both ends of a link with no managed far end), each answered
+with controls that continue the same draft from the sentence as decided (C1907).
+
+**Both ends of a link are one draft** (C1908, the operator's ruling on board F7-Q): a
+two-ended request whose far end is a device of the network makes ONE draft holding both
+devices' patches, each device's scope its own end; an answer changing one end only is a half
+and refused; the two ends are checked to match in the intent the draft would leave
+(:func:`ends_match`) before it is offered, a mismatch refused naming it; and one commit covers
+both (:func:`commit_pair`, `intent_edit.commit_many`). The paired deploy is C1909's: until it is
+built, each device is deployed from its own page.
 """
 
 import ipaddress
@@ -122,9 +163,15 @@ def _network(text: str) -> str:
 
 def touched(sentence: str) -> dict:
     """``{"interfaces": [...], "vlans": [...], "networks": [...]}``: what *sentence* names,
-    interfaces canonical, VLANs as numbers, networks as prefixes; each once, in its order."""
+    interfaces canonical, VLANs as numbers, networks as prefixes; each once, in its order.
+    Text that becomes a value is never read (C1905, the operator's design of 2026-10-27): a
+    quoted text is a placeholder by now, and a description's text ("describe X as …", "the
+    description of X to …") and a VLAN's name are blanked first (`intent_names.blank_values`,
+    the resolver's own), so "set the description on Gi1/0 to uplink to Gi0/1" names Gi1/0
+    alone and an answer touching Gi0/1 is refused."""
+    from modules.ai import intent_names
     from modules.nsot import ifnames
-    s = sentence or ""
+    s = intent_names.blank_values(sentence or "")
     vlan_spans = [m.span() for m in _VLANS.finditer(s)]
     interfaces = []
     for m in _IFACE.finditer(s):
@@ -137,6 +184,200 @@ def touched(sentence: str) -> dict:
     networks = [_network(m.group(1)) for m in _PREFIX.finditer(s)]
     return {"interfaces": list(dict.fromkeys(interfaces)), "vlans": list(dict.fromkeys(vlans)),
             "networks": list(dict.fromkeys(networks))}
+
+
+# ── quoted text, held back from the model (the operator's order of 2026-10-27, item a) ──
+
+#: A placeholder as Mercury issues it.
+PLACEHOLDER = re.compile(r"<<text_[1-9][0-9]{0,2}>>")
+#: Anything shaped as one, issued or not: an invented or altered placeholder in an answer, or
+#: one typed outside quotes.
+PLACEHOLDER_LIKE = re.compile(r"<<\s*[A-Za-z][\w -]{0,30}>>")
+#: The fields of an operation that take quoted text; every other one holds a name or a number.
+TEXT_FIELDS = ("description", "vlan_name")
+_OPENS_SINGLE = " \t([{=:"
+_CLOSES_SINGLE = " \t.,;:!?)]}"
+
+
+def _single_close(s: str, i: int) -> int:
+    """Where the single quote opened at *i* closes, or -1 when it cannot be a quote (an
+    apostrophe): the opening one at the start or after a space or an opening bracket and not
+    before a space, its partner the first matching quote after a non-space and before the
+    end, a space or punctuation."""
+    if (i and s[i - 1] not in _OPENS_SINGLE) or i + 1 >= len(s) or s[i + 1].isspace():
+        return -1
+    close = "'" if s[i] == "'" else "’"
+    for k in range(i + 2, len(s)):
+        if s[k] == close and not s[k - 1].isspace() and (
+                k + 1 == len(s) or s[k + 1] in _CLOSES_SINGLE):
+            return k
+    return -1
+
+
+def _double_close(s: str, i: int) -> int:
+    """Where the double quote opened at *i* closes (straight: the next straight one; curly:
+    its partner, nesting by depth), or -1."""
+    if s[i] == '"':
+        return s.find('"', i + 1)
+    depth = 0
+    for k in range(i, len(s)):
+        depth += {"“": 1, "”": -1}.get(s[k], 0)
+        if depth == 0:
+            return k
+    return -1
+
+
+def quote_spans(sentence: str) -> tuple:
+    """``([(open, close)], error)``: where each quote in *sentence* opens and closes (the
+    indices of both quote characters), by the module's rules, left to right; *error* is
+    ``(kind, words)`` for a double quote with no partner, else ``None``. The one reader of
+    quotes: `hold_quotes` here, and the name resolver's spans (`intent_names.resolve`, C1906:
+    an apostrophe is never a quote there either)."""
+    s = sentence or ""
+    spans, i = [], 0
+    while i < len(s):
+        c = s[i]
+        j = -1
+        if c in '"“':
+            j = _double_close(s, i)
+            if j < 0:
+                return spans, ("unbalanced_quote", (
+                    f"the sentence opens a quote it does not close (the {c} at character "
+                    f"{i + 1}: {s[i:i + 24]!r}); close it, or remove it, and draft again, as "
+                    "Mercury does not guess where quoted text ends; nothing was sent"))
+        elif c == "”":
+            return spans, ("unbalanced_quote", (
+                f"the sentence closes a quote it never opened (the ” at character {i + 1}); "
+                "open it, or remove it, and draft again; nothing was sent"))
+        elif c in "'‘":
+            j = _single_close(s, i)
+        if j < 0:
+            i += 1
+            continue
+        spans.append((i, j))
+        i = j + 1
+    return spans, None
+
+
+def hold_quotes(sentence: str) -> dict:
+    """``{"ok", "sentence", "quoted", "error", "detail"}``: *sentence* with each quoted text
+    taken out and an opaque placeholder in its place (``<<text_1>>``, in order), and
+    ``quoted`` the placeholders' exact texts. Refused (``ok`` false, Mercury's answer before
+    any call): a double quote with no partner (``unbalanced_quote``), and text outside quotes
+    shaped as a placeholder (``placeholder_in_words``). The module's docstring has the rules."""
+    s = sentence or ""
+    spans, error = quote_spans(s)
+    if error:
+        return {"ok": False, "sentence": "", "quoted": {}, "error": error[0],
+                "detail": error[1]}
+
+    def refused(error, detail):
+        return {"ok": False, "sentence": "", "quoted": {}, "error": error, "detail": detail}
+
+    out, quoted, at = [], {}, 0
+    for i, j in spans:
+        out.extend(s[at:i])
+        if j == i + 1:
+            out.extend(s[i:j + 1])          # empty quotes hold nothing and stay as written
+        else:
+            tag = f"<<text_{len(quoted) + 1}>>"
+            quoted[tag] = s[i + 1:j]
+            out.append(tag)
+        at = j + 1
+    out.extend(s[at:])
+    # Only the words outside quotes: a placeholder's own text, or one quoted, is no collision.
+    typed = PLACEHOLDER_LIKE.search("".join(" " if part in quoted else part for part in out))
+    if typed:
+        return refused("placeholder_in_words", (
+            f"the sentence holds {typed.group(0)}, the form Mercury uses for quoted text, "
+            "outside quotes; put it in quotes if it is text to keep, and draft again; nothing "
+            "was sent"))
+    return {"ok": True, "sentence": "".join(out), "quoted": quoted, "error": "", "detail": ""}
+
+
+def restore(text: str, quoted: dict) -> str:
+    """*text* with each placeholder Mercury issued put back as the exact text it stands for,
+    in one pass (a quoted text that itself reads ``<<text_2>>`` is never replaced again)."""
+    if not quoted or not isinstance(text, str):
+        return text
+    return PLACEHOLDER.sub(lambda m: quoted.get(m.group(0), m.group(0)), text)
+
+
+def restored(choices: dict, quoted: dict) -> dict:
+    """The model's answer (``model_dump``) with the real text in every place a person reads
+    it: the question, why not, and each operation's text fields."""
+    if not quoted:
+        return choices
+    out = dict(choices, question=restore(choices.get("question", ""), quoted),
+               why_not=restore(choices.get("why_not", ""), quoted))
+    out["patches"] = [dict(p, operations=[dict(o, **{f: restore(o.get(f, ""), quoted)
+                                                     for f in TEXT_FIELDS})
+                                          for o in p.get("operations") or []])
+                      for p in choices.get("patches") or []]
+    return out
+
+
+def quoted_note(quoted: dict) -> str:
+    """What each placeholder stood for, for the call's use row in History, masked as every
+    record is (``<<text_1>> = "…"``; each text cut at 60 characters, said)."""
+    if not quoted:
+        return ""
+    from modules import redact
+    parts = []
+    for tag, text in quoted.items():
+        shown = text if len(text) <= 60 else text[:59] + "…"
+        parts.append(f"{tag} = {json.dumps(shown, ensure_ascii=False)}")
+    return redact.redact_text("quoted text put back: " + "; ".join(parts))
+
+
+# ── requests no operation makes, refused before any call (C1890) ──────────────────────
+
+#: Settings no operation makes, each as a request names it in a setting position (never a
+#: word inside a description or a VLAN's name, which `intent_names.blank_values` blanks first):
+#: an interface made a trunk, an access port or a routed port; switchport words; MTU, speed and
+#: duplex set; a static route; an OSPF cost. Refusing by resemblance is safe (CLAUDE.md): a
+#: person who meant something else rewords it. An address is not among them: "add the address
+#: 192.0.2.1 to OSPF" is an OSPF network (one address is /32), so it stays the model's.
+_STATE = r"(?:trunk|access|routed|switched|layer[- ]?[23])"
+NOT_OPERATIONS = (
+    ("an interface's switchport mode (trunk, access or routed) or its access VLAN", re.compile(
+        r"\b(?:make|set|turn|configure|change|convert|put)\s+(?:[A-Za-z][A-Za-z-]*\s?\d+"
+        r"(?:[/.:]\d+)*|it|them|this|that|(?:the|that|this|both|all)\s+[\w-]+(?:\s+(?:ports?"
+        r"|links?|interfaces?))?)\s+"
+        r"(?:(?:(?:to|into|as)\s+)(?:(?:an?|the)\s+)?" + _STATE + r"\b"
+        r"|(?:an?|the)\s+" + _STATE + r"\b"
+        r"|" + _STATE + r"(?:\s+(?:port|mode|vlan|link|interface))?"
+        r"(?=\s*$|\s*[,.;]|\s+\d|\s+(?:and|on|for)\b))", re.I)),
+    ("an interface's switchport mode or VLANs", re.compile(
+        r"\bswitchport\b|\b(?:trunk|access)\s+mode\b|\bnative\s+vlan\b|\ballowed\s+vlans?\b"
+        r"|\b(?:put|move|assign|place)\s+[A-Za-z][A-Za-z-]*\s?\d+(?:[/.:]\d+)*\s+(?:in|into|on"
+        r"|to)\s+vlan\b", re.I)),
+    ("an interface's MTU", re.compile(r"\bmtu\b", re.I)),
+    ("an interface's speed or duplex", re.compile(
+        r"\b(?:set|change|raise|lower|make)\s+(?:the\s+)?(?:[\w/.-]+['’]s\s+)?(?:speed|duplex)\b"
+        r"|\bspeed\s+(?:of\s+|to\s+)?\d+|\b(?:full|half|auto)[- ]duplex\b|\bduplex\s+(?:full"
+        r"|half|auto)\b", re.I)),
+    ("a static route", re.compile(r"\bstatic\s+routes?\b|\bip\s+route\b", re.I)),
+    ("an OSPF cost", re.compile(
+        r"\b(?:set|change|raise|lower)\s+(?:the\s+)?(?:ospf\s+)?cost\b|\bospf\s+cost\b", re.I)),
+)
+#: The operations there are, in words, as a refusal names them.
+OPERATIONS_IN_WORDS = ("descriptions (set or clear), shut and no shut, VLANs (add or remove) "
+                       "and OSPF network statements (add or remove)")
+
+
+def not_an_operation(sentence: str) -> str:
+    """Why *sentence* asks for a change no operation makes, naming the operations there are,
+    or "" (the module's docstring: decided by where the words stand, never inside a value)."""
+    from modules.ai import intent_names
+    text = intent_names.blank_values(sentence)
+    for what, rx in NOT_OPERATIONS:
+        m = rx.search(text)
+        if m:
+            return (f"{what} is set by no operation of a change in words (\"{m.group(0).strip()}"
+                    f"\"): it drafts {OPERATIONS_IN_WORDS} only; make this change with Edit; "
+                    "nothing was sent")
+    return ""
 
 
 def nothing_named(t: dict) -> bool:
@@ -193,15 +434,20 @@ def _contiguous(wild: int) -> bool:
     return (wild & (wild + 1)) == 0
 
 
-def to_patches(answer: IntentChange, scope: dict) -> dict:
+def to_patches(answer: IntentChange, scope: dict, quoted: dict = None) -> dict:
     """``{"ok", "error", "patches"}``: each device's operations in `intent_patch`'s own shape,
     validated by `intent_patch.parse`; refused, naming why, BEFORE any preview, when an
     operation fills a field its op does not use, or changes what *scope* does not hold: a device
     out of scope, or an interface, VLAN or network the sentence did not name. *scope* is
-    ``{hostname: touched(sentence)}``."""
+    ``{hostname: touched(sentence)}``. *quoted* is `hold_quotes`' placeholders: each is put
+    back with its exact text after these checks and before the patch's own rules; one the
+    answer invents or alters, drops, or puts in a field that holds no free text is refused,
+    naming it."""
     from modules.nsot import ifnames, intent_patch
 
-    patches = []
+    quoted = quoted or {}
+    used = set()
+    patches, parsed = [], []
     for d in answer.patches:
         if d.hostname not in scope:
             return {"ok": False, "error": f"the answer changes {d.hostname[:64]!r}, a device "
@@ -219,13 +465,34 @@ def to_patches(answer: IntentChange, scope: dict) -> dict:
             if outside:
                 return {"ok": False, "error": f"{d.hostname}'s operation {i} ({o.op.value}) "
                         f"changes {outside}, which the request does not name"}
+            for f in mine:
+                value = getattr(o, f)
+                tags = PLACEHOLDER_LIKE.findall(value) if isinstance(value, str) else []
+                if tags and f not in TEXT_FIELDS:
+                    return {"ok": False, "error": f"{d.hostname}'s operation {i} "
+                            f"({o.op.value}) puts {tags[0][:40]} in its {f}, which holds no "
+                            "quoted text"}
+                invented = [t for t in tags if t not in quoted]
+                if invented:
+                    return {"ok": False, "error": f"{d.hostname}'s operation {i} "
+                            f"({o.op.value}) holds {invented[0][:40]}, a placeholder the "
+                            "sentence does not have (it quotes "
+                            + (", ".join(quoted) or "nothing") + ")"}
+                used.update(tags)
             op = {"op": o.op.value}
             for f in mine:
-                op["name" if f == "vlan_name" else f] = getattr(o, f)
+                op["name" if f == "vlan_name" else f] = restore(getattr(o, f), quoted)
             ops.append(op)
-        patch, refusal = intent_patch.parse({"hostname": d.hostname, "operations": ops})
+        parsed.append((d.hostname, ops))
+    dropped = [t for t in quoted if t not in used]
+    if dropped and answer.patches:
+        return {"ok": False, "error": "the answer leaves out the quoted text " + ", ".join(
+            f"{json.dumps(quoted[t][:40], ensure_ascii=False)} ({t})" for t in dropped)
+            + ", which the sentence gives"}
+    for hostname, ops in parsed:
+        patch, refusal = intent_patch.parse({"hostname": hostname, "operations": ops})
         if refusal:
-            return {"ok": False, "error": f"{d.hostname}: {refusal['error']}"}
+            return {"ok": False, "error": f"{hostname}: {refusal['error']}"}
         patches.append(patch)
     return {"ok": True, "error": "", "patches": patches}
 
@@ -243,23 +510,228 @@ def _outside(o: Operation, named: dict, ifnames) -> str:
     return ""
 
 
+# ── both ends of a link, as one draft (C1908, the operator's ruling on board F7-Q) ─────
+
+def _lines(i: dict) -> list:
+    """Every line an interface's intent holds in a list of text (its switchport, OSPF and
+    unmodelled lines among them), stripped."""
+    out = []
+    for v in (i or {}).values():
+        if isinstance(v, list):
+            out += [str(x).strip() for x in v if isinstance(x, str)]
+    return out
+
+
+def _vlan_set(entries) -> set:
+    """A trunk's allowed VLANs as a set of numbers ("all" for none listed, or "all")."""
+    out = set()
+    for entry in entries or []:
+        for part in str(entry).replace(" ", "").split(","):
+            if not part:
+                continue
+            if part.lower() in ("all", "1-4094"):
+                return {"all"}
+            if "-" in part:
+                lo, _s, hi = part.partition("-")
+                if lo.isdigit() and hi.isdigit():
+                    out |= {str(n) for n in range(int(lo), int(hi) + 1)}
+                    continue
+            out.add(part)
+    return out or {"all"}
+
+
+def _shown_vlans(vlans: set) -> str:
+    if "all" in vlans:
+        return "all VLANs"
+    nums = sorted(int(v) for v in vlans if v.isdigit())
+    return "VLANs " + ", ".join(str(n) for n in nums) if nums else "no VLAN"
+
+
+def _address(doc: dict, text: str):
+    """An IPv4 address *text* names: itself, or the address of the interface of *doc* it names
+    (a tunnel's source); ``None`` when neither."""
+    from modules.nsot import ifnames
+    try:
+        return ipaddress.IPv4Address(text)
+    except ValueError:
+        pass
+    for i in (doc or {}).get("interfaces") or []:
+        if isinstance(i, dict) and ifnames.same_interface(str(i.get("name", "")), text):
+            got = _iface_net(i)
+            return got.ip if got else None
+    return None
+
+
+def _iface_net(i: dict):
+    """An interface's IPv4 address and network (``IPv4Interface``), or ``None``."""
+    words = str((i or {}).get("ipv4") or "").split()
+    try:
+        if len(words) >= 2:
+            return ipaddress.IPv4Interface(f"{words[0]}/{words[1]}")
+        if len(words) == 1:
+            return ipaddress.IPv4Interface(words[0])
+    except ValueError:
+        return None
+    return None
+
+
+def _ospf_of(doc: dict, i: dict) -> dict:
+    """``{"area", "auth", "v3_area"}`` of an interface: its OSPFv2 area (the network statement
+    covering its address), its authentication type (the interface's own, else its area's),
+    and its OSPFv3 area (its `ospfv3` lines); each "" when it has none."""
+    from modules.nsot import intent_patch
+    net = _iface_net(i)
+    area, procs = "", []
+    routing = doc.get("routing") if isinstance(doc.get("routing"), dict) else {}
+    for proc in routing.get("ospf") or []:
+        if not isinstance(proc, dict):
+            continue
+        procs.append(proc)
+        for (address, wild), a, _where in intent_patch._statements(proc):
+            if net is not None and (int(net.ip) & ~wild & 0xFFFFFFFF) == (
+                    int(ipaddress.IPv4Address(address)) & ~wild & 0xFFFFFFFF):
+                area = str(a)
+    auth = ""
+    for line in (i or {}).get("ospf") or []:
+        m = re.match(r"authentication(?:\s+(message-digest|null|key-chain))?", str(line).strip())
+        if m:
+            auth = m.group(1) or "plain"
+    if not auth and area:
+        for proc in procs:
+            for line in proc.get("settings") or []:
+                m = re.match(rf"area\s+{re.escape(area)}\s+authentication(?:\s+(message-digest))?$",
+                             str(line).strip())
+                if m:
+                    auth = m.group(1) or "plain"
+    v3 = ""
+    for line in (i or {}).get("ospfv3") or []:
+        m = re.search(r"\barea\s+(\S+)", str(line))
+        if m:
+            v3 = m.group(1)
+    return {"area": area, "auth": auth or ("none" if area else ""), "v3_area": v3}
+
+
+def ends_match(a: str, doc_a: dict, port_a: str, b: str, doc_b: dict, port_b: str) -> dict:
+    """``{"mismatches": [...], "facts": [...]}``: whether the two ends of a link match in the
+    intent a draft would leave (C1908, checked before any preview is offered): a trunk's
+    allowed and native VLANs, a tunnel's source, destination and addressing, the OSPF area
+    (OSPFv2 by the statement covering each end's address, OSPFv3 by its interface lines) and
+    the OSPF authentication type. Each mismatch names both ends' values; each fact is what the
+    two ends share, said in the draft."""
+    from modules.nsot import ifnames
+
+    def iface(doc, name):
+        return next((i for i in (doc or {}).get("interfaces") or [] if isinstance(i, dict)
+                     and ifnames.same_interface(str(i.get("name", "")), name)), None)
+    ia, ib = iface(doc_a, port_a), iface(doc_b, port_b)
+    end_a, end_b = f"{a} {port_a}", f"{b} {port_b}"
+    if ia is None or ib is None:
+        missing = end_a if ia is None else end_b
+        return {"mismatches": [f"{missing} is not in its device's intent"], "facts": []}
+    bad, facts = [], []
+    mode_a, mode_b = str(ia.get("switchport_mode") or ""), str(ib.get("switchport_mode") or "")
+    if "trunk" in (mode_a, mode_b):
+        if mode_a != mode_b:
+            bad.append(f"{end_a} is {mode_a or 'not a switchport'} and {end_b} is "
+                       f"{mode_b or 'not a switchport'}; both ends of a trunk are trunks")
+        else:
+            va, vb = (_vlan_set(i.get("switchport_trunk_vlans")) for i in (ia, ib))
+            na, nb_ = (next((m.group(1) for line in _lines(i) for m in [re.search(
+                r"\bnative\s+vlan\s+(\d+)", line)] if m), "1") for i in (ia, ib))
+            if va != vb:
+                bad.append(f"{end_a} allows {_shown_vlans(va)} and {end_b} allows "
+                           f"{_shown_vlans(vb)}; both ends of a trunk carry the same VLANs")
+            if na != nb_:
+                bad.append(f"{end_a} has native VLAN {na} and {end_b} native VLAN {nb_}; both "
+                           "ends of a trunk carry the same native VLAN")
+            if va == vb and na == nb_:
+                facts.append(f"both trunks, {_shown_vlans(va)}, native VLAN {na}")
+    if all(str(n).lower().startswith("tunnel") for n in (port_a, port_b)):
+        def tun(i, what):
+            return next((m.group(1) for line in _lines(i) for m in [re.match(
+                rf"tunnel\s+{what}\s+(\S+)", line)] if m), "")
+        src_a, dst_a, src_b, dst_b = (tun(ia, "source"), tun(ia, "destination"),
+                                      tun(ib, "source"), tun(ib, "destination"))
+        for end, dst, other, src, doc in ((end_a, dst_a, end_b, src_b, doc_b),
+                                          (end_b, dst_b, end_a, src_a, doc_a)):
+            addr = _address(doc, src) if src else None
+            if not dst or addr is None:
+                bad.append(f"{end}'s tunnel destination ({dst or 'none'}) cannot be checked "
+                           f"against {other}'s source ({src or 'none'})")
+            elif str(addr) != dst:
+                bad.append(f"{end}'s tunnel destination is {dst}, and {other}'s source is "
+                           f"{addr}; each end's destination is the other's source")
+    na_, nb2 = _iface_net(ia), _iface_net(ib)
+    if na_ is not None and nb2 is not None:
+        if na_.network != nb2.network:
+            if all(str(n).lower().startswith("tunnel") for n in (port_a, port_b)):
+                bad.append(f"{end_a} is in {na_.network} and {end_b} in {nb2.network}; both "
+                           "ends of a tunnel share one network")
+        else:
+            facts.append(f"both in {na_.network}")
+    oa, ob = _ospf_of(doc_a, ia), _ospf_of(doc_b, ib)
+    if oa["area"] or ob["area"]:
+        if oa["area"] != ob["area"]:
+            bad.append(f"{end_a} is in OSPF area {oa['area'] or '(none)'} and {end_b} in "
+                       f"{ob['area'] or '(none)'}; both ends of a link share one area")
+        elif oa["auth"] != ob["auth"]:
+            bad.append(f"{end_a} authenticates OSPF as {oa['auth']} and {end_b} as "
+                       f"{ob['auth']}; both ends use one authentication type")
+        else:
+            facts.append(f"OSPF area {oa['area']}, authentication {oa['auth']}")
+    if oa["v3_area"] or ob["v3_area"]:
+        if oa["v3_area"] != ob["v3_area"]:
+            bad.append(f"{end_a} is in OSPFv3 area {oa['v3_area'] or '(none)'} and {end_b} in "
+                       f"{ob['v3_area'] or '(none)'}; both ends of a link share one area")
+        else:
+            facts.append(f"OSPFv3 area {oa['v3_area']}")
+    return {"mismatches": bad, "facts": facts}
+
+
+def pair_digest(items: list) -> str:
+    """What a two-device draft offers to commit, as one digest: each device, its patch exactly
+    and the version of its intent it was previewed on, in the order drafted. A commit of
+    either end alone, or of anything else, is refused (`commit_pair`)."""
+    import hashlib
+    text = json.dumps([{"hostname": h, "patch": p, "base": b or ""} for h, p, b in items],
+                      sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(("pair:" + text).encode("utf-8")).hexdigest()
+
+
+#: What a two-device commit says until the paired deploy is built (C1909, the operator's
+#: order of 2026-10-27): each device is deployed from its own page.
+PAIRED_DEPLOY_NOT_BUILT = ("Deploy each device from its page; the paired deploy (C1909) is not "
+                           "built yet")
+
+
 # ── the call ─────────────────────────────────────────────────────────────────
 
 FEATURE = "intent_patch"
-PROMPT = ("intent_change", 1)
+#: v2 (the operator's order of 2026-10-27, item a): quoted text reaches the model only as
+#: opaque placeholders (`hold_quotes`), and the prompt says what they are and where they may
+#: stand. v1 stays for its record (the measurements of 2026-10-26 and 27 were made on it).
+PROMPT = ("intent_change", 2)
 
 #: The steps, as the manual's How it works page names them (docs/manual/how-it-works/
 #: intent-in-words.md).
 STEPS = (
+    ("quote", "quoted text taken out and opaque placeholders put in its place, before anything "
+              "reads the sentence; an unclosed quote is asked about with nothing sent"),
     ("scope", "the device, and the interfaces, VLANs and networks the sentence names, read by "
               "code; a sentence naming none stops there with nothing sent"),
+    ("screen", "a change no operation makes refused, naming the operations; on a tab, "
+               "alternatives, an OSPF network with no area, a description with no text and a "
+               "two-ended request whose far end is not a managed device each asked about, "
+               "answered with controls that continue the draft; both ends of a link to a "
+               "managed device made one two-device draft; all before any call"),
     ("resolve", "the names as people say them, resolved by code against the device's intent "
                 "and neighbours (G1/0, the host port, the uplink to edge1); several matches ask "
                 "which, none says so with the device's interfaces, all before any call"),
     ("ask","one recorded, capped call through the AI gateway, as the person who asked, with "
             "only the named parts' current values"),
     ("check", "the draft refused before any preview if it changes what the sentence did not "
-              "name; the patch's own rules then hold"),
+              "name, or invents, drops or misplaces a placeholder; the quoted text then put "
+              "back exactly, and the patch's own rules hold"),
     ("preview", "the intent editor's own preview: what the change does, what a deploy would "
                 "send, its checks; nothing is written"),
     ("commit", "the person commits the draft exactly as drafted (refused if the intent moved "
@@ -305,7 +777,8 @@ def scope_of(list_name: str, sentence: str, devices: list = None) -> dict:
 
 
 def change(list_name: str, sentence: str, *, actor: str, trigger: dict, send=None,
-           today: str = None, devices: list = None, picks: dict = None) -> dict:
+           today: str = None, devices: list = None, picks: dict = None,
+           answer: dict = None) -> dict:
     """``{"ok", "error", "detail", "previews", "call_id", "cost_usd", "resolutions", ...}``:
     *sentence* made a patch per device it changes, each previewed by the intent editor
     (nothing written); or one question back, or a refusal naming why, with nothing previewed.
@@ -315,36 +788,110 @@ def change(list_name: str, sentence: str, *, actor: str, trigger: dict, send=Non
     about which one. Mercury answers itself, with no call and nothing spent, when the sentence
     names no device in scope or nothing to change, when a reference matches several and the
     person must choose ("choose"), or when it matches nothing or names an interface the device
-    lacks ("no_such_interface")."""
+    lacks ("no_such_interface"); and before those (`screen`), when a quote is left open or a
+    placeholder typed, when the change is one no operation makes ("not_an_operation"), and on
+    a tab when the words leave a choice only the person can make ("two_ended",
+    "alternatives", "no_area", "no_value"). Quoted text reaches the model only as placeholders
+    (`hold_quotes`), put back after the answer is checked. *answer* (``{"kind", "value"}``) is
+    the person's answer to such a question (*trigger*, C1843's, carried into the continued
+    draft unchanged): the draft continues from the sentence as decided
+    (``decided`` in the answer), with no retyping (C1907). A two-ended request whose far end is
+    a device of the network is ONE draft of both devices' patches, checked to match before
+    any preview (``pair``; C1908)."""
     from modules.ai.nl_query import QUESTION_MAX
 
-    sentence = " ".join((sentence or "").split())
-    if not sentence:
+    words = " ".join((sentence or "").split())
+    if not words:
         return {"ok": False, "error": "empty", "detail": "type the change first"}
-    if len(sentence) > QUESTION_MAX:
+    if len(words) > QUESTION_MAX:
         return {"ok": False, "error": "too_long",
-                "detail": f"the sentence is {len(sentence)} characters; at most "
+                "detail": f"the sentence is {len(words)} characters; at most "
                           f"{QUESTION_MAX} are taken"}
-    scope = scope_of(list_name, sentence, devices)
+    pre = screen(list_name, sentence, devices, picks, answer)
+    if pre.get("decided") is not None:
+        # The person's answer to Mercury's own question (C1907): the same draft continues
+        # from the sentence as decided, shown to them, with no retyping.
+        decided = pre["decided"]
+        if len(" ".join(decided.split())) > QUESTION_MAX:
+            return dict(_MERCURY, error="too_long", words=words, detail=(
+                f"the sentence as decided is {len(decided)} characters; at most "
+                f"{QUESTION_MAX} are taken"))
+        return dict(change(list_name, decided, actor=actor, trigger=trigger, send=send,
+                           today=today, devices=devices), decided=" ".join(decided.split()))
+    if pre.get("refusal"):
+        return dict(pre["refusal"], words=words)
+    extra = {"words": words, "sent": pre["sentence"], "resolutions": pre["resolutions"],
+             "resolution_said": pre["said"]}
+    return dict(_drafted(list_name, pre["sentence"], pre["named"], actor=actor,
+                         trigger=trigger, send=send, today=today, quoted=pre["quoted"],
+                         pair=pre.get("pair")), **extra)
+
+
+#: Mercury's own answer before any call: no call id, nothing spent.
+_MERCURY = {"ok": False, "by": "mercury", "call_id": "", "cost_usd": 0.0}
+
+
+def requote(sentence: str, quoted: dict) -> str:
+    """*sentence* (as `hold_quotes` left it) with each placeholder back in quotes, the person's
+    exact text inside, so the sentence as decided reads as they typed it and is held again."""
+    from modules.ai import intent_names
+
+    def back(m):
+        text = quoted.get(m.group(0))
+        if text is None:
+            return m.group(0)
+        return intent_names.quoted_value(text)[0] or m.group(0)
+    return PLACEHOLDER.sub(back, sentence or "")
+
+
+def screen(list_name: str, sentence: str, devices: list = None, picks: dict = None,
+           answer: dict = None) -> dict:
+    """Everything decided before any call, in order (STEPS `quote`, `scope`, `screen`,
+    `resolve`): ``{"named", "sentence", "quoted", "resolutions", "said", "pair"}``, *sentence*
+    as the model is given it (quoted text as placeholders, names resolved; a two-ended request
+    rewritten to name both ends, *pair* the link); or ``{"refusal": <change's answer>}`` when
+    Mercury answers itself; or ``{"decided": <sentence>}`` when *answer* (``{"kind",
+    "value"}``) answers Mercury's own question, the sentence as decided, quotes back in place."""
+    # Quotes first, from the words as typed: the text inside is kept exactly (its spaces too),
+    # and the rest is read with its spaces collapsed.
+    held = hold_quotes((sentence or "").strip())
+    if not held["ok"]:
+        return {"refusal": dict(_MERCURY, error=held["error"], detail=held["detail"])}
+    masked = " ".join(held["sentence"].split())
+    scope = scope_of(list_name, masked, devices)
     if not scope["ok"]:
-        return dict(scope, by="mercury", call_id="", cost_usd=0.0)
+        return {"refusal": dict(scope, by="mercury", call_id="", cost_usd=0.0)}
     named = scope["named"]
-    resolved = {"sentence": sentence, "resolutions": [], "said": []}
+    outside = not_an_operation(masked)
+    if outside:
+        return {"refusal": dict(_MERCURY, error="not_an_operation", detail=outside)}
+    resolved = {"sentence": masked, "resolutions": [], "said": []}
     if devices and len(named) == 1:
-        resolved = resolve_names(list_name, named[0], sentence, picks)
+        resolved = resolve_names(list_name, named[0], masked, picks, answer)
+        if resolved.get("decided") is not None:
+            return {"decided": requote(resolved["decided"], held["quoted"])}
         if resolved.get("refusal"):
-            return resolved["refusal"]
-    extra = {"words": sentence, "sent": resolved["sentence"],
-             "resolutions": resolved["resolutions"], "resolution_said": resolved["said"]}
-    return dict(_drafted(list_name, resolved["sentence"], named, actor=actor, trigger=trigger,
-                         send=send, today=today), **extra)
+            return resolved
+        if resolved.get("pair"):
+            named = [named[0], resolved["pair"]["far"]]
+    elif answer:
+        return {"refusal": dict(_MERCURY, error="not_an_answer", detail=(
+            "an answer to Mercury's question is taken on a device's Intent tab only; nothing "
+            "was sent"))}
+    return {"named": named, "sentence": resolved["sentence"], "quoted": held["quoted"],
+            "resolutions": resolved["resolutions"], "said": resolved["said"],
+            "pair": resolved.get("pair")}
 
 
-def resolve_names(list_name: str, device: str, sentence: str, picks: dict = None) -> dict:
+def resolve_names(list_name: str, device: str, sentence: str, picks: dict = None,
+                  answer: dict = None) -> dict:
     """*sentence*'s names on *device* resolved against its committed intent and neighbours:
-    ``{"sentence", "resolutions", "said"}``, or ``{"refusal": <change's answer>}`` when the
-    person must choose or a name resolves to nothing. A device with no committed intent is
-    left as written: the slice says so after (`slices`)."""
+    ``{"sentence", "resolutions", "said", "pair"}``, or ``{"refusal": <change's answer>}`` when
+    the person must choose, a name resolves to nothing, or the words leave a choice only the
+    person can make (`intent_names.questions`, asked first, its controls continuing the draft:
+    ``{"decided": <sentence>}`` for *answer*). A two-ended request whose far end is a device
+    of the network is one draft of both (``pair``, C1908), its sentence naming both ends. A
+    device with no committed intent is left as written: the slice says so after (`slices`)."""
     from modules.ai import intent_names
     from modules.nsot import hostvars, intent_edit
 
@@ -355,9 +902,24 @@ def resolve_names(list_name: str, device: str, sentence: str, picks: dict = None
         doc = hostvars.from_yaml(opened["yaml"]) or {}
     except Exception:                                   # noqa: BLE001 (`slices` says it)
         return {"sentence": sentence, "resolutions": [], "said": []}
+    if answer:
+        d = intent_names.decide(list_name, device, doc, sentence, answer.get("kind", ""),
+                                str(answer.get("value", "")))
+        if not d["ok"]:
+            return {"refusal": dict(_MERCURY, error="not_an_answer", detail=(
+                f"{d['error']}; nothing was sent"))}
+        return {"decided": d["sentence"]}
+    q = intent_names.questions(list_name, device, doc, sentence)
+    pair = None
+    if q and q["kind"] == "pair":
+        pair, sentence = q, q["sentence"]
+    elif q:
+        return {"refusal": dict(_MERCURY, error=q["kind"], question=q, resolutions=[],
+                                resolution_said=[], detail=(
+                                    f"one question first, from {device}'s own intent: "
+                                    f"{q['question']}; nothing was sent"))}
     got = intent_names.resolve(list_name, device, doc, sentence, picks)
-    mercury = {"ok": False, "by": "mercury", "call_id": "", "cost_usd": 0.0, "words": sentence,
-               "resolutions": got["resolutions"], "resolution_said": got["said"]}
+    mercury = dict(_MERCURY, resolutions=got["resolutions"], resolution_said=got["said"])
     if got["ask"]:
         a = got["ask"]
         return {"refusal": dict(mercury, error="choose", choose=a, detail=(
@@ -368,15 +930,39 @@ def resolve_names(list_name: str, device: str, sentence: str, picks: dict = None
             f"{u['why']}; choose one of its interfaces, or see its neighbours; nothing was "
             "sent"))}
     return {"sentence": got["sentence"], "resolutions": got["resolutions"],
-            "said": got["said"]}
+            "said": got["said"], "pair": pair}
 
 
-def _drafted(list_name: str, sentence: str, named: list, *, actor: str, trigger: dict, send,
-             today) -> dict:
+def _scopes(t: dict, named: list, pair: dict) -> dict:
+    """What each device may change: the sentence's own named parts for each, and for a
+    two-device draft (*pair*) the far device its own end alone (and the VLANs and networks
+    named), the near device everything but the far end's port."""
+    from modules.nsot import ifnames
+    if not pair:
+        return {h: t for h in named}
+    near, far = pair["device"], pair["far"]
+    mine = [n for n in t["interfaces"] if ifnames.same_interface(n, pair["port"])
+            or not ifnames.same_interface(n, pair["far_port"])]
+    return {near: dict(t, interfaces=mine),
+            far: dict(t, interfaces=[ifnames.canonical(pair["far_port"])])}
+
+
+def _drafted(list_name: str, sentence: str, named: list, *, actor: str, trigger: dict,
+             send, today, quoted: dict = None, pair: dict = None) -> dict:
     """`change` from the resolved *sentence* on: the touched sections, the call, and the
-    answer converted, scope-checked and previewed."""
+    answer converted, scope-checked, its placeholders put back (*quoted*) and previewed. What
+    the person reads (the question, why not, the draft, `choices`) carries the real text; each
+    use row says what the placeholders stood for (`quoted_note`)."""
     from modules.ai import calls, gateway
     from modules.nsot import intent_patch
+
+    quoted = quoted or {}
+    note = quoted_note(quoted)
+
+    def detail(*parts):
+        # A use row's words may hold the person's quoted text: masked, as every record is.
+        from modules import redact
+        return redact.redact_text("; ".join(p for p in parts + (note,) if p))[:400]
 
     t = touched(sentence)
     if nothing_named(t):
@@ -385,7 +971,8 @@ def _drafted(list_name: str, sentence: str, named: list, *, actor: str, trigger:
                     "the sentence names no interface, VLAN or OSPF network to change; name it "
                     "as the device does (GigabitEthernet0/1, VLAN 40, 192.0.2.0/24); nothing "
                     "was sent")}
-    got = slices(list_name, named, t)
+    scopes = _scopes(t, named, pair)
+    got = slices(list_name, named, t, per_host=scopes)
     if got["missing"]:
         return {"ok": False, "error": "no_intent", "by": "mercury", "call_id": "",
                 "cost_usd": 0.0, "detail": "; ".join(f"{h}: {why}" for h, why in
@@ -397,33 +984,44 @@ def _drafted(list_name: str, sentence: str, named: list, *, actor: str, trigger:
     if not asked["ok"]:
         return asked
     answer = asked["output"]
-    base = {"call_id": asked["call_id"], "cost_usd": asked["cost_usd"],
-            "choices": answer.model_dump(mode="json")}
+    choices = restored(answer.model_dump(mode="json"), quoted)
+    base = {"call_id": asked["call_id"], "cost_usd": asked["cost_usd"], "choices": choices}
     links = {"page": f"/v2/device/{named[0]}?tab=intent"}
+    question, why_not = choices["question"][:200], choices["why_not"][:200]
     if answer.outcome is Outcome.ask:
         calls.record_use(asked["call_id"], "asked a question back", actor=actor,
-                         detail=answer.question[:200], links=links)
-        return dict(base, ok=False, error="ask", clarify=answer.question[:200],
-                    detail=f"one question first: {answer.question[:200]}")
+                         detail=detail(answer.question[:200]), links=links)
+        return dict(base, ok=False, error="ask", clarify=question,
+                    detail=f"one question first: {question}")
     if answer.outcome is Outcome.refuse:
         calls.record_use(asked["call_id"], "shown: the operations cannot make it", actor=actor,
-                         detail=answer.why_not[:200], links=links)
+                         detail=detail(answer.why_not[:200]), links=links)
         return dict(base, ok=False, error="unanswerable",
-                    detail=f"this change cannot be drafted in words: {answer.why_not[:200]}")
+                    detail=f"this change cannot be drafted in words: {why_not}")
     if not answer.patches:
         calls.record_use(asked["call_id"], "refused by validation", actor=actor,
-                         detail="an answer with no patch", links=links)
+                         detail=detail("an answer with no patch"), links=links)
         return dict(base, ok=False, error="couldnt_change",
                     detail="the answer changes no device; nothing is previewed")
-    made = to_patches(answer, {h: t for h in named})
+    made = to_patches(answer, scopes, quoted)
+    if made["ok"] and pair:
+        # Never a half (PHASE8_PLAN 16.10): a two-device draft changes both ends or neither.
+        drafted = {p.hostname for p in made["patches"]}
+        if drafted != {pair["device"], pair["far"]}:
+            made = {"ok": False, "error": (
+                f"the request changes both ends, {pair['device']} {pair['port']} and "
+                f"{pair['far']} {pair['far_port']}, and the answer changes "
+                + (", ".join(sorted(drafted)) or "neither") + " only")}
     if not made["ok"]:
         calls.record_use(asked["call_id"], "refused by validation", actor=actor,
-                         detail=made["error"][:200], links=links)
+                         detail=detail(made["error"][:200]), links=links)
         return dict(base, ok=False, error="couldnt_change",
                     detail=f"{made['error']}; nothing is previewed")
     previews = [dict(intent_patch.preview(list_name, p.hostname, p), hostname=p.hostname)
                 for p in made["patches"]]
     refused = [p for p in previews if not p.get("ok")]
+    if pair and not refused:
+        return _pair_drafted(base, previews, pair, asked["call_id"], actor, links, detail)
     for p in previews:
         # What a commit of this draft must be handed exactly (part 2): its digest is on the
         # call's use row, so a commit of any other patch, or on any other version, is refused.
@@ -431,11 +1029,54 @@ def _drafted(list_name: str, sentence: str, named: list, *, actor: str, trigger:
             p["draft"] = draft_digest(p["hostname"], p.get("patch"), p.get("base"))
     calls.record_use(asked["call_id"], "refused by the intent" if refused else
                      "previewed in the intent editor", actor=actor,
-                     detail="; ".join(f"{p['hostname']}: {p.get('error', '')}"
-                                      for p in refused)[:200], links=links,
+                     detail=detail("; ".join(f"{p['hostname']}: {p.get('error', '')}"
+                                             for p in refused)[:200]), links=links,
                      drafts=[p["draft"] for p in previews if p.get("draft")])
     return dict(base, ok=not refused, error="intent" if refused else "", previews=previews,
                 detail="; ".join(f"{p['hostname']}: {p.get('error', '')}" for p in refused))
+
+
+def _pair_drafted(base: dict, previews: list, pair: dict, call_id: str, actor: str,
+                  links: dict, detail) -> dict:
+    """A two-device draft's end (C1908): the two ends checked to match in the intent the draft
+    would leave (`ends_match`), a mismatch refused naming it; else both previews, near end
+    first, offered as ONE commit (`pair_digest` on the call's use row), never either alone."""
+    from modules.ai import calls
+    from modules.nsot import hostvars
+
+    order = {pair["device"]: 0, pair["far"]: 1}
+    previews = sorted(previews, key=lambda p: order.get(p["hostname"], 2))
+    near, far = previews
+    docs = []
+    for p in previews:
+        try:
+            docs.append(hostvars.from_yaml(p.get("yaml") or "") or {})
+        except Exception:                               # noqa: BLE001 (said as a mismatch)
+            docs.append({})
+    got = ends_match(pair["device"], docs[0], pair["port"], pair["far"], docs[1],
+                     pair["far_port"])
+    if got["mismatches"]:
+        why = "the two ends would not match: " + "; ".join(got["mismatches"])
+        calls.record_use(call_id, "refused: the ends would not match", actor=actor,
+                         detail=detail(why[:200]), links=links)
+        return dict(base, ok=False, error="ends_mismatch", detail=f"{why}; nothing is previewed")
+    link = dict(pair, facts=got["facts"])
+    if not all(p.get("changed") and p.get("vs_intent_changed", True) for p in previews):
+        # Already so on one end or both: nothing to commit as one change.
+        calls.record_use(call_id, "previewed in the intent editor", actor=actor,
+                         detail=detail("both ends; already so on "
+                                       + ", ".join(p["hostname"] for p in previews
+                                                   if not p.get("changed")
+                                                   or not p.get("vs_intent_changed", True))),
+                         links=links)
+        return dict(base, ok=True, error="", previews=previews, pair=link, detail="")
+    digest = pair_digest([(p["hostname"], p.get("patch"), p.get("base")) for p in previews])
+    calls.record_use(call_id, "previewed in the intent editor", actor=actor,
+                     detail=detail(f"both ends: {near['hostname']} {pair['port']} and "
+                                   f"{far['hostname']} {pair['far_port']}"), links=links,
+                     drafts=[digest])
+    return dict(base, ok=True, error="", previews=previews, pair=dict(link, draft=digest),
+                detail="")
 
 
 #: The Source: of an intent commit made from a draft (part 2); the call is its AI-Call:.
@@ -494,6 +1135,66 @@ def commit_draft(list_name: str, hostname: str, call_id: str, patch_text: str, b
     return got
 
 
+def commit_pair(list_name: str, call_id: str, pair_text: str, summary: str,
+                actor: str) -> dict:
+    """Commit a two-device draft (C1908) as *actor*: both devices' patches in ONE intent commit
+    (`intent_patch.commit_many`, one `repo.commit()`), as ``Source: ai-draft`` with ``AI-Call:``.
+    Refused before anything is written unless *pair_text* (``[{"hostname", "patch", "base"}]``,
+    in the order drafted) is exactly the pair that call offered (`pair_digest` on its use
+    row): one end alone, either patch changed, or another version is refused, naming both
+    digests. The answer says the paired deploy is not built yet (C1909): each device is
+    deployed from its own page."""
+    from modules.ai import calls
+    from modules.nsot import intent_patch
+
+    def refused(status, stage, why):
+        return {"ok": False, "status": status, "stage": stage, "error": why}
+
+    try:
+        items = json.loads(pair_text or "")
+        items = [(str(i["hostname"]), i["patch"], str(i.get("base") or "")) for i in items]
+    except (ValueError, TypeError, KeyError):
+        return refused(400, "patch", "the draft's two patches could not be read; draft it again")
+    if len(items) != 2:
+        return refused(400, "patch", f"a two-device draft holds two devices' patches, and this "
+                                     f"holds {len(items)}; nothing was written")
+    found = calls.find(call_id or "")
+    if found["state"] != "ok":
+        return refused(404 if found["state"] == "absent" else 503, "call", (
+            f"the AI call {call_id[:40]!r} that drafted this is not in the record of AI calls"
+            + (f" ({found['error']})" if found.get("error") else "") + "; nothing was written"))
+    hosts = [h for h, _p, _b in items]
+    subject = set((found["row"].get("subject") or {}).get("devices") or [])
+    if not set(hosts) <= subject:
+        return refused(409, "call", f"the AI call {call_id} drafted no change to "
+                                    f"{' and '.join(h for h in hosts if h not in subject)}; "
+                                    "nothing was written")
+    handed = pair_digest(items)
+    drafted = [d for u in found["uses"] for d in u.get("drafts") or []]
+    if handed not in drafted:
+        return refused(409, "differs", (
+            f"this is not the drafted change: the call {call_id} drafted "
+            + (", ".join(d[:12] for d in drafted) or "nothing to commit")
+            + f", and this commit was handed {handed[:12]} (a patch, or the version of "
+            f"{' or '.join(hosts)}'s intent, differs); nothing was written. Draft it again"))
+    got = intent_patch.commit_many(list_name, items, summary, actor, source=DRAFT_SOURCE,
+                                   extra_trailers=[f"AI-Call: {call_id}"])
+    if got.get("ok") and got.get("commit"):
+        calls.record_use(call_id, "committed to intent", actor=actor,
+                         detail=f"commit {got['commit'][:12]} to {' and '.join(hosts)}'s intent",
+                         links={"page": f"/v2/device/{hosts[0]}?tab=history"})
+    return dict(got, hostnames=hosts, deploy=PAIRED_DEPLOY_NOT_BUILT)
+
+
+def _held_in(text: str, quoted: dict) -> str:
+    """An expected text with each quoted text in it as its placeholder, longest first, as the
+    model is asked to write it (`stale` only: a case's expectation holds the real text)."""
+    for tag, value in sorted(quoted.items(), key=lambda kv: -len(kv[1])):
+        if value and isinstance(text, str):
+            text = text.replace(value, tag)
+    return text
+
+
 def stale(list_name: str, case: dict) -> list:
     """Why a recorded case's expectation no longer holds against *list_name*'s committed
     intent (``[]``: it holds), asked of the real path with no call: the expected operations
@@ -513,9 +1214,12 @@ def stale(list_name: str, case: dict) -> list:
     opened = intent_edit.open_doc(list_name, device)
     if not opened["ok"]:
         return [f"{where}: no committed intent to judge it against: {opened['error']}"]
-    # Part 1: the names resolved now, as the recording will resolve them (the case's own
-    # choice given); a reference expects the current resolution.
-    resolved = resolve_names(list_name, device, case.get("sentence") or "", case.get("picks"))
+    # Everything before the call, as the recording will meet it (`screen`: the quotes held
+    # back, the vocabulary, Mercury's questions, the names resolved with the case's own choice
+    # given); a reference expects the current resolution, and Mercury's own answer is judged
+    # as the recording judges it (`cases.intent_misses`).
+    from modules.ai import cases
+    resolved = screen(list_name, case.get("sentence") or "", [device], case.get("picks"))
     refusal = resolved.get("refusal") or {}
     if "choose" in allowed:
         got = [c["name"] for c in (refusal.get("choose") or {}).get("candidates") or []]
@@ -525,27 +1229,28 @@ def stale(list_name: str, case: dict) -> list:
                     f"{got or [r['to'] for r in resolved.get('resolutions') or []]}"]
         return []
     if refusal:
-        if "mercury" in allowed and said.get("mercury", "") in refusal.get("detail", ""):
+        if not cases.intent_misses(expect, refusal):
             return []
-        return [f"{where}: the names do not resolve as the case expects: "
+        return [f"{where}: Mercury answers before any call, not as the case expects: "
                 f"{refusal.get('detail', '')[:200]}"]
     for phrase, names in (case.get("resolves") or {}).items():
         now = next((r["to"] for r in resolved["resolutions"] if r["said"] == phrase), None)
         if now != names:
             return [f"{where}: the case expects {phrase!r} to resolve to {names}, and it now "
                     f"resolves to {now}"]
+    if expect.get("patches"):
+        return _stale_pair(list_name, case, resolved, where)
+    if resolved.get("pair") and {"answer", "refused_after"} & set(allowed):
+        return [f"{where}: the sentence is now one two-device draft of "
+                f"{resolved['pair']['device']} and {resolved['pair']['far']}, and the case "
+                "expects one device's operations"]
     if not expect.get("ops") or not ({"answer", "refused_after"} & set(allowed)):
         return []
-    blank = {k: (0 if f.annotation is int else "")
-             for k, f in Operation.model_fields.items() if k != "op"}
-    ops = [dict(blank, op=o["op"], **{("vlan_name" if k == "name" else k): v
-                                      for k, v in o.items() if k != "op"})
-           for o in expect["ops"]]
-    # Strict, as the gateway reads an answer: from its JSON (an enum is its value there).
-    answer = IntentChange.model_validate_json(json.dumps({
-        "outcome": "answer", "question": "", "why_not": "",
-        "patches": [{"hostname": device, "operations": ops}]}))
-    made = to_patches(answer, {device: touched(resolved["sentence"])})
+    quoted = resolved["quoted"]
+    # Strict, as the gateway reads an answer: from its JSON (an enum is its value there). Its
+    # text as the model would write it: each quoted text as its placeholder.
+    answer = _expected_answer({device: expect["ops"]}, quoted)
+    made = to_patches(answer, {device: touched(resolved["sentence"])}, quoted)
     if not made["ok"]:
         return [f"{where}: the expected operations are outside what the sentence names: "
                 f"{made['error']}"]
@@ -569,10 +1274,66 @@ def stale(list_name: str, case: dict) -> list:
     return []
 
 
-def slices(list_name: str, hostnames: list, t: dict) -> dict:
+def _expected_answer(by_host: dict, quoted: dict) -> IntentChange:
+    """A case's expected operations (``{hostname: [ops]}``) as the model's answer, read as the
+    gateway reads one (strict, from its JSON), each quoted text as its placeholder."""
+    blank = {k: (0 if f.annotation is int else "")
+             for k, f in Operation.model_fields.items() if k != "op"}
+    patches = [{"hostname": host, "operations": [
+        dict(blank, op=o["op"], **{("vlan_name" if k == "name" else k):
+                                   (_held_in(v, quoted) if k in ("description", "name") else v)
+                                   for k, v in o.items() if k != "op"}) for o in ops]}
+        for host, ops in by_host.items()]
+    return IntentChange.model_validate_json(json.dumps({
+        "outcome": "answer", "question": "", "why_not": "", "patches": patches}))
+
+
+def _stale_pair(list_name: str, case: dict, resolved: dict, where: str) -> list:
+    """`stale` for a two-device expectation (C1908, ``expect.patches``): the sentence must be one
+    two-device draft of the expected devices, the expected operations inside each end's scope,
+    each previewed, and the two ends matching after them."""
+    from modules.nsot import hostvars, intent_patch
+
+    expect, pair = case["expect"], resolved.get("pair")
+    if not pair:
+        return [f"{where}: the case expects one draft of {' and '.join(expect['patches'])}, and "
+                "the sentence is not one two-device draft now (no link to a managed far end)"]
+    if set(expect["patches"]) != {pair["device"], pair["far"]}:
+        return [f"{where}: the case expects {sorted(expect['patches'])}, and the link is "
+                f"{pair['device']} {pair['port']} to {pair['far']} {pair['far_port']}"]
+    scopes = _scopes(touched(resolved["sentence"]), resolved["named"], pair)
+    made = to_patches(_expected_answer(expect["patches"], resolved["quoted"]), scopes,
+                      resolved["quoted"])
+    if not made["ok"]:
+        return [f"{where}: the expected operations are outside what the sentence names: "
+                f"{made['error']}"]
+    docs = {}
+    for patch in made["patches"]:
+        shown = intent_patch.preview(list_name, patch.hostname, patch)
+        if not shown.get("ok"):
+            return [f"{where}: the intent editor refuses {patch.hostname}'s expected change: "
+                    f"{(shown.get('error') or '')[:200]}"]
+        if not shown.get("changed") or not shown.get("vs_intent_changed", True):
+            return [f"{where}: {patch.hostname}'s expected change is already in its committed "
+                    "intent"]
+        docs[patch.hostname] = hostvars.from_yaml(shown.get("yaml") or "") or {}
+    got = ends_match(pair["device"], docs[pair["device"]], pair["port"], pair["far"],
+                     docs[pair["far"]], pair["far_port"])
+    if got["mismatches"]:
+        if "refused_after" in expect["outcome"]:
+            return []
+        return [f"{where}: the expected change leaves the ends not matching: "
+                + "; ".join(got["mismatches"])[:200]]
+    if "answer" not in expect["outcome"]:
+        return [f"{where}: the case expects the ends' mismatch refused, and they now match"]
+    return []
+
+
+def slices(list_name: str, hostnames: list, t: dict, per_host: dict = None) -> dict:
     """``{"devices": {hostname: slice + platform, role}, "missing": [(hostname, why)]}``: the
     touched sections of *hostnames*, each from its committed intent (`intent_edit.open_doc`,
-    the blob it names), its platform and role from the inventory."""
+    the blob it names), its platform and role from the inventory. *per_host* gives a device
+    its own touched parts (a two-device draft: each end its own port), else *t* for all."""
     from modules.nsot import hostvars, intent_edit
     from modules.ai.nl_query import _inventory
 
@@ -589,6 +1350,7 @@ def slices(list_name: str, hostnames: list, t: dict) -> dict:
             missing.append((name, f"its committed intent could not be read: {exc}"))
             continue
         row = inventory.get(name) or {}
-        out[name] = dict(slice_of(doc, t), platform=str(row.get("platform") or ""),
+        out[name] = dict(slice_of(doc, (per_host or {}).get(name, t)),
+                         platform=str(row.get("platform") or ""),
                          role=str(row.get("role") or ""))
     return {"devices": out, "missing": missing}

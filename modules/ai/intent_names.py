@@ -23,6 +23,27 @@ them; NetBox's cables are made from those same LLDP links, so they are not read 
   Several, with a singular reference, is a question before any call: each candidate with its
   neighbour or description, and "Both" or "All N". No match, or a name the device lacks (and
   nothing else named that it holds), is said with the device's real interfaces.
+- **Only a definite reference is resolved** (the operator's design for C1890, 2026-10-27): one
+  after "the", "that", "this", "these" or "those", after "all", "both" or "every", or after
+  the tab's own device as a possessive ("edge2's trunk" on edge2's tab). An indefinite or
+  target-state phrase describes the state wanted, never a port: "a trunk", "an access port",
+  "as a trunk", "to a routed port", "make gi0/1 a trunk" stay as words (the operations that
+  would make them are refused by `intent_words.not_an_operation`, or by the model).
+
+**Questions before any call** (the operator's order of 2026-10-27, item b): where code can tell
+the words leave a choice only the person can make, Mercury asks, with no call and no cost, and
+never chooses for the person (`questions`); each question carries its controls, and the
+person's answer continues the same draft from the sentence as decided (`decide`, C1907):
+- **Both ends** of a link (PHASE8_PLAN 16.10, never a half; C1908, `ends`): a both-ends
+  quantifier, and its far end a device of the network (named, or read from the link): ONE
+  draft of both devices, the sentence rewritten to name both ends. A far end Mercury does not
+  manage, or one no read names, is asked about: this end only, or the device at the far end.
+- **Alternatives**: "VLAN 40 or 41", "Gi0/1 or Gi0/2"; each said with what the committed intent
+  holds of it (for a VLAN to add or remove, which of them can be), each possible one a button.
+- **An OSPF network to add with no area**: the device's processes and areas said, each area a
+  button, another typed in a field checked as an area.
+- **A description to set with no text** ("set a description on Gi0/1"): its current one said,
+  the text typed in a field (it reaches the model as a placeholder).
 """
 import logging
 import re
@@ -31,7 +52,10 @@ log = logging.getLogger(__name__)
 
 #: Phrases, in the order they are read; each span is read once. A reference's noun decides
 #: its kind; "all", "both" and "every" before it, or a plural noun, mean every match.
-_ALL = r"(?:(?P<all>all|both|every)\s+(?:of\s+)?)?(?:the\s+)?"
+_ALL = (r"(?:(?P<all>all|both|every)\s+(?:of\s+)?)?"
+        r"(?P<det>(?:the|that|this|these|those)\s+)?")
+#: The tab's device as a possessive just before a reference ("edge2's trunk").
+_OWNER = re.compile(r"(?<![\w.-])([\w][\w.-]*)['’]s\s+$")
 REFERENCES = (
     ("port_to", re.compile(r"\b" + _ALL + r"(?P<noun>ports?|interfaces?|links?)\s+(?:to|toward|towards"
                            r"|facing)\s+(?P<x>[\w][\w.-]*)", re.I)),
@@ -45,16 +69,28 @@ REFERENCES = (
 )
 _TOKEN = re.compile(r"\b([A-Za-z][A-Za-z-]*)\s?(\d+(?:[/.:]\d+)*)\b")
 _SPLIT = re.compile(r"^([A-Za-z][A-Za-z-]*)\s?(\d+(?:[/.:]\d+)*)$")
-_QUOTED = re.compile(r"'[^']*'|\"[^\"]*\"|“[^”]*”")
 #: A description's value is words, never a reference or a name to resolve: after "description
 #: to" (=, :) or "describe <what> as", up to the clause's end ("uplink to edge1" in "set Gi0/2's
 #: description to uplink to edge1, and shut Gi0/3" stays as written). "description of <name> to"
 #: is not matched there, so the name before "to" is still read.
 #: Interface types that are no port: a reference ("the port to edge2") never means one.
 NOT_PORTS = ("vlan", "loopback", "tunnel", "bdi", "null", "virtualportgroup")
+#: Where a value ends: ", and", ";", or the next clause's verb after "and" or a comma ("describe
+#: Gi2 as to edge2, shut Gi3"); a comma before anything else is the value's ("spare port, desk 4").
+_VALUE_END = (r"(?=,\s*and\b|;|(?:\s+and|,)\s+(?:shut|no\b|bring|add|remove|set|clear"
+              r"|describe|enable|disable|rename|make)\b|$)")
 _VALUE = re.compile(r"\b(?:description\s*(?:to|=|:)|describe\s+.+?\s+as)\s+"
-                    r"(.+?)(?=,\s*and\b|;|\s+and\s+(?:shut|no\b|bring|add|remove|set|clear"
-                    r"|describe|enable|disable)\b|$)", re.I)
+                    r"(.+?)" + _VALUE_END, re.I)
+#: The same value after "description of / on / for <what> to" (C1904, measured 2026-10-27:
+#: "set the description of Gi0/1 to uplink to edge1", on a switch whose Gi0/2 faces edge1, was
+#: sent as "... to GigabitEthernet0/2"). <what> is an interface as written, or a definite
+#: reference ("the host port", "the port to desk7", "the VLAN 10 ports"), read to its end, so
+#: the name in it is still read and only what follows "to" is the value.
+_VALUE_OF = re.compile(
+    r"\bdescriptions?\s+(?:of|on|for)\s+(?:[A-Za-z][A-Za-z-]*\s?\d+(?:[/.:]\d+)*"
+    r"|(?:the|that|this|both|all)\s+(?:host[- ]?ports?|uplinks?|trunks?|(?:ports?|links?"
+    r"|interfaces?)\s+(?:to|toward|towards|facing)\s+[\w][\w.-]*|vlan\s*\d{1,4}\s+ports?))"
+    r"\s+(?:to|=|:)\s+(.+?)" + _VALUE_END, re.I)
 #: Words a reference's noun is never confused with when read as shorthand.
 _NOT_SHORTHAND = {"vlan", "vlans", "area", "process", "as", "asn", "ospf", "id"}
 
@@ -68,6 +104,21 @@ def _plural(m) -> bool:
 def _word(x: str, text: str) -> bool:
     """*x* as a whole word of *text* (desk7 is not desk70, nor the desk7 of desk7-b)."""
     return bool(x) and re.search(rf"(?<![\w-]){re.escape(x)}(?![\w-])", text or "", re.I)
+
+
+def definite(kind: str, m, before: str, device: str) -> bool:
+    """Whether the reference *m* names ports rather than a state (C1890, the operator's design
+    of 2026-10-27): "the", "that", "this", "these", "those", "all", "both" or "every" in it, or
+    *device* as the possessive just *before* it ("edge2's trunk" on its tab). "toward X" names a
+    neighbour, never a state, and is always read. Anything else ("a trunk", "an uplink", "make
+    gi0/1 a trunk") stays as words."""
+    if kind == "toward":
+        return True
+    got = m.groupdict()
+    if got.get("all") or got.get("det"):
+        return True
+    owner = _OWNER.search(before)
+    return bool(owner and device and owner.group(1).lower() == device.lower())
 
 
 def interfaces_of(doc: dict) -> list:
@@ -84,12 +135,15 @@ def interfaces_of(doc: dict) -> list:
     return out
 
 
-def neighbours_of(network: str, device: str) -> dict:
+def neighbours_of(network: str, device: str, far: bool = False) -> dict:
     """``{"ports": {interface: [{"name", "role", "by"}]}, "said": [...]}``: each of *device*'s
     interfaces' managed neighbours, from the network model's shared subnets and the Topology
     read's physical links (the management path as "the management path"). An SDN switch is
     named by its key, ``of:<DPID>`` (S14), its links the controller's, each naming its sources.
-    What could not be read is said, never left out."""
+    What could not be read is said, never left out. With *far*, each neighbour also carries
+    ``port``, its own end of the link ("" when no read names it), for one draft of both ends
+    (`ends`); off by default, so what other readers hold (and send, Explain's needs) is
+    unchanged."""
     from modules import network_model as M
     from modules.nsot import ifnames
 
@@ -100,10 +154,15 @@ def neighbours_of(network: str, device: str) -> dict:
     me = model["names"].get(device) or (device if device.startswith("of:") else None)
     nodes = model["nodes"]
 
-    def add(port, peer, role, by):
+    def add(port, peer, role, by, other=""):
         got = ports.setdefault(ifnames.canonical(port), [])
-        if not any(p["name"] == peer for p in got):
-            got.append({"name": peer, "role": role, "by": by})
+        known = next((p for p in got if p["name"] == peer), None)
+        if known is None:
+            got.append(dict({"name": peer, "role": role, "by": by},
+                            **({"port": ifnames.canonical(other) if other else ""} if far
+                               else {})))
+        elif far and other and not known.get("port"):
+            known["port"] = ifnames.canonical(other)
 
     for link in model["links"].values():
         members = link.get("members") or []
@@ -118,7 +177,7 @@ def neighbours_of(network: str, device: str) -> dict:
                 continue
             node = nodes.get(others[0]["dev"]) or {}
             add(m["interface"], node.get("name") or others[0]["dev"], node.get("role", ""),
-                f"intent: the subnet {link['subnet']}")
+                f"intent: the subnet {link['subnet']}", others[0].get("interface") or "")
     obs = M.observed(network, model)
     if obs["state"] != "read":
         said.append(f"the Topology read could not be used ({obs['why']}), so neighbours are "
@@ -128,14 +187,14 @@ def neighbours_of(network: str, device: str) -> dict:
         for i, end in enumerate(ends):
             if end.get("dev") != me or len(ends) != 2:
                 continue
-            far = ends[1 - i]
-            if far["dev"] == M.MANAGER_ID or cable.get("mercury_attaches_here"):
+            far_end = ends[1 - i]
+            if far_end["dev"] == M.MANAGER_ID or cable.get("mercury_attaches_here"):
                 add(end.get("port") or "", "the management path", "manager", "observed")
             else:
-                node = nodes.get(far["dev"]) or {}
+                node = nodes.get(far_end["dev"]) or {}
                 by = " and ".join(cable.get("sources") or ["LLDP"])
-                add(end.get("port") or "", node.get("name") or far["dev"].replace("ext:", ""),
-                    node.get("role", ""), f"observed ({by})")
+                add(end.get("port") or "", node.get("name") or far_end["dev"].replace("ext:", ""),
+                    node.get("role", ""), f"observed ({by})", far_end.get("port") or "")
     return {"ports": ports, "said": said}
 
 
@@ -199,8 +258,10 @@ def resolve(network: str, device: str, doc: dict, sentence: str, picks: dict = N
     observed = [dict(e, seen=E.seen(e, now=now, stale_hours=hours)) for e in observed]
     nb = dict(nb, said=list(nb.get("said") or []))
     notes = nb["said"]                  # the same list: every answer below carries the notes
-    quoted = [m.span() for m in _QUOTED.finditer(sentence)] + [
-        m.span(1) for m in _VALUE.finditer(sentence)]
+    # Quotes by the one quote reader (C1906: an apostrophe, "Gi0/1's", never opens one).
+    from modules.ai.intent_words import quote_spans
+    quoted = [(i, j + 1) for i, j in quote_spans(sentence)[0]] + [
+        m.span(1) for rx in (_VALUE, _VALUE_OF) for m in rx.finditer(sentence)]
     spans, resolutions = [], []
 
     def inside(a, b):
@@ -215,7 +276,7 @@ def resolve(network: str, device: str, doc: dict, sentence: str, picks: dict = N
     for kind, rx in REFERENCES:
         for m in rx.finditer(sentence):
             a, b = m.span()
-            if inside(a, b):
+            if inside(a, b) or not definite(kind, m, sentence[:a], device):
                 continue
             phrase = m.group(0).strip()
             got = _matches(kind, m, ifaces, ports, devices, device, observed, notes)
@@ -364,3 +425,411 @@ def _unknown(said: str, ifaces: list, nb: dict, resolutions: list,
                         "interfaces": [{"name": i["name"], "label": (
                             f"{i['name']} ({i['description']})" if i["description"]
                             else i["name"])} for i in ifaces]}}
+
+
+# ── questions before any call (the operator's order of 2026-10-27, item b) ──────────────
+
+#: A value a sentence gives, whose words are never a request: a description's text (as
+#: `_VALUE` reads it, and after "desc"), and a VLAN's name after "named", "called" or "name".
+_VALUES = (_VALUE, _VALUE_OF,
+           re.compile(r"\bdesc\s*(?:to|=|:)?\s+(?:\S+\s+)?as\s+(.+?)" + _VALUE_END, re.I),
+           re.compile(r"\b(?:named|called|name)\s+(\S+)", re.I))
+#: A both-ends quantifier (PHASE8_PLAN 16.10).
+BOTH_ENDS = re.compile(r"\b(?:both|each|either)\s+(?:of\s+the\s+)?(?:ends?|sides?)\b"
+                       r"|\bat\s+(?:each|both)\s+ends?\b|\bon\s+both\b", re.I)
+_IFACE_WORDS = r"[A-Za-z][A-Za-z-]*\s?\d+(?:[/.:]\d+)*"
+#: Alternatives offered: VLANs ("VLAN 40 or 41", "vlans 40, 41 or 42") and interfaces.
+_VLAN_OR = re.compile(r"\bvlans?\s+(\d{1,4}(?:\s*,\s*(?:vlan\s+)?\d{1,4})*\s*,?\s+or\s+"
+                      r"(?:vlan\s+)?\d{1,4})\b", re.I)
+_IFACE_OR = re.compile(rf"(?<![\w/])({_IFACE_WORDS})\s*,?\s+or\s+(?:on\s+)?({_IFACE_WORDS})"
+                       r"(?![\w/])", re.I)
+_ADDS = re.compile(r"\b(?:add|create|advertise|include)\b", re.I)
+_REMOVES = re.compile(r"\b(?:remove|delete|drop|withdraw|move|take)\b", re.I)
+#: A description to set, with no text: the whole sentence, nothing after the interface.
+_NO_TEXT = (
+    re.compile(rf"^\s*(?:please\s+)?(?:set|change|update|edit|give|add|put)\s+(?:a\s+|an\s+|"
+               rf"the\s+|its\s+)?(?:new\s+)?desc(?:ription)?\s+(?:on|of|for|to)\s+"
+               rf"(?P<x>{_IFACE_WORDS})\s*[.!?]?\s*$", re.I),
+    re.compile(rf"^\s*(?:please\s+)?(?:give|set)\s+(?P<x>{_IFACE_WORDS})(?:['’]s)?\s+(?:a\s+|"
+               rf"an\s+|the\s+)?(?:new\s+)?desc(?:ription)?\s*[.!?]?\s*$", re.I),
+)
+
+
+def blank_values(sentence: str) -> str:
+    """*sentence* with each value it gives (`_VALUES`) blanked to spaces, same length, so a
+    signal read from the rest never fires on a description's or a VLAN name's own words."""
+    out = list(sentence or "")
+    for rx in _VALUES:
+        for m in rx.finditer(sentence or ""):
+            a, b = m.span(1)
+            out[a:b] = " " * (b - a)
+    return "".join(out)
+
+
+def _named_devices(sentence: str, device: str, devices: dict) -> list:
+    """The devices of the network *sentence* names, other than *device*: each name as a whole
+    word, a hyphen or slash allowed beside it ("the edge1-edge2 link")."""
+    return [d for d in devices if d.lower() != (device or "").lower() and re.search(
+        rf"(?<![\w.]){re.escape(d)}(?![\w.])", sentence or "", re.I)]
+
+
+#: A both-ends phrase that names the link (PHASE8_PLAN 16.10; C1908): the quantifier, then the
+#: link as said ("the link to edge2", "the trunk to edge2", "the edge1-edge2 link", "Gi0/3").
+PAIR = re.compile(
+    r"(?P<quant>\b(?:both|each|either)\s+(?:of\s+the\s+)?(?:ends?|sides?)\s+(?:of\s+)?)"
+    r"(?P<what>(?:(?:the|this|that)\s+)?(?:[\w./]+-[\w./]+\s+)?(?:links?|trunks?|connections?"
+    r"|uplinks?|ports?|interfaces?|" + _IFACE_WORDS + r")"
+    r"(?:\s+(?:to|toward|towards|with)\s+(?P<to>[\w][\w.-]*))?)", re.I)
+#: The words that leave the choice to Mercury, dropped once the person has chosen.
+_WHICHEVER = re.compile(r",?\s*\b(?:whichever|either one|i forget which)\b[^,;.]*", re.I)
+#: An OSPF area as the person may type it: a number, or dotted.
+AREA = re.compile(r"^(?:\d{1,10}|\d{1,3}(?:\.\d{1,3}){3})$")
+
+
+def _link(network: str, device: str, other: str, nb: dict) -> list:
+    """``[(port, far port)]``: *device*'s links toward *other*, from *device*'s neighbours, and
+    from *other*'s toward *device* when *device*'s reads name none or no far port (a link one
+    end's LLDP sees)."""
+    mine = sorted({(port, p.get("port") or "") for port, peers in (nb.get("ports") or {}).items()
+                   for p in peers if p["name"].lower() == other.lower()})
+    if mine and all(far for _p, far in mine):
+        return mine
+    theirs = neighbours_of(network, other, far=True)
+    back = sorted({(p.get("port") or "", port) for port, peers in
+                   (theirs.get("ports") or {}).items() for p in peers
+                   if p["name"].lower() == device.lower() and p.get("port")})
+    if not mine:
+        return back
+    found = dict(back)
+    return [(port, far or found.get(port, "")) for port, far in mine]
+
+
+def _local_ports(network: str, device: str, doc: dict, what: str, nb: dict) -> list:
+    """The ports of *device* the both-ends phrase's link names ("the trunk", "Gi0/3", "the link
+    to desk7"), as the resolver reads them; ``[]`` when it names no port of *device*."""
+    from modules.ai.intent_words import touched
+    got = resolve(network, device, doc, what, neighbours=nb)
+    if not got["ok"]:
+        return []
+    held = {i["name"] for i in interfaces_of(doc)}
+    return [n for n in touched(got["sentence"])["interfaces"] if n in held]
+
+
+def ends(network: str, device: str, doc: dict, sentence: str, neighbours: dict = None,
+         devices: dict = None) -> dict:
+    """A request for both ends of a link from *device*'s tab (PHASE8_PLAN 16.10, never a half;
+    C1908, the operator's ruling on board F7-Q): ``None`` with no both-ends quantifier
+    (`BOTH_ENDS`) outside the values the sentence gives; ``{"kind": "pair", ...}`` when the
+    phrase (`PAIR`) names exactly one link and its far end is a device of the network (its own
+    inventory, `_devices`, never a pattern) with a known far port: the sentence rewritten to
+    name both ends ("edge1 GigabitEthernet4 and edge2 GigabitEthernet4"), for ONE draft holding both
+    devices' patches; else the question Mercury asks, with its controls (`decide`): draft
+    this end only (a far end Mercury does not manage, or none found), the device at an
+    unknown far end, or which of several links."""
+    text = blank_values(sentence)
+    q = BOTH_ENDS.search(text)
+    if not q:
+        return None
+    devs = devices if devices is not None else _devices(network)
+    nb = neighbours if neighbours is not None else neighbours_of(network, device, far=True)
+    others = _named_devices(sentence, device, devs)
+    m = PAIR.search(text)
+    local = _local_ports(network, device, doc, sentence[m.start("what"):m.end("what")], nb) \
+        if m else []
+    links, unmanaged = [], []
+    if others:
+        for other in others:
+            links += [(port, other, far) for port, far in _link(network, device, other, nb)
+                      if not local or port in local]
+    else:
+        for port in local:
+            for p in (nb.get("ports") or {}).get(port) or []:
+                if p["name"] in devs and p["name"] != device:
+                    far = p.get("port") or dict(_link(network, device, p["name"], nb)).get(port, "")
+                    links.append((port, p["name"], far))
+                else:
+                    unmanaged.append((port, p["name"]))
+        # The phrase names its far end, and that is no device of the network ("the link to
+        # desk7"): the far end is outside Mercury, whatever the reads say.
+        if m and m.group("to") and not links and local:
+            unmanaged = unmanaged or [(local[0], m.group("to"))]
+    said = nb.get("said") or []
+    note = f" ({'; '.join(said)})" if said else ""
+    if m and len(links) == 1 and links[0][2]:
+        port, far, far_port = links[0]
+        return {"kind": "pair", "phrase": m.group(0), "device": device, "port": port,
+                "far": far, "far_port": far_port,
+                "sentence": (sentence[:m.start()] + f"{device} {port} and {far} {far_port}"
+                             + sentence[m.end():])}
+    this_end = [{"label": f"Draft {device}'s end only", "value": "this-end"}] \
+        if m and local else []
+    base = {"kind": "two_ended", "phrase": q.group(0), "field": None, "links": [
+        {"port": p, "device": o, "far": f} for p, o, f in links]}
+    if len(links) > 1:
+        return dict(base, choices=[{"label": f"{p} (to {o}" + (f" {f}" if f else "") + ")",
+                                    "value": f"port:{p}:{o}"} for p, o, f in links],
+                    question=(f"{device} has {len(links)} links that fit the words: which one? "
+                              "Both ends of the one you choose are drafted together" + note))
+    if links:                       # one link, its far port unknown
+        p, o, _f = links[0]
+        return dict(base, choices=this_end, question=(
+            f"{device} {p} links to {o}, and no read names {o}'s port, so {o}'s end cannot be "
+            f"drafted; draft {device}'s end only, or add {o}'s port from {o}'s tab" + note))
+    if others:
+        return dict(base, choices=this_end, question=(
+            f"nothing on {device} links to {', '.join(others)} (neither intent's point-to-point "
+            f"subnets nor the Topology read show one, from either end), so the far end cannot be "
+            f"drafted here; draft {device}'s end only, or name {device}'s interface" + note))
+    if unmanaged:
+        port, peer = unmanaged[0]
+        return dict(base, choices=this_end, question=(
+            f"{peer} is not a device Mercury manages, so only {device}'s end, {port}, can be "
+            "drafted" + note))
+    pick = [{"label": d, "value": f"far:{d}"} for d in sorted(devs) if d != device]
+    if local:
+        return dict(base, choices=this_end + pick, question=(
+            f"Mercury does not know what {' or '.join(local)} links to (neither intent's "
+            "point-to-point subnets nor the Topology read show a neighbour): name the device at "
+            f"the far end, or draft {device}'s end only" + note))
+    return dict(base, choices=[], question=(
+        f"the words ask for both ends, and name no interface of {device} and no device at the "
+        f"far end; name {device}'s interface (and the far device) and draft again" + note))
+
+
+def _iface_state(i: dict) -> str:
+    bits = [f"\"{i['description']}\"" if i["description"] else "no description",
+            "shut" if i["shutdown"] else "up"]
+    if i["mode"] == "access" and i["access_vlan"]:
+        bits.append(f"access VLAN {i['access_vlan']}")
+    elif i["mode"]:
+        bits.append(i["mode"])
+    return ", ".join(bits)
+
+
+def alternatives(device: str, doc: dict, sentence: str) -> dict:
+    """Alternatives the person offers, which Mercury never chooses between: ``{"kind":
+    "alternatives", "phrase", "question", "choices", "field"}`` or ``None``. VLANs ("VLAN 40 or
+    41, whichever is free"): each said with whether the committed intent holds it, and, for a
+    VLAN to add (or remove), which of them can be, each that can a button (when exactly one
+    can, the question says so, and it is the one button: the choice is still the person's).
+    Interfaces ("Gi0/1 or Gi0/2, whichever is unused"): each a button with its committed
+    description and state, and Both; what "unused" means is the person's, so nothing is
+    judged."""
+    text = blank_values(sentence)
+    m = _VLAN_OR.search(text)
+    if m:
+        numbers = list(dict.fromkeys(re.findall(r"\d+", m.group(1))))
+        held = {str(v.get("id")): str(v.get("name") or "") for v in (doc or {}).get("vlans")
+                or [] if isinstance(v, dict)}
+        have = [f"VLAN {n}" + (f" (named {held[n]})" if held[n] else "") for n in numbers
+                if n in held]
+        lack = [f"VLAN {n}" for n in numbers if n not in held]
+        said = f"{device}'s committed intent holds " + (
+            ("neither" if len(numbers) == 2 else "none of them") if not have else
+            ("both" if len(numbers) == 2 else "all of them") + f" ({', '.join(have)})"
+            if not lack else f"{' and '.join(have)} and not {' or '.join(lack)}")
+        verb = ("add" if _ADDS.search(text) and not _REMOVES.search(text) else
+                "remove" if _REMOVES.search(text) and not _ADDS.search(text) else "")
+        can, able = "", numbers
+        if verb:
+            able = [n for n in numbers if (n not in held) == (verb == "add")]
+            done = "added" if verb == "add" else "removed"
+            can = (f"; so only VLAN {able[0]} can be {done}" if len(able) == 1 else
+                   f"; so none of them can be {done}" if not able else
+                   f"; so {'either' if len(able) == 2 else 'any'} can be {done}")
+        return {"kind": "alternatives", "phrase": m.group(0).strip(), "field": None,
+                "span": list(m.span()), "choices": [{"label": f"VLAN {n}", "value": n}
+                                                    for n in able],
+                "question": (f"you offer VLAN {' or '.join(numbers)}, and Mercury does not "
+                             f"choose for you: {said}{can}. Which one?")}
+    m = _IFACE_OR.search(text)
+    if not m:
+        return None
+    ifaces = interfaces_of(doc)
+    names = [i["name"] for i in ifaces]
+    tokens = [m.group(1), m.group(2)]
+    if not all(_interface_shaped(t, names) for t in tokens):
+        return None
+    by_name = {i["name"]: i for i in ifaces}
+    said, choices = [], []
+    for t in tokens:
+        full = _shorthand(t, names)
+        said.append(f"{full} ({_iface_state(by_name[full])})" if full
+                    else f"{t} ({device} holds no such interface)")
+        if full:
+            choices.append({"label": f"{full} ({_iface_state(by_name[full])})", "value": full})
+    if len(choices) == 2:
+        choices.append({"label": "Both", "value": "*"})
+    return {"kind": "alternatives", "phrase": m.group(0).strip(), "field": None,
+            "span": list(m.span()), "choices": choices, "question": (
+                f"you offer {' or '.join(tokens)}, and Mercury does not choose for you: "
+                f"{'; '.join(said)}. Which one?")}
+
+
+def _areas(doc: dict) -> list:
+    """``[(process, [areas])]`` of *doc*'s committed OSPF, its areas in order."""
+    from modules.nsot import intent_patch
+    routing = (doc or {}).get("routing") if isinstance((doc or {}).get("routing"), dict) \
+        else {}
+    out = []
+    for proc in routing.get("ospf") or []:
+        if isinstance(proc, dict):
+            out.append((str(proc.get("process")), sorted(
+                {str(a) for _k, a, _w in intent_patch._statements(proc)},
+                key=lambda a: (len(a), a))))
+    return out
+
+
+def no_area(device: str, doc: dict, sentence: str) -> dict:
+    """An OSPF network to add with no area given: ``{"kind": "no_area", "phrase", "question",
+    "choices", "field"}`` or ``None``. The operation needs an area, and the words give none, so
+    any area would be a guess: the device's processes and their areas are said, each area a
+    button, and another typed in a field checked as a number or a dotted area. Read only from
+    a sentence that adds (and removes or moves nothing), names OSPF and a prefix, and has no
+    "area"."""
+    from modules.ai.intent_words import _PREFIX
+
+    text = blank_values(sentence)
+    if not (_ADDS.search(text) and not _REMOVES.search(text) and re.search(r"\bospf\b", text,
+                                                                           re.I)
+            and not re.search(r"\barea\b", text, re.I)):
+        return None
+    prefix = _PREFIX.search(text)
+    if not prefix:
+        return None
+    procs = _areas(doc)
+    shown = [f"process {p}" + (f" (areas {', '.join(a)})" if a else " (no network yet)")
+             for p, a in procs]
+    held = (f"{device}'s committed OSPF holds {'; '.join(shown)}" if procs else
+            f"{device}'s committed intent holds no OSPF process")
+    areas = list(dict.fromkeys(a for _p, got in procs for a in got))
+    return {"kind": "no_area", "phrase": prefix.group(0),
+            "choices": [{"label": f"Area {a}", "value": a} for a in areas],
+            "field": {"kind": "area", "label": "Another area", "placeholder": "e.g. 10",
+                      "pattern": r"\d{1,10}|\d{1,3}(\.\d{1,3}){3}"},
+            "question": (f"which area should {prefix.group(0)} join? The words give none, and "
+                         f"Mercury does not guess one: {held}")}
+
+
+def no_value(device: str, doc: dict, sentence: str) -> dict:
+    """A description to set with no text (the whole sentence "set a description on Gi0/1",
+    nothing after the interface): ``{"kind": "no_value", "phrase", "question", "choices",
+    "field"}`` or ``None``. The interface's current description is said, and the text is typed
+    in a field: it reaches the model as a placeholder, never as words to follow."""
+    for rx in _NO_TEXT:
+        m = rx.match(sentence or "")
+        if m:
+            names = [i["name"] for i in interfaces_of(doc)]
+            full = _shorthand(m.group("x"), names)
+            if not full:
+                return None             # the device lacks it: `resolve` says so
+            now = next(i["description"] for i in interfaces_of(doc) if i["name"] == full)
+            return {"kind": "no_value", "phrase": m.group("x"), "interface": full,
+                    "choices": [], "field": {
+                        "kind": "text", "label": "The description",
+                        "placeholder": "the description, exactly as it should read",
+                        "pattern": ""},
+                    "question": (f"what should {full}'s description say? The words give no "
+                                 "text" + (f"; it reads \"{now}\" now" if now
+                                           else "; it has none now"))}
+    return None
+
+
+def questions(network: str, device: str, doc: dict, sentence: str,
+              neighbours: dict = None, devices: dict = None) -> dict:
+    """The first of `ends` (both ends: one two-device draft, ``kind`` "pair", or its
+    question), `alternatives`, `no_area` and `no_value`, or ``None``."""
+    return (ends(network, device, doc, sentence, neighbours, devices)
+            or alternatives(device, doc, sentence) or no_area(device, doc, sentence)
+            or no_value(device, doc, sentence))
+
+
+def quoted_value(text: str) -> tuple:
+    """``(the text in quotes, "")`` for a typed answer to go as a value (so `hold_quotes` makes it
+    a placeholder): straight quotes, or curly ones when it holds a straight double quote;
+    ``("", why)`` when it holds both."""
+    if '"' not in text:
+        return f'"{text}"', ""
+    if "“" not in text and "”" not in text:
+        return f"“{text}”", ""
+    return "", ("the text holds both a straight and a curly double quote, so it cannot be "
+                "quoted as one value; type it without one of them")
+
+
+def decide(network: str, device: str, doc: dict, sentence: str, kind: str, value: str,
+           neighbours: dict = None, devices: dict = None) -> dict:
+    """The person's answer to Mercury's own question (C1907): ``{"ok", "sentence", "error"}``,
+    *sentence* rewritten as decided, so the same draft continues with no retyping. The
+    question is asked again of the same words (`questions`); an answer it did not offer (a
+    button's value, or a field's text that fails its check) is refused, naming both."""
+    q = questions(network, device, doc, sentence, neighbours, devices)
+    if not q or q["kind"] != kind:
+        return {"ok": False, "sentence": "", "error": (
+            f"Mercury no longer asks {kind!r} of these words (it asks "
+            f"{(q or {}).get('kind') or 'nothing'}); draft again")}
+    value = (value or "").strip()
+    offered = [str(c["value"]) for c in q.get("choices") or []]
+    field = q.get("field") or {}
+
+    def refused(why):
+        return {"ok": False, "sentence": "", "error": why}
+
+    if kind == "two_ended":
+        if value not in offered:
+            return refused(f"{value!r} is not an answer Mercury offered ({', '.join(offered) or 'none'})")
+        text = blank_values(sentence)
+        m = PAIR.search(text)
+        if value == "this-end":
+            local = _local_ports(network, device, doc, sentence[m.start("what"):m.end("what")],
+                                 neighbours if neighbours is not None
+                                 else neighbours_of(network, device, far=True))
+            if len(local) == 1:
+                return {"ok": True, "error": "", "sentence": (
+                    sentence[:m.start()] + local[0] + sentence[m.end():])}
+            return {"ok": True, "error": "", "sentence": (
+                sentence[:m.start("quant")] + sentence[m.end("quant"):])}
+        if value.startswith("far:"):
+            far = value[4:]
+            if m.group("to"):
+                return {"ok": True, "error": "", "sentence": (
+                    sentence[:m.start("to")] + far + sentence[m.end("to"):])}
+            return {"ok": True, "error": "", "sentence": (
+                sentence[:m.end("what")] + f" to {far}" + sentence[m.end("what"):])}
+        port, other = value[len("port:"):].rsplit(":", 1)
+        return {"ok": True, "error": "", "sentence": (
+            sentence[:m.start("what")] + f"{port} to {other}" + sentence[m.end("what"):])}
+    if kind == "alternatives":
+        if value not in offered:
+            return refused(f"{value!r} is not an answer Mercury offered ({', '.join(offered) or 'none'})")
+        a, b = q["span"]
+        if value.isdigit():
+            chosen = f"VLAN {value}"
+        elif value == "*":
+            pair = [c["value"] for c in q["choices"] if c["value"] != "*"]
+            chosen = " and ".join(pair)
+        else:
+            chosen = value
+        out = sentence[:a] + chosen + sentence[b:]
+        return {"ok": True, "error": "", "sentence": _WHICHEVER.sub("", out).strip()}
+    if kind == "no_area":
+        if value not in offered and not AREA.match(value):
+            return refused(f"{value!r} is no OSPF area: an area is a number (0 to 4294967295) "
+                           "or dotted, as 0.0.0.10")
+        if value.isdigit() and int(value) > 4294967295:
+            return refused(f"{value} is past the largest OSPF area, 4294967295")
+        return {"ok": True, "error": "", "sentence": (
+            sentence.rstrip().rstrip(".!?") + f" area {value}")}
+    if kind == "no_value":
+        if not value:
+            return refused("the description is empty: to clear it, say so (\"clear the "
+                           "description on " + q["interface"] + "\")")
+        if len(value) > 240 or any(not (c.isprintable() and ord(c) < 127) for c in value):
+            return refused("a description is printable ASCII, at most 240 characters; "
+                           f"this one is {len(value)}" + ("" if value.isascii() else
+                                                          ", and holds other characters"))
+        quoted, why = quoted_value(value)
+        if why:
+            return refused(why)
+        return {"ok": True, "error": "", "sentence": (
+            f"set the description of {q['interface']} to {quoted}")}
+    return refused(f"{kind!r} is no question Mercury asks")
