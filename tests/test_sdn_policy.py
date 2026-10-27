@@ -139,6 +139,20 @@ def test_prompt_v3_takes_the_action_from_the_catalogue_and_maps_no_rule_to_an_ac
     assert "a scan is answered by dropping its source" in v1
 
 
+def test_the_adopted_prompt_is_v3_and_the_request_carries_it(world):
+    """C1988's adoption: the loop's and the screen's classify sends v3's text (take the
+    catalogue's default), never v1's scan-to-drop line."""
+    assert CL.CLASSIFY_PROMPT == ("sdn_classify", 3)
+    set_policy(SDN_LAB)
+    keep_pack(SCAN)
+    world.answer = answer(action_id="rate_limit_source")
+    classify_as_person(world)
+    (body,) = world.sent
+    system = "".join(b["text"] for b in body["system"])
+    assert "Take the catalogue's `default` action" in system
+    assert "a scan is answered by dropping its source" not in system
+
+
 def test_a_drop_for_a_scan_under_sdn_lab_s_policy_is_refused_naming_both_sides(world):
     set_policy(SDN_LAB)
     keep_pack(SCAN)

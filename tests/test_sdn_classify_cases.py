@@ -74,7 +74,9 @@ def test_the_held_out_set_is_its_own_twelve_with_ipv6_twins():
 def test_each_file_is_on_the_pin_and_its_expectations_hold_against_its_evidence(name):
     data = load(name)
     assert data["model"] == profiles.TASKS["sdn_classify"]["model"]
-    assert data["prompt"] == "sdn_classify.v1" and data["task"] == "sdn_classify"
+    # The cases are the adopted prompt's (C1988: v3, adopted 2026-10-27).
+    assert data["prompt"] == "{}.v{}".format(*CL.CLASSIFY_PROMPT) == "sdn_classify.v3"
+    assert data["task"] == "sdn_classify"
     assert _script().check(ROOT, os.path.join(DIR, f"{name}.json")) == []
 
 

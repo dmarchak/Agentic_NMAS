@@ -1,7 +1,7 @@
 {
  "task": "sdn_classify",
  "model": "claude-haiku-5-5",
- "prompt": "sdn_classify.v1",
+ "prompt": "sdn_classify.v3",
  "network": "sdn_lab",
  "about": "classify_threat's held-out set, written 2026-10-27 BEFORE prompts/sdn_classify.v1.md existed (by the author of the schema and the recorded set, not blind to the design; never tuned on). Built as the recorded set is, from the same run's files, each a different edit or a different quiet collection: IPv6 twins of the scan, the flood and the redirect (192.0.2.N to 2001:db8:8::N, the topology's own pairing, the real rule run again over the edited collection), the flood caught earlier under a shorter window, a flood the scan rule's fallback names a scan (no flow naming a source, so no catalogue action can be built), a drop in place of the redirect, and five more quiet collections. Measured once with the recorded set, reported apart. Re-keyed 2026-10-27 from the harness network lab8 to sdn_lab, the id of the operator's network \"SDN lab\" (C1948: the runner refuses a case file of another network); expectations unchanged.",
  "cases": [

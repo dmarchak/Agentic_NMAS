@@ -1,7 +1,7 @@
 {
  "task": "sdn_classify",
  "model": "claude-haiku-5-5",
- "prompt": "sdn_classify.v1",
+ "prompt": "sdn_classify.v3",
  "network": "sdn_lab",
  "about": "classify_threat's recorded set (PHASE8_PLAN 17.1 S7; 13.6). Each case is one detection of the Lab 8 run of 2026-10-27 (09:11 to 09:36 UTC, Ryu 4.34 over Open vSwitch 2.17.12, Mininet's hosts 192.0.2.1 to .4 and 2001:db8:8::1 to ::4), its detection and the evidence pack's sdn section exactly as Mercury keeps them, rebuilt from the run's own collection by the real rules (modules/sdn/detect.py) and section builder; `from` names the run's file in the operator's lab8 reports folder and `edit` the one change, if any. The seven threats are every detection the run made (two scans on both switches, the flood on both, the unauthorised redirect). The five normal cases are the run's quiet collections (no threat running), each with the scan rule's packet-rate fallback threshold lowered so the rule fires on the port's own traffic: a false positive Mercury's rules made, which the classifier should call no threat. Expectations written 2026-10-27 from the evidence, before any run and before the prompt; judged by cases.sdn_classify_misses. Not yet measured: no recording here. Re-keyed 2026-10-27 from the harness network lab8 to sdn_lab, the id of the operator's network \"SDN lab\" (C1948: the runner refuses a case file of another network); expectations unchanged.",
  "cases": [

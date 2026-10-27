@@ -362,7 +362,11 @@ def _iso(epoch: float) -> str:
 
 #: The task's pin (`profiles.TASKS`) and the background feature's name (`background.FEATURES`).
 CLASSIFY_FEATURE = "sdn_classify"
-CLASSIFY_PROMPT = ("sdn_classify", 1)
+#: The adopted prompt: v3 (C1988, adopted 2026-10-27 under PHASE8_PLAN 15.12's relative bar,
+#: measured against v1 over the walk's two frozen packs and the recorded and held-out cases,
+#: 3 runs each: no case v1 held reliably lost; reliable cases 8 to 11 of 12 recorded, 8 to 10
+#: of 12 held-out; the packs 3 to 6 of 6). The done bar (95% reliable) is not met: C1994.
+CLASSIFY_PROMPT = ("sdn_classify", 3)
 #: The classifier's steps, each named on its How it works page (modules/manual.py).
 CLASSIFY_STEPS = (
     ("pack", "the detection's evidence pack, as kept when it fired, its hash checked: a pack "

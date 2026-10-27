@@ -1964,3 +1964,20 @@ tests/test_sdn_classify_cases.py (`scratchpad/cat_hm.py`). The baseline passed (
 **The result: every mutant killed; the canary killed; the working tree untouched (nmas-control's
 fingerprint).**
 
+## 2026-10-27: prompt v3 adopted for the SDN classifier (C1988), by hand
+
+**What touches the tier:** `modules/sdn/closed_loop.py`, `CLASSIFY_PROMPT` from v1 to v3: the
+prompt text the loop's and the screen's classify send (prompts/sdn_classify.v3.md, committed and
+hand-checked with the catalogue's order in the entry above; measured before adoption, C1988).
+
+**The method:** each mutant its exact line in a `scripts/nmas-control` throwaway worktree, then
+tests/test_sdn_policy.py, tests/test_sdn_classify.py and tests/test_sdn_classify_cases.py
+(`scratchpad/adopt_hm.py`); the baseline passed (72 tests).
+
+| mutant | result | killed by |
+|---|---|---|
+| back to v1 | killed | `test_the_adopted_prompt_is_v3_and_the_request_carries_it`, both case files' prompt test |
+| canary: a version with no file (99) | killed | 32 tests |
+
+**The result: both killed; the working tree untouched (nmas-control's fingerprint).**
+

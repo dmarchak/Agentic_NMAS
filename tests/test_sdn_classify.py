@@ -135,7 +135,8 @@ def test_the_request_holds_the_detection_its_evidence_and_the_catalogue(world):
     (body,) = world.sent
     from modules.ai import profiles, prompts
     assert body["model"] == profiles.TASKS["sdn_classify"]["model"] == "claude-haiku-5-5"
-    assert body["system"][0]["text"] == prompts.load("sdn_classify", 1)["text"]
+    # The adopted prompt's text, whole (C1988: v3 since 2026-10-27).
+    assert body["system"][0]["text"] == prompts.load(*CL.CLASSIFY_PROMPT)["text"]
     assert 'name="catalogue"' in body["system"][1]["text"]
     assert body["system"][-1]["cache_control"] == {"type": "ephemeral"}
     data = body["messages"][0]["content"]
