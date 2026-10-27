@@ -84,7 +84,11 @@ EXPECTED = {"phase3-step1.sh", "phase3-step2.sh", "c584-loki-writer.sh",
             # C730: the golden archive's versions counted, masked or not, read-only (2026-10-15).
             "c730-golden-archive-census.sh",
             # C1346: udp/69 admitted from each relayed ZTP subnet, and recorded (2026-10-19).
-            "c1346-ztp-relayed-firewall.sh"}
+            "c1346-ztp-relayed-firewall.sh",
+            # C1916: Loki published on loopback only, its old container kept for rollback.
+            "c1916-loki-loopback.sh",
+            # C1917: NetBox admitted from the operator's laptop only, in DOCKER-USER (2026-10-27).
+            "c1917-netbox-docker-user.sh"}
 # minio-4d-4e.sh (pip into the app's interpreter) was removed on 2026-10-08: the operator
 # decided on boto3, the host's apt package, so nothing is installed and the lock is
 # regenerated from the host, read-only, once the release importing it is deployed.

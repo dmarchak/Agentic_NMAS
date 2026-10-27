@@ -8,10 +8,15 @@ RUN pip install --no-cache-dir "setuptools<58" "pip<24" \
  && pip install --no-cache-dir --no-build-isolation "eventlet==0.30.2" "ryu==4.34"
 COPY l4_switch_13.py /opt/lab/l4_switch_13.py
 RUN ryu-manager --version \
- && python -c "import ryu.app.ofctl_rest, ryu.app.simple_switch_13; print('imports ok')"
+ && python -c "import ryu.app.ofctl_rest, ryu.app.rest_topology, ryu.topology.switches, ryu.app.simple_switch_13; print('imports ok')"
 EXPOSE 6653 8080
 # REST on loopback only: Mercury reads it on the same host; OpenFlow listens on every address
 # and the host's firewall admits the Mininet VM alone (the run uses host networking, so ufw's
 # rules apply to it).
+# Topology from the controller (the operator, 2026-10-27; PHASE8_PLAN 17.1 S14): OpenFlow switches
+# run no LLDP, so Ryu discovers links itself (--observe-links: LLDP sent by packet-out, read back by
+# packet-in) and serves them, with switches and hosts, on ryu.app.rest_topology's
+# /v1.0/topology/{switches,links,hosts}.
 ENTRYPOINT ["ryu-manager", "--ofp-tcp-listen-port", "6653", "--wsapi-host", "127.0.0.1", \
-            "--wsapi-port", "8080", "ryu.app.ofctl_rest", "/opt/lab/l4_switch_13.py"]
+            "--wsapi-port", "8080", "--observe-links", \
+            "ryu.app.ofctl_rest", "ryu.app.rest_topology", "/opt/lab/l4_switch_13.py"]

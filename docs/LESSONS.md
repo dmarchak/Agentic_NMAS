@@ -5531,3 +5531,26 @@ run, and runs the rest on demand, one mutant at a time, with nothing heavy besid
 - `modules/pipeline.py` is real, tested and WIRED: every deploy and every
   restore runs it. `pipeline_builder.py` generated Jenkins pipeline XML and
   went with Jenkins in P.4.
+
+### From the host firewall (C1916 to C1918, 2026-10-27)
+
+- **Docker-published ports bypass ufw.** Docker's own iptables rules accept a
+  published port's traffic in the FORWARD path before ufw's INPUT rules are
+  consulted, so a `-p 3100:3100` container answers the whole LAN whatever ufw
+  says. The operator found Loki readable and writable from the laptop with no
+  authentication, on a host whose ufw rules looked closed. Three ways to keep a
+  container's port off the LAN: publish it on loopback (`-p 127.0.0.1:3100:3100`),
+  run it with host networking so ufw's INPUT governs it, or filter in the
+  DOCKER-USER chain (matching the connection's original destination port), kept
+  in `/etc/ufw/after.rules` so a reboot keeps it. IPv6 published ports go
+  through docker-proxy, a host process, so ufw does govern those.
+- **Read the firewall's default before trusting its rules.** The same host's
+  ufw allowed incoming traffic by default ("Default: allow (incoming)"), so a
+  list of deny rules said nothing about the ports it did not name: Prometheus,
+  Thanos, the exporters and Grafana were all LAN-reachable. `ufw status verbose`
+  shows the default; `ss -lntup` shows what listens. The two together are the
+  exposure, never the rule list alone.
+- **Measure who uses a service before moving it.** Before Loki moved to loopback,
+  every client was read on the host: Alloy's push URL, Grafana's datasource,
+  Mercury's setting, and the live connections on the port. All were local, so
+  the move broke nothing.
