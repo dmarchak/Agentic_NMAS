@@ -977,6 +977,12 @@ def verify_words(checks: dict) -> list:
         # (`verify_scope.read_back`).
         out += [f"Not looked for: {s.get('line', '')} ({s.get('why', 'no reason recorded')})"
                 for s in rb.get("skipped") or [] if isinstance(s, dict)]
+    pt = checks.get("pair_transient")
+    if isinstance(pt, dict) and pt.get("words"):
+        # The paired deploy (C1964): what of the link this end left to the link's own verify.
+        seen = [str(s) for s in pt.get("seen") or []]
+        out.append(pt["words"][:1].upper() + pt["words"][1:]
+                   + (f" (seen here between the two applies: {'; '.join(seen)})" if seen else ""))
     return out
 
 

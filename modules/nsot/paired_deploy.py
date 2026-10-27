@@ -8,12 +8,29 @@ exact program, one confirm by hash as a verified person. The apply is the batch'
 (`routes.deploy.apply_batch` with *pair*), each device through the one pipeline; this module is
 what the pair adds to it, in the order the steps run (`STEPS`):
 
+- ``order`` (C1965): which end goes first, judged by Mercury's management path to each device
+  from the Topology reader's stored read (`order_for`, `topology`): the end Mercury reaches
+  THROUGH the other goes first, so the other's change cannot cut Mercury off from it before it
+  is changed or rolled back; neither reached through the other, the link's own order. The
+  pair is refused when the read cannot be used or names no path to an end (refused, never
+  guessed), or when the link carries an end's only management path and either program can
+  take the link down: each order then puts a change on a path it needs (the near end first
+  cuts the far end off; the far end first cuts its own path, so it could not be rolled back),
+  and no order keeps both ends reachable through every step and its rollback. (The two ends
+  cannot each be reached through the other: on a shortest path the end passed through is the
+  nearer.) The preview states the order and its
+  reason; the confirm and the apply judge it again, and a moved order or a refusal refuses
+  both, nothing sent.
 - ``both_or_neither``: a device refused at apply (its program moved, another operation holds
   it) refuses the other too, by name, with nothing sent to either: half a link change is never
   started.
 - ``first_end``, ``second_end``: each device's pipeline, in the rollout order, with its own
   verify, and its save to startup HELD (`PipelineContext.hold_save`); the second end is sent
-  only when the first deployed (anything else, and it is never sent).
+  only when the first deployed (anything else, and it is never sent). On the FIRST end the
+  link's own line protocol and its adjacency to the far end (by the far end's router ID on
+  the link's interface) are an expected transient between the two applies (C1964;
+  `transient_for`, `PipelineContext.pair_transient`): its own verify leaves them to the link's
+  verify after both ends, and says so; every other interface and adjacency is judged as ever.
 - ``link_verify``: once both have applied, the link itself is read on both ends (`verify_link`):
   the link's line protocol on each end (a trunk's and a tunnel's state with it), and the OSPF or
   OSPFv3 adjacency across it when the change touched that protocol, each read only through a
@@ -45,9 +62,12 @@ log = logging.getLogger(__name__)
 
 #: The steps, as the manual's deploy page names them (docs/manual/how-it-works/deploy.md).
 STEPS = (
-    ("both_or_neither", "a device refused at apply, or held by another operation, refuses the "
+    ("order", "the end Mercury reaches through the other goes first, from the Topology read; "
+              "refused when the read cannot say, or when no order keeps both reachable"),
+    ("both_or_neither","a device refused at apply, or held by another operation, refuses the "
                         "other too; nothing is sent to either"),
-    ("first_end", "the first device's pipeline, its own verify, its save to startup held"),
+    ("first_end", "the first device's pipeline, its own verify (the link's own line protocol "
+                  "and adjacency left to the link's verify), its save to startup held"),
     ("second_end", "the second device's pipeline, sent only when the first deployed"),
     ("link_verify", "the link read on both ends within the settle windows: its line protocol, "
                     "and the adjacency across it when the change touched OSPF or OSPFv3"),
@@ -249,6 +269,307 @@ def checks_words(checks: list) -> list:
                     else "gone, as committed intent no longer puts it across the link")
         out.append(f"{c['words']}: {want}" + "".join(f" ({n})" for n in c.get("notes") or []))
     return out
+
+
+# ── the first end's expected transient (C1964) ────────────────────────────────────
+
+def transient_for(link: dict, host: str, intents: dict, checks: list,
+                  first: bool = True) -> dict:
+    """What an end's own verify leaves to the link's verify (the pipeline's
+    `PipelineContext.pair_transient`): ``{"interface", "far", "ids": {"ospf": rid, "ospfv3":
+    rid}, "line", "words"}``, or None.
+
+    The FIRST end (``first_end``): between the two applies the link's own line protocol on this
+    end, and its adjacency to the far end, can be down as the change intends (OSPF
+    authentication on one end only drops the adjacency until the other end has it), so they
+    are judged once, by the link's verify after both ends (``line`` True). An adjacency is left
+    out only where the link's verify judges it (*checks*, `link_checks`: the change touches
+    that protocol); otherwise it is judged here as ever. It is named by the far end's router
+    ID AND this end's interface: the far end's router ID on another interface (two routers
+    can also meet on a core VLAN) is judged as ever, and so is the adjacency of a far end whose router
+    ID committed intent does not give; the words say so.
+
+    The SECOND end (``second_end``, *first* False): its line protocol is judged as ever, and
+    the link's adjacency, which its change brings BACK, is left out of both sides of its own
+    count, as on the first end; counted, its return would net against an adjacency lost
+    elsewhere on that device and hide it. None when the link's verify judges no adjacency."""
+    mine = next((port for h, port in ends(link) if h == host), "")
+    other = next((h for h, _p in ends(link) if h != host), "")
+    rid = (_carries(link, intents).get("rid") or {}).get(other) or ""
+    judged = {c.get("family") for c in checks or []}
+    ids = {p: rid for p in ("ospf", "ospfv3") if rid and p in judged}
+    if not first:
+        return ({"interface": mine, "far": other, "ids": ids, "line": False, "words": (
+            f"the adjacency to {other} on {mine}: judged by the link's verify after both "
+            "ends")} if ids else None)
+    words = f"the link to {other}: judged after both ends"
+    if not rid and judged & {"ospf", "ospfv3"}:
+        words += (f" (its line protocol only: {other}'s router ID is not in its committed "
+                  "intent, so its adjacency is judged here as ever)")
+    elif not ids:
+        words += (" (its line protocol only: the change does not touch the adjacency across "
+                  "it, which is judged here as ever)")
+    return {"interface": mine, "far": other, "ids": ids, "line": True, "words": words}
+
+
+# ── the order: Mercury's management path to each end (C1965) ───────────────────────
+
+#: A cable that carries traffic, as `topology_graph.mercury_reach` reads them: up, or a state
+#: no read could give (a down or ghost cable carries nothing).
+_CARRYING = ("up", "unknown")
+#: A family `touched` finds, as a refusal names it.
+_FAMILY_WORDS = {"ospf": "OSPF", "ospfv3": "OSPFv3", "trunk": "trunk", "tunnel": "tunnel"}
+
+
+def topology(list_name: str) -> dict:
+    """The network's observed cables as Mercury's network model maps them
+    (`network_model.observed`, the Topology reader's stored read: LLDP's links and where
+    Mercury's own host attaches, ``mercury_attaches_here``): ``{"names": {device: model id},
+    "nodes": {id: node}, "cables": {id: cable}, "read_at", "why"}``. One stored value read and
+    the model from this process's memory; no device and no source is asked. *why* says why the
+    read cannot be used, and the order is then refused, never guessed."""
+    from modules import network_model as M
+
+    out = {"names": {}, "nodes": {}, "cables": {}, "read_at": "", "why": ""}
+    try:
+        model, err = M.model_for(list_name)
+    except Exception as exc:                            # noqa: BLE001 (said, never raised)
+        model, err = None, f"{type(exc).__name__}: {exc}"
+    if model is None:
+        return dict(out, why=f"the network model could not be built ({err})")
+    out.update(names=dict(model.get("names") or {}), nodes=dict(model.get("nodes") or {}))
+    try:
+        obs = M.observed(list_name, model)
+    except Exception as exc:                            # noqa: BLE001 (said, never raised)
+        obs = {"state": "could not read", "why": f"{type(exc).__name__}: {exc}"}
+    out["read_at"] = obs.get("read_at") or ""
+    if obs.get("state") != "read":
+        return dict(out, why="the Topology read could not be used ("
+                             + (obs.get("why") or "no reason was given") + ")")
+    out["cables"] = dict(obs.get("cables") or {})
+    return out
+
+
+def _graph(cables: dict, skip=()) -> dict:
+    """``{node: [(other, this node's port, other's port, cable id)]}`` over the cables that
+    carry traffic, less *skip*."""
+    g = {}
+    for cid, cable in sorted((cables or {}).items()):
+        e = cable.get("ends") or []
+        if cid in skip or len(e) != 2 or cable.get("state") not in _CARRYING:
+            continue
+        a, b = e
+        g.setdefault(a.get("dev", ""), []).append((b.get("dev", ""), a.get("port", ""),
+                                                   b.get("port", ""), cid))
+        g.setdefault(b.get("dev", ""), []).append((a.get("dev", ""), b.get("port", ""),
+                                                   a.get("port", ""), cid))
+    return g
+
+
+def _distances(g: dict) -> dict:
+    """Each node's hops from Mercury's host, breadth first; an outside peer is reached and
+    never walked through (as `network_model._walk`)."""
+    from modules.network_model import MANAGER_ID
+
+    dist, frontier = {MANAGER_ID: 0}, [MANAGER_ID]
+    while frontier:
+        nxt = []
+        for node in frontier:
+            if node.startswith("ext:"):
+                continue
+            for other, _mine, _theirs, _cid in g.get(node) or []:
+                if other not in dist:
+                    dist[other] = dist[node] + 1
+                    nxt.append(other)
+        frontier = nxt
+    return dist
+
+
+def _paths_to(g: dict, dist: dict, target: str):
+    """Every SHORTEST path from Mercury's host to *target*, as what they share: ``{"transit":
+    {node}, "cables": {cable id}, "hops": [(node, its port, target's port, cable id)]}`` (the
+    last hops into *target*), or None when no carrying cable reaches it. Every shortest path,
+    not one: with equal paths Mercury's traffic may take any, so an end on any of them could
+    sit on the path."""
+    from modules.network_model import MANAGER_ID
+
+    if target not in dist or target == MANAGER_ID:
+        return None
+    transit, cables, hops, seen, frontier = set(), set(), [], {target}, [target]
+    while frontier:
+        nxt = []
+        for node in frontier:
+            for other, mine, theirs, cid in g.get(node) or []:
+                if other.startswith("ext:") or dist.get(other, -9) != dist[node] - 1:
+                    continue
+                cables.add(cid)
+                if node == target:
+                    hops.append((other, theirs, mine, cid))
+                if other != MANAGER_ID:
+                    transit.add(other)
+                    if other not in seen:
+                        seen.add(other)
+                        nxt.append(other)
+        frontier = nxt
+    return {"transit": transit, "cables": cables, "hops": sorted(hops)}
+
+
+def _link_cables(cables: dict, ids: dict, link: dict) -> set:
+    """The observed cable(s) that ARE the link: the near end's port to the far end's."""
+    from modules.nsot import ifnames
+
+    want = {(ids.get(h), p) for h, p in ends(link)}
+    out = set()
+    for cid, cable in (cables or {}).items():
+        e = cable.get("ends") or []
+        if len(e) == 2 and all(any(x.get("dev") == d and ifnames.same_interface(
+                str(x.get("port") or ""), p) for d, p in want) for x in e) \
+                and e[0].get("dev") != e[1].get("dev"):
+            out.add(cid)
+    return out
+
+
+def _hop_words(hop: tuple, label: dict, link_cids: set) -> str:
+    """One last hop into a device, as the preview says it."""
+    from modules.network_model import MANAGER_ID
+    from modules.nsot import ifnames
+
+    node, port, theirs, cid = hop
+    if node == MANAGER_ID:
+        return f"directly, on its {ifnames.canonical(theirs) or 'port'}"
+    return (f"through {label.get(node, node.replace('ext:', ''))} "
+            f"{ifnames.canonical(port) or '(port not named)'}"
+            + (", the link being changed" if cid in link_cids else ""))
+
+
+def _reach_words(paths: dict, label: dict, link_cids: set) -> str:
+    hops = paths["hops"]
+    first = _hop_words(hops[0], label, link_cids)
+    # The link first when it is one of the equal paths: it is the one the change sits on.
+    on_link = [h for h in hops if h[3] in link_cids]
+    if on_link:
+        first = _hop_words(on_link[0], label, link_cids)
+    rest = [_hop_words(h, label, link_cids) for h in hops if _hop_words(h, label, link_cids)
+            != first]
+    return first + (f" (and {' and '.join(rest)})" if rest else "")
+
+
+def can_cut(commands, port: str) -> str:
+    """Why *commands* could take the link at *port* down, in words ("" when they cannot): a
+    line in the port's section other than its description (an OSPF setting, an address, its
+    state, a trunk's or tunnel's line, an MTU), or a line in an OSPF or OSPFv3 process (read as
+    the link's protocol, `touched`). A description cannot. What a program does elsewhere on
+    the device is each device's own verify's, as in any deploy."""
+    from modules.nsot import ifnames
+
+    got = touched(commands, port)
+    if got["families"]:
+        return ("changes the link's "
+                + " and ".join(_FAMILY_WORDS[f] for f in sorted(got["families"])))
+    if got["admin"]:
+        return f"sends `{got['admin']}` to {port}"
+    for head, child in _sections(commands):
+        words = head.split()
+        if child and words[:1] == ["interface"] and len(words) > 1 \
+                and ifnames.same_interface(words[1], port) \
+                and not re.match(r"(no )?description\b", child.lower()):
+            return f"changes {port} beyond its description"
+    return ""
+
+
+def order_for(link: dict, topo: dict, programs: dict = None) -> dict:
+    """``order`` (C1965): which end goes first, from Mercury's management path to each
+    (*topo*, `topology`). ``{"order": [first, second], "words", "refused", "paths": {device:
+    words}}``; *refused* non-empty means the pair is not offered, and *words* is the preview's
+    sentence ("edge2 first: Mercury reaches edge2 through edge1 GigabitEthernet4, the link
+    being changed").
+
+    The end Mercury reaches THROUGH the other (the other end is on a shortest path to it) goes
+    first: the other end's change then cannot cut Mercury off from it before it is changed or
+    rolled back. Neither through the other: the link's own order. Refused, saying why and
+    naming the path: the read cannot be used, or names no path from Mercury to an end
+    (unknown, never guessed); or, with *programs*
+    given (the plan and the apply; the confirm judges the order alone), either program can
+    take the link down (`can_cut`) while the link carries an end's ONLY management path: then
+    the near end first cuts the far end off before it is changed, and the far end first leaves
+    it unreachable for its rollback should the near end fail, so no order keeps both ends
+    reachable through every step and its rollback."""
+    from modules.network_model import MANAGER_ID
+
+    near, far = link["device"], link["far"]
+    out = {"order": [near, far], "words": "", "refused": "", "paths": {}}
+    both = f"{near} and {far}"
+    if topo.get("why"):
+        return dict(out, refused=(f"Mercury's management path to {both} is unknown: "
+                                  f"{topo['why']}; the order is refused rather than guessed"))
+    ids = topo.get("names") or {}
+    missing = [h for h in (near, far) if h not in ids]
+    if missing:
+        return dict(out, refused=(f"{' and '.join(missing)} is not in the network's model, so "
+                                  "Mercury's management path to it is unknown; the order is "
+                                  "refused rather than guessed"))
+    label = {i: n for n, i in ids.items()}
+    g = _graph(topo.get("cables"))
+    if MANAGER_ID not in g:
+        return dict(out, refused=("the Topology read shows nowhere Mercury's host attaches, so "
+                                  f"its management path to {both} is unknown; the order is "
+                                  "refused rather than guessed"))
+    dist = _distances(g)
+    paths = {h: _paths_to(g, dist, ids[h]) for h in (near, far)}
+    lost = [h for h, p in paths.items() if p is None]
+    if lost:
+        return dict(out, refused=(
+            f"the Topology read names no path from Mercury to {' or '.join(lost)} (no carrying "
+            "cable reaches it from where Mercury's host attaches), so its management path is "
+            "unknown; the order is refused rather than guessed"))
+    link_cids = _link_cables(topo.get("cables"), ids, link)
+    said = {h: _reach_words(p, label, link_cids) for h, p in paths.items()}
+    out["paths"] = {h: f"Mercury reaches {h} {w}" for h, w in said.items()}
+    # At most one end is behind the other: on a shortest path the end passed through is
+    # nearer Mercury than the end reached, so the two cannot each be behind the other. The
+    # case where each order puts a change on a path it needs is the one below.
+    behind = {near: ids[far] in paths[near]["transit"], far: ids[near] in paths[far]["transit"]}
+    cut = ""
+    for host, port in ends(link) if programs is not None else ():
+        why = can_cut((programs or {}).get(host) or [], port)
+        if why:
+            cut = f"{host}'s program {why}"
+            break
+    without = {}
+    if cut and any(paths[h]["cables"] & link_cids for h in (near, far)):
+        g2 = _graph(topo.get("cables"), skip=link_cids)
+        d2 = _distances(g2)
+        alone = [h for h in (near, far) if paths[h]["cables"] & link_cids and ids[h] not in d2]
+        if alone:
+            h = alone[0]
+            other = far if h == near else near
+            return dict(out, refused=(
+                f"{out['paths'][h]}, and that link is its only management path, while {cut}: "
+                f"{other} first would cut Mercury off from {h} before {h} is changed, and {h} "
+                f"first would leave {h} unreachable for its rollback should {other} fail; no "
+                "order keeps both ends reachable through every step and its rollback"))
+        for h in (near, far):
+            if paths[h]["cables"] & link_cids:
+                without[h] = _reach_words(_paths_to(g2, d2, ids[h]), label, set())
+    first = far if behind[far] else near
+    second = near if first == far else far
+    if behind[first]:
+        words = f"{first} first: {out['paths'][first]}"
+    else:
+        words = (f"{first} first, as the link names it: neither end is reached through the "
+                 f"other ({out['paths'][near]}; {out['paths'][far]})")
+    if without:
+        words += ("; without that link Mercury still reaches "
+                  + " and ".join(f"{h} {w}" for h, w in without.items())
+                  + ", so a change that takes the link down leaves both ends reachable")
+    return dict(out, order=[first, second], words=words)
+
+
+def refused_order(link: dict, why: str) -> list:
+    """``order`` refused at apply: both ends refused, by name, nothing sent to either."""
+    return [{"device": host, "outcome": "refused", "reason": (
+        f"not sent: the order of the link {link_words(link)} could not be kept ({why}); both "
+        "ends change together, or neither does. Nothing was sent.")} for host, _p in ends(link)]
 
 
 # ── reading the link ──────────────────────────────────────────────────────────────

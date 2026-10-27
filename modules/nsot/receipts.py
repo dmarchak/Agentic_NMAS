@@ -177,6 +177,10 @@ def _checks(result: dict) -> dict:
         "expected_effects": dict(verify.get("expected_effects") or {}),
         "unexpected_settle": verify.get("unexpected_settle"),
         "failed_at_once": verify.get("failed_at_once"),
+        # The paired deploy (C1964): what of the link this end's own verify left to the link's
+        # verify after both ends, and what of it was seen down. Absent on every other row.
+        **({"pair_transient": dict(verify["pair_transient"])}
+           if verify.get("pair_transient") else {}),
     }
     if not protocols:
         checks["neighbours_note"] = ("no routing protocol on this device: the "

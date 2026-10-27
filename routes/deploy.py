@@ -785,6 +785,16 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
     from modules.nsot import paired_deploy
     from modules.nsot.receipts import operation
     order = list(confirmations)
+    if pair and not refused:
+        # The order (`paired_deploy`, order; C1965), judged again here with the programs just
+        # recomputed: a refusal, or an order other than the one confirmed, refuses both.
+        decided = paired_deploy.order_for(pair, paired_deploy.topology(list_name), programs)
+        why = decided["refused"] or (
+            "" if decided["order"] == order else
+            f"the confirmed order ({', '.join(order)}) is not the order Mercury's management "
+            f"path gives now ({decided['words']})")
+        if why:
+            refused, artifacts = paired_deploy.refused_order(pair, why), []
     if pair and refused:
         # Both or neither (`paired_deploy`, both_or_neither): one end refused before anything
         # was sent refuses the other, and neither is held.
@@ -828,8 +838,14 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
             ran.append(name)
             if on_device:
                 on_device("start", name, None)
+            # The link as this end's own verify leaves it to the link's (C1964): the first
+            # end's line protocol and adjacency there, the second end's adjacency there.
+            transient = (paired_deploy.transient_for(pair, name, intents, checks,
+                                                     first=bool(order) and name == order[0])
+                         if pair else None)
             result = _deploy_one(entry, list_name, device_rows, authorise, **extra,
-                                 **({"keep": contexts} if pair else {}))
+                                 **({"keep": contexts} if pair else {}),
+                                 **({"transient": transient} if transient else {}))
             # A pair's receipt rows are written once the pair has settled (each end may yet be
             # rolled back for the other): a pending row records its outcome as final.
             result = result if pair else record(result)
@@ -1187,11 +1203,14 @@ def _program(intended: str, captured: str, selected: list, device: dict,
 
 def _deploy_one(entry, list_name: str, device_rows: dict,
                 authorise: dict = None, source_ref: str = "", remove: dict = None,
-                scope: str = "", declare: dict = None, keep: dict = None) -> dict:
+                scope: str = "", declare: dict = None, keep: dict = None,
+                transient: dict = None) -> dict:
     """Run the pipeline for a single device. The only path that connects. *keep* (the paired
     deploy, `modules.nsot.paired_deploy`): the run's context is kept there by hostname, its save
     to startup held (`PipelineContext.hold_save`) until the link verifies, so a device whose own
-    run passed can still be rolled back when its far end or the link fails."""
+    run passed can still be rolled back when its far end or the link fails. *transient* (the
+    paired deploy, C1964; `paired_deploy.transient_for`): what of the link this end's own
+    verify leaves to the link's verify after both ends (`PipelineContext.pair_transient`)."""
     import threading
 
     from modules.nsot.deploy import (DEPLOYED, FAILED, SKIPPED_DRIFTED, DeviceMoved,
@@ -1351,6 +1370,8 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
     if keep is not None:
         ctx.hold_save = True
         keep[hostname] = ctx
+    if transient:
+        ctx.pair_transient = {device.get("ip", ""): dict(transient)}
 
     try:
         result = PipelineRunner(ctx).run()

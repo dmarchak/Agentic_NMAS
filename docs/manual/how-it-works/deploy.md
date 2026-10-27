@@ -328,20 +328,55 @@ person. The page says the link, what verify will read across it, and that either
 rolls both back; a device cannot be left out of it, and the plan is not offered when the
 devices are not exactly the link's two ends, when an end's interface is not in its device's
 committed intent, or when either end cannot be deployed now (both ends, or neither). The
-confirm posts to `/v2/monitoring/apply/confirm-pair`, which checks the same again and starts the
-apply as a job. Its steps, in the order the code declares them:
+rollout order is Mercury's, not the person's: the page states it with its reason (for
+example "edge2 first: Mercury reaches edge2 through edge1 GigabitEthernet4, the link being
+changed"),
+and draws no grip, Earlier or Later. The confirm posts to
+`/v2/monitoring/apply/confirm-pair`, which checks the same again, the order with it, and
+starts the apply as a job. Its steps, in the order the code declares them:
 
-1. `both_or_neither`. Read: each device's program again, as any apply does, and the device
+1. `order`. Read: the Topology reader's last stored read as the network's model maps it (the
+   physical links LLDP reports, and where Mercury's own host attaches: the managed interface
+   whose subnet holds one of the host's addresses, IPv4 or IPv6), never a device. Mercury's
+   management path to each end is every shortest path from its host to that device over the
+   links that carry traffic. The end Mercury reaches THROUGH the other end goes first, so the
+   other end's change cannot cut Mercury off from it before it is changed or rolled back;
+   when neither is reached through the other, the first end is the one the link names first.
+   The pair is not offered, and nothing is sent, when the read cannot be used (never read,
+   older than its promise, no attachment found, or no path to an end: the order is refused
+   rather than guessed), or when the link is the only management path to an end and either
+   program can take the link down (anything on its interface other than a description, or an
+   OSPF or OSPFv3 process line): then the near end first cuts the far end off before it is
+   changed, and the far end first leaves it unreachable for its rollback should the near end
+   fail, so no order keeps both ends reachable through every step and its rollback. The page
+   names the path either way. The confirm judges the order again from the read as it is
+   then, and the apply a third time with the programs it recomputes: an order that moved
+   since the preview is refused, naming both, and **Plan both ends again** shows the new one.
+   Sent: nothing. Recorded: nothing.
+2. `both_or_neither`. Read: each device's program again, as any apply does, and the device
    locks. Sent: nothing. Recorded: nothing. A device refused here (its program moved since the
    preview, another operation holds it, or its capture moved) refuses the other too, by name,
    with nothing sent to either: half a link change is never started.
-2. `first_end`. The first device in the rollout order runs the whole pipeline above, its own
-   verify included, with one difference: its save to startup is held, so a change its far end
-   then fails is never in startup.
-3. `second_end`. The second device runs the same, and only when the first deployed: anything
+3. `first_end`. The first device in the rollout order runs the whole pipeline above, its own
+   verify included, with two differences. Its save to startup is held, so a change its far
+   end then fails is never in startup. And the link's own line protocol on this end, and its
+   adjacency across the link where the link's verify reads it (the change touches OSPF or
+   OSPFv3 there), are an expected transient: a change made on one end at a time can take them
+   down until the far end has it too (OSPF authentication on one end drops the adjacency), so
+   they are judged once, by `link_verify` after both ends. This end's own verify leaves them
+   out of its comparison, before and after alike, and its result says "the link to edge2:
+   judged after both ends", with what it saw down meanwhile. The adjacency is named by the far
+   end's router ID AND the link's interface: every other interface, and every other adjacency
+   (the far end's router ID on another interface among them, where two routers also meet on a
+   core VLAN), is judged as in any deploy, and a loss there rolls this end back with nothing sent
+   to the other. A far end whose router ID committed intent does not give leaves its
+   adjacency judged here too, and the result says so.
+4. `second_end`. The second device runs the same, and only when the first deployed: anything
    else (a refusal, a failed push, a failed verify, the device found changed since its capture)
-   and the second is never sent.
-4. `link_verify`. Once both have applied, the link itself is read on both ends, each read a
+   and the second is never sent. Its line protocol is judged as in any deploy; the link's
+   adjacency, which its change brings back, is left out of both sides of its own count, so its
+   return cannot net against an adjacency lost elsewhere on it and hide it.
+5. `link_verify`. Once both have applied, the link itself is read on both ends, each read a
    command the read-only allowlist passes, on a session of its own: the link's line protocol
    on each end (`show interfaces | include (line protocol|Internet address)`), and, when either
    program touches OSPF or OSPFv3 on the link (or brings the port up where intent puts an
@@ -355,7 +390,7 @@ apply as a job. Its steps, in the order the code declares them:
    plan says so. A read that could not be made, or not trusted, neither passes nor fails: the
    change stands, saved, and the result is never drawn green. A link that was not up before
    the change, and that the change does not bring up, is not judged, and says so.
-5. `paired_rollback`. If either end failed (its push or its own verify, which its pipeline has
+6. `paired_rollback`. If either end failed (its push or its own verify, which its pipeline has
    already rolled back) or the link's verify failed, the other end is rolled back too, by the
    same rollback a failed verify runs: what landed read back first, the undo built from that
    run's own pre-change read, the device read back after it. Each rolled-back device's intent
@@ -364,9 +399,9 @@ apply as a job. Its steps, in the order the code declares them:
    never offered alone. **Revert or retry** (see [Revert or retry after a rollback](revert-retry))
    lifts it, on each device. The capture each end handed the batch is dropped: the device is
    back, so it is not its golden.
-6. `save_both`. When nothing failed, the held saves run on both ends (the one save there is,
+7. `save_both`. When nothing failed, the held saves run on both ends (the one save there is,
    recorded per device as above).
-7. `record`. Each device's receipt is written once the pair has settled: what it was sent, its
+8. `record`. Each device's receipt is written once the pair has settled: what it was sent, its
    own verify, and, under the link, the link's verify and why the end was rolled back when its
    far end or the link failed. The job's card says the link's verify, and a failed pair offers
    **Plan both ends again**, never a retry of one end.

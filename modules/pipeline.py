@@ -220,6 +220,17 @@ class PipelineContext:
     #: a device saved before its far end failed would keep the change across a reload whatever
     #: its rollback then did (C501's shape, one device further out).
     hold_save: bool = False
+    #: ip -> the paired deploy's link as this end's verify leaves it (C1964;
+    #: `paired_deploy.transient_for`): ``{"interface", "far", "ids": {"ospf": rid, "ospfv3":
+    #: rid}, "line", "words"}``. On the FIRST end (``line`` True) that interface's line protocol,
+    #: and its adjacency to the far end's router ID ON that interface where the link's verify
+    #: judges it, are an expected transient between the two applies, judged only by the link's
+    #: verify after both ends (`paired_deploy.verify_link`); on the second end only that
+    #: adjacency, whose return would otherwise net against a loss elsewhere. This verify leaves
+    #: them out of its comparison, before and after alike, and says so. Every other interface,
+    #: and every other adjacency (the far end's router ID on another interface among them), is
+    #: judged as ever.
+    pair_transient: dict = None
     #: Coverage's combined deploy (artboard A2): every sent line is read back, quick or full,
     #: and a line not read back FAILS verify, so the program is rolled back as one (a quick
     #: verify's missing line only keeps it from passing, nothing rolled back for it).
@@ -1152,7 +1163,7 @@ _UNREADABLE = "unreadable"
 
 
 def _await_neighbour_convergence(ctx, ip: str, hostname: str, protocol: str,
-                                 pre_count: int, need: int = None) -> dict:
+                                 pre_count: int, need: int = None, exclude=None) -> dict:
     """Re-poll a device's neighbour count within the protocol's settle window.
 
     Returns ``{"state", "count", "elapsed", "window"}``. Three outcomes:
@@ -1169,6 +1180,10 @@ def _await_neighbour_convergence(ctx, ip: str, hostname: str, protocol: str,
     before": a protocol intent declares and the device was not running
     needs at least one neighbour, and the drop tolerance would otherwise
     let zero pass. It can only tighten the condition.
+
+    ``exclude``, when given, is ``exclude(snapshot) -> int``: the rows of each re-read left out
+    of its count, as *pre_count* already leaves them out (the paired deploy, C1964: the link's
+    own adjacency, `_transient_rows`), so the comparison is like for like.
     """
     from modules.connection import get_persistent_connection
 
@@ -1180,13 +1195,17 @@ def _await_neighbour_convergence(ctx, ip: str, hostname: str, protocol: str,
     latest = {"count": -1, "snapshot": {}}
     seen: list = []
 
+    def _count(snap):
+        got = _protocol_counts(snap).get(protocol, -1)
+        return got - exclude(snap) if exclude is not None and got >= 0 else got
+
     def _probe():
         get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)  # reachable, or raise
         snapshot = _detect_routing_neighbors(_session_for(ctx, dev))
         # A read of THIS protocol that failed is not a count of zero (C272).
         latest["unreadable"] = _unread_protocol(snapshot, protocol)
         # THIS protocol's count and details, not the primary's (C62).
-        latest["count"] = _protocol_counts(snapshot).get(protocol, -1)
+        latest["count"] = _count(snapshot)
         latest["snapshot"] = (snapshot.get("protocols") or {}).get(protocol) or snapshot
         seen.append(latest["count"])
         return snapshot
@@ -1199,8 +1218,7 @@ def _await_neighbour_convergence(ctx, ip: str, hostname: str, protocol: str,
             return _protocol_counts(snap).get(protocol, -1) >= need
     else:
         def _met(snap):
-            return (_protocol_counts(snap).get(protocol, -1) - pre_count) \
-                >= -_NEIGHBOR_DROP_TOLERANCE
+            return (_count(snap) - pre_count) >= -_NEIGHBOR_DROP_TOLERANCE
     result = _wait_for(protocol, _probe, _met, sleep=ctx.settle_sleep or time.sleep,
                        list_name=_list_of(ctx))
 
@@ -1400,6 +1418,41 @@ def _protocol_shows_progress(snapshot: dict, count: int, rose: bool = False) -> 
     return False
 
 
+def _transient_rows(snapshot: dict, proto: str, transient: dict) -> int:
+    """How many of *proto*'s rows in a neighbour read are the paired deploy's transient (C1964):
+    the far end's router ID ON the link's interface, both named. A row the read gives no
+    interface for, the far end's router ID on another interface, and a protocol whose far-end
+    router ID committed intent does not give are never it: the safe reading."""
+    from modules.nsot.expected_effects import canonical, neighbour_rows
+
+    rid = ((transient or {}).get("ids") or {}).get(proto) or ""
+    port = canonical((transient or {}).get("interface") or "")
+    if not rid or not port:
+        return 0
+    return sum(1 for r in neighbour_rows(snapshot, proto)
+               if r["id"] == rid and r["interface"] == port)
+
+
+def _judge_names(expected: dict, before: dict, after: dict, transient: dict) -> dict:
+    """`expected_effects.judge`, with the paired deploy's FIRST end's link (C1964, ``line``
+    True) taken out of ``lost_unexpected`` and ``not_up`` into ``transient``: its line protocol
+    between the two applies is the link verify's to judge. Every other interface, and the
+    second end's link, is judged as ever, and an interface the program shuts keeps its own
+    judgement (``not_down``)."""
+    from modules.nsot import expected_effects as _fx
+
+    got = _fx.judge(expected, before, after)
+    # The second end's line protocol is judged as ever (``line`` False).
+    port = (_fx.canonical((transient or {}).get("interface") or "")
+            if (transient or {}).get("line", True) else "")
+    if not port:
+        return got
+    held = sorted({n for n in got["lost_unexpected"] + got["not_up"] if n == port})
+    return dict(got, transient=held,
+                lost_unexpected=[n for n in got["lost_unexpected"] if n != port],
+                not_up=[n for n in got["not_up"] if n != port])
+
+
 def _stage_verify(ctx: PipelineContext) -> None:
     """
     Diff pre vs post snapshots using protocol-agnostic convergence checks.
@@ -1437,18 +1490,23 @@ def _stage_verify(ctx: PipelineContext) -> None:
         expected = _fx.derive(ctx.rendered_commands.get(ip) or [])
         pre_states = (pre.get("interfaces") or {}).get("states") or {}
         post_states = (post.get("interfaces") or {}).get("states") or {}
+        # The paired deploy (C1964): what of the link is the link verify's to judge, after both
+        # ends (the first end: its line protocol and adjacency; the second: its adjacency);
+        # none of this when the run is not one end of a pair.
+        transient = (ctx.pair_transient or {}).get(ip) or {}
         named, unexpected_settle, hard = None, None, False
         if pre_states and post_states:
-            named = _fx.judge(expected, pre_states, post_states)
+            named = _judge_names(expected, pre_states, post_states, transient)
             if named["lost_unexpected"]:
                 waited = _await_interfaces(
-                    ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)["lost_unexpected"])
+                    ctx, ip, lambda s: not _judge_names(expected, pre_states, s,
+                                                        transient)["lost_unexpected"])
                 unexpected_settle = {"seconds": waited["window"]["timeout"],
                                      "elapsed": waited["elapsed"],
                                      "basis": "the installation's default, inherited by this "
                                               "network; not yet measured for its platforms"}
                 if waited["states"]:
-                    named = _fx.judge(expected, pre_states, waited["states"])
+                    named = _judge_names(expected, pre_states, waited["states"], transient)
                 if named["lost_unexpected"]:
                     hard = True
                     issues.append(
@@ -1504,12 +1562,32 @@ def _stage_verify(ctx: PipelineContext) -> None:
             pre_ids = _fx.neighbour_ids(pre_nbr, pre_proto)
             expected_gone[pre_proto] = len(expect & pre_ids)
         record["adjacencies_expected_down"] = adj_drops
+        # The paired deploy (C1964): the link's own adjacency (the far end's router ID on the
+        # link's interface), where the link's verify judges it, left out of BOTH sides of each protocol's comparison, so
+        # its loss is not counted and its presence hides no other loss. One the program drops on
+        # purpose (it shuts the link) is already left out above, and is not left out twice.
+        held_out: dict = {}
+        for pre_proto in pre_counts:
+            rid = (transient.get("ids") or {}).get(pre_proto) if transient else ""
+            if rid and rid not in _fx.expected_ids(adj_drops, pre_proto):
+                held_out[pre_proto] = (lambda snap, _p=pre_proto:
+                                       _transient_rows(snap, _p, transient))
+        transient_seen: list = []
+        for pre_proto, out_of in sorted(held_out.items()):
+            if out_of(pre_nbr) and not out_of(post_nbr) and post_counts.get(pre_proto, -1) >= 0:
+                transient_seen.append(
+                    f"{'OSPFv3' if pre_proto == 'ospfv3' else 'OSPF'} adjacency to "
+                    f"{transient.get('far', '')} on {transient.get('interface', '')} down")
 
         # A hard failure already visible: nothing is waited out over it (C506).
         for pre_proto, pre_count in ([] if hard else sorted(pre_counts.items())):
             # Compared without the adjacencies the program drops on purpose (C506 phase 2).
-            pre_count = pre_count - expected_gone.get(pre_proto, 0)
+            out_of = held_out.get(pre_proto)
+            pre_count = (pre_count - expected_gone.get(pre_proto, 0)
+                         - (out_of(pre_nbr) if out_of else 0))
             post_count = post_counts.get(pre_proto, -1)
+            if out_of and post_count >= 0:
+                post_count -= out_of(post_nbr)
             # A read that could not be trusted goes to the settle window below,
             # which reads again on a new session; only when that read cannot be
             # trusted either is it `unreadable` (C272), never "unreadable after
@@ -1529,7 +1607,7 @@ def _stage_verify(ctx: PipelineContext) -> None:
             # every 30 seconds, so a neighbour check run two seconds after a
             # RIP change reports a drop that is not real.
             settled = _await_neighbour_convergence(
-                ctx, ip, hostname, pre_proto, pre_count)
+                ctx, ip, hostname, pre_proto, pre_count, exclude=out_of)
             record.setdefault("neighbors_by_protocol", {})[pre_proto] = settled
             if pre_proto == primary or "neighbors" not in record:
                 record["neighbors"] = settled
@@ -1693,11 +1771,13 @@ def _stage_verify(ctx: PipelineContext) -> None:
                               + ", and it is still up")
             if named["not_up"] and not hard:
                 waited = _await_interfaces(
-                    ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)["not_up"],
+                    ctx, ip, lambda s: not _judge_names(expected, pre_states, s,
+                                                        transient)["not_up"],
                     check="interfaces")
                 if waited["states"]:
-                    named = dict(named, not_up=_fx.judge(expected, pre_states,
-                                                         waited["states"])["not_up"])
+                    named = dict(named, not_up=_judge_names(expected, pre_states,
+                                                            waited["states"],
+                                                            transient)["not_up"])
                 if named["not_up"]:
                     issues.append(
                         "The change brings up " + ", ".join(named["not_up"])
@@ -1864,6 +1944,13 @@ def _stage_verify(ctx: PipelineContext) -> None:
             "declared_moves": moves_checked,
             "routes_declared": routes_declared or None,
             "notes": notes,
+            # The paired deploy's first end (C1964): the link this verify left to the link's
+            # own verify after both ends, in words, and what of it was seen down here.
+            "pair_transient": ({
+                "interface": transient.get("interface", ""), "far": transient.get("far", ""),
+                "words": transient.get("words", ""),
+                "seen": [f"{n} line protocol not up" for n in (named or {}).get("transient")
+                         or []] + transient_seen} if transient else None),
         }
         if unmet:
             log.error("pipeline[8/verify]: %s intent not met (no rollback): %s",

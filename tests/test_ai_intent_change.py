@@ -968,13 +968,26 @@ def test_a_pair_commit_whose_link_is_not_the_drafts_writes_nothing(world, pair, 
 
 # ── C1909: the paired deploy's plan and confirm, from the commit's answer ─────────────
 
-def _committed_pair(world, host, monkeypatch, s2_in_inventory=True):  # noqa: F811
+#: Mercury reaches s1 and s2 each on its own management port (C1965): the link's order.
+PAIR_INDEPENDENT = (("mercury", "eth0", "s1", "Gi0/0"), ("mercury", "eth0", "s2", "Gi0/0"),
+                    ("s1", "Gi0/3", "s2", "Gi0/3"))
+#: s2 reached only through s1 Gi0/3, the link: s2 goes first.
+PAIR_S2_BEHIND = (("mercury", "eth0", "s1", "Gi0/0"), ("s1", "Gi0/3", "s2", "Gi0/3"))
+
+
+def _committed_pair(world, host, monkeypatch, s2_in_inventory=True,  # noqa: F811
+                    topology=PAIR_INDEPENDENT):
     """Both ends committed; the paired plan its answer opens, as a person's browser asks it
     (s2 in the plan's inventory too, beside the lab's r2 and s1, unless *s2_in_inventory* is
-    false)."""
+    false), Mercury's management path to each read from a planted Topology read (*topology*,
+    `tests.test_paired_deploy._topo`'s cables; C1965)."""
     import re
     from html import unescape
+    from modules.nsot import paired_deploy
     from tests import test_committed_before_p1 as CB
+    from tests.test_paired_deploy import _topo
+    planted = topology if isinstance(topology, dict) else _topo(*topology)
+    monkeypatch.setattr(paired_deploy, "topology", lambda list_name: planted)
     devices = dict(CB.DEVICES, s2=dict(CB.DEVICES["s1"], hostname="s2", ip="192.0.2.22"))
     if s2_in_inventory:
         monkeypatch.setattr("modules.nsot.restore._devices_of",
@@ -1002,6 +1015,61 @@ def test_the_paired_plan_draws_the_link_and_confirms_to_its_own_route(world, pai
     assert 'hx-post="/v2/monitoring/apply/confirm-pair?list=Lab"' in button, button
     assert 'hx-params="list,scope,order,confirmations,command_hashes,authorise,pair"' in button
     assert '"pair": "s1:GigabitEthernet0/3,s2:GigabitEthernet0/3"' in button
+    # C1965: the order is Mercury's, said with its reason, and not moved by hand.
+    said = html.split('id="apply-pair-order"', 1)[1].split("</p>", 1)[0]
+    assert ("in this order: s1 first, as the link names it: neither end is reached through "
+            "the other (Mercury reaches s1 directly, on its GigabitEthernet0/0; Mercury reaches "
+            "s2 directly, on its GigabitEthernet0/0)") in said, said
+    assert "Move s1 earlier" not in html and "data-grip" not in html
+
+
+def test_the_paired_plan_puts_the_end_behind_the_other_first(world, pair, host,  # noqa: F811
+                                                            monkeypatch):
+    """C1965: s2 reached through s1 Gi0/3, the link being changed, goes first: the plan's rows,
+    its stated order and its confirm's, in that order."""
+    html = _committed_pair(world, host, monkeypatch, topology=PAIR_S2_BEHIND)
+    said = html.split('id="apply-pair-order"', 1)[1].split("</p>", 1)[0]
+    assert ("in this order: s2 first: Mercury reaches s2 through s1 GigabitEthernet0/3, the "
+            "link being changed") in said, said
+    rollout = html.split('id="rollout"', 1)[1].split("</ol>", 1)[0]
+    assert rollout.index('data-device="s2"') < rollout.index('data-device="s1"')
+    assert json.loads(_confirm_body(html)["order"]) == ["s2", "s1"]
+
+
+def test_an_unread_topology_offers_no_paired_plan(world, pair, host, monkeypatch):  # noqa: F811
+    """C1965: the management path unknown, the order is refused, never guessed: no confirm."""
+    from tests.test_paired_deploy import _topo
+    html = _committed_pair(world, host, monkeypatch, topology=_topo(
+        why="the Topology read could not be used (the Topology reader has not read yet)"))
+    assert 'id="apply-confirm"' not in html
+    notice = html.split('id="apply-pair"', 1)[1].split("</div>", 1)[0]
+    assert ("Not offered: Mercury's management path to s1 and s2 is unknown: the Topology read "
+            "could not be used (the Topology reader has not read yet); the order is refused "
+            "rather than guessed") in notice, notice
+
+
+def test_the_paired_confirm_refuses_an_order_that_moved(world, pair, host,  # noqa: F811
+                                                        monkeypatch):
+    """C1965: planned s1 first (independent paths), and the Topology read since puts s2 behind
+    s1: the confirm refuses, naming both orders, and starts nothing. Its control is the
+    unmoved confirm, `test_the_paired_confirm_starts_one_job_carrying_the_link`."""
+    from html import unescape
+    from modules import deploy_job
+    from modules.nsot import paired_deploy
+    from tests.test_paired_deploy import _topo
+    started = []
+    monkeypatch.setattr(deploy_job, "start", lambda *a, **k: started.append(a) or "j1")
+    body = _confirm_body(_committed_pair(world, host, monkeypatch))
+    assert json.loads(body["order"]) == ["s1", "s2"]
+    monkeypatch.setattr(paired_deploy, "topology", lambda list_name: _topo(*PAIR_S2_BEHIND))
+    r = host["client"].post("/v2/monitoring/apply/confirm-pair?list=Lab", data={
+        k: body[k] for k in ("list", "scope", "order", "confirmations", "command_hashes",
+                             "authorise", "pair")}, headers={"HX-Request": "true"})
+    html = unescape(r.get_data(as_text=True))
+    assert r.status_code == 400 and started == [], html[-800:]
+    assert ("the order moved. This confirm carries s1, s2; Mercury's management path now gives "
+            "s2 first: Mercury reaches s2 through s1 GigabitEthernet0/3, the link being "
+            "changed") in html, html[-800:]
 
 
 def test_the_paired_plan_is_not_offered_when_one_end_cannot_deploy(world, pair, host,  # noqa: F811

@@ -1963,6 +1963,13 @@ def _apply_ctx(req, scope: str = None, names: list = None) -> dict:
         if ctx["pair"]["refused"]:
             # Both ends, or neither: never a batch of the two deployed one by one.
             ready = ctx["ready"] = []
+        elif ctx["pair"]["order"]:
+            # The order is Mercury's, from its management path to each end (C1965): the rows,
+            # the page's order and the confirm's, in it.
+            rank = {n: i for i, n in enumerate(ctx["pair"]["order"])}
+            rows.sort(key=lambda r: rank.get(r["name"], len(rank)))
+            ready = ctx["ready"] = sorted(ready, key=lambda n: rank.get(n, len(rank)))
+            ctx["order"] = [r["name"] for r in rows]
     if ready:
         # The confirm body, computed HERE from the hashes this preview drew: the
         # browser sends it back unchanged, in the rollout order.
@@ -1984,17 +1991,20 @@ def _pair_ctx(list_name: str, scope: str, args: dict, devices: list, ready: list
     both ends of, what verify will read across it (`paired_deploy.link_checks`, from the
     programs drawn and committed intent), and why it is refused when it is: a scope other than
     the whole intent, a link that does not read, devices other than its two ends, an end not
-    in its device's committed intent, or an end that cannot be deployed now (both or neither).
-    ``{"link", "words", "checks", "refused"}``."""
+    in its device's committed intent, an end that cannot be deployed now (both or neither), or
+    an order Mercury's management path cannot give (C1965, `paired_deploy.order_for`: which end
+    goes first, and why, from the Topology read). ``{"link", "words", "checks", "refused",
+    "order", "order_words"}``."""
     from modules.nsot import paired_deploy as PD
     from routes.deploy import _committed_intents_of
 
     try:
         link = PD.link_of(args["pair"])
     except PD.LinkRefused as exc:
-        return {"link": args["pair"], "words": args["pair"], "checks": [], "refused": str(exc)}
+        return {"link": args["pair"], "words": args["pair"], "checks": [], "refused": str(exc),
+                "order": [], "order_words": ""}
     out = {"link": PD.link_text(link), "words": PD.link_words(link), "checks": [],
-           "refused": ""}
+           "refused": "", "order": [], "order_words": ""}
     if scope != "intent":
         return dict(out, refused="a paired deploy sends each device's whole committed intent, "
                                  f"and this plan is scoped to {scope}")
@@ -2009,7 +2019,11 @@ def _pair_ctx(list_name: str, scope: str, args: dict, devices: list, ready: list
             f"{' and '.join(not_ready)} has nothing to send or cannot be deployed now (each says "
             "why below), and both ends of the link change together, or neither does"))
     programs = {d.get("device"): d.get("commands") or [] for d in devices}
-    return dict(out, checks=PD.checks_words(PD.link_checks(link, programs, intents)))
+    decided = PD.order_for(link, PD.topology(list_name), programs)
+    if decided["refused"]:
+        return dict(out, refused=decided["refused"])
+    return dict(out, checks=PD.checks_words(PD.link_checks(link, programs, intents)),
+                order=decided["order"], order_words=decided["words"])
 
 
 @bp.route("/monitoring/apply", methods=["GET"])
@@ -2165,7 +2179,8 @@ def pair_apply_confirm():
     applied, both rolled back if either end or the link fails (`modules.nsot.paired_deploy`).
     Posted by htmx from the plan's confirm, as the batch Apply's is; answers 202 with the job's
     card, or 400 with the refusal and nothing sent: a scope other than the whole intent, a
-    link that does not read, or an order that is not exactly the link's two ends."""
+    link that does not read, an order that is not exactly the link's two ends, or an order
+    other than the one Mercury's management path gives now (C1965), or none it can give."""
     from flask import request
 
     from modules import deploy_job, identity
@@ -2206,6 +2221,18 @@ def pair_apply_confirm():
            else PD.link_problem(link, intents, order))
     if why:
         return _apply_answer("", 400, refused=f"Nothing confirmed: {why}. Nothing was sent.")
+    # The order (C1965): Mercury's, from its management path to each end, judged again; one
+    # that moved since the preview is refused, naming both (the apply judges it a third time,
+    # with the programs, `routes.deploy.apply_batch`).
+    decided = PD.order_for(link, PD.topology(list_name))
+    if decided["refused"]:
+        return _apply_answer("", 400, refused=(
+            f"Nothing confirmed: {decided['refused']}. Nothing was sent."))
+    if decided["order"] != order:
+        return _apply_answer("", 400, refused=(
+            f"Nothing confirmed: the order moved. This confirm carries {', '.join(order)}; "
+            f"Mercury's management path now gives {decided['words']}. Plan both ends again. "
+            "Nothing was sent."))
     job = deploy_job.start(
         list_name, order, confirmations, hashes, authorise=data["authorise"], remove={},
         scope="", actor=identity.request_actor(),

@@ -36,7 +36,7 @@
       ticked"): the link the two devices are both ends of, what verify reads across it, and
       that either end failing rolls both back; or why it is not offered (both or neither). -#}
   {%- if pair %}
-  <div class="notice {{ 'notice-danger' if pair.refused else 'notice-info' }} apply-pair" id="apply-pair" role="status">{{ icon('warn' if pair.refused else 'info', 16) }}<p><strong>Both ends of the link {{ pair.words }}, as one change.</strong> {% if pair.refused %}Not offered: {{ pair.refused }}. Nothing is sent to either.{% else %}Each device receives exactly its program below, one after the other in this order; the second is sent only when the first deployed. Once both apply, verify reads the link: {{ pair.checks | join('; ') }}. If either end fails, or the link does, both are rolled back, and each device's receipt says what it achieved.{% endif %}</p></div>
+  <div class="notice {{ 'notice-danger' if pair.refused else 'notice-info' }} apply-pair" id="apply-pair" role="status">{{ icon('warn' if pair.refused else 'info', 16) }}<p><strong>Both ends of the link {{ pair.words }}, as one change.</strong> {% if pair.refused %}Not offered: {{ pair.refused }}. Nothing is sent to either.{% else %}Each device receives exactly its program below, one after the other in the order below, which Mercury chose from its management path to each; the second is sent only when the first deployed. While only the first has its change, the link's own line protocol and adjacency there are left to the link's verify. Once both apply, verify reads the link: {{ pair.checks | join('; ') }}. If either end fails, or the link does, both are rolled back, and each device's receipt says what it achieved.{% endif %}</p></div>
   {%- endif %}
   {#- Drawn only while a batch confirmed from this preview runs, then only once it has ended
       (C602; C883: both were drawn on every preview, `.notice`'s display beating `hidden`):
@@ -47,23 +47,31 @@
 
   {%- if sending %}
   <h2 class="apply-h" id="rollout-h">Rollout order</h2>
+  {%- if pair and pair.order_words %}
+  {#- A pair's order is Mercury's, from its management path to each end (C1965): said, and
+      not moved by hand; the confirm and the apply refuse an order that moved. -#}
+  <p class="muted apply-why" id="apply-pair-order">One device at a time, in this order: {{ pair.order_words }}.</p>
+  {%- else %}
   <p class="muted apply-why">One device at a time, in this order. The batch stops after repeated failures (a push, a verify or a refusal), so the first devices are the ones a bad change would reach; put the one you would most like to learn from first. Drag a device by its grip, or use Earlier and Later.</p>
+  {%- endif %}
   {#- Where a move is said for a screen reader, and a refused drop for everyone (C905). -#}
   <p class="rollout-said sr-only" id="rollout-said" aria-live="polite"></p>
   <ol class="rollout" id="rollout" aria-labelledby="rollout-h">
     {%- for r in sending %}
     <li class="rollout-item" data-device="{{ r.name }}">
+      {%- if not pair %}
       <span class="rollout-grip" data-grip aria-hidden="true" title="Drag to move {{ r.name }} in the order">{{ icon('grip', 16) }}</span>
+      {%- endif %}
       <span class="grow"><a href="#apply-{{ r.name }}">{{ r.name }}</a> {{ badge(STATE.get(r.state, (r.state, 'muted'))[0], STATE.get(r.state, (r.state, 'muted'))[1]) }}</span>
       {#- Earlier and Later move the row in the page and ask nothing (C888: each was a re-plan
           of about 6 s that changed no program); the keyboard's and touch's way, beside the
-          grip. Leave out still plans again: it changes what is confirmed. -#}
+          grip. Leave out still plans again: it changes what is confirmed. A pair's two ends
+          are one change, in Mercury's order (C1909, C1965): none of the three is drawn. -#}
+      {%- if not pair %}
       <button type="button" class="btn btn-small" data-reorder data-move="up"{% if loop.first %} disabled{% endif %}
               aria-label="Move {{ r.name }} earlier">Earlier</button>
       <button type="button" class="btn btn-small" data-reorder data-move="down"{% if loop.last %} disabled{% endif %}
               aria-label="Move {{ r.name }} later">Later</button>
-      {#- A pair's two ends are one change: neither is left out (C1909). -#}
-      {%- if not pair %}
       <button type="button" class="btn btn-small" data-reorder hx-get="{{ url_for('v2.profile_apply_preview', drop=r.name) }}"
               hx-include="#apply-form" hx-target="#apply-preview" hx-swap="outerHTML" hx-disabled-elt="#apply-preview button"
               aria-label="Leave {{ r.name }} out of this batch"><span class="op-idle">Leave out</span><span class="op-busy">Leaving out…</span></button>
