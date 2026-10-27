@@ -196,8 +196,13 @@ class TestTheGates:
 
 
 @pytest.fixture
-def run_lab(lab, monkeypatch):  # noqa: F811
-    """The run with the device-facing parts replaced: what was sent is recorded."""
+def run_lab(lab, tmp_path, monkeypatch):  # noqa: F811
+    """The run with the device-facing parts replaced: what was sent is recorded. The run
+    declares its window and ends it in the restart record, which is this test's own (C1864:
+    in the session's store, r2's window in the list Lab quiets a later test's r2)."""
+    from modules import restarts
+
+    monkeypatch.setattr(restarts, "_data", lambda name: str(tmp_path / name))
     sent = []
     monkeypatch.setattr(reload_op, "_device", lambda l, h: {"hostname": "r2",
                                                             "ip": "203.0.113.12",

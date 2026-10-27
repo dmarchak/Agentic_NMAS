@@ -46,6 +46,11 @@ def planted(lab, tmp_path, monkeypatch):  # noqa: F811
     # The reveal record is this lab's own (C837: History draws every reveal, and the process's
     # record holds other tests' reveals of a list also named Lab).
     monkeypatch.setattr(reveal_audit, "_path", lambda: str(tmp_path / "reveal_audit.jsonl"))
+    # The restart record too (C1864): the two windows below cover the list Lab, and in the
+    # session's store they quieted a later test's alert and drew in its device's History (a
+    # different lab, its list also named Lab). DATA_DIR stays put: the lab's reader values live
+    # there.
+    monkeypatch.setattr(restarts, "_data", lambda name: str(tmp_path / name))
     from modules.nsot import credential_rotation as cr
     from modules.nsot import listref, receipts
     from modules.nsot import repo as R

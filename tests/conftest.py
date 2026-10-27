@@ -743,6 +743,69 @@ def _no_module_leaves_a_reader_store(request):
         f"{', '.join(left)}. They are put back; a module fixture removes what it wrote (C1522).")
 
 
+def _restart_record():
+    """``{path: bytes or None}``: each of the restart record's files (`restarts.LINE_STORES`,
+    the owner's own table) in the session's store, None when absent."""
+    from modules import restarts
+
+    out = {}
+    for name in restarts.LINE_STORES:
+        path = os.path.join(_TEST_DATA_DIR, name)
+        try:
+            with open(path, "rb") as fh:
+                out[path] = fh.read()
+        except FileNotFoundError:
+            out[path] = None
+    return out
+
+
+def _put_back_the_restart_record(kept: dict, who: str) -> None:
+    """Put each restart-record file back as *kept* holds it, then fail *who* naming each one
+    that moved (C1864): put back first, so one leaker never becomes the next test's failure."""
+    moved = []
+    for path, data in kept.items():
+        try:
+            with open(path, "rb") as fh:
+                now = fh.read()
+        except FileNotFoundError:
+            now = None
+        if now == data:
+            continue
+        moved.append(os.path.basename(path))
+        if data is None:
+            os.remove(path)
+        else:
+            with open(path, "wb") as fh:
+                fh.write(data)
+    assert not moved, (
+        f"{who} left the restart record changed in the session's store: {', '.join(moved)}. "
+        "It is put back; a test that declares a window or records a restart points "
+        "`modules.config.DATA_DIR` (or `modules.restarts._data`) at its own folder (C1864).")
+
+
+@pytest.fixture(autouse=True)
+def _no_test_leaves_a_restart_record(request):
+    """No test may leave a planned-restart window, a window's end or a restart in the session's
+    store (C1864). The store is one directory for the whole session, and a window is read by
+    everything after it: Needs attention quiets a device's alert while a window covers it, and
+    a device's History draws it. `test_history_one_timeline`'s `planted` declared two windows
+    over the list Lab there, and `test_evidence_pack`'s r1 and r2, in a list also named Lab,
+    then drew those windows in r1's History and lost r2's alert row, only when the paging
+    tests (which use `planted`) ran first in the same process."""
+    kept = _restart_record()
+    yield
+    _put_back_the_restart_record(kept, request.node.nodeid)
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _no_module_leaves_a_restart_record(request):
+    """The same rule for a module (C1864): a module-scoped fixture writes before any test's
+    snapshot, so only the module's own start and end can see it."""
+    kept = _restart_record()
+    yield
+    _put_back_the_restart_record(kept, f"{request.node.nodeid} (after its last test)")
+
+
 @pytest.fixture(autouse=True)
 def _no_test_writes_into_live_data(request):
     """No test may create a path in the store, except a named exemption.
