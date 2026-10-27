@@ -506,6 +506,17 @@ LINE_STORES["flow_intent"] = _network_store("flow_intent", "SDN flow intent", "f
                                             "flow_intent.jsonl")
 
 
+def _explain_answers_path() -> str:
+    from modules.ai import explain_answers
+    return explain_answers._path()
+
+
+# Explain's answers, kept with their frozen packs (C1853): one file for the installation, one
+# line per answer, through `store_append` and `store_rows` (`modules/ai/explain_answers.py`).
+LINE_STORES["explain_answers"] = _installation_store("explain_answers", "Explain answers",
+                                                     "answers", _explain_answers_path)
+
+
 # ── The files ────────────────────────────────────────────────────────────────────────────────
 
 def file_networks(store: str = STORE) -> dict:

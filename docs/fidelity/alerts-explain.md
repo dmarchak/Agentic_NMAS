@@ -14,8 +14,8 @@ test_device_v2's lab with tests/v2_context.py's `_alert_evidence` set-up: r3's r
 instance and a silenced syslog instance firing, each pack built by the real trigger over the
 Loki and Prometheus captures; the first card opened; Explain pressed with hosted AI allowed and
 an answer planted (a hypothesis citing `alert`, needing a person).
-Templates compared: templates/v2/_alert_evidence.html, templates/v2/_evidence_pack.html, templates/v2/_explain.html
-Templates sha256: `3efa0c170da2bdd638f413cc4bae45c38c1d21ee46b1c36cdb5790863e74fe58`
+Templates compared: templates/v2/_alert_evidence.html, templates/v2/_evidence_pack.html, templates/v2/_explain.html, templates/v2/_explain_block.html
+Templates sha256: `bb0b208450694e2fd656fb744a8b091db35009be9a6c3c297c58ac82bc77e798`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
@@ -111,3 +111,30 @@ stays kept as it was" and **Show it**. `_explain.html` draws, above the call's H
   once draws as before.
 
 Templates sha256 before: `fe9dc84abf22ba7879d554bf3de7004d535dd8e61e68e38273f12fd863f2e47f`.
+
+**Compared again 2026-10-27 (C1853, the operator's Walk 2: an answer kept with its pack):**
+Explain's control and its answer moved from `_evidence_pack.html` into its own block,
+`_explain_block.html`, which the pack includes and which Explain's answer replaces whole; the
+record now compares it too. An answer is kept with its pack. The card draws the kept one when it
+opens, with nothing sent, under the answer's "Read pack <id>, schema N, built <when>" line
+(C1862): "kept with the pack · explained <age>", who and when on hover. With one kept, the
+button is **Explain again**, with "A new call, up to $…; this answer stays." beside it.
+- **Shots:** `tests/test_board_shots.py::test_monitoring_alerts_explain` (2026-10-27 05:0x UTC,
+  at 1440, 1280 and 390 beside the board at 1440), with a fourth state, `alerts-explain-kept`:
+  the page drawn again and the card opened. Each width starts with no answer kept. In
+  `-explained`, the answer just made is drawn with no kept line, and the button already reads
+  Explain again with "A new call, up to $0.1076; this answer stays.". In `-kept`, the same answer
+  is drawn with "Read pack ep-…, schema 5, built just now as of 12 d ago.", then "kept with the
+  pack · explained just now", then "This call in History ($0.0100)". At 390 both stack, with no
+  sideways scroll.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| A kept answer, reopened | not drawn (the board draws one answer, made now) | the answer as drawn when made, its pack named, "kept with the pack · explained just now" under it; nothing sent | **deviation** (log: P1 Alerts: a kept answer and Explain again) |
+| Explain again | not drawn (the board's button reads Explain after an answer) | with an answer kept, made now or reopened, the button reads Explain again, busy as "Explaining again…", with "A new call, up to $0.1076; this answer stays." beside it, the cost the task's per-call cap | **deviation** (log: P1 Alerts: a kept answer and Explain again) |
+| The answer store unreadable | a refusal in the answer's place, as Couldn't analyse is drawn | the same form: "Not explained: the kept Explain answers cannot be read (…)…; nothing was sent", in place of the answer, the button Explain again; compared by the template and tests/test_explain_kept.py, not shot | **same** |
+
+No other region's verdict changed. A pack with no answer kept draws Explain as before.
+
+Templates sha256 before: `3efa0c170da2bdd638f413cc4bae45c38c1d21ee46b1c36cdb5790863e74fe58`
+(over the three templates compared before `_explain_block.html` was added).

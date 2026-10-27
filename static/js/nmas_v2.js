@@ -210,6 +210,81 @@
 
   var HELD_WORDS = 'Newer data is waiting; it shows when you send or cancel.';
 
+  /* A REFRESH NEVER DISRUPTS A PERSON MID-TASK (C1852, the operator's Walk 2, 2026-10-27: on
+     Monitoring › Alerts › History each announcement redrew the list, closing the entry a person
+     had open and dropping an Explain in flight, whose answer then had nowhere to land). Two
+     more states hold a live redraw, as editing does:
+
+     - SENDING: an action in the region is in flight (a request that is not a GET, marked on
+       its element from the request's start to its end, `noteSending`). Its answer swaps into
+       the region; replacing the region first leaves it nowhere. The hold ends with the answer.
+     - OPEN: an entry in the region that loaded its own body when opened (`details[hx-get]`,
+       open) is open. What the person reads and pressed there came by its own requests, which
+       a redraw of the list cannot draw again. The entry says "Paused while you work" with
+       Show it now (the redraw at once; open entries are opened again and load their bodies
+       again); closing every such entry lets the redraw happen by itself.
+
+     Paused, not kept: keeping a live entry through a swap means moving its nodes, with their
+     requests in flight, through htmx's swap, then racing the reopened entry's own load. */
+  var PAUSED_WORDS = 'Paused while you work: newer data is waiting.';
+  var SENDING_WORDS = 'Newer data is waiting; it shows when this answers.';
+
+  /* PURE over the DOM: an element in *region* whose action is in flight, or null. */
+  function sendingIn(region) {
+    return region && region.querySelector ? region.querySelector('[data-nmas-sending]') : null;
+  }
+
+  /* PURE over the DOM: an open entry in *region* that loaded its own body, or null. */
+  function openedIn(region) {
+    return region && region.querySelector ? region.querySelector('details[hx-get][open]') : null;
+  }
+
+  /* PURE: why a live redraw of *region* is held now ("editing", "sending", "open"), or ''. */
+  function holdReason(region) {
+    if (editingIn(region)) return 'editing';
+    if (sendingIn(region)) return 'sending';
+    if (openedIn(region)) return 'open';
+    return '';
+  }
+
+  function isWrite(verb) {
+    return !!verb && String(verb).toLowerCase() !== 'get';
+  }
+
+  function noteSending(e) {
+    var d = (e && e.detail) || {}, el = d.elt;
+    if (el && el.setAttribute && isWrite((d.requestConfig || {}).verb)) el.setAttribute('data-nmas-sending', '1');
+  }
+
+  function noteSent(e) {
+    var el = e && e.detail && e.detail.elt;
+    if (el && el.removeAttribute) el.removeAttribute('data-nmas-sending');
+  }
+
+  /* ONE PRESS, ONE KEY (C1854): every request that is not a GET carries a key made for that
+     press (`X-NMAS-Press`); an AI call already made under it is returned, never made again
+     (modules/ai/presses.py). PURE but for the randomness it is handed. */
+  function pressKey(crypto) {
+    try {
+      if (crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, '');
+    } catch (err) { /* below */ }
+    var bytes = null, out = '';
+    try {
+      if (crypto && crypto.getRandomValues) { bytes = new Uint8Array(16); crypto.getRandomValues(bytes); }
+    } catch (err) { bytes = null; }
+    for (var i = 0; i < 16; i++) {
+      var b = bytes ? bytes[i] : Math.floor(Math.random() * 256);
+      out += (b < 16 ? '0' : '') + b.toString(16);
+    }
+    return out;
+  }
+
+  function keyThePress(e) {
+    var d = e && e.detail;
+    if (!d || !d.headers || !isWrite(d.verb)) return;
+    d.headers['X-NMAS-Press'] = pressKey(root.crypto);
+  }
+
   /* Was this swap caused by a LIVE update (a reader's or a job's announcement, `nmas:<key>`)?
      Only those are held: a person's own submission swaps the region it was sent from,
      typed reason and all, because that answer is what they asked for. */
@@ -221,10 +296,14 @@
   function holdWhileEditing(e) {
     var region = e.detail && e.detail.target;
     if (!e.detail || !e.detail.shouldSwap || !region || !isLiveUpdate(e.detail)) return;
-    var editing = editingIn(region);
-    if (!editing) return;
+    var why = holdReason(region);
+    if (!why) return;
     e.detail.shouldSwap = false;
     region.setAttribute('data-held', '1');
+    // The skipped redraw's open entries are the person's own, still open: nothing to reopen.
+    delete keptOpen[region.id];
+    if (why !== 'editing') { notePaused(region, why); return; }
+    var editing = editingIn(region);
     // The note stays INSIDE the region, beside the field: its form or Alpine component when
     // that is the region's own, else the field's parent. `<body>` carries x-data (the frame),
     // so a field with no nearer component put the note on the page grid as a new column
@@ -259,7 +338,9 @@
     var region = e.detail && e.detail.target;
     if (!region || !region.id) return;
     var keys = openKeys(region);
+    // What is open NOW: an entry closed since an earlier skipped redraw is not opened again.
     if (keys.length) keptOpen[region.id] = keys;
+    else delete keptOpen[region.id];
   }
   function reopenKept() {
     for (var id in keptOpen) {
@@ -275,20 +356,69 @@
     }
   }
 
-  /* Once a held region is no longer being edited, ask for it again: the redraw it skipped. */
+  /* The pause's words where the person is: in the open entry, under its summary (with Show it
+     now), or beside the action in flight. One note per region; the reason it names is the
+     current one. */
+  function notePaused(region, why) {
+    var old = region.querySelectorAll('.held-note');
+    for (var i = 0; i < old.length; i++) old[i].parentNode.removeChild(old[i]);
+    var note = root.document.createElement('p');
+    note.className = 'held-note';
+    note.setAttribute('role', 'status');
+    note.setAttribute('data-held-why', why);
+    var words = root.document.createElement('span');
+    words.textContent = why === 'open' ? PAUSED_WORDS : SENDING_WORDS;
+    note.appendChild(words);
+    if (why === 'open') {
+      var entry = openedIn(region), button = root.document.createElement('button');
+      button.type = 'button';
+      button.className = 'btn btn-small btn-outline held-resume';
+      button.textContent = 'Show it now';
+      button.title = 'Redraws the list now; the entries open now stay open and load again';
+      note.appendChild(root.document.createTextNode(' '));
+      note.appendChild(button);
+      var summary = entry.querySelector('summary');
+      if (summary && summary.nextSibling) entry.insertBefore(note, summary.nextSibling);
+      else entry.appendChild(note);
+    } else {
+      var at = sendingIn(region);
+      (at.parentNode || region).insertBefore(note, at.nextSibling);
+    }
+  }
+
+  /* Ask a held region again: the redraw it skipped. Its open entries are noted first, so the
+     redraw opens them again. */
+  function redrawHeld(region) {
+    region.removeAttribute('data-held');
+    var notes = region.querySelectorAll('.held-note');
+    for (var j = 0; j < notes.length; j++) notes[j].parentNode.removeChild(notes[j]);
+    var url = region.getAttribute('hx-get');
+    if (url && root.htmx) {
+      root.htmx.ajax('GET', url, {target: region, swap: region.getAttribute('hx-swap') || 'outerHTML'});
+    }
+  }
+
+  /* Once nothing holds a held region (no editing, no action in flight, no entry open), ask
+     for it again; while a reason remains, its note says the current one. */
   function releaseHeld() {
     var held = root.document.querySelectorAll('[data-held="1"]');
     for (var i = 0; i < held.length; i++) {
-      var region = held[i];
-      if (editingIn(region)) continue;
-      region.removeAttribute('data-held');
-      var notes = region.querySelectorAll('.held-note');
-      for (var j = 0; j < notes.length; j++) notes[j].parentNode.removeChild(notes[j]);
-      var url = region.getAttribute('hx-get');
-      if (url && root.htmx) {
-        root.htmx.ajax('GET', url, {target: region, swap: region.getAttribute('hx-swap') || 'outerHTML'});
-      }
+      var region = held[i], why = holdReason(region);
+      if (!why) { redrawHeld(region); continue; }
+      var note = region.querySelector('.held-note');
+      var noted = note ? (note.getAttribute('data-held-why') || 'editing') : '';
+      if (noted !== why && why !== 'editing') notePaused(region, why);
     }
+  }
+
+  /* Show it now: the person asks for the newer list while an entry is open. Refused while an
+     action in the region is in flight: its answer would have nowhere to land. */
+  function resumeHeld(e) {
+    var b = e.target && e.target.closest ? e.target.closest('.held-resume') : null;
+    if (!b) return;
+    var region = b.closest('[data-held="1"]');
+    if (!region || sendingIn(region) || editingIn(region)) return;
+    redrawHeld(region);
   }
 
   function drawAges(scope) {
@@ -1176,6 +1306,10 @@
     root.document.addEventListener('htmx:beforeSwap', rememberOpen);
     root.document.addEventListener('htmx:beforeRequest', noteAsked);
     root.document.addEventListener('htmx:beforeRequest', markTab);
+    root.document.addEventListener('htmx:beforeRequest', noteSending);
+    root.document.addEventListener('htmx:afterRequest', noteSent);
+    root.document.addEventListener('htmx:configRequest', keyThePress);
+    root.document.addEventListener('click', resumeHeld);
     root.document.addEventListener('htmx:beforeSend', holdSubmitter);
     root.document.addEventListener('htmx:afterRequest', releaseSubmitter);
     root.document.addEventListener('htmx:beforeSwap', neverSilent);
@@ -1200,5 +1334,5 @@
                   badgeDoubt: badgeDoubt, missedKeys: missedKeys, isFragment: isFragment,
                   failWords: failWords, couldntWords: couldntWords, injectedScripts: injectedScripts,
                   rewrittenWords: rewrittenWords, openKeys: openKeys, submitterOf: submitterOf,
-                  reasonsTyped: reasonsTyped};
+                  reasonsTyped: reasonsTyped, holdReason: holdReason, pressKey: pressKey};
 })(typeof window !== 'undefined' ? window : this);

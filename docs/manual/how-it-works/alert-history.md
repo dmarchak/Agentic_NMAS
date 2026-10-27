@@ -43,6 +43,13 @@ long, and its pack. Open a row for every state it passed through, and its pack o
 evidence. An alert whose resolve Grafana did not record, and which the reader no longer holds,
 says so.
 
+The list is drawn again each time the alerts reader reads Grafana (about every minute), but
+never under you: while a row you opened is open, the list waits, and the row says **Paused
+while you work: newer data is waiting**, with **Show it now** (the newer list at once, your open
+rows opened again). Close the rows, and the newer list is drawn by itself. While Build evidence
+or Explain is being answered, the list waits for the answer and says so beside it. The same holds
+on **Firing**, and on any list whose rows load when opened.
+
 ## Build evidence {#build}
 
 A past alert with no pack offers **Build evidence**. It is busy on itself until the pack is

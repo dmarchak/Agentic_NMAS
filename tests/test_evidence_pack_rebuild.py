@@ -294,21 +294,23 @@ def test_build_again_in_a_real_browser(history):
             assert b.js(f"return {row}.querySelector('.pack').getAttribute('data-pack')") \
                 == old["id"]
             # The press answers in place, and its response names `alerts`, so History's list
-            # redraws after it (modules/invalidation.py): what is read below is read once the
-            # list has been drawn again and nothing is in flight, never between the two.
+            # is asked again after it (modules/invalidation.py). With the row open, that redraw
+            # is paused, never drawn over the row (C1852): what is read below is read once the
+            # list's answer has come and been held and nothing is in flight, never between.
             b.js("window.__list = document.getElementById('alert-history'); "
                  f"{row}.querySelector('form.pack-rebuild button').click()")
             drawn = (f"var r = {row}; var p = r && r.querySelector('.pack'); "
                      "return !document.querySelector('.htmx-request') && "
-                     "document.getElementById('alert-history') !== window.__list && "
                      "!!p && p.getAttribute('data-pack') === ")
-            b.wait_for(drawn + f"'{old['id']}-s5'", 30)
+            held = ("document.getElementById('alert-history') === window.__list && "
+                    "window.__list.getAttribute('data-held') === '1' && ")
+            b.wait_for(drawn.replace("return ", "return " + held, 1) + f"'{old['id']}-s5'", 30)
+            assert b.js(f"return !!{row}.querySelector('.held-note[data-held-why=\"open\"]')")
             text = b.js(f"return {row}.querySelector('.pack').textContent")
             assert "Built again from pack " + old["id"] in text
             assert b.js(f"return {row}.querySelectorAll("
                         "'section.pack-section[data-ref=\"concurrent\"]').length") == 1
-            b.js("window.__list = null; "
-                 f"{row}.querySelector('.pack-lineage button').click()")
+            b.js(f"{row}.querySelector('.pack-lineage button').click()")
             b.wait_for(drawn + f"'{old['id']}'", 15)
             text = b.js(f"return {row}.querySelector('.pack').textContent")
             assert f"Built again as pack {old['id']}-s5" in text

@@ -14,8 +14,8 @@ group is opened on r2's past alert, and Build evidence is pressed: its rebuilt p
 the Loki and Prometheus captures. At 1280 and 390 the pack built at 1440 is kept, frozen, so the
 row opens on the pack and not on Build evidence. The Loki capture is answered whatever the
 window, so the shot's log lines are 15 Oct's, not 21 Oct's.
-Templates compared: templates/v2/_alert_history.html, templates/v2/_evidence_pack.html, templates/v2/monitoring.html
-Templates sha256: `a925cd86203963b4018366e10c65bb932ad196e7d81abe616a267ad9a07caef8`
+Templates compared: templates/v2/_alert_history.html, templates/v2/_evidence_pack.html, templates/v2/monitoring.html, templates/v2/_explain_block.html
+Templates sha256: `7a8a6c425fc46ce1bde970bbd331f86f98e18ab6526c4dc75e92a9aeff22fe11`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
@@ -73,3 +73,26 @@ was built on hover.
   packs of one alert"). No other region's verdict changed.
 
 Templates sha256 before: `b7fba315b8648fb0ecde6d529dd9b76ee31a43b7f5fc37cdab68f2dca52717e9`.
+
+**Compared again 2026-10-27 (C1852 and C1853, the operator's Walk 2):** the list is no longer
+redrawn under a person. While a row whose pack was loaded is open, or while Build evidence,
+Build again or Explain is being answered, the alerts reader's redraw waits. The open row says
+so under its summary, with **Show it now**; beside an action in flight, the row says the newer
+data shows when the action answers. The pack's Explain moved into `_explain_block.html`
+(compared in docs/fidelity/alerts-explain.md), so this record compares it too.
+- **Shots:** `tests/test_board_shots.py::test_monitoring_alerts_history_rebuild` (2026-10-27
+  05:03 UTC, at 1440, 1280 and 390 beside `alerts-history-rebuild-board` at 1440). Build
+  again's response names `alerts`, so the list is asked again. The shot `-rebuilt` is taken
+  once that redraw has been held. Under r2's summary, "Paused while you work: newer data is
+  waiting." stands on one line with Show it now, an outline button, at its right; the pack
+  built again sits below it in place. At 390 the words wrap and the button goes under them,
+  with no sideways scroll. `::test_monitoring_alerts_history` was shot again at the same time,
+  with its regions unchanged.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| The list paused while a row is open | not drawn (the board draws no redraw) | "Paused while you work: newer data is waiting." under the open row's summary, with Show it now (the newer list at once, the open rows opened again and their packs loaded again); closing the rows draws the newer list by itself | **deviation** (log: P1-H: the list paused while you work) |
+| The list waiting on an action | not drawn | "Newer data is waiting; it shows when this answers." beside Build evidence, Build again or Explain while it is busy on itself; compared by tests/test_explain_kept.py's `test_a_refresh_mid_explain_keeps_the_row_and_the_answer_lands` in Firefox, not shot (it lasts only while the call is in flight) | **deviation** (log: P1-H: the list paused while you work) |
+
+Templates sha256 before: `a925cd86203963b4018366e10c65bb932ad196e7d81abe616a267ad9a07caef8`
+(over the three templates compared before `_explain_block.html` was added).

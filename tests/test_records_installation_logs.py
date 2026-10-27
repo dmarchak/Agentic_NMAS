@@ -81,8 +81,25 @@ def _transition(n):
     assert alert_history.record([alert_history.from_annotation(a, "grafana-alerts")])["added"]
 
 
+def _explain_answers():
+    from modules.ai import explain_answers
+    return explain_answers
+
+
+def _explain_answer(n):
+    """An Explain answer kept with its pack (C1853), through its owner's keeper (which reads the
+    store first, so an answer's call is kept once)."""
+    from modules.ai import explain_answers
+    pack = {"id": evidence_pack.pack_id(f"{n:020x}"), "hash": f"{n:064x}"}
+    result = {"ok": True, "error": "", "call_id": f"ai-{n:016x}", "cost_usd": 0.001,
+              "pack_id": pack["id"], "answer": {"rationale": f"answer {n}", "hypotheses": []}}
+    assert explain_answers.keep(pack, result, "alex@example.com")["kept"]
+
+
 #: Each store: its writer, its owner's read as a list of rows, and its file.
 CASES = {
+    "explain_answers": (_explain_answer, lambda: _explain_answers().read()["rows"],
+                        lambda: _explain_answers()._path()),
     "alert_history": (_transition, lambda: alert_history.read()["rows"],
                       lambda: alert_history._path()),
     "evidence_packs": (_pack, lambda: evidence_pack.read()["rows"],

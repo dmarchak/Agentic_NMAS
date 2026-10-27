@@ -200,7 +200,7 @@ OPERATIONS = {
     "show-commands": ("modules.nsot.reads", "STEPS"),
     "logging-path": ("modules.nsot.logging_path", "STEPS"),
     "reveal-log-line": ("modules.log_reveal", "STEPS"),
-    "alert-explain": ("modules.ai.explain", "STEPS"),
+    "alert-explain": ("modules.ai.explain_answers", "STEPS"),
     "alert-history": ("modules.alert_history", "BUILD_STEPS"),
     "alert-rebuild": ("modules.alert_history", "REBUILD_STEPS"),
     "ask-in-words": ("modules.ai.nl_query", "STEPS"),

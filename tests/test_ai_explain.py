@@ -42,6 +42,9 @@ def world(pack_lab, monkeypatch, tmp_path):
     # The AI controls ask whether a key is stored, presence only (modules/ai/controls.py).
     monkeypatch.setattr("modules.ai.controls._key_set", lambda: True)
     monkeypatch.setattr(calls, "_path", lambda: str(tmp_path / "ai_calls.jsonl"))
+    # The answers kept with their packs (C1853): each test its own, as its record of calls.
+    from modules.ai import explain_answers
+    monkeypatch.setattr(explain_answers, "_path", lambda: str(tmp_path / "explain_answers.jsonl"))
     pack = _build(_alerts(V6, extra_labels={"ifAlias": INJECTION}))
     assert EP.record(pack)["ok"]
 

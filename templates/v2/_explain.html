@@ -39,6 +39,14 @@
       it was built from. -#}
   <p class="muted small explain-pack" data-pack-read="{{ x.pack_read.id }}">Read pack <span class="mono">{{ x.pack_read.id }}</span>, schema {{ x.pack_read.schema }}, built {{ stamp(x.pack_read.built_at) }}{% if x.pack_read.as_of and x.pack_read.as_of != x.pack_read.built_at %} as of {{ stamp(x.pack_read.as_of) }}{% endif %}.</p>
 {%- endif %}
+{%- if x.kept and not x.kept.fresh %}
+  {#- An answer kept with the pack (C1853), opened with no new call: said, so an earlier answer
+      never reads as one made now; who and when on hover. -#}
+  <p class="muted small explain-kept" title="Explained {{ x.kept.at }} by {{ x.kept.actor or 'no one recorded' }}, kept with the pack; nothing was sent now{% if x.kept.earlier %}; {{ x.kept.earlier }} earlier answer{{ 's' if x.kept.earlier != 1 }} kept, each in History{% endif %}">{{ badge('kept with the pack', 'neutral') }} explained {{ stamp(x.kept.at) }}{% if x.kept.earlier %} · {{ x.kept.earlier }} earlier{% endif %}</p>
+{%- endif %}
+{%- if x.keep_error %}
+  <p class="warn-text small">This answer could not be kept with the pack ({{ x.keep_error }}): reopening the alert will not show it.</p>
+{%- endif %}
 {%- if x.recorded is defined and not x.recorded %}
   <p class="warn-text small">The record of AI calls could not be written, so History will not show this call.</p>
 {%- elif x.call_id %}

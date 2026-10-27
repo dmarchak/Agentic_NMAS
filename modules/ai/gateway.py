@@ -22,6 +22,10 @@ and every call, sent or refused, is one `ai_calls` row. In order, before anythin
    call against the installation's day cap, unless an admin chose no cap (`day_cap` None,
    said in every cap refusal). A refusal names both operands.
 
+**One press, one provider request** (C1854): from the caps on, a call runs through
+`presses.once`: a press whose key was already seen, or whose masked request is already in
+flight, gets that call's result (`from_row`) and sends nothing, the join recorded as a use row.
+
 Then the adapter sends it; a refusal, a `max_tokens` stop, an answer that is not the schema,
 and each provider failure are each their own kind, never a parser's crash (13.5).
 """
@@ -229,6 +233,55 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
                       f"bound of {pin['max_prompt_tokens']}"
                       + (f" ({model} charges every rate at its long tier over {long_at})"
                          if long_at else "") + "; nothing was sent", prompt_tokens=est)
+
+    # One press, one provider request (C1854): the caps, the send and the record run once per
+    # press key and once per identical request in flight; a press that joins one gets that
+    # call's result, rebuilt from its row (modules/ai/presses.py).
+    def spend():
+        return _capped_send(feature, row, body, model, max_tokens, schema_model, key,
+                            send=send, today=today, refuse=refuse)
+
+    from modules.ai import presses
+    return presses.once(feature, body, actor=actor, make=spend, refuse=refuse,
+                        rebuild=lambda kept: from_row(kept, schema_model),
+                        wait_s=press_wait_s())
+
+
+#: Added to the adapter's worst case for a press's wait: the caps' read and the record's write
+#: around the send (an allowance, not measured).
+PRESS_MARGIN_S = 15.0
+
+
+def press_wait_s() -> float:
+    """How long a press waits on an identical call in flight (`presses.once`): one call's
+    longest time in the adapter (each attempt's connect and read bounds, every retry and the
+    longest wait between them: 65 s x 3 + 20 s x 2 = 235 s, from anthropic_adapter.TIMEOUT,
+    MAX_RETRIES and MAX_WAIT_S), and `PRESS_MARGIN_S`. Derived from the adapter's bounds, not
+    measured: no live call has been measured near them."""
+    a = anthropic_adapter
+    return (a.TIMEOUT[0] + a.TIMEOUT[1]) * (a.MAX_RETRIES + 1) + a.MAX_WAIT_S * a.MAX_RETRIES \
+        + PRESS_MARGIN_S
+
+
+def from_row(row: dict, schema_model) -> dict:
+    """A recorded call's result as `ask` returned it (a joined press's, C1854): its output
+    validated again by its schema, as JSON as the answer was (a strict schema takes an enum's
+    value only from JSON), or its refusal's kind and words."""
+    out = {"call_id": row.get("id", ""), "cost_usd": float(row.get("cost_usd") or 0.0),
+           "recorded": True}
+    if row.get("verdict") == "ok":
+        return dict(out, ok=True, output=schema_model.model_validate_json(
+            json.dumps(row.get("output") or {})))
+    return dict(out, ok=False, error=row.get("verdict") or "unknown",
+                detail=row.get("detail") or "")
+
+
+def _capped_send(feature, row, body, model, max_tokens, schema_model, key, *, send, today,
+                 refuse) -> dict:
+    """The part of `ask` that spends: the caps judged by the worst case, the send, and the
+    answer checked and recorded (the module's docstring, items 6 on)."""
+    from modules import redact
+
     cap = caps(feature)
     # No day cap (an admin's choice) is said in every cap refusal, so nobody reads one as the
     # day cap's.
@@ -287,7 +340,7 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
         return _answered(sent, "schema", f"the answer is not {row['schema']}: {where}: "
                          f"{first['msg']}")
     out = calls.record(dict(sent, verdict="ok", output=output.model_dump(mode="json")))
-    return {"ok": True, "output": output, "call_id": call_id, "cost_usd": cost,
+    return {"ok": True, "output": output, "call_id": row["id"], "cost_usd": cost,
             "recorded": out.get("recorded", False)}
 
 

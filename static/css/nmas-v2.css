@@ -592,6 +592,10 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
   padding: 5px 8px; background: var(--surface); color: var(--ink); flex: 1 1 260px; min-width: 0; }
 .att-ack .refusal { color: var(--warn); flex: 1 1 100%; }
 .held-note { flex: 1 1 100%; font-size: 12px; color: var(--ink-2); }
+/* A live redraw paused while a person works in an open entry (C1852): the words and Show it
+   now, under the entry's summary. */
+p.held-note { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0; }
+.explain-again-cost { margin-left: 4px; }
 .cmd { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; }
 /* A multi-line command (a one-time root step) keeps its lines. */
 .cmd code { white-space: pre-wrap; }

@@ -1955,15 +1955,31 @@ def test_monitoring_alerts_explain(tmp_path, monkeypatch):
     card = "document.querySelector('details.pack-card')"
     try:
         import app as A
+        from modules.ai import explain_answers
         _d_walk("alerts-explain", None, "", [], boards=(("AlertsExplain.dc.html", 1440),),
                 widths=((1440, 1.0),))
         with browser.Served(A.app) as served:
+            def fresh(b):
+                # Each width starts with no answer kept (C1853), so its first press is Explain.
+                if os.path.exists(explain_answers._path()):
+                    os.remove(explain_answers._path())
+                b.go(served.url("/v2/monitoring/alerts"))
+
+            def reopened(b):
+                # The page drawn again and the card opened: the answer kept with the pack is
+                # drawn with nothing sent, and the button is Explain again.
+                b.go(served.url("/v2/monitoring/alerts"))
+                b.wait_for(f"return !!{card}", 20)
+                b.js(f"{card}.open = true; return 1")
             _d_walk("alerts-explain", served, "/v2/monitoring/alerts", [
-                ("tab", None, f"!!{card}"),
+                ("tab", fresh, f"!!{card}"),
                 ("open", f"{card}.open = true",
                  f"!!{card}.querySelector('[data-op=\"alert-evidence\"]')"),
                 ("explained", f"{card}.querySelector('[data-op=\"alert-evidence\"]').click()",
-                 f"/The device stopped sending its heartbeat/.test({card}.textContent)")],
+                 f"/The device stopped sending its heartbeat/.test({card}.textContent)"),
+                ("kept", reopened,
+                 f"/kept with the pack/.test({card}.textContent) && "
+                 f"/Explain again/.test({card}.textContent)")],
                 widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
     finally:
         next(gen, None)
@@ -2080,11 +2096,13 @@ def test_monitoring_alerts_history_rebuild(tmp_path, monkeypatch):
                         ("older", older, "!!document.querySelector('details.ah-group')"),
                         ("offered", f"{group}.open = true; {row}.open = true",
                          f"!!{row}.querySelector('form.pack-rebuild button')"),
-                        # Its response names `alerts`, so the list redraws after the answer:
-                        # shot once it has, nothing in flight.
+                        # Its response names `alerts`, so the list is asked again after the
+                        # answer; with the row open that redraw is paused (C1852): shot once
+                        # it has been held, the row saying so, nothing in flight.
                         ("rebuilt", "window.__list = document.getElementById('alert-history'); "
                                     f"{row}.querySelector('form.pack-rebuild button').click()",
-                         "document.getElementById('alert-history') !== window.__list && "
+                         "document.getElementById('alert-history') === window.__list && "
+                         "window.__list.getAttribute('data-held') === '1' && "
                          f"({row}.querySelector('.pack') || {{}}).getAttribute && "
                          f"{row}.querySelector('.pack').getAttribute('data-pack') === "
                          f"'{old['id']}-s5'"),

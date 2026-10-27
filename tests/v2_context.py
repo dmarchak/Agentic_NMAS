@@ -996,6 +996,9 @@ def _alert_evidence(client, _lab, _mp):
                    lambda k, d=None: allowed[k] if k in allowed else real_get(k, d))
         mp.setattr(gateway, "_api_key", lambda: "sk-planted-walk-key-0123456789")
         mp.setattr(calls, "_path", lambda: os.path.join(folder, "ai_calls.jsonl"))
+        # The answers kept with their packs (C1853), in this walk's own folder.
+        from modules.ai import explain_answers
+        mp.setattr(explain_answers, "_path", lambda: os.path.join(folder, "explain_answers.jsonl"))
         mp.setattr(anthropic_adapter, "send", lambda body, key: anthropic_adapter.Reply(
             status=200, body={"content": [{"type": "text", "text": json.dumps(answer)}],
                               "stop_reason": "end_turn",
@@ -1005,10 +1008,11 @@ def _alert_evidence(client, _lab, _mp):
                         headers={"HX-Request": "true", "Accept": "text/html"})
         assert r.status_code == 200 and "The device stopped sending heartbeats." in \
             r.get_data(as_text=True)
-        # And no fault found (C1742): what was checked drawn, no hypothesis.
+        # And no fault found (C1742): what was checked drawn, no hypothesis. A second answer for
+        # the same pack is Explain again (C1853: a plain Explain draws the one kept).
         answer = {"outcome": "no_fault_found", "rationale": "Every figure of the alert is steady.",
                   "hypotheses": [], "checked": [cite], "needs_human": False, "why_not": ""}
-        r = client.post(f"/v2/monitoring/alerts/pack/{pack['id']}/explain",
+        r = client.post(f"/v2/monitoring/alerts/pack/{pack['id']}/explain", data={"again": "1"},
                         headers={"HX-Request": "true", "Accept": "text/html"})
         assert r.status_code == 200 and "Every figure of the alert is steady." in \
             r.get_data(as_text=True)

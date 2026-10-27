@@ -45,7 +45,9 @@ CONTROLS = {
         "task": "explain",
         "words": "Explain",
         "endpoints": ("v2.monitoring_alert_explain",),
-        "template": "v2/_evidence_pack.html",
+        # Drawn in each pack's card (_evidence_pack.html includes it) and as Explain's own
+        # answer, with the answer kept with the pack (C1853).
+        "template": "v2/_explain_block.html",
         # A past alert with no pack yet draws it too, disabled beside Build evidence, its mark
         # and reason as ever (Monitoring › Alerts › History, C1808).
         "also": ("v2/_alert_history.html",),

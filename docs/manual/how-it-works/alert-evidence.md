@@ -152,7 +152,9 @@ ever (see [The AI mark](installation-settings#ai-mark)).
 
 1. `pack`: the alert's stored pack is read and its hash checked; a pack that changed since it
    was built is not explained.
-2. `topology`: the part of the network around the alert's device, from {{product}}'s network
+2. `kept`: an answer already kept with this pack (below) is drawn, and nothing is sent. Only
+   **Explain again** goes on to ask.
+3. `topology`: the part of the network around the alert's device, from {{product}}'s network
    model (below): the device and everything one link, adjacency or cable away from it, with
    what the pack captured as observed when the alert fired (never read again). It goes unless
    the network has the topology class turned off; the answer then says "No topology was sent
@@ -160,7 +162,7 @@ ever (see [The AI mark](installation-settings#ai-mark)).
    context (inventory, intent, adjacency, performance, events, endpoints, flows) as present,
    partial or not collected, with its source and age, so a gap is said rather than left to be
    guessed. Endpoints and flows are not collected yet.
-3. `ask`: the pack (its health figures among it) and the topology go as data (masked when they
+4. `ask`: the pack (its health figures among it) and the topology go as data (masked when they
    were built, and masked again on the way out), the pack's layout, the topology's layout, the
    network's summary and the allowed reads as the instructions' context; no tool is offered,
    so the model can only read. The model is told to cite each figure by its reference, never
@@ -168,7 +170,7 @@ ever (see [The AI mark](installation-settings#ai-mark)).
    it, and to offer a cause the evidence does not show only as a hypothesis, with the read that
    would confirm it. With the topology class off, only the alert's device's own figures go
    (which devices are near it is topology), and the pack says the rest were withheld.
-4. `check`: every hypothesis must cite pieces of the pack as it was sent, by their references,
+5. `check`: every hypothesis must cite pieces of the pack as it was sent, by their references,
    or items of the topology that was sent, by their ids, and name one read-only command a
    person could run to confirm it (a `show`, `ping` or `traceroute`, as Show commands allows).
    One that cites a reference neither holds (an id of the network the topology sent did not
@@ -177,13 +179,40 @@ ever (see [The AI mark](installation-settings#ai-mark)).
    **no fault found** holds no hypothesis and must cite the evidence it checked, each piece one
    the pack or the topology holds and one that was read (a section that was unreadable or
    absent is not healthy evidence); one that does not is "couldn't analyse" too.
-5. `show`: a short rationale, then at most three hypotheses, the most likely first, each with
+6. `keep`: the model's answer (hypotheses, no fault found, "the pack cannot say", or "couldn't
+   analyse") is kept with the pack, beside any earlier one. A refusal before the model answered
+   (hosted AI off, a cap, the provider down) is not an answer and is not kept.
+7. `show`: a short rationale, then at most three hypotheses, the most likely first, each with
    the references it cites (a pack piece is a link to it above; a topology id is drawn as text)
    and its confirming read. It is a hypothesis, not a finding: nothing was run. Run the read
    through **Show commands** to check it. Or **no fault found**: what the evidence shows, and
    each piece it checked, linked. That is an assessment of the pack, not of the network: only
    what the pack holds was checked, and an alert can fire on a passing blip or a threshold set
    too low. Explain is told to say so rather than invent a cause.
+
+### An answer is kept with its pack {#kept-answers}
+
+A pack is frozen, so the same pack, prompt version and model ask the same question. Each answer
+is kept with its pack, keyed by those three (the records store **Explain answers**, moved on
+**Settings › Installation › Connections**, Record stores, as every records store is): opening the alert again, reloading the page, or following
+History's link to the call draws it, marked **kept with the pack** with when it was explained
+(who pressed it, on hover), and nothing is sent. Pressing **Explain** on a page drawn before the
+answer was kept draws the kept answer too.
+
+With an answer kept, the button is **Explain again**: a new recorded call, said beside it with
+its cost ("A new call, up to $…; this answer stays"). Its answer is kept beside the first; the
+newest is drawn, with the count of earlier ones, and each stays in History. If the kept answers
+cannot be read, Explain sends nothing and says why (whether the pack was explained already is not
+known); Explain again still asks.
+
+### One press, one call {#one-press}
+
+Each press of an AI control carries its own key. A press sent twice (a retry, a form sent again)
+returns the first one's call; a second press of the same alert while the first is still being
+answered (a double click, or a press after the page was reloaded mid-call, by you or someone
+else) waits for that call and draws its answer. Neither sends anything to the provider; each is
+recorded as a use of the call ("joined call …") in History. This holds for every AI control,
+not only Explain.
 
 ## What of the network Explain sends {#topology}
 

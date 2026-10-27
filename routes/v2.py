@@ -1503,7 +1503,7 @@ def monitoring_alert_pack(pack_id):
     html = render_template("v2/_evidence_pack.html", pack=pack, state=got["state"],
                            error=got["error"], pid=pid,
                            intact=evidence_pack.intact(pack) if pack else False,
-                           explain_model=_explain_model(),
+                           explain_model=_explain_model(), explained=_explained(pack),
                            **_pack_lineage(pack, got["rows"]))
     return _strict(html, 200 if pack else 404)
 
@@ -1537,16 +1537,36 @@ def _explain_model() -> str:
     return f"{profiles.profile(pin['model'])['words']}, {pin['model']}"
 
 
+def _explained(pack):
+    """The answer kept with *pack* as its card draws it (C1853), or None: a read of the
+    answers store, never a call. A store that cannot be read is said in place."""
+    from modules.ai import explain_answers
+
+    if not pack:
+        return None
+    have = explain_answers.kept(pack)
+    if have["state"] == "unreadable":
+        return {"ok": False, "error": "answers_unreadable", "pack_id": pack.get("id", ""),
+                "detail": f"the kept Explain answers cannot be read ({have['error']}), so an "
+                          "answer kept with this pack cannot be shown"}
+    return explain_answers.as_drawn(have["answer"], have["earlier"]) if have["answer"] else None
+
+
 @bp.route("/monitoring/alerts/pack/<pack_id>/explain", methods=["POST"])
 def monitoring_alert_explain(pack_id):
     """Explain (PHASE8_PLAN 15.9, P1's one AI step; modules/ai/explain.py): the pack's
     hypotheses, each citing it, from one recorded call as the person who pressed Explain,
-    drawn in the pack; a refusal says why in place. Nothing runs."""
+    drawn in the pack; a refusal says why in place. Nothing runs. The answer is kept with the
+    pack (modules/ai/explain_answers.py, C1853): a pack that has one draws it and sends
+    nothing, unless the press is Explain again (``again``), a new call."""
     from modules import identity
-    from modules.ai import explain
+    from modules.ai import explain_answers
 
-    got = explain.explain(pack_id[:64], actor=identity.request_actor())
-    return _strict(render_template("v2/_explain.html", x=got, explain_model=_explain_model()))
+    pid = pack_id[:64]
+    got = explain_answers.press(pid, actor=identity.request_actor(),
+                                again=request.form.get("again") == "1")
+    return _strict(render_template("v2/_explain_block.html", x=got, pack={"id": pid},
+                                   explain_model=_explain_model()))
 
 
 # ---------------------------------------------------------------------------
@@ -1620,7 +1640,8 @@ def monitoring_alert_history_evidence(episode_id):
             rows = rows + [pack]
     html = render_template("v2/_evidence_pack.html", pack=pack, state="ok", error="",
                            pid=pack["id"], intact=evidence_pack.intact(pack),
-                           explain_model=_explain_model(), **_pack_lineage(pack, rows))
+                           explain_model=_explain_model(), explained=_explained(pack),
+                           **_pack_lineage(pack, rows))
     return _strict(html)
 
 
@@ -1676,7 +1697,8 @@ def monitoring_alert_pack_rebuild(pack_id):
             rows = rows + [pack]
     html = render_template("v2/_evidence_pack.html", pack=pack, state="ok", error="",
                            pid=pack["id"], intact=evidence_pack.intact(pack),
-                           explain_model=_explain_model(), **_pack_lineage(pack, rows))
+                           explain_model=_explain_model(), explained=_explained(pack),
+                           **_pack_lineage(pack, rows))
     return _strict(html)
 
 

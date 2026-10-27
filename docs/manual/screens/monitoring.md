@@ -174,11 +174,14 @@ the pack gave it. **Show** narrows the cards to a rule, device or label. **Earli
 packs of alerts that have resolved, the newest 50 drawn. A Needs attention row about an alert
 opens its card here. An open pack's **Explain** carries the **AI** mark; when hosted AI cannot
 answer it is disabled with the reason under it, and the pack is drawn whole (see
-[The AI mark](installation-settings#ai-mark)).
+[The AI mark](installation-settings#ai-mark)). Its answer is kept with the pack: opening the
+card again draws it, and nothing is sent; **Explain again** is a new call, said with its cost
+(see [An answer is kept with its pack](alert-evidence#kept-answers)).
 
-The list redraws when the alert reader finishes a read, after any new pack is built. If the
-reader has not read Grafana, or the pack record cannot be read, the tab says so instead of
-listing nothing.
+The list redraws when the alert reader finishes a read, after any new pack is built, but never
+under you: while a card you opened is open, or while Explain is being answered, it waits, and
+the card says **Paused while you work** with **Show it now**. If the reader has not read
+Grafana, or the pack record cannot be read, the tab says so instead of listing nothing.
 
 The tab has two views, **Firing** (above) and **History**: the alerts that fired and resolved,
 from {{product}}'s alert history, every time Grafana's own (see
