@@ -428,10 +428,41 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   hand with its reason, never chased with a test.** [tests/test_nmas_mutation.py
   (`TestTheWorkflow`: the weekly schedule and its window guard); tests/test_mutation_canary.py;
   the dispatch rule: not mechanised]
-  **Until Sat 31 Oct (the operator's sprint ruling, 2026-10-25; PHASE8_PLAN 15.12), the
-  irreversible tier's proof is a hand check, not a run: every mutant applied by hand, a
-  must-die canary per function, and a committed log (docs/TIER_HAND_CHECK.md); workflow runs
-  are the weekly measurement only. Stage 10 restores the run bar.** [not mechanised]
+  **Until the sprint's condition is met (PHASE8_PLAN 15.12: both the SDN Lab 8 slice and
+  Phase 8's AI scope at their done bars; the operator, 2026-10-27), the irreversible tier's
+  proof is a hand check, not a run: the changed lines' mutants applied by hand, a must-die
+  canary, and a committed log (docs/TIER_HAND_CHECK.md); workflow runs are the weekly
+  measurement only. Stage 10 restores the run bar.** [not mechanised]
+
+### AI cost safety (the operator, 2026-10-27; PHASE8_PLAN 18)
+
+- **Every AI call names its trigger, and a background call runs only where its feature is on
+  for that network.** A gateway call is `person` (a verified person's click, with their id) or
+  `background` (a job's id); the gateway refuses a background call whose feature is off for its
+  network, records the refusal, and makes no provider request. Background AI features are off
+  by default per network; turning one on is an admin action, only in Settings › AI, that first
+  shows a labelled estimate (calls a day, dollars a day and a month, from the measured cost per
+  call) and records who, when and the estimate shown. Off is one click and stops new calls at
+  once. No background AI feature ships before these rules are live. Cost: one field per call,
+  one setting per feature. Prevents: spend no person started or approved. [not mechanised yet:
+  C1843; the gateway's refusal is the irreversible tier's, its hand check logged in
+  docs/TIER_HAND_CHECK.md]
+- **A background AI feature calls the model only when deterministic code has found something,
+  inside its own daily and monthly caps within the overall cap.** Each feature's trigger is
+  stated in PHASE8_PLAN 18 (the SDN loop classifies only when a detection rule fires; incident
+  narration once per incident; the digest once a day). Reaching a cap stops that feature and
+  raises a Needs attention row, with warnings at 50% and 80%; Mercury never raises a cap.
+  Cost: two caps per feature. Prevents: a loop spending on nothing, or past what was
+  approved. [not mechanised yet: C1843]
+- **AI spend is shown where people work, never only in Settings.** The toolbar chip ("AI $X
+  today · N background on", or "AI off", never blank; amber at 50% and red at 80% of the day
+  cap) opens the spend panel: today, the 7- and 30-day daily averages, month to date against the
+  monthly cap with its projection, the viewer's own spend, and each background feature's
+  trigger and estimate against actual with Turn off. Prices come from a dated table in code
+  and screens say the provider bills; evaluation runs count against the caps under their run;
+  a fresh install has AI off until an admin enters a key and accepts the cost terms. Cost: one
+  chip and one panel. Prevents: spend found first on the provider's bill. [not mechanised
+  yet: C1843]
 
 ## Module map (compact; full map in docs/ARCHITECTURE.md)
 
