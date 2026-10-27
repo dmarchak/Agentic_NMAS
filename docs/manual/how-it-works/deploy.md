@@ -316,6 +316,61 @@ change stops after the first devices it breaks, instead of reaching the whole fl
 The Apply runs as a job, answering at once and drawing each device's start and finish as it
 happens.
 
+## Both ends of a link: the paired deploy {#the-paired-deploy}
+
+A change to both ends of a link (a description, a trunk's VLANs, an OSPF setting), drafted in
+words as one draft and committed as one commit (see
+[Change it in words](intent-in-words)), is deployed as ONE change: **Deploy both ends…** on the
+commit's answer opens Devices › Plan a deploy with both devices ticked and the link carried
+(`/v2/monitoring/apply?scope=intent&pair=<device>:<port>,<device>:<port>`). The plan is the
+batch's own: each device's exact program, one preview and one confirm by hash, as a verified
+person. The page says the link, what verify will read across it, and that either end failing
+rolls both back; a device cannot be left out of it, and the plan is not offered when the
+devices are not exactly the link's two ends, when an end's interface is not in its device's
+committed intent, or when either end cannot be deployed now (both ends, or neither). The
+confirm posts to `/v2/monitoring/apply/confirm-pair`, which checks the same again and starts the
+apply as a job. Its steps, in the order the code declares them:
+
+1. `both_or_neither`. Read: each device's program again, as any apply does, and the device
+   locks. Sent: nothing. Recorded: nothing. A device refused here (its program moved since the
+   preview, another operation holds it, or its capture moved) refuses the other too, by name,
+   with nothing sent to either: half a link change is never started.
+2. `first_end`. The first device in the rollout order runs the whole pipeline above, its own
+   verify included, with one difference: its save to startup is held, so a change its far end
+   then fails is never in startup.
+3. `second_end`. The second device runs the same, and only when the first deployed: anything
+   else (a refusal, a failed push, a failed verify, the device found changed since its capture)
+   and the second is never sent.
+4. `link_verify`. Once both have applied, the link itself is read on both ends, each read a
+   command the read-only allowlist passes, on a session of its own: the link's line protocol
+   on each end (`show interfaces | include (line protocol|Internet address)`), and, when either
+   program touches OSPF or OSPFv3 on the link (or brings the port up where intent puts an
+   adjacency), the adjacency across it (`show ip ospf neighbor`, `show ospfv3 neighbor`): FULL
+   on both ends, to the far end's router ID, when committed intent puts it across the link,
+   gone when it no longer does. Each check is polled within the network's settle windows, as
+   verify polls (`verify_settle_windows`: interfaces, then OSPF's 45 s). A port the program
+   shuts is expected administratively down, and the far end of a port shut on one end only is
+   not judged (an emulated link can stay up when its partner is shut). A trunk's forwarding is read as its line protocol on both ends, and
+   a tunnel's as the tunnel's: the VLANs each end of a trunk forwards are not read, and the
+   plan says so. A read that could not be made, or not trusted, neither passes nor fails: the
+   change stands, saved, and the result is never drawn green. A link that was not up before
+   the change, and that the change does not bring up, is not judged, and says so.
+5. `paired_rollback`. If either end failed (its push or its own verify, which its pipeline has
+   already rolled back) or the link's verify failed, the other end is rolled back too, by the
+   same rollback a failed verify runs: what landed read back first, the undo built from that
+   run's own pre-change read, the device read back after it. Each rolled-back device's intent
+   is marked rolled back, as a single device's is after its rollback, so the next plan does not
+   offer the change again; an end that was never sent is marked the same way, so its half is
+   never offered alone. **Revert or retry** (see [Revert or retry after a rollback](revert-retry))
+   lifts it, on each device. The capture each end handed the batch is dropped: the device is
+   back, so it is not its golden.
+6. `save_both`. When nothing failed, the held saves run on both ends (the one save there is,
+   recorded per device as above).
+7. `record`. Each device's receipt is written once the pair has settled: what it was sent, its
+   own verify, and, under the link, the link's verify and why the end was rolled back when its
+   far end or the link failed. The job's card says the link's verify, and a failed pair offers
+   **Plan both ends again**, never a retry of one end.
+
 ## What a deploy does not do {#what-a-deploy-does-not-do}
 
 - It does not read the device to compute the program: the stored golden is the baseline. A

@@ -215,6 +215,11 @@ class PipelineContext:
     rollback_failures: dict = field(default_factory=dict)
     #: Set by a batch: stage 8.5 hands its captures back instead of committing.
     defer_golden: bool = False
+    #: Set by the paired deploy (C1908, C1909; `modules.nsot.paired_deploy`): stage 8.2 holds
+    #: the save to startup, which runs (`save_held`) only once the LINK has verified too, since
+    #: a device saved before its far end failed would keep the change across a reload whatever
+    #: its rollback then did (C501's shape, one device further out).
+    hold_save: bool = False
     #: Coverage's combined deploy (artboard A2): every sent line is read back, quick or full,
     #: and a line not read back FAILS verify, so the program is rolled back as one (a quick
     #: verify's missing line only keeps it from passing, nothing rolled back for it).
@@ -2277,6 +2282,10 @@ def _stage_save_startup(ctx: PipelineContext) -> None:
     # back), so the deploy and onboarding cannot disagree about what "saved" means.
     from modules.nsot.onboard import persist_on_device
 
+    if ctx.hold_save:
+        # The paired deploy saves both ends together once the link verifies (`save_held`).
+        log.info("pipeline[save_startup]: held for the link's verify (the paired deploy)")
+        return
     # Sequential: one device per run (`routes/deploy.py` `_deploy_one`), and the batch above
     # it is sequential for its circuit breaker.
     for dev in ctx.selected_devices:
@@ -2308,6 +2317,36 @@ def _stage_save_startup(ctx: PipelineContext) -> None:
         raise PipelineStageError(
             "verified and running, NOT saved to startup (a reload loses the change): "
             + ", ".join(unsaved))
+
+
+def save_held(ctx: PipelineContext) -> dict:
+    """The save a paired deploy held (`hold_save`), run now that the link verified: stage 8.2
+    itself, the one save there is, so it is recorded per device the same way (C501, C511).
+    Returns ``ctx.saved_startup``; a failed save is a warning, never a rollback, as there."""
+    ctx.hold_save = False
+    try:
+        _stage_save_startup(ctx)
+    except PipelineStageError as exc:
+        ctx.warnings.append(f"save_startup: {exc}")
+    return dict(ctx.saved_startup)
+
+
+def roll_back_after(ctx: PipelineContext, reason: str) -> PipelineContext:
+    """Roll back a device whose OWN run passed, because the change it is half of did not (the
+    paired deploy, C1908 and C1909: the far end's apply or verify, or the link's verify,
+    failed). The same two steps a failed stage takes (`run`): what landed read back first
+    (`_capture_failure_state`), then the rollback stage (`_stage_rollback`), which builds the
+    undo from this run's own pre-change read, reads the device back after it, and marks the
+    device's intent rolled back (`_note_rolled_back_intent`), the single-device path's own
+    record of a change that did not land. *reason* is recorded as the run's error and the
+    note's reason."""
+    ctx.error = reason
+    ctx.final_status = "failed"
+    ctx.stages_failed.append("pair")
+    log.warning("pipeline: rolling back a verified change, its pair failed: %s", reason)
+    _capture_failure_state(ctx)
+    _stage_rollback(ctx)
+    return ctx
 
 
 def _stage_save_golden(ctx: PipelineContext) -> None:

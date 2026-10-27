@@ -44,7 +44,14 @@
 <section class="card apply-job" id="apply-job" data-job="{{ job }}"
          {%- if arrivals and not arrivals.ended %} hx-get="{{ url_for('v2.profile_apply_job', job=job) }}" hx-trigger="nmas:deploy_job from:body" hx-swap="outerHTML"{% endif %}>
   <h2 class="apply-h">{{ badge(lv[0], lv[1]) }} {{ (res.happened or {}).summary }}</h2>
+  {%- if pair %}
+  {#- The paired deploy (C1909): the link's verify, and whether both ends were rolled back. -#}
+  <p class="apply-pair{{ ' apply-refused' if (pair.verify or {}).state != 'passed' }}" id="apply-pair-result"><strong>Both ends of the link {{ pair.link }}:</strong> {{ (pair.verify or {}).words }}{% if pair.rolled_back %}; rolled back with its far end: {{ pair.rolled_back | join(' and ') }}{% endif %}.</p>
+  {%- endif %}
   {{ run_stepper(run) }}
+  {%- if again %}
+  <p class="apply-retry"><a class="btn btn-small" id="apply-pair-again" data-op="deploy" href="{{ url_for('v2.profile_apply', list=j.list, scope='intent', device=again.devices, pair=again.link_text) }}" title="A new plan of both ends, the link carried; nothing is resent from this run">Plan both ends again</a>{{ how('deploy', 'the-paired-deploy', compact=True) }}</p>
+  {%- endif %}
   {%- if retry %}
   {#- C1499: each device this batch did not deploy, retried on the same scope: a new preview of
       that device alone, never a resend of this batch's hash. -#}
@@ -88,6 +95,7 @@
     {%- endif %}
     {%- if (t.saved or {}).words %}<p{% if t.saved.state == 'not_saved' %} class="apply-refused"{% endif %}>{{ t.saved.words }}.</p>{% endif %}
     {%- if (t.rollback or {}).performed %}<p>Rolled back: {{ t.rollback.state }}{% if t.rollback.detail %} ({{ t.rollback.detail }}){% endif %}.</p>{% endif %}
+    {%- if t.pair %}<p{% if t.pair.rolled_back_for %} class="apply-refused"{% endif %}>End {{ t.pair.end }} of the link {{ t.pair.link }}: {{ t.pair.verify_words }}{% if t.pair.rolled_back_for %}. Rolled back with its far end: {{ t.pair.rolled_back_for }}{% endif %}.</p>{% endif %}
   </details>
   {%- endfor %}
   {%- if (res.did_not or {})['items'] %}

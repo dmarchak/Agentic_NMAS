@@ -180,9 +180,12 @@ def words(name):
     if got.get("pair"):
         # C1908: one draft of both ends; Commit both devices' intent posts both patches back,
         # exactly as drafted (the pair's digest is on the call's use row).
+        from modules.nsot import paired_deploy
         pr = got["pair"]
         w["pair"] = {"device": pr["device"], "port": pr["port"], "far": pr["far"],
                      "far_port": pr["far_port"], "facts": list(pr.get("facts") or []),
+                     # The link the commit carries on to the paired deploy (C1909).
+                     "link": paired_deploy.link_text(pr),
                      "existing": [{"said": e["said"], "bears": bool(e["bears"])}
                                   for e in pr.get("existing") or []],
                      "draft": pr.get("draft", ""), "pair_json": json.dumps(
@@ -213,15 +216,19 @@ def words_commit(name):
     actor = identity.request_actor()
     call_id = request.form.get("call_id", "")
     if request.form.get("pair") == "1":
-        # C1908: both ends of a link, one commit; no plan follows (the paired deploy, C1909,
-        # is not built: each device is deployed from its page). The pair's patches travel in
-        # `patch`, the field the confirm is bound to (operation_stages), as one device's does.
+        # C1908: both ends of a link, one commit; no plan opens by itself: the answer offers the
+        # paired deploy (C1909), the plan for both devices with the link carried. The pair's
+        # patches travel in `patch`, the field the confirm is bound to (operation_stages), as
+        # one device's does; the link the draft was made for in `link`.
         got = intent_words.commit_pair(ref.name, call_id, request.form.get("patch", ""),
-                                       request.form.get("summary", ""), actor)
+                                       request.form.get("summary", ""), actor,
+                                       link_text=request.form.get("link", ""))
         w = {"committed": {k: got.get(k) for k in ("ok", "commit", "changed", "error", "stage",
-                                                    "message", "hostnames", "deploy")
+                                                    "message", "hostnames", "deploy", "link",
+                                                    "link_words")
                            if k in got},
-             "call_id": call_id, "actor": actor, "sentence": request.form.get("words", "")}
+             "call_id": call_id, "actor": actor, "sentence": request.form.get("words", ""),
+             "list": ref.name}
         return _strict(render_template("v2/_intent_words.html", host=host, w=w),
                        200 if got.get("ok") else got.get("status", 400))
     got = intent_words.commit_draft(ref.name, host, call_id, request.form.get("patch", ""),

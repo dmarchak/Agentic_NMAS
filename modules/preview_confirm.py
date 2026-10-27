@@ -886,6 +886,8 @@ def build_result(*, action: str, level: str, summary: str, targets: list,
                          **({"saved": t["saved"]} if "saved" in t else {}),
                          # What verify read, in words (C1270), where the operation verifies.
                          **({"verify_words": t["verify_words"]} if "verify_words" in t else {}),
+                         # The paired deploy's link and why this end rolled back (C1909).
+                         **({"pair": t["pair"]} if "pair" in t else {}),
                          "stage": t.get("stage", ""),
                          "reason": t.get("reason", ""), "outcome": t.get("outcome", "")}
                         for t in targets],
@@ -1090,6 +1092,9 @@ def operation_result(rows: list, report: dict, receipt_status: dict, action: str
             "verify_words": verify_words(r.get("checks")),
             "rollback": r.get("rollback") or {},
             "saved": _saved_after(r),
+            # The paired deploy (C1908, C1909): the link, its verify, and why this end was
+            # rolled back, read back from the receipt. Only on a pair's targets.
+            **({"pair": r["pair"]} if r.get("pair") else {}),
         })
         if (r.get("saved_startup") or {}).get("state") == "not_saved":
             did_not.append({"target": name, "kind": "not_saved",
@@ -1122,7 +1127,15 @@ def operation_result(rows: list, report: dict, receipt_status: dict, action: str
             did_not.append({"target": name, "kind": "not_undone",
                             "text": "Rejected by the device when pushed, so not undone by the "
                                     "rollback: never applied.", "lines": list(not_undone)})
-    if report.get("breaker_tripped"):
+    # The paired deploy's link (C1908, C1909): a verify that did not pass is said once, by the
+    # link, and never drawn green.
+    paired = next((r["pair"] for r in rows if r.get("pair")), None)
+    if paired and paired.get("verify") != "passed" \
+            and not any((r.get("pair") or {}).get("rolled_back_for") for r in rows):
+        did_not.append({"target": f"the link {paired.get('link', '')}", "kind": "link_verify",
+                        "text": paired.get("verify_words") or "the link was not verified",
+                        "lines": []})
+    if report.get("breaker_tripped") and not paired:
         did_not.append({"target": "this batch", "kind": "breaker",
                         "text": f"Stopped early: {report.get('breaker_reason', '')}", "lines": []})
     for s in report.get("skipped") or []:
@@ -1174,6 +1187,8 @@ def operation_result(rows: list, report: dict, receipt_status: dict, action: str
                "for: every device in the batch appears here.")
     level = result_level(rows, receipt_ok, bool(report.get("breaker_tripped")))
     if golden_refused and level == "success":
+        level = "partial"
+    if paired and paired.get("verify") != "passed" and level == "success":
         level = "partial"
     return build_result(
         action=action,

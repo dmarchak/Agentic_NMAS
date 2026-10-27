@@ -27,7 +27,7 @@ Shots: each board at 1440; the page at 1440, 1280 and 390 in six states (`tab-in
 `tab-intent-departs` (C884) at 1440.
 Compared 2026-10-16.
 Templates compared: templates/v2/_intent.html, templates/v2/_intent_edit.html, templates/v2/_intent_check.html, templates/v2/_intent_words.html, templates/v2/_intent_proof.html
-Templates sha256: `0bbb08471c76ae886906208b8ceeb0cc6a51a3460a3c45920627664a849cdb95`
+Templates sha256: `9e9d8c6dbf2e7e96045faa0dcfb1d16a92c96b9501270e370d397e3602458092`
 
 Compared again 2026-10-17 (C1023) after "Open (commit) with your edit on it" (`_intent_edit.html`)
 and Write the ticked lines into the document (`_intent_check.html`) became busy on themselves
@@ -137,6 +137,23 @@ The row "F7-Q Q1: a mismatch already in committed intent" added and Q1b's built 
 narrowed; no other region's verdict changed.
 Templates sha256 before: `0dcda5f7a26ed1b010602152368694e12fa34f6e8a106a288dab247e09e9ac39`.
 
+Compared again 2026-10-27 (C1909, the paired deploy; board F7-Q, version 168, Q1's footer:
+"Then Deploy opens the plan for r3 and r4, both ticked: one preview, one confirm by hash. Verify
+reads the link (adjacency up on both ends, or the trunk forwarding), and if either end fails,
+both are rolled back, and the receipt says what each end achieved"). `_intent_words.html`: the
+two-device draft's footer says that sentence, its verify words narrowed to what is read (the
+link's line protocol on both ends, and the adjacency across it when the change touches OSPF or
+OSPFv3: a trunk's forwarded VLANs are not read, no capture of `show interfaces trunk` existing to
+build the parser on); the commit form carries the draft's link (`link`); and the two-device
+commit's answer offers **Deploy both ends…** (its (i) opening the deploy page's paired-deploy
+section), which opens Devices › Plan a deploy with both devices ticked and the link carried, in
+place of "Deploy each device from its page; the paired deploy (C1909) is not built yet". Compared
+by the template and the pages the tests draw (tests/test_ai_intent_change.py's two-device commit
+and the paired plan it opens; tests/v2_context.py's walk on r3 and r4), not by shots, which stay
+owed with F7-Q's. The rows "F7-Q Q1: the footer" and "F7-Q Q1: committed both" rewritten; no
+other region's verdict changed.
+Templates sha256 before: `0bbb08471c76ae886906208b8ceeb0cc6a51a3460a3c45920627664a849cdb95`.
+
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
 
@@ -174,9 +191,9 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Every commit in Mercury's formatting | not drawn | the document's label says it is "opened as committed, byte for byte, and committed in Mercury's own formatting"; the Checks say "Committed in Mercury's own formatting" when the typed text is laid out otherwise; the committed card says the data was kept without its comments and layout | **deviation** (log: Tab intent: every commit in Mercury's own formatting, said (C1693)) |
 | F7-Q Q1: one draft, both ends (notice) | "One draft, both ends of the link r3 GigabitEthernet4 ↔ r4 GigabitEthernet4 · the ends match: …", the model and cost | the same words, the link and the ends' facts as Mercury read them ("both trunks, VLANs 10, 20, 30, native VLAN 1"), the model and cost; the sentence as decided under it when a question came first | **same** |
 | F7-Q Q1: the two ends side by side | each device, "intent at <sha>", its intent's YAML lines (- and +) | each device and "intent at <sha>", the changes in words and the configuration lines the change makes (the editor's rows), stacked under 900 px | **deviation** (log: F7-Q Q1: each end drawn as the editor's changes) |
-| F7-Q Q1: the footer | Commit both devices' intent, Discard; "Then Deploy opens the plan for r3 and r4, both ticked …, both are rolled back" | Why, in one line; Commit both devices' intent (busy on itself, its (i)); Discard draft; "the paired deploy … (C1909) is not built yet: each device is deployed from its own page"; no deploy is offered for the two | **later** (C1909, the paired deploy with the link verified and both ends rolled back) |
+| F7-Q Q1: the footer | Commit both devices' intent, Discard; "Then Deploy opens the plan for r3 and r4, both ticked …, both are rolled back" | Why, in one line; Commit both devices' intent (busy on itself, its (i)); Discard draft; "One commit, as you, with your reason. Then Deploy both ends opens the plan for s1 and s2, both ticked: one preview, one confirm by hash. Verify reads the link (its line protocol on both ends, and the adjacency across it when the change touches OSPF or OSPFv3), and if either end fails, both are rolled back, and the receipt says what each end achieved" (C1909) | **deviation** (log: F7-Q Q1: the footer says what the link's verify reads) |
 | F7-Q Q1: Why, in one line | not drawn | the commit's one line, required, starting from the sentence, as on every draft | **deviation** (log: F7-Q Q1: Why, in one line before the two-device commit) |
-| F7-Q Q1: committed both | not drawn (the board's note) | "Committed to s1 and s2's intent: one commit, <sha>, as <person> (Source: ai-draft, with the AI call). Nothing was sent to either device. Deploy each device from its page; the paired deploy (C1909) is not built yet: s1, s2", each a link to its page | **later** (C1909) |
+| F7-Q Q1: committed both | not drawn (the board's note); its footer: "Then Deploy opens the plan for r3 and r4, both ticked" | "Committed to s1 and s2's intent: one commit, <sha>, as <person> (Source: ai-draft, with the AI call). Nothing was sent to either device. Deploy both ends opens the plan for s1 and s2, both ticked: one preview, one confirm by hash; verify then reads the link, and if either end fails, both are rolled back." and **Deploy both ends…** (primary, its (i) on the deploy page's paired-deploy section), opening Devices › Plan a deploy with both ticked and the link carried; nothing is started (C1909) | **deviation** (log: F7-Q Q1: committed both offers Deploy both ends…) |
 | F7-Q Q1b: the ends do not match | "Not drafted: the two ends would not match." and the mismatch named, red | the same words and colour, each mismatch the draft creates or changes naming both ends' values (C1933) | **same** |
 | F7-Q Q1: a mismatch already in committed intent | not drawn (the board draws the refusal only) | the draft offered, and beside it, under its notice, a warning per mismatch the draft leaves as it is: "The ends already differ: s1 GigabitEthernet0/3 allows VLANs 10, 20, 30 and s2 GigabitEthernet0/3 allows VLANs 10, 20, already in committed intent; this change does not touch it", or "This change may fail: …; this change touches the link's trunk settings and may fail because of it" when the draft changes that family | **deviation** (log: F7-Q Q1: a mismatch already in committed intent, said beside the draft) |
 | F7-Q Q1c: a far end Mercury does not manage | "One question first (no AI call, $0): h1 is not a device Mercury manages, so only s1's end, GigabitEthernet1/0, can be drafted."; Draft s1's end only, Cancel | the same words and buttons, "from s1's own intent" in the head | **deviation** (log: F7-Q: the questions keep F7's "from <device>'s own intent") |

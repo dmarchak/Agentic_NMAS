@@ -896,18 +896,31 @@ def _pair_fields(world, host):  # noqa: F811
     form = raw.split('class="iw-commit"', 1)[1].split("</form>", 1)[0]
     fields = {m.group(1): H.unescape(m.group(2))
               for m in re.finditer(r'<input type="hidden" name="([a-z_]+)" value="([^"]*)"', form)}
-    # The pair's patches in `patch`, the field the confirm is bound to; `pair` marks it a pair.
-    assert set(fields) == {"call_id", "pair", "patch", "words"} and fields["pair"] == "1", fields
+    # The pair's patches in `patch`, the field the confirm is bound to; `pair` marks it a pair;
+    # `link`, the link the draft was made for, which the paired deploy carries (C1909).
+    assert set(fields) == {"call_id", "pair", "patch", "link", "words"} \
+        and fields["pair"] == "1", fields
+    assert fields["link"] == "s1:GigabitEthernet0/3,s2:GigabitEthernet0/3"
     return dict(fields, summary="both ends of the s1-s2 trunk")
 
 
-def test_both_ends_commit_as_one_commit_and_no_paired_deploy_is_offered(world, pair, host):  # noqa: F811
+def test_both_ends_commit_as_one_commit_and_the_paired_deploy_is_offered(world, pair, host):  # noqa: F811
+    """C1909 (board F7-Q's footer): the commit's answer offers Deploy both ends…, the plan for
+    both devices, both ticked, the link carried; nothing is started for the person."""
     fields = _pair_fields(world, host)
     r, html = _commit(host, dict(fields, plan="1"))
     assert r.status_code == 200 and "HX-Redirect" not in r.headers, "no deploy follows"
     assert "Committed to s1 and s2's intent:</strong> one commit" in html, html[-1500:]
-    assert ("Deploy each device from its page; the paired deploy (C1909) is not built yet"
-            in html)
+    assert ("Deploy both ends opens the plan for s1 and s2, both ticked: one preview, one "
+            "confirm by hash" in html)
+    from urllib.parse import parse_qs, urlsplit
+    import re
+    href = re.search(r'id="iw-deploy-pair" data-op="deploy" href="([^"]+)"', html).group(1)
+    url = urlsplit(href)
+    assert url.path == "/v2/monitoring/apply" and parse_qs(url.query) == {
+        "list": ["Lab"], "scope": ["intent"], "device": ["s1", "s2"],
+        "pair": ["s1:GigabitEthernet0/3,s2:GigabitEthernet0/3"]}, href
+    assert "Deploy each device from its page" not in html
     changed = _git(host, "show", "--name-only", "--format=%B", "HEAD")
     assert "host_vars/s1.yml" in changed and "host_vars/s2.yml" in changed
     assert "Source: ai-draft" in changed and f"AI-Call: {fields['call_id']}" in changed
@@ -937,6 +950,117 @@ def test_one_end_of_a_pair_draft_cannot_be_committed_alone(world, pair, host):  
                                     json.dumps(items[0]["patch"]), items[0]["base"],
                                     "s1 alone", "operator@example.com")
     assert got["ok"] is False and got["stage"] == "differs", got
+
+
+@pytest.mark.parametrize("link,words", [
+    ("", "the draft's link could not be read"),
+    ("s1:GigabitEthernet0/3,r2:GigabitEthernet2", "is not between the two devices it changes"),
+], ids=["no-link", "another-devices-link"])
+def test_a_pair_commit_whose_link_is_not_the_drafts_writes_nothing(world, pair, host, link,  # noqa: F811
+                                                                   words):
+    """C1909: the link the paired deploy will verify travels with the commit, and must name
+    exactly the two devices the draft changes."""
+    fields = _pair_fields(world, host)
+    before = _git(host, "rev-parse", "HEAD")
+    r, html = _commit(host, dict(fields, link=link))
+    assert words in html and _git(host, "rev-parse", "HEAD") == before, html[-800:]
+
+
+# ── C1909: the paired deploy's plan and confirm, from the commit's answer ─────────────
+
+def _committed_pair(world, host, monkeypatch, s2_in_inventory=True):  # noqa: F811
+    """Both ends committed; the paired plan its answer opens, as a person's browser asks it
+    (s2 in the plan's inventory too, beside the lab's r2 and s1, unless *s2_in_inventory* is
+    false)."""
+    import re
+    from html import unescape
+    from tests import test_committed_before_p1 as CB
+    devices = dict(CB.DEVICES, s2=dict(CB.DEVICES["s1"], hostname="s2", ip="192.0.2.22"))
+    if s2_in_inventory:
+        monkeypatch.setattr("modules.nsot.restore._devices_of",
+                            lambda name: [dict(v) for v in devices.values()])
+    fields = _pair_fields(world, host)
+    r, html = _commit(host, fields)
+    href = unescape(re.search(r'id="iw-deploy-pair" data-op="deploy" href="([^"]+)"',
+                              r.get_data(as_text=True)).group(1))
+    page = host["client"].get(href)
+    assert page.status_code == 200, page.get_data(as_text=True)[-800:]
+    return unescape(page.get_data(as_text=True))
+
+
+def test_the_paired_plan_draws_the_link_and_confirms_to_its_own_route(world, pair, host,  # noqa: F811
+                                                                      monkeypatch):
+    import re
+    html = _committed_pair(world, host, monkeypatch)
+    assert ("Both ends of the link s1 GigabitEthernet0/3 ↔ s2 GigabitEthernet0/3, as one "
+            "change.</strong>") in html, html[-3000:]
+    notice = html.split('id="apply-pair"', 1)[1].split("</div>", 1)[0]
+    assert "the link's line protocol on both ends: up on both ends" in notice, notice
+    assert "If either end fails, or the link does, both are rolled back" in html
+    assert "Leave s1 out of this batch" not in html, "a pair's end left out"
+    button = re.search(r'<button[^>]*id="apply-confirm".*?</button>', html, re.S).group(0)
+    assert 'hx-post="/v2/monitoring/apply/confirm-pair?list=Lab"' in button, button
+    assert 'hx-params="list,scope,order,confirmations,command_hashes,authorise,pair"' in button
+    assert '"pair": "s1:GigabitEthernet0/3,s2:GigabitEthernet0/3"' in button
+
+
+def test_the_paired_plan_is_not_offered_when_one_end_cannot_deploy(world, pair, host,  # noqa: F811
+                                                                    monkeypatch):
+    """Both ends, or neither: s2 not in the plan's inventory is refused, and so the pair is,
+    with no confirm at all (never s1's half alone)."""
+    html = _committed_pair(world, host, monkeypatch, s2_in_inventory=False)
+    notice = html.split('id="apply-pair"', 1)[1].split("</div>", 1)[0]
+    assert "Not offered: s2 has nothing to send or cannot be deployed now" in notice, notice
+    assert 'id="apply-confirm"' not in html
+    assert "both ends of the link s1 GigabitEthernet0/3 ↔ s2 GigabitEthernet0/3 change " \
+        "together, or neither does (above)" in html
+
+
+def _confirm_body(html):
+    import re
+    from html import unescape
+    button = re.search(r'<button[^>]*id="apply-confirm"[^>]*>', html, re.S).group(0)
+    return json.loads(unescape(re.search(r"hx-vals='([^']+)'", button).group(1)))
+
+
+def test_the_paired_confirm_starts_one_job_carrying_the_link(world, pair, host, monkeypatch):  # noqa: F811
+    from modules import deploy_job
+    started = []
+    monkeypatch.setattr(deploy_job, "start", lambda *a, **k: (started.append((a, k)), "j1")[1])
+    body = _confirm_body(_committed_pair(world, host, monkeypatch))
+    r = host["client"].post("/v2/monitoring/apply/confirm-pair?list=Lab", data={
+        k: body[k] for k in ("list", "scope", "order", "confirmations", "command_hashes",
+                             "authorise", "pair")}, headers={"HX-Request": "true"})
+    assert r.status_code == 202, r.get_data(as_text=True)[-800:]
+    ((args, kw),) = started
+    assert args[1] == ["s1", "s2"] and kw["pair"] == {
+        "device": "s1", "port": "GigabitEthernet0/3", "far": "s2",
+        "far_port": "GigabitEthernet0/3"}
+    assert kw["remove"] == {} and kw["scope"] == ""
+
+
+@pytest.mark.parametrize("change,words", [
+    (lambda b: dict(b, order=json.dumps(["s1"]),
+                    confirmations=json.dumps({"s1": json.loads(b["confirmations"])["s1"]}),
+                    command_hashes=json.dumps({"s1": json.loads(b["command_hashes"])["s1"]})),
+     "are not exactly the two ends of the link"),
+    (lambda b: dict(b, scope="profile"), "a paired deploy sends each device's whole committed"),
+    (lambda b: dict(b, pair="s1:GigabitEthernet0/3"), "is not two ends"),
+], ids=["one-end", "another-scope", "no-link"])
+def test_the_paired_confirm_refuses_anything_but_both_ends(world, pair, host, monkeypatch,  # noqa: F811
+                                                           change, words):
+    from html import unescape
+    from modules import deploy_job
+    started = []
+    monkeypatch.setattr(deploy_job, "start", lambda *a, **k: started.append(a) or "j1")
+    body = _confirm_body(_committed_pair(world, host, monkeypatch))
+    sent = change({k: body[k] for k in ("list", "scope", "order", "confirmations",
+                                        "command_hashes", "authorise", "pair")})
+    r = host["client"].post("/v2/monitoring/apply/confirm-pair?list=Lab", data=sent,
+                            headers={"HX-Request": "true"})
+    html = unescape(r.get_data(as_text=True))
+    assert r.status_code == 400 and words in html and "Nothing was sent" in html, html[-800:]
+    assert started == []
 
 
 def test_a_two_device_commit_proves_each_formatting_only_document(world, pair, host):  # noqa: F811

@@ -58,8 +58,9 @@ and refused; the two ends are judged before it is offered by what the draft does
 (:func:`ends_judged`, C1933: committed intent against the intent the draft would leave), a
 mismatch the draft creates or changes refused naming it, and one already in committed intent
 that the draft leaves as it is said beside the draft, with whether this change may fail
-because of it (the bearing rule, in its docstring); and one commit covers both (:func:`commit_pair`, `intent_edit.commit_many`). The paired deploy is C1909's: until it is
-built, each device is deployed from its own page.
+because of it (the bearing rule, in its docstring); and one commit covers both (:func:`commit_pair`, `intent_edit.commit_many`). Its answer offers the paired deploy
+(C1909, `modules.nsot.paired_deploy`): the plan for both devices, both ticked, the link
+verified once both apply, and both rolled back if either end or the link fails.
 """
 
 import ipaddress
@@ -806,10 +807,11 @@ def pair_digest(items: list) -> str:
     return hashlib.sha256(("pair:" + text).encode("utf-8")).hexdigest()
 
 
-#: What a two-device commit says until the paired deploy is built (C1909, the operator's
-#: order of 2026-10-27): each device is deployed from its own page.
-PAIRED_DEPLOY_NOT_BUILT = ("Deploy each device from its page; the paired deploy (C1909) is not "
-                           "built yet")
+#: What a two-device commit's answer offers next (C1909, board F7-Q): the plan for both
+#: devices, both ticked, the link carried, as one change (`modules.nsot.paired_deploy`).
+PAIRED_DEPLOY = ("Deploy both ends opens the plan for {a} and {b}, both ticked: one preview, one "
+                 "confirm by hash; verify then reads the link, and if either end fails, both are "
+                 "rolled back")
 
 
 # ── the call ─────────────────────────────────────────────────────────────────
@@ -1270,16 +1272,18 @@ def commit_draft(list_name: str, hostname: str, call_id: str, patch_text: str, b
 
 
 def commit_pair(list_name: str, call_id: str, pair_text: str, summary: str,
-                actor: str) -> dict:
+                actor: str, link_text: str = "") -> dict:
     """Commit a two-device draft (C1908) as *actor*: both devices' patches in ONE intent commit
     (`intent_patch.commit_many`, one `repo.commit()`), as ``Source: ai-draft`` with ``AI-Call:``.
     Refused before anything is written unless *pair_text* (``[{"hostname", "patch", "base"}]``,
     in the order drafted) is exactly the pair that call offered (`pair_digest` on its use
     row): one end alone, either patch changed, or another version is refused, naming both
-    digests. The answer says the paired deploy is not built yet (C1909): each device is
-    deployed from its own page."""
+    digests; and unless *link_text*, the link the draft was made for
+    (`paired_deploy.link_text`), names exactly these two devices. The answer offers the paired
+    deploy (C1909): the plan for both devices, both ticked, carrying the link (``link``), never
+    started for the person."""
     from modules.ai import calls
-    from modules.nsot import intent_patch
+    from modules.nsot import intent_patch, paired_deploy
 
     def refused(status, stage, why):
         return {"ok": False, "status": status, "stage": stage, "error": why}
@@ -1292,6 +1296,16 @@ def commit_pair(list_name: str, call_id: str, pair_text: str, summary: str,
     if len(items) != 2:
         return refused(400, "patch", f"a two-device draft holds two devices' patches, and this "
                                      f"holds {len(items)}; nothing was written")
+    try:
+        link = paired_deploy.link_of(link_text)
+    except paired_deploy.LinkRefused as exc:
+        return refused(400, "link", f"the draft's link could not be read ({exc}); nothing was "
+                                    "written. Draft it again")
+    if sorted([link["device"], link["far"]]) != sorted(h for h, _p, _b in items):
+        return refused(400, "link", (
+            f"the draft's link {paired_deploy.link_words(link)} is not between the two devices "
+            f"it changes ({' and '.join(h for h, _p, _b in items)}); nothing was written. "
+            "Draft it again"))
     found = calls.find(call_id or "")
     if found["state"] != "ok":
         return refused(404 if found["state"] == "absent" else 503, "call", (
@@ -1317,7 +1331,9 @@ def commit_pair(list_name: str, call_id: str, pair_text: str, summary: str,
         calls.record_use(call_id, "committed to intent", actor=actor,
                          detail=f"commit {got['commit'][:12]} to {' and '.join(hosts)}'s intent",
                          links={"page": f"/v2/device/{hosts[0]}?tab=history"})
-    return dict(got, hostnames=hosts, deploy=PAIRED_DEPLOY_NOT_BUILT)
+    return dict(got, hostnames=hosts, link=paired_deploy.link_text(link),
+                link_words=paired_deploy.link_words(link),
+                deploy=PAIRED_DEPLOY.format(a=link["device"], b=link["far"]))
 
 
 def _held_in(text: str, quoted: dict) -> str:

@@ -226,6 +226,8 @@ OPERATIONS = {
     "console-server-rekey": ("modules.nsot.console_rekey", "STEPS"),
     # Settings › AI (board AI3b, C1843): turning a background AI feature on for a network.
     "ai-background": ("modules.ai.settings_view", "TURN_ON_STEPS"),
+    # C1909: both ends of a link deployed as one change, on the deploy page.
+    "paired-deploy": ("modules.nsot.paired_deploy", "STEPS"),
 }
 #: The page each operation's steps are named on (an operation may have two
 #: declared sequences on one page: onboarding's two phases and its ZTP form).
@@ -252,7 +254,8 @@ OPERATION_PAGE = {"onboard-phase-two": "onboard", "onboard-ztp": "onboard",
                   "oob-onboard": "onboard",
                   "console-server-port": "installation-settings",
                   "console-server-key": "installation-settings",
-                  "console-server-rekey": "rekey"}
+                  "console-server-rekey": "rekey",
+                  "paired-deploy": "deploy"}
 #: Why an operation has no declared step list yet, said rather than left blank.
 UNDECLARED = {
     "capture": "the capture job reads, previews and records in code paths with no step tuple",

@@ -48,15 +48,20 @@ _lock = threading.Lock()
 
 def start(list_name: str, order: list, confirmations: dict, command_hashes: dict, *,
           authorise: dict, remove: dict, scope: str, actor: str, actor_kind: str,
-          ident, declare: dict = None, card: str = "") -> str:
+          ident, declare: dict = None, card: str = "", pair: dict = None) -> str:
     """Start the batch, in *order*, and return the job's id at once. *declare*: each device's
     declared effects (C506 phase 3), checked again at apply and folded into its hash. *card*:
-    the one device's page card that started it (C537: that page reopens it)."""
+    the one device's page card that started it (C537: that page reopens it). *pair*: the two
+    devices are both ends of this link, deployed as one change (C1908, C1909;
+    `modules.nsot.paired_deploy`)."""
     from modules import identity
     from modules.nsot import capture_job
 
     order = [d for d in order if d in confirmations]
     label = f"{len(order)} device(s): " + ", ".join(order)
+    if pair:
+        from modules.nsot.paired_deploy import link_words
+        label = f"both ends of the link {link_words(pair)}"
 
     def work(job_id):
         from modules.outbound import mask_payload
@@ -98,7 +103,8 @@ def start(list_name: str, order: list, confirmations: dict, command_hashes: dict
             report = apply_batch(list_name, {d: confirmations[d] for d in order},
                                  command_hashes, authorise=authorise, remove=remove,
                                  scope=scope, actor=actor, actor_kind=actor_kind,
-                                 on_device=on_device, declare=declare)
+                                 on_device=on_device, declare=declare,
+                                 **({"pair": pair} if pair else {}))
         # A device refused at apply (its program moved) or skipped as drifted
         # never reaches the batch's own loop, so no event names it: it is
         # recorded from the report, or its row would read "not reached", the

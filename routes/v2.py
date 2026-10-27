@@ -1824,7 +1824,10 @@ def _apply_args(req, names: list = None) -> dict:
             picked[d] = ids
         for i in ids:
             reasons[(d, i)] = (req.args.get(f"why::{d}::{i}") or "").strip()
-    return {"list": named_list(req), "order": order, "picked": picked, "reasons": reasons}
+    # The paired deploy (C1909): the link the two ticked devices are both ends of, as a
+    # two-device commit offers it (`paired_deploy.link_text`).
+    return {"list": named_list(req), "order": order, "picked": picked, "reasons": reasons,
+            "pair": (req.args.get("pair") or "").strip()}
 
 
 #: A template's name in Coverage's words, for a section of the program (CDP has no column).
@@ -1882,7 +1885,8 @@ def _apply_ctx(req, scope: str = None, names: list = None) -> dict:
     scope = scope or _scope(req)
     list_name = args["list"] or listref.active().name
     ctx = {"list_name": list_name, "order": args["order"], "rows": [], "preview": None,
-           "confirm_body": None, "ready": [], "scope": scope, "words": SCOPE_WORDS[scope]}
+           "confirm_body": None, "ready": [], "scope": scope, "words": SCOPE_WORDS[scope],
+           "pair": None}
     if not args["order"]:
         return ctx
     devices = plan_devices(list_name, args["order"], remove=args["picked"], scope=plan_scope(scope))
@@ -1954,6 +1958,11 @@ def _apply_ctx(req, scope: str = None, names: list = None) -> dict:
     ctx["order"] = [r["name"] for r in rows]
     ctx.update(rows=rows, preview=out["preview"], ready=ready,
                all_nothing=bool(rows) and all(r["nothing"] for r in rows))
+    if args["pair"]:
+        ctx["pair"] = _pair_ctx(list_name, scope, args, devices, ready)
+        if ctx["pair"]["refused"]:
+            # Both ends, or neither: never a batch of the two deployed one by one.
+            ready = ctx["ready"] = []
     if ready:
         # The confirm body, computed HERE from the hashes this preview drew: the
         # browser sends it back unchanged, in the rollout order.
@@ -1965,7 +1974,42 @@ def _apply_ctx(req, scope: str = None, names: list = None) -> dict:
             "remove": {n: list((plan[n].get("removals") or {}).get("ids") or [])
                        for n in ready if (plan[n].get("removals") or {}).get("ids")},
             "authorise": {n: authorise[n] for n in ready if n in authorise}}
+        if ctx["pair"]:
+            ctx["confirm_body"]["pair"] = ctx["pair"]["link"]
     return ctx
+
+
+def _pair_ctx(list_name: str, scope: str, args: dict, devices: list, ready: list) -> dict:
+    """The paired deploy on the plan (C1909, board F7-Q): the link the two ticked devices are
+    both ends of, what verify will read across it (`paired_deploy.link_checks`, from the
+    programs drawn and committed intent), and why it is refused when it is: a scope other than
+    the whole intent, a link that does not read, devices other than its two ends, an end not
+    in its device's committed intent, or an end that cannot be deployed now (both or neither).
+    ``{"link", "words", "checks", "refused"}``."""
+    from modules.nsot import paired_deploy as PD
+    from routes.deploy import _committed_intents_of
+
+    try:
+        link = PD.link_of(args["pair"])
+    except PD.LinkRefused as exc:
+        return {"link": args["pair"], "words": args["pair"], "checks": [], "refused": str(exc)}
+    out = {"link": PD.link_text(link), "words": PD.link_words(link), "checks": [],
+           "refused": ""}
+    if scope != "intent":
+        return dict(out, refused="a paired deploy sends each device's whole committed intent, "
+                                 f"and this plan is scoped to {scope}")
+    intents, err = _committed_intents_of(list_name)
+    why = (f"committed intent could not be read ({err})" if err
+           else PD.link_problem(link, intents, args["order"]))
+    if why:
+        return dict(out, refused=why)
+    not_ready = [h for h, _p in PD.ends(link) if h not in ready]
+    if not_ready:
+        return dict(out, refused=(
+            f"{' and '.join(not_ready)} has nothing to send or cannot be deployed now (each says "
+            "why below), and both ends of the link change together, or neither does"))
+    programs = {d.get("device"): d.get("commands") or [] for d in devices}
+    return dict(out, checks=PD.checks_words(PD.link_checks(link, programs, intents)))
 
 
 @bp.route("/monitoring/apply", methods=["GET"])
@@ -2044,9 +2088,15 @@ def _apply_answer(job: str, code: int = 200, started_op: str = "", refused: str 
     # a new preview of that device alone, never a resend of this batch's hash.
     scope = (got or {}).get("scope") or ""
     retry = deploy_job.failed_devices(got) if scope in SCOPE_WORDS else []
+    # A paired deploy (C1909) is never retried one end at a time: a failed pair offers its plan
+    # again, both ends ticked, the link carried.
+    pair = ((got or {}).get("payload") or {}).get("pair")
+    if pair:
+        retry = []
+    again = pair if pair and deploy_job.failed_devices(got) else None
     return _strict(render_template("v2/_apply_job.html", j=got, job=job, run=run,
                                    arrivals=arrival_watch.state(job), started_op=started_op,
-                                   retry=retry, retry_scope=scope),
+                                   retry=retry, retry_scope=scope, pair=pair, again=again),
                    code if got or started_op else 404)
 
 
@@ -2104,6 +2154,64 @@ def profile_apply_confirm():
         ident=identity.verified_identity())
     return _apply_answer(job, 202,
                          started_op="deploy" if scope == "intent" else "monitoring-templates")
+
+
+@bp.route("/monitoring/apply/confirm-pair", methods=["POST"])
+def pair_apply_confirm():
+    """Start the paired deploy (C1908, C1909; board F7-Q) as a job, as the verified person: both
+    ends of the link the preview drew, each device's program computed again by the apply and
+    compared with the hash this confirm carries (a moved one refuses BOTH, nothing sent to
+    either), the second end sent only when the first deployed, the link verified once both
+    applied, both rolled back if either end or the link fails (`modules.nsot.paired_deploy`).
+    Posted by htmx from the plan's confirm, as the batch Apply's is; answers 202 with the job's
+    card, or 400 with the refusal and nothing sent: a scope other than the whole intent, a
+    link that does not read, or an order that is not exactly the link's two ends."""
+    from flask import request
+
+    from modules import deploy_job, identity
+    from modules.nsot import listref
+    from modules.nsot import paired_deploy as PD
+    from routes.deploy import _committed_intents_of
+
+    form = request.form
+    scope = (form.get("scope") or "").strip()
+    if scope != "intent":
+        return _apply_answer("", 400, refused=(
+            "Nothing confirmed: a paired deploy sends each device's whole committed intent "
+            f"(scope intent), and this confirm carries {scope or 'no scope'!r}. Nothing was "
+            "sent."))
+    list_name = (form.get("list") or "").strip()
+    if not list_name or not listref.exists(list_name):
+        return _apply_answer("", 400, refused=(
+            "No known list named: the paired deploy records into one list's repository, so the "
+            "list comes from the preview you confirmed. Nothing was sent."))
+    try:
+        data = _confirm_fields(form, ("order", "confirmations", "command_hashes", "authorise"))
+        link = PD.link_of(form.get("pair", ""))
+    except (ValueError, PD.LinkRefused) as exc:
+        return _apply_answer("", 400, refused=f"Nothing confirmed: {exc}. Nothing was sent.")
+    order = [d for d in data["order"] if isinstance(d, str) and d]
+    confirmations, hashes = data["confirmations"], data["command_hashes"]
+    if not order or any(not hashes.get(d) for d in order):
+        return _apply_answer("", 400, refused=(
+            "Nothing confirmed: every device needs the capture and command hashes its preview "
+            "showed. Nothing was sent."))
+    if len(order) != len(set(order)) or set(order) != set(confirmations):
+        return _apply_answer("", 400, refused=(
+            f"Nothing confirmed: the rollout order sent ({', '.join(order)}) is not exactly the "
+            f"devices this confirm carries hashes for ({', '.join(sorted(confirmations))}), "
+            "each once. Nothing was sent."))
+    intents, err = _committed_intents_of(list_name)
+    why = (f"committed intent could not be read ({err})" if err
+           else PD.link_problem(link, intents, order))
+    if why:
+        return _apply_answer("", 400, refused=f"Nothing confirmed: {why}. Nothing was sent.")
+    job = deploy_job.start(
+        list_name, order, confirmations, hashes, authorise=data["authorise"], remove={},
+        scope="", actor=identity.request_actor(),
+        actor_kind=getattr(identity.identify(request), "kind", ""),
+        ident=identity.verified_identity(), pair=link)
+    return _apply_answer(job, 202, started_op="deploy")
 
 
 @bp.route("/monitoring/apply/job/<job>", methods=["GET"])

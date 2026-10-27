@@ -335,8 +335,25 @@ def rows_for(report: dict, *, list_name: str, action: str, actor: str,
                              else NO_GOLDEN),
             "second_reading": dict(SECOND_READING_NOT_BUILT),
             "follow_up": dict(FOLLOW_UP_NOT_BUILT),
+            # The paired deploy (C1908, C1909): the link this device is one end of, the link's
+            # verify, and why this end was rolled back when its far end or the link failed.
+            # Only on a pair's rows; a row without it is a single device's.
+            **({"pair": _pair_record(result["pair"])} if result.get("pair") else {}),
         })
     return rows
+
+
+def _pair_record(pair: dict) -> dict:
+    """A paired deploy's facts on one end's receipt, its words masked like the reason."""
+    from modules.redact import redact_text
+
+    return {"link": pair.get("link", ""), "end": pair.get("end"),
+            "verify": pair.get("verify", ""),
+            "verify_words": redact_text(pair.get("verify_words", "") or ""),
+            "rolled_back_for": redact_text(pair.get("rolled_back_for", "") or ""),
+            "checks": [{"family": c.get("family", ""), "state": c.get("state", ""),
+                        "words": redact_text(c.get("words", "") or "")}
+                       for c in pair.get("checks") or []]}
 
 
 def pending_row(result: dict, *, list_name: str, action: str, actor: str, actor_kind: str,

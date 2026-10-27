@@ -638,12 +638,17 @@ def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
 def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
                 authorise: dict = None, remove: dict = None, scope: str = "",
                 actor: str, actor_kind: str, on_device=None,
-                declare: dict = None) -> dict:
+                declare: dict = None, pair: dict = None) -> dict:
     """Deploy the confirmed devices, in the ORDER of *confirmations* (the
     rollout order: sequential, the circuit breaker stopping after repeated
     failed devices). THE apply, for the device page's Deploy… and the v2 batch
     confirm (P.9 d2), each run as a job: the actor and how it was verified come
-    in as arguments, since a job's thread has no request to read them from."""
+    in as arguments, since a job's thread has no request to read them from.
+
+    *pair* (``{"device", "port", "far", "far_port"}``; C1908, C1909): the two devices are both
+    ends of one link, deployed as ONE change (`modules.nsot.paired_deploy`): both or neither
+    start, the second is sent only when the first deployed, the link is verified once both
+    applied, and either end failing, or the link, rolls both back."""
     from modules.nsot import profile as _profile, profile_apply
     from modules.nsot.deploy import (CircuitBreaker, NotAuthorised,
                                      assert_authorised, command_fingerprint,
@@ -653,6 +658,9 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
     remove = remove or {}
     artifacts, fresh_captures, device_rows = [], {}, {}
     refused, templates_sent = [], {}
+    # The pair's programs as recomputed here (the confirmed ones): what verify's link checks are
+    # read from, and what an end never sent is marked rolled back with.
+    programs = {}
     for hostname in confirmations:
         built, error = _artifact_for(list_name, hostname)
         if built is None:
@@ -698,6 +706,7 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
                     raise NotAuthorised("a declared effect no longer fits the program: "
                                         + "; ".join(problems))
                 now = command_fingerprint(recomputed, device_auth, full["ids"], declared)
+                programs[hostname] = list(recomputed)
             except (NotAuthorised, profile_apply.ScopeRefused, _profile.ProfileRefused) as exc:
                 refused.append({"device": hostname, "outcome": "refused",
                                 "reason": str(exc)})
@@ -773,26 +782,57 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
     # commit and receipt. A device another operation holds is refused alone,
     # by name, and the rest proceed.
     from modules.nsot import device_ops
+    from modules.nsot import paired_deploy
     from modules.nsot.receipts import operation
+    order = list(confirmations)
+    if pair and refused:
+        # Both or neither (`paired_deploy`, both_or_neither): one end refused before anything
+        # was sent refuses the other, and neither is held.
+        refused = paired_deploy.refused_both(pair, refused)
+        artifacts = []
     # Held as what it is (C364): a scoped batch is its scope's operation, never "deploy".
     held, busy = device_ops.acquire_many(
         list_name, [a.device for a in artifacts], operation(scope), actor)
+    if pair and busy:
+        device_ops.release_many(list_name, held)
+        held, busy, artifacts = [], paired_deploy.refused_both(pair, refused + busy), []
+        refused = []
     artifacts = [a for a in artifacts if a.device in held]
     refused += busy
     try:
         batch = plan_batch(artifacts, confirmations, fresh_captures)
+        if pair and batch["skipped"]:
+            # An end whose capture moved since the preview (or not deployable) is skipped by the
+            # plan, which a batch carries on past: a pair does not.
+            refused += paired_deploy.refused_both(pair, batch["skipped"])
+            refused = list({r["device"]: r for r in refused}.values())
+            batch = {"to_deploy": [], "skipped": []}
 
         extra = {**({"remove": remove} if remove else {}), **({"scope": scope} if scope else {}),
                  **({"declare": declare} if declare else {})}
         record, pending = _pending_receipts(list_name, "deploy", confirmations, command_hashes,
                                             actor=actor, actor_kind=actor_kind, scope=scope)
+        contexts, ran = {}, []
+        if pair:
+            # The pair's link checks, from the programs and the committed intent they render,
+            # and the link's state read before anything is sent (what its verify compares).
+            intents, _err = _committed_intents_of(list_name)
+            checks = paired_deploy.link_checks(pair, programs, intents)
+            before = (paired_deploy.read_state(pair, device_rows)
+                      if batch["to_deploy"] else {})
+
         def _one(entry):
             # *on_device* (a job, P.9 d2) hears each device start and finish,
             # in the rollout order, so its page can draw where the batch is.
             name = entry["artifact"].device
+            ran.append(name)
             if on_device:
                 on_device("start", name, None)
-            result = record(_deploy_one(entry, list_name, device_rows, authorise, **extra))
+            result = _deploy_one(entry, list_name, device_rows, authorise, **extra,
+                                 **({"keep": contexts} if pair else {}))
+            # A pair's receipt rows are written once the pair has settled (each end may yet be
+            # rolled back for the other): a pending row records its outcome as final.
+            result = result if pair else record(result)
             if on_device:
                 on_device("done", name, result)
             return result
@@ -801,11 +841,24 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
         # time (artboard A2); every other scope keeps the setting's limit on failed devices.
         templates = scope == profile_apply.TEMPLATES
         report = run_batch(batch, _one,
-                           CircuitBreaker(limit=1) if templates
-                           else CircuitBreaker(list_name=list_name), sequential=templates,
-                           list_name=list_name)
+                           paired_deploy.breaker() if pair
+                           else CircuitBreaker(limit=1) if templates
+                           else CircuitBreaker(list_name=list_name),
+                           sequential=templates or bool(pair), list_name=list_name)
         if refused:
             _merge_refusals(report, refused)
+        if pair:
+            paired_deploy.settle(report, pair, order, contexts=contexts,
+                                 devices=device_rows, programs=programs, checks=checks,
+                                 before=before, list_name=list_name,
+                                 run_id=pending.get("run_id", ""))
+            for r in report.get("results") or []:
+                # Each end its pipeline ran, as a batch records it (a refused or unattempted
+                # end gets its whole row with the batch's, as in any batch).
+                if r.get("device") in ran:
+                    record(r)
+                    if on_device:
+                        on_device("done", r["device"], r)
         if templates:
             report["templates_sent"] = templates_sent
 
@@ -1134,8 +1187,11 @@ def _program(intended: str, captured: str, selected: list, device: dict,
 
 def _deploy_one(entry, list_name: str, device_rows: dict,
                 authorise: dict = None, source_ref: str = "", remove: dict = None,
-                scope: str = "", declare: dict = None) -> dict:
-    """Run the pipeline for a single device. The only path that connects."""
+                scope: str = "", declare: dict = None, keep: dict = None) -> dict:
+    """Run the pipeline for a single device. The only path that connects. *keep* (the paired
+    deploy, `modules.nsot.paired_deploy`): the run's context is kept there by hostname, its save
+    to startup held (`PipelineContext.hold_save`) until the link verifies, so a device whose own
+    run passed can still be rolled back when its far end or the link fails."""
     import threading
 
     from modules.nsot.deploy import (DEPLOYED, FAILED, SKIPPED_DRIFTED, DeviceMoved,
@@ -1292,6 +1348,9 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
     # answers whether a device-only interface block is its measured default (C1383).
     ctx.confirmed_capture = {device.get("ip", ""): captured}
     ctx.capture_dialect = {device.get("ip", ""): getattr(artifact, "platform", "")}
+    if keep is not None:
+        ctx.hold_save = True
+        keep[hostname] = ctx
 
     try:
         result = PipelineRunner(ctx).run()

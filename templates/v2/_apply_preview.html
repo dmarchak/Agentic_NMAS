@@ -30,7 +30,14 @@
   {%- for name in order %}
   <input type="hidden" name="device" value="{{ name }}">
   {%- endfor %}
+  {%- if pair %}<input type="hidden" name="pair" value="{{ pair.link }}">{% endif %}
   <p class="apply-what">{{ preview.what.summary }}</p>
+  {#- The paired deploy (C1909, board F7-Q's "Then Deploy opens the plan for both, both
+      ticked"): the link the two devices are both ends of, what verify reads across it, and
+      that either end failing rolls both back; or why it is not offered (both or neither). -#}
+  {%- if pair %}
+  <div class="notice {{ 'notice-danger' if pair.refused else 'notice-info' }} apply-pair" id="apply-pair" role="status">{{ icon('warn' if pair.refused else 'info', 16) }}<p><strong>Both ends of the link {{ pair.words }}, as one change.</strong> {% if pair.refused %}Not offered: {{ pair.refused }}. Nothing is sent to either.{% else %}Each device receives exactly its program below, one after the other in this order; the second is sent only when the first deployed. Once both apply, verify reads the link: {{ pair.checks | join('; ') }}. If either end fails, or the link does, both are rolled back, and each device's receipt says what it achieved.{% endif %}</p></div>
+  {%- endif %}
   {#- Drawn only while a batch confirmed from this preview runs, then only once it has ended
       (C602; C883: both were drawn on every preview, `.notice`'s display beating `hidden`):
       nmas_apply.js shows one when the confirm's 202 locks the preview, keyed on the job card
@@ -55,9 +62,12 @@
               aria-label="Move {{ r.name }} earlier">Earlier</button>
       <button type="button" class="btn btn-small" data-reorder data-move="down"{% if loop.last %} disabled{% endif %}
               aria-label="Move {{ r.name }} later">Later</button>
+      {#- A pair's two ends are one change: neither is left out (C1909). -#}
+      {%- if not pair %}
       <button type="button" class="btn btn-small" data-reorder hx-get="{{ url_for('v2.profile_apply_preview', drop=r.name) }}"
               hx-include="#apply-form" hx-target="#apply-preview" hx-swap="outerHTML" hx-disabled-elt="#apply-preview button"
               aria-label="Leave {{ r.name }} out of this batch"><span class="op-idle">Leave out</span><span class="op-busy">Leaving out…</span></button>
+      {%- endif %}
     </li>
     {%- endfor %}
   </ol>
@@ -149,13 +159,16 @@
     <p>{{ preview.confirm.statement }}</p>
     {%- if confirm_body %}
     {%- set op = 'deploy' if scope == 'intent' else 'monitoring-templates' %}
+    {#- A paired deploy (C1909) posts the same body, with its link, to its own confirm. -#}
     <span class="op-act"><button type="button" class="btn btn-primary" id="apply-confirm" data-op="{{ op }}"
-            hx-post="{{ url_for('v2.profile_apply_confirm') }}" hx-target="#apply-result" hx-swap="innerHTML"
-            hx-vals='{{ {"list": confirm_body.list, "scope": confirm_body.scope, "order": confirm_body.order | tojson, "confirmations": confirm_body.confirmations | tojson, "command_hashes": confirm_body.command_hashes | tojson, "remove": confirm_body.remove | tojson, "authorise": confirm_body.authorise | tojson} | tojson }}'
-            hx-params="list,scope,order,confirmations,command_hashes,remove,authorise"
+            hx-post="{{ url_for('v2.pair_apply_confirm') if confirm_body.pair else url_for('v2.profile_apply_confirm') }}" hx-target="#apply-result" hx-swap="innerHTML"
+            hx-vals='{{ {"list": confirm_body.list, "scope": confirm_body.scope, "order": confirm_body.order | tojson, "confirmations": confirm_body.confirmations | tojson, "command_hashes": confirm_body.command_hashes | tojson, "remove": confirm_body.remove | tojson, "authorise": confirm_body.authorise | tojson, "pair": confirm_body.pair or ""} | tojson }}'
+            hx-params="{{ 'list,scope,order,confirmations,command_hashes,authorise,pair' if confirm_body.pair else 'list,scope,order,confirmations,command_hashes,remove,authorise' }}"
             hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">{{ 'Deploy to' if scope == 'intent' else 'Apply to' }} {{ ready | length }} device(s) in this order</span><span class="op-busy">Starting the batch…</span></button>{{ how(op) }}</span>
     {%- elif all_nothing %}
     <p class="muted">{{ words.all_nothing }}</p>
+    {%- elif pair and pair.refused %}
+    <p class="apply-refused">Not offered: both ends of the link {{ pair.words }} change together, or neither does (above).</p>
     {%- elif not confirm_body %}
     <p class="apply-refused">{{ words.none_can }}</p>
     {%- endif %}

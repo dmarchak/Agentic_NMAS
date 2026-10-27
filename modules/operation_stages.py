@@ -32,6 +32,12 @@ STAGES = {
     "v2.profile_apply_confirm": Stages(
         "v2.profile_apply_preview", "command_hashes", "modules.pipeline._stage_verify",
         "modules.pipeline._stage_rollback", "routes.deploy._write_receipts"),
+    # The paired deploy (C1908, C1909; board F7-Q): both ends of a link through the batch plan
+    # and apply as one change; verify is the link's own, after each end's pipeline verified
+    # itself, and the rollback rolls back both ends with the pipeline's own rollback.
+    "v2.pair_apply_confirm": Stages(
+        "v2.profile_apply_preview", "command_hashes", "modules.nsot.paired_deploy.verify_link",
+        "modules.pipeline.roll_back_after", "routes.deploy._write_receipts"),
     # The v2 device page's Deploy, with Mode B (7.3): the same plan and apply, as a job.
     "device_v2.deploy_confirm": Stages(
         "device_v2.deploy", "command_hash", "modules.pipeline._stage_verify",
@@ -323,6 +329,7 @@ PROFILE = "n/a: changes the network's monitoring profile, which no device's reco
 HISTORY = {
     # ---- confirm: sends to a device
     "v2.profile_apply_confirm": ("receipts", "golden"),
+    "v2.pair_apply_confirm": ("receipts", "golden"),
     "device_v2.deploy_confirm": ("receipts", "golden"),
     "device_v2.restore_confirm": ("receipts", "golden"),
     "device_v2.persist_confirm": ("rotation",),

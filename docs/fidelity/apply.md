@@ -47,8 +47,22 @@ region, the same words when verify passed; the stepper's Verify step drawn parti
 did not pass is data (`run_stepper.finished`'s `partial_at`), not this template. Every other
 region unchanged: the verify line and its causes' loop in `_apply_job.html`, read from the diff
 and drawn by `tests/test_verify_verdict_follows_receipt.py`, not a new shot.
+Compared again 2026-10-27 (C1909, the paired deploy; board F7-Q's footer "Then Deploy opens the
+plan for r3 and r4, both ticked: one preview, one confirm by hash", this page being that plan).
+Opened with a link (`pair`), the preview draws, under its headline, the link as one change: what
+verify reads across it and that either end failing rolls both back, or, when the plan is not
+exactly the link's two ends or either end cannot be deployed, why it is not offered (no confirm
+then, never a batch of the two one by one). Neither device is offered Leave out. The confirm
+is the same button with the same label, posting the same body with the link to
+`/v2/monitoring/apply/confirm-pair`. The job card's result says, under its headline, the link's
+verify and which ends were rolled back with their far end; each device's evidence says its end
+of the link; and a failed pair offers **Plan both ends again** in place of a Retry per device.
+Board B draws no pair. Compared by the templates and the pages the tests draw
+(tests/test_ai_intent_change.py's paired plan and confirm, tests/test_paired_deploy.py's job
+card), not a new shot. Two rows added; every other region unchanged, a pair's page aside.
+Templates sha256 before: `079a9e82b4e4f38c476d7f85d8ea672bf255fc4b09f69b8f08981ce13716c4d1`.
 Templates compared: templates/v2/apply.html, templates/v2/_apply_preview.html, templates/v2/_apply_job.html
-Templates sha256: `079a9e82b4e4f38c476d7f85d8ea672bf255fc4b09f69b8f08981ce13716c4d1`
+Templates sha256: `eac007dc8d20d89e3a3d00d13e3cf8bc0703950f2c379f11a03a2bf5c4c2875d`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).
@@ -70,4 +84,6 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | The result | "486 devices: 485 deployed and verified, 1 rolled back", partial, one golden commit linked, a receipt per device, Retry the 1 rolled back, Open in History | badged Done, "2 of 2 device(s) deployed. 2 device(s) accounted for: every device in the batch appears here."; each device "what was sent and what was checked" open; the golden commit as text, not a link; no Open in History (capture 20) | **deviation** (log: Batch deploy: the result's commit is text and it has no link to History) |
 | The result's words | not drawn | "No baseline tag: 7 device(s) not targeted: ['r1', 'r2', …]", a raw list, and "the follow-up window … is a job behind 7.1 (register C60), not built yet", an internal note (capture 20; C901) | **deviation** (log: Batch deploy: the result prints a raw list and an internal note (C901)) |
 | Retry (C1499) | "Retry the 1 rolled back" on the result | "Retry <device>" under the stepper for each device the batch did not deploy (failed, refused, rolled back), each a new preview of that device alone on the batch's scope, with How does this work?; none while it runs | **deviation** (log: Batch deploy: Retry for every device the batch did not deploy) |
+| The paired deploy's plan (C1909) | not drawn (board B has no pair; board F7-Q: "Then Deploy opens the plan for r3 and r4, both ticked: one preview, one confirm by hash") | under the headline, "Both ends of the link s1 GigabitEthernet0/3 ↔ s2 GigabitEthernet0/3, as one change." with each device's program sent one after the other, the second only when the first deployed, what verify reads across the link, and that either end failing rolls both back; or "Not offered: …" naming why, with no confirm; no Leave out; the confirm's button and label unchanged, posting to the pair's own confirm | **deviation** (log: Batch deploy: the paired deploy's plan (C1909)) |
+| The paired deploy's result (C1909) | not drawn | "Both ends of the link …: the link verified" (or its verify failed, unread or not judged, never green), "rolled back with its far end: s1 and s2"; each device's evidence "End 1 of the link …" with why it was rolled back; a failed pair offers Plan both ends again (its (i)), never Retry <device> | **deviation** (log: Batch deploy: the paired deploy's result and Plan both ends again (C1909)) |
 | The way back | Open in History | "Back to Coverage: it redraws from the new goldens." after a deploy from Devices (capture 20; C861) | **deviation** (log: Batch deploy: the result ends Back to Coverage after a Devices deploy (C861)) |

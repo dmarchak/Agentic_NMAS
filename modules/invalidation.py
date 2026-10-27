@@ -344,6 +344,7 @@ DECLARED = {
     "v2.credentials_intact": ("breakglass",),
     "breakglass.export": ("breakglass",),
     "v2.profile_apply_confirm": Nothing("starts a job and answers at once; the batch deploys and ANNOUNCES deploy_job as each device finishes, and what a deploy changes at the end (ANNOUNCERS)"),
+    "v2.pair_apply_confirm": Nothing("starts a job and answers at once; the paired deploy runs the batch apply, which ANNOUNCES deploy_job as each end finishes and settles, and what a deploy changes at the end (ANNOUNCERS)"),
     "v2.save_confirm": Nothing("starts a job and answers at once; the Save ANNOUNCES save when it finishes, with the commit and what each device boots (ANNOUNCERS save)"),
     "device_v2.restore_confirm": Nothing("starts a job and answers at once; the restore ANNOUNCES deploy_job as it finishes, and what a restore changes (ANNOUNCERS deploy-job)"),
     "device_v2.deploy_confirm": Nothing("starts a job and answers at once; the deploy ANNOUNCES deploy_job as it finishes, and what a deploy changes (ANNOUNCERS)"),

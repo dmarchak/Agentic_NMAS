@@ -118,9 +118,12 @@ ends share.
 
 **Commit both devices' intent** makes one commit holding both devices' changes, as you, with
 your one line: refused, writing nothing, if either device's intent moved since the draft, or if
-what is handed to it is not the pair the AI call drafted (either end alone included). The
-deploy that follows is each device's own, from its page: deploying both ends as one change,
-with the link verified and both ends rolled back together, is not built yet.
+what is handed to it is not the pair the AI call drafted (either end alone included), or if the
+link the draft was made for does not name the two devices. Nothing is sent. Its answer offers
+**Deploy both ends…**, which opens the plan for both devices, both ticked, as one change across
+the link: one preview, one confirm by hash; then verify reads the link itself, and if either end
+fails, or the link does, both are rolled back (see
+[the paired deploy](deploy#the-paired-deploy)).
 
 When the far end is not a device {{product}} manages (a host), or no read names what the port
 links to, {{product}} asks first: **Draft <device>'s end only**, or, when the far end is unknown,

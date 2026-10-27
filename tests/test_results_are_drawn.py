@@ -107,6 +107,11 @@ PAGE_RECORD = {
     "v2.profile_apply_confirm": ("templates/v2/_apply_job.html",
                                  ('id="apply-job"', "res.targets", "res.record"),
                                  "device_v2.history"),
+    # The paired deploy (C1909): the same job card, the link's verify and what each end
+    # achieved drawn from the receipts, read back on each device's History.
+    "v2.pair_apply_confirm": ("templates/v2/_apply_job.html",
+                              ('id="apply-pair-result"', "t.pair.verify_words", "res.record"),
+                              "device_v2.history"),
     # The IP SLA policy (P.9 d4): committed to the profile; the page redraws
     # and states the policy now in force from the committed profile.
     "v2.ip_sla_policy_set": ("templates/v2/ip_sla.html",
