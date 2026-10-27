@@ -212,8 +212,9 @@ def test_a_malformed_request_is_said():
 
 
 def test_topology_is_not_served_by_ofctl_rest():
-    """The capture: `GET /v1.0/topology/links` is Ryu's HTML 404 without rest_topology, so
-    the driver declares no read_topology; and a call the controller does not serve is named."""
+    """The capture: `GET /v1.0/topology/links` is Ryu's HTML 404 without rest_topology (the
+    topology calls say so, tests/test_sdn_topology.py); and a call the controller does not
+    serve is named."""
     entry = one(NO_SWITCH, "GET", "/v1.0/topology/links")
     assert entry["status"] == 404 and "<html>" in entry["body"]
     out = driver(Session(captured(entry))).switches()

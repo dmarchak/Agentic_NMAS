@@ -199,6 +199,32 @@ def test_neighbours_name_one_device_and_a_shared_segment_names_none(monkeypatch,
         else ["GigabitEthernet0/2"]), "a shared segment is never an uplink"
 
 
+def test_an_sdn_switch_s_neighbours_are_its_controller_links_naming_their_sources(monkeypatch):
+    # S14 (C1910): a switch the controller discovered has no name in the model, only its key;
+    # its links are the controller's (and a hybrid one also a device's LLDP), each said.
+    from modules import network_model as M
+    s1, s2 = "of:0000000000000001", "of:0000000000000002"
+    observed = {"state": "read", "why": "", "cables": {
+        f"cable:{s1}/port 2~{s2}/port 2": {
+            "ends": [{"dev": s1, "port": "port 2"}, {"dev": s2, "port": "port 2"}],
+            "sources": ["controller (lab-controller)"]},
+        f"cable:dev:2/Gi4~{s1}/port 3": {
+            "ends": [{"dev": "dev:2", "port": "Gi4"}, {"dev": s1, "port": "port 3"}],
+            "sources": ["LLDP (r1)", "controller (lab-controller)"]}}}
+    monkeypatch.setattr(M, "model_for", lambda network: (MODEL, ""))
+    monkeypatch.setattr(M, "observed", lambda network, model: observed)
+    got = intent_names.neighbours_of("Lab", s1)
+    assert got == {"said": [], "ports": {
+        "port 2": [{"name": s2, "role": "", "by": "observed (controller (lab-controller))"}],
+        "port 3": [{"name": "r1", "role": "router",
+                    "by": "observed (LLDP (r1) and controller (lab-controller))"}]}}
+    # The device end of the hybrid link names the switch by its key, and LLDP's links stay LLDP.
+    r1 = intent_names.neighbours_of("Lab", "r1")["ports"]
+    assert r1["GigabitEthernet4"] == [
+        {"name": s1, "role": "", "by": "observed (LLDP (r1) and controller (lab-controller))"}]
+    assert intent_names.neighbours_of("Lab", "of:0000000000000009")["ports"] == {}
+
+
 # ── the endpoint layer: observation first, drift said (C1772) ───────────────
 
 def _observed(port="Gi1/0", device="s1"):

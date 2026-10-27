@@ -137,8 +137,12 @@ CLASS_KEYS = {
     # NetBox's documented cables (C1863): a link's source and cable id, its NetBox status when
     # not connected, and what the subgraph says of the read (when, how many, left out by why).
     "netbox_cables", "netbox_cable", "status", "drawn", "joined_to_an_intent_subnet",
-    "links_of_their_own", "not_drawn", "count", "truncated"}
-ID = re.compile(r"^(dev|link|adj|cable|ext):|^mercury$")
+    "links_of_their_own", "not_drawn", "count", "truncated",
+    # An SDN controller's topology (PHASE8_PLAN 17.1 S14, C1910): the coverage header's
+    # controller layer (its state, source, age and why), and a cable's sources (a controller,
+    # a device's LLDP); metadata about where a link was learned, no value of a device.
+    "controller", "sources"}
+ID = re.compile(r"^(dev|link|adj|cable|ext|of):|^mercury$")
 
 
 def _keys(obj, out):

@@ -87,8 +87,9 @@ def interfaces_of(doc: dict) -> list:
 def neighbours_of(network: str, device: str) -> dict:
     """``{"ports": {interface: [{"name", "role", "by"}]}, "said": [...]}``: each of *device*'s
     interfaces' managed neighbours, from the network model's shared subnets and the Topology
-    read's physical links (the management path as "the management path"). What could not be
-    read is said, never left out."""
+    read's physical links (the management path as "the management path"). An SDN switch is
+    named by its key, ``of:<DPID>`` (S14), its links the controller's, each naming its sources.
+    What could not be read is said, never left out."""
     from modules import network_model as M
     from modules.nsot import ifnames
 
@@ -96,7 +97,7 @@ def neighbours_of(network: str, device: str) -> dict:
     model, err = M.model_for(network)
     if model is None:
         return {"ports": {}, "said": [f"the network model could not be built: {err}"]}
-    me = model["names"].get(device)
+    me = model["names"].get(device) or (device if device.startswith("of:") else None)
     nodes = model["nodes"]
 
     def add(port, peer, role, by):
@@ -132,8 +133,9 @@ def neighbours_of(network: str, device: str) -> dict:
                 add(end.get("port") or "", "the management path", "manager", "observed")
             else:
                 node = nodes.get(far["dev"]) or {}
+                by = " and ".join(cable.get("sources") or ["LLDP"])
                 add(end.get("port") or "", node.get("name") or far["dev"].replace("ext:", ""),
-                    node.get("role", ""), "observed (LLDP)")
+                    node.get("role", ""), f"observed ({by})")
     return {"ports": ports, "said": said}
 
 

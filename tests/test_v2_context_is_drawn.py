@@ -802,6 +802,7 @@ EMPTY_IN_FIXTURE = {
     "v2/_topology_map.html r.lines": _TOPOLOGY,
     "v2/_topology_map.html r.lines #2": _TOPOLOGY,
     "v2/_topology_map.html sl.rows": _TOPOLOGY,
+    "v2/_topology_map.html t.coverage": _TOPOLOGY,
     "v2/_topology_map.html t.errors": _TOPOLOGY,
     "v2/_topology_map.html t.fleet": _TOPOLOGY,
     "v2/_topology_map.html t.list_groups": _TOPOLOGY,
@@ -837,8 +838,11 @@ EMPTY_IN_FIXTURE = {
 #: 368 with feature 7's (Change it in words, 2026-10-26), whose draft draws the intent check's
 #: diff rows and pending lines; 365 with the logs builder's leftovers (the operator's walk
 #: of History › Query, 2026-10-26), which draws Loki's jobs and devices to add, and History's
-#: remote line's uncommitted files as the lab stands by then.
-EMPTY_IN_FIXTURE_CEILING = 365
+#: remote line's uncommitted files as the lab stands by then. 366 with S14's controller strip
+#: on Topology (C1910, 2026-10-27): a new loop of a map the walk never reaches (it stores no
+#: topology value); a provider storing one was tried and draws the map, exposing 30 fields the
+#: map carries and draws nowhere, a finding of its own, so the loop is declared with the rest.
+EMPTY_IN_FIXTURE_CEILING = 366
 #: The population and how many of it drew, measured 2026-10-18 (557 and 171): floors, a little
 #: under the measurement, so a scan that stopped seeing loops, or a walk that stopped drawing,
 #: fails.

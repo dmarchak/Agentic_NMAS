@@ -10,12 +10,26 @@ What ofctl_rest offers, and what this driver reads of it:
   200 once Ryu has SENT the message. The switch's own answer (an OpenFlow error) is never
   reported back, so a write's 200 says sent, not installed: Verify reads the table back.
 
+What it reads of Ryu's topology REST (`ryu.app.rest_topology`, a separate application,
+PHASE8_PLAN 17.1 S14; the lab's controller runs it with `--observe-links` since 2026-10-27):
+- `GET /v1.0/topology/switches`: each switch, `{"dpid": "<16 hex>", "ports": [port]}`, a
+  port `{"dpid", "port_no": "<8 hex>", "hw_addr", "name"}`;
+- `GET /v1.0/topology/links`: `[{"src": port, "dst": port}]`, one entry per direction, found
+  by Ryu's own LLDP (its chassis id `dpid:<16 hex>`, its port id the port number packed in
+  four bytes, ryu/topology/switches.py `LLDPPacket`);
+- `GET /v1.0/topology/hosts`: `[{"mac", "ipv4": [...], "ipv6": [...], "port": port}]`.
+  **Ryu keeps a host until it restarts and records no time** (its `HostState` is a dict that
+  only grows; a host that moved replaces its port, one that left stays), so a listed host is
+  "listed by the controller", never "here now": the answer's `hosts_note` says so.
+- **Without the application every topology call is Ryu's HTML 404** (captured,
+  rest_no_switch.json), said as the application not running, never as no links. **Without
+  `--observe-links`** the application answers, and its links are always empty (Ryu sends no
+  LLDP): an empty link list between two or more switches is said with that possibility
+  (`modules/sdn/topology.py`), never as a fabric with no cables.
+
 What it does not offer:
 - **no version**: no call answers one and the server sends no version header, so `test` says
-  so rather than inventing one;
-- **no links**: ofctl_rest has no topology. Ryu's topology REST is a separate application
-  (`ryu.app.rest_topology`, which needs `--observe-links`), so this driver does not declare
-  `read_topology`, and `links` refuses saying why.
+  so rather than inventing one.
 
 Ryu's quirks the translation answers:
 - **Its match keys are OpenFlow 1.0's on the way out** (`ryu.lib.ofctl_v1_3.match_to_str`):
@@ -41,7 +55,8 @@ import json
 
 from modules.sdn.drivers.base import (
     ACTION_FIELDS, UINT64_MAX, UNPARSED, ControllerDriver, Flow, Meter, MeterBand,
-    MeterFeatures, PortStats, SpecError, dpid_hex, flow_from_spec, meter_from_spec)
+    MeterFeatures, PortStats, SpecError, dpid_hex, flow_from_spec, meter_from_spec, topo_host,
+    topo_port)
 
 #: Ryu's OpenFlow 1.0 match keys, and the OXM name each stands for.
 _MATCH_FROM_RYU = {"dl_src": "eth_src", "dl_dst": "eth_dst", "dl_type": "eth_type",
@@ -63,6 +78,36 @@ METER_DELETE = "/stats/meterentry/delete"
 
 SENT_NOTE = ("the controller sent it to the switch; Ryu's ofctl_rest does not report the "
              "switch's own answer, so read the table back to verify")
+
+TOPOLOGY = "/v1.0/topology"
+#: What a 404 from the topology REST means, said in place of "no links".
+NO_TOPOLOGY_APP = ("the topology app is not running (start ryu-manager with --observe-links "
+                   "and ryu.app.rest_topology)")
+HOSTS_NOTE = ("Ryu keeps a host until the controller restarts and records no time, so a "
+              "host listed is one it learned since then, not necessarily one there now")
+LINKS_NOTE = ("none cabled, or the controller discovers none (Ryu discovers links only when "
+              "run with --observe-links)")
+
+
+def port_from_ryu(entry: dict) -> dict:
+    """One of the topology REST's ports in the one shape (base.topo_port)."""
+    if not isinstance(entry, dict):
+        raise SpecError(f"a port is a mapping, not {entry!r}")
+    return topo_port(entry.get("dpid"), entry.get("port_no"), entry.get("name"),
+                     entry.get("hw_addr"))
+
+
+def link_from_ryu(entry: dict) -> dict:
+    if not isinstance(entry, dict):
+        raise SpecError(f"a link is a mapping, not {entry!r}")
+    return {"src": port_from_ryu(entry.get("src")), "dst": port_from_ryu(entry.get("dst"))}
+
+
+def host_from_ryu(entry: dict) -> dict:
+    if not isinstance(entry, dict):
+        raise SpecError(f"a host is a mapping, not {entry!r}")
+    return topo_host(entry.get("mac"), entry.get("ipv4"), entry.get("ipv6"),
+                     port_from_ryu(entry.get("port")))
 
 
 def _number(text):
@@ -151,11 +196,12 @@ class RyuDriver(ControllerDriver):
     kind = "ryu"
     label = "Ryu"
     status = "built"
-    capabilities = frozenset({"read_flows", "read_port_stats", "read_meters", "write_flows",
-                              "write_meters", "delete_flows"})
-    absent = {"read_topology": "Ryu's ofctl_rest has no links call; its topology REST "
-                               "(ryu.app.rest_topology, run with --observe-links) is a "
-                               "separate application this driver does not read"}
+    capabilities = frozenset({"read_topology", "read_flows", "read_port_stats", "read_meters",
+                              "write_flows", "write_meters", "delete_flows"})
+    #: ryu/topology/switches.py `LLDPPacket.CHASSIS_ID_FMT` (rendered by Ryu's own code:
+    #: tests/fixtures/sdn/ryu/lldp_from_ryu.json).
+    lldp_chassis_prefix = "dpid:"
+    links_note = LINKS_NOTE
     write_routes = {("POST", FLOW_ADD): "write_flows",
                     ("POST", FLOW_MODIFY_STRICT): "write_flows",
                     ("POST", FLOW_DELETE_STRICT): "delete_flows",
@@ -238,6 +284,62 @@ class RyuDriver(ControllerDriver):
         if failed:
             return failed
         return {"ok": True, "switches": [{"dpid": d, "dpid_hex": dpid_hex(d)} for d in dpids]}
+
+    # ── the topology REST (ryu.app.rest_topology: switches, links, hosts) ───────────────────
+
+    def _topology_get(self, what: str, parse):
+        """`(items, None)` from `GET /v1.0/topology/<what>`, each parsed by *parse*, or
+        `(None, failure)`; a 404 is the application not running, said so."""
+        path = f"{TOPOLOGY}/{what}"
+        got = self._http("GET", path)
+        if not got.get("ok"):
+            return None, got
+        if got["status"] == 404:
+            return None, {"ok": False, "status": 404, "no_topology_app": True,
+                          "error": f"HTTP 404 from {path}: {NO_TOPOLOGY_APP}"}
+        if got["status"] != 200:
+            return None, self._failure(got, path)
+        try:
+            data = json.loads(got["text"])
+        except ValueError:
+            return None, {"ok": False, "status": 200,
+                          "error": f"HTTP 200 from {path} with a body that is not JSON"}
+        if not isinstance(data, list):
+            return None, {"ok": False, "error": f"{path} answered a {type(data).__name__}, "
+                                                "not a list"}
+        try:
+            return [parse(item) for item in data], None
+        except SpecError as exc:
+            return None, {"ok": False, "error": f"{path}: {exc}"}
+
+    def _links(self) -> dict:
+        links, failed = self._topology_get("links", link_from_ryu)
+        return failed or {"ok": True, "links": links}
+
+    def _hosts(self) -> dict:
+        hosts, failed = self._topology_get("hosts", host_from_ryu)
+        return failed or {"ok": True, "hosts": hosts, "hosts_note": HOSTS_NOTE}
+
+    def _topology(self) -> dict:
+        def switch(entry):
+            if not isinstance(entry, dict):
+                raise SpecError(f"a switch is a mapping, not {entry!r}")
+            first = port_from_ryu({"dpid": entry.get("dpid"), "port_no": 0})
+            return {"dpid": first["dpid"], "dpid_hex": first["dpid_hex"],
+                    "ports": [port_from_ryu(p) for p in entry.get("ports") or []]}
+
+        switches, failed = self._topology_get("switches", switch)
+        if failed:
+            return failed
+        links, failed = self._topology_get("links", link_from_ryu)
+        if failed:
+            return failed
+        hosts, failed = self._topology_get("hosts", host_from_ryu)
+        if failed:
+            return failed
+        return {"ok": True, "switches": sorted(switches, key=lambda s: s["dpid"]),
+                "links": links, "hosts": hosts, "hosts_note": HOSTS_NOTE,
+                "links_note": LINKS_NOTE}
 
     def _switch_desc(self, dpid) -> dict:
         desc, failed = self._per_switch(f"/stats/desc/{dpid}", dpid)

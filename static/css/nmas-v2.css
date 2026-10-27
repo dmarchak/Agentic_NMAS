@@ -37,6 +37,7 @@
   --code-bg: #14202B; --code-ink: #E6EDF3; --code-dim: #8FA1B2; --mark: #FFF1C2; --mark-ink: #14202B;
   --sev-line: #E0B84A;
   --ai: #0E6E78; --ai-soft: #E3F3F4;
+  --sdn: #2D5BB8; --sdn-soft: #E8EEF8;
   color-scheme: light;
 }
 
@@ -68,6 +69,7 @@
     --code-bg: #0A0F14; --code-ink: #E6EAEE; --code-dim: #8FA1B2; --mark: #5C4A12; --mark-ink: #FFF1C2;
     --sev-line: #D9B44A;
     --ai: #5CC8D2; --ai-soft: #0F2E31;
+    --sdn: #7FA6F0; --sdn-soft: #182844;
     color-scheme: dark;
   }
 }
@@ -92,6 +94,7 @@
   --code-bg: #0A0F14; --code-ink: #E6EAEE; --code-dim: #8FA1B2; --mark: #5C4A12; --mark-ink: #FFF1C2;
   --sev-line: #D9B44A;
   --ai: #5CC8D2; --ai-soft: #0F2E31;
+  --sdn: #7FA6F0; --sdn-soft: #182844;
   color-scheme: dark;
 }
 
@@ -1661,6 +1664,24 @@ input[type=text][aria-disabled="true"]:disabled { background: var(--muted-soft);
 .topo-line.topo-unread { stroke: var(--ink-3); stroke-dasharray: .5 6; }
 .topo-line.topo-ronly { stroke-width: 1.5; }
 .topo-line.topo-gone { stroke-opacity: .25; }
+/* S14 (board F): a switch a controller programs, and the links its controller reports, in the
+   controller's colour; the controller's own control links and the hosts it learned dotted and
+   dashed beside them. A link not read now keeps its grey dots (the state wins). */
+.topo-line.topo-ok.topo-src-ctl { stroke: var(--sdn); }
+.topo-line.topo-ov { stroke-width: 1.5; }
+.topo-line.topo-ov-control { stroke: var(--sdn); stroke-dasharray: 2 5; }
+.topo-line.topo-ov-host { stroke: var(--ink-3); stroke-dasharray: 4 4; stroke-linecap: butt; }
+.topo-c-sdn use, .topo-c-sdn .topo-ico { color: var(--sdn); }
+.topo-c-sdn .topo-ic { stroke: var(--sdn); }
+.topo-c-host use { color: var(--ink-3); }
+.topo-sdnline { font-size: 11px; fill: var(--sdn); text-anchor: middle;
+  paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
+.topo-st.topo-st-src { fill: var(--sdn-soft); }
+.topo-st-t.topo-st-src { fill: var(--sdn); font-weight: 500; }
+.topo-cov { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 8px; }
+.topo-cov-c { white-space: normal; }
+.topo-cov-ctl { background: var(--sdn-soft); color: var(--sdn); }
+.topo-cov-warn { background: var(--warn-soft); color: var(--warn); }
 .topo-glow { fill: none; stroke: var(--accent); stroke-width: 14; stroke-linecap: round; stroke-opacity: .2; }
 .topo-pathglow { stroke-opacity: .35; stroke-width: 10; }
 /* Topology board D (C693): a delivered branch in the accent, one that is not in danger; the

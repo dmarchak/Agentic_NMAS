@@ -1,0 +1,44 @@
+{
+ "frames": [
+  {
+   "chassis_id": "dpid:0000000000000001",
+   "chassis_id_subtype": 7,
+   "dpid": 1,
+   "frame_hex": "0180c200000e1e8ad109f1bd88cc021607647069643a3030303030303030303030303030303104050200000003060200780000000000000000000000",
+   "parsed_back": [
+    1,
+    3
+   ],
+   "port_id_hex": "00000003",
+   "port_id_subtype": 2,
+   "port_no": 3,
+   "tlv_types": [
+    1,
+    2,
+    3,
+    0
+   ]
+  },
+  {
+   "chassis_id": "dpid:0123456789abcdef",
+   "chassis_id_subtype": 7,
+   "dpid": 81985529216486895,
+   "frame_hex": "0180c200000e0200000000fe88cc021607647069643a303132333435363738396162636465660405020000fffe060200780000000000000000000000",
+   "parsed_back": [
+    81985529216486895,
+    65534
+   ],
+   "port_id_hex": "0000fffe",
+   "port_id_subtype": 2,
+   "port_no": 65534,
+   "tlv_types": [
+    1,
+    2,
+    3,
+    0
+   ]
+  }
+ ],
+ "made_by": "render_lldp_with_ryu.py",
+ "ryu": "4.34"
+}

@@ -36,7 +36,12 @@ read-only: no model is asked to build it, and nothing here writes.
   `context_for` overlays the overlay it is GIVEN and reads no observed state itself, so Explain
   of a past alert never describes the network now. A read that cannot be used (absent,
   unreadable, older than its promise, later than the time it is captured for) is said as
-  "could not read" with why, on every item it would have overlaid; never left out.
+  "could not read" with why, on every item it would have overlaid; never left out. **The
+  controller layer** (PHASE8_PLAN 17.1 S14) comes in the same read: an SDN controller's links
+  are cables naming their ``sources`` (``controller (<connection>)``, and a device's LLDP for a
+  hybrid link), its switches ``of:<DPID>`` ends, and what each controller gave (read, or
+  couldn't read with why, its switches as last read) is the coverage header's ``controller``
+  layer (`controller_coverage`).
 
 **What it reuses.** The adjacencies are the Neighbours tab's own rules (`neighbours.ospf_links`,
 `ospfv3_links`, `bgp_peers`, `router_id`, `addresses`), each device's links computed ONCE and
@@ -122,7 +127,10 @@ ID_WORDS = (
     "between two devices that no intent subnet joins; a link's source says which: intent, "
     "netbox_cable or both",
     "adj:<protocol>:<a>~<b>:<subnet or ipv4/ipv6> is an adjacency between two ends",
-    "cable:<a>/<port>~<b>/<port> is a physical link LLDP reports",
+    "cable:<a>/<port>~<b>/<port> is a physical link LLDP reports (or, naming its sources, "
+    "one an SDN controller reports, or both)",
+    "of:<16 hex digits> is an OpenFlow switch discovered via its controller, keyed by its "
+    "DPID",
 )
 
 _CACHE: dict = {}
@@ -643,8 +651,10 @@ def build(network: str, inventory, intents: dict, manifest: dict = None, version
 # ----------------------------------------------------------------------------- coverage
 
 #: The layers a network context can hold, in the order the coverage header lists them (the
-#: operator, 2026-10-26: "make gaps explicit"). Flows remain roadmap.
-LAYERS = ("inventory", "intent", "adjacency", "performance", "events", "endpoints", "flows")
+#: operator, 2026-10-26: "make gaps explicit"). Flows remain roadmap. ``controller`` is an SDN
+#: controller's topology (PHASE8_PLAN 17.1 S14): its switches, links and hosts.
+LAYERS = ("inventory", "intent", "adjacency", "controller", "performance", "events",
+          "endpoints", "flows")
 #: A layer's state: all of it here, some of it, or none collected.
 PRESENT, PARTIAL, NOT_COLLECTED = "present", "partial", "not_collected"
 
@@ -679,6 +689,7 @@ def coverage(model: dict, obs: dict, devices: dict, carried: dict = None) -> dic
         "age": obs.get("read_at") or built,
         "why": "" if read else f"observed state could not be read ({obs.get('why', '')}); "
                                "only what intent expects is here"}
+    out["controller"] = controller_coverage(obs)
     carried = carried or {}
     for layer, words in (("performance", "health figures (CPU, memory, interfaces)"),
                          ("events", "log lines and alerts")):
@@ -694,6 +705,33 @@ def coverage(model: dict, obs: dict, devices: dict, carried: dict = None) -> dic
     out["flows"] = {"state": NOT_COLLECTED, "source": "", "age": "",
                     "why": "flows are not collected (roadmap)"}
     return {layer: out[layer] for layer in LAYERS}
+
+
+def controller_coverage(obs: dict, now: float = None) -> dict:
+    """The controller layer as a coverage header states it (S14), from the observed read:
+    present when every controller's topology was read, partial when one could not be ("couldn't
+    read: <why>", its switches as last read with that read's age), not_collected when the
+    network has no controller or the Topology read itself could not be used."""
+    from modules.sdn import topology as SDN
+
+    if obs.get("state") != "read":
+        return {"state": NOT_COLLECTED, "source": "", "age": "",
+                "why": f"the Topology read could not be used ({obs.get('why', '')})"}
+    got = obs.get("controllers")
+    if not got or got.get("state") == "none":
+        return {"state": NOT_COLLECTED, "source": "", "age": "",
+                "why": "this network has no SDN controller connection"}
+    said = got.get("controllers") or []
+    if not said:
+        return {"state": NOT_COLLECTED, "source": "", "age": "",
+                "why": f"the controllers' topology could not be read ({got.get('why', '')})"}
+    unread = [c for c in said if c["state"] != "read"]
+    ages = sorted(c["read_at"] for c in said if c.get("read_at"))
+    return {"state": PARTIAL if unread else PRESENT,
+            "source": "; ".join(SDN.words(c, now) for c in said if c["state"] == "read")
+                      or ", ".join(c["source"] for c in said),
+            "age": ages[0] if ages else "",
+            "why": "; ".join(SDN.words(c, now) for c in unread)}
 
 
 # ----------------------------------------------------------------------------- the cache
@@ -752,6 +790,7 @@ def observed(network: str, model: dict, now: float = None, stored: dict = None) 
     ``not_configured`` (no Prometheus) or ``unreadable`` (everything else)."""
     from modules import reader_job
     from modules.readers import topology_graph as T
+    from modules.sdn import topology as SDN
 
     now = _now() if now is None else now
     out = {"state": "could not read", "why": "", "cause": "unreadable", "read_at": "",
@@ -804,6 +843,8 @@ def observed(network: str, model: dict, now: float = None, stored: dict = None) 
             return MANAGER_ID
         if name in names:
             return names[name]
+        if SDN.is_switch(name):
+            return name                     # an OpenFlow switch, keyed by its DPID (S14)
         # An outside peer the reader named through LLDP keeps the address intent names it by
         # (topology_graph.network_graph: `external` the name, `address` the address).
         if link and name == link.get("external") and link.get("address"):
@@ -833,7 +874,12 @@ def observed(network: str, model: dict, now: float = None, stored: dict = None) 
             if link.get("since"):
                 entry["since"] = link["since"]
             out["routing"][aid] = entry
+    if net.get("sdn") is not None:
+        # The controller layer (S14): what each controller gave, for the coverage header.
+        out["controllers"] = net["sdn"]
     for link in (net.get("layers") or {}).get("physical") or []:
+        if link.get("overlay"):
+            continue                        # a controller's hosts and itself: not cables
         ea = (end(link.get("a", "")), link.get("port_a") or "")
         eb = (end(link.get("b", "")), link.get("port_b") or "")
         (x, px), (y, py) = sorted((ea, eb))
@@ -848,6 +894,10 @@ def observed(network: str, model: dict, now: float = None, stored: dict = None) 
             entry["down_at"] = [end(d) for d in link["down_at"]]
         if link.get("manager"):
             entry["mercury_attaches_here"] = True
+        if link.get("sources"):
+            # A link a controller reported, or a hybrid one (a device's LLDP and the
+            # controller): each source named (S14). LLDP's own links say nothing more.
+            entry["sources"] = list(link["sources"])
         out["cables"][cid] = entry
     return out
 

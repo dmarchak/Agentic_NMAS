@@ -42,6 +42,12 @@ def node_class(name: str, n: dict) -> str:
     role = (n.get("role") or "").lower()
     if name == MANAGER:
         return "server"
+    # A switch a controller programs (S14), keyed by DPID: its own symbol, whether a controller
+    # reports it or only a device's LLDP names it; a host a controller learned.
+    if n.get("sdn"):
+        return "sdn"
+    if n.get("host"):
+        return "host"
     if n.get("outside"):
         return "external"
     if role in ("router", "edge-router", "core-router"):

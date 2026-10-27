@@ -94,7 +94,7 @@
   "deploy/*": "this repository's, except what vendored claims",
   "static/js/nmas_*.js": "this repository's",
   "static/css/nmas-v2.css": "this repository's",
-  "static/img/topology/*": "the project's OWN device symbols: router and switch drawn 2026-10-04 in the conventional network-diagram style (the operator: no third-party artwork), server, cloud and the dashed circle (class unknown) drawn 2026-10-10, firewall, access point and controller drawn 2026-10-10 for the board's legend; the project's licence",
+  "static/img/topology/*": "the project's OWN device symbols: router and switch drawn 2026-10-04 in the conventional network-diagram style (the operator: no third-party artwork), server, cloud and the dashed circle (class unknown) drawn 2026-10-10, firewall, access point and controller drawn 2026-10-10 for the board's legend; the SDN switch (a switch a controller programs) and the host drawn 2026-10-27 for Topology board F; the project's licence",
   "static/img/brand/*": "the project's OWN Mercury mark and icons (NSOT_STAGE7_PLAN 19), drawn by modules/brand.py from the operator's master geometry; the PNG rendered from its SVG by scripts/nmas-brand-icons; the project's licence",
   "static/js/vendor/MANIFEST.json": "this repository's record of the vendored files",
   "prompts/*": "this repository's prompts, versioned files (Phase 8, PHASE8_PLAN 4)",

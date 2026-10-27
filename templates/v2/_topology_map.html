@@ -58,6 +58,9 @@
 {%- else %}
 {%- if t.failed %}<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>The reader's last attempt failed ({{ t.failed }}); this is its last good read, {{ stamp(t.value_at) }}.</p></div>{% endif %}
 {%- for e in t.errors %}<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>{{ e }}</p></div>{% endfor %}
+{#- S14 (board F): a network with an SDN controller says each source of the map, the
+    controller's read time and counts, or "couldn't read" with why and its switches' age. -#}
+{%- if t.coverage %}<div class="topo-cov small" role="group" aria-label="Where this map comes from">{% for ch in t.coverage %}<span class="chip topo-cov-c{{ ' topo-cov-' ~ ch.cls if ch.cls }}">{{ ch.text }}</span>{% endfor %}</div>{% endif %}
 {%- set at = t.attention -%}
 {%- set c = at.counts -%}
 
@@ -190,7 +193,7 @@
   {%- if t.s.snap == '1' %}<defs><pattern id="topo-grid" width="{{ t.grid }}" height="{{ t.grid }}" patternUnits="userSpaceOnUse"><circle class="topo-grid-dot" cx="0" cy="0" r="1.6"></circle></pattern></defs><rect class="topo-grid" x="0" y="0" width="{{ g.width + 400 }}" height="{{ g.height + 400 }}" fill="url(#topo-grid)"></rect><circle class="topo-snapmark" cx="0" cy="0" r="23" visibility="hidden"></circle>{% endif %}
   {%- for l in g.links %}
   {%- if l.sel or l.path %}<path class="topo-glow{% if l.path and not l.sel %} topo-pathglow topo-path-{{ l.path.cls }}{{ ' topo-path-l2' if l.path.l2 }}{% endif %}" d="{{ l.d }}"></path>{% endif %}
-  <path class="topo-line topo-{{ l.cls }}{{ ' topo-ronly' if l.routing_only }}{{ ' topo-gone' if l.gone }}" d="{{ l.d }}" data-a="{{ l.a }}" data-b="{{ l.b }}"></path>
+  <path class="topo-line topo-{{ l.cls }}{{ ' topo-ronly' if l.routing_only }}{{ ' topo-gone' if l.gone }}{{ ' topo-src-ctl' if 'controller' in (l.source or '') and not l.overlay }}{{ ' topo-ov topo-ov-' ~ l.kind if l.overlay }}" d="{{ l.d }}" data-a="{{ l.a }}" data-b="{{ l.b }}"></path>
   {%- endfor %}
   {%- if g.labels %}
   {%- for l in g.links %}
@@ -202,12 +205,13 @@
   {%- for n in g.nodes %}
   <g class="topo-n topo-c-{{ n.cls }}{{ ' topo-spof' if n.spof }}{{ ' topo-island' if n.island }}{{ ' topo-outside' if n.outside }}{{ ' topo-onpath topo-onpath-' ~ n.path if n.path }}{{ ' topo-match' if n.match }}{{ ' topo-gone' if n.gone }}{{ ' topo-lost' if n.lost }}" data-node="{{ n.name }}" data-x="{{ n.x }}" data-y="{{ n.y }}">
     {%- if n.managed %}<a href="{{ url_for('device_v2.device', name=n.name, list=t.list) }}">{% endif %}
-    <title>{{ n.label }}: {{ t.classes[n.cls] }}{% if n.role and n.cls not in ('router', 'switch', 'l3switch') %} ({{ n.role }}){% endif %}{% if n.manager %}, this host, where Mercury runs{% endif %}{% for tag in n.tags %}. {{ tag.words }}{% endfor %}</title>
+    <title>{{ n.label }}: {{ t.classes[n.cls] }}{% if n.role and n.cls not in ('router', 'switch', 'l3switch', 'sdn', 'host') %} ({{ n.role }}){% endif %}{% if n.manager %}, this host, where Mercury runs{% endif %}{% if n.sdn %}. {{ n.sdn.title }}{% endif %}{% for tag in n.tags %}. {{ tag.words }}{% endfor %}</title>
     <rect class="topo-ic" x="{{ n.x - 17 }}" y="{{ n.y - 17 }}" width="34" height="34" rx="8"></rect>
     <use href="#ti-{{ n.icon }}" x="{{ n.x - 13 }}" y="{{ n.y - 13 }}" width="26" height="26"></use>
     {%- if n.l3 %}<rect class="topo-l3" x="{{ n.x + 9 }}" y="{{ n.y - 22 }}" width="18" height="12" rx="3"></rect><text class="topo-l3-t" x="{{ n.x + 18 }}" y="{{ n.y - 13 }}">L3</text>{% endif %}
     {%- if not n.answering or n.gone %}<path class="topo-x" d="M{{ n.x - 15 }} {{ n.y - 15 }}l30 30M{{ n.x + 15 }} {{ n.y - 15 }}l-30 30"></path>{% endif %}
     <text class="topo-name" x="{{ n.x }}" y="{{ n.y + 32 }}">{{ n.label }}</text>
+    {%- if n.sdn %}<text class="topo-sdnline" x="{{ n.x }}" y="{{ n.y + 45 }}">{{ n.sdn.line }}</text>{% endif %}
     {%- for tag in n.tags %}<g class="topo-tag topo-tag-{{ tag.cls }}"><title>{{ tag.words }}</title><rect x="{{ n.x - 52 - loop.index0 * 50 }}" y="{{ n.y - 30 }}" width="{{ tag.text | length * 7 + 12 }}" height="15" rx="7"></rect><text x="{{ n.x - 52 - loop.index0 * 50 + 6 }}" y="{{ n.y - 19 }}">{{ tag.text }}</text></g>{% endfor %}
     {%- if n.lost %}<text class="topo-losttag" x="{{ n.x }}" y="{{ n.y + 46 }}">cut off</text>{% endif %}
     {%- if n.managed %}</a>{% endif %}
@@ -248,6 +252,15 @@
   {%- for k in ('ok', 'warn', 'bad', 'unread') %}<span><svg width="26" height="10" aria-hidden="true"><line class="topo-line topo-{{ k }}" x1="1" y1="5" x2="25" y2="5"></line></svg>{{ t.line_words[k] }}</span>{% endfor %}
   <span class="topo-legsep"></span>
   {%- for k, icon_name in [('router', 'router'), ('switch', 'switch'), ('l3switch', 'switch'), ('firewall', 'firewall'), ('server', 'server'), ('accesspoint', 'access-point'), ('controller', 'controller'), ('external', 'cloud'), ('unknown', 'unknown')] %}<span>{{ ic(icon_name) }}{% if k == 'l3switch' %}<b class="topo-l3b">L3</b>{% endif %}{{ t.classes[k] }}</span>{% endfor %}
+  {%- if t.sdn %}
+  <span class="topo-legsep"></span>
+  <span class="topo-c-sdn">{{ ic('sdn-switch') }}{{ t.classes.sdn }}; its links read from the controller</span>
+  <span>{{ ic('host') }}{{ t.classes.host }}</span>
+  <span><svg width="26" height="10" aria-hidden="true"><line class="topo-line topo-ok topo-src-ctl" x1="1" y1="5" x2="25" y2="5"></line></svg>a link the controller reports</span>
+  <span><svg width="26" height="10" aria-hidden="true"><line class="topo-line topo-ok" x1="1" y1="5" x2="25" y2="5"></line></svg>one LLDP reports</span>
+  <span><svg width="26" height="10" aria-hidden="true"><line class="topo-line topo-ok topo-ov topo-ov-host" x1="1" y1="5" x2="25" y2="5"></line></svg>a host the controller learned</span>
+  {%- if not t.sdn.hosts_drawn %}<span class="topo-faint">{{ t.sdn.hosts }} hosts learned, more than the map draws: each is in the endpoint layer</span>{% endif %}
+  {%- endif %}
 </div>
 </div>
 {%- endif %}
@@ -292,7 +305,7 @@
     {%- for e in at.groups[k] %}
     <a class="topo-ent{{ ' sel' if e.id == t.s.sel }}"{% if e.id == t.s.sel %} aria-current="true"{% endif %} href="{{ page }}{{ t.qs({'sel': e.id}) }}" hx-get="{{ region }}{{ t.qs({'sel': e.id}) }}" hx-target="#topo" hx-swap="outerHTML" hx-push-url="{{ page }}{{ t.qs({'sel': e.id}) }}">
       <span class="topo-ends">{{ ic(t.icon_of.get(e.a, 'unknown')) }}{{ ic(t.icon_of.get(e.b, 'unknown')) }}</span>
-      <span class="topo-entw"><span class="mono">{{ e.title }}</span><span class="topo-what">{{ e.what }}{% if e.since %}; {{ since_words(e.since, e.since_seen) }}{% endif %}</span></span>
+      <span class="topo-entw"><span class="mono">{{ e.title }}</span>{% if t.sdn and e.source %}<span class="topo-faint"> · {{ e.source }}</span>{% endif %}<span class="topo-what">{{ e.what }}{% if e.since %}; {{ since_words(e.since, e.since_seen) }}{% endif %}</span></span>
     </a>
     {%- endfor %}
   </details>
@@ -372,7 +385,7 @@
   {%- for grp in t.list_groups %}
   <h3 class="topo-bandh">{{ grp.words }} ({{ grp.devices | length }})</h3>
   <ul class="small topo-list">{% for d in grp.devices %}<li>{{ ic(t.icon_of.get(d.name, 'unknown')) }} {% if d.managed %}<a href="{{ url_for('device_v2.device', name=d.name, list=t.list) }}">{{ d.label }}</a>{% else %}{{ d.label }}{% if d.outside %} <span class="muted">(outside management)</span>{% endif %}{% endif %}:
-    {% for l in d.links %}<span class="topo-li-{{ l.state }}">{{ l.port or '?' }} to {{ l.to }} {{ l.state }}{% if l.kind in ('one_silent', 'far_not_polled') %} (one end){% endif %}</span>{{ ', ' if not loop.last }}{% else %}<span class="muted">no LLDP link</span>{% endfor %}</li>{% endfor %}</ul>
+    {% for l in d.links %}<span class="topo-li-{{ l.state }}">{{ l.port or '?' }} to {{ l.to }} {{ l.state }}{% if l.kind in ('one_silent', 'far_not_polled') %} (one end){% endif %}{% if t.sdn %} · {{ l.source }}{% endif %}</span>{{ ', ' if not loop.last }}{% else %}<span class="muted">no LLDP link</span>{% endfor %}</li>{% endfor %}</ul>
   {%- endfor %}
   </details>
 </section>

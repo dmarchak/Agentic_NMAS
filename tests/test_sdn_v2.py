@@ -35,7 +35,7 @@ from modules import reader_job
 from modules.readers import sdn_controllers as SDN
 from modules.sdn import connections as C
 from modules.sdn import flow_intent as F
-from tests.sdn_fakes import Response, Routes, fixture
+from tests.sdn_fakes import Response, Routes, captured, fixture
 from tests.test_sdn_connections import networks  # noqa: F401 - the fixture
 from tests.test_sdn_ryu import LIMIT, V6_DROP
 
@@ -57,6 +57,12 @@ class Captured(Routes):
         if self.flows is not None and url.endswith("/stats/flow/1"):
             self.sent.append(dict(kwargs, method=method, url=url))
             return Response(200, json.dumps({"1": self.flows}))
+        if "/v1.0/topology/" in url:
+            # This capture's controller ran ofctl_rest alone: its topology REST is Ryu's own 404
+            # (rest_no_switch.json, the same image), so the topology is said as not running.
+            self.sent.append(dict(kwargs, method=method, url=url))
+            return captured(next(e for e in fixture("rest_no_switch.json")
+                                 if e["path"] == "/v1.0/topology/links"))
         return super().request(method, url, **kwargs)
 
 
@@ -149,9 +155,14 @@ class TestTheReader:
     def test_its_calls_are_counted_and_none_is_per_request(self, lab):
         store_read()
         sent = len(lab["sessions"]["session"].sent)
-        # 1 + 3N (the closed loop), test()'s 1, and per switch its description, meters (two
-        # requests on Ryu: their configuration and their statistics) and meter features.
-        assert sent == 4 + 1 + 4
+        # 1 + 3N (the closed loop), test()'s 1, the topology's first request (S14: this
+        # controller runs no topology application, so its 404 ends the read), and per switch
+        # its description, meters (two requests on Ryu: their configuration and their
+        # statistics) and meter features.
+        assert sent == 4 + 1 + 1 + 4
+        (c,) = value()["controllers"]
+        assert c["topology"]["state"] == "could not read"
+        assert "the topology app is not running" in c["topology"]["error"]
         for path in ("/v2/sdn", "/v2/sdn/flows", "/v2/sdn/view?tab=flows"):
             assert get(lab, path)[0].status_code == 200
         assert len(lab["sessions"]["session"].sent) == sent, "a page view asks no controller"
@@ -200,7 +211,7 @@ class TestControllers:
         assert "Version not reported (Ryu's ofctl_rest reports no version)" in text
         assert "Southbound 192.0.2.10:6653 · informational: where switches connect" in text
         assert "read flows read port stats read meters write flows write meters " \
-               "delete flows · read topology: not offered by this driver" in text
+               "delete flows read topology" in text and "not offered by this driver" not in text
         assert "Controller's own flows cookie 0" in text
         assert 'href="/v2/sdn/flows?q=0000000000000001&amp;list=Default"' in html
         assert re.search(r'<a class="btn" href="/v2/settings/network/Default\?'

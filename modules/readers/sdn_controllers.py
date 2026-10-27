@@ -13,7 +13,12 @@ page view (CLAUDE.md, "Enterprise scale"). Per network, every `sdn_controllers` 
   driver declares `read_meters`, its meters and its meter features, each read on its own;
 - **whose each flow is** (`flow_intent.classify` over the network's flow intent): Mercury's,
   Mercury's and not as recorded, the controller's own, or unauthorised; each of Mercury's flows
-  not installed, missing or expired.
+  not installed, missing or expired;
+- **per connection, its topology** where the driver declares `read_topology` (PHASE8_PLAN 17.1
+  S14): the switches with their ports, the links the controller discovered and the hosts it
+  learned (`topology`, one read), the one source of the Topology view's controller layer and
+  the endpoint layer's controller-learned hosts (`modules/sdn/topology.py` reads it from this
+  store); a topology that cannot be read keeps its last good read with that read's time.
 
 **A connection that fails keeps what it last read** (reader_job rule 3, per connection): it is
 ``not_answering`` with the error, since when and how many reads in a row, and its switches as
@@ -22,10 +27,11 @@ read, and the reader keeps its last good value. A network with no connection is 
 another network's never reads Default's (C1841), and one with none set is not read at all
 (`settings_scope.URL_KEYS`: its list is its "URL").
 
-**Calls per read**, a connection with N switches: the closed loop's 1 + 3N, `test()`'s 1, and
-per switch its description, and its meters and meter features for a driver that reads meters
-(3N driver calls; 4N requests on Ryu, whose meters are two, configuration and statistics),
-else N: every switch's reads at once (`fanout.read_each`).
+**Calls per read**, a connection with N switches: the closed loop's 1 + 3N, `test()`'s 1, the
+topology's 1 (3 requests on Ryu: switches, links, hosts), and per switch its description, and
+its meters and meter features for a driver that reads meters (3N driver calls; 4N requests on
+Ryu, whose meters are two, configuration and statistics), else N: every switch's reads at once
+(`fanout.read_each`).
 """
 
 import logging
@@ -96,14 +102,50 @@ def _switch_extras(drv, dpid: int, reads_meters: bool) -> dict:
 
 def _carried(conn: dict, before: dict, error: str, now_iso: str) -> dict:
     """A connection that failed this read: its error, since when and how many reads in a row,
-    and what it last read whole (its switches, version, that read's time)."""
+    and what it last read whole (its switches, version, that read's time, its topology)."""
     was_failing = before.get("state") == "not_answering"
     return dict(conn, state="not_answering", error=error,
                 failing_since=(before.get("failing_since") if was_failing else None) or now_iso,
                 failures=(before.get("failures") or 0) + 1 if was_failing else 1,
                 version=before.get("version"), version_note=before.get("version_note", ""),
                 switches=before.get("switches") or [],
-                last_good_at=before.get("last_good_at"))
+                last_good_at=before.get("last_good_at"),
+                topology=_topology_kept((before.get("topology") or {}), error))
+
+
+#: A connection's topology as stored (PHASE8_PLAN 17.1 S14): ``state`` read, could not read
+#: (with ``error``, and the last good read's ``switches``, ``links`` and ``hosts`` kept with
+#: ``read_at``, that read's time), or not_declared (the driver has no `read_topology`).
+TOPOLOGY_STATES = ("read", "could not read", "not_declared")
+
+
+def _topology_kept(before: dict, error: str) -> dict:
+    """The last good topology, kept whole with its own time, marked as not read now."""
+    return {"state": "could not read" if before.get("state") != "not_declared"
+            else "not_declared", "error": error,
+            "read_at": before.get("read_at") or "",
+            "switches": before.get("switches") or [], "links": before.get("links") or [],
+            "hosts": before.get("hosts") or [], "hosts_note": before.get("hosts_note", ""),
+            "links_note": before.get("links_note", "")}
+
+
+def _topology(drv, decl: dict, before: dict, now_iso: str) -> dict:
+    """The controller's topology this read: its switches with their ports, its links and the
+    hosts it learned (`ControllerDriver.topology`), or, when it cannot be read, the last good
+    one kept with its time and why; a driver that does not declare `read_topology` says so."""
+    if "read_topology" not in decl.get("capabilities", []):
+        why = (decl.get("absent") or {}).get("read_topology", "")
+        return {"state": "not_declared", "read_at": "", "switches": [], "links": [],
+                "hosts": [], "hosts_note": "",
+                "error": "the driver does not declare read_topology" + (f": {why}" if why
+                                                                         else "")}
+    got = drv.topology()
+    if not got.get("ok"):
+        return _topology_kept(before, got.get("error") or "no answer")
+    return {"state": "read", "error": "", "read_at": now_iso,
+            "switches": got.get("switches") or [], "links": got.get("links") or [],
+            "hosts": got.get("hosts") or [], "hosts_note": got.get("hosts_note", ""),
+            "links_note": got.get("links_note", "")}
 
 
 def read(list_name: str = "", clock=time.time, previous=None, driver=None,
@@ -168,6 +210,7 @@ def read(list_name: str = "", clock=time.time, previous=None, driver=None,
             continue
         test = drv.test()
         entry.update(version=test.get("version"), version_note=test.get("version_note", ""))
+        entry["topology"] = _topology(drv, decl, prior.get("topology") or {}, now_iso)
         reads_meters = "read_meters" in decl["capabilities"]
         switches = got.get("switches") or []
         extras = fanout.read_each(lambda s: _switch_extras(drv, s["dpid"], reads_meters),
@@ -220,7 +263,8 @@ READER = reader_job.register(reader_job.Reader(
     what=("each network's SDN controller connections: whether each answers, its switches, "
           "their flow tables with whose each flow is, their meters, for SDN › Controllers and "
           "Flows (PHASE8_PLAN 17.1 S11)"),
-    endpoints=("each connection's driver: test, the switch list, and per switch its flows, "
+    endpoints=("each connection's driver: test, the switch list, its topology (switches, "
+               "links, hosts) where it declares read_topology, and per switch its flows, "
                "port counters (twice), description, meters and meter features",
                "the network's flow intent (flow_intent.jsonl or the records database)"),
     interval_seconds=INTERVAL_SECONDS,

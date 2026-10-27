@@ -1693,6 +1693,37 @@ def _sdn_operations(client, mp, session):
     LP._jobs["Lab"]["thread"].join(10)
 
 
+def _sdn_no_topology(client, _lab, _mp):
+    """SDN › Controllers' capabilities a driver lacks (`c.caps.lacks`): since S14 the one built
+    driver, Ryu, declares every capability, so a connection's card is drawn once with Ryu's
+    declaration less read_topology (its own words for why), the planted case of a built
+    driver that lacks one. Patches undone, the connection removed."""
+    import pytest
+
+    from modules.sdn import connections as C
+    from modules.sdn import drivers
+    from modules.sdn.drivers.ryu import RyuDriver
+    from tests.test_sdn_v2 import BASE, T0, Captured, store_read
+
+    mp = pytest.MonkeyPatch()
+    real = drivers.make
+    try:
+        mp.setattr(RyuDriver, "capabilities", RyuDriver.capabilities - {"read_topology"})
+        mp.setattr(RyuDriver, "absent", {"read_topology": "planted: no topology application"})
+        mp.setattr(drivers, "make", lambda kind, connection, **kw: real(
+            kind, connection, **dict(kw, session=Captured())))
+        C.save_connection("Lab", {"name": "lab-controller", "kind": "ryu", "url": BASE},
+                          actor="v2-context")
+        # After _sdn's last read (T0 + 70), so this read is the one stored.
+        store_read("Lab", clock=lambda: T0 + 100)
+        html = client.get("/v2/sdn?list=Lab").get_data(as_text=True)
+        assert "read topology: not offered by this driver" in html
+        assert client.post("/v2/settings/network/Lab/sdn/lab-controller/remove").status_code \
+            == 200
+    finally:
+        mp.undo()
+
+
 #: What no followed GET reaches, each on the lab's own state: a POST's card, a script's GET,
 #: a state the lab's walk does not hold. In order: `_deploy` changes r3, so it is last.
 PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _drift,
@@ -1701,6 +1732,7 @@ PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _dr
                    _save_no_golden, _profile_versions,
                    _no_change_window, _update_owed, _lease_release, _ip_sla_retunes, _ip_sla_unsent,
                    _console_ztp, _console_servers, _day_cap_confirm, _oob_onboard, _sdn,
+                   _sdn_no_topology,
                    _deploy,
                    # After _deploy: r3's intent is then a real device's (r2's capture,
                    # parsed), which the editor's check passes; the walk's own r3 lacks a

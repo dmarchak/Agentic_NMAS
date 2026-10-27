@@ -44,7 +44,8 @@ METER = {"meter_id": 1, "flags": ["KBPS"], "bands": [{"type": "DROP", "rate": 10
 
 #: Every public call, with arguments that are well formed.
 CALLS = {
-    "test": (), "switches": (), "switch_desc": (1,), "links": (), "flows": (1,),
+    "test": (), "switches": (), "switch_desc": (1,), "links": (), "hosts": (), "topology": (),
+    "flows": (1,),
     "port_stats": (1,), "meters": (1,), "meter_features": (1,),
     "add_flow": (1, DROP), "render_add_flow": (1, DROP),
     "modify_flow_strict": (1, DROP), "render_modify_flow_strict": (1, DROP),
@@ -98,12 +99,14 @@ def test_a_declaration_out_of_bounds_is_named():
     assert ": read_first is a later driver's" in problems
 
 
-def test_ryu_declares_what_ofctl_rest_offers_and_says_why_topology_is_absent():
+def test_ryu_declares_what_ofctl_rest_and_rest_topology_offer():
+    """Since PHASE8_PLAN 17.1 S14 (C1910) the lab's controller runs ryu.app.rest_topology with
+    --observe-links (lab/sdn/ryu/Dockerfile), so the driver reads topology too; a controller
+    without the application answers 404, said as such (tests/test_sdn_topology.py)."""
     assert RyuDriver.capabilities == frozenset({
-        "read_flows", "read_port_stats", "read_meters", "write_flows", "write_meters",
-        "delete_flows"})
-    assert "read_topology" not in RyuDriver.capabilities
-    assert "--observe-links" in RyuDriver.absent["read_topology"]
+        "read_topology", "read_flows", "read_port_stats", "read_meters", "write_flows",
+        "write_meters", "delete_flows"})
+    assert RyuDriver.absent == {}
 
 
 def test_make_answers_a_driver_or_names_the_kinds_there_are():
@@ -152,13 +155,20 @@ def test_a_driver_not_built_refuses_every_call_naming_it(kind, call):
     assert session.sent == []
 
 
-def test_ryu_refuses_links_naming_the_capability_and_why():
+class _NoTopology(RyuDriver):
+    """Ryu's calls, declaring no read_topology, with why: its topology calls must refuse."""
+    kind, label = "notopo", "No-topology"
+    capabilities = RyuDriver.capabilities - {"read_topology"}
+    absent = {"read_topology": "this controller runs no topology application"}
+
+
+@pytest.mark.parametrize("call", ["links", "hosts", "topology"])
+def test_a_topology_call_not_declared_is_refused_naming_the_capability_and_why(call):
     session = Session()
-    out = ryu(session).links()
+    out = getattr(_NoTopology(Connection("http://127.0.0.1:8080"), session=session), call)()
     assert out == {"ok": False, "refused": True, "error": (
-        "Ryu does not declare read_topology, so links is refused: Ryu's ofctl_rest has no "
-        "links call; its topology REST (ryu.app.rest_topology, run with --observe-links) is "
-        "a separate application this driver does not read")}
+        f"No-topology does not declare read_topology, so {call} is refused: this controller "
+        "runs no topology application")}
     assert session.sent == []
 
 

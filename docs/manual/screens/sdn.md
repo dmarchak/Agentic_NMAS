@@ -21,6 +21,15 @@ driver reads meters. It then decides whose each flow is, by its cookie (see
 [Flows](#flows)). A controller that does not answer keeps what it last read, drawn with that
 read's time. A connection saved a moment ago is drawn at once as **not read yet**.
 
+Where the driver reads topology (**read topology** among a card's capabilities), the reader also
+asks the controller for its topology: its switches with their ports, the links it discovered
+between them, and the hosts it learned. That read draws the switches, their links and hosts on
+[Topology](topology#controller), with the controller's own symbol, and puts the hosts in the
+endpoint layer. Ryu serves it only with `ryu.app.rest_topology` loaded and `--observe-links`
+given; without the application, its topology is said as "the topology app is not running",
+and the rest of the controller is read as before. A topology that cannot be read keeps its last
+read, with that read's time.
+
 The 30 seconds come from the lab's controller application, which removes an idle flow after 30
 seconds: a read every 30 seconds sees each flow at least once.
 

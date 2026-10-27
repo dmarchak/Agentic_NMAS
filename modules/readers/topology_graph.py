@@ -20,6 +20,13 @@ the brief's "disagreement is a finding").
 (connected components; each one outside the largest named with why), single points of failure
 (articulation points and bridges, each with what it would cut off), and criticality
 (betweenness). What LLDP cannot see is said by the page, never guessed here.
+
+**An SDN controller's layer** (PHASE8_PLAN 17.1 S14): OpenFlow switches run no LLDP, so the
+links between them, and the hosts behind them, are what their controller reported, read from
+the SDN reader's stored value (`sdn.topology.stored`; no controller is asked here). Switches are
+nodes keyed by DPID, their links physical links naming their source; a managed device's LLDP
+neighbour named by a DPID is one hybrid link with both sources; the controller and its hosts
+are drawn beside them and never analysed (`_controller_layer`).
 """
 
 import logging
@@ -34,8 +41,11 @@ log = logging.getLogger(__name__)
 #: the laptop, 2026-10-10: about 4.5 s for the four layers, inside the 60 s.
 INTERVAL_SECONDS = 60
 #: The series read, each one instant query for the whole fleet.
+#: `lldpRemChassisId` and `lldpLocPortDesc` (S14's hybrid links: a neighbour with no system
+#: name, an SDN controller's LLDP, is known by its chassis id alone) are read when Prometheus has
+#: them; an installation whose LLDP module does not scrape the chassis id joins no hybrid link.
 METRICS = ("lldpRemEntry", "lldpRemPortId", "ifOperStatus", "ifHighSpeed", "ospfNbrState",
-           "ospfv3NbrState", "cbgpPeer2State")
+           "ospfv3NbrState", "cbgpPeer2State", "lldpRemChassisId", "lldpLocPortDesc")
 LAYERS = ("physical", "ospf", "ospfv3", "bgp", "rip", "ripng")
 LAYER_WORDS = {"physical": "Physical (LLDP)", "ospf": "OSPF", "ospfv3": "OSPFv3", "bgp": "BGP",
                "rip": "RIP", "ripng": "RIPng"}
@@ -53,11 +63,20 @@ LAYOUT_UP_TO = 200
 KEEPALIVE_SECONDS = 600
 
 
+def _timeless(node):
+    """*node* without any read time (``read_at``): a controller layer's (S14) times move every
+    read while its graph holds still."""
+    if isinstance(node, dict):
+        return {k: _timeless(v) for k, v in node.items() if k != "read_at"}
+    if isinstance(node, list):
+        return [_timeless(v) for v in node]
+    return node
+
+
 def changed(previous, value) -> bool:
     """Announce only when the graph moved (the brief: "announces `topology` only on a change"):
-    the value without its read time."""
-    strip = lambda v: {k: x for k, x in (v or {}).items() if k != "read_at"}  # noqa: E731
-    return strip(previous) != strip(value)
+    the value without its read times."""
+    return _timeless(previous or {}) != _timeless(value or {})
 
 
 def short(name: str) -> str:
@@ -627,9 +646,10 @@ def mercury_reach(phys: list, nodes: dict) -> dict:
     mgr = [l for l in phys if l.get("manager") and l.get("state") in ("up", "unknown")]
     attached = sorted({l["b"] for l in mgr})
     g = nx.MultiGraph()
-    g.add_nodes_from(n for n, v in nodes.items() if not v.get("external") and n != MANAGER)
+    g.add_nodes_from(n for n, v in nodes.items() if not v.get("external") and n != MANAGER
+                     and not v.get("overlay"))
     for l in phys:
-        if not l.get("manager") and l.get("state") in ("up", "unknown"):
+        if not l.get("manager") and not l.get("overlay") and l.get("state") in ("up", "unknown"):
             g.add_edge(l["a"], l["b"])
     only = []
     for comp in nx.connected_components(g):
@@ -682,7 +702,8 @@ def analyse(nodes: list, links: list) -> dict:
 
 def network_graph(hosts: list, roles: dict, intents: dict, results: dict, up: dict,
                   expected: dict = None, previous: dict = None, now: str = "",
-                  at_here: list = None, before_links: dict = None, rip: dict = None) -> dict:
+                  at_here: list = None, before_links: dict = None, rip: dict = None,
+                  sdn: dict = None) -> dict:
     """One network's graph, every layer and its analysis. *hosts* is the inventory (the
     population: a managed device the graph lacks is still a node, drawn apart with why).
     *expected* is the network's declared islands (``{device: {reason, by, at}}``); *previous*
@@ -690,7 +711,12 @@ def network_graph(hosts: list, roles: dict, intents: dict, results: dict, up: di
     first read), so a device that becomes an island is told apart from one that was.
     *at_here* is this host's own addresses (`here()`), for where Mercury attaches;
     *before_links* each layer's link states at the last good read, for each one's since;
-    *rip* the RIP reader's answer for this network's devices (`readers/rip`), ``{}`` when unread."""
+    *rip* the RIP reader's answer for this network's devices (`readers/rip`), ``{}`` when unread.
+    *sdn* the network's controller topology (`sdn.topology.stored`, PHASE8_PLAN 17.1 S14): its
+    switches become nodes keyed by DPID, its links physical links naming their source, a
+    managed device's LLDP neighbour named by a DPID one hybrid link to that switch's port, and
+    its hosts and the controller itself drawn beside them (`overlay` links, outside every
+    analysis); what each controller gave is ``sdn``, for the coverage header."""
     managed = set(hosts)
     polled = {h for h in hosts if (up.get(h) or {}).get("lldp") == 1}
     answering = {h for h in hosts if any(v == 1 for v in (up.get(h) or {}).values())}
@@ -703,6 +729,7 @@ def network_graph(hosts: list, roles: dict, intents: dict, results: dict, up: di
     for o in others:
         nodes[o] = {"managed": False, "role": "", "polled": False, "answering": False,
                     "lldp_read": False}
+    sdn_said = _controller_layer(sdn, hosts, managed, results, nodes, phys)
     layers = {"physical": phys}
     layers.update(routing_links(intents, hosts, results, up))
     layers.update(rip_links(intents, hosts, rip or {}))
@@ -760,14 +787,17 @@ def network_graph(hosts: list, roles: dict, intents: dict, results: dict, up: di
         # runs no OSPF is not an island of the OSPF layer.
         # The physical layer's: the inventory and LLDP's own neighbours, never a routing peer
         # known only by its address.
-        names = sorted(n for n, v in nodes.items() if not v.get("external")) \
+        names = sorted(n for n, v in nodes.items() if not v.get("external")
+                       and not v.get("overlay")) \
             if layer == "physical" else sorted({e for l in links for e in (l["a"], l["b"])})
         if layer == "physical":
             # Mercury's host forwards nothing between devices: the analyses are the devices'
             # own, and its reach is said apart (measured 2026-10-10: attached to s3 and r6, the
-            # host had joined them, hiding r6's island and naming itself a weak point).
+            # host had joined them, hiding r6's island and naming itself a weak point). A
+            # controller's hosts and the controller itself (S14's overlay) forward nothing
+            # either.
             a = analyse([n for n in names if n != MANAGER],
-                        [l for l in links if not l.get("manager")])
+                        [l for l in links if not l.get("manager") and not l.get("overlay")])
             a.update(mercury_reach(links, nodes))
         else:
             a = analyse(names, links)
@@ -803,7 +833,74 @@ def network_graph(hosts: list, roles: dict, intents: dict, results: dict, up: di
             laid = topology_layout.layout(nodes, phys)
         except Exception as exc:                     # noqa: BLE001 (the page lays out instead)
             log.warning("topology: the map could not be laid out (%s); the page lays it out", exc)
-    return {"nodes": nodes, "layers": layers, "analysis": analysis, "layout": laid}
+    out = {"nodes": nodes, "layers": layers, "analysis": analysis, "layout": laid}
+    if sdn_said is not None:
+        out["sdn"] = sdn_said
+    return out
+
+
+def _controller_layer(sdn, hosts, managed, results, nodes, phys):
+    """S14's controller layer into *nodes* and *phys*, in place (`network_graph`'s *sdn*):
+    ``{"state", "why", "controllers": [said], "hosts", "hosts_drawn"}``, or None when the
+    network has no controller connection. Each controller's switches are nodes keyed by DPID,
+    its links physical links naming their source; a managed device's LLDP neighbour whose
+    chassis id is a DPID is one hybrid link (its device end's state its `ifOperStatus`); the
+    controller and the hosts it learned are drawn with dotted `overlay` links (hosts only up
+    to `sdn.topology.HOSTS_DRAWN_UP_TO`)."""
+    from modules.sdn import topology as SDN
+
+    if not sdn or sdn.get("state") == "none":
+        return None
+    controllers = sdn.get("controllers") or []
+    got = SDN.layer(controllers)
+    for key, node in got["nodes"].items():
+        nodes.setdefault(key, node)
+    hybrid, seen_only = SDN.hybrid_links(
+        SDN.lldp_chassis({h: results.get(h, {}) for h in hosts}), managed, got["nodes"])
+    for key, node in seen_only.items():
+        nodes.setdefault(key, node)
+    ifs = _if_index({h: results.get(h, {}) for h in hosts})
+    for l in hybrid:
+        dev, port = (l["a"], l["port_a"]) if l["a"] in managed else (l["b"], l["port_b"])
+        state = _end_state(ifs, dev, port)
+        l.update(state=state, down_at=[dev] if state == "down" else [],
+                 ends={dev: state})
+    for l in got["links"]:
+        l.setdefault("down_at", [])
+    phys.extend(got["links"])
+    phys.extend(hybrid)
+    for c in controllers:
+        if c["state"] == "not_declared" or not c.get("switches"):
+            continue
+        ctl = f"{SDN.CONTROLLER_PREFIX}{c['name']}"
+        nodes[ctl] = {"managed": False, "role": "controller", "polled": False,
+                      "answering": c["state"] == "read", "lldp_read": False, "overlay": True,
+                      "controller": {"name": c["name"], "label": c.get("label", ""),
+                                     "state": c["state"]}}
+        for sw in c["switches"]:
+            phys.append({"a": ctl, "port_a": "", "b": SDN.switch_key(sw["dpid"]),
+                         "port_b": "", "kind": "control", "overlay": True,
+                         "state": "up" if c["state"] == "read" else "unknown",
+                         "sources": [f"controller ({c['name']})"], "reported_by": [],
+                         "down_at": []})
+    drawn = len(got["hosts"]) <= SDN.HOSTS_DRAWN_UP_TO
+    if drawn:
+        for h in got["hosts"]:
+            key = f"{SDN.HOST_PREFIX}{h['mac']}"
+            nodes[key] = {"managed": False, "role": "host", "polled": False,
+                          "answering": h["state"] == "read", "lldp_read": False,
+                          "overlay": True,
+                          "host": {"mac": h["mac"], "ipv4": h.get("ipv4") or [],
+                                   "ipv6": h.get("ipv6") or [], "controller": h["controller"],
+                                   "port_name": h.get("port_name", "")}}
+            phys.append({"a": h["switch"], "port_a": SDN.port_words(h["port_no"]),
+                         "b": key, "port_b": "", "kind": "host", "overlay": True,
+                         "state": "up" if h["state"] == "read" else "unknown",
+                         "sources": [f"controller ({h['controller']})"], "reported_by": [],
+                         "down_at": []})
+    return {"state": sdn.get("state", ""), "why": sdn.get("why", ""),
+            "controllers": SDN.said(controllers), "hosts": len(got["hosts"]),
+            "hosts_drawn": drawn}
 
 
 def _peer_by_lldp(hv: dict, host: str, address: str, phys: list) -> str:
@@ -884,10 +981,14 @@ def rip_answer(clock=time.time) -> tuple:
 
 
 def read(source=None, population=None, clock=time.time, previous=None, expected=None,
-         at_here=None, rip=None) -> dict:
+         at_here=None, rip=None, sdn=None) -> dict:
+    """Every network's graph (`network_graph`). *sdn* is ``sdn(network, now) ->`` the
+    network's controller topology (`sdn.topology.stored`, the SDN reader's stored value), a
+    test's in place of the store's."""
     from modules import integration_groups as IG
     from modules.neighbours import committed_intents
     from modules.readers.adjacencies import lists
+    from modules.sdn import topology as SDN
 
     configured, results, up = (source or (lambda: IG.merged("prometheus",
                                                             prometheus_series)))()
@@ -926,13 +1027,27 @@ def read(source=None, population=None, clock=time.time, previous=None, expected=
                                             previous=before, now=now,
                                             at_here=here() if at_here is None else at_here,
                                             before_links=before_links,
-                                            rip=rip_lists.get(list_name) or {})
+                                            rip=rip_lists.get(list_name) or {},
+                                            sdn=_sdn_of(sdn or SDN.stored, list_name,
+                                                        clock(), errors))
     if rip_error:
         errors.append(rip_error)
     return {"configured": True, "networks": networks, "errors": errors, "read_at": now}
 
 
 READER_NAME = "topology-graph"
+
+
+def _sdn_of(fn, list_name: str, now: float, errors: list):
+    """*list_name*'s controller topology, or None; a failure to read it is said in the read's
+    errors and the rest of the graph is drawn (the controller layer is one source of many)."""
+    try:
+        return fn(list_name, now)
+    except Exception as exc:                         # noqa: BLE001 (said as the read's error)
+        errors.append(f"{list_name}: the controller topology could not be read "
+                      f"({type(exc).__name__}: {exc})")
+        return {"state": "could not read", "why": f"{type(exc).__name__}: {exc}",
+                "controllers": []}
 
 
 def _expected(list_name: str) -> dict:
@@ -947,9 +1062,11 @@ READER = reader_job.register(reader_job.Reader(
     name=READER_NAME,
     what="how each network is connected, layer by layer, and where it is weak (P.11)",
     endpoints=("Prometheus: GET /api/v1/query for lldpRemEntry, lldpRemPortId, ifOperStatus, "
-               "ifHighSpeed, ospfNbrState, ospfv3NbrState, cbgpPeer2State and up "
-               "(the whole fleet, per configuration)",
-               "this host: each list's committed host_vars at HEAD"),
+               "ifHighSpeed, ospfNbrState, ospfv3NbrState, cbgpPeer2State, "
+               "lldpRemChassisId, lldpLocPortDesc and up (the whole fleet, per configuration)",
+               "this host: each list's committed host_vars at HEAD",
+               "the SDN reader's stored value: each controller's topology (switches, links, "
+               "hosts), never a controller call"),
     interval_seconds=INTERVAL_SECONDS,
     interval_basis=("the LLDP and routing jobs' scrape interval (60 s since 2026-10-01): a "
                     "faster read only re-reads the same sample"),

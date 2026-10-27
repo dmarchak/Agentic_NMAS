@@ -73,7 +73,11 @@ SHORT = {"full": "FULL", "2-way": "2WAY", "init": "INIT", "attempt": "ATTEMPT",
 CLASSES = {"router": "router", "switch": "L2 switch", "l3switch": "L3 switch",
            "firewall": "firewall", "server": "server", "accesspoint": "access point",
            "controller": "controller", "external": "external",
-           "unknown": "not classified in NetBox"}
+           "unknown": "not classified in NetBox",
+           # S14 (board F): a switch a controller programs, keyed by its DPID; a host the
+           # controller learned.
+           "sdn": "a switch a controller programs (OpenFlow)",
+           "host": "a host a controller learned"}
 LINE_WORDS = {"ok": "as intended", "warn": "not as intended",
               "bad": "down, or a neighbour missing", "unread": "not read"}
 GROUP_WORDS = {"bad": "Down, or an intended neighbour missing",
@@ -156,11 +160,37 @@ def qs(list_name: str, s: dict, over: dict = None) -> str:
 
 # ---------------------------------------------------------------------------- names
 
-def label(name: str) -> str:
-    """How a node is named on the page: Mercury's own host by the product's name."""
+def label(name: str, nodes: dict = None) -> str:
+    """How a node is named on the page: Mercury's own host by the product's name; an OpenFlow
+    switch (S14) by the name it reports, else its DPID's short form (``of:…0001``); a
+    controller by its connection's name; a host a controller learned by its first address,
+    else its MAC."""
     from modules import brand
     from modules.readers.topology_graph import MANAGER
-    return brand.PRODUCT_SHORT if name == MANAGER else name
+    from modules.sdn import topology as SDN
+    if name == MANAGER:
+        return brand.PRODUCT_SHORT
+    n = (nodes or {}).get(name) or {}
+    if SDN.is_switch(name):
+        return (n.get("sdn") or {}).get("label") or SDN.short(name)
+    if name.startswith(SDN.CONTROLLER_PREFIX):
+        return name[len(SDN.CONTROLLER_PREFIX):]
+    if name.startswith(SDN.HOST_PREFIX):
+        h = n.get("host") or {}
+        return ((h.get("ipv4") or []) + (h.get("ipv6") or []) or [name[len(SDN.HOST_PREFIX):]])[0]
+    return name
+
+
+#: How a link's source is named, on hover, in the lists and (Labels on, a network with a
+#: controller layer) on the map (S14).
+def source_words(l: dict) -> str:
+    srcs = l.get("sources") or []
+    if l.get("manager"):
+        return "measured"
+    if not srcs:
+        return "LLDP"
+    kinds = ["LLDP" if s.startswith("LLDP") else "controller" for s in srcs]
+    return " + ".join(dict.fromkeys(kinds))
 
 
 # ---------------------------------------------------------------------------- links
@@ -333,6 +363,12 @@ def _link(l: dict, layers: dict, on: list, nodes: dict, twoway: dict = None) -> 
         classes.append("bad")
         whats.append(("bad", f"link down at {', '.join(label(d) for d in l.get('down_at') or [])}",
                       l.get("since"), l.get("since_seen")))
+    elif l.get("state") == "unknown" and l.get("kind") == "controller":
+        # S14: a link only its controller reports, the controller not read now: kept as last
+        # read, never drawn as up.
+        classes.append("unread")
+        whats.append(("unread", f"{', '.join(l.get('sources') or [])} could not be read now; "
+                                f"as last read {l.get('read_at') or 'never'}", "", False))
     elif l.get("state") == "unknown":
         classes.append("unread")
         whats.append(("unread", "the link's state is not read (no ifOperStatus for its ports)",
@@ -411,17 +447,68 @@ def _link(l: dict, layers: dict, on: list, nodes: dict, twoway: dict = None) -> 
                f"{'outside management' if (nodes.get(far) or {}).get('outside') else 'not polled'}")
     elif l.get("kind") == "one_silent":
         how = f"only {label(l['reported_by'][0])}'s LLDP reports it"
+    elif l.get("kind") == "controller":
+        how = (f"reported by {', '.join(l.get('sources') or [])}"
+               + (", both directions" if l.get("directions", 0) > 1 else ", one direction"))
+    elif l.get("kind") == "hybrid":
+        how = f"one link, two sources: {' and '.join(l.get('sources') or [])}"
     else:
         how = ""
+    if l.get("sources"):
+        # S14: each source named, with what it saw.
+        lines = []
+        for src in l["sources"]:
+            if src.startswith("LLDP"):
+                lines.append(f"{src}: its neighbour's chassis id {l.get('chassis', '')}"
+                             + ("" if l.get("lldp_port_id_read", True) else
+                                "; its port id could not be read as a port number"))
+            else:
+                ends = l.get("ends_detail") or {}
+                named = [f"{label(k, nodes)} {d.get('name')}" for k, d in sorted(ends.items())
+                         if d.get("name")]
+                lines.append(f"{src}" + (f": {', '.join(named)}" if named else "")
+                             + (f"; read {l['read_at']}" if l.get("read_at") else ""))
+        rows.insert(0, {"dt": "Source", "cls": "", "chip": source_words(l), "lines": lines})
     speed = f", {l['speed']} Mb/s" if l.get("speed") else ""
     readers = [d for d in (a, b) if (nodes.get(d) or {}).get("managed")]
+    la, lb = label(a, nodes), label(b, nodes)
     return {"id": link_id(l), "a": a, "b": b, "port_a": pa, "port_b": pb,
-            "la": label(a), "lb": label(b), "title": f"{label(a)} {pa} ↔ {label(b)} {pb}",
+            "la": la, "lb": lb, "title": f"{la} {pa} ↔ {lb} {pb}",
+            "source": source_words(l), "sources": list(l.get("sources") or []),
             "cls": cls, "chips": chips, "state": l.get("state", "unknown"),
             "how": how + speed, "since": l.get("since", ""), "since_seen": l.get("since_seen"),
             "rows": rows, "none": none, "readers": readers,
             "whats": sorted(whats, key=lambda w: -RANK[w[0]]),
             "manager": bool(l.get("manager")), "kind": l.get("kind", "")}
+
+
+def _overlay_link(l: dict, nodes: dict) -> dict:
+    """A controller's control link to a switch, or a host it learned on a switch port (S14):
+    drawn dotted beside the fabric, its source on hover; never a link to review (no attention,
+    no weak point: it forwards nothing)."""
+    a, b = l["a"], l["b"]
+    la, lb = label(a, nodes), label(b, nodes)
+    pa, pb = l.get("port_a") or "", l.get("port_b") or ""
+    src = ", ".join(l.get("sources") or [])
+    if l.get("kind") == "host":
+        h = (nodes.get(b) or {}).get("host") or {}
+        lines = [f"MAC {h.get('mac', '')}"] + [f"address {x}" for x in (h.get("ipv4") or [])
+                                                + (h.get("ipv6") or [])]
+        how = f"a host {src} learned on {la} {pa}" + (f" ({h['port_name']})"
+                                                      if h.get("port_name") else "")
+        dt = "Host"
+    else:
+        lines = [f"{lb} is programmed by {la}; Mercury changes its flows only through it"]
+        how = f"{la} manages {lb} (OpenFlow)"
+        dt = "Control"
+    title = f"{la} {pa} ↔ {lb} {pb}".replace("  ", " ").strip()
+    return {"id": link_id(l), "a": a, "b": b, "port_a": pa, "port_b": pb, "la": la, "lb": lb,
+            "title": title, "source": "controller", "sources": list(l.get("sources") or []),
+            "cls": "ok", "chips": [], "state": l.get("state", "unknown"), "how": how,
+            "since": "", "since_seen": False,
+            "rows": [{"dt": dt, "cls": "", "chip": "controller", "lines": lines}],
+            "none": [], "readers": [], "whats": [], "manager": False,
+            "kind": l.get("kind", ""), "overlay": True}
 
 
 def _routing_only(layers: dict, on: list, nodes: dict, twoway: dict = None) -> list:
@@ -595,8 +682,16 @@ def view(list_name: str, values) -> dict:
     present = [p for p in PROTOS if any(layers.get(w) for w in DRAWN if TOGGLE_OF.get(w, w) == p)]
     on = present if s["p"] is None else [p for p in s["p"] if p in present]
     twoway = _twoway_intended(layers)
-    links = [_link(l, layers, on, nodes, twoway) for l in phys] + \
-        _routing_only(layers, on, nodes, twoway)
+    links = [_overlay_link(l, nodes) if l.get("overlay") else _link(l, layers, on, nodes, twoway)
+             for l in phys] + _routing_only(layers, on, nodes, twoway)
+    # S14: a network with a controller layer says each source in a strip above the map, and
+    # labels every link by its source (Labels on).
+    out["sdn"] = net.get("sdn")
+    out["coverage"] = _coverage(list_name, net, st["value_at"]) if net.get("sdn") else []
+    if net.get("sdn"):
+        for l in links:
+            if not l.get("overlay") and not l.get("routing_only"):
+                l["chips"] = list(l["chips"]) + [{"text": l["source"], "cls": "src"}]
     from modules import topology_expected
     declared = topology_expected.read(list_name)
     weak = _weak(an, phys, declared.get("islands") or {})
@@ -609,9 +704,12 @@ def view(list_name: str, values) -> dict:
     fleet = sorted(n for n, v in nodes.items() if v.get("managed"))
     out["collapsed"] = len(fleet) > COLLAPSE_ABOVE
     out["summary"] = {"devices": len(fleet),
-                      "links": sum(1 for l in phys),
+                      "links": sum(1 for l in phys if not l.get("overlay")),
                       "outside": sum(1 for v in nodes.values() if v.get("outside")),
-                      "ok": sum(1 for l in links if l["cls"] == "ok")}
+                      "ok": sum(1 for l in links if l["cls"] == "ok" and not l.get("overlay"))}
+    if net.get("sdn"):
+        out["summary"]["switches"] = sum(1 for k, v in nodes.items()
+                                         if v.get("sdn") and not v.get("outside"))
     out["attention"] = _attention(links, weak, s)
     out["weak"] = weak
     out["critical"] = an.get("critical") or []
@@ -631,16 +729,47 @@ def view(list_name: str, values) -> dict:
     return out
 
 
+def _coverage(list_name: str, net: dict, value_at: str, now: float = None) -> list:
+    """The strip above the map in a network with a controller layer (board F): one chip per
+    source, ``[{"text", "cls"}]``: LLDP (the Topology reader's read), each controller (read, or
+    couldn't read with why, its switches as last read with their age), and the endpoint
+    layer's hosts from a controller."""
+    from modules import endpoints as E
+    from modules.sdn import topology as SDN
+
+    sdn = net.get("sdn") or {}
+    chips = [{"text": f"LLDP · the Topology reader, read {value_at}", "cls": ""}]
+    if sdn.get("state") == "could not read":
+        chips.append({"text": f"controllers: couldn't read: {sdn.get('why', '')}",
+                      "cls": "warn"})
+    for c in sdn.get("controllers") or []:
+        chips.append({"text": SDN.words(c, now), "cls": "ctl" if c["state"] == "read"
+                      else "warn"})
+    try:
+        got = E.stored(list_name)
+    except Exception as exc:                          # noqa: BLE001 (said on the chip)
+        got = {"state": "unreadable", "why": f"{type(exc).__name__}: {exc}", "endpoints": []}
+    if got.get("state") == "read":
+        from_ctl = sum(1 for e in got.get("endpoints") or []
+                       if any(s.startswith("controller (") for s in e.get("sources") or []))
+        chips.append({"text": f"endpoints · {from_ctl} host{'s' if from_ctl != 1 else ''} "
+                              f"from a controller, read {got.get('read_at', '')}", "cls": ""})
+    else:
+        chips.append({"text": f"endpoints: not read ({got.get('why', '')})", "cls": ""})
+    return chips
+
+
 def _attention(links: list, weak: list, s: dict) -> dict:
     """The board's "Needs attention on the map": each link that is not as intended, grouped by
     its line style, with what is wrong and since when; then the weak points. Filtered by the
     group asked and the text typed; the counts are always the whole."""
     groups = {"bad": [], "warn": [], "unread": [], "weak": [], "apart": []}
     for l in links:
-        if l["cls"] == "ok":
+        if l["cls"] == "ok" or l.get("overlay"):
             continue
         top = [w for w in l["whats"] if w[0] == l["cls"]] or l["whats"][:1]
         groups[l["cls"]].append({"link": l, "id": l["id"], "title": l["title"],
+                                 "source": l.get("source", ""),
                                  "what": "; ".join(w[1] for w in top),
                                  "since": next((w[2] for w in top if w[2]), ""),
                                  "since_seen": next((w[3] for w in top if w[2]), False),
@@ -714,10 +843,11 @@ def _list_groups(nodes: dict, phys: list) -> list:
         n = nodes.get(name) or {}
         mine = [l for l in phys if name in (l["a"], l["b"])]
         groups.setdefault(node_class(name, n), []).append({
-            "name": name, "label": label(name), "managed": n.get("managed", False),
+            "name": name, "label": label(name, nodes), "managed": n.get("managed", False),
             "outside": n.get("outside", False), "cls": node_class(name, n),
-            "links": [{"to": label(l["b"] if l["a"] == name else l["a"]),
+            "links": [{"to": label(l["b"] if l["a"] == name else l["a"], nodes),
                        "state": l.get("state"), "kind": l.get("kind", ""),
+                       "source": source_words(l),
                        "port": (l.get("port_a") if l["a"] == name else l.get("port_b")) or ""}
                       for l in mine]})
     return [{"words": CLASSES[c], "devices": groups[c]} for c in CLASSES if c in groups]
@@ -781,7 +911,7 @@ def _node_labels(nodes: dict, pos: dict, bgp) -> dict:
         for dev, asn in (adj.get("asn") or {}).items():
             if (nodes.get(dev) or {}).get("outside"):
                 peer_as.setdefault(dev, asn)
-    return {name: label(name) + (f" · AS {peer_as[name]}" if name in peer_as else "")
+    return {name: label(name, nodes) + (f" · AS {peer_as[name]}" if name in peer_as else "")
             for name in pos}
 
 
@@ -1013,14 +1143,35 @@ def _svg(nodes, phys, links, weak, s, view_, bgp=()) -> dict:
                           "gone": name == gone, "lost": name in lost,
                           "island": any(t["cls"] == "isl" for t in tags.get(name, [])),
                           "spof": any(t["cls"] == "spof" for t in tags.get(name, [])),
-                          "role": n.get("role") or "", "manager": name == MANAGER})
+                          "role": n.get("role") or "", "manager": name == MANAGER,
+                          "sdn": _sdn_words(name, n), "overlay": bool(n.get("overlay"))})
     return {"width": width, "height": height, "card_w": CARD_W, "links": drawn,
             "nodes": out_nodes, "labels": labels, "z": s["z"]}
 
 
+def _sdn_words(name: str, n: dict) -> dict:
+    """An OpenFlow switch's second line and hover words on the map (board F): ``{"line":
+    "of:…0001 · via controller", "title": "DPID 0000000000000001 · discovered via controller
+    c1, read <t> · 3 ports"}``; {} for any other node."""
+    from modules.sdn import topology as SDN
+    sdn = n.get("sdn")
+    if not sdn:
+        return {}
+    via = f"controller {sdn['controller']}" if sdn.get("controller") else "LLDP only"
+    title = f"DPID {sdn.get('dpid_hex', '')} · discovered via {via}"
+    if sdn.get("read_at"):
+        title += f", read {sdn['read_at']}"
+    if sdn.get("state") not in ("read", None):
+        title += f" (not read now: {sdn.get('why', '')})"
+    if sdn.get("ports"):
+        title += f" · {sdn['ports']} ports"
+    return {"line": f"{SDN.short(name)} · via {'controller' if sdn.get('controller') else 'LLDP'}",
+            "title": title}
+
+
 _ICON = {"router": "router", "switch": "switch", "l3switch": "switch", "firewall": "firewall",
          "server": "server", "accesspoint": "access-point", "controller": "controller",
-         "external": "cloud", "unknown": "unknown"}
+         "external": "cloud", "unknown": "unknown", "sdn": "sdn-switch", "host": "host"}
 
 
 _SYMBOLS = {}

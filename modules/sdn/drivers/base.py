@@ -28,6 +28,17 @@ One shape across drivers: `Flow`, `PortStats`, `Meter`, `MeterBand` and `MeterFe
 OpenFlow 1.3's OXM field names in a match (`OXM_FIELDS`) and actions as normalised dicts
 (`ACTION_FIELDS`). A drop is an empty action list. Each driver translates its controller's
 form both ways.
+
+**Topology is one shape too** (`read_topology`, PHASE8_PLAN 17.1 S14): `links()` answers
+``{"links": [{"src": end, "dst": end}]}``, `hosts()` ``{"hosts": [host]}`` and `topology()`
+all three with the switches' ports, ``{"switches": [{"dpid", "dpid_hex", "ports": [port]}],
+"links", "hosts", "hosts_note"}``. A port (`topo_port`) is ``{"dpid", "dpid_hex", "port_no",
+"name", "hw_addr"}``, *port_no* a number; a link is one direction as the controller reports
+it (a cable both ways is two); a host (`topo_host`) is ``{"mac", "ipv4", "ipv6", "dpid",
+"dpid_hex", "port_no", "port_name", "port_hw_addr"}``, its addresses as the controller learned
+them less the unspecified ones (`0.0.0.0`, `::`), which a host sends from before it has an
+address. *hosts_note* is the driver's word on how current a listed host is (a controller that
+keeps a host forever and records no time says so), never left for a reader to assume.
 """
 
 import dataclasses
@@ -197,6 +208,68 @@ def parse_dpid(value) -> int:
 def dpid_hex(dpid: int) -> str:
     """The sixteen-hex-digit form a person reads a datapath id in."""
     return f"{dpid:016x}"
+
+
+def _port_number(value):
+    """A port number from a number or the controller's text (decimal, 0x-prefixed, or the
+    eight hex digits Ryu's topology prints), or the text kept when it is a reserved port's
+    name; None for anything else."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    text = str(value or "").strip()
+    if text.upper() in RESERVED_PORTS:
+        return text.upper()
+    try:
+        if text.lower().startswith("0x"):
+            return int(text, 16)
+        if len(text) == 8 and all(c in "0123456789abcdefABCDEF" for c in text):
+            return int(text, 16)
+        return int(text, 10)
+    except ValueError:
+        return None
+
+
+def topo_port(dpid, port_no, name="", hw_addr="") -> dict:
+    """One switch port in the topology shape; raises SpecError for a datapath id or port that
+    is not one."""
+    number = parse_dpid(dpid)
+    port = _port_number(port_no)
+    if port is None:
+        raise SpecError(f"{port_no!r} is not a port number")
+    return {"dpid": number, "dpid_hex": dpid_hex(number), "port_no": port,
+            "name": str(name or ""), "hw_addr": str(hw_addr or "").lower()}
+
+
+#: Addresses a host sends from before it has one (DHCP's and IPv6 duplicate detection's),
+#: which locate nothing.
+UNSPECIFIED = frozenset({"0.0.0.0", "::"})
+
+
+def topo_host(mac, ipv4, ipv6, port: dict) -> dict:
+    """One host a controller learned, in the topology shape: its addresses kept as learned,
+    in order, less the unspecified ones; each checked to be an address of its family."""
+    import ipaddress
+
+    def keep(values, version):
+        out = []
+        for v in values or []:
+            text = str(v or "").strip()
+            if not text or text in UNSPECIFIED:
+                continue
+            try:
+                if ipaddress.ip_address(text).version != version:
+                    continue
+            except ValueError:
+                continue
+            if text not in out:
+                out.append(text)
+        return out
+
+    return {"mac": str(mac or "").lower(), "ipv4": keep(ipv4, 4), "ipv6": keep(ipv6, 6),
+            "dpid": port["dpid"], "dpid_hex": port["dpid_hex"], "port_no": port["port_no"],
+            "port_name": port["name"], "port_hw_addr": port["hw_addr"]}
 
 
 def request_digest(rendered: Mapping) -> str:
@@ -482,7 +555,7 @@ class _TooLarge(Exception):
 #: Each call, and the capability it needs (None: every built driver answers it).
 CALL_CAPABILITY = {
     "test": None, "switches": None, "switch_desc": None,
-    "links": "read_topology",
+    "links": "read_topology", "hosts": "read_topology", "topology": "read_topology",
     "flows": "read_flows",
     "port_stats": "read_port_stats",
     "meters": "read_meters", "meter_features": "read_meters",
@@ -513,6 +586,13 @@ class ControllerDriver:
     absent: Mapping = {}
     #: (method, path prefix) -> the capability a write path needs; `apply` sends nothing else.
     write_routes: Mapping = {}
+    #: Where the controller's own link discovery sends LLDP (`read_topology`, S14): the prefix
+    #: its chassis id carries before the DPID's sixteen hex digits, so a neighbouring device's
+    #: LLDP names the switch (`sdn.topology.chassis_dpid`); "" when it sends none Mercury reads.
+    lldp_chassis_prefix: str = ""
+    #: What an empty link list may mean for this controller, said beside it (never "no cables"
+    #: when the controller may simply not be discovering links).
+    links_note: str = ""
 
     def __init__(self, connection: Connection, *, session=None,
                  clock: Callable[[], float] = time.monotonic,
@@ -571,8 +651,19 @@ class ControllerDriver:
         return self._call("switch_desc", self._switch_desc, dpid, dpid_arg=True)
 
     def links(self) -> dict:
-        """`{"links": [...]}`: the links between switches the controller knows."""
+        """`{"links": [{"src": port, "dst": port}]}`: the links between switches the controller
+        knows, each direction as it reports it."""
         return self._call("links", self._links)
+
+    def hosts(self) -> dict:
+        """`{"hosts": [topo_host], "hosts_note"}`: the hosts the controller learned, each on
+        the switch port it learned it on."""
+        return self._call("hosts", self._hosts)
+
+    def topology(self) -> dict:
+        """`{"switches": [{"dpid", "dpid_hex", "ports"}], "links", "hosts", "hosts_note"}`:
+        one read of the controller's whole topology."""
+        return self._call("topology", self._topology)
 
     def flows(self, dpid) -> dict:
         """`{"dpid", "flows": [Flow.as_dict()]}`: a switch's whole flow table."""
@@ -649,6 +740,7 @@ class ControllerDriver:
         raise NotImplementedError(f"{self.kind} declares this call but does not implement it")
 
     _test = _switches = _switch_desc = _links = _flows = _port_stats = _not_implemented
+    _hosts = _topology = _not_implemented
     _meters = _meter_features = _not_implemented
     _render_add_flow = _render_modify_flow_strict = _render_delete_flow_strict = _not_implemented
     _render_add_meter = _render_delete_meter = _not_implemented

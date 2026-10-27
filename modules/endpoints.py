@@ -6,7 +6,12 @@ where each endpoint (a host, a phone, a printer) is attached, from what the netw
   (`modules/nsot/platform_reads.json`: per dialect, the command and the pattern its lines fill;
   a command the read-only allowlist refuses is never sent), by `readers/endpoints`;
 - DHCP leases through an optional, generic lease source (`lease_sources`, Kea's the first),
-  which name a MAC's host and address.
+  which name a MAC's host and address;
+- the hosts an SDN controller learned (PHASE8_PLAN 17.1 S14: MAC, IPv4 and IPv6 addresses,
+  switch by DPID, port), read from the SDN reader's stored topology (`sdn.topology.
+  endpoint_hosts`), so an endpoint behind an OpenFlow switch is located on that switch's port;
+  its last seen is when the controller last listed it, with the driver's note on what a
+  listing means.
 
 **Location.** An endpoint is located where a switch learned its MAC on a port that is neither a
 trunk (committed intent) nor an uplink (a port with a managed neighbour: the network model's
@@ -80,6 +85,7 @@ def seen(e: dict, now: float = None, stale_hours: int = STALE_DEFAULT_HOURS) -> 
     words = _ago(age) if age is not None else "at an unknown time"
     return {"located": True, "age": words, "stale": stale,
             "said": f"last seen {e['device']} {e.get('interface', '')}, {words}"
+                    + (" (as its controller lists it)" if e.get("note") else "")
                     + (f", stale (older than {stale_hours} h)" if stale else "")}
 
 
@@ -134,7 +140,7 @@ def _epoch(text: str) -> float:
 
 
 def locate(reads: dict, leases: list, ports: dict, previous: list = None,
-           now: float = None) -> dict:
+           now: float = None, controller: list = None) -> dict:
     """The network's endpoints from this read: ``{"endpoints": [...], "version", "read_at",
     "ignored": n}``.
 
@@ -143,7 +149,12 @@ def locate(reads: dict, leases: list, ports: dict, previous: list = None,
     *ports*: ``{device: {"trunks": set, "uplinks": set}}``, the ports that locate nothing.
     *previous*: the last value's endpoints, whose locations are carried forward with their
     last_seen when not seen now, whatever their age, while their device is still one this
-    read covers (a device gone from the network carries nothing forward)."""
+    read covers (a device gone from the network carries nothing forward).
+    *controller*: the hosts the network's SDN controllers learned (`sdn.topology.
+    endpoint_hosts`, S14): each locates its MAC on its switch's port (``of:<DPID>``, ``port
+    N``) as of the controller's read, unless a device's MAC table located it in this read;
+    its addresses, IPv4 and IPv6, join the endpoint's, and the driver's note on what a
+    listing means is kept with it (``note``)."""
     from modules.nsot import ifnames
 
     now = time.time() if now is None else now
@@ -181,6 +192,25 @@ def locate(reads: dict, leases: list, ports: dict, previous: list = None,
                 if addr and addr not in e["addresses"]:
                     e["addresses"].append(addr)
                 note(e, f"{device}'s {'ARP' if kind == 'arp' else 'IPv6 neighbours'}")
+    located_now = {m for m, e in by_mac.items() if e["device"]}
+    switches = set()
+    for host in controller or []:
+        mac = mac_of(host.get("mac", ""))
+        if not mac:
+            continue
+        switches.add(host["device"])
+        e = ep(mac)
+        if mac not in located_now:
+            e.update(device=host["device"], interface=host.get("interface", ""), vlan="",
+                     last_seen=host.get("last_seen") or at)
+            if host.get("port_name"):
+                e["port_name"] = host["port_name"]
+            if host.get("note"):
+                e["note"] = host["note"]
+        for addr in host.get("addresses") or []:
+            if addr and addr not in e["addresses"]:
+                e["addresses"].append(addr)
+        note(e, host.get("source") or "an SDN controller's host table")
     for lease in leases or []:
         mac = mac_of(lease.get("mac", ""))
         if not mac:
@@ -196,7 +226,8 @@ def locate(reads: dict, leases: list, ports: dict, previous: list = None,
     for old in previous or []:
         mac = old.get("mac", "")
         e = by_mac.get(mac)
-        kept = old.get("device") in reads           # its device is still the network's
+        # Its device is still the network's: one read now, or a switch a controller reports.
+        kept = old.get("device") in reads or old.get("device") in switches
         if e is None:
             if kept:
                 by_mac[mac] = dict(old)            # not seen in this read: kept, its age said
@@ -232,8 +263,8 @@ def coverage_layer(network: str) -> dict:
                 "why": f"no endpoint read for this network ({got['why']}) (C1772)"}
     unread = sorted(h for h, d in (got.get("devices") or {}).items() if d.get("error"))
     return {"state": "partial" if unread else "present",
-            "source": "each device's MAC table, ARP and IPv6 neighbours, and the DHCP leases "
-                      "(the endpoint reader)",
+            "source": "each device's MAC table, ARP and IPv6 neighbours, the DHCP leases, and "
+                      "the hosts an SDN controller learned (the endpoint reader)",
             "age": got.get("read_at", ""),
             "why": f"{', '.join(unread)} could not be read" if unread else ""}
 
