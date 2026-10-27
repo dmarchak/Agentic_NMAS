@@ -781,26 +781,46 @@ A prompt version's recorded cases (`tests/fixtures/ai_cases/`) are measured five
 with `scripts/nmas-nl-cases` (Ask in words) or `scripts/nmas-pack-replay` (Explain), recorded
 as an evaluation, never a person (C1784), the stale check first, the date-relative cases at
 their own frozen "now".
+- **Reliability decides, not consistency** (the operator, 2026-10-27, as the rule's owner).
+  Consistency as first defined rewarded being consistently wrong: feature 7's case 33, Sonnet
+  wrong in 10 of 10 runs, counted as consistent, while Haiku, right in 5 of 10, counted as
+  inconsistent. **A case is reliable when it is correct in every run; reliability is the share
+  of cases that are.** A consistently wrong case counts against it. Applied symmetrically to
+  every model and every version. Cost: none at the run, only the scoring. Prevents: adopting
+  or keeping a version because it repeats a wrong answer.
 - **Adoption is relative.** A candidate replaces the current version when no case the current
-  version passes fails under it, and its main-set consistency is not below the current
-  version's. Both are measured on the main set and on a blind held-out set, written before any
-  run by someone who saw neither the prompts nor any result.
+  version passes reliably becomes unreliable under it, and its overall reliability does not
+  drop. Cases the current version fails are not protected. Both are measured on the main set
+  and on a blind held-out set, written before any run by someone who saw neither the prompts
+  nor any result.
 - **A blind set decides once.** The next version is measured on a new one written the same
   way.
-- **Done is absolute:** 11.1's floor, 95% consistency (Translator, Decision-maker) or 90%
-  (Analyst; Explain).
+- **Done is absolute:** 11.1's floor applied to reliability, 95% (Translator, Decision-maker)
+  or 90% (Analyst; Explain).
 - **A candidate that passes adoption but not the floor goes live,** and the feature stays not
   done until a later version meets the floor.
-- **Consistency compares the card's fields only** (PHASE8_PLAN section 6's table: for Ask in
-  words, the builder's query model whole; a question back or a refusal on its outcome), never
-  the prose, and is never redefined to pass.
+- **Consistency is still reported, beside reliability, and decides nothing.** It compares the
+  card's fields only (PHASE8_PLAN section 6's table: for Ask in words, the builder's query
+  model whole; a question back or a refusal on its outcome), never the prose, and is never
+  redefined to pass.
 - **A run refused before it was sent fails twice** (the operator, 2026-10-26, from metrics v9:
   two cases refused over the prompt budget in all five runs were counted as agreeing). A
   request Mercury refused before sending it (over the prompt budget, over a cap) is a failed
-  run for pass and for consistency. A case holding one is never consistent, five identical
-  refusals included. Mercury's own answer made with no call is an outcome, not a refusal:
+  run for pass, reliability and consistency. A case holding one is never reliable or
+  consistent, five identical refusals included. Mercury's own answer made with no call is an outcome, not a refusal:
   its guidance on a question no metric matches, and its own question back (logs v4's
   ambiguous role).
+- **Statistics, while the sprint rules are active** (the operator, 2026-10-27):
+  - held-out sets grow to about 30 cases, written blind, the existing ones extended;
+  - adoption and done decisions take 10 runs a case;
+  - reliability and consistency are reported with their cases and runs beside them.
+- **Cost to performance** (the operator, 2026-10-27):
+  - Among candidates (model, prompt version, context level) that pass the adoption bar and meet
+    the done floor, the one with the lowest cost per successful answer is adopted. A dearer one
+    only when it alone meets the bars, its extra cost said.
+  - The smallest model that meets the floor per task. Larger models are measurement ceilings.
+  - Every measurement reports cost per call and cost per successful answer beside pass and
+    consistency, and flags a version whose cost rose without a gain the bars count.
 - **The rule's record:** PHASE8_PLAN 15.12.
 
 ## What is NOT tested

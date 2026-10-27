@@ -1893,7 +1893,61 @@ line.
 **A candidate, not a condition:** pseudonymising addresses and hostnames before a payload leaves
 (a reversible map held in Mercury), listed with 15.9's candidates; nothing above waits for it.
 
-### 15.12 The Phase 8 sprint, Sun 2026-10-25 to Sat 2026-10-31 (the operator, 2026-10-25)
+### 15.12 The Phase 8 sprint, from Sun 2026-10-25 until its condition is met (the operator, 2026-10-25; the expiry made a condition 2026-10-27)
+
+**The sprint rules end on a condition, not a date** (the operator, 2026-10-27 ~01:xx UTC): when
+**both** the SDN Lab 8 slice (17) and Phase 8's AI scope (18.1's A1 and A2, 18.3's cost safety,
+18.2's open items) meet their done bars. Until then, for the SDN slice and the whole AI scope:
+1. **The findings freeze:** a finding is registered, not fixed, unless it blocks completing an
+   in-scope feature.
+2. **The agent decides anything inside the plan** (each decision a line in
+   STANDING_APPROVAL_LOG).
+3. **The consistency floors gate release only.**
+4. **The irreversible tier's narrowed proof:** a hand check of the changed lines and a canary,
+   logged in docs/TIER_HAND_CHECK.md (CLAUDE.md's sprint line), in place of the targeted
+   mutation run.
+
+- **The AI day cap** stays at its current value while the rules are active. It returns to $1.50
+  at Phase 8's close, never on a date, and the operator is reminded then.
+- **Every report says the sprint rules are active,** and what remains toward the condition.
+- **When the rules expire,** section 19's close-out runs at once.
+
+**Measurement statistics, and cost to performance** (the operator, 2026-10-27; a $200 API
+credit pays for testing only, so statistics, not spend, limit a measurement):
+- **Bigger sets and more runs, while the rules are active:**
+  - each feature's held-out set grows to about 30 cases, written blind as now, with the existing
+    cases kept and extended, never replaced;
+  - adoption and done decisions take 10 runs a case, not 5;
+  - consistency is reported with its number of cases and runs beside it.
+- **Model comparisons, on the same sets, each reported per case with cost per call:**
+  - Haiku against Sonnet for feature 7 (C1785) and for Ask in words;
+  - Opus against Sonnet on Explain, as a quality ceiling.
+  A model change follows 15.12's adoption bar like any version.
+- **New features start with about 30 recorded cases and a blind held-out set:** the SDN
+  classifier (17.1 S7) and the assistant (18.1 A1).
+- **Unchanged:**
+  - held-out sets are never tuned on;
+  - 18.3's cost-safety rules apply in full: Mercury cannot see credits and shows true cost;
+  - evaluation runs count against the caps.
+- **Before any measurement round:** its estimate is set against the day cap, and a round that
+  would pass the cap is reported first, with its estimate.
+- **The product is built for the best cost to performance:** the cheapest configuration that
+  meets the bars, never the best result regardless of cost.
+  - **(a) The selection rule.** Among the candidates (model, prompt version, context level) that
+    pass the adoption bar and meet the done floor, the one with the lowest cost per successful
+    answer is adopted. A dearer candidate is adopted only when it is the only one meeting the
+    bars, and the report says what the extra cost buys.
+  - **(b) The smallest model that meets the floor, per task.** Larger models, Opus especially,
+    are measurement ceilings, not product defaults, unless nothing smaller meets the bar.
+  - **(c) The spending levers stay in every design:**
+    - deterministic resolution before the call;
+    - prompt caching;
+    - the context budget;
+    - prompts trimmed to what changes answers;
+    - the model called only when code has found something;
+    - no call at all when Python can answer.
+  - **(d) Every measurement reports cost per call and cost per successful answer** beside pass
+    and consistency. It flags any version whose cost rose without a gain the bars count.
 
 **The goal:** the sprint's Phase 8 features working, deployed and usable on the lab; no video
 work. **A feature is done** when it is deployed, its about 20 recorded cases pass in CI, and the
@@ -1917,6 +1971,50 @@ when every item is done and walked, not on a date.** These replace the dated sch
     feature's completion;
   - Explain's tuning stays closed (cases set the bar, not the prompt).
 - Its cost: none in work. Its defect class: a feature held "done" without its cases or a walk.
+
+**Amended 2026-10-27 ~06:1x UTC by the operator, as the rule's owner: reliability replaces
+consistency in every decision below.** Consistency as defined rewards being consistently wrong:
+feature 7's case 33, Sonnet wrong in 10 of 10 runs, counted as consistent, while Haiku, right
+in 5 of 10, counted as inconsistent. In its place:
+- **Reliability** is the share of cases correct in every run. A consistently wrong case counts
+  against it.
+- **Adoption:** no case the current version passes reliably may become unreliable under the
+  candidate, and overall reliability must not drop. Cases the current version fails are not
+  protected.
+- **The done floors** (95%; Explain and the Analyst 90%) apply to reliability.
+- Applied symmetrically to every model and every version; consistency is still reported beside
+  reliability and decides nothing. Every adoption decision this sprint was re-scored under it
+  (logs v3 and v4, metrics v9 and v10, Explain, feature 7); the result follows.
+- Cost: none at the run, only the scoring. Prevents: adopting or keeping a version because it
+  repeats a wrong answer.
+
+**The re-score (2026-10-27 ~06:2x UTC; each run's pass as its recorded judge gave it, only the
+case-level aggregation changed, every recorded figure under the old rule reproduced first):
+no adoption decision flips; two done verdicts do.**
+- **Logs v3 over v2:** adopted under both rules (the 20: reliability 19 of 20 against 14; blind
+  set 1: 9 of 10 against 8; nothing protected lost). Not done: blind set 1 at 90%.
+- **Logs v4 over v3:** adopted under both. **Done flips: v4 is reliable on 20 of 20, blind set
+  1's 10 of 10 and blind set 2's 10 of 10 (100% each), over the 95% floor**, where consistency
+  put blind set 2 at 90%. That rests on 5 runs and 10-case blind sets; the statistics rule of
+  2026-10-27 (10 runs, about 30 held-out cases) and the walk come before logs is called done.
+- **Metrics v9 against v7:** not adopted under both (cases 7 and 16 refused over the budget in
+  every run, C1830). **v7's main set flips below the floor:** reliability 20 of 22 (90.9%),
+  where consistency put it at 95.5%, its cases 2 and 12 wrong the same way in every run. It
+  was never done (its held-out sets were under the floor).
+- **Metrics v10 against v7 (10 runs):** adopted under both (main 23 of 23 against 21; held-out
+  set 4 27 of 30 against 23; nothing protected lost). Not done: held-out set 4 at 90.0%
+  (the recorded "91.3%" was the run pass rate, 274 of 300). **Haiku v10:** not adoptable under
+  both (main cases 8 and 16, held-out cases 16 and 19 lost).
+- **Explain v5 against v4:** v4 kept under both, now on cost alone: case 5, which v5 failed
+  once, was not reliable under v4 (3 of 5), so it is not protected. Neither meets 90%.
+- **Explain v6 against v4:** not adopted under both (cases 10 and 13 lost; reliability 13 of
+  21 against 15).
+- **Cases the old rule credited for repeating a wrong answer:** logs v2 blind set 1 cases 1
+  and 7; metrics v7 main cases 2 and 12, held-out set 4 cases 1, 7 and 15; metrics v10
+  held-out set 4 cases 7 and 15 (Haiku: 7); feature 7 main35 Sonnet cases 27 and 33, Haiku 27.
+  None changed an adoption.
+
+The text as first written, kept for the record of the decisions made under it:
 
 **Adoption is relative; done is absolute (the operator, 2026-10-26 ~21:2x UTC, adopting logs
 v3).** A candidate prompt version replaces the current one when:
@@ -3208,12 +3306,21 @@ due date is a dependency (CLAUDE.md, "Sequence by dependency"):
 | S5 | Flow intent: every flow Mercury installs carries a Mercury cookie, recorded with its expected match and actions. A flow with a cookie that is neither Mercury's nor declared as the controller application's own is unauthorised, reported like an intent departure. No AI | 4 |
 | S6 | Detection rules in code, thresholds per network: scan (distinct destination ports per source over the window where flows are L4, else packet-rate based and marked lower confidence), flood (rate against a baseline), unauthorised flow. Each detection is an alert in Mercury's alert stream with an evidence pack, so Explain works unchanged | 6 |
 | S7 | `classify_threat` (AI, through the gateway, Pydantic v2 strict). Output: the lab's schema (`threat_detected`, `threat_type`, `severity`, `affected_devices`, `recommended_action`, `reasoning`), plus `action_id` from the response catalogue with validated parameters and cited evidence ids. Egress: flow and port data are the topology class. Recorded cases (each threat, normal traffic five times), expectations from evidence before any run, and a blind held-out set | 6 |
-| S8 | `respond_to_threat` as gated operations, each with a preview of the exact REST bodies, a History record, Verify (the table read back, the threat's metric falling, unaffected host pairs still passing) and rollback; every response flow and meter carries a hard timeout (a per-network default): rate-limit (a meter and its flow; OVS queues if meters are unsupported, which the operator is checking), drop (a drop flow for the source), remove an unauthorised flow (`OFPFC_DELETE_STRICT`, then the expected flow reinstalled where one should exist) | 10 |
+| S8 | `respond_to_threat` as gated operations, each with a preview of the exact REST bodies, a History record, Verify (the table read back, the threat's metric falling, unaffected host pairs still passing) and rollback; every response flow and meter carries a hard timeout (a per-network default): rate-limit (a meter and its flow: one meter with a single drop band, kbps or pktps with a burst, the only band the lab's OVS offers, read 2026-10-27, 17.6; Verify reads the band's drop count rising), drop (a drop flow for the source), remove an unauthorised flow (`OFPFC_DELETE_STRICT`, then the expected flow reinstalled where one should exist) | 10 |
 | S9 | Modes: HITL by default (detect, classify, show the assessment and the action, wait for a person's confirm); AUTO off by default, enabled per network by an admin with a recorded reason and an expiry, only catalogue actions within an allowed risk class, each autonomous action recorded as such. This is the Phase 9 autonomy design in miniature (17.4) | 4 |
 | S10 | The continuous loop: a job per network (an interval setting) running detect, classify and respond in the current mode, with a live log; stoppable | 4 |
 | S11 | Screens built against S3's boards: SDN › Controllers, Flows and Responses; the OpenFlow switch's device page with Flows in place of Intent; Needs attention rows (controller unreachable, unauthorised flows, a response awaiting approval); History's controller kind; manual pages for each | 12 |
 | S12 | Management authority per device: direct (Mercury configures it) or controller (only through its controller). Every direct-configuration action on a controller-managed device is refused, naming the controller; tested across every device-changing route | 3 |
 | S13 | Lab deliverable fit: `collect_threat_data`, `classify_threat` and `respond_to_threat` as named functions in one module (`modules/sdn/closed_loop.py`), so the report can show their code | in S4, S7, S8 |
+| S14 | **Topology from the controller** (the operator, 2026-10-27 ~07:4x UTC; OpenFlow switches run no LLDP, the controller discovers links itself): (1) the driver capability `read_topology`: Ryu through its REST topology app (switches, links, hosts; `ryu-manager --observe-links` with `ryu.app.rest_topology`, both in the lab controller's start command, `lab/sdn/ryu/Dockerfile`), ONOS through `/devices`, `/links`, `/hosts`; (2) links become a topology layer with source "controller (<name>)" and its read time, switches "discovered via controller" devices keyed by DPID, the coverage header listing the layer; (3) controller-learned hosts (MAC, IP, DPID, port, last seen) feed the endpoint layer, so "which port is h1 on?" and feature 7's port references work on SDN switches; (4) hybrid links: an IOS device's LLDP neighbour whose chassis id is a DPID joins that switch's port, one link with both sources noted; (5) the Topology view marks controller-managed switches with their own symbol (`static/img/topology/sdn-switch.svg`, Mercury's own, drawn 2026-10-27) and labels each link by its source | 8 |
+| S15 | Registered only, later: a path trace through the switches' flow tables | — |
+| S16 | **Flows, managed** (the operator, 2026-10-27 ~07:5x UTC: three layers, AI advises, validation decides, Python executes; boards first; cost safety: person-triggered only). SDN › Flows and a switch's Flows tab gain Add, Edit and Remove. Add: a form (switch, table, priority, match, actions: output, drop, set_field, meter, group; idle and hard timeouts); Python enforces OpenFlow 1.3's match prerequisites (an `ipv4_*` field needs `eth_type` 0x0800, `tcp_*`/`udp_*` need `ip_proto` 6/17, and the rest), refusing with the missing field named; Mercury sets the cookie. Edit: actions and timeouts by modify-strict; a change of match or priority is delete-strict plus add as one action, and the editor says so. Remove: delete-strict by match, priority and cookie, never a wildcard; the table-miss flow (priority 0) protected by a typed confirmation; removing a controller-owned flow warns that a reactive application may reinstall it. Each: the exact REST bodies previewed, a History record, Verify (the table read back), rollback. The operation core is S8's own (respond installs and removes flows the same way) | 8 |
+| S17 | **Policies** (a new tab, SDN › Policies): intent-level rules: block, allow, rate-limit (a meter), isolate a host, quarantine, an optional path preference. Python compiles a policy to flows: hosts resolved through the endpoint layer (controller-learned hosts, S14), the ingress switch chosen from the topology, priorities assigned by Python from a documented scheme, never by AI. A conflict check before the preview: overlap and shadowing against the flows installed (a lower-priority block hidden by a higher-priority forward, and the rest), naming each conflicting flow. Policies are committed intent, versioned per network; a missing flow of a committed policy is a departure offering Reinstall, like a device's drift. An optional expiry is the flows' `hard_timeout`. Removing a policy removes exactly its flows, by cookie | 12 |
+| S18 | **A policy in words** (an AI-marked box on Policies; Lab 7's pattern, as feature 7): the model returns a structured policy only (kind, source, destination, protocol, port, rate, duration), Pydantic v2 strict, never flows or REST bodies. Host references resolve deterministically; an ambiguous one asks with buttons before any call; quoted text goes as placeholders. Then compile, conflict check, preview (the flows, the REST bodies, and the effect in words: "h1 can no longer reach h3 on TCP 22; other traffic unaffected"), confirm, install, verify. About 30 recorded cases and a blind held-out set, 15.12's bars and the cost-to-performance rule (the smaller model tried first) | 8 |
+| S19 | **Explain this flow table** (AI-marked; Lab 6's analyst): what each flow does, which are Mercury's, the controller's own or unauthorised, and the anomalies (shadowed or never-matching flows, unexpected drops), every claim citing a flow. Recorded cases as S18 | 5 |
+| S20 | **Verify's limit, said in the UI:** Verify checks installation and counters; testing traffic from the hosts is the operator's. Registered, later: a probe feature that sends test traffic between hosts | 1 |
+
+**The order within SDN** (the operator left it to the agent, 2026-10-27; the lab slice's detect, classify and respond stay first): S7 classify, S8 respond with S16's operation core built as S8's (one path for every flow Mercury installs, modifies or removes), S9 the modes, S10 the loop, S12 authority, S14 topology; then S16's screens on that core, S17 policies (needing S14's hosts and topology), S18 and S19 (AI, after S17 and the cost-safety rules, person-triggered only), S20 with each Verify. Boards for S16 to S18 are drawn first and signed off under the Phase 7 mode.
 
 **The slice's total:** about 69 focused hours. To land by Fri 30 Oct, items run in parallel where
 nothing depends on them (17.3), with at most two code agents at a time (the laptop's memory).
@@ -3258,8 +3365,19 @@ and Mercury offers only that.
 - **Flows are one shape across drivers:** `table_id`, `priority`, `cookie`, `match` (OpenFlow
   1.3 field names), `actions` and instructions, timeouts and counters. Each driver translates
   its controller's form both ways.
-- **No product code names Ryu, Mininet or an address.** The Ryu application and its container
-  are lab environment (`lab/sdn/`), and the URL is the operator's value in Settings.
+- **A controller is named only in its own driver** (`modules/sdn/drivers/ryu.py` and its
+  registry entry). No product code names Mininet, a lab application or an address. The Ryu
+  application and its container are lab environment (`lab/sdn/`), and the URL is the
+  operator's value in Settings.
+- **What Ryu 4.34's REST does not offer** (read from its source, S1, 2026-10-27):
+  - **No topology in `ofctl_rest`:** it has no links call. The topology comes from
+    `ryu.app.rest_topology` with `--observe-links`, both in the lab's container since
+    f5a8073e; the driver declares `read_topology` from it (S14, C1910), and an answer of 404
+    is said as "the topology app is not running", never as no links. Ryu keeps a learned host
+    until it restarts and reads only its own LLDP frames.
+  - **No version.**
+  - **A write's 200 means sent, never installed:** Ryu does not report the switch's OpenFlow
+    errors. So S8's Verify reads the table back, and a write's own answer says so.
 
 ### 17.3 The order, by dependency
 
@@ -3330,6 +3448,25 @@ Ryu 4.34 needs Python 3.9; Ubuntu 24.04's 3.12 breaks its dependencies. The imag
 The build checks the pins itself. Built and run on the laptop 2026-10-26 ~23:3x UTC:
 `ryu-manager 4.34`, `ofctl_rest` and the L4 application loaded, REST answering `[]` on
 127.0.0.1:8080 only, OpenFlow listening on 0.0.0.0:6653.
+
+**Running on the NMAS host since 2026-10-27 ~08:0x UTC** (the operator's walk, steps 1 to 9
+all passing): image `mercury-lab-ryu:4.34` built from `lab/sdn/ryu`; container `ryu`,
+`--restart unless-stopped`, `--network host`, started with `--observe-links` and
+`ryu.app.rest_topology` beside `ofctl_rest` and the L4 application (the Dockerfile's start
+command carries both since this commit, so a rebuild matches what runs); ufw admits 6653/tcp
+from the Mininet VM alone (rule 11 before the deny, rule 12, and its IPv6 deny), because ufw's
+incoming default on this host is allow (C1918). Measured: from the laptop 6653 timed out and
+8080 was refused; from the Mininet VM 6653 connected; Mininet `linear,2` with OpenFlow 1.3,
+`pingall` 0% dropped; `/stats/switches` `[1, 2]`, the topology REST's links 4 ends (the one
+link, both ways) and hosts 2. Mininet reaches the controller over the management LAN
+(`--controller remote,ip=<nmas-host>,port=6653`); no hypervisor bridge changed. The
+Controllers VM stays as it is until the NMAS has run a full lab session.
+
+**The Mininet VM's OVS meters** (the operator's read, 2026-10-27): `max_meter` 200000,
+`max_bands` 1, band types drop only, capabilities kbps, pktps, burst and stats. So a rate-limit
+response (S8) and a rate-limit policy (S17) are one meter with a single drop band, in kbps or
+pktps with a burst; there is no DSCP-remark band. Verify reads the meter's band statistics:
+the band's drop count rising while the flow matches shows the limit working.
 - **Host networking.** The container uses `--network host`, so ufw's rules apply to it. Ports
   Docker publishes are not filtered by ufw.
 - **No port conflicts.** Read on the host 2026-10-26 ~23:3x UTC: neither 6653 nor 8080 is in
@@ -3345,3 +3482,371 @@ The build checks the pins itself. Built and run on the laptop 2026-10-26 ~23:3x 
   - A scan then leaves one flow per probed port for at least one read interval.
 
 Registered: C1837 (this section's slice, open until the operator's walk).
+
+## 18. Phase 8's scope, and AI cost safety (the operator, 2026-10-27)
+
+**Phase 8 is the addition of AI to Mercury.** It is complete when the items of 18.1 meet 15.12's
+adoption and done bars, each with recorded cases and a blind held-out set. The priorities are
+the operator's; the order of 18.5 is proposed, for the operator to confirm. **One dependency
+is fixed: no background AI feature ships before 18.3's cost-safety rules are live.**
+
+### 18.1 In scope
+
+**A1. The toolbar assistant (P7, 16.10).**
+- **Prerequisites, before stage 1:**
+  - (a) **The manual-truth test:** every screen and control the manual names exists, and every
+    control has a manual entry.
+  - (b) **The egress mask for user-typed or pasted text:** secrets removed and the user told.
+    It is the irreversible tier, with its hand check (docs/TIER_HAND_CHECK.md).
+- **Stage 1:** explain-this-screen, the screen's subject sent as structured data; and how-to
+  grounded in the manual, citing a manual section and linking the screen. A question the manual
+  does not cover is recorded as a manual gap.
+- **Stage 2:** routing to Ask in words, feature 7, Explain and Ask the device, each with its
+  own validation and record.
+- **Stage 3:** multi-turn.
+- **Change handling** (amended):
+  - It never commits, deploys or approves.
+  - It pre-fills a feature 7 draft or an action where one covers the request.
+  - Otherwise it gives schema-checked instructions labelled "checked, not applied", and records
+    the request as an uncovered-request gap.
+  - A two-ended request resolves both ends first.
+  - Secrets are never seen or generated.
+
+**A2. 16.11's items.**
+1. "Was this right?" on every AI answer; a no opens a candidate recorded case for review.
+2. AI-proposed expected effects in the deploy preview, each accepted or rejected by the person.
+3. A change record and rollback plan draft.
+4. Incident correlation (topology-based grouping in code) with an AI timeline and root-cause
+   draft.
+5. The daily digest (statistics in code, an AI summary).
+
+Tier 2:
+- compliance findings explained, with feature 7 fix drafts;
+- capacity questions over forecasts computed in code;
+- brownfield modelling suggestions (excusing a line needs approval);
+- ticket and email intake into feature 7 drafts;
+- runbook-to-procedure drafting;
+- site documentation.
+
+### 18.2 Still open from 2026-10-26 (their bars unchanged)
+
+- metrics v10 against v7 on the main set and held-out set 4;
+- Explain v6's adoption;
+- the alert-history backfill, then Walk 2 in a report;
+- the Mode B fix with its one click and the `GigabitEthernet1/1` test, then the operator's
+  re-walk on s1;
+- C1834;
+- the fidelity audit and the board hash pins;
+- logs v4's commit (85dce038).
+
+### 18.3 AI cost safety: the standing rules (C1843; their CLAUDE.md lines given to the operator, 2026-10-27)
+
+1. **Every gateway call carries a trigger:** `person` (a verified person's click, with their
+   id) or `background` (a job's id).
+   - The gateway refuses a background call unless its feature is enabled for that network. The
+     refusal is recorded, and no provider request is made.
+   - Enforced in the gateway. It is the irreversible tier: a hand check of the changed lines, a
+     canary, and the TIER_HAND_CHECK log.
+2. **Background AI features are off by default, per network.**
+   - Turning one on is an admin action. It first shows an estimate, labelled as one: calls a
+     day, dollars a day and a month, from the measured cost per call and the expected
+     frequency.
+   - It records who, when, and the estimate shown.
+3. **Settings › AI** has the master switch and one switch per AI feature.
+   - Off stops new calls at once; calls in flight finish and are recorded.
+   - A background feature is turned on only here.
+4. **Budgets:** each background feature has daily and monthly caps within the overall cap.
+   - Reaching one stops that feature and raises a Needs attention row.
+   - Warnings come at 50% and 80%.
+   - Mercury never raises a cap.
+5. **A background feature calls the model only when deterministic code has found something.**
+   Each one's trigger:
+   - the SDN loop classifies only when a detection rule fires (17.1 S6, S10);
+   - incident narration runs once per incident (A2.4);
+   - the digest runs once a day (A2.5).
+6. **Spend history,** by feature, by person or job, and by day, from the record of AI calls,
+   with each feature's estimate beside its actual spend.
+7. **A fresh install** has AI off until an admin enters a key and accepts the cost terms. The
+   setup wizard recommends the provider's own spending limit as a backstop.
+8. **Prices** come from a dated price table in code (`profiles.PRICES_AS_OF`). Screens say
+   the provider bills, not Mercury.
+9. **Evaluation runs** count against the caps and are attributed to their run.
+10. **Spend is visible where people work, never only in Settings:**
+    - (a) **The toolbar chip,** always shown: "AI $X today · N background on", or "AI off",
+      never blank. Neutral, amber at 50% and red at 80% of the day cap; compact at laptop and
+      phone widths.
+    - (b) **The spend panel,** opened from the chip:
+      - today;
+      - the 7-day and 30-day daily averages;
+      - month to date against the monthly cap, with a month-end projection at the current rate;
+      - the viewer's own spend today;
+      - each enabled background feature, with its trigger, estimate against actual, and Turn
+        off.
+      Off is one click here; on is only in Settings › AI, after the estimate is accepted.
+    - (c) **Needs attention rows only when someone should act:**
+      - a 50% or 80% warning;
+      - a feature stopped by its cap;
+      - a background feature running above 150% of the estimate it was approved at;
+      - an approval nearing its expiry.
+      There is no standing spend row.
+    - (d) **Who sees amounts** is a per-network setting. By default, everyone who can make AI
+      calls.
+    - Boards first for the chip and the panel, then a fidelity record and a manual page.
+
+**The audit of today's call paths against 1 to 9** (read 2026-10-27, `modules/ai/`, every
+`gateway.ask` and its callers):
+- **Six paths call the gateway, every one a person's click today:**
+  - Ask in words, metrics and logs (`v2.history_ask_*_words`);
+  - Explain (`v2.monitoring_alert_explain`);
+  - Intent in words (`intent_v2.words`);
+  - the Settings AI card's Test (`settings_v2.install_test`, through
+    `installation_settings`).
+  Each passes `identity.request_actor()`.
+- **No background path exists yet.** The SDN loop (17.1 S10) will be the first.
+- **No call carries a trigger field (rule 1).** Person and evaluation are told apart only by the
+  actor string.
+- **The gateway checks today:** the master switch (`hosted_allowed`), the key, the task's pin,
+  the per-call cap and the installation's day cap. There is no per-feature switch, no per-network
+  enablement, no monthly or per-feature cap (rules 2 to 4), no chip or panel (rule 10), and no
+  wizard step (rule 7).
+- **Rule 8 holds in part:** `PRICES_AS_OF` dates the table; the screens' "the provider bills"
+  wording is not checked.
+- **Rule 9 holds for Ask in words only:** `scripts/nmas-nl-cases` refuses an actor holding "@",
+  so an evaluation is recorded as `evaluation:<run>`. `scripts/nmas-pack-replay` and
+  `scripts/nmas-intent-cases` accept any actor, so an evaluation could be recorded as a person
+  (C1846).
+
+### 18.4 Every AI item in the plan: status and size
+
+The sizes are estimates in focused hours, never measurements. The operator marks scope; A1 and
+A2 are in it.
+
+| Item | Where | Status | Size |
+|---|---|---|---|
+| Ask in words, metrics (feature 1) | 13.2, 15.12 | live v7; v10 candidate committed (85dce038), measurement pending; not done | 1 to measure |
+| Ask in words, logs | 15.12 | live v4 (adopted 2026-10-26); not done: blind set 90%, C1834's fix built | 2 |
+| Explain (P1) | 15.9 | live v4; round 1 (2026-10-27, Sonnet, 21 cases × 10 runs, by reliability): v4 152/210 runs, 12/21 reliable (57.1%), $0.0512 a successful answer; v6 147/210, 12/21, $0.0525; v6 not adopted (case 13 made unreliable, 8 of 10; it gains case 7); cases 8, 11, 12, 19 and 21 fail every run on both; not done (90% floor); schema 6's observer section (C1896) and C1897 measured next | 8 |
+| Intent in words (feature 7) | 13.2, 15.16 | live on Sonnet; measured 2026-10-27, 10 runs, by reliability: main35 32 of 35 (91.4%, under the 95% floor), held29 28 of 29 (96.6%); Haiku not adopted (held29 cases 23 and 29 made unreliable, 27 of 29), at $0.00017 a successful answer against Sonnet's $0.00205 to $0.00222 (C1785, closed); not done; case 33's two-ended detection before the call proposed. **v1's baseline for v2 (2026-10-27 ~07:3x to 07:5x UTC, Sonnet, 10 runs): main51 44 of 51 reliable (86.3%; cases 27, 33, 34, 44, 48 and 49 fail every run, case 50 refused before the call by v1's resolver, C1904); the blind held_out_3 30 of 30 (100%), $0.00205 a successful answer; held_out_3's two-ended cases 20 and 21 to be judged again under the two-device expectation (C1908) once its judge exists, v1's recorded answers with v2's** | 2 |
+| AI connection check | 15.13 | a utility, no bar | 0 |
+| **A1 the toolbar assistant** (P7) | 16.10, 18.1 | **in scope**; not built | 66: manual-truth test 6, egress mask 8, stage 1 16, stage 2 16, stage 3 12, cases 8 |
+| **A2.1 "Was this right?"** | 16.11 | **in scope**; not built | 8 |
+| **A2.2 AI-proposed expected effects** | 16.11 | **in scope**; not built (deterministic effects exist, C506) | 12 |
+| **A2.3 change record and rollback plan draft** | 16.11, section 6 rank 3 | **in scope**; not built | 10 |
+| **A2.4 incident correlation and AI timeline** | 16.11, section 6 ranks 2 and 5 | **in scope**; not built (background: 18.3) | 20 |
+| **A2.5 daily digest** | 16.11 | **in scope**; not built (background: 18.3) | 10 |
+| **A2 tier 2** (six items) | 16.11 | **in scope**; not built | about 90 |
+| SDN `classify_threat` | 17.1 S7 | in the lab slice; not built | 6 |
+| SDN later: a flow table in words; flows from a sentence; cross-switch anomaly notes | 17.1 | registered only (C1837) | 6, 16, 10 |
+| P5 plan with AI, and the action library | 16.7 | after the sprint; not built | about 40 |
+| P6 AI-assisted platform packs | 16.8 | after the sprint; not built | about 30 |
+| Template drafting for a new platform | section 6 rank 10 | release gate unmeasured; not built | about 30 |
+| Config-to-intent (higher-level intent from configs) | section 6 rank 9 | not built | about 24 |
+| AI catalog selection | section 6 rank 4 | only if decision 9 | not sized |
+| A pipeline check proposed after an escape | section 6 rank 6 | not built | about 12 |
+| A verifier draft for review | section 6 rank 8 | not built | about 12 |
+| AI cost safety itself | 18.3 | not built (C1843) | about 30: rules 1 to 5 and 9, 16; the chip, panel and history, 10; the wizard, 4 |
+
+### 18.5 The proposed order (for the operator to confirm)
+
+1. **Now, the lab's critical path, with 18.2 alongside:** the SDN slice by Fri 30 Oct (17.3).
+   - **In parallel,** in the order listed: the Mode B one-click deploy (then the operator's
+     re-walk), C1834, metrics v10's measurement, the backfill and Walk 2's report, Explain v6's
+     verdict, and the fidelity audit and hash pins.
+2. **Cost safety, before the SDN loop (S10).** The loop is the first background AI feature, so
+   18.3's rules come first, by Thu 29 Oct:
+   - rules 1 to 5 and 9 (the gateway's trigger and refusal, the irreversible tier's hand
+     check, per-network switches with the estimate, caps);
+   - then the chip and the panel (boards first).
+   - Rules 6 to 8 (history, the wizard, the provider-bills wording) follow straight after.
+   - Until rules 1 to 5 are live, the lab's loop classifies only on a person's press, so it is
+     not a background feature.
+3. **After Lab 8 (from Mon 3 Nov):**
+   - feature 7's measurement;
+   - A1's prerequisites, then stages 1 to 3;
+   - A2 in 16.11's order (1 to 5, then tier 2).
+
+### 18.6 The boards (drawn first, compared before built)
+
+1. The toolbar chip: its three colours and AI off, at laptop and phone widths.
+2. The spend panel.
+3. Settings › AI: the master switch and each feature's switch; turning a background feature on,
+   with its estimate; budgets per feature; who sees amounts.
+4. Spend history: by feature, person or job, and day, estimate beside actual.
+5. The fresh-install AI step: the key, the cost terms, the provider's own limit recommended.
+6. The assistant: explain-this-screen, how-to with its manual citation, a routed hand-off, a
+   change answered "checked, not applied", and an uncovered request recorded.
+
+Registered: C1843 (cost safety), C1844 (the manual-truth test), C1845 (the egress mask for
+typed text), C1846 (evaluation actors not enforced in two scripts).
+
+## 19. Phase 8 close-out (the operator, 2026-10-27; run as soon as 15.12's rules expire)
+
+**When:** the sprint rules end when the SDN Lab 8 slice and Phase 8's AI scope both meet their
+done bars (15.12). The close-out starts then, in this order:
+1. **Every finding registered under the freeze, by severity:** A, then B, then UNKNOWN (each
+   settled by its named measurement), then C. Each is fixed, or kept with a stated reason.
+2. **The fidelity audit:** every built screen compared with its board, and each record's
+   templates hash pinned (CLAUDE.md, "A board-built screen is compared").
+3. **The deferred items:**
+   - C1784: evaluation rows hidden by default in History's AI calls;
+   - C1785: Haiku against Sonnet for feature 7;
+   - C1791: the heartbeat's severity;
+   - C1809 to C1811: measurement freshness;
+   - C1783 and C1793: endpoint search and history;
+   - C1836: request logging.
+4. **Every exception created during the sprint:** each STANDING_APPROVAL_LOG line taken under
+   the sprint rules, and each `Test-Weakened` trailer and freeze exception, read again and
+   either kept with its reason or undone.
+5. **The AI day cap back to $1.50,** with the operator reminded.
+
+**Reporting:** the register's open count when the close-out starts (the Count section's
+figure), and the count each time it falls.
+
+### 19.1 Boards signed off under the Phase 7 mode, for the operator's design review
+
+The operator's order, 2026-10-27 ~07:3x UTC: a list of every board counted as signed off under
+the Phase 7 operating mode (CLAUDE.md, "Phase 7 operating mode"; from 2026-10-09 the agent's
+boards count as signed off, each one line in docs/STANDING_APPROVAL_LOG.md), for the operator's
+design review once the features are done, kept current as new ones are signed off: every new
+sign-off adds its row here the same turn it is logged. Kinds: **drawn** (a board the agent
+drew), **revised** (a board revision or redraw, including the agent's redraw of a board the
+operator signed off before the mode), **no drawing** (a control or state added to a signed-off
+board or page without a new drawing), **deviation** (the operator's order of 2026-10-27 ~07:5x
+UTC: a built screen that differs from its board, or draws what no board draws, as the log
+records it under the mode; the Board column names the board, its file and what differs, and the
+Log column the docs/fidelity/ record where the log names one). Excluded: boards the operator
+signed off themselves, and the comparison rows in docs/fidelity/ that the log does not word as
+a deviation. "Main canvas" is the canvas "NMAS v2 mockups"; "no file" means neither canvas index nor
+docs/boards/ holds a drawing for it.
+
+| Date | Page | Board | What it governs | Log |
+|---|---|---|---|---|
+| 2026-10-10 | Device actions on v2 | Capture card (board 1), no drawing | The reason for a shrink taken beside Capture's confirm, in the deploy card's reason pattern; What next by direction | 2026-10-10, "Cutover blocker 4 (C486)" |
+| 2026-10-10 | none (log only) | Record stores card, drawn; no file | Settings › Installation, below the Records database card: a store per row (where, last check, Move… / Move back…), the preview's counts per network, the result's steps | 2026-10-10, "Board: Record stores" |
+| 2026-10-10 | none (log only) | History › Remote set-up, drawn; no file | The remote's card from History's header: no remote (Connect), connected (facts, Run the write probe, first push's typed Acknowledge, automatic pushing) | 2026-10-10, "Board: History › Remote set-up" |
+| 2026-10-10 | none (log only) | Board I's create form and delete card, revised (board I the operator's, 2026-10-05); no file | New network… in the scope bar's network menu (preview naming the folder, Create); Delete this network… on the Network tab (what it holds, where its data goes, the name typed) | 2026-10-10, "Board I's create form" |
+| 2026-10-10 | none (log only) | Inventory source card, drawn; no file | A network's Network tab: where its devices come from and how fresh, a change previewed by one NetBox read, Refresh now | 2026-10-10, "a network's Inventory source card" |
+| 2026-10-10 | none (log only) | Source of truth › NetBox, drawn; no file | netbox.html: the connection and master switch, every network's devices, last import and removals, Import… / Remove… / Import every network…, the job card | 2026-10-10, "Board: Source of truth › NetBox" |
+| 2026-10-10 | none (log only) | Board E as built, revised (board E the operator's, 2026-10-04); no file | Add device… card above Devices (fields, Review the plan, Create); the pending page's Verify…, Get the bootstrap config…, Abandon…; Onboard it again… | 2026-10-10, "Board E as built" |
+| 2026-10-10 | none (log only) | Templates › Edit…, drawn; no file | The template editor in intent editor H's layout: the check as typed, reason and Commit, moved and refused states, Approve… for each revoked approval | 2026-10-10, "Board: Templates › Edit…" |
+| 2026-10-10 | none (log only) | Templates › Bindings…, drawn; no file | Each platform's template, per-device overrides, the preview naming every device that moves, reason and commit | 2026-10-10, "Board: Templates › Bindings…" |
+| 2026-10-10 | none (log only) | Device Actions › Reload…, drawn; no file | The Reload card: what else goes down, what will not happen, the six checks, the reason and the confirm naming the outage, the run and result per step | 2026-10-10, "Board: Device Actions › Reload…" |
+| 2026-10-10 | none (log only) | History › Baselines › Re-apply…, drawn; no file | reapply.html: counts by state, each device collapsed with its program and checks, one confirm, the batch drawn in place | 2026-10-10, "Board: History › Baselines › Re-apply…" |
+| 2026-10-10 | none (log only) | Templates › Coverage, drawn; no file | Templates' second tab: the dated measurement, Check coverage now, counts by outcome, what to model next, devices grouped and collapsed | 2026-10-10, "Board: Templates › Coverage" |
+| 2026-10-10 | none (log only) | Credentials › Profiles, drawn; no file | Credentials' second tab: the resolver's order, each profile's coverage, set or not set, Add / Edit / Delete, each change recorded | 2026-10-10, "Board: Credentials › Profiles" |
+| 2026-10-10 | none (log only) | Device History tab's golden rows, no drawing | A Reveal button on each golden row of the timeline, the version drawn unmasked under the row, recorded first | 2026-10-10, "Revealing a golden version on v2" |
+| 2026-10-11 | 7.4 Fleet | L, `ZtpDiscovery.dc.html`, main canvas v111, revised | Devices › Onboard devices › Discovered: vendor class by pool, the serial that changes each boot, next request, Picked, not taken | 2026-10-11, "Boards L and M redrawn" |
+| 2026-10-11 | 7.4 Fleet | M, `ZtpPlan.dc.html`, main canvas v111, revised | The ZTP plan's pending note from the measurements, "by serial" still pending | 2026-10-11, "Boards L and M redrawn" |
+| 2026-10-11 | 7.4 Fleet | M, `ZtpPlan.dc.html`, main canvas v113, revised (the operator's decision, "treat it as signed off") | The pending page's five steps with a bare first boot, Verify's result naming the next step (Deploy its intent…) | 2026-10-11, "Board M redrawn on the operator's decision" |
+| 2026-10-11 | Coverage, templates, stepper, History | 7.5, `HistoryIdentity.dc.html`, main canvas v112, drawn | History's identity line under the filters in four states, and its filter | 2026-10-11, "7.5: History's identity line" |
+| 2026-10-11 | History, Query | D, `LogsTail.dc.html`, main canvas v110 (the version from tests/signed_off_screens.py), drawn | The sidebar's Logs, a live tail: Pause, the window's counts, four filters, lines newest first, Paused, Loki failing | 2026-10-11, "C675: board D (`LogsTail.dc.html`)" |
+| 2026-10-11 | History, Query | D, `LogsTail.dc.html`, deviation: "checked every 5 s · the newest line HH:MM:SS UTC" where the board says "read 2 s ago" | The live tail's freshness line | 2026-10-11, "The tail says it checks every 5 s"; docs/fidelity/logs-tail.md |
+| 2026-10-11 | History, Query | A to C, `AskLibrary.dc.html`, `AskMetric.dc.html`, `AskLogs.dc.html`, deviation: Pin / Unpin and Remove… on each saved view, and Save this view… asking a title in place, which the boards do not draw | Saved views on History › Query | 2026-10-11, "the saved views' controls" |
+| 2026-10-11 | History, Query | A, `AskLibrary.dc.html`, deviation: Ask your own opens board B's layout with no question (PromQL in B's chart, LogQL in C's lines table) where the board draws a dashed card and no page | Ask your own (PromQL or LogQL), its bounds and its editable query | 2026-10-11, "Ask your own in board B's layout" |
+| 2026-10-11 | History, Query | A, `AskLibrary.dc.html`, deviation: routing neighbour changes counted per protocol on one device where the board says "per neighbour" | Routing neighbour changes, Restarts and Telemetry rates in board B's layout | 2026-10-11, "the last three questions in board B's layout"; docs/fidelity/history-metric.md |
+| 2026-10-11 | P.11 Topology | A, `TopoDesktop.dc.html`, main canvas v109, revised (the operator's five decisions, drawn by the agent; the log does not say "counted as signed off") | The desktop map: bands removed, Reset layout for Arrange, the line saying how to move, pan and zoom and who arranged it last | 2026-10-11, "Topology's boards redrawn for C661" |
+| 2026-10-11 | P.11 Topology | B, `TopoPhone.dc.html`, main canvas v109, revised (as above) | The phone map: pan and pinch only | 2026-10-11, "Topology's boards redrawn for C661" |
+| 2026-10-11 | P.11 Topology | C, `TopoWall.dc.html`, main canvas v109, revised (as above) | The wall: its header names the network's shared layout | 2026-10-11, "Topology's boards redrawn for C661" |
+| 2026-10-11 | P.11 Topology | A, `TopoDesktop.dc.html`, deviation: the legend says "not classified in NetBox" where the board says "class unknown" (the operator's words) | Topology's legend word for an unclassified device | 2026-10-11, "C665 step 2: board F4's Role map" |
+| 2026-10-11 | P.8 Settings | F4, `InstallTabs.dc.html`, deviation: a read-only Roles card saying where roles live (NetBox's `mercury_kind`) where the board draws an editable role map | Settings › Installation › Platforms and roles, once the role map was removed (C665) | 2026-10-11, "C665 step 2: board F4's Role map" |
+| 2026-10-12 | Item 5, DHCP | C, `DhcpSubnets.dc.html`, main canvas v117, revised (board C the operator's, 2026-10-06) | Pool description on Add and Edit…, under each pool's range, and the "no description" state | 2026-10-12, "C709: DHCP board C revised" |
+| 2026-10-12 | P.11 Topology | D, `TopoPathTrace.dc.html` (file from the canvas), main canvas v114, drawn | Path…: the path packets take, hop by hop from each forwarding table, branches, stops, layer 2 dashed | 2026-10-12, "Topology board D: Path…" |
+| 2026-10-12 | P.11 Topology | E, `TopoSnap.dc.html`, main canvas v115, drawn | Snap to grid, one toolbar switch: dots, the outline at the nearest dot, Alt and an arrow, off by default | 2026-10-12, "C691: Topology board E" |
+| 2026-10-15 | Device actions on v2 | 7.3's operation-card boards (no single file), deviation: a card spans the tab where the board holds it to 860 px (the operator's instruction) | The device page's operation cards, a deploy's steps in one row on a wide screen | 2026-10-15, "C793: the device page's operation cards" |
+| 2026-10-15 | none (the top bar) | The top bar (no file named), deviation: "Integrations: stale" in warning past its reader's promise, the unconfigured named on hover | The top bar's integrations item, taking over today's status bar | 2026-10-15, "C811, 7.8, today's pages (4)" |
+| 2026-10-15 | P.8 Settings | F4, `InstallTabs.dc.html`, deviation: "How does this work?" beside Check now; "unknown" and "paused" for an unreadable network where the board draws "never" and a time; a running row names who holds the run | Settings › Installation › Diagnostics, the Drift checks card | 2026-10-15, "C807: Settings › Installation › Diagnostics" (on the UNCHECKED list; no fidelity record) |
+| 2026-10-15 | P.8 Settings | D, `SettingsNetwork.dc.html`, deviation: a Test on Settings › Default's Monitoring profile card, which the board does not draw | The Monitoring profile card | 2026-10-15, "C811, 7.8, today's pages (4)" |
+| 2026-10-15 | P.8 Settings | A, D and F3, `SettingsNetwork.dc.html`, `InstallCards.dc.html`, deviation: a hidden field on each settings card carrying what it drew (nothing visible) | Every settings card | 2026-10-15, "C811, 7.8, today's pages (4)" |
+| 2026-10-16 | 7.4 Fleet | C, `SaveAll.dc.html`, deviation: a leading warn notice when the save would repeat the last baseline, which the board does not draw | v2's Save card | 2026-10-16, "C860: v2's Save says when it would repeat" |
+| 2026-10-16 | 7.4 Fleet | B, `BatchDeploy.dc.html`, deviation: the rollout order as a per-device list with Earlier, Later and a drag grip (the operator's R4) where the board draws three rules with Change… and Reorder… | Batch deploy's preview, the rollout order | 2026-10-16, "C905: the rollout order is a per-device list" |
+| 2026-10-16 | 7.4 Fleet | B, `BatchDeploy.dc.html`, deviation: the order bound by the confirm route and recorded in the job and receipts, where the board says it is in the plan's hash | Batch deploy's confirm | 2026-10-16, "C888: the order is bound by the confirm route" |
+| 2026-10-16 | 7.4 Fleet | G, `Adopt.dc.html`, deviation: the lines a save makes permanent and loses listed in Persist's drawing, where the board draws a count only | Adopt's card | 2026-10-16, "C923: Adopt's card lists the lines" |
+| 2026-10-16 | 7.4 Fleet | A, `FleetSelect.dc.html`, deviation: a fifth intent chip, "intent changed since measured" (info, what moved on hover), beside the board's four | Devices' intent chips | 2026-10-16, "Devices: a fifth intent chip"; docs/fidelity/devices.md |
+| 2026-10-16 | C342 drift | `C342Drift.dc.html` (file from the canvas), drawn | The device Overview's Drift row in five states: at golden, drifted closed and open, a source that cannot answer, unreadable, phone | 2026-10-16, "C342: board C342Drift drawn" |
+| 2026-10-16 | C537/C538 In progress | C537 A, `TopBarDesktop.dc.html`, main canvas v66, drawn (the canvas title still says FOR SIGN-OFF) | The top bar at desktop width: idle, running, finished unopened, the command box | 2026-10-16, "Board: C537 A, the top bar" |
+| 2026-10-16 | C537/C538 In progress | C537 B, `TopBarPhone.dc.html`, main canvas v66, drawn (canvas: FOR SIGN-OFF) | The top bar at phone width: the chip as its count, the outcome, the command box full width | 2026-10-16, "Board: C537 B, the top bar" |
+| 2026-10-16 | C537/C538 In progress | C537 C, `Reattach.dc.html`, main canvas v66, drawn (canvas: FOR SIGN-OFF) | A device page reopening its card: running, result, a freed card showing the result | 2026-10-16, "Board: C537 C, a device page" |
+| 2026-10-16 | C537/C538 In progress | C537 C, `Reattach.dc.html`, deviation: a finished, unopened result kept 30 minutes in memory (a restart loses it; History keeps the receipt) where the board says "until opened, kept across a restart" | Reopening a finished result | 2026-10-16, "Board C's decision: how long a finished" |
+| 2026-10-16 | C566 | A, `C566Profile.dc.html`, deviation: the count of devices cross-checked leads "On the devices" and those not read are listed by reason, neither drawn by the board | Monitoring › Profile's proposal | 2026-10-16, "C869: the profile proposal says what it read" |
+| 2026-10-16 | C954 Stop tracking | `NetboxStopTracking.dc.html`, drawn | NetBox's Remove card gains Stop tracking instead…: its preview, the one confirm, result and refusal | 2026-10-16, "NetBox's Remove card gains Stop tracking" |
+| 2026-10-16 | Device actions on v2 | No board (`DevDeployPreview` and `DeployExpected` draw no such region), deviation: where each line comes from, in today's wizard's words, through one macro | The device Deploy card's and Devices › Plan a deploy's previews | 2026-10-16, "C867, C878: the deploy previews' attribution" |
+| 2026-10-16 | Device actions on v2 | 9, `DevRestore.dc.html`, deviation: each moment's message after its claim, which the board does not draw | The restore chooser | 2026-10-16, "C868: the restore chooser draws" |
+| 2026-10-16 | none (Landing's boards) | Landing's boards (no file), deviation: a row's meta line names the device's network ("r1 in Default"), Open <device> opening it in its own network, where the boards draw the device link alone | Landing's rows | 2026-10-16, "Landing: a row names each device's network"; docs/fidelity/landing.md |
+| 2026-10-16 | none (the Overview's boards) | The device Overview's boards (no file), deviation: the recorded intent state as its own Intent state row under Last measured, where the boards draw it inside The difference | The device page's Overview | 2026-10-16, "Device Overview: the recorded intent state"; docs/fidelity/tab-overview.md |
+| 2026-10-17 | 7.4 Fleet | M's pending page progress card, revised; no file | The pending page's "<device> onboarding progress" card: Answering / Not answering yet, the ZTP stop rule, the live clock from Create | 2026-10-17, "C1193: board M's pending page" |
+| 2026-10-17 | C1029 deleted network | `SettingsNetworkDeleted.dc.html`, drawn | A deleted network's Settings page (410): the notice and no actions; a tab drawn before the delete refusing each write by name; phone | 2026-10-17, "Board: a deleted network's Settings page" |
+| 2026-10-17 | Coverage, templates, stepper, History | D, `HistoryTimeline.dc.html`, deviation: the Kind menu gains "NetBox imports and removals", its rows drawn as every kind's | History's Kind menu | 2026-10-17, "Deviation: C1030 (B8)"; docs/fidelity/history.md |
+| 2026-10-17 | Item 5, DHCP | The inheriting network's DHCP page, no drawing | The read-only page: the owner line, the controls absent | 2026-10-17, "C1181: the inheriting network's read-only DHCP" |
+| 2026-10-17 | none (log only) | The 2026-10-10 NetBox board (no file), deviation: the master switch in words (whether writes are on and where they are turned off), a confirm able to turn writes on | Source of truth › NetBox's master switch | 2026-10-17, "NetBox: the master switch is words"; docs/fidelity/netbox.md |
+| 2026-10-17 | none (Services mockups) | The device Logs tab's board (no file), deviation: a login line shows its account's name as sent, where the board masks the user with Reveal… | The device page's Logs tab | 2026-10-17, "Device Logs: a login line shows"; docs/fidelity/tab-logs.md |
+| 2026-10-17 | none (the device page's boards) | No board, deviation: the header's chip "Restarting as planned (until …, by …)" in warn inside a planned-restart window, wrapping at phone width | The device page header's status chip | 2026-10-17, "Deviation: C1025: the header's chip"; docs/fidelity/device.md |
+| 2026-10-17 | P.8 Settings | Board N's label region, no drawing (the log calls it "the agent's board" and names no drawing) | The top bar's network label "Default · <name> was deleted" after a redirect | 2026-10-17, "C1190: the top bar's network label" |
+| 2026-10-18 | 7.4 Fleet | A, `FleetSelect.dc.html`, deviation: the Actions menu offers Save the devices with no golden, a scope of Save, which the boards do not draw | Devices' Actions menu | 2026-10-18, "Devices: the Actions menu offers Save"; docs/fidelity/devices.md |
+| 2026-10-18 | 7.4 Fleet | A, `FleetSelect.dc.html`, deviation: with every shown row ticked the selection is all matching, carried as the search and filters, beyond the board's head checkbox | Devices' select-all | 2026-10-18, "Devices: a select-all box"; docs/fidelity/devices.md |
+| 2026-10-18 | Device actions on v2 | 11, `DevRevertRetry.dc.html`, deviation: the headline names a rollback that did not restore the device ("Rollback failed", "incomplete", "not read back", "not attempted"), which no board draws | The Deploy and Re-apply cards' headline | 2026-10-18, "C1268 (A): the Deploy and Re-apply cards' headline"; docs/fidelity/device.md |
+| 2026-10-18 | Device actions on v2 | 2, `DevCaptureResult.dc.html`, deviation: the result amber, "Recorded; departs from intent", where the board draws green "Recorded" (the operator confirmed it, 2026-10-18) | Capture's result | 2026-10-18, "Device: Capture's result is amber" and "The operator's decision (C1273)"; docs/fidelity/device.md |
+| 2026-10-18 | none (Landing's boards) | No board, deviation: a Grafana incident's member draws its onset and any silence (who, until when, why) | Landing's incident rows | 2026-10-18, "Landing: a Grafana incident's member"; docs/fidelity/landing.md |
+| 2026-10-18 | none (log only) | The 2026-10-10 Inventory source board (no file), deviation: each skipped, warned and gone device named, grouped by cause, the counts leading | Settings: a network's Inventory source card | 2026-10-18, "Settings: the Inventory source card names"; docs/fidelity/settings.md |
+| 2026-10-18 | none (log only) | No board, deviation: the result's evidence draws what verify read, its scope, the lines read back and each not read back | Apply's result and the device Deploy card's checks | 2026-10-18, "Apply: the result's evidence draws"; docs/fidelity/apply.md |
+| 2026-10-19 | 7.4 Fleet | Board E's Add device card, no drawing | Route option (3): None (D4) / The relay's own address, under Gateway, only for ZTP | 2026-10-19, "0e's two controls on board-built cards" |
+| 2026-10-19 | Item 5, DHCP | Board C's Add a subnet, no drawing | For ZTP onboarding, a checkbox in the Subnet part, Gateway and DNS refused when ticked | 2026-10-19, "0e's two controls on board-built cards" |
+| 2026-10-19 | none (Landing's boards) | No board, deviation: a sent Acknowledge answered in place within 6 s ("Acknowledged." with no Cancel once sent, or why it was refused, or that the outcome is not known) | Landing's Needs attention Acknowledge form | 2026-10-19, "Landing: a sent acknowledgement is answered"; docs/fidelity/landing.md |
+| 2026-10-19 | none (Services mockups) | The device page's NetBox tab, no drawing | What NetBox lacks, and Import into NetBox… for one device through the import's preview and confirm | 2026-10-19, "The device page's NetBox tab gains" |
+| 2026-10-20 | Item 5, DHCP | Board A's Leases table, no drawing | Release lease… on each lease, its card in board D's exclusion card's pattern, the result with the stepper | 2026-10-20, "DHCP › Leases gains Release lease…" |
+| 2026-10-21 | 7.4 Fleet | Board A's pending row, no drawing | A pending row's chip reads its onboarding's progress, its age, redrawn on `pending` | 2026-10-21, "Devices: a pending row reads" |
+| 2026-10-21 | 7.4 Fleet | Board B's batch result, no drawing | Retry <device> under the stepper for each device a finished batch did not deploy | 2026-10-21, "Batch deploy: Retry for every device" |
+| 2026-10-21 | C603 Decline | The IP SLA page (not on the Decline board), no drawing | Probes off the policy's frequency: their own section, cost now and after, ticked, their own commit | 2026-10-21, "IP SLA: probes off the policy's frequency" |
+| 2026-10-21 | C603 Decline | The IP SLA page (not on the Decline board), no drawing | Committed, not yet on the device: each side's lines, the last failed send, Retry <device> | 2026-10-21, "IP SLA: a committed probe" |
+| 2026-10-21 | none (log only) | The NetBox job card (the 2026-10-10 board), no drawing | An import's preview offers Free <address> from <record>…, its own preview, confirm and result | 2026-10-21, "NetBox: an import's preview offers Free" |
+| 2026-10-21 | P.11 Topology | Board A's weak points, no drawing | Accept… on each SPOF and only link, drawn "accepted" with its reason and Withdraw, warning again when what it cuts off changes | 2026-10-21, "Topology: a weak point the design intends" |
+| 2026-10-22 | 7.4 Fleet | E, `OnboardList.dc.html`, deviation: the review's Console part, the offer drawn under Create, and Create's result offering the kick-start, which the board does not draw | Add device's review | 2026-10-22, "Add device: the review's Console part"; docs/fidelity/devices.md (Board E) |
+| 2026-10-22 | 7.4 Fleet | M, `ZtpPlan.dc.html`, and the manual's `OnboardPanel.dc.html`, deviation: the Onboarding card's Console part under the three actions (as console-ztp board F draws it), which neither draws | The pending page's Onboarding card | 2026-10-22, "Pending: the Onboarding card's Console part"; docs/fidelity/pending.md |
+| 2026-10-22 | Out-of-band ZTP (docs/boards/console-ztp.html) | A, drawn (letter from the file) | Settings › Installation › Console servers: ports, keys and host keys | 2026-10-22, "Out-of-band ZTP's interface: board drawn" |
+| 2026-10-22 | Out-of-band ZTP (docs/boards/console-ztp.html) | B, drawn (letter from the file) | Add device's review: the console offer, or its absence said | 2026-10-22, "Out-of-band ZTP's interface: board drawn" |
+| 2026-10-22 | Out-of-band ZTP (docs/boards/console-ztp.html) | C, drawn (letter from the file) | The console survey's preview, the profile chosen from platform and role | 2026-10-22, "Out-of-band ZTP's interface: board drawn" |
+| 2026-10-22 | Out-of-band ZTP (docs/boards/console-ztp.html) | D, drawn (letter from the file) | The survey's result: blank, not blank or unknown, the MAC, the masked transcript, the next step | 2026-10-22, "Out-of-band ZTP's interface: board drawn" |
+| 2026-10-22 | Out-of-band ZTP (docs/boards/console-ztp.html) | E, drawn (letter from the file) | The kick-start's preview (the exact lines) and result; refused before Create | 2026-10-22, "Out-of-band ZTP's interface: board drawn" |
+| 2026-10-22 | Out-of-band ZTP (docs/boards/console-ztp.html) | F, drawn | A pending device's page with the console card, and a console run's stepper | 2026-10-22, "Out-of-band ZTP board F" |
+| 2026-10-23 | Out-of-band onboarding (docs/boards/oob-onboarding.html) | A, drawn | Add device's Address from gains Out-of-band (console), enabled or disabled with its reason; hides the address fields | 2026-10-23, "Out-of-band onboarding board A" |
+| 2026-10-23 | Out-of-band onboarding (docs/boards/oob-onboarding.html) | B, drawn | The one review card and its one button, Onboard <device> through its console | 2026-10-23, "Out-of-band onboarding board B" |
+| 2026-10-23 | Out-of-band onboarding (docs/boards/oob-onboarding.html) | C, drawn | The run's stepper from the confirm, a console run's own page (oob_run.html), the result | 2026-10-23, "Out-of-band onboarding board C" |
+| 2026-10-23 | Out-of-band onboarding (docs/boards/oob-onboarding.html) | D, drawn (the log row says "Taken", not "counted as signed off") | An In progress list on Devices, the top bar chip's read, not in the sidebar | 2026-10-23, "Out-of-band onboarding board D" |
+| 2026-10-23 | Out-of-band ZTP (docs/boards/console-ztp.html) | A, deviation: the host key's whole fingerprint, monospace, selected in one click, with its key type, where the board draws `SHA256:a81c…` | Console servers' rows and the Re-key preview | 2026-10-23, "Console servers: the host key's whole fingerprint" |
+| 2026-10-26 | Coverage, templates, stepper, History | History's board D, no drawing | An AI call's opened row: Show the prompt and the answer, in place | 2026-10-26, "History: an opened row's links" |
+| 2026-10-26 | Coverage, templates, stepper, History | History's board D, no drawing | Load more by keyset (the next 50) and jump to a date, on History and a device's History tab | 2026-10-26, "History: Load more by keyset" |
+| 2026-10-26 | Feature 7 | F7, `IntentWords.dc.html`, main canvas v141, drawn | Change it in words on the Intent tab: the sentence, Draft the change, the preview, and six other states | 2026-10-26, "Board F7: Change it in words" |
+| 2026-10-26 | Feature 7 | F7, `IntentWords.dc.html`, main canvas v146 and v147, revised | Feature 7 parts 1 and 2: names read, Mercury's own question, Already so, the footer, committed and not committed, History linked | 2026-10-26, "Board F7 redrawn: feature 7's parts" |
+| 2026-10-26 | Feature 7 | F7 1d, `IntentWords.dc.html`, main canvas v148, revised | History's AI call, intent commit and deploy receipt linked both ways | 2026-10-26, "Board F7 1d: AI call" |
+| 2026-10-26 | History, Query | 8.1, `AskWords.dc.html`, main canvas v144, drawn (after the row was built) | Ask in words on both builders, nine states: idle, busy, filled, a question back, Mercury's own answer, refused, AI off | 2026-10-26, "Board 8.1: Ask in words" |
+| 2026-10-26 | P1, Monitoring › Alerts | P1, `AlertsExplain.dc.html`, main canvas v143, drawn | The Alerts tab: summary, filter, alerts grouped by rule, Explain's answer on top of the folded evidence pack, AI off | 2026-10-26, "Board P1: Monitoring › Alerts" |
+| 2026-10-26 | P1, Monitoring › Alerts | P1-H, `AlertsHistory.dc.html`, drawn (in the agent's copy of the canvas folder; in neither canvas index) | Alerts › History: Firing and History switch, the summary, the filter, past alerts with Build evidence and Explain, a rebuilt pack | 2026-10-26, "Board P1-H: Monitoring › Alerts › History" |
+| 2026-10-27 | C1693 | H-N, `IntentNormalise.dc.html`, main canvas v165, drawn | Normalise the formatting on the Intent tab: the offer, the editor's four-line proof, the stop, Commit the formatting only | 2026-10-27, "Board H-N: normalise an intent" |
+| 2026-10-27 | C1843: AI cost safety | AI1, `AiChip.dc.html`, main canvas v159 to v164, drawn | The toolbar AI chip: neutral, amber, red, no cap, AI off, unreadable, amounts hidden, laptop and phone | 2026-10-27, "Boards AI1 to AI5: AI cost safety" |
+| 2026-10-27 | C1843: AI cost safety | AI2, `AiSpendPanel.dc.html`, drawn | The spend panel from the chip, its Needs attention rows, the unreadable record | 2026-10-27, "Boards AI1 to AI5: AI cost safety" |
+| 2026-10-27 | C1843: AI cost safety | AI3, `SettingsAi.dc.html`, drawn | Settings › AI: the master switch, a switch per feature, background features per network with caps, who sees amounts | 2026-10-27, "Boards AI1 to AI5: AI cost safety" |
+| 2026-10-27 | C1843: AI cost safety | AI3b, `SettingsAiOn.dc.html`, drawn (the log names the file within "AI1 to AI5"; the canvas labels it AI3b) | Turning a background feature on: the estimate, the caps, the refusal when the estimate moved | 2026-10-27, "Boards AI1 to AI5: AI cost safety" |
+| 2026-10-27 | C1843: AI cost safety | AI4, `AiSpendHistory.dc.html`, drawn | History › AI calls led by spend, by feature, person or job and day, estimate beside actual | 2026-10-27, "Boards AI1 to AI5: AI cost safety" |
+| 2026-10-27 | C1843: AI cost safety | AI5, `SettingsAiFirst.dc.html`, drawn | A fresh install: AI off until a key and the cost terms, the four steps, the provider's limit | 2026-10-27, "Boards AI1 to AI5: AI cost safety" |
+| 2026-10-27 | Feature 7 | F7-Q, `IntentWordsAsk.dc.html`, main canvas v167, drawn | Mercury's pre-call questions continue the draft: two-ended offers, alternatives as buttons, the area and description questions | 2026-10-27, "Board F7-Q: Mercury's pre-call questions" |
+| 2026-10-27 | P.8 Settings | The AI (hosted) card on Installation, no drawing (the log: "drawn without a board") | No cap with the typed `no cap` confirmation, the large-increase confirmation, the warn notice | 2026-10-27, "The AI card's no cap" |
+| 2026-10-27 | SDN (PHASE8_PLAN 17) | S1, `SdnControllers.dc.html`, canvas v157, drawn (the canvas title still says FOR SIGN-OFF) | SDN › Controllers: each connection's operating state, Edit connection | 2026-10-27, "SDN boards S1 to S7 drawn" |
+| 2026-10-27 | SDN (PHASE8_PLAN 17) | S2, `SdnFlows.dc.html`, drawn (canvas: FOR SIGN-OFF) | SDN › Flows: owner by cookie, expected against installed, unauthorised highlighted, meters | 2026-10-27, "SDN boards S1 to S7 drawn" |
+| 2026-10-27 | SDN (PHASE8_PLAN 17) | S3, `SdnResponses.dc.html`, drawn (canvas: FOR SIGN-OFF) | SDN › Responses: awaiting approval first, HITL or AUTO, the loop and Stop, rules and thresholds | 2026-10-27, "SDN boards S1 to S7 drawn" |
+| 2026-10-27 | SDN (PHASE8_PLAN 17) | S4, `SdnResponse.dc.html`, drawn (canvas: FOR SIGN-OFF) | A response's preview (the exact REST bodies), confirm by hash, Verify's three checks, result and rollback | 2026-10-27, "SDN boards S1 to S7 drawn" |
+| 2026-10-27 | SDN (PHASE8_PLAN 17) | S5, `SdnSwitch.dc.html`, drawn (canvas: FOR SIGN-OFF) | An OpenFlow switch's device page: Flows in place of Intent, direct actions refused | 2026-10-27, "SDN boards S1 to S7 drawn" |
+| 2026-10-27 | SDN (PHASE8_PLAN 17) | S6, `SdnSettings.dc.html`, drawn (canvas: FOR SIGN-OFF) | Settings › Integrations, the SDN controller connection, every driver with its status | 2026-10-27, "SDN boards S1 to S7 drawn" |
+| 2026-10-27 | SDN (PHASE8_PLAN 17) | S7, `SdnPhone.dc.html`, drawn (canvas: FOR SIGN-OFF) | SDN at phone width: Controllers, Flows and Responses | 2026-10-27, "SDN boards S1 to S7 drawn" |
+| 2026-10-27 | P.11 Topology | F, `TopoSdn.dc.html`, main canvas v170, drawn | An SDN fabric read from its controller (17.1 S14, C1910): the controller-managed switch symbol (`sdn-switch.svg`), links labelled by source, a hybrid LLDP-and-controller link, controller-learned hosts, the controller as a coverage layer | 2026-10-27, "Board F: Topology, an SDN fabric" |
+| 2026-10-27 | SDN (PHASE8_PLAN 17) | S8, `SdnFlowEdit.dc.html`, main canvas v171, drawn | Flows managed (17.1 S16, S19): Add with OpenFlow 1.3's prerequisites named, Edit by modify-strict (match or priority as delete-strict plus add), Remove by delete-strict with the table-miss flow's typed confirmation and the controller-owned warning, the REST preview, Explain this flow table | 2026-10-27, "Boards S8 and S9" |
+| 2026-10-27 | SDN (PHASE8_PLAN 17) | S9, `SdnPolicies.dc.html`, main canvas v171, drawn | SDN › Policies (17.1 S17, S18): policies as committed intent with departures and Reinstall, the priority scheme, Describe a policy with its pre-call question, the compiled flows, the conflict check and the effect in words | 2026-10-27, "Boards S8 and S9" |
+
+**Count:** 118 rows: 52 drawn, 12 revised, 17 no drawing, 37 deviation. Every row comes from
+docs/STANDING_APPROVAL_LOG.md; the other sources supplied only these: the canvas indexes gave
+the S1 to S7 numbers against the SDN files, AI3b's label for `SettingsAiOn.dc.html`, the files
+for Topology board D (`TopoPathTrace.dc.html`), DHCP board C (`DhcpSubnets.dc.html`) and
+`C342Drift.dc.html`, and the canvas page names; docs/boards/console-ztp.html gave the letters A
+to E for its one log row; tests/signed_off_screens.py gave LogsTail's version (v110). For the
+deviation rows the log names the board by letter or number; the canvas index gave its file
+(`AskLibrary`, `AskMetric`, `AskLogs`, `InstallTabs`, `InstallCards`, `SettingsNetwork`,
+`FleetSelect`, `OnboardList`, `DevRevertRetry`; the log names the rest), and the log line about
+the operator's confirmation of C1273 joins its deviation's row.

@@ -48,12 +48,15 @@ STOPS = ("ai_off", "no_key", "over_cap", "unknown_task", "unknown_model", "provi
 
 
 def summary(case: dict, runs: list) -> dict:
-    """One case's runs, reported: passes, consistency (the same outcome and operations every
-    run), cost and latency."""
+    """One case's runs, reported: passes, reliability (correct in every run: what adoption and
+    the done floor decide on, the operator's amendment of 2026-10-27), consistency (the same
+    outcome and operations every run; reported, deciding nothing), cost and latency."""
     shapes = {json.dumps([r["outcome"], sorted(json.dumps(o, sort_keys=True)
                                                 for o in r["ops"])]) for r in runs}
     lat = [r["latency_s"] for r in runs]
-    return {"n": case["n"], "passed": sum(not r["misses"] for r in runs), "runs": len(runs),
+    passed = sum(not r["misses"] for r in runs)
+    return {"n": case["n"], "passed": passed, "runs": len(runs),
+            "reliable": bool(runs) and passed == len(runs),
             "consistent": len(shapes) == 1, "cost_usd": round(sum(r["cost_usd"] for r in runs), 4),
             "latency_p50_s": round(statistics.median(lat), 2) if lat else None,
             "outcomes": [r["outcome"] for r in runs],
@@ -144,9 +147,11 @@ def record(checkout: str, list_name: str, actor: str, out: str, case_file: str,
                    "report": report, "recordings": by_case}, fh, indent=2)
     total = sum(s["runs"] for s in report)
     passed = sum(s["passed"] for s in report)
+    reliable = sum(s["reliable"] for s in report)
     consistent = sum(s["consistent"] for s in report)
     lat = [r["latency_s"] for rs in by_case.values() for r in rs]
-    print(f"{passed} of {total} runs pass; {consistent} of {len(report)} cases consistent; "
+    print(f"{passed} of {total} runs pass; {reliable} of {len(report)} cases reliable (correct "
+          f"in every run); {consistent} of {len(report)} cases consistent; "
           f"latency p50 {statistics.median(lat) if lat else 0:.1f} s; ${spent:.4f} spent; "
           f"written {out}")
     return status

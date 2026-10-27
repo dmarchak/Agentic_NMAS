@@ -216,6 +216,25 @@ def test_the_recorder_reports_passes_consistency_cost_and_latency(monkeypatch, t
     assert [s["passed"] for s in rec["report"]] == [2] * n
     assert all(s["consistent"] for s in rec["report"])
     assert rec["spent_usd"] == pytest.approx(0.02 * n)
+    assert all(s["reliable"] for s in rec["report"])
+
+
+def test_a_case_wrong_in_every_run_is_consistent_and_never_reliable():
+    """The operator's amendment of 2026-10-27: reliability (correct in every run) decides, and a
+    consistently wrong case counts against it; case 33's shape, one wrong answer ten times,
+    against a right one in half the runs."""
+    mod = _script()
+    case = {"n": 33, "expect": {"outcome": ["ask", "refuse", "refused_after"]}}
+    wrong = {"outcome": "answer", "ops": [{"op": "set_description"}], "misses": ["outcome answer"],
+             "cost_usd": 0.0, "latency_s": 1.0}
+    right = {"outcome": "ask", "ops": [], "misses": [], "cost_usd": 0.0, "latency_s": 1.0}
+    every_run_wrong = mod.summary(case, [wrong] * 10)
+    half_right = mod.summary(case, [right, wrong] * 5)
+    every_run_right = mod.summary(case, [right] * 10)
+    assert every_run_wrong["consistent"] and not every_run_wrong["reliable"]
+    assert not half_right["consistent"] and not half_right["reliable"]
+    assert every_run_right["consistent"] and every_run_right["reliable"]
+    assert not mod.summary(case, [])["reliable"], "no runs is never reliable"
 
 
 def test_a_recording_is_never_a_person_and_can_ask_another_model(monkeypatch, tmp_path, capsys):
