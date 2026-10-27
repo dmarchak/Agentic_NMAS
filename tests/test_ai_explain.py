@@ -538,9 +538,13 @@ def test_a_health_figure_is_read_when_it_was_measured(world):
     is not healthy evidence, though its section was read."""
     import copy
     pack = copy.deepcopy(world.pack)
+    # Each figure names its device as the builder's do (evidence_health._piece): the answer
+    # names r1, so its citation must be r1's (C1897).
     health = {"ref": "health", "name": "health", "state": "ok", "pieces": [
-        {"ref": "health:dev:u1:cpu", "figure": "cpu", "state": "ok"},
-        {"ref": "health:dev:u1:scrapes", "figure": "scrapes", "state": "unreadable"}]}
+        {"ref": "health:dev:u1:cpu", "dev": "dev:u1", "device": "r1", "figure": "cpu",
+         "state": "ok"},
+        {"ref": "health:dev:u1:scrapes", "dev": "dev:u1", "device": "r1", "figure": "scrapes",
+         "state": "unreadable"}]}
     pack["sections"] = [s for s in pack["sections"] if s["name"] != "health"] + [health]
     ok = explain.ExplanationV2.model_validate_json(
         json.dumps(_no_fault(pack, checked=["health:dev:u1:cpu"])))

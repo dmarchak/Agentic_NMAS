@@ -306,9 +306,14 @@ def select(pack: dict, selector: str) -> list:
     figure's id carries the device's id, which a case cannot know before the pack is built);
     ``concurrent:<device name or address>``, every other alert of that device (C1850), or
     ``concurrent:<device>@<rule>``, that rule's alone (an address may hold colons, so the rule
-    follows an ``@``); or ``<section>:*``, every piece of that section and the section
-    itself."""
+    follows an ``@``); ``observer:<what>``, the observer's piece of that reference and every one
+    under it (``observer:host`` is the host's three, ``observer:job`` every job's; C1896: its
+    references are stable names, known before the pack is built); or ``<section>:*``, every
+    piece of that section and the section itself."""
     parts = selector.split(":")
+    if parts[0] == "observer" and selector != "observer:*":
+        return [p for p in _section(pack, "observer").get("pieces") or []
+                if p.get("ref") == selector or (p.get("ref") or "").startswith(selector + ":")]
     if parts[0] == "health" and len(parts) == 3:
         return [p for p in _section(pack, "health").get("pieces") or []
                 if p.get("device") == parts[1] and p.get("figure") == parts[2]]
@@ -491,6 +496,12 @@ def explain_misses(expect: dict, answer, pack: dict, error: str = "") -> list:
         if all(why for _n, why in lacks):
             out.append("none of the accepted lines of reasoning: " + "; ".join(
                 f"{n}: {', '.join(why)}" for n, why in lacks))
+    # The leading hypothesis's own evidence (C1896, case 21): it cites at least one piece of
+    # each group, so the cause ranked first rests on that evidence, not a later hypothesis.
+    for group in expect.get("lead_cites", ()):
+        lead = set(hyps[0].get("evidence_refs") or []) if hyps else set()
+        if not lead & _refs(pack, group):
+            out.append(f"the leading hypothesis cites none of {group}")
     if hyps and expect.get("lead_not_only"):
         lead = set(hyps[0].get("evidence_refs") or [])
         if lead and lead <= _refs(pack, expect["lead_not_only"]):

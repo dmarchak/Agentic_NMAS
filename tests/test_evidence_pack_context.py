@@ -424,8 +424,10 @@ class TestTheHealthFigures:
 # ------------------------------------------------------------------- Explain
 
 def _citing(w, refs):
-    a = _answer(w.pack)
-    a["hypotheses"][0]["evidence_refs"] = refs
+    """An answer resting on s3's evidence: its rationale names only s3, so every device it names
+    is cited (C1897)."""
+    a = _answer(w.pack, rationale="s3's figures in the window.")
+    a["hypotheses"][0].update(evidence_refs=refs, claim="s3 stalled in the window.")
     return a
 
 

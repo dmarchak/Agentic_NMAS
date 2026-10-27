@@ -15,7 +15,7 @@ the Loki and Prometheus captures. At 1280 and 390 the pack built at 1440 is kept
 row opens on the pack and not on Build evidence. The Loki capture is answered whatever the
 window, so the shot's log lines are 15 Oct's, not 21 Oct's.
 Templates compared: templates/v2/_alert_history.html, templates/v2/_evidence_pack.html, templates/v2/monitoring.html, templates/v2/_explain_block.html
-Templates sha256: `7a8a6c425fc46ce1bde970bbd331f86f98e18ab6526c4dc75e92a9aeff22fe11`
+Templates sha256: `c8e11756f7bea09cf0613c7b4c3b07ca0a577525aa7e1a0b9ba58284ea7d06d3`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
@@ -96,3 +96,14 @@ data shows when the action answers. The pack's Explain moved into `_explain_bloc
 
 Templates sha256 before: `a925cd86203963b4018366e10c65bb932ad196e7d81abe616a267ad9a07caef8`
 (over the three templates compared before `_explain_block.html` was added).
+
+**Compared again 2026-10-27 (C1896, the monitoring side, pack schema 6):** `_evidence_pack.html`,
+drawn in a row's body, gained the `observer` section and names it on a pack of an older schema
+and in Build again's words (the regions are described in docs/fidelity/alerts-explain.md,
+"Compared again 2026-10-27 (C1896 ...)"). Compared by the template and
+tests/test_evidence_observer.py; not shot (held under the memory rule of 2026-10-27; the shots of
+`::test_monitoring_alerts_history_rebuild` are owed). **Verdict:** a **deviation** for the new
+region, its line in docs/STANDING_APPROVAL_LOG.md ("P1 Alerts: the monitoring side over the
+window"); no other region's verdict changed.
+
+Templates sha256 before: `a925cd86203963b4018366e10c65bb932ad196e7d81abe616a267ad9a07caef8`.

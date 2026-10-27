@@ -3,7 +3,9 @@
 When an alert fires, {{product}} gathers what a person would gather by hand: the alert, the
 other alerts in its network around the same time, its device's recent History, the device's
 Intent check, its expected and reported neighbours, the network around it as it was observed,
-the health of the devices near it, and the log lines around the alert's onset. It does this once, when the alert is first seen firing, and keeps
+the health of the devices near it, the monitoring side over the same time (the polling, the SNMP
+exporter and the host that polls), and the log lines around the alert's onset. It does this
+once, when the alert is first seen firing, and keeps
 the result, the alert's **evidence pack**, so it reads the same while the alert fires and
 after it resolves: what it holds is as of the alert's time, never as of when it is read.
 **Monitoring › Alerts** draws one card per firing alert, and the packs of alerts no longer
@@ -22,7 +24,7 @@ reaches {{product}} from Grafana by a webhook: the reader asks.
 
 ## What it holds {#sections}
 
-Ten sections, each naming its source, when it was read, and its state: **read**, **read,
+Eleven sections, each naming its source, when it was read, and its state: **read**, **read,
 nothing found**, **nothing to read** (no device, no committed golden, no onset), **not
 configured**, or **could not be read**, with why. A source that fails is a section saying so,
 never a shorter pack.
@@ -82,7 +84,10 @@ never a shorter pack.
    `health:dev:12:cpu`), and the time it was read. A figure that could not be read, whose
    source is not configured, or that the source holds nothing for says so, never a zero. Four
    questions are asked for all the devices together, never one per device.
-10. **Log lines around the onset:** the device's lines from 15 minutes before the onset to 15
+10. **The monitoring side over the window:** the collector's side of the same window (see
+   [below](#observer)): the scrape jobs polling these devices, each across all its targets, the
+   SNMP exporter, and the host Prometheus runs on.
+11. **Log lines around the onset:** the device's lines from 15 minutes before the onset to 15
    minutes after it (or until the pack was built, if sooner), asked through History › Query's
    logs builder with Mercury's heartbeat lines left out; the 50 nearest the onset are kept and
    the rest counted.
@@ -112,6 +117,43 @@ held 23 or fewer; the busiest held 67). In a pack built as the alert fired the
 section is captured at the time; in a replayed or rebuilt pack it is rebuilt afterwards from the
 alert history, cut at the alert's time. A history that cannot be read, or holds nothing yet,
 is said.
+
+## The monitoring side {#observer}
+
+When several devices stop answering in the same minute, the cause may be the poller itself
+(Prometheus, the SNMP exporter, the host they run on) or something beneath the devices (the
+path to them, the host they run on), as well as each device. The health section is the devices'
+side; this section is the collector's, over the same window (from 15 minutes before the onset
+to the alert's time):
+
+- **Each scrape job** polling the alert's device or a device within two hops of it, read across
+  **all** its targets, not only those devices: how many targets, scrapes and failed scrapes, how
+  many targets failed at least once; minute by minute, the most targets failing at once and
+  when, the first and last failing minute, and the minutes with half or more failing; the
+  slowest scrape against the job's timeout, and the quickest failed scrape. A failure that runs
+  to the timeout is a target that did not answer in time; one over in under 5 seconds was
+  **refused** (by the exporter or Prometheus), never a device's silence (measured over 44 days in
+  this lab: every device-side failure ran 20 to 55 seconds). The timeout and interval are read
+  from Prometheus's configuration as it is now, which may differ from the alert's time, and the
+  section says so. At most 20 jobs; the rest are counted.
+- **The SNMP exporter**, as Prometheus holds it: the packets it sent and retried and its
+  slowest completed walk, how many targets it refused, and its own scrape when Prometheus
+  scrapes it (otherwise said: not collected).
+- **The host Prometheus runs on**, from the node exporter Prometheus scrapes on that host (an
+  instance at `localhost`, `127.0.0.1` or `[::1]`): CPU busy and the 1-minute load, each its
+  lowest, average and highest over the window and when the highest was, beside its **usual**
+  (the median over the day before the window) and the host's CPU count; and the memory
+  available. With no such node exporter, these say so.
+
+Each piece has its own reference (`observer:job:<job>`, `observer:exporter`,
+`observer:host:cpu`, `observer:host:load`, `observer:host:memory`) and its own read state, as a
+health figure does: a question Prometheus could not answer is said on each piece it would have
+filled, never a zero. Six questions are asked in all, each summed by job or by host, so their
+size does not grow with the fleet, and each is bounded at the connection's own 5 seconds
+(they took 0.06 seconds at most in this lab). In a pack built as the alert fired the section is
+captured at the time; in a replayed or rebuilt pack it is rebuilt afterwards, Prometheus asked
+over the alert's window, and marked so. A pack kept before 27 Oct 2026 (schema 5 or older) holds
+none; its card offers Build again.
 
 ## References and the hash {#references}
 
@@ -178,7 +220,11 @@ ever (see [The AI mark](installation-settings#ai-mark)).
    is not a read, makes the whole answer "couldn't analyse", and nothing is shown. An answer of
    **no fault found** holds no hypothesis and must cite the evidence it checked, each piece one
    the pack or the topology holds and one that was read (a section that was unreadable or
-   absent is not healthy evidence); one that does not is "couldn't analyse" too.
+   absent is not healthy evidence); one that does not is "couldn't analyse" too. And every
+   device the answer names, in its rationale or a hypothesis, must be cited somewhere in it (its
+   figures, its alerts, its log lines or its id in the topology): a name is matched whole
+   against the devices the pack and the topology name (`edge1` inside `edge10` is not edge1), and an
+   answer naming a device it cites nothing of is "couldn't analyse", naming each such device.
 6. `keep`: the model's answer (hypotheses, no fault found, "the pack cannot say", or "couldn't
    analyse") is kept with the pack, beside any earlier one. A refusal before the model answered
    (hosted AI off, a cap, the provider down) is not an answer and is not kept.
@@ -273,8 +319,9 @@ A pack is frozen once kept, so a pack kept by an earlier release holds only what
 gathered: one kept before 27 Oct 2026 (schema 4 or older) holds no other alerts around the
 onset and the health of the alert's device alone. Its card says which schema it was kept with
 and which this release builds, and, for a past alert the alert history holds, offers **Build
-again**: "Build again with this release's evidence: other alerts, two-hop health, one id per
-device; the pack kept now stays". It is busy on itself until the new pack is drawn in its
+again**: "Build again with this release's evidence: other alerts, two-hop health, the monitoring
+side, one id per device; the pack kept now stays". A pack kept before the monitoring side was
+gathered (schema 5) says it holds none, and offers Build again too. It is busy on itself until the new pack is drawn in its
 place, and is recorded as the person who pressed it. It reaches no device.
 
 1. `find`: the kept pack, and any pack already built again from it; one that is kept is drawn,
@@ -290,7 +337,7 @@ place, and is recorded as the person who pressed it. It reaches no device.
    (NetBox's cables among its links, on a NetBox network), and the log lines; one id per
    device. It names the pack it was built from: its id, schema, when it was built and its hash.
 4. `keep`: kept beside the old pack in the evidence pack record, under its own id (the alert's,
-   ending `-s5` for schema 5). The old pack is never rewritten or deleted: it stays in the same
+   ending `-s6` for schema 6). The old pack is never rewritten or deleted: it stays in the same
    record, and opens from the new one's **Show it**.
 5. `show`: the new pack drawn in place, with Explain. From now on the alert's row on History,
    and the Alerts tab's list, open the new pack, and Explain from it reads it. The old pack,

@@ -4839,15 +4839,18 @@
         "at": "2026-10-22T18:01:50Z",
         "episode": "96671faee6a201ade8de",
         "pack": "ep-7607ab655cee9cd2e37c",
-        "how": "evidence_pack.build_for_episode (Build evidence), pack schema 5: the other alerts in the window, every id the network model's, the health figures for the devices within two hops in the model as it is now. The walk's stored pack (schema 4, hash a51f8d639f2d) stays frozen; a case's runs ask a pack rebuilt with schema 5 and saved by scripts/nmas-pack-replay --episode."
+        "how": "evidence_pack.build_for_episode (Build evidence), pack schema 6: the other alerts in the window, every id the network model's, the health figures for the devices within two hops in the model as it is now, and the observer section (C1896: the scrape jobs polling those devices across all their targets, the SNMP exporter, the host Prometheus runs on). The walk's stored pack (schema 4, hash a51f8d639f2d) stays frozen; a case's runs ask a pack rebuilt with schema 6 and saved by scripts/nmas-pack-replay --episode, after this release deploys (the schema-5 rebuild the re-run of 2026-10-27 05:02 UTC read, hash dc29086001f9, holds no observer section and is tests/fixtures/evidence_pack/walk2_r1_pack.json)."
       },
-      "found": "the pack rebuilt with schema 5 on the host (2026-10-27 01:39 UTC, read-only, nothing kept, no call): r1 CPU 47 to 57%, 4 heartbeats 300 s apart (the last 3 s before the alert), 7 of 119 scrapes failed 17:47:43 to 18:01:13, discards 0, 4 notice lines in its log; within two hops in the model as now r2 failed 4 scrapes, r3 6, r4 5, r6 5, s1 3, s3 3, s4 3, s2 1, r8 holds no series; the other alerts (16 in the window): Device unreachable (SNMP) firing on r3, r4 and r7, each begun 17:59:50 and fired 18:01:50, the same minute as r1, and pending on r2, s1, s4 and s3; IP SLA probe failing pending on r1, r4, s2 and s3; output discards on one polled address, firing. The walk's own answer was couldn't analyse (C1849).",
+      "found": "the pack rebuilt with schema 5 on the host (2026-10-27 01:39 UTC, read-only, nothing kept, no call): r1 CPU 47 to 57%, 4 heartbeats 300 s apart (the last 3 s before the alert), 7 of 119 scrapes failed 17:47:43 to 18:01:13, discards 0, 4 notice lines in its log; within two hops in the model as now r2 failed 4 scrapes, r3 6, r4 5, r6 5, s1 3, s3 3, s4 3, s2 1, r8 holds no series; the other alerts (16 in the window): Device unreachable (SNMP) firing on r3, r4 and r7, each begun 17:59:50 and fired 18:01:50, the same minute as r1, and pending on r2, s1, s4 and s3; IP SLA probe failing pending on r1, r4, s2 and s3; output discards on one polled address, firing. The walk's own answer was couldn't analyse (C1849). The observer section's own six questions, asked of the lab's Prometheus for this window (2026-10-27 ~05:3x UTC, read-only; tests/fixtures/prometheus/observer/walk2_r1/): seven jobs poll these devices; every target of cisco_8000v failed (34 of 204 scrapes on 6 of 6 targets, at most 5 of 6 at once, 17:47:50 to 18:01:50) and of cisco_vios_l2 (10 of 68 on 4 of 4), each failure running to its timeout (the quickest 30 s of a 30 s timeout; 37.9 s, the slowest 55 s of 55 s), none refused; bgp, cisco_ipsla, lldp, ospf and ospfv3 failed none; the SNMP exporter retried 354 of 9,372 packets (1 of 17,651 in case 20's quiet window), its slowest completed walk 40.6 s (9.4 s then), its own scrape not collected; the host Prometheus runs on busy 17 to 29% against a usual 24%, load1 0.6 to 2.7 (average 1.2) against a usual 1.4 on 4 CPUs, memory 69% available.",
       "needs": [
         "health:r1:scrapes",
         "health:r1:heartbeat",
         "concurrent:r3@Device unreachable (SNMP)",
         "concurrent:r4@Device unreachable (SNMP)",
-        "concurrent:r7@Device unreachable (SNMP)"
+        "concurrent:r7@Device unreachable (SNMP)",
+        "observer:job:cisco_8000v",
+        "observer:job:cisco_vios_l2",
+        "observer:host:load"
       ],
       "expect": {
         "outcome": [
@@ -4870,6 +4873,23 @@
             ]
           ]
         ],
+        "cites": [
+          [
+            "concurrent:r3@Device unreachable (SNMP)"
+          ],
+          [
+            "concurrent:r4@Device unreachable (SNMP)"
+          ],
+          [
+            "concurrent:r7@Device unreachable (SNMP)"
+          ]
+        ],
+        "lead_cites": [
+          [
+            "observer:job:cisco_8000v",
+            "observer:job:cisco_vios_l2"
+          ]
+        ],
         "lead_not_only": [
           "health:r1:cpu",
           "health:r1:heartbeat",
@@ -4879,8 +4899,8 @@
           "logs:*"
         ]
       },
-      "why": "Set from the evidence before any run (2026-10-27, the walk's case): r1 sent every heartbeat on time at ordinary CPU, so its own figures do not explain an SNMP outage; r3, r4 and r7 went unreachable by SNMP in the same minute and scrapes failed on every device within two hops, so a cause shared beneath them (the polling path, or the host they share) is the evidence's, offered as a hypothesis a person must confirm. One hypothesis citing r3, r4 and r7 (each by its alert in the window, or r3 and r4 by their failed scrapes; r7 is beyond two hops, so only its alert is in the pack) is the parent session's expectation for the walk, set before any run.",
-      "flag": "A person reads the recording: the shared cause is placed beneath the devices (the poller, the management path or the host they share), hedged as not in the evidence; r1 is not blamed on its own figures; no figure is stated the pack does not hold."
+      "why": "Set from the evidence before any run (2026-10-27, the walk's case): r1 sent every heartbeat on time at ordinary CPU, so its own figures do not explain an SNMP outage; r3, r4 and r7 went unreachable by SNMP in the same minute and scrapes failed on every device within two hops, so a cause shared beneath them (the polling path, or the host they share) is the evidence's, offered as a hypothesis a person must confirm. One hypothesis citing r3, r4 and r7 (each by its alert in the window, or r3 and r4 by their failed scrapes; r7 is beyond two hops, so only its alert is in the pack) is the parent session's expectation for the walk, set before any run. Revised before any run, with the observer section present (2026-10-27, C1896 and C1897), from the pack's contents and from what the alert backtest (the report of 2026-10-27T0323Z) and C1485 measured of 10-21 and 10-22, never from an answer: (1) `lead_cites`: the leading hypothesis must cite the observer's cisco_8000v or cisco_vios_l2 job, because those pieces are the evidence for the cause ranked first: every target of both device jobs failed in the window, each failure ran to its timeout and none was refused, so the devices did not answer the poll in time across the fleet; C1485 measured the same shape on these days (every failure a scrape run to its timeout, 5 to 10 of 12 targets at once, the lab VM past its physical cores, no device's own CPU raised) and the backtest found s3, the poller's path, failing in all four fleet firings of 10-21 and 10-22. So the cause the evidence supports is shared across the fleet, on the collection path through s3 or beneath the devices (the lab host they run on), not r1 alone (lead_not_only, unchanged) and not one segment: the jobs that failed are the two big walks of every router and switch, on both sides of the 10.255.3.0/24 segment (s1 and s2 behind r1 and r2 among them). The collector's own host is ruled out by the same section (busy and load at or under their usual), which is why the observer is the lead's evidence rather than the health figures alone. (2) `cites`: r3's, r4's and r7's own Device unreachable (SNMP) alerts are each cited somewhere, by their alerts (the operator's bar for the walk: a cause shared with r3, r4 and r7, citing them; r7 has no figures in the pack, so its alert is its only citation, which C1897 now requires of any device named). (3) `together`, needs_human, outcome and figures_from_pack stand as first set.",
+      "flag": "A person reads the recording: the leading cause is shared across the fleet, placed on the collection path or beneath the devices (the lab host they run on), hedged as not in the evidence and with what would confirm it, never one segment's fault nor r1's own figures; the collector's host is said to be at its usual load, not the cause; no figure is stated the pack does not hold."
     }
   ]
 }

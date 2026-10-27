@@ -59,9 +59,11 @@ def _marks(pack):
 class TestEachSectionIsMarked:
     def test_a_pack_built_as_its_alert_fired_is_captured_throughout(self, pack_lab):
         pack = _build(_alerts(V4))
-        # Schema 5 (C1849 to C1851) keeps schema 4's marks, on its new section too.
-        assert pack["provenance"] == "captured" and pack["schema"] == 5
+        # Schema 5 (C1849 to C1851) and 6 (C1896) keep schema 4's marks, on their new sections
+        # too.
+        assert pack["provenance"] == "captured" and pack["schema"] == 6
         assert set(_marks(pack).values()) == {"captured"} and "concurrent" in _marks(pack)
+        assert "observer" in _marks(pack)
         assert all(s["provenance_words"].startswith("captured at the time")
                    for s in pack["sections"])
 
@@ -74,7 +76,7 @@ class TestEachSectionIsMarked:
                                 "device": "rebuilt", "history": "rebuilt",
                                 "intent": "rebuilt", "neighbours": "missing",
                                 "observed": "missing", "endpoints": "missing",
-                                "health": "rebuilt", "logs": "rebuilt"}
+                                "health": "rebuilt", "observer": "rebuilt", "logs": "rebuilt"}
         for name in ("neighbours", "observed", "endpoints"):
             s = _section(pack, name)
             assert s["state"] == "absent" and s["pieces"] == []
@@ -149,7 +151,8 @@ class TestExplainReadsTheMarkedFrozenPack:
         _backfill(load("annotations_firing"))
         pack = EP.build_for_episode(_episode(), actor="operator@example.com")
         assert EP.record(pack)["ok"]
-        world.answer = _answer(pack, hypotheses=[{
+        # The rationale names no device it does not cite (C1897): r2's alert is cited.
+        world.answer = _answer(pack, rationale="r2's heartbeat stopped.", hypotheses=[{
             "claim": "The heartbeat stopped.", "evidence_refs": ["alert"],
             "confirm_with": "show logging | include HEARTBEAT"}])
         return pack

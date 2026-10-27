@@ -34,9 +34,15 @@ The model only reasons over the pack. Everything else is Mercury's, deterministi
   built after its alert says it is the network model as it is now, which may differ from then.
 - **The check** (`check`): every reference must resolve to what was SENT, a piece of the pack
   as sent or an id of the topology sent, and every `confirm_with` must be a read on the
-  read-only allowlist (`readonly_commands`); one that does not is "couldn't analyse", naming
-  it, and nothing is shown (the card's kill criterion: one claim shown with a reference that
-  does not resolve). No tool is offered.
+  read-only allowlist (`readonly_commands`); and every device the answer names (its rationale
+  and each claim, a name matched as a whole token against the devices the pack and the topology
+  name) must be cited somewhere in it (C1897, `uncited_devices`: Walk 2's answer named a device
+  whose alert the pack held and cited nothing of it). One that does not is "couldn't analyse", naming it, and nothing is
+  shown (the card's kill criterion: one claim shown with a reference that does not resolve).
+  No tool is offered.
+- **The monitoring side** (C1896): the pack's `observer` section, the scrape jobs polling the
+  devices across all their targets, the SNMP exporter and the collector's host, one line per
+  piece, each cited ``observer:<what>``.
 
 **The request's order** (the operator, 2026-10-25): the stable context first, cached (the
 prompt, then the network summary, the pack's format and the topology's format: the same bytes
@@ -79,8 +85,8 @@ STEPS = (
             "topology as data, no tool offered"),
     ("check", "every reference resolves to the pack or to the topology as sent, and every "
               "confirming read is on the read-only allowlist; no fault found cites the "
-              "evidence it checked, each piece read; one that does not is couldn't analyse, "
-              "and nothing is shown"),
+              "evidence it checked, each piece read; every device the answer names is cited "
+              "somewhere in it; one that does not is couldn't analyse, and nothing is shown"),
     ("show", "the hypotheses drawn beside the pack, or no fault found with what it checked, "
              "each reference linked to its piece; nothing runs"),
 )
@@ -193,6 +199,20 @@ def vocabulary(sections=None) -> str:
             "it) or address, its state then, when it started, fired and resolved (blank when "
             "not by then), and same_alert when it is an earlier episode of this alert; "
             "Grafana's times, UTC. A piece's reference is concurrent:<episode id>, as written.")
+    if "observer" in names:
+        from modules import evidence_observer as O
+        lines.append(
+            "observer is the monitoring side over the health section's window: each scrape job "
+            "polling the alert's device or a device within two hops, across ALL its targets "
+            "(not only those devices); the SNMP exporter; and the host Prometheus runs on (the "
+            "collector's host). A failed scrape that ran to its timeout is a target that did not "
+            "answer in "
+            f"time; one over in under {O.REFUSED_UNDER_S} s was refused. A piece's reference is "
+            "its own, observer:<what>, as written; the section's lines hold the pieces, "
+            + O.LINE_FORMAT + ". When several devices fail at once from one collector, the "
+            "collector and what is beneath the devices are candidate causes beside each "
+            "device's own: this section (the collector's side) and the health section (the "
+            "devices' side) are what rank them.")
     if "health" in names or "concurrent" in names:
         lines.append(
             "One device has one id in everything sent (the pack and the topology): cite a "
@@ -361,7 +381,14 @@ def as_sent(section: dict) -> dict:
     2026-10-26, the approved trim; `evidence_health.lines`), every other section as stored.
     The check resolves against the pieces, which the pack keeps."""
     from modules import evidence_health as H
+    from modules import evidence_observer as O
 
+    if section.get("name") == "observer":
+        # One line per piece, its reference first (C1896); the pieces' words are the pack
+        # format's.
+        out = {k: v for k, v in section.items() if k != "pieces"}
+        out["lines"] = O.lines(section.get("pieces") or [])
+        return out
     if section.get("name") != "health":
         return section
     # The figures' words are the pack format's (the cached prefix), not repeated per call.
@@ -402,12 +429,93 @@ def context(topo: dict = None) -> dict:
     return out
 
 
-def check(answer: "Explanation", pack: dict, topology_ids=(), sections=None) -> str:
+#: The sections every piece of which is the alert's own device's: citing one cites that device.
+OWN_DEVICE_SECTIONS = ("alert", "device", "history", "intent", "neighbours", "logs")
+
+
+def device_ids(sections: list, names: dict = None, own: str = "") -> dict:
+    """``{device name: its id, or ""}``: every device the pack as sent or the topology sent
+    names (C1897): the health figures' and the other alerts' ``device`` with its ``dev``, the
+    topology's *names* (its ids by name), and the alert's own device *own*."""
+    out = {}
+    for s in sections or []:
+        if s.get("name") not in DEVICE_ID_SECTIONS:
+            continue
+        for p in s.get("pieces") or []:
+            if p.get("device"):
+                out[p["device"]] = out.get(p["device"]) or p.get("dev") or ""
+    for name, dev in (names or {}).items():
+        if name:
+            out[name] = dev or out.get(name, "")
+    if own:
+        out.setdefault(own, "")
+    return out
+
+
+def named_devices(text: str, known) -> list:
+    """The names of *known* that *text* names as whole tokens, sorted: a name inside a longer
+    name or word is not it ("edge1" in "edge10", "core-edge1" or "edge1.lab" is not edge1), and
+    a name is
+    matched as written (case kept). Longer names are matched first, so a name that is part of
+    another known name is not counted inside it."""
+    import re
+
+    found, rest = set(), text or ""
+    for name in sorted({n for n in known if n}, key=lambda n: (-len(n), n)):
+        pat = re.compile(r"(?<![\w-])" + re.escape(name) + r"(?![\w-]|\.\w)")
+        if pat.search(rest):
+            found.add(name)
+            rest = pat.sub(" ", rest)
+    return sorted(found)
+
+
+def cites_device(ref: str, name: str, dev: str, sent: dict, own: str) -> bool:
+    """Whether the citation *ref* is of the device *name* (its id *dev*): a piece of the pack
+    as sent naming it (``device``, ``dev``, or a neighbour's ``peer``), any piece of the alert's
+    own device's sections when it is *own*, or a topology id that is the device's id or holds
+    it as a whole part (an adjacency's or a cable's end)."""
+    import re
+
+    from modules import evidence_pack as EP
+
+    piece = EP.resolve(sent, ref)
+    if piece is not None:
+        if name in (piece.get("device"), piece.get("peer")) or (dev and piece.get("dev") == dev):
+            return True
+        return name == own and ref.split(":", 1)[0] in OWN_DEVICE_SECTIONS
+    return bool(dev) and re.search(r"(?:^|[:~])" + re.escape(dev) + r"(?=$|[:~/])",
+                                   ref) is not None
+
+
+def uncited_devices(answer, sent: dict, names: dict = None, own: str = "") -> list:
+    """The devices the answer names (its rationale and each hypothesis's claim, matched as
+    whole tokens against the devices the pack and the topology name, `device_ids`) with no
+    citation of their own anywhere in it (a hypothesis's references or the checked list), sorted
+    (C1897: an answer naming a device whose alert the pack held, without citing it)."""
+    ids = device_ids(sent.get("sections") or [], names, own)
+    text = " ".join([answer.rationale or ""] + [h.claim or "" for h in answer.hypotheses])
+    refs = [r for h in answer.hypotheses for r in h.evidence_refs] + list(
+        getattr(answer, "checked", None) or [])
+    return [n for n in named_devices(text, ids)
+            if not any(cites_device(r, n, ids[n], sent, own) for r in refs)]
+
+
+def _uncited_words(names: list) -> str:
+    said = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+    return (f"the answer names {said} but cites nothing of {'it' if len(names) == 1 else 'them'}"
+            ": every device it names needs a citation of its own (its figures, its alerts or "
+            "its id in the topology)")
+
+
+def check(answer: "Explanation", pack: dict, topology_ids=(), sections=None,
+          names: dict = None) -> str:
     """"" when every hypothesis cites the pack as sent (*sections*, by default the pack's
-    every section) or the topology sent (*topology_ids*) and names an allowed read, and every
-    piece of evidence the answer says it checked (schema v2) is one of them and was read; else
-    why not (the first one that does not, named). No fault found holds no hypothesis and cites
-    at least one piece it checked."""
+    every section) or the topology sent (*topology_ids*) and names an allowed read, every
+    piece of evidence the answer says it checked (schema v2) is one of them and was read, and
+    every device the answer names (in its rationale or a claim) is cited somewhere in it
+    (C1897; *names* the topology sent's ids by name); else why not (the first one that does
+    not, named; every uncited device, named). No fault found holds no hypothesis and cites at
+    least one piece it checked."""
     from modules import evidence_pack as EP
     from modules import readonly_commands as R
 
@@ -435,8 +543,10 @@ def check(answer: "Explanation", pack: dict, topology_ids=(), sections=None) -> 
         state = EP.read_state(sent, ref) if piece is not None else "ok"
         if state not in READ_STATES:
             return f"the evidence checked cites {ref[:40]!r}, which was not read ({state})"
+    own = pack.get("device") or ""
     if outcome == "no_fault_found":
-        return ""
+        uncited = uncited_devices(answer, sent, names, own)
+        return _uncited_words(uncited) if uncited else ""
     if not answer.hypotheses and not answer.needs_human:
         return "the answer holds no hypothesis and does not ask for a person"
     if len(answer.hypotheses) > MAX_HYPOTHESES:
@@ -452,7 +562,8 @@ def check(answer: "Explanation", pack: dict, topology_ids=(), sections=None) -> 
         refused = R.refusal(h.confirm_with)
         if refused:
             return f"hypothesis {i}'s confirming read is not a read Mercury allows: {refused}"
-    return ""
+    uncited = uncited_devices(answer, sent, names, own)
+    return _uncited_words(uncited) if uncited else ""
 
 
 def explain(pack_id: str, *, actor: str, trigger: dict, send=None, today: str = None) -> dict:
@@ -700,7 +811,8 @@ def explain_pack(pack: dict, *, actor: str, trigger: dict, send=None, today: str
                                    **{k: got[k] for k in ("parent_call_id", "needs_said")
                                       if got.get(k)}, **kept}
     links = {"page": f"/v2/monitoring/alerts/pack/{pack_id}", "anchor": f"explain-{pack_id}"}
-    why = check(answer, pack, topo["ids"] if topo["sent"] else (), sections=sections)
+    why = check(answer, pack, topo["ids"] if topo["sent"] else (), sections=sections,
+                names=topo.get("names") if topo["sent"] else None)
     if why:
         calls.record_use(got["call_id"], "refused by validation", actor=actor, detail=why,
                          links=links)

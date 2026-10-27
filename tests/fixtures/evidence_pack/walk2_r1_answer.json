@@ -1,0 +1,50 @@
+{
+ "checked": [
+  "health:dev:uc038a8be:cpu",
+  "health:dev:uc038a8be:discards",
+  "health:dev:u342aff19:discards",
+  "health:dev:ub937e1ed:discards",
+  "health:dev:u5f6ab452:discards",
+  "intent:1"
+ ],
+ "hypotheses": [
+  {
+   "claim": "A fault on the shared 10.255.3.0/24 segment (r1 Gi2 and the s3/s4 Vl100 switch side) is the likely common cause, since r1 lost OSPF neighbour 10.255.1.24 by dead timer while peers on that segment also had failed scrapes and unreachable alerts.",
+   "confirm_with": "show ip ospf neighbor",
+   "evidence_refs": [
+    "logs:2",
+    "link:10.255.3.0/24",
+    "health:dev:uc038a8be:scrapes",
+    "health:dev:u342aff19:scrapes",
+    "health:dev:ub937e1ed:scrapes",
+    "concurrent:cbebc687c0f78597623c",
+    "concurrent:8c353e47008e6ad65b9e"
+   ]
+  },
+  {
+   "claim": "s3, a switch on the segment, was under stress (output discards peaking at 15.8/s at 17:44:50, one heartbeat in the window with the last 617s before the alert, repeated Interface output discards alerts), which may have disrupted forwarding for the routers.",
+   "confirm_with": "show interfaces counters errors",
+   "evidence_refs": [
+    "health:dev:u38e76896:discards",
+    "health:dev:u38e76896:heartbeat",
+    "concurrent:aa8e6c74b49bb2ff0083",
+    "concurrent:c33280ad8bf404a78301"
+   ]
+  },
+  {
+   "claim": "Not in the evidence: the lab host or hypervisor beneath the devices may have stalled, since many devices showed failed scrapes starting about 17:47:3x and 300s heartbeat gaps together while their CPU stayed moderate.",
+   "confirm_with": "show logging | include OSPF|LINK|LINEPROTO",
+   "evidence_refs": [
+    "health:dev:uc038a8be:heartbeat",
+    "health:dev:uc038a8be:cpu",
+    "health:dev:ub937e1ed:heartbeat",
+    "health:dev:u5f6ab452:heartbeat",
+    "health:dev:u654297ae:scrapes"
+   ]
+  }
+ ],
+ "needs_human": true,
+ "outcome": "answer",
+ "rationale": "r1's SNMP scrapes failed 7 of 119 times between 17:47:43 and 18:01:13 and its heartbeat had a 300s gap, but its CPU stayed at 47-57%, so its own load does not explain the alert. r2, r3, r4, r6, s1, s3, s4 and s2 show failed scrapes and heartbeat gaps in the same window, and r2, r3, r4, r7, s1, s3 and s4 raised their own Device unreachable (SNMP) alerts. That points to something shared rather than r1 alone. r1 also logged an OSPF neighbour 10.255.1.24 (s4) going down on Gi2 at 17:51:32 (dead timer expired), and s3 on the same segment showed output discards and IP SLA failures. The adjacencies were not observed, so the cause is not settled.",
+ "why_not": ""
+}

@@ -15,7 +15,7 @@ instance and a silenced syslog instance firing, each pack built by the real trig
 Loki and Prometheus captures; the first card opened; Explain pressed with hosted AI allowed and
 an answer planted (a hypothesis citing `alert`, needing a person).
 Templates compared: templates/v2/_alert_evidence.html, templates/v2/_evidence_pack.html, templates/v2/_explain.html, templates/v2/_explain_block.html
-Templates sha256: `bb0b208450694e2fd656fb744a8b091db35009be9a6c3c297c58ac82bc77e798`
+Templates sha256: `cf2cd988031a8a10224da41e016019bf52223a3a3cb4d17208b1491467b165a7`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
@@ -138,3 +138,26 @@ No other region's verdict changed. A pack with no answer kept draws Explain as b
 
 Templates sha256 before: `3efa0c170da2bdd638f413cc4bae45c38c1d21ee46b1c36cdb5790863e74fe58`
 (over the three templates compared before `_explain_block.html` was added).
+
+**Compared again 2026-10-27 (C1896, the monitoring side, pack schema 6):**
+`_evidence_pack.html` gained the pack's eleventh section, **The monitoring side over the
+window** (`observer`), between the health figures and the log lines: its words, ref, state chip,
+mark, source and window as every section has; a line saying whose jobs it reads ("The scrape
+jobs polling the alert's device and the devices within two hops, each across all its targets;
+the SNMP exporter; the host Prometheus runs on", the timeouts' source on hover); and each piece:
+a job's failed scrapes of its scrapes on how many of its targets, from when to when, the most
+at once of how many and when, the minutes failing and with half or more, its slowest scrape
+against its timeout and its quickest failure; the SNMP exporter's jobs, retried packets, slowest
+walk, refused targets and its own scrape; the collector's host's CPU busy and load (min, avg,
+max, when, its usual, its CPUs) and memory available (its low and when). A pack of an older schema
+says, under its pack line, that it holds no monitoring side, and Build again's words name it.
+- **Compared:** by the template and tests/test_evidence_observer.py's
+  `test_the_card_draws_each_piece` (the card drawn from Walk 2's captured answers); **not shot**:
+  the shots (`tests/test_board_shots.py::test_monitoring_alerts_explain` at 1440, 1280 and 390)
+  were held under the laptop's memory rule of 2026-10-27 (browser runs only for a test the
+  change itself needs), and are owed before this record's verdict is final.
+- **Verdict:** a **deviation**, the one new region: the board (version 143) has no monitoring
+  side. Its line is in docs/STANDING_APPROVAL_LOG.md ("P1 Alerts: the monitoring side over the
+  window"). No other region's verdict changed.
+
+Templates sha256 before: `3efa0c170da2bdd638f413cc4bae45c38c1d21ee46b1c36cdb5790863e74fe58`.

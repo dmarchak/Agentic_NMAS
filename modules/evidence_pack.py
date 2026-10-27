@@ -6,7 +6,9 @@ When an alert fires, a person gathers the evidence by hand: the alert, the other
 network around the onset (`concurrent`, C1850, from the alert history), the device's recent
 History, its Intent check, its expected and reported neighbours, the network around it as it
 was observed (`observed`, C1712: captured here, so Explain never reads the network as it is
-later), the health of the devices within two hops (`health`, C1714, `evidence_health`), and
+later), the health of the devices within two hops (`health`, C1714, `evidence_health`), the
+monitoring side over the window (`observer`, C1896, `evidence_observer`: the scrape jobs polling
+those devices across all their targets, the SNMP exporter, the host Prometheus runs on), and
 the log lines around the onset, every time series read as of the alert's time (`build`'s
 *now*). One device has one id in all of it: the network model's, wherever the model knows the
 device (C1849). The pack gathers exactly those, once, when the `grafana-alerts` reader first
@@ -81,14 +83,17 @@ log = logging.getLogger(__name__)
 #: call sends; and reads a rebuilt pack's health figures for the devices within two hops in
 #: the model as it is now, said so. A pack of 4 stays readable: it holds no `concurrent`, and
 #: Explain names its devices by the model's ids as it sends it (`explain.one_id`), never
-#: rewriting the pack.
-SCHEMA = 5
+#: rewriting the pack. 6 (C1896, 2026-10-27) adds `observer`, the monitoring side over the
+#: window (the scrape jobs polling the devices across all their targets, the SNMP exporter, the
+#: host Prometheus runs on; `evidence_observer`); a pack of 5 stays readable and holds none, and
+#: its card offers Build again.
+SCHEMA = 6
 #: The records store (`records_db.STORES`) and its file.
 STORE = "evidence_packs"
 FILE_NAME = "evidence_packs.jsonl"
 #: The sections, in the order a person reads them.
 SECTIONS = ("alert", "concurrent", "device", "history", "intent", "neighbours", "observed",
-            "endpoints", "health", "logs")
+            "endpoints", "health", "observer", "logs")
 SECTION_WORDS = {"alert": "The alert",
                  "concurrent": "Other alerts in the network around the onset",
                  "device": "The device", "history": "Recent History",
@@ -96,6 +101,7 @@ SECTION_WORDS = {"alert": "The alert",
                  "observed": "The network around it, as observed",
                  "endpoints": "What is attached around it, as observed",
                  "health": "Health of the devices around it",
+                 "observer": "The monitoring side over the window",
                  "logs": "Log lines around the onset",
                  "sdn": "The SDN flows and port rates the detection rests on"}
 #: The section only an SDN detection's pack holds (`build_detection`, PHASE8_PLAN 17.1 S6), kept
@@ -143,7 +149,8 @@ HISTORY_KINDS = ("receipts", "golden", "intent", "restarts", "reloads", "windows
 HISTORY_DAYS = "7"
 HISTORY_LIMIT = 20
 #: Packs built per read of the alerts. Each asks Loki twice or three times, Prometheus four
-#: times and git a few times; ten keep a storm's delay to the reader's announcement bounded.
+#: times for the health figures and six for the observer (each aggregated, 0.06 s at most on
+#: the lab's Prometheus, 2026-10-27) and git a few times; ten keep a storm's delay to the reader's announcement bounded.
 #: A scale guard, not a measured bound: the build's time is unmeasured on the host.
 MAX_PER_RUN = 10
 #: Packs the tab draws that no longer fire, newest first; and firing cards per group.
@@ -261,9 +268,10 @@ def resolve(pack: dict, ref: str):
 
 
 #: The sections whose pieces each carry a read state of their own (one of STATES): a health
-#: figure is measured or says why not. Every other piece's ``state`` is what it describes (an
-#: alert's, an adjacency's, an intent check's), never whether it was read (C1761).
-PIECES_READ_ON_THEIR_OWN = ("health",)
+#: figure, or an observer piece (C1896), is measured or says why not. Every other piece's
+#: ``state`` is what it describes (an alert's, an adjacency's, an intent check's), never whether
+#: it was read (C1761).
+PIECES_READ_ON_THEIR_OWN = ("health", "observer")
 
 
 def read_state(pack: dict, ref: str) -> str:
@@ -737,6 +745,41 @@ def health_section(ref, host: str, capture: dict, onset, now: float, built: floa
     return sec
 
 
+def observer_section(ref, host: str, capture: dict, onset, now: float, built: float,
+                     prometheus=None) -> dict:
+    """The monitoring side over the health section's window (C1896; `evidence_observer`): the
+    scrape jobs polling the alert's device and the devices within two hops, each across all its
+    targets; the SNMP exporter; the host Prometheus runs on. Each piece's reference is
+    ``observer:<what>``."""
+    from modules import evidence_health as H
+    from modules import evidence_observer as O
+
+    source = ("Prometheus: the scrape jobs polling the alert's device and the devices within two "
+              "hops, each across all its targets; the SNMP exporter as Prometheus holds it; the "
+              "host Prometheus runs on, from its node exporter; each summarised over the window")
+    devices, _total = H.devices_of(capture, host)
+    got = O.read(ref.name, [n for _d, n, _h in devices], onset, now, prom=prometheus)
+    extra = {"window": got["window"], "as_of": _iso(now), "asked_at": _iso(built),
+             "questions": got["asked"], "errors": got["errors"],
+             "jobs_total": got["jobs_total"], "jobs_most": O.MAX_JOBS,
+             "timeouts_from": "Prometheus's configuration as it is now (status/config), which "
+                              "may differ from the alert's time"}
+    pieces = [{k: v for k, v in p.items() if k != "ref"} for p in got["pieces"]]
+    states = {p["state"] for p in pieces}
+    if states <= {"not_configured"}:
+        sec = _section("observer", source, built, "not_configured",
+                       f"no Prometheus is configured for {ref.name}", pieces=pieces, **extra)
+    elif states <= {"unreadable", "not_configured"}:
+        sec = _section("observer", source, built, "unreadable", "; ".join(got["errors"]),
+                       pieces=pieces, **extra)
+    else:
+        sec = _section("observer", source, built, "ok", pieces=pieces, **extra)
+    # Each piece's reference is its stable name, the one an answer cites.
+    for p, mine in zip(sec["pieces"], got["pieces"]):
+        p["ref"] = mine["ref"]
+    return sec
+
+
 def devices_from(capture: dict) -> str:
     """Whose figures the health section holds, in words: the walk the capture made (C1851: a
     pack rebuilt from the alert history walks the model as it is now, and says so)."""
@@ -869,11 +912,12 @@ def concurrent_section(network: str, store: str, own: str, onset, at: float, bui
 REBUILT_MARKS = {
     "replay": {"alert": "rebuilt", "concurrent": "rebuilt", "device": "rebuilt",
                "history": "rebuilt", "intent": "rebuilt", "neighbours": "rebuilt",
-               "observed": "rebuilt", "health": "rebuilt", "logs": "rebuilt"},
+               "observed": "rebuilt", "health": "rebuilt", "observer": "rebuilt",
+               "logs": "rebuilt"},
     "history": {"alert": "captured", "concurrent": "rebuilt", "device": "rebuilt",
                 "history": "rebuilt", "intent": "rebuilt", "neighbours": "missing",
                 "observed": "missing", "endpoints": "missing", "health": "rebuilt",
-                "logs": "rebuilt"},
+                "observer": "rebuilt", "logs": "rebuilt"},
 }
 #: Each mark's words for a section, beyond `PROVENANCE_WORDS`: what it was rebuilt from.
 REBUILT_FROM = {
@@ -886,6 +930,9 @@ REBUILT_FROM = {
     "neighbours": "Prometheus's routing tables asked as of the alert's time",
     "observed": "the Topology reader's own read over Prometheus as of the alert's time",
     "health": "Prometheus and Loki asked over the alert's window",
+    "observer": ("Prometheus asked over the alert's window: the scrape jobs, the SNMP exporter "
+                 "and the collector's host as Prometheus kept them then; each job's timeout from "
+                 "its configuration as it is now"),
     "logs": "Loki asked over the window around the onset",
 }
 #: A pack rebuilt from the alert history reads its health figures for the devices within two
@@ -994,7 +1041,7 @@ def build(inst: dict, *, store: str, value_at: str, now: float = None, loki=None
     if ref is None:
         why = f"no device to read for: {dev_section['why']}"
         for name in ("history", "intent", "neighbours", "observed", "endpoints", "health",
-                     "logs"):
+                     "observer", "logs"):
             sections.append(_absent(name, "", why))
     elif mode == "history":
         sections.append(history_section(ref, host, until=now))
@@ -1014,6 +1061,12 @@ def build(inst: dict, *, store: str, value_at: str, now: float = None, loki=None
                                            prometheus=prometheus, loki=loki))
         except Exception as exc:                      # noqa: BLE001
             sections.append(_section("health", "Prometheus and Loki", clock, "unreadable",
+                                     _failed(exc)))
+        try:
+            sections.append(observer_section(ref, host, cap, onset, now, clock,
+                                             prometheus=prometheus))
+        except Exception as exc:                      # noqa: BLE001 (said, never raised)
+            sections.append(_section("observer", "Prometheus", clock, "unreadable",
                                      _failed(exc)))
         sections.append(logs_section(ref, host, onset, now, client=loki))
     else:
@@ -1041,6 +1094,12 @@ def build(inst: dict, *, store: str, value_at: str, now: float = None, loki=None
                                            prometheus=prometheus, loki=loki))
         except Exception as exc:                      # noqa: BLE001
             sections.append(_section("health", "Prometheus and Loki", clock, "unreadable",
+                                     _failed(exc)))
+        try:
+            sections.append(observer_section(ref, host, cap, onset, now, clock,
+                                             prometheus=prometheus))
+        except Exception as exc:                      # noqa: BLE001 (said, never raised)
+            sections.append(_section("observer", "Prometheus", clock, "unreadable",
                                      _failed(exc)))
         sections.append(logs_section(ref, host, onset, now, client=loki))
     _marks(sections, mode, clock)

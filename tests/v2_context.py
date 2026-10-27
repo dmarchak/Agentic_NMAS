@@ -1054,6 +1054,10 @@ def _alert_evidence(client, _lab, _mp):
                    lambda name: os.path.join(folder, "readers", f"{name}.json"))
         mp.setattr(Q, "_client", lambda *a, **k: T.DeviceLoki())
         T._prometheus(mp)
+        # The observer's questions (C1896) from Walk 2's captured answers, an SNMP exporter's
+        # own scrape planted (the lab's Prometheus scrapes none): every kind of its pieces.
+        from tests import test_evidence_observer as OB
+        OB._install(mp, edit={"figures": OB.with_self_scrape})
         os.makedirs(os.path.join(folder, "readers"))
 
         def store(value):

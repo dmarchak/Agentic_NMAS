@@ -435,3 +435,83 @@ def test_a_shared_cause_by_three_devices_alerts_passes_and_by_two_misses(kinds):
     ans["hypotheses"][0]["evidence_refs"] = three[:2] + [_ref(pack, f"concurrent:r4@{RULE}")]
     assert cases.explain_misses(expect, ans, pack) == [
         "no one hypothesis cites other alerts of 3 or more devices"]
+
+
+# ── case 21 with the observer section (C1896, C1897; set before any run) ──
+
+def _walk_pack():
+    """Walk 2's rebuilt pack (tests/fixtures/evidence_pack/walk2_r1_pack.json, schema 5, as the
+    re-run read it) with the observer section the six captured answers give for its window
+    (tests/fixtures/prometheus/observer/walk2_r1/, `evidence_observer.read`): what a schema-6
+    rebuild holds, its other sections as captured."""
+    import json
+
+    from modules import evidence_pack as EP
+    from tests.test_evidence_observer import _read
+    with open(os.path.join(ROOT, "tests", "fixtures", "evidence_pack", "walk2_r1_pack.json"),
+              encoding="utf-8") as fh:
+        pack = json.load(fh)
+    got, _p = _read()
+    pieces = [{k: v for k, v in p.items() if k != "ref"} for p in got["pieces"]]
+    sec = EP._section("observer", "Prometheus", 0, "ok", pieces=pieces, window=got["window"])
+    for p, mine in zip(sec["pieces"], got["pieces"]):
+        p["ref"] = mine["ref"]
+    pack["sections"].insert([s["name"] for s in pack["sections"]].index("logs"), sec)
+    return pack
+
+
+def _walk_answer():
+    with open(os.path.join(ROOT, "tests", "fixtures", "evidence_pack", "walk2_r1_answer.json"),
+              encoding="utf-8") as fh:
+        import json
+        return json.load(fh)
+
+
+def test_case_21_each_alert_cited_and_its_lead_on_the_observer():
+    """Revised before any run (C1896, C1897): r3's, r4's and r7's alerts each cited, by their
+    alerts alone; the leading hypothesis citing a device job the observer shows failing on every
+    target; its needs include those pieces, measured in the pack."""
+    e = BY[21]["expect"]
+    assert e["cites"] == [[f"concurrent:{d}@Device unreachable (SNMP)"] for d in
+                          ("r3", "r4", "r7")]
+    assert e["lead_cites"] == [["observer:job:cisco_8000v", "observer:job:cisco_vios_l2"]]
+    assert "Revised before any run, with the observer section present" in BY[21]["why"]
+    assert cases.explain_unready(BY[21], _walk_pack()) == []
+
+
+def test_the_walk_s_answer_misses_case_21_on_its_lead_and_r4_s_and_r7_s_alerts():
+    pack = _walk_pack()
+    got = cases.explain_misses(BY[21]["expect"], _walk_answer(), pack)
+    assert ("the leading hypothesis cites none of ['observer:job:cisco_8000v', "
+            "'observer:job:cisco_vios_l2']") in got, got
+    assert "cites none of ['concurrent:r7@Device unreachable (SNMP)']" in got
+    assert "cites none of ['concurrent:r4@Device unreachable (SNMP)']" in got
+
+
+def test_an_answer_leading_on_the_collection_path_passes_case_21():
+    pack = _walk_pack()
+    alerts = [_ref(pack, f"concurrent:{d}@Device unreachable (SNMP)") for d in ("r3", "r4", "r7")]
+    lead = {"claim": "Collection failed across the fleet beneath the devices, not r1 alone: every "
+                     "target of the two device jobs timed out while the collector's host was at "
+                     "its usual load; not in the evidence, the lab host they run on.",
+            "evidence_refs": ["observer:job:cisco_8000v", "observer:job:cisco_vios_l2",
+                              "observer:host:load"] + alerts,
+            "confirm_with": "show processes cpu history"}
+    ans = {"outcome": "answer", "why_not": "", "needs_human": True, "checked": [],
+           "rationale": "r1, r3, r4 and r7 stopped answering the poll together.",
+           "hypotheses": [lead]}
+    assert cases.explain_misses(BY[21]["expect"], ans, pack) == []
+    # The control: the same lead resting on the devices' figures instead of the observer.
+    ans["hypotheses"][0]["evidence_refs"] = [_ref(pack, "health:r3:scrapes")] + alerts
+    assert cases.explain_misses(BY[21]["expect"], ans, pack) == [
+        "the leading hypothesis cites none of ['observer:job:cisco_8000v', "
+        "'observer:job:cisco_vios_l2']"]
+
+
+def test_an_observer_selector_names_its_pieces_by_reference():
+    pack = _walk_pack()
+    assert [p["ref"] for p in cases.select(pack, "observer:host")] == [
+        "observer:host:cpu", "observer:host:load", "observer:host:memory"]
+    assert len(cases.select(pack, "observer:job")) == 7
+    assert cases.select(pack, "observer:job:cisco") == []
+    assert cases.select(pack, "observer:*")[0]["name"] == "observer"

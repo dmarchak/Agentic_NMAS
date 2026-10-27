@@ -35,8 +35,8 @@ from tests.test_evidence_pack import pack_lab  # noqa: F401 (the fixture)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HX = {"HX-Request": "true"}
-WORDS = ("Build again with this release's evidence: other alerts, two-hop health, one id per "
-         "device; the pack kept now stays")
+WORDS = ("Build again with this release's evidence: other alerts, two-hop health, the "
+         "monitoring side, one id per device; the pack kept now stays")
 
 
 def _as_schema_4(pack: dict) -> dict:
@@ -71,7 +71,7 @@ class TestTheControl:
         c = history["client"]
         old, _rows = _kept_four()
         html = _html(c.get(f"/v2/monitoring/alerts/pack/{old['id']}"))
-        assert "Kept with schema 4; this release builds schema 5" in html
+        assert f"Kept with schema 4; this release builds schema {EP.SCHEMA}" in html
         assert WORDS in html and 'data-op="alert-evidence"' in html
         assert f'/v2/monitoring/alerts/pack/{old["id"]}/rebuild' in html
         assert "manual/alert-evidence#rebuild" in html or "alert-evidence#rebuild" in html
@@ -117,8 +117,8 @@ class TestBuildAgain:
         assert len(rows) == 2 and rows[0] == before[0], "the old pack, as it was kept"
         assert EP.intact(rows[0]) and rows[0]["schema"] == 4
         new = rows[1]
-        assert new["id"] == EP.rebuilt_id(old["alert_key"]) == old["id"] + "-s5"
-        assert new["schema"] == EP.SCHEMA == 5 and EP.intact(new)
+        assert new["id"] == EP.rebuilt_id(old["alert_key"]) == old["id"] + f"-s{EP.SCHEMA}"
+        assert new["schema"] == EP.SCHEMA == 6 and EP.intact(new)
         assert new["rebuilt_from"] == {"id": old["id"], "schema": 4,
                                        "built_at": old["replayed_at"], "hash": old["hash"]}
         assert "concurrent" in {s["name"] for s in new["sections"]}
@@ -132,14 +132,14 @@ class TestBuildAgain:
         c = history["client"]
         old, _rows = _kept_four()
         c.post(f"/v2/monitoring/alerts/pack/{old['id']}/rebuild", headers=HX)
-        new_id = old["id"] + "-s5"
-        assert EP.find(old["id"])[0]["schema"] == 4 and EP.find(new_id)[0]["schema"] == 5
+        new_id = old["id"] + f"-s{EP.SCHEMA}"
+        assert EP.find(old["id"])[0]["schema"] == 4 and EP.find(new_id)[0]["schema"] == EP.SCHEMA
         listed = _html(c.get("/v2/monitoring/alerts/history?range=all&show=all"))
         assert f"/v2/monitoring/alerts/pack/{new_id}" in listed
         assert f"/v2/monitoring/alerts/pack/{old['id']}\"" not in listed
         assert [p["id"] for p in EP.tab()["earlier"]] == [new_id]
         opened = _html(c.get(f"/v2/monitoring/alerts/pack/{old['id']}"))
-        assert f"Built again as pack {new_id} (schema 5" in _words(opened)
+        assert f"Built again as pack {new_id} (schema {EP.SCHEMA}" in _words(opened)
         assert WORDS not in opened, "built again once: not offered again"
 
     def test_pressing_again_builds_nothing_and_a_current_pack_is_refused(self, history):
@@ -148,10 +148,11 @@ class TestBuildAgain:
         c.post(f"/v2/monitoring/alerts/pack/{old['id']}/rebuild", headers=HX)
         rows = EP.read()["rows"]
         again = c.post(f"/v2/monitoring/alerts/pack/{old['id']}/rebuild", headers=HX)
-        assert again.status_code == 200 and f'data-pack="{old["id"]}-s5"' in _html(again)
+        assert again.status_code == 200 and f'data-pack="{old["id"]}-s{EP.SCHEMA}"' in _html(again)
         assert EP.read()["rows"] == rows
-        r = c.post(f"/v2/monitoring/alerts/pack/{old['id']}-s5/rebuild", headers=HX)
-        assert r.status_code == 409 and "is of schema 5, this release's (5)" in _html(r)
+        r = c.post(f"/v2/monitoring/alerts/pack/{old['id']}-s{EP.SCHEMA}/rebuild", headers=HX)
+        assert r.status_code == 409
+        assert f"is of schema {EP.SCHEMA}, this release's ({EP.SCHEMA})" in _html(r)
         assert EP.read()["rows"] == rows
 
     def test_a_pack_captured_as_its_alert_fired_is_matched_to_its_past_alert(self, history):
@@ -196,9 +197,9 @@ class TestBuildAgain:
         assert holder.wait(30) == 0
         assert got["r"].status_code == 200
         rows = EP.read()["rows"]
-        assert [r["id"] for r in rows] == [old["id"], old["id"] + "-s5"]
+        assert [r["id"] for r in rows] == [old["id"], old["id"] + f"-s{EP.SCHEMA}"]
         assert "other@example.com" in rows[1]["trigger"]
-        assert f'data-pack="{old["id"]}-s5"' in _html(got["r"])
+        assert f'data-pack="{old["id"]}-s{EP.SCHEMA}"' in _html(got["r"])
 
 
 #: Another worker: holds the build lock, waits for the go file, keeps its pack built again (one
@@ -228,7 +229,7 @@ class TestExplainNamesThePackItRead:
         from modules.ai import explain
         old, _rows = _kept_four()
         history["client"].post(f"/v2/monitoring/alerts/pack/{old['id']}/rebuild", headers=HX)
-        new = EP.find(old["id"] + "-s5")[0]
+        new = EP.find(old["id"] + f"-s{EP.SCHEMA}")[0]
         seen = {}
 
         def ask(feature, prompt, schema, data, **kw):
@@ -241,14 +242,14 @@ class TestExplainNamesThePackItRead:
                                 None, prompt, schema, data))
         got = explain.explain(new["id"], actor="operator@example.com",
                               trigger=triggers.person("operator@example.com"))
-        assert got["pack_read"] == {"id": new["id"], "schema": 5,
+        assert got["pack_read"] == {"id": new["id"], "schema": EP.SCHEMA,
                                     "built_at": new["replayed_at"], "as_of": new["built_at"]}
         assert "concurrent" in seen["pack"]
         from flask import render_template
         import app as A
         with A.app.test_request_context():
             html = unescape(render_template("v2/_explain.html", x=got, explain_model="m"))
-        assert f"Read pack {new['id']}, schema 5, built" in _words(html)
+        assert f"Read pack {new['id']}, schema {EP.SCHEMA}, built" in _words(html)
         older = explain.explain(old["id"], actor="operator@example.com",
                                 trigger=triggers.person("operator@example.com"))
         assert older["pack_read"]["id"] == old["id"] and older["pack_read"]["schema"] == 4
@@ -266,7 +267,8 @@ class TestExplainNamesThePackItRead:
         old, _rows = _kept_four()
         new = EP.build_for_episode(_episode(), actor="operator@example.com", rebuild_of=old)
         assert EP.record(new)["ok"]
-        world.answer = _answer(new, hypotheses=[{
+        # The rationale names no device it does not cite (C1897): r2's alert is cited.
+        world.answer = _answer(new, rationale="r2's heartbeat stopped.", hypotheses=[{
             "claim": "The heartbeat stopped.", "evidence_refs": ["alert"],
             "confirm_with": "show logging | include HEARTBEAT"}])
         with pressed_by("operator@example.com"):
@@ -274,14 +276,14 @@ class TestExplainNamesThePackItRead:
                                   trigger=triggers.person("operator@example.com"),
                                   send=world.send, today="2026-10-26")
         assert got["ok"] is True, got
-        assert got["pack_read"] == {"id": new["id"], "schema": 5,
+        assert got["pack_read"] == {"id": new["id"], "schema": EP.SCHEMA,
                                     "built_at": new["replayed_at"], "as_of": new["built_at"]}
 
 
 def test_build_again_in_a_real_browser(history):
     """On History, r2's row opens on its schema-4 kept pack, which offers Build again; pressed,
-    the card draws the pack built again (schema 5, its other alerts) in place, and its Show it
-    draws the old one, still readable as it was kept."""
+    the card draws the pack built again (this release's schema, its other alerts) in place,
+    and its Show it draws the old one, still readable as it was kept."""
     from tests import browser
     if not browser.available()[0]:
         pytest.skip(browser.available()[1])
@@ -310,7 +312,8 @@ def test_build_again_in_a_real_browser(history):
                      "!!p && p.getAttribute('data-pack') === ")
             held = ("document.getElementById('alert-history') === window.__list && "
                     "window.__list.getAttribute('data-held') === '1' && ")
-            b.wait_for(drawn.replace("return ", "return " + held, 1) + f"'{old['id']}-s5'", 30)
+            b.wait_for(drawn.replace("return ", "return " + held, 1)
+                       + f"'{old['id']}-s{EP.SCHEMA}'", 30)
             assert b.js(f"return !!{row}.querySelector('.held-note[data-held-why=\"open\"]')")
             text = b.js(f"return {row}.querySelector('.pack').textContent")
             assert "Built again from pack " + old["id"] in text
@@ -319,7 +322,7 @@ def test_build_again_in_a_real_browser(history):
             b.js(f"{row}.querySelector('.pack-lineage button').click()")
             b.wait_for(drawn + f"'{old['id']}'", 15)
             text = b.js(f"return {row}.querySelector('.pack').textContent")
-            assert f"Built again as pack {old['id']}-s5" in text
+            assert f"Built again as pack {old['id']}-s{EP.SCHEMA}" in text
             assert b.js(f"return {row}.querySelectorAll("
                         "'section.pack-section[data-ref=\"concurrent\"]').length") == 0
             assert len(EP.read()["rows"]) == 2

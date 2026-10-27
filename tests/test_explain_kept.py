@@ -218,9 +218,12 @@ def history_row(held, monkeypatch):
     e = dict(e, fired_at=e["started_at"], outcome="fired")
     pack = EP.build_for_episode(e, actor="operator@example.com")
     assert EP.record(pack)["ok"]
-    held.answer = _answer(pack, hypotheses=[{"claim": "The heartbeat stopped.",
-                                             "evidence_refs": ["alert"],
-                                             "confirm_with": "show logging | include HEARTBEAT"}])
+    # The rationale names no device the pack lacks: r2's alert, never _answer's r1 (C1897
+    # refuses an answer naming a device it does not cite).
+    held.answer = _answer(pack, rationale="The heartbeat stopped arriving within the window.",
+                          hypotheses=[{"claim": "The heartbeat stopped.",
+                                       "evidence_refs": ["alert"],
+                                       "confirm_with": "show logging | include HEARTBEAT"}])
     held.episode, held.history_pack = e, pack
     return held
 

@@ -1,0 +1,190 @@
+adjacencies:
+  adj:ospf:dev:u342aff19~dev:uc038a8be:10.255.3.0/24:
+    between: ['dev:u342aff19', 'dev:uc038a8be']
+    expected: true
+    link: link:10.255.3.0/24
+    observed: could not read (cannot be rebuilt; a later read is never put in its place, when the pack
+      was built)
+    proto: ospf
+    via: {'dev:u342aff19': Gi2, 'dev:uc038a8be': Gi2}
+  adj:ospf:dev:u38e76896~dev:uc038a8be:10.255.3.0/24:
+    between: ['dev:u38e76896', 'dev:uc038a8be']
+    expected: true
+    link: link:10.255.3.0/24
+    observed: could not read (cannot be rebuilt; a later read is never put in its place, when the pack
+      was built)
+    proto: ospf
+    via: {'dev:u38e76896': Vl100, 'dev:uc038a8be': Gi2}
+  adj:ospf:dev:u5f6ab452~dev:uc038a8be:10.255.3.0/24:
+    between: ['dev:u5f6ab452', 'dev:uc038a8be']
+    expected: true
+    link: link:10.255.3.0/24
+    observed: could not read (cannot be rebuilt; a later read is never put in its place, when the pack
+      was built)
+    proto: ospf
+    via: {'dev:u5f6ab452': Gi3, 'dev:uc038a8be': Gi2}
+  adj:ospf:dev:u66688a5c~dev:uc038a8be:10.255.3.0/24:
+    between: ['dev:u66688a5c', 'dev:uc038a8be']
+    expected: true
+    link: link:10.255.3.0/24
+    observed: could not read (cannot be rebuilt; a later read is never put in its place, when the pack
+      was built)
+    proto: ospf
+    via: {'dev:u66688a5c': Vl100, 'dev:uc038a8be': Gi2}
+  adj:ospf:dev:ub937e1ed~dev:uc038a8be:10.255.3.0/24:
+    between: ['dev:ub937e1ed', 'dev:uc038a8be']
+    expected: true
+    link: link:10.255.3.0/24
+    observed: could not read (cannot be rebuilt; a later read is never put in its place, when the pack
+      was built)
+    proto: ospf
+    via: {'dev:ub937e1ed': Gi3, 'dev:uc038a8be': Gi2}
+  adj:ospfv3:dev:u342aff19~dev:uc038a8be:2001:db8:3::/64:
+    between: ['dev:u342aff19', 'dev:uc038a8be']
+    expected: true
+    link: link:2001:db8:3::/64
+    observed: could not read (cannot be rebuilt; a later read is never put in its place, when the pack
+      was built)
+    proto: ospfv3
+    via: {'dev:u342aff19': Gi2, 'dev:uc038a8be': Gi2}
+  adj:ospfv3:dev:u5f6ab452~dev:uc038a8be:2001:db8:3::/64:
+    between: ['dev:u5f6ab452', 'dev:uc038a8be']
+    expected: true
+    link: link:2001:db8:3::/64
+    observed: could not read (cannot be rebuilt; a later read is never put in its place, when the pack
+      was built)
+    proto: ospfv3
+    via: {'dev:u5f6ab452': Gi3, 'dev:uc038a8be': Gi2}
+  adj:ospfv3:dev:ub937e1ed~dev:uc038a8be:2001:db8:3::/64:
+    between: ['dev:ub937e1ed', 'dev:uc038a8be']
+    expected: true
+    link: link:2001:db8:3::/64
+    observed: could not read (cannot be rebuilt; a later read is never put in its place, when the pack
+      was built)
+    proto: ospfv3
+    via: {'dev:ub937e1ed': Gi3, 'dev:uc038a8be': Gi2}
+as_now: 'the network model as it is now (the inventory and committed intent, read 2026-10-27T05:02:35Z),
+  not as it was at the alert''s time 2026-10-22T18:01:50Z: it may differ from then; nothing observed then
+  was captured, so observed says could not read'
+cables: could not read (cannot be rebuilt; a later read is never put in its place, when the pack was built)
+coverage:
+  adjacency: {age: '2026-10-27T05:02:35Z', source: 'expected from intent; observed: none', state: partial,
+    why: 'observed state could not be read (cannot be rebuilt; a later read is never put in its place,
+      when the pack was built); only what intent expects is here'}
+  endpoints: {age: '2026-10-27T05:02:06Z', source: 'the evidence pack''s endpoints section: nothing read:
+      not captured when the alert fired', state: not_collected, why: 'absent: cannot be rebuilt; a later
+      read is never put in its place'}
+  events: {age: '2026-10-22T18:01:50Z', source: 'the evidence pack''s logs section: the network''s Loki,
+      through History › Query''s logs builder, r1''s lines', state: present, why: ''}
+  flows: {age: '', source: '', state: not_collected, why: flows are not collected (roadmap)}
+  intent: {age: '2026-10-27T05:02:35Z', source: 'committed intent (host_vars), what it implies for the
+      topology', state: present, why: ''}
+  inventory: {age: '2026-10-27T05:02:35Z', source: 'the network''s inventory (name, NetBox id, role, site,
+      platform, address)', state: present, why: ''}
+  performance: {age: '2026-10-27T05:02:06Z', source: 'the evidence pack''s health section: Prometheus
+      (CPU, scrapes, interface discards) and Loki (the syslog heartbeat), for the alert''s device and
+      every device within two hops of it, one question each for them all, each summarised over the window',
+    state: present, why: ''}
+devices:
+  dev:u342aff19: {address: 10.255.1.12, detail: 'beyond the hops asked: identity only', hop: 1, name: r2,
+    platform: cisco_iosxe, role: router, via: 'link:10.255.3.0/24'}
+  dev:u38e76896: {address: 10.255.1.23, detail: 'beyond the hops asked: identity only', hop: 1, name: s3,
+    platform: cisco_ios, role: switch, via: 'link:10.255.3.0/24'}
+  dev:u5f6ab452: {address: 10.255.1.14, detail: 'beyond the hops asked: identity only', hop: 1, name: r4,
+    platform: cisco_iosxe, role: router, via: 'link:10.255.3.0/24'}
+  dev:u654297ae: {address: 10.255.1.21, detail: 'beyond the hops asked: identity only', hop: 1, name: s1,
+    platform: cisco_ios, role: switch, via: 'link:10.255.2.10/31'}
+  dev:u66688a5c: {address: 10.255.1.24, detail: 'beyond the hops asked: identity only', hop: 1, name: s4,
+    platform: cisco_ios, role: switch, via: 'link:10.255.3.0/24'}
+  dev:ub937e1ed: {address: 10.255.1.13, detail: 'beyond the hops asked: identity only', hop: 1, name: r3,
+    platform: cisco_iosxe, role: router, via: 'link:10.255.3.0/24'}
+  dev:uc038a8be:
+    address: 10.255.1.11
+    hop: 0
+    interfaces:
+    - addresses: [10.255.1.11/32, '2001:db8:1::11/128']
+      name: Lo0
+      ospf_area: '0'
+      ospfv3_area: '0'
+    - addresses: [192.0.2.15/24, '2001:db8::2/64']
+      name: Gi1
+      vrf: clab-mgmt
+    - addresses: [10.255.3.11/24, '2001:db8:3::11/64']
+      name: Gi2
+      ospf_area: '0'
+      ospfv3_area: '0'
+    - addresses: [10.255.2.10/31, '2001:db8:2:a::1/64']
+      name: Gi3
+    name: r1
+    ospf:
+      areas: ['0']
+      passive: [Lo0]
+      router_id: 10.255.1.11
+    ospfv3: {router_id: 10.255.1.11}
+    platform: cisco_iosxe
+    role: router
+hops: 1
+links:
+  link:10.255.2.10/31:
+    members:
+    - {address: 10.255.2.10/31, dev: 'dev:uc038a8be', interface: Gi3}
+    - {address: 10.255.2.11/31, dev: 'dev:u654297ae', interface: Gi0/2}
+    source: intent
+    subnet: 10.255.2.10/31
+  link:10.255.3.0/24:
+    members:
+    - {address: 10.255.3.11/24, dev: 'dev:uc038a8be', interface: Gi2}
+    - {address: 10.255.3.12/24, dev: 'dev:u342aff19', interface: Gi2}
+    - {address: 10.255.3.13/24, dev: 'dev:ub937e1ed', interface: Gi3}
+    - {address: 10.255.3.14/24, dev: 'dev:u5f6ab452', interface: Gi3}
+    - {address: 10.255.3.23/24, dev: 'dev:u38e76896', interface: Vl100}
+    - {address: 10.255.3.24/24, dev: 'dev:u66688a5c', interface: Vl100}
+    source: intent
+    subnet: 10.255.3.0/24
+  link:2001:db8:2:a::/64:
+    members:
+    - {address: '2001:db8:2:a::1/64', dev: 'dev:uc038a8be', interface: Gi3}
+    - {address: '2001:db8:2:a::2/64', dev: 'dev:u654297ae', interface: Gi0/2}
+    source: intent
+    subnet: 2001:db8:2:a::/64
+  link:2001:db8:3::/64:
+    members:
+    - {address: '2001:db8:3::11/64', dev: 'dev:uc038a8be', interface: Gi2}
+    - {address: '2001:db8:3::12/64', dev: 'dev:u342aff19', interface: Gi2}
+    - {address: '2001:db8:3::13/64', dev: 'dev:ub937e1ed', interface: Gi3}
+    - {address: '2001:db8:3::14/64', dev: 'dev:u5f6ab452', interface: Gi3}
+    - {address: '2001:db8:3::23/64', dev: 'dev:u38e76896', interface: Vl100}
+    - {address: '2001:db8:3::24/64', dev: 'dev:u66688a5c', interface: Vl100}
+    source: intent
+    subnet: 2001:db8:3::/64
+  link:clab-mgmt/192.0.2.0/24:
+    expanded: false
+    members:
+    - {address: 192.0.2.15/24, dev: 'dev:uc038a8be', interface: Gi1}
+    - {address: 192.0.2.15/24, dev: 'dev:u342aff19', interface: Gi1}
+    - {address: 192.0.2.15/24, dev: 'dev:ub937e1ed', interface: Gi1}
+    - {address: 192.0.2.15/24, dev: 'dev:u5f6ab452', interface: Gi1}
+    note: '4 members hold an address another member holds: separate segments or an address conflict, so
+      it is not walked through'
+    source: intent
+    subnet: 192.0.2.0/24
+    vrf: clab-mgmt
+  link:clab-mgmt/2001:db8::/64:
+    expanded: false
+    members:
+    - {address: '2001:db8::2/64', dev: 'dev:uc038a8be', interface: Gi1}
+    - {address: '2001:db8::2/64', dev: 'dev:u342aff19', interface: Gi1}
+    - {address: '2001:db8::2/64', dev: 'dev:ub937e1ed', interface: Gi1}
+    - {address: '2001:db8::2/64', dev: 'dev:u5f6ab452', interface: Gi1}
+    note: '4 members hold an address another member holds: separate segments or an address conflict, so
+      it is not walked through'
+    source: intent
+    subnet: 2001:db8::/64
+    vrf: clab-mgmt
+model: nm-519a69515a84
+netbox_cables: 'Default''s inventory is a local CSV, which holds no cables: its links are intent''s subnets
+  alone'
+network: Default
+observed: {read_at: never, source: none, state: 'could not read (cannot be rebuilt; a later read is never
+    put in its place, when the pack was built)'}
+subject: dev:uc038a8be

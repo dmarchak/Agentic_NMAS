@@ -1,0 +1,1 @@
+{"status":"success","data":{"resultType":"vector","result":[{"metric":{"instance":"localhost:9100","q":"cpus"},"value":[1792692110,"4"]},{"metric":{"instance":"localhost:9100","q":"usual_cpu"},"value":[1792692110,"23.973611111125344"]},{"metric":{"instance":"localhost:9100","q":"usual_load"},"value":[1792692110,"1.35"]}]}}

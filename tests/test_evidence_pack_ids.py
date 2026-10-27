@@ -136,7 +136,8 @@ def _named(data) -> dict:
         if isinstance(d, dict) and d.get("name"):
             out.setdefault(d["name"], set()).add(i)
     for s in json.loads(data["pack"]):
-        for line in s.get("lines") or []:
+        # The observer's lines name no device (C1896): each opens with its own reference.
+        for line in (s.get("lines") or []) if s["name"] == "health" else []:
             m = _LINE.match(line)
             assert m, line
             out.setdefault(m.group(1), set()).add(m.group(2))
@@ -148,13 +149,16 @@ def _named(data) -> dict:
 
 def _in_request(data) -> set:
     """Every reference the request holds: each "ref" in the pack as sent, each health line's
-    figures (health:<the line's id>:<figure>, the pack format's rule), and every id of the
-    topology sent."""
+    figures (health:<the line's id>:<figure>, the pack format's rule), each observer line's own
+    reference (its first word, C1896), and every id of the topology sent."""
     out = set()
     for s in json.loads(data["pack"]):
         out.add(s["ref"])
         out |= {p["ref"] for p in s.get("pieces") or []}
         for line in s.get("lines") or []:
+            if s["name"] == "observer":
+                out.add(line.split()[0].rstrip(":"))
+                continue
             m = _LINE.match(line)
             out |= {f"health:{m.group(2)}:{part.split()[0]}" for part in m.group(4).split("; ")}
     topo = yaml.safe_load(data.get("network_topology") or "") or {}
@@ -385,7 +389,8 @@ class TestARebuiltPackIsOfNow:
         assert "1 other alert begun before the window with no resolve recorded is not listed" \
             in page
         assert "the network model as it is now" in page, "the health section says it"
-        kinds.answer = _answer(pack, hypotheses=[{
+        # Its rationale names only the devices it cites (C1897).
+        kinds.answer = _answer(pack, rationale="r3 and r4 went unreachable too.", hypotheses=[{
             "claim": "A cause shared with r3 and r4.", "evidence_refs": [
                 r3["ref"], _by(pack)[(RULE, "r4")]["ref"]],
             "confirm_with": "show logging"}])
