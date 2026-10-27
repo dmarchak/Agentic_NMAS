@@ -1981,3 +1981,20 @@ tests/test_sdn_policy.py, tests/test_sdn_classify.py and tests/test_sdn_classify
 
 **The result: both killed; the working tree untouched (nmas-control's fingerprint).**
 
+## 2026-10-27: the normal-traffic classification sends the loop's prompt (Lab 8 objective 2.3), by hand
+
+**What touches the tier:** `modules/sdn/closed_loop.py`, `COLLECTION_PROMPT` from v2 (a prompt
+written for this path alone) to `CLASSIFY_PROMPT` (v3, the loop's): the operator's order, since
+2.3 asks whether the classifier the loop uses false-positives on normal traffic. The request is
+unchanged but its system text.
+
+**The method:** each mutant its exact line in a `scripts/nmas-control` throwaway worktree, then
+tests/test_sdn_classify_normal.py and tests/test_sdn_policy.py (`scratchpad/coll_hm.py`).
+
+| mutant | result | killed by |
+|---|---|---|
+| back to v2 | killed | `test_the_request_says_no_rule_fired_and_every_id_sent_may_be_cited` |
+| canary: a version with no file (99) | killed | 7 tests |
+
+**The result: both killed; the working tree untouched (nmas-control's fingerprint).**
+

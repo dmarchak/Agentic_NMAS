@@ -669,9 +669,11 @@ def request_blocks(sent: dict, section: dict, limits: dict) -> dict:
 
 # ─────────────────────────────── a collection no rule fired on (objective 2.3, false positives)
 
-#: The prompt for a collection no rule fired on: v1's, and what to judge when no rule fired
-#: (scripts/nmas-sdn-classify-normal). v1 stays the loop's and the person's Classify's.
-COLLECTION_PROMPT = ("sdn_classify", 2)
+#: The prompt for a collection no rule fired on (scripts/nmas-sdn-classify-normal): the loop's
+#: own, `CLASSIFY_PROMPT` (the operator, 2026-10-27: Lab 8's objective 2.3 asks whether the
+#: classifier false-positives on normal traffic, so it is the same prompt the loop uses; the
+#: detection piece says no rule fired). v2, written for this path alone, is kept as the record.
+COLLECTION_PROMPT = CLASSIFY_PROMPT
 #: What a collection's request names as its detection: none fired.
 NO_DETECTION_WORDS = ("no detection rule fired on this collection: assess whether the "
                       "evidence shows a threat the rules did not find")

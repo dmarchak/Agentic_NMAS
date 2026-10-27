@@ -90,7 +90,10 @@ def test_the_request_says_no_rule_fired_and_every_id_sent_may_be_cited(world):
     assert '"ref"' not in text and '"sdn:' not in text
     assert "0000000000000001" in data["names"]
     (row,) = rows()
-    assert row["prompt"] == "sdn_classify.v2" and row["actor"] == EVAL
+    # The loop's own prompt (the operator, 2026-10-27: 2.3 asks about the classifier the loop
+    # uses), v3 since C1988's adoption; v2 is the record.
+    assert row["prompt"] == "{}.v{}".format(*CL.CLASSIFY_PROMPT) == "sdn_classify.v3"
+    assert row["actor"] == EVAL
     assert row["subject"]["kind"] == "sdn_collection"
     assert got["sent"]["ids"] == len(req["sent"]["ids"])
 
