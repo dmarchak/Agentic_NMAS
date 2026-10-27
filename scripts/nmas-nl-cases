@@ -178,7 +178,11 @@ def record(checkout: str, list_name: str, actor: str, out: str, case_file: str =
             break
         rec = {"n": case["n"], "model": pin, "now": now,
                "recorded_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
-               "choices": got.get("choices"), "call_id": got.get("call_id", ""),
+               "choices": got.get("choices"),
+               # The model's own answer where its canonical form differs (metrics v10's
+               # one named device, logs v4's text in any case, C1834); absent, the same.
+               **({"answered": got["answered"]} if got.get("answered") else {}),
+               "call_id": got.get("call_id", ""),
                "cost_usd": got.get("cost_usd", 0), "error": got.get("error", ""),
                "prompt": list(asked or (feature_prompt, (nl_query.PROMPT_LOGS if logs
                                                           else nl_query.PROMPT)[1])),

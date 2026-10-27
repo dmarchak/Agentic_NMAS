@@ -148,6 +148,12 @@ text.
 - **A mnemonic carries the event.** When a mnemonic records the event asked about, no word
   for the event is added. Only a direction no chosen mnemonic expresses stays, cased as the
   line writes it ("down" on an interface's line).
+- **A text is matched in any case.** Whenever the answer holds a text for **Text contains**,
+  `read_back` writes it in lower case and ticks the builder's **any case**, so "Down", "DOWN"
+  and "down" are one answer and find the same lines (Loki compares text case by case). The
+  answer as the model gave it is kept with the call's record beside the one filled. The
+  excluded text is left exactly as the model wrote it: matched in any case it could leave out
+  lines the answer never named.
 - **An interface flap** is both its link and its line protocol mnemonics.
 - **A BGP neighbour going up or down** is `%BGP-5-ADJCHANGE` alone.
 - **One device meant by its role alone** ("what went wrong on the switch") among several of

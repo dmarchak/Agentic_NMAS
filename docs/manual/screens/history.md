@@ -299,6 +299,11 @@ without a word, so choosing the old range again brings it back.
 - **Mnemonic** offers the mnemonics Mercury's logs reader counted for the chosen devices over
   the range, the most frequent first; **+ more** lists the rest.
 - **Text contains** and **excludes** keep or leave out lines holding the text, exactly as typed.
+  Loki compares text case by case, so "down" does not find "Down" or "DOWN". Tick **any case**
+  beside **contains** to keep the lines holding the text in any case (the query becomes
+  `|~ "(?i)…"`, the text written so that each character matches only itself). It is off until
+  you tick it; **Ask in words** ticks it whenever it fills a text, so the same question finds
+  the same lines however the answer happened to case the word. **excludes** is always exact.
 - **Show** draws the **Lines**, newest first, or **Counts over time**: the matching lines
   counted in each window (a minute to a day), one series per device, mnemonic or any label
   Loki holds, drawn on the same chart as a metrics answer. Click a point to name its window and

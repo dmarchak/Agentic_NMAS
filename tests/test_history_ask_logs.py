@@ -897,3 +897,101 @@ class TestScopeFirst:
         _page(web)
         got = [p for path, p in web.asked if path.endswith("/label/device/values")]
         assert got and "query" not in got[-1], "every kind: no narrowing"
+
+
+def _re2_as_python(pat):
+    """An RE2 pattern the builder writes, as Python's re reads it: RE2's \\x{HH} is Python's
+    \\xHH; the flag and the escapes `literal` writes read the same in both."""
+    return re.sub(r"\\x\{([0-9a-f]{2})\}", lambda m: "\\x" + m.group(1), pat)
+
+
+class TestAnyCase:
+    """C1834 (the operator's order, 2026-10-26): Loki's |= is case-sensitive, so the Text
+    filter gains a choice, "any case" (the address's `anycase`): on, the text is matched in any
+    case by RE2's flag before the text written as a literal; off (the default), exactly as
+    written, as before. Each query is read back by the independent Go-string reader above."""
+
+    RNG = {"start": NOW - 86400, "end": NOW, "seconds": 86400, "words": "the last 24 h"}
+    DISC = {"labels": ["device", "job"], "since": {"device": 0}}
+
+    def _built(self, **values):
+        spec, errors = Q.ask(values)
+        assert not errors, errors
+        return Q.build(spec, self.DISC, self.RNG, spec["dev"])
+
+    def test_off_the_text_is_matched_exactly_as_written(self):
+        b = self._built(has="Down")
+        strings, outside = tokens(b["log_query"])
+        assert outside == '{job=~"_"} |= "_" !~ "_"', outside
+        assert strings[1] == "Down"
+        assert b["explain"]["has"] == 'keeps the lines containing "Down", exactly as written'
+        assert 'containing "Down", newest' in b["reads"] and "any case" not in b["reads"]
+
+    def test_on_the_text_is_matched_in_any_case(self):
+        b = self._built(has="down", anycase="1")
+        strings, outside = tokens(b["log_query"])
+        assert outside == '{job=~"_"} |~ "_" !~ "_"', outside
+        assert strings[1] == "(?i)down", strings
+        pat = _re2_as_python(strings[1])
+        for line in ("Neighbor 192.0.2.2 Down", "from FULL to DOWN", "changed state to down"):
+            assert re.search(pat, line), line
+        assert not re.search(pat, "changed state to up")
+        assert b["explain"]["has"] == 'keeps the lines containing "down", in any case'
+        assert 'containing "down", in any case, newest' in b["reads"], b["reads"]
+
+    @pytest.mark.parametrize("text", ["a.b*(c)+?", "[x]{2}^$|y", 'say "hi" \\ there',
+                                      "tab\there", "(?-i)Down"])
+    def test_a_text_holding_regex_characters_matches_only_itself_in_any_case(self, text):
+        b = self._built(has=text, anycase="1")
+        strings, _outside = tokens(b["log_query"])
+        assert strings[1] == "(?i)" + Q.literal(text), strings[1]
+        pat = _re2_as_python(strings[1])
+        assert re.fullmatch(pat, text, re.S) and re.fullmatch(pat, text.swapcase(), re.S)
+        # Every metacharacter is itself: what the text would match read as RE2 is not matched.
+        assert not re.fullmatch(pat, text + "x", re.S)
+        if "." in text:
+            assert not re.fullmatch(pat, text.replace(".", "X"), re.S)
+
+    def test_the_choice_is_carried_only_as_one(self):
+        _spec, errors = Q.ask({"has": "down", "anycase": "yes"})
+        assert errors == ["'yes' is not the any-case choice (1, or none)"], errors
+        spec, _e = Q.ask({"has": "down", "anycase": "yes"})
+        assert spec["anycase"] == "" and "|= " in Q.build(spec, self.DISC, self.RNG,
+                                                         [])["log_query"]
+        assert "anycase" in Q.ADDRESS_KEYS and "anycase" in Q.FILTERS
+        assert Q.DEFAULTS["anycase"] == "", "off by default: the builder as it was"
+        assert Q.qs(Q.ask({"has": "down"})[0]) == "?has=down"
+        assert Q.qs(Q.ask({"has": "down", "anycase": "1"})[0]) == "?has=down&anycase=1"
+
+    def test_the_page_draws_the_choice_beside_contains_and_asks_with_it(self, web):
+        html = _page(web, has="Neighbor")
+        box = re.search(r'<input id="lq-anycase"[^>]*>', html).group(0)
+        assert 'type="checkbox"' in box and 'name="anycase"' in box and 'value="1"' in box
+        assert 'form="lq-form"' in box and "checked" not in box
+        assert html.index('id="lq-has"') < html.index('id="lq-anycase"') < \
+            html.index('id="lq-not"'), "beside contains"
+        assert '|= "Neighbor"' in html
+        web.asked.clear()
+        html = _page(web, ask="1", has="neighbor", anycase="1", range="1h", hl="has")
+        box = re.search(r'<input id="lq-anycase"[^>]*>', html).group(0)
+        assert " checked" in box
+        assert 'keeps the lines containing "neighbor", in any case' in html
+        asked = [p["query"] for p in _logs_asked(web)]
+        assert asked and '|~ "(?i)neighbor" !~ ' in asked[-1] and "|= " not in asked[-1], asked
+        # Carried once: the checkbox is the lq-form's own, never a hidden copy beside it.
+        form = re.search(r'<form id="lq-form".*?</form>', html, re.S).group(0)
+        assert 'name="anycase"' not in form
+
+    def test_an_empty_answer_says_the_text_was_matched_in_any_case(self, web):
+        web.loki.empty = True
+        html = unescape(_page(web, ask="1", has="neighbor", anycase="1", range="1h"))
+        assert "No line contains “neighbor”, in any case: this may not match" in html
+
+    def test_an_excluded_text_a_text_in_any_case_need_not_hold_is_no_clash(self):
+        spec, _e = Q.ask({"has": "neighbor down", "anycase": "1", "not": "down"})
+        assert Q.clashes(spec) == [], "a line holding NEIGHBOR DOWN passes both"
+        spec, _e = Q.ask({"has": "neighbor 192.0.2.7", "anycase": "1", "not": "192.0.2.7"})
+        assert Q.clashes(spec), "digits have no case: every line holding the text holds it"
+        spec, _e = Q.ask({"mn": ["%LINK-3-UPDOWN"], "has": "ospf-5-adjchg", "anycase": "1"})
+        (words, _fixes), = Q.clashes(spec)
+        assert "name different mnemonics" in words

@@ -174,9 +174,13 @@ def misses(expect: dict, got: dict, now: float) -> list:
     return out
 
 
-def result_of_logs(choices: dict) -> dict:
+def result_of_logs(choices: dict, version: int = None) -> dict:
     """A recorded logs answer (`LogsChoices`, or v3's `LogsChoicesV2`) as nl_query.logs says
-    it, without the builder's read-back, as `result_of` is for the metrics half."""
+    it, without the builder's read-back, as `result_of` is for the metrics half. *version* is
+    the logs prompt version it was asked with (none: the live one): from
+    `nl_query.CANONICAL_LOGS_FROM`, the answer is read as nl_query.logs reads it, in its
+    canonical form, its text matched in any case (C1834); a canonical recording replays as
+    itself."""
     from modules.ai import nl_query
 
     model = nl_query.LogsChoicesV2 if "needs" in choices else nl_query.LogsChoices
@@ -185,7 +189,23 @@ def result_of_logs(choices: dict) -> dict:
         return {"ok": False, "error": "ask", "clarify": c.question}
     if c.outcome is nl_query.Outcome.refuse:
         return {"ok": False, "error": "unanswerable", "detail": c.why_not}
-    return {"ok": True, "error": "", "values": nl_query.values_logs(c)}
+    version = nl_query.PROMPT_LOGS[1] if version is None else version
+    any_case = version >= nl_query.CANONICAL_LOGS_FROM
+    if any_case:
+        c = nl_query.canonical_logs(c)
+    return {"ok": True, "error": "", "values": nl_query.values_logs(c, any_case=any_case)}
+
+
+def _text_misses(v: dict, allowed) -> bool:
+    """Whether the answer's text is none of *allowed*. A text matched exactly is compared as
+    written (Loki's ``|=`` is case-sensitive, so the case is part of the value); a text matched
+    in any case (``anycase``, C1834) matches the same lines as any other casing of it, so it
+    is compared with each allowed text case-folded. Only the case is folded: a different word,
+    or the empty text where a text is expected, still misses."""
+    has = v.get("has") or ""
+    if v.get("anycase"):
+        return has.casefold() not in {a.casefold() for a in allowed}
+    return has not in allowed
 
 
 def logs_misses(expect: dict, got: dict, now: float) -> list:
@@ -211,7 +231,7 @@ def logs_misses(expect: dict, got: dict, now: float) -> list:
         out.append(f"role {v.get('role')!r}, expected {expect['role']!r}")
     if expect.get("contains_empty") and v.get("has"):
         out.append(f"text {v.get('has')!r}, expected none (a mnemonic or severity says it)")
-    if "contains" in expect and (v.get("has") or "") not in expect["contains"]:
+    if "contains" in expect and _text_misses(v, expect["contains"]):
         out.append(f"text {v.get('has')!r}, expected one of {expect['contains']}")
     if "severity" in expect and (v.get("sev") or "any") not in expect["severity"]:
         out.append(f"severity {v.get('sev') or 'any'!r}, expected one of {expect['severity']}")

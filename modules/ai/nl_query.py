@@ -1382,11 +1382,33 @@ def parts_logs(question: str, kinds: list, mns: list, labels: list, devices: lis
     }
 
 
-def values_logs(c: LogsChoices) -> dict:
-    """The logs builder's address for the choices (history_logq's own keys)."""
+#: The first logs prompt version whose answers are read in their canonical form
+#: (`canonical_logs`; C1834, the operator, 2026-10-26).
+CANONICAL_LOGS_FROM = 4
+
+
+def canonical_logs(c):
+    """*c*, a logs answer, in its one form where several ask the same (C1834, the operator's
+    order of 2026-10-26: fixed in Python after the model, never by a prompt version). Loki's
+    ``|=`` is case-sensitive, so "down", "Down" and "DOWN" matched different lines across runs
+    of one question; Ask in words matches its text in any case (`values_logs`, the builder's
+    `anycase`), so the text is kept lower-case: two answers differing only in the text's case
+    are then one answer, the same lines matched. The excluded text stays as written: a
+    case-blind exclusion drops more lines than the model named, unseen. Any other answer, and
+    one with no text, is returned as it is."""
+    if c.outcome is not Outcome.answer or not c.contains or c.contains == c.contains.lower():
+        return c
+    return c.model_copy(update={"contains": c.contains.lower()})
+
+
+def values_logs(c: LogsChoices, any_case: bool = False) -> dict:
+    """The logs builder's address for the choices (history_logq's own keys). *any_case*: the
+    text matched in any case (`canonical_logs`), set by Ask in words from v4 whenever the answer
+    holds a text."""
     return {"job": list(c.kinds), "dev": list(c.devices), "role": c.role,
             "sev": "" if c.severity is Severity.any else c.severity.value,
-            "mn": list(c.mnemonics), "has": c.contains, "not": c.excludes,
+            "mn": list(c.mnemonics), "has": c.contains,
+            "anycase": "1" if any_case and c.contains else "", "not": c.excludes,
             "show": c.show.value, "by": c.by or "device", "every": c.every.value,
             "range": c.range.value,
             **({"from": c.from_utc, "to": c.to_utc} if c.range is LogsRange.custom else {})}
@@ -1456,10 +1478,18 @@ def logs(list_name: str, question: str, *, actor: str, send=None, client=None,
                           today=today, subject=subject)
     if not got["ok"]:
         return dict(got, offered=mns)
-    c = got["output"]
+    c, kept = got["output"], {}
+    any_case = prompt[1] >= CANONICAL_LOGS_FROM
+    if any_case:
+        # One form where several ask the same (`canonical_logs`, C1834), the model's own
+        # answer kept beside, as the metrics half keeps it (v10).
+        c = canonical_logs(c)
+        if c is not got["output"]:
+            kept["answered"] = got["output"].model_dump(mode="json")
     base = {"call_id": got["call_id"], "cost_usd": got["cost_usd"], "offered": mns,
+            # The answer as recorded cases keep it (from v4, in its canonical form).
             "choices": c.model_dump(mode="json"),
-            **{k: got[k] for k in ("parent_call_id", "needs_said") if got.get(k)}}
+            **{k: got[k] for k in ("parent_call_id", "needs_said") if got.get(k)}, **kept}
     links = {"page": f"/v2/history/query/ask/logs?list={list_name}"}
     if c.outcome is Outcome.ask:
         calls.record_use(got["call_id"], "asked a question back", actor=actor,
@@ -1471,7 +1501,7 @@ def logs(list_name: str, question: str, *, actor: str, send=None, client=None,
                          detail=c.why_not[:200], links=links)
         return dict(base, ok=False, error="unanswerable",
                     detail=f"the builder cannot answer this: {_sentence(c.why_not)}")
-    v, said = values_logs(c), []
+    v, said = values_logs(c, any_case=any_case), []
     for key, allowed, what in (("job", set(kinds), "kind"), ("mn", set(mns), "mnemonic")):
         out_ = [x for x in v[key] if x not in allowed]
         if out_:
@@ -1505,8 +1535,9 @@ def logs(list_name: str, question: str, *, actor: str, send=None, client=None,
         if n == 0 and v.get("has"):
             # A zero that rests on free text says so, never "an answer" (the operator's walk,
             # 2026-10-26: "reboot", which IOS never logs, read as no reboots).
-            out["test"] += (f"; no line contains '{v['has']}', which may not be how the "
-                            "platform logs it")
+            out["test"] += (f"; no line contains '{v['has']}'"
+                            + (", in any case" if v.get("anycase") else "")
+                            + ", which may not be how the platform logs it")
     calls.record_use(got["call_id"], "filled the builder", actor=actor,
                      detail="; ".join(out["errors"])[:200],
                      links=_filled_links(links, "/v2/history/query/ask/logs", view))

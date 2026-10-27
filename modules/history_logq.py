@@ -69,16 +69,20 @@ PRESETS = (
 )
 
 #: Every value the address carries, and its default. Lists are the repeatable ones.
-DEFAULTS = {"job": [], "dev": [], "role": "", "sev": "", "mn": [], "has": "", "not": "",
-            "show": "lines", "by": "device", "every": "5m", "range": "24h", "within": "",
-            "from": "", "to": "", "ask": "", "before": "", "at": "", "hl": ""}
+#: `anycase` ("1" or ""): the Text filter's "any case" choice (C1834): the text matched in any
+#: case (`|~ "(?i)<the text as an RE2 literal>"`), else exactly as written (`|=`). Off by
+#: default, so a person's builder matches as it always has; Ask in words sets it whenever the
+#: model chose a text (nl_query.canonical_logs).
+DEFAULTS = {"job": [], "dev": [], "role": "", "sev": "", "mn": [], "has": "", "anycase": "",
+            "not": "", "show": "lines", "by": "device", "every": "5m", "range": "24h",
+            "within": "", "from": "", "to": "", "ask": "", "before": "", "at": "", "hl": ""}
 LISTS = ("job", "dev", "mn")
 #: The keys a saved view keeps (modules/saved_views.py): the question and the range, asked.
-ADDRESS_KEYS = ("job", "dev", "role", "sev", "mn", "has", "not", "show", "by", "every", "range",
-                "within", "from", "to", "ask")
+ADDRESS_KEYS = ("job", "dev", "role", "sev", "mn", "has", "anycase", "not", "show", "by",
+                "every", "range", "within", "from", "to", "ask")
 #: The filter choices (what a preset sets or leaves at its default).
-FILTERS = ("job", "dev", "role", "sev", "mn", "has", "not", "show", "by", "every", "range",
-           "within", "from", "to")
+FILTERS = ("job", "dev", "role", "sev", "mn", "has", "anycase", "not", "show", "by", "every",
+           "range", "within", "from", "to")
 
 _MN = re.compile(r"^%?[A-Z0-9_]+(?:-[A-Z0-9_]+)*-[0-7]-[A-Z0-9_]+$")
 _LABEL = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -127,6 +131,9 @@ def ask(values) -> tuple:
             errors.append(f"the text filter is {len(spec[key])} characters; at most {TEXT_MAX} "
                           "are taken")
             spec[key] = ""
+    if spec["anycase"] not in ("", "1"):
+        errors.append(f"{spec['anycase'][:20]!r} is not the any-case choice (1, or none)")
+        spec["anycase"] = ""
     if spec["show"] not in ("lines", "counts"):
         spec["show"] = "lines"
     if spec["every"] not in WINDOWS:
@@ -398,7 +405,13 @@ def build(spec: dict, disc: dict, rng: dict, devices: list) -> dict:
                       f"|~ {string('(?:' + alternation(mns) + ')')}"), "mn"))
         explain["mn"] = f"keeps the lines holding {' or '.join(m.lstrip('%') for m in mns)}"
         reads.append(" or ".join(m.lstrip("%") for m in mns) + " lines")
-    if spec["has"]:
+    if spec["has"] and spec["anycase"]:
+        # Any case (C1834): RE2's case-insensitive flag before the text written as a literal,
+        # so a metacharacter in it matches itself and nothing else.
+        pipe.append((f"|~ {string('(?i)' + literal(spec['has']))}", "has"))
+        explain["has"] = f'keeps the lines containing "{spec["has"]}", in any case'
+        reads.append(f'containing "{spec["has"]}", in any case')
+    elif spec["has"]:
         pipe.append((f"|= {string(spec['has'])}", "has"))
         explain["has"] = f'keeps the lines containing "{spec["has"]}", exactly as written'
         reads.append(f'containing "{spec["has"]}"')
@@ -660,7 +673,11 @@ def clashes(spec: dict) -> list:
         # the other is dropped first.
         return [drop_other, drop_first] if hl == first_key else [drop_first, drop_other]
 
-    named = ["%" + m for m in _MN_IN_TEXT.findall(spec["has"] or "")]
+    # Text matched in any case names a mnemonic in any case: a line holds it as the device
+    # writes it, in capitals (C1834).
+    anycase = bool(spec.get("anycase"))
+    named = ["%" + m for m in _MN_IN_TEXT.findall(((spec["has"] or "").upper() if anycase
+                                                    else spec["has"] or ""))]
     if mn and named and not set(named) & set(mn):
         words = (f"The mnemonic{'s' if len(mn) > 1 else ''} chosen ({chips}) and the text "
                  f"“{spec['has']}” name different mnemonics: a line carries one, so "
@@ -677,9 +694,13 @@ def clashes(spec: dict) -> list:
             out.append((words, order((f"Drop {chips}", {"mn": [], "hl": "mn"}),
                                      ("Any severity", {"sev": "", "hl": "sev"}), "mn")))
     nope = spec["not"]
-    if nope and ((spec["has"] and nope in spec["has"]) or (mn and all(nope in m for m in mn))):
-        held = f"the text “{spec['has']}”" if spec["has"] and nope in spec["has"] \
-            else f"every mnemonic chosen ({chips})"
+    # The excluded text is matched exactly, so a text matched in any case holds it on every
+    # line only when it has no letter a case could change ("DOWN" passes "down" in any case
+    # and does not hold "down").
+    in_has = bool(spec["has"]) and nope in spec["has"] and (not anycase
+                                                          or nope.lower() == nope.upper())
+    if nope and (in_has or (mn and all(nope in m for m in mn))):
+        held = f"the text “{spec['has']}”" if in_has else f"every mnemonic chosen ({chips})"
         words = (f"Every line holding {held} holds “{nope}” too, which the line must "
                  "exclude, so no line can match")
         out.append((words, [(f"Drop the excluded text “{nope}”",

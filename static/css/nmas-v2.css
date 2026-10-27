@@ -2045,6 +2045,8 @@ summary.lq-chip::-webkit-details-marker { display: none; }
   border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--ink);
   min-height: 34px; }
 .lq-text { display: inline-flex; gap: 6px; align-items: center; }
+/* The Text filter's "any case" choice (C1834), beside contains. */
+.lq-case { display: inline-flex; gap: 6px; align-items: center; font-size: 13.5px; color: var(--ink-2); }
 /* Ask in words (8.1): the question takes the row's width, its button beside it. */
 .lq-row input.lq-words-in { flex: 1 1 18rem; min-width: 0; }
 .lq-more { position: relative; }

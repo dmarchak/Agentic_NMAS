@@ -17,7 +17,7 @@ Compared again 2026-10-15: each `<details>` keyed (`data-keep`, C472) so a redra
 Compared again 2026-10-15 (board E3): the go links, the query box, the range chips and picker, the actions and the three states moved into `_history_ask_parts.html`, which the metrics builder shares (the rendered page the same but for whitespace, every state rendered before and after and compared); the head's Metrics switch now opens the metrics builder, and Code mode's Builder is a link. The shots at 1440, 1280 and 390 retaken; nothing drawn moved. Two fixes found on the way, neither a region's verdict: the bounds line says no log store is configured where none is (it raised an error page before, reading Loki's unread limits), and the heartbeat stage writes the marker as an RE2 literal, `NMAS-HEARTBEAT` (Python's escape wrote `NMAS\\-HEARTBEAT`, the same lines matched).
 Compared again 2026-10-15 (C818, C819; the operator's decisions of that day): Reveal… built as the board draws it, and Edit as code from Counts ending in Code mode's chart. The page shot at 1440, 1280 and 390 as before, and two more states beside the board's Lines view: `history-ask-logs-reveal-ask-page-<width>` (the box open with a reason) and `history-ask-logs-revealed-page-<width>` (the line revealed), at 1440 and 390, fed by the lines capture with one planted secret-bearing line (tests/test_log_reveal.py). Each masked value is now marked as the board marks it; the bounds line says revealing is recorded, as the board's does.
 Templates compared: templates/v2/history_ask_logs.html, templates/v2/_history_body.html, templates/v2/_history_ask_logs.html, templates/v2/_history_ask_head.html, templates/v2/_history_ask_parts.html, templates/v2/_history_ask_words.html, templates/v2/_ai.html
-Templates sha256: `0f900cdfbb3c6186dc0718b6bb0c7e827d3bc3319bf9ef8870429c41c077c5e0`
+Templates sha256: `bdce9d617ea643c278ed6bf9650d15069714dba64923c2afd0fd303d8668d8a6`
 
 Compared again 2026-10-15 (P7-03): `_history_body.html` gained a `data-concept` marker and one
 sentence inside a Baselines row's detail (the block drawing each baseline's Re-apply… link); this
@@ -72,6 +72,14 @@ Changed 2026-10-25 again (the gate's fixes):
 
 Nothing drawn on this page changed; the hash written again.
 Templates sha256 before: `b106ce9eaf710572ccecbdd30675a68f78a13b483fbb7c80d3168012585e0de7`.
+
+Compared again 2026-10-27 (C1834, logs v4 matching text in any case): the Text row gained an
+"any case" checkbox between contains and excludes (`anycase`, off by default; on, the contains
+filter is `|~ "(?i)…"`, its words on hover), and the empty answer says "in any case" when it is
+on. Shots: `history-ask-logs-page-1440` beside the board at 1440, the Text row region. The board
+draws contains and excludes only: a **deviation**, logged ("History, Ask your own (logs): the
+Text filter's any-case choice"). Every other region as before; the hash written again.
+Templates sha256 before: `0f900cdfbb3c6186dc0718b6bb0c7e827d3bc3319bf9ef8870429c41c077c5e0`.
 
 Changed 2026-10-25 again (C1724, C1740): `_history_ask_words.html` gained the metrics
 builder's timezone inputs (`tz`, `tz_off`), drawn only when the including template sets
@@ -192,7 +200,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Devices | chosen chips with ×, + device, by role, all N; "by the device label, never a regex" | the same; + device asks a name from the values Loki holds; the hint says label or line, with the label's first line; read for the kinds chosen; a device chosen the range does not hold kept, marked "not seen in this range" | **deviation** (log: F3 logs builder: devices before the label began); (log: History › Query: not seen in this range) |
 | Severity | "at or worse than" and a select | the same, any severity or 0 to 7; the hint says label or the mnemonic's digit | **same** |
 | Mnemonic | chips from the store for the chosen devices, + more | the same, from Mercury's logs reader's counts, the most frequent four and + N more; a mnemonic chosen the range does not hold kept, marked "not seen in this range" | **deviation** (log: History › Query: not seen in this range) |
-| Text | contains, excludes | the same | **same** |
+| Text | contains, excludes | contains, an "any case" checkbox, excludes | **deviation** (log: History, Ask your own (logs): the Text filter's any-case choice) |
 | Show | Lines or Counts over time; per device or per mnemonic; every 5 minutes or 1 hour | the same switch; per device, per mnemonic or per any label Loki holds; every 1 minute to 1 day | **deviation** (log: F3 logs builder: the Show row's choices) |
 | The query | the dark box, the last choice marked and repeated, the plain sentence | the same; Mercury's heartbeat stage drawn in it; above it, filters no line can match together warned, the first button dropping the leftover | **deviation** (log: F3 logs builder: the heartbeat stage); (log: History › Query: filters that cannot match together) |
 | Edit as code | "Edit as code hands it to Code mode" | the link, to today's box with the LogQL; a count query drawn there on the same chart (C819) | **deviation** (log: F3 Edit as code: counts drawn in Code mode) |

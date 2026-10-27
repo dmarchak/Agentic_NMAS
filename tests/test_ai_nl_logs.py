@@ -396,6 +396,11 @@ def test_a_zero_resting_on_free_text_says_so(world, monkeypatch):
     world.answer = _choices(mnemonics=[], contains="reboot", show="lines", range="7d")
     got = _ask(world, "Which devices rebooted this week?")
     assert got["ok"] is True and got["lines"] == 0
+    # From v4 the text is matched in any case (C1834), and the words say so.
+    assert got["test"] == ("the test run matches 0 line(s) over the range; no line contains "
+                           "'reboot', in any case, which may not be how the platform logs it"), \
+        got["test"]
+    got = _ask(world, "Which devices rebooted this week?", prompt=("nl_logs", 3))
     assert got["test"] == ("the test run matches 0 line(s) over the range; no line contains "
                            "'reboot', which may not be how the platform logs it"), got["test"]
 
@@ -549,3 +554,83 @@ def test_v4_keeps_one_direction_word_cased_as_the_line_writes_it_and_nothing_lon
     assert "or flapping, is both %LINK-3-UPDOWN and %LINEPROTO-5-UPDOWN" in v4
     assert "never add a word for the event itself" in v4
     assert "state to down" not in v4, "a longer phrase is never offered as an example"
+
+
+# ---------------------------------------------------------------------------- C1834
+
+OSPF_DOWN = "Did any OSPF neighbours go down on r2 or r4 in the past week?"
+
+
+@pytest.mark.parametrize("said", ["DOWN", "Down", "down"])
+def test_the_text_is_read_in_its_canonical_form_after_the_model(world, said):
+    """C1834 (the operator's order, 2026-10-26): logs v4 answered blind set 2's case 9 with
+    "", "DOWN" or "Down" over five runs, and Loki's |= is case-sensitive. Fixed in Python
+    after the model, never by a prompt: from v4 the text is lower-case and matched in any
+    case, so the three answers are one, the same LogQL; the model's own answer is kept beside
+    where it differs, as metrics v10 keeps it."""
+    world.answer = _choices(contains=said, show="lines", range="7d")
+    got = _ask(world, OSPF_DOWN)
+    assert got["ok"] is True, got
+    assert got["values"]["has"] == "down" and got["values"]["anycase"] == "1", got["values"]
+    assert got["view"]["built"]["log_query"].endswith(
+        ' |~ "(?i)down" !~ "%HA_EM-\\\\d-LOG: NMAS-HEARTBEAT: NMAS-HEARTBEAT"'), \
+        got["view"]["built"]["log_query"]
+    assert got["choices"]["contains"] == "down", "the recorded answer is the canonical one"
+    if said == "down":
+        assert "answered" not in got, "the canonical form is the model's own: nothing beside"
+    else:
+        assert (got.get("answered") or {}).get("contains") == said, \
+            "the model's own answer, as given"
+        assert dict(got["answered"], contains="down") == got["choices"], "only the case moved"
+    assert "keeps the lines containing \"down\", in any case" in \
+        got["view"]["built"]["explain"]["has"]
+
+
+def test_three_casings_of_one_answer_fill_one_builder(world):
+    filled = []
+    for said in ("DOWN", "Down", "down"):
+        world.answer = _choices(contains=said, show="lines", range="7d")
+        got = _ask(world, OSPF_DOWN)
+        filled.append((got["choices"], got["values"], got["view"]["built"]["log_query"]))
+    assert filled[0] == filled[1] == filled[2], "consistency compares one form"
+
+
+def test_no_text_and_the_excluded_text_are_left_as_the_model_wrote_them(world):
+    world.answer = _choices(contains="", excludes="Up", show="lines", range="7d")
+    got = _ask(world, OSPF_DOWN)
+    assert got["values"]["has"] == "" and got["values"]["anycase"] == ""
+    assert got["values"]["not"] == "Up" and '!= "Up"' in got["view"]["built"]["log_query"]
+    assert "answered" not in got and got["choices"]["excludes"] == "Up"
+
+
+def test_v3_is_unchanged_its_text_exactly_as_the_model_wrote_it(world):
+    """Earlier versions are still asked by a measurement (scripts/nmas-nl-cases --prompt)."""
+    world.answer = _choices(contains="DOWN", show="lines", range="7d")
+    got = _ask(world, OSPF_DOWN, prompt=("nl_logs", 3))
+    assert got["values"]["has"] == "DOWN" and got["values"]["anycase"] == ""
+    assert ' |= "DOWN" ' in got["view"]["built"]["log_query"]
+    assert got["choices"]["contains"] == "DOWN" and "answered" not in got
+
+
+def test_the_judge_compares_a_text_in_any_case_case_folded_and_nothing_else():
+    """`cases.logs_misses` judges the canonical choice: a text matched in any case is the same
+    query in every casing, so it is compared case-folded; a text matched exactly (v3, or the
+    builder by hand) keeps its case as part of the value; a different word, or no text where
+    one is expected, still misses."""
+    from modules.ai import cases
+    recorded = _choices(mnemonics=["%OSPF-5-ADJCHG"], contains="Dead timer expired",
+                        show="lines", range="7d")
+    e = {"outcome": ["answer"], "contains": ["Dead timer expired", "Dead timer"]}
+    replay = cases.result_of_logs(recorded)
+    assert replay["values"]["has"] == "dead timer expired" and replay["values"]["anycase"] == "1"
+    assert cases.logs_misses(e, replay, NOW) == []
+    for wrong in ("Dead", "timer expired", ""):
+        got = cases.result_of_logs(dict(recorded, contains=wrong))
+        assert cases.logs_misses(e, got, NOW) == [
+            f"text {wrong.lower()!r}, expected one of {e['contains']}"], wrong
+    exact = cases.result_of_logs(dict(recorded, contains="dead timer expired"), version=3)
+    assert exact["values"]["anycase"] == ""
+    assert cases.logs_misses(e, exact, NOW) == [
+        "text 'dead timer expired', expected one of ['Dead timer expired', 'Dead timer']"], \
+        "matched exactly, the case is part of the value"
+    assert cases.result_of_logs(recorded, version=3)["values"]["has"] == "Dead timer expired"

@@ -14,7 +14,7 @@
 {%- macro hidden(skip=(), extra={}) -%}
 <input type="hidden" name="list" value="{{ q.list }}">
 {%- for k in ('job', 'dev', 'mn') if k not in skip %}{% for v in s[k] %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}{% endfor %}
-{%- for k in ('role', 'sev', 'has', 'not', 'show', 'by', 'every', 'range', 'within', 'from', 'to') if k not in skip and s[k] %}<input type="hidden" name="{{ k }}" value="{{ s[k] }}">{% endfor %}
+{%- for k in ('role', 'sev', 'has', 'anycase', 'not', 'show', 'by', 'every', 'range', 'within', 'from', 'to') if k not in skip and s[k] %}<input type="hidden" name="{{ k }}" value="{{ s[k] }}">{% endfor %}
 {%- for k, v in extra.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
 {%- endmacro %}
 {#- Reveal… (C818; board F3): a line with a masked value asks a reason in place, then the line
@@ -41,7 +41,7 @@
 {%- call part.state('danger', 'Loki not answering') %}<p><strong>Couldn't load: {{ d.error }}</strong>, asked {{ part.when(q.now, 't') }}. The choices below are the address's; Loki's jobs, devices and labels could not be read.</p><div>{{ go(dict(change), 'Ask again', 'btn btn-small') }}</div>{% endcall %}
 {%- endif %}
 
-<form id="lq-form" class="lq-form" method="get" action="{{ here }}" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" hx-disabled-elt="#lq-ask" hx-indicator="#lq-ask">{{ hidden(('sev', 'has', 'not', 'by', 'every')) }}<input type="hidden" name="ask" value="1"></form>
+<form id="lq-form" class="lq-form" method="get" action="{{ here }}" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" hx-disabled-elt="#lq-ask" hx-indicator="#lq-ask">{{ hidden(('sev', 'has', 'anycase', 'not', 'by', 'every')) }}<input type="hidden" name="ask" value="1"></form>
 <section class="card lq-build" aria-label="Build a logs question">
   {%- set words_url = url_for('v2.history_ask_logs_words') %}{% set words_hidden = hidden() %}
   {%- set words_placeholder = 'OSPF adjacency changes per device, last 7 days' %}{% set words_tz = true %}
@@ -128,6 +128,7 @@
 
   <div class="lq-row"><span class="lq-lab">Text</span><div class="lq-line">
     <label class="lq-text">contains <input id="lq-has" type="text" name="has" form="lq-form" value="{{ s.has }}" maxlength="200" aria-label="Text the line contains" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" hx-include="#lq-form" hx-vals='{"ask": "", "hl": "has"}' hx-trigger="change" hx-indicator="this" hx-disabled-elt="this"></label>
+    <label class="lq-case" title="Off: the text exactly as written (|=). On: in any case, so Down, DOWN and down all match (|~ &quot;(?i)…&quot;). Ask in words turns it on."><input id="lq-anycase" type="checkbox" name="anycase" value="1" form="lq-form"{% if s.anycase %} checked{% endif %} aria-label="Match the text in any case" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" hx-include="#lq-form" hx-vals='{"ask": "", "hl": "has"}' hx-trigger="change" hx-indicator="this" hx-disabled-elt="this"> any case</label>
     <label class="lq-text">excludes <input id="lq-not" type="text" name="not" form="lq-form" value="{{ s['not'] }}" maxlength="200" placeholder="nothing" aria-label="Text the line excludes" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" hx-include="#lq-form" hx-vals='{"ask": "", "hl": "not"}' hx-trigger="change" hx-indicator="this" hx-disabled-elt="this"></label>
   </div></div>
 
@@ -178,7 +179,7 @@
 {%- set c = a.context or {} %}
 {%- call part.state('', 'No lines in range', 'status') %}
   <p><strong>No lines match over {{ rng.words }}.</strong>{% if c.sent is not none and c.sent is defined %} {{ (q.devices | join(' and ')) if q.devices and q.devices | length <= 3 else 'The devices asked' if q.devices else 'Every device' }} sent {{ '{:,}'.format(c.sent) }} line{{ 's' if c.sent != 1 }} in the range{% if c.filtered %}; none passed the filters{% endif %}.{% endif %}</p>
-  {%- if s.has %}<p class="muted">No line contains “{{ s.has }}”: this may not match how the platform logs it. A mnemonic names an event as the device logs it.</p>{% endif %}
+  {%- if s.has %}<p class="muted">No line contains “{{ s.has }}”{% if s.anycase %}, in any case{% endif %}: this may not match how the platform logs it. A mnemonic names an event as the device logs it.</p>{% endif %}
   {%- if a.kept %}<p class="muted">{% if a.inside_kept and not s.has %}The range is inside what Loki keeps ({{ a.kept_words }}), so this is an answer, not a gap.{% elif a.inside_kept %}The range is inside what Loki keeps ({{ a.kept_words }}).{% else %}Part of the range is older than Loki keeps ({{ a.kept_words }}): nothing there is held.{% endif %}</p>{% endif %}
   {%- if s.has %}<div>{{ go({'has': '', 'ask': '1', 'hl': 'has'}, 'Drop the text filter', 'btn btn-small') }}</div>{% endif %}
 {% endcall %}
