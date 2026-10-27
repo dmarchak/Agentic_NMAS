@@ -11,12 +11,13 @@ apply. The actions:
   (IPv4 or IPv6) with no actions, above every flow not Mercury's (`flow_ops.
   response_priority`), with the network's hard timeout;
 - ``rate_limit_source`` (risk low): one meter with a single drop band (kbps or pktps, with a
-  burst), then, for every destination the controller's own flows on the switch forward the
-  source to (the evidence's targets first), a flow matching the pair whose actions are the
-  meter and the controller's own forwarding for it read from the switch's table, so the one
-  meter caps the source's total; a destination the controller sets up afterwards is not
-  metered, and the preview says so (`rate_limit_gap`); the meter is removed by Mercury once its
-  flows expire (`flow_ops.expire_meters`);
+  burst), then, for every host the controller's topology lists other than the source (the
+  evidence's targets first), a flow matching the pair whose actions are the meter and the port
+  toward that host (`_topology_ports`: its attachment, else the first link toward its switch),
+  so the one meter caps the source's total; the switch's live IP flows give the ports only
+  when the topology cannot be read or places no host; what is not metered is said
+  (`rate_limit_gap`); the meter is removed by Mercury once its flows expire
+  (`flow_ops.expire_meters`);
 - ``remove_flow`` (risk medium): the unauthorised flow the detection names, by delete-strict
   (its table, priority, match and cookie), then Mercury's own recorded flow put back where the
   unauthorised one displaced it, if one should be there.
@@ -1097,6 +1098,51 @@ def _forwarding(flows: list, source: str, target: str) -> list:
     return sorted(ports, key=str)
 
 
+def _topology_ports(drv, dpid: int, source: str) -> dict:
+    """Where switch *dpid* sends each host's traffic, from the controller's topology (the
+    operator's order for Lab 8's objective 3.1: a scan's L4 flows expire in seconds and leave
+    only the controller's L2 pair, so a person's preview cannot read the forwarding from the
+    flows). ``{"ok", "error", "ports": {address: port}, "unplaced": [words]}``: every host the
+    controller lists but *source*, by each IPv4 address it lists, out of its own port when it
+    hangs on *dpid*, else out of the first link of the shortest path of links toward its
+    switch; a host with no IPv4 address, one listed on an inter-switch link port, or one no
+    link reaches is named in *unplaced*. ``ok`` False, with the read's error, when the
+    topology cannot be read."""
+    hosts, links = drv.hosts(), drv.links()
+    for got in (hosts, links):
+        if not got.get("ok"):
+            return {"ok": False, "ports": {}, "unplaced": [],
+                    "error": got.get("error") or "the controller's topology could not be read"}
+    adj, link_ports = {}, set()
+    for link in links["links"]:
+        s, d = link["src"], link["dst"]
+        adj.setdefault(s["dpid"], []).append((d["dpid"], s["port_no"]))
+        link_ports |= {(s["dpid"], s["port_no"]), (d["dpid"], d["port_no"])}
+    first, queue = {dpid: None}, [dpid]
+    while queue:
+        here = queue.pop(0)
+        for there, out in sorted(adj.get(here, [])):
+            if there not in first:
+                first[there] = out if first[here] is None else first[here]
+                queue.append(there)
+    ports, unplaced = {}, []
+    for host in hosts["hosts"]:
+        at, v4 = host, list(host.get("ipv4") or [])          # base.topo_host: flat
+        if source in v4:
+            continue
+        if not v4:
+            unplaced.append(f"{host.get('mac')} (no IPv4 address listed)")
+        elif (at["dpid"], at["port_no"]) in link_ports:
+            unplaced.append(f"{', '.join(v4)} (listed on an inter-switch link port)")
+        elif at["dpid"] == dpid or first.get(at["dpid"]) is not None:
+            port = at["port_no"] if at["dpid"] == dpid else first[at["dpid"]]
+            ports.update({a: port for a in v4})
+        else:
+            unplaced.append(f"{', '.join(v4)} (on {at['dpid_hex']}, which no link reaches "
+                            "from this switch)")
+    return {"ok": True, "error": "", "ports": ports, "unplaced": unplaced}
+
+
 def _destinations(flows: list, source: str) -> list:
     """Every destination the controller's own flows on the switch forward *source*'s traffic
     to (its flows not Mercury's whose match names the source and a destination), in address
@@ -1117,14 +1163,27 @@ def _destinations(flows: list, source: str) -> list:
 
 
 def rate_limit_gap(source: str, params: dict) -> str:
-    """What a rate limit leaves unmetered, in words, for its preview's will-not list."""
+    """What a rate limit leaves unmetered, in words, for its preview's will-not list: the hosts
+    it meters and where their ports came from, what it does not meter and why, no NORMAL, and
+    that an IPv4 source's IPv6 traffic is not metered (C1997)."""
+    import ipaddress
+
     metered = ", ".join(params.get("targets") or [])
-    words = (f"Traffic from {source} to a destination the controller sets up after this "
-             f"response is not metered: the meter caps {source}'s forwarding to {metered}, as "
-             "the switch's table holds it now, and no flow here forwards with NORMAL.")
+    ports_from = params.get("ports_from") or "the switch's flows"
+    later = ("a host the controller's topology does not list yet" if
+             ports_from == "the controller's topology" else
+             "a destination the controller sets up after this response")
+    words = (f"Traffic from {source} to {later} is not metered: the meter caps {source}'s "
+             f"traffic to {metered}, each out of the port {ports_from} gives for it, and no "
+             "flow here forwards with NORMAL.")
     if params.get("not_metered"):
-        words += (f" Not metered now: {', '.join(params['not_metered'])} (no single "
-                  "forwarding port for it in the table).")
+        words += f" Not metered now: {'; '.join(params['not_metered'])}."
+    try:
+        if ipaddress.ip_address(source).version == 4:
+            words += (f" Only {source}'s IPv4 traffic is metered: the same host's IPv6 "
+                      "traffic is not.")
+    except ValueError:
+        pass
     return words
 
 
@@ -1238,35 +1297,53 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
                 changes.append({"do": "add_meter", "meter": {
                     "meter_id": meter_id, "flags": flags,
                     "bands": [{"type": "DROP", "rate": rate, "burst_size": burst}]}})
+                import ipaddress
                 targets = [t for t in detection.get("targets") or [] if t]
-                if not targets:
-                    raise ResponseRefused("the evidence names no destination of the source's "
-                                          "traffic, so there is no forwarding to meter: drop "
-                                          "it instead")
-                # The source's whole forwarding on this switch, the evidence's targets first, so
-                # the one meter caps the source's total (the operator's order for Lab 8's
-                # objective 3.1: "limits traffic from the scanning source"). A destination the
-                # controller sets up after this read is not metered; the preview says so.
-                dests = list(dict.fromkeys(targets + _destinations(read["flows"], source)))
-                pairs = []
-                for target in dests:
-                    ports = _forwarding(read["flows"], source, target)
-                    if len(ports) != 1:
-                        continue
-                    pairs.append(target)
+                # Every host the source can reach, through one meter, so it caps the source's
+                # total (the operator's orders for Lab 8's objective 3.1): each host's port from
+                # the controller's topology (its attachment, else the first link toward its
+                # switch), the evidence's targets first; the switch's live IP flows only when
+                # the topology cannot be read or places no host (a scan's L4 flows expire in
+                # seconds, and a person's preview comes later). An IPv6 source takes the
+                # flows: the topology's ports are used for an IPv4 source (C1997).
+                v4 = ipaddress.ip_address(source).version == 4
+                topo = (_topology_ports(drv, dpid, source) if v4 else
+                        {"ok": False, "ports": {}, "unplaced": [],
+                         "error": "the source is IPv6, and the topology's ports are used for "
+                                  "an IPv4 source only"})
+                found, not_metered, ports_from = {}, [], ""
+                if topo["ok"] and topo["ports"]:
+                    others = sorted((a for a in topo["ports"] if a not in targets),
+                                    key=ipaddress.ip_address)
+                    found = {t: topo["ports"][t] for t in targets + others
+                             if t in topo["ports"]}
+                    not_metered = [f"{t} (the controller's topology does not list it)"
+                                   for t in targets if t not in topo["ports"]] + topo["unplaced"]
+                    ports_from = "the controller's topology"
+                else:
+                    why = topo["error"] or "it places no host"
+                    for target in dict.fromkeys(targets + _destinations(read["flows"], source)):
+                        ports = _forwarding(read["flows"], source, target)
+                        if len(ports) == 1:
+                            found[target] = ports[0]
+                        else:
+                            not_metered.append(f"{target} (no single forwarding port for it "
+                                               "in the table)")
+                    ports_from = f"the switch's flows (the controller's topology: {why})"
+                if not found:
+                    raise ResponseRefused(
+                        f"no forwarding port for {source}'s traffic is known on switch "
+                        f"{dpid}: {ports_from} give none, so there is nothing to meter: drop "
+                        "it instead")
+                for target, port in found.items():
                     changes.append({"do": "add_flow", "flow": {
                         "table_id": 0, "priority": priority, "cookie": flow_intent.new_cookie(),
                         "idle_timeout": 0, "hard_timeout": hard,
                         "match": _pair_match(source, target),
                         "actions": [{"type": "METER", "meter_id": meter_id},
-                                    {"type": "OUTPUT", "port": ports[0]}]}})
-                if not pairs:
-                    raise ResponseRefused(
-                        f"no single forwarding port for {source}'s traffic to "
-                        f"{', '.join(dests)} is in switch {dpid}'s table, so there is "
-                        "nothing to meter: drop it instead")
-                out["params"]["targets"] = pairs
-                out["params"]["not_metered"] = [t for t in dests if t not in pairs]
+                                    {"type": "OUTPUT", "port": port}]}})
+                out["params"].update(targets=list(found), not_metered=not_metered,
+                                     ports_from=ports_from)
         else:
             ref = (detection.get("subject") or {}).get("value")
             found = _flow_by_ref(read["flows"], conn, dpid, ref)

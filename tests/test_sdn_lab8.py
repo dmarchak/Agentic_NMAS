@@ -64,6 +64,80 @@ def fake_with(flows, dpid, features=None):
     return fake
 
 
+def captured_topology() -> dict:
+    """The lab controller's topology REST, captured with the fabric attached
+    (tests/fixtures/sdn/ryu/topology_rest.json): its answers by path."""
+    import os
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "sdn", "ryu",
+                        "topology_rest.json")
+    with open(path, encoding="utf-8") as fh:
+        entries = json.load(fh)
+    return {e["path"]: json.loads(e["body"]) for e in entries
+            if e["path"].startswith("/v1.0/topology/")}
+
+
+def l2_only_switch(topology):
+    """s1 as the walk found it at its preview (the operator, 2026-10-27): the scan's L4 flows
+    expired, only the controller's standing flows left (the Lab 8 run's L2-only capture: LLDP,
+    the match-all, the L2 pairs); its controller's topology *topology*, or none (Ryu's 404)."""
+    l2 = lab8("l2_only_s1.json")
+    fake = FakeRyu(BASE, flows={1: flows_of(l2, 1)}, features=features_of(l2, 1), dpids=(1,),
+                   topology=topology)
+    fake.driver = lambda net, name: C.driver_for(net, name, session=fake, sleep=lambda s: None)
+    return fake, flows_of(l2, 1)
+
+
+@pytest.mark.usefixtures("lab")
+def test_a_scan_s_rate_limit_takes_every_host_s_port_from_the_topology_with_only_l2_flows_left():
+    """The walk's step 10a found it (the operator, 2026-10-27, high B): by a person's preview
+    the scan's L4 flows have expired and s1 holds only the controller's L2 pair, so no IP flow
+    gives a port. The ports come from the controller's topology (the real capture: h1 and h2
+    on s1 ports 1 and 2, h3 and h4 on s2, the s1-s2 link on port 3 of each): one meter, and h1's
+    traffic to every other host through it, the scan's target first: h3 and h4 out of port 3,
+    h2 out of port 2; each above the controller's L2 flows as well as its L4 ones; the two
+    hosts the controller lists with no IPv4 address named as not metered, and the gap said."""
+    (d,) = D.scan(collect(lab8("scan_s1.json")), VALUES)["detections"]
+    fake, table = l2_only_switch(captured_topology())
+    assert not [f for f in table if "ipv4_src" in (f.get("match") or {})], "premise: no IP flow"
+    preview = CL.respond_to_threat("Default", d, "rate_limit_source", driver=fake.driver)
+    assert preview["ok"], preview["error"]
+    meter, *metered = preview["plan"]["steps"]
+    meter_id = json.loads(meter["request"]["body"])["meter_id"]
+    bodies = [json.loads(s["request"]["body"]) for s in metered]
+    out = {b["match"]["ipv4_dst"]: [a["port"] for a in b["actions"] if a["type"] == "OUTPUT"]
+           for b in bodies}
+    assert out == {"192.0.2.3": [3], "192.0.2.2": [2], "192.0.2.4": [3]}
+    assert list(out)[0] == d["targets"][0] == "192.0.2.3"
+    assert all(b["match"]["ipv4_src"] == "192.0.2.1" and
+               b["actions"][0] == {"type": "METER", "meter_id": meter_id} for b in bodies)
+    l2_top = max(f["priority"] for f in table if "eth_src" in (f.get("match") or {}))
+    assert all(b["priority"] > l2_top for b in bodies), "above the controller's L2 flows"
+    assert preview["params"]["ports_from"] == "the controller's topology"
+    assert preview["params"]["not_metered"] == ["12:da:aa:70:da:9f (no IPv4 address listed)",
+                                                "d2:e6:76:c9:06:24 (no IPv4 address listed)"]
+    (gap,) = [w for w in preview["plan"]["will_not"] if "not metered" in w]
+    assert "to a host the controller's topology does not list yet is not metered" in gap
+    assert "Only 192.0.2.1's IPv4 traffic is metered" in gap
+    done = CL.respond_to_threat("Default", None, confirm={"ask": preview["ask"],
+                                                          "hash": preview["plan"]["hash"]},
+                                actor="op@example.com", actor_verified="access",
+                                driver=fake.driver, sleep=lambda s: None, counter_interval=0)
+    assert done["outcome"] == "verified", done["error"]
+
+
+@pytest.mark.usefixtures("lab")
+def test_with_no_topology_and_only_l2_flows_the_rate_limit_is_refused_naming_both():
+    """Neither source gives a port (no topology application, the L2-only table): refused before
+    any request, naming the flows as the source tried and why the topology gave none."""
+    (d,) = D.scan(collect(lab8("scan_s1.json")), VALUES)["detections"]
+    fake, _table = l2_only_switch(None)
+    preview = CL.respond_to_threat("Default", d, "rate_limit_source", driver=fake.driver)
+    assert not preview["ok"]
+    assert "no forwarding port for 192.0.2.1's traffic is known on switch 1" in preview["error"]
+    assert "the switch's flows (the controller's topology: " in preview["error"]
+    assert fake.writes == []
+
+
 @pytest.mark.usefixtures("lab")
 def test_the_scan_is_found_on_l4_flows_and_its_drop_clears_the_lldp_flow():
     entries = lab8("scan_s1.json")

@@ -106,9 +106,12 @@ class FakeRyu(Session):
     it answers instead; *count* is called before each read of meters to move their counters."""
 
     def __init__(self, base, flows=None, meters=None, features=None, ignore=(), fail=None,
-                 count=None, dpids=(1,)):
+                 count=None, dpids=(1,), topology=None):
         super().__init__()
         self.base = base
+        #: Ryu's topology REST's answers by path (`/v1.0/topology/<what>`: a list, as captured);
+        #: None answers each topology read as Ryu does without the application, HTML 404.
+        self.topology = topology
         self.dpids = list(dpids)
         self.table = {d: [dict(f) for f in (flows or {}).get(d, [])] for d in self.dpids}
         self.meter = {d: {m["meter_id"]: dict(m) for m in (meters or {}).get(d, [])}
@@ -146,6 +149,10 @@ class FakeRyu(Session):
             parts = path.strip("/").split("/")
             if path == "/stats/switches":
                 return Response(200, json.dumps(self.dpids))
+            if path.startswith("/v1.0/topology/"):
+                if self.topology is None or path not in self.topology:
+                    return Response(404, "", "text/html")
+                return Response(200, json.dumps(self.topology[path]))
             dpid = int(parts[-1])
             if dpid not in self.dpids:
                 return Response(404, "", "text/html")

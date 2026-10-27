@@ -161,11 +161,18 @@ def test_a_scan_s_rate_limit_meters_all_the_source_s_forwarding_on_the_switch():
         b["actions"] for b in bodies if b["match"]["ipv4_dst"] == "192.0.2.9")
     # Only the controller's own flows say where the source goes: Mercury's flow names no
     # destination to meter.
-    assert preview["params"]["not_metered"] == ["192.0.2.10"] and "192.0.2.11" not in dsts
+    assert preview["params"]["not_metered"] == [
+        "192.0.2.10 (no single forwarding port for it in the table)"]
+    assert "192.0.2.11" not in dsts
+    # This switch's controller has no topology application (the fake answers Ryu's 404), so
+    # the ports are the flows', and the preview says why.
+    assert preview["params"]["ports_from"].startswith("the switch's flows (the controller's "
+                                                      "topology: ")
     (gap,) = [w for w in preview["plan"]["will_not"] if "not metered" in w]
     assert (f"Traffic from {d['source']} to a destination the controller sets up after this "
             "response is not metered") in gap
     assert "no flow here forwards with NORMAL" in gap and "Not metered now: 192.0.2.10" in gap
+    assert f"Only {d['source']}'s IPv4 traffic is metered" in gap
     assert confirm(fake, preview)["outcome"] == "verified"
 
 
