@@ -617,7 +617,16 @@ def detection_frequency(network: str, now: float = None, days: int = 30) -> dict
     background feature's estimate (`background.FEATURES`): ``{"per_day", "basis"}``, from the
     network's own detection history, the SDN transitions in the alert history over the last
     *days* days. Measured over the days the history covers (from its first SDN row in the
-    window, at least one); with no SDN row for the network, unknown (None), never guessed."""
+    window, at least one); with no SDN row for the network, unknown (None), never guessed.
+
+    **Measured in whole UTC days, so the answer moves only when the measurement does
+    (C1954):** the window starts at the UTC midnight *days* days before today's, and the span
+    is the count of UTC midnights from the first SDN row's day to today's (at least one), so
+    within a day the figures and the basis change only when a detection is recorded. The
+    estimate's digest is taken over them (`background.estimate`), and an admin's Turn on is
+    refused only when they moved; a span in fractions of a day grew with the clock and moved
+    the digest within about three minutes. They can still move at a UTC midnight, once a
+    day."""
     from modules import alert_history
     from modules.config import list_slug
     from modules.sdn import detect
@@ -627,7 +636,8 @@ def detection_frequency(network: str, now: float = None, days: int = 30) -> dict
     if got["state"] == "unreadable":
         return {"per_day": None, "basis": ("unknown: the alert history cannot be read "
                                            f"({got['error']})")}
-    since = now - days * 86400
+    today = int(now // 86400)
+    since = (today - days) * 86400
     rows = [r for r in alert_history.transitions(got["rows"])
             if r.get("store") == detect.STORE
             and network in {list_slug(n) for n in r.get("networks") or []}]
@@ -639,10 +649,11 @@ def detection_frequency(network: str, now: float = None, days: int = 30) -> dict
                                            "run there, or nothing fired)")}
     fired = sum(1 for _t, r in stamped if r.get("to") == "condition")
     first = min(t for t, _r in stamped)
-    span = max((now - first) / 86400, 1.0)
+    span = max(today - int(first // 86400), 1)
     return {"per_day": round(fired / span, 3),
             "basis": (f"measured: {fired} detection(s) fired on {network} over the "
-                      f"{span:.1f} day(s) its alert history covers since {_iso(first)}")}
+                      f"{span} whole UTC day(s) its alert history covers since "
+                      f"{_iso(first)}")}
 
 
 # ───────────────────────────────────────────────────────────────────────────── respond (S8)

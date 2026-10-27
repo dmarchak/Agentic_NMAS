@@ -150,7 +150,18 @@ def caps_of(entry: dict) -> dict:
 
 def admit(trigger: dict) -> str:
     """``""`` when the background *trigger*'s feature is on for its network, else why not (the
-    gateway's ``feature_off``). A switch that cannot be read is said, and refused."""
+    gateway's ``feature_off``). A switch that cannot be read is said, and refused. The
+    trigger's network must be a network Mercury holds, named by its one id: a name no network
+    answers to, or another spelling of one, is refused naming what it was compared with
+    (C1945), before any switch is read."""
+    try:
+        canonical = _network(trigger.get("network"))
+    except Refused as exc:
+        return f"{exc}; nothing was sent"
+    if canonical != trigger.get("network"):
+        return (f"a background trigger names its network by its id: "
+                f"{trigger.get('network')!r} is not, the network's id is {canonical!r}; "
+                "nothing was sent")
     try:
         entry = entry_of(trigger["network"], trigger["feature"])
     except Exception as exc:                                    # noqa: BLE001 (said, refused)
@@ -302,10 +313,14 @@ def _spec(feature: str) -> dict:
 
 
 def _network(network: str) -> str:
+    """*network*'s one canonical id (`listref.network_id`, C1903), the key of its switches;
+    raises Refused for a name no network answers to, naming it and the networks there are
+    (C1945: `listref.resolve` derives a slug for any name and never raised, so this refusal
+    could not fire). Creates nothing."""
     from modules.nsot import listref
 
     try:
-        return listref.resolve(network).slug
+        return listref.network_id(network)
     except Exception as exc:                                    # noqa: BLE001
         raise Refused(f"{network!r} is not a network Mercury holds ({exc})") from None
 

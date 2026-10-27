@@ -1815,3 +1815,31 @@ tests/test_ai_background.py (`scratchpad/settings_ai_controls.py`).
 **The result: every mutant killed (two first survived; the test above was made independent and
 one written, and both run again); the canary killed.**
 
+## 2026-10-27: a background call's network asked by its one id (C1945), by hand
+
+**What touches the tier:** `modules/ai/background.py`, the gateway's switch question. `_network`
+now asks `listref.network_id` (C1903's resolver, which raises for a name no network answers to)
+in place of `listref.resolve` (which derives a slug for any name and never raised, so its "not a
+network Mercury holds" refusal could not fire). `admit` asks it first: a trigger naming a
+network Mercury does not hold is refused naming the name and the registered networks, and one
+naming another spelling of a network is refused naming its id, before any switch is read. Every
+change makes the gateway refuse more, never less: before it, a switch stored on under a name no
+network answers to admitted its call.
+
+**The method:** the narrowed hand check (PHASE8_PLAN 15.12): each mutant applied as its exact
+line in a `scripts/nmas-control` throwaway worktree of the change, then
+tests/test_ai_background.py, tests/test_settings_ai_v2.py, tests/test_sdn_classify.py and
+tests/test_ai_spend.py (`scratchpad/bfix_hm.py`). The baseline passed (137 tests).
+
+| mutant | result | killed by |
+|---|---|---|
+| `_network` back to `listref.resolve(network).slug` | killed | `test_an_unknown_feature_or_network_is_refused`, `test_a_background_call_for_a_network_mercury_does_not_hold_is_refused_naming_it` |
+| `admit` does not ask the network (`canonical = trigger.get("network")`) | killed | `test_a_background_call_for_a_network_mercury_does_not_hold_is_refused_naming_it`, `test_a_background_call_naming_another_spelling_of_a_network_is_refused_naming_its_id` |
+| the network's refusal admits (`return ""`) | killed | `test_a_background_call_for_a_network_mercury_does_not_hold_is_refused_naming_it` |
+| the spelling check removed (`if False:`) | killed | `test_a_background_call_naming_another_spelling_of_a_network_is_refused_naming_its_id` |
+| the spelling check inverted (`==`) | killed | 23 tests |
+| canary: `_network` raises | killed | 80 tests |
+
+**The result: every mutant killed; the canary killed; the working tree untouched (nmas-control's
+fingerprint).**
+

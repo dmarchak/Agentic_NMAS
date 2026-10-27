@@ -391,6 +391,65 @@ def test_the_frequency_is_unknown_with_no_detection_and_measured_from_the_histor
     assert CL.detection_frequency("branch", now=1_793_000_000.0)["per_day"] is None
 
 
+def _clock(monkeypatch, at: float):
+    """Every reader of the time sees *at*, then the time passing from it; returns a function
+    moving the clock on by a number of seconds."""
+    import time
+    real, start, skew = time.time, time.time(), [0.0]
+    monkeypatch.setattr(time, "time", lambda: at + (real() - start) + skew[0])
+    return lambda seconds: skew.__setitem__(0, skew[0] + seconds)
+
+
+def _detected(at: float):
+    from modules import alert_history
+
+    d = detection_of(SCAN)
+    inst = dict(D.instance(d, at, at), active_at=D._iso(at))
+    assert alert_history.record(alert_history.from_detections(D.STORE, [NET], [inst], [],
+                                                              now=at))["ok"]
+
+
+def _turn_on(shown: str):
+    from modules.ai import background
+
+    return background.turn_on(NET, "sdn_classify", day_cap_usd=0.5, month_cap_usd=10.0,
+                              shown=shown, actor="admin@example.com", verified="access")
+
+
+@pytest.mark.parametrize("ago,per_day", [(2 * 86400, 0.5), (30 * 86400 - 300, 0.033)],
+                         ids=["two-days-before", "at-the-windows-edge"])
+def test_an_estimate_confirmed_ten_minutes_after_it_was_shown_is_accepted(world, monkeypatch,
+                                                                          ago, per_day):
+    # C1954: the measured frequency's figures are whole UTC days, so time alone (07:26 UTC to
+    # 07:36) does not move the estimate's digest: not the span (a detection two days before),
+    # and not the window (one 30 days less 5 minutes before, which a window of 30 times
+    # 86400 s back from now would drop within the 10 minutes).
+    from modules.ai import background
+
+    later = _clock(monkeypatch, 1_793_000_000.0)
+    _detected(1_793_000_000.0 - ago)
+    shown = background.estimate(NET, "sdn_classify")
+    assert shown["calls_per_day"] == per_day
+    later(600)
+    got = _turn_on(shown["digest"])
+    assert got["ok"] is True and got["entry"]["estimate"]["digest"] == shown["digest"]
+
+
+def test_an_estimate_whose_detections_changed_since_it_was_shown_is_refused(world, monkeypatch):
+    # C1954's other half: the digest still moves when the measurement does (a detection
+    # recorded between showing and confirming), and nothing is turned on.
+    from modules.ai import background
+
+    later = _clock(monkeypatch, 1_793_000_000.0)
+    _detected(1_793_000_000.0 - 2 * 86400)
+    shown = background.estimate(NET, "sdn_classify")["digest"]
+    later(60)
+    _detected(1_793_000_000.0 + 30)
+    with pytest.raises(background.Refused, match="the estimate moved since it was shown"):
+        _turn_on(shown)
+    assert background.switches() == {}
+
+
 # ── a person's Classify, through the real routes ─────────────────────────────────────────────
 
 @pytest.fixture

@@ -31,6 +31,7 @@ from modules import installation_settings as I
 from modules.ai import background as B
 from modules.ai import calls, connection, gateway, profiles, triggers
 from modules.ai import anthropic_adapter as A
+from tests.registered_networks import register
 from tests.test_ai_gateway import KEY, OK_BODY, own_record  # noqa: F401 (fixture)
 
 ADMIN = "admin@example.com"
@@ -44,13 +45,9 @@ def bg(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "USER_SETTINGS_FILE", str(tmp_path / "user_settings.json"))
     monkeypatch.setattr(I, "_path", lambda name: str(tmp_path / name))
     monkeypatch.setattr(gateway, "_api_key", lambda: KEY)
-    from modules.nsot import listref
-
-    def resolve(name):
-        if name not in ("Lab", "lab", "Branch", "branch"):
-            raise listref.UnknownList(f"no list {name!r}")
-        return types.SimpleNamespace(slug=config.list_slug(name), name=name)
-    monkeypatch.setattr(listref, "resolve", resolve)
+    # Two networks registered as New network… would (the real resolver answers, C1945: a fake
+    # that raised hid that the real one never did).
+    register(monkeypatch, tmp_path, "Lab", "Branch")
     from modules.settings_schema import write_settings
     assert write_settings({"ai_hosted": {"by": ADMIN, "at": "2026-10-27T00:00:00Z",
                                          "reason": "the lab's background loop"},
@@ -178,6 +175,36 @@ def test_an_unknown_feature_or_network_is_refused(bg):
         B.estimate("Lab", "nope")
     with pytest.raises(B.Refused, match="'Nowhere' is not a network Mercury holds"):
         B.estimate("Nowhere", "fake_loop")
+
+
+def test_a_background_call_for_a_network_mercury_does_not_hold_is_refused_naming_it(bg):
+    # C1945: a switch stored ON for a name no network answers to, so the switch alone would
+    # admit it: the refusal is the network's, naming the name and the networks compared with.
+    on = {"on": True, "at": B._iso(B._now()), "day_cap_usd": 0.5, "month_cap_usd": 10.0}
+    _store_switches({"nowhere": {"fake_loop": on}})
+    got = _call(bg, network="nowhere")
+    assert got.get("error") == "feature_off" and bg.sent == []
+    assert got.get("detail", "").startswith(
+        "'nowhere' is not a network Mercury holds (no network answers to 'nowhere': the "
+        "registered networks are ")
+    assert "Branch" in got["detail"] and "Lab" in got["detail"]
+    assert got["detail"].endswith("; nothing was sent")
+
+
+def test_a_background_call_naming_another_spelling_of_a_network_is_refused_naming_its_id(
+        bg, monkeypatch):
+    # A registry whose folder name is not its id's spelling: the trigger names the folder,
+    # the switch stored ON under it, and the call is refused naming both (C1945).
+    reg = bg.dir / "device_lists_spelling.json"
+    reg.write_text(json.dumps({"current_list": "Lab", "lists": {"Lab": "lab_old"}}))
+    monkeypatch.setattr("modules.device.DEVICE_LISTS_CONFIG", str(reg))
+    on = {"on": True, "at": B._iso(B._now()), "day_cap_usd": 0.5, "month_cap_usd": 10.0}
+    _store_switches({"lab_old": {"fake_loop": on}})
+    got = _call(bg, network="lab_old")
+    assert got.get("error") == "feature_off" and bg.sent == []
+    assert got.get("detail", "") == ("a background trigger names its network by its id: "
+                                     "'lab_old' is not, the network's id is 'lab'; nothing "
+                                     "was sent")
 
 
 # ── off is one call ───────────────────────────────────────────────────────────────────────────
