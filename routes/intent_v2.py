@@ -132,7 +132,7 @@ def words(name):
     call as the person who asked, its draft a patch to THIS device's intent alone, previewed by
     the intent editor (`intent_words.change`). Writes nothing; nothing reaches the device."""
     from modules import identity
-    from modules.ai import intent_words, profiles
+    from modules.ai import intent_words, profiles, triggers
 
     found, refusal = _device_or_404(name)
     if refusal is not None:
@@ -144,7 +144,8 @@ def words(name):
     # reference or an unknown name means, "*" for every one; it continues the same draft.
     phrase, chosen = request.form.get("phrase", ""), request.form.getlist("pick")
     picks = {phrase: "*" if "*" in chosen else chosen} if phrase and chosen else None
-    got = intent_words.change(ref.name, sentence, actor=identity.request_actor(),
+    actor = identity.request_actor()
+    got = intent_words.change(ref.name, sentence, actor=actor, trigger=triggers.person(actor),
                               devices=[host], picks=picks)
     pin = profiles.TASKS.get(intent_words.FEATURE) or {}
     model = f"{profiles.profile(pin['model'])['words']}, {pin['model']}" if pin else ""

@@ -216,17 +216,62 @@ def cache_summary(day: str, feature: str = None) -> dict:
                 hit_rate=(sums["cache_read"] / total) if total else None)
 
 
-def spent_usd(day: str, zone: str = None) -> dict:
-    """``{"state", "usd", "calls", "error"}``: what the calls recorded on the cap's *day*
-    (``YYYY-MM-DD``, its midnight the boundary's) cost. An unreadable record is said, never
-    read as nothing spent."""
-    got = read()
+#: How far before a window's start a windowed read keeps reading back: a row's `at` is stamped
+#: before `record` waits for the file's lock, so rows are in time order only to within that
+#: wait (seconds); ten minutes is far past it (`records_migrate.store_rows_since`).
+ORDER_SLACK_S = 600.0
+
+
+def day_start(day: str, zone: str = None):
+    """When the cap's *day* (``YYYY-MM-DD``) begins: its midnight in the boundary's zone, as
+    an aware UTC datetime. ValueError for a day that is no date. A midnight a daylight-saving
+    change skips is read with the offset before it, which is the instant the day's first hour
+    begins; a repeated one, its first occurrence (zoneinfo's fold 0)."""
+    z = _zone(zone or boundary())
+    midnight = datetime.datetime.combine(datetime.date.fromisoformat(day), datetime.time(0, 0),
+                                         tzinfo=z)
+    return midnight.astimezone(datetime.timezone.utc)
+
+
+def rows_since(start) -> dict:
+    """Every call recorded at or after *start* (an aware datetime), OLDEST first, read without
+    reading the rest of the record: the bound every spend figure is read within (the record
+    grows for ever; a window does not). Calls only, as `read`. ``{"state", "rows", "error"}``.
+    Its premise: the record is in time order to within `ORDER_SLACK_S`, because `record`
+    stamps each row as it writes it and no product writer hands in a time of its own
+    (tests/test_ai_spend.py holds both)."""
+    from modules import records_migrate
+
+    got = records_migrate.store_rows_since(STORE, _path(), start, ORDER_SLACK_S,
+                                           skip_unparsable=True)
     if got["state"] == "unreadable":
-        return {"state": "unreadable", "usd": None, "calls": 0, "error": got["error"]}
+        log.error("ai_calls: unreadable (%s)", got["error"])
+    return dict(got, rows=[r for r in got["rows"] if "use_of" not in r])
+
+
+def day_rows(day: str, zone: str = None) -> dict:
+    """``{"state", "rows", "error"}``: the calls recorded on the cap's *day*, oldest first,
+    read within that day's window (`rows_since`). A day that is no date holds no row."""
+    zone = zone or boundary()
+    try:
+        start = day_start(day, zone)
+    except (TypeError, ValueError):
+        return {"state": "ok", "rows": [], "error": ""}
+    got = rows_since(start)
     # A row is the day's when its recorded time falls in it: one with no readable time is no
     # day's (read without a default, which no row could tell from another).
-    zone = zone or boundary()
-    rows = [r for r in got["rows"] if _row_day(r, zone) == day]
+    return dict(got, rows=[r for r in got["rows"] if _row_day(r, zone) == day])
+
+
+def spent_usd(day: str, zone: str = None) -> dict:
+    """``{"state", "usd", "calls", "error"}``: what the calls recorded on the cap's *day*
+    (``YYYY-MM-DD``, its midnight the boundary's) cost, read within the day's window
+    (`day_rows`), never the whole record. An unreadable record is said, never read as nothing
+    spent."""
+    got = day_rows(day, zone)
+    if got["state"] == "unreadable":
+        return {"state": "unreadable", "usd": None, "calls": 0, "error": got["error"]}
+    rows = got["rows"]
     # A press that joined another's call (verdict "joined", C1854) cost nothing and made no
     # call: it is summed (its 0) but never counted as a call.
     return {"state": got["state"], "usd": sum(float(r.get("cost_usd") or 0) for r in rows),

@@ -757,13 +757,14 @@ def history_ask_metrics_words():
     Nothing runs as an answer until the person presses Ask. Refused, the builder is drawn as
     it was (the form carries its choices) with the reason."""
     from modules import history_promq
-    from modules.ai import nl_query
+    from modules.ai import nl_query, triggers
 
     def fill(name, question, actor):
         # "Today" is midnight in the viewer's browser's timezone (the form's `tz`, or its
         # `tz_off` minutes east of UTC), until an installation timezone exists (C1740).
-        return nl_query.metrics(name, question, actor=actor, viewer_zone=nl_query.zone(
-            request.form.get("tz", ""), request.form.get("tz_off", "")))
+        zone = nl_query.zone(request.form.get("tz", ""), request.form.get("tz_off", ""))
+        return nl_query.metrics(name, question, actor=actor, trigger=triggers.person(actor),
+                                viewer_zone=zone)
     return _ask_words(fill, history_promq.view, "v2/_history_ask_metrics.html",
                       _ask_metrics_ctx, "v2.history_ask_metrics")
 
@@ -773,13 +774,14 @@ def history_ask_logs_words():
     """Ask in words on the logs builder (8.1's LogQL half): as the metrics builder's, the
     logs builder filled, read back and test-run; nothing runs until Ask."""
     from modules import history_logq
-    from modules.ai import nl_query
+    from modules.ai import nl_query, triggers
 
     def fill(name, question, actor):
         # The named days and weeks in the viewer's browser's timezone, as the metrics
         # builder's (C1740).
-        return nl_query.logs(name, question, actor=actor, viewer_zone=nl_query.zone(
-            request.form.get("tz", ""), request.form.get("tz_off", "")))
+        zone = nl_query.zone(request.form.get("tz", ""), request.form.get("tz_off", ""))
+        return nl_query.logs(name, question, actor=actor, trigger=triggers.person(actor),
+                             viewer_zone=zone)
     return _ask_words(fill, history_logq.view, "v2/_history_ask_logs.html",
                       _ask_logs_ctx, "v2.history_ask_logs")
 
@@ -1560,10 +1562,11 @@ def monitoring_alert_explain(pack_id):
     pack (modules/ai/explain_answers.py, C1853): a pack that has one draws it and sends
     nothing, unless the press is Explain again (``again``), a new call."""
     from modules import identity
-    from modules.ai import explain_answers
+    from modules.ai import explain_answers, triggers
 
     pid = pack_id[:64]
-    got = explain_answers.press(pid, actor=identity.request_actor(),
+    actor = identity.request_actor()
+    got = explain_answers.press(pid, actor=actor, trigger=triggers.person(actor),
                                 again=request.form.get("again") == "1")
     return _strict(render_template("v2/_explain_block.html", x=got, pack={"id": pid},
                                    explain_model=_explain_model()))

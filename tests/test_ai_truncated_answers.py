@@ -10,6 +10,8 @@ import json
 
 import pytest
 
+from modules.ai import triggers
+from tests.ai_person import pressed_by
 from modules.ai import anthropic_adapter as A
 from modules.ai import calls, nl_query, profiles
 from tests.test_ai_nl_query import NOW, _choices, _words, site, web, world  # noqa: F401
@@ -32,9 +34,12 @@ def _cut(w, text):
 @pytest.mark.parametrize("text", [json.dumps(_choices()), json.dumps(_choices())[:120]],
                          ids=["complete-and-valid", "cut-mid-answer"])
 def test_a_metrics_answer_stopped_at_max_tokens_fills_nothing(world, text):
-    got = nl_query.metrics("Lab", "input errors per interface, the top 5",
-                           actor="operator@example.com", send=_cut(world, text),
-                           client=world.prom, now=NOW, today="2026-10-25")
+    with pressed_by("operator@example.com"):
+        got = nl_query.metrics("Lab", "input errors per interface, the top 5",
+                               actor="operator@example.com",
+                               trigger=triggers.person("operator@example.com"),
+                               send=_cut(world, text),
+                               client=world.prom, now=NOW, today="2026-10-25")
     assert got["ok"] is False and got["error"] == "max_tokens"
     assert got["detail"] == f"the answer ran past max_tokens ({BOUND})"
     assert "values" not in got and "view" not in got and "choices" not in got

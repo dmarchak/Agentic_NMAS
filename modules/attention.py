@@ -192,6 +192,14 @@ ROW_KINDS = {
                                 "the console holds is not known",
                                 "read the run's transcript, check the console server and the "
                                 "device, then survey its console again"),
+    # PHASE8_PLAN 18.3 rule 4 (C1843): a background AI feature's spend against its own caps.
+    ("ai_spend", "warning"): ("a background AI feature has spent 50% or 80% of its day or "
+                              "month cap on a network",
+                              "read its spend; leave it, turn it off, or change its cap in "
+                              "Settings › AI"),
+    ("ai_spend", "stopped"): ("a background AI feature reached its day or month cap on a "
+                              "network, so it makes no call until the period ends",
+                              "leave it stopped, raise its cap, or turn it off in Settings › AI"),
 }
 
 #: The ways a row leaves the page (the operator, 2026-10-02): the CONDITION RESOLVING (the
@@ -330,6 +338,12 @@ CLEARS = {
                                 "device completes, or a later kick-start completes, or a "
                                 "person acknowledges this run with a reason; a later run that "
                                 "stops raises it again"),
+    ("ai_spend", "warning"): (("resolves", "time"), "the day or month it counts ends (the cap's "
+                              "day boundary), or an admin raises the cap until the spend is "
+                              "under 50% of it, or turns the feature off"),
+    ("ai_spend", "stopped"): (("resolves", "time"), "the day or month whose cap it reached ends "
+                              "(the cap's day boundary), or an admin changes the cap, or turns "
+                              "the feature off"),
 }
 
 #: The kinds a person acknowledges HERE, with "Acknowledge…" on the row (modules/
@@ -3733,6 +3747,100 @@ def console_ztp_source(found=None) -> dict:
                                   f"kick-start, {len(rows)} whose latest run needs a person"))
 
 
+# ---------------------------------------------------------------------------
+# Source: background AI features against their caps (PHASE8_PLAN 18.3 rule 4, C1843)
+# ---------------------------------------------------------------------------
+
+#: Where an admin changes a background feature (Settings › AI, PHASE8_PLAN 18.6, not built
+#: yet: the AI (hosted) card is where AI is set today).
+AI_SETTINGS_HREF = "/v2/settings/installation?tab=connections#card-ai"
+
+
+def _ai_period_end(which: str, today: str, zone: str) -> float:
+    """When the cap's day or month holding *today* ends, as an epoch."""
+    import datetime as _dt
+
+    from modules.ai import calls
+
+    d = _dt.date.fromisoformat(today)
+    nxt = (d + _dt.timedelta(days=1) if which == "day" else
+           (d.replace(day=1) + _dt.timedelta(days=32)).replace(day=1))
+    return calls.day_start(nxt.isoformat(), zone).timestamp()
+
+
+def ai_spend_source(now=None) -> dict:
+    """Each background AI feature on, on each network, against its own day and month caps
+    (`spend.feature_summaries`): one STOPPED row (danger) for a cap a refusal shows it reached
+    this period, else one WARNING row at 50% (warning) or 80% (danger) of its nearer cap. With
+    no feature on anywhere nothing is read; else the month's window of the record of AI calls,
+    never the whole record."""
+    from modules.ai import background, calls, spend
+
+    started = time.time()
+    label = "AI spend: background features"
+    try:
+        on = background.enabled()
+    except Exception as exc:                                    # noqa: BLE001 (said, a row)
+        return source_result("ai_spend", label, read_at=started, took_ms=0,
+                             error=f"the background AI switches could not be read: {exc}")
+    if not on:
+        return source_result("ai_spend", label, read_at=started,
+                             took_ms=int((time.time() - started) * 1000),
+                             checked="no background AI feature is on for any network, so no "
+                                     "spend was read")
+    zone = calls.boundary()
+    today = calls.today(now, zone)
+    got = calls.rows_since(spend.month_start(today, zone))
+    if got["state"] == "unreadable":
+        return source_result("ai_spend", label, read_at=started,
+                             took_ms=int((time.time() - started) * 1000),
+                             error=f"the record of AI calls could not be read: {got['error']}")
+    rows = []
+    for f in spend.feature_summaries(got["rows"], today, zone, now):
+        name, net = f["words"], f["network"]
+        key = f"{net}:{f['feature']}"
+        spent = {"day": f["spent"]["day_usd"], "month": f["spent"]["month_usd"]}
+        period = {"day": "today", "month": "this month"}
+        stopped = [w for w in ("month", "day") if f["stopped"][w]]
+        if stopped:
+            w = stopped[0]
+            rows.append(row(
+                source="ai_spend", kind="stopped", key=f"{key}:{w}", level="danger",
+                since=_ts(f["stopped_at"][w]),
+                clears_at=_ai_period_end(w, today, zone),
+                what=f"{name} on {net} stopped: it reached its {w} cap",
+                cause=(f"{name} spent ${spent[w]:.4f} on {net} {period[w]} against its {w} cap "
+                       f"${f['caps'][w]:.4f}, and the gateway refused its next call "
+                       f"({f['stopped_at'][w]}); it makes no call until the {w} ends"),
+                operands={"spent_usd": round(spent[w], 6), "cap_usd": f["caps"][w], "cap": w,
+                          "network": net, "feature": f["feature"]},
+                action={"label": (f"Leave {name} stopped until the {w} ends, raise its {w} "
+                                  f"cap, or turn it off for {net} in Settings › AI"),
+                        "href": AI_SETTINGS_HREF}))
+            continue
+        if not f["warning"]:
+            continue
+        w = max(("day", "month"), key=lambda k: f["fractions"][k] or 0.0)
+        pct = int(f["fractions"][w] * 100)
+        rows.append(row(
+            source="ai_spend", kind="warning", key=f"{key}:{w}",
+            level="danger" if f["warning"] == "80" else "warning",
+            clears_at=_ai_period_end(w, today, zone),
+            what=f"{name} on {net} has spent {pct}% of its {w} cap",
+            cause=(f"{name} spent ${spent[w]:.4f} on {net} {period[w]}, {pct}% of its {w} cap "
+                   f"${f['caps'][w]:.4f} (warned at {f['warning']}%); at its cap it stops "
+                   f"until the {w} ends"),
+            operands={"spent_usd": round(spent[w], 6), "cap_usd": f["caps"][w], "cap": w,
+                      "network": net, "feature": f["feature"]},
+            action={"label": (f"Read {name}'s spend on {net}; leave it, turn it off, or "
+                              f"change its {w} cap in Settings › AI"),
+                    "href": AI_SETTINGS_HREF}))
+    return source_result("ai_spend", label, read_at=started,
+                         took_ms=int((time.time() - started) * 1000), rows=rows,
+                         checked=(f"{len(on)} background feature switch(es) on, against their "
+                                  f"day and month caps: {len(rows)} near or at a cap"))
+
+
 SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding_source,
            rollback_source, deploy_source, baseline_source, authorisation_source,
            grafana_source, integrations_source, ci_source, redaction_source,
@@ -3742,7 +3850,8 @@ SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding
            interrupted_source, dashboard_roles_source, template_behind_source,
            records_source, scheduled_rotation_source, host_key_source,
            host_key_window_source, netbox_inventory_source, adjacency_log_source,
-           netbox_lag_source, console_ztp_source, intent_format_source)
+           netbox_lag_source, console_ztp_source, intent_format_source,
+           ai_spend_source)
 
 
 #: What can move each source's rows: the data keys (modules/invalidation.VOCABULARY) whose
@@ -3799,6 +3908,8 @@ SOURCE_KEYS = {
     "console_ztp_source": ("device_state", "pending", "console_ztp"),
     # C1693: the intent-format reader announces intent; an intent commit wakes it (reader_wakes).
     "intent_format_source": ("intent",),
+    # Every AI call's route announces its record; a switch or a cap changed is a settings write.
+    "ai_spend_source": ("ai_calls", "settings"),
 }
 
 #: Every key that can move a row, and a person's acknowledgement.

@@ -1229,6 +1229,10 @@ SETTING_WORDS = {
     "drift_off": "drift checks turned off",
     "records_store_move": "a store moved to the records database",
     "records_store_back": "a store moved back to its files",
+    # PHASE8_PLAN 18.3 rule 2 (C1843; modules/ai/background.py): a background AI feature.
+    "ai_background_on": "a background AI feature turned on",
+    "ai_background_off": "a background AI feature turned off",
+    "ai_background_caps": "a background AI feature's caps changed",
 }
 
 

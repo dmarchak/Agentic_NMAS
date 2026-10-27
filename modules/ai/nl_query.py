@@ -647,16 +647,16 @@ def looked_up(results: list) -> str:
         for r in results) or "(nothing looked up)"
 
 
-def _ask_round(schema, prompt, data: dict, *, list_name, actor, ctx, send, today, thinking,
-               subject) -> dict:
+def _ask_round(schema, prompt, data: dict, *, list_name, actor, trigger, ctx, send, today,
+               thinking, subject) -> dict:
     """One question's call, and its needs round when the answer names needs (at most one
     follow-up, `needs.run`): the gateway's answer, the follow-up's in place of the first's
     when there was one, ``cost_usd`` the round's combined, ``parent_call_id`` the first
     call's."""
     from modules.ai import needs as N
 
-    kw = {"actor": actor, "context": ctx, "send": send, "today": today, "thinking": thinking,
-          "network": list_name}
+    kw = {"actor": actor, "trigger": trigger, "context": ctx, "send": send, "today": today,
+          "thinking": thinking, "network": list_name}
     got = gateway.ask(FEATURE, prompt, schema, dict(data, looked_up=looked_up([])),
                       subject=subject, **kw)
     wanted = list(getattr(got.get("output"), "needs", None) or []) if got.get("ok") else []
@@ -970,7 +970,7 @@ def values(c: MetricsChoices) -> dict:
             **({"from": c.from_utc, "to": c.to_utc} if c.range is Range.custom else {})}
 
 
-def metrics(list_name: str, question: str, *, actor: str, send=None, client=None,
+def metrics(list_name: str, question: str, *, actor: str, trigger: dict, send=None, client=None,
             now: float = None, today: str = None, viewer_zone: dict = None,
             thinking: str = None, prompt: tuple = None) -> dict:
     """``{"ok", "error", "detail", "values", "view", "series", "call_id", "cost_usd",
@@ -1051,18 +1051,19 @@ def metrics(list_name: str, question: str, *, actor: str, send=None, client=None
             context_said["offered"] = f"{len(sel['offered'])} of {len(offered)}"
             offered = sel["offered"]
         got = _ask_round(schema, prompt, sel["data"], list_name=list_name, actor=actor,
-                         ctx=sel["ctx"], send=send, today=today, thinking=thinking,
-                         subject=subject)
+                         trigger=trigger, ctx=sel["ctx"], send=send, today=today,
+                         thinking=thinking, subject=subject)
     elif prompt[1] >= 8:
         net = network_context(list_name, "metrics")
         got = _ask_round(schema, prompt, dict(data, coverage=net["coverage"]),
-                         list_name=list_name, actor=actor,
+                         list_name=list_name, actor=actor, trigger=trigger,
                          ctx={"builder": vocabulary(), "network": net["summary"]}, send=send,
                          today=today, thinking=thinking, subject=subject)
     else:
         got = gateway.ask(FEATURE, prompt, schema, data,
-                          actor=actor, context={"builder": vocabulary()}, send=send,
-                          today=today, thinking=thinking, subject=subject, network=list_name)
+                          actor=actor, trigger=trigger, context={"builder": vocabulary()},
+                          send=send, today=today, thinking=thinking, subject=subject,
+                          network=list_name)
     kept = {"context": context_said} if context_said else {}
     if not got["ok"]:
         return dict(got, offered=[o[0] for o in offered], **kept)
@@ -1415,7 +1416,7 @@ def values_logs(c: LogsChoices, any_case: bool = False) -> dict:
             **({"from": c.from_utc, "to": c.to_utc} if c.range is LogsRange.custom else {})}
 
 
-def logs(list_name: str, question: str, *, actor: str, send=None, client=None,
+def logs(list_name: str, question: str, *, actor: str, trigger: dict, send=None, client=None,
          now: float = None, today: str = None, viewer_zone: dict = None,
          prompt: tuple = None) -> dict:
     """``{"ok", "error", "detail", "values", "view", "lines", ..., "today", "range_said"}``: the
@@ -1468,15 +1469,15 @@ def logs(list_name: str, question: str, *, actor: str, send=None, client=None,
         got = _ask_round(schema, prompt,
                          dict(data, mnemonics="\n".join(f"{m} | {w}" for m, w in offered_),
                               coverage=net["coverage"]),
-                         list_name=list_name, actor=actor,
+                         list_name=list_name, actor=actor, trigger=trigger,
                          ctx={"builder": vocabulary_logs(prompt[1]), "network": net["summary"]},
                          send=send, today=today, thinking=None, subject=subject)
     else:
         mns = offer_mnemonics(question, seen)
         got = gateway.ask(FEATURE, prompt, schema,
                           parts_logs(question, kinds, mns, labels, named, roles, now, z),
-                          actor=actor, context={"builder": vocabulary_logs()}, send=send,
-                          today=today, subject=subject, network=list_name)
+                          actor=actor, trigger=trigger, context={"builder": vocabulary_logs()},
+                          send=send, today=today, subject=subject, network=list_name)
     if not got["ok"]:
         return dict(got, offered=mns)
     c, kept = got["output"], {}

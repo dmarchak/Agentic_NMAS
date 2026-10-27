@@ -22,6 +22,8 @@ import json
 import pytest
 import requests
 
+from modules.ai import triggers
+from tests.ai_person import pressed_by
 from modules.ai import anthropic_adapter as A
 from modules.ai import calls, connection, explain, gateway, nl_query, profiles, prompts, schemas  # noqa: F401 (nl_query and explain register their schemas)
 from modules.ai import intent_words  # noqa: F401,E402 (it registers feature 7's schema)
@@ -158,9 +160,11 @@ def _answer(text, stop="end_turn", usage=None):
 
 
 def _ask(world, parts=None, **kw):
-    return gateway.ask("connection_check", ("ping", 1), connection.Ping,
-                       parts if parts is not None else {"word": "w"}, actor="operator@example.com",
-                       send=world.send, today="2026-10-25", **kw)
+    with pressed_by("operator@example.com"):
+        return gateway.ask("connection_check", ("ping", 1), connection.Ping,
+                           parts if parts is not None else {"word": "w"}, actor="operator@example.com",
+                           trigger=triggers.person("operator@example.com"),
+                           send=world.send, today="2026-10-25", **kw)
 
 
 def _rows():
@@ -382,8 +386,10 @@ def test_every_haiku_task_s_prompt_bound_is_under_its_long_tier():
 
 
 def test_a_task_no_pin_names_is_refused(world):
-    got = gateway.ask("not_a_task", ("ping", 1), connection.Ping, {"word": "w"}, actor="a",
-                      send=world.send, today="2026-10-25")
+    with pressed_by("operator@example.com"):
+        got = gateway.ask("not_a_task", ("ping", 1), connection.Ping, {"word": "w"}, actor="operator@example.com",
+                          trigger=triggers.person("operator@example.com"),
+                          send=world.send, today="2026-10-25")
     assert got["error"] == "unknown_task" and world.sent == [] and "connection_check" in got["detail"]
 
 
@@ -445,13 +451,16 @@ def test_the_prices_are_the_pricing_page_s_and_the_table_says_when_they_are_stal
 
 
 def test_the_day_cap_counts_what_today_spent(world):
+    # Recorded in the order they happened, as `calls.record` stamps every product row when it
+    # writes it (C1843: the day's spend is read from the end of the record back to the day's
+    # start, `calls.rows_since`).
+    calls.record({"id": "ai-yday", "at": "2026-10-24T23:00:00Z", "verdict": "ok",
+                  "cost_usd": 9.0})
     calls.record({"id": "ai-old", "at": "2026-10-25T01:00:00Z", "verdict": "ok",
                   "cost_usd": 1.4999})
     # The day's room, $0.0001, under this call's worst case (a Test's: about $0.00007 at
     # 64 answer tokens, so the room is made smaller than that by the cap, not the spend).
     world.settings["ai_cap_usd_per_day"] = 1.49995
-    calls.record({"id": "ai-yday", "at": "2026-10-24T23:00:00Z", "verdict": "ok",
-                  "cost_usd": 9.0})
     got = _ask(world)
     assert got["error"] == "over_cap" and world.sent == []
     assert "today's spend $1.4999" in got["detail"] and "day cap $1.4999" in got["detail"]
@@ -467,27 +476,37 @@ def test_an_unreadable_record_refuses_rather_than_count_nothing(world, monkeypat
 def test_an_unregistered_schema_is_refused(world):
     class Loose(schemas.StrictModel):
         x: str
-    got = gateway.ask("connection_check", ("ping", 1), Loose, {}, actor="a", send=world.send,
-                      today="2026-10-25")
+    with pressed_by("operator@example.com"):
+        got = gateway.ask("connection_check", ("ping", 1), Loose, {}, actor="operator@example.com",
+                          trigger=triggers.person("operator@example.com"), send=world.send,
+                          today="2026-10-25")
     assert got["error"] == "schema" and world.sent == []
 
 
 def test_a_provider_failure_is_recorded_by_its_kind(world):
     def down(body, key):
         raise A.Overloaded("HTTP 529 after 3 attempts: busy", status=529, attempts=3)
-    got = gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
-                      actor="a", send=down, today="2026-10-25")
+    with pressed_by("operator@example.com"):
+        got = gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
+                          actor="operator@example.com",
+                          trigger=triggers.person("operator@example.com"), send=down, today="2026-10-25")
     assert got["error"] == "overloaded" and _rows()[0]["attempts"] == 3
 
 
 def test_the_connection_check_wants_its_own_word_back(world):
     world.answer = _answer('{"echo": "not-the-word"}')
-    got = connection.check(actor="a", send=world.send, today="2026-10-25")
+    with pressed_by("operator@example.com"):
+        got = connection.check(actor="operator@example.com",
+                               trigger=triggers.person("operator@example.com"),
+                               send=world.send, today="2026-10-25")
     assert got["ok"] is False and got["error"] == "schema" and "not-the-word" in got["detail"]
     word = world.sent[0]["body"]["messages"][0]["content"].split("\n")[1]
     world.answer = _answer(json.dumps({"echo": word}))
-    assert connection.check(actor="a", send=world.send, today="2026-10-25")["ok"] is False, \
-        "a new word each check: the old answer does not pass"
+    with pressed_by("operator@example.com"):
+        assert connection.check(actor="operator@example.com",
+                                trigger=triggers.person("operator@example.com"),
+                                send=world.send, today="2026-10-25")["ok"] is False, \
+            "a new word each check: the old answer does not pass"
 
 
 def test_history_draws_each_call(world):

@@ -40,7 +40,8 @@ import yaml
 from modules import alert_history as AH
 from modules import evidence_pack as EP
 from modules import network_model as NM
-from modules.ai import explain
+from modules.ai import explain, triggers
+from tests.ai_person import pressed_by
 from tests.test_ai_explain import world  # noqa: F401 (the fixture)
 from tests.test_device_v2 import lab  # noqa: F401 (the fixture)
 from tests.test_evidence_pack import V6, _alerts, _section, pack_lab  # noqa: F401
@@ -251,8 +252,10 @@ class TestOneIdPerDevice:
         ref = f"health:{kinds.ids['r1']}:discards"
         kinds.answer = _answer(stored, outcome="no_fault_found", hypotheses=[],
                                checked=[ref])
-        got = explain.explain(stored["id"], actor="operator@example.com", send=kinds.send,
-                              today="2026-10-27")
+        with pressed_by("operator@example.com"):
+            got = explain.explain(stored["id"], actor="operator@example.com",
+                                  trigger=triggers.person("operator@example.com"),
+                                  send=kinds.send, today="2026-10-27")
         assert got["ok"] is True, got
         assert got["answer"]["checked"] == [{"ref": "health:dev:@r1:discards", "in_pack": True,
                                              "as_sent": ref}]

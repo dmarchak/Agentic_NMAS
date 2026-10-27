@@ -106,7 +106,11 @@ prompt is held under 100,000 tokens, since over it every rate is five times; a l
 refused, saying so. It is off
 until a person allows it. Every call goes through one gateway, which masks what leaves the
 host, refuses a call over a cap before sending it, and records it under **History › AI calls**
-(the feature, the model, the verdict, the cost, who asked). **Spent today** is the day's total
+(the feature, the model, the verdict, the cost, who asked). Every call also names what
+started it, recorded with it: a person's press (the person the request verified), an
+evaluation run, or a background job acting on something {{product}} found; a call that names
+none is refused before anything is read or sent. No background feature runs today: each will
+be off for every network until an admin turns it on. **Spent today** is the day's total
 from that record; a record that cannot be read refuses every call. The day begins at midnight
 in the zone **The day begins at** names, beside the cap: UTC unless set, or a time zone's name
 such as America/Denver, its daylight-saving changes followed. **Spent today** says when the

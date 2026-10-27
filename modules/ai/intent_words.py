@@ -304,8 +304,8 @@ def scope_of(list_name: str, sentence: str, devices: list = None) -> dict:
     return {"ok": True, "named": said}
 
 
-def change(list_name: str, sentence: str, *, actor: str, send=None, today: str = None,
-           devices: list = None, picks: dict = None) -> dict:
+def change(list_name: str, sentence: str, *, actor: str, trigger: dict, send=None,
+           today: str = None, devices: list = None, picks: dict = None) -> dict:
     """``{"ok", "error", "detail", "previews", "call_id", "cost_usd", "resolutions", ...}``:
     *sentence* made a patch per device it changes, each previewed by the intent editor
     (nothing written); or one question back, or a refusal naming why, with nothing previewed.
@@ -336,8 +336,8 @@ def change(list_name: str, sentence: str, *, actor: str, send=None, today: str =
             return resolved["refusal"]
     extra = {"words": sentence, "sent": resolved["sentence"],
              "resolutions": resolved["resolutions"], "resolution_said": resolved["said"]}
-    return dict(_drafted(list_name, resolved["sentence"], named, actor=actor, send=send,
-                         today=today), **extra)
+    return dict(_drafted(list_name, resolved["sentence"], named, actor=actor, trigger=trigger,
+                         send=send, today=today), **extra)
 
 
 def resolve_names(list_name: str, device: str, sentence: str, picks: dict = None) -> dict:
@@ -371,7 +371,8 @@ def resolve_names(list_name: str, device: str, sentence: str, picks: dict = None
             "said": got["said"]}
 
 
-def _drafted(list_name: str, sentence: str, named: list, *, actor: str, send, today) -> dict:
+def _drafted(list_name: str, sentence: str, named: list, *, actor: str, trigger: dict, send,
+             today) -> dict:
     """`change` from the resolved *sentence* on: the touched sections, the call, and the
     answer converted, scope-checked and previewed."""
     from modules.ai import calls, gateway
@@ -391,8 +392,8 @@ def _drafted(list_name: str, sentence: str, named: list, *, actor: str, send, to
                                                       got["missing"]) + "; nothing was sent"}
     subject = {"kind": "intent", "id": list_name, "devices": list(named)}
     asked = gateway.ask(FEATURE, PROMPT, IntentChange, parts(sentence, named, got["devices"]),
-                        actor=actor, context={"operations": vocabulary()}, send=send,
-                        today=today, subject=subject, network=list_name)
+                        actor=actor, trigger=trigger, context={"operations": vocabulary()},
+                        send=send, today=today, subject=subject, network=list_name)
     if not asked["ok"]:
         return asked
     answer = asked["output"]

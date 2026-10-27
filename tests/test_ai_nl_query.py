@@ -18,6 +18,8 @@ import os
 
 import pytest
 
+from modules.ai import triggers
+from tests.ai_person import pressed_by
 from modules.ai import anthropic_adapter as A
 from modules.ai import calls, gateway, nl_query, profiles, schemas
 from tests.test_history_ask_metrics import NOW, FakeProm, web  # noqa: F401 (the fixture)
@@ -94,8 +96,10 @@ def _choices(**over):
 
 
 def _ask(world, question="input errors per interface, the top 5", **kw):
-    return nl_query.metrics("Lab", question, actor="operator@example.com", send=world.send,
-                            client=world.prom, now=NOW, today="2026-10-25", **kw)
+    with pressed_by("operator@example.com"):
+        return nl_query.metrics("Lab", question, actor="operator@example.com",
+                                trigger=triggers.person("operator@example.com"), send=world.send,
+                                client=world.prom, now=NOW, today="2026-10-25", **kw)
 
 
 # ---------------------------------------------------------------------------- offered
@@ -884,9 +888,11 @@ def test_v8_s_needs_round_looks_up_once_and_asks_once_more(world, monkeypatch):
     def send(body, key):
         world.answer = answers.pop(0)
         return plain(body, key)
-    got = nl_query.metrics("Lab", "input errors on the printer's port", actor="operator@x",
-                           send=send, client=world.prom, now=NOW, today="2026-10-25",
-                           prompt=nl_query.CANDIDATE)
+    with pressed_by("operator@example.com"):
+        got = nl_query.metrics("Lab", "input errors on the printer's port", actor="operator@example.com",
+                               trigger=triggers.person("operator@example.com"),
+                               send=send, client=world.prom, now=NOW, today="2026-10-25",
+                               prompt=nl_query.CANDIDATE)
     assert got["ok"] is True and len(world.sent) == 2, got
     second = world.sent[1]["body"]["messages"][0]["content"]
     assert 'endpoint_location printer: {"device": "s1", "interface": "Gi1/1"}' in second

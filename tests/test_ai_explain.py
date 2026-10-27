@@ -21,6 +21,8 @@ import re
 
 import pytest
 
+from modules.ai import triggers
+from tests.ai_person import pressed_by
 from modules import evidence_pack as EP
 from modules.ai import anthropic_adapter as A
 from modules.ai import calls, explain, gateway, profiles
@@ -85,8 +87,10 @@ def _answer(pack, **over):
 
 
 def _explain(world):
-    return explain.explain(world.pack["id"], actor="operator@example.com", send=world.send,
-                           today="2026-10-25")
+    with pressed_by("operator@example.com"):
+        return explain.explain(world.pack["id"], actor="operator@example.com",
+                               trigger=triggers.person("operator@example.com"), send=world.send,
+                               today="2026-10-25")
 
 
 # ---------------------------------------------------------------------------- the request
@@ -185,7 +189,9 @@ def test_a_pack_changed_since_it_was_built_is_not_explained(world, monkeypatch):
 
 
 def test_a_pack_not_kept_says_so(world):
-    got = explain.explain("ep-0000000000", actor="a", send=world.send)
+    with pressed_by("operator@example.com"):
+        got = explain.explain("ep-0000000000", actor="operator@example.com",
+                              trigger=triggers.person("operator@example.com"), send=world.send)
     assert got["error"] == "no_pack" and world.sent == []
 
 
@@ -311,8 +317,10 @@ def test_each_prompt_asks_for_the_schema_it_was_written_for(world):
         1: ("explain", 1), 2: ("explain", 1), 3: ("explain", 1), 4: ("explain", 2),
         5: ("explain", 2), 6: ("explain", 3)}
     world.answer = {k: v for k, v in _answer(world.pack).items() if k != "checked"}
-    got = explain.explain_pack(world.pack, actor="operator@example.com", send=world.send,
-                               today="2026-10-25", prompt=("explain", 3))
+    with pressed_by("operator@example.com"):
+        got = explain.explain_pack(world.pack, actor="operator@example.com",
+                                   trigger=triggers.person("operator@example.com"), send=world.send,
+                                   today="2026-10-25", prompt=("explain", 3))
     assert got["ok"] is True, got
     assert world.sent[-1]["body"]["output_config"]["format"]["schema"]["properties"][
         "outcome"]["$ref"] == "#/$defs/Outcome"
@@ -360,8 +368,10 @@ def test_v6_sends_nothing_looked_up_first_and_a_need_is_looked_up_once(world, mo
     def send(body, key):
         world.answer = answers.pop(0)
         return plain(body, key)
-    got = explain.explain_pack(world.pack, actor="operator@example.com", send=send,
-                               today="2026-10-25", prompt=V6_PROMPT)
+    with pressed_by("operator@example.com"):
+        got = explain.explain_pack(world.pack, actor="operator@example.com",
+                                   trigger=triggers.person("operator@example.com"), send=send,
+                                   today="2026-10-25", prompt=V6_PROMPT)
     assert got["ok"] is True and len(world.sent) == 2, got
     first, second = (s["body"]["messages"][0]["content"] for s in world.sent)
     assert '<data name="looked_up">\n(nothing looked up)\n</data>' in first
@@ -428,8 +438,10 @@ def test_v6_under_the_budget_drops_in_order_and_never_the_onset_window(world, mo
 def test_v6_s_answer_carries_its_level_and_the_prompt_says_omitted_for_size(world):
     from modules.ai import prompts
     world.answer = dict(_answer(world.pack), needs=[])
-    got = explain.explain_pack(world.pack, actor="operator@example.com", send=world.send,
-                               today="2026-10-25", prompt=V6_PROMPT)
+    with pressed_by("operator@example.com"):
+        got = explain.explain_pack(world.pack, actor="operator@example.com",
+                                   trigger=triggers.person("operator@example.com"), send=world.send,
+                                   today="2026-10-25", prompt=V6_PROMPT)
     assert got["ok"] is True and got["context"]["level"] == 0, got
     assert got["context"]["budget"] == 20000 and got["context"]["dropped"] == []
     text = " ".join(prompts.load(*V6_PROMPT)["text"].split())
@@ -557,8 +569,10 @@ def test_an_explanation_stopped_at_max_tokens_shows_nothing(world):
     """A complete, valid explanation whose stop is max_tokens shows nothing (the operator,
     2026-10-25; tests/test_ai_truncated_answers.py)."""
     from tests.test_ai_truncated_answers import _cut
-    got = explain.explain(world.pack["id"], actor="operator@example.com",
-                          send=_cut(world, json.dumps(_answer(world.pack))), today="2026-10-25")
+    with pressed_by("operator@example.com"):
+        got = explain.explain(world.pack["id"], actor="operator@example.com",
+                              trigger=triggers.person("operator@example.com"),
+                              send=_cut(world, json.dumps(_answer(world.pack))), today="2026-10-25")
     bound = profiles.TASKS["explain"]["max_tokens"]
     assert got["ok"] is False and "answer" not in got
     assert got["error"] == "max_tokens"

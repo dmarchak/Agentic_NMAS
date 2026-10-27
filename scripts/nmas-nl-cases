@@ -114,7 +114,7 @@ def frozen(case: dict):
 def record(checkout: str, list_name: str, actor: str, out: str, case_file: str = CASES,
            thinking: str = None, model: str = None, prompt: int = None,
            only=()) -> int:
-    from modules.ai import cases, nl_query, profiles
+    from modules.ai import cases, nl_query, profiles, triggers
 
     if os.path.realpath(out).startswith(os.path.realpath(checkout) + os.sep):
         print(f"nmas-nl-cases: --out {out} is inside the checkout; write it elsewhere",
@@ -165,10 +165,11 @@ def record(checkout: str, list_name: str, actor: str, out: str, case_file: str =
         # every day it is recorded, and its recording is judged as of it.
         now = frozen(case) or time.time()
         if logs:
-            got = nl_query.logs(list_name, case["question"], actor=actor, prompt=asked,
-                                now=now)
+            got = nl_query.logs(list_name, case["question"], actor=actor,
+                                trigger=triggers.evaluation(actor), prompt=asked, now=now)
         else:
-            got = nl_query.metrics(list_name, case["question"], actor=actor, thinking=thinking,
+            got = nl_query.metrics(list_name, case["question"], actor=actor,
+                                   trigger=triggers.evaluation(actor), thinking=thinking,
                                    prompt=asked, now=now)
         spent += float(got.get("cost_usd") or 0)
         if got.get("error") in STOPS:

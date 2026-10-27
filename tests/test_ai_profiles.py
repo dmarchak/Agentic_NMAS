@@ -13,6 +13,8 @@ import types
 
 import pytest
 
+from modules.ai import triggers
+from tests.ai_person import pressed_by
 from modules.ai import calls, connection, profiles
 from tests.test_ai_gateway import own_record, world  # noqa: F401 (fixtures)
 
@@ -175,18 +177,27 @@ def _reply(body):
 
 
 def test_the_check_sends_one_word_of_its_own_as_the_data_named_word(world):
-    got = connection.check(actor="a", send=_answering(world), today="2026-10-25")
+    with pressed_by("operator@example.com"):
+        got = connection.check(actor="operator@example.com",
+                               trigger=triggers.person("operator@example.com"),
+                               send=_answering(world), today="2026-10-25")
     (row,) = calls.read()["rows"]
     assert got == {"ok": True, "detail": f"answered, ${row['cost_usd']:.5f}",
                    "call_id": row["id"], "cost_usd": row["cost_usd"]}
     first = _word(world)
-    connection.check(actor="a", send=_answering(world), today="2026-10-25")
+    with pressed_by("operator@example.com"):
+        connection.check(actor="operator@example.com",
+                         trigger=triggers.person("operator@example.com"),
+                         send=_answering(world), today="2026-10-25")
     assert _word(world) != first, "a new word each check"
 
 
 def test_a_wrong_echo_is_refused_naming_both_its_first_40_characters(world):
     echo = "x" * 39 + "yz" + "w" * 9
-    got = connection.check(actor="a", send=_answering(world, echo=echo), today="2026-10-25")
+    with pressed_by("operator@example.com"):
+        got = connection.check(actor="operator@example.com",
+                               trigger=triggers.person("operator@example.com"),
+                               send=_answering(world, echo=echo), today="2026-10-25")
     (row,) = calls.read()["rows"]
     assert got == {"ok": False, "error": "schema", "call_id": row["id"],
                    "detail": f"the answer echoed {echo[:40]!r}, not {_word(world)!r}"}
@@ -197,12 +208,18 @@ def test_the_check_counts_the_day_it_is_given(world, monkeypatch):
     days = []
     monkeypatch.setattr(calls, "spent_usd", lambda day: days.append(day) or {
         "state": "ok", "usd": 0.0, "calls": 0, "error": ""})
-    connection.check(actor="a", send=_answering(world), today="2026-10-21")
+    with pressed_by("operator@example.com"):
+        connection.check(actor="operator@example.com",
+                         trigger=triggers.person("operator@example.com"),
+                         send=_answering(world), today="2026-10-21")
     assert days == ["2026-10-21"]
 
 
 def test_a_refused_check_is_the_gateway_s_answer_unchanged(world):
     world.settings.pop("ai_hosted")
-    got = connection.check(actor="a", send=_answering(world), today="2026-10-25")
+    with pressed_by("operator@example.com"):
+        got = connection.check(actor="operator@example.com",
+                               trigger=triggers.person("operator@example.com"),
+                               send=_answering(world), today="2026-10-25")
     assert got["ok"] is False and got["error"] == "ai_off" and world.sent == []
     assert set(got) == {"ok", "error", "detail", "call_id", "recorded"}

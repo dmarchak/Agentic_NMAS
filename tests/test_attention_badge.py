@@ -128,7 +128,9 @@ class TestARowThatClearsByTime:
         import ast
         timed = {k for k, (ways, _) in attention.CLEARS.items() if "time" in ways}
         assert timed == {("approvals", "pending"), ("restarts", "unplanned"),
-                         ("adjacency_log", "flap")}     # a day after its last drop (C589)
+                         ("adjacency_log", "flap"),     # a day after its last drop (C589)
+                         # The day or month a background AI feature's spend counts ends (C1843).
+                         ("ai_spend", "warning"), ("ai_spend", "stopped")}
         tree = ast.parse(open(attention.__file__, encoding="utf-8").read())
         found = set()
         for node in ast.walk(tree):

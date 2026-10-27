@@ -25,6 +25,8 @@ import json
 
 import pytest
 
+from modules.ai import triggers
+from tests.ai_person import pressed_by
 from modules import alert_history as H
 from modules import evidence_pack as EP
 from modules import list_settings as L
@@ -447,8 +449,10 @@ class TestExplainReadsIt:
                 "usage": {"input_tokens": 4000, "output_tokens": 300}},
                 attempts=1, latency_s=0.9)
         monkeypatch.setattr(A, "send", send)
-        got = explain.explain(pack["id"], actor="operator@example.com", send=send,
-                              today="2026-10-25")
+        with pressed_by("operator@example.com"):
+            got = explain.explain(pack["id"], actor="operator@example.com",
+                                  trigger=triggers.person("operator@example.com"), send=send,
+                                  today="2026-10-25")
         assert got["ok"] is True, got
         assert [c["ref"] for c in got["answer"]["hypotheses"][0]["cites"]] == ["sdn:1", "sdn:2"]
         content = sent[0]["messages"][0]["content"]

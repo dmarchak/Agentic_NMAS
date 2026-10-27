@@ -71,16 +71,17 @@ ROWS = [{"at": "2026-10-25T08:00:00Z", "cost_usd": 0.0105},
 
 
 def test_the_days_spend_is_its_rows_cost_and_count(monkeypatch):
-    monkeypatch.setattr(calls, "read", lambda: {"state": "ok", "rows": [dict(r) for r in ROWS],
-                                                "error": ""})
+    # The day is read within its window (`calls.rows_since`, C1843), each row judged by its day.
+    monkeypatch.setattr(calls, "rows_since", lambda start: {
+        "state": "ok", "rows": [dict(r) for r in ROWS], "error": ""})
     assert calls.spent_usd("2026-10-25") == {"state": "ok", "usd": 0.0105, "calls": 3,
                                              "error": ""}
     assert calls.spent_usd("2026-10-23") == {"state": "ok", "usd": 0, "calls": 0, "error": ""}
 
 
 def test_an_unreadable_record_is_said_whole(monkeypatch):
-    monkeypatch.setattr(calls, "read", lambda: {"state": "unreadable", "rows": [],
-                                                "error": "a torn line at 3"})
+    monkeypatch.setattr(calls, "rows_since", lambda start: {"state": "unreadable", "rows": [],
+                                                            "error": "a torn line at 3"})
     assert calls.spent_usd("2026-10-25") == {"state": "unreadable", "usd": None, "calls": 0,
                                              "error": "a torn line at 3"}
 

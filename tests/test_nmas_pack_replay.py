@@ -164,7 +164,7 @@ def test_explain_twice_prints_tokens_cost_and_the_answer(replay):
     pack = _built(replay)
     replay.answer = _answer(pack)
     lines = []
-    assert replay.driver.explain_twice(pack, "operator@example.com", out=lines.append) == 0
+    assert replay.driver.explain_twice(pack, "evaluation:replay-test", out=lines.append) == 0
     text = "\n".join(lines)
     assert text.count("input_tokens 4000, output_tokens 300, cache_creation_input_tokens 0, "
                       "cache_read_input_tokens 0, cost $") == 2
@@ -191,7 +191,7 @@ def test_named_versions_are_asked_in_order_a_candidate_s_before_and_after(replay
     pack = _built(replay)
     replay.answer = _answer(pack)
     lines = []
-    assert replay.driver.explain_twice(pack, "operator@example.com", out=lines.append,
+    assert replay.driver.explain_twice(pack, "evaluation:replay-test", out=lines.append,
                                        versions=[4, 5]) == 0
     text = "\n".join(lines)
     assert "== explain.v4: answered and checked" in text
@@ -261,7 +261,7 @@ def test_a_saved_pack_is_explained_as_built_and_a_changed_one_never(replay, tmp_
 def test_a_refusal_stops_the_run(replay):
     replay.settings.pop("ai_hosted")
     lines = []
-    assert replay.driver.explain_twice(_built(replay), "operator@example.com",
+    assert replay.driver.explain_twice(_built(replay), "evaluation:replay-test",
                                        out=lines.append) == 1
     assert lines[0].startswith("== explain.v1: ai_off")
     assert "stopped at ai_off" in lines[-1] and replay.sent == []

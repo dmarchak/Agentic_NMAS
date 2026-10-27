@@ -20,12 +20,12 @@ class Ping(StrictModel):
     echo: str
 
 
-def check(*, actor: str, send=None, today: str = None) -> dict:
+def check(*, actor: str, trigger: dict, send=None, today: str = None) -> dict:
     """``{"ok", "detail", "call_id", ...}``: the gateway's answer to one ping, its word
-    compared with the one sent."""
+    compared with the one sent. *trigger* is what started it (`triggers`)."""
     word = "mercury-" + secrets.token_hex(4)
-    got = gateway.ask(FEATURE, PROMPT, Ping, {"word": word}, actor=actor, send=send,
-                      today=today)
+    got = gateway.ask(FEATURE, PROMPT, Ping, {"word": word}, actor=actor, trigger=trigger,
+                      send=send, today=today)
     if not got["ok"]:
         return got
     if got["output"].echo != word:

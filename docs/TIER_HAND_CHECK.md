@@ -1612,3 +1612,130 @@ YAML escapes passes the first check and is written plainly by the serialiser).
 The machine logs (one JSON line per step for the harness, one line per mutant by hand) are
 scratch tooling, as above.
 
+## 2026-10-27: AI cost safety, rules 1 to 5 and 9 (C1843): every call's trigger, the background switches and their caps, rebased on C1854's change, on the change's tree
+
+**What changed in the tier:** two new modules and the gateway's spending path. `modules/ai/triggers.py`:
+every AI call names its trigger (a person's press inside a verified request, an evaluation run,
+or a background job on a finding deterministic code made), and `check` refuses one that names
+none, or a malformed one, before the allowance, the key or the record is read.
+`modules/ai/background.py`: background features are off by default per network; `admit` asks
+whether the feature is on for its network, and `over_cap` asks whether the feature's spend today
+and this month, plus this call's worst case, fits its own caps. The gateway: `ask` checks the
+trigger first, then `admit` before the key; `_capped_send` asks `over_cap` after the
+installation's day cap. `modules/ai/calls.py` gains the windowed reads the caps rest on:
+`day_start`, `rows_since`, `day_rows` and `spent_usd`.
+
+**The method:** `hand_check.py` (mutmut 3.8.0's generator) in a throwaway worktree of the change
+(717a1c72, plus C1854's change, plus C1843). It ran one function at a time, with a canary that
+must die for each, one pytest at a time. The functions: the gateway's `ask` and `_capped_send`
+(changed lines); every function of `triggers`; background's `switches`, `entry_of`, `enabled`,
+`caps_of`, `admit` and `over_cap`; and calls' four reads (changed lines). The aimed tests:
+tests/test_ai_triggers.py, test_ai_background.py, test_ai_spend.py, test_ai_gateway.py,
+test_ai_gateway_ask.py, test_ai_gateway_parts.py, test_ai_presses.py, test_ai_day_boundary.py.
+Background's estimate and the admin's actions (`_frequency`, `measured_cost`, `estimate`,
+`turn_on`, `turn_off`, `set_caps`, `_caps`, `_write`) send nothing, so they were outside the
+check. A cap they write reaches a call only through `caps_of` and `over_cap`, which were
+checked. Each survivor judged non-equivalent then got a test. To prove each kill, the survivor's
+own line was applied by hand in a throwaway worktree of the working state
+(`scripts/nmas-control`, `c1843_prove.py`), its aimed test run, and the failing test's name read:
+66 survivors, 66 killed.
+
+**The result: every non-equivalent mutant killed, every canary killed, every file restored
+identical; no defect in the code.**
+
+| function | mutants | killed by the suite | killed by a new test | equivalent |
+|---|---|---|---|---|
+| gateway `ask` (changed lines) | 39 | 39 | 0 | 0 |
+| gateway `_capped_send` (changed lines) | 28 | 25 | 3 | 0 |
+| triggers `person` | 4 | 4 | 0 | 0 |
+| triggers `evaluation` | 12 | 11 | 0 | 1 |
+| triggers `background` | 18 | 16 | 2 | 0 |
+| triggers `actor_of` | 22 | 19 | 0 | 3 |
+| triggers `_refused` | 7 | 7 | 0 | 0 |
+| triggers `_person` | 38 | 33 | 5 | 0 |
+| triggers `_evaluation` | 22 | 19 | 3 | 0 |
+| triggers `_background` | 93 | 85 | 8 | 0 |
+| triggers `check` | 32 | 32 | 0 | 0 |
+| background `switches` | 7 | 5 | 0 | 2 |
+| background `entry_of` | 14 | 13 | 1 | 0 |
+| background `enabled` | 12 | 8 | 2 | 2 |
+| background `caps_of` | 23 | 23 | 0 | 0 |
+| background `admit` | 21 | 17 | 4 | 0 |
+| background `over_cap` | 95 | 85 | 10 | 0 |
+| calls `day_start` (changed lines) | 18 | 15 | 1 | 2 |
+| calls `rows_since` (changed lines) | 34 | 19 | 15 | 0 |
+| calls `day_rows` (changed lines) | 29 | 17 | 12 | 0 |
+| calls `spent_usd` (changed lines) | 8 | 8 | 0 | 0 |
+| **all** | **576** | **500** | **66** | **10** |
+
+**Survivors killed by new tests** (in tests/test_ai_background.py unless named):
+- `_capped_send`: the feature's caps judged on no day (so on the clock's day, not the day the
+  gateway counts), and the refusal's worst case dropped from its row
+  (`test_the_features_caps_count_on_the_calls_own_day_and_record_its_worst_case`).
+  `over_cap`'s day dropped is killed by the same test.
+- triggers `background`: a trigger naming no network given `list_slug("")`, which is
+  `"default"` (it would spend under the Default list), or a made-up name
+  (`test_a_background_call_naming_no_network_names_none_and_is_refused`).
+- triggers `_person`, `_evaluation`, `_background`, five places: the taken trigger's `why` renamed
+  or non-empty (tests/test_ai_triggers.py
+  `test_a_trigger_taken_says_no_why_and_names_itself`). `_person`'s refusal reworded
+  (`test_a_person_trigger_naming_an_evaluation_says_each_kind_names_its_own`). `_background`'s
+  `isinstance` guard on the feature made always true, so a list raised `TypeError`, and its
+  network test's `or` made `and`, so `7` reached `list_slug`
+  (`test_a_background_trigger_whose_names_are_not_text_is_refused_not_raised`). The known
+  features' and finding kinds' separators reworded
+  (`test_the_refusals_list_every_feature_and_finding_kind`).
+- `entry_of`: the `on is True` test made always true, so `{"on": false}`, `"true"`, `1` or no
+  `on` read as on (`test_a_switch_stored_anything_but_on_true_admits_nothing`).
+- `enabled`: the sort key made `(feature, feature)` or `(network, entry)`
+  (`test_the_switches_on_are_listed_by_network_then_feature`).
+- `admit`: the unreadable switches' words (the exception's type, the feature named)
+  (`test_switches_that_cannot_be_read_are_said_and_refused`).
+- `over_cap`: a switch turned off mid-call says `admit`'s words, not the fallback's, and its row
+  names no cap (`test_a_switch_turned_off_mid_call_says_admits_words_and_names_no_cap`). An
+  unreadable record's refusal names the day cap
+  (`test_an_unreadable_record_stops_the_feature_on_its_day_cap`). `>` made `>=`, which refused a
+  call that brings the spend exactly to the cap. The cap is what may be spent, and the
+  installation's day cap uses `>` too
+  (`test_a_call_that_brings_the_spend_exactly_to_the_cap_is_sent`; binary fractions keep the
+  sum exact). The month's refusal said "today", or a reworded "this month"
+  (`test_the_month_caps_refusal_names_this_month`; the existing month test skips on a month's
+  first day, and this one names its own day).
+- calls `day_start`: `astimezone(None)`, the host's local zone in place of UTC
+  (tests/test_ai_day_boundary.py
+  `test_a_days_start_is_said_in_utc_whatever_the_hosts_zone`, with `TZ=Asia/Tokyo`). Not a
+  defect in the code, which converts to UTC. The mutant also changed no figure: every consumer
+  compares instants or takes `.timestamp()`, and the mutant survived the suite on a host in
+  MDT. The test holds the docstring's promise for a caller that writes the start with a "Z".
+- calls `rows_since` (tests/test_ai_spend.py): the store's name dropped, so a record moved to
+  the records database read the file left behind
+  (`test_rows_since_reads_the_records_database_once_the_record_moved_there`). `skip_unparsable`
+  dropped or false, so one torn line made every spend figure, and so every cap, unreadable
+  (`test_rows_since_skips_a_torn_line_as_the_whole_read_does`). The unreadable check inverted,
+  or matched against a misspelled state, and the log line's every part (11 mutants; two of them
+  raised `KeyError` on an unreadable record)
+  (`test_an_unreadable_record_is_said_and_logged_once`). The inverted check changes only the
+  log: the answer is the store's either way.
+- calls `day_rows` (tests/test_ai_spend.py): the zone asked dropped from the window's start or
+  the row's day, so a zone east of UTC lost its day's first hours
+  (`test_a_days_rows_are_read_in_the_zone_asked`). A day that is no date answered in another
+  shape, which `spent_usd` then indexed
+  (`test_a_day_that_is_no_date_holds_no_row`, nine mutants).
+
+**Equivalents, with why:**
+- triggers `evaluation`: `actor or ""` made `actor or "XXXX"`. `XXXX` does not start with
+  `evaluation:`, so the run is `""` either way.
+- triggers `actor_of`, three: the `or ""` defaults for `by`, `run` and `job` made `"XXXX"`.
+  `actor_of` is called only from `check`, after the kind's own validation, so each is a
+  non-empty string there: `by` a verified person, `run` matching the run's shape, `job` matching
+  `_ID`.
+- background `switches`, two: `get_setting(SETTING, {})` with its default `None` or omitted.
+  The `or {}` after it reads both as `{}`.
+- background `enabled`, two: the sort key `None` or omitted. The tuples' first two members
+  (network, feature) are a dict's keys and never tie, so the entry is never compared and the
+  order is the same.
+- calls `day_start`, two: `datetime.time(0, 0)` made `time(0)` or `time(0, )`, which equal it.
+
+The machine logs (`hc-c1843.jsonl`, one JSON line per step; `c1843-prove.jsonl`, one line per
+survivor applied by hand) are scratch tooling, as above.
+

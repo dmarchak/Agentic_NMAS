@@ -709,8 +709,9 @@ def test_card(name: str, client=None, actor: str = "") -> dict:
 
     spec = CARDS[name]
     if spec.get("test") == "ai":
-        from modules.ai import connection
-        got = connection.check(actor=actor)
+        from modules.ai import connection, triggers
+        # A person's press of Test or Replace… (their routes pass the request's actor).
+        got = connection.check(actor=actor, trigger=triggers.person(actor))
         now = _now()
         return {"ok": bool(got.get("ok")), "message": got.get("detail") or "",
                 "error": "" if got.get("ok") else

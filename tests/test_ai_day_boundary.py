@@ -18,6 +18,8 @@ import re
 
 import pytest
 
+from modules.ai import triggers
+from tests.ai_person import pressed_by
 from modules.ai import anthropic_adapter as A
 from modules.ai import calls, connection, gateway
 
@@ -58,6 +60,26 @@ def test_the_reset_is_where_the_counter_turns_over_across_a_dst_change(zone):
         assert info["at"] == reset.strftime("%Y-%m-%dT%H:%M:%SZ") and calls.today(now, zone) == before
         if zone == "America/Denver":
             assert info["zone_hm"] == "00:00" and info["utc"] in ("06:00", "07:00")
+
+
+def test_a_days_start_is_said_in_utc_whatever_the_hosts_zone():
+    # `day_start` answers an aware UTC datetime (its docstring), so a caller that writes it
+    # with a "Z", as the reset's is written, says the instant; never the host's local time.
+    import os
+    import time
+    was = os.environ.get("TZ")
+    os.environ["TZ"] = "Asia/Tokyo"
+    time.tzset()
+    try:
+        start = calls.day_start("2026-10-26", "America/Denver")
+    finally:
+        if was is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = was
+        time.tzset()
+    assert start.utcoffset() == datetime.timedelta(0)
+    assert start.strftime("%Y-%m-%dT%H:%M:%SZ") == "2026-10-26T06:00:00Z"
 
 
 def test_an_unknown_zone_is_refused_and_a_stored_one_this_host_lacks_is_utc(monkeypatch):
@@ -101,8 +123,10 @@ def test_the_gateway_refuses_by_the_stated_day(record, monkeypatch, zone, refuse
         return A.Reply(status=200, body={"content": [{"type": "text", "text": json.dumps(
             {"word": "w"})}], "stop_reason": "end_turn",
             "usage": {"input_tokens": 120, "output_tokens": 8}}, attempts=1, latency_s=0.2)
-    got = gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
-                      actor="operator@example.com", send=send)
+    with pressed_by("operator@example.com"):
+        got = gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
+                          actor="operator@example.com",
+                          trigger=triggers.person("operator@example.com"), send=send)
     assert (got.get("error") == "over_cap") is refused, got
     assert bool(sent) is not refused
 

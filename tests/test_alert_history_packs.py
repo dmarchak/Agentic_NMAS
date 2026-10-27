@@ -18,6 +18,8 @@ from html import unescape
 
 import pytest
 
+from modules.ai import triggers
+from tests.ai_person import pressed_by
 from modules import alert_history as H
 from modules import evidence_pack as EP
 from modules.ai import explain
@@ -158,8 +160,10 @@ class TestExplainReadsTheMarkedFrozenPack:
         return json.loads(re.search(r'<data name="pack">(.*?)</data>', content, re.S).group(1))
 
     def test_each_sections_mark_is_in_what_explain_sends(self, world, rebuilt):
-        got = explain.explain(rebuilt["id"], actor="operator@example.com", send=world.send,
-                              today="2026-10-26")
+        with pressed_by("operator@example.com"):
+            got = explain.explain(rebuilt["id"], actor="operator@example.com",
+                                  trigger=triggers.person("operator@example.com"), send=world.send,
+                                  today="2026-10-26")
         assert got["ok"] is True, got
         sent = {s["name"]: s for s in self._sent_pack(world)}
         assert sent["neighbours"]["provenance"] == "missing"
@@ -171,15 +175,19 @@ class TestExplainReadsTheMarkedFrozenPack:
     def test_explaining_again_sends_the_same_pack_and_builds_nothing(self, world, rebuilt):
         before = EP.read()["rows"]
         for _ in range(2):
-            explain.explain(rebuilt["id"], actor="operator@example.com", send=world.send,
-                            today="2026-10-26")
+            with pressed_by("operator@example.com"):
+                explain.explain(rebuilt["id"], actor="operator@example.com",
+                                trigger=triggers.person("operator@example.com"), send=world.send,
+                                today="2026-10-26")
         assert self._sent_pack(world, 0) == self._sent_pack(world, 1)
         assert EP.read()["rows"] == before
 
     def test_the_prompt_text_and_version_are_explains_own(self, world, rebuilt):
         from modules.ai import prompts
-        explain.explain(rebuilt["id"], actor="operator@example.com", send=world.send,
-                        today="2026-10-26")
+        with pressed_by("operator@example.com"):
+            explain.explain(rebuilt["id"], actor="operator@example.com",
+                            trigger=triggers.person("operator@example.com"), send=world.send,
+                            today="2026-10-26")
         system = world.sent[0]["body"]["system"]
         assert system[0]["text"] == prompts.load(*explain.PROMPT)["text"]
         assert "provenance" not in system[0]["text"]

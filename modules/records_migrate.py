@@ -382,6 +382,77 @@ def store_rows(store: str, path: str, skip_unparsable: bool = False, network: st
     return {"state": "ok", "rows": rows, "error": ""}
 
 
+#: The block a windowed read takes from the end of a file at a time.
+TAIL_BLOCK = 64 * 1024
+
+
+def _tail_rows(path: str, floor, skip_unparsable: bool) -> list:
+    """The file's rows from its end back to the first one recorded before *floor* (an aware
+    datetime), oldest first. A line is split from the next at ``\\n``, a byte no UTF-8
+    character holds inside it, so a block's edge never cuts a character a line keeps."""
+    out, rest = [], b""
+    with open(path, "rb") as fh:
+        fh.seek(0, os.SEEK_END)
+        pos = fh.tell()
+        while True:
+            if pos == 0:
+                lines, rest = ([rest] if rest.strip() else []), b""
+            else:
+                step = min(TAIL_BLOCK, pos)
+                pos -= step
+                fh.seek(pos)
+                chunk = fh.read(step) + rest
+                # The first piece may be a line's end whose start is in the block before.
+                rest, *lines = chunk.split(b"\n")
+            for raw in reversed(lines):
+                if not raw.strip():
+                    continue
+                try:
+                    obj = json.loads(raw.decode("utf-8"))
+                except ValueError:
+                    if not skip_unparsable:
+                        raise
+                    continue
+                at = _at(obj) if isinstance(obj, dict) else None
+                if at is not None and at < floor:
+                    return list(reversed(out))
+                out.append(obj)
+            if pos == 0 and not rest:
+                return list(reversed(out))
+
+
+def store_rows_since(store: str, path: str, since, slack_s: float,
+                     skip_unparsable: bool = False, network: str = "") -> dict:
+    """`store_rows`, for the rows recorded at or after *since* (an aware datetime) alone, read
+    without reading the rest: from the file's end back, stopping at the first row recorded
+    more than *slack_s* before *since* (rows are appended in the order their `at` was stamped
+    to within a lock's wait, which the slack covers); on the records database, the rows whose
+    `at` column is that late. A row with no readable `at` is no window's. ``{"state",
+    "rows", "error"}``, oldest first, as `store_rows` says."""
+    from modules import records_db
+
+    floor = since - datetime.timedelta(seconds=slack_s)
+    if records_db.backend(store) == records_db.POSTGRES:
+        st = store_of(store)
+        sql = f"select body from {st.qualified} where network = %s and at >= %s " + _ORDER
+        try:
+            with records_db.pooled() as c:
+                rows = [r[0] for r in c.execute(sql, (network, since)).fetchall()]
+            return {"state": "ok", "rows": rows, "error": ""}
+        except Exception as exc:                      # noqa: BLE001 (said, never "none")
+            first = (str(exc).strip().splitlines() or [type(exc).__name__])[0]
+            return {"state": "unreadable", "rows": [],
+                    "error": f"the records database: {type(exc).__name__}: {first}"}
+    if not os.path.exists(path):
+        return {"state": "absent", "rows": [], "error": ""}
+    try:
+        rows = _tail_rows(path, floor, skip_unparsable)
+    except (OSError, ValueError) as exc:
+        return {"state": "unreadable", "rows": [], "error": f"{type(exc).__name__}: {exc}"}
+    kept = [r for r in rows if isinstance(r, dict) and _at(r) is not None and _at(r) >= since]
+    return {"state": "ok", "error": "", "rows": kept}
+
+
 def store_append(store: str, path: str, row: dict, network: str = "") -> None:
     """Append *row* to a line store: its file, owner-only and under its cross-process lock
     (C1328), or, once moved, the records database. Raises naming why when it could not be kept:

@@ -30,6 +30,8 @@ import time
 
 import pytest
 
+from modules.ai import triggers
+from tests.ai_person import pressed_by
 from modules.ai import anthropic_adapter as A
 from modules.ai import calls, connection, gateway, presses
 from tests.test_ai_gateway import KEY, own_record, world  # noqa: F401 (fixtures)
@@ -48,10 +50,18 @@ def app():
 
 def _ask(world, app, key=None, actor=ACTOR):
     """One press as a route makes it: in a request carrying *key* (or none)."""
+    from flask import g
+
+    from modules import identity
     headers = {presses.HEADER: key} if key else {}
     with app.test_request_context("/x", method="POST", headers=headers):
+        # The request's verified person, as the gate leaves it: a person trigger inside a
+        # request must name the request's own verified actor (C1843).
+        g.nmas_identity = identity.Identity(actor=actor, email=actor, kind="person",
+                                            verified=True, outcome="ok", peer_trusted=True)
         return gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
-                           actor=actor, send=world.send, today="2026-10-25")
+                           actor=actor, trigger=triggers.person(actor), send=world.send,
+                           today="2026-10-25")
 
 
 def _uses():
@@ -130,9 +140,22 @@ def test_the_same_key_from_another_person_is_not_their_call(world, app):
     assert len(world.sent) == 2, "a key is a press's, and a press is its person's"
 
 
+def _verified(actor=ACTOR):
+    """The request's verified person, as the gate leaves it (C1843: a person trigger inside a
+    request names the request's own verified actor)."""
+    from flask import g
+
+    from modules import identity
+    g.nmas_identity = identity.Identity(actor=actor, email=actor, kind="person", verified=True,
+                                        outcome="ok", peer_trusted=True)
+
+
 def _ask_word(world, word):
+    """One gateway call of the press being served (inside the caller's request)."""
+    _verified()
     return gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": word},
-                       actor=ACTOR, send=world.send, today="2026-10-25")
+                       actor=ACTOR, trigger=triggers.person(ACTOR), send=world.send,
+                       today="2026-10-25")
 
 
 def test_each_call_of_a_press_is_its_own_and_a_retry_joins_each_in_turn(world, app):
@@ -164,12 +187,13 @@ def test_a_joiner_has_its_own_row_costing_nothing_and_the_join_is_logged(world, 
     why = "the same press sent again: its key was seen (call 1 of the press)"
     (call,) = [r for r in calls.read()["rows"] if r["id"] == first["call_id"]]
     (join,) = _joins()
-    with app.test_request_context("/x"):
+    with pressed_by(ACTOR):                               # the press's scope: a verified person's
         scope = _about()["scope"]
     assert join == {
         "id": join["id"], "at": join["at"], "feature": "connection_check", "actor": ACTOR,
         "model": call["model"], "prompt": "ping.v1", "schema": call["schema"],
         "subject": {}, "thinking": call["thinking"], "prompt_sha256": call["prompt_sha256"],
+        "trigger": call["trigger"],
         "verdict": "joined", "cost_usd": 0.0, "joined": first["call_id"], "scope": scope,
         "detail": f"joined call {first['call_id']}: {why}"}
     assert join["id"] != first["call_id"] and again["recorded"] is True
@@ -181,20 +205,18 @@ def test_a_joiner_has_its_own_row_costing_nothing_and_the_join_is_logged(world, 
 
 def test_a_retry_under_another_access_scope_is_refused_and_handed_nothing(world, app,
                                                                          monkeypatch):
-    """A press's key sent again under another access scope than its call was made under (here
-    the same actor's name arriving as a service, which `may` allows no gated action) is
-    refused (``other_scope``), recorded naming both scopes, with no answer and nothing sent."""
+    """A press's key sent again under another access scope than its call was made under is
+    refused (``other_scope``), recorded naming both scopes, with no answer and nothing sent.
+    Under C1843 a person's trigger runs only as the request's verified person, and every
+    verified person shares one scope today, so the scope itself is varied here: what the
+    comparison reads (`identity.access_scope`) answers another scope on the replay."""
     world.answer = PING
     first = _ask(world, app, key="v" * 32)
-    with app.test_request_context("/x"):
+    with pressed_by(ACTOR):
         before = _about()["scope"]
     from modules import identity
-    service = identity.Identity(actor=ACTOR, email=ACTOR, kind="service", service_id="svc",
-                                verified=True, outcome="ok", peer="198.51.100.7",
-                                peer_trusted=True, header_present=True)
-    monkeypatch.setattr(identity, "identify", lambda _request: service)
-    with app.test_request_context("/x"):
-        after = _about()["scope"]
+    after = "service svc; may no gated action"
+    monkeypatch.setattr(identity, "access_scope", lambda: after)
     assert after != before
     again = _ask(world, app, key="v" * 32)
     assert len(world.sent) == 1 and "output" not in again and _joins() == []
@@ -226,8 +248,10 @@ def test_the_gateway_names_each_part_of_a_request_s_identity(slow, app, monkeypa
         kw = dict(kw)
         prompt = kw.pop("prompt", ("ping", 1))
         with app.test_request_context("/x", method="POST"):
+            _verified()
             return gateway.ask("connection_check", prompt, connection.Ping, {"word": "w"},
-                               actor=ACTOR, send=slow.send, today="2026-10-25", **kw)
+                               actor=ACTOR, trigger=triggers.person(ACTOR), send=slow.send,
+                               today="2026-10-25", **kw)
     t1, _out1 = _in_thread(lambda: press(first))
     assert slow.started.wait(10)
     t2, _out2 = _in_thread(lambda: press(second))
@@ -238,14 +262,15 @@ def test_the_gateway_names_each_part_of_a_request_s_identity(slow, app, monkeypa
     assert _joins() == []
 
 
-def test_two_access_scopes_never_join_each_others_call(slow, app):
-    """The same request in flight under another access scope (a verified person's press, and
-    the same one from outside any request: unverified) is not joined: each makes its own."""
+def test_two_access_scopes_never_join_each_others_call(slow, app, monkeypatch):
+    """The same request in flight under another access scope is not joined: each makes its
+    own. (Under C1843 every press here is a verified person's, who share one scope today, so
+    the second press's scope is varied where the digest reads it, `identity.access_scope`.)"""
+    from modules import identity
     t1, out1 = _in_thread(lambda: _ask(slow, app, key="w" * 32))
     assert slow.started.wait(10)
-    t2, out2 = _in_thread(lambda: gateway.ask("connection_check", ("ping", 1), connection.Ping,
-                                              {"word": "w"}, actor=ACTOR, send=slow.send,
-                                              today="2026-10-25"))
+    monkeypatch.setattr(identity, "access_scope", lambda: "service svc; may no gated action")
+    t2, out2 = _in_thread(lambda: _ask(slow, app, key="x" * 32))
     time.sleep(0.4)
     slow.release.set()
     t1.join(10), t2.join(10)
@@ -364,10 +389,15 @@ def test_a_different_request_in_flight_is_not_joined(slow, app):
     assert slow.started.wait(10)
 
     def other():
+        from flask import g
+
+        from modules import identity
         with app.test_request_context("/x", method="POST"):
+            g.nmas_identity = identity.Identity(actor=ACTOR, email=ACTOR, kind="person",
+                                                verified=True, outcome="ok", peer_trusted=True)
             return gateway.ask("connection_check", ("ping", 1), connection.Ping,
-                               {"word": "another"}, actor=ACTOR, send=slow.send,
-                               today="2026-10-25")
+                               {"word": "another"}, actor=ACTOR, trigger=triggers.person(ACTOR),
+                               send=slow.send, today="2026-10-25")
     t2, _out2 = _in_thread(other)
     time.sleep(0.4)
     slow.release.set()
@@ -383,15 +413,20 @@ def test_a_slot_held_past_the_wait_is_refused_recorded_and_sends_nothing(world, 
     def keep_body(body, key):
         body_seen["body"] = body
         return A.Reply(status=200, body=PING, attempts=1, latency_s=0.1)
-    gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"}, actor=ACTOR,
-                send=keep_body, today="2026-10-25")
+    with pressed_by(ACTOR):
+        gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"}, actor=ACTOR,
+                    trigger=triggers.person(ACTOR),
+                    send=keep_body, today="2026-10-25")
+        about = _about()                                  # the press's scope: a verified person's
     slot = presses._Slot("req-" + presses.request_digest("connection_check", body_seen["body"],
-                                                         _about()))
+                                                         about))
     slot.claim(1, time.monotonic, time.sleep)
     try:
         monkeypatch.setattr(gateway, "press_wait_s", lambda: 0.3)
-        got = gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
-                          actor=ACTOR, send=world.send, today="2026-10-25")
+        with pressed_by(ACTOR):
+            got = gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
+                              actor=ACTOR,
+                              trigger=triggers.person(ACTOR), send=world.send, today="2026-10-25")
     finally:
         slot.release()
     assert got["ok"] is False and got["error"] == "in_flight" and world.sent == []
@@ -469,8 +504,10 @@ def test_a_request_holding_text_that_cannot_be_utf8_has_an_identity(world, app):
     never a crash."""
     world.answer = PING
     with app.test_request_context("/x", method="POST"):
+        _verified()
         got = gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w\udcff"},
-                          actor=ACTOR, send=world.send, today="2026-10-25",
+                          actor=ACTOR, trigger=triggers.person(ACTOR), send=world.send,
+                          today="2026-10-25",
                           subject={"kind": "query", "id": "Lab\udcff", "devices": []})
     assert got["ok"] and len(world.sent) == 1
 
@@ -528,10 +565,12 @@ def test_a_call_another_process_holds_is_joined(world, app, tmp_path):
     def keep(body, key):
         seen["body"] = body
         return A.Reply(status=200, body=PING, attempts=1, latency_s=0.1)
-    planted = gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
-                          actor="alex@example.com", send=keep, today="2026-10-25")
-    with app.test_request_context("/x"):                  # the press's scope: a request's
-        about = _about()
+    with pressed_by("alex@example.com"):
+        planted = gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
+                              actor="alex@example.com",
+                              trigger=triggers.person("alex@example.com"),
+                              send=keep, today="2026-10-25")
+        about = _about()                                  # the press's scope: a verified person's
     base = os.path.join(presses._dir(),
                         "req-" + presses.request_digest("connection_check", seen["body"], about))
     go = str(tmp_path / "go")
@@ -580,8 +619,10 @@ def test_a_holder_that_dies_mid_call_leaves_the_waiter_to_make_its_own(world, ap
         seen["body"] = body
         return A.Reply(status=200, body=PING, attempts=1, latency_s=0.1)
     with app.test_request_context("/x", method="POST"):
+        _verified("alex@example.com")
         gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
-                    actor="alex@example.com", send=keep, today="2026-10-25")
+                    actor="alex@example.com", trigger=triggers.person("alex@example.com"),
+                    send=keep, today="2026-10-25")
         about = _about()
     base = os.path.join(presses._dir(),
                         "req-" + presses.request_digest("connection_check", seen["body"], about))

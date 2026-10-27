@@ -69,12 +69,21 @@ def test_a_join_is_drawn_as_a_join_of_its_call_and_the_call_names_who_joined(wor
     sent, $0, the call's outcome, opening the call's prompt and answer), never a second call;
     the call's row names who joined it, and the day's spend counts one call."""
     import app as APP
-    from modules.ai import presses
+    from flask import g
+
+    from modules.ai import presses, triggers
+    from tests.ai_person import identity_of
     world.answer = _answer(world.pack)
+    actor = "operator@example.com"
     for _ in range(2):
+        # One request carrying the press's key and its verified person (C1843: a person
+        # trigger names the request's own verified actor), as the route makes it.
         with APP.app.test_request_context("/x", method="POST",
                                           headers={presses.HEADER: "h" * 32}):
-            got = _explain(world)
+            g.nmas_identity = identity_of(actor)
+            got = explain.explain(world.pack["id"], actor=actor,
+                                  trigger=triggers.person(actor), send=world.send,
+                                  today="2026-10-25")
     assert got["ok"] is True and len(world.sent) == 1
     by_kind = {e["record"][0][1] != got["call_id"]: e
                for e in HS.ai_calls({"device": "", "limit": 50})["events"]}

@@ -17,6 +17,8 @@ import json
 import pytest
 import yaml
 
+from modules.ai import triggers
+from tests.ai_person import pressed_by
 from modules.ai import anthropic_adapter as A
 from modules.ai import calls, gateway, intent_words, nl_query
 from tests.test_committed_before_p1 import host  # noqa: F401 (the fixture)
@@ -72,8 +74,10 @@ DESCRIBE = _answer(("s1", [_op("set_description", interface="GigabitEthernet0/1"
 
 
 def _change(world, sentence="describe s1's GigabitEthernet0/1 as uplink to edge1"):
-    return intent_words.change("Lab", sentence, actor="operator@example.com",
-                               send=world.send, today="2026-10-26")
+    with pressed_by("operator@example.com"):
+        return intent_words.change("Lab", sentence, actor="operator@example.com",
+                                   trigger=triggers.person("operator@example.com"),
+                                   send=world.send, today="2026-10-26")
 
 
 def _committed(name):
@@ -159,17 +163,21 @@ def test_what_is_not_an_answer_previews_nothing_and_says_why(world, sentence, an
     ("", None, "empty", "type the change first"),
 ], ids=["no-device", "nothing-named", "empty"])
 def test_mercury_answers_what_needs_no_model(world, sentence, devices, error, said):
-    got = intent_words.change("Lab", sentence, actor="operator@example.com", send=world.send,
-                              today="2026-10-26", devices=devices)
+    with pressed_by("operator@example.com"):
+        got = intent_words.change("Lab", sentence, actor="operator@example.com",
+                                  trigger=triggers.person("operator@example.com"), send=world.send,
+                                  today="2026-10-26", devices=devices)
     assert got["ok"] is False and got["error"] == error and said in got["detail"], got
     assert world.sent == [] and calls.read()["rows"] == [], "no call, nothing spent"
 
 
 def test_on_a_device_s_tab_the_device_needs_no_naming(world):
     world.answer = DESCRIBE
-    got = intent_words.change("Lab", "describe GigabitEthernet0/1 as uplink to edge1",
-                              actor="operator@example.com", send=world.send,
-                              today="2026-10-26", devices=["s1"])
+    with pressed_by("operator@example.com"):
+        got = intent_words.change("Lab", "describe GigabitEthernet0/1 as uplink to edge1",
+                                  actor="operator@example.com",
+                                  trigger=triggers.person("operator@example.com"), send=world.send,
+                                  today="2026-10-26", devices=["s1"])
     assert got["ok"] is True, got
 
 
@@ -179,9 +187,11 @@ def test_on_a_tab_a_description_naming_another_device_is_drafted(world):
     another device's name is only words: the call is made and the draft previewed."""
     world.answer = _answer(("s1", [_op("set_description", interface="GigabitEthernet0/1",
                                        description="uplink to r2")]))
-    got = intent_words.change("Lab", "describe GigabitEthernet0/1 as uplink to r2",
-                              actor="operator@example.com", send=world.send,
-                              today="2026-10-26", devices=["s1"])
+    with pressed_by("operator@example.com"):
+        got = intent_words.change("Lab", "describe GigabitEthernet0/1 as uplink to r2",
+                                  actor="operator@example.com",
+                                  trigger=triggers.person("operator@example.com"), send=world.send,
+                                  today="2026-10-26", devices=["s1"])
     assert got["ok"] is True, got
     assert len(world.sent) == 1
     (p,) = got["previews"]
@@ -193,8 +203,10 @@ def test_on_a_tab_an_answer_changing_the_device_named_in_words_is_refused(world)
     refused by the scope check before any preview, naming r2, and nothing is previewed."""
     world.answer = _answer(("r2", [_op("shutdown", interface="GigabitEthernet3")]))
     before = _committed("s1")
-    got = intent_words.change("Lab", "shut Gi0/1 on s1 and r2", actor="operator@example.com",
-                              send=world.send, today="2026-10-26", devices=["s1"])
+    with pressed_by("operator@example.com"):
+        got = intent_words.change("Lab", "shut Gi0/1 on s1 and r2", actor="operator@example.com",
+                                  trigger=triggers.person("operator@example.com"),
+                                  send=world.send, today="2026-10-26", devices=["s1"])
     assert got["ok"] is False and got["error"] == "couldnt_change", got
     assert "the answer changes 'r2', a device outside the request" in got["detail"], got
     assert not got.get("previews") and _committed("s1") == before

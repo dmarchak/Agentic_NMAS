@@ -10,6 +10,10 @@ import json
 import os
 import re
 
+import pytest
+
+from modules.ai import triggers
+from tests.ai_person import pressed_by
 from modules import history_promq as pq
 from modules.ai import nl_query
 from tests.test_ai_nl_query import NOW, _ask, _words, site, web, world  # noqa: F401
@@ -52,9 +56,12 @@ def test_a_question_naming_a_device_is_offered_only_what_it_carries(world):
                     "operations": [], "top": "none", "range": "24h", "from_utc": "",
                     "to_utc": ""}
     asked = _per_device(world)
-    got = nl_query.metrics("Lab", "Interface status changes on s1 today",
-                           actor="operator@example.com", send=world.send, client=world.prom,
-                           now=NOW, today="2026-10-25")
+    with pressed_by("operator@example.com"):
+        got = nl_query.metrics("Lab", "Interface status changes on s1 today",
+                               actor="operator@example.com",
+                               trigger=triggers.person("operator@example.com"),
+                               send=world.send, client=world.prom,
+                               now=NOW, today="2026-10-25")
     assert asked == ['device=~"s1"'.join("{}")]
     offered = _offered_in_request(world)
     assert "ifOperStatus" in offered and FLAPS not in offered, offered
@@ -70,8 +77,10 @@ def test_the_whole_catalogue_offers_the_flap_counter_without_the_narrowing(world
                     "operations": [], "top": "none", "range": "24h", "from_utc": "",
                     "to_utc": ""}
     _per_device(world)
-    nl_query.metrics("Lab", "Interface status changes today", actor="operator@example.com",
-                     send=world.send, client=world.prom, now=NOW, today="2026-10-25")
+    with pressed_by("operator@example.com"):
+        nl_query.metrics("Lab", "Interface status changes today", actor="operator@example.com",
+                         trigger=triggers.person("operator@example.com"),
+                         send=world.send, client=world.prom, now=NOW, today="2026-10-25")
     assert FLAPS in _offered_in_request(world)
 
 
@@ -81,16 +90,21 @@ def test_an_unreadable_narrowing_falls_back_to_the_whole_catalogue(world):
                     "operations": [], "top": "none", "range": "24h", "from_utc": "",
                     "to_utc": ""}
     _per_device(world, fail="connection refused")
-    nl_query.metrics("Lab", "Interface status changes on s1 today",
-                     actor="operator@example.com", send=world.send, client=world.prom,
-                     now=NOW, today="2026-10-25")
+    with pressed_by("operator@example.com"):
+        nl_query.metrics("Lab", "Interface status changes on s1 today",
+                         actor="operator@example.com",
+                         trigger=triggers.person("operator@example.com"),
+                         send=world.send, client=world.prom,
+                         now=NOW, today="2026-10-25")
     assert FLAPS in _offered_in_request(world), "unread, the offer is the catalogue's"
 
 
 def test_no_metric_the_device_carries_is_said_naming_the_device(world):
     _per_device(world, answer={"status": "success", "data": ["sysUpTime"]})
-    got = nl_query.metrics("Lab", "Interface errors on s1", actor="operator@example.com",
-                           send=world.send, client=world.prom, now=NOW, today="2026-10-25")
+    with pressed_by("operator@example.com"):
+        got = nl_query.metrics("Lab", "Interface errors on s1", actor="operator@example.com",
+                               trigger=triggers.person("operator@example.com"),
+                               send=world.send, client=world.prom, now=NOW, today="2026-10-25")
     assert got["error"] == "no_match" and world.sent == []
     assert got["detail"].startswith("no metric of the 1 s1 carries shares a word")
 
@@ -99,8 +113,10 @@ def test_a_question_no_metric_matches_is_mercury_s_own_answer_at_no_cost(world):
     """Case 17 (C1700): no model asked, nothing spent, nothing recorded; the answer says
     what it could not match and among how many, and the judge reads it as `guide`."""
     from modules.ai import calls, cases
-    got = nl_query.metrics("Lab", "Show me the network", actor="operator@example.com",
-                           send=world.send, client=world.prom, now=NOW, today="2026-10-25")
+    with pressed_by("operator@example.com"):
+        got = nl_query.metrics("Lab", "Show me the network", actor="operator@example.com",
+                               trigger=triggers.person("operator@example.com"),
+                               send=world.send, client=world.prom, now=NOW, today="2026-10-25")
     assert world.sent == [] and calls.read()["rows"] == []
     assert got["error"] == "no_match" and got["by"] == "mercury"
     assert got["cost_usd"] == 0.0 and got["call_id"] == ""
@@ -166,9 +182,12 @@ def test_a_question_naming_a_role_is_offered_only_what_its_devices_carry(world):
                     "operations": [], "top": "none", "range": "24h", "from_utc": "",
                     "to_utc": ""}
     asked = _per_device(world)
-    nl_query.metrics("Lab", "Interface status on all access devices",
-                     actor="operator@example.com", send=world.send, client=world.prom,
-                     now=NOW, today="2026-10-25")
+    with pressed_by("operator@example.com"):
+        nl_query.metrics("Lab", "Interface status on all access devices",
+                         actor="operator@example.com",
+                         trigger=triggers.person("operator@example.com"),
+                         send=world.send, client=world.prom,
+                         now=NOW, today="2026-10-25")
     assert asked == ['{role=~"access"}']
     offered = _offered_in_request(world)
     assert offered and set(offered) <= set(_s1()["data"]) and FLAPS not in offered
@@ -180,9 +199,12 @@ def test_a_device_and_a_role_named_are_offered_what_either_carries(world):
                     "operations": [], "top": "none", "range": "24h", "from_utc": "",
                     "to_utc": ""}
     asked = _per_device(world)
-    nl_query.metrics("Lab", "Interface status on r1 and the access devices",
-                     actor="operator@example.com", send=world.send, client=world.prom,
-                     now=NOW, today="2026-10-25")
+    with pressed_by("operator@example.com"):
+        nl_query.metrics("Lab", "Interface status on r1 and the access devices",
+                         actor="operator@example.com",
+                         trigger=triggers.person("operator@example.com"),
+                         send=world.send, client=world.prom,
+                         now=NOW, today="2026-10-25")
     assert asked == ['{device=~"r1"}', '{role=~"access"}']
 
 
@@ -204,9 +226,12 @@ def test_an_answer_counting_a_state_s_changes_fills_the_builder_with_changes(wor
     from tests.test_ai_nl_query import _choices
     world.answer = _choices(metric="ifOperStatus", devices=["s1"], top="none",
                             operations=[{"kind": "changes", "arg": "1d"}], range="24h")
-    got = nl_query.metrics("Lab", "Interface status changes on s1 today",
-                           actor="operator@example.com", send=world.send, client=world.prom,
-                           now=NOW, today="2026-10-25")
+    with pressed_by("operator@example.com"):
+        got = nl_query.metrics("Lab", "Interface status changes on s1 today",
+                               actor="operator@example.com",
+                               trigger=triggers.person("operator@example.com"),
+                               send=world.send, client=world.prom,
+                               now=NOW, today="2026-10-25")
     assert got["ok"] is True, got.get("detail")
     assert got["values"]["op"] == ["changes:1d"]
     view = json.dumps(got["view"], default=str)

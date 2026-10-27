@@ -145,6 +145,13 @@ DEFAULTS: dict = {
     # The day the day cap counts begins at midnight here: UTC (the gateway's day until it was
     # stated, 2026-10-26), or a time zone's name; modules/ai/calls.py owns the day.
     "ai_cap_day_boundary":      "UTC",
+    # Background AI features, per network, OFF by default (PHASE8_PLAN 18.3 rules 2 to 4;
+    # modules/ai/background.py): `{network: {feature: {"on", "by", "at", "estimate",
+    # "day_cap_usd", "month_cap_usd", ...}}}`, keyed by network inside one installation value
+    # so no network inherits another's switch. Empty reproduces every release before it: no
+    # background AI call runs. Turning one on is an admin's decision after its estimate, which
+    # no measurement can make; its caps are theirs too (Mercury never raises a cap).
+    "ai_background":            {},
     "wf_read_first":            True,
     "wf_auto_backup":           True,
     "wf_run_jenkins":           True,
@@ -770,6 +777,15 @@ SCHEMA: dict = {
         "ai_cap_usd_per_call": {"type": "number", "minimum": 0},
         "ai_cap_usd_per_day": {"type": ["number", "null"], "exclusiveMinimum": 0},
         "ai_cap_day_boundary": {"type": "string", "minLength": 1, "maxLength": 64},
+        # {network: {feature: switch}}; each switch an object `background` writes (its own
+        # checks: positive caps within the day cap, the estimate's digest), kept open here so a
+        # field a later release adds stays readable by this one (expand, then contract).
+        "ai_background": {"type": "object", "additionalProperties": {
+            "type": "object", "additionalProperties": {
+                "type": "object", "required": ["on"],
+                "properties": {"on": _BOOL, "by": _STR, "at": _STR,
+                               "day_cap_usd": {"type": "number", "exclusiveMinimum": 0},
+                               "month_cap_usd": {"type": "number", "exclusiveMinimum": 0}}}}},
         "wf_read_first": _BOOL,
         "wf_auto_backup": _BOOL,
         "wf_run_jenkins": _BOOL,

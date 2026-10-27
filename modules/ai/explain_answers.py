@@ -143,7 +143,7 @@ def as_drawn(kept_answer: dict, earlier: int = 0, fresh: bool = False) -> dict:
                       "fresh": fresh})
 
 
-def press(pack_id: str, *, actor: str, again: bool = False, send=None,
+def press(pack_id: str, *, actor: str, trigger: dict, again: bool = False, send=None,
           today: str = None) -> dict:
     """Explain pressed on *pack_id*: its kept answer when it has one and *again* is not
     asked (nothing sent), else one call (`explain.explain_pack`), its answer kept. The result
@@ -155,7 +155,7 @@ def press(pack_id: str, *, actor: str, again: bool = False, send=None,
     pack, state, _error = EP.find(pack_id)
     if pack is None or not EP.intact(pack):
         # Not kept or changed since built: explain says which, and sends nothing.
-        return explain.explain(pack_id, actor=actor, send=send, today=today)
+        return explain.explain(pack_id, actor=actor, trigger=trigger, send=send, today=today)
     if not again:
         have = kept(pack)
         if have["state"] == "unreadable":
@@ -167,7 +167,7 @@ def press(pack_id: str, *, actor: str, again: bool = False, send=None,
             log.info("explain answers: %s opened the kept answer %s for %s; nothing sent",
                      actor, have["answer"].get("call_id"), pack_id)
             return as_drawn(have["answer"], have["earlier"])
-    got = explain.explain_pack(pack, actor=actor, send=send, today=today)
+    got = explain.explain_pack(pack, actor=actor, trigger=trigger, send=send, today=today)
     saved = keep(pack, got, actor)
     if saved["kept"]:
         have = kept(pack)

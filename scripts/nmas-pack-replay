@@ -138,13 +138,14 @@ def explain_twice(pack: dict, actor: str, out=print, ask=None, versions=None) ->
     """v1, then the current prompt (or the *versions* named, in order: `--prompt`, a
     candidate's before-and-after); each call's tokens, cost and answer printed. 0 when each
     was asked, 1 when a refusal stopped the run."""
-    from modules.ai import explain
+    from modules.ai import explain, triggers
 
     ask = ask or explain.explain_pack
     prompts = ([("explain", int(v)) for v in versions] if versions
                else [("explain", 1), explain.PROMPT])
     for prompt in prompts:
-        got = ask(pack, actor=actor, prompt=prompt)
+        # An evaluation run, counted under its run (PHASE8_PLAN 18.3 rule 9).
+        got = ask(pack, actor=actor, trigger=triggers.evaluation(actor), prompt=prompt)
         row = _row(got.get("call_id") or "") if got.get("call_id") else {}
         tokens = row.get("tokens") or {}
         out(f"== explain.v{prompt[1]}: "

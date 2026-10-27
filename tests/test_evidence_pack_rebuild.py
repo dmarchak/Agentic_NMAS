@@ -26,6 +26,8 @@ import pytest
 
 from modules import alert_history as H
 from modules import evidence_pack as EP
+from modules.ai import triggers
+from tests.ai_person import pressed_by
 from tests.test_ai_explain import world  # noqa: F401 (the fixture)
 from tests.test_alert_history_packs import _episode, history  # noqa: F401 (the fixture)
 from tests.test_device_v2 import lab  # noqa: F401 (the fixture)
@@ -237,7 +239,8 @@ class TestExplainNamesThePackItRead:
         monkeypatch.setattr(explain, "_ask_round",
                             lambda prompt, schema, data, ctx, network, **kw: ask(
                                 None, prompt, schema, data))
-        got = explain.explain(new["id"], actor="operator@example.com")
+        got = explain.explain(new["id"], actor="operator@example.com",
+                              trigger=triggers.person("operator@example.com"))
         assert got["pack_read"] == {"id": new["id"], "schema": 5,
                                     "built_at": new["replayed_at"], "as_of": new["built_at"]}
         assert "concurrent" in seen["pack"]
@@ -246,7 +249,8 @@ class TestExplainNamesThePackItRead:
         with A.app.test_request_context():
             html = unescape(render_template("v2/_explain.html", x=got, explain_model="m"))
         assert f"Read pack {new['id']}, schema 5, built" in _words(html)
-        older = explain.explain(old["id"], actor="operator@example.com")
+        older = explain.explain(old["id"], actor="operator@example.com",
+                                trigger=triggers.person("operator@example.com"))
         assert older["pack_read"]["id"] == old["id"] and older["pack_read"]["schema"] == 4
 
     def test_an_answer_shown_names_the_pack_it_read(self, world, monkeypatch):  # noqa: F811
@@ -265,8 +269,10 @@ class TestExplainNamesThePackItRead:
         world.answer = _answer(new, hypotheses=[{
             "claim": "The heartbeat stopped.", "evidence_refs": ["alert"],
             "confirm_with": "show logging | include HEARTBEAT"}])
-        got = explain.explain(new["id"], actor="operator@example.com", send=world.send,
-                              today="2026-10-26")
+        with pressed_by("operator@example.com"):
+            got = explain.explain(new["id"], actor="operator@example.com",
+                                  trigger=triggers.person("operator@example.com"),
+                                  send=world.send, today="2026-10-26")
         assert got["ok"] is True, got
         assert got["pack_read"] == {"id": new["id"], "schema": 5,
                                     "built_at": new["replayed_at"], "as_of": new["built_at"]}

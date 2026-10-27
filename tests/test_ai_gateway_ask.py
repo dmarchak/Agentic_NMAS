@@ -12,6 +12,8 @@ import logging
 import pytest
 from pydantic import ValidationError
 
+from modules.ai import triggers
+from tests.ai_person import pressed_by
 from modules.ai import anthropic_adapter as A
 from modules.ai import calls, connection, gateway, profiles, prompts
 from tests.test_ai_gateway import KEY, own_record, world  # noqa: F401 (fixtures)
@@ -19,9 +21,12 @@ from tests.test_ai_gateway import KEY, own_record, world  # noqa: F401 (fixtures
 CALL_ID = "ai-planted00000001"
 ACTOR = "operator@example.com"
 MODEL = profiles.TASKS["connection_check"]["model"]
+#: The trigger every row records (C1843): a person's press, in a request that verified them
+#: (`identity.actor_verification` reads "access").
+TRIGGER = {"kind": "person", "by": ACTOR, "verified": "access"}
 BASE = {"id": CALL_ID, "feature": "connection_check", "actor": ACTOR, "model": MODEL,
         "prompt": "ping.v1", "schema": "", "verdict": "", "detail": "", "cost_usd": 0.0,
-        "subject": {}}
+        "subject": {}, "trigger": TRIGGER}
 SHA = prompts.load("ping", 1)["sha256"]
 #: A row once the task's model is known: it records the thinking asked (the batched gateway
 #: change, 2026-10-25), the model's default when the task names none.
@@ -35,8 +40,10 @@ def fixed_id(monkeypatch):
 
 def _ask(world, feature="connection_check", prompt=("ping", 1), schema=connection.Ping,
          parts=None, send=None, today="2026-10-25"):
-    return gateway.ask(feature, prompt, schema, {"word": "w"} if parts is None else parts,
-                       actor=ACTOR, send=send or world.send, today=today)
+    with pressed_by(ACTOR):
+        return gateway.ask(feature, prompt, schema, {"word": "w"} if parts is None else parts,
+                           actor=ACTOR,
+                           trigger=triggers.person(ACTOR), send=send or world.send, today=today)
 
 
 def _row():
@@ -371,8 +378,11 @@ def test_a_task_naming_no_thinking_sends_none_and_its_request_is_unchanged(world
 
 def test_thinking_off_sends_the_model_s_own_form_and_records_it(world):
     send, sent = _sending(_answer('{"echo": "w"}'))
-    got = gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
-                      actor=ACTOR, send=send, today="2026-10-25", thinking="off")
+    with pressed_by(ACTOR):
+        got = gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
+                          actor=ACTOR,
+                          trigger=triggers.person(ACTOR),
+                          send=send, today="2026-10-25", thinking="off")
     assert got["ok"] is True
     ((body, _key),) = sent
     assert body["thinking"] == {"type": "disabled"} == profiles.MODELS[MODEL]["thinking_off"]
@@ -387,15 +397,20 @@ def test_a_task_s_pin_names_its_thinking(world, monkeypatch):
     assert sent[0][0]["thinking"] == {"type": "disabled"}
     open(calls._path(), "w").close()
     send, sent = _sending(_answer('{"echo": "w"}'))
-    assert gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
-                       actor=ACTOR, send=send, today="2026-10-25",
-                       thinking="adaptive")["ok"] is True
+    with pressed_by(ACTOR):
+        assert gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
+                           actor=ACTOR,
+                           trigger=triggers.person(ACTOR), send=send, today="2026-10-25",
+                           thinking="adaptive")["ok"] is True
     assert "thinking" not in sent[0][0], "a measurement's ask replaces the pin for one call"
 
 
 def test_a_thinking_not_known_is_refused_before_anything_is_sent(world):
-    got = gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
-                      actor=ACTOR, send=world.send, today="2026-10-25", thinking="low")
+    with pressed_by(ACTOR):
+        got = gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
+                          actor=ACTOR,
+                          trigger=triggers.person(ACTOR),
+                          send=world.send, today="2026-10-25", thinking="low")
     words = "thinking 'low' is not one of adaptive, off; nothing was sent"
     assert got == _refused("thinking", words) and world.sent == []
     assert _row() == dict(BASE, thinking="low", verdict="thinking", detail=words)
@@ -404,8 +419,11 @@ def test_a_thinking_not_known_is_refused_before_anything_is_sent(world):
 def test_thinking_off_on_a_model_with_no_way_to_turn_it_off_is_refused(world, monkeypatch):
     monkeypatch.setitem(profiles.MODELS, MODEL,
                         {k: v for k, v in profiles.MODELS[MODEL].items() if k != "thinking_off"})
-    got = gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
-                      actor=ACTOR, send=world.send, today="2026-10-25", thinking="off")
+    with pressed_by(ACTOR):
+        got = gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
+                          actor=ACTOR,
+                          trigger=triggers.person(ACTOR),
+                          send=world.send, today="2026-10-25", thinking="off")
     words = f"{MODEL}'s profile names no way to turn thinking off; nothing was sent"
     assert got == _refused("thinking", words) and world.sent == []
 
@@ -415,13 +433,18 @@ def test_the_subject_is_written_with_the_call_sent_or_refused(world):
     answered or refused before anything was sent."""
     subject = {"kind": "alert", "id": "ep-1", "devices": ["r1"]}
     send, _ = _sending(_answer('{"echo": "w"}'))
-    assert gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
-                       actor=ACTOR, send=send, today="2026-10-25", subject=subject)["ok"]
+    with pressed_by(ACTOR):
+        assert gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
+                           actor=ACTOR,
+                           trigger=triggers.person(ACTOR),
+                           send=send, today="2026-10-25", subject=subject)["ok"]
     assert _row()["subject"] == subject
     open(calls._path(), "w").close()
     world.settings.pop("ai_hosted")
-    gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
-                actor=ACTOR, send=send, today="2026-10-25", subject=subject)
+    with pressed_by(ACTOR):
+        gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
+                    actor=ACTOR,
+                    trigger=triggers.person(ACTOR), send=send, today="2026-10-25", subject=subject)
     assert _row()["subject"] == subject and _row()["verdict"] == "ai_off"
 
 

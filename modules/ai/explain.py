@@ -455,7 +455,7 @@ def check(answer: "Explanation", pack: dict, topology_ids=(), sections=None) -> 
     return ""
 
 
-def explain(pack_id: str, *, actor: str, send=None, today: str = None) -> dict:
+def explain(pack_id: str, *, actor: str, trigger: dict, send=None, today: str = None) -> dict:
     """``{"ok", "error", "detail", "answer", "pack_id", "call_id", "cost_usd"}``: the pack's
     hypotheses, checked; or a refusal naming why, with nothing shown."""
     from modules import evidence_pack as EP
@@ -465,7 +465,7 @@ def explain(pack_id: str, *, actor: str, send=None, today: str = None) -> dict:
         return {"ok": False, "error": "no_pack", "pack_id": pack_id,
                 "detail": (f"the evidence packs cannot be read ({error})"
                            if state == "unreadable" else f"no evidence pack {pack_id} is kept")}
-    return explain_pack(pack, actor=actor, send=send, today=today)
+    return explain_pack(pack, actor=actor, trigger=trigger, send=send, today=today)
 
 
 #: The pack's parts in the order v6's budget DROPS them (the operator, 2026-10-26): the oldest
@@ -604,14 +604,16 @@ def budgeted(pack: dict, topo: dict, prompt: tuple, schema) -> dict:
     return chosen
 
 
-def _ask_round(prompt, schema, data, ctx, network, *, actor, send, today, subject) -> dict:
+def _ask_round(prompt, schema, data, ctx, network, *, actor, trigger, send, today,
+               subject) -> dict:
     """v6's call and its needs round (at most one follow-up, `needs.run`), as Ask in words'
     (`nl_query._ask_round`): the follow-up's answer in place of the first's when there was one,
     the cost the round's, ``parent_call_id`` the first call's."""
     from modules.ai import needs as N
     from modules.ai import nl_query
 
-    kw = {"actor": actor, "context": ctx, "send": send, "today": today, "network": network}
+    kw = {"actor": actor, "trigger": trigger, "context": ctx, "send": send, "today": today,
+          "network": network}
     got = gateway.ask(FEATURE, prompt, schema, dict(data, looked_up=nl_query.looked_up([])),
                       subject=subject, **kw)
     wanted = list(getattr(got.get("output"), "needs", None) or []) if got.get("ok") else []
@@ -636,7 +638,7 @@ def _ask_round(prompt, schema, data, ctx, network, *, actor, send, today, subjec
                                      for r in rnd["results"]))
 
 
-def explain_pack(pack: dict, *, actor: str, send=None, today: str = None,
+def explain_pack(pack: dict, *, actor: str, trigger: dict, send=None, today: str = None,
                  prompt: tuple = PROMPT) -> dict:
     """`explain` of a pack in hand (a stored one, or a replay's, scripts/nmas-pack-replay):
     its hash checked, the class gates asked, one call through the gateway, the answer checked
@@ -684,10 +686,11 @@ def explain_pack(pack: dict, *, actor: str, send=None, today: str = None,
         data, ctx, sections, kept = sel["data"], sel["ctx"], sel["sections"], {
             "context": sel["said"]}
         got = _ask_round(tuple(prompt), schema, data, ctx, pack.get("network") or "",
-                         actor=actor, send=send, today=today, subject=subject)
+                         actor=actor, trigger=trigger, send=send, today=today,
+                         subject=subject)
     else:
-        got = gateway.ask(FEATURE, tuple(prompt), schema, data, actor=actor, context=ctx,
-                          send=send, today=today, subject=subject,
+        got = gateway.ask(FEATURE, tuple(prompt), schema, data, actor=actor, trigger=trigger,
+                          context=ctx, send=send, today=today, subject=subject,
                           network=pack.get("network") or "")
     if not got["ok"]:
         return dict(got, pack_id=pack_id, pack_read=read, topology=said, **kept)

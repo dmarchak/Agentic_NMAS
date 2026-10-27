@@ -19,6 +19,8 @@ from html import unescape
 
 import pytest
 
+from modules.ai import triggers
+from tests.ai_person import pressed_by
 from modules.ai import anthropic_adapter as A
 from modules.ai import calls, gateway, nl_query
 from tests.test_history_ask_logs import NOW, web  # noqa: F401 (the fixture)
@@ -66,8 +68,10 @@ def _choices(**over):
 
 
 def _ask(world, question="OSPF adjacency changes per device", **kw):
-    return nl_query.logs("Lab", question, actor="operator@example.com", send=world.send,
-                         client=world.loki, now=NOW, today="2026-10-25", **kw)
+    with pressed_by("operator@example.com"):
+        return nl_query.logs("Lab", question, actor="operator@example.com",
+                             trigger=triggers.person("operator@example.com"), send=world.send,
+                             client=world.loki, now=NOW, today="2026-10-25", **kw)
 
 
 def test_the_offer_is_the_question_s_mnemonics_and_none_for_a_severity_question():
@@ -347,9 +351,12 @@ def test_an_answer_stopped_at_max_tokens_fills_nothing(world):
     """A complete, valid answer whose stop is max_tokens fills nothing (the operator,
     2026-10-25; tests/test_ai_truncated_answers.py has the metrics half and the route)."""
     from tests.test_ai_truncated_answers import _cut
-    got = nl_query.logs("Lab", "OSPF adjacency changes per device",
-                        actor="operator@example.com", send=_cut(world, json.dumps(_choices())),
-                        client=world.loki, now=NOW, today="2026-10-25")
+    with pressed_by("operator@example.com"):
+        got = nl_query.logs("Lab", "OSPF adjacency changes per device",
+                            actor="operator@example.com",
+                            trigger=triggers.person("operator@example.com"),
+                            send=_cut(world, json.dumps(_choices())),
+                            client=world.loki, now=NOW, today="2026-10-25")
     assert got["ok"] is False and got["error"] == "max_tokens"
     assert "values" not in got and "view" not in got and "choices" not in got
     (row,) = calls.read()["rows"]

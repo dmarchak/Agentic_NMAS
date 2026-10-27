@@ -4,8 +4,13 @@
 StrictModel>, "call_id", "cost_usd"}`` or ``{"ok": False, "error": <kind>, "detail", "call_id"}``,
 and every call, sent or refused, is one `ai_calls` row. In order, before anything is sent:
 
+0. **The call names its trigger** (PHASE8_PLAN 18.3 rule 1, `triggers.check`): a person's
+   press, an evaluation run, or a background job on a finding; none, or one out of shape, is
+   refused (`trigger`) before anything is read. The row records it.
 1. **Hosted AI is allowed** on this installation: the admin's setting `ai_hosted`, with who,
-   when and the recorded reason (PHASE8_PLAN 13.1, 15.8). Off by default.
+   when and the recorded reason (PHASE8_PLAN 13.1, 15.8). Off by default. **A background
+   call's feature is on for its network** (rule 2, `background.admit`): off by default, else
+   refused (`feature_off`).
 2. **A key is set** (`anthropic_api_key`, in the secrets store, typed by a person).
 3. **The task** is one `profiles.TASKS` pins: its model, its prompt bound and its answer
    bound (the operator's ruling of 2026-10-25: pinned per task, never chosen at run time).
@@ -20,7 +25,9 @@ and every call, sent or refused, is one `ai_calls` row. In order, before anythin
    `max_tokens`, at the pinned model's prices): the task's per-call cap (its pinned model's
    worst case at its bounds, `profiles.cap_per_call`), and the day's spend so far plus this
    call against the installation's day cap, unless an admin chose no cap (`day_cap` None,
-   said in every cap refusal). A refusal names both operands.
+   said in every cap refusal). A refusal names both operands. A background call's feature's
+   own day and month caps on its network after it (rule 4, `background.over_cap`:
+   `feature_cap`, naming which).
 
 **One press, one provider request** (C1854): from the caps on, a call runs through
 `presses.once`: a press whose key was already seen, or whose request is already in flight (the
@@ -35,7 +42,7 @@ import logging
 
 from pydantic import ValidationError
 
-from modules.ai import anthropic_adapter, calls, profiles, prompts, schemas
+from modules.ai import anthropic_adapter, background, calls, profiles, prompts, schemas, triggers
 
 log = logging.getLogger(__name__)
 
@@ -150,8 +157,8 @@ def _text_of(reply_body: dict) -> str:
 
 
 def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
-        context: dict = None, send=None, today: str = None, thinking: str = None,
-        subject: dict = None, network: str = "") -> dict:
+        trigger: dict = None, context: dict = None, send=None, today: str = None,
+        thinking: str = None, subject: dict = None, network: str = "") -> dict:
     """One schema-bound call of the task *feature* (the module's docstring has the order): its
     model and bounds are its pin in `profiles.TASKS`, never an argument. *context* is the
     stable prefix every call of the task shares, cached; *parts* the call's own data,
@@ -160,7 +167,8 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
     measurement of both asks; by default the task's pin, "adaptive" when it names none. The
     row records which was sent. *subject* is what the call is about, written with it (15.14:
     the device, the alert or the query, ``{"kind", "id", "devices"}``), on every row, sent or
-    refused. *network* is the network the call is about (a list's folder name; "" for the
+    refused. *trigger* is what started the call (`triggers`); a call without one is refused.
+    *network* is the network the call is about (a list's folder name; "" for the
     installation's own, the connection check): with the subject, the prompt, the model and
     the requester's access scope, what makes two presses one request (C1854)."""
     call_id = calls.new_id()
@@ -178,9 +186,17 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
         return {"ok": False, "error": kind, "detail": detail, "call_id": call_id,
                 "recorded": out.get("recorded", False)}
 
+    named = triggers.check(trigger, actor, feature)
+    row["trigger"] = named["trigger"]
+    if not named["ok"]:
+        return refuse("trigger", named["why"])
     hosted = hosted_allowed()
     if not hosted["allowed"]:
         return refuse("ai_off", hosted["why"])
+    if named["trigger"]["kind"] == triggers.BACKGROUND:
+        off = background.admit(named["trigger"])
+        if off:
+            return refuse("feature_off", off)
     key = _api_key()
     if not key:
         return refuse("no_key", "no Anthropic API key is set (Settings: a person types it)")
@@ -321,6 +337,10 @@ def _capped_send(feature, row, body, model, max_tokens, schema_model, key, *, se
         return refuse("over_cap", f"today's spend ${spent['usd']:.4f} plus this call's worst "
                       f"case ${worst:.4f} is over the day cap ${cap['per_day']:.4f}",
                       worst_usd=worst)
+    if row["trigger"]["kind"] == triggers.BACKGROUND:
+        over = background.over_cap(row["trigger"], worst, day)
+        if over:
+            return refuse(over["kind"], over["why"], cap_kind=over["cap"], worst_usd=worst)
 
     try:
         reply = (send or anthropic_adapter.send)(body, key)
