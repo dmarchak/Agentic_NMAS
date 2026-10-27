@@ -154,6 +154,13 @@ What to act on first: **N awaiting approval**, the mode and whether the loop is 
   otherwise the log says why none was made and the catalogue's default is proposed; its log
   lists each pass's steps, newest first; **Stop** ends it after its current pass,
   and the card says who stopped it and when.
+- **The loop's log** shows one run whole, from its start, in a box that scrolls: every pass's
+  steps, newest first. **Run** chooses an earlier run, each named by its job id (the network and
+  the time it started) and its start time in UTC, with its line count. **Download log** saves
+  the run shown as plain text, every line oldest first under a header naming the network and the
+  run, in a file named for the run's job id (for example, a lab's evidence of a 3-minute run). A
+  run longer than 2,000 lines is drawn to its newest 2,000, and the box says how many of how
+  many; the download has every line.
 - **Detection rules**: each rule's threshold on this network, and the response timeouts: every
   response flow expires at its hard timeout.
 

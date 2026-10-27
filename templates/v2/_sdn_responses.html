@@ -96,10 +96,7 @@
       {%- else %}<input type="hidden" name="run" value="start"><label class="small">every <input type="number" name="interval" min="5" max="600" value="10"> s</label> <button class="btn" type="submit" hx-disabled-elt="this" data-op="sdn"{{ gate('configure') }}><span class="op-idle">Start</span><span class="op-busy">Starting…</span></button>{{ how('sdn', 'responses', compact=True, op='Start') }}{% endif %}
     </form></div>
   <p class="small faint">{% if g.loop.running %}Started by {{ g.loop.by }} {{ stamp(g.loop.since) }}: detect, classify (an AI call only where an admin turned its background feature on for this network, in Settings › AI; otherwise the catalogue's default), respond in the mode.{% elif g.loop.stopped %}{{ g.loop.stopped.words | capitalize }}, {{ stamp(g.loop.stopped.at) }}.{% else %}Not started on this network.{% endif %}</p>
-  {%- if g.log %}
-  <pre class="mono sdn-log">{% for l in g.log %}{{ l.at[11:19] }} {{ l.step }}: {{ l.words }}
-{% endfor %}</pre>
-  {%- endif %}
+  {%- with lg = g.log %}{% include "v2/_sdn_log.html" %}{% endwith %}
 </section>
 
 <section class="card sdn-rules" aria-labelledby="sdn-rules-h">

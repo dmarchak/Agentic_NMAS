@@ -24,8 +24,8 @@ and `branch-controller` at another address refusing every connection, read twice
 reader 12 minutes apart. The board's four switches, 61 flows and ONOS second controller are
 board data; the capture has one switch, and an ONOS connection cannot be saved (its driver is
 not built), so the second controller is a Ryu one that does not answer.
-Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html
-Templates sha256: `949a0a6ccf1a32af972c938906217437b4a54995f536d69f79a679c901659af6`
+Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html
+Templates sha256: `96f71034114284c6c2d6f905aa0c53c5639cb35037b8030857b961632950a43d`
 
 **Hashed again 2026-10-27 for PHASE8_PLAN 17.1 S7** (the AI's classification and Classify on an
 awaiting response, `_sdn_responses.html`): the two regions below compared by reading the
@@ -36,6 +36,10 @@ template against SdnResponses' region list, with no new shot; the classification
 person when its threat stops, and a refused classification is said with its call): the two
 regions below compared by reading `_sdn_responses.html`'s awaiting card against SdnResponses'
 region list, with no new shot; both are additions the board does not draw, each a deviation.
+
+**Compared again 2026-10-27 ~18:0x UTC for C1971** (the loop's log, `_sdn_log.html`, added to
+the templates compared, and its include in `_sdn_responses.html`): the loop's region read
+against SdnResponses' log, with no new shot; its scroll, Run and Download log are a deviation.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).
@@ -76,7 +80,8 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | A refused classification (C1968) | not drawn | the card's classification line says "AI classification refused: <why>; proposed by the catalogue default, <action> (AI call <id>)" and links "The refused answer in History" (the call) | **deviation** (log: SDN C1968: a refused classification said, its call linked) |
 | Classify | not drawn: the board's box is filled by the loop | **Classify** (AI-marked, its hover the task, model and cap; disabled with the reason while AI cannot answer), and "Classify again" once a classification is kept, before Preview, with its (i) | **deviation** (log: SDN S7: a person's Classify on an awaiting response) |
 | Mode | HITL and AUTO as radio rows, Reason, Until (a date), Allowed risk, Turn AUTO on… | the mode chip and its words; Reason, For (hours, at most 24), Allowed risk, Turn AUTO on; while on, who, why and until when, and Turn AUTO off | **deviation** (log: SDN S9: AUTO for N hours, not until a date) |
-| The loop | its state chip, "every 10 s · detect, classify, respond", Stop, the log | the same; stopped, "every N s" and Start; the log newest first, each line's time, step and words | **same** |
+| The loop | its state chip, "every 10 s · detect, classify, respond", Stop, the log | the same; stopped, "every N s" and Start | **same** |
+| The loop's log | the latest lines, newest first, each line's time, step and words | one run whole (from its start line), newest first, in a box that scrolls; above it **Run** (each run by its job id, start time in UTC and line count) and **Download log** (the run as text); a line naming the lines drawn of the run's and its first and last times; past 2,000 lines the newest 2,000, said (C1971) | **deviation** (log: SDN C1971: the loop's log scrolls over the whole run, with Run and Download log) |
 | Detection rules | the table with each threshold editable, Save thresholds…, the timeout line | the same table read-only, and the timeout line with the ceiling; no Save thresholds… | **later** S8's thresholds edited on this tab (until then written by `list_settings.write`) |
 | Needs attention | "a row on Needs attention until it is confirmed, dismissed …" | not said: that row is a later S11 step | **later** S11's Needs attention rows (a response awaiting approval) |
 | The response's preview and result (SdnResponse) | the card in place: what it does, exactly these requests, what will not happen, Verify, checks, bound hash, Send N requests | drawn in place by a click: what it does, the detection and its checked parameters, exactly these requests, what will not happen, the warnings, Verify (its limit said), the bound hash, Send N requests; the result: outcome, what was sent, Verify, counters, rollback, the record | **later** a click-driven shot (the harness shoots pages) |

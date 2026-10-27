@@ -36,7 +36,7 @@ def _ctx(tab: str) -> dict:
     if tab == "responses":
         from modules import sdn_ops_page
 
-        g = sdn_ops_page.responses_view(network)
+        g = sdn_ops_page.responses_view(network, (request.args.get("run") or "").strip())
     else:
         g = (sdn_page.flows_view(network, request.args) if tab == "flows"
              else sdn_page.controllers_view(network))
@@ -74,6 +74,35 @@ def responses():
     from routes.v2 import _page
 
     return _page("v2/sdn.html", active_nav="sdn", list_name=_list_name(), **_ctx("responses"))
+
+
+@bp.route("/log", methods=["GET"])
+def log_region():
+    """The loop's log panel alone (C1971), for the run the picker names (`?run=<job id>`; the
+    newest when none): the whole run, newest line first. A read."""
+    from modules import sdn_ops_page
+
+    lg = sdn_ops_page.log_view(_list_name(), (request.args.get("run") or "").strip())
+    return _strict(render_template("v2/_sdn_log.html", lg=lg))
+
+
+@bp.route("/log/download", methods=["GET"])
+def log_download():
+    """Download log (C1971): one run of the loop's log as plain text, every line, oldest
+    first, named for the network and the run (`<job id>.log`, the job id naming both). A read;
+    a run that is not in the log is a 404 naming it."""
+    from flask import Response
+
+    from modules.sdn import loop
+
+    got = loop.run_text(_list_name(), (request.args.get("run") or "").strip())
+    if got["state"] != "ok":
+        return Response(f"No log to download: {got['error']}.\n", status=404,
+                        mimetype="text/plain")
+    safe = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in got["job"])
+    return Response(got["text"], mimetype="text/plain",
+                    headers={"Content-Disposition": f'attachment; filename="{safe}.log"',
+                             "Cache-Control": "no-store"})
 
 
 # ───────────────────────────────────────────────────────────────────────────── operations

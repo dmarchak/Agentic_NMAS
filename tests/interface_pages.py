@@ -200,6 +200,23 @@ def seed(lab: dict, mp, folder: str) -> None:
     same, from the same starts."""
     _commit_intent(lab["repo"], "r3")
     _pending_surveyed(lab["repo"], mp, folder)
+    _loop_run("Lab", mp, folder)
+
+
+def _loop_run(network: str, mp, folder: str) -> None:
+    """One run of the SDN loop in *network*'s log, as `start` and a pass write it, so SDN ›
+    Responses draws its log panel with the run picker and Download log (C1971). The log is
+    the walk's own file in *folder*, never the store's (the store's guard refuses a test that
+    creates a network's folder there)."""
+    import os
+
+    from modules.sdn import loop
+
+    mp.setattr(loop, "_path", lambda net, name: os.path.join(folder, f"sdn-{net}-{name}"))
+    t0 = 1_790_000_000.0
+    loop.say(network, "start", f"started by walk@example.invalid, every 10 s, as job "
+                               f"{loop.job_id(network, t0)}", now=t0)
+    loop.say(network, "detect", "nothing new", now=t0 + 6)
 
 
 def pages() -> dict:

@@ -1,0 +1,32 @@
+{#- The loop's log panel on SDN › Responses (C1971; board SdnResponses draws the log, the scroll,
+    the run picker and Download log are a deviation, docs/fidelity/sdn.md): one run of the loop
+    whole, newest line first, in a box that scrolls; the picker names every run by its job id
+    and start time; Download log gives the run's every line as text. Built by
+    modules/sdn_ops_page.log_view, drawn by _sdn_responses.html and alone by
+    routes/sdn_v2.log_region. -#}
+<div class="sdn-logbox" id="sdn-log" role="region" aria-label="The loop's log">
+{%- if lg.state == 'unreadable' %}
+<p class="notice notice-danger small" role="alert">The loop's log cannot be read: {{ lg.error }}.</p>
+{%- elif lg.state == 'unknown' %}
+<p class="notice notice-warn small" role="alert">Couldn't load: {{ lg.error }}.</p>
+{%- endif %}
+{%- if lg.runs %}
+<div class="sdn-log-hd">
+  <form class="sdn-log-pick" hx-get="{{ url_for('sdn_v2.log_region') }}" hx-target="#sdn-log" hx-swap="outerHTML" hx-trigger="change" hx-disabled-elt="find select">
+    <input type="hidden" name="list" value="{{ lg.network }}">
+    <label class="small" for="sdn-log-run">Run</label>
+    <select id="sdn-log-run" name="run">
+      {%- for r in lg.runs %}
+      <option value="{{ r.job }}"{% if r.job == lg.job %} selected{% endif %}>{{ r.job }} · started {{ r.at | replace('T', ' ') | replace('Z', ' UTC') }} · {{ r.count }} line{{ 's' if r.count != 1 }}</option>
+      {%- endfor %}
+    </select>
+  </form>
+  <a class="btn btn-small" href="{{ url_for('sdn_v2.log_download', list=lg.network, run=lg.job) }}" download title="This run's every line as text, oldest first, named {{ lg.job }}.log">Download log</a>
+</div>
+{%- if lg.job %}
+<p class="small faint sdn-log-sum">{% if lg.drawn < lg.count %}The newest {{ lg.drawn }} of this run's {{ lg.count }} lines, newest first: Download log has every line.{% else %}All {{ lg.count }} line{{ 's' if lg.count != 1 }} of this run, newest first.{% endif %} {{ lg.at | replace('T', ' ') | replace('Z', ' UTC') }} to {{ lg.until | replace('T', ' ') | replace('Z', ' UTC') }}.</p>
+<pre class="mono sdn-log" tabindex="0">{% for l in lg.lines %}{{ l.at[11:19] }} {{ l.step }}: {{ l.words }}
+{% endfor %}</pre>
+{%- endif %}
+{%- endif %}
+</div>

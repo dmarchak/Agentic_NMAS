@@ -123,8 +123,32 @@ def _classification(row: dict):
             "who": row.get("classified_by") or "", "at": row.get("classified_at") or row.get("at")}
 
 
-def responses_view(network: str) -> dict:
-    """SDN › Responses (board SdnResponses)."""
+#: C1971: the most lines of one run the log panel draws. A 3-minute run at the shortest interval
+#: (5 s) writes about 150 lines (two to five a pass); 2,000 holds a run of about 40 minutes at
+#: that interval and keeps the page's HTML near 200 kB. A longer run is drawn newest first to
+#: this many, the panel saying how many of how many, and Download log gives every line.
+LOG_PANEL_LINES = 2000
+
+
+def log_view(network: str, run: str = "") -> dict:
+    """The loop's log panel (C1971): one run whole, newest line first, *run* the job id asked
+    for (the newest run when empty). ``{"network", "job", "at", "until", "lines", "count",
+    "drawn", "runs", "state", "error"}``: *count* every line of the run, *drawn* those drawn
+    (at most `LOG_PANEL_LINES`); *runs* every run in the log, newest first, for the picker."""
+    from modules.sdn import loop
+
+    got = loop.run_log(network, run)
+    rows = got["rows"]
+    lines = [{"at": r.get("at") or "", "step": r.get("step") or "", "words": r.get("words") or ""}
+             for r in reversed(rows[-LOG_PANEL_LINES:])]
+    return {"network": network, "job": got["job"], "at": got["at"], "until": got["until"],
+            "lines": lines, "count": len(rows), "drawn": len(lines), "runs": got["runs"],
+            "state": got["state"], "error": got["error"]}
+
+
+def responses_view(network: str, run: str = "") -> dict:
+    """SDN › Responses (board SdnResponses). *run*: the loop run whose log the panel draws
+    (C1971; the newest when empty)."""
     from modules.sdn import closed_loop, detect, flow_ops, loop, modes
 
     awaiting = loop.awaiting(network)
@@ -145,11 +169,10 @@ def responses_view(network: str) -> dict:
                      "ai": _classification(r), "params": dict(r.get("params") or {})})
     th = detect.thresholds(network)
     limits = flow_ops.settings_of(network)
-    log_rows = loop.log_lines(network, 30)
     return {"network": network, "tab": "responses", "listed": "ok", "awaiting": rows,
             "awaiting_state": awaiting["state"], "awaiting_error": awaiting["error"],
             "mode": modes.current(network), "loop": loop.status(network),
-            "log": list(reversed(log_rows["rows"])), "log_error": log_rows["error"],
+            "log": log_view(network, run),
             "thresholds": th, "limits": limits, "risks": modes.RISKS,
             "max_hours": modes.MAX_AUTO_SECONDS // 3600,
             "verify_limit": flow_ops.VERIFY_LIMIT, "controllers": True,

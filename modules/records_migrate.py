@@ -45,6 +45,7 @@ import hashlib
 import json
 import logging
 import os
+import threading
 import time
 from typing import Callable
 
@@ -386,14 +387,15 @@ def store_rows(store: str, path: str, skip_unparsable: bool = False, network: st
 TAIL_BLOCK = 64 * 1024
 
 
-def _tail_rows(path: str, floor, skip_unparsable: bool) -> list:
-    """The file's rows from its end back to the first one recorded before *floor* (an aware
-    datetime), oldest first. A line is split from the next at ``\\n``, a byte no UTF-8
-    character holds inside it, so a block's edge never cuts a character a line keeps."""
+def _tail_rows(path: str, floor, skip_unparsable: bool, upto: int = None) -> list:
+    """The file's rows from its end (or byte *upto*) back to the first one recorded before
+    *floor* (an aware datetime), oldest first. A line is split from the next at ``\\n``, a byte
+    no UTF-8 character holds inside it, so a block's edge never cuts a character a line
+    keeps."""
     out, rest = [], b""
     with open(path, "rb") as fh:
         fh.seek(0, os.SEEK_END)
-        pos = fh.tell()
+        pos = fh.tell() if upto is None else min(upto, fh.tell())
         while True:
             if pos == 0:
                 lines, rest = ([rest] if rest.strip() else []), b""
@@ -421,14 +423,110 @@ def _tail_rows(path: str, floor, skip_unparsable: bool) -> list:
                 return list(reversed(out))
 
 
+# ── C1973: the windowed read, kept per process ─────────────────────────────────────────────
+# Every v2 page that draws AI spend (an AI control's readiness, Needs attention's caps, Settings'
+# AI cards) read the AI calls record's window from the file again on every request: on the host
+# on 2026-10-27, 11,508 lines parsed (5,751 calls that day) for 2.3 to 3.2 s a read in a quiet
+# process, and SDN › Responses, Needs attention and Settings › Installation took 21 to 45 s
+# in the app. The rows a window read are kept here, per file, and a later read parses only the
+# bytes appended since: the work per request is the new lines, never the record.
+#
+# What it assumes (each checked at every read, the file read whole again when one fails): the
+# file is appended to, never rewritten (the same device and inode, no shorter, and its last
+# `KEPT_EDGE` bytes before the kept end unchanged); a line is kept only once its ``\n`` is
+# written; the kept window is at least as old as the one asked (an older one is read whole and
+# kept instead). The rows returned are copies: a caller changing one changes nothing kept.
+
+#: How many bytes before the kept end are compared at each read, to see a rewrite.
+KEPT_EDGE = 256
+
+_kept = {}
+_kept_lock = threading.Lock()
+
+
+def _edge(fh, end: int) -> bytes:
+    fh.seek(max(0, end - KEPT_EDGE))
+    return fh.read(min(KEPT_EDGE, end))
+
+
+def _window(rows: list, floor) -> list:
+    """*rows* (``(at, row)``, oldest first) from the end back to the first recorded before
+    *floor*: what `_tail_rows` returns for *floor* over the same bytes, each row a copy beside
+    its parsed time."""
+    out = []
+    for at, row in reversed(rows):
+        if at is not None and at < floor:
+            break
+        out.append((at, dict(row) if isinstance(row, dict) else row))
+    return out[::-1]
+
+
+def _without(row, drop: tuple):
+    """*row* without the keys in *drop* (a row that is no dict, as it is)."""
+    if not drop or not isinstance(row, dict):
+        return row
+    return {k: v for k, v in row.items() if k not in drop}
+
+
+def _tail_rows_kept(path: str, floor, skip_unparsable: bool, drop: tuple = ()) -> list:
+    """`_tail_rows`, its rows kept in this process (the section's comment) without the keys in
+    *drop*: a read parses only the lines appended since the last one. ``[(at, row)]``, oldest
+    first, *at* the row's parsed time (None when it has none), so no caller parses it again.
+    What is kept is the window's rows for as long as the process runs, so a caller drops what
+    it never reads: the AI calls record's `request` was 125 of its 140 MiB on the host
+    (2026-10-27), a month of whole rows 363 MiB in a process."""
+    drop = tuple(drop)
+    st = os.stat(path)
+    ident = (st.st_dev, st.st_ino, bool(skip_unparsable), drop)
+    with _kept_lock:
+        k = _kept.get(path)
+        with open(path, "rb") as fh:
+            if k and k["ident"] == ident and k["floor"] <= floor and st.st_size >= k["end"] \
+                    and _edge(fh, k["end"]) == k["edge"]:
+                if st.st_size > k["end"]:
+                    fh.seek(k["end"])
+                    added = fh.read(st.st_size - k["end"])
+                    whole = added.rfind(b"\n") + 1
+                    for raw in added[:whole].split(b"\n"):
+                        if not raw.strip():
+                            continue
+                        try:
+                            row = json.loads(raw.decode("utf-8"))
+                        except ValueError:
+                            if not skip_unparsable:
+                                raise
+                            continue
+                        at = _at(row) if isinstance(row, dict) else None
+                        if at is not None and at < k["floor"]:
+                            k["rows"] = []        # the read back from the end stops here
+                            continue
+                        k["rows"].append((at, _without(row, drop)))
+                    k["end"] += whole
+                    k["edge"] = _edge(fh, k["end"])
+                return _window(k["rows"], floor)
+            end = st.st_size
+            fh.seek(max(0, end - 1))
+            if end and fh.read(1) != b"\n":
+                # A line still being written: read as before, and keep nothing this time.
+                return [(_at(r) if isinstance(r, dict) else None, _without(r, drop))
+                        for r in _tail_rows(path, floor, skip_unparsable)]
+            rows = _tail_rows(path, floor, skip_unparsable, upto=end)
+            kept = [(_at(r) if isinstance(r, dict) else None, _without(r, drop)) for r in rows]
+            _kept[path] = {"ident": ident, "floor": floor, "end": end,
+                           "edge": _edge(fh, end), "rows": kept}
+            return _window(kept, floor)
+
+
 def store_rows_since(store: str, path: str, since, slack_s: float,
-                     skip_unparsable: bool = False, network: str = "") -> dict:
+                     skip_unparsable: bool = False, network: str = "",
+                     drop: tuple = ()) -> dict:
     """`store_rows`, for the rows recorded at or after *since* (an aware datetime) alone, read
     without reading the rest: from the file's end back, stopping at the first row recorded
     more than *slack_s* before *since* (rows are appended in the order their `at` was stamped
     to within a lock's wait, which the slack covers); on the records database, the rows whose
     `at` column is that late. A row with no readable `at` is no window's. ``{"state",
-    "rows", "error"}``, oldest first, as `store_rows` says."""
+    "rows", "error"}``, oldest first, as `store_rows` says. Each row comes without the keys
+    in *drop*, on either backend: the file's kept rows hold none of them (`_tail_rows_kept`)."""
     from modules import records_db
 
     floor = since - datetime.timedelta(seconds=slack_s)
@@ -437,7 +535,7 @@ def store_rows_since(store: str, path: str, since, slack_s: float,
         sql = f"select body from {st.qualified} where network = %s and at >= %s " + _ORDER
         try:
             with records_db.pooled() as c:
-                rows = [r[0] for r in c.execute(sql, (network, since)).fetchall()]
+                rows = [_without(r[0], drop) for r in c.execute(sql, (network, since)).fetchall()]
             return {"state": "ok", "rows": rows, "error": ""}
         except Exception as exc:                      # noqa: BLE001 (said, never "none")
             first = (str(exc).strip().splitlines() or [type(exc).__name__])[0]
@@ -446,10 +544,10 @@ def store_rows_since(store: str, path: str, since, slack_s: float,
     if not os.path.exists(path):
         return {"state": "absent", "rows": [], "error": ""}
     try:
-        rows = _tail_rows(path, floor, skip_unparsable)
+        rows = _tail_rows_kept(path, floor, skip_unparsable, drop)
     except (OSError, ValueError) as exc:
         return {"state": "unreadable", "rows": [], "error": f"{type(exc).__name__}: {exc}"}
-    kept = [r for r in rows if isinstance(r, dict) and _at(r) is not None and _at(r) >= since]
+    kept = [r for at, r in rows if isinstance(r, dict) and at is not None and at >= since]
     return {"state": "ok", "error": "", "rows": kept}
 
 

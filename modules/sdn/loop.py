@@ -49,9 +49,11 @@ then one of ``confirmed`` (the operation that answered it) or ``dismissed`` (by 
 as closed in an older record.
 """
 
+import calendar
 import json
 import logging
 import os
+import re
 import secrets
 import threading
 import time
@@ -115,6 +117,93 @@ def say(network: str, step: str, words: str, now: float = None, **extra) -> dict
 def log_lines(network: str, limit: int = 50) -> dict:
     got = _read(network, LOG_FILE)
     return dict(got, rows=got["rows"][-limit:])
+
+
+# ───────────────────────────────────────────────────────────────────────────── runs (C1971)
+# The log is one file of every run on the network. A RUN is its ``start`` line and every line
+# after it up to the next ``start``; lines written before any recorded start (a log older than
+# the start line) are one run of their own, named `BEFORE_FIRST_START`.
+
+#: The run's name for lines written before any recorded start.
+BEFORE_FIRST_START = "before-the-first-recorded-start"
+#: The start line's words name its job (`start`): "... as job <id>".
+_JOB_IN_WORDS = re.compile(r" as job (sdn-loop-\S+)$")
+
+
+def _run_job(network: str, row: dict) -> str:
+    """The job id a ``start`` line names: its ``job`` field when it carries one, else the id
+    its words end with, else `job_id` at the line's own time."""
+    if row.get("job"):
+        return str(row["job"])
+    m = _JOB_IN_WORDS.search(row.get("words") or "")
+    if m:
+        return m.group(1)
+    try:
+        since = calendar.timegm(time.strptime(row.get("at") or "", "%Y-%m-%dT%H:%M:%SZ"))
+    except ValueError:
+        since = None
+    return job_id(network, since)
+
+
+def _runs_of(network: str, rows: list) -> list:
+    """*rows* (the log, oldest first) cut into runs, oldest first, each ``{"job", "at",
+    "until", "count", "rows"}``."""
+    runs = []
+    for row in rows:
+        if row.get("step") == "start" or not runs:
+            started = row.get("step") == "start"
+            runs.append({"job": _run_job(network, row) if started else BEFORE_FIRST_START,
+                         "at": row.get("at") or "", "rows": []})
+        runs[-1]["rows"].append(row)
+    for r in runs:
+        r["count"] = len(r["rows"])
+        r["until"] = r["rows"][-1].get("at") or ""
+    return runs
+
+
+def run_log(network: str, job: str = "") -> dict:
+    """One run of the loop on *network*, whole: the run named *job*, else the newest.
+    ``{"state", "error", "job", "at", "until", "rows" (oldest first), "runs"}``; *runs* names
+    every run in the log, newest first (``{"job", "at", "count"}``). *state* is ``absent`` (no
+    log yet), ``unreadable``, ``unknown`` (no run is named *job*: *error* names it and how many
+    runs there are) or ``ok``."""
+    got = _read(network, LOG_FILE)
+    out = {"state": got["state"], "error": got["error"], "job": "", "at": "", "until": "",
+           "rows": [], "runs": []}
+    if got["state"] != "ok":
+        return out
+    runs = _runs_of(network, got["rows"])
+    out["runs"] = [{"job": r["job"], "at": r["at"], "count": r["count"]}
+                   for r in reversed(runs)]
+    if not runs:
+        return out
+    pick = next((r for r in runs if r["job"] == job), None) if job else runs[-1]
+    if pick is None:
+        return dict(out, state="unknown", error=(f"no run {job} is in {network}'s loop log, "
+                                                 f"which holds {len(runs)} run(s)"))
+    return dict(out, job=pick["job"], at=pick["at"], until=pick["until"], rows=pick["rows"])
+
+
+def run_text(network: str, job: str = "") -> dict:
+    """A run's log as plain text, for its download: ``{"state", "error", "job", "text"}``. A
+    header names the network, the run, its first and last line's times and the line count;
+    then one line per log line, oldest first: its time, step and words, then any other field
+    (``key=value``, sorted). Masked on the way out (`redact.redact_text`)."""
+    from modules.redact import redact_text
+
+    got = run_log(network, job)
+    if got["state"] != "ok" or not got["rows"]:
+        return {"state": got["state"] if got["state"] != "ok" else "absent",
+                "error": got["error"] or f"{network}'s loop has written no log yet",
+                "job": got["job"], "text": ""}
+    lines = [f"# Mercury SDN loop log: network {network}, run {got['job']}",
+             f"# {got['at']} to {got['until']}, {len(got['rows'])} line(s), oldest first"]
+    for r in got["rows"]:
+        extra = " ".join(f"{k}={r[k]}" for k in sorted(r) if k not in ("at", "step", "words"))
+        lines.append(f"{r.get('at', '')} {r.get('step', '')}: {r.get('words', '')}"
+                     + (f" [{extra}]" if extra else ""))
+    return {"state": "ok", "error": "", "job": got["job"],
+            "text": redact_text("\n".join(lines) + "\n")}
 
 
 # ───────────────────────────────────────────────────────────────────────────── pending

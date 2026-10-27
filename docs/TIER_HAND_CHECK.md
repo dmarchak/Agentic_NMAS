@@ -1843,3 +1843,46 @@ tests/test_ai_spend.py (`scratchpad/bfix_hm.py`). The baseline passed (137 tests
 **The result: every mutant killed; the canary killed; the working tree untouched (nmas-control's
 fingerprint).**
 
+## 2026-10-27: the AI calls record's window kept per process (C1973), by hand
+
+**What touches the tier:** `modules/records_migrate.py`, the read every spend figure is taken from
+(`calls.rows_since` → `day_rows` → `spent_usd`, which the gateway's day and month caps and the
+background features' caps compare against). `store_rows_since` now reads the file through
+`_tail_rows_kept`: the window's rows are kept per process, and a later read parses only the lines
+appended since, after checking that the file is the same one (device and inode), no shorter, and
+unchanged in its last `KEPT_EDGE` bytes before the kept end; otherwise it reads the file whole
+again. A line is kept only once its newline is written. Each kept row leaves out the keys the
+caller names (`calls.WINDOW_WITHOUT`, the request as sent): a month of whole rows measured 363 MiB
+in a process on the host. The cap's risk is an undercount, which would let a call past its cap, so
+each mutant below makes the kept answer differ from a whole read's, or a request survive.
+
+**The method:** the narrowed hand check (PHASE8_PLAN 15.12): each mutant applied as its exact
+line in a `scripts/nmas-control` throwaway worktree of the change, then
+tests/test_v2_page_work_budget.py, tests/test_ai_spend.py, tests/test_ai_gateway.py,
+tests/test_ai_background.py and tests/test_records_db.py (`scratchpad/kept_hm.py`). The baseline
+passed (176 tests).
+
+| mutant | result | killed by |
+|---|---|---|
+| the file's identity not compared (a replaced file answered from the kept rows) | killed | `test_a_file_replaced_by_another_is_read_whole` |
+| the kept window's floor not compared (an older window answered from a newer kept one) | killed | `test_the_features_month_cap_stops_it`, `test_the_month_caps_refusal_names_this_month` |
+| the edge not compared (`and True`) | killed | `test_the_windows_work_is_the_windows_not_the_records` |
+| a half-written line taken (`whole = len(added)`) | killed | `test_a_line_half_written_at_a_read_is_counted_once_it_is_whole` |
+| the kept end not advanced (appended rows counted again) | killed | `test_the_kept_read_answers_what_a_whole_read_answers` |
+| an appended row from before the floor kept (the window not ended there) | killed | `test_a_row_appended_from_before_the_window_ends_it_as_a_whole_read_does` |
+| a narrower window not cut at its own floor (`_window`'s `if False:`) | killed | `test_a_row_appended_from_before_the_window_ends_it_as_a_whole_read_does` |
+| the window's start made strict (`at > since`) | killed | `test_the_window_is_exactly_what_a_whole_read_filtered_by_time_gives` |
+| the first read keeps the request | killed | `test_a_windowed_call_holds_no_request_and_a_found_call_does` |
+| an appended row keeps the request | killed | `test_a_windowed_call_holds_no_request_and_a_found_call_does` |
+| `_without` keeps every key | killed | `test_a_windowed_call_holds_no_request_and_a_found_call_does` |
+| `calls.rows_since` passes no `drop` | killed | `test_a_windowed_call_holds_no_request_and_a_found_call_does` |
+| the size not compared (`st.st_size >= k["end"]` removed) | survived: equivalent | a file shorter than the kept end gives fewer than the compared bytes at the edge (`_edge` reads from `end - KEPT_EDGE` to `end`, or from 0 when `end` is under `KEPT_EDGE`), so the edge comparison already sees every shortening |
+| canary: `_tail_rows_kept` raises | killed | 45 tests |
+
+The first run, before the request was left out and the four tests named above were added, had
+four survivors (identity, size, half-written line, out-of-order row) and the request kept per
+process; the tests and the drop are what this change adds to the agent's version.
+
+**The result: every mutant killed but one equivalent, named; the canary killed; the working tree
+untouched (nmas-control's fingerprint).**
+

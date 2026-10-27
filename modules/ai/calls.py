@@ -233,17 +233,24 @@ def day_start(day: str, zone: str = None):
     return midnight.astimezone(datetime.timezone.utc)
 
 
+#: What a windowed row leaves out: the request as sent, which no spend figure reads and which
+#: the window's rows, kept per process (`records_migrate._tail_rows_kept`), would otherwise
+#: hold (125 of the record's 140 MiB on the host, 2026-10-27). `find` gives a call whole.
+WINDOW_WITHOUT = ("request",)
+
+
 def rows_since(start) -> dict:
     """Every call recorded at or after *start* (an aware datetime), OLDEST first, read without
     reading the rest of the record: the bound every spend figure is read within (the record
-    grows for ever; a window does not). Calls only, as `read`. ``{"state", "rows", "error"}``.
+    grows for ever; a window does not). Calls only, as `read`, each without the keys in
+    `WINDOW_WITHOUT`. ``{"state", "rows", "error"}``.
     Its premise: the record is in time order to within `ORDER_SLACK_S`, because `record`
     stamps each row as it writes it and no product writer hands in a time of its own
     (tests/test_ai_spend.py holds both)."""
     from modules import records_migrate
 
     got = records_migrate.store_rows_since(STORE, _path(), start, ORDER_SLACK_S,
-                                           skip_unparsable=True)
+                                           skip_unparsable=True, drop=WINDOW_WITHOUT)
     if got["state"] == "unreadable":
         log.error("ai_calls: unreadable (%s)", got["error"])
     return dict(got, rows=[r for r in got["rows"] if "use_of" not in r])

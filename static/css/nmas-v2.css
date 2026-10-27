@@ -2290,6 +2290,15 @@ summary.lq-chip::-webkit-details-marker { display: none; }
 .sdn-op-req { white-space: pre-wrap; word-break: break-all; font-size: 12.5px; padding: 8px;
   background: var(--surface-2); border-radius: var(--r); }
 .sdn-log { white-space: pre-wrap; word-break: break-word; font-size: 12.5px; margin: 0 18px 14px; }
+/* C1971: the log scrolls over the whole run inside its box, never the page. */
+.sdn-logbox .sdn-log { max-height: 22rem; overflow-y: auto; padding: 8px;
+  background: var(--surface-2); border-radius: var(--r); }
+.sdn-log-hd { display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  margin: 0 18px 6px; min-width: 0; }
+.sdn-log-pick { display: flex; gap: 6px; align-items: center; min-width: 0; max-width: 100%; }
+.sdn-log-pick select { max-width: 100%; min-width: 0; }
+.sdn-log-sum { margin: 0 18px 6px; }
+.sdn-logbox .notice { margin: 0 18px 8px; }
 .sdn-kv { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 6px 16px; margin: 0; font-size: 13.5px; }
 .sdn-kv dt { color: var(--ink-2); }
 .sdn-kv dd { margin: 0; overflow-wrap: anywhere; }
