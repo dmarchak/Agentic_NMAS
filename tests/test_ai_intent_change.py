@@ -535,6 +535,30 @@ def _on_tab(world, sentence):
                                    send=world.send, today="2026-10-26", devices=["s1"])
 
 
+def test_an_interface_named_inside_a_value_is_read_never_changed(world):
+    """C1942, main case 31 (v2 refused it in 10 of 10 runs): "the same as Gi0/2's" names
+    Gi0/2 inside the description's value, so Gi0/2 is out of the scope (C1905) but its section
+    is sent to read; an answer copying its description is drafted, one changing it refused."""
+    import yaml
+    from modules.nsot import intent_edit
+    doc = yaml.safe_load(intent_edit.open_doc("Lab", "s1")["yaml"])
+    gi02 = next(i["description"] for i in doc["interfaces"]
+                if i["name"] == "GigabitEthernet0/2" and i.get("description"))
+    sentence = "set Gi0/1's description to the same as Gi0/2's"
+    assert intent_words.touched(sentence)["interfaces"] == ["GigabitEthernet0/1"]
+    assert intent_words.named_in_values(sentence) == ["GigabitEthernet0/2"]
+    world.answer = _answer(("s1", [_op("set_description", interface="GigabitEthernet0/1",
+                                       description=gi02)]))
+    got = _on_tab(world, sentence)
+    assert got["ok"] is True, got
+    assert gi02 in world.sent[-1]["bytes"], "Gi0/2's description is sent to read"
+    world.answer = _answer(("s1", [_op("set_description", interface="GigabitEthernet0/2",
+                                       description="x")]))
+    got = _on_tab(world, sentence)
+    assert got["ok"] is False and "GigabitEthernet0/2" in got.get("detail", "") + \
+        got.get("error", ""), got
+
+
 def test_quoted_text_never_leaves_and_the_draft_carries_it_exactly(world):
     """The order's item a, recorded case 42: the model is sent <<text_1>> in the quote's
     place, and none of its words; the quote's own names are no part of the scope; the draft
@@ -691,14 +715,16 @@ def test_the_main_set_s_one_device_s1_cases_hold_on_the_real_s1(world, reads):
 
 def test_case_50_s_value_never_widens_the_scope(world):
     """C1905, recorded case 50: Gi0/1 inside the value is not in scope; a shutdown of it is
-    refused before any preview."""
+    refused before any preview. Its section is sent to READ (C1942: a value may refer to
+    another interface, case 31), which widens nothing the answer may change."""
     world.answer = _answer(("s1", [
         _op("set_description", interface="GigabitEthernet1/0", description="uplink to Gi0/1"),
         _op("shutdown", interface="GigabitEthernet0/1")]))
     got = _on_tab(world, "set the description on Gi1/0 to uplink to Gi0/1")
     assert got["error"] == "couldnt_change" and "'GigabitEthernet0/1', which the request does " \
         "not name" in got["detail"], got
-    assert "GigabitEthernet0/1" not in world.sent[-1]["body"]["messages"][0]["content"]
+    assert intent_words.touched("set the description on Gi1/0 to uplink to Gi0/1")[
+        "interfaces"] == ["GigabitEthernet1/0"], "the scope is Gi1/0 alone"
 
 
 # ── C1908: both ends of a link, one draft and one commit ────────────────────────────────

@@ -170,8 +170,20 @@ def touched(sentence: str) -> dict:
     the resolver's own), so "set the description on Gi1/0 to uplink to Gi0/1" names Gi1/0
     alone and an answer touching Gi0/1 is refused."""
     from modules.ai import intent_names
+    return _named_parts(intent_names.blank_values(sentence or ""))
+
+
+def named_in_values(sentence: str) -> list:
+    """The interfaces *sentence* names only inside a value ("set Gi0/1's description to the same
+    as Gi0/2's": Gi0/2), canonical, in order: given to the model to READ, never in the scope
+    (C1942: a value that refers to another interface must be readable, and `touched` keeps it
+    out of what may change)."""
+    scoped = touched(sentence)["interfaces"]
+    return [i for i in _named_parts(sentence or "")["interfaces"] if i not in scoped]
+
+
+def _named_parts(s: str) -> dict:
     from modules.nsot import ifnames
-    s = intent_names.blank_values(sentence or "")
     vlan_spans = [m.span() for m in _VLANS.finditer(s)]
     interfaces = []
     for m in _IFACE.finditer(s):
@@ -972,7 +984,15 @@ def _drafted(list_name: str, sentence: str, named: list, *, actor: str, trigger:
                     "as the device does (GigabitEthernet0/1, VLAN 40, 192.0.2.0/24); nothing "
                     "was sent")}
     scopes = _scopes(t, named, pair)
-    got = slices(list_name, named, t, per_host=scopes)
+    # What the model reads: each device's scope plus, for the device the words are about (a
+    # pair's near end), the interfaces named only inside a value (C1942); the answer is still
+    # held to `scopes` alone.
+    extra = named_in_values(sentence)
+    reads = {h: dict(s, interfaces=s["interfaces"] + [i for i in extra
+                                                      if i not in s["interfaces"]])
+             if extra and (not pair or h == pair["device"]) else s
+             for h, s in scopes.items()}
+    got = slices(list_name, named, t, per_host=reads)
     if got["missing"]:
         return {"ok": False, "error": "no_intent", "by": "mercury", "call_id": "",
                 "cost_usd": 0.0, "detail": "; ".join(f"{h}: {why}" for h, why in
