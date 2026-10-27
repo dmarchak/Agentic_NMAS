@@ -140,6 +140,8 @@ def responses_view(network: str) -> dict:
                      "risk": r.get("risk"), "action_words": entry.get("words", ""),
                      "why": r.get("why", ""),
                      "classified": r.get("classified") or closed_loop.DEFAULT_WORDS,
+                     "refused_call": r.get("refused_call") or "",
+                     "inactive_since": r.get("inactive_since") or "",
                      "ai": _classification(r), "params": dict(r.get("params") or {})})
     th = detect.thresholds(network)
     limits = flow_ops.settings_of(network)

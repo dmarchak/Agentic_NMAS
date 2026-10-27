@@ -616,7 +616,8 @@ def observe(network: str, collected: dict, *, values: dict = None, intent: dict 
     *values* the thresholds (default: the network's); *intent* the flow intent (default: the
     network's). Never raises: ``{"ok", "error", ...}``, naming what was judged, what fired,
     what resolved, what is pending, which ports have no baseline yet, and what was not
-    judged."""
+    judged; *kept* each fired detection's pack as kept, by its key, so the loop classifies
+    the pack in hand rather than reading every kept pack to find it again (C1970)."""
     from modules import alert_history, evidence_pack
     from modules.filestore import PathLock, StoreUnreadable, read_json_for_write, write_atomic
     from modules.sdn import flow_intent
@@ -624,6 +625,7 @@ def observe(network: str, collected: dict, *, values: dict = None, intent: dict 
     out = {"ok": False, "error": "", "network": network, "collected_at": "",
            "detections": [], "fired": [], "resolved": [], "firing": 0, "unjudged": [],
            "pending": [], "no_baseline": [], "notes": [], "packs": {"built": 0, "failed": []},
+           "kept": {},
            "history": {}, "changed": False, "thresholds": {}}
     if (collected or {}).get("network") != network:
         out["error"] = (f"the collection is {(collected or {}).get('network')!r}'s, not "
@@ -688,6 +690,7 @@ def observe(network: str, collected: dict, *, values: dict = None, intent: dict 
                     if kept["ok"]:
                         pack_id = pack["id"]
                         out["packs"]["built"] += 1
+                        out["kept"][key] = pack
                     else:
                         pack_error = kept["error"]
                 except Exception as exc:              # noqa: BLE001 (said, never raised)

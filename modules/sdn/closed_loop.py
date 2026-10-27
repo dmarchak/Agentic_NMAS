@@ -395,15 +395,48 @@ def _sdn_section(pack: dict) -> dict:
                  if s.get("name") == EP.SDN_SECTION), {})
 
 
+def piece_id(piece: dict) -> str:
+    """A piece's evidence id, the one scheme the classifier is sent and may cite (C1969): its
+    own (a flow's, a port's, an earlier sighting's: `flow_ref`, `port_ref`), else one made from
+    what it is, the detection ``detection:<rule>:<dpid>`` and the switch's coverage
+    ``coverage:<dpid>`` (a section holds one of each). Never the pack's ``sdn:<n>``
+    references: those are the pack's own (Explain's), and are not sent here."""
+    if piece.get("id"):
+        return str(piece["id"])
+    kind = piece.get("kind") or "piece"
+    if kind == "detection":
+        return f"detection:{piece.get('rule') or ''}:{piece.get('dpid') or ''}"
+    if kind == "sighting":
+        return f"sighting:{piece.get('port') or ''}"
+    return f"{kind}:{piece.get('dpid') or ''}"
+
+
+def as_sent(piece: dict, ids: set) -> dict:
+    """*piece* as the classifier reads it: its evidence id (`piece_id`) and nothing of the
+    pack's reference scheme; the detection's own list of the evidence it rests on cut to the
+    ids sent, the rest counted (C1969: a scan rests on some 260 flows and the section keeps the
+    50 busiest, so the other ids named flows whose figures were never sent; they were most of
+    the request's size)."""
+    out = {k: v for k, v in piece.items() if k != "ref"}
+    out["id"] = piece_id(piece)
+    if piece.get("kind") == "detection":
+        rests = list(piece.get("evidence") or [])
+        out["evidence"] = [i for i in rests if i in ids]
+        out["evidence_not_sent"] = len(rests) - len(out["evidence"])
+    return out
+
+
 def sent_evidence(section: dict) -> dict:
     """What the classifier is given of a pack's sdn section, and what its answer may name:
-    ``{"detection", "pieces", "ids", "names", "sources"}``. *ids* every evidence id sent (each
-    piece's, and those the detection lists); *names* what an affected device may be (the
-    switch's DPID, every host address the evidence holds); *sources* the addresses the
-    detection saw sending."""
-    pieces = list(section.get("pieces") or [])
+    ``{"detection", "pieces", "ids", "names", "sources"}``, each piece as sent (`as_sent`).
+    *ids* every evidence id sent, exactly: each piece's (`piece_id`), the one scheme of what is
+    sent and what is accepted (C1969); *names* what an affected device may be (the switch's
+    DPID, every host address the evidence holds); *sources* the addresses the detection saw
+    sending."""
+    stored = list(section.get("pieces") or [])
+    ids = {piece_id(p) for p in stored}
+    pieces = [as_sent(p, ids) for p in stored]
     det = next((p for p in pieces if p.get("kind") == "detection"), {})
-    ids = {p["id"] for p in pieces if p.get("id")} | set(det.get("evidence") or [])
     names = {_canon(det.get("dpid"))} if det.get("dpid") else set()
     for addr in [det.get("source")] + list(det.get("targets") or []):
         if addr:
@@ -586,7 +619,7 @@ def classify_pack(network: str, detection: dict, pack: dict, *, actor: str, trig
     if why:
         calls.record_use(got["call_id"], "refused by validation", actor=actor, detail=why,
                          links=links)
-        return dict(out, error="couldnt_classify",
+        return dict(out, error="couldnt_classify", why=why,
                     detail=f"couldn't classify: {why}; nothing of the answer is used")
     action = answer.action_id.value
     calls.record_use(got["call_id"], f"proposed: {action}" if action != NO_ACTION

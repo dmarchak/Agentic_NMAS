@@ -25,12 +25,17 @@ reader 12 minutes apart. The board's four switches, 61 flows and ONOS second con
 board data; the capture has one switch, and an ONOS connection cannot be saved (its driver is
 not built), so the second controller is a Ryu one that does not answer.
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html
-Templates sha256: `9bfafe369ad61f3721e42c0300b601113f327c8920b111ffd734a2fd7636ff53`
+Templates sha256: `949a0a6ccf1a32af972c938906217437b4a54995f536d69f79a679c901659af6`
 
 **Hashed again 2026-10-27 for PHASE8_PLAN 17.1 S7** (the AI's classification and Classify on an
 awaiting response, `_sdn_responses.html`): the two regions below compared by reading the
 template against SdnResponses' region list, with no new shot; the classification's region is
 **later** until a shot plants one, and Classify is a deviation.
+
+**Hashed again 2026-10-27 for C1968** (the Lab 8 walk's step 10: a response stays awaiting a
+person when its threat stops, and a refused classification is said with its call): the two
+regions below compared by reading `_sdn_responses.html`'s awaiting card against SdnResponses'
+region list, with no new shot; both are additions the board does not draw, each a deviation.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).
@@ -67,6 +72,8 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | An awaiting response's head | "Port scan from <source> on <dpid>", the confidence chip, "Detected 40 s ago by the scan rule: …", "Open the alert" | the detection's title, source and switch, the confidence chip, "Detected <age>: <the rule's words> · an alert with its evidence pack"; no "Open the alert" link | **deviation** (log: SDN S8: an awaiting response without its alert link) |
 | The AI's classification | an AI-marked box: threat, severity, model and cost, evidence ids, the recommendation | when a classification is kept (S7, 2026-10-27): a box marked AI with the threat or "No threat", its kind and severity, by whom (the loop or a person) and when, the model and cost (the call's id on hover), the reasoning, the recommendation with its catalogue action, the devices named and the evidence ids cited; with none, one line naming who chose the action (the catalogue's default, chosen in code, and why no AI classification was made). Compared by reading the template against the board's list, not yet shot: the harness's `sdn-responses` shot plants no classification | **later** a shot with a kept classification (tests/test_board_shots.py) |
 | Its actions | Preview the drop…, Choose another action…, Dismiss with a reason…, How does this work? | "for N s" (the response's hard timeout, editable), Preview the <action>…, a reason field and "Dismiss with this reason", each with its (i); no Choose another action… | **deviation** (log: SDN S8: the awaiting card's actions) |
+| A response whose threat stopped (C1968) | not drawn: the board's response awaits while its threat runs | "Inactive" and "Threat no longer active since <time>: the detection resolved, and this response still awaits your approval or dismissal", under the detection's line; the card otherwise unchanged, its classification kept | **deviation** (log: SDN C1968: a response stays awaiting when its threat stops) |
+| A refused classification (C1968) | not drawn | the card's classification line says "AI classification refused: <why>; proposed by the catalogue default, <action> (AI call <id>)" and links "The refused answer in History" (the call) | **deviation** (log: SDN C1968: a refused classification said, its call linked) |
 | Classify | not drawn: the board's box is filled by the loop | **Classify** (AI-marked, its hover the task, model and cap; disabled with the reason while AI cannot answer), and "Classify again" once a classification is kept, before Preview, with its (i) | **deviation** (log: SDN S7: a person's Classify on an awaiting response) |
 | Mode | HITL and AUTO as radio rows, Reason, Until (a date), Allowed risk, Turn AUTO on… | the mode chip and its words; Reason, For (hours, at most 24), Allowed risk, Turn AUTO on; while on, who, why and until when, and Turn AUTO off | **deviation** (log: SDN S9: AUTO for N hours, not until a date) |
 | The loop | its state chip, "every 10 s · detect, classify, respond", Stop, the log | the same; stopped, "every N s" and Start; the log newest first, each line's time, step and words | **same** |

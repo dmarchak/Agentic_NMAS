@@ -8,10 +8,11 @@ PHASE8_PLAN 17.1 S9 and S10, 17.4), no network, a fake clock.
 - **The loop's pass**: detect; classify is a background AI call the gateway refuses while hosted
   AI or the feature is off (the default), so no provider request is made and the catalogue's
   default is proposed, chosen in code (tests/test_sdn_classify.py: the feature on); in HITL
-  each new detection is
-  kept awaiting a person (one per detection), cleared when its detection resolves; in AUTO an
-  action within the risk class is applied through the flow-operation core as Mercury, recorded
-  autonomous with the setting and its reason; one above it stays HITL.
+  each new detection is kept awaiting a person (one per detection), still awaiting when its
+  detection resolves, marked no longer active (C1968; tests/test_sdn_loop_live.py holds the
+  rest); in AUTO an action of a classification that passed, within the risk class, is applied
+  through the flow-operation core as Mercury, recorded autonomous with the setting and its
+  reason; one above it stays HITL.
 - **The job**: one loop per network; a second start refused naming the first; stop recorded.
 """
 import time
@@ -136,7 +137,8 @@ def test_a_pass_in_hitl_keeps_one_response_awaiting_a_person(networks, monkeypat
     assert len(LP.awaiting(NET)["rows"]) == 1
     LP.run_pass(NET, collect=collected, observe=observed(resolved=["k1"], detections=[]),
                 now=lambda: T0 + 20, driver=lambda n, c: {"ok": False, "error": "unused"})
-    assert LP.awaiting(NET)["rows"] == []
+    (row,) = LP.awaiting(NET)["rows"]
+    assert row["inactive_since"] == LP._iso(T0 + 20), "it awaits a person, no longer active"
 
 
 def test_a_pass_in_auto_applies_within_its_risk_as_mercury_autonomous(networks,  # noqa: F811
@@ -153,6 +155,15 @@ def test_a_pass_in_auto_applies_within_its_risk_as_mercury_autonomous(networks, 
         return {"id": "sdnop-1", "outcome": "verified"}
 
     monkeypatch.setattr(CL, "respond_to_threat", respond)
+
+    def passed(network, d, job, **kw):
+        """A classification that passed the check, proposing the rule's catalogue default
+        (C1968: AUTO acts only on one that passed; tests/test_sdn_loop_live.py, none)."""
+        action = CL.DEFAULT_ACTION[d["rule"]]
+        return {"action": action, "risk": CL.CATALOGUE[action]["risk"], "params": {},
+                "classification": {"threat_type": "planted"}, "person": False, "why": "",
+                "refused_call": "", "words": "planted: passed"}
+    monkeypatch.setattr(LP, "classify", passed)
     out = LP.run_pass(NET, collect=collected, observe=observed(fired=["k1", "k2"], detections=[
         detection("k1", "scan"), detection("k2", "unauthorised_flow")]),
         driver=lambda n, c: {"ok": False, "error": "unused"})

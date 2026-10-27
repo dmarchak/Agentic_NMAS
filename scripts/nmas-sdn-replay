@@ -1,0 +1,202 @@
+#!/usr/bin/env python3
+"""Replay kept SDN detections through the classifier (PHASE8_PLAN 17.1 S7; C1969's evaluation):
+each detection's evidence pack as Mercury kept it when it fired, frozen and hash-checked,
+classified through `closed_loop.classify_pack` (the loop's and the screen's own path), recorded
+as an evaluation.
+
+    # on the host, the deployed copy run as a file (it adopts the app's interpreter): what
+    # would be sent for each detection, by part, with no call
+    nmas-host nmas -- <checkout>/scripts/nmas-sdn-replay --list <network> \\
+        --key <detection key> --key <detection key> --dry-run
+    # and classified through the gateway, three runs, as evaluation:<run>
+    nmas-host nmas -- <checkout>/scripts/nmas-sdn-replay --list <network> \\
+        --key <detection key> --key <detection key> --runs 3 --out /tmp/sdn-replay.json
+
+**The pack is the one kept** (`closed_loop.detection_pack`: the one the detection's firing
+entry names, else the newest SDN pack of the network whose alert is that detection), never
+rebuilt: its hash is checked (`classify_pack`'s first step), so a pack changed since it was
+kept is refused and nothing is sent. **The detection** is the loop's own, from the network's
+responses record (the ``proposed`` row of that key, `loop.PENDING_FILE`), else made from the
+pack's sdn section (its detection piece) and its alert (the key).
+
+**Recorded as an evaluation, never a person** (C1784, C1846): the actor is
+``evaluation:<run>`` (none given is ``evaluation:sdn-replay-<UTC time>``; an address or
+anything else is refused before anything is asked), so its spend counts against the caps under
+its run. **Nothing is sent to a switch**: a classification only proposes, and nothing is kept
+with any response.
+
+Per detection and run it prints and keeps the outcome (passed the check, refused by it and
+why, or refused before the call), the action and its parameters, the ids cited, the call's id,
+cost and latency. A refusal that is Mercury's or the provider's (hosted AI off, a cap) stops
+the run with nothing more spent (3); a detection with no kept pack, or a pack whose hash does
+not match, is said and skipped (its outcome ``no_pack`` or ``changed``). `--out` may not be
+inside the checkout (2).
+
+**`--dry-run`**: for each detection, the pack found, whether it is intact, and what would be
+sent by part (the detection, the evidence pieces by kind, the names, the evidence ids), with
+no call and nothing recorded.
+"""
+import argparse
+import json
+import os
+import sys
+import time
+
+sys.dont_write_bytecode = True
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+STOPS = ("ai_off", "no_key", "over_cap", "unknown_task", "unknown_model", "provider_error",
+         "rate_limited", "overloaded", "key_refused", "bad_request", "provider_down",
+         "trigger", "withheld", "classified", "limits", "feature_off")
+
+
+def detection_of(network: str, key: str, pack: dict) -> dict:
+    """The detection *key* as the loop held it: its ``proposed`` row in the network's responses
+    record, else made from the pack (its sdn section's detection piece, the alert's labels)."""
+    from modules.sdn import closed_loop, loop
+
+    got = loop._read(network, loop.PENDING_FILE)
+    for row in reversed(got["rows"]):
+        d = row.get("detection") or {}
+        if row.get("kind") == "proposed" and d.get("key") == key:
+            return d
+    det = closed_loop.sent_evidence(closed_loop._sdn_section(pack))["detection"]
+    alert = next((s for s in pack.get("sections") or [] if s.get("name") == "alert"), {})
+    labels = next((p.get("labels") or {} for p in alert.get("pieces") or []), {})
+    kind = "flow" if det.get("rule") == "unauthorised_flow" else (
+        "source" if det.get("source") else "port")
+    return {"key": key, "rule": det.get("rule"), "title": det.get("title"),
+            "network": network, "connection": det.get("connection"),
+            "dpid_hex": det.get("dpid"), "source": det.get("source"),
+            "targets": list(det.get("targets") or []), "port": det.get("port"),
+            "words": det.get("words"), "subject": {"kind": kind, "value": labels.get(kind)}}
+
+
+def what_is_sent(pack: dict) -> dict:
+    """What the classifier would be sent of *pack*, by part, in characters (no call)."""
+    from modules.sdn import closed_loop
+
+    section = closed_loop._sdn_section(pack)
+    sent = closed_loop.sent_evidence(section)
+
+    def size(x):
+        return len(json.dumps(x, sort_keys=True, separators=(",", ":")))
+
+    kinds = {}
+    for p in sent["pieces"]:
+        k = kinds.setdefault(p.get("kind") or "piece", {"pieces": 0, "chars": 0})
+        k["pieces"] += 1
+        k["chars"] += size(p)
+    return {"detection_chars": size(sent["detection"]), "pieces": kinds,
+            "names": sent["names"], "ids": len(sent["ids"]),
+            "evidence_not_sent": sent["detection"].get("evidence_not_sent", 0),
+            "catalogue_chars": size(closed_loop.catalogue_for_ai())}
+
+
+def replay(network: str, keys: list, actor: str, runs: int, out: str, dry_run: bool) -> int:
+    from modules import evidence_pack as EP
+    from modules.ai import triggers
+    from modules.sdn import closed_loop
+
+    found = {}
+    for key in keys:
+        pack, why = closed_loop.detection_pack(network, key)
+        found[key] = pack
+        if pack is None:
+            print(f"{key}: no pack: {why}")
+            continue
+        print(f"{key}: pack {pack.get('id')} built {pack.get('built_at')}, "
+              f"{'intact' if EP.intact(pack) else 'CHANGED since it was kept'}")
+        if dry_run:
+            print("  would send: " + json.dumps(what_is_sent(pack), sort_keys=True))
+    if dry_run:
+        return 0
+    recs, spent, status = {k: [] for k in keys}, 0.0, 0
+    for run in range(1, runs + 1):
+        for key in keys:
+            pack = found[key]
+            if pack is None:
+                recs[key].append({"run": run, "outcome": "no_pack"})
+                continue
+            d = detection_of(network, key, pack)
+            t0 = time.monotonic()
+            got = closed_loop.classify_pack(network, d, pack, actor=actor,
+                                            trigger=triggers.evaluation(actor))
+            took = time.monotonic() - t0
+            spent += float(got.get("cost_usd") or 0)
+            c = got.get("classification") or {}
+            outcome = ("passed" if got.get("ok") else
+                       "refused by the check" if got.get("error") == "couldnt_classify" else
+                       got.get("error") or "refused")
+            rec = {"run": run, "outcome": outcome, "action": got.get("action") or "",
+                   "params": got.get("params") or {}, "cited": c.get("evidence_refs") or [],
+                   "why": got.get("why") or "", "detail": (got.get("detail") or "")[:240],
+                   "call_id": got.get("call_id", ""),
+                   "cost_usd": float(got.get("cost_usd") or 0), "latency_s": round(took, 2)}
+            recs[key].append(rec)
+            print(f"run {run} {key}: {outcome}"
+                  + (f", {rec['action']} {rec['params']}" if got.get("ok") else
+                     f": {rec['why'] or rec['detail']}")
+                  + f" (call {rec['call_id'] or 'none'}, ${rec['cost_usd']:.4f}, {took:.1f} s)",
+                  flush=True)
+            if got.get("error") in STOPS:
+                print(f"nmas-sdn-replay: refused by Mercury ({got['error']}); stopped, "
+                      f"${spent:.4f} spent", file=sys.stderr)
+                status = 3
+                break
+        if status:
+            break
+    passed = sum(r.get("outcome") == "passed" for rs in recs.values() for r in rs)
+    total = sum(len(rs) for rs in recs.values())
+    with open(out, "w", encoding="utf-8") as fh:
+        json.dump({"network": network, "keys": keys, "actor": actor, "runs": runs,
+                   "prompt": "{}.v{}".format(*closed_loop.CLASSIFY_PROMPT),
+                   "spent_usd": round(spent, 6), "passed": passed, "asked": total,
+                   "recordings": recs}, fh, indent=2)
+    print(f"{passed} of {total} classifications passed the check; ${spent:.4f} spent; "
+          f"written {out}")
+    return status
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
+    ap.add_argument("--checkout", default="")
+    ap.add_argument("--list", required=True, help="the network, either spelling")
+    ap.add_argument("--key", action="append", required=True,
+                    help="a kept detection's key (repeat for more)")
+    ap.add_argument("--actor", default="")
+    ap.add_argument("--out", default="")
+    ap.add_argument("--runs", type=int, default=1)
+    ap.add_argument("--dry-run", action="store_true",
+                    help="say what would be sent for each detection; no call")
+    args = ap.parse_args(argv)
+    checkout = os.path.abspath(os.path.expanduser(args.checkout)) if args.checkout else ROOT
+    sys.path.insert(0, checkout)
+    os.chdir(checkout)
+    from modules.ai import cases
+    network, refusal = cases.run_network(args.list)
+    if refusal:
+        print(f"nmas-sdn-replay: {refusal}", file=sys.stderr)
+        return 2
+    if args.dry_run:
+        return replay(network, args.key, "", 0, "", True)
+    if not args.out:
+        ap.error("a replay that asks needs --out (or --dry-run)")
+    if os.path.realpath(args.out).startswith(os.path.realpath(checkout) + os.sep):
+        print(f"nmas-sdn-replay: --out {args.out} is inside the checkout; write it elsewhere",
+              file=sys.stderr)
+        return 2
+    actor, refusal = cases.evaluation_actor(args.actor, "sdn-replay")
+    if refusal:
+        print(f"nmas-sdn-replay: {refusal}", file=sys.stderr)
+        return 2
+    print(f"nmas-sdn-replay: recorded as {actor}")
+    return replay(network, args.key, actor, args.runs, args.out, False)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

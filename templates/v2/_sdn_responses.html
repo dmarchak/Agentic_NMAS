@@ -18,6 +18,9 @@
 <section class="card sdn-resp" aria-labelledby="sdn-r-{{ r.id }}">
   <div class="sdn-ctl-hd"><h2 id="sdn-r-{{ r.id }}">{{ r.title }}{% if r.source %} from <span class="mono">{{ r.source }}</span>{% endif %} on <span class="mono">{{ r.dpid_hex }}</span></h2>{% if r.confidence %} {{ badge(r.confidence, 'danger' if r.confidence == 'high' else 'warn') }}{% endif %}</div>
   <p class="small">Detected {{ stamp(r.at) }}: {{ r.words }} · an alert with its evidence pack</p>
+  {%- if r.inactive_since %}
+  <p class="small sdn-inactive">{{ badge('Inactive', 'muted') }} Threat no longer active since {{ stamp(r.inactive_since) }}: the detection resolved, and this response still awaits your approval or dismissal.</p>
+  {%- endif %}
   {%- if r.ai %}{% set a = r.ai %}
   <div class="sdn-ai" id="sdn-c-{{ r.id }}" role="group" aria-label="The AI's classification">
     <p class="small">{{ badge('AI', 'info', title='Classified by AI (' ~ a.model ~ '); checked in code; it proposes and never confirms') }} <strong>{% if a.threat_detected %}A threat: {{ a.threat_type }}{% else %}No threat{% endif %}</strong>, severity {{ a.severity }} <span class="faint">· by {{ a.by }}{% if a.who %} ({{ a.who }}){% endif %} {{ stamp(a.at) }} · <span title="AI call {{ a.call_id }}">{{ a.model }}, ${{ '%.4f' | format(a.cost_usd) }}</span></span></p>
@@ -27,7 +30,7 @@
     <p class="small faint">Evidence it cites: <span class="mono">{{ a.refs | join(', ') }}</span></p>
   </div>
   {%- else %}
-  <p class="small faint">{{ r.classified }}.</p>
+  <p class="small faint">{{ r.classified }}.{% if r.refused_call %} <a href="{{ url_for('v2.history_page', call=r.refused_call) }}" title="The prompt as sent and the answer the check refused">The refused answer in History</a>.{% endif %}</p>
   {%- endif %}
   <p class="small"><strong>Proposed:</strong> {{ r.label }} (catalogue action <span class="mono">{{ r.action }}</span>, risk {{ r.risk }}): {{ r.action_words }}.</p>
   <div class="sdn-acts">

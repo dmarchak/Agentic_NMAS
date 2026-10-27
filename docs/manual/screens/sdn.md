@@ -137,13 +137,19 @@ What to act on first: **N awaiting approval**, the mode and whether the loop is 
   Its preview button, named for the action ("Preview the drop traffic from the source…"), builds its card as Flows' changes are (the action's parameters checked
   against the evidence: the source is the detection's, the hard timeout within the network's
   ceiling); **Send** applies it as you. **Dismiss with this reason** closes it, sending nothing.
-  A response clears by itself when its detection resolves before anyone acts.
+  A response stays until you approve or dismiss it: when its detection resolves first, the card
+  says **Threat no longer active since** the collection that stopped showing it, its
+  classification kept, and the line goes if the detection fires again. When the AI's answer was
+  refused by the check (or no classification could be made), the card says so ("AI
+  classification refused: why; proposed by the catalogue default") with **The refused answer
+  in History**, and the rule's catalogue default awaits you, even in AUTO.
 - **Mode**: **HITL**, a person confirms each response, is the default. **Turn AUTO on** takes a
   reason, how many hours (at most 24) and the allowed risk (low: rate-limit and drop; medium:
   also remove a flow). While AUTO is on the card names who turned it on, why and until when;
   **Turn AUTO off** ends it at once. At its expiry the mode is HITL again, and the record says so.
 - **The loop**: **Start** runs detect, classify and respond on this network every N seconds (5 to
-  600); classify is an AI call only where an admin turned its background feature on for this
+  600), start to start: a pass that takes longer starts the next at once, and the log says so;
+  classify is an AI call only where an admin turned its background feature on for this
   network (off by default; the screen that turns it on, Settings › AI, is not built yet), and
   otherwise the log says why none was made and the catalogue's default is proposed; its log
   lists each pass's steps, newest first; **Stop** ends it after its current pass,
