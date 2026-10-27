@@ -70,11 +70,15 @@ response adds carries a hard timeout (600 seconds unless you set another in the 
 the network's ceiling), so a mistaken response expires by itself; its meter is removed by Mercury
 once those flows have expired.
 
-The action proposed is the catalogue's default for the rule, chosen in code, unless an AI
-classification proposed another (below). In **HITL** (the default) a response waits for you on
-SDN › Responses. In **AUTO**, which a person turns on for one network with a reason and an
-expiry, the loop applies only actions within the allowed risk, each recorded as autonomous with
-that reason and with who chose the action.
+The action proposed is the rule's default in the network's **response policy** (SDN ›
+Responses, the rules), chosen in code, unless an AI classification proposed another (below).
+The policy also limits which actions each rule may take on the network: a preview or a confirm
+of any other is refused, naming the action, the rule and what is allowed. In **HITL** (the
+default) a response waits for you on SDN › Responses. In **AUTO**, which a person turns on for
+one network with a reason and an expiry, the loop applies only actions within the allowed risk,
+each recorded as autonomous with that reason and with who chose the action. Every response,
+AUTO's or yours, writes one line to the loop's log: who applied which action on which switch,
+the operation, and the resulting entries as Verify read them back.
 
 ## Classify a detection with AI {#classify}
 
@@ -97,12 +101,15 @@ network, and Classify is a press of yours.
    changed since, or none kept, is refused and nothing is sent.
 2. `egress`: the flows and port rates are the network's topology class, so they are sent only
    while that class is allowed for the network; otherwise nothing is sent, and the card says
-   why.
+   why. The catalogue sent is only the actions the network's response policy allows for the
+   detection's rule.
 3. `ask`: one call through the AI gateway: the detection, its flows and port rates with their
    evidence ids, the names a device may be given, the network's response timeouts, and the
    response catalogue. The loop's call is refused unless its feature is on and within its caps.
 4. `check`: Mercury checks the answer in code before anything of it is used: the action is in
-   the catalogue and answers the detection's rule; a source is one the detection saw; a flow is
+   the catalogue, answers the detection's rule and is one the network's response policy allows
+   for it (one outside it is refused, and the rule's default awaits you, never AUTO's); a
+   source is one the detection saw; a flow is
    the one it names; a hard timeout is within the network's ceiling; at least one evidence id is
    cited, and every one cited was sent; every affected device is one the evidence names. An
    answer that fails is refused, saying which check, and the proposal stays as it was.

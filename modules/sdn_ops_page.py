@@ -146,6 +146,42 @@ def log_view(network: str, run: str = "") -> dict:
             "state": got["state"], "error": got["error"]}
 
 
+#: Each rule as the rules table names it.
+RULE_LABELS = {"scan": "Scan", "flood": "Flood", "unauthorised_flow": "Unauthorised flow"}
+#: Where the network's response policy comes from, in words (`list_settings.resolve`'s origin).
+POLICY_ORIGIN = {"set here": "set on this network",
+                 "unset everywhere": "the default: every catalogue action that answers the rule",
+                 "unset here": "the default: every catalogue action that answers the rule"}
+
+
+def policy_view(network: str) -> dict:
+    """The response policy as the rules table draws it and its form edits it (the Lab 8
+    walk's objective 3.1): per rule, the catalogue actions that answer it, those the policy
+    allows and its default; *loaded*, the policy as drawn, which Save carries back (or
+    ``unreadable``); where it comes from. A policy that cannot be read is drawn as that, its
+    reason said, and every rule shown allowing nothing."""
+    from modules import list_settings
+    from modules.sdn import closed_loop as CL
+
+    pol = CL.policy(network)
+    try:
+        origin = list_settings.resolve(network, CL.POLICY_KEY)[1]
+    except Exception as exc:                          # noqa: BLE001 (said as unread)
+        origin = f"not read ({type(exc).__name__})"
+    rows = []
+    for rule in CL.RULES:
+        got = pol["rules"].get(rule) or {}
+        rows.append({"rule": rule, "label": RULE_LABELS[rule], "default": got.get("default", ""),
+                     "allowed": list(got.get("allowed") or []),
+                     "answers": [{"id": a, "label": CL.CATALOGUE[a]["label"],
+                                  "risk": CL.CATALOGUE[a]["risk"]} for a in CL.answering(rule)]})
+    loaded = (json.dumps({r: pol["rules"][r]["allowed"] for r in CL.RULES}, sort_keys=True)
+              if pol["ok"] else "unreadable")
+    return {"ok": pol["ok"], "error": pol["error"], "rows": rows, "loaded": loaded,
+            "by_rule": {r["rule"]: r for r in rows},
+            "origin": POLICY_ORIGIN.get(str(origin), str(origin))}
+
+
 def responses_view(network: str, run: str = "") -> dict:
     """SDN › Responses (board SdnResponses). *run*: the loop run whose log the panel draws
     (C1971; the newest when empty)."""
@@ -176,6 +212,7 @@ def responses_view(network: str, run: str = "") -> dict:
             "thresholds": th, "limits": limits, "risks": modes.RISKS,
             "max_hours": modes.MAX_AUTO_SECONDS // 3600,
             "verify_limit": flow_ops.VERIFY_LIMIT, "controllers": True,
+            "policy": policy_view(network),
             # A person's Classify answered in place: its refusal drawn on its card (the route
             # sets it; a read has none).
             "classify": None}

@@ -428,6 +428,7 @@ HISTORY = {
     "sdn_v2.response_confirm": ("sdn_operations",),
     "sdn_v2.response_dismiss": "n/a: a dismissal is kept with the network's SDN responses "
                                "(modules/sdn/loop.py), never a device's record",
+    "sdn_v2.policy_set": NOT_A_DEVICE,
     "sdn_v2.mode_set": "n/a: the network's SDN mode is kept in its own record "
                        "(modules/sdn/modes.py), never a device's",
     "sdn_v2.loop_set": "n/a: the loop's start and stop are kept in its log (modules/sdn/loop.py), "

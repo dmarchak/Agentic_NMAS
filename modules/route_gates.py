@@ -202,6 +202,7 @@ GATES = {
     "sdn_v2.controller_test": _g(K, "tests a saved SDN controller connection with its stored credential from SDN › Controllers; changes nothing"),
     "sdn_v2.response_dismiss": _g(K, "dismisses an SDN response awaiting a person, with their reason; nothing is sent, recorded"),
     "sdn_v2.mode_set": _g(K, "turns SDN responses' AUTO mode on (a verified person's reason, expiry and allowed risk) or off for one network (PHASE8_PLAN 17.4), recorded"),
+    "sdn_v2.policy_set": _g(K, "sets one network's SDN response policy (each detection rule's allowed catalogue actions and its default; the Lab 8 walk's objective 3.1), each action checked against its rule, refused when the policy moved since the form drew it, recorded in the network's settings record"),
     "sdn_v2.loop_set": _g(K, "starts or stops the SDN closed loop's job on one network (PHASE8_PLAN 17.1 S10), recorded in its log; the job's classify step is a background AI call the gateway refuses unless the feature is on for the network"),
     "sdn_v2.response_classify": _g(K, "Classify a response awaiting a person: one recorded, capped AI call as the person who pressed it, reading the detection's stored evidence pack (modules/sdn/closed_loop.py, PHASE8_PLAN 17.1 S7); its answer checked in code and kept with the response, its catalogue action proposed; nothing is sent to a switch"),
     "sdn_v2.flow_preview": _g(N, "previews an SDN flow change: reads the switch's table and renders the exact requests and their hash; writes nothing"),

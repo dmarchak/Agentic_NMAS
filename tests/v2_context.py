@@ -1882,6 +1882,16 @@ def _sdn_operations(client, mp, session):
         .get_data(as_text=True)
     assert client.post(f"/v2/sdn/response/{other['id']}/dismiss",
                        data={"list": "Lab", "reason": "the lab's own test"}).status_code == 200
+    # The response policy (objective 3.1): one refused (an action that does not answer its
+    # rule), one saved and the region drawn again with it.
+    page = client.get("/v2/sdn/responses?list=Lab").get_data(as_text=True)
+    loaded = html.unescape(re.search(r'name="loaded" value="([^"]*)"', page).group(1))
+    policy = {"list": "Lab", "loaded": loaded, "scan_default": "rate_limit_source",
+              "flood_default": "rate_limit_source", "flood_allowed": "drop_source",
+              "unauthorised_flow_default": "remove_flow"}
+    assert client.post("/v2/sdn/policy", data=dict(policy, scan_default="remove_flow"))\
+        .status_code == 409
+    assert client.post("/v2/sdn/policy", data=policy).status_code == 200
     assert client.post("/v2/sdn/mode", data={"list": "Lab", "mode": "auto", "reason": "lab run",
                                              "hours": "1", "risk": "low"}).status_code == 200
     assert client.post("/v2/sdn/mode", data={"list": "Lab", "mode": "hitl"}).status_code == 200

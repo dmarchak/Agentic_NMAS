@@ -65,6 +65,11 @@ SCOPES: dict = {
     # Drawn on SDN › Responses beside the response they bound, not on a generic card.
     **_group(NETWORK, "sdn_responses", "sdn_response_hard_timeout_seconds",
              "sdn_response_max_seconds"),
+    # The Lab 8 walk's objective 3.1 (2026-10-27): each rule's allowed response actions, the
+    # first its default, one network's. A group of its own, not the timeouts': a value set here
+    # makes its group the network's own (`list_settings.write`), and setting the policy must not
+    # stop the network inheriting Default's timeouts. Drawn and set on SDN › Responses' rules.
+    **_group(NETWORK, "sdn_response_policy", "sdn_response_policy"),
     # ── Per network: each a group of one ─────────────────────────────────────────────────
     **{k: (NETWORK, k) for k in (
         "verify_settle_windows", "deploy_max_workers", "deploy_verify_failure_limit",
@@ -177,6 +182,7 @@ GROUP_LABELS: dict = {
     "alert_history_retention_days": "Alert history: transitions kept (days)",
     "endpoints": "Endpoints", "sdn_controllers": "SDN controllers",
     "sdn_detection": "SDN detection thresholds", "sdn_responses": "SDN response timeouts",
+    "sdn_response_policy": "SDN response policy",
 }
 
 #: Network groups no generic Settings card draws or saves, each with the one module that
@@ -186,8 +192,10 @@ GROUP_LABELS: dict = {
 #: `templates/v2/_sdn_settings.html`). `sdn_detection`: the thresholds belong on SDN ›
 #: Responses beside the rules they set (17.5, board 3); until that tab is built
 #: `list_settings.write` writes them, and `modules/sdn/detect.py` reads them. `sdn_responses`:
-#: the same, read by `modules/sdn/flow_ops.py`.
-CARDLESS = ("sdn_controllers", "sdn_detection", "sdn_responses")
+#: the same, read by `modules/sdn/flow_ops.py`. `sdn_response_policy`: written by
+#: `modules/sdn/closed_loop.py` (`save_policy`, which checks each action answers its rule) from
+#: SDN › Responses' rules, and read by its `policy`.
+CARDLESS = ("sdn_controllers", "sdn_detection", "sdn_responses", "sdn_response_policy")
 
 #: Network groups that are each network's own and never inherited from Default, whatever the
 #: network's mode or choice: a network that sets none has none (the operator's decision of

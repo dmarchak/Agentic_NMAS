@@ -609,6 +609,18 @@ DEFAULTS: dict = {
     # should hold is the operator's decision about the network, which no measurement makes.
     "sdn_response_hard_timeout_seconds": 600,
     "sdn_response_max_seconds": 3600,
+    # The SDN response policy (the Lab 8 walk's objective 3.1, the operator's order of
+    # 2026-10-27; `modules/sdn/closed_loop.py`, `policy`), per network: for each detection rule,
+    # the catalogue actions a response to it may take, the FIRST the rule's default. A
+    # classification proposing another is refused and the default awaits a person; a person's
+    # preview or confirm of another is refused. The default reproduces every release before it:
+    # every catalogue action that answers the rule, a scan's default a drop, a flood's a
+    # rate-limit, an unauthorised flow's its removal. Not measured: which responses a network
+    # allows is its operator's decision. Written only from SDN › Responses' rules
+    # (`closed_loop.save_policy`), which checks every action against the rule it answers.
+    "sdn_response_policy": {"scan": ["drop_source", "rate_limit_source"],
+                            "flood": ["rate_limit_source", "drop_source"],
+                            "unauthorised_flow": ["remove_flow"]},
 
     # ── Jenkins ─────────────────────────────────────────────────────────────
     # Every generated pipeline emitted Windows `bat` steps; that stays the
@@ -748,6 +760,12 @@ def discover_empty_default_guards(root: str = "") -> dict:
 
 _STR = {"type": "string"}
 _BOOL = {"type": "boolean"}
+#: A rule's response actions in the SDN response policy: one or more of the catalogue's actions
+#: (`closed_loop.CATALOGUE`'s keys; tests/test_sdn_policy.py holds them equal), none twice.
+#: Which action answers which rule is `closed_loop.policy_problems`' check, naming both.
+_SDN_ACTIONS = {"type": "array", "minItems": 1, "uniqueItems": True,
+                "items": {"type": "string",
+                          "enum": ["drop_source", "rate_limit_source", "remove_flow"]}}
 
 SCHEMA: dict = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1025,6 +1043,12 @@ SCHEMA: dict = {
         "sdn_response_hard_timeout_seconds": {"type": "integer", "minimum": 1,
                                               "maximum": 65535},
         "sdn_response_max_seconds": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "sdn_response_policy": {
+            "type": "object", "additionalProperties": False,
+            "required": ["scan", "flood", "unauthorised_flow"],
+            "properties": {"scan": _SDN_ACTIONS, "flood": _SDN_ACTIONS,
+                           "unauthorised_flow": _SDN_ACTIONS},
+        },
         "deploy_max_workers": {"type": "integer", "minimum": 1, "maximum": 16},
         "deploy_verify_failure_limit": {"type": "integer", "minimum": 1},
         "verify_settle_windows": {

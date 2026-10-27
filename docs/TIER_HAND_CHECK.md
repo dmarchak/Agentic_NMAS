@@ -1886,3 +1886,55 @@ process; the tests and the drop are what this change adds to the agent's version
 **The result: every mutant killed but one equivalent, named; the canary killed; the working tree
 untouched (nmas-control's fingerprint).**
 
+## 2026-10-27: SDN's response policy in what the classifier is sent, and a normal-traffic collection classified (the Lab 8 walk's objectives 3.1 and 2.3), by hand
+
+**What touches the tier:** `modules/sdn/closed_loop.py`, what leaves the host for the AI
+provider. (1) The response policy (`policy`, `policy_refusal`): the catalogue the model is sent
+(`catalogue_for_ai(allowed)`, through `request_blocks`) lists only the actions the network allows
+for the detection's rule, and `none`; an unreadable policy allows nothing and sends nothing. (2)
+`prepare_collection`, a new request shape: one live collection with no detection (prompt
+`sdn_classify.v2`), behind the same gates as `classify_pack` (the classification marking, the
+topology class, the limits, the policy), plus a refusal for another network's collection or one
+that read no switch; the 50 busiest flows sent and the rest counted; the call made only by
+`scripts/nmas-sdn-classify-normal`, as an evaluation.
+
+**The method:** the narrowed hand check (PHASE8_PLAN 15.12), by the agent that built it: each
+mutant applied as its exact line in a `scripts/nmas-control` throwaway worktree, then the aimed
+tests (tests/test_sdn_policy.py, tests/test_sdn_classify_normal.py, tests/test_sdn_response_log.py
+and the SDN classify tests); a must-die canary first for each part.
+
+**Part 1, the policy in what is sent.** Canary: `request_blocks` returns `{}`: killed, 38 tests.
+
+| mutant | result | killed by |
+|---|---|---|
+| H1 the catalogue sent unfiltered | killed | tests/test_sdn_policy.py's two catalogue-sent tests; tests/test_sdn_classify_normal.py's catalogue test |
+| H2 classify sends every action | killed | tests/test_sdn_policy.py's two catalogue-sent tests |
+| H3 classify's policy gate skipped | killed | `test_a_policy_that_cannot_be_read_allows_nothing_and_sends_nothing` |
+| H4 the check's policy test skipped | killed | `test_a_drop_for_a_scan…`, `test_in_the_loop_the_refused_drop…` |
+| H5 the refusal's comparison skipped | killed | 4 tests in tests/test_sdn_policy.py (preview, confirm, check, loop) |
+| H6 the unreadable branch skipped | killed | `test_a_policy_that_cannot_be_read_allows_nothing…` |
+| H7 the policy's read fails open | killed | both fail-closed tests |
+| H8 the names not sent | killed | `test_the_request_says_no_rule_fired…` |
+| H9 `none` answers no rule | survived, then killed by the test added for it | `test_sdn_lab_s_policy_sends…` |
+| H10 a flow piece loses its packet counts | killed | `test_a_busy_collection_sends_its_busiest_flows…` |
+
+**Part 3, a collection classified.** Canary: the request's data emptied: killed, 6 tests.
+
+| mutant | result | killed by |
+|---|---|---|
+| N1 every flow sent | killed | the busy-collection test |
+| N2 the detection piece cites the flows | killed | `test_the_request_says_no_rule_fired…` |
+| N3 the DPIDs not added to the names | killed | the request test, the threat test |
+| N4 the marking gate skipped | killed | the gates test |
+| N5 the topology gate skipped | killed | the gates test |
+| N6 the policy gate skipped | killed | the gates test |
+| N7 the no-switch gate skipped | killed | the no-switch and other-network test |
+| N8 the network gate skipped | killed | the no-switch and other-network test |
+| N9 the catalogue every action | killed | `test_the_catalogue_sent_is_the_actions_the_network_allows` |
+| N10 prompt v1 used | killed | the request test |
+| N11 a threat never reported | killed | the threat test, the runs test |
+| N12 the call not an evaluation | killed | 6 tests |
+
+**The result: every mutant killed (H9 after its test was added); both canaries killed; the
+working tree untouched (nmas-control's fingerprint).**
+

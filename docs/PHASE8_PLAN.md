@@ -3859,8 +3859,10 @@ docs/boards/ holds a drawing for it.
 | 2026-10-27 | SDN (PHASE8_PLAN 17) | S3, `SdnResponses.dc.html`, deviation: an Inactive chip and "Threat no longer active since <time>" on a response still awaiting a person | An awaiting response whose detection resolved (C1968) | 2026-10-27, "SDN C1968: a response stays awaiting when its threat stops"; docs/fidelity/sdn.md |
 | 2026-10-27 | SDN (PHASE8_PLAN 17) | S3, `SdnResponses.dc.html`, deviation: a refused classification said, the catalogue default proposed, the refused call linked | An awaiting response's classification line (C1968) | 2026-10-27, "SDN C1968: a refused classification said, its call linked"; docs/fidelity/sdn.md |
 | 2026-10-27 | SDN (PHASE8_PLAN 17) | S3, `SdnResponses.dc.html`, deviation: the loop's log one run whole in a scrolling box, with Run and Download log | The loop's log (C1971, Lab 8 objective 4.2) | 2026-10-27, "SDN C1971: the loop's log scrolls over the whole run, with Run and Download log"; docs/fidelity/sdn.md |
+| 2026-10-27 | SDN (PHASE8_PLAN 17) | S3, `SdnResponses.dc.html`, deviation: each rule's allowed responses in the rules table, set by a Response policy form under it | The network's response policy (Lab 8 objective 3.1) | 2026-10-27, "SDN 3.1: each rule's allowed responses on the rules card"; docs/fidelity/sdn.md |
+| 2026-10-27 | SDN (PHASE8_PLAN 17) | S3, `SdnResponses.dc.html`, deviation: a response kept with no action proposed when the policy cannot be read, said in place of Proposed | An awaiting response under an unreadable policy (Lab 8 objective 3.1) | 2026-10-27, "SDN 3.1: a response proposed with no action when the policy is unreadable"; docs/fidelity/sdn.md |
 
-**Count:** 138 rows: 52 drawn, 12 revised, 17 no drawing, 57 deviation. Every row comes from
+**Count:** 140 rows: 52 drawn, 12 revised, 17 no drawing, 59 deviation. Every row comes from
 docs/STANDING_APPROVAL_LOG.md; the other sources supplied only these: the canvas indexes gave
 the S1 to S7 numbers against the SDN files, AI3b's label for `SettingsAiOn.dc.html`, the files
 for Topology board D (`TopoPathTrace.dc.html`), DHCP board C (`DhcpSubnets.dc.html`) and

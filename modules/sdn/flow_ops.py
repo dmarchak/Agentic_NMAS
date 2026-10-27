@@ -453,7 +453,7 @@ def _plan_add_flow(drv, dpid, change, table, recorded, meter_ids, response, limi
                         + f" on {out['dpid_hex']}: {flow_words(spec)}.")
     return {"role": "add_flow", "words": f"add {flow_words(spec)}", "request": request,
             "undo": undo, "undo_words": "delete it (delete-strict)",
-            "expect": {"present": spec}}
+            "expect": {"present": spec}, "reinstall": reinstall}
 
 
 def _plan_remove_flow(drv, dpid, change, table, recorded, own, ask, before, out):
@@ -684,17 +684,22 @@ def verify_installed(drv, dpid: int, steps: list, *, sleep=time.sleep,
                      reads: int = VERIFY_READS, pause: float = VERIFY_PAUSE) -> dict:
     """The gating check: each step's expectation against the table (and meters) read back, up
     to *reads* times *pause* apart until all hold. ``{"ok", "checks", "reads", "flows",
-    "meters"}``; a read that fails is itself a failed check, never a pass."""
+    "meters", "flows_read", "meters_read"}``, *flows_read* and *meters_read* whether the last
+    read of each answered (*flows* and *meters* are that read's); a read that fails is itself a
+    failed check, never a pass."""
     meters_needed = any("meter" in s["expect"] or "no_meter" in s["expect"] for s in steps)
     checks, flows, meter_rows = [], [], []
+    flows_read = meters_read = False
     for attempt in range(1, reads + 1):
         checks = []
         got = drv.flows(dpid)
+        flows_read = meters_read = False
         if not got.get("ok"):
             checks = [{"name": "table read back", "state": "fail",
                        "words": f"the table could not be read back: {got.get('error')}"}]
         else:
             flows = got.get("flows") or []
+            flows_read = True
             meter_rows = []
             if meters_needed:
                 m = drv.meters(dpid)
@@ -703,6 +708,7 @@ def verify_installed(drv, dpid: int, steps: list, *, sleep=time.sleep,
                                    "words": f"the meters could not be read back: "
                                             f"{m.get('error')}"})
                 meter_rows = m.get("meters") or []
+                meters_read = bool(m.get("ok"))
             by_id = {m.get("meter_id"): m for m in meter_rows}
             for s in steps:
                 e = s["expect"]
@@ -740,10 +746,50 @@ def verify_installed(drv, dpid: int, steps: list, *, sleep=time.sleep,
                                             + ("gone" if gone else "still on the switch")})
         if checks and all(c["state"] == "pass" for c in checks):
             return {"ok": True, "checks": checks, "reads": attempt, "flows": flows,
-                    "meters": meter_rows}
+                    "meters": meter_rows, "flows_read": flows_read, "meters_read": meters_read}
         if attempt < reads:
             sleep(pause)
-    return {"ok": False, "checks": checks, "reads": reads, "flows": flows, "meters": meter_rows}
+    return {"ok": False, "checks": checks, "reads": reads, "flows": flows, "meters": meter_rows,
+            "flows_read": flows_read, "meters_read": meters_read}
+
+
+def read_back(steps: list, verified: dict) -> list:
+    """What Verify's last read (*verified*, `verify_installed`'s answer) found for each step,
+    the switch's own entries, never the request sent: an added or edited flow as the table
+    holds it (``flow``: its table, priority, match, actions, idle and hard timeouts and
+    cookie; None when it was not there), with ``reinstall`` for Mercury's flow put back; a
+    removed flow (``removed``, as named) and whether it is ``gone``; a meter as the switch
+    holds it (``meter``: its id, flags and bands; None when it was not there). ``read`` is
+    False where that table or the meters could not be read, and nothing is said of it then."""
+    flows = verified.get("flows") or []
+    meters = {m.get("meter_id"): m for m in verified.get("meters") or []}
+    flows_read, meters_read = bool(verified.get("flows_read")), bool(verified.get("meters_read"))
+    keep = ("table_id", "priority", "match", "actions", "idle_timeout", "hard_timeout", "cookie")
+    out = []
+    for s in steps:
+        e = s["expect"]
+        if "present" in e:
+            spec = e["present"]
+            hit = _find(flows, {k: spec.get(k) for k in ("table_id", "priority", "match",
+                                                          "cookie")}) if flows_read else None
+            out.append({"role": s["role"], "reinstall": bool(s.get("reinstall")),
+                        "read": flows_read, "cookie": spec.get("cookie"),
+                        "flow": {k: hit.get(k) for k in keep} if hit else None})
+        elif "absent" in e:
+            named = {k: e["absent"].get(k) for k in ("table_id", "priority", "match", "cookie")}
+            hit = _find(flows, named) if flows_read else None
+            out.append({"role": s["role"], "read": flows_read, "removed": named,
+                        "gone": flows_read and hit is None})
+        elif "meter" in e:
+            mid = e["meter"]["meter_id"]
+            held = meters.get(mid) if meters_read else None
+            out.append({"role": s["role"], "read": meters_read, "meter_id": mid,
+                        "meter": {k: held.get(k) for k in ("meter_id", "flags", "bands")}
+                        if held else None})
+        elif "no_meter" in e:
+            out.append({"role": s["role"], "read": meters_read, "meter_id": e["no_meter"],
+                        "gone": meters_read and e["no_meter"] not in meters})
+    return out
 
 
 def counters(drv, dpid: int, steps: list, *, sleep=time.sleep,
@@ -947,7 +993,8 @@ def apply(network: str, ask: dict, confirmed_hash: str, *, actor: str, actor_ver
             else:
                 out["at"] = "verify"
                 v = verify_installed(drv, p["dpid"], p["steps"], sleep=sleep)
-                out["verify"] = {"ok": v["ok"], "checks": v["checks"], "reads": v["reads"]}
+                out["verify"] = {"ok": v["ok"], "checks": v["checks"], "reads": v["reads"],
+                                 "read_back": read_back(p["steps"], v)}
                 if v["ok"]:
                     out["counters"] = counters(
                         drv, p["dpid"], p["steps"], sleep=sleep,

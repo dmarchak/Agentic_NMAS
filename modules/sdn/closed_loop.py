@@ -31,9 +31,17 @@ answer is checked against what was sent (`check_classification`), and a passing 
 changes which catalogue action is proposed, which then goes through HITL or AUTO exactly as the
 catalogue's default does. Two triggers reach it: the loop's (`loop.py`), a background call the
 gateway refuses unless the feature ``sdn_classify`` is on for the network and within its caps
-(PHASE8_PLAN 18.3; off by default), after which the loop proposes the catalogue's default for
-the rule (`DEFAULT_ACTION`), said as chosen in code; and a person's Classify on a response
-awaiting them (SDN › Responses).
+(PHASE8_PLAN 18.3; off by default), after which the loop proposes the rule's default in the
+network's response policy (`policy`), said as chosen in code; and a person's Classify on a
+response awaiting them (SDN › Responses).
+
+**The response policy** (`policy`, the setting ``sdn_response_policy``; the Lab 8 walk's
+objective 3.1): for each rule, the catalogue actions a response to it may take on the network,
+the first its default. The model is sent only the actions the policy allows for the
+detection's rule (`catalogue_for_ai`); an answer naming another is refused by the check, and the
+rule's default awaits a person; a person's preview or confirm of another is refused
+(`policy_refusal`, the one check). A policy that cannot be read fails closed: nothing is sent,
+no action is allowed, and it says why.
 
 **`collect_threat_data(network)`** is deterministic and asks no AI. For every controller
 connection of *network* (`connections.connections`) it reads:
@@ -358,11 +366,13 @@ CLASSIFY_STEPS = (
     ("pack", "the detection's evidence pack, as kept when it fired, its hash checked: a pack "
              "changed since, or none kept, is refused and nothing is sent"),
     ("egress", "the flows and port rates are the topology class: sent only while the class is "
-               "allowed for the network, else nothing is sent"),
+               "allowed for the network, else nothing is sent; the catalogue sent is only the "
+               "actions the network's response policy allows for the detection's rule"),
     ("ask", "one recorded, capped call through the AI gateway: a person's Classify, or the "
             "loop's background call, which the gateway refuses unless the feature is on for "
             "the network and within its caps"),
-    ("check", "in code: the action is the catalogue's and answers the detection's rule; the "
+    ("check", "in code: the action is the catalogue's, answers the detection's rule and is one "
+              "the network's response policy allows for it; the "
               "source is one the detection saw, the flow the one it names, the timeout within "
               "the network's ceiling; at least one evidence id is cited and every one cited was "
               "sent; every affected device named was in the evidence. One that fails is refused "
@@ -453,13 +463,16 @@ def sent_evidence(section: dict) -> dict:
             "names": sorted(names), "sources": [s for s in [det.get("source")] if s]}
 
 
-def check_classification(answer, detection: dict, sent: dict, limits: dict) -> tuple:
+def check_classification(answer, detection: dict, sent: dict, limits: dict, *, pol: dict,
+                         network: str) -> tuple:
     """``(why, params)``: why the answer is refused ("" when it passes), and the action's
     parameters as `build_response` takes them. Compared in code with what was sent: the
-    action is the catalogue's and answers the detection's rule; no threat proposes no action;
-    the source is one the detection saw (its address compared in canonical form), the flow
-    the one it names, the hard timeout within the network's ceiling; at least one evidence id
-    is cited and every one cited was sent; every affected device was in the evidence."""
+    action is the catalogue's and answers the detection's rule, and *network*'s response
+    policy *pol* (`policy`) allows it for that rule (`policy_refusal`); no threat proposes no
+    action; the source is one the detection saw (its address compared in canonical form), the
+    flow the one it names, the hard timeout within the network's ceiling; at least one
+    evidence id is cited and every one cited was sent; every affected device was in the
+    evidence."""
     action = answer.action_id.value
     p = answer.parameters
     refs = list(answer.evidence_refs or [])
@@ -482,6 +495,9 @@ def check_classification(answer, detection: dict, sent: dict, limits: dict) -> t
     if rule not in CATALOGUE[action]["rules"]:
         return (f"{action} answers {', '.join(CATALOGUE[action]['rules'])}, not the "
                 f"detection's rule {rule}"), {}
+    outside = policy_refusal(network, rule, action, pol)
+    if outside:
+        return outside, {}
     params = {}
     if action in ("drop_source", "rate_limit_source"):
         seen = [_canon(s) for s in _sources(detection or {}) if _canon(s) in names] or \
@@ -563,7 +579,7 @@ def classify_pack(network: str, detection: dict, pack: dict, *, actor: str, trig
     "pack_id"}``: *classification* what is shown and kept (the answer's fields, the call's id,
     model and cost); *action* the catalogue action proposed, or ``none``; *params* its checked
     parameters. Refused: *error* names the kind (the gateway's own, ``changed``,
-    ``classified``, ``withheld``, ``limits`` or ``couldnt_classify``)."""
+    ``classified``, ``withheld``, ``limits``, ``policy`` or ``couldnt_classify``)."""
     from modules import evidence_pack as EP
     from modules.ai import calls, egress_classes, gateway, profiles
     from modules.sdn import flow_ops
@@ -585,25 +601,20 @@ def classify_pack(network: str, detection: dict, pack: dict, *, actor: str, trig
     limits = flow_ops.settings_of(network)
     if not limits["ok"]:
         return dict(out, error="limits", detail=f"{limits['error']}; nothing was sent")
+    pol = policy(network)
+    if not pol["ok"]:
+        return dict(out, error="policy", detail=f"{pol['error']}; nothing was sent")
     section = _sdn_section(pack)
     sent = sent_evidence(section)
     if not sent["detection"]:
         return dict(out, error="no_pack", detail="the pack holds no SDN detection to classify; "
                     "nothing was sent")
+    rule = (detection or {}).get("rule") or sent["detection"].get("rule")
+    allowed = (pol["rules"].get(rule) or {}).get("allowed") or []
     schema = ThreatAssessment
     v = limits["values"]
-    data = {
-        "detection": json.dumps(sent["detection"], sort_keys=True, separators=(",", ":")),
-        "evidence": json.dumps({"pieces": sent["pieces"], "counts": section.get("counts"),
-                                "total_flows": section.get("total"),
-                                "subset": bool(section.get("subset"))},
-                               sort_keys=True, separators=(",", ":")),
-        "names": json.dumps(sent["names"]),
-        "limits": json.dumps({"hard_timeout_default_s": v["sdn_response_hard_timeout_seconds"],
-                              "hard_timeout_max_s": v["sdn_response_max_seconds"],
-                              "rate_limit_default": RATE_LIMIT_DEFAULT}, sort_keys=True),
-    }
-    context = {"catalogue": json.dumps(catalogue_for_ai(), sort_keys=True,
+    data = request_blocks(sent, section, v)
+    context = {"catalogue": json.dumps(catalogue_for_ai(allowed), sort_keys=True,
                                        separators=(",", ":"))}
     subject = {"kind": "sdn_detection", "id": (detection or {}).get("key") or "",
                "rule": (detection or {}).get("rule") or "", "devices": []}
@@ -614,7 +625,7 @@ def classify_pack(network: str, detection: dict, pack: dict, *, actor: str, trig
     if not got["ok"]:
         return dict(out, error=got["error"], detail=got.get("detail", ""))
     answer = got["output"]
-    why, params = check_classification(answer, detection, sent, v)
+    why, params = check_classification(answer, detection, sent, v, pol=pol, network=network)
     links = {"page": "/v2/sdn/responses", "anchor": f"sdn-c-{subject['id']}"}
     if why:
         calls.record_use(got["call_id"], "refused by validation", actor=actor, detail=why,
@@ -631,17 +642,169 @@ def classify_pack(network: str, detection: dict, pack: dict, *, actor: str, trig
     return dict(out, ok=True, classification=shown, action=action, params=params)
 
 
-def catalogue_for_ai() -> list:
-    """The response catalogue as the classifier is given it: each action's id, what it does,
-    its risk, the rules it answers and the parameters it takes; and ``none``."""
+def request_blocks(sent: dict, section: dict, limits: dict) -> dict:
+    """The classifier's data blocks, one shape for a detection's pack (`classify_pack`) and a
+    collection (`prepare_collection`): the detection, the evidence pieces as sent with their
+    counts, the names a device may be given, and the network's response *limits* (its
+    timeouts) with the rate-limit's default."""
+    return {
+        "detection": json.dumps(sent["detection"], sort_keys=True, separators=(",", ":")),
+        "evidence": json.dumps({"pieces": sent["pieces"], "counts": section.get("counts"),
+                                "total_flows": section.get("total"),
+                                "subset": bool(section.get("subset"))},
+                               sort_keys=True, separators=(",", ":")),
+        "names": json.dumps(sent["names"]),
+        "limits": json.dumps({"hard_timeout_default_s":
+                              limits["sdn_response_hard_timeout_seconds"],
+                              "hard_timeout_max_s": limits["sdn_response_max_seconds"],
+                              "rate_limit_default": RATE_LIMIT_DEFAULT}, sort_keys=True),
+    }
+
+
+# ─────────────────────────────── a collection no rule fired on (objective 2.3, false positives)
+
+#: The prompt for a collection no rule fired on: v1's, and what to judge when no rule fired
+#: (scripts/nmas-sdn-classify-normal). v1 stays the loop's and the person's Classify's.
+COLLECTION_PROMPT = ("sdn_classify", 2)
+#: What a collection's request names as its detection: none fired.
+NO_DETECTION_WORDS = ("no detection rule fired on this collection: assess whether the "
+                      "evidence shows a threat the rules did not find")
+
+
+def collection_request(network: str, collected: dict, allowed, limits: dict) -> dict:
+    """What scripts/nmas-sdn-classify-normal sends for *collected* (`collect_threat_data`'s
+    answer on *network*), built with NO detection: ``{"section", "sent", "data", "context"}`` in
+    `classify_pack`'s blocks (`request_blocks`). Its detection piece says no rule fired
+    (``rule`` none, `NO_DETECTION_WORDS`), naming the switches and the collection's time. The
+    evidence: every port row read (its rates), the network's busiest flows (at most
+    `detect.SECTION_FLOWS` by packets, the rest counted) and each switch's coverage, each with
+    its id; *sent*'s ids are exactly the pieces' (`sent_evidence`), so every id sent may be
+    cited, and its names add each switch's DPID. The catalogue is the *allowed* actions'
+    (`catalogue_for_ai`). Reads nothing: a dry run shows exactly this."""
+    from modules.sdn import detect
+
+    switches = [(c, s) for c in (collected or {}).get("controllers") or []
+                for s in c.get("switches") or []]
+    flows = [f for _c, s in switches for f in s.get("flows") or [] if f.get("id")]
+    busiest = sorted(flows, key=lambda f: -(f.get("packet_count") or 0))[:detect.SECTION_FLOWS]
+    dpids = [s.get("dpid_hex") for _c, s in switches if s.get("dpid_hex")]
+    det = {"kind": "detection", "id": f"collection:{collected.get('collected_at') or ''}",
+           "rule": "none", "title": "No detection", "words": NO_DETECTION_WORDS,
+           "network": network, "collected_at": collected.get("collected_at") or "",
+           "collection_state": collected.get("state") or "", "switches": dpids,
+           "connections": sorted({str(c.get("connection")) for c, _s in switches}),
+           "evidence": []}
+    pieces = [det]
+    for _c, s in switches:
+        for p in s.get("ports") or []:
+            if p.get("id"):
+                pieces.append(dict(p, kind="port", sample=s.get("sample")))
+    pieces += [detect.flow_piece(f) for f in busiest]
+    for _c, s in switches:
+        pieces.append({"kind": "coverage", "dpid": s.get("dpid_hex"), **(s.get("coverage") or {
+            "granularity": "not read", "words": "this switch's flows could not be read"})})
+    section = {"pieces": pieces, "total": len(flows), "subset": len(flows) > len(busiest),
+               "counts": {"switches": len(switches), "flows": len(busiest),
+                          "ports": sum(p["kind"] == "port" for p in pieces)}}
+    sent = sent_evidence(section)
+    sent["names"] = sorted(set(sent["names"]) | {_canon(d) for d in dpids})
+    return {"section": section, "sent": sent, "data": request_blocks(sent, section, limits),
+            "context": {"catalogue": json.dumps(catalogue_for_ai(allowed), sort_keys=True,
+                                                separators=(",", ":"))}}
+
+
+def network_actions(pol: dict) -> list:
+    """Every catalogue action *pol* allows for some rule, in the catalogue's order: what a
+    collection's request offers, where no rule names one."""
+    allowed = {a for r in (pol.get("rules") or {}).values() for a in r.get("allowed") or []}
+    return [a for a in CATALOGUE if a in allowed]
+
+
+def prepare_collection(network: str, collected: dict) -> dict:
+    """Everything before the call that classifies a collection NO rule fired on
+    (`collect_threat_data`'s answer *collected* on *network*; the Lab 8 walk's objective 2.3,
+    scripts/nmas-sdn-classify-normal, which makes the call as an evaluation): the same gates as
+    `classify_pack` in its order (the classification marking, the topology class, the
+    network's limits, its response policy), and before them a collection of another network or
+    one that read no switch; then the request (`collection_request`). ``{"ok", "error",
+    "detail", "req", "pol", "limits", "subject", "sent"}``: refused, *error* names the kind and
+    *detail* says why, "nothing was sent"; *sent* the ids and pieces the request holds.
+
+    **No module calls the gateway for it**: an AI call from Mercury's code starts only from a
+    gated POST (tests/test_ai_entry_points.py), and this is an operator's evaluation, run by
+    the script, which asks through the gateway with an evaluation's trigger."""
+    from modules.ai import egress_classes
+    from modules.sdn import flow_ops
+
+    out = {"ok": False, "error": "", "detail": "", "req": None, "pol": None, "limits": None,
+           "subject": None, "sent": {}}
+    collected = collected or {}
+    if collected.get("network") != network:
+        return dict(out, error="collection", detail=(
+            f"the collection is {collected.get('network')!r}'s, not {network!r}'s; nothing "
+            "was sent"))
+    switches = (collected.get("summary") or {}).get("switches") or 0
+    if not switches:
+        return dict(out, error="no_collection", detail=(
+            f"the collection read no switch ({collected.get('state')}"
+            + (f": {collected.get('error') or collected.get('words')}"
+               if collected.get("error") or collected.get("words") else "")
+            + "); nothing was sent"))
+    marked = egress_classes.classification_marking(network)
+    if marked:
+        return dict(out, error="classified", detail=f"{network} carries the classification "
+                    f"marking {marked!r}, which forces AI off; nothing was sent")
+    gate = egress_classes.topology_allowed(network)
+    if not gate["allowed"]:
+        return dict(out, error="withheld", detail="the collection's flows and port rates are "
+                    f"the topology class, and {gate['why']}; nothing was sent")
+    limits = flow_ops.settings_of(network)
+    if not limits["ok"]:
+        return dict(out, error="limits", detail=f"{limits['error']}; nothing was sent")
+    pol = policy(network)
+    if not pol["ok"]:
+        return dict(out, error="policy", detail=f"{pol['error']}; nothing was sent")
+    req = collection_request(network, collected, network_actions(pol), limits["values"])
+    sent = req["sent"]
+    return dict(out, ok=True, req=req, pol=pol, limits=limits["values"],
+                subject={"kind": "sdn_collection", "id": collected.get("collected_at") or "",
+                         "rule": "", "devices": []},
+                sent={"ids": len(sent["ids"]), "pieces": len(sent["pieces"]) + 1,
+                      "flows_total": req["section"]["total"],
+                      "flows_sent": req["section"]["counts"]["flows"]})
+
+
+def judge_collection(network: str, answer, prepared: dict) -> dict:
+    """The classifier's *answer* about a collection (`prepare_collection`'s *prepared*), as
+    the evaluation reports it: ``{"assessment", "threat_detected", "check"}``, *assessment*
+    the answer's fields as the model gave them, *check* ``{"passed", "why", "params"}`` the
+    same check as a detection's (`check_classification`, against the request's detection, rule
+    none: an action proposed with no rule fired is refused by it). **A threat found on a
+    collection no rule fired on is a false positive to report, never refused away.**"""
+    sent = prepared["req"]["sent"]
+    why, params = check_classification(answer, sent["detection"], sent, prepared["limits"],
+                                       pol=prepared["pol"], network=network)
+    return {"assessment": answer.model_dump(mode="json"),
+            "threat_detected": bool(answer.threat_detected),
+            "check": {"passed": not why, "why": why, "params": params}}
+
+
+def catalogue_for_ai(allowed) -> list:
+    """The response catalogue as the classifier is given it: of the actions *allowed* (the
+    network's response policy for the detection's rule, `policy`), each one's id, what it
+    does, its risk, the rules it answers and the parameters it takes, in the catalogue's
+    order; and ``none``. An action the policy does not allow is never listed (the check
+    refuses it anyway, `check_classification`)."""
     takes = {"drop_source": ["source", "hard_timeout"],
              "rate_limit_source": ["source", "hard_timeout", "rate", "unit", "burst"],
              "remove_flow": ["flow"]}
+    keep = set(allowed or ())
     out = [{"action_id": k, "label": e["label"], "does": e["words"], "risk": e["risk"],
-            "answers": list(e["rules"]), "parameters": takes[k]} for k, e in CATALOGUE.items()]
+            "answers": list(e["rules"]), "parameters": takes[k]} for k, e in CATALOGUE.items()
+           if k in keep]
     out.append({"action_id": NO_ACTION, "label": "No catalogue action",
                 "does": "nothing is proposed; a person decides", "risk": "none",
-                "answers": list(DEFAULT_ACTION), "parameters": []})
+                "answers": list(RULES), "parameters": []})
     return out
 
 
@@ -707,9 +870,161 @@ CATALOGUE = {
                              "where it displaced one"},
 }
 RISKS = ("low", "medium")
-#: The action proposed for each rule when no classifier advises (C1843: none may yet).
+#: The rules a response answers, in the order SDN › Responses draws them.
+RULES = ("scan", "flood", "unauthorised_flow")
+#: Each rule's default action where the network sets no response policy (`DEFAULT_POLICY`'s
+#: first entries): the action proposed when no classifier advises (C1843). What decides an
+#: action is the network's policy (`policy`), never this table.
 DEFAULT_ACTION = {"scan": "drop_source", "flood": "rate_limit_source",
                   "unauthorised_flow": "remove_flow"}
+#: The response policy's setting (`modules/settings_schema.py`): for each rule, the catalogue
+#: actions a response to it may take on the network, the first its default.
+POLICY_KEY = "sdn_response_policy"
+#: The policy where none is set, reproducing every release before it: each rule may take
+#: every catalogue action that answers it, its default first.
+DEFAULT_POLICY = {"scan": ["drop_source", "rate_limit_source"],
+                  "flood": ["rate_limit_source", "drop_source"],
+                  "unauthorised_flow": ["remove_flow"]}
+
+
+class PolicyRefused(ValueError):
+    """A response policy not saved, in words."""
+
+
+def answering(rule: str) -> list:
+    """The catalogue actions that answer *rule*, in the catalogue's order."""
+    return [a for a, e in CATALOGUE.items() if rule in e["rules"]]
+
+
+def policy_problems(value) -> list:
+    """Why *value* is not a response policy, each in words naming the rule, the action and
+    the actions allowed for it (none when it is one): a mapping naming every rule (`RULES`) and
+    nothing else, each a non-empty list of distinct catalogue actions, each answering that
+    rule."""
+    if not isinstance(value, dict):
+        return [f"is {type(value).__name__}, not a mapping of each rule to its actions"]
+    out = []
+    stray = sorted(str(k) for k in value if k not in RULES)
+    if stray:
+        out.append(f"names {', '.join(stray)}, which no detection rule is (the rules are "
+                   f"{', '.join(RULES)})")
+    for rule in RULES:
+        can = answering(rule)
+        got = value.get(rule)
+        if not isinstance(got, list) or not got:
+            out.append(f"gives {rule} no action (one or more of {', '.join(can)} answer it)")
+            continue
+        for a in got:
+            if not isinstance(a, str) or a not in CATALOGUE:
+                out.append(f"gives {rule} {a!r}, which is not in the response catalogue "
+                           f"({', '.join(CATALOGUE)})")
+            elif a not in can:
+                out.append(f"gives {rule} {a}, which answers "
+                           f"{', '.join(CATALOGUE[a]['rules'])}, not {rule} (the actions that "
+                           f"answer {rule}: {', '.join(can)})")
+        twice = sorted({str(a) for a in got if got.count(a) > 1})
+        if twice:
+            out.append(f"names {', '.join(twice)} twice for {rule}")
+    return out
+
+
+def policy(network: str) -> dict:
+    """*network*'s response policy, the one read of it: ``{"ok", "error", "rules"}``, *rules*
+    each rule's ``{"allowed": [...], "default": <the first>}``. Where nothing answers (unset
+    everywhere, as every other SDN setting reads) it is `DEFAULT_POLICY`, the schema's own. A
+    setting that cannot be read, or is not a policy (`policy_problems`), **fails closed**: *ok*
+    False, *rules* empty (no action allowed for any rule) and *error* naming why; it is never
+    read as every action."""
+    from modules import list_settings
+
+    try:
+        got = list_settings.value(network, POLICY_KEY, DEFAULT_POLICY)
+    except Exception as exc:                          # noqa: BLE001 (said, never raised)
+        return {"ok": False, "rules": {},
+                "error": (f"{network}'s {POLICY_KEY} could not be read ({type(exc).__name__}: "
+                          f"{exc}), so no response action is allowed")}
+    problems = policy_problems(got)
+    if problems:
+        return {"ok": False, "rules": {},
+                "error": (f"{network}'s {POLICY_KEY} {'; '.join(problems)}, so no response "
+                          "action is allowed until it is set again (SDN › Responses, the rules)")}
+    return {"ok": True, "error": "",
+            "rules": {r: {"allowed": list(got[r]), "default": got[r][0]} for r in RULES}}
+
+
+def policy_refusal(network: str, rule: str, action: str, pol: dict = None) -> str:
+    """Why *action* may not answer a detection of *rule* on *network* under its response
+    policy (*pol*, read when not given), or "": the one check a classification, a preview and
+    a confirm make (`check_classification`, `build_response`, `respond_to_threat`), naming the
+    action, the rule, the network and the actions it allows."""
+    pol = policy(network) if pol is None else pol
+    if not pol.get("ok"):
+        return pol.get("error") or f"{network}'s response policy could not be read"
+    allowed = (pol["rules"].get(rule) or {}).get("allowed") or []
+    if action not in allowed:
+        return (f"{action} is outside {network}'s response policy for {rule}, which allows "
+                f"{', '.join(allowed) or 'no action'}")
+    return ""
+
+
+def _policy_lock():
+    import os
+
+    from modules import config
+    from modules.filestore import PathLock
+
+    return PathLock(lambda: os.path.join(config.DATA_DIR, "sdn_response_policy"))
+
+
+def policy_words(allowed: dict) -> str:
+    """A policy's lists in words: ``scan: rate_limit_source (default); flood: …``."""
+    return "; ".join(f"{r}: " + ", ".join(
+        f"{a} (default)" if i == 0 else a for i, a in enumerate(allowed.get(r) or []))
+        for r in RULES)
+
+
+def save_policy(network: str, value: dict, *, actor: str, actor_verified: str = "",
+                loaded=None) -> dict:
+    """Set *network*'s response policy to *value* (each rule's actions, the default first) as
+    *actor*, a verified person, recorded in the network's settings record with the policy
+    before and after. *loaded* is the policy as the form that sent it drew it (each rule's
+    list), or ``"unreadable"`` when it drew one that could not be read; with it, a save is
+    refused when the stored policy moved since (CONCURRENCY_AUDIT R17's rule), naming both.
+    Raises `PolicyRefused` naming why; ``{"ok", "network", "before", "after", "unchanged",
+    "recorded"}``."""
+    from modules import list_settings as L
+
+    if not actor or actor_verified in ("", "none"):
+        raise PolicyRefused("the response policy is set by a verified person")
+    problems = policy_problems(value)
+    if problems:
+        raise PolicyRefused(f"the policy {'; '.join(problems)}")
+    after = {r: list(value[r]) for r in RULES}
+    with _policy_lock():
+        now = policy(network)
+        before = {r: now["rules"][r]["allowed"] for r in RULES} if now["ok"] else None
+        if loaded is not None:
+            drawn = loaded if loaded == "unreadable" else {r: list((loaded or {}).get(r) or [])
+                                                           for r in RULES}
+            held = before if before is not None else "unreadable"
+            if drawn != held:
+                raise PolicyRefused(
+                    f"{network}'s response policy moved since the page drew it (drawn: "
+                    f"{drawn if drawn == 'unreadable' else policy_words(drawn)}; now: "
+                    f"{policy_words(before) if before else 'unreadable, ' + now['error']}): "
+                    "nothing was saved; look at it again")
+        if before == after:
+            return {"ok": True, "network": network, "before": before, "after": after,
+                    "unchanged": True, "recorded": False}
+        got = L.write(network, {POLICY_KEY: after}, actor=actor)
+        if not got.get("ok"):
+            raise PolicyRefused(got.get("error") or "the setting could not be written")
+    entry = L._record(network, {"kind": "sdn_response_policy", "group": POLICY_KEY,
+                                "written": [POLICY_KEY], "before": before, "after": after,
+                                "actor": actor, "actor_verified": actor_verified})
+    log.info("sdn: %s set %s's response policy (%s)", actor, network, policy_words(after))
+    return {"ok": True, "network": network, "before": before, "after": after,
+            "unchanged": False, "recorded": entry.get("recorded", False)}
 #: The rate-limit's defaults: NOT measured, a starting point the person changes in the preview.
 RATE_LIMIT_DEFAULT = {"unit": "kbps", "rate": 1000, "burst": 100}
 RATE_UNITS = {"kbps": "KBPS", "pktps": "PKTPS"}
@@ -809,13 +1124,17 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
     out = {"ok": False, "error": "", "action": action_id, "risk": "", "ask": None,
            "params": dict(params or {})}
     try:
-        if not isinstance(detection, dict) or detection.get("rule") not in DEFAULT_ACTION:
+        if not isinstance(detection, dict) or detection.get("rule") not in RULES:
             raise ResponseRefused("a response answers one detection of the scan, flood or "
                                   "unauthorised-flow rule")
         if detection.get("network") not in (None, "", network):
             raise ResponseRefused(f"the detection is {detection.get('network')!r}'s, not "
                                   f"{network!r}'s")
-        action_id = action_id or DEFAULT_ACTION[detection["rule"]]
+        pol = policy(network)
+        if not action_id:
+            if not pol["ok"]:
+                raise ResponseRefused(pol["error"])
+            action_id = pol["rules"][detection["rule"]]["default"]
         entry = CATALOGUE.get(action_id)
         if entry is None:
             raise ResponseRefused(f"{action_id!r} is not in the response catalogue "
@@ -823,6 +1142,9 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
         if detection["rule"] not in entry["rules"]:
             raise ResponseRefused(f"{action_id} answers {', '.join(entry['rules'])}, not "
                                   f"{detection['rule']}")
+        refusal = policy_refusal(network, detection["rule"], action_id, pol)
+        if refusal:
+            raise ResponseRefused(refusal)
         out.update(action=action_id, risk=entry["risk"])
         conn, dpid = detection.get("connection") or "", parse_dpid(detection.get("dpid"))
         made = flow_ops._driver(network, conn, driver)
@@ -915,7 +1237,7 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
                                               "actions", "idle_timeout", "hard_timeout")}})
             out["params"].update(flow=ref, cookie=flow_intent.cookie_hex(found.get("cookie")))
         out["ask"] = {"connection": conn, "dpid": dpid, "changes": changes,
-                      "response": action_id != "remove_flow",
+                      "response": action_id != "remove_flow", "action": action_id,
                       "detection": {k: detection.get(k) for k in
                                     ("key", "rule", "title", "dpid_hex", "source", "words",
                                      "at")}}
@@ -952,12 +1274,153 @@ def respond_to_threat(network: str, detection: dict, action_id: str = None,
     ask = (confirm or {}).get("ask")
     if not isinstance(ask, dict):
         return {"ok": False, "error": "a confirm carries the previewed ask", "outcome": "refused"}
+    # The action is the one the preview built (`build_response` binds it into the ask), held
+    # against the network's policy again at the confirm: a policy changed since the preview,
+    # or an action named apart from its preview, sends nothing.
+    previewed = ask.get("action") or ""
+    if not previewed:
+        return {"ok": False, "outcome": "refused", "error": (
+            "the confirm's preview names no action (one made before this release): nothing "
+            "was sent; preview again")}
+    if action_id and action_id != previewed:
+        return {"ok": False, "outcome": "refused", "error": (
+            f"the confirm names {action_id} and its preview {previewed}: nothing was sent; "
+            "preview again")}
+    action_id = previewed
+    refusal = policy_refusal(network, (ask.get("detection") or {}).get("rule") or "", action_id)
+    if refusal:
+        return {"ok": False, "outcome": "refused", "error": f"{refusal}: nothing was sent"}
     response = {"kind": "response", "action": action_id, "risk": CATALOGUE.get(
         action_id or "", {}).get("risk", ""), "detection": ask.get("detection") or {},
         "classified_by": classified_by or DEFAULT_WORDS}
     return flow_ops.apply(network, ask, (confirm or {}).get("hash", ""), actor=actor,
                           actor_verified=actor_verified, mode=mode, autonomous=autonomous,
                           response=response, driver=driver, **apply_kwargs)
+
+
+#: The meter's unit as a response's log line says it, from its flags.
+METER_UNITS = {"KBPS": "kbps", "PKTPS": "pktps"}
+
+
+def _switch_name(network: str, connection: str, dpid) -> str:
+    """The name switch *dpid* reports (its OpenFlow description, as the SDN reader last kept
+    it), or "" when Mercury knows none: never guessed."""
+    from modules.sdn import topology
+    from modules.sdn.drivers.base import parse_dpid
+
+    try:
+        want = parse_dpid(dpid)
+        for c in topology.stored(network).get("controllers") or []:
+            if not connection or c.get("name") == connection:
+                name = (c.get("names") or {}).get(want)
+                if name:
+                    return str(name)
+    except Exception:                                 # noqa: BLE001 (no name: said as none)
+        return ""
+    return ""
+
+
+def entry_words(flow: dict) -> str:
+    """A flow entry as read back, every field a response's log line names: its match,
+    actions, priority, idle and hard timeouts and cookie (and its table when not 0)."""
+    from modules.sdn import flow_ops
+    from modules.sdn.flow_intent import action_words, cookie_hex
+
+    return (f"match {flow_ops.match_words(flow.get('match'))}; actions "
+            f"{action_words(flow.get('actions'))}; priority {flow.get('priority', 0)}; "
+            f"idle timeout {flow.get('idle_timeout') or 0} s; hard timeout "
+            f"{flow.get('hard_timeout') or 0} s; cookie {cookie_hex(flow.get('cookie') or 0)}"
+            + (f"; table {flow['table_id']}" if flow.get("table_id") else ""))
+
+
+def meter_words(meter: dict) -> str:
+    """A meter as read back: its id, and each band's type, rate, unit and burst."""
+    flags = [str(f).upper() for f in meter.get("flags") or []]
+    unit = next((METER_UNITS[f] for f in flags if f in METER_UNITS), "unit not reported")
+    bands = "; ".join(f"band {str(b.get('type') or '?').lower()}, rate {b.get('rate')} {unit}, "
+                      f"burst {b.get('burst_size') or 0}" for b in meter.get("bands") or [])
+    return f"meter {meter.get('meter_id')}: {bands or 'no band reported'}"
+
+
+def response_words(done: dict, *, action: str, who: str, switch: str) -> str:
+    """A response's line in the loop's log, from its operation *done* (`respond_to_threat`'s
+    apply): who applied *action* on *switch*, the operation's id and outcome, and the
+    resulting entries as READ BACK by its Verify (`flow_ops.read_back`): each flow's match,
+    actions, priority, timeouts and cookie, a meter's band, a removed flow gone. An entry
+    Verify did not read back is said so, never drawn from the request sent."""
+    from modules.sdn import flow_ops
+    from modules.sdn.flow_intent import cookie_hex
+
+    outcome = done.get("outcome") or "refused"
+    why = done.get("error") or "no reason given"
+    if outcome == "refused":
+        return f"{who}'s {action} on switch {switch} was refused: nothing was sent ({why})"
+    head = f"{who} applied {action} on switch {switch}, operation {done.get('id') or 'none'}"
+    if outcome == "rolled_back":
+        return f"{head}: rolled back ({why}); nothing of it is in force"
+    if outcome != "verified":
+        return f"{head}: {outcome.replace('_', ' ')} ({why}); look at the switch now"
+    said = []
+    for r in (done.get("verify") or {}).get("read_back") or []:
+        if r["role"] in ("add_flow", "edit_flow"):
+            what = "reinstalled flow" if r.get("reinstall") else "flow"
+            if r.get("flow"):
+                said.append(f"{what} {entry_words(r['flow'])}")
+            else:
+                said.append(f"{what} cookie {cookie_hex(r.get('cookie') or 0)}: Verify did not "
+                            "read it back" + ("" if r.get("read") else
+                                              " (the table could not be read)"))
+        elif r["role"] == "remove_flow":
+            gone = ("gone from the table as read back" if r.get("gone") else
+                    "Verify did not read the table" if not r.get("read") else
+                    "still in the table as read back")
+            named = r.get("removed") or {}
+            said.append(f"removed flow match {flow_ops.match_words(named.get('match'))}; "
+                        f"priority {named.get('priority', 0)}; cookie "
+                        f"{cookie_hex(named.get('cookie') or 0)}"
+                        + (f"; table {named['table_id']}" if named.get("table_id") else "")
+                        + f": {gone}")
+        elif r["role"] == "add_meter":
+            said.append(meter_words(r["meter"]) if r.get("meter") else
+                        f"meter {r.get('meter_id')}: Verify did not read it back")
+    if not said:
+        said = ["Verify read nothing back for it"]
+    return f"{head}: verified; as read back: " + " | ".join(said)
+
+
+def log_response(network: str, done: dict, *, action: str, who: str, ask: dict = None,
+                 now: float = None, response_id: str = "") -> dict:
+    """Write a response's line to the loop's log (`loop.say`, step ``respond``): the one
+    writer, for AUTO's apply in a pass and a person's confirm on SDN › Responses
+    (`response_words` says what it holds). Never raises: a line that could not be written is
+    said in the answer (``logged`` False, ``error``), so a response that was applied is never
+    reported as failed by its log."""
+    from modules.sdn import loop
+    from modules.sdn.drivers.base import dpid_hex, parse_dpid
+
+    ask = ask or {}
+    plan = done.get("plan") or {}
+    conn = plan.get("connection") or ask.get("connection") or ""
+    dpid = plan.get("dpid") if plan.get("dpid") is not None else ask.get("dpid")
+    try:
+        switch = dpid_hex(parse_dpid(dpid))
+    except Exception:                                 # noqa: BLE001 (said as given)
+        switch = str(dpid or "unknown")
+    name = _switch_name(network, conn, dpid) if dpid is not None else ""
+    shown = f"{switch} ({name})" if name else switch
+    words = response_words(done, action=action, who=who, switch=shown)
+    extra = {"operation": done.get("id") or "", "action": action, "actor": who,
+             "dpid": switch, "outcome": done.get("outcome") or "refused",
+             "read_back": (done.get("verify") or {}).get("read_back") or []}
+    if response_id:
+        extra["response"] = response_id
+    try:
+        return dict(loop.say(network, "respond", words, now, **extra), logged=True)
+    except Exception as exc:                          # noqa: BLE001 (said in the answer)
+        log.error("sdn respond: the response's log line on %s could not be written (%s)",
+                  network, type(exc).__name__)
+        return {"step": "respond", "words": words, "logged": False,
+                "error": f"{type(exc).__name__}: {exc}"}
 
 
 def classified_words(classification: dict, action: str) -> str:

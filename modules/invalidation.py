@@ -413,6 +413,7 @@ DECLARED = {
     "sdn_v2.response_confirm": ("sdn",),
     "sdn_v2.response_dismiss": ("sdn",),
     "sdn_v2.mode_set": ("sdn",),
+    "sdn_v2.policy_set": ("settings", "sdn"),
     "sdn_v2.loop_set": ("sdn",),
     # PHASE8_PLAN 17.1 S7: a person's Classify is one recorded AI call, and its answer is kept
     # with the response awaiting them (its proposed action can change).

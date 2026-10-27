@@ -153,7 +153,18 @@ What to act on first: **N awaiting approval**, the mode and whether the loop is 
   network (off by default; the screen that turns it on, Settings › AI, is not built yet), and
   otherwise the log says why none was made and the catalogue's default is proposed; its log
   lists each pass's steps, newest first; **Stop** ends it after its current pass,
-  and the card says who stopped it and when.
+  and the card says who stopped it and when. What the log says:
+  - a pass that finds nothing new says which of these it is: **network healthy: no threat
+    detected** only when the collection read every switch whole and no detection is active;
+    **no new threat; N still active**, naming each detection still firing; or that the
+    collection was partial, or read no switch, which is never called healthy;
+  - **a response** (AUTO's, or yours when you send it) says who applied which action on which
+    switch (its DPID, and the name it reports when Mercury knows one), the operation's id, and
+    the resulting entries **as Verify read them back from the switch**: each flow's match,
+    actions, priority, idle and hard timeouts and cookie; a rate limit's meter, its band, rate,
+    unit and burst; a removed flow gone, and Mercury's flow put back. An entry Verify did not
+    read back is said so, never shown from the request; a response rolled back or refused says
+    that and why.
 - **The loop's log** shows one run whole, from its start, in a box that scrolls: every pass's
   steps, newest first. **Run** chooses an earlier run, each named by its job id (the network and
   the time it started) and its start time in UTC, with its line count. **Download log** saves
@@ -161,10 +172,33 @@ What to act on first: **N awaiting approval**, the mode and whether the loop is 
   run, in a file named for the run's job id (for example, a lab's evidence of a 3-minute run). A
   run longer than 2,000 lines is drawn to its newest 2,000, and the box says how many of how
   many; the download has every line.
-- **Detection rules**: each rule's threshold on this network, and the response timeouts: every
-  response flow expires at its hard timeout.
+- **Detection rules**: each rule's threshold on this network, the responses each rule may take
+  (its default first), and the response timeouts: every response flow expires at its hard
+  timeout. The responses are set under the table ([Response policy](#response-policy)).
 
 Verify checks installation and counters; testing traffic between the hosts is yours.
+
+## Response policy {#response-policy}
+
+Under the detection rules, **Response policy** says, for each rule, which catalogue actions a
+response to it may take on this network, and which is its default (the one proposed when a
+detection fires). Where it comes from is beside its name: set on this network, inherited from
+Default, or the default (every action that answers the rule: a scan's default a drop, a
+flood's a rate-limit, an unauthorised flow's its removal).
+
+- **Each rule**: its **default** (a list of the actions that answer it) and a tick for each
+  other action allowed. The default is always allowed.
+- **Save the response policy** checks each action answers its rule and saves it as you,
+  recorded in the network's settings record with the policy before and after; the rules redraw
+  with it. It is refused, beside the button, naming why: an action that does not answer its
+  rule, or the policy changed by someone else since the page drew it (look again).
+- **What it changes**: the loop proposes the rule's default; Classify sends the model only the
+  actions this network allows for the rule, and an answer naming another is refused (the
+  card says "AI classification refused: … outside the network's response policy …") and the
+  default awaits you, even in AUTO; a preview or a confirm of an action outside it is refused,
+  naming the action, the rule and what is allowed.
+- **A policy that cannot be read** is said in red under the table: no response action is
+  allowed and nothing is sent to AI until it is set again here.
 
 ## At phone width {#phone}
 

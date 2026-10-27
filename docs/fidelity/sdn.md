@@ -25,7 +25,7 @@ reader 12 minutes apart. The board's four switches, 61 flows and ONOS second con
 board data; the capture has one switch, and an ONOS connection cannot be saved (its driver is
 not built), so the second controller is a Ryu one that does not answer.
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html
-Templates sha256: `96f71034114284c6c2d6f905aa0c53c5639cb35037b8030857b961632950a43d`
+Templates sha256: `d84b5777d10eeb85043c4a1015a1d3ab12508562869163cd61e77c8defb76a2f`
 
 **Hashed again 2026-10-27 for PHASE8_PLAN 17.1 S7** (the AI's classification and Classify on an
 awaiting response, `_sdn_responses.html`): the two regions below compared by reading the
@@ -40,6 +40,13 @@ region list, with no new shot; both are additions the board does not draw, each 
 **Compared again 2026-10-27 ~18:0x UTC for C1971** (the loop's log, `_sdn_log.html`, added to
 the templates compared, and its include in `_sdn_responses.html`): the loop's region read
 against SdnResponses' log, with no new shot; its scroll, Run and Download log are a deviation.
+
+**Hashed again 2026-10-27 ~19:1x UTC for the Lab 8 walk's objective 3.1** (the response policy:
+each rule's allowed responses drawn in the rules table and set under it; a response proposed
+with no action when the policy could not be read; `_sdn_responses.html`): the two regions below
+compared by reading the template against SdnResponses' region list, with no new shot; both are
+additions the board does not draw, each a deviation. The loop's log region is unchanged here
+(its lines' words changed, not its markup).
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).
@@ -83,6 +90,8 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | The loop | its state chip, "every 10 s · detect, classify, respond", Stop, the log | the same; stopped, "every N s" and Start | **same** |
 | The loop's log | the latest lines, newest first, each line's time, step and words | one run whole (from its start line), newest first, in a box that scrolls; above it **Run** (each run by its job id, start time in UTC and line count) and **Download log** (the run as text); a line naming the lines drawn of the run's and its first and last times; past 2,000 lines the newest 2,000, said (C1971) | **deviation** (log: SDN C1971: the loop's log scrolls over the whole run, with Run and Download log) |
 | Detection rules | the table with each threshold editable, Save thresholds…, the timeout line | the same table read-only, and the timeout line with the ceiling; no Save thresholds… | **later** S8's thresholds edited on this tab (until then written by `list_settings.write`) |
+| Response policy (objective 3.1) | not drawn: the board's response takes the catalogue's action for its rule | a "Responses allowed" column in the rules table (each rule's allowed actions, its default marked), and under it **Response policy**: where it comes from, per rule a default select and a tick per other action that answers the rule, **Save the response policy** with its (i), refusals said beside it; a red notice when the policy cannot be read | **deviation** (log: SDN 3.1: each rule's allowed responses on the rules card) |
+| A response with no action proposed (objective 3.1) | not drawn | "No action is proposed: the network's response policy could not be read when this was detected", in place of the Proposed line | **deviation** (log: SDN 3.1: a response proposed with no action when the policy is unreadable) |
 | Needs attention | "a row on Needs attention until it is confirmed, dismissed …" | not said: that row is a later S11 step | **later** S11's Needs attention rows (a response awaiting approval) |
 | The response's preview and result (SdnResponse) | the card in place: what it does, exactly these requests, what will not happen, Verify, checks, bound hash, Send N requests | drawn in place by a click: what it does, the detection and its checked parameters, exactly these requests, what will not happen, the warnings, Verify (its limit said), the bound hash, Send N requests; the result: outcome, what was sent, Verify, counters, rollback, the record | **later** a click-driven shot (the harness shoots pages) |
 | The flow editor (SdnFlowEdit) | the form, the prerequisite refusal, the preview, Edit's and Remove's words, Explain this flow table (AI) | the form, the refusal naming the field, the preview card; Edit's and Remove's words; no Explain (S19, after cost safety) | **later** a click-driven shot; Explain is S19 |

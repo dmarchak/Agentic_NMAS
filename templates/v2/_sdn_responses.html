@@ -32,7 +32,11 @@
   {%- else %}
   <p class="small faint">{{ r.classified }}.{% if r.refused_call %} <a href="{{ url_for('v2.history_page', call=r.refused_call) }}" title="The prompt as sent and the answer the check refused">The refused answer in History</a>.{% endif %}</p>
   {%- endif %}
+  {%- if r.action %}
   <p class="small"><strong>Proposed:</strong> {{ r.label }} (catalogue action <span class="mono">{{ r.action }}</span>, risk {{ r.risk }}): {{ r.action_words }}.</p>
+  {%- else %}
+  <p class="small notice notice-warn"><strong>No action is proposed:</strong> the network's response policy could not be read when this was detected. Set it in the rules below, then preview the rule's default.</p>
+  {%- endif %}
   <div class="sdn-acts">
     <form class="op-act" hx-post="{{ url_for('sdn_v2.response_classify', rid=r.id) }}" hx-target="#sdn" hx-swap="outerHTML" hx-disabled-elt="find button">
       <input type="hidden" name="list" value="{{ g.network }}">
@@ -101,17 +105,40 @@
 
 <section class="card sdn-rules" aria-labelledby="sdn-rules-h">
   <div class="sdn-ctl-hd"><h2 id="sdn-rules-h">Detection rules</h2><span class="faint small">thresholds for this network · in code, never AI</span></div>
+  {%- set p = g.policy %}
+  {%- macro allowed(row, ok) -%}
+  {%- if ok %}{% for a in row.allowed %}<span class="mono">{{ a }}</span>{% if loop.first %} <span class="faint">(default)</span>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}<span class="faint">none: the policy cannot be read</span>{% endif %}
+  {%- endmacro %}
   {%- if g.thresholds.ok %}{% set v = g.thresholds['values'] %}
   <div class="table-wrap"><table class="table">
-    <thead><tr><th scope="col">Rule</th><th scope="col">Fires when</th><th scope="col">Threshold</th><th scope="col">Needs</th></tr></thead>
+    <thead><tr><th scope="col">Rule</th><th scope="col">Fires when</th><th scope="col">Threshold</th><th scope="col">Needs</th><th scope="col">Responses allowed</th></tr></thead>
     <tbody>
-      <tr><td>Scan</td><td>distinct destination ports per source over the window</td><td>{{ v.sdn_scan_ports }} ports in {{ v.sdn_scan_window_seconds }} s</td><td>L4 flows; on L2-only flows, a packet-rate fallback ({{ v.sdn_scan_fallback_pps }} pps) marked lower confidence</td></tr>
-      <tr><td>Flood</td><td>a port's packet rate against its baseline</td><td>{{ v.sdn_flood_factor }} × baseline for {{ v.sdn_flood_window_seconds }} s</td><td>two port-stat samples a stated interval apart</td></tr>
-      <tr><td>Unauthorised flow</td><td>a cookie neither Mercury's nor the controller's own</td><td>any</td><td>flow tables</td></tr>
+      <tr><td>Scan</td><td>distinct destination ports per source over the window</td><td>{{ v.sdn_scan_ports }} ports in {{ v.sdn_scan_window_seconds }} s</td><td>L4 flows; on L2-only flows, a packet-rate fallback ({{ v.sdn_scan_fallback_pps }} pps) marked lower confidence</td><td>{{ allowed(p.by_rule.scan, p.ok) }}</td></tr>
+      <tr><td>Flood</td><td>a port's packet rate against its baseline</td><td>{{ v.sdn_flood_factor }} × baseline for {{ v.sdn_flood_window_seconds }} s</td><td>two port-stat samples a stated interval apart</td><td>{{ allowed(p.by_rule.flood, p.ok) }}</td></tr>
+      <tr><td>Unauthorised flow</td><td>a cookie neither Mercury's nor the controller's own</td><td>any</td><td>flow tables</td><td>{{ allowed(p.by_rule.unauthorised_flow, p.ok) }}</td></tr>
     </tbody>
   </table></div>
   {%- else %}
   <p class="small">The thresholds cannot be read: {{ g.thresholds.error }}.</p>
   {%- endif %}
+  {%- if not p.ok %}
+  <div class="notice notice-danger" role="alert"><p>The response policy cannot be read: {{ p.error }}. Until it is set again no response action is allowed, and nothing is sent to AI.</p></div>
+  {%- endif %}
+  <form class="sdn-policy" hx-post="{{ url_for('sdn_v2.policy_set') }}" hx-target="#sdn-policy-ans" hx-swap="innerHTML" hx-disabled-elt="find button" aria-labelledby="sdn-policy-h">
+    <input type="hidden" name="list" value="{{ g.network }}">
+    <input type="hidden" name="loaded" value="{{ p.loaded }}">
+    <p class="small" id="sdn-policy-h"><strong>Response policy</strong> <span class="faint">· {{ p.origin }} · which catalogue actions a response to each rule may take, the default proposed first; AI is offered only these, and an answer naming another is refused</span></p>
+    {%- for row in p.rows %}
+    <fieldset class="sdn-policy-rule">
+      <legend class="small">{{ row.label }}</legend>
+      <label class="small">default <select name="{{ row.rule }}_default">{% for a in row.answers %}<option value="{{ a.id }}"{% if a.id == row.default %} selected{% endif %}>{{ a.id }}</option>{% endfor %}</select></label>
+      {%- for a in row.answers %}
+      <label class="small" title="{{ a.label }} (risk {{ a.risk }})"><input type="checkbox" name="{{ row.rule }}_allowed" value="{{ a.id }}"{% if a.id in row.allowed %} checked{% endif %}> <span class="mono">{{ a.id }}</span></label>
+      {%- endfor %}
+    </fieldset>
+    {%- endfor %}
+    <span class="op-act"><button class="btn" type="submit" hx-disabled-elt="this" data-op="sdn"{{ gate('configure') }}><span class="op-idle">Save the response policy</span><span class="op-busy">Saving…</span></button>{{ how('sdn', 'response-policy', compact=True, op='Save the response policy') }}</span>
+    <span class="sdn-answer" id="sdn-policy-ans" role="status"></span>
+  </form>
   <p class="small faint">{% if g.limits.ok %}Every response flow expires at its hard timeout: {{ g.limits['values'].sdn_response_hard_timeout_seconds }} s on this network, at most {{ g.limits['values'].sdn_response_max_seconds }} s; a response's meter is removed once its flows have expired.{% else %}The response timeouts cannot be read: {{ g.limits.error }}.{% endif %}</p>
 </section>

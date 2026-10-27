@@ -1,0 +1,239 @@
+#!/usr/bin/env python3
+"""Classify one live collection of normal traffic, no rule fired, several times (the Lab 8
+walk's objective 2.3, false positives): `classify_collection` (here: the gates and request of
+`closed_loop.prepare_collection`, one gateway call, `closed_loop.judge_collection`) on ONE
+collection read now from the network's controllers, asked N times, each assessment printed
+whole. The call is made here, never from Mercury's modules: an AI call from the product's code
+starts only from a gated POST, and this is an operator's evaluation run on the host.
+
+    # on the host, the deployed copy run as a file (it adopts the app's interpreter): what
+    # would be sent, by part, with no call
+    nmas-host nmas -- <checkout>/scripts/nmas-sdn-classify-normal --list <network> --dry-run
+    # and classified through the gateway, five runs of the same collection
+    nmas-host nmas -- <checkout>/scripts/nmas-sdn-classify-normal --list <network> \\
+        --runs 5 --out /tmp/sdn-normal.json
+
+**One collection, read-only** (`closed_loop.collect_threat_data`): each switch's flows, and its
+port counters twice `--interval` seconds apart (5 by default, 1 to 60), as the loop reads them.
+Nothing is written to a switch; the detection rules are not run, and nothing is kept as a
+detection, an alert or a response. A collection that read no switch is said and nothing is
+asked (2).
+
+**Asked as an evaluation, never a person** (C1784, C1846): the actor is ``evaluation:<run>``
+(none given is ``evaluation:sdn-classify-normal-<UTC time>``; an address or anything else is
+refused before anything is read), so its spend counts against the caps under its run, and the
+gateway's cost safety applies to every call. The same gates as a detection's classification
+(the classification marking, the topology class, the response limits and policy); a refusal
+that is Mercury's or the provider's (hosted AI off, a cap) stops the run with nothing more
+spent (3).
+
+Per run it prints the assessment as the model gave it (threat_detected, threat_type, severity,
+affected_devices, recommended_action, reasoning, action_id, parameters, evidence_refs), the
+code's check of it, the call's id, cost and seconds; then ``N of R said no threat (false
+positives: M)``. A threat found on normal traffic is a false positive to report, never refused
+away. `--out` (not inside the checkout) keeps the collection, the request's counts and every
+run.
+
+**`--dry-run`**: the collection read, and what would be sent by part (the pieces by kind, their
+characters, the ids, the names, the catalogue), with no call and nothing recorded.
+"""
+import argparse
+import json
+import os
+import sys
+import time
+
+sys.dont_write_bytecode = True
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+#: Refusals that are Mercury's or the provider's: the run stops, nothing more spent.
+STOPS = ("ai_off", "no_key", "over_cap", "unknown_task", "unknown_model", "provider_error",
+         "rate_limited", "overloaded", "key_refused", "bad_request", "provider_down",
+         "trigger", "withheld", "classified", "limits", "policy", "feature_off", "prompt",
+         "schema", "collection", "no_collection")
+
+
+def collect(network: str, interval: float) -> dict:
+    """One collection of *network*, read-only (`closed_loop.collect_threat_data`)."""
+    from modules.sdn import closed_loop
+
+    return closed_loop.collect_threat_data(network, interval)
+
+
+def classify_collection(network: str, collected: dict, *, actor: str, trigger: dict,
+                        send=None) -> dict:
+    """Ask the classifier, once, about *collected* (a collection no rule fired on): the gates
+    and the request (`closed_loop.prepare_collection`, as a detection's classification has
+    them), one call through the AI gateway as *actor* with *trigger* (an evaluation's) with
+    the same schema, and the answer judged (`closed_loop.judge_collection`) and its use
+    recorded. *send* replaces the provider (tests). ``{"ok", "error", "detail", "call_id",
+    "cost_usd", "assessment", "threat_detected", "check", "sent"}``; a threat found is a false
+    positive to report, never refused away."""
+    from modules.ai import calls, gateway
+    from modules.sdn import closed_loop
+
+    prep = closed_loop.prepare_collection(network, collected)
+    out = {"ok": False, "error": prep["error"], "detail": prep["detail"], "call_id": "",
+           "cost_usd": 0.0, "assessment": None, "threat_detected": None, "check": None,
+           "sent": prep["sent"]}
+    if not prep["ok"]:
+        return out
+    got = gateway.ask(closed_loop.CLASSIFY_FEATURE, tuple(closed_loop.COLLECTION_PROMPT),
+                      closed_loop.ThreatAssessment, prep["req"]["data"], actor=actor,
+                      trigger=trigger, context=prep["req"]["context"], send=send,
+                      subject=prep["subject"], network=network)
+    out.update(call_id=got.get("call_id", ""), cost_usd=got.get("cost_usd", 0.0))
+    if not got["ok"]:
+        return dict(out, error=got["error"], detail=got.get("detail", ""))
+    judged = closed_loop.judge_collection(network, got["output"], prep)
+    calls.record_use(got["call_id"], "assessed a collection no rule fired on: "
+                     + ("a threat (a false positive to report)" if judged["threat_detected"]
+                        else "no threat"),
+                     actor=actor, detail=judged["check"]["why"] or "the check passed",
+                     links={"page": "/v2/sdn/responses"})
+    return dict(out, ok=True, error="", detail="", **judged)
+
+
+def what_is_sent(network: str, collected: dict) -> dict:
+    """What `classify_collection` would send for *collected*, by part, in characters (no
+    call): the pieces by kind, the ids, the names, the flows sent of all read, the catalogue
+    the network's response policy allows; or the gate that would refuse it, nothing sent."""
+    from modules.sdn import closed_loop
+
+    prep = closed_loop.prepare_collection(network, collected)
+    if not prep["ok"]:
+        return {"refused": prep["error"], "why": prep["detail"]}
+    req = prep["req"]
+    sent = req["sent"]
+
+    def size(x):
+        return len(json.dumps(x, sort_keys=True, separators=(",", ":")))
+
+    kinds = {}
+    for p in sent["pieces"]:
+        k = kinds.setdefault(p.get("kind") or "piece", {"pieces": 0, "chars": 0})
+        k["pieces"] += 1
+        k["chars"] += size(p)
+    return {"detection_chars": size(sent["detection"]), "pieces": kinds,
+            "names": sent["names"], "ids": len(sent["ids"]),
+            "flows_read": req["section"]["total"], "flows_sent": req["section"]["counts"]["flows"],
+            "data_chars": sum(len(v) for v in req["data"].values()),
+            "catalogue_chars": len(req["context"]["catalogue"]),
+            "catalogue_actions": closed_loop.network_actions(prep["pol"])}
+
+
+def summary_words(runs: list) -> str:
+    """``N of R said no threat (false positives: M)``, and what did not answer."""
+    answered = [r for r in runs if r.get("ok")]
+    none = sum(1 for r in answered if not r.get("threat_detected"))
+    found = sum(1 for r in answered if r.get("threat_detected"))
+    out = f"{none} of {len(runs)} said no threat (false positives: {found})"
+    failed = [r for r in runs if not r.get("ok")]
+    if failed:
+        out += f"; {len(failed)} not answered ({', '.join(sorted({r['error'] for r in failed}))})"
+    return out
+
+
+def classify_normal(network: str, collected: dict, actor: str, runs: int, out: str) -> int:
+    """Classify *collected* *runs* times as *actor* (an evaluation), printing each run and the
+    summary, and keep everything in *out*."""
+    from modules.ai import triggers
+    from modules.sdn import closed_loop
+
+    done, spent, status = [], 0.0, 0
+    for run in range(1, runs + 1):
+        t0 = time.monotonic()
+        got = classify_collection(network, collected, actor=actor,
+                                  trigger=triggers.evaluation(actor))
+        took = time.monotonic() - t0
+        spent += float(got.get("cost_usd") or 0)
+        rec = {"run": run, "ok": bool(got.get("ok")), "error": got.get("error") or "",
+               "detail": got.get("detail") or "", "assessment": got.get("assessment"),
+               "threat_detected": got.get("threat_detected"), "check": got.get("check"),
+               "call_id": got.get("call_id", ""), "cost_usd": float(got.get("cost_usd") or 0),
+               "seconds": round(took, 2), "sent": got.get("sent")}
+        done.append(rec)
+        print(f"── run {run} of {runs}: call {rec['call_id'] or 'none'}, "
+              f"${rec['cost_usd']:.4f}, {took:.1f} s", flush=True)
+        if got.get("ok"):
+            print(json.dumps(rec["assessment"], indent=2, sort_keys=False), flush=True)
+            c = rec["check"] or {}
+            print("check: " + ("passed" if c.get("passed") else f"refused: {c.get('why')}")
+                  + (" · a FALSE POSITIVE: a threat on normal traffic"
+                     if rec["threat_detected"] else " · no threat"), flush=True)
+        else:
+            print(f"not answered ({rec['error']}): {rec['detail']}", flush=True)
+            if rec["error"] in STOPS:
+                print(f"nmas-sdn-classify-normal: refused by Mercury or the provider "
+                      f"({rec['error']}); stopped, ${spent:.4f} spent", file=sys.stderr)
+                status = 3
+                break
+    words = summary_words(done)
+    with open(out, "w", encoding="utf-8") as fh:
+        json.dump({"network": network, "actor": actor, "runs": runs,
+                   "prompt": "{}.v{}".format(*closed_loop.COLLECTION_PROMPT),
+                   "spent_usd": round(spent, 6), "summary": words,
+                   "collection": collected, "recordings": done}, fh, indent=2)
+    print(f"{words}; ${spent:.4f} spent; written {out}")
+    return status
+
+
+def main(argv=None, collector=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
+    ap.add_argument("--checkout", default="")
+    ap.add_argument("--list", required=True, help="the network, either spelling")
+    ap.add_argument("--runs", type=int, default=5, help="how many times to ask (1 to 20)")
+    ap.add_argument("--interval", type=float, default=5.0,
+                    help="seconds between the collection's two port reads (1 to 60)")
+    ap.add_argument("--actor", default="")
+    ap.add_argument("--out", default="")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="say what would be sent; no call")
+    args = ap.parse_args(argv)
+    checkout = os.path.abspath(os.path.expanduser(args.checkout)) if args.checkout else ROOT
+    sys.path.insert(0, checkout)
+    os.chdir(checkout)
+    from modules.ai import cases
+    network, refusal = cases.run_network(args.list)
+    if refusal:
+        print(f"nmas-sdn-classify-normal: {refusal}", file=sys.stderr)
+        return 2
+    if not 1 <= args.runs <= 20:
+        print(f"nmas-sdn-classify-normal: --runs is from 1 to 20, not {args.runs}",
+              file=sys.stderr)
+        return 2
+    actor = ""
+    if not args.dry_run:
+        if not args.out:
+            ap.error("a run that asks needs --out (or --dry-run)")
+        if os.path.realpath(args.out).startswith(os.path.realpath(checkout) + os.sep):
+            print(f"nmas-sdn-classify-normal: --out {args.out} is inside the checkout; write it "
+                  "elsewhere", file=sys.stderr)
+            return 2
+        actor, refusal = cases.evaluation_actor(args.actor, "sdn-classify-normal")
+        if refusal:
+            print(f"nmas-sdn-classify-normal: {refusal}", file=sys.stderr)
+            return 2
+    collected = (collector or collect)(network, args.interval)
+    s = collected.get("summary") or {}
+    print(f"nmas-sdn-classify-normal: {network}, collected {collected.get('collected_at')} "
+          f"({collected.get('state')}): {s.get('switches', 0)} switch(es), {s.get('flows', 0)} "
+          f"flows, port rates over {args.interval:g} s"
+          + (f"; {collected.get('error')}" if collected.get("error") else ""))
+    if not s.get("switches"):
+        print("nmas-sdn-classify-normal: the collection read no switch; nothing was asked",
+              file=sys.stderr)
+        return 2
+    if args.dry_run:
+        print("would send: " + json.dumps(what_is_sent(network, collected), sort_keys=True))
+        return 0
+    print(f"nmas-sdn-classify-normal: recorded as {actor}")
+    return classify_normal(network, collected, actor, args.runs, args.out)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -51,7 +51,7 @@ adopt(__name__)
 
 STOPS = ("ai_off", "no_key", "over_cap", "unknown_task", "unknown_model", "provider_error",
          "rate_limited", "overloaded", "key_refused", "bad_request", "provider_down",
-         "trigger", "withheld", "classified", "limits", "feature_off")
+         "trigger", "withheld", "classified", "limits", "policy", "feature_off")
 
 
 def detection_of(network: str, key: str, pack: dict) -> dict:
@@ -76,12 +76,17 @@ def detection_of(network: str, key: str, pack: dict) -> dict:
             "words": det.get("words"), "subject": {"kind": kind, "value": labels.get(kind)}}
 
 
-def what_is_sent(pack: dict) -> dict:
-    """What the classifier would be sent of *pack*, by part, in characters (no call)."""
+def what_is_sent(pack: dict, network: str = "") -> dict:
+    """What the classifier would be sent of *pack*, by part, in characters (no call): the
+    catalogue as *network*'s response policy allows it for the detection's rule (none
+    allowed where the policy cannot be read, as the classifier would send nothing then)."""
     from modules.sdn import closed_loop
 
     section = closed_loop._sdn_section(pack)
     sent = closed_loop.sent_evidence(section)
+    pol = closed_loop.policy(network) if network else {"ok": False, "rules": {}}
+    rule = sent["detection"].get("rule")
+    allowed = (pol["rules"].get(rule) or {}).get("allowed") or []
 
     def size(x):
         return len(json.dumps(x, sort_keys=True, separators=(",", ":")))
@@ -94,7 +99,8 @@ def what_is_sent(pack: dict) -> dict:
     return {"detection_chars": size(sent["detection"]), "pieces": kinds,
             "names": sent["names"], "ids": len(sent["ids"]),
             "evidence_not_sent": sent["detection"].get("evidence_not_sent", 0),
-            "catalogue_chars": size(closed_loop.catalogue_for_ai())}
+            "catalogue_chars": size(closed_loop.catalogue_for_ai(allowed)),
+            "catalogue_actions": allowed}
 
 
 def replay(network: str, keys: list, actor: str, runs: int, out: str, dry_run: bool) -> int:
@@ -112,7 +118,7 @@ def replay(network: str, keys: list, actor: str, runs: int, out: str, dry_run: b
         print(f"{key}: pack {pack.get('id')} built {pack.get('built_at')}, "
               f"{'intact' if EP.intact(pack) else 'CHANGED since it was kept'}")
         if dry_run:
-            print("  would send: " + json.dumps(what_is_sent(pack), sort_keys=True))
+            print("  would send: " + json.dumps(what_is_sent(pack, network), sort_keys=True))
     if dry_run:
         return 0
     recs, spent, status = {k: [] for k in keys}, 0.0, 0

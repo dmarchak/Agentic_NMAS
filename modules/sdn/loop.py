@@ -16,9 +16,10 @@ step, the one AI call, which runs only where its feature is on (below).
    proposes its catalogue action and parameters; one proposing no catalogue action is kept
    for a person, never AUTO's. **Fail-safe (C1968):** a classification refused by the check,
    failed or unavailable (the feature off, a cap, the provider) never drops the detection: the
-   rule's catalogue default (`closed_loop.DEFAULT_ACTION`) is kept awaiting a person, said as
-   such ("AI classification refused: <why>; proposed by the catalogue default", with the
-   refused answer's AI call), and AUTO never acts on it;
+   rule's default in the network's response policy (`closed_loop.policy`) is kept awaiting a
+   person, said as such ("AI classification refused: <why>; proposed by the catalogue
+   default", with the refused answer's AI call), and AUTO never acts on it; a policy that
+   cannot be read proposes no action, said, for a person;
 4. **respond in the mode** (`modes.decide`): in AUTO, an action of a classification that
    passed, within the allowed risk, is previewed and applied through the flow-operation core
    as Mercury, recorded as autonomous with the setting and its reason, and with who chose the
@@ -34,7 +35,14 @@ longer active since <time>", its classification kept, until a person approves or
 it (C1968).
 
 **The log** (``sdn_loop.jsonl`` in the network's folder): one line per step of each pass, with
-its time, what it read and decided; `log_lines` reads the newest. **The job** runs in a thread
+its time, what it read and decided; `log_lines` reads the newest. A pass with no new detection
+says which it is: "network healthy: no threat detected" only when the collection read every
+switch whole and no detection is active; "no new threat; N still active: …" naming them; or
+that the collection was partial, or read no switch, never called healthy. **A response's line**
+(`closed_loop.log_response`, AUTO's apply here and a person's confirm on the page alike): who
+applied which action on which switch, the operation's id, and the resulting entries as its
+Verify read them back (each flow's match, actions, priority, idle and hard timeouts and cookie,
+a meter's band; one not read back said so). **The job** runs in a thread
 of the process that started it (`start`), its passes scheduled start to start every interval
 (`schedule`, C1972): a pass that takes longer starts the next at once and says so in the log;
 `stop` ends it after its current pass, recording who and when. One loop per network: a second
@@ -323,6 +331,8 @@ def job_id(network: str, since: float = None) -> str:
 #: Why a response whose classification did not pass awaits a person, even in AUTO (C1968).
 NOT_CLASSIFIED_WHY = ("no AI classification passed the check, so a person decides (AUTO acts "
                       "only on one that did)")
+#: Who an autonomous response is applied as, in its record and its log line.
+AUTO_ACTOR = "Mercury (AUTO)"
 
 
 def classify(network: str, d: dict, job: str, *, send=None, pack: dict = None) -> dict:
@@ -346,9 +356,19 @@ def classify(network: str, d: dict, job: str, *, send=None, pack: dict = None) -
     else:
         got = closed_loop.classify_threat(network, d, actor=triggers.actor_of(trigger),
                                           trigger=trigger, send=send)
-    default = closed_loop.DEFAULT_ACTION[d["rule"]]
-    out = {"action": default, "risk": closed_loop.CATALOGUE[default]["risk"], "params": {},
-           "classification": None, "person": False, "why": "", "refused_call": ""}
+    # The rule's default is the network's response policy's (`closed_loop.policy`); a policy
+    # that cannot be read proposes no action, said, and a person decides.
+    pol = closed_loop.policy(network)
+    default = ((pol["rules"].get(d["rule"]) or {}).get("default") or "") if pol["ok"] else ""
+    out = {"action": default, "risk": closed_loop.CATALOGUE[default]["risk"] if default else "",
+           "params": {}, "classification": None, "person": False, "why": "",
+           "refused_call": ""}
+    if not default:
+        return dict(out, person=True, why=NOT_CLASSIFIED_WHY,
+                    refused_call=got.get("call_id") if got.get("error") == "couldnt_classify"
+                    else "",
+                    words=(f"no action proposed: {pol['error'] or 'the policy names none'}; a "
+                           "person decides"))
     if not got.get("ok"):
         if got.get("error") == "couldnt_classify":
             return dict(out, person=True, why=NOT_CLASSIFIED_WHY,
@@ -408,7 +428,25 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
         resolved = list(seen.get("resolved") or [])
         waiting = {r.get("detection", {}).get("key"): r for r in awaiting(network)["rows"]}
         held = [waiting[k] for k in resolved if k in waiting]
-        line("detect", ("; ".join(d["words"] for d in fired) if fired else "nothing new")
+        # A pass with no new detection says which of four it is (objective 3.1): healthy only
+        # when the collection read every switch whole and nothing is active; a detection still
+        # active (or one whose subject was not read, so it stays firing) is named; a read that
+        # failed in part, or covered no switch, is said and never called healthy.
+        still = [d.get("words") or d.get("key") for d in seen.get("detections") or []
+                 if d["key"] not in set(seen["fired"])] + [
+            f"{u.get('title') or u.get('key')} ({u.get('words')})"
+            for u in seen.get("unjudged") or []]
+        state, switches = collected.get("state"), s.get("switches", 0)
+        quiet = (f"no new threat; {len(still)} still active: {'; '.join(still)}" if still else
+                 "network healthy: no threat detected" if state == "ok" and switches else
+                 f"no threat detected on the switches read, but the collection was {state} "
+                 f"({collected.get('error') or 'no reason given'}): not called healthy"
+                 if switches else
+                 f"no switch was read ({state}"
+                 + (f": {collected.get('error') or collected.get('words')}"
+                    if collected.get("error") or collected.get("words") else "")
+                 + "): nothing judged healthy")
+        line("detect", ("; ".join(d["words"] for d in fired) if fired else quiet)
              + (f"; {len(resolved)} no longer active (the collection judged its subject and "
                 "no longer shows it)" if resolved else "")
              + (f", {len(held)} of them with a response still awaiting a person" if held
@@ -455,14 +493,15 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
             done = closed_loop.respond_to_threat(
                 network, d, action, confirm={"ask": preview["ask"],
                                              "hash": preview["plan"]["hash"]},
-                actor="Mercury (AUTO)", actor_verified="system", mode="auto",
+                actor=AUTO_ACTOR, actor_verified="system", mode="auto",
                 autonomous=decision["autonomous"],
                 classified_by=closed_loop.classified_words(verdict["classification"], action),
                 driver=driver, sleep=sleep, now=now)
             out["applied"].append({"id": done.get("id"), "outcome": done.get("outcome")})
-            line("respond", f"AUTO applied {action}: {done.get('outcome')}"
-                            + (f" ({done.get('error')})" if done.get("error") else ""),
-                 operation=done.get("id"))
+            # The one writer of a response's line (`closed_loop.log_response`): the switch, the
+            # operation and the entries as Verify read them back, as a person's confirm logs.
+            out["lines"].append(closed_loop.log_response(
+                network, done, action=action, who=AUTO_ACTOR, ask=preview["ask"], now=now()))
         expired = flow_ops.expire_meters(network, driver=driver, now=now)
         if expired["removed"]:
             line("expire", f"removed expired meter(s) {expired['removed']}")

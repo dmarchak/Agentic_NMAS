@@ -1076,6 +1076,7 @@ def updates(ctx):
 #: A subject's words (15.14): what the call was about, from the row's own `subject`.
 SUBJECT_WORDS = {"alert": "the alert", "query": "a question on", "device": "the device",
                  "intent": "an intent change on", "sdn_detection": "the SDN detection",
+                 "sdn_collection": "an SDN collection no rule fired on",
                  "": "the installation"}
 
 
@@ -1094,6 +1095,9 @@ def subject_words(subject: dict) -> str:
     if kind == "sdn_detection":
         # PHASE8_PLAN 17.1 S7: the rule that fired and the detection's key.
         return f"{head} {s.get('rule') or ''} {s.get('id') or ''}".replace("  ", " ").strip()
+    if kind == "sdn_collection":
+        # The Lab 8 walk's objective 2.3: a collection classified as an evaluation, by its time.
+        return f"{head}, collected {s.get('id') or 'at an unrecorded time'}"
     return head
 
 

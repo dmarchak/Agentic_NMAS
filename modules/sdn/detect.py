@@ -552,12 +552,27 @@ def instance(d: dict, since: float, fired_at: float, window: int = 0) -> dict:
             "silences": []}
 
 
+def flow_piece(f: dict) -> dict:
+    """A collected flow as an evidence piece: its id, table, priority, cookie, match,
+    actions (and in words), timeouts and counters. One shape for a detection's section and
+    a collection's (`closed_loop.collection_request`)."""
+    from modules.sdn import flow_intent
+
+    return {"kind": "flow", "id": f["id"], "table_id": f.get("table_id"),
+            "priority": f.get("priority"),
+            "cookie": flow_intent.cookie_hex(f.get("cookie")),
+            "match": f.get("match") or {}, "actions": f.get("actions") or [],
+            "actions_words": flow_intent.action_words(f.get("actions")),
+            "idle_timeout": f.get("idle_timeout"),
+            "hard_timeout": f.get("hard_timeout"),
+            "packet_count": f.get("packet_count"), "byte_count": f.get("byte_count"),
+            "duration_sec": f.get("duration_sec")}
+
+
 def section(d: dict, collected: dict, sw: dict) -> dict:
     """The pack's ``sdn`` section for detection *d*: the detection itself, then the flows and
     ports it rests on as collected (each with its evidence id), earlier sightings for a scan,
     and the switch's coverage. At most `SECTION_FLOWS` flows; the rest counted."""
-    from modules.sdn import flow_intent
-
     ids = set(d["evidence"])
     flows = [f for f in sw.get("flows") or [] if f.get("id") in ids]
     total = len(flows)
@@ -572,15 +587,7 @@ def section(d: dict, collected: dict, sw: dict) -> dict:
             pieces.append(dict({k: v for k, v in p.items()}, kind="port",
                                sample=sw.get("sample")))
     for f in flows:
-        pieces.append({"kind": "flow", "id": f["id"], "table_id": f.get("table_id"),
-                       "priority": f.get("priority"),
-                       "cookie": flow_intent.cookie_hex(f.get("cookie")),
-                       "match": f.get("match") or {}, "actions": f.get("actions") or [],
-                       "actions_words": flow_intent.action_words(f.get("actions")),
-                       "idle_timeout": f.get("idle_timeout"),
-                       "hard_timeout": f.get("hard_timeout"),
-                       "packet_count": f.get("packet_count"), "byte_count": f.get("byte_count"),
-                       "duration_sec": f.get("duration_sec")})
+        pieces.append(flow_piece(f))
     now_ids = {f.get("id") for f in sw.get("flows") or []}
     earlier = [s for s in d.get("sightings") or [] if s.get("id") not in now_ids]
     for s in earlier:

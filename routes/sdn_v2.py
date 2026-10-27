@@ -234,11 +234,19 @@ def response_confirm():
         confirm={"ask": ask, "hash": (request.form.get("hash") or "").strip()}, actor=actor,
         actor_verified=identity.actor_verification(actor),
         classified_by=closed_loop.classified_words(row.get("classification"), action))
+    # The response's line in the loop's log, as AUTO's is written (`closed_loop.log_response`):
+    # the switch, the operation and the entries as Verify read them back.
+    logged = closed_loop.log_response(network, done, action=ask.get("action") or action,
+                                      who=actor, ask=ask, response_id=rid)
     if done.get("outcome") == "verified" and rid:
         try:
             loop.resolve(network, rid, "confirmed", actor=actor, operation=done.get("id", ""))
         except ValueError as exc:
             done["note"] = str(exc)
+    if not logged.get("logged"):
+        done["note"] = "; ".join(x for x in (done.get("note"), "its line in the loop's log "
+                                             f"could not be written ({logged.get('error')})")
+                                 if x)
     return _op_card(sdn_ops_page.result(network, "response", done),
                     200 if done.get("outcome") != "refused" else 409)
 
@@ -284,6 +292,50 @@ def mode_set():
     except (ValueError, modes.ModeRefused) as exc:
         return _strict(render_template("v2/_sdn_answer.html", refused=str(exc))), 409
     return _strict(render_template("v2/_sdn_view.html", **_ctx("responses")))
+
+
+@bp.route("/policy", methods=["POST"])
+def policy_set():
+    """Set this network's response policy (the Lab 8 walk's objective 3.1): for each rule, its
+    default and the other catalogue actions allowed, from the rules' form on Responses.
+    Refused, beside Save, naming why (an action that does not answer its rule, a rule with
+    none, the policy moved since the form drew it); saved, the region drawn again. Recorded
+    in the network's settings record as the verified person."""
+    import json
+
+    from flask import make_response
+
+    from modules import identity
+    from modules.sdn import closed_loop
+
+    network = _network_of_form()
+    value = {}
+    for rule in closed_loop.RULES:
+        default = (request.form.get(f"{rule}_default") or "").strip()
+        also = [a.strip() for a in request.form.getlist(f"{rule}_allowed") if a.strip()]
+        value[rule] = ([default] if default else []) + [a for a in also if a != default]
+    raw = (request.form.get("loaded") or "").strip()
+    try:
+        loaded = raw if raw == "unreadable" else json.loads(raw) if raw else None
+    except ValueError:
+        loaded = None
+    if not (loaded == "unreadable" or isinstance(loaded, dict)):
+        return _strict(render_template("v2/_sdn_answer.html", refused=(
+            "the form carried no policy as the page drew it, so a change made since could not "
+            "be told from yours; nothing was saved: load the page again"))), 409
+    actor = identity.request_actor()
+    try:
+        closed_loop.save_policy(network, value, actor=actor,
+                                actor_verified=identity.actor_verification(actor),
+                                loaded=loaded)
+    except closed_loop.PolicyRefused as exc:
+        return _strict(render_template("v2/_sdn_answer.html", refused=str(exc))), 409
+    resp = make_response(_strict(render_template("v2/_sdn_view.html", **_ctx("responses"))))
+    # The answer replaces the region (the rules now draw the policy saved), not the slot
+    # beside Save that a refusal is drawn in.
+    resp.headers["HX-Retarget"] = "#sdn"
+    resp.headers["HX-Reswap"] = "outerHTML"
+    return resp
 
 
 @bp.route("/loop", methods=["POST"])
