@@ -101,6 +101,8 @@ NOT_AN_OPERATION = {
     ("_breakglass_export.html", "Cancel"): "closes the export, building nothing",
     ("_records_db_replace.html", "Cancel"): "puts the records database card back, replacing nothing",
     ("_install_card_replace.html", "Cancel"): "puts the Installation card back, replacing nothing",
+    ("_install_card.html", "Cancel"): "puts the AI card back from the day cap's confirmation, "
+                                      "saving nothing",
     ("_install_platforms_preview.html", "Cancel"): "puts the map cards back, saving nothing",
     ("_records_stores.html", "Cancel"): "puts the record stores back, moving nothing",
     ("_remote_setup.html", "Close"): "closes the remote set-up card, recording nothing",

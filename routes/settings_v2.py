@@ -362,21 +362,26 @@ def install_card(name):
 
 @bp.route("/installation/card/<name>/save", methods=["POST"])
 def install_save(name):
-    """Board F3: save the fields the person changed, recorded with the verified person and the
-    fields' names; a switch the form did not send is off. The card sends what it drew
-    (`loaded`, R17): a changed field another person moved since is refused, naming both."""
+    """Board F3: save the fields the person changed, recorded with the verified person and each
+    field's old and new value; a switch the form did not send is off. The card sends what it
+    drew (`loaded`, R17): a changed field another person moved since is refused, naming both.
+    A large increase of the AI day cap, or No cap, is drawn as its confirmation first and
+    nothing is written (409 when No cap's words were typed wrong)."""
     from modules import identity
     from modules import installation_settings as I
     from modules.settings_schema import loaded_from
 
     if name not in I.CARDS:
         return _install(name)
-    form = {f["key"]: request.form.get(f["key"]) for f in I.CARDS[name]["fields"]}
+    form = {k: request.form.get(k) for k in I.form_keys(name)}
     try:
         saved = I.save_card(name, form, identity.request_actor(), _verified(),
                             loaded=loaded_from(request.form.get("loaded")))
     except I.Refused as exc:
         return _install(name, 409, refused=str(exc))
+    if saved.get("confirm"):
+        return _install(name, 409 if saved["confirm"]["refused"] else 200,
+                        confirm=saved["confirm"])
     return _install(name, saved=saved)
 
 

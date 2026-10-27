@@ -134,7 +134,8 @@ DEFAULTS: dict = {
     # with a recorded reason (`{"by", "at", "reason"}`, the settings_not_applicable pattern):
     # no measurement can decide that, it is a person's decision about data leaving the host.
     # The caps: a call's worst case, and a day's spend (PHASE8_PLAN 7 caps a month at $50;
-    # a day's $1.50 stays under it), each a person's to change.
+    # a day's $1.50 stays under it), each a person's to change, with no program ceiling
+    # (the operator, 2026-10-27); null is "no cap", chosen explicitly.
     "anthropic_api_key":        "",
     "ai_hosted":                {},
     # Retiring (2026-10-25): each task's per-call cap is derived from its pin
@@ -732,8 +733,14 @@ SCHEMA: dict = {
         "anthropic_api_key": _STR,
         "ai_hosted": {"type": "object", "additionalProperties": False,
                       "properties": {"by": _STR, "at": _STR, "reason": _STR}},
-        "ai_cap_usd_per_call": {"type": "number", "minimum": 0, "maximum": 5},
-        "ai_cap_usd_per_day": {"type": "number", "minimum": 0, "maximum": 50},
+        # Spend limits are the customer's, never the program's (the operator, 2026-10-27): no
+        # maximum. The day cap is a positive amount, or null for "no cap", an admin's explicit
+        # choice behind a typed confirmation (installation_settings, NO_CAP_TYPED). The
+        # retiring per-call cap is read by nothing and keeps `minimum: 0`, so a 0 an older
+        # release stored stays readable (the whole file is validated on every write, and no
+        # card draws this key to correct it).
+        "ai_cap_usd_per_call": {"type": "number", "minimum": 0},
+        "ai_cap_usd_per_day": {"type": ["number", "null"], "exclusiveMinimum": 0},
         "ai_cap_day_boundary": {"type": "string", "minLength": 1, "maxLength": 64},
         "wf_read_first": _BOOL,
         "wf_auto_backup": _BOOL,
@@ -815,10 +822,12 @@ SCHEMA: dict = {
                 "required": ["state", "days", "window_start", "window_end", "set_by", "set_at"],
                 "properties": {
                     "state": {"enum": ["on", "off"]},
-                    "days": {"type": "integer", "minimum": 1, "maximum": 3650},
+                    # How often and how many are the customer's (the operator, 2026-10-27): no
+                    # maximum; the hours are a clock's, bounded by it.
+                    "days": {"type": "integer", "minimum": 1},
                     "window_start": {"type": "integer", "minimum": 0, "maximum": 23},
                     "window_end": {"type": "integer", "minimum": 0, "maximum": 24},
-                    "max_per_run": {"type": "integer", "minimum": 1, "maximum": 1000},
+                    "max_per_run": {"type": "integer", "minimum": 1},
                     "devices": {"type": "array", "items": _STR},
                     "set_by": _STR, "set_at": _STR, "verified": _STR,
                 },

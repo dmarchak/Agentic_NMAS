@@ -1198,6 +1198,61 @@ def credential_profiles(ctx):
                  for r in reversed(got["rows"]) if _recent(ctx, r.get("at"))])
 
 
+#: The installation's settings record's kinds, as a row says them (a kind not here is said by
+#: its own name, never dropped).
+SETTING_WORDS = {
+    "card_replace": "replaced", "netbox_writes_off": "NetBox writes turned off",
+    "ai_hosted_allow": "hosted AI allowed", "ai_hosted_off": "hosted AI turned off",
+    "records_db_save": "saved", "records_db_replace": "password replaced",
+    "ratify": "decision recorded", "network_create": "network created",
+    "network_delete": "network deleted", "inventory_source": "inventory source set",
+    "drift_interval": "drift check interval set", "drift_on": "drift checks turned on",
+    "drift_off": "drift checks turned off",
+    "records_store_move": "a store moved to the records database",
+    "records_store_back": "a store moved back to its files",
+}
+
+
+def installation_settings(ctx):
+    """Each change to the installation's own settings (Settings › Installation): who, when, the
+    card, and for a card's Save each field's old and new value ("AI (hosted): Cap per day $50
+    → $80", the operator, 2026-10-27: a cap change is an admin action recorded in History).
+    Installation-wide, so the fleet's on every network, never one device's. A row recorded
+    before values were kept names its fields only."""
+    from modules import installation_settings as I
+    if ctx["device"]:
+        return _out()
+    got = I.changes()
+    if got["state"] == "unreadable":
+        return _out(errors=["the installation's settings record could not be read: "
+                            f"{got.get('error', '')}"])
+
+    def title(r):
+        card = r.get("card") or ""
+        if card in I.CARDS:
+            return I.CARDS[card]["title"]
+        if r.get("kind", "").startswith("records_"):
+            return "Records database"
+        return card.replace("_", " ").capitalize() or "Installation"
+
+    def what(r):
+        kind = r.get("kind", "")
+        if kind == "card_save" and r.get("changes"):
+            return f"{title(r)}: " + "; ".join(I.change_words(c) for c in r["changes"])
+        if kind in ("card_save", "records_db_save"):
+            return f"{title(r)} saved: {', '.join(r.get('fields') or []) or 'no fields named'}"
+        words = SETTING_WORDS.get(kind, kind.replace("_", " ") or "a change")
+        return f"{title(r)}: {words}"
+    return _out([_event(r.get("at"), "setting", what(r), [],
+                        who=_who(r.get("actor", ""), r.get("actor_verified", "")),
+                        record=[("Card", title(r)), ("Recorded as", r.get("kind")),
+                                ("Changes", "; ".join(I.change_words(c)
+                                                      for c in r.get("changes") or [])),
+                                ("Fields", ", ".join(r.get("fields") or [])),
+                                ("Reason", r.get("reason"))])
+                 for r in got["rows"] if _recent(ctx, r.get("at"))])
+
+
 #: A Grafana write's action, as a row says it.
 _GRAFANA_VERBS = {"silence_set": "set", "silence_moved": "moved", "silence_expired": "expired"}
 
@@ -1828,7 +1883,7 @@ SOURCES = {
     "topology_expected": topology_expected, "topology_layout": topology_layout,
     "saved_views": saved_views, "reveals": reveals, "host_keys": host_keys,
     "netbox": netbox, "grafana_writes": grafana_writes, "heartbeat_windows": heartbeat_windows,
-    "ai_calls": ai_calls,
+    "ai_calls": ai_calls, "installation_settings": installation_settings,
 }
 
 #: The kind filter (board D): each a group of event kinds, in the board's four headings.
@@ -1852,6 +1907,7 @@ KIND_GROUPS = (
                                ("acknowledged", "Acknowledgements", ("acknowledged",)),
                                ("breakglass", "Break-glass exports", ("breakglass",)),
                                ("credentials", "Credential profiles", ("credential",)),
+                               ("settings", "Installation settings", ("setting",)),
                                ("expected", "Expected islands", ("expected",)),
                                ("layout", "Topology layouts", ("layout",)),
                                ("views", "Saved views", ("view",)),
@@ -1967,6 +2023,7 @@ SOURCE_KINDS = {
     "topology_expected": ("expected",), "topology_layout": ("layout",), "saved_views": ("view",),
     "reveals": ("reveal",), "host_keys": ("hostkey",), "netbox": ("netbox",),
     "grafana_writes": ("grafana",), "heartbeat_windows": ("heartbeat",), "ai_calls": ("ai_call",),
+    "installation_settings": ("setting",),
 }
 
 #: The sources that cannot be asked for rows older than a page's place, each with why: their

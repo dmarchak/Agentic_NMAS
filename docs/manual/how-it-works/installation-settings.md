@@ -23,7 +23,9 @@ service itself; **Test** is a person asking now.
    other name is letters, digits and `. _ -`; backup VMs are numbers separated by commas; a
    date is `YYYY-MM-DD` or empty; the port is a number from 1 to 65535; the bind address is
    letters, digits and `. : _ -`; an email is `name@domain`; the commit author's name is one
-   line, not empty. A refusal names the field and what it accepts, and nothing is saved.
+   line, not empty; the AI card's cap per day is an amount in US dollars more than $0, with
+   no maximum (see [The day cap](#ai-cap)). A refusal names the field and what it accepts,
+   and nothing is saved.
 2. `write`: only the fields you changed are written, to the installation's settings, for
    every network. Read: the settings as they stand, compared with what the card showed when
    you opened it. Sent: nothing. Recorded: the values. A field you left as it was is not
@@ -32,9 +34,12 @@ service itself; **Test** is a person asking now.
    and what it is now, and nothing is saved: the card is drawn again with the values now.
    Saving what is already stored writes nothing and says "Nothing changed".
 3. `record`: the save is appended to the installation's settings record, a file. Read:
-   nothing. Sent: nothing. Recorded: who, how that was established, when, the card and the
-   names of the fields written, never their values. If the record could not be written the
-   card says so; the save is made either way.
+   nothing. Sent: nothing. Recorded: who, how that was established, when, the card, and each
+   field written with its old and new value (a card's fields are never secrets: a token is
+   changed by **Replace…**, which records only its name; a value is masked as it is kept
+   all the same). **History** draws each save under the kind **Installation settings**, for
+   example "AI (hosted): Cap per day $50 → $80", with who and when. If the record could not
+   be written the card says so; the save is made either way.
 
 The **Server** card's bind address and port are read when Mercury starts: its Save says the
 change waits for the next restart, and Mercury listens where it did until then. The TFTP root
@@ -110,6 +115,39 @@ and UTC's beside it. It is the same instant the gateway counts by. The card's **
 is one small, real call: the model is given a word Mercury chose and must give it back, so a
 passing Test means the allowance, the key, the mask, the caps, the model and the record all
 held. It costs a fraction of a cent and is recorded like any call.
+
+## The day cap {#ai-cap}
+
+The **Cap per day** is the most the installation's AI calls may spend in a day, in US
+dollars. Before each call the gateway adds today's spend to the call's worst case and refuses
+the call, sending nothing, when the sum is over the cap; the refusal names both amounts and
+the cap. The provider bills what is spent, to the account the API key belongs to; the cap is
+Mercury's own limit, set below the provider's.
+
+The cap is yours to set: **{{product}} has no ceiling of its own**, so a deployment that
+spends more than a laboratory does sets what it needs. A cap is an amount more than $0;
+$0 and a negative amount are refused, saying so. To stop AI calls, turn hosted AI off
+instead.
+
+**A large increase asks first.** A new cap at least double the old one, or at least $50 more,
+is not saved at once: the card shows what it means, "Up to $80 a day, about $2,400 a month
+at full use" (a month counted as 30 days), with **Save** and **Cancel**. Nothing is written
+until that Save, and one more press saves it. The confirmation keeps what the card showed
+when you opened it, so a change another person made to the cap meanwhile is still refused,
+naming both values. A smaller change, or a decrease, saves at once.
+
+**No cap** is a choice of its own beside the field, never an empty field. Ticking it and
+pressing Save shows a stronger confirmation: Mercury would not stop AI spend, and the
+provider's own limit is the backstop. Type `no cap` and press **Save with no cap** to set it;
+anything else typed is refused and nothing is written. While no cap is set the card says
+"No cap is set: Mercury does not stop AI spend; the provider's own limit is the backstop",
+the gateway refuses no call for the day's spend (a task's cap per call still applies, and
+its refusal says no day cap is set), and the toolbar's spend chip, once built, shows "no
+cap" for as long as it is set. To set a cap again, untick No cap, give an amount and Save.
+
+Every change to the cap, like every Save on these cards, is recorded with who, when, and its
+old and new value, and is drawn on **History** (the kind **Installation settings**): "AI
+(hosted): Cap per day $50 → $80".
 
 ## The AI mark, and a control shown disabled {#ai-mark}
 

@@ -175,24 +175,28 @@ def set_policy(profile: str, form: dict, *, actor: str, verified: str,
     if state not in ("on", "off"):
         return {"ok": False, "error": f"a policy is on or off, not {state!r}"}
 
-    def number(name, default, low, high):
+    def number(name, default, low, high=None):
+        """A whole number from *low*; *high* only where a clock bounds it (an hour). How often
+        and how many are the customer's, with no program maximum (the operator, 2026-10-27)."""
         raw = str(form.get(name, "") if form.get(name, "") != "" else default).strip()
         try:
             value = int(raw)
         except ValueError:
             raise ValueError(f"{name.replace('_', ' ')} is a whole number, not {raw!r}") from None
-        if not low <= value <= high:
+        if high is None and value < low:
+            raise ValueError(f"{name.replace('_', ' ')} is {low} or more, not {value}")
+        if high is not None and not low <= value <= high:
             raise ValueError(f"{name.replace('_', ' ')} is between {low} and {high}, "
                              f"not {value}")
         return value
 
     try:
-        policy = {"state": state, "days": number("days", DEFAULT_DAYS, 1, 3650),
+        policy = {"state": state, "days": number("days", DEFAULT_DAYS, 1),
                   "window_start": number("window_start", 0, 0, 23),
                   "window_end": number("window_end", 24, 0, 24)}
         # "At most N a run" is optional: blank takes every due device, one after another.
         if str(form.get("max_per_run") or "").strip():
-            policy["max_per_run"] = number("max_per_run", 1, 1, 1000)
+            policy["max_per_run"] = number("max_per_run", 1, 1)
     except ValueError as exc:
         return {"ok": False, "error": f"{exc}: nothing was changed"}
     # Only these devices (a pilot set): names, by comma or space; none = every device the

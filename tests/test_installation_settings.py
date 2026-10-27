@@ -729,22 +729,33 @@ class TestTheCards:
         assert px.index('name="proxmox_node"') < px.index("Replace…") \
             < px.index('name="proxmox_token_expires"')
 
-    def test_save_writes_what_changed_records_names_never_values(self, networks):
+    def test_save_writes_what_changed_and_records_each_old_and_new_value_masked(self, networks):
+        """The operator, 2026-10-27: a change is an admin action recorded with who, when and
+        old to new (it recorded the fields' names only before). A card's fields are never
+        secrets; a URL's user and password are masked as the value is kept all the same."""
         from modules import installation_settings as I
+        from modules.secrets_store import SECRET_KEYS
         from modules.settings_schema import get_setting
+        assert not {f["key"] for c in I.CARDS.values() for f in c["fields"]} & set(SECRET_KEYS)
         _r, html = _card_save(networks, "netbox",
                          {"netbox_url": "https://192.0.2.30", "netbox_auth_scheme": "Token"})
         card = _kcard(html, "netbox")
-        assert "Saved" in card and "netbox_auth_scheme" in card
+        assert "Saved" in card and "Auth scheme Bearer → Token" in card
         assert get_setting("netbox_url") == "https://192.0.2.30"
         assert get_setting("netbox_auth_scheme") == "Token"
         assert get_setting("netbox_verify_tls") is False, "a switch not sent is off"
         rec = I.changes(kinds=("card_save",))["rows"][0]
         assert rec["card"] == "netbox" and "netbox_url" in rec["fields"]
-        assert "192.0.2.30" not in json.dumps(rec), "names, never values"
+        assert {c["key"]: (c["old"], c["new"]) for c in rec["changes"]} == {
+            "netbox_auth_scheme": ("Bearer", "Token"), "netbox_url": ("", "https://192.0.2.30"),
+            "netbox_verify_tls": (True, False)}
         _r, again = _card_save(networks, "netbox",
                           {"netbox_url": "https://192.0.2.30", "netbox_auth_scheme": "Token"})
         assert "Nothing changed" in _kcard(again, "netbox")
+        _card_save(networks, "netbox", {"netbox_url": "https://ops:Planted-Pw-8812@192.0.2.31",
+                                        "netbox_auth_scheme": "Token"})
+        rec = I.changes(kinds=("card_save",))["rows"][0]
+        assert "Planted-Pw-8812" not in json.dumps(rec) and "192.0.2.31" in json.dumps(rec)
 
     def test_a_field_that_is_not_its_kind_is_refused_naming_it(self, networks):
         from modules.settings_schema import get_setting

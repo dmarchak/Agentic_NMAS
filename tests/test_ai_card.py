@@ -11,7 +11,8 @@ test reaches a network.
   nothing.
 - Test, allowed and keyed, is one call through the gateway as the person who pressed it, its
   word echoed, recorded, and announces `ai_calls`.
-- The caps save as numbers; a word, or one over the schema's maximum, is refused.
+- The day cap saves as a number; a word is refused, and there is no maximum (a large increase
+  asks first: tests/test_ai_day_cap.py).
 """
 import json
 import re
@@ -202,7 +203,10 @@ def test_a_test_allowed_and_keyed_is_one_recorded_call_as_the_person(networks, m
     assert "ai_calls" in r.headers.get("X-NMAS-Invalidates", "")
 
 
-def test_the_day_cap_saves_as_a_number_and_refuses_a_word_or_too_much(networks, no_send):
+def test_the_day_cap_saves_as_a_number_and_refuses_a_word(networks, no_send):
+    """A word is refused. A program maximum is not (the operator, 2026-10-27: limits are the
+    customer's): $99 from $0.75 is a large increase, so the card asks first and writes nothing
+    until its Save (tests/test_ai_day_cap.py holds the rest)."""
     from modules.settings_schema import get_setting
     r, html = _post(networks, "/v2/settings/installation/card/ai/save",
                     {"ai_cap_usd_per_day": "0.75", "ai_cap_day_boundary": "UTC",
@@ -212,8 +216,9 @@ def test_the_day_cap_saves_as_a_number_and_refuses_a_word_or_too_much(networks, 
     r, html = _post(networks, "/v2/settings/installation/card/ai/save",
                     {"ai_cap_usd_per_day": "lots", "ai_cap_day_boundary": "UTC",
                      "loaded": _loaded(networks)})
-    assert r.status_code == 409 and "is not an amount in US dollars" in html
+    assert r.status_code == 409 and "is not a positive amount in US dollars" in html
     r, html = _post(networks, "/v2/settings/installation/card/ai/save",
                     {"ai_cap_usd_per_day": "99", "ai_cap_day_boundary": "UTC",
                      "loaded": _loaded(networks)})
-    assert r.status_code == 409 and get_setting("ai_cap_usd_per_day") == 0.75
+    assert r.status_code == 200 and "A large increase" in _card(html)
+    assert get_setting("ai_cap_usd_per_day") == 0.75

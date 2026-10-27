@@ -19,7 +19,8 @@ and every call, sent or refused, is one `ai_calls` row. In order, before anythin
 6. **The caps**, judged by the worst case (that estimate as cache writes, plus all of
    `max_tokens`, at the pinned model's prices): the task's per-call cap (its pinned model's
    worst case at its bounds, `profiles.cap_per_call`), and the day's spend so far plus this
-   call against the installation's day cap. A refusal names both operands.
+   call against the installation's day cap, unless an admin chose no cap (`day_cap` None,
+   said in every cap refusal). A refusal names both operands.
 
 Then the adapter sends it; a refusal, a `max_tokens` stop, an answer that is not the schema,
 and each provider failure are each their own kind, never a parser's crash (13.5).
@@ -55,17 +56,33 @@ def hosted_allowed() -> dict:
             "reason": got["reason"]}
 
 
-def caps(feature: str) -> dict:
-    """The task's per-call cap (derived from its pin) and the installation's day cap (its
-    literal key; a value that is not a number reads as its default)."""
+#: Said in a cap's refusal while no day cap is set: what the person chose, and what stands.
+NO_DAY_CAP_WORDS = ("no day cap is set (an admin chose no cap: Mercury does not stop AI "
+                    "spend; the provider's own limit is the backstop)")
+
+
+def day_cap():
+    """The installation's day cap in US dollars, or None: **no cap**, an admin's explicit
+    choice (the key stored as null, behind a typed confirmation on the AI card; the operator,
+    2026-10-27). A key never set reads as the schema's default; a stored value that is not a
+    number (a hand-edited file) as the gateway's, the same one, never as no cap."""
     from modules.settings_schema import get_setting
 
+    # The schema declares the key's default, and the default is named here too, so a key never
+    # set is never read as None: None here is only a stored null.
+    raw = get_setting("ai_cap_usd_per_day", DEFAULT_CAP_PER_DAY)
+    if raw is None:
+        return None
     try:
-        # The schema declares the key's default, so `get_setting` never falls past it.
-        per_day = float(get_setting("ai_cap_usd_per_day"))
+        return float(raw)
     except (TypeError, ValueError):
-        per_day = DEFAULT_CAP_PER_DAY
-    return {"per_call": profiles.cap_per_call(feature), "per_day": per_day}
+        return DEFAULT_CAP_PER_DAY
+
+
+def caps(feature: str) -> dict:
+    """The task's per-call cap (derived from its pin) and the installation's day cap
+    (`day_cap`: None is no cap)."""
+    return {"per_call": profiles.cap_per_call(feature), "per_day": day_cap()}
 
 
 def _api_key() -> str:
@@ -213,18 +230,22 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
                       + (f" ({model} charges every rate at its long tier over {long_at})"
                          if long_at else "") + "; nothing was sent", prompt_tokens=est)
     cap = caps(feature)
+    # No day cap (an admin's choice) is said in every cap refusal, so nobody reads one as the
+    # day cap's.
+    uncapped = "" if cap["per_day"] is not None else f"; {NO_DAY_CAP_WORDS}"
     worst = worst_case_usd(model, body)
     if worst > cap["per_call"]:
         return refuse("over_cap", f"this call's worst case ${worst:.4f} is over the "
-                      f"{feature} task's per-call cap ${cap['per_call']:.4f}", worst_usd=worst)
+                      f"{feature} task's per-call cap ${cap['per_call']:.4f}{uncapped}",
+                      worst_usd=worst)
     # The cap's day: its midnight the stated boundary's (calls.today; UTC by default), from a
     # clock asked for UTC by name (never a local time read by default).
     day = today or calls.today()
     spent = calls.spent_usd(day)
     if spent["state"] == "unreadable":
         return refuse("over_cap", "the record of AI calls cannot be read, so today's spend "
-                      f"is unknown ({spent['error']}); nothing was sent")
-    if spent["usd"] + worst > cap["per_day"]:
+                      f"is unknown ({spent['error']}){uncapped}; nothing was sent")
+    if cap["per_day"] is not None and spent["usd"] + worst > cap["per_day"]:
         return refuse("over_cap", f"today's spend ${spent['usd']:.4f} plus this call's worst "
                       f"case ${worst:.4f} is over the day cap ${cap['per_day']:.4f}",
                       worst_usd=worst)

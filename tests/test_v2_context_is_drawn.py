@@ -265,9 +265,11 @@ UNDRAWN = {
                       "(drawn); Python fetches from it"),
         ("default origin", "each identity gate cell's raw inputs, drawn as its origin words")],
     "GET /v2/settings/installation/card/<name>": [
-        ("group", "a settings group's internal id; its title is drawn"),
-        ("tab", "the tab the card belongs to: the route filters cards by it, and only the "
-                "Replace form's Cancel reads it")],
+        ("group", "a settings group's internal id; its title is drawn")],
+    # The AI card's day cap confirmations (the operator, 2026-10-27), reached by a provider:
+    # the same card as the GET's, with its confirmation.
+    "POST /v2/settings/installation/card/<name>/save": [
+        ("group", "a settings group's internal id; its title is drawn")],
     "GET /v2/settings/installation/card/<name>/replace": [
         ("fields health secret_set writes", INSTALL_CARD),
         ("integration loaded secret_at", "the form echo, a layout index and the Test button's "

@@ -1376,3 +1376,81 @@ compared.
 | 318 | `- day = today or calls.today()`<br>`+ day = None` | killed | `tests/test_ai_gateway_ask.py::test_an_unreadable_record_is_refused_in_its_words` |
 | 319 | `- day = today or calls.today()`<br>`+ day = today and calls.today()` | killed | `tests/test_ai_gateway_ask.py::test_an_unreadable_record_is_refused_in_its_words` |
 
+## 2026-10-27: the AI spend caps with no program maximum, changed lines only, on the change's tree
+
+**What changed in the tier since e87f1dd8** (the last proved change, the section above): the
+operator's cap order of 2026-10-27 (C1861). `gateway.day_cap()` is new: the installation's day
+cap in US dollars, or None, an admin's explicit "no cap" stored as null, never read from a key
+that was not set. `gateway.caps` reads it. `gateway.ask` skips the day cap's comparison when it
+is None and says "no day cap is set" in every cap refusal. No other function of the tier
+changed (`git diff` over `gateway.py`, `profiles.py`, `connection.py` and `redact.py`: only
+`gateway.py`, lines 22 to 23, 59 to 85, 233 to 240 and 247 to 248).
+
+**The method**, as the sections above: the mutants mutmut 3.8.0 generates on those lines, plus
+a must-die canary, one at a time, the aimed tests `tests/test_ai_gateway_ask.py`,
+`tests/test_ai_gateway.py`, `tests/test_ai_gateway_parts.py`, `tests/test_ai_day_cap.py` and
+`tests/test_ai_card.py`, the file restored from its copy and compared. It ran in a throwaway
+worktree of e314aec9 with the change applied (its `gateway.py` the one committed with C1861),
+before the commit, so the deploy waits for nothing.
+
+**The result: 53 mutants, 51 killed, 2 survived, both equivalent.** Every canary was killed.
+
+| function | mutants | killed | survived | canary | baseline | file restored |
+|---|---|---|---|---|---|---|
+| `modules.ai.gateway.day_cap` | 9 | 7 | 2 (equivalent) | killed | passed | identical |
+| `modules.ai.gateway.caps` | 5 | 5 | 0 | killed | passed | identical |
+| `modules.ai.gateway.ask` | 39 | 39 | 0 | killed | passed | identical |
+| **all 3** | **53** | **51** | **2** | | | |
+
+**The two survivors are equivalent, listed by hand (CLAUDE.md: never chased with a test).**
+Mutants 3 and 5 of `day_cap` change only the fallback argument of
+`get_setting("ai_cap_usd_per_day", DEFAULT_CAP_PER_DAY)` (to None, or to nothing). `get_setting`
+returns the stored value, else `DEFAULTS.get(key, default)`, and the schema declares this key's
+default (1.5, read from `settings_schema.DEFAULTS` on the change's tree), so the argument is
+never reached. It is kept as a second statement of "a key never set is never no cap"; were the
+schema's default removed, `tests/test_ai_gateway_parts.py`'s stored-value cases would read it.
+
+### `modules.ai.gateway.day_cap`
+
+- Baseline: the tests passed on the file as committed (5.5 s).
+- Canary: the body replaced by a raise, **killed** by `tests/test_ai_gateway_ask.py::test_a_prompt_at_its_bound_is_sent`.
+- Mutants: 9, killed 7, survived 2 (equivalent, above).
+
+| # | change (− committed, + mutant) | outcome | killed by |
+|---|---|---|---|
+| 1 | `- raw = get_setting("ai_cap_usd_per_day", DEFAULT_CAP_PER_DAY)`<br>`+ raw = None` | killed | `tests/test_ai_gateway_ask.py::test_a_worst_case_over_the_call_cap_is_refused_with_both_operands` |
+| 2 | `- raw = get_setting("ai_cap_usd_per_day", DEFAULT_CAP_PER_DAY)`<br>`+ raw = get_setting(None, DEFAULT_CAP_PER_DAY)` | killed | `tests/test_ai_gateway_ask.py::test_with_no_day_cap_a_call_is_sent_whatever_today_s_spend` |
+| 3 | `- raw = get_setting("ai_cap_usd_per_day", DEFAULT_CAP_PER_DAY)`<br>`+ raw = get_setting("ai_cap_usd_per_day", None)` | survived, equivalent | |
+| 4 | `- raw = get_setting("ai_cap_usd_per_day", DEFAULT_CAP_PER_DAY)`<br>`+ raw = get_setting(DEFAULT_CAP_PER_DAY)` | killed | `tests/test_ai_gateway_ask.py::test_a_worst_case_over_the_call_cap_is_refused_with_both_operands` |
+| 5 | `- raw = get_setting("ai_cap_usd_per_day", DEFAULT_CAP_PER_DAY)`<br>`+ raw = get_setting("ai_cap_usd_per_day", )` | survived, equivalent | |
+| 6 | `- raw = get_setting("ai_cap_usd_per_day", DEFAULT_CAP_PER_DAY)`<br>`+ raw = get_setting("XXai_cap_usd_per_dayXX", DEFAULT_CAP_PER_DAY)` | killed | `tests/test_ai_gateway_ask.py::test_with_no_day_cap_a_call_is_sent_whatever_today_s_spend` |
+| 7 | `- raw = get_setting("ai_cap_usd_per_day", DEFAULT_CAP_PER_DAY)`<br>`+ raw = get_setting("AI_CAP_USD_PER_DAY", DEFAULT_CAP_PER_DAY)` | killed | `tests/test_ai_gateway_ask.py::test_with_no_day_cap_a_call_is_sent_whatever_today_s_spend` |
+| 8 | `- if raw is None:`<br>`+ if raw is not None:` | killed | `tests/test_ai_gateway_ask.py::test_a_worst_case_over_the_call_cap_is_refused_with_both_operands` |
+| 9 | `- return float(raw)`<br>`+ return float(None)` | killed | `tests/test_ai_gateway_ask.py::test_with_no_day_cap_a_call_is_sent_whatever_today_s_spend` |
+
+### `modules.ai.gateway.caps`
+
+- Baseline: the tests passed on the file as committed (4.3 s).
+- Canary: the body replaced by a raise, **killed** by `tests/test_ai_gateway_ask.py::test_a_prompt_at_its_bound_is_sent`.
+- Mutants: 5, killed 5, survived 0: each renames a key of the returned dict (`per_call` or
+  `per_day`, to `XX…XX` or upper case) or passes None for the feature, and each is killed by
+  `tests/test_ai_gateway_ask.py::test_a_prompt_at_its_bound_is_sent`.
+
+### `modules.ai.gateway.ask`
+
+- Baseline: the tests passed on the file as committed (4.3 s).
+- Canary: the body replaced by a raise, **killed** by `tests/test_ai_gateway_ask.py::test_hosted_ai_off_is_refused_whole_and_logged`.
+- Mutants: 39 (numbers 300 to 324, 335, 337, 343 to 354), killed 39, survived 0.
+
+| # | change (− committed, + mutant) | killed by |
+|---|---|---|
+| 300 to 306 | `uncapped = "" if cap["per_day"] is not None else f"; {NO_DAY_CAP_WORDS}"`: None; the condition forced either way; "XXXX"; the key renamed (2); `is None` | `test_a_worst_case_over_the_call_cap_is_refused_with_both_operands` (300, 301, 303, 306), `test_with_no_day_cap_a_cap_s_refusal_says_no_day_cap_is_set` (302), `test_a_prompt_at_its_bound_is_sent` (304, 305) |
+| 307 to 311 | `worst = worst_case_usd(model, body)`: None, either argument None or dropped | `test_a_prompt_at_its_bound_is_sent` |
+| 312 to 314 | `if worst > cap["per_call"]`: `>=`, the key renamed (2) | `test_a_prompt_at_its_bound_is_sent` |
+| 315 to 324 | the per-call refusal: its kind None, dropped or renamed (2); its words None, dropped or the key renamed (2); `worst_usd` None or dropped | `test_a_worst_case_over_the_call_cap_is_refused_with_both_operands` |
+| 335, 337, 343, 344 | the unreadable record's refusal: its words None or dropped; `spent["error"]` renamed (2) | `test_an_unreadable_record_is_refused_in_its_words` |
+| 345 to 354 | `if cap["per_day"] is not None and spent["usd"] + worst > cap["per_day"]`: `or`; the keys renamed (6); `is None`; `-` for `+`; `>=` | `test_a_prompt_at_its_bound_is_sent` (345, 346, 347, 350, 351, 353, 354), `test_the_day_cap_is_refused_with_its_three_operands` (348, 349), `test_a_days_spend_reaching_the_cap_exactly_is_sent` (352) |
+
+(All in `tests/test_ai_gateway_ask.py`. The machine log, one JSON line per step, is scratch
+tooling, as above.)
+

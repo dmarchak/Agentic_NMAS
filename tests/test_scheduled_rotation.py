@@ -611,11 +611,28 @@ def test_a_bad_policy_is_refused_naming_the_field(data):
     _profile()
     got = SR.set_policy("role:router", {"state": "on", "days": "0"}, actor=SETTER,
                         verified="access", person=True)
-    assert not got["ok"] and "days is between 1 and 3650" in got["error"]
+    assert not got["ok"] and "days is 1 or more, not 0" in got["error"]
+    got = SR.set_policy("role:router", {"state": "on", "max_per_run": "0"}, actor=SETTER,
+                        verified="access", person=True)
+    assert not got["ok"] and "max per run is 1 or more, not 0" in got["error"]
     got = SR.set_policy("role:nope", {"state": "on"}, actor=SETTER, verified="access",
                         person=True)
     assert not got["ok"] and "no profile is named" in got["error"]
     assert SR.policies() == {}
+
+
+def test_how_often_and_how_many_have_no_program_maximum(data):
+    """The operator, 2026-10-27: limits belong to the customer. Ten years and more between
+    rotations, and more than a thousand devices a run, are set; the hours stay a clock's."""
+    _profile()
+    got = SR.set_policy("role:router", {"state": "on", "days": "36500", "max_per_run": "5000"},
+                        actor=SETTER, verified="access", person=True)
+    assert got["ok"], got
+    pol = SR.policies()["role:router"]
+    assert pol["days"] == 36500 and pol["max_per_run"] == 5000
+    got = SR.set_policy("role:router", {"state": "on", "window_start": "24"}, actor=SETTER,
+                        verified="access", person=True)
+    assert not got["ok"] and "window start is between 0 and 23" in got["error"]
 
 
 @pytest.fixture

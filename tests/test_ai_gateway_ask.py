@@ -244,6 +244,39 @@ def test_the_day_cap_is_refused_with_its_three_operands(world, monkeypatch):
                           verdict="over_cap", detail=words, worst_usd=worst)
 
 
+def test_with_no_day_cap_a_call_is_sent_whatever_today_s_spend(world, monkeypatch):
+    """No cap (the key stored as null, an admin's typed choice; the operator, 2026-10-27):
+    the day's spend refuses nothing. The same spend under a cap is refused, naming it."""
+    body = _request(world)
+    worst = gateway.worst_case_usd(MODEL, body)
+    world.settings["ai_cap_usd_per_day"] = None
+    _spent(monkeypatch, 1_000_000.0)
+    world.answer = _answer('{"echo": "w"}')
+    assert _ask(world)["ok"] is True and len(world.sent) == 1
+    open(calls._path(), "w").close()
+    world.settings["ai_cap_usd_per_day"] = 5000.0
+    words = (f"today's spend ${1_000_000.0:.4f} plus this call's worst case ${worst:.4f} "
+             f"is over the day cap ${5000.0:.4f}")
+    assert _ask(world) == _refused("over_cap", words) and len(world.sent) == 1
+
+
+def test_with_no_day_cap_a_cap_s_refusal_says_no_day_cap_is_set(world, monkeypatch):
+    body = _request(world)
+    worst = gateway.worst_case_usd(MODEL, body)
+    world.settings["ai_cap_usd_per_day"] = None
+    monkeypatch.setattr(profiles, "cap_per_call", lambda name: worst / 2)
+    words = (f"this call's worst case ${worst:.4f} is over the connection_check task's "
+             f"per-call cap ${worst / 2:.4f}; no day cap is set (an admin chose no cap: Mercury "
+             "does not stop AI spend; the provider's own limit is the backstop)")
+    assert _ask(world) == _refused("over_cap", words) and world.sent == []
+    open(calls._path(), "w").close()
+    monkeypatch.setattr(profiles, "cap_per_call", lambda name: worst)
+    _spent(monkeypatch, None, "unreadable", "a torn line at 3")
+    words = ("the record of AI calls cannot be read, so today's spend is unknown (a torn line "
+             f"at 3); {gateway.NO_DAY_CAP_WORDS}; nothing was sent")
+    assert _ask(world) == _refused("over_cap", words) and world.sent == []
+
+
 def test_a_days_spend_reaching_the_cap_exactly_is_sent(world, monkeypatch):
     body = _request(world)
     worst = gateway.worst_case_usd(MODEL, body)

@@ -42,12 +42,14 @@ def _unread(html: str, reads: set) -> tuple:
 
 
 def _saves_read() -> set:
-    """What the settings Saves read: each Installation card's fields (`installation_settings.
-    CARDS`) and each network group's keys (`settings_scope.group_keys`), and `loaded` (R17)."""
+    """What the settings Saves read: each Installation card's form (`installation_settings.
+    form_keys`, the one list the card Save's route reads its form by: the card's fields, and on
+    the AI card the No cap choice and its confirmations, C1861) and each network group's keys
+    (`settings_scope.group_keys`), and `loaded` (R17)."""
     from modules import installation_settings as I
     from modules.settings_scope import group_keys, network_groups
 
-    keys = {f["key"] for spec in I.CARDS.values() for f in spec["fields"]}
+    keys = {k for name in I.CARDS for k in I.form_keys(name)}
     keys |= {k for g in network_groups() for k in group_keys(g)}
     return keys | {"loaded"}
 

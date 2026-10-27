@@ -408,7 +408,8 @@ HISTORY = {
     "settings_v2.network_create": NOT_A_DEVICE,
     "settings_v2.network_source_apply": NOT_A_DEVICE,
     "settings_v2.network_delete": NOT_A_DEVICE,
-    "settings_v2.install_save": NOT_A_DEVICE,
+    # The installation's settings record, drawn on History (the operator, 2026-10-27).
+    "settings_v2.install_save": ("installation_settings",),
     "settings_v2.install_test": NOT_A_DEVICE,
     "v2.monitoring_alert_explain": "n/a: one AI call, kept in the fleet's ai_calls record, "
                                    "never one device's record",
@@ -421,10 +422,10 @@ HISTORY = {
                                  "never one device's record",
     "intent_v2.words": "n/a: one AI call, kept in the fleet's ai_calls record (its subject the "
                        "device); its draft writes nothing, and its commit is intent_v2.commit's",
-    "settings_v2.install_replace": NOT_A_DEVICE,
-    "settings_v2.install_writes_off": NOT_A_DEVICE,
-    "settings_v2.install_ai_allow": NOT_A_DEVICE,
-    "settings_v2.install_ai_off": NOT_A_DEVICE,
+    "settings_v2.install_replace": ("installation_settings",),
+    "settings_v2.install_writes_off": ("installation_settings",),
+    "settings_v2.install_ai_allow": ("installation_settings",),
+    "settings_v2.install_ai_off": ("installation_settings",),
     "settings_v2.install_ratify": NOT_A_DEVICE,
     "settings_v2.platforms_preview": NOT_A_DEVICE,
     "settings_v2.platforms_apply": NOT_A_DEVICE,

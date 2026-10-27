@@ -26,7 +26,7 @@
   {%- if saved %}
   <div class="notice notice-{{ 'muted' if saved.recorded else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<div>
     {%- if saved.nothing %}<strong>Nothing changed:</strong> every field already held what was sent.
-    {%- else %}<strong>Saved</strong> by {{ saved.actor_label }} {{ stamp(saved.at_iso) }}: {{ saved.written | length }} field{{ '' if saved.written | length == 1 else 's' }} ({{ saved.written | join(', ') }}), for every network. Recorded in the installation's settings record.
+    {%- else %}<strong>Saved</strong> by {{ saved.actor_label }} {{ stamp(saved.at_iso) }}: {{ saved.change_words | join('; ') }}, for every network. Recorded in the installation's settings record, old and new, and drawn on History.
     {%- if saved.restart %} <strong>Bind and port take effect at the next restart:</strong> Mercury still listens where it did until then.{% endif %}
     {%- if not saved.recorded %} <strong>Saved, and its record could not be written:</strong> {{ saved.record_error }}.{% endif %}{% endif %}</div></div>
   {%- endif %}
@@ -52,6 +52,39 @@
   <div class="notice notice-{{ 'muted' if tested.ok else 'danger' }} set-result" role="status">{{ icon('tick' if tested.ok else 'warn', 16) }}<div>
     <strong>Test {{ 'passed' if tested.ok else 'failed' }}</strong> {{ stamp(tested.at_iso) }}: {{ tested.message if tested.ok else tested.error }}.</div></div>
   {%- endif %}
+  {%- if confirm %}
+  {#- The day cap's confirmation (the operator, 2026-10-27): nothing is written until its Save
+      is pressed. It carries the values as sent and what the card drew (`loaded`, R17), so a
+      change another person made meanwhile is still refused, naming both. A large increase
+      says what it means; No cap needs its words typed. -#}
+  {%- set cf = confirm %}
+  <div class="notice notice-warn set-result set-confirm" role="alert">{{ icon('warn', 16) }}<div>
+    {%- if cf.kind == 'no_cap' %}
+    <p><strong>No cap:</strong> {{ cf.label }} {{ cf.old_words }} → {{ cf.new_words }}. Mercury would not stop AI spend; the provider's own limit is the backstop, and the provider bills what is spent. Type <span class="mono">{{ cf.typed }}</span> to confirm.</p>
+    {%- if cf.refused %}<p><strong>Not saved:</strong> {{ cf.refused }}.</p>{% endif %}
+    {%- else %}
+    <p><strong>A large increase:</strong> {{ cf.label }} {{ cf.old_words }} → {{ cf.new_words }}. {{ cf.implication }}. The provider bills what is spent; nothing is saved until you press Save.</p>
+    {%- endif %}
+    <form class="set-inline" method="post" action="{{ url_for('settings_v2.install_save', name=k.name) }}"
+          hx-post="{{ url_for('settings_v2.install_save', name=k.name) }}" hx-target="#card-{{ k.name }}" hx-swap="outerHTML">
+      <input type="hidden" name="loaded" value='{{ cf.loaded | tojson }}'>
+      {%- for key, v in cf.sent | dictsort %}
+      <input type="hidden" name="{{ key }}" value="{{ v }}">
+      {%- endfor %}
+      {%- if cf.kind == 'no_cap' %}
+      <input type="hidden" name="no_cap" value="on">
+      <label class="sr-only" for="f-{{ k.name }}-no-cap-typed">Type {{ cf.typed }} to confirm</label>
+      <input id="f-{{ k.name }}-no-cap-typed" name="no_cap_typed" type="text" autocomplete="off" placeholder="{{ cf.typed }}">
+      {%- else %}
+      <input type="hidden" name="confirm" value="{{ cf.confirm }}">
+      {%- endif %}
+      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="installation-settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">{{ 'Save with no cap' if cf.kind == 'no_cap' else 'Save ' ~ cf.new_words ~ ' a day' }}</span><span class="op-busy">Saving…</span></button>{{ how('installation-settings', 'ai-cap', compact=True, op='changing the day cap') }}</span>
+      <a class="btn btn-small" href="{{ url_for('settings_v2.installation', tab=s.tab) }}" hx-get="{{ url_for('settings_v2.install_card', name=k.name) }}" hx-target="#card-{{ k.name }}" hx-swap="outerHTML">Cancel</a>
+    </form></div></div>
+  {%- endif %}
+  {%- if k.no_cap and k.no_cap.set %}
+  <div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<div><strong>{{ k.no_cap.words }}.</strong> An admin chose it; untick No cap and give an amount to set one again.</div></div>
+  {%- endif %}
   <form class="set-form" id="form-{{ k.name }}" method="post" action="{{ url_for('settings_v2.install_save', name=k.name) }}"
         hx-post="{{ url_for('settings_v2.install_save', name=k.name) }}" hx-target="#card-{{ k.name }}" hx-swap="outerHTML">
     {#- What this card drew (R17): its Save writes only what the person changed, and refuses a
@@ -68,7 +101,9 @@
     <div><select id="{{ fid }}" name="{{ f.key }}">{% for c in f.choices %}<option{% if c == f.value %} selected{% endif %}>{{ c }}</option>{% endfor %}</select>{% if f.note %} <span class="set-origin">{{ f.note }}</span>{% endif %}</div>
     {%- else %}
     <label for="{{ fid }}">{{ f.label }}</label>
-    <div><input id="{{ fid }}" name="{{ f.key }}"{% if f.kind in ('url', 'name', 'host', 'port', 'vmids') %} class="mono"{% endif %} type="{{ 'number' if f.kind == 'port' else ('date' if f.kind == 'date' else ('email' if f.kind == 'email' else 'text')) }}" value="{{ f.value if f.value is not none else '' }}" autocomplete="off" title="{{ f.kind_words }}">{% if f.note %} <span class="set-origin">{{ f.note }}</span>{% endif %}</div>
+    <div><input id="{{ fid }}" name="{{ f.key }}"{% if f.kind in ('url', 'name', 'host', 'port', 'vmids') %} class="mono"{% endif %} type="{{ 'number' if f.kind == 'port' else ('date' if f.kind == 'date' else ('email' if f.kind == 'email' else 'text')) }}" value="{{ f.value if f.value is not none else '' }}" autocomplete="off" title="{{ f.kind_words }}">
+      {%- if k.no_cap and f.key == k.no_cap.key %} <label class="set-switch" title="No cap is a choice of its own: saving it asks you to type “{{ k.no_cap.typed }}” to confirm"><input id="{{ fid }}-none" name="no_cap" type="checkbox" value="on"{% if k.no_cap.set %} checked{% endif %}> No cap</label>{% endif %}
+      {%- if f.note %} <span class="set-origin">{{ f.note }}</span>{% endif %}</div>
     {%- endif %}
     {%- endfor %}
     {%- if s.secret and s.secret_at >= k.fields | length %}{{ secret_row() }}{% endif %}

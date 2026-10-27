@@ -1401,6 +1401,28 @@ def _console_ztp(client, lab, _mp):
         server.close()
 
 
+def _day_cap_confirm(client, _lab, _mp):
+    """Settings › Installation, the AI card's two confirmations (the operator, 2026-10-27): a
+    large increase of the day cap, and No cap with its words typed wrong. Neither writes, so
+    nothing is undone."""
+    from html import unescape
+
+    from modules.ai import gateway
+
+    before = gateway.day_cap()
+    card = client.get("/v2/settings/installation/card/ai").get_data(as_text=True)
+    loaded = unescape(re.search(r'name="loaded" value=\'([^\']*)\'', card).group(1))
+    base = {"ai_cap_usd_per_day": str(float(before) * 100), "ai_cap_day_boundary": "UTC",
+            "loaded": loaded}
+    for data, code, words in ((base, 200, "A large increase"),
+                              (dict(base, no_cap="on", no_cap_typed="yes"), 409,
+                               "typed to confirm")):
+        r = client.post("/v2/settings/installation/card/ai/save", data=data,
+                        headers={"HX-Request": "true", "Accept": "text/html"})
+        assert r.status_code == code and words in r.get_data(as_text=True), r.status_code
+    assert gateway.day_cap() == before, "a confirmation writes nothing"
+
+
 def _console_servers(client, _lab, _mp):
     """Settings › Installation › Console servers (O8) with a port record, a NetBox port with
     none, a key, a held host key and the store's log: the tab, each card, each change and its
@@ -1538,7 +1560,7 @@ PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _dr
                    _alert_evidence, _logs_builder_leftovers, _alert_history,
                    _save_no_golden, _profile_versions,
                    _no_change_window, _update_owed, _lease_release, _ip_sla_retunes, _ip_sla_unsent,
-                   _console_ztp, _console_servers, _oob_onboard, _deploy,
+                   _console_ztp, _console_servers, _day_cap_confirm, _oob_onboard, _deploy,
                    # After _deploy: r3's intent is then a real device's (r2's capture,
                    # parsed), which the editor's check passes; the walk's own r3 lacks a
                    # syslog heartbeat, so a draft on it is refused before the patch.

@@ -25,6 +25,7 @@ by :func:`replace_secret`, and NetBox's master switch turned off by :func:`netbo
 
 import json
 import logging
+import math
 import os
 import re
 import time
@@ -294,7 +295,7 @@ KINDS = {
     "date": "a date, YYYY-MM-DD, or empty",
     "text": "text on one line",
     "email": "an email address",
-    "usd": "an amount in US dollars, up to four decimals",
+    "usd": "a positive amount in US dollars, up to four decimals, with no maximum",
     "zone": "UTC, or a time zone's name such as America/Denver",
 }
 
@@ -353,7 +354,8 @@ CARDS = {
         "group": "ai_gateway", "title": "AI (hosted)", "tab": "connections",
         "fields": (_f("ai_cap_usd_per_day", "Cap per day", "usd",
                       "today's spend plus a call's worst case, refused before it is sent; "
-                      "each call's own cap is its task's, below"),
+                      "each call's own cap is its task's, below. No program maximum: the "
+                      "limit is yours, and the provider bills what is spent"),
                    _f("ai_cap_day_boundary", "The day begins at", "zone",
                       "midnight in this zone, UTC unless set: when the day cap's count starts "
                       "again (a zone follows its daylight-saving changes)")),
@@ -363,6 +365,28 @@ CARDS = {
                 "records it under History › AI calls.",
     },
 }
+
+#: The day cap (the operator, 2026-10-27): limits are the customer's, so there is no program
+#: maximum. Two confirmations stand between a person and a costly mistake, each informative
+#: and one more click, each drawn in the card with nothing written until it is pressed:
+#:
+#: - **A large increase**: the new cap at least LARGE_RATIO times the old one, or at least
+#:   LARGE_STEP_USD more (a rise from $1.50 to $3 is large by the first, $100 to $160 by the
+#:   second; $100 to $140 is neither). The confirmation says what it means: "Up to $X a day,
+#:   about $Y a month at full use", the month MONTH_DAYS days.
+#: - **No cap**: a control of its own (never an empty field), stored as null, confirmed only
+#:   by typing NO_CAP_TYPED. While it is set the card says NO_CAP_WORDS, the gateway refuses no
+#:   call for the day's spend, and `ai.controls.cap_state` answers no_cap for the toolbar.
+NO_CAP_KEY = "ai_cap_usd_per_day"
+LARGE_RATIO = 2.0
+LARGE_STEP_USD = 50.0
+MONTH_DAYS = 30
+NO_CAP_TYPED = "no cap"
+NO_CAP_WORDS = ("No cap is set: Mercury does not stop AI spend; the provider's own limit is "
+                "the backstop")
+#: The form's own fields beside a card's settings: the No cap choice, its typed confirmation,
+#: and the large increase's confirm (the value confirmed, as drawn).
+NO_CAP_FIELD, NO_CAP_TYPED_FIELD, CONFIRM_FIELD = "no_cap", "no_cap_typed", "confirm"
 
 #: The hosted allowance's Allow (a person's recorded decision) and Turn off.
 AI_HOSTED_ON_STEPS = ("check", "write", "record")
@@ -452,7 +476,96 @@ def card(name: str, ai_state: bool = True) -> dict:
         out["spent"] = calls.spent_usd(calls.today())
         out["resets"] = calls.reset_info()
         out["reason_bounds"] = (AI_REASON_MIN, AI_REASON_MAX)
+        # The No cap choice, beside the day cap's field: ticked while no cap is set, with the
+        # card's words saying what that means.
+        out["no_cap"] = {"key": NO_CAP_KEY, "set": gateway.day_cap() is None,
+                         "words": NO_CAP_WORDS, "typed": NO_CAP_TYPED}
     return out
+
+
+def form_keys(name: str) -> tuple:
+    """What a card's Save reads from its form: each field, and on the AI card the No cap
+    choice, its typed confirmation and the large increase's confirm."""
+    keys = tuple(f["key"] for f in CARDS[name]["fields"])
+    if any(k == NO_CAP_KEY for k in keys):
+        keys += (NO_CAP_FIELD, NO_CAP_TYPED_FIELD, CONFIRM_FIELD)
+    return keys
+
+
+def money(value) -> str:
+    """US dollars as a person reads them: "$80", "$2,400", "$1.50", "$0.0125"; None is no
+    cap."""
+    if value is None:
+        return "no cap"
+    v = round(float(value), 4)
+    if v == int(v):
+        return f"${v:,.0f}"
+    if round(v, 2) == v:
+        return f"${v:,.2f}"
+    return "$" + f"{v:,.4f}".rstrip("0").rstrip(".")
+
+
+def value_words(kind: str, value) -> str:
+    """A card field's value in a change's words: money for an amount, on or off for a switch,
+    "empty" for nothing."""
+    if kind == "usd":
+        return money(value)
+    if kind == "switch":
+        return "on" if value else "off"
+    return "empty" if value in (None, "") else str(value)
+
+
+def change_words(change: dict) -> str:
+    """One recorded change: "Cap per day $50 → $80"."""
+    kind = change.get("kind", "")
+    return (f"{change.get('label') or change.get('key', '?')} "
+            f"{value_words(kind, change.get('old'))} → {value_words(kind, change.get('new'))}")
+
+
+def _kept(value):
+    """A field's value as the record keeps it: masked by position and by known secret (a URL's
+    user and password, a stored secret's value), though no card field is a secret."""
+    if not isinstance(value, str):
+        return value
+    from modules.redact import redact_text
+    return redact_text(value)
+
+
+def is_large(old, new) -> bool:
+    """A large increase of the day cap: from a cap to a higher one at least LARGE_RATIO times
+    it, or at least LARGE_STEP_USD more. From no cap, or a decrease, is never large."""
+    if old is None or new is None or new <= old:
+        return False
+    return new >= LARGE_RATIO * old or new - old >= LARGE_STEP_USD
+
+
+def _confirmation(f: dict, old, new, form: dict, values: dict, loaded: dict, by_key: dict):
+    """The confirmation the day cap's change needs before it is written, or None. ``kind``
+    "large" (an increase `is_large` judges) or "no_cap" (from a cap to none); ``refused`` when
+    a No cap was sent with the wrong words typed."""
+    typed = form.get(NO_CAP_TYPED_FIELD)
+    if new is None and old is not None:
+        if typed is not None and " ".join(typed.lower().split()) == NO_CAP_TYPED:
+            return None
+        kind = "no_cap"
+    elif is_large(old, new):
+        if (form.get(CONFIRM_FIELD) or "").strip() == _drawn(f, new):
+            return None
+        kind = "large"
+    else:
+        return None
+    refused = ""
+    if kind == "no_cap" and typed is not None:
+        refused = (f"no cap needs the words {NO_CAP_TYPED!r} typed to confirm "
+                   f"({'nothing was typed' if not typed.strip() else 'something else was'}); "
+                   f"the cap stays {money(old)}")
+    return {"kind": kind, "label": f["label"], "old_words": money(old),
+            "new_words": money(new), "confirm": _drawn(f, new),
+            "implication": ("" if new is None else
+                            f"Up to {money(new)} a day, about {money(new * MONTH_DAYS)} a month "
+                            "at full use"),
+            "sent": {k: _drawn(by_key[k], v) for k, v in values.items()},
+            "loaded": loaded, "refused": refused, "typed": NO_CAP_TYPED}
 
 
 def _drawn(f: dict, value) -> str:
@@ -511,9 +624,17 @@ def _value(f: dict, raw):
             raise no()
         return text
     if kind == "usd":
-        if not re.fullmatch(r"\d{1,3}(\.\d{1,4})?", text):
+        # No program maximum (the operator, 2026-10-27: limits are the customer's); a
+        # thousands comma is taken ("5,000"). More than $0: a cap of nothing is no cap's job.
+        plain = (text.replace(",", "") if re.fullmatch(r"-?\d{1,3}(,\d{3})+(\.\d{1,4})?", text)
+                 else text)
+        if not re.fullmatch(r"-?\d+(\.\d{1,4})?", plain) or not math.isfinite(float(plain)):
             raise no()
-        return float(text)
+        if float(plain) <= 0:
+            raise Refused(f"{label} {text!r} is not a positive amount: it must be more than $0"
+                          + ("; to stop AI, turn hosted AI off; for no cap, choose No cap"
+                             if f["key"] == NO_CAP_KEY else ""))
+        return float(plain)
     if kind == "zone":
         from modules.ai import calls
         if not re.fullmatch(r"[A-Za-z0-9_+/-]{1,64}", text) or not calls.valid_boundary(text):
@@ -526,8 +647,14 @@ def _value(f: dict, raw):
 
 def save_card(name: str, form: dict, actor: str, verified: str, loaded=None) -> dict:
     """Save a card's fields (CARD_SAVE_STEPS): check each, write what the person changed to the
-    installation's settings, record who and which fields (never a value). A switch the form
-    did not send is off. ``{"ok", "written", "nothing", "restart", "recorded", ...}``.
+    installation's settings, record who and, for each field changed, its old and new value (a
+    card's fields are never secrets: those go through Replace…; each value is masked as it is
+    kept all the same). A switch the form did not send is off.
+    ``{"ok", "written", "nothing", "restart", "recorded", "changes", ...}``.
+
+    The day cap's change may need a confirmation first (`_confirmation`: a large increase, or
+    no cap): then nothing is written and ``{"ok": False, "confirm": {...}}`` comes back, the
+    card drawing it with the values as sent and *loaded* as drawn, for one more press.
 
     *loaded* is what the card drew (CONCURRENCY_AUDIT R17): a field still as drawn is not
     written, so another person's change to it since stands; a field the person changed that
@@ -541,7 +668,10 @@ def save_card(name: str, form: dict, actor: str, verified: str, loaded=None) -> 
     if not isinstance(loaded, dict):
         raise Refused(NOT_LOADED)
     by_key = {f["key"]: f for f in spec["fields"]}
-    values = {k: _value(f, form.get(k)) for k, f in by_key.items()}                   # check
+    # No cap is its own control: chosen, the day cap's field is not read (never an empty
+    # field meaning none).
+    values = {k: (None if k == NO_CAP_KEY and form.get(NO_CAP_FIELD) == "on"         # check
+                  else _value(f, form.get(k))) for k, f in by_key.items()}
     with settings_lock():
         now = {k: get_setting(k, DEFAULTS.get(k)) for k in by_key}
         mine, moved = changed_since_loaded({k: _drawn(by_key[k], v) for k, v in values.items()},
@@ -553,12 +683,21 @@ def save_card(name: str, form: dict, actor: str, verified: str, loaded=None) -> 
         if not changed:
             return {"ok": True, "nothing": True, "written": [], "recorded": True,
                     "restart": False}
+        if NO_CAP_KEY in changed:
+            ask = _confirmation(by_key[NO_CAP_KEY], now[NO_CAP_KEY], changed[NO_CAP_KEY],
+                                form, values, loaded, by_key)
+            if ask:
+                return {"ok": False, "confirm": ask, "written": []}
         out = write_settings(changed, actor=actor)                                   # write
     if not out["ok"]:
         raise Refused(out["error"])
+    changes = [{"key": k, "label": by_key[k]["label"], "kind": by_key[k]["kind"],
+                "old": _kept(now[k]), "new": _kept(changed[k])} for k in sorted(changed)]
     entry = _record({"kind": "card_save", "card": name, "actor": actor,             # record
-                     "actor_verified": verified, "fields": sorted(changed)})
+                     "actor_verified": verified, "fields": sorted(changed),
+                     "changes": changes})
     return dict(entry, ok=True, nothing=False, written=sorted(changed),
+                change_words=[change_words(c) for c in changes],
                 restart=any(k in changed for k in RESTART_KEYS))
 
 

@@ -134,13 +134,23 @@ def readiness(task: str, today: str = None, spent=None) -> dict:
         return dict(out, kind="unreadable", reason="the record of AI calls cannot be read "
                     f"({spent.get('error') or 'no reason given'}), so today's spend is unknown")
     usd = float(spent.get("usd") or 0.0)
-    if usd + cap["per_call"] > cap["per_day"]:
+    if cap["per_day"] is not None and usd + cap["per_call"] > cap["per_day"]:
         # When the day starts again is drawn by the reason's macro from `resets` (calls'
         # one answer), in the viewer's time and in UTC.
         return dict(out, kind="day_cap", spent=usd, resets=calls.reset_info(),
                     reason=f"today's AI spend ${usd:.4f} plus this task's per-call cap "
                            f"${cap['per_call']:.4f} is over the day cap ${cap['per_day']:.4f}")
     return dict(out, ready=True, spent=usd)
+
+
+def cap_state() -> dict:
+    """``{"day_cap": <US dollars> | None, "no_cap": bool}``: the installation's day cap as the
+    gateway reads it (`gateway.day_cap`, its one home). ``no_cap`` is True while an admin has
+    chosen no cap (the key stored as null): the one answer the toolbar's spend chip reads to
+    say "no cap" for as long as it is set (the operator, 2026-10-27; the chip is not built
+    yet, and its label lands with it)."""
+    per_day = gateway.day_cap()
+    return {"day_cap": per_day, "no_cap": per_day is None}
 
 
 def _may_configure() -> bool:

@@ -116,11 +116,14 @@ def test_every_object_is_closed_however_pydantic_writes_it(monkeypatch):
 @pytest.mark.parametrize("stored,per_day", [({}, 1.50), ({"ai_cap_usd_per_day": 0.75}, 0.75),
                                             ({"ai_cap_usd_per_day": "0.25"}, 0.25),
                                             ({"ai_cap_usd_per_day": "lots"}, 1.50),
-                                            ({"ai_cap_usd_per_day": None}, 1.50)])
+                                            ({"ai_cap_usd_per_day": None}, None),
+                                            ({"ai_cap_usd_per_day": 5000}, 5000.0)])
 def test_the_day_cap_is_the_stored_number_else_its_declared_default(monkeypatch, stored,
                                                                     per_day):
     """Through the real settings read: a key never set reads as the schema's default, and a
-    stored value that is not a number (a hand-edited file) as the gateway's, the same one."""
+    stored value that is not a number (a hand-edited file) as the gateway's, the same one. A
+    stored null is no cap, an admin's explicit choice (the operator, 2026-10-27: it was read
+    as the default before null was a value the schema allowed), and no maximum applies."""
     from modules import settings_schema
     monkeypatch.setattr(settings_schema, "load_user_settings", lambda: dict(stored))
     assert gateway.DEFAULT_CAP_PER_DAY == settings_schema.DEFAULTS["ai_cap_usd_per_day"]
