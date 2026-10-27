@@ -84,6 +84,12 @@ def _sdn_driver_scrub() -> str:
 #: Every masking entry point, called through its own shape, with the planted URL.
 ENTRY_POINTS = {
     "modules/sdn/drivers/base.py:_scrub": _sdn_driver_scrub,
+    # C1693's keyed-hash comparison masks each line as redact_text does, keeping the values.
+    "modules/secret_compare.py:masked_values": lambda: (
+        __import__("modules.secret_compare", fromlist=["masked_values"]).masked_values(PLANTED)[0]),
+    "modules/secret_compare.py:_masked_lines": lambda: "\n".join(
+        m for m, _digests, _n in __import__("modules.secret_compare", fromlist=["_masked_lines"])
+        ._masked_lines(PLANTED, None, None)),
     "modules/redact.py:redact_positional": lambda: redact.redact_positional(PLANTED),
     # The config check's every printed line (C725): positional without the store, both with.
     "modules/nsot/config_check.py:mask": lambda: (
@@ -140,6 +146,12 @@ ENTRY_POINTS = {
 
 #: Functions whose names say mask, redact or scrub but never take free text, each with why.
 NOT_FREE_TEXT = {
+    "modules/nsot/intent_normalise.py:masked_render": "Normalise's proof renders a document "
+        "through `templates.artifact_for` and takes its `rendered_masked`, the render path's "
+        "own masking; it masks nothing itself (C1693)",
+    "modules/nsot/intent_normalise.py:_masked_compared": "renders two documents' true configs "
+        "and hands them to `secret_compare.compare`, whose masking is masked_values (an entry "
+        "point above); only counts and masked lines leave (C1693)",
     "modules/sdn/connections.py:_invalidate_redaction": "drops redact's cached known values "
         "after an SDN credential is saved or removed, so the next masking reads them; it masks "
         "nothing (S2)",

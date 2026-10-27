@@ -251,11 +251,12 @@ class TestTheSecretCheckDoesNotRefuseLegitimateCommits:
         return values
 
     def test_a_short_value_does_not_refuse_ordinary_config(self, tmp_path, short_secret):
-        """A stored secret too short to check never refuses ordinary YAML: written verbatim."""
+        """A stored secret too short to check never refuses ordinary YAML: written, in
+        Mercury's own formatting (C1693)."""
         from modules.nsot import hostvars
         text = "hostname: s1\nusers:\n- username admin privilege 15\n"
         path = hostvars.write_committed_text(str(tmp_path), "s1", text)
-        assert open(path, encoding="utf-8").read() == text
+        assert open(path, encoding="utf-8").read() == hostvars.canonical(text)
 
     def test_the_floor_is_documented_not_incidental(self):
         from modules.nsot import hostvars
@@ -267,7 +268,7 @@ class TestTheSecretCheckDoesNotRefuseLegitimateCommits:
         from modules.nsot import hostvars
         text = "hostname: s1\nbanner: Str0ngC0mmunityValueExtended\n"
         path = hostvars.write_committed_text(str(tmp_path), "s1", text)
-        assert open(path, encoding="utf-8").read() == text
+        assert open(path, encoding="utf-8").read() == hostvars.canonical(text)
 
     def test_a_whole_token_match_is_still_refused(self, tmp_path, long_secret):
         from modules.nsot import hostvars
@@ -301,7 +302,7 @@ class TestTheSecretCheckDoesNotRefuseLegitimateCommits:
         from modules.nsot import hostvars
         text = f"hostname: s2\nbanner: {long_secret['s1:snmp_community_ro']}\n"
         path = hostvars.write_committed_text(str(tmp_path), "s2", text)
-        assert open(path, encoding="utf-8").read() == text
+        assert open(path, encoding="utf-8").read() == hostvars.canonical(text)
 
 
 class TestEveryCheckableSecretOfTheDeviceIsChecked:
@@ -455,11 +456,11 @@ class TestCommittedIntentMustBePrintableAscii:
 
     def test_the_ascii_version_is_accepted(self, tmp_path):
         """The same description with an ASCII hyphen (not the en dash that corrupted one on
-        a device) is accepted and written verbatim."""
+        a device) is accepted and written (in Mercury's own formatting, C1693)."""
         from modules.nsot import hostvars
         text = "hostname: s4\ndescription: mgmt identity - a b\n"
         path = hostvars.write_committed_text(str(tmp_path), "s4", text)
-        assert open(path, encoding="utf-8").read() == text
+        assert open(path, encoding="utf-8").read() == hostvars.canonical(text)
 
     def test_write_committed_refuses_it_too(self, tmp_path):
         """Both entry points, not just the editor."""

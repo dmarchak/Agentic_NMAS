@@ -26,8 +26,8 @@ Shots: each board at 1440; the page at 1440, 1280 and 390 in six states (`tab-in
 `-open`, `-edited`, `-error`, `-fixed`, `-done`), and `tab-intent-moved` and
 `tab-intent-departs` (C884) at 1440.
 Compared 2026-10-16.
-Templates compared: templates/v2/_intent.html, templates/v2/_intent_edit.html, templates/v2/_intent_check.html, templates/v2/_intent_words.html
-Templates sha256: `83d13c05b9150e6145fd0e0df0f2da0705ddfe03d867747cdbf83b56f7aa9862`
+Templates compared: templates/v2/_intent.html, templates/v2/_intent_edit.html, templates/v2/_intent_check.html, templates/v2/_intent_words.html, templates/v2/_intent_proof.html
+Templates sha256: `e3215e27e5d968fc927fbb012dd9d835c4fcc8748c59f6285cb2f0d5d9e73fff`
 
 Compared again 2026-10-17 (C1023) after "Open (commit) with your edit on it" (`_intent_edit.html`)
 and Write the ticked lines into the document (`_intent_check.html`) became busy on themselves
@@ -92,6 +92,20 @@ F7 at 1440.
   refused, naming it). **same**.
 Templates sha256 before: `91ee38590f13ff5f43224862e60ebe3b5d999643989b1730e746cafb31d93162`.
 
+Compared again 2026-10-27 (C1693, board H-N, `IntentNormalise.dc.html` version 165 on the
+canvas page "C1693", signed off under the Phase 7 mode; its five proof lines as the operator
+clarified them the same day). `_intent.html` offers Normalise the formatting… for a
+hand-formatted document; `_intent_edit.html` opens on Mercury's formatting; `_intent_check.html`
+draws the proof (`_intent_proof.html`, which joins the templates compared) and the editor's
+Commit again, out of band; the refusal and the committed result say what Normalise did.
+Compared by the templates against the board and by the page the tests draw on r2's real intent
+laid out by hand (tests/test_intent_normalise.py: the client's fragments, and the real
+browser's walk: offered, proved, a planted keyed-hash mismatch stopping it with Commit disabled,
+proved again, committed in place, not offered after). **Shots owed** (log: Tab intent:
+Normalise's shots owed (C1693)): board H-N and `tab-intent-normalise` at 1440, 1280 and 390
+are taken with the next run of tests/test_board_shots.py.
+Templates sha256 before: `83d13c05b9150e6145fd0e0df0f2da0705ddfe03d867747cdbf83b56f7aa9862`.
+
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
 
@@ -119,3 +133,12 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Committed: what a deploy keeps (C884) | not drawn (the committed state draws a deploy to plan) | the lines only the device holds, which a merge-only deploy never removes, apart under "What a deploy keeps: only r2 holds these" with Remove lines (Mode B)… beside them, Plan a deploy… staying primary (shot `tab-intent-departs`: Loopback0's description deleted). When a deploy would send nothing, the card is headed "How s1 now departs from its intent", those lines its only rows, "A deploy sends nothing: it is merge-only", and Remove lines (Mode B)… is its primary action, opening the device page's deploy card at the removal: the operator's fix (tests/test_intent_committed_departs.py on s1's real capture; not shot, this lab always has lines to send) | **deviation** (log: Tab intent: what a deploy keeps, with Remove lines (Mode B)… (C884)) |
 | Intent moved (state 3) | "not saved"; you opened, it is now (a link), by whom, when and its subject, "Nothing was written"; your edit kept and their change side by side; Open with your edit on it, or Open alone when both change one line | the same, the new commit in words (shot `tab-intent-moved`; both forms: tests/test_intent_editor_v2.py's `TestCommitting`); How does this work? in the head before Discard the edit, which the board does not draw there, the Open button keeping its (i) (C522) | **deviation** (log: Tab intent: intent moved's head carries How does this work? (C522)) |
 | Phone | no phone board; the board's columns stack under 900 px | the columns stack, the document first, then the check column and the footer | **same** |
+| Normalise: the offer (H-N A) | a warning notice in the card, "This document is hand-formatted." and its words, Normalise the formatting… inside it; How does this work? in words in the card's head beside Edit | the same notice and words under the last commit's line, only for a document that does not round-trip, Normalise the formatting… inside it with its (i) beside it (the control's own link, C503's rule; the head keeps Edit's); for a viewer who may not commit, the notice says who may normalise it, with no button | **deviation** (log: Tab intent: Normalise's (i) beside its button (C1693)) |
+| Normalise: the editor's head (H-N B) | "r6 · Intent · editing", opened at the commit, "Mercury's formatting loaded; nothing written" | "Editing r2's intent", the file, opened at its blob, "Mercury's formatting loaded; nothing written." in place of "Nothing is written until you commit" | **same** |
+| Normalise: the document (H-N B) | the lines whose formatting changed highlighted, "Highlighted: lines whose formatting changed (41 of 333). The document's data is unchanged." | the plain text box (C901's deviation stands) with Mercury's formatting in it, and under it "Mercury's own formatting of the committed document: N of M lines changed formatting", the data's sameness left to the proof beside it | **deviation** (log: Tab intent: Normalise's changed lines counted, not highlighted (C1693)) |
+| Normalise: the proof (H-N B) | "Formatting only: proved", five lines each with ✓: the parsed document equal; the render byte-identical (318 lines); the device diff empty against the committed golden; the masked lines compared by keyed hash, 3 of 3 identical, their kinds named, "No value is shown or kept"; the new text round-trips | "Formatting only: proved" with its badge, the five lines in the board's words each with a pass badge, the counts measured (the render's lines, N of N, the kinds from the masking's labels), and a line of counts under them; the editor's Checks and any unmodelled lines stay below it | **same** |
+| Normalise: the reason and the commit (H-N B) | the Reason field and Commit the formatting only under the proof in the right column, "One commit on r6's intent, as you, with your reason…" | the editor's own footer: "Why, in one line" and the Commit, drawn again by the check as Commit the formatting only with the board's words, disabled until the proof passes | **deviation** (log: Tab intent: Normalise's reason and commit in the editor's footer (C1693)) |
+| Normalise: stopped (H-N C) | "Stopped: this is not formatting only", the render's differing lines as a diff, a masked line named by its line and masked text, "Its value is not shown", every differing line listed, Commit disabled | "Stopped: this is not formatting only" with its badge, each failing line with a differs badge in its own words, the refusal's notice, every differing line under where it differs (the render, the device diff, the masked lines), a masked line by its number and masked text with "Its value is not shown. Committing this could change the device's credential.", Commit disabled | **same** |
+| Normalise: refused at the server | not drawn (the board's button is disabled) | the commit refused by the server whatever the page showed: the editor again, its refusal naming each failing line, and the proof drawn as when stopped | **deviation** (log: Tab intent: Normalise refused by the server (C1693)) |
+| Normalise: committed (H-N D) | "r6's intent: formatting normalised, commit … by … at …, '…'. The render is unchanged. Change it in words is available now."; History · the commit's diff | the editor's committed card (its commit, subject and person as for any edit) with a notice "r2's intent: formatting normalised, proved before it was written. The render is unchanged. Change it in words is available now."; Edit again · See it in History, no link to the commit's diff | **deviation** (log: Tab intent: Normalise's committed result (C1693)) |
+| Every commit in Mercury's formatting | not drawn | the document's label says it is "opened as committed, byte for byte, and committed in Mercury's own formatting"; the Checks say "Committed in Mercury's own formatting" when the typed text is laid out otherwise; the committed card says the data was kept without its comments and layout | **deviation** (log: Tab intent: every commit in Mercury's own formatting, said (C1693)) |

@@ -226,7 +226,8 @@ def plan(repo: str, devices: list, steps: list, *, render, eligible=None,
         if hostvars.to_yaml(doc) != text:
             reasons.append("the file is hand-formatted (it does not round-trip "
                            "through to_yaml): writing it would silently drop "
-                           "its comments or layout -- edit it in the editor")
+                           "its comments or layout -- normalise it first: Normalise "
+                           "the formatting… on its Intent tab")
 
         mismatched = []
         for step in steps:

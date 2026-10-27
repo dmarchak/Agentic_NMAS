@@ -51,7 +51,9 @@ def test_the_editor_and_bulk_intent_pass_their_list():
         return [c for c in ast.walk(tree) if isinstance(c, ast.Call)
                 and getattr(c.func, "id", "") == "_platform_of_host"]
 
-    for fn in (intent_edit.preview, templatize._bulk_render_and_eligible):
+    # The editor reads its platform in `render_context` (C1693: shared by the preview and
+    # Normalise's proof), with the list it was given.
+    for fn in (intent_edit.render_context, templatize._bulk_render_and_eligible):
         calls = platform_calls(fn)
         assert calls, fn.__name__
         assert all(len(c.args) == 2 and getattr(c.args[1], "id", "") == "list_name"

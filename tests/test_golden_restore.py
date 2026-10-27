@@ -264,8 +264,14 @@ class TestIntentIsRestoredWithTheDevice:
     """
 
     def _with_intent(self, lab, host, text):
+        """*text* committed as *host*'s intent byte for byte, as a ref from before C1693 holds
+        it (every write path since commits Mercury's own formatting, so a comment reaches a
+        ref only from before then; the restore still carries that ref's own bytes)."""
         from modules.nsot import hostvars
-        hostvars.write_committed_text(lab["repo"], host, text)
+        path = hostvars.committed_path(lab["repo"], host)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(text)
         R.git(lab["repo"], "add", "-A", "host_vars")
         R.git(lab["repo"], "commit", "-m", f"intent: {host}")
         _rc, sha, _err = R.git(lab["repo"], "rev-parse", "HEAD")
@@ -329,8 +335,12 @@ class TestIntentIsRestoredWithTheDevice:
 
         assert out["restored"] == ["R1"]
         assert [s["device"] for s in out["skipped"]] == ["R2"]
-        assert "new: yes" in open(hostvars.committed_path(lab["repo"], "R1")).read()
-        assert "old: yes" in open(hostvars.committed_path(lab["repo"], "R2")).read()
+        # Read as documents: since C1693 a restore writes the ref's intent in Mercury's own
+        # formatting (YAML's `yes` is written `true`), the same document.
+        r1 = hostvars.from_yaml(open(hostvars.committed_path(lab["repo"], "R1")).read())
+        r2 = hostvars.from_yaml(open(hostvars.committed_path(lab["repo"], "R2")).read())
+        assert r1.get("new") is True and "old" not in r1
+        assert r2.get("old") is True and "new" not in r2
 
     def test_restored_intent_is_staged_across_the_crash_window(
             self, lab, monkeypatch):

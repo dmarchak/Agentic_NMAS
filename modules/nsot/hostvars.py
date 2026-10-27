@@ -100,6 +100,66 @@ def from_yaml(text: str) -> dict:
     return yaml.safe_load(text) or {}
 
 
+# ---------------------------------------------------------------------------
+# Mercury's own formatting (C1693): every committed intent document is `to_yaml`'s output
+# ---------------------------------------------------------------------------
+
+def round_trips(text: str) -> bool:
+    """Whether *text* is Mercury's own serialisation of itself, ``to_yaml(from_yaml(text)) ==
+    text``: the property a patch needs (feature 7's, bulk intent's), which rewrite a document
+    through the serialiser and refuse one whose comments or layout that would drop. False for
+    text that does not parse, or parses to something other than a mapping."""
+    import yaml
+
+    try:
+        doc = from_yaml(text or "")
+    except yaml.YAMLError:
+        return False
+    return isinstance(doc, dict) and to_yaml(doc) == text
+
+
+def _as_serialised(doc: dict) -> dict:
+    """*doc* as every reader takes it, so a document and its serialisation compare equal when
+    they say the same: an absent ``unmodeled`` is ``[]`` (`to_yaml` writes it so, and readers
+    read it with that default), an unmodelled entry's ``lineno`` is a pointer into a source
+    text, not intent (`to_yaml` drops it), and ``secret_refs`` is a set of names (`to_yaml`
+    sorts it; `hydrate_secrets` reads each). Anything else, ``secrets`` included, is compared
+    as it stands."""
+    out = dict(doc)
+    out["unmodeled"] = [{k: v for k, v in e.items() if k != "lineno"} if isinstance(e, dict)
+                        else e for e in (doc.get("unmodeled") or [])]
+    out["secret_refs"] = sorted(doc.get("secret_refs") or [], key=str)
+    return out
+
+
+def same_document(a: dict, b: dict) -> bool:
+    """Whether two parsed intent documents say the same, as every reader takes them
+    (`_as_serialised`): the test that a change of text is a change of formatting only."""
+    return (isinstance(a, dict) and isinstance(b, dict)
+            and _as_serialised(a) == _as_serialised(b))
+
+
+def canonical(text: str, hostname: str = "") -> str:
+    """*text* in Mercury's own formatting: `to_yaml` of its parse. Raises `ValueError` when it
+    does not parse to a mapping, or when the serialisation would not be the same document
+    (``secrets`` held in the text, which `to_yaml` never writes): writing it would change what
+    the document says, so nothing is written and the refusal says which keys moved."""
+    doc = from_yaml(text or "")
+    if not isinstance(doc, dict):
+        raise ValueError("host_vars must be a YAML mapping")
+    out = to_yaml(doc)
+    again = from_yaml(out)
+    if not same_document(again, doc):
+        moved = sorted(k for k in set(doc) | set(again)
+                       if _as_serialised(doc).get(k) != _as_serialised(again).get(k))
+        raise ValueError(
+            f"{hostname or doc.get('hostname') or 'this document'}: Mercury's own formatting "
+            f"of it would change what it says ({', '.join(moved) or 'its keys'}), so it is "
+            "not written; remove what the serialiser does not keep (a secrets block holds "
+            "values, and intent holds only secret_refs)")
+    return out
+
+
 def write_staged(repo: str, host_vars: dict) -> str:
     """Write an extraction to the staging area. Nothing is committed."""
     hostname = host_vars.get("hostname") or "unknown"
@@ -831,16 +891,19 @@ def write_committed(repo: str, host_vars: dict) -> str:
 
 def write_committed_text(repo: str, hostname: str, text: str, *,
                          judge_descriptions: bool = True) -> str:
-    """Write edited YAML verbatim, after the same refusal.
+    """Write an edited document in Mercury's own formatting, after the same refusal.
 
     *judge_descriptions* False is for a RECORD, never authoring: a restore writes the intent a
     past ref held after the device is restored to it, and refusing there would leave the
     device restored and its intent not (C428's rule is about authored intent).
 
-    The editor path. Round-tripping through ``from_yaml``/``to_yaml`` would
-    silently discard anything the model does not know about, so the operator's
-    text is kept as written — which is also why the value-level leak check
-    matters here and not only structurally.
+    The editor's path, feature 7's (through the editor's commit), bulk intent's and a
+    restore's. **What is written is `canonical(text)`** (C1693, the operator, 2026-10-27:
+    every intent write path saves in the canonical format): the same document, every key
+    kept (`to_yaml` drops nothing but a ``secrets`` block, which `canonical` refuses rather
+    than drop, and an unmodelled line's source ``lineno``), its comments and layout Mercury's.
+    A hand-formatted document cannot be patched (feature 7 and bulk intent refuse it), so
+    none is written from here; the leak check runs on the text given and the text written.
     """
     assert_printable(text, hostname)
     parsed = from_yaml(text)
@@ -856,10 +919,14 @@ def write_committed_text(repo: str, hostname: str, text: str, *,
     problems = description_problems(parsed) if judge_descriptions else []
     if problems:
         raise SessionDescription(f"{hostname}: " + "; ".join(problems))
+    # The leak check on the text as given, so its refusal names that text's line; the canonical
+    # text written holds the same values (the same document), checked again all the same.
+    assert_no_secret_values(text, hostname)
+    text = canonical(text, hostname)
     assert_no_secret_values(text, hostname)
     path = _ensure_dir(committed_path(repo, hostname))
     with open(path, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(text if text.endswith("\n") else text + "\n")
+        fh.write(text)
     return path
 
 

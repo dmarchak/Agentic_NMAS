@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
 {#- H's right column, drawn again as the document is typed (routes/intent_v2.check): an error
     on its line and column (the commit waits), else what the edit changes, what a deploy would
     send, the checks, and the lines the parser does not model with whether each is
@@ -24,7 +24,11 @@
 {%- if d.golden %}its golden <span class="mono">{{ d.golden.sha[:7] }}</span> (captured {{ stamp(d.golden.timestamp) }}){% else %}its golden{% endif %}
 {%- endmacro %}
 <div class="ie-col">
-  {%- if d.same %}
+  {%- if p.proof %}
+  {#- C1693, board H-N: an edit that changes formatting only is proved so, line by line, in
+      place of the diffs (it changes nothing a deploy would send when it passes). -#}
+  {%- with proof=p.proof %}{% include "v2/_intent_proof.html" %}{% endwith %}
+  {%- elif d.same %}
   <div><h3 class="ie-k">What your edit changes in {{ host }}, and what a deploy would send {{ badge('the same', 'ok') }}</h3>
     {{ rows(d.edit_rows) }}
     <p class="small">A deploy would send exactly this change: {{ d.sent }} line{{ '' if d.sent == 1 else 's' }}, merge-only{% if d.replaces %}; each line it changes is one setting, so the new value replaces the old{% endif %}. {{ host }} matches its intent now ({{ golden_words() }}), so nothing else is pending.</p></div>
@@ -60,6 +64,7 @@
       <li>{{ badge('pass', 'ok') }}<span>The document parses, and names {{ host }}; every interface key is one intent reads; no secret value in the text; every character a device accepts</span></li>
       {%- if p.template is defined %}<li>{{ badge('pass' if p.deployable else 'not yet', 'ok' if p.deployable else 'warn') }}<span>{{ host }}'s template renders it: <span class="mono">{{ p.template }}</span>{% if not p.deployable and p.blocking_reasons %}; a deploy is blocked: {{ p.blocking_reasons | join('; ') }}{% endif %}</span></li>{% endif %}
       <li>{{ badge('at commit', 'info') }}<span>{{ host }}'s intent is still the version you opened: if it moved, nothing is written</span></li>
+      {%- if p.canonical is defined and not p.canonical and not p.proof %}<li>{{ badge('at commit', 'info') }}<span>Committed in Mercury's own formatting: the data you typed is kept, its comments and layout are not</span></li>{% endif %}
     </ul></div>
   {%- if p.unmodelled %}
   {%- set pending = p.unmodelled | rejectattr('acknowledged') | list %}
@@ -74,4 +79,13 @@
   </div>
   {%- endif %}
 </div>
+{%- endif %}
+{%- if commit_oob %}
+{#- The editor's Commit (_intent_edit.html's footer, the same markup), drawn again out of band
+    (routes/intent_v2.check): for an edit that changes formatting only (C1693, board H-N) it
+    says so and waits on the proof, disabled until every line passes; the server refuses it
+    too (intent_edit.commit). -#}
+{%- set fmt = p.ok and p.proof -%}
+<span class="op-act ie-commit" id="ie-commit" hx-swap-oob="true"><span class="muted small">{% if fmt %}One commit on {{ host }}'s intent, as you, with your reason. Nothing is sent to {{ host }}.{% if p.proof.ok %} A deploy afterwards would send nothing.{% else %} It waits until the check proves it formatting only.{% endif %}{% else %}Commits the document as you, with its reason. Nothing is sent to {{ host }}.{% endif %}</span>
+  <button type="submit" class="btn btn-primary op-confirm" data-op="edit-intent" hx-disabled-elt="this"{{ gate('approve') }}{% if fmt and not p.proof.ok %} disabled{% endif %}><span class="op-idle">{% if fmt %}Commit the formatting only{% else %}Commit to {{ host }}'s intent{% endif %}</span><span class="op-busy">Committing…</span></button>{{ how('edit-intent', compact=True, op='editing intent') }}</span>
 {%- endif %}

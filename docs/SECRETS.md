@@ -205,6 +205,23 @@ made anyway and its failure ignored: the deployment target is Linux, and a
 development box raising here would be the tail wagging the dog. The checker
 is what reports a mode that could not be set.
 
+## Secrets compared by keyed hash: a key held nowhere (C1693, C1792)
+
+A masked text cannot show a change inside a secret's value, so where Mercury must say whether a
+secret stayed the same (Normalise's proof, C1693; the baseline comparison, C924), it compares
+the values by keyed hash: `modules/secret_compare.py`, HMAC-SHA256 over each value in a masked
+position, the positions `redact.redact_text` masks (a test holds the two to one output).
+
+**The key is not a store.** It is 32 random bytes drawn when the process starts and held in its
+memory only: never written to `data/`, logged, shown or returned, so it is not in the table
+above and the checker has nothing to classify. No hash is stored or returned either: a caller
+gets counts and the lines that differ, by line number and masked text. Both values are always
+read in the same call (a golden from git, a render hydrated from the credential store), so a
+key that outlived the process would buy nothing; and a hash that escaped by mistake means
+nothing outside the process that made it. Deriving one from `data/key.key` was not chosen: it
+would put the Fernet key to a second use. A key file was not chosen: it would be one more
+owner-only secret to create and back up, for nothing a comparison needs.
+
 ## What none of this covers
 
 - **A secret in a store this list does not name is not reported as safe — it

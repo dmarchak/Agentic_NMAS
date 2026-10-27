@@ -121,6 +121,10 @@ ROW_KINDS = {
     ("ci", "verdict"): ("the running commit has no CI pass",
                         "update to a release CI passed, or find why CI could not be asked"),
     ("reachability", "not-answering"): ("devices are not answering", "check the path, then each"),
+    # C1693: a hand-formatted document cannot be patched (Change it in words, bulk intent).
+    ("intent-format", "hand"): ("a device's committed intent does not round-trip through "
+                                "Mercury's serialiser, so a patch cannot change it",
+                                "normalise its formatting on the device's Intent tab"),
     ("netbox-secrets", "held"): ("NetBox holds a credential in a device's context",
                                  "mask it, remove it by hand, or repair the record first"),
     # C1344: onboarding writes NetBox once, from the bootstrap golden; a deploy never does.
@@ -270,6 +274,10 @@ CLEARS = {
                                "committed interfaces, addresses and cables: at once when an "
                                "import, an onboarding's Verify or a golden commit wakes it, "
                                "else within 5 minutes"),
+    ("intent-format", "hand"): (("resolves",), "the device's intent is committed in Mercury's "
+                                "own formatting (Normalise's commit, or any edit since, which "
+                                "saves in it): the reader reads it at once when the commit "
+                                "announces intent, else within 5 minutes"),
     ("netbox-secrets", "held"): (("resolves",), "NetBox no longer holds the credential (masked "
                                  "or removed), at the next hourly read"),
     ("netbox_inventory", "unreadable"): (("resolves",), "the network's next refresh reads "
@@ -2455,6 +2463,70 @@ def netbox_secrets_source(cached=None) -> dict:
                 f"{len(v.get('devices') or [])} holding a credential")
 
 
+def intent_format_source(cached=None) -> dict:
+    """A device whose committed intent does not round-trip through Mercury's serialiser
+    (C1693): Change it in words and bulk intent refuse to patch it, so one row per device,
+    naming it and its network, with Normalise on its Intent tab as the action. Read from the
+    intent-format reader's stored value (one ls-tree per network per cycle), never per
+    request."""
+    from modules import reader_job
+
+    started = time.time()
+    label = "Intent formatting"
+    got = reader_job.read_cached("intent-format") if cached is None else cached
+    doc = got.get("doc") or {}
+    good = doc.get("last_good") or {}
+    took = int((time.time() - started) * 1000)
+    if got["state"] != "ok" or not good:
+        why = (got.get("why") if got["state"] != "ok" else
+               "the reader has never stored a value; its last attempt: "
+               + ((doc.get("last_attempt") or {}).get("error") or "none recorded"))
+        return source_result("intent-format", label, read_at=started, took_ms=took,
+                             error=f"not read yet: {why}")
+    v = good.get("value") or {}
+    value_at, promise = _ts(good.get("value_at")), doc.get("stale_after_seconds")
+    rows, judged, files, failed = [], 0, 0, []
+    for name, net in sorted((v.get("lists") or {}).items()):
+        if net.get("error"):
+            failed.append(f"{name} ({net['error']})")
+            continue
+        judged += 1
+        files += len(net.get("files") or [])
+        for host in net.get("hand") or []:
+            rows.append(row(
+                source="intent-format", kind="hand", key=f"{name}:{host}", level="warning",
+                what=f"{host}'s committed intent is hand-formatted, so a patch cannot change it",
+                devices=[host], read_at=value_at,
+                cause=(f"host_vars/{host}.yml in {name}'s repository at "
+                       f"{str(net.get('head', ''))[:8]} does not round-trip through Mercury's "
+                       "serialiser (its comments or layout are not Mercury's own), so Change "
+                       "it in words and bulk intent refuse it rather than drop them"),
+                operands={"network": name, "head": net.get("head", "")},
+                action={"label": (f"Normalise the formatting… on {host}'s Intent tab: the "
+                                  "editor proves it changes formatting only, then commit it"),
+                        "href": f"/v2/device/{host}?" + urlencode(
+                            {"tab": "intent", "normalise": 1, "list": name})}))
+    if failed and not judged:
+        return source_result("intent-format", label, read_at=started, took_ms=took,
+                             error="no network's intent could be read: " + "; ".join(failed))
+    for which in failed:
+        # One network unreadable is not "nothing hand-formatted" there (C1693): said as a row.
+        rows.append(row(
+            source="intent-format", kind="unreadable", key=f"unreadable:{which}",
+            level="unknown", read_at=value_at,
+            what=f"Intent formatting could not be read for {which.split(' (', 1)[0]}",
+            cause=(f"{which}. Whether its devices' intent round-trips is unknown until it "
+                   "can be read"),
+            action={"label": "Find why the repository cannot be read: the cause above names "
+                             "what git answered", "known": False}))
+    return source_result(
+        "intent-format", label, read_at=started, took_ms=took, rows=rows, value_at=value_at,
+        stale_after_seconds=promise, reader="intent-format",
+        checked=(f"{files} committed intent document(s) in {judged} network(s), {len(rows)} "
+                 "hand-formatted"
+                 + (f"; not read: {'; '.join(failed)}" if failed else "")))
+
+
 def _n(count: int, one: str, many: str) -> str:
     return f"{count} {one if count == 1 else many}"
 
@@ -3670,7 +3742,7 @@ SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding
            interrupted_source, dashboard_roles_source, template_behind_source,
            records_source, scheduled_rotation_source, host_key_source,
            host_key_window_source, netbox_inventory_source, adjacency_log_source,
-           netbox_lag_source, console_ztp_source)
+           netbox_lag_source, console_ztp_source, intent_format_source)
 
 
 #: What can move each source's rows: the data keys (modules/invalidation.VOCABULARY) whose
@@ -3725,6 +3797,8 @@ SOURCE_KEYS = {
     "host_key_window_source": ("host_keys",),
     # A console survey's or kick-start's end announces these (console_ztp.ANNOUNCE_KEYS).
     "console_ztp_source": ("device_state", "pending", "console_ztp"),
+    # C1693: the intent-format reader announces intent; an intent commit wakes it (reader_wakes).
+    "intent_format_source": ("intent",),
 }
 
 #: Every key that can move a row, and a person's acknowledgement.

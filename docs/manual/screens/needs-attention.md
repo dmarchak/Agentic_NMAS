@@ -140,6 +140,16 @@ are off the row says so, and where they come on. The row clears when the import 
 reader finds NetBox holding the golden. A network nobody imports into NetBox (no site and no
 device record there) is not compared.
 
+**Intent laid out by hand.** Change it in words and bulk intent change a device's intent by
+rewriting it through Mercury's serialiser, so they refuse a document whose comments or layout
+that would drop. A reader checks every network's committed intent at HEAD for such documents
+(every 5 minutes, and at once after an intent commit; a document already judged is not read
+again). Each is one row: "edge1's committed intent is hand-formatted, so a patch cannot change
+it", with the network and the commit read. Its action, **Normalise the formatting…**, opens the
+device's Intent tab on Mercury's own formatting, proved formatting only before you commit it
+([Normalise the formatting](edit-intent#normalise)). The row clears when the device's intent is
+committed in Mercury's own formatting, which every commit since this check is.
+
 **Credentials** (hourly, metadata only, never a value): a credential with an expiry is a
 warning 30 days before it expires, a danger row 7 days before, and a danger row as soon as it
 has expired. One expiring more than a year out has no row. Where each expiry comes from:

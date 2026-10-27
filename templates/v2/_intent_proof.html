@@ -1,0 +1,32 @@
+{%- from "v2/_macros.html" import icon, badge -%}
+{#- Normalise's proof (C1693, board H-N's B and C; modules/nsot/intent_normalise.proof): its five
+    lines, each passed or not in its own words, and when any fails, every differing line,
+    masked, under where it differs: the render's, the device diff's, and a masked line named by
+    its number and masked text, never its value. Drawn by the editor's check
+    (_intent_check.html) and by the editor's refusal when the server refused the commit
+    (_intent_edit.html). *proof*: the proof. -#}
+{%- set where = {'render': 'The render against the committed render',
+                 'device': "The device diff, against the device's committed golden",
+                 'masked': 'The masked lines, compared by keyed hash'} -%}
+<div class="ie-proof" data-proof="{{ 'proved' if proof.ok else 'stopped' }}">
+  <h3 class="ie-k">{% if proof.ok %}Formatting only: proved {{ badge('proved', 'ok') }}{% else %}Stopped: this is not formatting only {{ badge('stopped', 'danger') }}{% endif %}</h3>
+  <ul class="op-gates ie-proof-lines">
+    {%- for l in proof.lines %}
+    <li data-line="{{ l.key }}">{{ badge('pass' if l.passed else 'differs', 'ok' if l.passed else 'danger') }}<span>{{ l.words }}</span></li>
+    {%- endfor %}
+  </ul>
+  {%- if proof.total %}<p class="faint small">{{ proof.changed }} of {{ proof.total }} lines changed formatting; the render is {{ proof.rendered_lines }} lines; {{ proof.masked.compared }} masked line{{ '' if proof.masked.compared == 1 else 's' }} compared, {{ proof.masked.identical }} identical.</p>{% endif %}
+  {%- if not proof.ok %}
+  <div class="notice notice-danger ie-proof-stop">{{ icon('warn', 16) }}<p>The commit is refused: nothing is written while any line above differs. Every differing line is below, masked as the editor masks. Report it in the register, or edit by hand.</p></div>
+  <div class="ie-proof-differs">
+    {%- for d in proof.differs %}
+    {%- if loop.changed(d['from']) %}<p class="ie-sub">{{ where.get(d['from'], d['from']) }}</p>{% endif %}
+    {%- if d['from'] == 'masked' %}
+    <p class="ie-masked-differs">A masked line differs by keyed hash{% if d.side %} ({{ 'only in what is committed' if d.side == 'before' else 'only in the new text' }}){% endif %}: line {{ d.number }}, <span class="mono">{{ d.line }}</span>. Its value is not shown. Committing this could change the device's credential.</p>
+    {%- else %}
+    <div class="ie-diff"><div class="dr dr-{{ 'add' if d.line.startswith('+') else 'del' }}">{{ d.line }}</div></div>
+    {%- endif %}
+    {%- endfor %}
+  </div>
+  {%- endif %}
+</div>

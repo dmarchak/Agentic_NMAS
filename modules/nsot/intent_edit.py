@@ -214,13 +214,49 @@ def unmodelled(parsed: dict) -> list:
     return [{"line": l, "acknowledged": l in acked} for l in unmodeled_lines(parsed)]
 
 
+def render_context(list_name: str, hostname: str) -> dict:
+    """What a render of *hostname*'s intent needs, read once, for the preview and Normalise's
+    proof alike: ``{"ok": True, "repo", "capture", "platform", "template", "eff"}`` (*eff*
+    gives a document what it inherits from the network's monitoring profile, P.9); ``capture``
+    None when no golden is recorded; or the refusal for a platform no dialect renders."""
+    from routes.templates import _captured_golden, _platform_for as _platform_of_host
+    from modules.nsot import templates_repo
+
+    repo = _repo_for(list_name)
+    # Its committed golden only (C683): the backup store this fell back to retires at 7.8, and
+    # what Mercury renders against is what it recorded, never a file beside it.
+    capture, _at = _captured_golden(hostname, list_name)
+    if not capture:
+        return {"ok": True, "repo": repo, "capture": None}
+
+    # The platform from THIS list's inventory (C495): the active list's held no row for a
+    # device of another network, and the refusal said its row named no platform.
+    platform = _platform_of_host(hostname, list_name)
+    from modules.nsot.platform import is_dialect
+    if not is_dialect(platform):
+        from routes.templates import unknown_platform_words
+        return {"status": 409, "ok": False, "stage": "render",
+                "error": unknown_platform_words(hostname, list_name)}
+    from modules.nsot import profile as _profile
+
+    def _eff(doc_):
+        return _profile.effective_for(repo, list_name, hostname, doc_, platform)
+
+    return {"ok": True, "repo": repo, "capture": capture, "platform": platform,
+            "template": templates_repo.template_for_device(repo, hostname, platform),
+            "eff": _eff}
+
+
 def preview(list_name: str, hostname: str, text: str) -> dict:
     """Validate an edit and say what it would DO. Writes nothing.
 
     ``vs_intent``: the render of the edit against the render of what is committed (what the
     edit changes); ``vs_device``: the render of the edit against the device's capture (what
     a deploy would send). Both render what the device inherits from the network's monitoring
-    profile (P.9), and both read git, never a working file."""
+    profile (P.9), and both read git, never a working file. An edit that changes the
+    committed document's formatting only (Normalise, C1693) carries ``proof``, the five lines
+    `intent_normalise.proof` draws; ``canonical`` says whether the text is Mercury's own
+    formatting, which is what a commit writes."""
     from modules.nsot import hostvars, roundtrip
 
     if not isinstance(text, str) or not text.strip():
@@ -232,34 +268,19 @@ def preview(list_name: str, hostname: str, text: str) -> dict:
     parsed = checked["parsed"]
     lines = unmodelled(parsed)
 
-    from routes.templates import _captured_golden, _platform_for as _platform_of_host
-    from modules.nsot import templates_repo
-
-    # Its committed golden only (C683): the backup store this fell back to retires at 7.8, and
-    # what Mercury renders against is what it recorded, never a file beside it.
-    capture, _at = _captured_golden(hostname, list_name)
+    ctx = render_context(list_name, hostname)
+    if not ctx["ok"]:
+        return ctx
+    capture = ctx["capture"]
     if not capture:
         return {"status": 200, "ok": True, "valid": True, "rendered": "", "unmodelled": lines,
                 "message": ("Valid. No golden is recorded for this device yet (its page's "
                             "Capture records one), so there is nothing to render against.")}
-
-    # The platform from THIS list's inventory (C495): the active list's held no row for a
-    # device of another network, and the refusal said its row named no platform.
-    platform = _platform_of_host(hostname, list_name)
-    from modules.nsot.platform import is_dialect
-    if not is_dialect(platform):
-        from routes.templates import unknown_platform_words
-        return {"status": 409, "ok": False, "stage": "render",
-                "error": unknown_platform_words(hostname, list_name)}
-    template = templates_repo.template_for_device(repo, hostname, platform)
+    platform, template, _eff = ctx["platform"], ctx["template"], ctx["eff"]
 
     # `artifact_for()`, never `build_artifact()` directly, which reports every device as not
     # deployable without consulting the approval store.
     from routes.templates import artifact_for
-    from modules.nsot import profile as _profile
-
-    def _eff(doc_):
-        return _profile.effective_for(repo, list_name, hostname, doc_, platform)
 
     try:
         edited = artifact_for(hostname, capture, repo, platform, template,
@@ -272,6 +293,17 @@ def preview(list_name: str, hostname: str, text: str) -> dict:
     committed_raw, intent_state = hostvars.committed_at_head(repo, hostname)
     committed = hostvars.from_yaml(committed_raw) if committed_raw is not None else None
     document_changed = committed_raw is not None and committed_raw != text
+
+    from modules.nsot import intent_normalise
+    if committed_raw is not None and intent_normalise.formatting_only(committed_raw, text):
+        # Formatting only (C1693, board H-N): the proof in place of the diffs (which a passing
+        # proof says are empty), and the checks the column draws beside it.
+        return {"status": 200, "ok": True, "canonical": True,
+                "proof": intent_normalise.proof(list_name, hostname, text, committed_raw,
+                                                ctx=ctx),
+                "deployable": edited.deployable,
+                "blocking_reasons": list(edited.blocking_reasons),
+                "template": template, "unmodelled": lines}
 
     vs_intent, intent_note, current_render = "", None, None
     if intent_state == hostvars.NEVER_COMMITTED:
@@ -288,6 +320,7 @@ def preview(list_name: str, hostname: str, text: str) -> dict:
         capture, edited.rendered_masked, fromfile=f"device ({hostname})",
         tofile=f"edited ({hostname})", report_masked=True)
     return {"status": 200, "ok": True, "valid": True, "hostname": hostname,
+            "canonical": hostvars.round_trips(text if text.endswith("\n") else text + "\n"),
             "deployable": edited.deployable,
             "blocking_reasons": list(edited.blocking_reasons),
             "vs_intent": vs_intent, "vs_intent_changed": bool(vs_intent),
@@ -562,12 +595,32 @@ def commit(list_name: str, hostname: str, text: str, summary: str, base: str,
         if current != base:
             return moved(repo, hostname, base, current, text)
         committed_text = hostvars.blob_text(repo, current) or ""
-        if (text if text.endswith("\n") else text + "\n") == committed_text:
-            return {"status": 200, "ok": True, "hostname": hostname, "changed": False,
-                    "commit": "", "base": current,
-                    "message": "Nothing to commit: the document is what is already committed."}
+        typed = text if text.endswith("\n") else text + "\n"
         try:
-            hostvars.write_committed_text(repo, hostname, text)
+            # What is written (C1693): the document in Mercury's own formatting.
+            written = hostvars.canonical(typed, hostname)
+        except ValueError as exc:
+            return {"status": 400, "ok": False, "error": str(exc)}
+        if written == committed_text:
+            return {"status": 200, "ok": True, "hostname": hostname, "changed": False,
+                    "commit": "", "base": current, "message": (
+                        "Nothing to commit: the document is what is already committed."
+                        + ("" if typed == committed_text else
+                           " Intent is committed in Mercury's own formatting, so a change of "
+                           "comments or layout alone changes nothing."))}
+        trailers = list(extra_trailers or [])
+        from modules.nsot import intent_normalise
+        formatting = intent_normalise.formatting_only(committed_text, typed)
+        if formatting:
+            # Normalise (board H-N): refused unless the five lines prove it formatting only,
+            # whatever the button showed; proved against what is committed now, under the lock.
+            proved = intent_normalise.proof(list_name, hostname, typed, committed_text)
+            if not proved["ok"]:
+                return {"status": 409, "ok": False, "stage": "proof", "hostname": hostname,
+                        "proof": proved, "error": intent_normalise.refusal_words(proved)}
+            trailers.append(intent_normalise.trailer(proved))
+        try:
+            hostvars.write_committed_text(repo, hostname, typed)
         except hostvars.SecretLeak as exc:
             log.error("intent edit: refused host_vars edit for %s: %s", hostname, exc)
             return {"status": 400, "ok": False, "error": str(exc)}
@@ -575,12 +628,14 @@ def commit(list_name: str, hostname: str, text: str, summary: str, base: str,
             return {"status": 400, "ok": False, "error": str(exc)}
         result = repo_service.save_host_vars(list_name, [hostname], actor=actor, source=source,
                                              message=f"host_vars: {hostname} {summary}",
-                                             extra_trailers=extra_trailers)
+                                             extra_trailers=trailers)
         after = hostvars.committed_blob(repo, hostname)
     return {"status": 200, "ok": result.get("ok", False), "hostname": hostname,
             "changed": bool(result.get("commit")), "commit": result.get("commit", ""),
             "base": after or current, "message": result.get("message", ""),
-            "error": result.get("error", "")}
+            "error": result.get("error", ""),
+            # Said on the result: what was typed is not byte for byte what was written.
+            "formatting_only": formatting, "reformatted": written != typed}
 
 
 def acknowledge(text: str, lines) -> str:

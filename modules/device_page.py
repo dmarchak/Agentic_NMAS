@@ -1166,9 +1166,9 @@ def history(ref, dev: dict, limit: int = None, kinds=None, before=None) -> dict:
 # ---------------------------------------------------------------------------
 
 def intent_view(ref, dev: dict) -> dict:
-    """``{"state", "text", "commit", "note", "bootstrap", "profile"}``. *state*
+    """``{"state", "text", "commit", "note", "bootstrap", "normalise", "profile"}``. *state*
     is ``committed``, ``never_committed`` or ``unreadable`` (said, never an
-    empty document)."""
+    empty document); *normalise*, whether the committed document is hand-formatted (C1693)."""
     from modules.nsot import hostvars
     from modules.nsot import profile as _p
     from modules.nsot.platform import platform_for_device
@@ -1176,6 +1176,7 @@ def intent_view(ref, dev: dict) -> dict:
 
     host = dev.get("hostname", "")
     out = {"state": "", "text": "", "commit": {}, "note": "", "bootstrap": False,
+           "normalise": False,
            "profile": {"committed": False, "applies": [], "excluded": {}, "error": ""}}
     try:
         text, state = hostvars.committed_at_head(ref.repo_dir, host)
@@ -1189,6 +1190,10 @@ def intent_view(ref, dev: dict) -> dict:
     # Committed intent names secret REFERENCES, never values; masked on the
     # way out all the same, as every config text is.
     out.update(state="committed", text=redact_text(text))
+    # Normalise the formatting… (C1693, board H-N): offered only for a document that does not
+    # round-trip, which feature 7 and bulk intent cannot patch. One document, read above.
+    from modules.nsot.intent_normalise import offered
+    out["normalise"] = offered(text)
     change = hostvars.intent_change(ref.repo_dir, host)
     out["commit"] = {"sha": change.get("sha", ""), "subject": change.get("subject", "")}
     try:

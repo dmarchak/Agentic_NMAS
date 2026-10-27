@@ -39,6 +39,9 @@ WOKEN_BY = {
     # the baseline tags, and the goldens and intent at each, against the credentials held now:
     # a baseline taken, a golden or intent commit, a credential changed or rotated.
     "baseline-usability": ("baselines", "goldens", "intent", "credentials", "rotation"),
+    # C1693: each network's committed host_vars at HEAD, judged for the round trip: an intent
+    # commit (Normalise's, or any edit, which saves in Mercury's own formatting) clears a row.
+    "intent-format": ("intent",),
     # the rotation record and the credential store's metadata; NetBox, Proxmox and TLS by
     # settings.
     "credential-health": ("credentials", "rotation", "settings"),

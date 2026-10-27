@@ -538,7 +538,8 @@ def patched_text(hostname: str, text: str, patch, list_name: str = "") -> dict:
         return _refusal(409, "format", (
             f"{hostname}'s committed intent is hand-formatted: it does not round-trip through "
             "Mercury's serialiser, so writing the patch would silently drop its comments or "
-            "layout. Make this change in the device's Intent editor instead"))
+            "layout. Normalise the formatting… on its Intent tab first: the editor proves the "
+            "change is formatting only before it is committed"))
     got = apply(doc, patch)
     if not got["ok"]:
         return got

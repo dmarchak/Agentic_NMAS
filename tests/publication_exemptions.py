@@ -85,6 +85,9 @@ EXEMPT = {
     ('tests/fixtures/committed/r2.cfg', 'f1eeba711c88'): ('VENDOR', ('email',)),
     ('tests/fixtures/committed/r2.yml', 'a06dd1db1909'): ('VENDOR', ('email',)),
     ('tests/fixtures/committed/r2.yml', '54baf374ac60'): ('VENDOR', ('email',)),
+    # C1693: the same two lines of r2's intent, its interfaces indented as an editor writes them
+    ('tests/fixtures/committed/r2_hand_formatted.yml', 'a06dd1db1909'): ('VENDOR', ('email',)),
+    ('tests/fixtures/committed/r2_hand_formatted.yml', '54baf374ac60'): ('VENDOR', ('email',)),
     # tests/fixtures/transcripts/r1/ (C281: r1's real channel transcripts)
     ('tests/fixtures/transcripts/r1/show_running-config.txt', 'a5b73e35b275'): ('VENDOR', ('email',)),
     ('tests/fixtures/transcripts/r1/show_running-config.txt', 'f1eeba711c88'): ('VENDOR', ('email',)),

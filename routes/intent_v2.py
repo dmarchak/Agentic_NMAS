@@ -64,6 +64,39 @@ def edit(name):
     return _card(editor_ctx(ref, dev))
 
 
+@bp.route("/<name>/intent/normalise", methods=["GET"])
+def normalise(name):
+    """Normalise the formatting… (C1693, board H-N): H's editor opened on the committed
+    document in Mercury's own serialisation, at the blob it was read from. Writes nothing: the
+    check proves it formatting only, and the commit is the editor's own, refused by the
+    server unless the proof passes (`intent_edit.commit`)."""
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    return _card(normalise_ctx(ref, dev))
+
+
+def normalise_ctx(ref, dev) -> dict:
+    """H's editing card on the committed document in Mercury's own formatting, with how many
+    of its lines changed formatting; the refusal when it cannot be normalised."""
+    from modules.nsot import intent_normalise
+
+    ctx = editor_ctx(ref, dev)
+    if ctx["state"] != "editing":
+        return ctx
+    committed = ctx["text"]
+    try:
+        text = intent_normalise.normalised(committed, ctx["host"])
+    except ValueError as exc:
+        return {"state": "refused", "host": ctx["host"], "list": ref.name,
+                "why": f"its formatting cannot be normalised: {exc}"}
+    ctx.update(text=text, normalising={
+        "changed": intent_normalise.changed_lines(committed, text),
+        "total": len(text.splitlines())})
+    return ctx
+
+
 #: A draft's preview keys the row draws: `_intent_words.html`'s and the intent editor's check
 #: partial's (`_intent_check.html`), and no others.
 _DRAFT_DRAWN = ("changed", "changes", "device_keeps", "message", "yaml", "vs_intent_changed",
@@ -181,8 +214,11 @@ def check(name):
     ref, dev = found
     text = request.form.get("yaml", "")
     p = intent_edit.preview(ref.name, dev.get("hostname", ""), text)
+    # The editor's Commit, drawn again beside the answer (out of band): for a formatting-only
+    # edit it names it and waits on the proof (C1693, board H-N).
     return _strict(render_template("v2/_intent_check.html", p=p, host=dev.get("hostname", ""),
-                                   text=text, list_name=ref.name))
+                                   text=text, list_name=ref.name,
+                                   commit_oob=may_commit().get("may")))
 
 
 @bp.route("/<name>/intent/acknowledge", methods=["POST"])
@@ -220,8 +256,11 @@ def commit(name):
         return _card({"state": "moved", "host": host, "list": ref.name, "m": got,
                       "text": text, "summary": summary}, 409)
     if not got.get("ok"):
-        return _card(editor_ctx(ref, dev, text=text, base=base, summary=summary, refused=got),
-                     got.get("status", 400))
+        # What the refusal draws, and only that (every carried field is drawn): its words, the
+        # line and column it names, and a formatting-only commit's proof (C1693).
+        refused = {k: got[k] for k in ("error", "line", "column", "proof") if k in got}
+        return _card(editor_ctx(ref, dev, text=text, base=base, summary=summary,
+                                refused=refused), got.get("status", 400))
     p = intent_edit.preview(ref.name, host, text)
     return _card({"state": "done", "host": host, "list": ref.name, "r": got, "p": p,
                   "summary": summary, "actor": identity.request_actor()})

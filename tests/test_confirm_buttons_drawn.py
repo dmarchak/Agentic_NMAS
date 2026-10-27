@@ -760,7 +760,27 @@ class TestIntentEditCards(_Cards):
     CASES = {
         "intent_edit": ("_intent_edit.html", "Commit to {{ host }}'s intent",
                         r"Commit to s4's intent", "viewer"),
+        # The same Commit, drawn again by the check out of band (C1693): its formatting-only
+        # label and its proof are tests/test_intent_normalise.py's, on r2's real intent.
+        "intent_check": ("_intent_check.html", "{% if fmt %}Commit the formatting only{% else %}"
+                                               "Commit to {{ host }}'s intent{% endif %}",
+                         r"Commit to s4's intent", "viewer"),
     }
+
+    def _check(self, request):
+        ed = request.getfixturevalue("ed")
+        from modules.nsot import intent_edit
+        text = intent_edit.open_doc("lab", "s4")["yaml"].replace("uplink", "core uplink")
+        return _text(ed["client"].post("/v2/device/s4/intent/check", data={"yaml": text}))
+
+    def drawn_intent_check(self, request):
+        return self._check(request)
+
+    def blocked_intent_check(self, request, monkeypatch):
+        as_service(monkeypatch)
+        html = self._check(request)
+        assert "Checks" in html, "floor: the check is drawn"
+        return html
 
     def drawn_intent_edit(self, request):
         return _text(request.getfixturevalue("ed")["client"].get("/v2/device/s4/intent/edit"))
@@ -1747,9 +1767,10 @@ class TestThePopulation:
         out-of-band onboarding's button, 2026-10-23; 59 until feature 7's Commit this draft and
         Commit and plan deploy, 2026-10-26; 61 until SDN's six, 2026-10-27: Flows' Add flow…,
         Edit… and Remove…, the editor's Preview, the operation card's Send and a response's
-        Preview)."""
+        Preview; 67 until the intent editor's Commit drawn again by its check, C1693,
+        2026-10-27)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 67, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 68, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

@@ -127,7 +127,12 @@ class TestCommitting:
     def test_a_moved_intent_writes_nothing_and_places_the_edit_on_theirs(self, ed):
         opened, text = self._edited()
         # Another person commits a change to a DIFFERENT line first.
-        theirs = opened["yaml"].replace("hostname: s4", "hostname: s4\ndomain_name: lab.example", 1)
+        # In Mercury's own formatting, as every commit is written since C1693, so what is
+        # committed is their text byte for byte.
+        from modules.nsot import hostvars
+        theirs = hostvars.to_yaml(dict(hostvars.from_yaml(opened["yaml"]),
+                                       domain_name="lab.example"))
+        assert hostvars.canonical(theirs) == theirs
         got = intent_edit.commit("lab", "s4", theirs, "their change", opened["base"], "other")
         assert got["ok"] and got["changed"], got
         r, html = _post(ed, "/v2/device/s4/intent/commit", yaml=text, base=opened["base"],

@@ -13,21 +13,31 @@
   <input type="hidden" name="base" value="{{ c.base }}"><input type="hidden" name="list" value="{{ c.list }}">
   <div class="ie-hd">
     <div><h2 id="ed-h">Editing {{ host }}'s intent{% if c.refused.line %} {{ badge('line ' ~ c.refused.line ~ (', column ' ~ c.refused.column if c.refused.column else ''), 'danger') }}{% endif %}</h2>
-      <p class="muted small"><span class="mono">host_vars/{{ host }}.yml</span>, opened at <span class="mono">{{ (c.base or '')[:7] }}</span>{% if c.last.commit %} ({{ c.last.subject }}{% if c.last.at %}, {{ stamp(c.last.at) }}{% endif %}){% endif %}. Nothing is written until you commit.</p></div>
+      <p class="muted small"><span class="mono">host_vars/{{ host }}.yml</span>, opened at <span class="mono">{{ (c.base or '')[:7] }}</span>{% if c.last.commit %} ({{ c.last.subject }}{% if c.last.at %}, {{ stamp(c.last.at) }}{% endif %}){% endif %}. {% if c.normalising %}<strong class="ie-normalising">Mercury's formatting loaded; nothing written.</strong>{% else %}Nothing is written until you commit.{% endif %}</p></div>
     {#- C503's rule (C522): the card's one "How does this work?" in words, in its head as board
         H draws it; Commit keeps the (i) alone. -#}
     <div class="ie-hd-actions">{{ how('edit-intent') }}<button type="button" class="btn" hx-get="{{ url_for('device_v2.intent', name=host) }}" hx-target="#intent" hx-swap="outerHTML">Discard the edit</button></div>
   </div>
   {%- if c.refused %}
+  {%- if c.refused.proof %}
+  {#- C1693: the server refused a formatting-only commit whose proof failed, whatever the page
+      showed: each line of the proof, and every differing line, masked. -#}
+  <div class="notice notice-danger ie-refused" role="alert">{{ icon('warn', 16) }}<div><strong>{{ c.refused.error }}</strong>
+    {%- with proof=c.refused.proof %}{% include "v2/_intent_proof.html" %}{% endwith %}</div></div>
+  {%- else %}
   <div class="notice notice-danger ie-refused" role="alert">{{ icon('warn', 16) }}<div><strong>Not committed{% if c.refused.line %}, line {{ c.refused.line }}{% if c.refused.column %}, column {{ c.refused.column }}{% endif %}{% endif %}:</strong> {{ c.refused.error }}. Nothing was written.</div></div>
+  {%- endif %}
   {%- endif %}
   <div class="ie-split">
     <div class="ie-doc">
-      <label class="ie-label" for="ie-text">The committed document, edited in place: what you see is what is committed, byte for byte</label>
+      <label class="ie-label" for="ie-text">The committed document, edited in place: opened as committed, byte for byte, and committed in Mercury's own formatting</label>
       <textarea id="ie-text" name="yaml" class="mono ie-text" spellcheck="false" rows="{{ [c.text.count('\n') + 2, 40] | min }}"
                 hx-post="{{ url_for('intent_v2.check', name=host) }}" hx-trigger="load, input changed delay:600ms"
                 hx-target="#ie-check" hx-swap="innerHTML" hx-include="this">{{ c.text }}</textarea>
-      <p class="faint small">An error is named with its line and column as you type, and the commit waits until there is none. Secret values never appear here: <span class="mono">secret:</span> references only.</p>
+      {%- if c.normalising %}
+      <p class="faint small ie-normalised">Mercury's own formatting of the committed document: {{ c.normalising.changed }} of {{ c.normalising.total }} lines changed formatting. The check beside it proves the document's data unchanged before the commit is offered.</p>
+      {%- endif %}
+      <p class="faint small">An error is named with its line and column as you type, and the commit waits until there is none. Secret values never appear here: <span class="mono">secret:</span> references only. Intent is committed in Mercury's own formatting.</p>
     </div>
     <div class="ie-check" id="ie-check" aria-live="polite"><p class="muted">Checking the document…</p></div>
   </div>
@@ -35,8 +45,11 @@
     <label class="ie-why">Why, in one line (the commit's subject; the change itself is the diff)
       <input type="text" name="summary" value="{{ c.summary }}" autocomplete="off" required></label>
     {%- if c.confirm.may %}
-    <span class="op-act"><span class="muted small">Commits the document as you, with its reason. Nothing is sent to {{ host }}.</span>
-      <button type="submit" class="btn btn-primary op-confirm" data-op="edit-intent" hx-disabled-elt="this"{{ gate('approve') }}><span class="op-idle">Commit to {{ host }}'s intent</span><span class="op-busy">Committing…</span></button>{{ how('edit-intent', compact=True, op='editing intent') }}</span>
+    {#- The check draws this span again beside its answer (_intent_check.html, out of band,
+        the same markup): for a formatting-only edit (C1693, board H-N) it says so and waits
+        on the proof. Opened by Normalise, it waits for the check's first answer. -#}
+    <span class="op-act ie-commit" id="ie-commit"><span class="muted small">Commits the document as you, with its reason. Nothing is sent to {{ host }}.</span>
+      <button type="submit" class="btn btn-primary op-confirm" data-op="edit-intent" hx-disabled-elt="this"{{ gate('approve') }}{% if c.normalising %} disabled{% endif %}><span class="op-idle">Commit to {{ host }}'s intent</span><span class="op-busy">Committing…</span></button>{{ how('edit-intent', compact=True, op='editing intent') }}</span>
     {%- else %}
     <p class="op-note">{{ c.confirm.statement }} Nothing can be committed from here.</p>
     {%- endif %}
@@ -64,6 +77,11 @@
     <div>
       {%- if c.r.changed %}
       <p>Commit <span class="mono">{{ (c.r.commit or '')[:10] }}</span> "host_vars: {{ host }} {{ c.summary }}", as {{ c.actor }}.</p>
+      {%- if c.r.formatting_only %}
+      <div class="notice notice-ok ie-normalised-done">{{ icon('check', 16) }}<p>{{ host }}'s intent: formatting normalised, proved before it was written. The render is unchanged. Change it in words is available now.</p></div>
+      {%- elif c.r.reformatted %}
+      <p class="muted">Committed in Mercury's own formatting: the data you typed, without its comments and layout.</p>
+      {%- endif %}
       <p><strong>Nothing was sent to {{ host }}:</strong> its intent changed, {{ host }} did not
       {%- if sends and departs %}, so it now departs from its intent: a deploy sends the lines it lacks, and keeps the lines only {{ host }} holds until you remove them (Mode B)
       {%- elif sends %}, so it now departs from intent until a deploy sends the lines beside

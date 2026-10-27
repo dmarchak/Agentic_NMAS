@@ -185,7 +185,10 @@ SIGNED_OFF = {
     "tab:netbox": ("2026-09-30", "NSOT_STAGE7_PLAN 1g, the Services mockups (the NetBox "
                                  "browser's device slice)"),
     "tab:intent": ("2026-09-30", "NSOT_STAGE7_PLAN 1g: the OBSERVE heading and the device "
-                                 "tabs approved, step (a)"),
+                                 "tabs approved, step (a); its Normalise the formatting… and "
+                                 "the editor's proof by board H-N (C1693, canvas "
+                                 "`IntentNormalise.dc.html`, version 165, signed off under the "
+                                 "Phase 7 mode 2026-10-27)"),
     "tab:history": ("2026-10-03", "board D (C369), signed off 2026-10-03: the History page's "
                                   "timeline filtered to the device, the same reader and drawing. "
                                   "Before it: NSOT_STAGE7_PLAN 1g, step (a)"),

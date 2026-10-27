@@ -11,6 +11,7 @@ Real files from the host's Default list, committed at HEAD on 2026-10-07, read t
 | `profile.yml` | `profiles/monitoring.yml` | the network's monitoring profile, with P1's `management` section |
 | `r2.cfg` | `golden/r2.cfg` | r2's committed golden, masked |
 | `s1.cfg` | `golden/s1.cfg` | s1's committed golden, masked |
+| `r2_hand_formatted.yml` | `r2.yml` above, one edit | r2's committed intent laid out by hand (C1693): its `interfaces` list indented under its key, as an editor writes YAML (the shape r6's took), and one comment above it. The same document; it does not round-trip through `hostvars.to_yaml`, and it is the one intent fixture `tests/test_intent_round_trips.py` expects not to |
 
 **The edits, for publication, the same in every file that holds them:** each `10.0.0.x`
 address is `192.0.2.x`; the SNMP contact is `noc`; r2's license serial is `9XXXXXXXXXX` (as

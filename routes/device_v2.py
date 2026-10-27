@@ -160,6 +160,10 @@ def _intent_ctx(ref, dev):
     if request.args.get("edit"):
         from routes.intent_v2 import editor_ctx
         ctx["ed"] = editor_ctx(ref, dev)
+    elif request.args.get("normalise"):
+        # Normalise the formatting… without script (C1693): the same card its route draws.
+        from routes.intent_v2 import normalise_ctx
+        ctx["ed"] = normalise_ctx(ref, dev)
     return ctx
 
 

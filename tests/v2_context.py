@@ -668,6 +668,69 @@ def _intent_words(client, lab, _mp):
         shutil.rmtree(folder, ignore_errors=True)
 
 
+def _intent_normalise(client, lab, _mp):
+    """Normalise the formatting… (C1693, board H-N) on r3's committed intent, hand-formatted as
+    an editor writes YAML (its `interfaces` list indented under its key, a comment above it):
+    the Intent tab's offer, the editor opened on Mercury's formatting, the check's proof, and
+    then the same with the credential store answering the new document's true render with
+    another value (planted), so the proof stops naming the masked line, and the commit's
+    refusal draws it. r3's intent is put back after."""
+    import inspect
+
+    import pytest
+
+    from modules.nsot import hostvars, intent_edit
+    from modules.nsot.repo import save_host_vars
+
+    path = os.path.join(lab["repo"], "host_vars", "r3.yml")
+    before = open(path, encoding="utf-8").read()
+    hand, inside = [], False
+    for line in before.splitlines():
+        if line and not line.startswith((" ", "-")):
+            inside = line == "interfaces:"
+            hand += ["# typed in an editor that indents lists"] if inside else []
+            hand.append(line)
+        else:
+            hand.append("  " + line if inside and line else line)
+    hand_text = "\n".join(hand) + "\n"
+    assert hostvars.from_yaml(hand_text) == hostvars.from_yaml(before) and hand_text != before
+    mp = pytest.MonkeyPatch()
+    flips = {"n": 0}
+
+    def hydrate(hv, h, ln=""):
+        value = "walk-secret-value"
+        if inspect.stack()[1].function == "_masked_compared" and flips.get("on"):
+            flips["n"] += 1
+            value += "-moved" if flips["n"] % 2 == 0 else ""
+        return {**hv, "secrets": {ref: value for ref in hv.get("secret_refs") or []}}
+    try:
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(hand_text)
+        assert save_host_vars("Lab", ["r3"], actor="t", source="extraction")["ok"]
+        mp.setattr("modules.nsot.hostvars.hydrate_secrets", hydrate)
+        mp.setattr("modules.redact.known_secret_values", lambda: {})
+        r = client.get("/v2/device/r3/intent", headers={"HX-Request": "true"})
+        assert r.status_code == 200 and "Normalise the formatting" in r.get_data(as_text=True)
+        r = client.get("/v2/device/r3/intent/normalise", headers={"HX-Request": "true"})
+        assert r.status_code == 200 and "Mercury's formatting loaded" in r.get_data(as_text=True)
+        opened = intent_edit.open_doc("Lab", "r3")
+        norm = hostvars.canonical(opened["yaml"])
+        for planted in (False, True):
+            flips["on"] = planted
+            r = client.post("/v2/device/r3/intent/check", data={"yaml": norm})
+            html = r.get_data(as_text=True)
+            assert r.status_code == 200 and "ie-proof" in html, html[:400]
+            assert ("A masked line differs by keyed hash" in html) == planted
+        r = client.post("/v2/device/r3/intent/commit",
+                        data={"yaml": norm, "base": opened["base"], "summary": "normalise"})
+        assert r.status_code == 409 and "this is not formatting only" in r.get_data(as_text=True)
+    finally:
+        mp.undo()
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(before)
+        assert save_host_vars("Lab", ["r3"], actor="t", source="extraction")["ok"]
+
+
 def _persist_read(client, _lab, mp):
     """Persist's preview read (C886), asked by a POST on load and drawn by its job's GET: r3
     answering with r1's real running and startup (tests/test_persist_effect.py), one logging
@@ -1737,4 +1800,6 @@ PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _dr
                    # After _deploy: r3's intent is then a real device's (r2's capture,
                    # parsed), which the editor's check passes; the walk's own r3 lacks a
                    # syslog heartbeat, so a draft on it is refused before the patch.
-                   _intent_words]
+                   _intent_words,
+                   # After _intent_words, on the r3 it leaves (its syslog heartbeat committed).
+                   _intent_normalise]

@@ -101,6 +101,14 @@ commit with your reason. Nothing is sent to the device until you plan a deploy. 
 intent is only onboarding's bootstrap has no Edit: seed it first. See
 [Edit a device's intent](edit-intent).
 
+A document laid out by hand cannot be patched, so the tab says "This document is
+hand-formatted" above it and offers **Normalise the formatting…**: the editor opens on
+Mercury's own formatting of it, nothing written, and its check proves the change is formatting
+only (the parsed document equal, the render byte-identical, the device diff empty, the masked
+lines identical by keyed hash, the new text round-tripping) before **Commit the formatting
+only** is offered. Any line that differs stops the commit and is listed, masked. See
+[Normalise the formatting](edit-intent#normalise).
+
 **Change it in words** (marked **AI**), above the document, drafts a change from a sentence
 ("shut G4", "describe the host port as desk 4", "add VLAN 40 named LAB") and shows it in the
 editor's own preview: how your words were read, the changes, what a deploy would send, the

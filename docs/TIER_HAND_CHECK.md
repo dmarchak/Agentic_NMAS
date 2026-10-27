@@ -1556,3 +1556,59 @@ identical.**
 
 The machine logs are scratch tooling (`hc-c1852.jsonl`, `c1854-kill3.jsonl`).
 
+## 2026-10-27: secrets compared by keyed hash (C1693, C1792), on the change's tree
+
+**What changed in the tier:** a new module, `modules/secret_compare.py` (C1792's design, built
+for C1693's Normalise proof; C924 reuses it), which reads the values in masked positions and
+compares them by HMAC under a per-process key; `modules/nsot/intent_normalise.py`'s
+`_masked_compared`, which hydrates each document's secrets from the credential store and
+renders the true configuration to hand it the values; and `modules/nsot/hostvars.py`'s
+`write_committed_text`, the leak check before committed intent is written, whose changed lines
+now check the text given and the canonical text written.
+
+**The method.** In a throwaway worktree of the working state (`scripts/nmas-control`), one
+function at a time. `secret_compare.py` is small: the harness (`hand_check.py`, mutmut 3.8.0's
+generator) ran every mutant of each function, with tests/test_secret_compare.py. The two larger
+modules were not given to the harness (it builds every mutant of the whole file in memory):
+their changed lines were mutated by hand (`c1693_hand_mutants.py`, scratch tooling), each
+mutant one exact replacement, the aimed tests run with `-x` (tests/test_intent_normalise.py for
+`_masked_compared`; tests/test_hostvars_secrets.py, tests/test_intent_round_trips.py and
+tests/test_intent_normalise.py for `write_committed_text`).
+
+**The result.** Every canary killed. Every non-equivalent survivor killed by a test written for
+it, and the run repeated.
+
+| function | mutants | killed | equivalent | canary |
+|---|---|---|---|---|
+| `secret_compare._digest` | 9 | 8 | 1 | killed |
+| `secret_compare.masked_values` | 34 | 34 | 0 | killed |
+| `secret_compare._masked_lines` | 17 | 16 | 1 | killed |
+| `secret_compare._same` | 11 | 11 | 0 | killed |
+| `secret_compare.compare` | 88 | 88 | 0 | killed |
+| `intent_normalise._masked_compared` (by hand) | 12 | 12 | 0 | killed |
+| `hostvars.write_committed_text`, changed lines (by hand) | 6 | 5 | 1 | killed |
+
+**Survivors killed by new tests:** `compare`'s `continue` made `break` and the `paired` entry's
+key renamed (`test_an_unpaired_line_does_not_stop_the_lines_after_it`); the unpaired lines'
+sort key dropped or made constant (`test_the_unpaired_are_in_order_by_side_then_line`);
+`masked_values`' known-value label given a default (four mutants: removed by reading the table
+by its key, which the pattern is built from); `_masked_compared`'s template name dropped
+(`test_the_template_bound_to_the_device_is_the_one_compared`), the profile skipped
+(`test_what_the_profile_adds_is_compared_too`), the platform taken from the inventory row
+(`test_the_document_s_own_platform_is_rendered`), each document rendered twice or one
+compared with itself (`test_each_document_is_rendered_with_its_own_values`); and
+`write_committed_text`'s second leak check dropped
+(`test_a_secret_spelled_in_escapes_is_refused_in_the_text_written`: a stored value hidden in
+YAML escapes passes the first check and is written plainly by the serialiser).
+
+**Equivalents, with why:**
+- `_digest`: `"utf-8"` made `"UTF-8"`: Python's codec names are case-insensitive.
+- `_masked_lines`: `(text or "")` made `(text or "XXXX")`: the line `XXXX` holds no masked
+  value, so an empty text yields no masked line either way.
+- `write_committed_text`: `canonical(text, hostname)` made `canonical(text)`: the name only
+  words `canonical`'s refusal, which this path cannot reach (the leak check before it refuses a
+  `secrets` block, and the document is otherwise its own serialisation).
+
+The machine logs (one JSON line per step for the harness, one line per mutant by hand) are
+scratch tooling, as above.
+
