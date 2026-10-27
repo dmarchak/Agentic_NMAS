@@ -108,6 +108,7 @@ PAGES = (
     ("history", "History", "Screens", "screens/history.md"),
     ("monitoring", "Monitoring", "Screens", "screens/monitoring.md"),
     ("topology", "Topology", "Screens", "screens/topology.md"),
+    ("sdn", "SDN", "Screens", "screens/sdn.md"),
     ("show-commands-screen", "Show commands", "Screens", "screens/show-commands.md"),
     ("logs", "Logs", "Screens", "screens/logs.md"),
     ("dhcp", "DHCP", "Screens", "screens/dhcp.md"),
@@ -135,7 +136,7 @@ ON_TODAYS_APP = frozenset()
 #: Screens page it opens.
 SCREENS = {
     "Needs attention": "needs-attention", "Devices": "devices", "History": "history",
-    "Monitoring": "monitoring", "Topology": "topology", "Show commands": "show-commands-screen", "Logs": "logs", "DHCP": "dhcp", "Templates": "templates",
+    "Monitoring": "monitoring", "Topology": "topology", "SDN": "sdn", "Show commands": "show-commands-screen", "Logs": "logs", "DHCP": "dhcp", "Templates": "templates",
     "NetBox": "netbox", "Credentials": "credentials", "Help": "help", "Settings": "settings",
 }
 

@@ -51,6 +51,16 @@ SCOPES: dict = {
              "endpoint_stale_after_hours"),
     **_group(NETWORK, "s3_archive", "s3_endpoint", "s3_bucket", "s3_access_key",
              "s3_secret_key", "s3_region", "s3_prefix", "s3_verify_tls"),
+    # PHASE8_PLAN 17.1 S2: a network's SDN controller connections, one list (their credentials
+    # are the credential store's, keyed by the network). Each network's own, never inherited
+    # from Default (`OWN_ONLY`, C1841); drawn by its own Settings card, never a generic one
+    # (`CARDLESS`).
+    **_group(NETWORK, "sdn_controllers", "sdn_controllers"),
+    # PHASE8_PLAN 17.1 S6: the SDN detection rules' thresholds, one network's together (a
+    # scan's ports and window, its fallback rate, a flood's factor and window). Drawn on SDN ›
+    # Responses (17.5, board 3), not on a generic card (`CARDLESS`).
+    **_group(NETWORK, "sdn_detection", "sdn_scan_ports", "sdn_scan_window_seconds",
+             "sdn_scan_fallback_pps", "sdn_flood_factor", "sdn_flood_window_seconds"),
     # ── Per network: each a group of one ─────────────────────────────────────────────────
     **{k: (NETWORK, k) for k in (
         "verify_settle_windows", "deploy_max_workers", "deploy_verify_failure_limit",
@@ -92,7 +102,7 @@ SCOPES: dict = {
              "records_store_netbox_modified", "records_store_netbox_adopted",
              "records_store_interrupted_holds", "records_store_reader_values",
              "records_store_ai_calls", "records_store_evidence_packs",
-             "records_store_alert_history"),
+             "records_store_alert_history", "records_store_flow_intent"),
     # Phase 8's gateway (modules/ai): one key, one allowance and two caps for the installation.
     **_group(HOST, "ai_gateway", "anthropic_api_key", "ai_hosted", "ai_cap_usd_per_day",
            "ai_cap_day_boundary"),
@@ -157,8 +167,26 @@ GROUP_LABELS: dict = {
     "reads_retention_days": "Show commands: answers kept (days)",
     "ai_topology_class": "AI: the topology class",
     "alert_history_retention_days": "Alert history: transitions kept (days)",
-    "endpoints": "Endpoints",
+    "endpoints": "Endpoints", "sdn_controllers": "SDN controllers",
+    "sdn_detection": "SDN detection thresholds",
 }
+
+#: Network groups no generic Settings card draws or saves, each with the one module that
+#: writes it: a generic card would draw the group's value as a JSON field and save it past its
+#: writer's checks. `sdn_controllers`: `modules/sdn/connections.py` (save, remove, test),
+#: drawn by its own card on a network's Integrations tab (board SdnSettings,
+#: `templates/v2/_sdn_settings.html`). `sdn_detection`: the thresholds belong on SDN ›
+#: Responses beside the rules they set (17.5, board 3); until that tab is built
+#: `list_settings.write` writes them, and `modules/sdn/detect.py` reads them.
+CARDLESS = ("sdn_controllers", "sdn_detection")
+
+#: Network groups that are each network's own and never inherited from Default, whatever the
+#: network's mode or choice: a network that sets none has none (the operator's decision of
+#: 2026-10-27, C1841: a controller is one network's fabric, and inheriting Default's would
+#: read, and later change, another network's switches). `list_settings.group_choice` answers
+#: OWN for them unless the network declared them not applicable, so the resolver and
+#: `integration_groups.group_id` agree.
+OWN_ONLY = ("sdn_controllers",)
 
 #: The key whose value says a group's outside service is configured at all: with it empty
 #: nothing can be asked, so a reader skips the configuration and says "not configured"
@@ -167,15 +195,21 @@ URL_KEYS: dict = {
     "grafana": "grafana_url", "prometheus": "prometheus_url", "loki": "loki_url",
     "kea": "kea_url",
     "s3_archive": "s3_endpoint",
+    # A network's controller list is what names its services: with none set there is nothing
+    # to read, so the SDN reader keeps no store for it (C1841: none is none, never Default's).
+    "sdn_controllers": "sdn_controllers",
 }
 
 
 def network_groups() -> tuple:
     """Every group a network chooses for (inherit, its own, not applicable), sorted. The
     host's declarations of "deliberately none" (`settings_not_applicable`) are the Default
-    network's own bookkeeping, never a group another network inherits or owns."""
+    network's own bookkeeping, never a group another network inherits or owns. A `CARDLESS`
+    group is left out: it is read through the resolver as any group is, and written only by
+    its own module."""
     return tuple(sorted({g for k, (s, g) in SCOPES.items()
-                         if s == NETWORK and g != "settings_not_applicable"}))
+                         if s == NETWORK and g != "settings_not_applicable"
+                         and g not in CARDLESS}))
 
 
 def group_label(group: str) -> str:

@@ -1553,6 +1553,69 @@ def _oob_onboard(client, _lab, _mp):
         server.close()
 
 
+def _sdn(client, _lab, _mp):
+    """SDN › Controllers and Flows and Settings' SDN controllers card (PHASE8_PLAN 17.1 S11),
+    on Lab with one Ryu connection answered by Ryu 4.34's captured answers through the real
+    driver (tests/test_sdn_v2.py's `Captured`), its flow intent recorded as that test records
+    it, and the SDN reader run: connected, then L2-only flows (the granularity note), then not
+    answering; the card's Edit, Remove…, Test (answered, and not), a refused Save, and the
+    removal. Its patches are undone and the connection removed before the next provider."""
+    import json
+
+    import pytest
+
+    from modules.sdn import connections as C
+    from modules.sdn import drivers
+    from modules.sdn import flow_intent as F
+    from tests.test_sdn_ryu import LIMIT, V6_DROP
+    from tests.test_sdn_v2 import BASE, WITH_PEER, Captured, Down, T0, store_read
+
+    mp = pytest.MonkeyPatch()
+    session = {"now": Captured()}
+    real = drivers.make
+    try:
+        mp.setattr(drivers, "make", lambda kind, connection, **kw: real(
+            kind, connection, **dict(kw, session=session["now"])))
+        C.save_connection("Lab", {"name": "lab-controller", "kind": "ryu", "url": BASE,
+                                  "southbound": "192.0.2.10:6653"}, actor="v2-context")
+        for spec in (LIMIT, V6_DROP):
+            F.record_installed("Lab", connection="lab-controller", flow=dict(spec, dpid=1),
+                               actor="v2-context", response={"id": "resp-1", "action": "x"},
+                               at=T0)
+        assert "Not read yet" in client.get("/v2/sdn?list=Lab").get_data(as_text=True)
+        store_read("Lab")
+        for url in ("/v2/sdn?list=Lab", "/v2/sdn/flows?list=Lab",
+                    "/v2/sdn/flows?list=Lab&own=show", "/v2/sdn/flows?list=Lab&q=METER",
+                    "/v2/sdn/view?list=Lab&tab=flows&q=no-such-flow"):
+            assert client.get(url).status_code == 200, url
+        flows = json.loads(next(e for e in WITH_PEER if e["path"] == "/stats/flow/1")["body"])
+        session["now"] = Captured(flows=[f for f in flows["1"]
+                                         if not set(f["match"]) - {"in_port", "dl_dst",
+                                                                    "dl_src"}])
+        store_read("Lab", clock=lambda: T0 + 40)
+        assert "match L2 only" in client.get("/v2/sdn/flows?list=Lab").get_data(as_text=True)
+        session["now"] = Down()
+        store_read("Lab", clock=lambda: T0 + 70)
+        assert "Not answering since" in client.get("/v2/sdn?list=Lab").get_data(as_text=True)
+        assert client.post("/v2/sdn/controller/lab-controller/test?list=Lab").status_code == 200
+        session["now"] = Captured()
+        card = "/v2/settings/network/Lab/sdn"
+        for url in ("/v2/settings/network/Lab", card, f"{card}/edit/lab-controller",
+                    f"{card}/lab-controller/remove"):
+            assert client.get(url).status_code == 200, url
+        form = {"name": "branch-ctl", "kind": "ryu", "url": BASE, "verify_tls": "on",
+                "southbound": "", "own_cookies": "0", "loaded": "{}"}
+        assert "Answered" in client.post(f"{card}/test", data=form).get_data(as_text=True)
+        assert client.post(f"{card}/lab-controller/test").status_code == 200
+        assert client.post(f"{card}/save", data=form).status_code == 409
+        session["now"] = Down()
+        assert "Couldn't connect" in client.post(f"{card}/test", data=form)\
+            .get_data(as_text=True)
+        assert client.post(f"{card}/lab-controller/remove").status_code == 200
+    finally:
+        mp.undo()
+
+
 #: What no followed GET reaches, each on the lab's own state: a POST's card, a script's GET,
 #: a state the lab's walk does not hold. In order: `_deploy` changes r3, so it is last.
 PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _drift,
@@ -1560,7 +1623,8 @@ PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _dr
                    _alert_evidence, _logs_builder_leftovers, _alert_history,
                    _save_no_golden, _profile_versions,
                    _no_change_window, _update_owed, _lease_release, _ip_sla_retunes, _ip_sla_unsent,
-                   _console_ztp, _console_servers, _day_cap_confirm, _oob_onboard, _deploy,
+                   _console_ztp, _console_servers, _day_cap_confirm, _oob_onboard, _sdn,
+                   _deploy,
                    # After _deploy: r3's intent is then a real device's (r2's capture,
                    # parsed), which the editor's check passes; the walk's own r3 lacks a
                    # syslog heartbeat, so a draft on it is refused before the patch.

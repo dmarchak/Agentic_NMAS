@@ -400,6 +400,13 @@ HISTORY = {
     "settings_v2.mode_switch": NOT_A_DEVICE,
     "settings_v2.group_save": NOT_A_DEVICE,
     "settings_v2.group_test": NOT_A_DEVICE,
+    # SDN's controller connections (PHASE8_PLAN 17.1 S2, S11): a network's settings and a
+    # Test that reads a controller, no device's.
+    "settings_v2.sdn_save": NOT_A_DEVICE,
+    "settings_v2.sdn_remove": NOT_A_DEVICE,
+    "settings_v2.sdn_test": NOT_A_DEVICE,
+    "settings_v2.sdn_saved_test": NOT_A_DEVICE,
+    "sdn_v2.controller_test": NOT_A_DEVICE,
     "settings_v2.records_save": NOT_A_DEVICE,
     "settings_v2.records_test": NOT_A_DEVICE,
     "settings_v2.records_replace": NOT_A_DEVICE,

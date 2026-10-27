@@ -1,0 +1,261 @@
+[
+ {
+  "OFPFlowMod": {
+   "buffer_id": 4294967295,
+   "command": 0,
+   "cookie": 0,
+   "cookie_mask": 0,
+   "flags": 0,
+   "hard_timeout": 0,
+   "idle_timeout": 0,
+   "instructions": [
+    {
+     "OFPInstructionActions": {
+      "actions": [
+       {
+        "OFPActionOutput": {
+         "len": 16,
+         "max_len": 65535,
+         "port": 4294967293,
+         "type": 0
+        }
+       }
+      ],
+      "len": 24,
+      "type": 4
+     }
+    }
+   ],
+   "match": {
+    "OFPMatch": {
+     "length": 4,
+     "oxm_fields": [],
+     "type": 1
+    }
+   },
+   "out_group": 0,
+   "out_port": 0,
+   "priority": 0,
+   "table_id": 0
+  }
+ },
+ {
+  "OFPMeterMod": {
+   "bands": [
+    {
+     "burst_size": 100,
+     "rate": 1000,
+     "type": 1
+    }
+   ],
+   "command": 0,
+   "flags": 13,
+   "meter_id": 1
+  }
+ },
+ {
+  "OFPFlowMod": {
+   "buffer_id": 4294967295,
+   "command": 0,
+   "cookie": 5567946962029772801,
+   "cookie_mask": 0,
+   "flags": 0,
+   "hard_timeout": 300,
+   "idle_timeout": 0,
+   "instructions": [],
+   "match": {
+    "OFPMatch": {
+     "length": 22,
+     "oxm_fields": [
+      {
+       "OXMTlv": {
+        "field": "eth_type",
+        "mask": null,
+        "value": 2048
+       }
+      },
+      {
+       "OXMTlv": {
+        "field": "ipv4_src",
+        "mask": "255.255.255.0",
+        "value": "192.0.2.0"
+       }
+      }
+     ],
+     "type": 1
+    }
+   },
+   "out_group": 4294967295,
+   "out_port": 4294967295,
+   "priority": 100,
+   "table_id": 0
+  }
+ },
+ {
+  "OFPFlowMod": {
+   "buffer_id": 4294967295,
+   "command": 0,
+   "cookie": 5567946962029772802,
+   "cookie_mask": 0,
+   "flags": 0,
+   "hard_timeout": 300,
+   "idle_timeout": 0,
+   "instructions": [
+    {
+     "OFPInstructionMeter": {
+      "len": 8,
+      "meter_id": 1,
+      "type": 6
+     }
+    },
+    {
+     "OFPInstructionActions": {
+      "actions": [
+       {
+        "OFPActionOutput": {
+         "len": 16,
+         "max_len": 65509,
+         "port": 2,
+         "type": 0
+        }
+       }
+      ],
+      "len": 24,
+      "type": 4
+     }
+    }
+   ],
+   "match": {
+    "OFPMatch": {
+     "length": 26,
+     "oxm_fields": [
+      {
+       "OXMTlv": {
+        "field": "in_port",
+        "mask": null,
+        "value": 3
+       }
+      },
+      {
+       "OXMTlv": {
+        "field": "eth_type",
+        "mask": null,
+        "value": 2048
+       }
+      },
+      {
+       "OXMTlv": {
+        "field": "ipv4_src",
+        "mask": null,
+        "value": "192.0.2.3"
+       }
+      }
+     ],
+     "type": 1
+    }
+   },
+   "out_group": 4294967295,
+   "out_port": 4294967295,
+   "priority": 90,
+   "table_id": 0
+  }
+ },
+ {
+  "OFPFlowMod": {
+   "buffer_id": 4294967295,
+   "command": 0,
+   "cookie": 5567946962029772803,
+   "cookie_mask": 0,
+   "flags": 0,
+   "hard_timeout": 300,
+   "idle_timeout": 0,
+   "instructions": [],
+   "match": {
+    "OFPMatch": {
+     "length": 41,
+     "oxm_fields": [
+      {
+       "OXMTlv": {
+        "field": "eth_type",
+        "mask": null,
+        "value": 34525
+       }
+      },
+      {
+       "OXMTlv": {
+        "field": "ip_proto",
+        "mask": null,
+        "value": 6
+       }
+      },
+      {
+       "OXMTlv": {
+        "field": "tcp_dst",
+        "mask": null,
+        "value": 22
+       }
+      },
+      {
+       "OXMTlv": {
+        "field": "ipv6_src",
+        "mask": null,
+        "value": "2001:db8::1"
+       }
+      }
+     ],
+     "type": 1
+    }
+   },
+   "out_group": 4294967295,
+   "out_port": 4294967295,
+   "priority": 100,
+   "table_id": 0
+  }
+ },
+ {
+  "OFPFlowMod": {
+   "buffer_id": 4294967295,
+   "command": 4,
+   "cookie": 5567946962029772801,
+   "cookie_mask": 18446744073709551615,
+   "flags": 0,
+   "hard_timeout": 0,
+   "idle_timeout": 0,
+   "instructions": [],
+   "match": {
+    "OFPMatch": {
+     "length": 22,
+     "oxm_fields": [
+      {
+       "OXMTlv": {
+        "field": "eth_type",
+        "mask": null,
+        "value": 2048
+       }
+      },
+      {
+       "OXMTlv": {
+        "field": "ipv4_src",
+        "mask": "255.255.255.0",
+        "value": "192.0.2.0"
+       }
+      }
+     ],
+     "type": 1
+    }
+   },
+   "out_group": 4294967295,
+   "out_port": 4294967295,
+   "priority": 100,
+   "table_id": 0
+  }
+ },
+ {
+  "OFPMeterMod": {
+   "bands": [],
+   "command": 2,
+   "flags": 0,
+   "meter_id": 1
+  }
+ }
+]

@@ -27,8 +27,12 @@ below and tests/test_oob_onboard_v2.py, not from new shots: a console run's row 
 onboarding, a console survey or kick-start) opens the run's own page, "Open its stepper", since
 a device being onboarded has no page until its Create; its step is its run's stepper's own
 words. Every other row and region is unchanged.
+Compared again 2026-10-27 (PHASE8_PLAN 17.1 S11), by reading `base.html`'s change against the
+regions below, not from new shots: the sidebar gains SDN under OBSERVE, after Topology (board
+SdnControllers' sidebar; tests/test_v2_pages.py pins the order). Nothing in the top bar, the
+chip or its list moves, so every verdict below stands.
 Templates compared: templates/v2/_in_progress.html, templates/v2/base.html
-Templates sha256: `74615330f87f0bdd7d07074df9bd2036f32e2534e3a368d15244858ce170d331`
+Templates sha256: `be8aee7c422332a1dab3395e3d611ac707fd7307182a0c493348759a6a6e9743`
 Hash rewritten 2026-10-23 at the Phase B merge: the run page's links name their network as `?list=` (they said `?list_name=`), and the run page's Devices link takes the page's network; no drawn text, region or control moved, every verdict stands.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or

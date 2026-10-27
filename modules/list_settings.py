@@ -123,13 +123,15 @@ def group_choice(store: dict, group: str) -> str:
     """What *group* does for the network whose *store* this is: NA when declared not
     applicable (the group or any of its keys); OWN when any key of it is set here (a value
     set here is the network's own, whatever was chosen before); else the group's explicit
-    choice; else the network's mode (standalone: OWN; inheriting: INHERIT)."""
-    from modules.settings_scope import group_keys
+    choice; else the network's mode (standalone: OWN; inheriting: INHERIT). A group that is
+    never inherited (`settings_scope.OWN_ONLY`, C1841) is OWN unless declared not
+    applicable: a network that sets none of it has none."""
+    from modules.settings_scope import OWN_ONLY, group_keys
 
     keys = group_keys(group)
     if group in store["not_applicable"] or any(k in store["not_applicable"] for k in keys):
         return NA
-    if any(k in store["values"] for k in keys):
+    if group in OWN_ONLY or any(k in store["values"] for k in keys):
         return OWN
     explicit = (store.get("groups") or {}).get(group)
     if explicit in (INHERIT, OWN):

@@ -3,7 +3,8 @@ package structure decides, and this file names ONLY the exceptions, each with it
 (Not a test module; tests/test_nmas_coverage.py holds it whole.)
 
 The structure (`RULES`, first match wins):
-- `modules/nsot/`, `modules/readers/`, `modules/inventory/`, `modules/integrations/`, and
+- `modules/nsot/`, `modules/readers/`, `modules/inventory/`, `modules/integrations/`,
+  `modules/sdn/`, and
   every other module directly in `modules/`: **automation**, the code that reads, renders,
   checks, deploys and records network state;
 - `routes/` and `app.py`: **support**, the web layer around it.
@@ -23,6 +24,7 @@ RULES = (
     ("modules/readers/", AUTOMATION, "readers of device and service state"),
     ("modules/inventory/", AUTOMATION, "device inventory sources"),
     ("modules/integrations/", AUTOMATION, "NetBox, Kea, git, S3 and the other services"),
+    ("modules/sdn/", AUTOMATION, "SDN controllers: their drivers, flows and responses"),
     ("modules/", AUTOMATION, "Mercury's modules, unless named below"),
     ("routes/", SUPPORT, "the web routes: the interface around the automation"),
     ("app.py", SUPPORT, "the web application's entry point and its legacy routes"),
@@ -50,6 +52,7 @@ EXCEPTIONS = {
     "modules/device_netbox.py": (SUPPORT, "the device page's NetBox tab"),
     "modules/device_page.py": (SUPPORT, "the device page's model"),
     "modules/dhcp_page.py": (SUPPORT, "the DHCP page's model"),
+    "modules/sdn_page.py": (SUPPORT, "SDN › Controllers', Flows' and Settings' SDN card's model"),
     "modules/discovery_page.py": (SUPPORT, "the Discovered page's model"),
     "modules/filestore.py": (SUPPORT, "the app's atomic file writes"),
     "modules/history_query.py": (SUPPORT, "History's query page"),

@@ -262,7 +262,8 @@ DECLARED_MODULES: tuple = ("modules.readers.reachability",
                            "modules.readers.dhcp",
                            "modules.readers.ztp_discovery",
                            "modules.readers.host_key_windows",
-                           "modules.readers.onboarding_progress")
+                           "modules.readers.onboarding_progress",
+                           "modules.readers.sdn_controllers")
 
 #: Readers switched OFF, each with why: not imported, never started, no job-health row, no
 #: Needs attention source. Removed with their system (the operator decides when).

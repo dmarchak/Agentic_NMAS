@@ -52,7 +52,10 @@ RECORDS = {"topology.html": "topology.md", "history_syslog.html": "logs.md",
            "about.html": "about.md",
            # The one-decision out-of-band onboarding's run page (board C of
            # docs/boards/oob-onboarding.html, 2026-10-23).
-           "oob_run.html": "oob-run.md"}
+           "oob_run.html": "oob-run.md",
+           # PHASE8_PLAN 17.1 S11: SDN › Controllers and Flows (boards SdnControllers, SdnFlows
+           # and SdnPhone, signed off under the Phase 7 mode 2026-10-27).
+           "sdn.html": "sdn.md"}
 
 #: Components many screens share, each compared with its own boards (the operator, 2026-10-12:
 #: the one stepper, "add it to the board-fidelity records"): component -> its record.
@@ -67,7 +70,10 @@ COMPONENTS = {"_run_stepper.html": "stepper.md",
               "_evidence_pack.html": "alerts-explain.md",
               # Monitoring › Alerts › History (board P1-H, AlertsHistory.dc.html, signed off
               # under the Phase 7 mode 2026-10-26): past alerts, Build evidence.
-              "_alert_history.html": "alerts-history.md"}
+              "_alert_history.html": "alerts-history.md",
+              # Settings › Integrations' SDN controllers card (board SdnSettings, signed off
+              # under the Phase 7 mode 2026-10-27).
+              "_sdn_settings.html": "sdn-settings.md"}
 
 #: Signed-off screens built before the fidelity step and not yet compared with their boards
 #: (C650). Each is compared, and its differences fixed or logged, before it leaves this list.

@@ -1,5 +1,6 @@
 """The line stores kept one file per network on the records database (K31 part 2b): each network's
-settings changes, onboarding runs and inventory edits, in its list folder, against a REAL
+settings changes, onboarding runs, inventory edits and SDN flow intent (PHASE8_PLAN 17.1 S5,
+`flow_intent.record_installed` / `read`), in its list folder, against a REAL
 PostgreSQL shaped as host step 6a makes it (tests/pg_instance.py; skipped with its reason here, a
 failure in CI).
 
@@ -65,9 +66,24 @@ def _edit(network, n):
                     network=FOLDERS[network])
 
 
+def _intent(network, n):
+    """An SDN flow Mercury installed (PHASE8_PLAN 17.1 S5), through its owner's recorder."""
+    from modules.sdn import flow_intent
+    from tests.test_sdn_ryu import DROP
+    flow_intent.record_installed(network, connection="ctl-1",
+                                 flow=dict(DROP, dpid=1, cookie=flow_intent.mercury_cookie(n)),
+                                 actor="alex@example.com", response={"id": f"r{n}"})
+
+
+def _intent_rows(network):
+    from modules.sdn import flow_intent
+    return flow_intent.read(network)["rows"]
+
+
 #: Each store: its writer and its owner's read for one network, newest first or oldest first
 #: as the owner answers.
 CASES = {
+    "flow_intent": (_intent, lambda net: _intent_rows(net)),
     "network_settings_record": (_settings, lambda net: list_settings.changes(net)["rows"]),
     "onboarding_runs": (_run, lambda net: onboard.read_runs(
         os.path.join(_folder(net), "config_repo"))["rows"]),

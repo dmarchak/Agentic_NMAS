@@ -1,0 +1,58 @@
+[
+ {
+  "method": "GET",
+  "path": "/stats/switches",
+  "request_body": null,
+  "status": 200,
+  "content_type": "application/json",
+  "body": "[]"
+ },
+ {
+  "method": "GET",
+  "path": "/stats/flow/1",
+  "request_body": null,
+  "status": 404,
+  "content_type": "text/html; charset=UTF-8",
+  "body": ""
+ },
+ {
+  "method": "GET",
+  "path": "/stats/flow/abc",
+  "request_body": null,
+  "status": 400,
+  "content_type": "text/html; charset=UTF-8",
+  "body": ""
+ },
+ {
+  "method": "POST",
+  "path": "/stats/flowentry/add",
+  "request_body": "{\"dpid\": 1, \"priority\": 1, \"match\": {}, \"actions\": []}",
+  "status": 404,
+  "content_type": "text/html; charset=UTF-8",
+  "body": ""
+ },
+ {
+  "method": "POST",
+  "path": "/stats/flowentry/add",
+  "request_body": "{\"dpid\": 1, \"x\": true}",
+  "status": 500,
+  "content_type": "text/plain",
+  "body": "Traceback (most recent call last):\n  File \"/usr/local/lib/python3.9/site-packages/eventlet/wsgi.py\", line 573, in handle_one_response\n    result = self.application(self.environ, start_response)\n  File \"/usr/local/lib/python3.9/site-packages/ryu/app/wsgi.py\", line 236, in __call__\n    return super(wsgify_hack, self).__call__(environ, start_response)\n  File \"/usr/local/lib/python3.9/site-packages/webob/dec.py\", line 129, in __call__\n    resp = self.call_func(req, *args, **kw)\n  File \"/usr/local/lib/python3.9/site-packages/webob/dec.py\", line 193, in call_func\n    return self.func(req, *args, **kwargs)\n  File \"/usr/local/lib/python3.9/site-packages/ryu/app/wsgi.py\", line 290, in __call__\n    return controller(req)\n  File \"/usr/local/lib/python3.9/site-packages/ryu/app/wsgi.py\", line 160, in __call__\n    return getattr(self, action)(req, **kwargs)\n  File \"/usr/local/lib/python3.9/site-packages/ryu/app/ofctl_rest.py\", line 240, in wrapper\n    body = ast.literal_eval(req.body.decode('utf-8'))\n  File \"/usr/local/lib/python3.9/ast.py\", line 107, in literal_eval\n    return _convert(node_or_string)\n  File \"/usr/local/lib/python3.9/ast.py\", line 96, in _convert\n    return dict(zip(map(_convert, node.keys),\n  File \"/usr/local/lib/python3.9/ast.py\", line 106, in _convert\n    return _convert_signed_num(node)\n  File \"/usr/local/lib/python3.9/ast.py\", line 80, in _convert_signed_num\n    return _convert_num(node)\n  File \"/usr/local/lib/python3.9/ast.py\", line 71, in _convert_num\n    _raise_malformed_node(node)\n  File \"/usr/local/lib/python3.9/ast.py\", line 68, in _raise_malformed_node\n    raise ValueError(f'malformed node or string: {node!r}')\nValueError: malformed node or string: <ast.Name object at 0x7c02d620e550>\n"
+ },
+ {
+  "method": "GET",
+  "path": "/v1.0/topology/links",
+  "request_body": null,
+  "status": 404,
+  "content_type": "text/html; charset=UTF-8",
+  "body": "<html>\n <head>\n  <title>404 Not Found</title>\n </head>\n <body>\n  <h1>404 Not Found</h1>\n  The resource could not be found.<br /><br />\n\n\n\n </body>\n</html>"
+ },
+ {
+  "method": "POST",
+  "path": "/stats/flowentry/bogus",
+  "request_body": "{\"dpid\": 1}",
+  "status": 404,
+  "content_type": "text/html; charset=UTF-8",
+  "body": ""
+ }
+]

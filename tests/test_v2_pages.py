@@ -283,7 +283,7 @@ class TestTheLanding:
 #: to SOURCE OF TRUTH after NetBox (C529, 2026-10-06), Show commands joined OBSERVE. "—" is the
 #: rule above Help and Settings at the bottom.
 SIDEBAR = ("Needs attention", "Devices", "History",
-           "OBSERVE", "Monitoring", "Topology", "Show commands", "Logs",
+           "OBSERVE", "Monitoring", "Topology", "SDN", "Show commands", "Logs",
            "SOURCE OF TRUTH", "Templates", "NetBox", "DHCP", "Credentials",
            "—", "Help", "Settings")
 

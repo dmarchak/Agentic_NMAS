@@ -100,7 +100,8 @@ def _load() -> dict:
 def _key_changes(before: dict, after: dict) -> str:
     """``+added -removed ~changed`` per section, NAMES only, never a value."""
     parts = []
-    for section in ("profiles", "device_overrides", "template_secrets", "ssh_keys"):
+    for section in ("profiles", "device_overrides", "template_secrets", "ssh_keys",
+                    "controller_credentials"):
         b, a = before.get(section) or {}, after.get(section) or {}
         add = sorted(set(a) - set(b))
         rem = sorted(set(b) - set(a))
@@ -382,6 +383,11 @@ def device_credential_values() -> dict:
             _add(decrypt_value(override.get("secret", "")), "enable-secret")
         for ref, entry in (data.get("ssh_keys") or {}).items():
             _add(decrypt_value(entry.get("private_key", "")), "ssh-private-key")
+        # SDN controllers' credentials (PHASE8_PLAN 17.1 S2): a controller's error page or a
+        # proxy's can echo one back, as a device's failed login can.
+        for key, entry in (data.get("controller_credentials") or {}).items():
+            _add(decrypt_value(entry.get("password", "")), "controller-password")
+            _add(decrypt_value(entry.get("token", "")), "controller-token")
     except Exception as exc:                  # noqa: BLE001
         log.error("credentials: could not read profiles for redaction: %s", exc)
 
@@ -622,6 +628,121 @@ def ssh_key_info(ref: str):
         return None
     return {"ref": ref, "username": entry.get("username", ""),
             "public_key": entry.get("public_key", ""), "created": entry.get("created")}
+
+
+# ---------------------------------------------------------------------------
+# SDN controller connections' credentials (PHASE8_PLAN 17.1 S2)
+# ---------------------------------------------------------------------------
+
+#: A controller credential's key: the network whose settings layer holds the connection
+#: (`integration_groups.group_id`: ``default`` or the list's slug), a slash, its name.
+CONTROLLER_KEY = re.compile(r"[a-z0-9_]+/[A-Za-z0-9][A-Za-z0-9._-]{0,62}")
+#: What a controller credential holds: a user and password (HTTP basic), or a token (bearer).
+CONTROLLER_FIELDS = ("username", "password", "token")
+
+
+def check_controller_key(key) -> str:
+    if not isinstance(key, str) or not CONTROLLER_KEY.fullmatch(key):
+        raise ValueError(f"controller credential key {key!r} is not <network>/<name>")
+    return key
+
+
+def set_controller_credential(key: str, *, username: str = "", password: str = "",
+                              token: str = "", clear: bool = False) -> dict:
+    """Store a controller connection's credential under *key*, encrypted at rest as every
+    credential here is (the user's name too: it is half of what opens the controller).
+
+    **A blank keeps the stored value**, as a profile's password does: a credential is never
+    drawn back into a form, so an empty field means "unchanged", never "erase". The kind
+    follows what is typed: a token typed drops a stored user and password, a password typed
+    drops a stored token. Erasing is *clear*, said by name. Answers ``{"ok", "auth",
+    "changed", "previous"}``; ``previous`` is the entry as it was stored (encrypted), for a
+    caller that must put it back when its own write fails, and never leaves the process.
+    Logs the key, never a value."""
+    check_controller_key(key)
+    for name, value in (("username", username), ("password", password), ("token", token)):
+        if not isinstance(value, str):
+            raise ValueError(f"a controller's {name} is text, not a {type(value).__name__}")
+    if token and (password or username):
+        raise ValueError("give a user and password or a token for a controller, not both")
+    with _lock:
+        data = _load()
+        store = data.setdefault("controller_credentials", {})
+        previous = dict(store.get(key) or {})
+        entry = dict(previous)
+        if clear:
+            entry = {}
+        if token:
+            entry = {"token": encrypt_value(token)}
+        if password:
+            entry.pop("token", None)
+            entry["password"] = encrypt_value(password)
+        if username:
+            entry.pop("token", None)
+            entry["username"] = encrypt_value(username)
+        changed = entry != previous
+        if changed:
+            if entry:
+                store[key] = entry
+            else:
+                store.pop(key, None)
+            _save(data)
+    if changed:
+        log.info("credentials: %s controller credential '%s'",
+                 "cleared" if not entry else "stored", key)
+    return {"ok": True, "auth": _controller_auth(entry), "changed": changed,
+            "previous": previous}
+
+
+def restore_controller_credential(key: str, previous: dict) -> None:
+    """Put back the entry `set_controller_credential` answered as ``previous`` (as stored,
+    encrypted): the undo of a credential written for a connection whose own save failed."""
+    check_controller_key(key)
+    with _lock:
+        data = _load()
+        store = data.setdefault("controller_credentials", {})
+        if previous:
+            store[key] = dict(previous)
+        else:
+            store.pop(key, None)
+        _save(data)
+
+
+def clear_controller_credential(key: str) -> bool:
+    """Remove *key*'s credential; whether one was stored."""
+    check_controller_key(key)
+    with _lock:
+        data = _load()
+        store = data.setdefault("controller_credentials", {})
+        had = store.pop(key, None) is not None
+        if had:
+            _save(data)
+    if had:
+        log.info("credentials: cleared controller credential '%s'", key)
+    return had
+
+
+def get_controller_credential(key: str) -> dict:
+    """*key*'s credential DECRYPTED, for the one caller that sends it (the driver's
+    credentials callable, at each request): ``{"username", "password"}``, ``{"token"}`` or
+    ``{}``. Never returned to a page, printed or logged."""
+    entry = (_load().get("controller_credentials") or {}).get(check_controller_key(key)) or {}
+    return {k: decrypt_value(entry[k]) for k in CONTROLLER_FIELDS if entry.get(k)}
+
+
+def controller_credential_info(key: str) -> dict:
+    """``{"set", "auth"}`` for *key*: whether a credential is stored and its kind
+    (``basic``, ``token`` or ``none``), never a value or the user's name."""
+    entry = (_load().get("controller_credentials") or {}).get(check_controller_key(key)) or {}
+    return {"set": bool(entry), "auth": _controller_auth(entry)}
+
+
+def _controller_auth(entry: dict) -> str:
+    if entry.get("token"):
+        return "token"
+    if entry.get("username") or entry.get("password"):
+        return "basic"
+    return "none"
 
 
 def resolve(mgmt_ip: str, role: str = "", site: str = "",

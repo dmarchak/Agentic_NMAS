@@ -25,6 +25,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SCANNED_PACKAGES = (
     "modules/integrations",
     "modules/nsot",
+    "modules/sdn",          # a controller's address is the operator's value (PHASE8_PLAN 17.2)
     "routes",
 )
 

@@ -693,11 +693,14 @@ def network(list_name):
         return _strict(render_template("v2/settings.html", who=_who(), active_nav="settings",
                                        v=v), 410)
     v = settings_page.network_view(list_name, request.args.get("tab") or "integrations")
-    src = None
+    src = sdn = None
     if v.get("tab") == "network" and not v.get("error"):
         from modules import network_source as NS
         src = NS.view(list_name)
-    return _page("v2/settings.html", v=v, list_name=list_name, src=src)
+    if v.get("tab") == "integrations" and not v.get("error"):
+        from modules import sdn_page
+        sdn = sdn_page.card(list_name)
+    return _page("v2/settings.html", v=v, list_name=list_name, src=src, sdn=sdn)
 
 
 @bp.route("/network/<list_name>/group/<group>", methods=["GET"])
@@ -843,6 +846,116 @@ def group_test(list_name, group):
         except Exception as exc:                          # noqa: BLE001 (said in the card)
             result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
     return _card(list_name, group, tested=result)
+
+
+# ── SDN controllers (PHASE8_PLAN 17.1 S2's interface; board SdnSettings, signed off 2026-10-27)
+
+def _sdn(list_name: str, code: int = 200, editing: str = "", **ctx):
+    """The SDN controllers card on a network's Integrations tab, drawn whole."""
+    from modules import sdn_page
+
+    return _fragment("v2/_sdn_settings.html", code, k=sdn_page.card(list_name, editing),
+                     list_name=list_name, **ctx)
+
+
+def _sdn_answer(list_name: str, code: int = 200, **ctx):
+    """An answer drawn in place beside the control that asked (Test, a refused Save)."""
+    return _fragment("v2/_sdn_answer.html", code, list_name=list_name, **ctx)
+
+
+@bp.route("/network/<list_name>/sdn", methods=["GET"])
+def sdn_card(list_name):
+    """The card, drawn again (Cancel, and Edit's Cancel)."""
+    return _sdn(list_name)
+
+
+@bp.route("/network/<list_name>/sdn/edit/<name>", methods=["GET"])
+def sdn_edit(list_name, name):
+    """Edit: the card with its form holding the connection's values, its credential never
+    drawn (a blank keeps it)."""
+    return _sdn(list_name, editing=name)
+
+
+@bp.route("/network/<list_name>/sdn/test", methods=["POST"])
+def sdn_test(list_name):
+    """Test connection with the form's values as typed, before anything is saved: the
+    controller's switches and version, or why it could not connect, in place. A Test that
+    answered hands the form its receipt (`sdn_page.tested_receipt`), which Save needs. Writes
+    nothing."""
+    from modules import sdn_page
+    from modules.sdn import connections
+
+    values = sdn_page.form_values(request.form, sdn_page.loaded_of(request.form))
+    got = connections.test_connection(dict(values, network=list_name))
+    receipt = sdn_page.tested_receipt(list_name, values) if got.get("ok") else ""
+    return _sdn_answer(list_name, tested=got, receipt=receipt, url=values.get("url"))
+
+
+@bp.route("/network/<list_name>/sdn/save", methods=["POST"])
+def sdn_save(list_name):
+    """Save: refused while Test has not answered for the URL as typed (board SdnSettings),
+    and when the connection moved since the form drew it; else saved FOR the network, recorded
+    with the verified person, and the card drawn again with the result. A refusal is drawn
+    beside Save, the form kept as typed."""
+    from flask import make_response
+
+    from modules import identity
+    from modules import sdn_page
+    from modules.sdn import connections
+
+    loaded = sdn_page.loaded_of(request.form)
+    values = sdn_page.form_values(request.form, loaded)
+    problem = sdn_page.tested_problem(list_name, values, request.form.get("tested") or "")
+    if problem:
+        return _sdn_answer(list_name, 409, refused=problem)
+    try:
+        saved = connections.save_connection(list_name, values, identity.request_actor(),
+                                            _verified(), loaded=loaded)
+    except connections.ConnectionRefused as exc:
+        return _sdn_answer(list_name, 409, refused=str(exc))
+    resp = make_response(_sdn(list_name, saved=saved))
+    # The answer replaces the whole card (its list now holds the connection), not the slot
+    # beside Save that a refusal is drawn in.
+    resp.headers["HX-Retarget"] = "#sdn-card"
+    resp.headers["HX-Reswap"] = "outerHTML"
+    return resp
+
+
+@bp.route("/network/<list_name>/sdn/<name>/test", methods=["POST"])
+def sdn_saved_test(list_name, name):
+    """Test connection on a saved connection, with what is saved: in place, on its row."""
+    from modules.sdn import connections
+
+    return _sdn_answer(list_name, tested=connections.test_saved(list_name, name), name=name)
+
+
+@bp.route("/network/<list_name>/sdn/<name>/remove", methods=["GET"])
+def sdn_remove_card(list_name, name):
+    """Remove…: in place of the card, what removing it does and what survives, with Remove
+    and Cancel."""
+    from modules import sdn_page
+
+    k = sdn_page.card(list_name)
+    if not any(c["name"] == name for c in k["connections"]):
+        return _sdn(list_name, 409, refused=f"{list_name} has no controller connection "
+                                            f"{name!r}; nothing to remove")
+    return _fragment("v2/_sdn_settings.html", k=k, list_name=list_name, removing=name)
+
+
+@bp.route("/network/<list_name>/sdn/<name>/remove", methods=["POST"])
+def sdn_remove(list_name, name):
+    """Remove the connection and its credential, recorded; the card drawn again saying what
+    survives."""
+    from modules import identity
+    from modules.sdn import connections
+
+    try:
+        out = connections.remove_connection(list_name, name, identity.request_actor(),
+                                            _verified())
+    except connections.ConnectionRefused as exc:
+        return _sdn(list_name, 409, refused=str(exc))
+    return _sdn(list_name, removed={k: out[k] for k in ("name", "credential_cleared",
+                                                         "recorded", "survives")})
 
 
 @bp.route("/network/<list_name>/mode/banner", methods=["GET"])

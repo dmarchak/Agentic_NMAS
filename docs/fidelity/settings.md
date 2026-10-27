@@ -45,8 +45,14 @@ then each device, its address and since when). The stale badge now also reads th
 banner drew these lists; the 2026-10-10 source line drew none of them, so they are a new
 region, a deviation (below). A network on its own list, the change's preview and its result do
 not move, so every other verdict stands.
+
+**Compared again 2026-10-27 (PHASE8_PLAN 17.1 S11):** `settings.html` now draws the network's
+SDN controllers card (board SdnSettings, `_sdn_settings.html`) at the foot of the Integrations
+tab, below the group cards, spanning the tab. The card is compared region by region in its own
+record, docs/fidelity/sdn-settings.md, from tests/test_board_shots.py's `test_sdn`
+(`sdn-settings-page-1440`); nothing else on the page moved, so every other verdict stands.
 Templates compared: templates/v2/settings.html, templates/v2/_settings_scope.html, templates/v2/_settings_mode.html, templates/v2/_settings_card.html, templates/v2/_settings_refused.html, templates/v2/_network_source.html, templates/v2/_network_create.html, templates/v2/_network_delete.html, templates/v2/_network_picker.html, templates/v2/_network_picker_items.html
-Templates sha256: `92d793d3b06888f3d7a7f9b6c54a6773091dc53cd6c172de32d34fce9c761656`
+Templates sha256: `522b41d09272a03d10ad7508be0fc483670041accb734ea6932379a46fa1f8de`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).

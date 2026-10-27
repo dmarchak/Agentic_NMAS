@@ -1,0 +1,18 @@
+{%- from "v2/_macros.html" import icon -%}
+{#- An SDN controller's Test connection, or a refused Save, drawn in place beside the control
+    that asked (board SdnSettings: "Answered: …" or "Couldn't connect: <the reason>"). A Test of
+    the form's values that answered carries its receipt, the hidden field Save needs
+    (modules/sdn_page.tested_receipt). -#}
+{%- if refused is defined and refused %}
+<p class="sdn-ans sdn-ans-bad" role="alert">{{ icon('warn', 15) }}<span><strong>Not saved:</strong> {{ refused }}.</span></p>
+{%- elif tested is defined and tested %}
+{%- if tested.ok %}
+<p class="sdn-ans sdn-ans-ok" role="status">{{ icon('tick', 15) }}<span><strong>Answered{% if url is defined and url %} for <span class="mono">{{ url }}</span>{% endif %}:</strong>
+  {%- if tested.version %} {{ tested.version }},{% endif %} {{ tested.switches if tested.switches is not none else 'no count of' }} switch{{ '' if tested.switches == 1 else 'es' }} connected
+  {%- if not tested.version %}<span class="faint">; version not reported{% if tested.version_note %} ({{ tested.version_note }}){% endif %}</span>{% endif %}
+  {%- if tested.credentials == 'typed' %}<span class="faint">; with the credential typed</span>{% elif tested.credentials == 'stored' %}<span class="faint">; with the stored credential</span>{% endif %}.</span></p>
+{%- if receipt is defined and receipt %}<input type="hidden" name="tested" value="{{ receipt }}">{% endif %}
+{%- else %}
+<p class="sdn-ans sdn-ans-bad" role="status">{{ icon('warn', 15) }}<span><strong>Couldn't connect{% if url is defined and url %} to <span class="mono">{{ url }}</span>{% endif %}:</strong> {{ tested.error or 'no answer' }}.</span></p>
+{%- endif %}
+{%- endif %}

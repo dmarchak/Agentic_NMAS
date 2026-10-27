@@ -21,6 +21,13 @@ is a new instance, so a new pack). At most `MAX_PER_RUN` are built per read, so 
 alerts delays the reader's announcement by a bounded amount; the rest are built at the next
 read, and the tab names how many are waiting.
 
+**An SDN detection is an alert too** (PHASE8_PLAN 17.1 S6, `modules/sdn/detect.py`, the store
+``sdn``): its pack is built when the detection first fires, from the collection it rests on
+(`build_detection`): the alert, the device (absent: a controller's switch is in no inventory)
+and the ``sdn`` section, the flows and port rates cited by their evidence ids, captured at the
+detection's time. Its firing instances join the tab's (`sdn_firing`). A Grafana alert's pack is
+unchanged: ``sdn`` is not one of `SECTIONS`.
+
 **Each piece names its source and when it was read, and carries its own reference** (C1657:
 History rows and reader values carry no identifier, so the pack mints them): a section's
 reference is its name (``logs``), a piece's is the section's name and its place
@@ -71,7 +78,13 @@ SECTION_WORDS = {"alert": "The alert", "device": "The device", "history": "Recen
                  "observed": "The network around it, as observed",
                  "endpoints": "What is attached around it, as observed",
                  "health": "Health of the devices around it",
-                 "logs": "Log lines around the onset"}
+                 "logs": "Log lines around the onset",
+                 "sdn": "The SDN flows and port rates the detection rests on"}
+#: The section only an SDN detection's pack holds (`build_detection`, PHASE8_PLAN 17.1 S6), kept
+#: out of `SECTIONS` so a Grafana alert's pack, and Explain's pack format (the cached prefix,
+#: `explain.vocabulary`), are unchanged: the section rides as pack data, naming itself in its
+#: own words.
+SDN_SECTION = "sdn"
 #: A build more than this before the clock is a replay of a past alert (`build`'s *now*): the
 #: sections that read a store as it is now (History, the Intent check) say what they read.
 REPLAY_SLACK_SECONDS = 300
@@ -824,6 +837,66 @@ def build(inst: dict, *, store: str, value_at: str, now: float = None, loki=None
     return pack
 
 
+def build_detection(inst: dict, *, network: str, sdn: dict, now: float, trigger: str,
+                    switch_words: str) -> dict:
+    """An SDN detection's pack (PHASE8_PLAN 17.1 S6; `modules/sdn/detect.py` calls it when the
+    detection first fires), masked and hashed: the alert (*inst*, in the reader's shape, its
+    store ``sdn``); the device, absent (a controller's switch is in no network's inventory:
+    *switch_words* says which switch); and the ``sdn`` section, *sdn* ``{"source", "read_at",
+    "pieces", ...}``: the collected flows and port rates the detection rests on, as of the
+    collection (*now*, the detection's time), each piece carrying its evidence id. Every section
+    is marked captured. Explain reads it unchanged: the section is pack data, gated as the
+    topology class (`explain.sent_sections`)."""
+    from modules import redact
+    from modules.sdn import detect
+
+    onset, basis = _detection_onset(inst)
+    sections = [_alert_section(inst, detect.STORE, _iso(now), onset, basis),
+                _section("device", "every network's inventory", now, "absent",
+                         f"{switch_words} is an SDN controller's switch, not a device in any "
+                         "network's inventory (adopting switches as devices comes after "
+                         "PHASE8_PLAN 17.1's slice)")]
+    extra = {k: v for k, v in sdn.items() if k not in ("source", "read_at", "pieces")}
+    sections.append(_section(SDN_SECTION, sdn["source"], sdn["read_at"], "ok",
+                             pieces=sdn["pieces"], **extra))
+    for s in sections:
+        mark(s, "captured", "read when the detection was found firing"
+             if s["name"] != SDN_SECTION else
+             "the collection the detection rests on, read at the detection's time")
+    key = alert_key(inst)
+    pack = {"schema": SCHEMA, "id": pack_id(key), "alert_key": key, "built_at": _iso(now),
+            "store": detect.STORE, "rule": inst.get("rule") or "", "device": "",
+            "network": network, "onset": _iso(onset), "trigger": trigger,
+            "provenance": "captured", "sections": sections}
+    pack = redact.redact_payload(pack)
+    pack["hash"] = digest(pack)
+    return pack
+
+
+def _detection_onset(inst: dict):
+    """An SDN detection's onset: when its condition first held (``active_at``), the
+    collection that first showed it (Mercury's clock)."""
+    from modules import alert_history as H
+
+    at = H.epoch(inst.get("active_at"))
+    return at, ("the collection that first showed it, by Mercury's clock" if at is not None
+                else "not recorded")
+
+
+def sdn_firing() -> dict:
+    """The SDN detections firing now (`modules/sdn/detect.firing`): ``{"state", "error",
+    "updated_at", "instances": [(store, instance)]}``. Never raises: a state that cannot be
+    read is said, and lists none."""
+    try:
+        from modules.sdn import detect
+        got = detect.firing()
+    except Exception as exc:                          # noqa: BLE001 (said, never raised)
+        log.error("evidence_pack: the SDN detections could not be read (%s)", exc)
+        return {"state": "unreadable", "error": _failed(exc), "updated_at": "", "instances": []}
+    return {"state": got["state"], "error": got["error"], "updated_at": got["updated_at"],
+            "instances": [(detect.STORE, i) for i in got["instances"]]}
+
+
 def episode_instance(e: dict) -> dict:
     """An alert history episode (`alert_history.episodes`) as a firing instance in the alerts
     reader's shape: its rule and labels, its condition first holding when the episode began,
@@ -1012,6 +1085,14 @@ def tab(q: str = "") -> dict:
                         "why": got.get("why") or ((got.get("doc") or {}).get("last_attempt")
                                                   or {}).get("error") or ""})
         firing_now += [(name, i) for i in firing(good.get("value") or {})]
+    # Mercury's own SDN detections (PHASE8_PLAN 17.1 S6), a source only once one has been
+    # judged: a network with no SDN detection draws as before.
+    sdn = sdn_firing()
+    if sdn["state"] != "absent":
+        sources.append({"store": "sdn", "value_at": sdn["updated_at"],
+                        "state": "ok" if sdn["state"] == "ok" else "unreadable",
+                        "why": sdn["error"]})
+        firing_now += sdn["instances"]
     store = read()
     latest = {}
     for p in store["rows"]:

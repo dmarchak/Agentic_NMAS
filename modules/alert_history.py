@@ -14,6 +14,10 @@ records what each 60 s read shows: every alerting, pending, no-data or error ins
 resolve when a NORMAL instance's state began after the last recorded non-normal state of the
 same instance (the reader keeps the normal instances whose state began within the last hour,
 `grafana_alerts.RECENTLY_NORMAL_SECONDS`, so a reader that missed a read still sees a resolve).
+A third writer, Mercury's own SDN detections (`modules/sdn/detect.py`, PHASE8_PLAN 17.1
+S6, the store ``sdn``), records each detection's firing and its resolve through
+`from_detections`, keyed the same way; its time is the collection's, by Mercury's clock,
+because no Grafana holds the alert (``at_basis`` says so on each row).
 `scripts/nmas-alert-backfill` records Grafana's own state history (its alert annotations),
 as far back as Grafana holds it. A transition's key (`transition_key`) is computed the same
 way from both: the reader's configuration store, the rule's title, its public labels, the state
@@ -60,7 +64,9 @@ KIND_WORDS = {"pending": "pending", "condition": "firing", "no_data": "no data",
 #: Where each source's time comes from, said on every row.
 AT_BASIS = {"reader": "Grafana's rules view: when this state began (activeAt)",
             "reader_am": "Grafana's Alertmanager: when the alert began (startsAt)",
-            "backfill": "Grafana's state history: the transition's time"}
+            "backfill": "Grafana's state history: the transition's time",
+            "sdn": ("Mercury's SDN detection (modules/sdn/detect.py): the collection that showed "
+                    "it, by Mercury's clock, the detection being Mercury's own")}
 #: Days kept by default (`alert_history_retention_days`), as the log store's default.
 RETENTION_DAYS = 90
 #: The data lake's prefix for moved rows.
@@ -234,6 +240,31 @@ def from_reader(value: dict, store: str, networks=(), now: float = None) -> list
         row = _row(store, networks, inst.get("rule") or "", inst.get("state") or "",
                    inst.get("labels"), at, "reader", rule_uid=inst.get("rule_uid") or "",
                    kind="normal", device=dev, now=now)
+        row["requires_open"] = True
+        out.append(row)
+    return out
+
+
+def from_detections(store: str, networks=(), fired=(), resolved=(), now: float = None) -> list:
+    """The transitions of a source Mercury runs itself (the SDN detections, `modules/sdn/
+    detect.py`): each of *fired*, an instance in the reader's shape, firing from its
+    ``active_at``; each of *resolved*, ``(instance, epoch)``, normal from then (kept only
+    after its firing, as the reader's resolves are). Keyed as the reader keys its own (the
+    store, the rule, the labels, the state and its second)."""
+    out = []
+    none = {"device": "", "address": "", "device_from": "none"}
+    for inst in fired:
+        at = epoch(inst.get("active_at"))
+        if at is None:
+            continue
+        out.append(_row(store, networks, inst.get("rule") or "", inst.get("state") or "Alerting",
+                        inst.get("labels"), at, "sdn", rule_uid=inst.get("rule_uid") or "",
+                        value=inst.get("value") or "", kind="condition", device=dict(none),
+                        now=now))
+    for inst, at in resolved:
+        row = _row(store, networks, inst.get("rule") or "", "Normal", inst.get("labels"), at,
+                   "sdn", rule_uid=inst.get("rule_uid") or "", kind="normal",
+                   device=dict(none), now=now)
         row["requires_open"] = True
         out.append(row)
     return out
@@ -547,6 +578,9 @@ def _firing_now() -> set:
         value = (((got.get("doc") or {}).get("last_good") or {}).get("value") or {})
         for inst in value.get("instances") or []:
             out.add(identity(name, inst.get("rule") or "", inst.get("labels")))
+    # Mercury's own SDN detections still firing (their store's state, PHASE8_PLAN 17.1 S6).
+    for store, inst in evidence_pack.sdn_firing()["instances"]:
+        out.add(identity(store, inst.get("rule") or "", inst.get("labels")))
     return out
 
 

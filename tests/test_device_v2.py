@@ -693,6 +693,8 @@ class TestTheShippedScripts:
                                                     # O8: the Console servers tab's region
                                                     # (console_servers).
                                                     "/v2/settings/installation?tab=console",
+                                                    # S11: SDN's view region (sdn).
+                                                    "/v2/sdn?list=Lab",
                                                     # O6b: the console card while its run
                                                     # runs (console_ztp).
                                                     "/v2/onboard/console/7?list_name=Lab&run="
@@ -743,7 +745,9 @@ class TestTheShippedScripts:
         # and console_servers (Settings › Installation › Console servers redraws, O8).
         # +1 2026-10-25: ai_calls (History's fleet timeline redraws when an AI call is
         # recorded, the AI card's Test; Phase 8's 8.0b).
-        assert len(keys) == 50
+        # +1 2026-10-27: sdn (SDN › Controllers and Flows redraw on the sdn-controllers
+        # reader's announcement, PHASE8_PLAN 17.1 S11).
+        assert len(keys) == 51
         for key in keys:
             assert f"nmas:{key} from:body" in heard, key
         src = _js("nmas_v2.js")

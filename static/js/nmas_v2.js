@@ -57,6 +57,9 @@
               'logs',
               // The network's Kea read again: subnets, reservations, leases (C529).
               'dhcp',
+              // The SDN reader read a network's controllers again, or a connection was saved
+              // or removed (PHASE8_PLAN 17.1 S11): SDN › Controllers and Flows re-read.
+              'sdn',
               // A History › Query view saved, pinned or removed (C667).
               'saved_views',
               // A device asked anew, was picked or went quiet on the ZTP segment (board L).
@@ -414,6 +417,7 @@
   function relayTopology() { relay('topology'); }
   function relayLogs() { relay('logs'); }
   function relayDhcp() { relay('dhcp'); }
+  function relaySdn() { relay('sdn'); }
   function relaySavedViews() { relay('saved_views'); }
   function relayDiscovery() { relay('ztp_discovery'); }
   function relayPathTrace() { relay('path_trace'); }
@@ -511,6 +515,7 @@
     NMAS.subscribe('topology', 'v2Topology', relayTopology);
     NMAS.subscribe('logs', 'v2Logs', relayLogs);
     NMAS.subscribe('dhcp', 'v2Dhcp', relayDhcp);
+    NMAS.subscribe('sdn', 'v2Sdn', relaySdn);
     NMAS.subscribe('saved_views', 'v2SavedViews', relaySavedViews);
     NMAS.subscribe('ztp_discovery', 'v2Discovery', relayDiscovery);
     NMAS.subscribe('path_trace', 'v2PathTrace', relayPathTrace);

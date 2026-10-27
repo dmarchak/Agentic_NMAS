@@ -25,6 +25,8 @@ The tool's configuration, in three scopes of one page: **Installation** (what ev
   one network is never scraped as another's. With no directory named, Mercury writes nothing
   for that Prometheus, and its row says to name one.
 - **Inventory source** (Network tab): where the network's devices come from, its own list on this host or NetBox through filters, and how fresh they are. For a NetBox network it counts the devices loaded, skipped, loaded with a warning and no longer in NetBox, and names each one in groups closed until opened: the skipped by cause with where to put it right, the warned by cause, and those NetBox no longer returns with since when (see [Where a network's devices come from](settings-switch#source)).
+- **SDN controllers** (Integrations tab): the network's own controller connections, on their
+  own card, never inherited from Default (see [SDN controllers](#sdn-controllers)).
 - **Each group's own choice**: inherit from Default, its own, or not applicable. Choosing another opens that switch's preview in place of the card; nothing is saved by the choice itself. A group not configured has **Configure…**, which takes its values in the card; a group that is its own takes its fields in place, with **Save** and **Test** (see [Save a card](settings-switch#save) and [Test a connection](settings-switch#test)).
 
 ## A deleted network's page {#deleted}
@@ -87,6 +89,52 @@ The installation's console servers, for out-of-band ZTP ([how it works](onboard#
 - **Console-server ports**: one row per port Mercury has a record for: its NetBox port (the console server and the port's name, or "not in NetBox", or "not read" when NetBox could not be read, said once above the table with why), the driver, the host (with its jump host and SSH port), the console (a container name, or a TCP port), the key's name (with its user, or **no key stored** when the name holds none), the SSH host key held (its key type and its whole fingerprint, monospace and selected in one click, to compare with the server's own; **refused** when a session was refused, or "kept on first contact" before the first session), and who changed it and when. Each row has **Edit…** and **Remove…**, and **Re-key…** where a host key is held ([how it works](rekey#console-server)). NetBox's console-server ports with no record are listed under it, each with **Set up…**; **Add a port record…** opens an empty form (a port's NetBox id is chosen from NetBox's ports, or typed when NetBox cannot be read). Saving is checked by the store and refused, naming every field, with nothing written ([how it works](installation-settings#console-servers)).
 - **Keys**: each console-server key stored (its name, user, fingerprint and when it was made, and whether a port uses it), and **Generate a key…**, which shows only the public key and its `authorized_keys` line, never the private half ([how it works](installation-settings#console-server-keys)).
 - **Changes**: the store's own log, the last ten records added, replaced or removed, with who and when.
+
+## SDN controllers {#sdn-controllers}
+
+A network's SDN controllers, on its own card at the foot of a network's **Integrations** tab
+(Default's and every other network's). Each network's list is its own: a network never takes
+Default's controllers, whatever its mode, and a network that sets none has none (the operator's
+decision, 2026-10-27). The card is how a controller is added, changed, tested and removed; what
+each controller is doing is on [SDN](sdn).
+
+- **The saved connections**, one row each: its name, whether Mercury's last read found it
+  **connected**, **partly read**, **not answering** or **not read yet**, its driver, its
+  northbound URL, whether a credential is set (**a user and password set**, **a token set** or
+  **no credential**, never the credential itself) and whether TLS is used and verified. Each
+  row has three controls:
+  - **Test connection** asks the controller now, with what is saved, and answers on the row:
+    "Answered: N switches connected" (with its version where the controller reports one) or
+    "Couldn't connect: <the reason>". It changes nothing.
+  - **Edit** opens the form below with the connection's values. Its name stays (remove it and
+    add another to rename it); its credential is never drawn back, and a blank keeps it.
+  - **Remove…** says first what removing does: Mercury stops reading it and its stored
+    credential is erased; the flow-intent records naming it are kept, as a history; nothing on
+    the controller or its switches changes. **Remove <name>** does it; **Cancel** leaves it.
+- **Add a controller** (or **Edit <name>**): the form.
+  - **Name**: one you choose, unique on the network.
+  - **Driver**: each driver Mercury knows, with its status. Only a built driver can be chosen
+    (Ryu, through its `ofctl_rest` application); the later ones (ONOS; OpenDaylight and the
+    fabric managers, read-first) and the unmaintained one (Floodlight) are listed and not
+    selectable. Each driver declares what it can do, and Mercury offers only that.
+  - **Northbound URL**: where Mercury reads and writes, http or https, an IPv4 address, an IPv6
+    address in brackets (`http://[2001:db8::10]:8080`) or a name.
+  - **Username** and **Password**: only if the controller asks for them. They are stored
+    encrypted, as device credentials are, and are never shown or read back; a blank keeps the
+    one stored.
+  - **Verify TLS**, for an https URL.
+  - **Southbound address**: where the switches connect to the controller. Informational: drawn
+    on SDN › Controllers, never used to connect.
+  - **The controller application's own cookies**: a flow carrying one of these is the
+    controller's own (`0` by default, a learning switch's); any other cookie that is not
+    Mercury's makes a flow unauthorised on [SDN › Flows](sdn#flows).
+- **Test connection** reads the controller's switches and version with what is typed, before
+  anything is saved, and answers in place, naming the URL it asked. **Save** is refused until a
+  Test has answered for the URL as typed, with the same driver and TLS choice: change the URL
+  after a Test and Save says so, naming it. A Test's answer stands for 30 minutes. Save is also
+  refused when another person changed the same connection since the form was drawn, naming each
+  field and both values. A save or a removal is recorded in the network's settings record with
+  who, when and the names of what changed, never a credential.
 
 ## What is not here yet {#not-yet}
 

@@ -1454,3 +1454,34 @@ schema's default removed, `tests/test_ai_gateway_parts.py`'s stored-value cases 
 (All in `tests/test_ai_gateway_ask.py`. The machine log, one JSON line per step, is scratch
 tooling, as above.)
 
+## 2026-10-27: an SDN controller's answer masked whole, changed lines only, on the change's tree
+
+**What changed in the tier:** `modules/sdn/drivers/base.py`'s `ControllerDriver._scrub`, the
+masking of every answer an SDN controller gives (S1). It replaced the connection's own
+credential values in every string but ran `redact_text` on the `error` and `detail` words
+alone; the masking scan (tests/test_url_userinfo_masked.py, with `_scrub` added as an entry
+point) found a URL's user part in a list's string unmasked. Now every string is masked: its
+credential values replaced, then `redact_text` (`return redact_text(node) if node else node`),
+and the walk's result returned (`return walk(answer)`, the separate `error`/`detail` pass gone).
+
+**The method:** `_scrub` is a class method, which the harness's function finder does not reach,
+so each mutant of the changed lines was applied by hand (`scrub_mut.py`, scratch tooling), one
+at a time, in a throwaway worktree of the working state (`scripts/nmas-control`, the untracked
+SDN files staged there as the gate's snapshot does), the aimed tests run with `-x`:
+tests/test_url_userinfo_masked.py, tests/test_sdn_drivers.py, tests/test_sdn_ryu.py,
+tests/test_sdn_collect.py.
+
+**The result: 5 mutants, 5 killed, the canary killed, one equivalent.**
+
+| mutant | change | outcome | killed by |
+|---|---|---|---|
+| baseline | none | passed (567) | |
+| canary | the body replaced by a raise | killed | `test_every_masking_entry_point_masks_a_url_s_user_part[modules/sdn/drivers/base.py:_scrub]` |
+| no_mask | `return node` (no `redact_text`) | killed | the same |
+| cond_inverted | `if not node` | killed | the same |
+| no_walk | `return answer` | killed | the same |
+| walk_none | `return walk(None)` | killed | the same |
+| mask_raw | a line after the `return` | equivalent | (unreachable: the hand-written mutant put a statement after the return, so nothing changed) |
+
+The machine log is scratch tooling, as above.
+

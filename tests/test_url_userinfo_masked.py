@@ -71,8 +71,19 @@ def _adopt_scrub_plan() -> str:
     return repr(out)
 
 
+def _sdn_driver_scrub() -> str:
+    """An SDN controller's answer as its driver returns it (S1): every string with the
+    connection's credential values replaced, then masked as every service's words are."""
+    import types
+
+    from modules.sdn.drivers.base import ControllerDriver
+    stand_in = types.SimpleNamespace(_credential_values=lambda: ["other-credential"])
+    return repr(ControllerDriver._scrub(stand_in, {"error": PLANTED, "switches": [PLANTED]}))
+
+
 #: Every masking entry point, called through its own shape, with the planted URL.
 ENTRY_POINTS = {
+    "modules/sdn/drivers/base.py:_scrub": _sdn_driver_scrub,
     "modules/redact.py:redact_positional": lambda: redact.redact_positional(PLANTED),
     # The config check's every printed line (C725): positional without the store, both with.
     "modules/nsot/config_check.py:mask": lambda: (
@@ -129,6 +140,9 @@ ENTRY_POINTS = {
 
 #: Functions whose names say mask, redact or scrub but never take free text, each with why.
 NOT_FREE_TEXT = {
+    "modules/sdn/connections.py:_invalidate_redaction": "drops redact's cached known values "
+        "after an SDN credential is saved or removed, so the next masking reads them; it masks "
+        "nothing (S2)",
     "routes/v2.py:masked_parts": "splits a line already masked by redact_text at its "
         "placeholders, to mark them where drawn; it masks nothing (C818)",
     "modules/attention.py:redaction_source": "reports redact.health()'s counts as a Needs "

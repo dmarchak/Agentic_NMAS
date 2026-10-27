@@ -499,6 +499,12 @@ def _alert_history_path() -> str:
 LINE_STORES["alert_history"] = _installation_store("alert_history", "Alert history",
                                                    "transitions", _alert_history_path)
 
+# Every flow Mercury installs on an SDN controller, with what it expects of it (PHASE8_PLAN
+# 17.1 S5): one file per network, one line per installed or withdrawn flow, through
+# `store_append` and `store_rows` (`modules/sdn/flow_intent.py`).
+LINE_STORES["flow_intent"] = _network_store("flow_intent", "SDN flow intent", "flows",
+                                            "flow_intent.jsonl")
+
 
 # ── The files ────────────────────────────────────────────────────────────────────────────────
 

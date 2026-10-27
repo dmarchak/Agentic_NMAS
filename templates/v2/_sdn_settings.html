@@ -1,0 +1,87 @@
+{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{#- Settings › Integrations, the SDN controllers card (PHASE8_PLAN 17.1 S2's interface; board
+    SdnSettings, signed off 2026-10-27; docs/fidelity/sdn-settings.md). Per network, each
+    network's own list (C1841): the saved connections, each with Test connection, Edit and
+    Remove…; the add or edit form with every field the board draws; each driver with its status
+    (a later or unmaintained one shown, not selectable); credentials typed to set, never drawn;
+    Test answering in place; Save refused while Test has not answered for the URL as typed
+    (modules/sdn_page.tested_problem). From modules/sdn_page.card. -#}
+{%- set f = k.form -%}
+<section class="card set-card sdn-set" id="sdn-card" aria-labelledby="h-sdn">
+  <div class="card-head"><h2 id="h-sdn">SDN controllers <span class="faint sdn-net">· network {{ k.network }}</span></h2>
+    <span class="card-head-how">{{ how('settings', 'sdn-controllers') }}</span></div>
+  {%- if refused is defined and refused %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not done:</strong> {{ refused }}.</p></div>
+  {%- endif %}
+  {%- if saved is defined and saved %}
+  <div class="notice notice-{{ 'muted' if saved.recorded else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<p>
+    <strong>{{ 'Added' if saved.created else 'Saved' }} {{ saved.name }}</strong> for {{ k.network }}:
+    {%- if saved.written %} {{ saved.written | join(', ') }}{% else %} no field changed{% endif %}; its credential {{ {'replaced': 'stored, encrypted', 'kept': 'kept as it was', 'cleared': 'erased'}[saved.credentials.state] }}.
+    {%- if not saved.recorded %} <strong>Saved, and its record could not be written.</strong>{% endif %} SDN › Controllers reads it within 30 seconds.</p></div>
+  {%- endif %}
+  {%- if removed is defined and removed %}
+  <div class="notice notice-{{ 'muted' if removed.recorded else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<p>
+    <strong>Removed {{ removed.name }}</strong> from {{ k.network }}{% if removed.credential_cleared %}, and its stored credential erased{% endif %}. Kept: {{ removed.survives }}.
+    {%- if not removed.recorded %} <strong>Removed, and its record could not be written.</strong>{% endif %}</p></div>
+  {%- endif %}
+
+  {%- if k.state == 'unreadable' %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>{{ k.network }}'s controller connections could not be read: {{ k.error }}. Nothing is drawn as known, and Save is refused until it can be read.</p></div>
+  {%- elif k.state == 'not_applicable' %}
+  <p class="muted">SDN controllers are declared not applicable on {{ k.network }}: nothing is read or sent for it.</p>
+  {%- else %}
+  {%- for c in k.connections %}
+  {%- if removing is defined and removing == c.name %}
+  <div class="sdn-conn sdn-removing" id="sdn-row-{{ loop.index }}">
+    <p><strong>Remove {{ c.name }} from {{ k.network }}?</strong> Mercury stops reading it, and its stored credential is erased. Kept: the flow-intent records naming it (a history). Nothing on the controller or its switches changes.</p>
+    <form class="sdn-acts" method="post" action="{{ url_for('settings_v2.sdn_remove', list_name=list_name, name=c.name) }}" hx-post="{{ url_for('settings_v2.sdn_remove', list_name=list_name, name=c.name) }}" hx-target="#sdn-card" hx-swap="outerHTML">
+      <span class="op-act"><button type="submit" class="btn btn-danger" data-op="settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Remove {{ c.name }}</span><span class="op-busy">Removing…</span></button>{{ how('settings', 'sdn-controllers', compact=True, op='removing a controller') }}</span>
+      <a class="btn" href="{{ url_for('settings_v2.sdn_card', list_name=list_name) }}" hx-get="{{ url_for('settings_v2.sdn_card', list_name=list_name) }}" hx-target="#sdn-card" hx-swap="outerHTML">Cancel</a>
+    </form>
+  </div>
+  {%- else %}
+  <div class="sdn-conn" id="sdn-row-{{ loop.index }}">
+    <div class="sdn-conn-what"><strong>{{ c.name }}</strong> {{ badge(c.read_words[0], c.read_words[1]) }}
+      <span class="muted">{{ c.driver }} · <span class="mono">{{ c.northbound }}</span> · {{ c.cred_words }} · {{ c.tls }}</span>
+      <span class="sdn-answer" id="sdn-a-{{ loop.index }}" role="status"></span></div>
+    <span class="sdn-acts">
+      <span class="op-act"><button type="button" class="btn" data-op="settings" hx-post="{{ url_for('settings_v2.sdn_saved_test', list_name=list_name, name=c.name) }}" hx-target="#sdn-a-{{ loop.index }}" hx-swap="innerHTML" hx-disabled-elt="this" title="Asks the controller now, with what is saved; changes nothing"{{ gate('configure') }}><span class="op-idle">Test connection</span><span class="op-busy">Testing…</span></button>{{ how('settings', 'sdn-controllers', compact=True, op='testing a controller') }}</span>
+      <span class="op-act"><a class="btn" data-op="settings" href="{{ url_for('settings_v2.sdn_edit', list_name=list_name, name=c.name) }}" hx-get="{{ url_for('settings_v2.sdn_edit', list_name=list_name, name=c.name) }}" hx-target="#sdn-card" hx-swap="outerHTML">Edit</a>{{ how('settings', 'sdn-controllers', compact=True, op='editing a controller') }}</span>
+      <span class="op-act"><a class="btn" data-op="settings" href="{{ url_for('settings_v2.sdn_remove_card', list_name=list_name, name=c.name) }}" hx-get="{{ url_for('settings_v2.sdn_remove_card', list_name=list_name, name=c.name) }}" hx-target="#sdn-card" hx-swap="outerHTML" title="Says what removing it does first: nothing is removed until you confirm">Remove…</a>{{ how('settings', 'sdn-controllers', compact=True, op='removing a controller') }}</span>
+    </span>
+  </div>
+  {%- endif %}
+  {%- endfor %}
+
+  <div class="sdn-set-body">
+    <h3 class="sdn-h3">{% if k.editing %}Edit {{ k.editing }}{% else %}Add a controller{% endif %}</h3>
+    <form class="sdn-form" id="sdn-form" method="post" action="{{ url_for('settings_v2.sdn_save', list_name=list_name) }}"
+          hx-post="{{ url_for('settings_v2.sdn_save', list_name=list_name) }}" hx-target="#sdn-save-answer" hx-swap="innerHTML">
+      {#- What the form drew: a Save from it is refused when the connection moved since. -#}
+      <input type="hidden" name="loaded" value='{{ f.loaded | tojson }}'>
+      <div class="sdn-grid">
+        <div class="sdn-f"><label for="sdn-name">Name</label>
+          {%- if k.editing %}<input id="sdn-name" name="name" type="text" value="{{ f.name }}" readonly aria-readonly="true"><span class="sdn-hint">A connection keeps its name: remove it and add another to rename it.</span>
+          {%- else %}<input id="sdn-name" name="name" type="text" value="{{ f.name }}" placeholder="a name you choose" autocomplete="off" required>{% endif %}</div>
+        <div class="sdn-f"><label for="sdn-kind">Driver</label><select id="sdn-kind" name="kind">
+          {%- for d in k.drivers %}<option value="{{ d.kind }}"{% if not d.built %} disabled{% endif %}{% if d.kind == f.kind %} selected{% endif %}>{{ d.words }}</option>{% endfor %}
+        </select><span class="sdn-hint">Each driver declares what it can do; Mercury offers only that.</span></div>
+        <div class="sdn-f"><label for="sdn-url">Northbound URL</label><input id="sdn-url" name="url" type="text" class="mono" value="{{ f.northbound }}" placeholder="http://controller:8080" autocomplete="off" required><span class="sdn-hint">Where Mercury reads and writes. IPv4 or IPv6 (bracketed), http or https.</span></div>
+        <div class="sdn-f"><label for="sdn-user">Username</label><input id="sdn-user" name="username" type="text" autocomplete="off" placeholder="{% if f.cred_auth == 'basic' %}set: type to replace{% endif %}"><span class="sdn-hint">Only if the controller asks for one.</span></div>
+        <div class="sdn-f"><label for="sdn-pass">Password</label><input id="sdn-pass" name="password" type="password" autocomplete="new-password" placeholder="{% if f.cred_set %}set: type to replace{% else %}type to set{% endif %}"><span class="sdn-hint">Stored encrypted, as device credentials are; never shown or read back. Leave blank to keep the one stored.</span></div>
+        <div class="sdn-f sdn-f-box"><label class="sdn-check"><input type="checkbox" name="verify_tls"{% if f.verify_tls %} checked{% endif %}> Verify TLS</label></div>
+        <div class="sdn-f"><label for="sdn-south">Southbound address</label><input id="sdn-south" name="southbound" type="text" class="mono" value="{{ f.southbound }}" placeholder="where switches connect, for reading only" autocomplete="off"><span class="sdn-hint">Informational: drawn on SDN › Controllers, never used to connect.</span></div>
+        <div class="sdn-f"><label for="sdn-cookies">The controller application's own cookies</label><input id="sdn-cookies" name="own_cookies" type="text" class="mono" value="{{ f.own_cookies }}" autocomplete="off"><span class="sdn-hint">Flows with these cookies are the controller's own; any other cookie not Mercury's is unauthorised.</span></div>
+      </div>
+      <div class="sdn-foot">
+        <span class="op-act"><button type="button" class="btn" data-op="settings" hx-post="{{ url_for('settings_v2.sdn_test', list_name=list_name) }}" hx-target="#sdn-test-answer" hx-swap="innerHTML" hx-disabled-elt="this" title="Reads the controller with what is typed; saves nothing"{{ gate('configure') }}><span class="op-idle">Test connection</span><span class="op-busy">Testing…</span></button>{{ how('settings', 'sdn-controllers', compact=True, op='Test connection') }}</span>
+        <span class="op-act"><button type="submit" class="btn btn-primary" data-op="settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('settings', 'sdn-controllers', compact=True, op='saving a controller') }}</span>
+        {%- if k.editing %}<a class="btn" href="{{ url_for('settings_v2.sdn_card', list_name=list_name) }}" hx-get="{{ url_for('settings_v2.sdn_card', list_name=list_name) }}" hx-target="#sdn-card" hx-swap="outerHTML">Cancel</a>{% endif %}
+      </div>
+      <div class="sdn-slot" id="sdn-test-answer"></div>
+      <div class="sdn-slot" id="sdn-save-answer"></div>
+    </form>
+    <p class="faint small sdn-note">Test connection reads the controller's switches and version with what is typed, before anything is saved, and answers in place. Save is refused while Test has not answered for the URL as typed.</p>
+  </div>
+  {%- endif %}
+</section>

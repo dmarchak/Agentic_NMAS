@@ -52,6 +52,9 @@
   <div class="nav-head">OBSERVE</div>
   <a class="nav-item{% if active_nav == 'monitoring' %} active{% endif %}" href="{{ url_for('v2.monitoring_page') }}"{% if active_nav == 'monitoring' %} aria-current="page"{% endif %}>{{ icon('monitoring') }}<span>Monitoring</span></a>
   <a class="nav-item{% if active_nav == 'topology' %} active{% endif %}" href="{{ url_for('topology_v2.page') }}"{% if active_nav == 'topology' %} aria-current="page"{% endif %}>{{ icon('topology') }}<span>Topology</span></a>
+  {#- PHASE8_PLAN 17.1 S11: SDN, a network's controllers and their switches' flows (boards
+      SdnControllers and SdnFlows, signed off 2026-10-27). -#}
+  <a class="nav-item{% if active_nav == 'sdn' %} active{% endif %}" href="{{ url_for('sdn_v2.page') }}"{% if active_nav == 'sdn' %} aria-current="page"{% endif %}>{{ icon('sdn') }}<span>SDN</span></a>
   <a class="nav-item{% if active_nav == 'show_commands' %} active{% endif %}" href="{{ url_for('reads_v2.show_commands') }}"{% if active_nav == 'show_commands' %} aria-current="page"{% endif %}>{{ icon('show') }}<span>Show commands</span></a>
   {#- C652: Logs opens the queryable logs, the network's syslog by device (History › Query
       board C); Mercury's own log stays in Settings › Installation › Diagnostics. -#}

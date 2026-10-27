@@ -1,0 +1,167 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, info, how -%}
+{#- The SDN page's region (PHASE8_PLAN 17.1 S11): Controllers (board SdnControllers) or Flows
+    (board SdnFlows), at phone width as SdnPhone draws. Everything from the SDN reader's stored
+    value beside the network's connection list (modules/sdn_page.py); never a controller call
+    per view. Redrawn when the reader announces `sdn`. -#}
+{%- set settings_url = url_for('settings_v2.network', list_name=g.network, tab='integrations') ~ '#sdn-card' -%}
+{%- set region_args = {'tab': g.tab} if g.tab == 'controllers' else {'tab': g.tab, 'q': g.s.q, 'own': g.s.own} -%}
+<div id="sdn" class="sdn" hx-get="{{ url_for('sdn_v2.region', **region_args) }}" hx-trigger="nmas:sdn from:body" hx-swap="outerHTML">
+<div class="page-head">
+  <div class="page-title">
+    <h1>SDN · {{ 'Flows' if g.tab == 'flows' else 'Controllers' }} {{ info('sdn', g.tab) }}</h1>
+    <p class="sub">{% if g.tab == 'flows' %}Each switch's flow table, Mercury's expected flows beside what is installed.{% else %}The network's SDN controllers, as Mercury last read them. Their switches' flows are on Flows; detection and responses on Responses.{% endif %}</p>
+  </div>
+</div>
+<nav class="tabs sdn-tabs" aria-label="SDN">
+  {%- for key, label in tabs %}
+  <a class="tab{% if g.tab == key %} on{% endif %}" href="{{ url_for('sdn_v2.flows') if key == 'flows' else url_for('sdn_v2.page') }}"{% if g.tab == key %} aria-current="page"{% endif %}>{{ label }}</a>
+  {%- endfor %}
+  <span class="tab off" aria-disabled="true" title="Built with Responses (PHASE8_PLAN 17.1 S8 to S10): detection rules, HITL or AUTO, and the loop">Responses</span>
+</nav>
+
+{%- if g.listed == 'unreadable' %}
+<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>{{ g.network }}'s controller connections could not be read: {{ g.listed_error }}. Nothing is drawn as known.</p></div>
+{%- elif not g.controllers %}
+<div class="notice notice-muted sdn-empty" role="status">{{ icon('info', 16) }}<p>No SDN controller is connected to this network. <a href="{{ settings_url }}">Add one in Settings › Integrations</a>.</p></div>
+{%- else %}
+{%- set rd = g.read %}
+{%- if rd.state == 'unreadable' %}
+<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>The SDN reader's store cannot be read: {{ rd.why }}. No controller's state is drawn rather than one that may be wrong.</p></div>
+{%- elif rd.state == 'never' %}
+<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>The SDN reader has not read this network's controllers yet{% if rd.failed %}: its last attempt failed, {{ rd.failed }}{% endif %}. It reads every 30 seconds; this page redraws when it has.</p></div>
+{%- elif rd.failed %}
+<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>The SDN reader's last attempt failed ({{ rd.failed }}); this is its last good read, {{ stamp(rd.value_at) }}.</p></div>
+{%- endif %}
+
+{%- if g.tab == 'controllers' %}
+{%- set m = g.summary %}
+<p class="sdn-sum"><strong>{{ m.controllers }} controller{{ 's' if m.controllers != 1 }}</strong> · {{ m.connected }} connected{% if m.not_answering %} · {{ m.not_answering }} not answering{% endif %}{% if m.unread %} · {{ m.unread }} not read{% endif %} · {{ m.switches }} switch{{ 'es' if m.switches != 1 }}{% if rd.value_at %} <span class="faint small">· read {{ stamp(rd.value_at) }}</span>{% endif %}</p>
+{%- for c in g.controllers %}
+<section class="card sdn-ctl" aria-labelledby="sdn-c-{{ loop.index }}">
+  <div class="sdn-ctl-hd"><h2 id="sdn-c-{{ loop.index }}">{{ c.name }} {{ badge(c.words[0], c.words[1]) }}</h2>
+    <span class="sdn-acts">
+      <span class="op-act"><button type="button" class="btn" data-op="sdn" hx-post="{{ url_for('sdn_v2.controller_test', name=c.name) }}" hx-target="#sdn-t-{{ loop.index }}" hx-swap="innerHTML" hx-disabled-elt="this" title="Asks the controller now, with what is saved; changes nothing"{{ gate('configure') }}><span class="op-idle">Test connection</span><span class="op-busy">Testing…</span></button>{{ how('sdn', 'test-connection', compact=True, op='Test connection') }}</span>
+      <a class="btn" href="{{ settings_url }}">Edit connection</a>
+    </span></div>
+  <div class="sdn-answer" id="sdn-t-{{ loop.index }}" role="status"></div>
+  {%- if c.state == 'not_answering' %}
+  <div class="notice notice-warn"><p><strong>Not answering since {{ stamp(c.failing_since) }}:</strong> {{ c.error }} ({{ c.failures }} read{{ 's' if c.failures != 1 }} in a row). {% if c.last_good_at %}Its switches' flows on Flows are as last read, {{ stamp(c.last_good_at) }}.{% else %}It has not answered since it was added, so nothing of it has been read.{% endif %}</p></div>
+  <dl class="sdn-kv">
+    <dt>Driver</dt><dd>{{ c.driver }} <span class="faint">· {{ c.caps.status_words }}</span></dd>
+    <dt>Switches</dt><dd>{% if c.last_good_at %}{{ c.switch_count }} at the last good read <span class="faint">({{ stamp(c.last_good_at) }})</span>{% else %}none read{% endif %}</dd>
+  </dl>
+  {%- elif c.state == 'not_built' %}
+  <div class="notice notice-muted"><p>The {{ c.driver }} driver is not built ({{ c.caps.status_words }}), so Mercury reads nothing from this controller.</p></div>
+  <dl class="sdn-kv"><dt>Driver</dt><dd>{{ c.driver }} <span class="faint">· {{ c.caps.status_words }}</span></dd>
+    <dt>Northbound</dt><dd class="mono">{{ c.northbound }}</dd></dl>
+  {%- elif c.state == 'unread' %}
+  <p class="muted small sdn-unread">Not read yet. The SDN reader reads every 30 seconds; this card redraws when it has.</p>
+  <dl class="sdn-kv"><dt>Driver</dt><dd>{{ c.driver }} <span class="faint">· {{ c.caps.status_words }}</span></dd>
+    <dt>Northbound</dt><dd class="mono">{{ c.northbound }}</dd></dl>
+  {%- else %}
+  {%- if c.state == 'partial' %}<div class="notice notice-warn"><p><strong>Partly read:</strong> {{ c.error }}.</p></div>{% endif %}
+  <dl class="sdn-kv">
+    <dt>Driver</dt><dd>{{ c.driver }} <span class="faint">· {{ c.caps.status_words }}</span></dd>
+    <dt>Northbound</dt><dd><span class="mono">{{ c.northbound }}</span> <span class="faint">· {{ c.tls }}</span></dd>
+    <dt>Southbound</dt><dd>{% if c.southbound %}<span class="mono">{{ c.southbound }}</span>{% else %}not set{% endif %} <span class="faint">· informational: where switches connect</span></dd>
+    <dt>Version</dt><dd>{% if c.version %}{{ c.version }}{% else %}not reported{% if c.version_note %} <span class="faint">({{ c.version_note }})</span>{% endif %}{% endif %}</dd>
+    <dt>Cluster role</dt><dd>not reported <span class="faint">(this driver reports no cluster)</span></dd>
+    <dt>Switches</dt><dd><strong>{{ c.switch_count }}</strong> connected{% if c.dpids %}:{% for d in c.dpids[:12] %} <a class="mono" href="{{ url_for('sdn_v2.flows', q=d) }}" title="{{ d }}: its flows">{{ d }}</a>{% endfor %}{% if c.dpids | length > 12 %} <span class="faint">and {{ c.dpids | length - 12 }} more, on <a href="{{ url_for('sdn_v2.flows') }}">Flows</a></span>{% endif %}{% endif %} <span class="faint">· discovered via this controller, not adopted</span></dd>
+    <dt>Can</dt><dd>{% for w in c.caps.have %}<span class="chip sdn-chip">{{ w }}</span> {% endfor %}{% for w in c.caps.lacks %}<span class="faint">· {{ w }}: not offered by this driver</span> {% endfor %}</dd>
+    <dt>Controller's own flows</dt><dd>{% if c.cookies %}cookie{{ 's' if c.cookies | length != 1 }} <span class="mono">{{ c.cookies | join(', ') }}</span>{% else %}none declared{% endif %} <span class="faint">· the controller application's, declared on the connection; any other cookie not Mercury's is unauthorised</span></dd>
+    <dt>Last read</dt><dd>{{ stamp(c.last_good_at) }} <span class="faint">· flows, port stats{% if c.meters_read %} and meters{% endif %} of {{ c.switch_count }} switch{{ 'es' if c.switch_count != 1 }}, {{ c.switches_failed }} failed</span></dd>
+  </dl>
+  {%- endif %}
+</section>
+{%- endfor %}
+
+{%- else %}
+{#- Flows (board SdnFlows) -#}
+{%- set n = g.counts %}
+<p class="sdn-sum"><strong>{{ n.switches }} switch{{ 'es' if n.switches != 1 }} · {{ n.flows }} flow{{ 's' if n.flows != 1 }}</strong>: {{ n.mercury + n.mercury_differs }} Mercury's · {{ n.controller_own }} the controller's own{% if n.unauthorised %} · {{ badge(n.unauthorised ~ ' unauthorised', 'danger') }}{% endif %}{% if n.mercury_differs %} · {{ badge(n.mercury_differs ~ " of Mercury's not as recorded", 'warn') }}{% endif %}{% if n.missing %} · {{ badge(n.missing ~ " of Mercury's missing", 'warn') }}{% endif %}{% if n.unclassified %} · {{ n.unclassified }} not classified{% endif %} · {{ n.meters }} meter{{ 's' if n.meters != 1 }} <span class="faint small">· {{ g.controllers | join(', ') }}{% if rd.value_at %}, read {{ stamp(rd.value_at) }}{% endif %}</span></p>
+{%- for x in g.granularity %}
+<p class="note sdn-note-g">Flows on <span class="mono">{{ x.dpid_hex }}</span> match {{ x.granularity }} only{% if x.fields %} ({{ x.fields | join(', ') }}){% endif %}: {{ x.words }}.</p>
+{%- endfor %}
+{%- if g.intent_error %}
+<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>The network's flow intent could not be read ({{ g.intent_error }}), so no flow is called Mercury's or unauthorised: each is drawn as not classified.</p></div>
+{%- endif %}
+<form class="sdn-find" method="get" action="{{ url_for('sdn_v2.flows') }}" hx-get="{{ url_for('sdn_v2.region') }}" hx-target="#sdn" hx-swap="outerHTML">
+  <input type="hidden" name="tab" value="flows">
+  <label for="sdn-q" class="sr-only">Filter</label>
+  <input id="sdn-q" name="q" type="text" value="{{ g.s.q }}" placeholder="Filter by switch, match, action or cookie">
+  <label class="muted sdn-own"><input type="checkbox" name="own" value="hide"{% if g.s.own == 'hide' %} checked{% endif %}> Hide the controller's own flows</label>
+  <input type="hidden" name="own" value="show">
+  <button class="btn btn-small" type="submit">Show</button>
+</form>
+
+<section class="card sdn-sws" aria-label="Switches">
+{%- for sw in g.switches %}
+<details class="sdn-sw" data-keep="sw-{{ sw.dpid_hex }}"{% if sw.open %} open{% endif %}>
+  <summary><strong class="mono">{{ sw.dpid_hex }}</strong> <span class="muted">{% if sw.name %}{{ sw.name }} · {% endif %}{{ sw.controller }}</span>
+    {%- if sw.n.unauthorised %} {{ badge(sw.n.unauthorised ~ ' unauthorised', 'danger') }}{% endif %}
+    {%- if sw.n.mercury_differs %} {{ badge(sw.n.mercury_differs ~ " of Mercury's not as recorded", 'warn') }}{% endif %}
+    {%- if sw.n.missing %} {{ badge(sw.n.missing ~ " of Mercury's missing", 'warn') }}{% endif %}
+    {%- if sw.controller_state == 'not_answering' %} {{ badge('as last read', 'warn') }}{% elif sw.state != 'ok' %} {{ badge('partly read', 'warn') }}{% endif %}
+    {%- if not sw.wrong %} {{ badge('as expected', 'ok') }}{% endif %}
+    <span class="faint">{{ sw.total }} flow{{ 's' if sw.total != 1 }}{% if sw.n.mercury + sw.n.mercury_differs %}, {{ sw.n.mercury + sw.n.mercury_differs }} Mercury's{% endif %}{% if sw.n.controller_own %}, {{ sw.n.controller_own }} the controller's own{% if sw.hidden_own %} (hidden){% endif %}{% endif %}</span></summary>
+  {%- if sw.as_of %}<p class="muted small sdn-sw-note">Its controller is not answering: this table is as last read, {{ stamp(sw.as_of) }}.</p>{% endif %}
+  {%- if sw.error %}<p class="muted small sdn-sw-note">Not read whole: {{ sw.error }}.</p>{% endif %}
+  {%- if sw.flows or sw.records %}
+  <div class="table-wrap"><table class="table sdn-ft">
+    <thead><tr><th scope="col">Owner</th><th scope="col">Priority</th><th scope="col">Match</th><th scope="col">Actions</th><th scope="col">Packets</th><th scope="col">Timeouts</th><th scope="col">Cookie</th><th scope="col"><span class="sr-only">Act</span></th></tr></thead>
+    <tbody>
+    {%- for f in sw.flows | sort(attribute='owner', reverse=True) %}
+    <tr class="sdn-f-{{ f.owner or 'none' }}">
+      <td data-l="Owner">{{ badge(f.owner_words, f.owner_kind) }}{% if f.owner == 'mercury' %} <span class="faint">installed as expected</span>{% elif f.owner in ('unauthorised', 'mercury_differs') %}<br><span class="faint small">{{ f.words }}</span>{% endif %}</td>
+      <td data-l="Priority">{{ f.priority }}</td>
+      <td data-l="Match" class="mono">{{ f.match }}</td>
+      <td data-l="Actions" class="mono">{{ f.actions }}</td>
+      <td data-l="Packets">{{ '{:,}'.format(f.packets) if f.packets is not none else '–' }}</td>
+      <td data-l="Timeouts">{{ f.timeouts }}</td>
+      <td data-l="Cookie" class="mono">{{ f.cookie }}</td>
+      <td>{% if f.owner == 'unauthorised' %}<button class="btn btn-small" type="button" disabled aria-disabled="true" data-refused="Not yet: {{ g.remove_why }}">Remove…</button>{% endif %}</td>
+    </tr>
+    {%- endfor %}
+    {%- for r in sw.records %}
+    <tr class="sdn-r-{{ r.state }}">
+      <td data-l="Owner">{{ badge("Mercury's, " ~ {'missing': 'missing', 'expired': 'expired', 'not_judged': 'not judged'}[r.state], 'warn' if r.state == 'missing' else 'muted') }}</td>
+      <td data-l="Priority">{{ r.priority if r.priority is not none else '–' }}</td>
+      <td data-l="Match" class="mono">{{ r.match }}</td>
+      <td data-l="Actions" class="mono">{{ r.actions }}</td>
+      <td data-l="Packets">not installed</td>
+      <td data-l="Timeouts">{{ r.timeouts }}</td>
+      <td data-l="Cookie" class="mono">{{ r.cookie }}</td>
+      <td><span class="faint small">{{ r.words }}{% if r.state == 'expired' %}; nothing to do{% endif %}</span></td>
+    </tr>
+    {%- endfor %}
+    </tbody>
+  </table></div>
+  {%- elif sw.total %}
+  <p class="muted small sdn-sw-note">{% if g.s.q %}No flow on it matches "{{ g.s.q }}".{% else %}Every flow on it is the controller's own, hidden: untick "Hide the controller's own flows" to see them.{% endif %}</p>
+  {%- else %}
+  <p class="muted small sdn-sw-note">No flow is installed on it.</p>
+  {%- endif %}
+</details>
+{%- else %}
+<p class="muted sdn-none">{% if g.s.q %}No switch or flow matches "{{ g.s.q }}".{% else %}No switch has been read on this network's controllers yet.{% endif %}</p>
+{%- endfor %}
+</section>
+
+<section class="card sdn-meters" aria-labelledby="sdn-m-h">
+  <div class="sdn-ctl-hd"><h2 id="sdn-m-h">Meters</h2><span class="faint small">{% if g.meter_support.known %}meters supported on {{ g.meter_support.supported }} of {{ g.meter_support.switches }} switch{{ 'es' if g.meter_support.switches != 1 }} (each switch's meter features){% else %}this driver reads no meters{% endif %}</span></div>
+  {%- if g.meters %}
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th scope="col">Switch</th><th scope="col">Meter</th><th scope="col">Rate</th><th scope="col">Packets in band</th><th scope="col">Owner</th></tr></thead>
+    <tbody>
+    {%- for mt in g.meters %}
+    <tr><td class="mono">{{ mt.dpid_hex }}</td><td>{{ mt.meter_id }}</td><td>{{ mt.rate }}</td><td>{{ '{:,}'.format(mt.packets) if mt.packets is not none else '–' }}</td><td>{{ badge(mt.owner_words, mt.owner_kind) }}</td></tr>
+    {%- endfor %}
+    </tbody>
+  </table></div>
+  {%- else %}
+  <p class="muted small">No meter on any switch read.</p>
+  {%- endif %}
+</section>
+{%- endif %}
+{%- endif %}
+</div>

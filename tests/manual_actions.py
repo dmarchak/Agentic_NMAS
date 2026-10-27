@@ -78,6 +78,15 @@ NOT_AN_OPERATION = {
     ("_attention.html", "Acknowledge…"): "opens the reason field; the Acknowledge beside it carries the link",
     ("_attention.html", "Cancel"): "closes the reason field, recording nothing",
     ("_dhcp_reserve.html", "Cancel"): "puts the Reservations tab back, writing nothing",
+    ("_sdn_settings.html", "Cancel"): "draws the SDN controllers card again (leaving Edit or "
+                                      "Remove…), writing nothing",
+    ("_sdn_view.html", "Edit connection"): "opens Settings › Integrations, where the "
+                                           "connection is changed: a page of its own",
+    ("_sdn_view.html", "Show"): "narrows SDN › Flows to words and the controller's own flows, "
+                                "a read of the SDN reader's stored value",
+    ("_sdn_view.html", "Remove…"): "drawn disabled with its reason on an unauthorised flow: "
+                                   "removing a flow is a gated response, built with Responses "
+                                   "(PHASE8_PLAN 17.1 S8)",
     ("_intent_words.html", "Discard draft"): "reopens the Intent tab without the draft, which "
                                              "lived on the page only; nothing was written",
     ("_intent_words.html", "btn btn-small iw-choice"):"answers Mercury's own question (which "

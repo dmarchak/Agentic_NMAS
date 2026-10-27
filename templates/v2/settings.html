@@ -49,6 +49,11 @@
 <div class="set-cards">
   {%- for c in v.cards %}{% with list_name=v.network, is_default=v.is_default, result=None %}{% include "v2/_settings_card.html" %}{% endwith %}{% endfor %}
 </div>
+{%- if sdn %}
+{#- PHASE8_PLAN 17.1 S2's interface (board SdnSettings): the network's own SDN controllers,
+    never Default's (C1841), on its own card. -#}
+<div class="sdn-set-wrap">{% with k=sdn, list_name=v.network %}{% include "v2/_sdn_settings.html" %}{% endwith %}</div>
+{%- endif %}
 {%- if v.tab == 'network' %}
 {% include "v2/_network_source.html" %}
 {%- if not v.is_default %}{% with name=v.network %}{% include "v2/_network_delete.html" %}{% endwith %}{% endif %}

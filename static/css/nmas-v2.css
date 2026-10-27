@@ -2232,3 +2232,96 @@ summary.lq-chip::-webkit-details-marker { display: none; }
   .pq-ladder { grid-template-columns: repeat(5, minmax(0, 1fr)); font-size: 11.5px; }
   .pq-legend .pq-k { display: inline; }
 }
+
+/* SDN (PHASE8_PLAN 17.1 S11; boards SdnControllers, SdnFlows, SdnSettings and SdnPhone, signed
+   off 2026-10-27): Controllers' cards, Flows' folded switches, and Settings' SDN card. */
+.sdn { display: flex; flex-direction: column; gap: 14px; max-width: 1180px; }
+.sdn .page-head h1 { margin: 0; font-size: 24px; font-weight: 600; display: flex; gap: 8px; align-items: center; }
+.sdn-sum { margin: 0; font-size: 14px; }
+.sdn-empty a { font-weight: 500; }
+.sdn-ctl { display: flex; flex-direction: column; gap: 10px; padding: 0; }
+.sdn-ctl-hd { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px 18px; border-bottom: 1px solid var(--line-2); }
+.sdn-ctl-hd h2 { margin: 0; font-size: 16px; font-weight: 600; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.sdn-ctl > .notice, .sdn-ctl > .sdn-kv, .sdn-ctl > .sdn-unread, .sdn-ctl > .sdn-answer { margin: 0 18px; }
+.sdn-ctl > :last-child { margin-bottom: 14px; }
+.sdn-acts { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.sdn-kv { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 6px 16px; margin: 0; font-size: 13.5px; }
+.sdn-kv dt { color: var(--ink-2); }
+.sdn-kv dd { margin: 0; overflow-wrap: anywhere; }
+.sdn-kv .mono, .sdn-ft .mono { font-size: 12.5px; }
+.sdn-chip { font-size: 12px; padding: 1px 8px; margin: 0 2px 2px 0; }
+.sdn-answer:empty { display: none; }
+.sdn-ans { margin: 0; display: inline-flex; gap: 6px; align-items: flex-start; font-size: 13px; }
+.sdn-ans .ico { flex-shrink: 0; margin-top: 2px; }
+.sdn-ans-ok .ico { color: var(--ok); }
+.sdn-ans-bad { color: var(--danger); }
+.sdn-find { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 0; }
+.sdn-find input[type=text] { font: inherit; font-size: 13px; padding: 6px 9px; border: 1px solid var(--line);
+  border-radius: var(--r); min-width: 300px; background: var(--surface); color: var(--ink); }
+.sdn-own { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; }
+.sdn-sws { padding: 0; }
+.sdn-sw { border-top: 1px solid var(--line-2); }
+.sdn-sw:first-child { border-top: none; }
+.sdn-sw > summary { cursor: pointer; padding: 10px 18px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.sdn-sw > .table-wrap { padding: 0 18px 10px; }
+.sdn-sw-note { margin: 0; padding: 0 18px 10px; }
+.sdn-none { margin: 0; padding: 12px 18px; }
+.sdn-ft { min-width: 820px; }
+.sdn-ft tr.sdn-f-unauthorised td { background: var(--danger-soft); }
+.sdn-ft tr.sdn-r-missing td { background: var(--warn-soft); }
+.sdn-meters { padding: 0; }
+.sdn-meters > .table-wrap, .sdn-meters > p { padding: 0 18px 12px; margin: 0; }
+.sdn .note { margin: 0; color: var(--ink-2); background: var(--surface-2); border: 1px solid var(--line-2);
+  border-radius: var(--r); padding: 8px 12px; font-size: 13px; }
+.sdn-set .sdn-net { font-weight: 400; font-size: 13px; }
+.sdn-conn { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 10px 0; border-bottom: 1px solid var(--line-2); }
+.sdn-conn-what { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; min-width: 0; }
+.sdn-conn-what .mono { overflow-wrap: anywhere; }
+.sdn-removing { background: var(--danger-soft); padding: 10px 12px; border-radius: var(--r); border-bottom: none; }
+.sdn-removing p { margin: 0; flex: 1 1 360px; }
+.sdn-set-body { display: flex; flex-direction: column; gap: 10px; }
+.sdn-h3 { margin: 4px 0 0; font-size: 14px; font-weight: 600; }
+.sdn-slot:empty { display: none; }
+.sdn-note { margin: 0; }
+@media (max-width: 900px) {
+  .sdn-kv { grid-template-columns: 1fr; gap: 2px 0; }
+  .sdn-kv dd { margin-bottom: 6px; }
+}
+@media (max-width: 700px) {
+  .sdn-find input[type=text] { min-width: 0; width: 100%; }
+  /* SdnPhone: a wide flow row becomes a stacked block, each cell under its column's name. */
+  .sdn-ft { min-width: 0; }
+  .sdn-ft thead { display: none; }
+  .sdn-ft tr { display: block; border-bottom: 1px solid var(--line); padding: 6px 0; }
+  .sdn-ft td { display: block; border-bottom: none; padding: 2px 0; }
+  .sdn-ft td[data-l]::before { content: attr(data-l); display: inline-block; min-width: 76px;
+    color: var(--ink-3); font-family: var(--sans); font-size: 12px; }
+  .sdn-ctl-hd { padding: 10px 14px; }
+  .sdn-ctl > .notice, .sdn-ctl > .sdn-kv, .sdn-ctl > .sdn-unread, .sdn-ctl > .sdn-answer { margin: 0 14px; }
+}
+/* SdnSettings: the card spans the tab, its form four fields to a row, labels above. */
+.sdn-set-wrap { margin-top: 12px; }
+.sdn-set { padding: 0; gap: 0; }
+.sdn-set > .card-head { padding: 12px 18px; border-bottom: 1px solid var(--line-2); }
+.sdn-set > .notice, .sdn-set > p { margin: 10px 18px 0; }
+.sdn-set .sdn-conn { padding: 10px 18px; }
+.sdn-set .sdn-removing { margin: 8px 18px; }
+.sdn-set-body { padding: 14px 18px; }
+.sdn-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 18px; }
+.sdn-f { display: flex; flex-direction: column; gap: 4px; font-size: 13px; min-width: 0; }
+.sdn-f label { color: var(--ink); }
+.sdn-f input[type=text], .sdn-f input[type=password], .sdn-f select { font: inherit; font-size: 13px;
+  padding: 7px 9px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface);
+  color: var(--ink); min-width: 0; }
+.sdn-f input[readonly] { background: var(--surface-2); color: var(--ink-2); }
+.sdn-f-box { justify-content: center; }
+.sdn-check { display: inline-flex; gap: 8px; align-items: center; }
+.sdn-hint { font-size: 12px; color: var(--ink-3); }
+.sdn-foot { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+.sdn-slot { margin-top: 8px; }
+@media (max-width: 1100px) { .sdn-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .sdn-grid { grid-template-columns: minmax(0, 1fr); } }
+.sdn-meters .table { min-width: 560px; }
+.sdn-meters .table td { overflow-wrap: normal; }

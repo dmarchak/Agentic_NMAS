@@ -122,6 +122,8 @@ VOCABULARY = {
                   "its progress and result ready to read by id",
     "console_ztp": "a console survey or kick-start (out-of-band ZTP, modules/nsot/console_ztp.py) "
                    "ended: the console card reads its record by id",
+    "sdn": "each network's SDN controllers, their switches, flows and meters, as the SDN reader "
+           "last stored them (SDN › Controllers and Flows, PHASE8_PLAN 17.1 S11)",
     "console_servers": "Mercury's console-server store (modules/nsot/console_servers.py) and the "
                        "console servers' keys: Settings › Installation › Console servers reads "
                        "again",
@@ -269,6 +271,10 @@ DECLARED = {
     "settings_v2.mode_switch": ("settings",),
     "settings_v2.group_save": ("settings",),
     "settings_v2.records_save": ("settings",),
+    # A controller connection saved or removed: Settings' card and SDN › Controllers and Flows,
+    # which draw the connection list beside the SDN reader's stored read.
+    "settings_v2.sdn_save": ("settings", "sdn"),
+    "settings_v2.sdn_remove": ("settings", "sdn"),
     # The Test keeps its answer, which the card draws for every viewer (board F2).
     "settings_v2.records_test": ("settings",),
     "settings_v2.records_replace": ("settings",),
@@ -395,6 +401,9 @@ DECLARED = {
     "bulk_intent_v2.preview": Nothing("previews the change for the ticked devices; the apply "
                                       "commits"),
     "settings_v2.group_test": Nothing("tests an integration's connection and reports in the card"),
+    "settings_v2.sdn_test": Nothing("tests an SDN controller with the values as typed and answers beside Test; saves nothing"),
+    "settings_v2.sdn_saved_test": Nothing("tests a saved SDN controller and answers on its row; changes nothing"),
+    "sdn_v2.controller_test": Nothing("tests a saved SDN controller and answers on its card; the card's state stays the reader's"),
     # A card's Test keeps nothing, but the AI card's is one recorded call (Phase 8).
     "settings_v2.install_test": ("ai_calls",),
     "v2.monitoring_alert_explain": ("ai_calls",),

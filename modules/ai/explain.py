@@ -243,11 +243,24 @@ def carried_layers(pack: dict) -> dict:
 def sent_sections(pack: dict, topo: dict = None) -> list:
     """The pack's sections as they are sent: never the observed overlay (it rides in the
     subgraph); the health figures of the alert's device alone when no topology is sent (who
-    is near it is topology), the rest said withheld."""
+    is near it is topology), the rest said withheld. An SDN detection's ``sdn`` section (its
+    flows and port rates, PHASE8_PLAN 17.1 S6) is the topology class: its pieces are sent only
+    while the class is allowed for the pack's network (`egress_classes.topology_allowed`, asked
+    of the class itself, since a controller's switch is no device the subgraph is drawn around),
+    else withheld, saying why."""
+    from modules import evidence_pack as EP
+    from modules.ai import egress_classes
+
     out = []
     for s in pack.get("sections") or []:
         if s.get("name") in NOT_SENT:
             continue
+        if s.get("name") == EP.SDN_SECTION:
+            gate = egress_classes.topology_allowed(pack.get("network") or "")
+            if not gate["allowed"]:
+                s = dict(s, pieces=[], withheld=(
+                    "the flows and port rates are not sent: they are the topology class, and "
+                    + gate["why"]))
         if s.get("name") == "endpoints" and not (topo or {}).get("sent"):
             # Endpoints (MAC, address, hostname) are the topology class (15.15, the
             # operator's ruling): with no topology sent, none of them is.

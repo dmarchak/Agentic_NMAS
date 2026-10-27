@@ -74,6 +74,13 @@ SIGNED_OFF = {
     "dhcp.html": ("2026-10-06", "Item 5, DHCP on v2, boards A to D (canvas v59, page 'Item 5, "
                                 "DHCP on v2'), approved 2026-10-06 with the sidebar move; built "
                                 "2026-10-11 as board A's read-only page (C529 step 1)"),
+    "sdn.html": ("2026-10-27", "OBSERVE › SDN (PHASE8_PLAN 17.1 S11): its Controllers and Flows "
+                               "tabs, boards SdnControllers, SdnFlows and SdnPhone (with "
+                               "SdnSettings, Settings › Integrations' SDN controllers card), "
+                               "drawn under the Phase 7 mode and counted as signed off "
+                               "2026-10-27 (docs/STANDING_APPROVAL_LOG.md, the 'SDN boards S1 "
+                               "to S7' row); compared, docs/fidelity/sdn.md (the settings "
+                               "card: sdn-settings.md)"),
     "logs.html": ("2026-10-11", "the sidebar's Logs, a live tail (C675, the operator's design, "
                                 "2026-10-11): board D (LogsTail, canvas v110, page 'History, "
                                 "Query'), drawn under the Phase 7 mode and counted as signed off "

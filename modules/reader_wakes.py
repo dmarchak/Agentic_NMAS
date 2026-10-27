@@ -49,6 +49,10 @@ WOKEN_BY = {
     "platform-facts": ("settings",),
     # each integration's health endpoint, by settings.
     "integrations": ("settings",),
+    # each network's SDN controller connections (the `sdn_controllers` settings group): a
+    # connection saved or removed (`settings`) is read at once, not at the next 30 s. Never
+    # woken by `sdn`, the key this reader announces itself, which would wake it in a loop.
+    "sdn-controllers": ("settings",),
     # Mercury's stores: the rotation record, the save records a persist and a deploy's save
     # write, the break-glass export log, its intact checks and drills, the credentials held.
     "job-health": ("rotation", "credentials", "device_state", "breakglass"),

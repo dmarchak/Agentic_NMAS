@@ -1,0 +1,9 @@
+{%- extends "v2/base.html" -%}
+{#- OBSERVE › SDN (PHASE8_PLAN 17.1 S11): a network's SDN controllers and their switches' flows,
+    drawn to boards SdnControllers, SdnFlows and SdnPhone (signed off 2026-10-27 under the Phase 7
+    mode); compared region by region in docs/fidelity/sdn.md. The
+    view is one region, _sdn_view.html, redrawn when the SDN reader announces. -#}
+{% block title %}SDN · {{ brand.short }}{% endblock %}
+{% block main %}
+{% include "v2/_sdn_view.html" %}
+{% endblock %}

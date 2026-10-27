@@ -1,0 +1,130 @@
+[
+ {
+  "body": "[1]",
+  "content_type": "application/json",
+  "method": "GET",
+  "path": "/stats/switches",
+  "request_body": null,
+  "status": 200
+ },
+ {
+  "body": "{\"1\": {\"mfr_desc\": \"Example Manufacturer\", \"hw_desc\": \"Example Switch\", \"sw_desc\": \"0.0.0\", \"serial_num\": \"None\", \"dp_desc\": \"s1\"}}",
+  "content_type": "application/json",
+  "method": "GET",
+  "path": "/stats/desc/1",
+  "request_body": null,
+  "status": 200
+ },
+ {
+  "body": "{\"1\": [{\"priority\": 0, \"cookie\": 0, \"idle_timeout\": 0, \"hard_timeout\": 0, \"byte_count\": 4466, \"duration_sec\": 912, \"duration_nsec\": 4000000, \"packet_count\": 41, \"length\": 80, \"flags\": 0, \"actions\": [\"OUTPUT:CONTROLLER\"], \"match\": {}, \"table_id\": 0}, {\"priority\": 1, \"cookie\": 0, \"idle_timeout\": 0, \"hard_timeout\": 0, \"byte_count\": 1036, \"duration_sec\": 874, \"duration_nsec\": 120000000, \"packet_count\": 12, \"length\": 104, \"flags\": 0, \"actions\": [\"OUTPUT:2\"], \"match\": {\"in_port\": 1, \"dl_dst\": \"00:00:00:00:00:02\", \"dl_src\": \"00:00:00:00:00:01\"}, \"table_id\": 0}, {\"priority\": 2, \"cookie\": 0, \"idle_timeout\": 30, \"hard_timeout\": 0, \"byte_count\": 132, \"duration_sec\": 3, \"duration_nsec\": 500000000, \"packet_count\": 2, \"length\": 120, \"flags\": 0, \"actions\": [\"OUTPUT:2\"], \"match\": {\"in_port\": 1, \"dl_type\": 2048, \"nw_proto\": 6, \"nw_src\": \"192.0.2.1\", \"nw_dst\": \"192.0.2.2\", \"tp_dst\": 22}, \"table_id\": 0}, {\"priority\": 2, \"cookie\": 0, \"idle_timeout\": 30, \"hard_timeout\": 0, \"byte_count\": 74, \"duration_sec\": 5, \"duration_nsec\": 0, \"packet_count\": 1, \"length\": 120, \"flags\": 0, \"actions\": [\"OUTPUT:3\"], \"match\": {\"in_port\": 2, \"dl_type\": 2048, \"nw_proto\": 17, \"nw_src\": \"192.0.2.2\", \"nw_dst\": \"192.0.2.3\", \"tp_dst\": 53}, \"table_id\": 0}, {\"priority\": 2, \"cookie\": 0, \"idle_timeout\": 30, \"hard_timeout\": 0, \"byte_count\": 258, \"duration_sec\": 7, \"duration_nsec\": 250000000, \"packet_count\": 3, \"length\": 144, \"flags\": 0, \"actions\": [\"OUTPUT:3\"], \"match\": {\"in_port\": 1, \"dl_type\": 34525, \"nw_proto\": 6, \"tp_dst\": 443, \"ipv6_src\": \"2001:db8::1\", \"ipv6_dst\": \"2001:db8::2\"}, \"table_id\": 0}, {\"priority\": 100, \"cookie\": 5567946962029772801, \"idle_timeout\": 0, \"hard_timeout\": 300, \"byte_count\": 58800, \"duration_sec\": 40, \"duration_nsec\": 0, \"packet_count\": 980, \"length\": 72, \"flags\": 0, \"actions\": [], \"match\": {\"dl_type\": 2048, \"nw_src\": \"192.0.2.0/255.255.255.0\"}, \"table_id\": 0}, {\"priority\": 90, \"cookie\": 5567946962029772802, \"idle_timeout\": 0, \"hard_timeout\": 300, \"byte_count\": 7500000, \"duration_sec\": 12, \"duration_nsec\": 0, \"packet_count\": 5000, \"length\": 112, \"flags\": 0, \"actions\": [\"METER:1\", \"OUTPUT:2\"], \"match\": {\"in_port\": 3, \"dl_type\": 2048, \"nw_src\": \"192.0.2.3\"}, \"table_id\": 0}, {\"priority\": 5, \"cookie\": 0, \"idle_timeout\": 0, \"hard_timeout\": 0, \"byte_count\": 0, \"duration_sec\": 60, \"duration_nsec\": 0, \"packet_count\": 0, \"length\": 104, \"flags\": 0, \"actions\": [{\"WRITE_ACTIONS\": [\"OUTPUT:1\"]}, \"GOTO_TABLE:1\"], \"match\": {\"in_port\": 3, \"dl_type\": 2054}, \"table_id\": 0}, {\"priority\": 1, \"cookie\": 0, \"idle_timeout\": 0, \"hard_timeout\": 0, \"byte_count\": 0, \"duration_sec\": 60, \"duration_nsec\": 0, \"packet_count\": 0, \"length\": 104, \"flags\": 0, \"actions\": [\"SET_FIELD: {eth_dst:00:00:00:00:00:03}\", \"OUTPUT:3\"], \"match\": {\"dl_vlan\": \"10\"}, \"table_id\": 1}]}",
+  "content_type": "application/json",
+  "method": "GET",
+  "path": "/stats/flow/1",
+  "request_body": null,
+  "status": 200
+ },
+ {
+  "body": "{\"1\": [{\"rx_packets\": 120, \"tx_packets\": 118, \"rx_bytes\": 9480, \"tx_bytes\": 9310, \"rx_dropped\": 0, \"tx_dropped\": 0, \"rx_errors\": 0, \"tx_errors\": 0, \"rx_frame_err\": 0, \"rx_over_err\": 0, \"rx_crc_err\": 0, \"collisions\": 0, \"duration_sec\": 912, \"duration_nsec\": 4000000, \"port_no\": 1}, {\"rx_packets\": 118, \"tx_packets\": 121, \"rx_bytes\": 9320, \"tx_bytes\": 9500, \"rx_dropped\": 0, \"tx_dropped\": 0, \"rx_errors\": 0, \"tx_errors\": 0, \"rx_frame_err\": 0, \"rx_over_err\": 0, \"rx_crc_err\": 0, \"collisions\": 0, \"duration_sec\": 912, \"duration_nsec\": 4000000, \"port_no\": 2}, {\"rx_packets\": 40, \"tx_packets\": 38, \"rx_bytes\": 3200, \"tx_bytes\": 3100, \"rx_dropped\": 0, \"tx_dropped\": 3, \"rx_errors\": 0, \"tx_errors\": 0, \"rx_frame_err\": 0, \"rx_over_err\": 0, \"rx_crc_err\": 0, \"collisions\": 0, \"duration_sec\": 912, \"duration_nsec\": 4000000, \"port_no\": 3}, {\"rx_packets\": 0, \"tx_packets\": 0, \"rx_bytes\": 0, \"tx_bytes\": 0, \"rx_dropped\": 0, \"tx_dropped\": 0, \"rx_errors\": 0, \"tx_errors\": 0, \"rx_frame_err\": 0, \"rx_over_err\": 0, \"rx_crc_err\": 0, \"collisions\": 0, \"duration_sec\": 912, \"duration_nsec\": 4000000, \"port_no\": \"LOCAL\"}]}",
+  "content_type": "application/json",
+  "method": "GET",
+  "path": "/stats/port/1",
+  "request_body": null,
+  "status": 200
+ },
+ {
+  "body": "{\"1\": [{\"flags\": [\"KBPS\", \"BURST\", \"STATS\"], \"bands\": [{\"rate\": 1000, \"burst_size\": 100, \"type\": \"DROP\"}], \"meter_id\": 1}]}",
+  "content_type": "application/json",
+  "method": "GET",
+  "path": "/stats/meterconfig/1",
+  "request_body": null,
+  "status": 200
+ },
+ {
+  "body": "{\"1\": [{\"len\": 56, \"flow_count\": 1, \"packet_in_count\": 5000, \"byte_in_count\": 7500000, \"duration_sec\": 12, \"duration_nsec\": 0, \"band_stats\": [{\"packet_band_count\": 1200, \"byte_band_count\": 1800000}], \"meter_id\": 1}]}",
+  "content_type": "application/json",
+  "method": "GET",
+  "path": "/stats/meter/1",
+  "request_body": null,
+  "status": 200
+ },
+ {
+  "body": "{\"1\": [{\"max_meter\": 200, \"band_types\": [\"DROP\", \"DSCP_REMARK\"], \"capabilities\": [\"KBPS\", \"PKTPS\", \"BURST\", \"STATS\"], \"max_bands\": 1, \"max_color\": 0}]}",
+  "content_type": "application/json",
+  "method": "GET",
+  "path": "/stats/meterfeatures/1",
+  "request_body": null,
+  "status": 200
+ },
+ {
+  "body": "",
+  "content_type": "text/html; charset=UTF-8",
+  "method": "GET",
+  "path": "/stats/flow/99",
+  "request_body": null,
+  "status": 404
+ },
+ {
+  "body": "",
+  "content_type": "text/html; charset=UTF-8",
+  "method": "POST",
+  "path": "/stats/meterentry/add",
+  "request_body": "{\"bands\": [{\"burst_size\": 100, \"rate\": 1000, \"type\": \"DROP\"}], \"dpid\": 1, \"flags\": [\"KBPS\", \"BURST\", \"STATS\"], \"meter_id\": 1}",
+  "status": 200
+ },
+ {
+  "body": "",
+  "content_type": "text/html; charset=UTF-8",
+  "method": "POST",
+  "path": "/stats/flowentry/add",
+  "request_body": "{\"actions\": [], \"cookie\": 5567946962029772801, \"dpid\": 1, \"hard_timeout\": 300, \"idle_timeout\": 0, \"match\": {\"eth_type\": 2048, \"ipv4_src\": \"192.0.2.0/255.255.255.0\"}, \"priority\": 100, \"table_id\": 0}",
+  "status": 200
+ },
+ {
+  "body": "",
+  "content_type": "text/html; charset=UTF-8",
+  "method": "POST",
+  "path": "/stats/flowentry/add",
+  "request_body": "{\"actions\": [{\"meter_id\": 1, \"type\": \"METER\"}, {\"port\": 2, \"type\": \"OUTPUT\"}], \"cookie\": 5567946962029772802, \"dpid\": 1, \"hard_timeout\": 300, \"idle_timeout\": 0, \"match\": {\"eth_type\": 2048, \"in_port\": 3, \"ipv4_src\": \"192.0.2.3\"}, \"priority\": 90, \"table_id\": 0}",
+  "status": 200
+ },
+ {
+  "body": "",
+  "content_type": "text/html; charset=UTF-8",
+  "method": "POST",
+  "path": "/stats/flowentry/add",
+  "request_body": "{\"actions\": [], \"cookie\": 5567946962029772803, \"dpid\": 1, \"hard_timeout\": 300, \"idle_timeout\": 0, \"match\": {\"eth_type\": 34525, \"ip_proto\": 6, \"ipv6_src\": \"2001:db8::1\", \"tcp_dst\": 22}, \"priority\": 100, \"table_id\": 0}",
+  "status": 200
+ },
+ {
+  "body": "",
+  "content_type": "text/html; charset=UTF-8",
+  "method": "POST",
+  "path": "/stats/flowentry/delete_strict",
+  "request_body": "{\"cookie\": 5567946962029772801, \"cookie_mask\": 18446744073709551615, \"dpid\": 1, \"match\": {\"eth_type\": 2048, \"ipv4_src\": \"192.0.2.0/255.255.255.0\"}, \"priority\": 100, \"table_id\": 0}",
+  "status": 200
+ },
+ {
+  "body": "",
+  "content_type": "text/html; charset=UTF-8",
+  "method": "POST",
+  "path": "/stats/meterentry/delete",
+  "request_body": "{\"dpid\": 1, \"meter_id\": 1}",
+  "status": 200
+ },
+ {
+  "body": "",
+  "content_type": "text/html; charset=UTF-8",
+  "method": "POST",
+  "path": "/stats/flowentry/add",
+  "request_body": "{\"actions\": [], \"cookie\": 5567946962029772801, \"dpid\": 99, \"hard_timeout\": 300, \"idle_timeout\": 0, \"match\": {\"eth_type\": 2048, \"ipv4_src\": \"192.0.2.0/255.255.255.0\"}, \"priority\": 100, \"table_id\": 0}",
+  "status": 404
+ },
+ {
+  "body": "Traceback (most recent call last):\n  File \"/usr/local/lib/python3.9/site-packages/eventlet/wsgi.py\", line 573, in handle_one_response\n    result = self.application(self.environ, start_response)\n  File \"/usr/local/lib/python3.9/site-packages/ryu/app/wsgi.py\", line 236, in __call__\n    return super(wsgify_hack, self).__call__(environ, start_response)\n  File \"/usr/local/lib/python3.9/site-packages/webob/dec.py\", line 129, in __call__\n    resp = self.call_func(req, *args, **kw)\n  File \"/usr/local/lib/python3.9/site-packages/webob/dec.py\", line 193, in call_func\n    return self.func(req, *args, **kwargs)\n  File \"/usr/local/lib/python3.9/site-packages/ryu/app/wsgi.py\", line 290, in __call__\n    return controller(req)\n  File \"/usr/local/lib/python3.9/site-packages/ryu/app/wsgi.py\", line 160, in __call__\n    return getattr(self, action)(req, **kwargs)\n  File \"/usr/local/lib/python3.9/site-packages/ryu/app/ofctl_rest.py\", line 240, in wrapper\n    body = ast.literal_eval(req.body.decode('utf-8'))\n  File \"/usr/local/lib/python3.9/ast.py\", line 107, in literal_eval\n    return _convert(node_or_string)\n  File \"/usr/local/lib/python3.9/ast.py\", line 96, in _convert\n    return dict(zip(map(_convert, node.keys),\n  File \"/usr/local/lib/python3.9/ast.py\", line 106, in _convert\n    return _convert_signed_num(node)\n  File \"/usr/local/lib/python3.9/ast.py\", line 80, in _convert_signed_num\n    return _convert_num(node)\n  File \"/usr/local/lib/python3.9/ast.py\", line 71, in _convert_num\n    _raise_malformed_node(node)\n  File \"/usr/local/lib/python3.9/ast.py\", line 68, in _raise_malformed_node\n    raise ValueError(f'malformed node or string: {node!r}')\nValueError: malformed node or string: <ast.Name object at 0x7c02d6516700>\n",
+  "content_type": "text/plain",
+  "method": "POST",
+  "path": "/stats/flowentry/add",
+  "request_body": "{\"dpid\": 1, \"priority\": 1, \"match\": {}, \"actions\": [], \"x\": true}",
+  "status": 500
+ }
+]

@@ -189,6 +189,13 @@ GATES = {
     "settings_v2.mode_switch": _g(K, "switches a network between inheriting from Default and standalone, bound to its preview and recorded"),
     "settings_v2.group_save": _g(K, "saves a card's fields (Default's, or a network's own group) and their secrets, recorded"),
     "settings_v2.group_test": _g(K, "tests a card's integration with its saved values, for the person configuring it (the S3 archive's Test writes its probe object)"),
+    # PHASE8_PLAN 17.1 S2's interface (board SdnSettings): a network's SDN controller
+    # connections, each network's own (C1841).
+    "settings_v2.sdn_save": _g(K, "saves a network's SDN controller connection (its credential encrypted in the credential store), refused until Test answered for the URL as typed, recorded"),
+    "settings_v2.sdn_remove": _g(K, "removes a network's SDN controller connection and its stored credential, recorded"),
+    "settings_v2.sdn_test": _g(K, "tests an SDN controller connection with the values as typed, its credential among them, for the person configuring it; saves nothing"),
+    "settings_v2.sdn_saved_test": _g(K, "tests a saved SDN controller connection with its stored credential, for the person configuring it; changes nothing"),
+    "sdn_v2.controller_test": _g(K, "tests a saved SDN controller connection with its stored credential from SDN › Controllers; changes nothing"),
     "settings_v2.records_save": _g(K, "saves the installation's records database settings, recorded (board F2; works with the database down)"),
     "settings_v2.records_test": _g(K, "tests the records database (six checks, a temporary row rolled back) and keeps its answer"),
     "settings_v2.records_replace": _g(K, "replaces Mercury's copy of the records database password (a secret), recorded, then tests it"),

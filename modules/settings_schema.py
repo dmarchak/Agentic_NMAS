@@ -481,6 +481,7 @@ DEFAULTS: dict = {
     "records_store_ai_calls": "file",
     "records_store_evidence_packs": "file",
     "records_store_alert_history": "file",
+    "records_store_flow_intent": "file",
 
     # ── Platform map (NetBox platform slug → how NMAS treats the device) ────
     # This map is what makes multi-vendor support a configuration change rather
@@ -573,6 +574,25 @@ DEFAULTS: dict = {
     #   how old a location may be and still be trusted on a given network.
     "endpoint_read_interval_minutes": 15,
     "endpoint_stale_after_hours": 24,
+    # SDN controller connections (PHASE8_PLAN 17.1 S2), per network and never inherited
+    # (C1841): none by default, so a network with none set reads no controller, as before the
+    # setting existed. Written only by `modules/sdn/connections.py`, from its Settings card
+    # (board SdnSettings). The schema refuses a field it does not name, so no credential can be stored
+    # here: they are the credential store's, encrypted (`credentials.set_controller_credential`).
+    "sdn_controllers": [],
+    # SDN detection thresholds (PHASE8_PLAN 17.1 S6, `modules/sdn/detect.py`), per network, the
+    # slice's defaults as S6 was asked for (2026-10-26): a scan is 20 distinct destination ports
+    # from one source in 60 s (where flows are L4); a flood, a port receiving 5x its baseline
+    # for 30 s. The fallback where flows cannot show ports (L2, L3) is a port receiving 100
+    # packets a second or more, marked lower confidence: NOT measured, a placeholder until the
+    # operator's first run of the slice measures a scan and normal traffic (C1837).
+    # No measurement can replace the scan and flood thresholds: what counts as an attack on a
+    # network is its operator's decision.
+    "sdn_scan_ports": 20,
+    "sdn_scan_window_seconds": 60,
+    "sdn_scan_fallback_pps": 100,
+    "sdn_flood_factor": 5,
+    "sdn_flood_window_seconds": 30,
 
     # ── Jenkins ─────────────────────────────────────────────────────────────
     # Every generated pipeline emitted Windows `bat` steps; that stays the
@@ -925,6 +945,7 @@ SCHEMA: dict = {
         "records_store_ai_calls": {"type": "string", "enum": ["file", "postgres"]},
         "records_store_evidence_packs": {"type": "string", "enum": ["file", "postgres"]},
         "records_store_alert_history": {"type": "string", "enum": ["file", "postgres"]},
+        "records_store_flow_intent": {"type": "string", "enum": ["file", "postgres"]},
 
         "platform_map": {
             "type": "object",
@@ -951,6 +972,29 @@ SCHEMA: dict = {
         "ai_topology_class": _BOOL,
         "endpoint_read_interval_minutes": {"type": "integer", "minimum": 5, "maximum": 1440},
         "endpoint_stale_after_hours": {"type": "integer", "minimum": 1},
+        "sdn_controllers": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["name", "kind", "url"],
+                "properties": {
+                    "name": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$"},
+                    "kind": {"type": "string", "minLength": 1},
+                    "url": {"type": "string", "minLength": 1},
+                    "verify_tls": _BOOL,
+                    "timeout": {"type": "number", "exclusiveMinimum": 0, "maximum": 120},
+                    "southbound": _STR,
+                    "own_cookies": {"type": "array", "items": {
+                        "type": "integer", "minimum": 0, "maximum": 2 ** 64 - 1}},
+                },
+            },
+        },
+        "sdn_scan_ports": {"type": "integer", "minimum": 2, "maximum": 65535},
+        "sdn_scan_window_seconds": {"type": "integer", "minimum": 1, "maximum": 3600},
+        "sdn_scan_fallback_pps": {"type": "number", "exclusiveMinimum": 0},
+        "sdn_flood_factor": {"type": "number", "minimum": 1.5, "maximum": 1000},
+        "sdn_flood_window_seconds": {"type": "integer", "minimum": 0, "maximum": 3600},
         "deploy_max_workers": {"type": "integer", "minimum": 1, "maximum": 16},
         "deploy_verify_failure_limit": {"type": "integer", "minimum": 1},
         "verify_settle_windows": {

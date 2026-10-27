@@ -128,6 +128,58 @@ def test_dhcp(tmp_path, monkeypatch):
                    widths=((1440, 1.0), (390, 2.0)))
 
 
+def test_sdn(tmp_path, monkeypatch):
+    """PHASE8_PLAN 17.1 S11: SDN › Controllers beside board SdnControllers (1440), SDN › Flows
+    beside SdnFlows (1440), both at phone width beside SdnPhone (390), and Settings ›
+    Integrations' SDN controllers card beside SdnSettings (1440), on tests/test_sdn_v2.py's lab:
+    Default's `lab-controller` answered by Ryu 4.34's captured answers through the real driver
+    (one switch, `s1`, nine flows: the controller's own, Mercury's meter flow as recorded, a
+    drop flow in Mercury's range with no record, and an IPv6 drop recorded and never
+    installed), and `branch-controller` at another address answering nothing (refused), read
+    twice by the SDN reader. Its Edit card and a Test's answer are shot too."""
+    from tests import browser
+    from tests.test_sdn_connections import make_networks
+    from tests.test_sdn_v2 import BASE, Captured, Down, T0, make_lab, store_read
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    from modules.sdn import connections as C
+
+    lab = make_lab(make_networks(tmp_path, monkeypatch), monkeypatch)
+
+    class ByUrl:
+        """The capture for `lab-controller`'s URL, a refusal for any other."""
+
+        def __init__(self):
+            self.ok, self.down = Captured(), Down("http://192.0.2.20:8080")
+            self.sent = []
+
+        def request(self, method, url, **kwargs):
+            return (self.ok if url.startswith(BASE) else self.down).request(method, url,
+                                                                             **kwargs)
+
+    lab["sessions"]["session"] = ByUrl()
+    C.save_connection("Default", {"name": "branch-controller", "kind": "ryu",
+                                  "url": "http://192.0.2.20:8080"}, actor="op@example.com")
+    store_read(clock=lambda: time.time() - 760)
+    store_read(clock=lambda: time.time() - 18)
+    import app as A
+    with browser.Served(A.app) as served:
+        _shoot("sdn-controllers", "SdnControllers.dc.html", lambda w: "/v2/sdn?list=Default",
+               served, widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
+        _shoot("sdn-flows", "SdnFlows.dc.html", lambda w: "/v2/sdn/flows?list=Default",
+               served, widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
+        _shoot("sdn-phone", "SdnPhone.dc.html", lambda w: "/v2/sdn?list=Default", served,
+               widths=((390, 2.0),))
+        _shoot("sdn-settings", "SdnSettings.dc.html",
+               lambda w: "/v2/settings/network/Default?tab=integrations", served,
+               widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
+        _shoot("sdn-settings-edit", "",
+               lambda w: "/v2/settings/network/Default/sdn/edit/lab-controller", served,
+               widths=((1440, 1.0), (390, 2.0)))
+    assert T0, "the lab's flow intent was recorded at T0"
+
+
 def test_onboard_discovered(tmp_path, monkeypatch):
     """Board L (ZtpDiscovery, 1440) beside Onboard devices › Discovered, fed the discovery
     reader's value with all three groups (tests/test_onboard_discovered_v2.py's), and a Pick's
