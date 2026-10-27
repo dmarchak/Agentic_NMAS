@@ -1,7 +1,8 @@
 """Background AI features: off by default per network, on only by an admin who saw the
 estimate, each within its own caps (C1843; PHASE8_PLAN 18.3 rules 2 to 5; CLAUDE.md, "AI cost
-safety"; `modules/ai/background.py`). No feature exists yet (the SDN loop, S10, is the first),
-so a fake one is registered: the connection check's task, triggered by a detection.
+safety"; `modules/ai/background.py`). A fake feature is registered beside the real one (the SDN
+loop's `sdn_classify`, tests/test_sdn_classify.py): the connection check's task, triggered by a
+detection, so these tests hold the rules for any feature.
 
 Every call goes through the real gateway, with a real settings file and a real record of AI
 calls in the test's own folder; only the provider is fake (a `send` that keeps what it got).

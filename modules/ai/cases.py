@@ -658,3 +658,67 @@ def intent_patches(choices: dict) -> dict:
         out.setdefault(str(patch.get("hostname") or ""), []).extend(
             intent_ops({"patches": [patch]}))
     return out
+
+
+# ── classify_threat's cases (PHASE8_PLAN 17.1 S7; tests/fixtures/ai_cases/sdn_classify/) ────
+
+def sdn_outcome(got: dict) -> str:
+    """``answer`` when the classification passed Mercury's check; ``refused by the check``
+    when the model answered and the check refused it (a miss of the model's); anything else
+    is no outcome of the model's, named (a refusal before the call fails the run twice:
+    TESTING.md, "A run refused before it was sent fails twice")."""
+    if got.get("ok"):
+        return "answer"
+    error = got.get("error") or ""
+    if error == "couldnt_classify":
+        return "refused by the check"
+    return f"not the model's: {error or 'no answer'}"
+
+
+def sdn_compared(got: dict) -> str:
+    """The fields a run is compared on for consistency (PHASE8_PLAN 6's Decision-maker row:
+    the entry, its parameters and its evidence ids; never the prose): the outcome, whether a
+    threat was found and its kind, the action, the source or flow it acts on, and the evidence
+    ids cited as a set."""
+    outcome = sdn_outcome(got)
+    if outcome != "answer":
+        return json.dumps([outcome])
+    c = got["classification"]
+    return json.dumps([outcome, c["threat_detected"], c["threat_type"], got["action"],
+                       got["params"].get("source", ""), c["parameters"].get("flow", "")
+                       if got["action"] == "remove_flow" else "",
+                       sorted(set(c["evidence_refs"]))])
+
+
+def sdn_classify_misses(expect: dict, got: dict) -> list:
+    """What *got* (`closed_loop.classify_pack`'s answer) does that the case's *expect* does
+    not allow: ``[]`` is a pass. The answer must pass Mercury's check; then whether it finds a
+    threat, its kind, its severity and its action must each be one the case allows; a source
+    the action acts on must be the expected one (compared in canonical form), and a removed
+    flow the expected one; at least one id it cites must be one the detection rests on."""
+    import ipaddress
+
+    outcome = sdn_outcome(got)
+    if outcome != "answer":
+        why = got.get("detail") or ""
+        return [f"outcome {outcome}" + (f" ({why[:200]})" if why else "")]
+    c, action = got["classification"], got["action"]
+    out = []
+    if c["threat_detected"] is not expect["threat_detected"]:
+        out.append(f"threat_detected {c['threat_detected']}, expected {expect['threat_detected']}")
+    for field in ("threat_type", "severity"):
+        if c[field] not in expect[field]:
+            out.append(f"{field} {c[field]}, expected one of {expect[field]}")
+    if action not in expect["action_id"]:
+        out.append(f"action {action}, expected one of {expect['action_id']}")
+    if expect.get("source") and action in ("drop_source", "rate_limit_source"):
+        want = ipaddress.ip_address(expect["source"]).compressed
+        if got["params"].get("source") != want:
+            out.append(f"source {got['params'].get('source')!r}, expected {want}")
+    if expect.get("flow") and action == "remove_flow" \
+            and c["parameters"].get("flow") != expect["flow"]:
+        out.append(f"flow {c['parameters'].get('flow')!r}, expected {expect['flow']}")
+    if not set(c["evidence_refs"]) & set(expect["cites_any"]):
+        out.append(f"cites {c['evidence_refs'][:3]}, none of the evidence the detection rests "
+                   "on")
+    return out

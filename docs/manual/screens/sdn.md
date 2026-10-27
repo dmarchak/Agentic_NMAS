@@ -126,8 +126,14 @@ refused at the preview, naming both. How each step works:
 What to act on first: **N awaiting approval**, the mode and whether the loop is running.
 
 - **A response awaiting you**: the detection (the rule, the source, the switch, its confidence
-  and its words, an alert with its evidence pack), why no AI classified it (background AI is not
-  allowed until cost safety is live), and the action proposed from the catalogue with its risk.
+  and its words, an alert with its evidence pack), the AI's classification when there is one
+  (marked AI: threat or not, its kind and severity, its reasoning, what it recommends, the
+  devices it names, the evidence ids it cites, and the model, cost and call), else who chose the
+  action (the catalogue's default, chosen in code), and the action proposed from the catalogue
+  with its risk. **Classify** (an AI control, beside its mark) asks the model about this
+  detection as you and redraws the card with its answer, its action proposed; it sends nothing
+  to a switch, and is drawn disabled with the reason while AI cannot answer. How it works:
+  [Classify a detection with AI](sdn-flows#classify).
   Its preview button, named for the action ("Preview the drop traffic from the source…"), builds its card as Flows' changes are (the action's parameters checked
   against the evidence: the source is the detection's, the hard timeout within the network's
   ceiling); **Send** applies it as you. **Dismiss with this reason** closes it, sending nothing.
@@ -137,7 +143,10 @@ What to act on first: **N awaiting approval**, the mode and whether the loop is 
   also remove a flow). While AUTO is on the card names who turned it on, why and until when;
   **Turn AUTO off** ends it at once. At its expiry the mode is HITL again, and the record says so.
 - **The loop**: **Start** runs detect, classify and respond on this network every N seconds (5 to
-  600); its log lists each pass's steps, newest first; **Stop** ends it after its current pass,
+  600); classify is an AI call only where an admin turned its background feature on for this
+  network (off by default; the screen that turns it on, Settings › AI, is not built yet), and
+  otherwise the log says why none was made and the catalogue's default is proposed; its log
+  lists each pass's steps, newest first; **Stop** ends it after its current pass,
   and the card says who stopped it and when.
 - **Detection rules**: each rule's threshold on this network, and the response timeouts: every
   response flow expires at its hard timeout.

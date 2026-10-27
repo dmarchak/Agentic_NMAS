@@ -82,7 +82,8 @@ def test_a_scan_is_answered_by_a_drop_of_its_source(src, eth, field):
     (op,) = F.operations("Default")["rows"]
     assert op["response"]["action"] == "drop_source"
     assert op["response"]["detection"]["key"] == d["key"]
-    assert op["response"]["classified_by"] == "the catalogue's default (no AI: C1843)"
+    assert op["response"]["classified_by"] == ("the catalogue's default for the rule, chosen in "
+                                               "code (no AI classification)")
 
 
 @pytest.mark.usefixtures("lab")

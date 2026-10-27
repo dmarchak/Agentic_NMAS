@@ -151,11 +151,37 @@ def response_preview(rid):
         return _op_card(sdn_ops_page.refused(network, "response", f"no response {rid} is "
                                                                   "awaiting a person"), 404)
     action = (request.form.get("action") or row.get("action") or "").strip()
-    params = {k: request.form.get(k) for k in ("hard_timeout", "rate", "burst", "unit")
+    params = {k: request.form.get(k) for k in ("source", "hard_timeout", "rate", "burst", "unit")
               if (request.form.get(k) or "").strip()}
     got = closed_loop.respond_to_threat(network, row["detection"], action, params)
     return _op_card(sdn_ops_page.response_preview(network, row, got),
                     200 if got["ok"] else 409)
+
+
+@bp.route("/response/<rid>/classify", methods=["POST"])
+def response_classify(rid):
+    """Classify (PHASE8_PLAN 17.1 S7): a response awaiting a person classified by AI, one
+    recorded, capped call as the person who pressed it (`closed_loop.classify_threat`), its
+    answer checked in code and kept with the response, its catalogue action proposed. Nothing
+    is sent to a switch: the response still waits for a person's preview and confirm."""
+    from modules import identity
+    from modules.ai import triggers
+    from modules.sdn import closed_loop, loop
+
+    network = _network_of_form()
+    row = next((r for r in loop.awaiting(network)["rows"] if r.get("id") == rid), None)
+    if row is None:
+        return _strict(render_template("v2/_sdn_answer.html",
+                                       refused=f"no response {rid} is awaiting a person")), 404
+    actor = identity.request_actor()
+    got = closed_loop.classify_threat(network, row["detection"], actor=actor,
+                                      trigger=triggers.person(actor))
+    if got["ok"]:
+        loop.classified(network, rid, got, actor=actor)
+    ctx = _ctx("responses")
+    ctx["g"]["classify"] = {"rid": rid, "ok": got["ok"], "error": got.get("error", ""),
+                            "detail": got.get("detail", "")}
+    return _strict(render_template("v2/_sdn_view.html", **ctx))
 
 
 @bp.route("/response/confirm", methods=["POST"])
@@ -171,10 +197,14 @@ def response_confirm():
     if refused:
         return _op_card(sdn_ops_page.refused(network, "response", refused), 400)
     actor = identity.request_actor()
+    action = (request.form.get("action") or "").strip()
+    row = next((r for r in loop.awaiting(network)["rows"] if r.get("id") == rid), {}) \
+        if rid else {}
     done = closed_loop.respond_to_threat(
-        network, None, (request.form.get("action") or "").strip(),
+        network, None, action,
         confirm={"ask": ask, "hash": (request.form.get("hash") or "").strip()}, actor=actor,
-        actor_verified=identity.actor_verification(actor))
+        actor_verified=identity.actor_verification(actor),
+        classified_by=closed_loop.classified_words(row.get("classification"), action))
     if done.get("outcome") == "verified" and rid:
         try:
             loop.resolve(network, rid, "confirmed", actor=actor, operation=done.get("id", ""))

@@ -1760,3 +1760,29 @@ tests/test_alert_rule_changes.py (`scratchpad/c1886_hm.py`).
 **The result: every mutant killed; the canary killed; the working tree untouched (nmas-control's
 fingerprint).**
 
+## 2026-10-27: SDN classify_threat's egress gates (S7), by hand
+
+**What touches the tier:** `closed_loop.classify_pack` sends a detection's flows and port rates
+(the topology class) to the provider through `gateway.ask`. In front of the call it refuses a
+pack whose hash moved, a network carrying a classification marking, and a network whose topology
+class is off; each refusal sends nothing. No line of `gateway.py` or `triggers.py` changed; the
+background feature `sdn_classify` (`background.FEATURES`) is declared, and the gateway still
+refuses it as `feature_off` until an admin turns it on (its controls: the feature undeclared
+fails 6 tests).
+
+**The method:** the narrowed hand check (PHASE8_PLAN 15.12): each mutant applied as its exact
+lines in a `scripts/nmas-control` throwaway worktree, then tests/test_sdn_classify.py and
+tests/test_sdn_classify_cases.py (`scratchpad/s7_hm.py`).
+
+| mutant | result | killed by |
+|---|---|---|
+| the marking ignored (`if False:`) | killed, by a test written for it | `test_a_network_carrying_a_classification_marking_sends_nothing` |
+| the marking inverted | killed | 25 tests (every call refused) |
+| the topology gate ignored | killed | `test_the_topology_class_off_sends_nothing` |
+| the topology gate inverted | killed | 25 tests |
+| the pack's hash ignored | killed | `test_a_pack_changed_since_it_was_kept_is_refused_and_nothing_is_sent` |
+| canary: the marking step raises | killed | 25 tests |
+
+**The result: every mutant killed (the marking's first run survived; the test above was written
+and the mutant run again); the canary killed.**
+

@@ -1,10 +1,15 @@
 {%- from "v2/_macros.html" import badge, stamp, how -%}
+{%- import "v2/_ai.html" as ai -%}
 {#- SDN › Responses (board SdnResponses, signed off 2026-10-27 under the Phase 7 mode): what to
     act on first (a response awaiting a person), then the mode, the loop and the rules.
-    Detection decides in code; no AI classifies until cost safety is live (C1843), and the card
-    says so; a response is a previewed, confirmed operation (modules/sdn/flow_ops.py).
-    modules/sdn_ops_page.responses_view builds `g`. Included by _sdn_view.html. -#}
+    Detection decides in code. The AI's classification (PHASE8_PLAN 17.1 S7) is drawn on the
+    card when there is one: the loop's, where its background feature is on for the network, or
+    a person's Classify (an AI control, modules/ai/controls.py); it only proposes the catalogue
+    action, checked in code. A response is a previewed, confirmed operation
+    (modules/sdn/flow_ops.py). modules/sdn_ops_page.responses_view builds `g`. Included by
+    _sdn_view.html. -#}
 {%- set m = g.mode %}
+{%- set aic = ai_control('sdn_classify') %}
 <p class="sdn-sum"><strong>{{ g.awaiting | length }} awaiting approval</strong> · mode {{ m.mode | upper }} · the loop {% if g.loop.running %}running every {{ g.loop.interval | int }} s{% else %}stopped{% endif %}</p>
 {%- if g.awaiting_state == 'unreadable' %}
 <div class="notice notice-danger" role="alert"><p>The responses awaiting a person cannot be read: {{ g.awaiting_error }}.</p></div>
@@ -13,17 +18,33 @@
 <section class="card sdn-resp" aria-labelledby="sdn-r-{{ r.id }}">
   <div class="sdn-ctl-hd"><h2 id="sdn-r-{{ r.id }}">{{ r.title }}{% if r.source %} from <span class="mono">{{ r.source }}</span>{% endif %} on <span class="mono">{{ r.dpid_hex }}</span></h2>{% if r.confidence %} {{ badge(r.confidence, 'danger' if r.confidence == 'high' else 'warn') }}{% endif %}</div>
   <p class="small">Detected {{ stamp(r.at) }}: {{ r.words }} · an alert with its evidence pack</p>
+  {%- if r.ai %}{% set a = r.ai %}
+  <div class="sdn-ai" id="sdn-c-{{ r.id }}" role="group" aria-label="The AI's classification">
+    <p class="small">{{ badge('AI', 'info', title='Classified by AI (' ~ a.model ~ '); checked in code; it proposes and never confirms') }} <strong>{% if a.threat_detected %}A threat: {{ a.threat_type }}{% else %}No threat{% endif %}</strong>, severity {{ a.severity }} <span class="faint">· by {{ a.by }}{% if a.who %} ({{ a.who }}){% endif %} {{ stamp(a.at) }} · <span title="AI call {{ a.call_id }}">{{ a.model }}, ${{ '%.4f' | format(a.cost_usd) }}</span></span></p>
+    <p class="small">{{ a.reasoning }}</p>
+    <p class="small"><strong>It recommends:</strong> {{ a.recommended }}{% if a.action and a.action != 'none' %} (catalogue action <span class="mono">{{ a.action }}</span>, its parameters checked against the evidence){% else %} (no catalogue action: you decide){% endif %}.</p>
+    {%- if a.devices %}<p class="small faint">Affected: <span class="mono">{{ a.devices | join(', ') }}</span></p>{% endif %}
+    <p class="small faint">Evidence it cites: <span class="mono">{{ a.refs | join(', ') }}</span></p>
+  </div>
+  {%- else %}
   <p class="small faint">{{ r.classified }}.</p>
+  {%- endif %}
   <p class="small"><strong>Proposed:</strong> {{ r.label }} (catalogue action <span class="mono">{{ r.action }}</span>, risk {{ r.risk }}): {{ r.action_words }}.</p>
   <div class="sdn-acts">
+    <form class="op-act" hx-post="{{ url_for('sdn_v2.response_classify', rid=r.id) }}" hx-target="#sdn" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <input type="hidden" name="list" value="{{ g.network }}">
+      {{ ai.mark(aic) }} <button class="btn" type="submit" id="sdn-classify-{{ r.id }}" data-op="sdn-flows" hx-disabled-elt="this"{{ ai.attrs(aic, 'configure') }} title="One recorded AI call ({{ aic.model_words }}), capped; it reads this detection's evidence pack, proposes a catalogue action and sends nothing to a switch">{% if r.ai %}<span class="op-idle">Classify again</span><span class="op-busy">Classifying again…</span>{% else %}<span class="op-idle">Classify</span><span class="op-busy">Classifying…</span>{% endif %}</button>{{ how('sdn-flows', 'classify', compact=True, op='Classify') }}
+      {{ ai.reason(aic) }}
+    </form>
     <form class="op-act" hx-post="{{ url_for('sdn_v2.response_preview', rid=r.id) }}" hx-target="#sdn-rp-{{ r.id }}" hx-swap="innerHTML" hx-disabled-elt="find button">
       <input type="hidden" name="list" value="{{ g.network }}">
       <input type="hidden" name="action" value="{{ r.action }}">
-      <label class="small">for <input type="number" name="hard_timeout" min="1" max="{{ g.limits['values'].sdn_response_max_seconds if g.limits.ok else 3600 }}" value="{{ g.limits['values'].sdn_response_hard_timeout_seconds if g.limits.ok else 600 }}"> s</label>
+      {%- if r.params.source %}<input type="hidden" name="source" value="{{ r.params.source }}">{% endif %}
+      <label class="small">for <input type="number" name="hard_timeout" min="1" max="{{ g.limits['values'].sdn_response_max_seconds if g.limits.ok else 3600 }}" value="{{ r.params.hard_timeout or (g.limits['values'].sdn_response_hard_timeout_seconds if g.limits.ok else 600) }}"> s</label>
       {%- if r.action == 'rate_limit_source' %}
-      <label class="small">above <input type="number" name="rate" min="1" value="1000"></label>
-      <label class="small"><select name="unit"><option value="kbps">kbit/s</option><option value="pktps">packets/s</option></select></label>
-      <label class="small">burst <input type="number" name="burst" min="0" value="100"></label>
+      <label class="small">above <input type="number" name="rate" min="1" value="{{ r.params.rate or 1000 }}"></label>
+      <label class="small"><select name="unit"><option value="kbps"{% if r.params.unit == 'kbps' %} selected{% endif %}>kbit/s</option><option value="pktps"{% if r.params.unit == 'pktps' %} selected{% endif %}>packets/s</option></select></label>
+      <label class="small">burst <input type="number" name="burst" min="0" value="{{ r.params.burst if r.params.rate else 100 }}"></label>
       {%- endif %}
       <button class="btn btn-primary" type="submit" hx-disabled-elt="this" data-op="sdn-flows"{{ gate('confirm') }}><span class="op-idle">Preview the {{ r.label | lower }}…</span><span class="op-busy">Reading the switch…</span></button>{{ how('sdn-flows', compact=True, op='Preview a response') }}
     </form>
@@ -34,6 +55,9 @@
       <button class="btn" type="submit" hx-disabled-elt="this" data-op="sdn"{{ gate('configure') }}><span class="op-idle">Dismiss with this reason</span><span class="op-busy">Dismissing…</span></button>{{ how('sdn', 'responses', compact=True, op='Dismiss') }}
     </form>
   </div>
+  {%- if g.classify and g.classify.rid == r.id and not g.classify.ok %}
+  <p class="notice notice-warn small" role="alert">Couldn't classify: {{ g.classify.detail }}. The proposal above is unchanged.</p>
+  {%- endif %}
   <p class="faint small">Nothing is sent until you confirm the previewed requests. {{ g.verify_limit }}.</p>
   <div class="sdn-op-slot" id="sdn-rp-{{ r.id }}" role="region" aria-live="polite"></div>
 </section>
@@ -68,7 +92,7 @@
       {%- if g.loop.running %}<input type="hidden" name="run" value="stop"><button class="btn" type="submit" hx-disabled-elt="this" data-op="sdn"{{ gate('configure') }}><span class="op-idle">Stop</span><span class="op-busy">Stopping…</span></button>{{ how('sdn', 'responses', compact=True, op='Stop') }}
       {%- else %}<input type="hidden" name="run" value="start"><label class="small">every <input type="number" name="interval" min="5" max="600" value="10"> s</label> <button class="btn" type="submit" hx-disabled-elt="this" data-op="sdn"{{ gate('configure') }}><span class="op-idle">Start</span><span class="op-busy">Starting…</span></button>{{ how('sdn', 'responses', compact=True, op='Start') }}{% endif %}
     </form></div>
-  <p class="small faint">{% if g.loop.running %}Started by {{ g.loop.by }} {{ stamp(g.loop.since) }}: detect, classify (no AI call until cost safety is live, C1843), respond in the mode.{% elif g.loop.stopped %}{{ g.loop.stopped.words | capitalize }}, {{ stamp(g.loop.stopped.at) }}.{% else %}Not started on this network.{% endif %}</p>
+  <p class="small faint">{% if g.loop.running %}Started by {{ g.loop.by }} {{ stamp(g.loop.since) }}: detect, classify (an AI call only where an admin turned its background feature on for this network, in Settings › AI; otherwise the catalogue's default), respond in the mode.{% elif g.loop.stopped %}{{ g.loop.stopped.words | capitalize }}, {{ stamp(g.loop.stopped.at) }}.{% else %}Not started on this network.{% endif %}</p>
   {%- if g.log %}
   <pre class="mono sdn-log">{% for l in g.log %}{{ l.at[11:19] }} {{ l.step }}: {{ l.words }}
 {% endfor %}</pre>

@@ -70,10 +70,25 @@ CONTROLS = {
         "screen": "a device's Intent tab, Change it in words (board F7)",
         "beside": "the intent editor: Edit",
     },
+    "sdn_classify": {
+        "task": "sdn_classify",
+        "words": "Classify (an SDN detection)",
+        "endpoints": ("sdn_v2.response_classify",),
+        "template": "v2/_sdn_responses.html",
+        "screen": "SDN › Responses, a response awaiting a person",
+        "beside": "the response's Preview, its hard timeout and Dismiss with this reason",
+    },
 }
 
 #: Endpoints that reach the gateway without being an AI control of their own, each with why.
 ALSO_REACHES = {
+    "sdn_v2.loop_set": (
+        "Start runs the SDN loop's job (PHASE8_PLAN 17.1 S10), whose classify step is a "
+        "BACKGROUND call on each detection that fires (modules/sdn/loop.py), never a press: the "
+        "gateway refuses it, records the refusal and sends nothing unless an admin turned the "
+        "feature sdn_classify on for the network in Settings › AI, after its estimate, and it "
+        "is within its caps (PHASE8_PLAN 18.3). Start and Stop themselves need no AI and stay "
+        "usable; the person's own Classify is the sdn_classify control"),
     "settings_v2.install_replace": (
         "Replace… stores the AI card's key, then runs the card's Test "
         "(installation_settings.replace_secret, the irreversible tier); Replace… itself needs "

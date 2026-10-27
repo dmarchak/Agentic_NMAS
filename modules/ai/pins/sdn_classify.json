@@ -1,0 +1,14 @@
+{
+  "words": "Classify an SDN detection (SDN › Responses)",
+  "model": "claude-haiku-5-5",
+  "max_prompt_tokens": 24000,
+  "max_tokens": 2048,
+  "thinking": "off",
+  "temperature": null,
+  "why": {
+    "model": "Starts on Haiku 5.5, the smallest model (TESTING.md, 'Cost to performance'): it may become a background feature, called once per detection. Its recorded and held-out cases (tests/fixtures/ai_cases/sdn_classify/) then run on it and on Sonnet 5.5 as the ceiling (scripts/nmas-sdn-cases --model); pinned to the cheaper one that meets the Decision-maker floor, 95% reliable. Not measured yet.",
+    "max_prompt_tokens": "A scan's evidence is its detection, at most 50 flows (detect.SECTION_FLOWS), the coverage and the catalogue: the largest of the 24 recorded and held-out cases is 16,375 tokens by the gateway's over-estimate (3 characters a token; a scan's, its detection listing every flow id it rests on), the smallest 3,465. 24,000 leaves room for a larger switch, and is far under Haiku's long tier (100,000).",
+    "max_tokens": "Provisional, not measured: the answer is a short assessment and nine fields. The first measurement sets it to about 2.5x the largest output (C1757's rule).",
+    "thinking": "Off: one classification over a small evidence set, its reasoning the schema's first field. A measurement may ask adaptive for one run (gateway.ask's thinking) before this is settled."
+  }
+}

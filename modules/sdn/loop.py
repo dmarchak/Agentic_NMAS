@@ -1,19 +1,24 @@
 """The SDN closed loop as a job, one per network (PHASE8_PLAN 17.1 S10): detect, classify and
 respond in the network's mode, each pass logged, stoppable. Deterministic but for the classify
-step, which makes no AI call (below).
+step, the one AI call, which runs only where its feature is on (below).
 
 **A pass** (`run_pass`):
 1. AUTO's expiry, if it passed, recorded once (`modes.record_expiry`);
 2. `closed_loop.collect_threat_data(network)`, then `detect.observe` (each detection an alert
    with its evidence pack);
-3. for each detection that fired in this pass: **classify** (`closed_loop.classify_threat`,
-   called with a background trigger: it refuses, C1843, and makes no call), then the
-   catalogue's default action for the rule (`closed_loop.DEFAULT_ACTION`), marked as chosen in
-   code;
+3. for each detection that fired in this pass: **classify** (`closed_loop.classify_threat`)
+   as a BACKGROUND call, the job's, on that detection (`triggers.background("sdn_classify",
+   <job>, <network>, "detection", <its key>)`). The gateway refuses it, records the refusal
+   and sends nothing unless the feature is on for the network and within its caps
+   (`background.admit`, `over_cap`; off by default): then the catalogue's default action for
+   the rule is proposed (`closed_loop.DEFAULT_ACTION`), said as chosen in code. A
+   classification that passes the code's check proposes its catalogue action and parameters
+   instead; one proposing no catalogue action is kept for a person, never AUTO's;
 4. **respond in the mode** (`modes.decide`): in AUTO, an action within the allowed risk is
    previewed and applied through the flow-operation core as Mercury, recorded as autonomous
-   with the setting and its reason; otherwise (HITL, the default) the response is kept as
-   awaiting a person (`pending`), whose preview is built fresh when a person opens it;
+   with the setting and its reason, and with who chose the action; otherwise (HITL, the
+   default) the response is kept as awaiting a person (`pending`), with the classification
+   when there is one, its preview built fresh when a person opens it;
 5. a response's meter whose flows have expired is removed (`flow_ops.expire_meters`).
 
 **The log** (``sdn_loop.jsonl`` in the network's folder): one line per step of each pass, with
@@ -23,8 +28,10 @@ after its current pass, recording who and when. One loop per network: a second s
 refused, naming who started the first.
 
 **Pending responses** (``sdn_responses.jsonl``): ``proposed`` (the detection, the action, its
-risk, when), then one of ``confirmed`` (the operation that answered it), ``dismissed`` (by whom
-and why) or ``cleared`` (the detection resolved before anyone acted).
+risk, when, and the classification if the loop's call made one), then any number of
+``classified`` (a person's Classify: the classification, and the action it proposes), then one
+of ``confirmed`` (the operation that answered it), ``dismissed`` (by whom and why) or
+``cleared`` (the detection resolved before anyone acted).
 """
 
 import json
@@ -98,17 +105,44 @@ def log_lines(network: str, limit: int = 50) -> dict:
 # ───────────────────────────────────────────────────────────────────────────── pending
 
 def propose(network: str, detection: dict, action: str, risk: str, *, why: str,
-            now: float = None) -> dict:
+            now: float = None, classification: dict = None, params: dict = None,
+            classified: str = "") -> dict:
     """Keep a response awaiting a person. One per detection key: a second for a key already
-    awaiting is not added."""
+    awaiting is not added. *classification* the loop's AI classification, when one passed;
+    *params* the action's checked parameters; *classified* why there is none, in words."""
     now = time.time() if now is None else now
     for row in awaiting(network)["rows"]:
         if row.get("detection", {}).get("key") == detection.get("key"):
             return row
     row = {"kind": "proposed", "id": f"resp-{secrets.token_hex(5)}", "at": _iso(now),
-           "action": action, "risk": risk, "why": why, "detection": detection}
+           "action": action, "risk": risk, "why": why, "detection": detection,
+           "classification": classification, "params": dict(params or {}),
+           "classified": classified}
     _append(network, PENDING_FILE, row)
     return row
+
+
+def classified(network: str, response_id: str, got: dict, *, actor: str,
+               now: float = None) -> dict:
+    """Keep a person's classification (`closed_loop.classify_threat`'s passing answer *got*)
+    with the response awaiting them: its catalogue action and parameters become what is
+    proposed, and ``none`` keeps the action as it was (a person decides). The response stays
+    awaiting a person: nothing is sent."""
+    from modules.sdn import closed_loop
+
+    row = next((r for r in awaiting(network)["rows"] if r.get("id") == response_id), None)
+    if row is None:
+        raise ValueError(f"no response {response_id!r} is awaiting a person on {network}")
+    action = got.get("action") or ""
+    keep = action == closed_loop.NO_ACTION or action not in closed_loop.CATALOGUE
+    now = time.time() if now is None else now
+    out = {"kind": "classified", "id": response_id, "at": _iso(now), "actor": actor,
+           "classification": got.get("classification"),
+           "action": row.get("action") if keep else action,
+           "risk": row.get("risk") if keep else closed_loop.CATALOGUE[action]["risk"],
+           "params": dict(row.get("params") or {}) if keep else dict(got.get("params") or {})}
+    _append(network, PENDING_FILE, out)
+    return out
 
 
 def resolve(network: str, response_id: str, how: str, *, actor: str, why: str = "",
@@ -129,12 +163,17 @@ def resolve(network: str, response_id: str, how: str, *, actor: str, why: str = 
 
 
 def awaiting(network: str) -> dict:
-    """The responses awaiting a person, oldest first."""
+    """The responses awaiting a person, oldest first, each with its latest classification."""
     got = _read(network, PENDING_FILE)
     open_rows = {}
     for r in got["rows"]:
         if r.get("kind") == "proposed":
             open_rows[r["id"]] = r
+        elif r.get("kind") == "classified":
+            if r.get("id") in open_rows:
+                open_rows[r["id"]] = dict(open_rows[r["id"]], **{
+                    k: r.get(k) for k in ("classification", "action", "risk", "params")},
+                    classified_at=r.get("at"), classified_by=r.get("actor"))
         else:
             open_rows.pop(r.get("id"), None)
     return dict(got, rows=list(open_rows.values()))
@@ -142,11 +181,57 @@ def awaiting(network: str) -> dict:
 
 # ───────────────────────────────────────────────────────────────────────────── one pass
 
+def job_id(network: str, since: float = None) -> str:
+    """The loop's job id on *network*, what its background AI calls name (``job:<id>``): the
+    network's folder name, and the time the loop started when it is known."""
+    from modules.config import list_slug
+
+    stamp = time.strftime("-%Y%m%dT%H%M%SZ", time.gmtime(since)) if since else ""
+    return f"sdn-loop-{list_slug(network)}{stamp}"
+
+
+def classify(network: str, d: dict, job: str, *, send=None) -> dict:
+    """The pass's classify step for detection *d*: one background call through the gateway
+    (`closed_loop.classify_threat`), and what it proposes: ``{"action", "risk", "params",
+    "classification", "words", "person"}``. *person* True when only a person may act on it
+    (the AI proposed no catalogue action). The feature off, or any refusal: the catalogue's
+    default for the rule, said as chosen in code, with why."""
+    from modules.ai import triggers
+    from modules.config import list_slug
+    from modules.sdn import closed_loop
+
+    trigger = triggers.background(closed_loop.CLASSIFY_FEATURE, job, list_slug(network),
+                                  "detection", d.get("key") or "")
+    got = closed_loop.classify_threat(network, d, actor=triggers.actor_of(trigger),
+                                      trigger=trigger, send=send)
+    default = closed_loop.DEFAULT_ACTION[d["rule"]]
+    out = {"action": default, "risk": closed_loop.CATALOGUE[default]["risk"], "params": {},
+           "classification": None, "person": False}
+    if not got.get("ok"):
+        return dict(out, words=(f"no AI classification ({got.get('error')}: "
+                                f"{got.get('detail')}); proposed {default}, "
+                                f"{closed_loop.DEFAULT_WORDS}"))
+    c = got["classification"]
+    if got["action"] == closed_loop.NO_ACTION:
+        return dict(out, classification=c, person=True, words=(
+            f"AI call {got['call_id']}: {'a ' + c['threat_type'] if c['threat_detected'] else 'no'}"
+            f" threat, no catalogue action proposed; {default} is drawn for a person to decide, "
+            "never AUTO's"))
+    action = got["action"]
+    return dict(out, action=action, risk=closed_loop.CATALOGUE[action]["risk"],
+                params=got["params"], classification=c,
+                words=(f"AI call {got['call_id']}: a {c['threat_type']} threat, severity "
+                       f"{c['severity']}; proposed {action}, checked in code"))
+
+
 def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, now=time.time,
-             sleep=time.sleep, collect=None, observe=None) -> dict:
+             sleep=time.sleep, collect=None, observe=None, job: str = "", send=None) -> dict:
     """One pass of the loop (the module's docstring). ``{"ok", "error", "fired", "proposed",
-    "applied", "cleared", "lines"}``."""
+    "applied", "cleared", "lines"}``. *job* is the loop's id (`job_id`), what its background
+    AI calls name; *send* replaces the AI provider (tests)."""
     from modules.sdn import closed_loop, detect, flow_ops, modes
+
+    job = job or job_id(network)
 
     out = {"ok": False, "error": "", "fired": [], "proposed": [], "applied": [], "cleared": [],
            "lines": []}
@@ -178,17 +263,21 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
                     out["cleared"].append(row["id"])
         for d in fired:
             out["fired"].append(d["key"])
-            verdict = closed_loop.classify_threat(d, trigger="background")
-            action = closed_loop.DEFAULT_ACTION[d["rule"]]
-            risk = closed_loop.CATALOGUE[action]["risk"]
-            line("classify", f"{verdict['error']}; proposed {action} (risk {risk})")
+            verdict = classify(network, d, job, send=send)
+            action, risk, params = verdict["action"], verdict["risk"], verdict["params"]
+            line("classify", f"{verdict['words']} (risk {risk})")
             decision = modes.decide(network, risk, now())
+            if verdict["person"]:
+                decision = {"auto": False, "words": "the AI proposed no catalogue action, so a "
+                                                    "person decides"}
             if not decision["auto"]:
-                row = propose(network, d, action, risk, why=decision["words"], now=now())
+                row = propose(network, d, action, risk, why=decision["words"], now=now(),
+                              classification=verdict["classification"], params=params,
+                              classified=verdict["words"])
                 out["proposed"].append(row["id"])
                 line("respond", f"HITL, awaiting a person ({row['id']}): {decision['words']}")
                 continue
-            preview = closed_loop.respond_to_threat(network, d, action, driver=driver)
+            preview = closed_loop.respond_to_threat(network, d, action, params, driver=driver)
             if not preview["ok"]:
                 line("respond", f"AUTO could not preview {action}: {preview['error']}")
                 continue
@@ -196,7 +285,9 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
                 network, d, action, confirm={"ask": preview["ask"],
                                              "hash": preview["plan"]["hash"]},
                 actor="Mercury (AUTO)", actor_verified="system", mode="auto",
-                autonomous=decision["autonomous"], driver=driver, sleep=sleep, now=now)
+                autonomous=decision["autonomous"],
+                classified_by=closed_loop.classified_words(verdict["classification"], action),
+                driver=driver, sleep=sleep, now=now)
             out["applied"].append({"id": done.get("id"), "outcome": done.get("outcome")})
             line("respond", f"AUTO applied {action}: {done.get('outcome')}"
                             + (f" ({done.get('error')})" if done.get("error") else ""),
@@ -241,17 +332,18 @@ def start(network: str, *, actor: str, interval: float = DEFAULT_INTERVAL, drive
             raise ValueError(f"the loop on {network} is running, started by {job['by']} at "
                              f"{job['since']}")
         stop_event = threading.Event()
-        job = {"by": actor, "since": _iso(time.time()), "interval": interval,
-               "stop": stop_event}
+        started = time.time()
+        job = {"by": actor, "since": _iso(started), "interval": interval,
+               "stop": stop_event, "id": job_id(network, started)}
 
         def run():
             while not stop_event.is_set():
-                run_pass(network, driver=driver)
+                run_pass(network, driver=driver, job=job["id"])
                 stop_event.wait(interval)
 
         job["thread"] = threading.Thread(target=run, name=f"sdn-loop-{network}", daemon=True)
         _jobs[network] = job
-    say(network, "start", f"started by {actor}, every {interval:g} s")
+    say(network, "start", f"started by {actor}, every {interval:g} s, as job {job['id']}")
     job["thread"].start()
     return status(network)
 

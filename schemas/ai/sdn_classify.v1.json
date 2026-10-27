@@ -1,0 +1,138 @@
+{
+  "$defs": {
+    "ActionId": {
+      "enum": [
+        "drop_source",
+        "rate_limit_source",
+        "remove_flow",
+        "none"
+      ],
+      "title": "ActionId",
+      "type": "string"
+    },
+    "Parameters": {
+      "additionalProperties": false,
+      "description": "The action's parameters: the source address (drop and rate-limit), the flow's evidence\nid (remove), the hard timeout in seconds (0: the network's default), the rate (0: the\ncatalogue's default rate and burst), its unit and its burst.",
+      "properties": {
+        "burst": {
+          "title": "Burst",
+          "type": "integer"
+        },
+        "flow": {
+          "title": "Flow",
+          "type": "string"
+        },
+        "hard_timeout": {
+          "title": "Hard Timeout",
+          "type": "integer"
+        },
+        "rate": {
+          "title": "Rate",
+          "type": "integer"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "unit": {
+          "$ref": "#/$defs/RateUnit"
+        }
+      },
+      "required": [
+        "source",
+        "flow",
+        "hard_timeout",
+        "rate",
+        "unit",
+        "burst"
+      ],
+      "title": "Parameters",
+      "type": "object"
+    },
+    "RateUnit": {
+      "enum": [
+        "kbps",
+        "pktps"
+      ],
+      "title": "RateUnit",
+      "type": "string"
+    },
+    "Severity": {
+      "enum": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "Severity",
+      "type": "string"
+    },
+    "ThreatType": {
+      "enum": [
+        "port_scan",
+        "flood",
+        "unauthorised_flow",
+        "other",
+        "none"
+      ],
+      "title": "ThreatType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The lab's schema (threat_detected, threat_type, severity, affected_devices,\nrecommended_action, reasoning), the reasoning first, then the catalogue action, its\nparameters and the evidence ids it rests on.",
+  "properties": {
+    "action_id": {
+      "$ref": "#/$defs/ActionId"
+    },
+    "affected_devices": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Affected Devices",
+      "type": "array"
+    },
+    "evidence_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Evidence Refs",
+      "type": "array"
+    },
+    "parameters": {
+      "$ref": "#/$defs/Parameters"
+    },
+    "reasoning": {
+      "title": "Reasoning",
+      "type": "string"
+    },
+    "recommended_action": {
+      "title": "Recommended Action",
+      "type": "string"
+    },
+    "severity": {
+      "$ref": "#/$defs/Severity"
+    },
+    "threat_detected": {
+      "title": "Threat Detected",
+      "type": "boolean"
+    },
+    "threat_type": {
+      "$ref": "#/$defs/ThreatType"
+    }
+  },
+  "required": [
+    "reasoning",
+    "threat_detected",
+    "threat_type",
+    "severity",
+    "affected_devices",
+    "recommended_action",
+    "action_id",
+    "parameters",
+    "evidence_refs"
+  ],
+  "title": "ThreatAssessment",
+  "type": "object"
+}

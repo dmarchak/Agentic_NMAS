@@ -5,9 +5,9 @@ C1843).
 **A background feature** is an AI call no person pressed: a job's, on a finding deterministic
 code made (rule 5). `FEATURES` names each one: the task it calls (a `profiles.TASKS` pin), the
 finding kinds that may trigger it, its trigger in words, how many calls one finding makes at
-most, and where its trigger's frequency is measured. **None exists yet**: the SDN loop
-(PHASE8_PLAN 17.1 S10) is the first, and it adds its entry here; until then the gateway refuses
-every background call by name (`triggers.check`).
+most, and where its trigger's frequency is measured. The SDN loop's classify (PHASE8_PLAN 17.1
+S7 and S10, ``sdn_classify``) is the first; the gateway refuses a background call naming any
+other by name (`triggers.check`).
 
 **The switches** are one installation setting, ``ai_background``, keyed by network (a list's
 folder name) INSIDE, so a network never inherits another's switch: ``{network: {feature:
@@ -53,12 +53,23 @@ COST_WINDOW_DAYS = 30
 #: A month in the estimate's words: 30 days.
 MONTH_DAYS = 30
 
-#: Each background feature (none yet; the SDN loop, PHASE8_PLAN 17.1 S10, is the first):
-#: ``{name: {"task", "words", "trigger_words", "findings", "calls_per_finding",
-#: "frequency"}}``. *findings* are the finding kinds a trigger may name; *frequency* is
-#: ``"module:function"`` (or a callable), answering ``{"per_day": float | None, "basis": str}``
-#: for a network: how often its trigger fired, measured from the feature's own record.
-FEATURES: dict = {}
+#: Each background feature: ``{name: {"task", "words", "trigger_words", "findings",
+#: "calls_per_finding", "frequency"}}``. *findings* are the finding kinds a trigger may name;
+#: *frequency* is ``"module:function"`` (or a callable), answering ``{"per_day": float | None,
+#: "basis": str}`` for a network: how often its trigger fired, measured from the feature's own
+#: record. The SDN loop's classify (PHASE8_PLAN 17.1 S7, S10) is the first: one call per
+#: detection that fired in a pass, its frequency the network's SDN detections in its alert
+#: history (`closed_loop.detection_frequency`).
+FEATURES: dict = {
+    "sdn_classify": {
+        "task": "sdn_classify",
+        "words": "The SDN loop classifies each detection with AI",
+        "trigger_words": "a detection rule fires",
+        "findings": ("detection",),
+        "calls_per_finding": 1,
+        "frequency": "modules.sdn.closed_loop:detection_frequency",
+    },
+}
 
 
 class Refused(ValueError):

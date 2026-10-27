@@ -5,7 +5,8 @@ real Ryu driver and `tests.sdn_fakes.FakeRyu` seeded with Ryu's captured flow ta
 - **Flows' editor**: the form opens in place; its preview draws the exact requests and the hash
   and the hidden ask the confirm carries back; the confirm (a verified person) applies, verifies
   and records; a moved hash sends nothing; a prerequisite is refused naming the field.
-- **Responses**: a response awaiting a person is drawn with why no AI classified it; its
+- **Responses**: a response awaiting a person is drawn with who chose its action (the
+  catalogue's default, with no AI classification; tests/test_sdn_classify.py has the AI's); its
   preview is the plan's card; its confirm applies and closes it as confirmed; a dismissal needs
   its reason.
 - **The mode and the loop**: AUTO on with a reason and an expiry, off at once; the loop started
@@ -104,7 +105,8 @@ def test_a_response_awaiting_a_person_previews_confirms_and_closes(lab):
     row = LP.propose("Default", d, "drop_source", "low", why="HITL")
     c = lab["client"]
     html = unescape(c.get("/v2/sdn/responses?list=Default").get_data(as_text=True))
-    assert "1 awaiting approval" in html and "no AI call was made" in html
+    assert "1 awaiting approval" in html
+    assert "the catalogue's default for the rule, chosen in code (no AI classification)" in html
     assert "Preview the drop traffic from the source…" in html
     r = c.post(f"/v2/sdn/response/{row['id']}/preview", data={"list": "Default"})
     html = r.get_data(as_text=True)

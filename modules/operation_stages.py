@@ -425,6 +425,9 @@ HISTORY = {
                        "(modules/sdn/modes.py), never a device's",
     "sdn_v2.loop_set": "n/a: the loop's start and stop are kept in its log (modules/sdn/loop.py), "
                        "never a device's record",
+    "sdn_v2.response_classify": "n/a: one AI call, kept in the fleet's ai_calls record (its "
+                                "subject the detection); its proposal changes nothing until "
+                                "sdn_v2.response_confirm sends it",
     "settings_v2.records_save": NOT_A_DEVICE,
     "settings_v2.records_test": NOT_A_DEVICE,
     "settings_v2.records_replace": NOT_A_DEVICE,

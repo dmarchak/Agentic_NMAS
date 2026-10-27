@@ -209,6 +209,8 @@ OPERATIONS = {
     "intent-in-words": ("modules.ai.intent_words", "STEPS"),
     "privileged": ("modules.nsot.privileged", "STEPS"),
     "sdn-flows": ("modules.sdn.flow_ops", "STEPS"),
+    # PHASE8_PLAN 17.1 S7: Classify a detection with AI, on the same page as the response.
+    "sdn-classify": ("modules.sdn.closed_loop", "CLASSIFY_STEPS"),
     "save": ("modules.nsot.save_op", "STEPS"),
     "template-coverage": ("modules.nsot.template_coverage", "STEPS"),
     # Out-of-band ZTP (LAB9_PLAN.md section 8): the console survey and kick-start, on
@@ -224,6 +226,7 @@ OPERATIONS = {
 #: declared sequences on one page: onboarding's two phases and its ZTP form).
 OPERATION_PAGE = {"onboard-phase-two": "onboard", "onboard-ztp": "onboard",
                   "alert-explain": "alert-evidence",
+                  "sdn-classify": "sdn-flows",
                   "alert-rebuild": "alert-evidence",
                   "scheduled-rotation": "rotate",
                   "records-database-test": "records-database",

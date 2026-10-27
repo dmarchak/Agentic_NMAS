@@ -413,6 +413,9 @@ DECLARED = {
     "sdn_v2.response_dismiss": ("sdn",),
     "sdn_v2.mode_set": ("sdn",),
     "sdn_v2.loop_set": ("sdn",),
+    # PHASE8_PLAN 17.1 S7: a person's Classify is one recorded AI call, and its answer is kept
+    # with the response awaiting them (its proposed action can change).
+    "sdn_v2.response_classify": ("ai_calls", "sdn"),
     # A card's Test keeps nothing, but the AI card's is one recorded call (Phase 8).
     "settings_v2.install_test": ("ai_calls",),
     "v2.monitoring_alert_explain": ("ai_calls",),

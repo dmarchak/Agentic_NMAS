@@ -1,7 +1,6 @@
 """The SDN closed loop's named functions (PHASE8_PLAN 17.1 S13): what the loop reads, judges and
-does, in one module, so a report can show their code. `collect_threat_data` (S4) and
-`respond_to_threat` (S8) are here; `classify_threat` (S7) is the AI's, and until the cost-safety
-rules are live (C1843) it is a stub that refuses (below).
+does, in one module, so a report can show their code. `collect_threat_data` (S4),
+`classify_threat` (S7, the one AI step) and `respond_to_threat` (S8) are here.
 
 **`respond_to_threat(network, detection, ...)`** answers a detection (`detect`) with an action
 from the response catalogue (`CATALOGUE`), deterministic, through the flow-operation core
@@ -22,10 +21,19 @@ apply. The actions:
 Each action's parameters are checked against the evidence (the source is the detection's, the
 switch is the detection's, the timeout within the network's limit) before a request exists.
 
-**`classify_threat`** is a stub: background AI is not allowed until the cost-safety rules
-(C1843) give the gateway a trigger it can refuse, so it refuses, makes no call, and the loop
-(`loop.py`) proposes the catalogue's deterministic default for the rule instead
-(`DEFAULT_ACTION`), marked as such.
+**`classify_threat(network, detection, ...)`** asks a model, through the AI gateway, what a
+detection the rules already found is: the lab's schema (`ThreatAssessment`: threat_detected,
+threat_type, severity, affected_devices, recommended_action, reasoning), plus `action_id` from
+the catalogue (or ``none``), its parameters and the evidence ids it cites. Its evidence is the
+detection's evidence pack, its ``sdn`` section the topology class (sent only while the class is
+allowed for the network). **The model proposes; code checks; a person or AUTO decides**: the
+answer is checked against what was sent (`check_classification`), and a passing answer only
+changes which catalogue action is proposed, which then goes through HITL or AUTO exactly as the
+catalogue's default does. Two triggers reach it: the loop's (`loop.py`), a background call the
+gateway refuses unless the feature ``sdn_classify`` is on for the network and within its caps
+(PHASE8_PLAN 18.3; off by default), after which the loop proposes the catalogue's default for
+the rule (`DEFAULT_ACTION`), said as chosen in code; and a person's Classify on a response
+awaiting them (SDN › Responses).
 
 **`collect_threat_data(network)`** is deterministic and asks no AI. For every controller
 connection of *network* (`connections.connections`) it reads:
@@ -65,6 +73,9 @@ import json
 import logging
 import threading
 import time
+from enum import Enum
+
+from modules.ai.schemas import StrictModel, register
 
 log = logging.getLogger(__name__)
 
@@ -339,17 +350,299 @@ def _iso(epoch: float) -> str:
 
 # ───────────────────────────────────────────────────────────────────────────── classify (S7)
 
-#: Why the classifier makes no call yet: the gateway names no trigger (C1843).
-CLASSIFY_REFUSED = ("background AI is not allowed until cost safety is live (C1843): no AI call "
-                    "was made, and the response proposed is the catalogue's default for the "
-                    "rule, chosen in code")
+#: The task's pin (`profiles.TASKS`) and the background feature's name (`background.FEATURES`).
+CLASSIFY_FEATURE = "sdn_classify"
+CLASSIFY_PROMPT = ("sdn_classify", 1)
+#: The classifier's steps, each named on its How it works page (modules/manual.py).
+CLASSIFY_STEPS = (
+    ("pack", "the detection's evidence pack, as kept when it fired, its hash checked: a pack "
+             "changed since, or none kept, is refused and nothing is sent"),
+    ("egress", "the flows and port rates are the topology class: sent only while the class is "
+               "allowed for the network, else nothing is sent"),
+    ("ask", "one recorded, capped call through the AI gateway: a person's Classify, or the "
+            "loop's background call, which the gateway refuses unless the feature is on for "
+            "the network and within its caps"),
+    ("check", "in code: the action is the catalogue's and answers the detection's rule; the "
+              "source is one the detection saw, the flow the one it names, the timeout within "
+              "the network's ceiling; at least one evidence id is cited and every one cited was "
+              "sent; every affected device named was in the evidence. One that fails is refused "
+              "and nothing of it is used"),
+    ("propose", "the classification kept with the response awaiting a person and its action "
+                "proposed; nothing is sent: the response still goes through HITL (a person's "
+                "confirm by hash) or AUTO (within its allowed risk)"),
+)
+#: What a response proposed with no AI classification says (the feature off, or no answer).
+DEFAULT_WORDS = "the catalogue's default for the rule, chosen in code (no AI classification)"
+#: The action the classifier names when no catalogue action should run.
+NO_ACTION = "none"
 
 
-def classify_threat(detection: dict, *, trigger: str = "background") -> dict:
-    """S7's classifier, not yet built: it refuses and makes no call (see the module's
-    docstring). ``{"ok": False, "refused": True, "error", "trigger"}``."""
-    return {"ok": False, "refused": True, "error": CLASSIFY_REFUSED, "trigger": trigger,
-            "rule": (detection or {}).get("rule")}
+def _canon(name) -> str:
+    """A name as compared: an address in its compressed form, anything else lower-case."""
+    import ipaddress
+
+    text = str(name or "").strip()
+    try:
+        return ipaddress.ip_address(text).compressed
+    except ValueError:
+        return text.lower()
+
+
+def _sdn_section(pack: dict) -> dict:
+    from modules import evidence_pack as EP
+
+    return next((s for s in (pack or {}).get("sections") or []
+                 if s.get("name") == EP.SDN_SECTION), {})
+
+
+def sent_evidence(section: dict) -> dict:
+    """What the classifier is given of a pack's sdn section, and what its answer may name:
+    ``{"detection", "pieces", "ids", "names", "sources"}``. *ids* every evidence id sent (each
+    piece's, and those the detection lists); *names* what an affected device may be (the
+    switch's DPID, every host address the evidence holds); *sources* the addresses the
+    detection saw sending."""
+    pieces = list(section.get("pieces") or [])
+    det = next((p for p in pieces if p.get("kind") == "detection"), {})
+    ids = {p["id"] for p in pieces if p.get("id")} | set(det.get("evidence") or [])
+    names = {_canon(det.get("dpid"))} if det.get("dpid") else set()
+    for addr in [det.get("source")] + list(det.get("targets") or []):
+        if addr:
+            names.add(_canon(addr))
+    for p in pieces:
+        if p.get("kind") == "flow":
+            for k, v in (p.get("match") or {}).items():
+                if k.startswith(("ipv4_", "ipv6_")) and isinstance(v, str) and "/" not in v:
+                    names.add(_canon(v))
+        if p.get("kind") == "sighting" and p.get("dst"):
+            names.add(_canon(p["dst"]))
+    names.discard("")
+    return {"detection": det, "pieces": [p for p in pieces if p is not det], "ids": ids,
+            "names": sorted(names), "sources": [s for s in [det.get("source")] if s]}
+
+
+def check_classification(answer, detection: dict, sent: dict, limits: dict) -> tuple:
+    """``(why, params)``: why the answer is refused ("" when it passes), and the action's
+    parameters as `build_response` takes them. Compared in code with what was sent: the
+    action is the catalogue's and answers the detection's rule; no threat proposes no action;
+    the source is one the detection saw (its address compared in canonical form), the flow
+    the one it names, the hard timeout within the network's ceiling; at least one evidence id
+    is cited and every one cited was sent; every affected device was in the evidence."""
+    action = answer.action_id.value
+    p = answer.parameters
+    refs = list(answer.evidence_refs or [])
+    if not refs:
+        return "it cites no evidence id: an answer must rest on what it was given", {}
+    stray = [r for r in refs if r not in sent["ids"]]
+    if stray:
+        return (f"it cites {', '.join(stray[:3])}{' and more' if len(stray) > 3 else ''}, "
+                "which the evidence sent does not hold"), {}
+    names = set(sent["names"])
+    unknown = [d for d in answer.affected_devices if _canon(d) not in names]
+    if unknown:
+        return (f"it names {', '.join(unknown[:3])} as affected, which the evidence does not "
+                f"name (it names {', '.join(sent['names']) or 'nothing'})"), {}
+    if not answer.threat_detected and action != NO_ACTION:
+        return f"it finds no threat and proposes {action}", {}
+    if action == NO_ACTION:
+        return "", {}
+    rule = (detection or {}).get("rule") or sent["detection"].get("rule")
+    if rule not in CATALOGUE[action]["rules"]:
+        return (f"{action} answers {', '.join(CATALOGUE[action]['rules'])}, not the "
+                f"detection's rule {rule}"), {}
+    params = {}
+    if action in ("drop_source", "rate_limit_source"):
+        seen = [_canon(s) for s in _sources(detection or {}) if _canon(s) in names] or \
+            [_canon(s) for s in sent["sources"]]
+        if _canon(p.source) not in seen:
+            return (f"its source {p.source!r} is not one the detection saw "
+                    f"({', '.join(seen) or 'none'})"), {}
+        params["source"] = _canon(p.source)
+    if action == "remove_flow":
+        subject = ((detection or {}).get("subject") or {}).get("value")
+        if p.flow != subject:
+            return f"its flow {p.flow!r} is not the one the detection names ({subject})", {}
+    ceiling = limits["sdn_response_max_seconds"]
+    if p.hard_timeout:
+        if not 1 <= p.hard_timeout <= ceiling:
+            return (f"its hard timeout {p.hard_timeout} s is outside 1 to {ceiling} s (the "
+                    "network's sdn_response_max_seconds)"), {}
+        params["hard_timeout"] = p.hard_timeout
+    if action == "rate_limit_source" and p.rate:
+        if p.rate < 0 or p.burst < 0:
+            return f"its rate {p.rate} and burst {p.burst} are not 0 or more", {}
+        params.update(rate=p.rate, unit=p.unit.value, burst=p.burst)
+    return "", params
+
+
+def detection_pack(network: str, key: str) -> tuple:
+    """``(pack or None, why)``: the evidence pack kept when detection *key* fired on
+    *network*: the one its firing entry names, else (it resolved since) the newest SDN pack of
+    the network whose alert is that detection."""
+    from modules import evidence_pack as EP
+    from modules.sdn import detect
+
+    got = detect.read_state()
+    pid = ""
+    if got["state"] == "ok":
+        net = (got["doc"].get("networks") or {}).get(network) or {}
+        pid = ((net.get("firing") or {}).get(key) or {}).get("pack") or ""
+    if pid:
+        pack, _state, _err = EP.find(pid)
+        if pack is not None:
+            return pack, ""
+    packs = EP.read()
+    if packs["state"] == "unreadable":
+        return None, f"the evidence packs cannot be read ({packs['error']})"
+    for pack in reversed(packs["rows"]):
+        if pack.get("store") != detect.STORE or pack.get("network") != network:
+            continue
+        alert = next((s for s in pack.get("sections") or [] if s.get("name") == "alert"), {})
+        if any(p.get("fingerprint") == key for p in alert.get("pieces") or []):
+            return pack, ""
+    return None, f"no evidence pack was kept for the detection {key} on {network}"
+
+
+def classify_threat(network: str, detection: dict, *, actor: str, trigger: dict, send=None,
+                    today: str = None) -> dict:
+    """S7: classify *detection* (`detect`'s) on *network* with AI, through the gateway, as
+    *actor* with *trigger* (`triggers.person` for a person's Classify, `triggers.background`
+    for the loop's call; the gateway refuses the latter unless the feature is on for the
+    network). Its evidence is the pack kept when it fired (`detection_pack`); see
+    `classify_pack` for the answer."""
+    pack, why = detection_pack(network, (detection or {}).get("key") or "")
+    if pack is None:
+        return {"ok": False, "error": "no_pack", "detail": f"{why}; nothing was sent",
+                "call_id": "", "cost_usd": 0.0}
+    return classify_pack(network, detection, pack, actor=actor, trigger=trigger, send=send,
+                         today=today)
+
+
+def classify_pack(network: str, detection: dict, pack: dict, *, actor: str, trigger: dict,
+                  send=None, today: str = None, prompt: tuple = CLASSIFY_PROMPT,
+                  intact: bool = True) -> dict:
+    """`classify_threat` with its pack in hand (a stored one, or a recorded case's,
+    scripts/nmas-sdn-cases). In order (`CLASSIFY_STEPS`): the pack's hash (*intact* False is a
+    case's section, never hashed); the classification marking and the topology class; the
+    network's response limits; one call through the gateway; the answer checked in code
+    (`check_classification`). The model proposes and never confirms.
+
+    ``{"ok", "error", "detail", "call_id", "cost_usd", "classification", "action", "params",
+    "pack_id"}``: *classification* what is shown and kept (the answer's fields, the call's id,
+    model and cost); *action* the catalogue action proposed, or ``none``; *params* its checked
+    parameters. Refused: *error* names the kind (the gateway's own, ``changed``,
+    ``classified``, ``withheld``, ``limits`` or ``couldnt_classify``)."""
+    from modules import evidence_pack as EP
+    from modules.ai import calls, egress_classes, gateway, profiles
+    from modules.sdn import flow_ops
+
+    pack_id = (pack or {}).get("id") or ""
+    out = {"ok": False, "error": "", "detail": "", "call_id": "", "cost_usd": 0.0,
+           "classification": None, "action": "", "params": {}, "pack_id": pack_id}
+    if intact and not EP.intact(pack):
+        return dict(out, error="changed", detail="the evidence pack's hash does not match: it "
+                    "changed since it was kept, so it is not classified; nothing was sent")
+    marked = egress_classes.classification_marking(network)
+    if marked:
+        return dict(out, error="classified", detail=f"{network} carries the classification "
+                    f"marking {marked!r}, which forces AI off; nothing was sent")
+    gate = egress_classes.topology_allowed(network)
+    if not gate["allowed"]:
+        return dict(out, error="withheld", detail="the detection's flows and port rates are the "
+                    f"topology class, and {gate['why']}; nothing was sent")
+    limits = flow_ops.settings_of(network)
+    if not limits["ok"]:
+        return dict(out, error="limits", detail=f"{limits['error']}; nothing was sent")
+    section = _sdn_section(pack)
+    sent = sent_evidence(section)
+    if not sent["detection"]:
+        return dict(out, error="no_pack", detail="the pack holds no SDN detection to classify; "
+                    "nothing was sent")
+    schema = ThreatAssessment
+    v = limits["values"]
+    data = {
+        "detection": json.dumps(sent["detection"], sort_keys=True, separators=(",", ":")),
+        "evidence": json.dumps({"pieces": sent["pieces"], "counts": section.get("counts"),
+                                "total_flows": section.get("total"),
+                                "subset": bool(section.get("subset"))},
+                               sort_keys=True, separators=(",", ":")),
+        "names": json.dumps(sent["names"]),
+        "limits": json.dumps({"hard_timeout_default_s": v["sdn_response_hard_timeout_seconds"],
+                              "hard_timeout_max_s": v["sdn_response_max_seconds"],
+                              "rate_limit_default": RATE_LIMIT_DEFAULT}, sort_keys=True),
+    }
+    context = {"catalogue": json.dumps(catalogue_for_ai(), sort_keys=True,
+                                       separators=(",", ":"))}
+    subject = {"kind": "sdn_detection", "id": (detection or {}).get("key") or "",
+               "rule": (detection or {}).get("rule") or "", "devices": []}
+    got = gateway.ask(CLASSIFY_FEATURE, tuple(prompt), schema, data, actor=actor,
+                      trigger=trigger, context=context, send=send, today=today,
+                      subject=subject, network=network)
+    out.update(call_id=got.get("call_id", ""), cost_usd=got.get("cost_usd", 0.0))
+    if not got["ok"]:
+        return dict(out, error=got["error"], detail=got.get("detail", ""))
+    answer = got["output"]
+    why, params = check_classification(answer, detection, sent, v)
+    links = {"page": "/v2/sdn/responses", "anchor": f"sdn-c-{subject['id']}"}
+    if why:
+        calls.record_use(got["call_id"], "refused by validation", actor=actor, detail=why,
+                         links=links)
+        return dict(out, error="couldnt_classify",
+                    detail=f"couldn't classify: {why}; nothing of the answer is used")
+    action = answer.action_id.value
+    calls.record_use(got["call_id"], f"proposed: {action}" if action != NO_ACTION
+                     else "shown: no catalogue action", actor=actor, links=links)
+    shown = answer.model_dump(mode="json")
+    shown.update(call_id=got["call_id"], cost_usd=got.get("cost_usd", 0.0),
+                 model=profiles.TASKS[CLASSIFY_FEATURE]["model"],
+                 trigger=(trigger or {}).get("kind", ""), params=params)
+    return dict(out, ok=True, classification=shown, action=action, params=params)
+
+
+def catalogue_for_ai() -> list:
+    """The response catalogue as the classifier is given it: each action's id, what it does,
+    its risk, the rules it answers and the parameters it takes; and ``none``."""
+    takes = {"drop_source": ["source", "hard_timeout"],
+             "rate_limit_source": ["source", "hard_timeout", "rate", "unit", "burst"],
+             "remove_flow": ["flow"]}
+    out = [{"action_id": k, "label": e["label"], "does": e["words"], "risk": e["risk"],
+            "answers": list(e["rules"]), "parameters": takes[k]} for k, e in CATALOGUE.items()]
+    out.append({"action_id": NO_ACTION, "label": "No catalogue action",
+                "does": "nothing is proposed; a person decides", "risk": "none",
+                "answers": list(DEFAULT_ACTION), "parameters": []})
+    return out
+
+
+def detection_frequency(network: str, now: float = None, days: int = 30) -> dict:
+    """How often a detection rule fired on *network* (a list's folder name), for the
+    background feature's estimate (`background.FEATURES`): ``{"per_day", "basis"}``, from the
+    network's own detection history, the SDN transitions in the alert history over the last
+    *days* days. Measured over the days the history covers (from its first SDN row in the
+    window, at least one); with no SDN row for the network, unknown (None), never guessed."""
+    from modules import alert_history
+    from modules.config import list_slug
+    from modules.sdn import detect
+
+    now = time.time() if now is None else now
+    got = alert_history.read()
+    if got["state"] == "unreadable":
+        return {"per_day": None, "basis": ("unknown: the alert history cannot be read "
+                                           f"({got['error']})")}
+    since = now - days * 86400
+    rows = [r for r in alert_history.transitions(got["rows"])
+            if r.get("store") == detect.STORE
+            and network in {list_slug(n) for n in r.get("networks") or []}]
+    stamped = [(alert_history.epoch(r.get("at")), r) for r in rows]
+    stamped = [(t, r) for t, r in stamped if t is not None and t >= since]
+    if not stamped:
+        return {"per_day": None, "basis": (f"unknown: no SDN detection is in {network}'s alert "
+                                           f"history in the last {days} days (the loop has not "
+                                           "run there, or nothing fired)")}
+    fired = sum(1 for _t, r in stamped if r.get("to") == "condition")
+    first = min(t for t, _r in stamped)
+    span = max((now - first) / 86400, 1.0)
+    return {"per_day": round(fired / span, 3),
+            "basis": (f"measured: {fired} detection(s) fired on {network} over the "
+                      f"{span:.1f} day(s) its alert history covers since {_iso(first)}")}
 
 
 # ───────────────────────────────────────────────────────────────────────────── respond (S8)
@@ -594,7 +887,7 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
 def respond_to_threat(network: str, detection: dict, action_id: str = None,
                       params: dict = None, *, confirm: dict = None, actor: str = "",
                       actor_verified: str = "", mode: str = "hitl", autonomous: dict = None,
-                      driver=None, **apply_kwargs) -> dict:
+                      classified_by: str = DEFAULT_WORDS, driver=None, **apply_kwargs) -> dict:
     """S8: answer *detection* with a catalogue action, through the flow-operation core.
 
     Without *confirm*: the PREVIEW, writing nothing: ``{"ok", "error", "action", "risk",
@@ -602,7 +895,8 @@ def respond_to_threat(network: str, detection: dict, action_id: str = None,
     With *confirm* ``{"ask", "hash"}`` (the preview's ask, carried back unchanged, and the hash
     the person confirmed): the APPLY (`flow_ops.apply`), as *actor*, in *mode* (``hitl``: a
     person's confirm; ``auto``: *autonomous* names the setting and its reason), recorded with
-    the detection it answers."""
+    the detection it answers and *classified_by*, who chose the action: the catalogue's
+    default in code, or the AI call that proposed it (`classified_words`)."""
     from modules.sdn import flow_ops
 
     if confirm is None:
@@ -616,7 +910,71 @@ def respond_to_threat(network: str, detection: dict, action_id: str = None,
         return {"ok": False, "error": "a confirm carries the previewed ask", "outcome": "refused"}
     response = {"kind": "response", "action": action_id, "risk": CATALOGUE.get(
         action_id or "", {}).get("risk", ""), "detection": ask.get("detection") or {},
-        "classified_by": "the catalogue's default (no AI: C1843)"}
+        "classified_by": classified_by or DEFAULT_WORDS}
     return flow_ops.apply(network, ask, (confirm or {}).get("hash", ""), actor=actor,
                           actor_verified=actor_verified, mode=mode, autonomous=autonomous,
                           response=response, driver=driver, **apply_kwargs)
+
+
+def classified_words(classification: dict, action: str) -> str:
+    """Who chose *action* for a response: the AI call that proposed it (its id and model), when
+    *classification* is kept and proposes that action; else the catalogue's default."""
+    c = classification or {}
+    if c.get("call_id") and c.get("action_id") == action:
+        return f"proposed by AI call {c['call_id']} ({c.get('model', '')}), checked in code"
+    return DEFAULT_WORDS
+
+
+# ───────────────────────────────────────────────────────────────────────────── classify's schema
+
+class ThreatType(str, Enum):
+    port_scan = "port_scan"
+    flood = "flood"
+    unauthorised_flow = "unauthorised_flow"
+    other = "other"
+    none = "none"
+
+
+class Severity(str, Enum):
+    none = "none"
+    low = "low"
+    medium = "medium"
+    high = "high"
+    critical = "critical"
+
+
+#: The catalogue's actions and ``none``, as the classifier may name them.
+ActionId = Enum("ActionId", {a: a for a in (*CATALOGUE, NO_ACTION)}, type=str)
+
+
+class RateUnit(str, Enum):
+    kbps = "kbps"
+    pktps = "pktps"
+
+
+class Parameters(StrictModel):
+    """The action's parameters: the source address (drop and rate-limit), the flow's evidence
+    id (remove), the hard timeout in seconds (0: the network's default), the rate (0: the
+    catalogue's default rate and burst), its unit and its burst."""
+    source: str
+    flow: str
+    hard_timeout: int
+    rate: int
+    unit: RateUnit
+    burst: int
+
+
+@register("sdn_classify", 1)
+class ThreatAssessment(StrictModel):
+    """The lab's schema (threat_detected, threat_type, severity, affected_devices,
+    recommended_action, reasoning), the reasoning first, then the catalogue action, its
+    parameters and the evidence ids it rests on."""
+    reasoning: str
+    threat_detected: bool
+    threat_type: ThreatType
+    severity: Severity
+    affected_devices: list[str]
+    recommended_action: str
+    action_id: ActionId
+    parameters: Parameters
+    evidence_refs: list[str]

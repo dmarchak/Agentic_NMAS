@@ -158,6 +158,9 @@ def _pages(world):
 
 #: Drawn only for a device with committed intent: `test_the_intent_tab_calls_no_model`'s.
 INTENT_PAGES = {"intent_in_words": ["/v2/device/s1?tab=intent&list=Lab"]}
+#: Drawn only on a response awaiting a person: `test_sdn_responses_call_no_model`'s.
+SDN_PAGES = {"sdn_classify": ["/v2/sdn/responses?list=Default",
+                              "/v2/sdn/view?tab=responses&list=Default"]}
 
 
 def _count_ai(monkeypatch) -> dict:
@@ -207,7 +210,7 @@ def test_loading_and_refreshing_every_page_with_an_ai_control_calls_no_model(wor
     assert len(world.sent) == 1
     seen = _count_ai(monkeypatch)
     pages = _pages(world)
-    assert set(pages) | set(INTENT_PAGES) == set(controls.CONTROLS), \
+    assert set(pages) | set(INTENT_PAGES) | set(SDN_PAGES) == set(controls.CONTROLS), \
         "every registered control names its pages"
     drawn = _load_each(c, pages)
     assert drawn == set(pages), f"pages that drew no control: {set(pages) - drawn}"
@@ -229,4 +232,29 @@ def test_the_intent_tab_calls_no_model(host, monkeypatch, tmp_path):  # noqa: F8
     monkeypatch.setattr(calls, "_path", lambda: str(tmp_path / "ai_calls.jsonl"))
     seen = _count_ai(monkeypatch)
     assert _load_each(host["client"], INTENT_PAGES) == set(INTENT_PAGES)
+    assert seen == {"asked": [], "sends": []}
+
+
+def test_sdn_responses_call_no_model(tmp_path, monkeypatch):
+    """SDN › Responses with a scan awaiting a person (PHASE8_PLAN 17.1 S7), hosted AI allowed
+    and a key set: drawing Classify asks no model."""
+    import app as APP
+    from modules.ai import calls
+    from modules.sdn import loop
+    from modules.settings_schema import write_settings
+    from tests.test_sdn_connections import make_networks
+
+    make_networks(tmp_path, monkeypatch)
+    assert write_settings({"ai_hosted": {"by": "operator@example.com",
+                                         "at": "2026-10-27T00:00:00Z",
+                                         "reason": "the lab's proof of concept"}})["ok"]
+    monkeypatch.setattr(gateway, "_api_key", lambda: "sk-planted-entry-points-0123456789")
+    monkeypatch.setattr("modules.ai.controls._key_set", lambda: True)
+    monkeypatch.setattr(calls, "_path", lambda: str(tmp_path / "ai_calls.jsonl"))
+    loop.propose("Default", {"key": "k1", "rule": "scan", "title": "SDN scan",
+                             "dpid_hex": "0000000000000001", "source": "192.0.2.1",
+                             "words": "192.0.2.1 reached 25 ports"}, "drop_source", "low",
+                 why="HITL")
+    seen = _count_ai(monkeypatch)
+    assert _load_each(APP.app.test_client(), SDN_PAGES) == set(SDN_PAGES)
     assert seen == {"asked": [], "sends": []}

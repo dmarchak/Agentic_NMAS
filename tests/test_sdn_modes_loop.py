@@ -5,8 +5,10 @@ PHASE8_PLAN 17.1 S9 and S10, 17.4), no network, a fake clock.
 - **AUTO** is turned on only by a verified person, with a reason, an expiry no more than a day
   away and a known risk class; it allows only catalogue actions within its class; at its expiry
   the mode is HITL again and the record says so once; off is one action.
-- **The loop's pass**: detect; classify REFUSES and makes no AI call (C1843: the gateway names
-  no trigger yet), proposing the catalogue's default in code; in HITL each new detection is
+- **The loop's pass**: detect; classify is a background AI call the gateway refuses while hosted
+  AI or the feature is off (the default), so no provider request is made and the catalogue's
+  default is proposed, chosen in code (tests/test_sdn_classify.py: the feature on); in HITL
+  each new detection is
   kept awaiting a person (one per detection), cleared when its detection resolves; in AUTO an
   action within the risk class is applied through the flow-operation core as Mercury, recorded
   autonomous with the setting and its reason; one above it stays HITL.
@@ -80,10 +82,22 @@ def test_off_is_one_action_at_once(networks):  # noqa: F811
         MD.turn_off(NET, actor="admin@example.com", now=T0 + 7)
 
 
-def test_classify_refuses_and_makes_no_call():
-    got = CL.classify_threat({"rule": "scan"})
-    assert got["ok"] is False and got["refused"] is True
-    assert "background AI is not allowed until cost safety is live (C1843)" in got["error"]
+def test_classify_refuses_and_makes_no_call(networks, monkeypatch, tmp_path):  # noqa: F811
+    """The loop's classify is a background call (C1843 live): with hosted AI off, the default,
+    the gateway refuses it before anything is read or sent, and records the refusal under the
+    loop's job; no provider request is made (tests/test_sdn_classify.py holds the rest)."""
+    from modules.ai import calls, triggers
+    from tests.test_sdn_classify import SCAN, detection_of, keep_pack
+    monkeypatch.setattr(calls, "_path", lambda: str(tmp_path / "ai_calls.jsonl"))
+    keep_pack(SCAN)
+    d = detection_of(SCAN)
+    t = triggers.background("sdn_classify", "sdn-loop-default", "default", "detection", d["key"])
+    got = CL.classify_threat(NET, d, actor=triggers.actor_of(t), trigger=t,
+                             send=lambda body, key: pytest.fail("a provider request was made"))
+    assert (got["ok"], got["error"]) == (False, "ai_off")
+    (row,) = calls.read()["rows"]
+    assert row["verdict"] == "ai_off" and row["trigger"]["kind"] == "background"
+    assert row["actor"] == "job:sdn-loop-default"
 
 
 # ───────────────────────────────────────────────────────────────────────────── the pass
@@ -115,7 +129,8 @@ def test_a_pass_in_hitl_keeps_one_response_awaiting_a_person(networks, monkeypat
     assert row["action"] == "drop_source" and row["risk"] == "low"
     steps = [line["step"] for line in out["lines"]]
     assert steps == ["read", "detect", "classify", "respond"]
-    assert "no AI call was made" in out["lines"][2]["words"]
+    assert "no AI classification" in out["lines"][2]["words"]
+    assert "chosen in code" in out["lines"][2]["words"]
     LP.run_pass(NET, collect=collected, observe=observed(fired=["k1"]), now=lambda: T0 + 10,
                 driver=lambda n, c: {"ok": False, "error": "unused"})
     assert len(LP.awaiting(NET)["rows"]) == 1

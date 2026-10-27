@@ -70,7 +70,48 @@ response adds carries a hard timeout (600 seconds unless you set another in the 
 the network's ceiling), so a mistaken response expires by itself; its meter is removed by Mercury
 once those flows have expired.
 
-No AI classifies a detection yet: background AI calls are not allowed until cost safety is live,
-and the card says so. In **HITL** (the default) a response waits for you on SDN › Responses. In
-**AUTO**, which a person turns on for one network with a reason and an expiry, the loop applies
-only actions within the allowed risk, each recorded as autonomous with that reason.
+The action proposed is the catalogue's default for the rule, chosen in code, unless an AI
+classification proposed another (below). In **HITL** (the default) a response waits for you on
+SDN › Responses. In **AUTO**, which a person turns on for one network with a reason and an
+expiry, the loop applies only actions within the allowed risk, each recorded as autonomous with
+that reason and with who chose the action.
+
+## Classify a detection with AI {#classify}
+
+**Classify** on a response awaiting you asks a model what the detection is: whether it is a
+threat, its kind (a port scan, a flood, an unauthorised flow, another, or none), how severe, the
+hosts and switch it touches, what it recommends and why, and which catalogue action fits, with
+its parameters and the evidence it rests on. It is one recorded AI call as you, capped like
+every AI call; History lists it under AI calls. The rules found the detection; the model only
+advises, and nothing is sent to a switch until you preview and confirm the response as before.
+
+The loop can ask the same question by itself for each detection it finds, but only where an
+admin turned the background feature **The SDN loop classifies each detection with AI** on for
+this network, after seeing its estimate (calls a day from the network's own detection history,
+and their cost), with its own day and month caps. It is off by default, and while it is off the
+loop records the refusal, sends nothing and proposes the catalogue's default. **The screen that
+turns it on, Settings › AI, is not built yet**: until it is, the feature stays off on every
+network, and Classify is a press of yours.
+
+1. `pack`: the detection's evidence pack, as kept when it fired, its hash checked. A pack that
+   changed since, or none kept, is refused and nothing is sent.
+2. `egress`: the flows and port rates are the network's topology class, so they are sent only
+   while that class is allowed for the network; otherwise nothing is sent, and the card says
+   why.
+3. `ask`: one call through the AI gateway: the detection, its flows and port rates with their
+   evidence ids, the names a device may be given, the network's response timeouts, and the
+   response catalogue. The loop's call is refused unless its feature is on and within its caps.
+4. `check`: Mercury checks the answer in code before anything of it is used: the action is in
+   the catalogue and answers the detection's rule; a source is one the detection saw; a flow is
+   the one it names; a hard timeout is within the network's ceiling; at least one evidence id is
+   cited, and every one cited was sent; every affected device is one the evidence names. An
+   answer that fails is refused, saying which check, and the proposal stays as it was.
+5. `propose`: the classification is drawn on the response's card (marked AI, with the model,
+   the cost and the call) and its action becomes the one proposed, with its parameters filled
+   into the preview. An answer that finds no threat, or proposes no catalogue action, leaves the
+   action for you to decide, and the loop never applies such a response in AUTO.
+
+**What it never does:** it never confirms, never sends a request, and never changes the
+response's timeouts beyond the network's ceiling. A refusal from the gateway (hosted AI off, no
+key, a cap reached) is drawn beside **Classify**, which is shown disabled with the reason while
+AI cannot answer; Preview and Dismiss stay usable.

@@ -48,7 +48,7 @@ def preview(network: str, kind: str, ask: dict, plan: dict, extra: dict = None) 
 
 def response_preview(network: str, row: dict, got: dict) -> dict:
     """A response's preview: the plan's card with the detection, the action and its risk, and
-    why no AI classified it."""
+    who chose the action (the AI call that proposed it, or the catalogue's default)."""
     from modules.sdn import closed_loop
 
     params = got.get("params") or {}
@@ -56,7 +56,8 @@ def response_preview(network: str, row: dict, got: dict) -> dict:
              "detection": {"words": (row.get("detection") or {}).get("words", "")},
              "params": {k: params[k] for k in PARAMS_DRAWN if k in params},
              "label": closed_loop.CATALOGUE.get(got.get("action") or "", {}).get("label", ""),
-             "classified": closed_loop.CLASSIFY_REFUSED}
+             "classified": closed_loop.classified_words(row.get("classification"),
+                                                        got.get("action") or "")}
     if not got.get("ok") or not got.get("plan"):
         return dict(refused(network, "response", got.get("error") or "refused"), **extra)
     return preview(network, "response", got["ask"], got["plan"], extra)
@@ -99,6 +100,29 @@ def carried_ask(form) -> tuple:
     return ask, ""
 
 
+def _classification(row: dict):
+    """A response's AI classification as the card draws it (board SdnResponses' AI box), or
+    None: its threat, severity, type, the devices it names, its recommendation and reasoning,
+    the catalogue action it proposed (``none``: a person decides) and its parameters, the
+    evidence ids it cites, and the call (its id, model, cost, and whose: the loop's or a
+    person's, who and when)."""
+    c = row.get("classification")
+    if not isinstance(c, dict):
+        return None
+    from modules.ai import profiles
+    model = c.get("model") or ""
+    words = profiles.MODELS.get(model, {}).get("words", model)
+    return {"threat_detected": bool(c.get("threat_detected")),
+            "threat_type": (c.get("threat_type") or "").replace("_", " "),
+            "severity": c.get("severity") or "", "devices": list(c.get("affected_devices") or []),
+            "recommended": c.get("recommended_action") or "", "reasoning": c.get("reasoning") or "",
+            "action": c.get("action_id") or "", "params": dict(c.get("params") or {}),
+            "refs": list(c.get("evidence_refs") or []), "call_id": c.get("call_id") or "",
+            "model": words, "cost_usd": float(c.get("cost_usd") or 0.0),
+            "by": ("a person" if c.get("trigger") == "person" else "the loop"),
+            "who": row.get("classified_by") or "", "at": row.get("classified_at") or row.get("at")}
+
+
 def responses_view(network: str) -> dict:
     """SDN › Responses (board SdnResponses)."""
     from modules.sdn import closed_loop, detect, flow_ops, loop, modes
@@ -114,7 +138,9 @@ def responses_view(network: str) -> dict:
                      "confidence": d.get("confidence"), "action": r.get("action"),
                      "label": entry.get("label", r.get("action")),
                      "risk": r.get("risk"), "action_words": entry.get("words", ""),
-                     "why": r.get("why", ""), "classified": closed_loop.CLASSIFY_REFUSED})
+                     "why": r.get("why", ""),
+                     "classified": r.get("classified") or closed_loop.DEFAULT_WORDS,
+                     "ai": _classification(r), "params": dict(r.get("params") or {})})
     th = detect.thresholds(network)
     limits = flow_ops.settings_of(network)
     log_rows = loop.log_lines(network, 30)
@@ -124,4 +150,7 @@ def responses_view(network: str) -> dict:
             "log": list(reversed(log_rows["rows"])), "log_error": log_rows["error"],
             "thresholds": th, "limits": limits, "risks": modes.RISKS,
             "max_hours": modes.MAX_AUTO_SECONDS // 3600,
-            "verify_limit": flow_ops.VERIFY_LIMIT, "controllers": True}
+            "verify_limit": flow_ops.VERIFY_LIMIT, "controllers": True,
+            # A person's Classify answered in place: its refusal drawn on its card (the route
+            # sets it; a read has none).
+            "classify": None}

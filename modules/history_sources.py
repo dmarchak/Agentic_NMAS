@@ -1075,7 +1075,8 @@ def updates(ctx):
 
 #: A subject's words (15.14): what the call was about, from the row's own `subject`.
 SUBJECT_WORDS = {"alert": "the alert", "query": "a question on", "device": "the device",
-                 "intent": "an intent change on", "": "the installation"}
+                 "intent": "an intent change on", "sdn_detection": "the SDN detection",
+                 "": "the installation"}
 
 
 def subject_words(subject: dict) -> str:
@@ -1090,6 +1091,9 @@ def subject_words(subject: dict) -> str:
         return f"{head} {s.get('id') or 'the network'}"
     if kind == "intent":
         return f"{head} {', '.join(s.get('devices') or []) or 'no device'}"
+    if kind == "sdn_detection":
+        # PHASE8_PLAN 17.1 S7: the rule that fired and the detection's key.
+        return f"{head} {s.get('rule') or ''} {s.get('id') or ''}".replace("  ", " ").strip()
     return head
 
 

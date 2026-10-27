@@ -3635,7 +3635,7 @@ A2 are in it.
 | **A2.4 incident correlation and AI timeline** | 16.11, section 6 ranks 2 and 5 | **in scope**; not built (background: 18.3) | 20 |
 | **A2.5 daily digest** | 16.11 | **in scope**; not built (background: 18.3) | 10 |
 | **A2 tier 2** (six items) | 16.11 | **in scope**; not built | about 90 |
-| SDN `classify_threat` | 17.1 S7 | in the lab slice; not built | 6 |
+| SDN `classify_threat` | 17.1 S7 | built 2026-10-27 (a background feature, off until an admin turns it on in Settings › AI, not yet built; a person's Classify on an awaiting response); its recorded and held-out cases written, not yet measured | 6 |
 | SDN later: a flow table in words; flows from a sentence; cross-switch anomaly notes | 17.1 | registered only (C1837) | 6, 16, 10 |
 | P5 plan with AI, and the action library | 16.7 | after the sprint; not built | about 40 |
 | P6 AI-assisted platform packs | 16.8 | after the sprint; not built | about 30 |

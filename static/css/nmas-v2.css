@@ -2311,6 +2311,11 @@ summary.lq-chip::-webkit-details-marker { display: none; }
 .sdn-sw > .table-wrap { padding: 0 18px 10px; }
 .sdn-sw-note { margin: 0; padding: 0 18px 10px; }
 .sdn-none { margin: 0; padding: 12px 18px; }
+/* PHASE8_PLAN 17.1 S7: the AI's classification on an awaiting response (board SdnResponses' AI
+   box), set apart from the rules' own words; the mono ids wrap rather than widen the page. */
+.sdn-ai { border-left: 3px solid var(--sdn); background: var(--sdn-soft); padding: 6px 12px; margin: 6px 0; border-radius: 4px; }
+.sdn-ai p { margin: 4px 0; }
+.sdn-ai .mono { overflow-wrap: anywhere; }
 .sdn-ft { min-width: 820px; }
 .sdn-ft tr.sdn-f-unauthorised td { background: var(--danger-soft); }
 .sdn-ft tr.sdn-r-missing td { background: var(--warn-soft); }
