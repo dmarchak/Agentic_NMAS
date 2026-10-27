@@ -392,7 +392,7 @@ def _drafted(list_name: str, sentence: str, named: list, *, actor: str, send, to
     subject = {"kind": "intent", "id": list_name, "devices": list(named)}
     asked = gateway.ask(FEATURE, PROMPT, IntentChange, parts(sentence, named, got["devices"]),
                         actor=actor, context={"operations": vocabulary()}, send=send,
-                        today=today, subject=subject)
+                        today=today, subject=subject, network=list_name)
     if not asked["ok"]:
         return asked
     answer = asked["output"]

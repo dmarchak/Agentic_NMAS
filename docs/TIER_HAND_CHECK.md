@@ -1485,3 +1485,74 @@ tests/test_sdn_collect.py.
 
 The machine log is scratch tooling, as above.
 
+## 2026-10-27: one press, one provider call (C1854) with the operator's request identity, changed lines only, on the change's tree
+
+**What changed in the tier:** the gateway's egress path (`modules/ai/gateway.py` `ask`, `from_row`,
+the new `_joined`; `modules/ai/presses.py`, new: `_sha`, `request_digest`, `current_press`,
+`_prune`, `_done_call`, `_join`, `once`, `_Slot`), `modules/identity.py`'s new `access_scope`, and
+`modules/ai/calls.py`'s `spent_usd`. A press carries a key; a key already seen returns its call;
+an identical request in flight is joined; the request's identity is explicit (the operator's
+design, 2026-10-27 ~06:3x UTC: feature, network, subject, prompt version, model and the
+requester's access scope, `presses.IDENTITY`); a join across access scopes is refused
+(`other_scope`, recorded, nothing returned or sent); each joiner has its own row in the record of
+AI calls (verdict `joined`, cost 0, the call it joined), which replaced `calls.record_use` on the
+call. One defect found by the check and fixed: `request_digest` dumped with `ensure_ascii=False`,
+so a lone surrogate in a call's data raised before anything was recorded; it is `ensure_ascii=True`,
+which is also what the adapter sends.
+
+**The method:** `scratchpad/hand_check.py` over each top-level function holding changed lines
+(the changed lines' mutants and a canary that must die), in a throwaway worktree of the change
+(ec01d2d5 plus C1852's commit plus this change), the aimed tests: tests/test_ai_presses.py,
+tests/test_explain_kept.py, tests/test_ai_gateway_ask.py, tests/test_ai_gateway.py,
+tests/test_ai_gateway_parts.py, tests/test_identity.py, tests/test_history_ai_calls.py. `_Slot`'s
+methods, which the harness's function finder does not reach, by hand (`slot_mut.py`).
+`history_sources.ai_calls`'s changed lines draw History rows (not the tier); its harness run was
+stopped at 18 GiB (the harness builds every mutant of a large module in memory) and its lines are
+held by four hand controls instead (the join drawn as an ordinary call; its outcome not the
+call's; its row opening itself; no "Joined by").
+
+**The result: every non-equivalent mutant killed; every canary killed; every file restored
+identical.**
+
+| function | mutants | killed | equivalent (survived) |
+|---|---|---|---|
+| presses `_sha` | 8 | 6 | 2 |
+| presses `request_digest` | 34 | 32 | 2 |
+| presses `current_press` | 32 | 29 | 3 |
+| presses `_prune` | 13 | 13 | 0 |
+| presses `_done_call` | 11 | 11 | 0 |
+| presses `_join` | 44 | 44 | 0 |
+| presses `once` | 146 | 135 | 11 |
+| gateway `ask` (changed lines) | 67 | 67 | 0 |
+| gateway `from_row` | 57 | 51 | 6 |
+| gateway `_joined` | 38 | 34 | 4 |
+| identity `access_scope` | 38 | 37 | 1 |
+| calls `spent_usd` | 24 | 24 | 0 |
+| `_Slot` (by hand, with two canaries) | 9 | 8 | 1 |
+
+**Each equivalent, and why nothing observable changes:**
+- `_sha`: the codec named `"UTF-8"` (codec names are case-insensitive); the separator `b"XX\0XX"`
+  (within one program equal parts hash equal and different parts different; nothing outside the
+  process computes the digest).
+- `request_digest`: `ensure_ascii` omitted, twice (`True` is the default).
+- `current_press`: `or "XXXX"` (four characters still fail `KEY_SHAPE`, so the press has no key);
+  the `"XXkey-XX"` and `"KEY-"` prefixes (nothing reads slot names by prefix; both still differ
+  from `req-`).
+- `once`: the "running" marks on the request and key slots (a marker is read only after its lock
+  is taken, and only `done` with a string id is compared, so any other state reads as no finished
+  call); `slots[1]` marked running (differs only when a holder died after a `done` naming a call
+  missing from the record, where the press still makes its own call with one true warning);
+  `or "XXXX"` on the call id (every `make()` result carries a non-empty one).
+- `from_row`: the `id` default, three (the row comes from `calls.find(id)`, which matches on it);
+  `"unknown"`, two (every recorded row has a verdict); the detail's `or "XXXX"` (every failure's
+  detail is non-empty).
+- `_joined`: the explicit cost 0 dropped (the row's own `cost_usd` is 0.0, no send having priced
+  it); the `recorded` default, three (`calls.record` always returns `recorded`).
+- `access_scope`: the defensive `except` (`request_identity()` and `viewer()` already catch
+  everything).
+- `_Slot.release` without its unlock: `os.close` of the slot's only descriptor releases its
+  `flock`. (`claim_never_times_out` is killed by the process bound, the slot-held test never
+  returning, exit 124 at `NMAS_TEST_TIMEOUT=60`, not by an assertion.)
+
+The machine logs are scratch tooling (`hc-c1852.jsonl`, `c1854-kill3.jsonl`).
+

@@ -5,10 +5,12 @@ reaching the provider. Every AI call passes through the gateway, so every featur
 
 - **a key already seen returns its call:** a retry of a press with the same key, after the call
   ended or while it is in flight, makes no new provider request and returns the call's result,
-  its join recorded as a use row ("joined call <id>");
+  its join the joiner's own row (verdict ``joined``, cost 0, the call's id); a retry under
+  another access scope is refused (``other_scope``), never handed the call;
 - **the same request in flight is joined:** a double click (two presses, two keys, the same
-  feature, subject, data and prompt), or a press after a refresh dropped the first answer,
-  makes one provider request between them; both get the one call's result;
+  feature, network, subject, data, prompt, model and access scope), or a press after a refresh
+  dropped the first answer, makes one provider request between them; both get the one call's
+  result; another feature or another access scope with the same bytes is another request;
 - **a press after the call ended is a new call** (pressing again is a choice: Explain again);
 - **across processes:** a slot another PROCESS holds is waited on and joined (a module-level
   dict would not see it);
@@ -56,6 +58,21 @@ def _uses():
     return [r for rows in calls.uses().values() for r in rows]
 
 
+def _joins():
+    """The joiners' own rows in the record of AI calls (verdict ``joined``)."""
+    return [r for r in calls.read()["rows"] if r.get("verdict") == calls.JOINED]
+
+
+def _about(scope=None):
+    """The connection check's identity beside its body, as `ask` names it, its scope this
+    context's (`identity.access_scope`) unless given."""
+    from modules import identity
+    from modules.ai import profiles as P
+    return {"network": "", "subject": {}, "prompt": "ping.v1",
+            "model": P.TASKS["connection_check"]["model"],
+            "scope": identity.access_scope() if scope is None else scope}
+
+
 @pytest.fixture
 def slow(world):
     """The world's send held open until `release` is set, counting each request."""
@@ -88,10 +105,10 @@ def test_a_retry_with_the_same_key_sends_nothing_and_returns_the_call(world, app
     assert first["ok"] and again["ok"] and len(world.sent) == 1
     assert again["call_id"] == first["call_id"] and again["joined"] == first["call_id"]
     assert again["output"].echo == "w"
-    (use,) = _uses()
-    assert use["use"] == f"joined call {first['call_id']}" and use["actor"] == ACTOR
-    assert "key was seen" in use["detail"]
-    assert len(calls.read()["rows"]) == 1, "a join is a use row, never a second call"
+    (join,) = _joins()
+    assert join["joined"] == first["call_id"] and join["actor"] == ACTOR
+    assert "key was seen" in join["detail"]
+    assert _uses() == [], "the join is the joiner's own row, not a use of the call"
 
 
 def test_a_retry_with_the_same_key_while_the_first_is_in_flight_waits_and_joins(slow, app):
@@ -113,6 +130,154 @@ def test_the_same_key_from_another_person_is_not_their_call(world, app):
     assert len(world.sent) == 2, "a key is a press's, and a press is its person's"
 
 
+def _ask_word(world, word):
+    return gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": word},
+                       actor=ACTOR, send=world.send, today="2026-10-25")
+
+
+def test_each_call_of_a_press_is_its_own_and_a_retry_joins_each_in_turn(world, app):
+    """A press (one request, one key) that makes two gateway calls makes two provider requests,
+    neither joining the other; a retry of that press (the same key) joins its first call to
+    the first and its second to the second, sending nothing."""
+    world.answer = PING
+    headers = {presses.HEADER: "n" * 32}
+    with app.test_request_context("/x", method="POST", headers=headers):
+        first = [_ask_word(world, "one"), _ask_word(world, "two")]
+    assert len(world.sent) == 2 and first[0]["call_id"] != first[1]["call_id"]
+    assert not any("joined" in got for got in first) and _joins() == []
+    with app.test_request_context("/x", method="POST", headers=headers):
+        again = [_ask_word(world, "one"), _ask_word(world, "two")]
+    assert len(world.sent) == 2
+    assert [got["joined"] for got in again] == [got["call_id"] for got in first]
+
+
+def test_a_joiner_has_its_own_row_costing_nothing_and_the_join_is_logged(world, app, caplog):
+    """The joiner's own row in the record of AI calls: its actor, the feature, its subject and
+    prompt, verdict ``joined``, cost 0, the joined call's id, why (which call of the press) and
+    its access scope, and no request (nothing was sent). The day's spend counts one call and
+    its cost; the log names who joined which call and why."""
+    import logging
+    world.answer = PING
+    caplog.set_level(logging.INFO, logger=presses.__name__)
+    first = _ask(world, app, key="u" * 32)
+    again = _ask(world, app, key="u" * 32)
+    why = "the same press sent again: its key was seen (call 1 of the press)"
+    (call,) = [r for r in calls.read()["rows"] if r["id"] == first["call_id"]]
+    (join,) = _joins()
+    with app.test_request_context("/x"):
+        scope = _about()["scope"]
+    assert join == {
+        "id": join["id"], "at": join["at"], "feature": "connection_check", "actor": ACTOR,
+        "model": call["model"], "prompt": "ping.v1", "schema": call["schema"],
+        "subject": {}, "thinking": call["thinking"], "prompt_sha256": call["prompt_sha256"],
+        "verdict": "joined", "cost_usd": 0.0, "joined": first["call_id"], "scope": scope,
+        "detail": f"joined call {first['call_id']}: {why}"}
+    assert join["id"] != first["call_id"] and again["recorded"] is True
+    spent = calls.spent_usd(call["at"][:10])
+    assert spent["calls"] == 1 and spent["usd"] == pytest.approx(first["cost_usd"])
+    assert [r.getMessage() for r in caplog.records if r.name == presses.__name__] == [
+        f"ai presses: {ACTOR} joined call {first['call_id']} ({why})"]
+
+
+def test_a_retry_under_another_access_scope_is_refused_and_handed_nothing(world, app,
+                                                                         monkeypatch):
+    """A press's key sent again under another access scope than its call was made under (here
+    the same actor's name arriving as a service, which `may` allows no gated action) is
+    refused (``other_scope``), recorded naming both scopes, with no answer and nothing sent."""
+    world.answer = PING
+    first = _ask(world, app, key="v" * 32)
+    with app.test_request_context("/x"):
+        before = _about()["scope"]
+    from modules import identity
+    service = identity.Identity(actor=ACTOR, email=ACTOR, kind="service", service_id="svc",
+                                verified=True, outcome="ok", peer="198.51.100.7",
+                                peer_trusted=True, header_present=True)
+    monkeypatch.setattr(identity, "identify", lambda _request: service)
+    with app.test_request_context("/x"):
+        after = _about()["scope"]
+    assert after != before
+    again = _ask(world, app, key="v" * 32)
+    assert len(world.sent) == 1 and "output" not in again and _joins() == []
+    assert again["ok"] is False and again["error"] == "other_scope"
+    assert again["detail"] == (
+        f"this press's key was answered by call {first['call_id']} under the access scope "
+        f"{before!r}, and it is sent again under {after!r}: a call is never handed across "
+        "access scopes, so nothing was returned and nothing was sent")
+    (row,) = [r for r in calls.read()["rows"] if r["verdict"] == "other_scope"]
+    assert row["actor"] == ACTOR and row["cost_usd"] == 0.0 and row["detail"] == again["detail"]
+
+
+@pytest.mark.parametrize("first,second", [
+    ({"network": "Lab"}, {"network": "Other"}),
+    ({"subject": {"kind": "query", "id": "Lab", "devices": []}},
+     {"subject": {"kind": "query", "id": "Lab", "devices": ["r1"]}}),
+    ({"prompt": ("ping", 1)}, {"prompt": ("ping", 2)}),
+], ids=["network", "subject", "prompt version"])
+def test_the_gateway_names_each_part_of_a_request_s_identity(slow, app, monkeypatch, first,
+                                                             second):
+    """Through `ask`: the same body in flight for another network, another subject, or another
+    prompt version with the same text (planted: version 2 loads version 1's file) is another
+    request, so each press makes its own call."""
+    from modules.ai import prompts
+    real = prompts.load
+    monkeypatch.setattr(prompts, "load", lambda name, version: real(name, 1))
+
+    def press(kw):
+        kw = dict(kw)
+        prompt = kw.pop("prompt", ("ping", 1))
+        with app.test_request_context("/x", method="POST"):
+            return gateway.ask("connection_check", prompt, connection.Ping, {"word": "w"},
+                               actor=ACTOR, send=slow.send, today="2026-10-25", **kw)
+    t1, _out1 = _in_thread(lambda: press(first))
+    assert slow.started.wait(10)
+    t2, _out2 = _in_thread(lambda: press(second))
+    time.sleep(0.4)
+    slow.release.set()
+    t1.join(10), t2.join(10)
+    assert len(slow.sent) == 2 and slow.sent[0]["bytes"] == slow.sent[1]["bytes"]
+    assert _joins() == []
+
+
+def test_two_access_scopes_never_join_each_others_call(slow, app):
+    """The same request in flight under another access scope (a verified person's press, and
+    the same one from outside any request: unverified) is not joined: each makes its own."""
+    t1, out1 = _in_thread(lambda: _ask(slow, app, key="w" * 32))
+    assert slow.started.wait(10)
+    t2, out2 = _in_thread(lambda: gateway.ask("connection_check", ("ping", 1), connection.Ping,
+                                              {"word": "w"}, actor=ACTOR, send=slow.send,
+                                              today="2026-10-25"))
+    time.sleep(0.4)
+    slow.release.set()
+    t1.join(10), t2.join(10)
+    assert len(slow.sent) == 2 and _joins() == []
+    assert out1["got"]["call_id"] != out2["got"]["call_id"]
+
+
+@pytest.mark.parametrize("outcome", ["answered", "answered_wrong", "refused_unsent"])
+def test_a_joined_press_gets_exactly_what_the_press_it_joined_got(world, app, outcome):
+    """A retry's result is the call's own (`gateway.from_row`): an answer, or a failure's kind,
+    words and cost, recorded; a call refused before sending cost nothing, and so does its
+    join."""
+    if outcome == "answered":
+        world.answer = PING
+    elif outcome == "answered_wrong":
+        world.answer = dict(PING, content=[{"type": "text", "text": '{"other": 1}'}])
+    else:
+        def down(body, key):
+            raise A.Overloaded("HTTP 529 after 3 attempts: busy", status=529, attempts=3)
+        world.send = down
+    first = _ask(world, app, key="j" * 32)
+    again = _ask(world, app, key="j" * 32)
+    assert first["ok"] is (outcome == "answered")
+    if outcome == "refused_unsent":
+        assert "cost_usd" not in first, "a refusal says no cost: its join says 0"
+        first = dict(first, cost_usd=0.0)
+    else:
+        assert first["cost_usd"] > 0
+    assert first["recorded"] is True
+    assert again == dict(first, joined=first["call_id"])
+
+
 def test_a_key_of_another_shape_is_no_key(world, app):
     world.answer = PING
     for _ in range(2):
@@ -122,7 +287,11 @@ def test_a_key_of_another_shape_is_no_key(world, app):
 
 # ------------------------------------------------------------------- the same request in flight
 
-def test_a_double_click_is_one_provider_request(slow, app):
+def test_a_double_click_is_one_provider_request(slow, app, caplog):
+    """Two presses (two keys) of one request in flight make one provider request; the second
+    is a join, its own row saying why, and the log naming who joined which call."""
+    import logging
+    caplog.set_level(logging.INFO, logger=presses.__name__)
     t1, out1 = _in_thread(lambda: _ask(slow, app, key="a" * 32))
     assert slow.started.wait(10)
     t2, out2 = _in_thread(lambda: _ask(slow, app, key="b" * 32))
@@ -132,9 +301,41 @@ def test_a_double_click_is_one_provider_request(slow, app):
     assert len(slow.sent) == 1
     assert out1["got"]["ok"] and out2["got"]["ok"]
     assert out2["got"]["call_id"] == out1["got"]["call_id"] == out2["got"]["joined"]
-    (use,) = _uses()
-    assert use["use"] == f"joined call {out1['got']['call_id']}"
-    assert "in flight" in use["detail"]
+    (join,) = _joins()
+    why = ("the same request was in flight: connection_check, the same network, subject, "
+           "data, prompt, model and access scope")
+    assert join["detail"] == f"joined call {out1['got']['call_id']}: {why}"
+    assert [r.getMessage() for r in caplog.records if r.name == presses.__name__] == [
+        f"ai presses: {ACTOR} joined call {out1['got']['call_id']} ({why})"]
+
+
+def test_a_press_that_joined_a_call_in_flight_is_that_call_when_its_key_is_sent_again(slow, app):
+    """A double click's second press joined the first's call; its own key sent again (a
+    retry) returns that same call, sending nothing, rather than making one."""
+    t1, out1 = _in_thread(lambda: _ask(slow, app, key="x" * 32))
+    assert slow.started.wait(10)
+    t2, out2 = _in_thread(lambda: _ask(slow, app, key="y" * 32))
+    time.sleep(0.4)
+    slow.release.set()
+    t1.join(10), t2.join(10)
+    assert out2["got"]["joined"] == out1["got"]["call_id"]
+    again = _ask(slow, app, key="y" * 32)
+    assert len(slow.sent) == 1 and again["joined"] == out1["got"]["call_id"]
+
+
+def test_a_key_seen_by_a_release_that_recorded_no_scope_is_refused(world, app):
+    """A key's marker an earlier release wrote (a finished call, no scope recorded) is not
+    handed across: the retry is refused, saying the scope was not recorded."""
+    world.answer = PING
+    first = _ask(world, app, key="o" * 32)
+    with app.test_request_context("/x", method="POST", headers={presses.HEADER: "o" * 32}):
+        slot = presses._Slot(presses.current_press(ACTOR)["slot"])
+        scope = _about()["scope"]
+    slot.mark(state="done", call_id=first["call_id"])
+    again = _ask(world, app, key="o" * 32)
+    assert again["error"] == "other_scope" and len(world.sent) == 1
+    assert f"under the access scope 'not recorded', and it is sent again under {scope!r}" \
+        in again["detail"]
 
 
 def test_a_press_after_a_refresh_mid_call_joins_it(slow, app):
@@ -155,7 +356,7 @@ def test_a_press_after_the_call_ended_is_a_new_call(world, app):
     first = _ask(world, app, key="d" * 32)
     second = _ask(world, app, key="e" * 32)
     assert len(world.sent) == 2 and second["call_id"] != first["call_id"]
-    assert "joined" not in second and _uses() == []
+    assert "joined" not in second and _joins() == []
 
 
 def test_a_different_request_in_flight_is_not_joined(slow, app):
@@ -184,7 +385,8 @@ def test_a_slot_held_past_the_wait_is_refused_recorded_and_sends_nothing(world, 
         return A.Reply(status=200, body=PING, attempts=1, latency_s=0.1)
     gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"}, actor=ACTOR,
                 send=keep_body, today="2026-10-25")
-    slot = presses._Slot("req-" + presses.request_digest("connection_check", body_seen["body"]))
+    slot = presses._Slot("req-" + presses.request_digest("connection_check", body_seen["body"],
+                                                         _about()))
     slot.claim(1, time.monotonic, time.sleep)
     try:
         monkeypatch.setattr(gateway, "press_wait_s", lambda: 0.3)
@@ -193,8 +395,102 @@ def test_a_slot_held_past_the_wait_is_refused_recorded_and_sends_nothing(world, 
     finally:
         slot.release()
     assert got["ok"] is False and got["error"] == "in_flight" and world.sent == []
-    assert "in flight for over 0 s" in got["detail"] and "nothing was sent" in got["detail"]
+    assert got["detail"] == (f"an identical connection_check call has been in flight for over "
+                             f"0 s (slot {slot.name[:16]}…), the most one call can take; "
+                             "nothing was sent")
     assert calls.read()["rows"][0]["verdict"] == "in_flight", "every refusal is a row"
+
+
+def _hold(feature, body, about):
+    slot = presses._Slot("req-" + presses.request_digest(feature, body, about))
+    slot.claim(1, time.monotonic, time.sleep)
+    return slot
+
+
+BODY = {"model": "m", "messages": [{"role": "user", "content": "the same"}]}
+ABOUT = {"network": "Lab", "subject": {"kind": "alert", "id": "p1", "devices": ["r1"]},
+         "prompt": "explain.v6", "model": "m", "scope": "person; may reveal"}
+
+
+@pytest.mark.parametrize("held_feature,held_about", [
+    ("explain", ABOUT),
+    ("connection_check", dict(ABOUT, network="Other")),
+    ("connection_check", dict(ABOUT, subject=dict(ABOUT["subject"], id="p2"))),
+    ("connection_check", dict(ABOUT, prompt="explain.v5")),
+    ("connection_check", dict(ABOUT, model="m2")),
+    ("connection_check", dict(ABOUT, scope="unverified; may no gated action")),
+], ids=["feature", "network", "subject", "prompt", "model", "scope"])
+def test_the_same_bytes_under_another_identity_are_never_joined(held_feature, held_about):
+    """The same masked body in flight under another feature, network, subject, prompt
+    version, model or access scope is another request: this press makes its own call (each
+    feature's caps and record its own, and no answer handed across networks or scopes)."""
+    held = _hold(held_feature, BODY, held_about)
+    made = []
+    try:
+        got = presses.once("connection_check", BODY, about=ABOUT, actor=ACTOR,
+                           make=lambda: made.append(1) or {"ok": True, "call_id": "ai-own"},
+                           rebuild=pytest.fail, refuse=lambda *a: pytest.fail(f"refused {a}"),
+                           wait_s=0.3)
+    finally:
+        held.release()
+    assert made == [1] and got == {"ok": True, "call_id": "ai-own"}
+
+
+def test_the_same_identity_in_flight_is_waited_on(monkeypatch):
+    """The control beside the cases above: the same feature, identity and body held is the
+    same request (the press waits on it, here past its bound: refused, nothing made)."""
+    held = _hold("connection_check", BODY, dict(ABOUT))
+    try:
+        got = presses.once("connection_check", BODY, about=dict(ABOUT), actor=ACTOR,
+                           make=pytest.fail, rebuild=pytest.fail,
+                           refuse=lambda kind, detail: {"refused": kind}, wait_s=0.3)
+    finally:
+        held.release()
+    assert got == {"refused": "in_flight"}
+
+
+@pytest.mark.parametrize("about,given", [
+    ({k: "" for k in presses.IDENTITY if k != "scope"}, "model, network, prompt, subject"),
+    (dict({k: "" for k in presses.IDENTITY}, extra=""),
+     "extra, model, network, prompt, scope, subject"),
+    ({}, "none")], ids=["missing", "extra", "empty"])
+def test_a_request_s_identity_names_exactly_its_parts(about, given):
+    """No caller leaves a part of the identity out, or adds one the digest would not say; the
+    refusal names both the parts and what was given."""
+    with pytest.raises(ValueError) as got:
+        presses.request_digest("explain", BODY, about)
+    assert str(got.value) == ("a request's identity names network, subject, prompt, model, "
+                              f"scope; given {given}")
+
+
+def test_a_request_holding_text_that_cannot_be_utf8_has_an_identity(world, app):
+    """A lone surrogate in a call's data or its subject (JSON allows one escaped) is digested
+    as the adapter sends it (ASCII-escaped), so the call is made, as it was before presses,
+    never a crash."""
+    world.answer = PING
+    with app.test_request_context("/x", method="POST"):
+        got = gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w\udcff"},
+                          actor=ACTOR, send=world.send, today="2026-10-25",
+                          subject={"kind": "query", "id": "Lab\udcff", "devices": []})
+    assert got["ok"] and len(world.sent) == 1
+
+
+def test_the_same_request_with_its_keys_in_another_order_is_one_request():
+    """Equal requests are one request whatever order their dicts were built in (another
+    caller, another worker): the identity is the content, not the insertion order."""
+    one = {"model": "m", "max_tokens": 64,
+           "messages": [{"role": "user", "content": "x"}], "system": [{"type": "text",
+                                                                        "text": "p"}]}
+    other = {"system": [{"text": "p", "type": "text"}], "messages": [{"content": "x",
+                                                                       "role": "user"}],
+             "max_tokens": 64, "model": "m"}
+    assert one == other and list(one) != list(other)
+    about = dict(ABOUT)
+    reordered = dict(reversed(list(ABOUT.items())), subject=dict(
+        reversed(list(ABOUT["subject"].items()))))
+    assert about == reordered and list(about) != list(reordered)
+    assert presses.request_digest("explain", one, about) == \
+        presses.request_digest("explain", other, reordered)
 
 
 def test_the_wait_is_the_adapters_worst_case_and_its_margin():
@@ -234,8 +530,10 @@ def test_a_call_another_process_holds_is_joined(world, app, tmp_path):
         return A.Reply(status=200, body=PING, attempts=1, latency_s=0.1)
     planted = gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
                           actor="alex@example.com", send=keep, today="2026-10-25")
+    with app.test_request_context("/x"):                  # the press's scope: a request's
+        about = _about()
     base = os.path.join(presses._dir(),
-                        "req-" + presses.request_digest("connection_check", seen["body"]))
+                        "req-" + presses.request_digest("connection_check", seen["body"], about))
     go = str(tmp_path / "go")
     child = subprocess.Popen([sys.executable, "-c", HOLDER, base, planted["call_id"], go],
                              stdout=subprocess.PIPE, text=True)
@@ -250,6 +548,159 @@ def test_a_call_another_process_holds_is_joined(world, app, tmp_path):
         child.wait(10)
     assert world.sent == [] and out["got"]["call_id"] == planted["call_id"]
     assert out["got"]["joined"] == planted["call_id"]
+
+
+DIED = r"""
+import fcntl, json, os, sys, time
+base, go = sys.argv[1], sys.argv[2]
+os.makedirs(os.path.dirname(base), exist_ok=True)
+fd = os.open(base + ".lock", os.O_RDWR | os.O_CREAT, 0o600)
+fcntl.flock(fd, fcntl.LOCK_EX)
+open(base + ".json", "w").write(json.dumps({"state": "running"}))
+print("held", flush=True)
+for _ in range(200):
+    if os.path.exists(go):
+        break
+    time.sleep(0.05)
+os._exit(1)
+"""
+
+
+def test_a_holder_that_dies_mid_call_leaves_the_waiter_to_make_its_own(world, app, tmp_path,
+                                                                     caplog):
+    """Another process holding the identical request's slot dies mid-call (its lock released
+    with it, its marker still running): the waiting press makes its own call, joining
+    nothing and warning of no call to join."""
+    import logging
+    world.answer = PING
+    caplog.set_level(logging.INFO, logger=presses.__name__)
+    seen = {}
+
+    def keep(body, key):
+        seen["body"] = body
+        return A.Reply(status=200, body=PING, attempts=1, latency_s=0.1)
+    with app.test_request_context("/x", method="POST"):
+        gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
+                    actor="alex@example.com", send=keep, today="2026-10-25")
+        about = _about()
+    base = os.path.join(presses._dir(),
+                        "req-" + presses.request_digest("connection_check", seen["body"], about))
+    go = str(tmp_path / "go")
+    child = subprocess.Popen([sys.executable, "-c", DIED, base, go], stdout=subprocess.PIPE,
+                             text=True)
+    try:
+        assert child.stdout.readline().strip() == "held"
+        t, out = _in_thread(lambda: _ask(world, app, key="z" * 32))
+        time.sleep(0.4)
+        assert t.is_alive(), "the press waits on the other process's call"
+        open(go, "w").close()
+        t.join(10)
+    finally:
+        child.wait(10)
+    assert len(world.sent) == 1 and out["got"]["ok"] and "joined" not in out["got"]
+    assert _joins() == []
+    assert [r.getMessage() for r in caplog.records if r.name == presses.__name__] == []
+
+
+# ------------------------------------------------------------------------ the access scope
+
+ALL = "reveal, approve, confirm, publish_remote, configure, break_glass"
+
+
+def _scope_as(app, monkeypatch, ident):
+    from modules import identity
+    monkeypatch.setattr(identity, "identify", lambda _request: ident)
+    with app.test_request_context("/x"):
+        return identity.access_scope()
+
+
+def test_the_access_scope_is_who_may_sees_and_what_it_allows(world, app, monkeypatch):
+    """`identity.access_scope` in words, `may`'s answer over `GATED_ACTIONS` in order: a
+    verified person may every gated action; a service, by its label, none (a person is
+    required); a requester no assertion verified, none; an identity of no kind, a person."""
+    from modules import identity
+    seen = dict(email=ACTOR, verified=True, outcome="ok", peer="198.51.100.7",
+                peer_trusted=True, header_present=True)
+    person = identity.Identity(actor=ACTOR, kind="person", **seen)
+    service = identity.Identity(actor="service:svc", kind="service", service_id="svc", **seen)
+    kindless = identity.Identity(actor=ACTOR, kind="", **seen)
+    assert _scope_as(app, monkeypatch, person) == f"person; may {ALL}"
+    assert _scope_as(app, monkeypatch, kindless) == f"person; may {ALL}"
+    assert _scope_as(app, monkeypatch, service) == \
+        f"service {identity.service_label('svc')}; may no gated action"
+    assert _scope_as(app, monkeypatch, identity.Identity()) == "unverified; may no gated action"
+
+
+def test_an_unverified_scope_names_the_actions_its_gates_leave_open(world, app):
+    """Outside a request (a script, no identity carried) the requester is unverified, and the
+    scope names each action whose gate an admin opened to anyone (here reveal), by `may`."""
+    from modules import identity
+    assert identity.access_scope() == "unverified; may no gated action"
+    world.settings["require_identity_for_reveal"] = False
+    assert identity.access_scope() == "unverified; may reveal"
+
+
+def test_a_job_s_scope_is_the_person_it_carries(world):
+    """Outside a request, a job a verified person's request started (`carried`) has that
+    person's scope, not an unverified one."""
+    from modules import identity
+    person = identity.Identity(actor=ACTOR, email=ACTOR, kind="person", verified=True,
+                               outcome="ok", peer="198.51.100.7", peer_trusted=True,
+                               header_present=True)
+    with identity.carried(person):
+        assert identity.access_scope() == f"person; may {ALL}"
+
+
+# ------------------------------------------------------------------- the slots and the record
+
+def test_pruning_removes_exactly_the_slot_files_older_than_keep_s(monkeypatch):
+    """A file older than `KEEP_S` goes, one exactly `KEEP_S` old and a recent one stay, and a
+    file whose age cannot be read is passed over without stopping the rest."""
+    folder = presses._dir()
+    os.makedirs(folder)
+    now = 1_800_000_000.0
+    ages = {"key-old.json": presses.KEEP_S + 1, "key-at-bound.json": presses.KEEP_S,
+            "req-recent.lock": 10}
+    for name, age in ages.items():
+        path = os.path.join(folder, name)
+        open(path, "w").close()
+        os.utime(path, (now - age, now - age))
+    os.symlink(os.path.join(folder, "nowhere"), os.path.join(folder, "0-unreadable"))
+    listdir = os.listdir
+    monkeypatch.setattr(presses.os, "listdir", lambda p: sorted(listdir(p)))   # its order fixed
+    presses._prune(now)
+    assert sorted(listdir(folder)) == ["0-unreadable", "key-at-bound.json", "req-recent.lock"]
+
+
+@pytest.mark.parametrize("marker", [None, {}, {"state": "running"}, {"state": "done"},
+                                    {"state": "done", "call_id": 7},
+                                    {"state": "running", "call_id": "ai-1"}])
+def test_a_marker_naming_no_finished_call_names_none(marker):
+    """Only a finished call with a string id is a call to join; anything else is none (falsy),
+    so the press makes its own without looking one up."""
+    assert not presses._done_call(marker)
+
+
+def test_a_finished_marker_names_its_call():
+    """The planted case beside the cases above: a finished call's marker gives its id."""
+    assert presses._done_call({"state": "done", "call_id": "ai-1"}) == "ai-1"
+
+
+def test_a_call_the_record_cannot_give_is_not_joined_and_the_log_says_why(caplog):
+    """`_join` of a call not in the record, or with the record unreadable, returns None (the
+    press makes its own call), records no use, and logs the call and the record's answer."""
+    import logging
+    caplog.set_level(logging.WARNING, logger=presses.__name__)
+    assert presses._join("ai-gone", pytest.fail, ACTOR, "a reason") is None
+    assert _uses() == []
+    os.makedirs(calls._path())                                  # the record unreadable
+    error = calls.find("ai-gone")["error"]
+    assert error.startswith("IsADirectoryError")
+    assert presses._join("ai-gone", pytest.fail, ACTOR, "a reason") is None
+    made = "; a new call is made"
+    assert [r.getMessage() for r in caplog.records if r.name == presses.__name__] == [
+        f"ai presses: the call ai-gone to join is not in the record (absent){made}",
+        f"ai presses: the call ai-gone to join is not in the record ({error}){made}"]
 
 
 # --------------------------------------------------------------------------- every feature

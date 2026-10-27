@@ -655,7 +655,8 @@ def _ask_round(schema, prompt, data: dict, *, list_name, actor, ctx, send, today
     call's."""
     from modules.ai import needs as N
 
-    kw = {"actor": actor, "context": ctx, "send": send, "today": today, "thinking": thinking}
+    kw = {"actor": actor, "context": ctx, "send": send, "today": today, "thinking": thinking,
+          "network": list_name}
     got = gateway.ask(FEATURE, prompt, schema, dict(data, looked_up=looked_up([])),
                       subject=subject, **kw)
     wanted = list(getattr(got.get("output"), "needs", None) or []) if got.get("ok") else []
@@ -1061,7 +1062,7 @@ def metrics(list_name: str, question: str, *, actor: str, send=None, client=None
     else:
         got = gateway.ask(FEATURE, prompt, schema, data,
                           actor=actor, context={"builder": vocabulary()}, send=send,
-                          today=today, thinking=thinking, subject=subject)
+                          today=today, thinking=thinking, subject=subject, network=list_name)
     kept = {"context": context_said} if context_said else {}
     if not got["ok"]:
         return dict(got, offered=[o[0] for o in offered], **kept)
@@ -1475,7 +1476,7 @@ def logs(list_name: str, question: str, *, actor: str, send=None, client=None,
         got = gateway.ask(FEATURE, prompt, schema,
                           parts_logs(question, kinds, mns, labels, named, roles, now, z),
                           actor=actor, context={"builder": vocabulary_logs()}, send=send,
-                          today=today, subject=subject)
+                          today=today, subject=subject, network=list_name)
     if not got["ok"]:
         return dict(got, offered=mns)
     c, kept = got["output"], {}

@@ -11,18 +11,26 @@ the folder beside the record of AI calls (`calls._path`'s folder, ``ai_presses/`
    static/js/nmas_v2.js, `pressKey`). The n-th call a request makes under a key is slot
    ``key-<sha256(actor, key, n)>``: a second request with the same key (a retry, a resent
    form) waits while the first's n-th call is in flight, then returns that call; one that
-   arrives later returns it at once. Nothing is sent again.
+   arrives later returns it at once. Nothing is sent again. The slot records the access scope
+   the call was made under (`identity.access_scope`): a retry under another scope (a gate
+   changed between the two) is refused (``other_scope``, naming both), never handed the call.
 2. **The same request in flight is joined, not started again.** The slot
-   ``req-<sha256(feature, the masked request)>`` is held while a call is sent: a second press
-   of the same feature on the same subject, pack and prompt version (a double click, a press
-   after a refresh dropped the first answer, another person on the same alert) builds the
-   same masked request, finds the slot held, waits, and returns the call that held it. A
-   request that finds the slot free makes its own call, however recently an identical one
-   ended: pressing again after an answer is a new call (Explain's is "Explain again").
+   ``req-<request_digest>`` is held while a call is sent. Its identity is explicit
+   (`IDENTITY`): the feature, the network, the subject, the prompt and its version, the
+   model and the requester's access scope, then the masked request itself. A second press
+   with all of them equal (a double click, a press after a refresh dropped the first answer,
+   another person with the same scope on the same alert) finds the slot held, waits, and
+   returns the call that held it. Any one of them different is another request, so a call is
+   never handed across features, networks or access scopes. A request that finds the slot
+   free makes its own call, however recently an identical one ended: pressing again after an
+   answer is a new call (Explain's is "Explain again").
 
-Each join is recorded where the call is, a use row in `ai_calls` ("joined call <id>",
-`calls.record_use`), naming who joined and why. A join costs nothing new: the result is the
-call's own row, rebuilt by the gateway (its output validated again by its schema).
+Each join is the joiner's own row in `ai_calls` (the gateway's `_joined`): their actor, the
+feature and subject, verdict ``joined``, cost 0, ``joined`` the call's id, and why. It replaces
+a use row on the call (which a feature's own use, "shown" or "refused by validation", would
+then follow, so the call's history would read a join as what became of its answer). A join
+costs nothing new: the result is the call's own row, rebuilt by the gateway (its output
+validated again by its schema).
 
 **The wait is bounded** by the adapter's own worst case for one call (the gateway's
 `press_wait_s`, handed in: only the gateway reaches the adapter). Past it the press is refused
@@ -71,9 +79,23 @@ def _sha(*parts) -> str:
     return h.hexdigest()
 
 
-def request_digest(feature: str, body: dict) -> str:
-    """The identity of a request: the feature and the masked body as it would be sent."""
-    return _sha(feature, json.dumps(body, sort_keys=True, ensure_ascii=False))
+#: What makes two requests one, beside the feature and the masked body (`request_digest`):
+#: everything that changes the answer or who may see it, named by the gateway, never left to
+#: happen to be inside the body.
+IDENTITY = ("network", "subject", "prompt", "model", "scope")
+
+
+def request_digest(feature: str, body: dict, about: dict) -> str:
+    """The identity of a request: the feature, *about* (each of `IDENTITY`, every one named:
+    a missing or extra name raises, so no caller leaves one out) and the masked body as it
+    would be sent. JSON with sorted keys, ASCII-escaped as the adapter's request is, so equal
+    content is one request whatever order it was built in, and text that cannot be UTF-8
+    (a lone surrogate) is digested as it is sent instead of failing."""
+    if sorted(about) != sorted(IDENTITY):
+        raise ValueError(f"a request's identity names {', '.join(IDENTITY)}; given "
+                         f"{', '.join(sorted(about)) or 'none'}")
+    return _sha(feature, json.dumps(about, sort_keys=True, ensure_ascii=True),
+                json.dumps(body, sort_keys=True, ensure_ascii=True))
 
 
 def current_press(actor: str):
@@ -169,8 +191,9 @@ def _done_call(marker) -> str:
 
 
 def _join(call_id: str, rebuild, actor: str, why: str):
-    """The call *call_id*'s own result, its join recorded; None when its row cannot be read
-    (the press then makes its own call, which the caps judge against the record as ever)."""
+    """The call *call_id*'s own result, rebuilt by *rebuild* (the gateway's, which records the
+    joiner's own row); None when its row cannot be read (the press then makes its own call,
+    which the caps judge against the record as ever)."""
     from modules.ai import calls
 
     found = calls.find(call_id)
@@ -178,49 +201,60 @@ def _join(call_id: str, rebuild, actor: str, why: str):
         log.warning("ai presses: the call %s to join is not in the record (%s); a new call is "
                     "made", call_id, found.get("error") or found.get("state"))
         return None
-    calls.record_use(call_id, f"joined call {call_id}", actor=actor, detail=why)
     log.info("ai presses: %s joined call %s (%s)", actor, call_id, why)
-    return dict(rebuild(found["row"]), joined=call_id)
+    return dict(rebuild(found["row"], why), joined=call_id)
 
 
-def once(feature: str, body: dict, *, actor: str, make, rebuild, refuse, wait_s: float,
-         clock=time.monotonic, sleep=time.sleep) -> dict:
+def once(feature: str, body: dict, *, about: dict, actor: str, make, rebuild, refuse,
+         wait_s: float, clock=time.monotonic, sleep=time.sleep) -> dict:
     """*make*'s result (the gateway's caps, send and record), or the result of the call this
-    press joins (rule 1 or 2 above), rebuilt from its row by *rebuild*. A press that waited
-    past *wait_s* is refused through *refuse* (the gateway's, which records the row:
-    ``in_flight``), and nothing is sent."""
+    press joins (rule 1 or 2 above), rebuilt from its row by *rebuild* (``rebuild(row, why)``).
+    *about* is the request's identity beside its body (`IDENTITY`; its ``scope`` the
+    requester's access scope). A press that waited past *wait_s* is refused through *refuse*
+    (the gateway's, which records the row: ``in_flight``), and so is a key seen under another
+    scope (``other_scope``); nothing is sent."""
     press = current_press(actor)
+    digest = request_digest(feature, body, about)
+    scope = about["scope"]
     slots = []
     try:
         if press:
             mine = _Slot(press["slot"])
             mine.claim(wait_s, clock, sleep)
             slots.append(mine)
-            seen = _done_call(mine.marker())
+            marker = mine.marker()
+            seen = _done_call(marker)
+            if seen and marker.get("scope") != scope:
+                return refuse("other_scope", f"this press's key was answered by call {seen} "
+                              f"under the access scope {marker.get('scope') or 'not recorded'!r}"
+                              f", and it is sent again under {scope!r}: a call is never handed "
+                              "across access scopes, so nothing was returned and nothing was "
+                              "sent")
             if seen:
                 got = _join(seen, rebuild, actor, "the same press sent again: its key was seen "
                             f"(call {press['n']} of the press)")
                 if got is not None:
                     return got
-        same = _Slot("req-" + request_digest(feature, body))
+        same = _Slot("req-" + digest)
         waited = same.claim(wait_s, clock, sleep)
         slots.append(same)
         if waited:
             seen = _done_call(same.marker())
             got = (_join(seen, rebuild, actor, "the same request was in flight: "
-                         f"{feature}, the same subject, data and prompt") if seen else None)
+                         f"{feature}, the same network, subject, data, prompt, model and "
+                         "access scope") if seen else None)
             if got is not None:
                 if press:
-                    slots[0].mark(state="done", call_id=seen)
+                    slots[0].mark(state="done", call_id=seen, scope=scope)
                 return got
         same.mark(state="running")
         if press:
-            slots[0].mark(state="running")
+            slots[0].mark(state="running", scope=scope)
         got = make()
         call_id = got.get("call_id") or ""
         same.mark(state="done", call_id=call_id)
         if press:
-            slots[0].mark(state="done", call_id=call_id)
+            slots[0].mark(state="done", call_id=call_id, scope=scope)
         return got
     except InFlightTooLong as exc:
         return refuse("in_flight", f"an identical {feature} call has been in flight for over "

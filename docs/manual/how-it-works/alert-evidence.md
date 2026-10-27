@@ -211,8 +211,13 @@ Each press of an AI control carries its own key. A press sent twice (a retry, a 
 returns the first one's call; a second press of the same alert while the first is still being
 answered (a double click, or a press after the page was reloaded mid-call, by you or someone
 else) waits for that call and draws its answer. Neither sends anything to the provider; each is
-recorded as a use of the call ("joined call …") in History. This holds for every AI control,
-not only Explain.
+its presser's own row in History, "joined call …, nothing sent", costing nothing and counted as
+no call, and the call's row names who joined it. A press joins only a call with everything
+that shapes the answer or who may see it the same: the feature, the network, the subject, the
+prompt and its version, the model, and the presser's access scope (what Mercury allows them,
+as a person, a service or unverified). A press sent again under another access scope is
+refused, naming both, and is never handed the call. This holds for every AI control, not only
+Explain.
 
 ## What of the network Explain sends {#topology}
 

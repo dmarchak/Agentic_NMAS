@@ -606,6 +606,38 @@ def may(ident: "Identity", action: str, operation: str = "") -> tuple:
     return False, "requires a person"
 
 
+def access_scope() -> str:
+    """What the requester of this request may do, as one comparable string: who `may` sees
+    (a person, a service by its label, or unverified) and the gated actions `may` allows them,
+    in `GATED_ACTIONS`' order. An AI call is never handed across it (C1854: a press joins
+    another's call only under the same scope, `modules/ai/presses.py`).
+
+    It is `may`'s answer because `may` is the one function every gate asks. Mercury resolves no
+    role per network yet (NSOT_AUTHORIZATION section 6's ``any_person``: every verified person
+    may do every action; the roles per network are NSOT_STAGE10_PLAN's 9.I), so the scope is
+    the same on every network; when `may` takes a network, this takes it too. Two verified
+    persons share a scope today, and a person, a service and an unverified requester do not.
+    The identity is this request's (`request_identity()`), else the one a job carries
+    (`carried()`), else none (unverified)."""
+    ident = None
+    try:
+        from flask import has_request_context
+        if has_request_context():
+            ident = request_identity()
+    except Exception:                                   # noqa: BLE001
+        ident = None
+    if ident is None:
+        ident = getattr(_CARRIED, "ident", None) or Identity()
+    if not ident.is_identified:
+        who = "unverified"
+    elif ident.kind == "service":
+        who = f"service {service_label(ident.service_id)}"
+    else:
+        who = ident.kind or "person"
+    allowed = [a for a in GATED_ACTIONS if may(ident, a)[0]]
+    return f"{who}; may {', '.join(allowed) if allowed else 'no gated action'}"
+
+
 def require(request, action: str = "reveal", operation: str = ""):
     """``(identity, refusal)``. *refusal* is ``None`` when the action may proceed.
 

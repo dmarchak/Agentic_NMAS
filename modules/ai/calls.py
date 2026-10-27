@@ -21,6 +21,9 @@ _lock = threading.Lock()
 
 #: The record's store on the records database (one file for the installation).
 STORE = "ai_calls"
+#: The verdict of a press that joined another's call (C1854, `gateway._joined`): the joiner's
+#: own row, cost 0, ``joined`` the call's id. No call was made: `spent_usd` counts none.
+JOINED = "joined"
 
 
 def _path() -> str:
@@ -163,7 +166,9 @@ def _all() -> dict:
 
 def read() -> dict:
     """Every call, newest first: ``{"state": "ok"|"absent"|"unreadable", "rows", "error"}``.
-    Calls only: a use row (`record_use`) is no call, so it neither counts nor costs."""
+    Calls only: a use row (`record_use`) is no call, so it neither counts nor costs. A press
+    that joined another's call is its own row here (verdict `JOINED`, cost 0, ``joined`` the
+    call's id), drawn as a join."""
     got = _all()
     return dict(got, rows=[r for r in reversed(got["rows"]) if "use_of" not in r])
 
@@ -222,5 +227,7 @@ def spent_usd(day: str, zone: str = None) -> dict:
     # day's (read without a default, which no row could tell from another).
     zone = zone or boundary()
     rows = [r for r in got["rows"] if _row_day(r, zone) == day]
+    # A press that joined another's call (verdict "joined", C1854) cost nothing and made no
+    # call: it is summed (its 0) but never counted as a call.
     return {"state": got["state"], "usd": sum(float(r.get("cost_usd") or 0) for r in rows),
-            "calls": len(rows), "error": ""}
+            "calls": sum(1 for r in rows if r.get("verdict") != JOINED), "error": ""}

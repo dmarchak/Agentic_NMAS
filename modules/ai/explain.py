@@ -611,7 +611,7 @@ def _ask_round(prompt, schema, data, ctx, network, *, actor, send, today, subjec
     from modules.ai import needs as N
     from modules.ai import nl_query
 
-    kw = {"actor": actor, "context": ctx, "send": send, "today": today}
+    kw = {"actor": actor, "context": ctx, "send": send, "today": today, "network": network}
     got = gateway.ask(FEATURE, prompt, schema, dict(data, looked_up=nl_query.looked_up([])),
                       subject=subject, **kw)
     wanted = list(getattr(got.get("output"), "needs", None) or []) if got.get("ok") else []
@@ -687,7 +687,8 @@ def explain_pack(pack: dict, *, actor: str, send=None, today: str = None,
                          actor=actor, send=send, today=today, subject=subject)
     else:
         got = gateway.ask(FEATURE, tuple(prompt), schema, data, actor=actor, context=ctx,
-                          send=send, today=today, subject=subject)
+                          send=send, today=today, subject=subject,
+                          network=pack.get("network") or "")
     if not got["ok"]:
         return dict(got, pack_id=pack_id, pack_read=read, topology=said, **kept)
     answer, base = got["output"], {"pack_id": pack_id, "pack_read": read,

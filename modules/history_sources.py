@@ -1106,6 +1106,14 @@ def ai_calls(ctx):
         return _out(errors=[f"the record of AI calls could not be read: {got.get('error', '')}"])
     used = calls.uses()
     rows = got.get("rows") or []
+    # A press that joined another's call (C1854) is its own row, drawn as a join of that call:
+    # its outcome the call's, its detail opening the call's prompt and answer; the call names
+    # who joined it.
+    by_id = {r.get("id"): r for r in rows}
+    joins = {}
+    for r in reversed(rows):
+        if r.get("verdict") == calls.JOINED:
+            joins.setdefault(r.get("joined"), []).append(r)
     if ctx["device"]:
         rows = [r for r in rows if ctx["device"] in ((r.get("subject") or {}).get("devices")
                                                      or [])]
@@ -1119,12 +1127,20 @@ def ai_calls(ctx):
         verdict = r.get("verdict") or "?"
         last = (used.get(r.get("id")) or [{}])[-1].get("use", "")
         head = f"AI call, {r.get('feature', '?')} on {subject_words(r.get('subject'))}: "
-        head += (last or "answered") if verdict == "ok" else verdict.replace("_", " ")
+        if verdict == calls.JOINED:
+            head += f"joined call {r.get('joined', '?')}, nothing sent"
+        else:
+            head += (last or "answered") if verdict == "ok" else verdict.replace("_", " ")
         return head + f" ({r.get('model', '?')}, ${float(r.get('cost_usd') or 0):.4f})"
 
     def outcome(r):
         # The gateway's verdict; an answer it passed that its feature then refused showed the
         # person nothing, so it is no success either (drawn as a failure, as every kind's is).
+        # A join's is the call's it joined; a call no longer in the record, "joined" (unknown).
+        if r.get("verdict") == calls.JOINED:
+            joined = by_id.get(r.get("joined"))
+            return outcome(joined) if joined and joined.get("verdict") != calls.JOINED \
+                else calls.JOINED
         last = (used.get(r.get("id")) or [{}])[-1].get("use", "")
         return ("refused_by_validation" if r.get("verdict") == "ok"
                 and last.startswith("refused") else r.get("verdict", ""))
@@ -1139,8 +1155,9 @@ def ai_calls(ctx):
                    list((r.get("subject") or {}).get("devices") or []),
                    who=r.get("actor", ""),
                    detail=r.get("detail", "") or f"prompt {r.get('prompt', '?')}",
-                   outcome=outcome(r), call=r.get("id", ""),
-                   record=[("Call", r.get("id")), ("About", subject_words(r.get("subject"))),
+                   outcome=outcome(r), call=r.get("joined") or r.get("id", ""),
+                   record=[("Call", r.get("id")), ("Joined call", r.get("joined")),
+                           ("About", subject_words(r.get("subject"))),
                            ("Prompt", r.get("prompt")), ("Schema", r.get("schema")),
                            ("Model", r.get("model")), ("Tokens", tokens(r)),
                            ("Cost", f"${float(r.get('cost_usd') or 0):.4f}"),
@@ -1148,7 +1165,9 @@ def ai_calls(ctx):
                            ("Then", "; ".join(u.get("use", "") + (f" ({u['detail']})"
                                                                   if u.get("detail") else "")
                                               for u in used.get(r.get("id")) or [])
-                            or "nothing recorded")])
+                            or "nothing recorded"),
+                           ("Joined by", "; ".join(f"{j.get('actor', '?')} at {j.get('at', '?')}"
+                                                   for j in joins.get(r.get("id")) or []))])
         # What the answer produced (15.14's links both ways): the last use row's page and
         # anchor, drawn as "Open what it produced".
         e["produced"] = produced((used.get(r.get("id")) or [{}])[-1].get("links"))

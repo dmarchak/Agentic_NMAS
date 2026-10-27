@@ -23,8 +23,9 @@ and every call, sent or refused, is one `ai_calls` row. In order, before anythin
    said in every cap refusal). A refusal names both operands.
 
 **One press, one provider request** (C1854): from the caps on, a call runs through
-`presses.once`: a press whose key was already seen, or whose masked request is already in
-flight, gets that call's result (`from_row`) and sends nothing, the join recorded as a use row.
+`presses.once`: a press whose key was already seen, or whose request is already in flight (the
+same feature, network, subject, prompt, model, access scope and masked body), gets that call's
+result (`from_row`) and sends nothing, the join its own row (verdict ``joined``, cost 0).
 
 Then the adapter sends it; a refusal, a `max_tokens` stop, an answer that is not the schema,
 and each provider failure are each their own kind, never a parser's crash (13.5).
@@ -150,7 +151,7 @@ def _text_of(reply_body: dict) -> str:
 
 def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
         context: dict = None, send=None, today: str = None, thinking: str = None,
-        subject: dict = None) -> dict:
+        subject: dict = None, network: str = "") -> dict:
     """One schema-bound call of the task *feature* (the module's docstring has the order): its
     model and bounds are its pin in `profiles.TASKS`, never an argument. *context* is the
     stable prefix every call of the task shares, cached; *parts* the call's own data,
@@ -159,7 +160,9 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
     measurement of both asks; by default the task's pin, "adaptive" when it names none. The
     row records which was sent. *subject* is what the call is about, written with it (15.14:
     the device, the alert or the query, ``{"kind", "id", "devices"}``), on every row, sent or
-    refused."""
+    refused. *network* is the network the call is about (a list's folder name; "" for the
+    installation's own, the connection check): with the subject, the prompt, the model and
+    the requester's access scope, what makes two presses one request (C1854)."""
     call_id = calls.new_id()
     pin = profiles.TASKS.get(feature) or {}
     model = pin.get("model", "")
@@ -241,9 +244,15 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
         return _capped_send(feature, row, body, model, max_tokens, schema_model, key,
                             send=send, today=today, refuse=refuse)
 
+    # The request's identity beside its body (presses.IDENTITY): everything that changes the
+    # answer or who may see it, named here where each is known.
+    from modules import identity
     from modules.ai import presses
-    return presses.once(feature, body, actor=actor, make=spend, refuse=refuse,
-                        rebuild=lambda kept: from_row(kept, schema_model),
+    about = {"network": network or "", "subject": row["subject"], "prompt": row["prompt"],
+             "model": model, "scope": identity.access_scope()}
+    return presses.once(feature, body, about=about, actor=actor, make=spend, refuse=refuse,
+                        rebuild=lambda kept, why: _joined(row, kept, schema_model, why,
+                                                          about["scope"]),
                         wait_s=press_wait_s())
 
 
@@ -267,13 +276,23 @@ def from_row(row: dict, schema_model) -> dict:
     """A recorded call's result as `ask` returned it (a joined press's, C1854): its output
     validated again by its schema, as JSON as the answer was (a strict schema takes an enum's
     value only from JSON), or its refusal's kind and words."""
-    out = {"call_id": row.get("id", ""), "cost_usd": float(row.get("cost_usd") or 0.0),
-           "recorded": True}
+    out = {"call_id": row.get("id", ""), "cost_usd": float(row.get("cost_usd") or 0.0)}
     if row.get("verdict") == "ok":
         return dict(out, ok=True, output=schema_model.model_validate_json(
             json.dumps(row.get("output") or {})))
     return dict(out, ok=False, error=row.get("verdict") or "unknown",
                 detail=row.get("detail") or "")
+
+
+def _joined(row: dict, kept: dict, schema_model, why: str, scope: str) -> dict:
+    """A press that joined the call *kept* (C1854): its own row in the record of AI calls,
+    attributed to its actor (this press's *row*, without a request: none was sent), verdict
+    ``joined``, cost 0, ``joined`` the call's id and *why*, its access *scope*; and the call's
+    result (`from_row`), ``recorded`` whether this row was kept."""
+    own = {k: v for k, v in row.items() if k != "request"}
+    out = calls.record(dict(own, verdict=calls.JOINED, cost_usd=0.0, joined=kept["id"],
+                            scope=scope, detail=f"joined call {kept['id']}: {why}"))
+    return dict(from_row(kept, schema_model), recorded=out.get("recorded", False))
 
 
 def _capped_send(feature, row, body, model, max_tokens, schema_model, key, *, send, today,
