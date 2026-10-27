@@ -93,9 +93,26 @@ Filters:
     silence Mercury set, moved or expired in Grafana, for whom, with Grafana's answer; one
     Grafana refused is drawn in red; and each re-measure of the heartbeat windows, written from
     the heartbeat check's row on Needs attention, who wrote it and each of the network's
-    devices' windows), and Show commands runs.
+    devices' windows), alert rule changes in Grafana (below), and Show commands runs.
 - **Since.**
 - **Jump to:** a day; the timeline starts at its end (below).
+
+**Alert rule changes in Grafana.** A change to an alert rule made in Grafana itself (its
+editor, its API or its provisioning files) is a row of its own: "Alert rule changed in
+Grafana: Device unreachable (SNMP), version 12 → 13: threshold C: below 1 → below 2". Mercury
+reads every rule's definition each minute and compares it with the last one it recorded: a rule
+added, removed, or whose version or definition moved is one row, with what changed in short
+(the query, the threshold or condition, the pending period, labels, annotations, paused),
+never the whole rule. **Who** is the account Grafana says last saved the rule (a login, a
+service account, or its file provisioning); where Grafana names no one, the row says
+"Grafana does not say". The row's time is when Grafana saved it; open the row for when
+Mercury saw it, both versions, both hashes and where it was read. The first time Mercury reads
+a Grafana's rules it records each at its version as one row, "Alert rules first recorded",
+which is not a change. A rule generated per device (a heartbeat rule, carrying a `device`
+label) shows on that device's History too; any other rule's change shows on the network's
+History only, because a query that mentions a device is not an exact claim about which device
+it is. A read of Grafana that failed, or whose rules came back incomplete, records nothing.
+Rows appear when the page next loads.
 
 A row's **who** is a verified person's email, or, for a host command, the host login labelled
 "host login, not a verified identity". A deploy of part of intent is named by what it sent:

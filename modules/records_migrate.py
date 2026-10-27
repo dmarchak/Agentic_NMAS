@@ -588,6 +588,19 @@ LINE_STORES["explain_answers"] = _installation_store("explain_answers", "Explain
                                                      "answers", _explain_answers_path)
 
 
+def _alert_rule_changes_path() -> str:
+    from modules import alert_rule_changes
+    return alert_rule_changes._path()
+
+
+# Each change to a Grafana alert rule made in Grafana, as the ruler shows it (C1886): one file
+# for the installation, one line per rule seen, added, changed or removed, through
+# `store_append` and `store_rows` (`modules/alert_rule_changes.py`).
+LINE_STORES["alert_rule_changes"] = _installation_store("alert_rule_changes",
+                                                        "Alert rule changes in Grafana",
+                                                        "rule changes", _alert_rule_changes_path)
+
+
 # ── The files ────────────────────────────────────────────────────────────────────────────────
 
 def file_networks(store: str = STORE) -> dict:

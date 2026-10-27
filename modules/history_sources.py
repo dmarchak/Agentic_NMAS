@@ -1312,6 +1312,86 @@ def grafana_writes(ctx):
                  if r.get("network") in (ctx["ref"].name, None, "") and _recent(ctx, r.get("at"))])
 
 
+#: An alert rule change's kind of row, as its line says it.
+_RULE_CHANGE_WORDS = {"added": "added", "changed": "changed", "removed": "removed"}
+
+
+def alert_rule_changes(ctx):
+    """Each change to a Grafana alert rule made in Grafana (C1886; `modules/alert_rule_changes.
+    py`, recorded by the alerts reader from the ruler): the rule, its old and new version, what
+    changed in words, who Grafana says saved it (or that it does not say) and when. The first
+    read of a configuration is one row ("first recorded"), never a change per rule. A row names
+    the networks reading that Grafana; one naming none is drawn on every network. A device's
+    History draws only a rule whose ``device`` label names it: any other rule is the
+    network's."""
+    from modules import alert_rule_changes as ARC
+    got = ARC.read()
+    if got["state"] == "unreadable":
+        return _out(errors=[f"the alert rule record could not be read: {got['error']}"])
+    name = ctx["ref"].name
+    rows = [r for r in got["rows"] if r.get("kind") == "rule"
+            and (not r.get("networks") or name in r["networks"])]
+    if ctx["device"]:
+        rows = [r for r in rows if ctx["device"] in (r.get("devices") or [])]
+    rows = [r for r in rows if _recent(ctx, r.get("at"))]
+
+    def version(r):
+        if r.get("change") == "changed":
+            return f"version {r.get('version_from')} → {r.get('version')}"
+        if r.get("change") == "removed":
+            return f"was version {r.get('version_from')}"
+        return f"version {r.get('version')}"
+
+    def record(r):
+        return [("Rule", f"{r.get('title')} ({r.get('uid')})"),
+                ("Folder and group", f"{r.get('folder')} › {r.get('group')}"),
+                ("Version", version(r)),
+                ("Definition hash", (f"{r.get('hash_from') or '—'} → {r.get('hash') or '—'}"
+                                     if r.get("change") != "baseline" else r.get("hash"))),
+                ("What changed", r.get("summary")),
+                ("Saved by (as Grafana says)", r.get("who")),
+                ("Saved in Grafana", r.get("updated")),
+                ("Seen by Mercury", r.get("seen_at")),
+                ("Time shown", r.get("at_basis")),
+                ("Read from", f"Grafana's ruler, by the alerts reader ({r.get('store')})"),
+                ("Networks", ", ".join(r.get("networks") or []) or "every network"),
+                ("Devices", ", ".join(r.get("devices") or [])
+                 or "none by label: the network's record only")]
+
+    events, firsts = [], {}
+    for r in rows:
+        if r.get("change") == "baseline":
+            firsts.setdefault((r.get("store"), r.get("seen_at")), []).append(r)
+            continue
+        verb = _RULE_CHANGE_WORDS.get(r.get("change"), r.get("change") or "?")
+        what = f"Alert rule {verb} in Grafana: {r.get('title')}, {version(r)}"
+        if r.get("change") == "changed" and r.get("summary"):
+            what += f": {r['summary']}"
+        events.append(_event(r.get("at"), "alert_rule", what, r.get("devices") or [],
+                             who=r.get("who", ""), detail=r.get("at_basis", ""),
+                             outcome=r.get("change", ""), record=record(r)))
+    for (store, seen), rs in firsts.items():
+        n = len(rs)
+        events.append(_event(seen, "alert_rule",
+                             f"Alert rules first recorded from Grafana: {n} rule"
+                             f"{'' if n == 1 else 's'}, each at its version",
+                             sorted({d for r in rs for d in r.get("devices") or []})
+                             if ctx["device"] else [],
+                             who="Mercury's alerts reader",
+                             detail=("the first read of this Grafana's rules: no change, the "
+                                     "state each later change is judged against"),
+                             outcome="baseline",
+                             record=[("Read from", f"Grafana's ruler, by the alerts reader "
+                                                   f"({store})")]
+                             + [(r.get("title"), f"version {r.get('version')}, hash "
+                                                 f"{r.get('hash')}, saved by {r.get('who')}")
+                                for r in rs]))
+    events.sort(key=lambda e: e["at"], reverse=True)
+    return _out(events[:ctx["limit"]],
+                cut=([f"the alert rule changes' newest {ctx['limit']}"]
+                     if len(events) > ctx["limit"] else []))
+
+
 def heartbeat_windows(ctx):
     """Each re-measure of the heartbeat windows written from Monitoring (C360: `heartbeat_apply`
     kept a record nothing drew): who, how many windows changed, and each device's window. The
@@ -1945,6 +2025,7 @@ SOURCES = {
     "netbox": netbox, "grafana_writes": grafana_writes, "heartbeat_windows": heartbeat_windows,
     "ai_calls": ai_calls, "installation_settings": installation_settings,
     "sdn_operations": sdn_operations,
+    "alert_rule_changes": alert_rule_changes,
 }
 
 #: The kind filter (board D): each a group of event kinds, in the board's four headings.
@@ -1980,6 +2061,8 @@ KIND_GROUPS = (
                                ("sdn", "SDN flow operations", ("sdn",)),
                                ("netbox", "NetBox imports and removals", ("netbox",)),
                                ("grafana", "Grafana writes", ("grafana", "heartbeat")),
+                               ("alert_rules", "Alert rule changes in Grafana",
+                                ("alert_rule",)),
                                ("show_commands", "Show commands", ("show_commands",)))),
 )
 KIND_FILTERS = {key: kinds for _h, group in KIND_GROUPS for key, _w, kinds in group}
@@ -2086,6 +2169,7 @@ SOURCE_KINDS = {
     "reveals": ("reveal",), "host_keys": ("hostkey",), "netbox": ("netbox",),
     "grafana_writes": ("grafana",), "heartbeat_windows": ("heartbeat",), "ai_calls": ("ai_call",),
     "installation_settings": ("setting",), "sdn_operations": ("sdn",),
+    "alert_rule_changes": ("alert_rule",),
 }
 
 #: The sources that cannot be asked for rows older than a page's place, each with why: their

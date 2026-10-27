@@ -66,6 +66,14 @@ whose state began within the last hour (`recently_normal`), each a resolve
 timed by Grafana. Grafana's own past (its alert annotations; this Grafana's
 `api/v1/rules/history` answered HTTP 500 on 2026-10-26) is read once by
 `scripts/nmas-alert-backfill`.
+
+**A change to a rule made in Grafana is recorded** (C1886; the operator, 2026-10-27). The
+value keeps each rule's definition as the ruler holds it (`rule_definitions`: its version,
+a hash of its definition, who Grafana says saved it and when, and a short digest of its parts),
+and the after-store step records each rule added, changed or removed against the last recorded
+state (`modules/alert_rule_changes.py`), drawn in History. A ruler that did not hold every rule
+the rules view lists is a partial answer for this (`rule_definitions_complete`), and nothing
+is recorded from it.
 """
 
 import logging
@@ -335,7 +343,15 @@ def parse(ruler: dict, view: dict, alerts: list, read_at: float, silences=None,
             **extra, **_instance_device(labels, source)})
 
     counts["silenced"] = sum(1 for i in instances if i.get("silenced_by"))
+    # Each rule's definition as the ruler holds it: its version, a hash, who and when (C1886;
+    # `modules/alert_rule_changes.py`, which records a change against the last recorded
+    # state). Judged complete only when the ruler held every rule the rules view lists.
+    from modules import alert_rule_changes as ARC
+    definitions = ARC.from_ruler(ruler)
+    complete, why = ARC.completeness(definitions, [r["uid"] for r in rules])
     return {"rules": rules, "instances": instances, "counts": counts,
+            "rule_definitions": definitions, "rule_definitions_complete": complete,
+            "rule_definitions_why": why,
             "stalled_groups": stalled, "alertmanager_only": unmatched,
             "configured_rules": len(config),
             # Every silence in force or waiting to start, whether or not an
@@ -417,12 +433,15 @@ def band_readings(value: dict, acks=None, prom=None) -> dict:
 
 def _after_store() -> bool:
     """After each stored read, before the announcement: every transition the read shows that
-    the alert history does not hold, recorded (`modules/alert_history.py`), then a pack for
-    each alert newly stored as firing (PHASE8_PLAN 15.9, P1; `modules/evidence_pack.py`), so
-    the Alerts tab that redraws on it shows both. True when either added something."""
-    from modules import alert_history, evidence_pack
+    the alert history does not hold, recorded (`modules/alert_history.py`), each change to a
+    rule's definition made in Grafana, recorded (C1886; `modules/alert_rule_changes.py`), then
+    a pack for each alert newly stored as firing (PHASE8_PLAN 15.9, P1;
+    `modules/evidence_pack.py`), so the Alerts tab that redraws on it shows them. True when any
+    added something."""
+    from modules import alert_history, alert_rule_changes, evidence_pack
     recorded = alert_history.after_alerts_read()
-    return evidence_pack.after_alerts_read() or recorded
+    changed = alert_rule_changes.after_alerts_read()
+    return evidence_pack.after_alerts_read() or recorded or changed
 
 
 READER = reader_job.register(reader_job.Reader(

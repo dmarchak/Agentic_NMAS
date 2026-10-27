@@ -469,6 +469,9 @@ WRITTEN_ELSEWHERE = {
     "grafana_writes": "every write Mercury sends to Grafana, recorded by the integration that "
                       "sends it (modules/integrations/grafana.py: a silence set, moved or "
                       "expired), whoever it was for",
+    "alert_rule_changes": "a change to a Grafana alert rule made in Grafana, recorded by the "
+                          "alerts reader's after-store step from the ruler (modules/"
+                          "alert_rule_changes.py, C1886): no Mercury operation writes it",
     "breakglass": "the break-glass export, a reveal route (routes/breakglass.py)",
     # The fleet's own records (C369, board D): about no one device, read by the one timeline.
     "commits": "a commit touching no device's golden or intent: the monitoring profile, the "

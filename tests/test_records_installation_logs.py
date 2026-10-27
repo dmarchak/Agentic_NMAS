@@ -2,7 +2,9 @@
 line-store seam `records_migrate.store_rows` / `store_append`: the reveal record, the host steps
 said done, the heartbeat windows' re-measures, NetBox's removals, and the alerts' evidence packs
 (PHASE8_PLAN 15.9, P1; `evidence_pack.record` and `evidence_pack.read`), and the alert history
-(`alert_history.record` and `alert_history.read`, 2026-10-26), against a REAL PostgreSQL
+(`alert_history.record` and `alert_history.read`, 2026-10-26), and the alert rule changes made
+in Grafana (`alert_rule_changes.record` and `alert_rule_changes.read`, C1886), against a REAL
+PostgreSQL
 shaped as host step 6a makes it (tests/pg_instance.py; skipped with its reason here, a failure in
 CI).
 
@@ -18,7 +20,8 @@ import stat
 
 import pytest
 
-from modules import alert_history, evidence_pack, heartbeat_windows, host_steps, netbox_guard
+from modules import alert_history, alert_rule_changes, evidence_pack, heartbeat_windows
+from modules import host_steps, netbox_guard
 from modules import records_db
 from modules import records_migrate as RM
 from modules import reveal_audit
@@ -96,10 +99,26 @@ def _explain_answer(n):
     assert explain_answers.keep(pack, result, "alex@example.com")["kept"]
 
 
+def _rule_change(n):
+    """The captured SNMP rule (tests/fixtures/grafana/ruler.json) alone, its version moved to
+    10 + n, through its owner's recorder (`alert_rule_changes.record`, the store's lock across
+    its read and append): the first a baseline, each after it one change (C1886)."""
+    from modules import alert_rule_changes as ARC
+    from tests.test_alert_rule_changes import SNMP, _rule
+    from tests.test_alert_rule_changes import load as load_ruler
+
+    rule = _rule(load_ruler("ruler"), SNMP)
+    rule["grafana_alert"]["version"] = 10 + n
+    ruler = {"RCN Lab": [{"name": "1m", "interval": "1m", "rules": [rule]}]}
+    assert ARC.record("grafana-alerts", ARC.from_ruler(ruler), ["Default"])["added"] == 1
+
+
 #: Each store: its writer, its owner's read as a list of rows, and its file.
 CASES = {
     "explain_answers": (_explain_answer, lambda: _explain_answers().read()["rows"],
                         lambda: _explain_answers()._path()),
+    "alert_rule_changes": (_rule_change, lambda: alert_rule_changes.read()["rows"],
+                           lambda: alert_rule_changes._path()),
     "alert_history": (_transition, lambda: alert_history.read()["rows"],
                       lambda: alert_history._path()),
     "evidence_packs": (_pack, lambda: evidence_pack.read()["rows"],
@@ -193,6 +212,13 @@ class TestEachOwnerSaysAFailedRecord:
             ann(load("annotations_72h"), 17895), "grafana-alerts")])
         assert got["ok"] is False and "cannot be read" in got["error"] and got["added"] == 0
         assert alert_history.read()["state"] == "unreadable"
+
+    def test_the_alert_rule_record_records_nothing_and_says_why(self, down):
+        from tests.test_alert_rule_changes import load as load_ruler
+        got = alert_rule_changes.record("grafana-alerts",
+                                        alert_rule_changes.from_ruler(load_ruler("ruler")))
+        assert got["ok"] is False and "cannot be read" in got["error"] and got["added"] == 0
+        assert alert_rule_changes.read()["state"] == "unreadable"
 
     def test_a_pack_says_it_was_not_kept_and_none_is_built_blind(self, down):
         _write, _read, _path = CASES["evidence_packs"]

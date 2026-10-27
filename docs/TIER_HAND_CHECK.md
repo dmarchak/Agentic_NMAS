@@ -1739,3 +1739,24 @@ identical; no defect in the code.**
 The machine logs (`hc-c1843.jsonl`, one JSON line per step; `c1843-prove.jsonl`, one line per
 survivor applied by hand) are scratch tooling, as above.
 
+## 2026-10-27: an alert rule's change recorded masked (C1886), the masking lines only, by hand
+
+**What touches the tier:** `modules/alert_rule_changes.py` keeps each alert rule change in a
+records store; the row is masked by `redact.redact_payload` before it is kept, and a rule's
+current facets are masked before they are compared with the kept ones, so a secret in a label
+is never stored and a masked value never reads as moved. It changes no masking code; the two
+lines that apply it are the tier's here.
+
+**The method:** the narrowed hand check (PHASE8_PLAN 15.12): each mutant applied as its exact
+line in a `scripts/nmas-control` throwaway worktree of the change, then
+tests/test_alert_rule_changes.py (`scratchpad/c1886_hm.py`).
+
+| mutant | result | killed by |
+|---|---|---|
+| the kept row unmasked (`kept = dict(row)`) | killed | `test_a_secret_in_a_label_is_kept_masked_and_never_reads_as_moved` |
+| the current facets compared unmasked | killed | the same test |
+| canary: the record step raises | killed | `test_two_reads_record_a_baseline_then_the_change_once` |
+
+**The result: every mutant killed; the canary killed; the working tree untouched (nmas-control's
+fingerprint).**
+
