@@ -184,10 +184,23 @@ def main(argv=None) -> int:
                          "hash checked), in place of building one: a pack is frozen once "
                          "built, so a case's five runs and a candidate's ask the same evidence "
                          "(an endpoint read the store no longer holds among it)")
+    ap.add_argument("--model", default="",
+                    help="ask Explain on this model in place of its pin, in this process "
+                         "alone (a comparison: Haiku, Sonnet, Opus)")
     args = ap.parse_args(argv)
+    if args.explain:
+        from modules.ai import cases
+        # An evaluation is recorded under its run, never as a person (C1784, C1846).
+        args.actor, refusal = cases.evaluation_actor(args.actor, "pack-replay")
+        refusal = refusal or cases.measure_on("explain", args.model)
+        if refusal:
+            print(f"nmas-pack-replay: {refusal}", file=sys.stderr)
+            return 2
+        print(f"nmas-pack-replay: recorded as {args.actor}"
+              + (f", on {args.model} (the pin file unchanged)" if args.model else ""))
     if args.pack:
-        if not (args.explain and args.actor):
-            ap.error("--pack explains a saved pack: it needs --explain and --actor")
+        if not args.explain:
+            ap.error("--pack explains a saved pack: it needs --explain")
         from modules import evidence_pack as EP
         with open(os.path.expanduser(args.pack), encoding="utf-8") as fh:
             pack = json.load(fh)
@@ -208,8 +221,6 @@ def main(argv=None) -> int:
         ap.error(f"--at {args.at} is in the future")
     if onset > at:
         ap.error("--onset is after --at")
-    if args.explain and not args.actor:
-        ap.error("--explain needs --actor (the person the calls are recorded as)")
     out = os.path.abspath(os.path.expanduser(args.out))
     if os.path.realpath(out).startswith(os.path.realpath(ROOT) + os.sep):
         print(f"nmas-pack-replay: --out {args.out} is inside the checkout; write it elsewhere",

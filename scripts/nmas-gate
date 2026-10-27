@@ -594,7 +594,14 @@ def main(argv=None):
     finally:
         remove()
     if rc == 0:
-        forget(gitdir, [p for _s, p in files])
+        # Only what the working tree still holds as committed: a file edited again while the
+        # suite ran keeps its ledger line (2026-10-26: three documents edited during a gate
+        # were dropped from the ledger at its commit, and the next gate's 1c named them as
+        # untouched by this session).
+        committed = [p for _s, p in files]
+        moved = set(git(repo, "diff", "--name-only", "HEAD", "--", *committed).stdout.split()) \
+            if committed else set()
+        forget(gitdir, [p for p in committed if p not in moved])
     return rc
 
 

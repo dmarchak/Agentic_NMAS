@@ -430,10 +430,17 @@ def test_the_prices_are_the_pricing_page_s_and_the_table_says_when_they_are_stal
                               "output": 0.50}
     assert {k: v / haiku["price"][k] for k, v in haiku["long_price"].items()} == pytest.approx(
         {"input": 5, "cache_write": 5, "cache_read": 5, "output": 5})
-    fresh = profiles.table(today="2026-11-01")
+    # Opus 5.5, read 2026-10-27 (a measurement ceiling): every rate 2x Sonnet's, cache reads
+    # 0.05x its input; thinking always on, so no thinking-off form.
+    opus = profiles.MODELS["claude-opus-5-5"]
+    assert opus["price"] == {"input": 4.00, "cache_write": 5.00, "cache_read": 0.20,
+                             "output": 20.00} and opus["thinking_off"] is None
+    import datetime
+    as_of = datetime.date.fromisoformat(profiles.PRICES_AS_OF)
+    fresh = profiles.table(today=(as_of + datetime.timedelta(days=7)).isoformat())
     assert fresh["stale"] is False and fresh["source"].startswith("https://platform.claude.com/")
     assert {r["task"] for r in fresh["rows"]} == set(profiles.TASKS)
-    old = profiles.table(today="2027-01-24")
+    old = profiles.table(today=(as_of + datetime.timedelta(days=91)).isoformat())
     assert old["stale"] is True and old["age_days"] == 91
 
 
@@ -565,8 +572,10 @@ def test_a_long_prompt_is_priced_at_the_long_rate():
         (100_000 * 0.10 + 1_000 * 0.50) / 1_000_000)
     assert profiles.cost_usd("claude-haiku-5-5", 100_001, 1_000) == pytest.approx(
         (100_001 * 0.50 + 1_000 * 2.50) / 1_000_000), "over 100,000 the whole call is long"
+    # A model the table does not hold (Opus 5.5 was the example until its row was read in,
+    # 2026-10-27).
     with pytest.raises(KeyError, match="known"):
-        profiles.profile("claude-opus-5-5")
+        profiles.profile("claude-nonesuch-0")
 
 
 def test_the_key_is_a_sealed_secret_and_hosted_ai_defaults_off():

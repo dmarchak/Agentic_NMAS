@@ -26,6 +26,48 @@ def load(path: str) -> dict:
         return json.load(fh)
 
 
+#: Every evaluation run is recorded under its run, never as a person (C1784, C1846; PHASE8_PLAN
+#: 18.3 rule 9: evaluation runs count against the caps, attributed to their run).
+EVALUATION = "evaluation:"
+_RUN = re.compile(r"^evaluation:[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$")
+
+
+def evaluation_actor(given: str, script: str, now: float = None) -> tuple:
+    """``(actor, refusal)`` for an evaluation script's ``--actor``: none given is
+    ``evaluation:<script>-<UTC time>``; one given must read ``evaluation:<run id>``. Anything
+    else, a person's address above all, is refused by name, so a measurement is never recorded
+    as a person nor counted against one."""
+    given = (given or "").strip()
+    if not given:
+        stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(time.time() if now is None
+                                                             else now))
+        return f"{EVALUATION}{script}-{stamp}", ""
+    if "@" in given:
+        return "", (f"--actor {given!r} reads as a person's address; an evaluation is recorded "
+                    f"as {EVALUATION}<run id>, never as a person (C1846)")
+    if not _RUN.match(given):
+        return "", (f"--actor {given!r} is not {EVALUATION}<run id> (letters, digits and . _ : "
+                    "-, at most 80); an evaluation is recorded under its run (C1846)")
+    return given, ""
+
+
+def measure_on(task: str, model: str) -> str:
+    """A comparison on another model (PHASE8_PLAN 15.12, the operator, 2026-10-27): *task*'s pin
+    replaced in this process alone, never the pin file. ``""`` when done (or *model* is empty),
+    else why not."""
+    from modules.ai import profiles
+
+    if not model:
+        return ""
+    if model not in profiles.MODELS:
+        return (f"no model profile for {model!r}; known: "
+                f"{', '.join(sorted(profiles.MODELS))}")
+    if task not in profiles.TASKS:
+        return f"no task {task!r} is pinned"
+    profiles.TASKS[task] = dict(profiles.TASKS[task], model=model)
+    return ""
+
+
 def _yesterday(now: float) -> tuple:
     day = calendar.timegm(time.gmtime(now)[:3] + (0, 0, 0)) - 86400
     fmt = "%Y-%m-%d %H:%M"

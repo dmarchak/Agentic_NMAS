@@ -717,6 +717,20 @@ class TestOnlyNamedPaths:
         assert "named, and not touched by this session's Edit or Write tools: docs/b.md (" \
             in r.stdout
 
+    def test_a_file_edited_again_while_the_suite_ran_keeps_its_ledger_line(self, two, tmp_path):
+        """2026-10-26: three documents edited while a gate's suite ran were taken out of the
+        ledger at its commit, and the next gate's 1c named them as untouched by this session.
+        A committed path leaves the ledger only when the working tree still holds it as
+        committed."""
+        ledger = two / ".git" / "nmas-edited-paths"
+        ledger.write_text("docs/a.md\ndocs/b.md\n")
+        again = f"echo 'a, edited during the run' > {two / 'docs' / 'a.md'}; " \
+                "echo '12 passed in 1.00s'"
+        r = _gate(two, tmp_path, suite=again, extra=("--only", "docs/a.md", "docs/b.md"))
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert _git(two, "status", "--porcelain") == "M docs/a.md", "the later edit is kept"
+        assert ledger.read_text() == "docs/a.md\n", "b left as committed; a edited again"
+
     def test_without_a_ledger_nothing_is_named(self, two, tmp_path):
         r = _gate(two, tmp_path)
         assert r.returncode == 0 and "not touched by this session" not in r.stdout

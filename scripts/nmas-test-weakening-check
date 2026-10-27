@@ -13,8 +13,10 @@ anchoring"). What it finds:
 - **a test deleted**: a `test_*` function, or a method of a `Test*` class (named by its class),
   in the parent's version of a changed `tests/**/test_*.py` file (or a deleted one) that is in
   none of the commit's changed test files. Not a deletion: a MOVE (the same qualified name in
-  another changed test file, new there) or a pure RENAME (a new name whose body's `ast.dump` is
-  the deleted one's).
+  another changed test file, new there) or a RENAME: a new name whose body, normalised (its
+  top-level statements' `ast.dump`, the docstring dropped), is the deleted one's identical or
+  stronger, every old statement kept in its order and no `return` added (C1831). A rename
+  that removes, loosens or wraps a statement is a deletion.
 - **a skip added**: `pytest.mark.skip`, `pytest.mark.skipif`, `pytest.mark.xfail` (as a
   decorator, a `pytestmark` value or a `pytest.param` mark), `pytest.skip()`, `pytest.xfail()`,
   `pytest.importorskip()`, and unittest's `skip`, `skipIf`, `skipUnless`, `expectedFailure`
@@ -181,16 +183,36 @@ def _names(path, *more):
 
 # --- tests deleted -------------------------------------------------------------------------
 
+def _normalised(body) -> tuple:
+    """A test's body normalised: its top-level statements' `ast.dump` (positions left out, as
+    `ast.dump` does), the leading docstring dropped (words about the test assert nothing)."""
+    if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant) \
+            and isinstance(body[0].value.value, str):
+        body = body[1:]
+    return tuple(ast.dump(s) for s in body)
+
+
+def kept_in(old: tuple, new: tuple) -> bool:
+    """*new* is *old*'s body identical or stronger (the operator, 2026-10-26, C1831): every
+    statement of *old*, in its order, is a top-level statement of *new*, and nothing *new*
+    adds is a `return` (which could end the test before what it kept). An assertion removed,
+    loosened or wrapped is not kept."""
+    it = iter(new)
+    if not all(any(s == n for n in it) for s in old):
+        return False
+    return not any(n.startswith("Return(") for n in new if n not in old)
+
+
 def test_functions(tree) -> dict:
-    """{qualified name: the body's ast.dump} for what pytest collects (pytest.ini: functions
-    `test_*`, classes `Test*`, nested classes included)."""
+    """{qualified name: the body normalised (`_normalised`)} for what pytest collects
+    (pytest.ini: functions `test_*`, classes `Test*`, nested classes included)."""
     out = {}
 
     def walk(body, prefix):
         for node in body:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and \
                     node.name.startswith("test"):
-                out[prefix + node.name] = ast.dump(ast.Module(body=node.body, type_ignores=[]))
+                out[prefix + node.name] = _normalised(node.body)
             elif isinstance(node, ast.ClassDef) and node.name.startswith("Test"):
                 walk(node.body, f"{prefix}{node.name}.")
 
@@ -223,12 +245,15 @@ def deleted_tests(changes, parent, commit) -> list:
                 continue
             moved = next((a for a in appeared if a[1] == qual and a not in used), None)
             renamed = moved or next((a for a in appeared if a[2] == dump and a not in used),
-                                    None)
+                                    None) or next((a for a in appeared
+                                                   if kept_in(dump, a[2]) and a not in used),
+                                                  None)
             if renamed:
                 used.add(renamed)
                 continue
-            # A rename that also edited the body is a deletion here: the test that was asserted
-            # is gone, and what replaced it is a reader's to judge (the operator's spec).
+            # A rename that removed, loosened or wrapped a statement of the body is a deletion
+            # here: the test that was asserted is gone, and what replaced it is a reader's to
+            # judge (the operator's spec; a stronger body is a rename, C1831).
             where = "the file deleted" if new_of.get(old) is None else \
                 "in none of the commit's changed test files"
             out.append(Weakening(old, qual, "test deleted", "defined", where,

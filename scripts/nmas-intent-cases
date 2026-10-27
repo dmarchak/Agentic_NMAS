@@ -71,13 +71,22 @@ def check(checkout: str, list_name: str, case_file: str = CASES) -> list:
 
 
 def record(checkout: str, list_name: str, actor: str, out: str, case_file: str,
-           runs: int) -> int:
+           runs: int, model: str = "") -> int:
     from modules.ai import cases, intent_words, profiles
 
     if os.path.realpath(out).startswith(os.path.realpath(checkout) + os.sep):
         print(f"nmas-intent-cases: --out {out} is inside the checkout; write it elsewhere",
               file=sys.stderr)
         return 2
+    # An evaluation is recorded under its run, never as a person (C1784, C1846); a comparison
+    # on another model replaces this process's pin alone.
+    actor, refusal = cases.evaluation_actor(actor, "intent-cases")
+    refusal = refusal or cases.measure_on(intent_words.FEATURE, model)
+    if refusal:
+        print(f"nmas-intent-cases: {refusal}", file=sys.stderr)
+        return 2
+    print(f"nmas-intent-cases: recorded as {actor}"
+          + (f", on {model} (the pin file unchanged)" if model else ""))
     # Every measurement starts with the expectations checked against the committed intent: a
     # stale one fails here, before anything is asked or spent, never as the model's miss.
     problems = check(checkout, list_name, case_file)
@@ -89,6 +98,9 @@ def record(checkout: str, list_name: str, actor: str, out: str, case_file: str,
         return 5
     data = cases.load(os.path.join(checkout, case_file))
     pin = profiles.TASKS[intent_words.FEATURE]["model"]
+    if model:
+        # A comparison: its recordings name the model asked, never the file's pin.
+        data = dict(data, model=model)
     if data["model"] != pin:
         print(f"nmas-intent-cases: the case file is for {data['model']}, the task is pinned to "
               f"{pin}", file=sys.stderr)
@@ -147,6 +159,9 @@ def main(argv=None) -> int:
     ap.add_argument("--out", default="")
     ap.add_argument("--cases", default=CASES)
     ap.add_argument("--runs", type=int, default=1)
+    ap.add_argument("--model", default="",
+                    help="ask on this model in place of the task's pin, in this process alone "
+                         "(a comparison: Haiku against Sonnet, C1785)")
     ap.add_argument("--check", action="store_true",
                     help="only check the expectations against the committed intent; no call")
     args = ap.parse_args(argv)
@@ -159,9 +174,9 @@ def main(argv=None) -> int:
             print(f"stale expectation: {p}")
         print(f"{len(problems)} stale expectation(s) in {args.cases}")
         return 5 if problems else 0
-    if not (args.actor and args.out):
-        ap.error("a recording needs --actor and --out")
-    return record(checkout, args.list, args.actor, args.out, args.cases, args.runs)
+    if not args.out:
+        ap.error("a recording needs --out (--actor defaults to evaluation:<run>)")
+    return record(checkout, args.list, args.actor, args.out, args.cases, args.runs, args.model)
 
 
 if __name__ == "__main__":

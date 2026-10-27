@@ -24,7 +24,7 @@ import os
 ANTHROPIC = "anthropic"
 
 PRICES_SOURCE = "https://platform.claude.com/docs/en/about-claude/pricing"
-PRICES_AS_OF = "2026-10-25"
+PRICES_AS_OF = "2026-10-27"
 PRICES_STALE_DAYS = 90
 
 #: Per million tokens, from PRICES_SOURCE on PRICES_AS_OF (its "Model pricing" table).
@@ -54,6 +54,21 @@ MODELS = {
         "temperatures": [1],
         # Cache hits at 0.05x the input rate (the page's note 2; C1679).
         "price": {"input": 2.00, "cache_write": 2.50, "cache_read": 0.10, "output": 10.00},
+    },
+    # A measurement ceiling (the operator, 2026-10-27: Opus against Sonnet on Explain), never a
+    # product default unless nothing smaller meets the bar (PHASE8_PLAN 15.12). Its prices read
+    # from PRICES_SOURCE on 2026-10-27, its row in "Model pricing".
+    "claude-opus-5-5": {
+        "provider": ANTHROPIC, "words": "Claude Opus 5.5",
+        # Thinking is always on: `disabled` is a 400 at every effort, as is a budget; depth is
+        # `output_config.effort` (the claude-api reference's curl examples, read 2026-10-27).
+        # So no thinking-off form: a pin of "off" on it is refused by the gateway.
+        "thinking_off": None,
+        # `temperature`, `top_p` and `top_k` are a 400 (its error codes, read 2026-10-27):
+        # only the default.
+        "temperatures": [1],
+        # Cache hits at 0.05x the input rate (the page's note 2).
+        "price": {"input": 4.00, "cache_write": 5.00, "cache_read": 0.20, "output": 20.00},
     },
 }
 

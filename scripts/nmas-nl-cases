@@ -120,11 +120,12 @@ def record(checkout: str, list_name: str, actor: str, out: str, case_file: str =
         print(f"nmas-nl-cases: --out {out} is inside the checkout; write it elsewhere",
               file=sys.stderr)
         return 2
-    if "@" in actor:
-        # A measurement is never recorded as a person (C1784): its actor names the run.
-        print(f"nmas-nl-cases: --actor {actor!r} reads as a person's address; a measurement "
-              "is recorded as evaluation:<run id>", file=sys.stderr)
+    # A measurement is never recorded as a person (C1784, C1846): its actor names the run.
+    actor, refusal = cases.evaluation_actor(actor, "nl-cases")
+    if refusal:
+        print(f"nmas-nl-cases: {refusal}", file=sys.stderr)
         return 2
+    print(f"nmas-nl-cases: recorded as {actor}")
     data = cases.load(os.path.join(checkout, case_file))
     logs = data.get("kind") == "logs"
     feature_prompt = (nl_query.PROMPT_LOGS if logs else nl_query.PROMPT)[0]
@@ -260,8 +261,8 @@ def main(argv=None) -> int:
         print(f"{len(problems)} stale expectation(s)")
         return 3 if problems else 0
     if args.record:
-        if not (args.list and args.actor and args.out):
-            ap.error("--record needs --list, --actor and --out")
+        if not (args.list and args.out):
+            ap.error("--record needs --list and --out (--actor defaults to evaluation:<run>)")
         return record(checkout, args.list, args.actor, args.out, args.cases, args.thinking,
                       args.model, args.prompt, tuple(args.case or ()))
     ap.error("--record or --merge")

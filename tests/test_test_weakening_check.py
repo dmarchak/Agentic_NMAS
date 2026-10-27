@@ -268,6 +268,32 @@ class TestTheTrailer:
         assert "C999999" not in rows
 
 
+class TestARenameThatWeakensIsADeletion:
+    """A rename is accepted only when the new body keeps the old one (C1831): a rename that
+    drops, loosens or cuts short an assertion is still a test deleted."""
+
+    @pytest.mark.parametrize("new", [
+        # the assertion dropped
+        "def test_three_renamed():\n    found = [1, 2, 3]\n",
+        # the assertion loosened
+        "def test_three_renamed():\n    found = [1, 2, 3]\n    assert len(found) >= 2\n",
+        # the assertion wrapped where it never runs
+        "def test_three_renamed():\n    found = [1, 2, 3]\n    if not found:\n"
+        "        assert len(found) >= 3\n",
+        # a return added before it, every statement still present
+        "def test_three_renamed():\n    found = [1, 2, 3]\n    return\n"
+        "    assert len(found) >= 3\n",
+    ], ids=["dropped", "loosened", "wrapped", "returns-first"])
+    def test_it_is_refused_as_the_old_name_deleted(self, repo, new):
+        _edit(repo, "tests/test_a.py",
+              "def test_three():\n    found = [1, 2, 3]\n    assert len(found) >= 3\n", new)
+        sha = _commit(repo, "rename, weakened")
+        p = _range(repo)
+        assert p.returncode == 1, p.stderr
+        assert f"REFUSED: {sha[:12]} tests/test_a.py: test deleted: test_three" in p.stderr, \
+            p.stderr
+
+
 class TestWhatIsNotAWeakening:
     def test_a_refused_form_added(self, repo):
         """A `grows` list gaining a member is its direction: nothing to name."""
@@ -279,6 +305,24 @@ class TestWhatIsNotAWeakening:
     def test_a_pure_rename(self, repo):
         _edit(repo, "tests/test_a.py", "def test_two(self):", "def test_two_renamed(self):")
         _commit(repo, "rename")
+        assert _range(repo).returncode == 0
+
+    def test_a_rename_with_its_docstring_reworded(self, repo):
+        """The body is normalised: words about the test assert nothing (C1831)."""
+        _edit(repo, "tests/test_a.py", "def test_three():\n    found",
+              'def test_three():\n    """Three found."""\n    found')
+        _commit(repo, "a docstring")
+        _edit(repo, "tests/test_a.py", 'def test_three():\n    """Three found."""',
+              'def test_three_found():\n    """Three found, said again in other words."""')
+        _commit(repo, "rename, the docstring reworded")
+        assert _range(repo).returncode == 0
+
+    def test_a_rename_with_a_stronger_body(self, repo):
+        """Every old statement kept in order, an assertion added between them (C1831)."""
+        _edit(repo, "tests/test_a.py", "def test_three():\n    found = [1, 2, 3]\n",
+              "def test_three_and_ordered():\n    found = [1, 2, 3]\n"
+              "    assert found == sorted(found)\n")
+        _commit(repo, "rename, stronger")
         assert _range(repo).returncode == 0
 
     def test_a_move_to_another_file(self, repo):

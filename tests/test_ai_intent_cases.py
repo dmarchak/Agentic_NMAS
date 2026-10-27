@@ -181,7 +181,7 @@ def test_the_recorder_reports_passes_consistency_cost_and_latency(monkeypatch, t
         return _got(*ops)
     asked = _planted(monkeypatch, answer)
     out = tmp_path / "rec.json"
-    assert mod.record(ROOT, "default", "operator@example.com", str(out),
+    assert mod.record(ROOT, "default", "evaluation:test-run", str(out),
                       os.path.join("tests", "fixtures", "ai_cases", "intent_patch",
                                    "recorded.json"), 2) == 0
     rec = json.loads(out.read_text())
@@ -190,14 +190,38 @@ def test_the_recorder_reports_passes_consistency_cost_and_latency(monkeypatch, t
     assert all(s["consistent"] for s in rec["report"]) and rec["spent_usd"] == 0.4
 
 
+def test_a_recording_is_never_a_person_and_can_ask_another_model(monkeypatch, tmp_path, capsys):
+    """C1846: an address, or any actor not evaluation:<run>, is refused before anything is
+    asked; none given is evaluation:intent-cases-<time>; --model replaces this process's pin
+    alone (C1785's comparison), the pin file unchanged."""
+    from modules.ai import profiles
+    mod = _script()
+    path = os.path.join("tests", "fixtures", "ai_cases", "intent_patch", "recorded.json")
+    asked = _planted(monkeypatch, lambda s: {"ok": True})
+    for actor in ("operator@example.com", "alex", "evaluation:"):
+        assert mod.record(ROOT, "default", actor, str(tmp_path / "x.json"), path, 1) == 2
+    assert asked == [] and "is not evaluation:<run id>" in capsys.readouterr().err
+    monkeypatch.setitem(profiles.TASKS, intent_words.FEATURE, dict(profiles.TASKS[
+        intent_words.FEATURE]))
+    seen = []
+    monkeypatch.setattr(intent_words, "change", lambda *a, actor, **k: (
+        seen.append((actor, profiles.TASKS[intent_words.FEATURE]["model"])) or {"ok": True}))
+    mod.record(ROOT, "default", "", str(tmp_path / "y.json"), path, 1,
+               model="claude-haiku-5-5")
+    assert seen and all(a.startswith("evaluation:intent-cases-") for a, _m in seen), seen[:1]
+    assert {m for _a, m in seen} == {"claude-haiku-5-5"}
+    assert mod.record(ROOT, "default", "", str(tmp_path / "z.json"), path, 1,
+                      model="claude-nonesuch") == 2
+
+
 def test_a_mercury_refusal_stops_and_max_tokens_voids(monkeypatch, tmp_path):
     mod = _script()
     path = os.path.join("tests", "fixtures", "ai_cases", "intent_patch", "recorded.json")
     _planted(monkeypatch, lambda s: {"ok": False, "error": "over_cap", "detail": "the day cap"})
-    assert mod.record(ROOT, "default", "a", str(tmp_path / "a.json"), path, 1) == 3
+    assert mod.record(ROOT, "default", "evaluation:a",str(tmp_path / "a.json"), path, 1) == 3
     _planted(monkeypatch, lambda s: {"ok": False, "error": "max_tokens", "detail": "cut"})
-    assert mod.record(ROOT, "default", "a", str(tmp_path / "b.json"), path, 1) == 4
-    assert mod.record(ROOT, "default", "a", os.path.join(ROOT, "out.json"), path, 1) == 2
+    assert mod.record(ROOT, "default", "evaluation:a",str(tmp_path / "b.json"), path, 1) == 4
+    assert mod.record(ROOT, "default", "evaluation:a",os.path.join(ROOT, "out.json"), path, 1) == 2
     assert not os.path.exists(os.path.join(ROOT, "out.json"))
 
 
@@ -211,7 +235,7 @@ def test_a_stale_expectation_stops_the_recording_before_any_call(monkeypatch, tm
         [f"case {case['n']} (s1): the expected change is already in the committed intent"]
         if case["n"] == 3 else []))
     out = tmp_path / "a.json"
-    assert mod.record(ROOT, "default", "a", str(out), path, 5) == 5
+    assert mod.record(ROOT, "default", "evaluation:a",str(out), path, 5) == 5
     assert asked == [] and not out.exists()
     assert "case 3 (s1): the expected change is already" in capsys.readouterr().err
     assert mod.main(["--check", "--list", "default", "--cases", path]) == 5

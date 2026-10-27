@@ -462,7 +462,13 @@ def test_a_measurement_is_never_recorded_as_a_person(world, tmp_path, capsys):
     out = tmp_path / "rec.json"
     assert _recorder().record(ROOT, "Lab", "operator@example.com", str(out)) == 2
     assert world.sent == [] and not out.exists()
-    assert "a measurement is recorded as evaluation:<run id>" in capsys.readouterr().err
+    assert "an evaluation is recorded as evaluation:<run id>" in capsys.readouterr().err
+    # C1846: not an address, yet not a run, is refused too; none given names the run itself.
+    assert _recorder().record(ROOT, "Lab", "alex", str(out)) == 2
+    assert world.sent == [] and "is not evaluation:<run id>" in capsys.readouterr().err
+    from modules.ai import cases
+    actor, refusal = cases.evaluation_actor("", "nl-cases", now=1_793_000_000.0)
+    assert refusal == "" and actor == "evaluation:nl-cases-20261026T073320Z"
 
 
 # ------------------------------------------------------------------- the logs half (C1762)

@@ -94,8 +94,11 @@ def test_the_card_draws_each_task_s_pinned_model_and_prices_read_only(networks, 
 
 def test_the_card_says_when_the_prices_are_older_than_90_days(networks, no_send, monkeypatch):
     from modules.ai import profiles
+    import datetime
     real = profiles.table
-    monkeypatch.setattr(profiles, "table", lambda today=None: real(today="2027-02-01"))
+    later = (datetime.date.fromisoformat(profiles.PRICES_AS_OF)
+             + datetime.timedelta(days=99)).isoformat()
+    monkeypatch.setattr(profiles, "table", lambda today=None: real(today=later))
     card = unescape(_card(_page(networks)))
     assert "99 days ago, older than 90; read the page again and update the table" in card
 

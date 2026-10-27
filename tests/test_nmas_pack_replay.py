@@ -205,6 +205,33 @@ def test_v5_is_a_candidate_never_the_pin():
     assert "s3" not in text and "C1547" not in text and "r1" not in text
 
 
+def test_an_explain_run_is_never_a_person_and_can_ask_another_model(replay, tmp_path,
+                                                                    capsys):
+    """C1846: a person's address, or any actor not evaluation:<run>, is refused before the
+    pack is read or anything asked; none given is evaluation:pack-replay-<time>; --model asks
+    on another model in this process alone (the operator's Opus and Haiku comparisons)."""
+    from modules.ai import profiles
+    pack = _built(replay)
+    path = tmp_path / "pack.json"
+    path.write_text(json.dumps(pack))
+    replay.answer = _answer(pack)
+    for actor in ("operator@example.com", "alex"):
+        assert replay.driver.main(["--pack", str(path), "--explain", "--actor", actor,
+                                   "--prompt", "4"]) == 2
+    assert replay.sent == [] and "an evaluation is recorded" in capsys.readouterr().err
+    pinned = profiles.TASKS["explain"]["model"]
+    try:
+        assert replay.driver.main(["--pack", str(path), "--explain", "--model",
+                                   "claude-opus-5-5", "--prompt", "4"]) == 0
+        out = capsys.readouterr().out
+        assert "recorded as evaluation:pack-replay-" in out and "on claude-opus-5-5" in out
+        assert replay.sent and replay.sent[-1]["body"]["model"] == "claude-opus-5-5"
+        assert replay.driver.main(["--pack", str(path), "--explain", "--model",
+                                   "claude-nonesuch", "--prompt", "4"]) == 2
+    finally:
+        profiles.TASKS["explain"] = dict(profiles.TASKS["explain"], model=pinned)
+
+
 def test_a_saved_pack_is_explained_as_built_and_a_changed_one_never(replay, tmp_path,
                                                                     capsys):
     """`--pack`: a pack is frozen once built (the operator, 2026-10-26), so a case's five runs
