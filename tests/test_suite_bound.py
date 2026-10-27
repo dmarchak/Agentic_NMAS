@@ -21,7 +21,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def _runner(tmp_path, body, bound="5"):
+def _runner(tmp_path, body, bound):
     probe = tmp_path / "test_probe_bound.py"
     probe.write_text(body)
     # NMAS_PROBE_RUN: conftest skips the whole-program import, so the probe starts in about
@@ -42,9 +42,16 @@ def _runner(tmp_path, body, bound="5"):
 #: these three probes under coverage as the gate runs them, load average to 28.5: at load 12
 #: and over, 162 runs, the slowest 4.55 s, none failed (6 to 12: 99 runs, 4.05 s; under 6:
 #: 1,272 runs, 0.75 s). The bound is about 2.5x the slowest: 12 s. (5 s held a premise the
-#: measurement refutes; 30 s, from 1b08287f, was a guess.) The hang probes keep 5 s: their
-#: hanging test began within 1.51 s in every run measured (170, under a gate's load).
+#: measurement refutes; 30 s, from 1b08287f, was a guess.)
 FINISHING_BOUND = "12"
+#: The bound for a probe that HANGS (C1674). It kept 5 s on the premise that its hanging test
+#: began within 1.51 s in every run measured here (170, under a gate's load); CI refuted it
+#: twice, #1157 (2026-10-25) and #1232 (2026-10-27): at 5 s the probe was still compiling its
+#: imports (`main`, in importlib's `source_to_code`), so the report named no test. A hang
+#: probe starts as a finishing one does, and the finishing probes' measured 12 s has held in
+#: every CI run since C1260, so the hang probes take the same bound: the report then names the
+#: hanging test however slow the runner's start. Cost: about 7 s more for each of the two.
+HANG_BOUND = FINISHING_BOUND
 
 HANG = ("import time\n\n"
         "def test_finished_first():\n    pass\n\n"
@@ -52,10 +59,10 @@ HANG = ("import time\n\n"
 
 
 def test_a_hang_is_named_with_its_line(tmp_path):
-    out = _runner(tmp_path, HANG)
+    out = _runner(tmp_path, HANG, bound=HANG_BOUND)
     assert out.returncode == 124, (out.returncode, out.stderr[-800:])
     err = out.stderr
-    assert "TIMED OUT after 5 s" in err
+    assert f"TIMED OUT after {HANG_BOUND} s" in err
     # The report's HEAD names what was running (C1674: CI #1157's failure printed the tail, the
     # stacks, and the cut hid which test the report named).
     running = [ln for ln in err.splitlines() if ln.startswith("  ") and "(started " in ln]
@@ -76,7 +83,7 @@ HANG_WITHOUT_A_DUMP = ("import faulthandler, signal, time\n\n"
 
 
 def test_a_hang_with_no_stack_says_which_way_it_has_none(tmp_path):
-    out = _runner(tmp_path, HANG_WITHOUT_A_DUMP)
+    out = _runner(tmp_path, HANG_WITHOUT_A_DUMP, bound=HANG_BOUND)
     assert out.returncode == 124, (out.returncode, out.stderr[-800:])
     assert "test_hangs_with_no_dump" in out.stderr
     assert "no stack for main: its stack file is empty (0 bytes)" in out.stderr, \
