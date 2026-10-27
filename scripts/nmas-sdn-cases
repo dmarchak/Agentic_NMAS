@@ -112,9 +112,11 @@ def summary(case: dict, runs: list) -> dict:
 
 
 def record(checkout: str, list_name: str, actor: str, out: str, case_file: str,
-           runs: int, model: str = "") -> int:
+           runs: int, model: str = "", prompt: tuple = None) -> int:
     from modules.ai import cases, profiles, triggers
     from modules.sdn import closed_loop
+
+    prompt = tuple(prompt or closed_loop.CLASSIFY_PROMPT)
 
     if os.path.realpath(out).startswith(os.path.realpath(checkout) + os.sep):
         print(f"nmas-sdn-cases: --out {out} is inside the checkout; write it elsewhere",
@@ -126,7 +128,8 @@ def record(checkout: str, list_name: str, actor: str, out: str, case_file: str,
         print(f"nmas-sdn-cases: {refusal}", file=sys.stderr)
         return 2
     print(f"nmas-sdn-cases: recorded as {actor}"
-          + (f", on {model} (the pin file unchanged)" if model else ""))
+          + (f", on {model} (the pin file unchanged)" if model else "")
+          + f", prompt {prompt[0]}.v{prompt[1]}")
     problems = check(checkout, case_file)
     if problems:
         for p in problems:
@@ -148,7 +151,8 @@ def record(checkout: str, list_name: str, actor: str, out: str, case_file: str,
             t0 = time.monotonic()
             got = closed_loop.classify_pack(list_name, case["detection"],
                                             pack_of(case, list_name), actor=actor,
-                                            trigger=triggers.evaluation(actor), intact=False)
+                                            trigger=triggers.evaluation(actor), intact=False,
+                                            prompt=prompt)
             took = time.monotonic() - t0
             spent += float(got.get("cost_usd") or 0)
             if got.get("error") in STOPS:
@@ -183,7 +187,7 @@ def record(checkout: str, list_name: str, actor: str, out: str, case_file: str,
     consistent = sum(s["consistent"] for s in report)
     answered = sum(1 for rs in by_case.values() for r in rs if not r["misses"])
     with open(out, "w", encoding="utf-8") as fh:
-        json.dump({"model": data["model"], "prompt": "{}.v{}".format(*closed_loop.CLASSIFY_PROMPT),
+        json.dump({"model": data["model"], "prompt": "{}.v{}".format(*prompt),
                    "case_file": case_file, "actor": actor, "runs": runs,
                    "spent_usd": round(spent, 6),
                    "reliability": {"reliable": reliable, "cases": len(report), "runs": total},
@@ -213,6 +217,9 @@ def main(argv=None) -> int:
                          "(a comparison: Sonnet as the ceiling)")
     ap.add_argument("--check", action="store_true",
                     help="only check the expectations against each case's evidence; no call")
+    ap.add_argument("--prompt", type=int, default=0,
+                    help="ask with this version of the classifier's prompt in place of the "
+                         "adopted one (a comparison before adoption, C1988)")
     args = ap.parse_args(argv)
     checkout = os.path.abspath(os.path.expanduser(args.checkout)) if args.checkout else ROOT
     sys.path.insert(0, checkout)
@@ -233,7 +240,10 @@ def main(argv=None) -> int:
     if refusal:
         print(f"nmas-sdn-cases: {refusal}", file=sys.stderr)
         return 2
-    return record(checkout, args.list, args.actor, args.out, args.cases, args.runs, args.model)
+    from modules.sdn import closed_loop
+    prompt = (closed_loop.CLASSIFY_PROMPT[0], args.prompt) if args.prompt else None
+    return record(checkout, args.list, args.actor, args.out, args.cases, args.runs, args.model,
+                  prompt)
 
 
 if __name__ == "__main__":

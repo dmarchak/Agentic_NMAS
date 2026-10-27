@@ -794,16 +794,17 @@ def judge_collection(network: str, answer, prepared: dict) -> dict:
 def catalogue_for_ai(allowed) -> list:
     """The response catalogue as the classifier is given it: of the actions *allowed* (the
     network's response policy for the detection's rule, `policy`), each one's id, what it
-    does, its risk, the rules it answers and the parameters it takes, in the catalogue's
-    order; and ``none``. An action the policy does not allow is never listed (the check
-    refuses it anyway, `check_classification`)."""
+    does, its risk, the rules it answers and the parameters it takes, in the policy's order,
+    the first marked ``default`` (the network's default for the rule, which prompt v3 tells
+    the model to take; C1988); and ``none``. An action the policy does not allow is never
+    listed (the check refuses it anyway, `check_classification`)."""
     takes = {"drop_source": ["source", "hard_timeout"],
              "rate_limit_source": ["source", "hard_timeout", "rate", "unit", "burst"],
              "remove_flow": ["flow"]}
-    keep = set(allowed or ())
-    out = [{"action_id": k, "label": e["label"], "does": e["words"], "risk": e["risk"],
-            "answers": list(e["rules"]), "parameters": takes[k]} for k, e in CATALOGUE.items()
-           if k in keep]
+    ordered = [k for k in dict.fromkeys(allowed or ()) if k in CATALOGUE]
+    out = [{"action_id": k, "label": CATALOGUE[k]["label"], "does": CATALOGUE[k]["words"],
+            "risk": CATALOGUE[k]["risk"], "answers": list(CATALOGUE[k]["rules"]),
+            "parameters": takes[k], "default": i == 0} for i, k in enumerate(ordered)]
     out.append({"action_id": NO_ACTION, "label": "No catalogue action",
                 "does": "nothing is proposed; a person decides", "risk": "none",
                 "answers": list(RULES), "parameters": []})

@@ -108,6 +108,37 @@ def test_the_default_policy_sends_a_scan_both_actions_that_answer_it(world):
     assert catalogue_sent(body) == ["drop_source", "rate_limit_source", "none"]
 
 
+def test_the_catalogue_is_sent_in_the_policy_s_order_its_default_first_and_marked(world):
+    """C1988: prompt v3 tells the model to take the catalogue's `default`, so the catalogue
+    sent lists the allowed actions in the network's order, the first (the policy's default)
+    marked default and no other; `none` last, never a default."""
+    set_policy(dict(SDN_LAB, scan=["rate_limit_source", "drop_source"]))
+    keep_pack(SCAN)
+    classify_as_person(world)
+    (body,) = world.sent
+    assert catalogue_sent(body) == ["rate_limit_source", "drop_source", "none"]
+    assert [e.get("default") for e in catalogue_entries(body)] == [True, False, None]
+    # The pure function: the policy's order, duplicates and unknown ids dropped.
+    got = CL.catalogue_for_ai(["drop_source", "rate_limit_source", "drop_source", "nope"])
+    assert [(e["action_id"], e.get("default")) for e in got] == [
+        ("drop_source", True), ("rate_limit_source", False), ("none", None)]
+
+
+def test_prompt_v3_takes_the_action_from_the_catalogue_and_maps_no_rule_to_an_action():
+    """C1988: v3 names no rule-to-action mapping (v1's "a scan is answered by dropping its
+    source" made the model answer drop under a rate-limit-only policy, 4 of 6 replays) and
+    tells the model to take the catalogue's default; v1 is kept unchanged as the record."""
+    from modules.ai import prompts
+    v3 = prompts.load("sdn_classify", 3)["text"]
+    v1 = prompts.load("sdn_classify", 1)["text"]
+    for mapping in ("is answered by", "a scan is answered", "a flood by", "unauthorised flow by",
+                    "rate-limiting a source before dropping"):
+        assert mapping not in v3, mapping
+    assert "Take the catalogue's `default` action" in v3
+    assert "Never choose an action the catalogue does not list." in v3
+    assert "a scan is answered by dropping its source" in v1
+
+
 def test_a_drop_for_a_scan_under_sdn_lab_s_policy_is_refused_naming_both_sides(world):
     set_policy(SDN_LAB)
     keep_pack(SCAN)

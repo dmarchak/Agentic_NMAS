@@ -129,9 +129,9 @@ def test_the_judge_names_each_departure(world):  # noqa: F811
     world.answer = allowed_answer(scan)
     good = _classify(world, scan)
     wrong = json.loads(json.dumps(good, default=str))
-    wrong["action"] = "rate_limit_source"
+    wrong["action"] = "remove_flow"           # no scan case allows it (C1988: both stopping ones)
     assert cases.sdn_classify_misses(scan["expect"], wrong) == [
-        "action rate_limit_source, expected one of ['drop_source']"]
+        "action remove_flow, expected one of ['rate_limit_source', 'drop_source']"]
     wrong = dict(good, params={"source": "192.0.2.3"})
     assert cases.sdn_classify_misses(scan["expect"], wrong) == [
         "source '192.0.2.3', expected 192.0.2.1"]
@@ -193,7 +193,8 @@ def test_the_recorder_reports_reliability_apart_from_consistency(monkeypatch, tm
     def answer(n, asked):
         got = _good(by_n[n])
         if n == 1 and asked > 12:                         # case 1 misses on run 2
-            got = dict(got, action="rate_limit_source")
+            # An action no scan case allows (C1988: a scan's case allows the rate limit too).
+            got = dict(got, action="remove_flow")
         return got
     asked = _planted(monkeypatch, answer)
     out = tmp_path / "rec.json"
@@ -206,6 +207,44 @@ def test_the_recorder_reports_reliability_apart_from_consistency(monkeypatch, tm
     assert rec["consistency"] == {"consistent": 11, "cases": 12}
     assert rec["report"][0]["passed"] == 1 and rec["report"][0]["reliable"] is False
     assert rec["usd_per_call"] == 0.001 and rec["actor"] == "evaluation:test-run"
+
+
+def test_a_recording_asks_with_the_prompt_named_and_says_which(monkeypatch, tmp_path):
+    """`--prompt N` (C1988: a version measured before it is adopted): every ask goes through
+    `classify_pack` with that version, and the report names it; without it, the adopted
+    `CLASSIFY_PROMPT`."""
+    mod = _script()
+    data = load("recorded")
+    by_n = {c["n"]: c for c in data["cases"]}
+    prompts = []
+
+    def classify(network, detection, pack, *, actor, trigger, **kw):
+        prompts.append(kw.get("prompt"))
+        return _good(by_n[int(pack["id"].split("-")[1])])
+    monkeypatch.setattr(CL, "classify_pack", classify)
+    out = tmp_path / "v3.json"
+    assert mod.record(ROOT, "default", "evaluation:v3", str(out),
+                      os.path.join(DIR, "recorded.json"), 1, "", ("sdn_classify", 3)) == 0
+    assert set(prompts) == {("sdn_classify", 3)} and len(prompts) == 12
+    assert json.loads(out.read_text())["prompt"] == "sdn_classify.v3"
+    prompts.clear()
+    out = tmp_path / "adopted.json"
+    assert mod.record(ROOT, "default", "evaluation:v1", str(out),
+                      os.path.join(DIR, "recorded.json"), 1) == 0
+    assert set(prompts) == {tuple(CL.CLASSIFY_PROMPT)}
+    assert json.loads(out.read_text())["prompt"] == "{}.v{}".format(*CL.CLASSIFY_PROMPT)
+
+
+def test_a_scan_case_allows_either_action_that_stops_a_scan():
+    """C1988 (the operator's order: no rule-to-action mapping): a scan case with a threat
+    allows rate_limit_source or drop_source, as a flood case does; the network's policy,
+    through Mercury's check, decides which may pass."""
+    for name in ("recorded", "held_out"):
+        scans = [c for c in load(name)["cases"] if c["detection"]["rule"] == "scan"
+                 and c["expect"]["action_id"] != [CL.NO_ACTION]]
+        assert scans, name
+        assert all(c["expect"]["action_id"] == ["rate_limit_source", "drop_source"]
+                   for c in scans), name
 
 
 def test_a_recording_is_never_a_person(monkeypatch, tmp_path, capsys):

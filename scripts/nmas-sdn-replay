@@ -103,10 +103,13 @@ def what_is_sent(pack: dict, network: str = "") -> dict:
             "catalogue_actions": allowed}
 
 
-def replay(network: str, keys: list, actor: str, runs: int, out: str, dry_run: bool) -> int:
+def replay(network: str, keys: list, actor: str, runs: int, out: str, dry_run: bool,
+           prompt: tuple = None) -> int:
     from modules import evidence_pack as EP
     from modules.ai import triggers
     from modules.sdn import closed_loop
+
+    prompt = tuple(prompt or closed_loop.CLASSIFY_PROMPT)
 
     found = {}
     for key in keys:
@@ -131,7 +134,7 @@ def replay(network: str, keys: list, actor: str, runs: int, out: str, dry_run: b
             d = detection_of(network, key, pack)
             t0 = time.monotonic()
             got = closed_loop.classify_pack(network, d, pack, actor=actor,
-                                            trigger=triggers.evaluation(actor))
+                                            trigger=triggers.evaluation(actor), prompt=prompt)
             took = time.monotonic() - t0
             spent += float(got.get("cost_usd") or 0)
             c = got.get("classification") or {}
@@ -160,7 +163,7 @@ def replay(network: str, keys: list, actor: str, runs: int, out: str, dry_run: b
     total = sum(len(rs) for rs in recs.values())
     with open(out, "w", encoding="utf-8") as fh:
         json.dump({"network": network, "keys": keys, "actor": actor, "runs": runs,
-                   "prompt": "{}.v{}".format(*closed_loop.CLASSIFY_PROMPT),
+                   "prompt": "{}.v{}".format(*prompt),
                    "spent_usd": round(spent, 6), "passed": passed, "asked": total,
                    "recordings": recs}, fh, indent=2)
     print(f"{passed} of {total} classifications passed the check; ${spent:.4f} spent; "
@@ -179,6 +182,9 @@ def main(argv=None) -> int:
     ap.add_argument("--runs", type=int, default=1)
     ap.add_argument("--dry-run", action="store_true",
                     help="say what would be sent for each detection; no call")
+    ap.add_argument("--prompt", type=int, default=0,
+                    help="ask with this version of the classifier's prompt in place of the "
+                         "adopted one (a comparison before adoption, C1988)")
     args = ap.parse_args(argv)
     checkout = os.path.abspath(os.path.expanduser(args.checkout)) if args.checkout else ROOT
     sys.path.insert(0, checkout)
@@ -200,8 +206,11 @@ def main(argv=None) -> int:
     if refusal:
         print(f"nmas-sdn-replay: {refusal}", file=sys.stderr)
         return 2
-    print(f"nmas-sdn-replay: recorded as {actor}")
-    return replay(network, args.key, actor, args.runs, args.out, False)
+    from modules.sdn import closed_loop
+    prompt = (closed_loop.CLASSIFY_PROMPT[0], args.prompt) if args.prompt else None
+    print(f"nmas-sdn-replay: recorded as {actor}"
+          + (f", with prompt {prompt[0]}.v{prompt[1]}" if prompt else ""))
+    return replay(network, args.key, actor, args.runs, args.out, False, prompt)
 
 
 if __name__ == "__main__":

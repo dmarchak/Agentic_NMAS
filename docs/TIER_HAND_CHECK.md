@@ -1938,3 +1938,29 @@ and the SDN classify tests); a must-die canary first for each part.
 **The result: every mutant killed (H9 after its test was added); both canaries killed; the
 working tree untouched (nmas-control's fingerprint).**
 
+## 2026-10-27: the classifier's catalogue in the policy's order, its default marked (C1988), by hand
+
+**What touches the tier:** `modules/sdn/closed_loop.py`, `catalogue_for_ai`: what the
+classifier is sent in its cached context. The allowed actions are listed in the network's policy
+order (they were in the catalogue's), the first marked `default: true` and the others `false`,
+`none` last and unmarked; duplicates and ids not in the catalogue dropped. Prompt v3 (a new file,
+`prompts/sdn_classify.v3.md`, not adopted by this change) tells the model to take the action
+marked default. Nothing new is sent but the mark; nothing the policy disallows is sent, as before.
+
+**The method:** the narrowed hand check (PHASE8_PLAN 15.12): each mutant applied as its exact
+line in a `scripts/nmas-control` throwaway worktree of the change, then tests/test_sdn_policy.py,
+tests/test_sdn_classify.py, tests/test_sdn_classify_normal.py, tests/test_sdn_loop_live.py and
+tests/test_sdn_classify_cases.py (`scratchpad/cat_hm.py`). The baseline passed (126 tests).
+
+| mutant | result | killed by |
+|---|---|---|
+| the catalogue's order (`[k for k in CATALOGUE if k in allowed]`) | killed | `test_the_catalogue_is_sent_in_the_policy_s_order_its_default_first_and_marked` |
+| unfiltered (every catalogue action) | killed | 4 tests: SDN lab's policy sends only the rate limit, the default policy's two actions, the order test, and one more |
+| no action marked default | killed | the order test |
+| every action marked default | killed | the order test |
+| the last action marked default | killed | the order test |
+| canary: `catalogue_for_ai` raises | killed | 76 tests |
+
+**The result: every mutant killed; the canary killed; the working tree untouched (nmas-control's
+fingerprint).**
+

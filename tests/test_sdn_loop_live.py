@@ -292,6 +292,32 @@ def test_the_replay_classifies_each_kept_pack_as_an_evaluation(world, monkeypatc
 
 
 @pytest.mark.usefixtures("lab")
+def test_the_replay_asks_with_the_prompt_version_named(world, monkeypatch, tmp_path):
+    """C1988: `--prompt 3` replays a kept pack with prompt v3 (measured before it is adopted):
+    the request's system text is v3's, never v1's scan-to-drop line, and the report names
+    the version."""
+    import types
+    from modules.ai import gateway
+    out = live_pass(world)
+    (key,) = out["fired"]
+    inner = citing(world, lambda d: [d["evidence"]["pieces"][0]["id"]])
+    systems = []
+
+    def send(body, *a, **kw):
+        systems.append("".join(b["text"] for b in body["system"]))
+        return inner(body, *a, **kw)
+    monkeypatch.setattr(gateway, "anthropic_adapter", types.SimpleNamespace(
+        **{**vars(gateway.anthropic_adapter), "send": send}))
+    report = tmp_path / "replay-v3.json"
+    assert _replay_script().replay(NET, [key], "evaluation:replay-v3", 1, str(report), False,
+                                   ("sdn_classify", 3)) == 0
+    assert json.loads(report.read_text())["prompt"] == "sdn_classify.v3"
+    (system,) = systems
+    assert "Take the catalogue's `default` action" in system
+    assert "a scan is answered by dropping its source" not in system
+
+
+@pytest.mark.usefixtures("lab")
 def test_the_replay_s_dry_run_says_what_would_be_sent_and_asks_nothing(world, capsys):
     out = live_pass(world)
     (key,) = out["fired"]
