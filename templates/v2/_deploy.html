@@ -7,7 +7,10 @@
     (a line ticked for removal, a reason typed), so the confirm always binds the program on the
     screen; the confirm starts the deploy as a job (`deploy_job`), whose card draws the
     pipeline's stages as they run, then the result from the receipt. Cancel and Close put back
-    the tab it replaced. -#}
+    the tab it replaced. On a card Deploy can be offered from, a reason field
+    (`data-sent-by-deploy`) plans nothing as it changes: Deploy carries the form and plans
+    again with every reason as typed, sending only the program the card drew (C1434, one
+    click; nmas_v2.js `drawDeploys`). -#}
 {%- set back_url = url_for('device_v2.' ~ (c.back or 'overview'), name=c.host) -%}
 {%- macro close_button(words) -%}
 <button type="button" class="btn" hx-get="{{ back_url }}" hx-target="#tab-body" hx-swap="innerHTML">{{ words }}</button>
@@ -20,11 +23,13 @@
   <div class="op-hd"><h2 id="op-title">Deploy committed intent to {{ c.host }}</h2>
     <div class="op-hd-actions">{{ how('deploy') }}{{ close_button('Cancel') }}</div></div>
   <form class="op-form" hx-get="{{ url_for('device_v2.deploy', name=c.host) }}" hx-trigger="change"
-        hx-target="#device-op" hx-swap="outerHTML">
+        hx-target="#device-op" hx-swap="outerHTML" hx-sync="closest .op-card:drop">
   <input type="hidden" name="back" value="{{ c.back }}">
+  <input type="hidden" name="plan" value="card">
   {%- if c.focus %}<input type="hidden" name="focus" value="{{ c.focus }}">{% endif %}
   <div class="op-part"><h3>What</h3><div><p>{{ c.summary }}</p></div></div>
   <div class="op-part"><h3>The program</h3><div>
+    {%- if c.moved %}<div class="notice notice-warn" role="status" data-moved>{{ icon('warn') }}<p>Not sent: the program moved after this card drew it ({{ c.moved | join('; ') }}). This is the plan now: read it, and press Deploy again to send it.</p></div>{% endif %}
     {%- for b in c.blocking %}<div class="notice notice-danger">{{ icon('warn') }}<p>Not sent: {{ b }}</p></div>{% endfor %}
     {%- if c.refused %}<div class="notice notice-danger">{{ icon('warn') }}<p>Not sent: {{ c.refused }}</p></div>{% endif %}
     {%- if c.sent %}
@@ -41,7 +46,7 @@
     {%- endif %}
     {%- for d in c.dangerous %}
     <label class="op-reason"><code>{{ d.line }}</code> is a dangerous line. Why (your stated reason, recorded with the change and in the hash):
-      <input type="text" name="dz::{{ d.index }}" value="{{ d.reason }}" placeholder="the link is being retired"></label>
+      <input type="text" name="dz::{{ d.index }}" value="{{ d.reason }}" placeholder="the link is being retired"{% if c.may or c.reasons_only %} data-sent-by-deploy{% endif %}></label>
     {%- endfor %}
     {%- if c.authorisation_error %}<p class="op-note">{{ c.authorisation_error }}</p>{% endif %}
   </div></div>
@@ -126,7 +131,7 @@
         <label for="rm-{{ r.id }}"><code>{{ r.text }}</code>{% if r.picked %} <strong>will be removed</strong>{% endif %}</label>
         {%- if r.picked %}
         <label class="op-reason">Why (recorded with the change and in the hash)
-          <input type="text" name="why::{{ r.id }}" value="{{ r.reason }}" placeholder="left over from the old design"></label>
+          <input type="text" name="why::{{ r.id }}" value="{{ r.reason }}" placeholder="left over from the old design"{% if c.may or c.reasons_only %} data-sent-by-deploy{% endif %}></label>
         {%- endif %}
         {%- endif %}
       </li>
@@ -154,15 +159,28 @@
     <p class="op-note" data-concept="confirm-by-hash">{{ c.effect }} Bound to program {{ c.command_hash[:12] }}: if {{ c.host }} or its intent moves before you confirm, nothing is sent.</p>
     <span class="op-act"><button type="button" class="btn btn-primary op-confirm" data-op="deploy"
             hx-post="{{ url_for('device_v2.deploy_confirm', name=c.host) }}" hx-target="#device-op" hx-swap="outerHTML"
-            hx-disabled-elt="this" hx-vals='{{ {"list": c.list, "back": c.back, "capture_hash": c.confirm.capture_hash, "command_hash": c.confirm.command_hash, "remove": c.confirm.remove | tojson, "authorise": c.confirm.authorise | tojson, "declare": c.confirm.declare | tojson} | tojson }}'{{ gate('confirm') }}><span class="op-idle">Deploy {{ c.sent | length }} line(s) to {{ c.host }}</span><span class="op-busy">Computing the program again and starting the deploy…</span></button>{{ how('deploy', compact=True, op='deploy') }}</span>
+            hx-disabled-elt="this" hx-include="closest .op-card" hx-sync="closest .op-card:replace" data-needs="{{ c.needs | join(' ') }}"
+            hx-vals='{{ {"list": c.list, "back": c.back, "capture_hash": c.confirm.capture_hash, "command_hash": c.confirm.command_hash, "remove": c.confirm.remove | tojson, "authorise": c.confirm.authorise | tojson, "declare": c.confirm.declare | tojson, "shown": (c.shown or {}) | tojson} | tojson }}'{{ gate('confirm') }}><span class="op-idle">Deploy {{ c.sent | length }} line(s) to {{ c.host }}</span><span class="op-busy">Computing the program again and starting the deploy…</span></button>{{ how('deploy', compact=True, op='deploy') }}</span>
     {%- else %}
-    {%- if c.waiting and c.sent %}
-    {#- The board's disabled primary (C1434): Deploy is drawn, never offered, while a line
-        still waits on its reason; the note under it names each line and where it is given. #}
+    {%- if c.waiting and c.sent and c.reasons_only %}
+    {#- The board's disabled primary (C1434): Deploy is drawn disabled while a line still
+        waits on its reason, the note under it naming each line and where it is given. Once
+        every reason field holds text it is offered at once, by the page (nmas_v2.js
+        `drawDeploys` enables it), never by a re-plan the press could race: pressed, it carries
+        the card's form and the program drawn (`shown`), and the server plans again with the
+        reasons and sends only that program. It is the one confirm pattern from the start (its
+        hx-post: tests/test_v2_one_confirm.py); disabled, a button sends nothing. #}
+    <span class="op-act"><button type="button" class="btn btn-primary" data-op="deploy" disabled aria-describedby="deploy-waits" data-waits="1" data-needs="{{ c.needs | join(' ') }}"
+            hx-post="{{ url_for('device_v2.deploy_confirm', name=c.host) }}" hx-target="#device-op" hx-swap="outerHTML" hx-disabled-elt="this" hx-include="closest .op-card" hx-sync="closest .op-card:replace"
+            hx-vals='{{ {"list": c.list, "back": c.back, "capture_hash": (c.shown or {}).get("capture_hash", ""), "command_hash": (c.shown or {}).get("program_hash", ""), "shown": (c.shown or {}) | tojson} | tojson }}'{{ gate('confirm') }}><span class="op-idle">Deploy {{ c.sent | length }} line(s) to {{ c.host }}</span><span class="op-busy">Computing the program again with your reasons and starting the deploy…</span></button>{{ how('deploy', compact=True, op='deploy') }}</span>
+    {%- elif c.waiting and c.sent %}
     <span class="op-act"><button type="button" class="btn btn-primary" data-op="deploy" disabled aria-describedby="deploy-waits">Deploy {{ c.sent | length }} line(s) to {{ c.host }}</button>{{ how('deploy', compact=True, op='deploy') }}</span>
     {%- endif %}
+    {%- if c.reasons_only %}
+    <p class="op-note" id="deploy-ready" hidden>Deploy computes the plan again with your stated reasons and sends it only if it is the program drawn above; if anything moved, nothing is sent and the plan as it is now is drawn, naming what moved.</p>
+    {%- endif %}
     <p class="op-note" id="deploy-waits">Not available:
-      {%- if c.waiting %} waits on your stated reason for {% for w in c.waiting_for %}<code>{{ w.line }}</code> (in {{ w.where }}){{ '; ' if not loop.last }}{% else %}every dangerous or ticked line{% endfor %}. Give it above and the plan is computed again; Deploy is offered once every reason is given.
+      {%- if c.waiting %} waits on your stated reason for {% for w in c.waiting_for %}<code>{{ w.line }}</code> (in {{ w.where }}){{ '; ' if not loop.last }}{% else %}every dangerous or ticked line{% endfor %}.{% if c.reasons_only %} Type it above and Deploy is offered: pressing it computes the plan again with your reasons before anything is sent.{% else %} Give it above and the plan is computed again.{% endif %}
       {%- elif not c.sent %} nothing to send.
       {%- else %} {% for g in c.failing %}{{ g.name }}{% if g.detail %} ({{ g.detail }}){% endif %}{{ '; ' if not loop.last }}{% else %}{{ c.refused or (c.blocking | join('; ')) or 'nothing can be deployed' }}{% endfor %}.{% endif %}
       {%- if c.held %} This preview reads again when that operation finishes, if the tool runs it.{% endif %} Nothing is queued.</p>

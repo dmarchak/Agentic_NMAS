@@ -624,6 +624,16 @@ def deploy_card(ref, host: str, entry: dict, preview: dict, viewer: dict, *,
     # A line waiting on its reason fails the preview's own "dangerous lines" check (ticked
     # removals included), so `t["may"]` decides it; `waiting` only chooses the words.
     may = bool(t["may"]) and not blocking and not refused and bool(lines)
+    # One click (C1434, the operator's bar of 2026-10-26): every reason field Deploy needs
+    # filled, by its form name. Deploy carries the form and plans again with them before
+    # anything is sent, so a Why typed and pressed at once is the Why sent. Only a card whose
+    # one failing check is its reasons may be pressed once they are typed.
+    from modules.preview_confirm import REASON_GATE
+    needs = ([f"dz::{d['index']}" for d in dangerous]
+             + [f"why::{r['id']}" for r in residue if r["picked"] and not r["why_not"]])
+    reasons_only = (waiting and bool(lines) and not blocking and not refused
+                    and bool(t["failing"])
+                    and all(g.get("name") == REASON_GATE for g in t["failing"]))
     confirm = preview.get("confirm") or {}
     # The one device, never the batch's "the devices you tick… N of N… for each" (C408).
     removing = any(r["picked"] for r in residue)
@@ -640,6 +650,7 @@ def deploy_card(ref, host: str, entry: dict, preview: dict, viewer: dict, *,
             "expected": program.get("expected") or {},
             "declare": _declare_part(ref, entry, pending),
             "waiting": waiting, "waiting_for": waiting_for,
+            "needs": needs, "reasons_only": reasons_only,
             "authorisation_error": entry.get("authorisation_error", ""),
             "blocking": blocking, "refused": refused,
             "what_not": t["what_not"], "operands": list(t["target"].get("operands") or []),

@@ -24,9 +24,10 @@ supersedes, never ticked for you.
 - **Ticked**, it will be removed. Ticking plans the device again (the card asks for the plan
   with the ticked IDs, `/v2/device/<device>/deploy?rm=<id>`), and the line appears at the end
   of the program with a reason field:
-  one decision, one control, so the tick chooses it and the reason says why. Typing the reason
-  plans the device again so the hash covers it. A reason must be at least three words and eight
-  characters, and not a copy of the line.
+  one decision, one control, so the tick chooses it and the reason says why. Once it holds text
+  Deploy is offered, and pressing it plans the device again with the reason as typed, so the
+  hash covers it and a reason typed and pressed at once is the one sent. A reason must be at
+  least three words and eight characters, and not a copy of the line.
 - **Disabled, with the reason beside it**, where removing it is refused:
   - IOS will not remove it, or removes it differently: the `hostname`, `version`, the boot
     markers, a `line` stanza, `end`, a banner, a `crypto pki` trustpoint or certificate, a

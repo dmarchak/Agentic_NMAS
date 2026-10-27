@@ -71,7 +71,7 @@ which `preview_confirm.capture_result` already calls "partial". A capture at its
 drawn as the board drew it. The deviation is a line in STANDING_APPROVAL_LOG.md. No template
 changed: the level and chip come from `device_actions.capture_result_card`.
 Templates compared: templates/v2/device.html, templates/v2/_actions_menu.html, templates/v2/_status.html, templates/v2/_drained_badge.html, templates/v2/_capture.html, templates/v2/_deploy.html, templates/v2/_attribution.html, templates/v2/_rotate.html, templates/v2/_persist.html, templates/v2/_persist_effect.html, templates/v2/_startup_effect.html, templates/v2/_seed.html, templates/v2/_restore.html, templates/v2/_revert.html, templates/v2/_retry.html, templates/v2/_retire.html
-Templates sha256: `bfa9ba2b2c9e47a7b0da69d32f05e1ef7f358be9d8125d886c21d597f64afe92`
+Templates sha256: `652a54807d6247cfc625b37257994ab9b85eeae848a63728fc76dec8359ef6be`
 
 Compared again 2026-10-16 (C537, C540) after `device.html` gained the line a reopened card
 carries and `_rotate.html` its running card's and held preview's changes (C540's words, and
@@ -135,6 +135,28 @@ and Checks region by region.
 
 Deviations, each a line in STANDING_APPROVAL_LOG.md: "Device: the deploy card's waiting note
 names each line" and "Device: one reason check for dangerous lines and removals".
+
+Compared again 2026-10-27 (C1434's one click, the operator's order after Walk 3) after
+`_deploy.html` let the page enable Deploy once every reason is typed, the press computing the
+plan again with the reasons as typed. Shots: `device-deploy` and `device-deploy-ready` at
+1440 beside `DevDeployPreview`, the foot region by region.
+- **The waiting foot:** the same as compared on 2026-10-26: the disabled primary, the note
+  naming the line. Its last sentence now says what the press does: "Type it above and Deploy
+  is offered: pressing it computes the plan again with your reasons before anything is sent.
+  Nothing is queued."
+- **The ready foot:** unchanged, the bound program and Deploy.
+- **Two states the shots do not reach,** read in the template and its tests
+  (tests/test_device_deploy_v2.py, the browser tests):
+  - **Reasons typed but not yet planned:** Deploy enabled in the page, its note saying the
+    press computes the plan again.
+  - **A press that finds the program moved:** a warning under The program, "Not sent: the
+    program moved after this card drew it (…)", naming what moved.
+  The board draws neither state. Both are within the board's parts, the confirm and its note,
+  so they are **same** in kind.
+- **The waiting Deploy is the one confirm pattern from the start,** drawn disabled
+  (tests/test_v2_one_confirm.py refused a confirm route named any other way). It holds the
+  same words as before, so nothing drawn moved.
+No other region's verdict changed.
 
 The running cards draw the one stepper, compared with its boards in docs/fidelity/stepper.md.
 Reload… (`_reload.html`; the walk's section I, capture 30) and Run a privileged command…

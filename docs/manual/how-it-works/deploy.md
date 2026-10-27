@@ -59,7 +59,9 @@ the server answers from git and the credential store. Planning opens no device s
    `no ip address`, `no router ospf|bgp|eigrp|isis`, `reload`, `erase nvram`,
    `crypto key zeroize`), each authorised by its exact text with your reason, and every line
    ticked for removal (Mode B), whose reason is the one you type beside its tick. While a line
-   still needs its reason, the Deploy button is not offered, and the card names the line;
+   still needs its reason, the Deploy button is drawn disabled, and the card names the line;
+   once every reason box holds text it is offered, and pressing it plans again with your
+   reasons as typed (below);
    blocked change (the program does not re-send
    a change that was rolled back); and no other operation holds the device. Two more are
    checked at apply: the device and its stored capture are unchanged since the preview (the
@@ -67,8 +69,9 @@ the server answers from git and the credential store. Planning opens no device s
    below), and no credential changes.
 
 To authorise a dangerous line you tick its box and type a reason (at least three words, not a
-copy of the line); the device is planned again so its hash covers the reason. The confirm is
-bound to a hash of the program and its authorisations. The apply recomputes it, and if the
+copy of the line); typing it redraws nothing, so you can type one reason after another, and
+the device is planned again with them when you press Deploy, so its hash covers each reason.
+The confirm is bound to a hash of the program and its authorisations. The apply recomputes it, and if the
 stored golden, the intent or the template moved before you confirm, it refuses that device
 with nothing sent, saying which side moved. **The device itself is compared only at apply**,
 at `pre_snapshot`: the program is computed against the stored golden, and a change made on
@@ -79,9 +82,14 @@ skipped as drifted. Capture it first, then preview again (see
 ## Confirm and apply {#confirm-and-apply}
 
 You press the card's **Deploy N line(s) to <device>** (or, for several devices, the batch
-Apply's confirm). The browser posts the hashes it was shown, carried in the card it drew (never
-fetched again), to `/v2/device/<device>/deploy/confirm` (or `/v2/monitoring/apply/confirm`),
-which starts the apply as a job. The apply
+Apply's confirm). The device card posts its form, each reason as typed when you pressed, with
+the program it drew (its hash without the reasons, and its capture's), to
+`/v2/device/<device>/deploy/confirm`, which plans again with those reasons: if that is the
+program drawn on the same capture, it is confirmed by the new plan's hashes, the reasons in
+them; if anything moved, nothing is sent and the card draws the plan as it is now, naming what
+moved (the capture, each line now sent or no longer sent, the lines ticked, the declared
+effects). The batch Apply posts the hashes it was shown, carried in the card it drew (never
+fetched again), to `/v2/monitoring/apply/confirm`. Either starts the apply as a job. The apply
 needs a verified person: the request's Cloudflare Access assertion, checked, from a trusted
 peer. That person is the actor recorded everywhere below.
 

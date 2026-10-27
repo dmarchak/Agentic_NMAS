@@ -315,31 +315,207 @@ def out_of_band(lab, monkeypatch):  # noqa: F811
     return lab
 
 
+def _spy_pipeline(monkeypatch):
+    """The real apply (`routes.deploy._deploy_one`: the program computed again with its
+    removals, every removal's reason checked on the path that connects), with only the
+    pipeline, the part that reaches a device, replaced by a recorder that succeeds. Returns
+    ``(contexts, authorisations)``: each pipeline context, and each `authorise` the job handed
+    the real `_deploy_one`."""
+    import modules.pipeline as P
+    import routes.deploy as rd
+    seen, authorised = [], []
+
+    class _Runner:
+        def __init__(self, ctx):
+            self.ctx = ctx
+            seen.append(ctx)
+
+        def run(self):
+            # As `PipelineRunner.run` answers: its own context, here every stage a pass.
+            self.ctx.final_status = "success"
+            return self.ctx
+    real = rd._deploy_one
+
+    def deploy_one(entry, list_name, rows, authorise, **kw):
+        authorised.append(authorise)
+        return real(entry, list_name, rows, authorise, **kw)
+    monkeypatch.setattr(P, "PipelineRunner", _Runner)
+    monkeypatch.setattr(rd, "_deploy_one", deploy_one)
+    monkeypatch.setattr(rd, "_commit_batch_golden", lambda *a, **k: {})
+    return seen, authorised
+
+
+def _program(ctx, ip):
+    """The program the pipeline was handed for *ip*, its mode changes (`exit`, `end`) out."""
+    return [line.rstrip() for line in ctx.confirmed_commands[ip]
+            if line.strip() not in ("exit", "end")]
+
+
+S1_IP = "192.0.2.21"
+GI11 = ("interface GigabitEthernet1/1\n description h2 - VLAN 20\n switchport access vlan 20\n"
+        " switchport mode access\n negotiation auto\n!\n")
+#: The capture's own unused port, the shape the sibling Gi1/10 is given (s1 has no Gi1/10).
+UNUSED = "interface GigabitEthernet0/1\n negotiation auto\n!\n"
+
+
+@pytest.fixture
+def walk_s1(lab, monkeypatch):  # noqa: F811
+    """The device the operator's Walk 3 (2026-10-26, C1434) removed a line on: s1, a vIOS-L2
+    switch (IOS 15.2), from its REAL golden (tests/fixtures/configs/fleet/s1.cfg, the reference
+    lab's capture with its credential hashes replaced by valid fakes; the session transcript
+    in tests/fixtures/transcripts/s1/ comes masked, its SNMP community `<redacted:…>`, which
+    no template reproduces), with two minimal edits:
+
+    - a sibling `interface GigabitEthernet1/10` beside `GigabitEthernet1/1`, in the shape of
+      the capture's own unused port (`GigabitEthernet0/1`: ` negotiation auto`). The capture
+      has none (vIOS-L2 numbers its ports 0/0 to 3/3); a 48-port IOS switch has both, and a
+      section matcher that took `GigabitEthernet1/1` for a prefix of `GigabitEthernet1/10`
+      would place or find the removal in the wrong section;
+    - `load-interval 30` under `GigabitEthernet1/1` only, typed on the device out of band and
+      taken in by a Capture (the golden holds it, intent does not).
+
+    Intent is the device's own, so the only line to send is the removal, and no line is
+    dangerous. In r2's lab list, beside it."""
+    from modules import credentials
+    from modules.nsot import hostvars
+    from modules.nsot.parsers import get_parser
+    from modules.nsot.repo import GoldenItem, save_golden, save_host_vars
+
+    with open(os.path.join(ROOT, "tests", "fixtures", "configs", "fleet", "s1.cfg"),
+              encoding="utf-8") as fh:
+        real = fh.read()
+    assert GI11 in real and UNUSED in real and "GigabitEthernet1/10" not in real
+    device = real.replace(GI11, GI11 + UNUSED.replace("0/1", "1/10"))
+    golden = device.replace("\ninterface GigabitEthernet1/1\n",
+                            "\ninterface GigabitEthernet1/1\n load-interval 30\n")
+    assert golden.count("load-interval 30") == 1 and golden != device
+    intent = get_parser("cisco_ios").parse(device)
+    intent["hostname"] = "s1"
+    secrets = dict(intent.get("secrets") or {})
+    out = save_golden("Lab", [GoldenItem("s1", golden, S1_IP, platform="cisco_ios")],
+                      source="capture", actor="t", allow_new=True, baseline=False)
+    assert out.get("commit"), out
+    hostvars.write_committed(lab["repo"], intent)
+    assert save_host_vars("Lab", ["s1"], actor="t", source="extraction")["ok"]
+    # The lab hydrates r2's secrets for any device; s1's are its own.
+    hydrate, stored = hostvars.hydrate_secrets, credentials.get_template_secret
+    monkeypatch.setattr("modules.nsot.hostvars.hydrate_secrets",
+                        lambda hv, host, ln="": ({**hv, "secrets": dict(secrets)}
+                                                 if host == "s1" else hydrate(hv, host, ln)))
+    monkeypatch.setattr("modules.credentials.get_template_secret",
+                        lambda key: (secrets.get(key.rsplit(":", 1)[-1])
+                                     if key.split(":")[1:2] == ["s1"] else stored(key)))
+    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
+    devices = [{"hostname": "r2", "ip": "203.0.113.12", "device_type": "cisco_xe",
+                "platform": "cisco_iosxe", "username": "admin"},
+               {"hostname": "s1", "ip": S1_IP, "device_type": "cisco_ios",
+                "platform": "cisco_ios", "username": "admin"}]
+    monkeypatch.setattr("modules.device.load_saved_devices",
+                        lambda path=None: [dict(d) for d in devices])
+    # The plan reads the device's row (its platform, so its template) from the list's own
+    # inventory, which the lab gives r2 and r6.
+    monkeypatch.setattr("modules.nsot.restore._devices_of",
+                        lambda ln: [dict(d) for d in devices])
+    return dict(lab, s1_golden=golden)
+
+
+def _deploy_button(card):
+    """The card's Deploy (`data-needs`), its tag and its `hx-vals`."""
+    m = re.search(r"<button[^>]*\bdata-needs=[^>]*>", card)
+    assert m, "the card draws no Deploy"
+    vals = re.search(r"hx-vals='([^']*)'", m.group(0))
+    return m.group(0), json.loads(html_mod.unescape(vals.group(1)))
+
+
+def _press(lab, host, card, fields):
+    """Deploy pressed as the page presses it: its `hx-vals`, and the card's form (`hx-include`)
+    as *fields*, the hidden ones the card draws included."""
+    _tag, vals = _deploy_button(card)
+    hidden = dict(re.findall(r'<input type="hidden" name="(back|plan|focus)" value="([^"]*)"',
+                             card))
+    assert hidden.get("plan") == "card", "the card's form says it is the card's"
+    return lab["client"].post(f"/v2/device/{host}/deploy/confirm",
+                              data=dict(hidden, **fields, **vals))
+
+
+class TestOneClickOnTheWalksSwitch:
+    """C1434, the operator's bar (2026-10-26): a Why typed and Deploy pressed at once sends that
+    Why. Deploy carries the card's form and the program it drew; the server plans again with
+    the reasons as typed and sends only that program, bound by the new plan's hashes."""
+
+    def test_the_why_pressed_with_deploy_is_sent_and_only_gi1_1s_removal(self, walk_s1,
+                                                                         monkeypatch):
+        from modules.nsot import capture_job
+        seen, authorised = _spy_pipeline(monkeypatch)
+        _r, plain = _get(walk_s1, "/v2/device/s1/deploy?focus=removal")
+        rid = _residue_id(plain, "load-interval 30")
+        assert "GigabitEthernet1/10" not in plain[plain.index('id="removal"'):], \
+            "nothing of Gi1/10 is left on the device"
+        _r, ticked = _get(walk_s1, f"/v2/device/s1/deploy?rm={rid}")
+        tag, _vals = _deploy_button(ticked)
+        assert " disabled" in tag and f'data-needs="why::{rid}"' in tag
+        r = _press(walk_s1, "s1", ticked, {"rm": rid,
+                                           f"why::{rid}": "left over from the old design"})
+        waiting = r.get_data(as_text=True)
+        assert r.status_code == 200 and "Deploying to s1" in waiting, waiting[:600]
+        job = re.search(r"/deploy/job/([0-9a-f]+)", waiting).group(1)
+        assert capture_job.wait(job, 20)
+        assert len(seen) == 1, ("the apply refused before the pipeline", capture_job.get(job))
+        assert _program(seen[0], S1_IP) == ["interface GigabitEthernet1/1",
+                                            " no load-interval 30"]
+        assert not any("1/10" in line for line in seen[0].confirmed_commands[S1_IP])
+        assert authorised == [{"s1": [{"line": "no load-interval 30",
+                                       "reason": "left over from the old design"}]}]
+        _r, out = _get(walk_s1, f"/v2/device/s1/deploy/job/{job}")
+        assert "op-ok" in out, out[out.find("What happened"):][:600]
+
+    def test_pressed_with_no_why_nothing_is_sent_and_the_line_is_named(self, walk_s1,
+                                                                       monkeypatch):
+        seen, _a = _spy_pipeline(monkeypatch)
+        _r, plain = _get(walk_s1, "/v2/device/s1/deploy?focus=removal")
+        rid = _residue_id(plain, "load-interval 30")
+        _r, ticked = _get(walk_s1, f"/v2/device/s1/deploy?rm={rid}")
+        r = _press(walk_s1, "s1", ticked, {"rm": rid, f"why::{rid}": ""})
+        card = r.get_data(as_text=True)
+        assert "Deploying to s1" not in card and seen == []
+        assert "waits on your stated reason for <code>no load-interval 30</code>" in card
+
+    def test_a_program_moved_since_it_was_drawn_is_not_sent_and_says_what_moved(
+            self, walk_s1, monkeypatch):
+        from modules.nsot.repo import GoldenItem, save_golden
+        seen, _a = _spy_pipeline(monkeypatch)
+        _r, plain = _get(walk_s1, "/v2/device/s1/deploy?focus=removal")
+        rid = _residue_id(plain, "load-interval 30")
+        _r, ticked = _get(walk_s1, f"/v2/device/s1/deploy?rm={rid}")
+        # Between the draw and the press a Capture takes in Gi1/10 without its line, so intent
+        # now sends it back: the program the press would send is not the one drawn.
+        now = walk_s1["s1_golden"]
+        bare = UNUSED.replace("0/1", "1/10")
+        assert bare in now
+        out = save_golden("Lab", [GoldenItem("s1", now.replace(
+            bare, "interface GigabitEthernet1/10\n!\n"), S1_IP, platform="cisco_ios")],
+            source="capture", actor="t", baseline=False)
+        assert out.get("commit"), out
+        r = _press(walk_s1, "s1", ticked, {"rm": rid,
+                                           f"why::{rid}": "left over from the old design"})
+        card = html_mod.unescape(r.get_data(as_text=True))
+        assert "Deploying to s1" not in card and seen == []
+        assert "Not sent: the program moved after this card drew it" in card
+        said = card[card.find("Not sent"):][:900]
+        assert "s1's captured configuration changed (capture " in said, said
+        assert "now sent and not drawn: interface GigabitEthernet1/10; negotiation auto" \
+            in said, said
+        # The plan now is drawn, Why kept, and Deploy offered for IT.
+        assert "left over from the old design" in card and "op-confirm" in card
+
+
 class TestTheWalksRemoval:
     """C1434, found again on the operator's Walk 3 (2026-10-26): a removal with no dangerous
     line read "not applicable" on the reason check, so Deploy was offered before the Why was
     given, and the apply refused "1 line(s) need an authorisation with a reason"."""
 
     def _spy_pipeline(self, monkeypatch):
-        """The real apply (`routes.deploy._deploy_one`: the program computed again with its
-        removals, every removal's reason checked on the path that connects), with only the
-        pipeline, the part that reaches a device, replaced by a recorder that succeeds."""
-        import modules.pipeline as P
-        import routes.deploy as rd
-        seen = []
-
-        class _Runner:
-            def __init__(self, ctx):
-                self.ctx = ctx
-                seen.append(ctx)
-
-            def run(self):
-                # As `PipelineRunner.run` answers: its own context, here every stage a pass.
-                self.ctx.final_status = "success"
-                return self.ctx
-        monkeypatch.setattr(P, "PipelineRunner", _Runner)
-        monkeypatch.setattr(rd, "_commit_batch_golden", lambda *a, **k: {})
-        return seen
+        return _spy_pipeline(monkeypatch)[0]
 
     def test_ticked_without_its_why_offers_no_deploy_and_names_the_line(self, out_of_band):
         _r, plain = _get(out_of_band, "/v2/device/r2/deploy?focus=removal")
@@ -350,8 +526,14 @@ class TestTheWalksRemoval:
         assert "waits on your stated reason for <code>no load-interval 30</code> (in its Why " \
                "box, beside the tick)" in ticked, ticked[ticked.find("Not available"):][:400]
         assert "<strong>lines needing a reason</strong>" in ticked
-        button = re.search(r"<button[^>]*>Deploy \d+ line\(s\) to r2</button>", ticked)
-        assert button and " disabled" in button.group(0) and "hx-post" not in button.group(0), \
+        # Drawn as the one confirm pattern (tests/test_v2_one_confirm.py), disabled, and not
+        # marked the offered confirm: a disabled button sends nothing, and a press without its
+        # Why is refused by the server too (TestOneClickOnTheWalksSwitch).
+        button = re.search(r'<button[^>]*data-waits="1"[^>]*>', ticked)
+        classes = re.search(r'class="([^"]*)"', button.group(0)).group(1).split() if button \
+            else []
+        assert button and " disabled" in button.group(0) and "op-confirm" not in classes \
+            and re.search(r"Deploy \d+ line\(s\) to r2", ticked), \
             "Deploy drawn disabled, never offered"
 
     def test_the_why_alone_authorises_it_and_only_the_removal_is_sent(self, out_of_band,
@@ -536,9 +718,9 @@ SETTLED = "!document.querySelector('.htmx-swapping, .htmx-settling, .htmx-reques
 class TestInARealBrowser:
     def test_plan_give_the_reason_confirm_and_the_result_arrives_in_place(
             self, deploy, live_browser, monkeypatch):
-        """The path a person takes: "Plan a deploy…", the dangerous line's reason typed (the
-        card plans again and offers the confirm), the confirm, the stepper, the result by
-        the job's announcement, the page never reloaded."""
+        """The path a person takes: "Plan a deploy…", the dangerous line's reason typed (Deploy
+        is offered as it is typed, and plans again with it when pressed, C1434), the confirm,
+        the stepper, the result by the job's announcement, the page never reloaded."""
         browser, srv, b = live_browser
         sent = []
         reached = _spy(monkeypatch, sent_hash=sent)
@@ -557,11 +739,13 @@ class TestInARealBrowser:
                        f"&& {SETTLED}", 15)
             b.js("var i = document.querySelector('input[name=\"dz::0\"]');"
                  "i.value = 'the link is being retired';"
+                 "i.dispatchEvent(new Event('input', {bubbles: true}));"
                  "i.dispatchEvent(new Event('change', {bubbles: true})); return 1")
-            b.wait_for(f"return {CARD} && {CARD}.querySelector('.op-confirm') && {SETTLED}", 15)
-            vals = b.js("return document.querySelector('#device-op .op-confirm')"
-                        ".getAttribute('hx-vals')")
-            sent.append(json.loads(vals)["command_hash"])
+            b.wait_for(f"return {CARD} && {CARD}.querySelector('.op-confirm:not([disabled])') "
+                       f"&& {SETTLED}", 15)
+            # The program the press binds is the plan with that reason: one plan, one hash.
+            _r, planned = _get(deploy, "/v2/device/r2/deploy?" + _reasons()[1:])
+            sent.append(_vals(planned)["command_hash"])
             b.click("#device-op .op-confirm")
             b.wait_for(f"return {CARD} && {CARD}.className.indexOf('op-ok') >= 0 && {SETTLED}",
                        30)
@@ -571,3 +755,129 @@ class TestInARealBrowser:
         finally:
             b.go("about:blank")
             browser.close_socketio_sessions()
+
+    def test_a_why_typed_and_deploy_pressed_at_once_sends_that_why(self, walk_s1, live_browser,
+                                                                   monkeypatch):
+        """C1434, the operator's bar (2026-10-26): on the walk's switch, the line ticked for
+        removal, its Why typed with real keys and Deploy pressed within 100 ms of the last one
+        (the key and the press in ONE WebDriver actions call, no round trip between). The press
+        is never lost: the job carries that Why as the removal's authorisation, the pipeline is
+        handed exactly Gi1/1's removal, and the result arrives in place."""
+        browser, srv, b = live_browser
+        seen, authorised = _spy_pipeline(monkeypatch)
+        why = "left over from the old design"
+        try:
+            b._call("POST", f"/session/{b.session}/window/rect", {"width": 1280, "height": 1000})
+            b.go(srv.url("/v2/device/s1?op=deploy"))
+            b.wait_for("return !!window.Alpine && window.NMAS && "
+                       f"NMAS.live().state === 'connected' && {CARD} && " + SETTLED, 15)
+            b.js("window.__notReloaded = 1; return 1")
+            rid = _residue_box(b)
+            b.click(f"#rm-{rid}")
+            field = f'#device-op input[name="why::{rid}"]'
+            press = "#device-op button[data-needs]"
+            b.wait_for(f"return document.querySelector('{field}') && {SETTLED}", 15)
+            assert b.js(f"return document.querySelector('{press}').disabled") is True, \
+                "no Why yet: Deploy waits"
+            b.js(f"var w = document.querySelector('{field}'), t = window.__t = {{}};"
+                 "w.addEventListener('input', function () { t.typed = performance.now(); });"
+                 "document.addEventListener('click', function (e) {"
+                 f"  if (e.target.closest && e.target.closest('{press}') && !t.pressed)"
+                 "    t.pressed = performance.now(); }, true); return 1")
+            b.type(field, why[:-1])
+            # Deploy in view for the pointer, the field keeping the focus (and its caret).
+            assert b.js(f"document.querySelector('{press}').scrollIntoView({{block: 'center'}});"
+                        f"return document.activeElement === document.querySelector('{field}')"), \
+                "the field lost its focus while the Why was typed"
+            _type_and_press(b, why[-1], press)
+            b.wait_for(f"return {CARD} && /op-(ok|warn|danger)/.test({CARD}.className) "
+                       f"&& {SETTLED}", 30)
+            t = b.js("return window.__t")
+            assert t.get("pressed") is not None and 0 <= t["pressed"] - t["typed"] < 100, t
+            assert "op-ok" in b.js(f"return {CARD}.className"), b.js(f"return {CARD}.textContent")
+            assert b.js("return window.__notReloaded") == 1
+            assert authorised == [{"s1": [{"line": "no load-interval 30", "reason": why}]}]
+            assert len(seen) == 1 and _program(seen[0], S1_IP) == [
+                "interface GigabitEthernet1/1", " no load-interval 30"]
+        finally:
+            b.go("about:blank")
+            browser.close_socketio_sessions()
+
+
+    def test_one_reason_then_another_typed_keeps_the_focus_and_every_key(
+            self, deploy, live_browser, monkeypatch):
+        """C1434: the card is never redrawn while a person types. On r2 (a dangerous line and
+        a ticked removal, two reasons), the first reason typed with real keys, then the second
+        field clicked and typed: leaving the first plans nothing, so the second keeps its focus
+        and every key; Deploy then sends both reasons."""
+        browser, srv, b = live_browser
+        sent = []
+        reached = _spy(monkeypatch, sent_hash=sent)
+        first, second = "the link is being retired", "left over from the old design"
+        try:
+            b._call("POST", f"/session/{b.session}/window/rect", {"width": 1280, "height": 1000})
+            b.go(srv.url("/v2/device/r2?op=deploy"))
+            b.wait_for("return !!window.Alpine && window.NMAS && "
+                       f"NMAS.live().state === 'connected' && {CARD} && " + SETTLED, 15)
+            rid = _residue_box(b)
+            b.click(f"#rm-{rid}")
+            field = f'#device-op input[name="why::{rid}"]'
+            b.wait_for(f"return document.querySelector('{field}') && {SETTLED}", 15)
+            b.js("window.__asked = 0; document.addEventListener('htmx:beforeRequest', "
+                 "function () { window.__asked++; }); return 1")
+            b.type('#device-op input[name="dz::0"]', first)
+            b.click(field)
+            b.type(field, second, pause=0.02)
+            got = b.js(f"var f = document.querySelector('{field}'); return [f.value, "
+                       "document.activeElement === f, window.__asked, document.querySelector("
+                       "'#device-op input[name=\"dz::0\"]').value]")
+            assert got == [second, True, 0, first], got
+            _r, planned = _get(deploy, f"/v2/device/r2/deploy?rm={rid}&why::{rid}={second}"
+                               + _reasons(first))
+            sent.append(_vals(planned)["command_hash"])
+            b.click("#device-op button[data-needs]")
+            b.wait_for(f"return {CARD} && {CARD}.className.indexOf('op-ok') >= 0 && {SETTLED}",
+                       30)
+            lines = {a["line"]: a["reason"] for a in reached[0]["authorise"]["r2"]}
+            assert lines == {"shutdown": first, "no load-interval 30": second}, lines
+        finally:
+            b.go("about:blank")
+            browser.close_socketio_sessions()
+
+
+def _residue_box(b, text="load-interval 30"):
+    """The id of the box the drawn card offers for the residue line *text*."""
+    rid = b.js("var want = arguments[0], b = Array.prototype.find.call("
+               "document.querySelectorAll('#device-op input[name=rm]'), function (i) {"
+               "  var l = document.querySelector('label[for=\"' + i.id + '\"]');"
+               "  return l && l.textContent.indexOf(want) >= 0; });"
+               "return b && b.value", text)
+    assert rid, "the residue line has its box"
+    return rid
+
+
+#: WebDriver's element reference key.
+ELEMENT = "element-6066-11e4-a52e-4f735466cecf"
+
+
+def _type_and_press(b, text, css):
+    """Type *text* into the focused field and press *css* in ONE WebDriver actions call: each
+    key down and up, then the pointer moved to the button, down and up, on consecutive ticks,
+    as a person who types the last letter and clicks at once."""
+    el = b._call("POST", f"/session/{b.session}/element", {"using": "css selector", "value": css})
+    ref = next(iter(el.values()))
+    keys = [a for ch in text for a in ({"type": "keyDown", "value": ch},
+                                       {"type": "keyUp", "value": ch})]
+    pause = {"type": "pause", "duration": 0}
+    pointer = [pause] * len(keys) + [
+        {"type": "pointerMove", "duration": 0, "origin": {ELEMENT: ref}, "x": 0, "y": 0},
+        {"type": "pointerDown", "button": 0}, {"type": "pointerUp", "button": 0}]
+    from urllib.error import HTTPError
+    try:
+        b._call("POST", f"/session/{b.session}/actions", {"actions": [
+            {"type": "key", "id": "keyboard", "actions": keys + [pause] * 3},
+            {"type": "pointer", "id": "mouse", "parameters": {"pointerType": "mouse"},
+             "actions": pointer}]})
+    except HTTPError as exc:          # the driver's own words, not only its status
+        raise AssertionError(f"the actions call was refused: {exc.read()[:600]!r}") from exc
+    b._call("DELETE", f"/session/{b.session}/actions")

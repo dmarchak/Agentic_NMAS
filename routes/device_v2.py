@@ -550,7 +550,9 @@ def strip():
     from modules import reader_job
 
     value, at, why = device_page._cached("integrations")
-    rows = (value or {}).get("integrations") or []
+    # SDN controller connections count in the total beside the integrations (PHASE8_PLAN
+    # 17.1 S2), named on hover as each integration is.
+    rows = ((value or {}).get("integrations") or []) + ((value or {}).get("controllers") or [])
     configured = [r for r in rows if r.get("state") != "not_configured"]
     unset = [r for r in rows if r.get("state") == "not_configured"]
     down = [r for r in configured if r.get("state") not in ("up", "refused")]
@@ -1364,10 +1366,64 @@ def _deploy_card(ref, dev, back, fields, focus=""):
                         "command_hash": entry.get("command_hash", ""),
                         "remove": list(rm.get("ids") or []), "authorise": authorise,
                         "declare": [raw_of(d) for d in entry.get("declared") or []]}
+    # The program as drawn, whatever reasons it waits on (C1434): its hash without the
+    # authorisations, so Deploy can plan again with the reasons typed since and send only
+    # this program; the masked lines name what moved if it did.
+    if "commands" in entry:
+        from modules.nsot.deploy import command_fingerprint
+        rm = entry.get("removals") or {}
+        declared = [raw_of(d) for d in entry.get("declared") or []]
+        c["shown"] = {"capture_hash": entry.get("capture_hash", ""),
+                      "program_hash": command_fingerprint(entry["commands"], [],
+                                                          rm.get("ids") or [],
+                                                          entry.get("declared") or []),
+                      "sent": list(c.get("sent") or []), "remove": list(rm.get("ids") or []),
+                      "declare": declared}
     c.update(back=back, ip=dev.get("ip", ""))
     if focus == "removal":
         c["focus"] = "removal"
     return c
+
+
+def _what_moved(shown_json, now, host) -> list:
+    """What differs between the program the card drew (*shown_json*, the `shown` its Deploy
+    carried) and the plan *now* (`_deploy_card`'s `shown`), in words, each naming both sides;
+    ``[]`` when they are one program on one capture. Reasons are not compared: typing them is
+    what the press plans again for."""
+    import json
+
+    try:
+        was = json.loads(shown_json or "")
+    except ValueError:
+        was = None
+    if not isinstance(was, dict) or not now:
+        return [f"the card carried no program to compare with the plan for {host} now"]
+    if (was.get("capture_hash") == now.get("capture_hash")
+            and was.get("program_hash") == now.get("program_hash")):
+        return []
+    out = []
+    if was.get("capture_hash") != now.get("capture_hash"):
+        out.append(f"{host}'s captured configuration changed (capture "
+                   f"{str(was.get('capture_hash', ''))[:12] or 'none'} drawn, "
+                   f"{str(now.get('capture_hash', ''))[:12] or 'none'} now)")
+    before, after = list(was.get("sent") or []), list(now.get("sent") or [])
+    added = [line for line in after if line not in before]
+    dropped = [line for line in before if line not in after]
+    if added:
+        out.append("now sent and not drawn: " + "; ".join(l.strip() for l in added))
+    if dropped:
+        out.append("drawn and no longer sent: " + "; ".join(l.strip() for l in dropped))
+    if sorted(was.get("remove") or []) != sorted(now.get("remove") or []):
+        out.append(f"the lines ticked for removal changed ({len(was.get('remove') or [])} "
+                   f"drawn, {len(now.get('remove') or [])} now)")
+    if (was.get("declare") or []) != (now.get("declare") or []):
+        out.append(f"the declared effects changed ({len(was.get('declare') or [])} drawn, "
+                   f"{len(now.get('declare') or [])} now)")
+    if not out:
+        out.append(f"the program changed where its masked values are (program "
+                   f"{str(was.get('program_hash', ''))[:12]} drawn, "
+                   f"{str(now.get('program_hash', ''))[:12]} now)")
+    return out
 
 
 @bp.route("/device/<name>/deploy", methods=["GET"])
@@ -1416,21 +1472,37 @@ def deploy_confirm(name):
     if refusal is not None:
         return refusal
     host = dev.get("hostname", "")
-    capture_hash = (request.form.get("capture_hash") or "").strip()
-    command_hash = (request.form.get("command_hash") or "").strip()
-    if not capture_hash or not command_hash:
-        return _strict(render_template("v2/_deploy.html", c={
-            "state": "refused_hash", "host": host, "list": ref.name,
-            "back": _back(request.form)}), 400)
-    try:
-        remove = json.loads(request.form.get("remove") or "[]")
-        authorise = json.loads(request.form.get("authorise") or "[]")
-        # The declared effects (C506 phase 3), in the hash: checked again at apply.
-        declare = json.loads(request.form.get("declare") or "[]")
-    except ValueError:
-        return _strict(render_template("v2/_deploy.html", c={
-            "state": "refused_hash", "host": host, "list": ref.name,
-            "back": _back(request.form)}), 400)
+    if request.form.get("plan") == "card":
+        # Pressed on the card, its form with it (C1434, one click; the operator's bar of
+        # 2026-10-26): plan again with every reason as typed NOW, a Why typed and pressed at
+        # once included, and send only if that is the program the card drew, bound by the new
+        # plan's hashes. Anything else draws the plan as it is now, naming what moved, and
+        # nothing is sent.
+        c = _deploy_card(ref, dev, _back(request.form), request.form,
+                         focus=request.form.get("focus", ""))
+        moved = _what_moved(request.form.get("shown"), c.get("shown"), host)
+        if moved or not c.get("may"):
+            c["moved"] = moved
+            return _strict(render_template("v2/_deploy.html", c=c))
+        bound = c["confirm"]
+        capture_hash, command_hash = bound["capture_hash"], bound["command_hash"]
+        remove, authorise, declare = bound["remove"], bound["authorise"], bound["declare"]
+    else:
+        capture_hash = (request.form.get("capture_hash") or "").strip()
+        command_hash = (request.form.get("command_hash") or "").strip()
+        if not capture_hash or not command_hash:
+            return _strict(render_template("v2/_deploy.html", c={
+                "state": "refused_hash", "host": host, "list": ref.name,
+                "back": _back(request.form)}), 400)
+        try:
+            remove = json.loads(request.form.get("remove") or "[]")
+            authorise = json.loads(request.form.get("authorise") or "[]")
+            # The declared effects (C506 phase 3), in the hash: checked again at apply.
+            declare = json.loads(request.form.get("declare") or "[]")
+        except ValueError:
+            return _strict(render_template("v2/_deploy.html", c={
+                "state": "refused_hash", "host": host, "list": ref.name,
+                "back": _back(request.form)}), 400)
     job = deploy_job.start(
         ref.name, [host], {host: capture_hash}, {host: command_hash},
         authorise={host: authorise} if authorise else {}, remove={host: remove} if remove else {},

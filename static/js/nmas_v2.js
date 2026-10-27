@@ -525,6 +525,61 @@
     NMAS.subscribe('console_servers', 'v2ConsoleServers', relayConsoleServers);
   }
 
+  /* One click on the device page's Deploy (C1434, the operator's bar of 2026-10-26: a Why
+     typed and Deploy pressed at once must send that Why). A reason field re-planned on its
+     change, and the press itself caused that change (the field's blur on the button's
+     mousedown): the redrawn card replaced the button before its click, or the click posted
+     the authorisations planned before the Why. Now a reason field marked
+     `data-sent-by-deploy` plans nothing as it changes; Deploy (`button[data-needs]`) is
+     offered once every reason field it names holds text, and pressed it carries the card's
+     form, so the server plans again with the reasons as typed and sends only the program the
+     card drew (routes/device_v2.py `deploy_confirm`). The card is never redrawn while a
+     person types, so their focus and caret stay where they are. */
+  function reasonPlansAtDeploy(e) {
+    var d = (e && e.detail) || {}, ev = d.triggeringEvent, t = ev && ev.target;
+    if (ev && ev.type === 'change' && t && t.hasAttribute && t.hasAttribute('data-sent-by-deploy')) {
+      e.preventDefault();
+    }
+  }
+  /* PURE over the DOM: whether every field *button*'s `data-needs` names, inside *card*, holds
+     text. A field the card does not draw is missing, never given. */
+  function reasonsTyped(button, card) {
+    var names = (button.getAttribute('data-needs') || '').split(/\s+/);
+    for (var i = 0; i < names.length; i++) {
+      if (!names[i]) continue;
+      var f = card.querySelector('[name="' + names[i].replace(/"/g, '') + '"]');
+      if (!f || !(f.value || '').trim()) return false;
+    }
+    return true;
+  }
+  /* A Deploy drawn waiting (`data-waits`) is already the confirm pattern, disabled: offered,
+     it is marked the confirm (`op-confirm`) as the server marks an offered one. */
+  function offerDeploy(b) {
+    b.classList.add('op-confirm');
+  }
+  function drawDeploys(scope) {
+    if (!scope || !scope.querySelectorAll) return;
+    var list = scope.querySelectorAll('button[data-needs]');
+    for (var i = 0; i < list.length; i++) {
+      var b = list[i], card = b.closest('.op-card');
+      if (!card || b.classList.contains('htmx-request')) continue;
+      var typed = reasonsTyped(b, card), waits = b.hasAttribute('data-waits');
+      if (typed && waits) offerDeploy(b);
+      if (!typed && waits) b.classList.remove('op-confirm');
+      if (waits || !b.hasAttribute('data-refused')) b.disabled = !typed;
+      var ready = card.querySelector('#deploy-ready'), wait = card.querySelector('#deploy-waits');
+      if (waits && ready && wait) {
+        ready.hidden = !typed;
+        wait.hidden = typed;
+        b.setAttribute('aria-describedby', typed ? 'deploy-ready' : 'deploy-waits');
+      }
+    }
+  }
+  function drawDeployOf(e) {
+    var card = e && e.target && e.target.closest && e.target.closest('.op-card');
+    if (card) drawDeploys(card);
+  }
+
   /* A form's submit button is busy on itself (C1023, the operator's B1 on walk W2). htmx
      reads `hx-disabled-elt`, and puts its `htmx-request` class, on the element that ISSUES the
      request: for a <form hx-post> that is the form, so the button's own
@@ -979,10 +1034,14 @@
       drawClock();
       drawLive();
       drawBadge();
+      drawDeploys(root.document);
       root.setInterval(function () { drawLive(); drawBadge(); releaseHeld(); }, 1000);
       root.setInterval(function () { drawAges(); }, 15000);
     });
-    root.document.addEventListener('htmx:afterSettle', function (e) { drawAges(e.target); drawClock(e.target); catchUpMissed(e); reopenKept(); });
+    root.document.addEventListener('htmx:afterSettle', function (e) { drawAges(e.target); drawClock(e.target); drawDeploys(e.target); catchUpMissed(e); reopenKept(); });
+    root.document.addEventListener('htmx:confirm', reasonPlansAtDeploy);
+    root.document.addEventListener('input', drawDeployOf);
+    root.document.addEventListener('change', drawDeployOf);
     root.document.addEventListener('htmx:beforeSwap', rememberOpen);
     root.document.addEventListener('htmx:beforeRequest', noteAsked);
     root.document.addEventListener('htmx:beforeRequest', markTab);
@@ -1009,5 +1068,6 @@
                   ackAnswer: ackAnswer, ackNoAnswer: ackNoAnswer, ACK_BOUND_MS: ACK_BOUND_MS,
                   badgeDoubt: badgeDoubt, missedKeys: missedKeys, isFragment: isFragment,
                   failWords: failWords, couldntWords: couldntWords, injectedScripts: injectedScripts,
-                  rewrittenWords: rewrittenWords, openKeys: openKeys, submitterOf: submitterOf};
+                  rewrittenWords: rewrittenWords, openKeys: openKeys, submitterOf: submitterOf,
+                  reasonsTyped: reasonsTyped};
 })(typeof window !== 'undefined' ? window : this);
