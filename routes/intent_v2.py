@@ -183,6 +183,8 @@ def words(name):
         pr = got["pair"]
         w["pair"] = {"device": pr["device"], "port": pr["port"], "far": pr["far"],
                      "far_port": pr["far_port"], "facts": list(pr.get("facts") or []),
+                     "existing": [{"said": e["said"], "bears": bool(e["bears"])}
+                                  for e in pr.get("existing") or []],
                      "draft": pr.get("draft", ""), "pair_json": json.dumps(
                          [{"hostname": p.get("hostname"), "patch": p.get("patch"),
                            "base": p.get("base", "")} for p in got.get("previews") or []],

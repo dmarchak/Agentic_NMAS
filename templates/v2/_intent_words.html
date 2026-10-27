@@ -34,6 +34,13 @@
 {#- C1908 (board F7-Q, Q1): one draft holding both ends of the link, side by side, the ends
     checked to match before it was offered; one commit covers both. -#}
 <div class="notice notice-ok" role="status">{{ icon('check', 16) }}<p><strong>One draft, both ends</strong> of the link {{ w.pair.device }} {{ w.pair.port }} ↔ {{ w.pair.far }} {{ w.pair.far_port }}{% if w.pair.facts %} · the ends match: {{ w.pair.facts | join('; ') }}{% endif %} <span class="faint">({{ w.model }}, ${{ '%.4f' | format(w.cost_usd) }})</span></p></div>
+{#- C1933 (the operator's decision, 2026-10-27; a deviation from F7-Q, which draws the
+    refusal only): a mismatch already in committed intent that the draft leaves as it is,
+    said beside the draft, which proceeds; when it bears on what the draft changes, that this
+    change may fail because of it. -#}
+{%- for e in w.pair.existing %}
+<div class="notice notice-warn iw-existing" role="status">{{ icon('warn', 16) }}<p><strong>{{ 'This change may fail:' if e.bears else 'The ends already differ:' }}</strong> {{ e.said }}.</p></div>
+{%- endfor %}
 {%- if w.decided %}<p class="iw-decided muted">Your words, as decided: <q>{{ w.decided }}</q></p>{% endif %}
 <div class="iw-draft">
   <div class="ie-split iw-pair">
@@ -139,8 +146,8 @@
 {%- elif w and w.error == 'unanswerable' %}
 <div class="notice notice-warn" role="alert">{{ icon('warn', 16) }}<p><strong>This change cannot be drafted in words:</strong> {{ w.detail.split(': ', 1)[1] if ': ' in w.detail else w.detail }}. Edit the document to make it.</p></div>
 {%- elif w and w.error == 'ends_mismatch' %}
-{#- C1908 (board F7-Q, Q1b): the two ends would not match after the draft; refused before
-    any preview, naming the mismatch. -#}
+{#- C1908 (board F7-Q, Q1b): the two ends would not match after the draft, by a mismatch
+    the draft creates or changes (C1933); refused before any preview, naming it. -#}
 <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Not drafted: the two ends would not match.</strong> {{ w.detail.split(': ', 1)[1] if ': ' in w.detail else w.detail }}.</p></div>
 {%- elif w and w.error == 'intent' %}
 <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Nothing drafted:</strong> {{ w.detail }}.</p></div>

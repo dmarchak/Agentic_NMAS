@@ -702,6 +702,26 @@ def _intent_words(client, lab, _mp):
                         data=dict(fields, summary="both ends of a link"),
                         headers={"HX-Request": "true", "Accept": "text/html"})
         assert "Committed to r3 and r4" in r.get_data(as_text=True), r.get_data(as_text=True)[-800:]
+        # C1933: r4's end of the link put in OSPFv3 area 7 in committed intent, where r3's is
+        # in none; a draft describing both ends again leaves it as it is, so it is drawn
+        # beside the draft, which is offered.
+        doc4 = yaml.safe_load(intent_edit.open_doc("Lab", "r4")["yaml"])
+        end4 = next(i for i in doc4["interfaces"] if i.get("name") == link)
+        end4["ospfv3"] = ["1 area 7"]
+        from modules.nsot import hostvars
+        with open(os.path.join(lab["repo"], "host_vars", "r4.yml"), "w", encoding="utf-8") as fh:
+            fh.write(hostvars.canonical(yaml.safe_dump(doc4), "r4"))
+        assert save_host_vars("Lab", ["r4"], actor="t", source="extraction")["ok"]
+        for p in answer["patches"]:
+            p["operations"][0]["description"] = "both ends again"
+        r = client.post("/v2/device/r3/intent/words",
+                        data={"words": f"describe both ends of {ifnames.abbreviate(link)} as "
+                                       "both ends again"},
+                        headers={"HX-Request": "true", "Accept": "text/html"})
+        html = _h.unescape(r.get_data(as_text=True))
+        assert "The ends already differ:</strong>" in html and "Commit both devices' intent" \
+            in html, _re.sub(r"<svg.*?</svg>", "", html.split("</form>", 1)[-1],
+                             flags=_re.S)[:1500]
     finally:
         mp.undo()
         shutil.rmtree(folder, ignore_errors=True)

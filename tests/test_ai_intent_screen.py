@@ -627,3 +627,143 @@ def test_the_lab_s_two_links_match():
     s = {"interfaces": [dict(TRUNK, name="GigabitEthernet0/3")]}
     assert intent_words.ends_match("s1", S1, "GigabitEthernet0/3", "s2", s,
                                    "GigabitEthernet0/3")["mismatches"] == []
+
+
+# ── C1933: a draft is refused only for a mismatch it creates or changes ─────────────────
+#
+# The lab's two links as committed (s1's real intent and s2 as s1 renamed, its trunk Gi0/3;
+# r3 and r4's Gi4 /31 as the masked read of 2026-10-27 gives them), each with a planted
+# mismatch, judged before (committed) and after (what a draft would leave).
+
+def _routed(addr, area="0", **iface):
+    return _doc(GigabitEthernet4=dict({"ipv4": f"{addr} 255.255.255.254",
+                                        "ospfv3": ["1 area 0"]}, **iface)) | {"routing": {
+        "ospf": [{"process": "1", "networks": [f"network 10.255.2.14 0.0.0.1 area {area}"]}]}}
+
+
+def _end(doc, port, **changes):
+    import copy
+    out = copy.deepcopy(doc)
+    for i in out["interfaces"]:
+        if i["name"] == port:
+            i.update(changes)
+    return out
+
+
+S2 = dict(_end(S1, "GigabitEthernet0/3"), hostname="s2")
+S_LINK = ("s1", "GigabitEthernet0/3", "s2", "GigabitEthernet0/3")
+R_LINK = ("r3", "GigabitEthernet4", "r4", "GigabitEthernet4")
+R3, R4 = _routed("10.255.2.14"), _routed("10.255.2.15")
+
+
+def _s2(**changes):
+    return _end(S2, "GigabitEthernet0/3", **changes)
+
+
+def _s1(**changes):
+    return _end(S1, "GigabitEthernet0/3", **changes)
+
+
+def _judged(link, before, after):
+    a, port_a, b, port_b = link
+    return intent_words.ends_judged(a, port_a, b, port_b, before, after)
+
+
+@pytest.mark.parametrize("link,before,after,words", [
+    (S_LINK, (S1, S2), (S1, _s2(switchport_trunk_vlans=["10,20"])),
+     "s1 GigabitEthernet0/3 allows VLANs 10, 20, 30 and s2 GigabitEthernet0/3 allows VLANs 10, "
+     "20; both ends of a trunk carry the same VLANs"),
+    (R_LINK, (R3, R4), (R3, _routed("10.255.2.15", area="10")),
+     "r3 GigabitEthernet4 is in OSPF area 0 and r4 GigabitEthernet4 in 10; both ends of a link "
+     "share one area"),
+], ids=["s1-s2-vlans", "r3-r4-area"])
+def test_a_mismatch_the_draft_creates_is_refused_naming_both_ends(link, before, after, words):
+    """The ends matched in committed intent and would not after the draft: refused."""
+    got = _judged(link, before, after)
+    assert got["refused"] == [words] and got["existing"] == [], got
+
+
+@pytest.mark.parametrize("link,before,after,words", [
+    (S_LINK, (S1, _s2(switchport_trunk_vlans=["10,20"])),
+     (S1, _s2(switchport_trunk_vlans=["10"])),
+     "s1 GigabitEthernet0/3 allows VLANs 10, 20, 30 and s2 GigabitEthernet0/3 allows VLANs 10; "),
+    (R_LINK, (R3, _routed("10.255.2.15", area="10")), (R3, _routed("10.255.2.15", area="20")),
+     "r3 GigabitEthernet4 is in OSPF area 0 and r4 GigabitEthernet4 in 20; "),
+], ids=["s1-s2-vlans", "r3-r4-area"])
+def test_a_mismatch_whose_values_the_draft_changes_is_refused(link, before, after, words):
+    """Already mismatched in committed intent, and the draft changes its values: refused,
+    naming the values it would leave."""
+    got = _judged(link, before, after)
+    assert len(got["refused"]) == 1 and got["refused"][0].startswith(words), got
+    assert got["existing"] == [], got
+
+
+@pytest.mark.parametrize("link,before,after,words", [
+    (S_LINK, (S1, _s2(switchport_trunk_vlans=["10,20"])),
+     (_s1(description="s1-s2 trunk"), _s2(switchport_trunk_vlans=["10,20"],
+                                          description="s1-s2 trunk")),
+     "s1 GigabitEthernet0/3 allows VLANs 10, 20, 30 and s2 GigabitEthernet0/3 allows VLANs 10, "
+     "20, already in committed intent; this change does not touch it"),
+    (R_LINK, (R3, _routed("10.255.2.15", area="10")),
+     (_routed("10.255.2.14", description="core"),
+      _routed("10.255.2.15", area="10", description="core")),
+     "r3 GigabitEthernet4 is in OSPF area 0 and r4 GigabitEthernet4 in 10, already in committed "
+     "intent; this change does not touch it"),
+], ids=["s1-s2-vlans", "r3-r4-area"])
+def test_a_mismatch_already_committed_and_left_as_it_is_is_said_and_not_refused(link, before,
+                                                                                after, words):
+    """A description on both ends of a link whose ends already differ: not refused; the
+    mismatch said as untouched."""
+    got = _judged(link, before, after)
+    assert got["refused"] == [], got
+    assert [(e["said"], e["bears"]) for e in got["existing"]] == [(words, False)], got
+
+
+@pytest.mark.parametrize("link,before,after,words", [
+    (S_LINK, (_s1(switchport=["switchport trunk native vlan 99"]), S2),
+     (_s1(switchport=["switchport trunk native vlan 99"], switchport_trunk_vlans=["10,20,30,40"]),
+      _s2(switchport_trunk_vlans=["10,20,30,40"])),
+     "s1 GigabitEthernet0/3 has native VLAN 99 and s2 GigabitEthernet0/3 native VLAN 1, already "
+     "in committed intent; this change touches the link's trunk settings and may fail because "
+     "of it"),
+    (R_LINK, (_routed("10.255.2.14", ospf=["authentication message-digest"]), R4),
+     (_routed("10.255.2.14", area="10", ospf=["authentication message-digest"]),
+      _routed("10.255.2.15", area="10")),
+     "r3 GigabitEthernet4 authenticates OSPF as message-digest and r4 GigabitEthernet4 as none, "
+     "already in committed intent; this change touches the link's OSPF settings and may fail "
+     "because of it"),
+], ids=["s1-s2-native-under-a-vlan-change", "r3-r4-auth-under-an-area-change"])
+def test_an_existing_mismatch_bearing_on_the_change_says_it_may_fail(link, before, after, words):
+    """The draft changes the same link's trunk (or OSPF) settings, and leaves a mismatch of
+    that family as it was: the draft proceeds, and the warning says it may fail because of
+    it, naming the fact."""
+    got = _judged(link, before, after)
+    assert got["refused"] == [], got
+    assert [(e["said"], e["bears"]) for e in got["existing"]] == [(words, True)], got
+
+
+def _v6(addr, v3, **iface):
+    return _doc(GigabitEthernet4=dict({"ipv6": [f"{addr}/64"], "ospfv3": [f"1 area {v3}"]},
+                                      **iface))
+
+
+@pytest.mark.parametrize("before,after,refused,existing", [
+    ((_v6("2001:DB8:2:C::1", "0"), _v6("2001:DB8:2:C::2", "5")),
+     (_v6("2001:DB8:2:C::1", "0"), _v6("2001:DB8:2:C::2", "5", description="core")),
+     [], ["r3 GigabitEthernet4 is in OSPFv3 area 0 and r4 GigabitEthernet4 in 5, already in "
+          "committed intent; this change does not touch it"]),
+    ((_v6("2001:DB8:2:C::1", "0"), _v6("2001:DB8:2:C::2", "5")),
+     (_v6("2001:DB8:2:C::1", "0"), _v6("2001:DB8:2:C::2", "6")),
+     ["r3 GigabitEthernet4 is in OSPFv3 area 0 and r4 GigabitEthernet4 in 6; both ends of a "
+      "link share one area"], []),
+    ((_v6("2001:DB8:2:C::1", "0"), _v6("2001:DB8:2:C::2", "0")),
+     (_v6("2001:DB8:2:C::1", "0"), _v6("2001:DB8:2:C::2", "5")),
+     ["r3 GigabitEthernet4 is in OSPFv3 area 0 and r4 GigabitEthernet4 in 5; both ends of a "
+      "link share one area"], []),
+], ids=["existing-left", "existing-changed", "created"])
+def test_an_ipv6_link_s_ospfv3_area_is_judged_by_what_the_draft_does(before, after, refused,
+                                                                      existing):
+    """An IPv6-only /64 between r3 and r4, its OSPFv3 area the fact: an existing mismatch
+    left as it is said, one the draft changes or creates refused, as on IPv4."""
+    got = _judged(R_LINK, before, after)
+    assert got["refused"] == refused and [e["said"] for e in got["existing"]] == existing, got

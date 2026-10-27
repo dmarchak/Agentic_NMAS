@@ -105,10 +105,16 @@ the model is given names both ends ("edge1 GigabitEthernet4 and edge2 GigabitEth
 device may change only its own end. A draft that changes one end only is refused: never half a
 change.
 
-Before the draft is offered, {{product}} checks that the two ends would still match: a trunk's
-allowed and native VLANs, a tunnel's source, destination and addressing, the OSPF area (OSPFv3's
-too) and the OSPF authentication type. A mismatch is refused, naming both ends' values, and
-nothing is offered to commit. The draft says what the ends share.
+Before the draft is offered, {{product}} compares the two ends in committed intent with the two
+ends the draft would leave: a trunk's allowed and native VLANs, a tunnel's source, destination
+and addressing, the OSPF area (OSPFv3's too) and the OSPF authentication type. A mismatch the
+draft creates, or one whose values it changes, is refused, naming both ends' values, and
+nothing is offered to commit. A mismatch already in committed intent that the draft leaves as
+it is does not stop it: it is said beside the draft ("…, already in committed intent; this
+change does not touch it"). When the draft changes the same link's trunk, tunnel, OSPF or
+OSPFv3 settings as that mismatch, it says **This change may fail** instead, naming the
+mismatch: the change is made on a link the mismatch already breaks. The draft says what the
+ends share.
 
 **Commit both devices' intent** makes one commit holding both devices' changes, as you, with
 your one line: refused, writing nothing, if either device's intent moved since the draft, or if

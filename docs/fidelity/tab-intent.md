@@ -27,7 +27,7 @@ Shots: each board at 1440; the page at 1440, 1280 and 390 in six states (`tab-in
 `tab-intent-departs` (C884) at 1440.
 Compared 2026-10-16.
 Templates compared: templates/v2/_intent.html, templates/v2/_intent_edit.html, templates/v2/_intent_check.html, templates/v2/_intent_words.html, templates/v2/_intent_proof.html
-Templates sha256: `0dcda5f7a26ed1b010602152368694e12fa34f6e8a106a288dab247e09e9ac39`
+Templates sha256: `0bbb08471c76ae886906208b8ceeb0cc6a51a3460a3c45920627664a849cdb95`
 
 Compared again 2026-10-17 (C1023) after "Open (commit) with your edit on it" (`_intent_edit.html`)
 and Write the ticked lines into the document (`_intent_check.html`) became busy on themselves
@@ -123,6 +123,20 @@ two-device draft, mismatch and commit tests), **not by shots: the board and page
 below; no other region's verdict changed.
 Templates sha256 before: `e3215e27e5d968fc927fbb012dd9d835c4fcc8748c59f6285cb2f0d5d9e73fff`.
 
+Compared again 2026-10-27 (C1933, the operator's decision: a two-device draft is refused only
+for a mismatch it creates or changes). `_intent_words.html` draws, between the two-device
+draft's notice and the sentence as decided, one warning per mismatch already in committed
+intent that the draft leaves as it is: "The ends already differ:" with the mismatch and "this
+change does not touch it", or "This change may fail:" when the draft changes the same link's
+trunk, tunnel, OSPF or OSPFv3 settings (`intent_words.ends_judged`'s bearing rule). Board F7-Q
+draws the refusal only (Q1b), which stays as built for a mismatch the draft creates or
+changes. Compared by the template and the pages the tests draw (tests/test_ai_intent_change.py's
+created mismatch refused on r2 and r2b, and an existing one said beside the offered draft on s1
+and s2; tests/v2_context.py's walk on r3 and r4), not by shots, which stay owed with F7-Q's.
+The row "F7-Q Q1: a mismatch already in committed intent" added and Q1b's built words
+narrowed; no other region's verdict changed.
+Templates sha256 before: `0dcda5f7a26ed1b010602152368694e12fa34f6e8a106a288dab247e09e9ac39`.
+
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
 
@@ -163,7 +177,8 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | F7-Q Q1: the footer | Commit both devices' intent, Discard; "Then Deploy opens the plan for r3 and r4, both ticked …, both are rolled back" | Why, in one line; Commit both devices' intent (busy on itself, its (i)); Discard draft; "the paired deploy … (C1909) is not built yet: each device is deployed from its own page"; no deploy is offered for the two | **later** (C1909, the paired deploy with the link verified and both ends rolled back) |
 | F7-Q Q1: Why, in one line | not drawn | the commit's one line, required, starting from the sentence, as on every draft | **deviation** (log: F7-Q Q1: Why, in one line before the two-device commit) |
 | F7-Q Q1: committed both | not drawn (the board's note) | "Committed to s1 and s2's intent: one commit, <sha>, as <person> (Source: ai-draft, with the AI call). Nothing was sent to either device. Deploy each device from its page; the paired deploy (C1909) is not built yet: s1, s2", each a link to its page | **later** (C1909) |
-| F7-Q Q1b: the ends do not match | "Not drafted: the two ends would not match." and the mismatch named, red | the same words and colour, each mismatch naming both ends' values | **same** |
+| F7-Q Q1b: the ends do not match | "Not drafted: the two ends would not match." and the mismatch named, red | the same words and colour, each mismatch the draft creates or changes naming both ends' values (C1933) | **same** |
+| F7-Q Q1: a mismatch already in committed intent | not drawn (the board draws the refusal only) | the draft offered, and beside it, under its notice, a warning per mismatch the draft leaves as it is: "The ends already differ: s1 GigabitEthernet0/3 allows VLANs 10, 20, 30 and s2 GigabitEthernet0/3 allows VLANs 10, 20, already in committed intent; this change does not touch it", or "This change may fail: …; this change touches the link's trunk settings and may fail because of it" when the draft changes that family | **deviation** (log: F7-Q Q1: a mismatch already in committed intent, said beside the draft) |
 | F7-Q Q1c: a far end Mercury does not manage | "One question first (no AI call, $0): h1 is not a device Mercury manages, so only s1's end, GigabitEthernet1/0, can be drafted."; Draft s1's end only, Cancel | the same words and buttons, "from s1's own intent" in the head | **deviation** (log: F7-Q: the questions keep F7's "from <device>'s own intent") |
 | F7-Q Q1c: an unknown far end | not drawn on version 168 (the version 167 sign-off decided a device picker when no read names the far end) | each device of the network a button beside Draft s1's end only | **deviation** (log: F7-Q Q1c: a device picker when the far end is unknown) |
 | F7-Q Q2 and Q3: alternatives | the facts and Which one?; a button per VLAN that can be added (one when only one can), the interfaces with their description and state, and Both | the same buttons; the facts in Mercury's words; Cancel beside them | **deviation** (log: F7-Q Q2 to Q5: the questions' words, and Cancel on each) |

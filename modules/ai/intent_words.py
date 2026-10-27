@@ -54,9 +54,11 @@ with controls that continue the same draft from the sentence as decided (C1907).
 **Both ends of a link are one draft** (C1908, the operator's ruling on board F7-Q): a
 two-ended request whose far end is a device of the network makes ONE draft holding both
 devices' patches, each device's scope its own end; an answer changing one end only is a half
-and refused; the two ends are checked to match in the intent the draft would leave
-(:func:`ends_match`) before it is offered, a mismatch refused naming it; and one commit covers
-both (:func:`commit_pair`, `intent_edit.commit_many`). The paired deploy is C1909's: until it is
+and refused; the two ends are judged before it is offered by what the draft does to them
+(:func:`ends_judged`, C1933: committed intent against the intent the draft would leave), a
+mismatch the draft creates or changes refused naming it, and one already in committed intent
+that the draft leaves as it is said beside the draft, with whether this change may fail
+because of it (the bearing rule, in its docstring); and one commit covers both (:func:`commit_pair`, `intent_edit.commit_many`). The paired deploy is C1909's: until it is
 built, each device is deployed from its own page.
 """
 
@@ -623,81 +625,175 @@ def _ospf_of(doc: dict, i: dict) -> dict:
     return {"area": area, "auth": auth or ("none" if area else ""), "v3_area": v3}
 
 
-def ends_match(a: str, doc_a: dict, port_a: str, b: str, doc_b: dict, port_b: str) -> dict:
-    """``{"mismatches": [...], "facts": [...]}``: whether the two ends of a link match in the
-    intent a draft would leave (C1908, checked before any preview is offered): a trunk's
-    allowed and native VLANs, a tunnel's source, destination and addressing, the OSPF area
-    (OSPFv2 by the statement covering each end's address, OSPFv3 by its interface lines) and
-    the OSPF authentication type. Each mismatch names both ends' values; each fact is what the
-    two ends share, said in the draft."""
+#: The families a link's match facts fall in (C1933), as the warning names them.
+FAMILIES = {"trunk": "trunk", "tunnel": "tunnel", "ospf": "OSPF", "ospfv3": "OSPFv3"}
+
+
+def _link_checks(a: str, doc_a: dict, port_a: str, b: str, doc_b: dict, port_b: str) -> dict:
+    """The facts `ends_match` judges, each mismatch kept apart: ``{"mismatches": [...],
+    "facts": [...], "ends": (a's, b's)}``. A mismatch is ``{"key", "family", "values",
+    "short", "rule"}``: which fact (the same key before and after a draft), its family
+    (:data:`FAMILIES`; ``None`` for an end not in its device's intent, which cannot be
+    checked), both ends' values as compared, the words naming them, and what a link needs.
+    *ends* is each end's own values by family (``None`` for an end not in its intent): what a
+    draft changing that family changes (`ends_judged`)."""
     from modules.nsot import ifnames
 
     def iface(doc, name):
         return next((i for i in (doc or {}).get("interfaces") or [] if isinstance(i, dict)
                      and ifnames.same_interface(str(i.get("name", "")), name)), None)
+
+    def native(i):
+        return next((m.group(1) for line in _lines(i) for m in [re.search(
+            r"\bnative\s+vlan\s+(\d+)", line)] if m), "1")
+
+    def tun(i, what):
+        return next((m.group(1) for line in _lines(i) for m in [re.match(
+            rf"tunnel\s+{what}\s+(\S+)", line)] if m), "")
+
+    tunnels = all(str(n).lower().startswith("tunnel") for n in (port_a, port_b))
     ia, ib = iface(doc_a, port_a), iface(doc_b, port_b)
     end_a, end_b = f"{a} {port_a}", f"{b} {port_b}"
+    bad, facts = [], []
+
+    def mismatch(key, family, values, short, rule=""):
+        bad.append({"key": key, "family": family, "values": tuple(str(v) for v in values),
+                    "short": short, "rule": rule})
+
     if ia is None or ib is None:
         missing = end_a if ia is None else end_b
-        return {"mismatches": [f"{missing} is not in its device's intent"], "facts": []}
-    bad, facts = [], []
+        mismatch("missing", None, (missing,), f"{missing} is not in its device's intent")
+        return {"mismatches": bad, "facts": [], "ends": (None, None)}
+
+    def own(doc, i):
+        o = _ospf_of(doc, i)
+        net = _iface_net(i)
+        return {"trunk": (str(i.get("switchport_mode") or ""),
+                          tuple(sorted(_vlan_set(i.get("switchport_trunk_vlans")))), native(i)),
+                "tunnel": (tun(i, "source"), tun(i, "destination"),
+                           str(net.network) if net else "") if tunnels else (),
+                "ospf": (o["area"], o["auth"]), "ospfv3": (o["v3_area"],)}
     mode_a, mode_b = str(ia.get("switchport_mode") or ""), str(ib.get("switchport_mode") or "")
     if "trunk" in (mode_a, mode_b):
         if mode_a != mode_b:
-            bad.append(f"{end_a} is {mode_a or 'not a switchport'} and {end_b} is "
-                       f"{mode_b or 'not a switchport'}; both ends of a trunk are trunks")
+            mismatch("trunk_mode", "trunk", (mode_a, mode_b),
+                     f"{end_a} is {mode_a or 'not a switchport'} and {end_b} is "
+                     f"{mode_b or 'not a switchport'}", "both ends of a trunk are trunks")
         else:
             va, vb = (_vlan_set(i.get("switchport_trunk_vlans")) for i in (ia, ib))
-            na, nb_ = (next((m.group(1) for line in _lines(i) for m in [re.search(
-                r"\bnative\s+vlan\s+(\d+)", line)] if m), "1") for i in (ia, ib))
+            na, nb_ = native(ia), native(ib)
             if va != vb:
-                bad.append(f"{end_a} allows {_shown_vlans(va)} and {end_b} allows "
-                           f"{_shown_vlans(vb)}; both ends of a trunk carry the same VLANs")
+                mismatch("trunk_vlans", "trunk", (_shown_vlans(va), _shown_vlans(vb)),
+                         f"{end_a} allows {_shown_vlans(va)} and {end_b} allows "
+                         f"{_shown_vlans(vb)}", "both ends of a trunk carry the same VLANs")
             if na != nb_:
-                bad.append(f"{end_a} has native VLAN {na} and {end_b} native VLAN {nb_}; both "
-                           "ends of a trunk carry the same native VLAN")
+                mismatch("native_vlan", "trunk", (na, nb_),
+                         f"{end_a} has native VLAN {na} and {end_b} native VLAN {nb_}",
+                         "both ends of a trunk carry the same native VLAN")
             if va == vb and na == nb_:
                 facts.append(f"both trunks, {_shown_vlans(va)}, native VLAN {na}")
-    if all(str(n).lower().startswith("tunnel") for n in (port_a, port_b)):
-        def tun(i, what):
-            return next((m.group(1) for line in _lines(i) for m in [re.match(
-                rf"tunnel\s+{what}\s+(\S+)", line)] if m), "")
+    if tunnels:
         src_a, dst_a, src_b, dst_b = (tun(ia, "source"), tun(ia, "destination"),
                                       tun(ib, "source"), tun(ib, "destination"))
-        for end, dst, other, src, doc in ((end_a, dst_a, end_b, src_b, doc_b),
-                                          (end_b, dst_b, end_a, src_a, doc_a)):
+        for key, end, dst, other, src, doc in (
+                ("tunnel_destination_a", end_a, dst_a, end_b, src_b, doc_b),
+                ("tunnel_destination_b", end_b, dst_b, end_a, src_a, doc_a)):
             addr = _address(doc, src) if src else None
             if not dst or addr is None:
-                bad.append(f"{end}'s tunnel destination ({dst or 'none'}) cannot be checked "
-                           f"against {other}'s source ({src or 'none'})")
+                mismatch(key, "tunnel", (dst, src, addr or ""),
+                         f"{end}'s tunnel destination ({dst or 'none'}) cannot be checked "
+                         f"against {other}'s source ({src or 'none'})")
             elif str(addr) != dst:
-                bad.append(f"{end}'s tunnel destination is {dst}, and {other}'s source is "
-                           f"{addr}; each end's destination is the other's source")
+                mismatch(key, "tunnel", (dst, src, addr),
+                         f"{end}'s tunnel destination is {dst}, and {other}'s source is {addr}",
+                         "each end's destination is the other's source")
     na_, nb2 = _iface_net(ia), _iface_net(ib)
     if na_ is not None and nb2 is not None:
         if na_.network != nb2.network:
-            if all(str(n).lower().startswith("tunnel") for n in (port_a, port_b)):
-                bad.append(f"{end_a} is in {na_.network} and {end_b} in {nb2.network}; both "
-                           "ends of a tunnel share one network")
+            if tunnels:
+                mismatch("tunnel_network", "tunnel", (na_.network, nb2.network),
+                         f"{end_a} is in {na_.network} and {end_b} in {nb2.network}",
+                         "both ends of a tunnel share one network")
         else:
             facts.append(f"both in {na_.network}")
     oa, ob = _ospf_of(doc_a, ia), _ospf_of(doc_b, ib)
     if oa["area"] or ob["area"]:
         if oa["area"] != ob["area"]:
-            bad.append(f"{end_a} is in OSPF area {oa['area'] or '(none)'} and {end_b} in "
-                       f"{ob['area'] or '(none)'}; both ends of a link share one area")
+            mismatch("ospf_area", "ospf", (oa["area"], ob["area"]),
+                     f"{end_a} is in OSPF area {oa['area'] or '(none)'} and {end_b} in "
+                     f"{ob['area'] or '(none)'}", "both ends of a link share one area")
         elif oa["auth"] != ob["auth"]:
-            bad.append(f"{end_a} authenticates OSPF as {oa['auth']} and {end_b} as "
-                       f"{ob['auth']}; both ends use one authentication type")
+            mismatch("ospf_auth", "ospf", (oa["auth"], ob["auth"]),
+                     f"{end_a} authenticates OSPF as {oa['auth']} and {end_b} as {ob['auth']}",
+                     "both ends use one authentication type")
         else:
             facts.append(f"OSPF area {oa['area']}, authentication {oa['auth']}")
     if oa["v3_area"] or ob["v3_area"]:
         if oa["v3_area"] != ob["v3_area"]:
-            bad.append(f"{end_a} is in OSPFv3 area {oa['v3_area'] or '(none)'} and {end_b} in "
-                       f"{ob['v3_area'] or '(none)'}; both ends of a link share one area")
+            mismatch("ospfv3_area", "ospfv3", (oa["v3_area"], ob["v3_area"]),
+                     f"{end_a} is in OSPFv3 area {oa['v3_area'] or '(none)'} and {end_b} in "
+                     f"{ob['v3_area'] or '(none)'}", "both ends of a link share one area")
         else:
             facts.append(f"OSPFv3 area {oa['v3_area']}")
-    return {"mismatches": bad, "facts": facts}
+    return {"mismatches": bad, "facts": facts, "ends": (own(doc_a, ia), own(doc_b, ib))}
+
+
+def _said(m: dict) -> str:
+    return f"{m['short']}; {m['rule']}" if m["rule"] else m["short"]
+
+
+def ends_match(a: str, doc_a: dict, port_a: str, b: str, doc_b: dict, port_b: str) -> dict:
+    """``{"mismatches": [...], "facts": [...]}``: whether the two ends of a link match in one
+    pair of intent documents (C1908): a trunk's allowed and native VLANs, a tunnel's source,
+    destination and addressing, the OSPF area (OSPFv2 by the statement covering each end's
+    address, OSPFv3 by its interface lines) and the OSPF authentication type. Each mismatch
+    names both ends' values; each fact is what the two ends share, said in the draft. A draft
+    is judged by `ends_judged`, which compares this before and after it (C1933)."""
+    got = _link_checks(a, doc_a, port_a, b, doc_b, port_b)
+    return {"mismatches": [_said(m) for m in got["mismatches"]], "facts": got["facts"]}
+
+
+def ends_judged(a: str, port_a: str, b: str, port_b: str, before: tuple, after: tuple) -> dict:
+    """``{"refused": [...], "existing": [...], "facts": [...]}``: a two-device draft's ends
+    judged by what the draft does to them (C1933, the operator's decision of 2026-10-27),
+    *before* the two devices' committed intent and *after* the intent the draft would leave
+    (each ``(a's document, b's document)``), fact by fact as `ends_match` reads them:
+
+    - a fact that matched before (or was not there) and does not after, or a mismatched fact
+      whose values the draft changes: **refused**, naming both ends' values, as `ends_match`
+      says it; so is an end not in its device's intent after the draft, which cannot be
+      checked at all (and a committed version that cannot be read counts as one, so the
+      draft is refused rather than let through unjudged);
+    - a fact mismatched before and left with the same values after: **existing**, each
+      ``{"said", "bears", "fact"}``: said beside the draft, which proceeds.
+
+    **The bearing rule.** An existing mismatch *bears* on the draft when the draft changes any
+    fact of the mismatch's own family on either end of this link, each end's values read as
+    `ends_match` reads them: the trunk (switchport mode, allowed VLANs, native VLAN), the
+    tunnel (source, destination and the tunnel's network, on a link of two tunnels), OSPF
+    (the OSPFv2 area and authentication type) and OSPFv3 (its area). Those are the facts an
+    adjacency or a trunk forms on together, so a change to one of them is verified against a
+    link the existing mismatch already breaks, and the warning says the change may fail
+    because of it. A change outside the family (a description, a shutdown, the other OSPF
+    version) does not bear: it is said as untouched. OSPFv3 has one fact, its area, so a
+    draft changing it changes the mismatch itself and is refused; its family is apart from
+    OSPFv2's because neither version's adjacency forms on the other's area. *facts* are what
+    the ends share after the draft."""
+    was = _link_checks(a, before[0], port_a, b, before[1], port_b)
+    now = _link_checks(a, after[0], port_a, b, after[1], port_b)
+    held = {m["key"]: m["values"] for m in was["mismatches"] if m["family"]}
+    refused, existing = [], []
+    for m in now["mismatches"]:
+        if m["family"] is None or held.get(m["key"]) != m["values"]:
+            refused.append(_said(m))
+            continue
+        bears = any(w is not None and n is not None and w[m["family"]] != n[m["family"]]
+                    for w, n in zip(was["ends"], now["ends"]))
+        said = f"{m['short']}, already in committed intent; " + (
+            f"this change touches the link's {FAMILIES[m['family']]} settings and may fail "
+            "because of it" if bears else "this change does not touch it")
+        existing.append({"said": said, "bears": bears, "fact": m["key"]})
+    return {"refused": refused, "existing": existing, "facts": now["facts"]}
 
 
 def pair_digest(items: list) -> str:
@@ -1041,7 +1137,8 @@ def _drafted(list_name: str, sentence: str, named: list, *, actor: str, trigger:
                 for p in made["patches"]]
     refused = [p for p in previews if not p.get("ok")]
     if pair and not refused:
-        return _pair_drafted(base, previews, pair, asked["call_id"], actor, links, detail)
+        return _pair_drafted(list_name, base, previews, pair, asked["call_id"], actor, links,
+                             detail)
     for p in previews:
         # What a commit of this draft must be handed exactly (part 2): its digest is on the
         # call's use row, so a commit of any other patch, or on any other version, is refused.
@@ -1056,44 +1153,61 @@ def _drafted(list_name: str, sentence: str, named: list, *, actor: str, trigger:
                 detail="; ".join(f"{p['hostname']}: {p.get('error', '')}" for p in refused))
 
 
-def _pair_drafted(base: dict, previews: list, pair: dict, call_id: str, actor: str,
-                  links: dict, detail) -> dict:
-    """A two-device draft's end (C1908): the two ends checked to match in the intent the draft
-    would leave (`ends_match`), a mismatch refused naming it; else both previews, near end
-    first, offered as ONE commit (`pair_digest` on the call's use row), never either alone."""
+def _pair_judged(list_name: str, pair: dict, shown: list) -> dict:
+    """`ends_judged` for a two-device draft's previews (*shown*, near end first): before is
+    each device's intent at the version its preview patched (``base``), after the text the
+    preview made (``yaml``). A document that cannot be read is judged as empty, so its end
+    is not in its intent and the draft is refused."""
+    from modules.nsot import hostvars, intent_edit
+
+    def doc(text):
+        try:
+            return hostvars.from_yaml(text or "") or {}
+        except Exception:                               # noqa: BLE001 (said as a mismatch)
+            return {}
+    repo = intent_edit._repo_for(list_name)
+    before = tuple(doc(hostvars.blob_text(repo, p["base"]) if p.get("base") else "")
+                   for p in shown)
+    after = tuple(doc(p.get("yaml")) for p in shown)
+    return ends_judged(pair["device"], pair["port"], pair["far"], pair["far_port"], before,
+                       after)
+
+
+def _pair_drafted(list_name: str, base: dict, previews: list, pair: dict, call_id: str,
+                  actor: str, links: dict, detail) -> dict:
+    """A two-device draft's end (C1908): the two ends judged by what the draft does to them
+    (`ends_judged`, C1933): a mismatch the draft creates or changes refused naming it; else
+    both previews, near end first, any mismatch already in committed intent said beside them,
+    offered as ONE commit (`pair_digest` on the call's use row), never either alone."""
     from modules.ai import calls
-    from modules.nsot import hostvars
 
     order = {pair["device"]: 0, pair["far"]: 1}
     previews = sorted(previews, key=lambda p: order.get(p["hostname"], 2))
     near, far = previews
-    docs = []
-    for p in previews:
-        try:
-            docs.append(hostvars.from_yaml(p.get("yaml") or "") or {})
-        except Exception:                               # noqa: BLE001 (said as a mismatch)
-            docs.append({})
-    got = ends_match(pair["device"], docs[0], pair["port"], pair["far"], docs[1],
-                     pair["far_port"])
-    if got["mismatches"]:
-        why = "the two ends would not match: " + "; ".join(got["mismatches"])
+    got = _pair_judged(list_name, pair, previews)
+    if got["refused"]:
+        why = "the two ends would not match: " + "; ".join(got["refused"])
         calls.record_use(call_id, "refused: the ends would not match", actor=actor,
                          detail=detail(why[:200]), links=links)
         return dict(base, ok=False, error="ends_mismatch", detail=f"{why}; nothing is previewed")
-    link = dict(pair, facts=got["facts"])
+    link = dict(pair, facts=got["facts"], existing=got["existing"])
+    # What the call's record says of a mismatch already in committed intent (C1933).
+    differ = "; ".join(e["said"] for e in got["existing"])
+    differ = f"the ends already differ: {differ}" if differ else ""
     if not all(p.get("changed") and p.get("vs_intent_changed", True) for p in previews):
         # Already so on one end or both: nothing to commit as one change.
         calls.record_use(call_id, "previewed in the intent editor", actor=actor,
                          detail=detail("both ends; already so on "
                                        + ", ".join(p["hostname"] for p in previews
                                                    if not p.get("changed")
-                                                   or not p.get("vs_intent_changed", True))),
+                                                   or not p.get("vs_intent_changed", True)),
+                                       differ),
                          links=links)
         return dict(base, ok=True, error="", previews=previews, pair=link, detail="")
     digest = pair_digest([(p["hostname"], p.get("patch"), p.get("base")) for p in previews])
     calls.record_use(call_id, "previewed in the intent editor", actor=actor,
                      detail=detail(f"both ends: {near['hostname']} {pair['port']} and "
-                                   f"{far['hostname']} {pair['far_port']}"), links=links,
+                                   f"{far['hostname']} {pair['far_port']}", differ), links=links,
                      drafts=[digest])
     return dict(base, ok=True, error="", previews=previews, pair=dict(link, draft=digest),
                 detail="")
@@ -1311,8 +1425,9 @@ def _expected_answer(by_host: dict, quoted: dict) -> IntentChange:
 def _stale_pair(list_name: str, case: dict, resolved: dict, where: str) -> list:
     """`stale` for a two-device expectation (C1908, ``expect.patches``): the sentence must be one
     two-device draft of the expected devices, the expected operations inside each end's scope,
-    each previewed, and the two ends matching after them."""
-    from modules.nsot import hostvars, intent_patch
+    each previewed, and the two ends judged as a draft's are (`ends_judged`, C1933: refused
+    only for a mismatch the change creates or changes)."""
+    from modules.nsot import intent_patch
 
     expect, pair = case["expect"], resolved.get("pair")
     if not pair:
@@ -1327,23 +1442,22 @@ def _stale_pair(list_name: str, case: dict, resolved: dict, where: str) -> list:
     if not made["ok"]:
         return [f"{where}: the expected operations are outside what the sentence names: "
                 f"{made['error']}"]
-    docs = {}
+    shown = {}
     for patch in made["patches"]:
-        shown = intent_patch.preview(list_name, patch.hostname, patch)
-        if not shown.get("ok"):
+        got = intent_patch.preview(list_name, patch.hostname, patch)
+        if not got.get("ok"):
             return [f"{where}: the intent editor refuses {patch.hostname}'s expected change: "
-                    f"{(shown.get('error') or '')[:200]}"]
-        if not shown.get("changed") or not shown.get("vs_intent_changed", True):
+                    f"{(got.get('error') or '')[:200]}"]
+        if not got.get("changed") or not got.get("vs_intent_changed", True):
             return [f"{where}: {patch.hostname}'s expected change is already in its committed "
                     "intent"]
-        docs[patch.hostname] = hostvars.from_yaml(shown.get("yaml") or "") or {}
-    got = ends_match(pair["device"], docs[pair["device"]], pair["port"], pair["far"],
-                     docs[pair["far"]], pair["far_port"])
-    if got["mismatches"]:
+        shown[patch.hostname] = got
+    got = _pair_judged(list_name, pair, [shown[pair["device"]], shown[pair["far"]]])
+    if got["refused"]:
         if "refused_after" in expect["outcome"]:
             return []
         return [f"{where}: the expected change leaves the ends not matching: "
-                + "; ".join(got["mismatches"])[:200]]
+                + "; ".join(got["refused"])[:200]]
     if "answer" not in expect["outcome"]:
         return [f"{where}: the case expects the ends' mismatch refused, and they now match"]
     return []

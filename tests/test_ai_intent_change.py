@@ -796,24 +796,89 @@ def test_one_end_alone_is_a_half_and_refused(world, pair):
         in got["detail"], got
 
 
-def test_ends_that_would_not_match_are_refused_naming_it(world, pair, host):  # noqa: F811
+@pytest.fixture
+def routed_pair(world, host, reads, monkeypatch):  # noqa: F811
+    """r2b committed beside r2: r2's real intent and golden, renamed (as `pair` makes s2 from
+    s1), its Gi2 in 10.255.3.0/24, OSPF area 0, linked to r2's Gi2 by the reads."""
+    import os
+    from modules.ai import intent_names
+    from modules.nsot.repo import GoldenItem, save_golden, save_host_vars
+    from tests import test_committed_before_p1 as CB
+    from tests.test_ai_intent_screen import ALL, LINKS
+    save_golden("Lab", [GoldenItem("r2b", CB._text("r2.cfg").replace("hostname r2",
+                                                                      "hostname r2b"),
+                                   "192.0.2.13", platform="cisco_iosxe")],
+                source="onboarding", actor="t", allow_new=True, baseline=False)
+    with open(os.path.join(host["repo"], "host_vars", "r2b.yml"), "w", encoding="utf-8") as fh:
+        fh.write(CB._text("r2.yml").replace("hostname: r2", "hostname: r2b"))
+    assert save_host_vars("Lab", ["r2b"], actor="t", source="extraction")["ok"]
+    for near, far in (("r2", "r2b"), ("r2b", "r2")):
+        monkeypatch.setitem(LINKS, near, {"ports": {"GigabitEthernet2": [{
+            "name": far, "role": "router", "by": "intent: the subnet 10.255.3.0/24",
+            "port": "GigabitEthernet2"}]}, "said": []})
+    monkeypatch.setattr(intent_names, "_devices", lambda network: dict(ALL, r2b="router"))
+    devices = dict(CB.DEVICES, r2b=dict(CB.DEVICES["r2"], hostname="r2b", ip="192.0.2.13"))
+    monkeypatch.setattr("modules.device.load_saved_devices",
+                        lambda *a, **k: [dict(v) for v in devices.values()])
+    monkeypatch.setattr(nl_query, "_inventory", lambda name: [
+        {"hostname": h, "role": d["role"], "platform": d["platform"]}
+        for h, d in devices.items()])
+
+
+ROUTED_WORDS = ("describe both ends of the link to r2b as core LAN, and remove network "
+                "10.255.3.0/24 area 0 from OSPF process 1 on r2b")
+#: r2b's end leaves OSPF and r2's stays: a mismatch the draft creates.
+ROUTED = _answer(("r2", [_op("set_description", interface="GigabitEthernet2",
+                             description="core LAN")]),
+                 ("r2b", [_op("set_description", interface="GigabitEthernet2",
+                              description="core LAN"),
+                          _op("remove_ospf_network", process=1, prefix="10.255.3.0/24",
+                              area="0")]))
+
+
+def test_ends_that_would_not_match_are_refused_naming_it(world, routed_pair, host):  # noqa: F811
+    """A mismatch the draft creates (C1933): r2's and r2b's Gi2 share OSPF area 0 in committed
+    intent, and the draft takes r2b's out of OSPF. Refused before any preview, naming both
+    ends' values, on the page with nothing to commit."""
+    world.answer = ROUTED
+    with pressed_by("operator@example.com"):
+        got = intent_words.change("Lab", ROUTED_WORDS, actor="operator@example.com",
+                                  trigger=triggers.person("operator@example.com"),
+                                  send=world.send, today="2026-10-26", devices=["r2"])
+    words = "r2 GigabitEthernet2 is in OSPF area 0 and r2b GigabitEthernet2 in (none)"
+    assert got["error"] == "ends_mismatch" and words in got["detail"], got
+    assert not got.get("previews")
+    (use,) = calls.uses()[got["call_id"]]
+    assert use["use"] == "refused: the ends would not match"
+    r = host["client"].post("/v2/device/r2/intent/words?list=Lab", data={"words": ROUTED_WORDS},
+                            headers={"HX-Request": "true"})
+    from html import unescape
+    html = unescape(r.get_data(as_text=True))
+    assert f"Not drafted: the two ends would not match.</strong> {words}" in html, html[-800:]
+    assert "Commit both devices' intent" not in html
+
+
+def test_a_mismatch_already_committed_is_said_beside_the_draft_which_is_offered(  # noqa: F811
+        world, pair, host):  # noqa: F811
+    """C1933, the operator's decision: s2's trunk already allows fewer VLANs than s1's in
+    committed intent, and the draft describes both ends only. The draft is offered (one
+    commit of both), the mismatch said beside it as untouched, and the call's record says it."""
     import os
     from modules.nsot.repo import save_host_vars
     with open(os.path.join(host["repo"], "host_vars", "s2.yml"), "w", encoding="utf-8") as fh:
         fh.write(pair["text"].replace("- 10,20,30", "- 10,20", 1))
     assert save_host_vars("Lab", ["s2"], actor="t", source="extraction")["ok"]
     world.answer = PAIR
+    said = ("s1 GigabitEthernet0/3 allows VLANs 10, 20, 30 and s2 GigabitEthernet0/3 allows "
+            "VLANs 10, 20, already in committed intent; this change does not touch it")
     got = _on_tab(world, PAIR_WORDS)
-    assert got["error"] == "ends_mismatch" and ("s1 GigabitEthernet0/3 allows VLANs 10, 20, 30 "
-                                                "and s2 GigabitEthernet0/3 allows VLANs 10, 20"
-                                                ) in got["detail"], got
-    assert not got.get("previews")
+    assert got["ok"] is True and got["pair"]["draft"], got
+    assert got["pair"]["existing"] == [{"said": said, "bears": False, "fact": "trunk_vlans"}]
     (use,) = calls.uses()[got["call_id"]]
-    assert use["use"] == "refused: the ends would not match"
+    assert use["use"] == "previewed in the intent editor" and said in use["detail"], use
     r, html = _post(host, {"words": PAIR_WORDS})
-    assert ("Not drafted: the two ends would not match.</strong> s1 GigabitEthernet0/3 allows "
-            "VLANs 10, 20, 30 and s2 GigabitEthernet0/3 allows VLANs 10, 20") in html, html[-800:]
-    assert "Commit both devices' intent" not in html
+    assert f"The ends already differ:</strong> {said}." in html, html[-1500:]
+    assert "Commit both devices' intent" in html and "Not drafted" not in html
 
 
 def _pair_fields(world, host):  # noqa: F811
