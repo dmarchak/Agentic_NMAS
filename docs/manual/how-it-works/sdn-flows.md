@@ -74,7 +74,11 @@ source's IPv4 traffic is metered; risk low), or **remove the unauthorised flow**
 (delete-strict, and Mercury's own flow put back where it displaced one, risk medium). Every flow a
 response adds carries a hard timeout (600 seconds unless you set another in the preview, at most
 the network's ceiling), so a mistaken response expires by itself; its meter is removed by Mercury
-once those flows have expired.
+once those flows have expired. A flood whose flows match MAC addresses only names no source
+address; its response then takes the host the controller's topology lists on the port the flood
+entered by, and the preview says so ("from the controller's topology: <address> (<MAC>) on port
+N"). When the topology lists no host there, only hosts with no IPv4 address, or several, or
+cannot be read, the preview is refused saying which.
 
 The action proposed is the rule's default in the network's **response policy** (SDN ›
 Responses, the rules), chosen in code, unless an AI classification proposed another (below).

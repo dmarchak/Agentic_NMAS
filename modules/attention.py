@@ -175,6 +175,10 @@ ROW_KINDS = {
                                         "read the device's rotation result and settle the "
                                         "stage it names, then run Rotate due devices now"),
     # C2000: the loop does not survive a restart, and does not start again by itself.
+    # C1999's notification half: a HITL network's threat is seen without opening Responses.
+    ("sdn_responses", "awaiting"): ("SDN responses to detected threats await a person on a "
+                                    "network", "open SDN › Responses and preview, confirm or "
+                                    "dismiss each"),
     ("sdn_loop", "restart_stopped"): ("a network's SDN loop was running and the app's restart "
                                       "stopped it, so its detections are not watched",
                                       "start the loop on SDN › Responses, or leave it stopped"),
@@ -323,6 +327,8 @@ CLEARS = {
     ("restarts", "unplanned"): (("acknowledge", "time"), "a person acknowledges it with a "
                                 "reason, or 7 days after the restart; History keeps it either "
                                 "way"),
+    ("sdn_responses", "awaiting"): (("resolves",), "every response awaiting on the network is "
+                                    "applied or dismissed on SDN › Responses"),
     ("sdn_loop", "restart_stopped"): (("resolves", "time"), "the loop is started again on SDN "
                                       "› Responses, or 24 hours after the restart (the loop's "
                                       "log keeps the stop either way)"),
@@ -2862,6 +2868,64 @@ def sdn_loop_source(found=None, now: float = None) -> dict:
                                  "restart within 24 hours")
 
 
+def sdn_responses_source(found=None) -> dict:
+    """The SDN responses awaiting a person (`loop.awaiting`; C1999's notification half): one
+    WARNING row per network (never one per detection; grouping into incidents is C1999's
+    other half), naming how many await, the oldest's age, its rule and source, and how many
+    are no longer active; DANGER when any is classified high or critical. Standing until
+    each is applied or dismissed. One small file read per network, never a controller.
+    *found* is ``{network: awaiting rows}`` (tests)."""
+    from modules.nsot import listref
+    from modules.sdn import loop as LP
+
+    started = time.time()
+    label = "SDN responses awaiting a person"
+    try:
+        waiting = found if found is not None else {
+            n: LP.awaiting(n) for n in listref.names()}
+    except Exception as exc:                          # noqa: BLE001 (said as the source's error)
+        return source_result("sdn_responses", label, read_at=started, took_ms=0,
+                             error=f"the responses could not be read: {type(exc).__name__}")
+    rows, unread = [], []
+    for network, got in sorted(waiting.items()):
+        if got.get("state") == "unreadable":
+            unread.append(f"{network} ({got.get('error')})")
+            continue
+        open_rows = got.get("rows") or []
+        if not open_rows:
+            continue
+        oldest = open_rows[0]
+        d = oldest.get("detection") or {}
+        inactive = sum(1 for r in open_rows if r.get("inactive_since"))
+        severe = [r for r in open_rows if str(((r.get("classification") or {}).get("severity")
+                                               or "")).lower() in ("high", "critical")]
+        n = len(open_rows)
+        rows.append(row(
+            source="sdn_responses", kind="awaiting", key=network,
+            level="danger" if severe else "warning", since=_ts(oldest.get("at")),
+            what=(f"{n} SDN response{'s' if n != 1 else ''} await{'' if n != 1 else 's'} a "
+                  f"person on {network}"),
+            cause=(f"The oldest, since {oldest.get('at')}: {d.get('title') or d.get('rule')}"
+                   + (f" from {d.get('source')}" if d.get("source") else "")
+                   + f", proposed {oldest.get('action') or 'no action'}"
+                   + (f"; {len(severe)} classified high or critical" if severe else "")
+                   + (f"; {inactive} no longer active" if inactive else "")
+                   + ". Nothing is sent to a switch until a person confirms"),
+            operands={"network": network, "awaiting": n, "oldest": oldest.get("at") or "",
+                      "severe": len(severe), "inactive": inactive},
+            action={"label": f"Open {network}'s SDN › Responses and preview, confirm or "
+                             "dismiss each",
+                    "href": f"/v2/sdn/responses?list={network}"}))
+    took = int((time.time() - started) * 1000)
+    if unread:
+        return source_result("sdn_responses", label, read_at=started, took_ms=took,
+                             rows=rows, error="the responses awaiting could not be read on "
+                                              + "; ".join(unread))
+    return source_result("sdn_responses", label, read_at=started, took_ms=took, rows=rows,
+                         checked=f"{len(waiting)} network(s): {len(rows)} with responses "
+                                 "awaiting a person")
+
+
 # ---------------------------------------------------------------------------
 # Source: history committed and not on its remote (C223)
 # ---------------------------------------------------------------------------
@@ -3902,7 +3966,7 @@ SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding
            records_source, scheduled_rotation_source, host_key_source,
            host_key_window_source, netbox_inventory_source, adjacency_log_source,
            netbox_lag_source, console_ztp_source, intent_format_source,
-           ai_spend_source, sdn_loop_source)
+           ai_spend_source, sdn_loop_source, sdn_responses_source)
 
 
 #: What can move each source's rows: the data keys (modules/invalidation.VOCABULARY) whose
@@ -3953,6 +4017,8 @@ SOURCE_KEYS = {
     "scheduled_rotation_source": ("rotation", "credentials"),
     # A loop started or stopped (`sdn_v2.loop_set` invalidates sdn) moves its row (C2000).
     "sdn_loop_source": ("sdn",),
+    # A response proposed (the loop announces sdn, C2003), confirmed or dismissed (routes).
+    "sdn_responses_source": ("sdn",),
     # A key kept, refused or replaced by any session or a re-key announces it (C906).
     "host_key_source": ("host_keys",),
     # A window's summary written by its reader announces the same key (C906).

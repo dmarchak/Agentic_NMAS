@@ -157,7 +157,10 @@ What to act on first: **N awaiting approval**, the mode and whether the loop is 
   not start again by itself** (a loop that resumed unattended would make AI calls and, in AUTO,
   act with no one present): the stop is recorded as **stopped by the app's restart**, with its
   last line's time, and Needs attention shows a warning for the network until you press Start
-  or 24 hours pass. What the log says:
+  or 24 hours pass. **Responses awaiting you are on Needs attention too**, so you need not have
+  this tab open: one row per network, naming how many await, the oldest's rule, source and
+  proposed action, and how many are no longer active; it turns red when any is classified high
+  or critical, and clears once each is applied or dismissed. What the log says:
   - a pass that finds nothing new says which of these it is: **network healthy: no threat
     detected** only when the collection read every switch whole and no detection is active;
     **no new threat; N still active**, naming each detection still firing; or that the

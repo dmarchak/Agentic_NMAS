@@ -138,6 +138,54 @@ def test_with_no_topology_and_only_l2_flows_the_rate_limit_is_refused_naming_bot
     assert fake.writes == []
 
 
+def _mac_only_flood(port):
+    """The walk's flood on s1 (C2002, 2026-10-27 step 23): its flows matched MAC addresses only,
+    so it named no source. The capture's scan detection with one edit: a flood on *port* with no
+    source, as the flood rule writes one over MAC-only flows."""
+    (d,) = D.scan(collect(lab8("scan_s1.json")), VALUES)["detections"]
+    return dict(d, rule="flood", source=None, sources=[], port=port, targets=[],
+                subject={"kind": "port", "value": port})
+
+
+@pytest.mark.usefixtures("lab")
+def test_a_flood_naming_no_source_takes_the_host_on_its_port_from_the_topology():
+    """C2002: the controller lists h2 (192.0.2.2, 00:00:00:00:00:02) on s1's port 2, so the
+    flood that entered there is dropped by that address, and the preview says where it came
+    from."""
+    fake, _table = l2_only_switch(captured_topology())
+    preview = CL.respond_to_threat("Default", _mac_only_flood(2), "drop_source",
+                                   driver=fake.driver)
+    assert preview["ok"], preview["error"]
+    body = json.loads(preview["plan"]["steps"][0]["request"]["body"])
+    assert body["match"] == {"eth_type": 0x0800, "ipv4_src": "192.0.2.2"}
+    assert preview["params"]["source"] == "192.0.2.2"
+    assert preview["params"]["source_from"] == (
+        "from the controller's topology: 192.0.2.2 (00:00:00:00:00:02) on port 2, the port "
+        "the flood entered by")
+    assert fake.writes == []
+
+
+@pytest.mark.usefixtures("lab")
+@pytest.mark.parametrize("port,topology,said", [
+    (1, "without h1", "the controller lists 12:da:aa:70:da:9f on port 1, with no IPv4 address"),
+    (7, "captured", "the controller lists no host on port 7"),
+    (2, None, "the controller's topology could not be read for the hosts on port 2"),
+], ids=["no-ipv4", "no-host", "no-topology"])
+def test_a_flood_with_no_source_the_topology_cannot_name_says_why(port, topology, said):
+    topo = captured_topology() if topology else None
+    if topology == "without h1":
+        # The capture with h1 (00:00:00:00:00:01, port 1's IPv4 host) left out.
+        hosts = topo["/v1.0/topology/hosts"]
+        topo["/v1.0/topology/hosts"] = [h for h in hosts if h["mac"] != "00:00:00:00:00:01"]
+    fake, _table = l2_only_switch(topo)
+    got = CL.respond_to_threat("Default", _mac_only_flood(port), "drop_source",
+                               driver=fake.driver)
+    assert not got["ok"] and said in got["error"], got["error"]
+    assert got["error"].startswith("the detection names no single source to act on (it names "
+                                   "none; ") and got["error"].endswith("): choose one")
+    assert fake.writes == []
+
+
 @pytest.mark.usefixtures("lab")
 def test_the_scan_is_found_on_l4_flows_and_its_drop_clears_the_lldp_flow():
     entries = lab8("scan_s1.json")

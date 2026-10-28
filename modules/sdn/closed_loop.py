@@ -1098,6 +1098,31 @@ def _forwarding(flows: list, source: str, target: str) -> list:
     return sorted(ports, key=str)
 
 
+def _port_hosts(drv, dpid: int, port) -> dict:
+    """The hosts the controller's topology lists on switch *dpid*'s *port* (C2002): ``{"addresses":
+    [IPv4, ...], "words"}``, *words* saying where the addresses came from, or why none did
+    (the topology unreadable, no host on the port, a host with no IPv4 address)."""
+    got = drv.hosts()
+    if not got.get("ok"):
+        return {"addresses": [], "words": ("the controller's topology could not be read for the "
+                                           f"hosts on port {port}: {got.get('error')}")}
+    try:
+        port = int(port)
+    except (TypeError, ValueError):
+        return {"addresses": [], "words": ""}
+    on = [h for h in got.get("hosts") or [] if h.get("dpid") == dpid and h.get("port_no") == port]
+    if not on:
+        return {"addresses": [], "words": f"the controller lists no host on port {port}"}
+    addresses = list(dict.fromkeys(a for h in on for a in h.get("ipv4") or []))
+    macs = ", ".join(str(h.get("mac")) for h in on)
+    if not addresses:
+        return {"addresses": [], "words": (f"the controller lists {macs} on port {port}, with no "
+                                           "IPv4 address")}
+    return {"addresses": addresses,
+            "words": (f"from the controller's topology: {', '.join(addresses)} "
+                      f"({macs}) on port {port}, the port the flood entered by")}
+
+
 def _topology_ports(drv, dpid: int, source: str) -> dict:
     """Where switch *dpid* sends each host's traffic, from the controller's topology (the
     operator's order for Lab 8's objective 3.1: a scan's L4 flows expire in seconds and leave
@@ -1262,10 +1287,20 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
         changes = []
         if action_id in ("drop_source", "rate_limit_source"):
             sources = _sources(detection)
+            if not sources and detection.get("port") is not None:
+                # A flood over flows that match MAC addresses only names no address (C2002):
+                # the hosts the controller lists on its ingress port, by their IPv4 address.
+                on_port = _port_hosts(drv, dpid, detection.get("port"))
+                sources = on_port["addresses"]
+                if on_port["words"]:
+                    out["params"]["source_from"] = on_port["words"]
             source = out["params"].get("source") or (sources[0] if len(sources) == 1 else None)
             if not source:
                 raise ResponseRefused("the detection names no single source to act on "
-                                      f"(it names {sources or 'none'}): choose one")
+                                      f"(it names {sources or 'none'}"
+                                      + (f"; {out['params']['source_from']}"
+                                         if out["params"].get("source_from") else "")
+                                      + "): choose one")
             if source not in sources:
                 raise ResponseRefused(f"the source {source} is not one the evidence saw "
                                       f"({', '.join(sources) or 'none'})")
