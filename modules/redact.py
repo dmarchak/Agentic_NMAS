@@ -123,10 +123,90 @@ _POSITIONAL = (
         re.M)),
     ("key_string", re.compile(
         r"(?i)\b(key-string\s+(?:\d+\s+)?)" + _VALUE + r"()")),
+    # `pre-shared-key`, in every documented form (C2074, 2026-10-28;
+    # tests/test_redact_ios_shapes.py): an ISAKMP keyring's `pre-shared-key {address <IPv4>
+    # [<mask>] | address ipv6 <prefix> | ipv6 <prefix> | hostname <name>} key [N] <k>`, and an
+    # IKEv2 keyring peer's `pre-shared-key [local|remote] [0|6] {<k> | hex <hex>}`. The first
+    # form of this rule knew only `address <IPv4> key`: it masked the mask, the IPv6 prefix or
+    # `hostname`, and IKEv2's `local`, type or `hex`, and printed the key. The value is never
+    # one of those keywords (a one-digit key is the value, never a type).
     ("pre_shared_key", re.compile(
-        r"(?i)\b(pre-shared-key\s+(?:address\s+\S+\s+)?(?:key\s+)?)" + _VALUE + r"()")),
+        r"(?i)\b(pre-shared-key[ \t]+"
+        r"(?:(?:address[ \t]+(?:ipv6[ \t]+)?\S+(?:[ \t]+\S+)?|(?:ipv6|hostname)[ \t]+\S+)"
+        r"[ \t]+key[ \t]+|key[ \t]+|(?:local|remote)[ \t]+)?(?:[0-9][ \t]+)?(?:hex[ \t]+)?)"
+        r"(?!(?:address|hostname|ipv6|local|remote|hex)\b)" + _VALUE + r"()")),
     ("shared_key", re.compile(
         r"(?i)\b((?:tacacs-server|radius-server)\s+key\s+(?:\d+\s+)?)" + _VALUE + r"()")),
+    # C2074 (2026-10-28): the IOS credential shapes still in clear after C745, each found so by a
+    # planted line (tests/test_redact_ios_shapes.py holds every form), bound by C745's three
+    # rules below (`[ \t]` between tokens, a one-digit type, every shape named by its carrier).
+    # A server's key on its host line: `radius-server host <host> [auth-port N] [acct-port N]
+    # [timeout N] [retransmit N] … key [0|6|7] <k>`, `tacacs-server host <host> [port N]
+    # [timeout N] [single-connection] key [0|7] <k>`, and an AAA group's `server-private <IPv4|
+    # IPv6> [auth-port N] [acct-port N] … key [0|7] <k>`. The options between the host and
+    # `key` are many and differ by release, so they are not spelled out: any tokens, and the
+    # LAST `key` on the line with a value after it is the carrier (a test user named `key`
+    # keeps its name; the key after it is masked).
+    ("server_host_key", re.compile(
+        r"(?i)\b((?:(?:radius|tacacs)-server[ \t]+host|server-private)[ \t]+\S+"
+        r"(?:[ \t]+\S+)*[ \t]+key[ \t]+(?:[0-9][ \t]+)?)" + _VALUE + r"()")),
+    # A RADIUS dynamic-authorization client's key (`aaa server radius dynamic-author`):
+    # `client <host> [vrf X] server-key [0|7] <k> [vrf X]`, or a `server-key [0|7] <k>` line.
+    # Named by its carrier (a client, or the line's start), so a word such as
+    # `console-server-key` is never read as one.
+    ("dynamic_author_key", re.compile(
+        r"(?im)((?:^[ \t]*|\bclient[ \t]+\S+(?:[ \t]+vrf[ \t]+\S+)?[ \t]+)"
+        r"server-key[ \t]+(?:[0-9][ \t]+)?)" + _VALUE + r"()")),
+    # A RADIUS server block's `pac key [0|6|7] <k>`, a line of its own. Leading its line, so a
+    # host line's `… pac key <k>` is `server_host_key`'s alone (two rules reading one value
+    # would name it twice to the parsers and the config check).
+    ("pac_key", re.compile(
+        r"(?im)^([ \t]*pac[ \t]+key[ \t]+(?:[0-9][ \t]+)?)" + _VALUE + r"()")),
+    # `key config-key password-encrypt <k>`: the master key type 6 passwords are encrypted
+    # with. Before `server_key`, which refuses `config-key` too, so an indented line keeps its
+    # keyword and loses its value whichever runs first.
+    ("config_key", re.compile(
+        r"(?i)\b(key[ \t]+config-key[ \t]+password-encrypt[ \t]+)" + _VALUE + r"()")),
+    # `ip nhrp authentication <s>` and `ipv6 nhrp authentication <s>` (an NHRP network's
+    # string, DMVPN over IPv4 or IPv6).
+    ("nhrp_authentication", re.compile(
+        r"(?i)\b(ip(?:v6)?[ \t]+nhrp[ \t]+authentication[ \t]+)" + _VALUE + r"()")),
+    # An IKEv2 profile's `authentication {local|remote} pre-share key [0|6] <k>` (its keyring's
+    # `pre-shared-key` lines are `pre_shared_key`'s; `pre-share` with no `key` names none).
+    ("ikev2_pre_share_key", re.compile(
+        r"(?i)\b(authentication[ \t]+(?:local|remote)[ \t]+pre-share[ \t]+key[ \t]+"
+        r"(?:[0-9][ \t]+)?)" + _VALUE + r"()")),
+    # An OSPF virtual link's keys: `area <id> virtual-link <router-id> [authentication …]
+    # [hello-interval N] … {authentication-key [0|7] <k> | message-digest-key N md5 [0|7] <k>}`
+    # (an interface's are `ospf_key`'s, named by `ip ospf`). The last carrier on the line.
+    ("ospf_virtual_link_key", re.compile(
+        r"(?i)\b(area[ \t]+\S+[ \t]+virtual-link[ \t]+\S+(?:[ \t]+\S+)*[ \t]+"
+        r"(?:authentication-key|message-digest-key[ \t]+\d+[ \t]+md5)[ \t]+(?:[0-9][ \t]+)?)"
+        + _VALUE + r"()")),
+    # OSPFv3's IPsec keys, named by `ipsec spi N` wherever it is configured (an interface's
+    # `ipv6 ospf` or `ospfv3`, an area's, a virtual link's): `authentication ipsec spi N
+    # {md5|sha1} [0|7] <key>`, and `encryption ipsec spi N esp {des|3des|aes-cbc
+    # {128|192|256}} [0|7] <key> {md5|sha1} [0|7] <key>`, whose two keys are each masked
+    # (`esp null` has the authentication key only). The authentication rule's prefix holds
+    # the encryption key as one token, masked or not, so either rule may run first.
+    ("ospfv3_ipsec_encryption_key", re.compile(
+        r"(?i)\b(encryption[ \t]+ipsec[ \t]+spi[ \t]+\d+[ \t]+esp[ \t]+"
+        r"(?:3des|des|aes-cbc[ \t]+\d+)[ \t]+(?:[0-9][ \t]+)?)" + _VALUE + r"()")),
+    ("ospfv3_ipsec_authentication_key", re.compile(
+        r"(?i)\b((?:authentication[ \t]+ipsec[ \t]+spi[ \t]+\d+"
+        r"|encryption[ \t]+ipsec[ \t]+spi[ \t]+\d+[ \t]+esp[ \t]+"
+        r"(?:null|(?:3des|des|aes-cbc[ \t]+\d+)[ \t]+(?:[0-9][ \t]+)?\S+))"
+        r"[ \t]+(?:md5|sha1)[ \t]+(?:[0-9][ \t]+)?)" + _VALUE + r"()")),
+    # A server block's key written as digits alone with no type (`radius server <name>`,
+    # `tacacs server <name>`, an ISAKMP client group): by its line alone it is a key chain's
+    # `key <N>`, an ID, which `server_key` refuses. Told apart by its block: the header at a
+    # line's start, its indented children, and a child `key <digits>` ending its line. Seen
+    # only where the text holds the block (a configuration, a log, typed words); a caller
+    # masking one line at a time cannot tell it from a key chain's ID, and leaves it.
+    ("server_block_key", re.compile(
+        r"(?im)^((?:(?:tacacs|radius)[ \t]+server"
+        r"|crypto[ \t]+isakmp[ \t]+client[ \t]+configuration[ \t]+group)[ \t]+\S+[ \t]*\r?\n"
+        r"(?:[ \t]+[^\n]*\n)*?[ \t]+key[ \t]+)(\d+)(?=[ \t]*\r?$)()")),
     # C745 (2026-10-28): the IOS credential shapes this table did not know, each found in
     # clear by a planted line (tests/test_redact_ios_shapes.py holds every form). Three rules
     # bind them all:
@@ -178,9 +258,11 @@ _POSITIONAL = (
     # unindented lines. Never a key chain's `key <N>` (a line that is the number alone, its
     # ID), nor an assignment (`    key = …`, a traceback's source line in a log). A server key
     # that is digits alone, typed with no type number, is a key chain's line by its shape, and
-    # one beginning `=` an assignment's, so neither is masked.
+    # one beginning `=` an assignment's, so neither is masked here (the digits alone are
+    # `server_block_key`'s, inside a server block). Nor an indented `key config-key …`, whose
+    # value is `config_key`'s (C2074).
     ("server_key", re.compile(
-        r"(?im)^((?:[ \t]+key[ \t]+(?!\d+\s*$|=)(?:[0-9][ \t]+)?"
+        r"(?im)^((?:[ \t]+key[ \t]+(?!\d+\s*$|=|config-key\b)(?:[0-9][ \t]+)?"
         r"|key[ \t]+[067][ \t]+))" + _VALUE + r"()")),
     # `standby [N] authentication [text] <s>`, `vrrp N authentication text <s>`, `glbp N
     # authentication text <s>`: the first-hop protocols' clear strings. Their `md5 key-string`
@@ -445,7 +527,8 @@ def redact_payload(payload, values: dict = None):
 #: $9$…` mid-line, a bare `$1$…` hash; and a key or password with no carrier `_POSITIONAL`
 #: names, such as a peer's `password 7 <hex>` or `key 1 md5 <x>` in prose. C745's shapes, the
 #: neighbor password, OSPF and NTP keys and SNMPv3 users among them, are `_POSITIONAL`'s since
-#: 2026-10-28, so a placeholder here keeps their label). Applied ONLY to a payload leaving the
+#: 2026-10-28, as are C2074's, a server's key on its host line and an OSPF virtual link's
+#: among them, so a placeholder here keeps their label). Applied ONLY to a payload leaving the
 #: host (Phase 8's gateway), never to a golden or a store, so it may over-mask: a word after
 #: "password" in prose is masked too, which costs the model a word and leaks nothing.
 #: Addresses and hostnames are never masked. Each entry captures (prefix, secret, suffix).

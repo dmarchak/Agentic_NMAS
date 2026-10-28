@@ -2295,3 +2295,170 @@ Not covered here: the shapes still unknown (an older `tacacs-server host … key
 `key config-key`, NHRP's and IKEv2's keys, an OSPF virtual link's, OSPFv3's IPsec keys),
 measured in clear the same day, the register's.**
 
+## 2026-10-28: the IOS credential shapes still in clear after C745, by position (C2074), by hand
+
+**What touches the tier.** C2074: ten entries added to `redact._POSITIONAL` and two changed,
+so goldens' reads, logs, responses, the archive, the parsers' secret references, the config
+check and the egress mask all get them (goldens stay verbatim at rest): `server_host_key`
+(`radius-server host …`, `tacacs-server host …` and `server-private …`, any options, the last
+`key [0-9] <k>` on the line), `dynamic_author_key` (`client <host> [vrf X] server-key [0|7]
+<k>`, or a `server-key` line), `pac_key` (a line's `pac key [0|6|7] <k>`), `config_key` (`key
+config-key password-encrypt <k>`), `nhrp_authentication` (`ip` or `ipv6 nhrp authentication
+<s>`), `ikev2_pre_share_key` (`authentication {local|remote} pre-share key [0|6] <k>`),
+`ospf_virtual_link_key` (`area N virtual-link <id> … {authentication-key | message-digest-key N
+md5} [0|7] <k>`), `ospfv3_ipsec_encryption_key` and `ospfv3_ipsec_authentication_key`
+(`authentication ipsec spi N {md5|sha1} [0|7] <k>`, `encryption ipsec spi N esp {des|3des|
+aes-cbc N|null} [[0|7] <k>] {md5|sha1} [0|7] <k>`, wherever configured), `server_block_key` (a
+`radius server`, `tacacs server` or ISAKMP client group block's `key <digits>` ending its line);
+`pre_shared_key` rewritten for every keyring form (ISAKMP `address <IPv4> [mask]`, `address
+ipv6`, `ipv6`, `hostname`; IKEv2 `[local|remote] [0|6] [hex]`), its value never one of those
+keywords; `server_key` refuses `config-key`. `gateway.MASK_WORDS` gives each new label its
+words. Measured before the change: 31 planted lines, one or more per shape, each kept its value
+through `redact_text` (21 through the egress mask too); after it, none. No capture holds any of these shapes (the
+fleet's captures scanned, counts only); each line is the Cisco command reference's documented
+form with an invented value.
+
+**The ordering hazards and how they are held.** `pre_shared_key` versus IKEv2's keyring: the
+first rule masked `local`, the type, `hex`, the mask, `ipv6` or `hostname` and printed the key;
+a new rule placed before it would still have lost the keyword to it, so the rule itself was
+rewritten (P1 to P12). `config_key` versus `server_key`: an indented `key config-key …` read by
+`server_key` first lost `config-key` and printed the key; `server_key` refuses `config-key`,
+so the order does not matter (G2 killed, G3 equivalent). `pac_key` versus `server_host_key`: a
+host line's `… pac key <k>` read by both named one value twice to the parsers and the config
+check; `pac_key` leads its line (A3). `server_block_key` versus `server_key`: disjoint by
+construction, digits ending the line against everything else (B7, B10). `ospf_key` versus the
+virtual link's: `ip ospf` names the interface's, `area … virtual-link` the link's (L3; the
+golden test's neighbours). `isakmp_key` versus IKEv2: different carriers, each its own label
+beside the other in one golden. `[ \t]`, never `\s`, between tokens (P11, H8, D8, A4, G4, N4,
+I6, V9, E8, U9); a one-digit type (P10, H7, D9, A6, I5, V8, E7, U10).
+
+**The digits-alone server key.** By its line alone ` key 12345678` is a key chain's ID, and
+`server_key` refuses it (C745's decision, kept). The positional pass runs over the whole text,
+so `server_block_key` reads the block: the header at a line's start, indented children, the key
+of digits ending its line; a `!`, a blank line, an unindented line or an indented header ends or
+refuses it. A caller masking one line at a time (the config check, the secret comparison, the
+parsers' unmodelled children) still cannot tell, and leaves it: stated in the rule's comment
+and a test, and the register's.
+
+**The method:** the narrowed hand check (PHASE8_PLAN 15.12), by the agent that built it: each
+mutant one or more exact text replacements, each found the stated number of times (checked
+read-only first: 96 mutants, every one found, compiled and its table loaded), in its own
+`scripts/nmas-control` throwaway worktree of the change, then a first stage of
+tests/test_redact_ios_shapes.py and test_ai_typed_text.py and, when that killed nothing, the
+whole aimed set: those two and test_redact_egress.py, test_ai_nl_logs.py,
+test_secret_compare.py, test_unmodeled_secrets.py, test_breakglass_export.py,
+test_claude_config_reads.py, test_url_userinfo_masked.py, test_s3_archive.py,
+test_provider_redaction.py and test_config_check.py (`scratchpad/hm_one.py`, `hm_all.sh`,
+`c2074_mutants.py`). The baseline passed (935, 1 skipped). A must-die canary first: C2074's
+rules removed and the two changed rules restored: killed (207 failed). Three runs (the
+baseline, the canary and P2) overlapped an edit of three docs in the working tree, and
+`nmas-control` said so (exit 3); they were run again with nothing editing, each exit 0, with
+the same results. Every other run exited 0. Counts are the first stage's failures.
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: C2074's rules removed, the two changed rules restored | killed | 207, every form |
+| P1 `pre_shared_key` restored to its first form | killed | 40 |
+| P2 the ISAKMP mask dropped | killed | 4, `address 192.0.2.0 255.255.255.0 key` |
+| P3 `address ipv6`'s `ipv6` keyword dropped | **survived: equivalent** | `address <token> [<token>] key` reads `address ipv6 <prefix> key` with `ipv6` as the address and the prefix as the optional mask, so every form masks the same token; the keyword states the documented form |
+| P4 the `ipv6 <prefix>` form dropped | killed | 4 |
+| P5 the `hostname` form dropped | killed | 4 |
+| P6 IKEv2's `local`/`remote` dropped | killed | 19 |
+| P7 without its type | killed | 12 |
+| P8 without `hex` | killed | 4 |
+| P9 the keyword refusal dropped | killed | 4, `pre-shared-key local` ending its line |
+| P10 its type any number | killed | the quoted test (`pre-shared-key local 12345678 is weak`) |
+| P11 crossing lines | killed | the line-end test |
+| P12 the keyring forms without `key` | killed | 11 |
+| H1 `server_host_key` matches nothing | killed | 45 |
+| H2 `radius-server` dropped | killed | 23 |
+| H3 `tacacs-server` dropped | killed | 13 |
+| H4 `server-private` dropped | killed | 9 |
+| H5 the first `key` on the line, not the last | killed | 3, a test user named `key` |
+| H6 without its type | killed | 28 |
+| H7 its type any number | killed | the quoted test (`key 12345678 is wrong`, IPv6) |
+| H8 crossing lines | killed | the line-end test |
+| H9 no options between the host and `key` | killed | 24 |
+| D1 `dynamic_author_key` matches nothing | killed | 21 |
+| D2 the line-leading `server-key` dropped | killed | 7 |
+| D3 the `client` carrier dropped | killed | 15 |
+| D4 `vrf` before `server-key` dropped | killed | 3 |
+| D5 without its type | killed | 10 |
+| D6 a bare `server-key` anywhere | killed | the no-secret test ("the console-server-key page opens") |
+| D7 without multiline | killed | the neighbours' golden (a `server-key` line mid-text) |
+| D8 crossing lines | killed | the line-end test |
+| D9 its type any number | killed | the quoted test (`server-key 12345678 was refused`) |
+| A1 `pac_key` matches nothing | killed | 11 |
+| A2 without its type | killed | 7 |
+| A3 `pac key` anywhere, not leading its line | killed | the parsers' test: a host line's `pac key` value named twice |
+| A4 crossing lines | killed | the line-end test |
+| A5 without multiline | killed | the neighbours' golden |
+| A6 its type any number | killed | the quoted test (`pac key 12345678 is set`) |
+| G1 `config_key` matches nothing | killed | 8 |
+| G2 `server_key`'s `config-key` refusal dropped | killed | 3, the indented form |
+| G3 `config_key` after `server_key` | **survived: equivalent** | `server_key` refuses `config-key`, so either order masks the same token with the same label (the rule's comment says so) |
+| G4 crossing lines | killed | the line-end test |
+| N1 `nhrp_authentication` matches nothing | killed | 9 |
+| N2 IPv4's only (`ipv6` dropped) | killed | 4, every IPv6 case |
+| N3 IPv6's only | killed | 5 |
+| N4 crossing lines | killed | the line-end test |
+| I1 `ikev2_pre_share_key` matches nothing | killed | 12 |
+| I2 `local` dropped | killed | 5 |
+| I3 `remote` dropped | killed | 7 |
+| I4 without its type | killed | 7 |
+| I5 its type any number | killed | the quoted test (`pre-share key 12345678 is weak`) |
+| I6 crossing lines | killed | the line-end test |
+| V1 `ospf_virtual_link_key` matches nothing | killed | 19 |
+| V2 without `authentication-key` | killed | 11 |
+| V3 without `message-digest-key` | killed | 8 |
+| V4 its `md5` keyword dropped | killed | 9 |
+| V5 no options between the router ID and the key | killed | 6 |
+| V6 the first carrier on the line, not the last | **survived: equivalent** | every documented form has one carrier (`authentication-key` and `message-digest-key` are alternatives), so the first and the last are the same token |
+| V7 without its type | killed | 7 |
+| V8 its type any number | killed | the quoted test (`authentication-key 12345678 is set`) |
+| V9 crossing lines | killed | the line-end test |
+| E1 `ospfv3_ipsec_encryption_key` matches nothing | killed | 16 |
+| E2 `3des` dropped | killed | 6 |
+| E3 `des` dropped | killed | 4 |
+| E4 `aes-cbc` dropped | killed | 6 |
+| E5 AES's key size optional | killed | the line-end test (`esp aes-cbc 128` with nothing after) |
+| E6 without its type | killed | 6 |
+| E7 its type any number | killed | the quoted test (a DES key of digits alone) |
+| E8 crossing lines | killed | the line-end test |
+| U1 `ospfv3_ipsec_authentication_key` matches nothing | killed | 41 |
+| U2 the `authentication ipsec` form dropped | killed | 22 |
+| U3 the encryption line's authentication key dropped | killed | 19 |
+| U4 `esp null` dropped | killed | 3 |
+| U5 `md5` dropped | killed | 29 |
+| U6 `sha1` dropped | killed | 12 |
+| U7 without its type | killed | 9 |
+| U8 the encryption key's type in its prefix dropped | killed | 6 |
+| U9 crossing lines | killed | the line-end test |
+| U10 its type any number | killed | the quoted test (an MD5 key of digits alone) |
+| O1 the authentication rule before the encryption rule | **survived: equivalent** | the authentication rule's prefix holds the encryption key as one token, masked or not, so either order masks the same tokens with the same labels (the rule's comment says so) |
+| B1 `server_block_key` matches nothing | killed | 6 |
+| B2 `tacacs server` dropped | killed | 1, the TACACS IPv6 block |
+| B3 `radius server` dropped | killed | 4 |
+| B4 the ISAKMP client group dropped | killed | 1 |
+| B5 an indented header allowed | killed | 1, the indented header |
+| B6 unindented children allowed | killed | 3, a key chain after a server block |
+| B7 the key not required to end its line | killed | 4, C745's golden block among them |
+| B8 the header without `\r` | killed | the CRLF block |
+| B9 the key's line end without `\r` | killed | the CRLF block |
+| B10 any token, not digits | killed | C745's golden block (`key PlantedRadiusKey` labelled `server_key`) |
+| B11 without multiline | killed | 2, a block not at the text's start |
+| B12 the children read greedily | **survived: equivalent** | a server block holds one key, so the nearest and the farthest `key <digits>` line in the block are the same line |
+| L1 `server_host_key` labelled `shared_key` | killed | 47 |
+| L2 `server_block_key` labelled `server_key` | killed | 7 |
+| L3 `ospf_virtual_link_key` labelled `ospf_key` | killed | 21 |
+| W1 a C2074 label with no words | killed | the typed text's pasted case (`key config-key …`) |
+| W2 two labels with the same words | killed | `test_every_mask_redact_makes_has_its_words` |
+
+**The result: 96 mutants; every one killed but P3, G3, V6, O1 and B12 (each equivalent, the
+reason given); the canary killed; no survivor needed a test, and none was added after the run.
+Not covered here: a TACACS or RADIUS key containing spaces (documented as allowed: masking
+takes the first word, every path, the egress mask too); a server key of digits alone where a
+caller masks line by line; the shapes masked only on egress (`ip ftp password`, IS-IS
+`isis password`, `area-password` and `domain-password`, `l2tp tunnel password`), measured in
+clear through `redact_text` the same day; the register's.**
+

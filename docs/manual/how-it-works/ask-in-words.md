@@ -124,9 +124,18 @@ masked:
 - **By position:** a value in a secret's place in a configuration line, whatever it is: an
   SNMP community (`snmp-server community …`, a trap host's community), a user's or the enable
   password or secret, a line password, a key string, a TACACS or RADIUS key (the global
-  `tacacs-server key …` and a server block's `key …`), a pre-shared key, an IKE key
+  `tacacs-server key …`, a server's on its host line, `radius-server host … key …` or
+  `tacacs-server host … key …`, an AAA group's `server-private … key …`, and a server block's
+  `key …`, even one of digits alone when the block is there to read), a RADIUS
+  dynamic-authorization client's `server-key …` and a RADIUS server's `pac key …`, the
+  password-encryption master key (`key config-key password-encrypt …`), a pre-shared key (an
+  ISAKMP keyring's to an IPv4 or IPv6 peer or a hostname, an IKEv2 keyring's `pre-shared-key
+  [local|remote] …` and an IKEv2 profile's `authentication … pre-share key …`), an IKE key
   (`crypto isakmp key …`, to an IPv4 or IPv6 peer), an OSPF key (`ip ospf
-  authentication-key …`, `ip ospf message-digest-key N md5 …`), a neighbor's password
+  authentication-key …`, `ip ospf message-digest-key N md5 …`, and a virtual link's), OSPFv3's
+  IPsec keys (`ipv6 ospf authentication ipsec spi …` and every key of `ipv6 ospf encryption
+  ipsec spi …`, on an interface, an area or a virtual link), an NHRP authentication string
+  (`ip nhrp authentication …` or `ipv6 nhrp authentication …`), a neighbor's password
   (`neighbor <address> password …`, IPv4 or IPv6), an SNMPv3 user's authentication and
   privacy passwords (`snmp-server user …`), an HSRP, VRRP or GLBP authentication string, an
   NTP key (`ntp authentication-key N md5 …`), a password after `password` or `secret`
@@ -146,10 +155,10 @@ words as they were sent, each masked value as its placeholder, so the value is n
 back on the page. The call's record holds the masked words only, with the note's words beside
 them; **History** draws the request as it was sent, masked.
 
-Some secret lines are not yet recognised in every form, among them the older
-`tacacs-server host … key …` and `radius-server host … key …` forms, an AAA group's
-`server-private … key …`, an OSPF virtual link's key, OSPFv3's IPsec keys, an IKEv2 profile's
-`pre-share key …` and an NHRP authentication string: leave secrets out of your words.
+Some secret lines are not yet recognised in every form: a TACACS or RADIUS key containing
+spaces keeps every word after its first, and a server block's key of digits alone is masked
+only when its `radius server`, `tacacs server` or client group line is pasted above it (alone,
+` key 12345678` reads as a key chain's key number). Leave secrets out of your words.
 
 ## What it costs, and what is recorded {#cost}
 

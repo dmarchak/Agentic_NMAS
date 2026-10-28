@@ -59,7 +59,12 @@ outbound path, and is masked as every other one is.
   server block's key, an HSRP, VRRP or GLBP string, an NTP key: `redact._POSITIONAL`, every
   form in `tests/test_redact_ios_shapes.py`), and the archive's own test of the first three
   holds them masked there (`tests/test_s3_archive.py`,
-  `test_c745_shapes_reach_the_archive_masked`). The shapes still unknown are the register's.
+  `test_c745_shapes_reach_the_archive_masked`). C2074 (2026-10-28) added those still in clear
+  after it (a TACACS or RADIUS server's key on its host line or `server-private` line, a
+  dynamic-authorization client's `server-key`, a RADIUS `pac key`, `key config-key
+  password-encrypt`, NHRP's string, IKEv2's keyring and profile keys and the ISAKMP keyring's
+  IPv6 and hostname forms, an OSPF virtual link's keys, OSPFv3's IPsec keys, and a server
+  block's key of digits alone, read by its block). The shapes still unknown are the register's.
 - **What is already in the bucket stays.** The copies written before this release (every
   version of each `<stamp>.cfg`) are plaintext, and Mercury's key cannot delete. The operator's
   read-only measurement, `scripts/host-steps/c730-golden-archive-census.sh`, counts the versions
