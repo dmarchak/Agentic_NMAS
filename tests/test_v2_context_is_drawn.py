@@ -95,6 +95,8 @@ INSTALL_CARD = ("the whole card record handed to the Replace form, which reads `
                 "and the id; these are drawn by `_install_card.html` on the card's own route")
 RECORDS_CARD = ("the whole records card handed to the Replace form, which reads only the "
                 "password rule; every one of these is drawn by `_records_db_card.html`")
+LOGS_ASK = ("the live tail's ask echoed (`s`): Python words `paused` into `paused_at` and "
+            "`from` into `from_query`, both drawn, and `g.qs()` carries both in every link")
 
 #: {route: [(keys, reason), ...]}: carried, drawn by no template of the same response.
 #: The pending page and its fragment (C1193): measured first on 2026-10-17, when a provider
@@ -186,6 +188,29 @@ UNDRAWN = {
     "GET /v2/devices/table": [
         ("counts platforms states", "the filters' choices and counts, drawn by the full page's "
                                     "filter selects; the table fragment does not redraw them")],
+    # C2082 (2026-10-28): the routes passing their payload as `g` measured for the first time
+    # (tests/v2_context.py `given`); these keys were carried and undrawn before, unseen.
+    "GET /v2/dhcp/lease": [
+        ("tee renew rebind", "a subnet's Kea timers, read by `g.tee_words(x)` (Python) into "
+                             "the renew and rebind words of its Lease time cell, which are "
+                             "drawn"),
+        ("global_times", "Kea's global timers, folded into `same_as_global`, drawn as \"the "
+                         "same as Kea's global\""),
+        ("options global_options", "a subnet's own and Kea's global options, read by "
+                                   "dhcp_page.gateway and dns into the Gateway and DNS cells, "
+                                   "drawn with \"(global)\" when inherited"),
+        ("uses", "reservations-in-subnet and reservations-global, read by dhcp_page into each "
+                 "reservation's Now words (\"Kea does not use it: ...\") and the pool-beside-"
+                 "reservation flag"),
+        ("code", "the DNS option's number (6 or 23), which the DNS column's heading names for "
+                 "both families"),
+        ("expiring", "a lease row's flag for the \"Expiring within a day\" filter, which keeps "
+                     "only these rows; each row draws its end date"),
+        ("from_pool_beside_reservation", "GAP (minor): counted into the subnet's \"N from the "
+                                         "pool where a reservation exists\" flag (drawn); the "
+                                         "row that is one is not marked (C2091)"),
+        ("prefix_len", "GAP (IPv6): a delegated prefix's length on a DHCPv6 lease; the row "
+                       "draws the address without it (C2090)")],
     "GET /v2/help/<slug>": [
         ("anchors diagrams sections", "the page's parts, already inside its HTML (drawn); "
                                       "`sections` feeds the side panel's own route"),
@@ -218,10 +243,18 @@ UNDRAWN = {
         ("csv_path data_dir repo_dir", LISTREF),
         ("by_device by_interface", "the question's PromQL templates; the query they fill in is "
                                    "drawn")],
-    "GET /v2/history/query/syslog": [("csv_path data_dir repo_dir", LISTREF)],
+    "GET /v2/history/query/syslog": [
+        ("csv_path data_dir repo_dir", LISTREF),
+        ("all warning", "a measurement artifact, not a gap (C2082): `_history_body.html`, in "
+                        "this page's closure, loops `for key, words, _k in g` over a local "
+                        "`g`, so the walk takes the payload `g`'s keys as data and walks into "
+                        "`severities`, whose keys are the select's values; the same payload is "
+                        "examined by name on GET /v2/logs/view, where every key is drawn")],
     "GET /v2/history/timeline": [
         ("counts", KIND_COUNTS), ("identity kind_groups people", HISTORY_SHELL),
         ("verified", EVENT_VERIFIED)],
+    "GET /v2/logs": [("from paused", LOGS_ASK)],
+    "GET /v2/logs/tail": [("from paused", LOGS_ASK)],
     "GET /v2/monitoring/coverage": [
         ("covered", "a count the template computes itself, as 'fully covered'"),
         ("role", "the device's role, drawn on Devices; on Coverage it only scopes sections")],
@@ -351,7 +384,11 @@ UNDRAWN = {
 #: Move back buttons send it).
 #: -1 2026-10-26: the logs builder draws each label's first line from its epoch, `since` (the
 #: operator's walk of History › Query: each time in the viewer's zone, through `when()`).
-UNDRAWN_CEILING = 364
+#: +17 2026-10-28: C2082, the routes passing their payload as `g` (SDN, DHCP, Logs, discovery)
+#: measured for the first time (tests/v2_context.py `given`); DHCP's lease view 11, Logs' live
+#: tail 4, Syslog by device 2, carried and undrawn before, unseen. SDN's ~70 were trimmed or
+#: drawn, none listed.
+UNDRAWN_CEILING = 381
 
 #: {route: [(keys, reason), ...]}: in the preview a card is built from, read by neither its
 #: adapter nor its template.
@@ -1188,3 +1225,35 @@ class TestTheCheckCanFail:
             template_rendered.disconnect(recorder, A.app)
         assert r.status_code == 200
         assert "planted_undrawn_key" in recorder.routes["GET /v2/who"].undrawn
+
+    def test_a_route_value_under_an_injected_name_is_examined(self):
+        """C2082: a name Flask or a context processor injects is left out only while it holds
+        the value injected; a route's own value under it (`g=` for its payload) is examined."""
+        flask_g = object()
+        injected = {"g": flask_g, "list_name": "Lab"}
+        assert V.given("g", flask_g, injected) and V.given("list_name", "Lab", injected)
+        assert not V.given("g", {"tab": "flows"}, injected)
+        assert not V.given("list_name", "Branch", injected)
+        assert not V.given("tab", "flows", injected)
+
+    def test_a_planted_key_in_a_payload_passed_as_g_is_found(self, monkeypatch):
+        """C2082, the whole path on a real route whose payload is `g` (SDN's region): a key
+        planted in the SDN view is found undrawn. Before `given`, the recorder left `g` out
+        as Flask's own, and the planted key passed."""
+        from flask import template_rendered
+
+        import app as A
+        from modules import sdn_page
+
+        real = sdn_page.controllers_view
+        monkeypatch.setattr(sdn_page, "controllers_view",
+                            lambda network: dict(real(network), planted_undrawn_key="x"))
+        recorder = V._Recorder(A.app)
+        client = V.RecordingClient(A.app.test_client(), recorder)
+        template_rendered.connect(recorder, A.app)
+        try:
+            r = client.get("/v2/sdn/view?tab=controllers")
+        finally:
+            template_rendered.disconnect(recorder, A.app)
+        assert r.status_code == 200
+        assert "planted_undrawn_key" in recorder.routes["GET /v2/sdn/view"].undrawn

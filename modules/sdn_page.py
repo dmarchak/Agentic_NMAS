@@ -41,8 +41,6 @@ CAPABILITY_WORDS = {"read_topology": "read topology", "read_flows": "read flows"
 CAPABILITY_ORDER = ("read_flows", "read_port_stats", "read_meters", "write_flows",
                     "write_meters", "delete_flows", "read_topology")
 STATUS_WORDS = {"built": "built", "later": "later", "unmaintained": "unmaintained"}
-REMOVE_FLOW_WHY = ("a flow is removed by delete-strict through the flow-operation core, "
-                   "previewed and confirmed (modules/sdn/flow_ops.py)")
 
 
 # ───────────────────────────────────────────────────────────────────────────── the region's promise
@@ -93,6 +91,13 @@ def _stored(network: str) -> tuple:
         return {"state": "never", "failed": failed}, got
     return {"state": "ok", "value": last.get("value") or {},
             "value_at": last.get("value_at", ""), "failed": failed}, got
+
+
+def _drawn_read(got: dict) -> dict:
+    """The stored read as a tab draws it: its state, why, last failure and when it was read.
+    The read's ``value`` (every controller's switches, flows, meters and records, as read) is
+    what the cards and switches are built from in Python, never drawn whole (C2082)."""
+    return {k: v for k, v in got.items() if k != "value"}
 
 
 def _listed(network: str) -> dict:
@@ -181,7 +186,8 @@ def controllers_view(network: str) -> dict:
             "cookies": [_cookie_hex(k) for k in c.get("own_cookies") or []],
             "meters_read": any(s.get("meters_read") for s in switches)})
     return {"network": network, "tab": "controllers", "listed": listed["state"],
-            "listed_error": listed.get("error", ""), "read": got, "controllers": cards,
+            "listed_error": listed.get("error", ""), "read": _drawn_read(got),
+            "controllers": cards,
             "summary": {
                 "controllers": len(cards),
                 "connected": sum(c["state"] in ("connected", "partial") for c in cards),
@@ -328,14 +334,13 @@ def flows_view(network: str, values=None, now: float = None) -> dict:
     listed, got, conns = _merged(network, keep)
     judged = None
     out = {"network": network, "tab": "flows", "s": s, "listed": listed["state"],
-           "listed_error": listed.get("error", ""), "read": got, "switches": [],
+           "listed_error": listed.get("error", ""), "read": _drawn_read(got), "switches": [],
            "meters": [], "granularity": [], "controllers": [c["name"] for c in conns],
-           "remove_why": REMOVE_FLOW_WHY,
            "intent_error": ((got.get("value") or {}).get("intent") or {}).get("error", "")
            if ((got.get("value") or {}).get("intent") or {}).get("state") == "unreadable"
            else ""}
     counts = {"switches": 0, "flows": 0, "mercury": 0, "mercury_differs": 0,
-              "controller_own": 0, "unauthorised": 0, "missing": 0, "expired": 0,
+              "controller_own": 0, "unauthorised": 0, "missing": 0,
               "meters": 0, "unclassified": 0}
     supported = known = 0
     for c in conns:
@@ -346,8 +351,9 @@ def flows_view(network: str, values=None, now: float = None) -> dict:
             records = [_record_row(r) for r in sw.get("records") or []]
             n = {k: sum(1 for f in flows if f["owner"] == k) for k in OWNER_WORDS}
             n["unclassified"] = sum(1 for f in flows if f["owner"] not in OWNER_WORDS)
+            # An expired record is drawn as its own row ("expired; nothing to do"), never
+            # counted: nothing is to be done about it (C2082 found the count drawn nowhere).
             n["missing"] = sum(1 for r in records if r["state"] == "missing")
-            n["expired"] = sum(1 for r in records if r["state"] == "expired")
             for k in n:
                 counts[k] += n[k]
             counts["flows"] += len(flows)

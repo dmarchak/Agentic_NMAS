@@ -221,7 +221,10 @@ def responses_view(network: str, run: str = "") -> dict:
     limits = flow_ops.settings_of(network)
     return {"network": network, "tab": "responses", "listed": "ok", "awaiting": rows,
             "awaiting_state": awaiting["state"], "awaiting_error": awaiting["error"],
-            "mode": modes.current(network), "loop": loop.status(network),
+            # The mode as drawn (C2082): AUTO or HITL and its words, which carry who, why,
+            # until when, the allowed risk, an unreadable record and a lapsed AUTO.
+            "mode": {k: v for k, v in modes.current(network).items() if k in ("mode", "words")},
+            "loop": loop.status(network),
             # C2009: the network's stage; Turn AUTO on is drawn only on a network marked lab,
             # and AUTO recorded on elsewhere is drawn suspended (`modes.decide` runs nothing).
             "stage": {k: v for k, v in sdn_page.stage_line(network).items() if k != "stages"},

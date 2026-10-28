@@ -14,7 +14,9 @@ payload IS the context, and the renderer IS the template.
   top-level name the route passed and every key NAME at every depth beneath it: a dict's keys,
   a dataclass's fields, a named tuple's fields. What every page receives without its route
   asking (Flask's `request`, `session`, `g`, `config`, and the context processors' names) is
-  not the route's payload and is left out.
+  not the route's payload and is left out, when it holds the value injected: a route that
+  passes its own value under one of those names (`g=` for its payload) has shadowed it, and
+  that value is examined (`given`; C2082).
 * **Template reads** come from the template's Jinja AST, parsed by the app's own environment
   (`jinja_env.parse`), and from every template it extends, includes or imports, followed by
   name: a name loaded, an attribute (`x.name`), a constant subscript (`x['name']`), a
@@ -398,6 +400,23 @@ class Route(NamedTuple):
     requests: int
 
 
+def given(name: str, value, injected: dict) -> bool:
+    """Whether *name* is what every page receives without its route asking: a name Flask or a
+    context processor injects, holding the value it injects. A route that passes its own value
+    under such a name (`g=` for its payload; Flask lets the route's value win) has shadowed it,
+    and that value is the route's payload, examined like any other (C2082: SDN, DHCP, Logs and
+    discovery pass theirs as `g`, and the check skipped all of it by name)."""
+    if name not in injected:
+        return False
+    other = injected[name]
+    if value is other:
+        return True
+    try:
+        return bool(value == other)
+    except Exception:                       # noqa: BLE001 (a value that will not compare)
+        return False
+
+
 class _Recorder:
     """The renders of one request at a time, through Flask's `template_rendered` signal."""
 
@@ -413,7 +432,7 @@ class _Recorder:
         self.app.update_template_context(injected)
         rule = request.url_rule.rule if request.url_rule else request.path
         self.buf.append((f"{request.method} {rule}", template.name,
-                         {k: v for k, v in context.items() if k not in injected}))
+                         {k: v for k, v in context.items() if not given(k, v, injected)}))
 
     def request(self, call):
         """Run *call* (one request) and fold its renders into its route: the response's

@@ -148,9 +148,9 @@ def test_the_operation_is_drawn_beside_a_response_id(lab, monkeypatch):
 
 def test_every_field_a_lost_row_carries_is_drawn(lab):
     """tests/test_v2_context_is_drawn.py's comparison (`v2_context.carried` over the template's
-    reads), applied to the lost rows Flows draws, answered and not: that test's walk renders
-    them, but SDN's routes pass their payload as `g`, which it leaves out as Flask's own (a
-    blind spot, reported with C2077)."""
+    reads), applied to the lost rows Flows draws, answered and not, on this file's own cases.
+    That test examines SDN's payload, passed as `g`, since C2082; before, it left `g` out as
+    Flask's own (a blind spot reported with C2077), and this test was the one that saw it."""
     from modules import sdn_page as P
     from tests import v2_context as V
 

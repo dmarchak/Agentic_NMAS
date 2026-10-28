@@ -98,7 +98,7 @@
     <input type="hidden" name="list" value="{{ g.network }}"><input type="hidden" name="mode" value="auto">
     <label>Reason <input type="text" name="reason" required></label>
     <label>For (hours) <input type="number" name="hours" min="0.1" max="{{ g.max_hours }}" step="0.1" value="1" required></label>
-    <label>Allowed risk <select name="risk"><option value="low">low: rate-limit, drop</option><option value="medium">medium: also remove a flow</option></select></label>
+    <label>Allowed risk <select name="risk">{% for r in g.risks %}<option value="{{ r }}">{{ r }}{{ {'low': ': rate-limit, drop', 'medium': ': also remove a flow'}.get(r, '') }}</option>{% endfor %}</select></label>
     <button class="btn" type="submit" hx-disabled-elt="this" data-op="sdn"{% if st.stage == 'lab' %}{{ gate('configure') }}{% else %} disabled aria-disabled="true" data-refused="Not available: this network is not marked lab"{% endif %}><span class="op-idle">Turn AUTO on</span><span class="op-busy">Turning on…</span></button>{{ how('sdn', 'responses', compact=True, op='Turn AUTO on') }}
   </form>
   {%- endif %}

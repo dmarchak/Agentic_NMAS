@@ -28,7 +28,19 @@ reader 12 minutes apart. The board's four switches, 61 flows and ONOS second con
 board data; the capture has one switch, and an ONOS connection cannot be saved (its driver is
 not built), so the second controller is a Ryu one that does not answer.
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html
-Templates sha256: `caf9ef729b8315eb6db10d2bc426247917344b87c44f4996740c1d862a9c572c`
+Templates sha256: `cc7ac50ca45c15bdd0cdea1f93c5bbf85187515a8f4f9bb87279b5fa300c1072`
+
+**Compared again 2026-10-28 ~15:0x UTC for C2082** (the every-carried-field check sees the SDN
+payload, `g`): one template line changed, `_sdn_responses.html`'s Allowed risk select, whose
+options are now drawn from the view's `risks` (`modes.RISKS`, carried and drawn nowhere) instead
+of written out; for low and medium the select renders byte for byte as before (checked by
+rendering both), so no pixel moves. The payload trims (the stored read without its raw `value`,
+the mode as `mode` and `words`, no `remove_why`, no expired count) change no drawing. Every
+`test_sdn` shot taken twice, this change and the commit before it (8e01c4b6, through
+scripts/nmas-control), and the page shots compared pixel by pixel: the only differences are the
+run's own data (the log's and the stamps' times, "read 1 min ago" against "just now", a
+response's cookie, wrapping one line in `sdn-responses-held`), and the top bar's AI chip caught
+reading or read. No region's verdict changes.
 
 **Compared again 2026-10-28 ~14:1x UTC for C2077** (a lost response a newer response already
 answers: `_sdn_view.html` draws it **Answered**, naming the newer response, with no
