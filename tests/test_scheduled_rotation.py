@@ -282,10 +282,93 @@ def test_the_run_s_own_clock_moves_and_stops_at_the_backup_window(data, monkeypa
 # ---------------------------------------------------------------------------- checks before each
 
 def test_a_held_device_is_skipped_and_the_rest_run(data, monkeypatch):
+    """A hold another operation takes AFTER the timer's run started (here, on r1 while r3
+    rotates) skips that device alone, at its turn. A hold already there when the run would
+    start refuses the timer's run (C2030, below); a person's run skips it alone (below)."""
+    from modules.nsot import device_ops
+    taken, done = threading.Event(), threading.Event()
+
+    def other():
+        with device_ops.hold("Lab", "r1", "deploy", "bob@example.invalid"):
+            taken.set()
+            done.wait(10)
+
+    class HoldsR1WhileR3Rotates(Rotations):
+        def __call__(self, list_name, host, **kw):
+            if host == "r3":
+                threading.Thread(target=other, daemon=True).start()
+                assert taken.wait(5)
+            return super().__call__(list_name, host, **kw)
+
+    rot = HoldsR1WhileR3Rotates()
+    try:
+        got = _run(monkeypatch, _states(), trigger="scheduled", rotate=rot)
+    finally:
+        done.set()
+    assert [c["device"] for c in rot.calls] == ["r3"]
+    (skip,) = got["skipped"]
+    assert skip["device"] == "r1" and "held by another operation" in skip["why"]
+    assert got["state"] == "done"
+
+
+def _held_by_another_process(data, host, operation="save",
+                             actor="person@example.invalid",
+                             detail="write memory, then the golden"):
+    """A CHILD PROCESS holding *host* in Lab (a person's Save All in another worker, or the
+    host shell), in the data folder *data*; kill it to release."""
+    import subprocess
+    import sys
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    code = ("import sys, time\n"
+            f"sys.path.insert(0, {root!r})\n"
+            "from modules import config\n"
+            f"config.DATA_DIR = {str(data)!r}\n"
+            "from modules.nsot import device_ops as D\n"
+            f"D.acquire('Lab', {host!r}, {operation!r}, {actor!r}, detail={detail!r})\n"
+            "print('held', flush=True)\n"
+            "time.sleep(60)\n")
+    child = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE, text=True,
+                             env=dict(os.environ))
+    assert child.stdout.readline().strip() == "held"
+    return child
+
+
+def test_the_timer_starts_no_run_while_another_operation_holds_a_device_it_would_rotate(
+        data, monkeypatch):
+    """C2030 (2): 2026-10-28's race began with the timer's run starting while a person's
+    Save All was working through the fleet. A device the run would rotate held by another
+    operation, in ANOTHER PROCESS, when the timer's run would start: the run is refused,
+    naming the device and its holder, nothing is rotated, and the refusal decides nothing (the
+    next tick tries again); with the hold gone, the next run rotates."""
+    pytest.importorskip("fcntl")
+    rot = Rotations()
+    child = _held_by_another_process(data, "r1")
+    try:
+        got = _run(monkeypatch, _states(), trigger="scheduled", rotate=rot)
+    finally:
+        child.kill()
+        child.wait(5)
+    assert rot.calls == [] and got["state"] == "refused" and not got["ok"]
+    assert got["error"].startswith(
+        "held by another operation: r1 is being saved (write memory) by "
+        "person@example.invalid"), got["error"]
+    assert ("the timer starts no run while another operation holds a device it would "
+            "rotate (2 due); the next tick, in 5 min, tries again. Nothing was sent") \
+        in got["error"]
+    row = SR.runs()["rows"][-1]
+    assert row["state"] == "refused" and SR.last_decisive() is None and SR.halted() is None
+    again = _run(monkeypatch, _states(), trigger="scheduled", rotate=rot)
+    assert again["state"] == "done" and [c["device"] for c in rot.calls] == ["r3", "r1"]
+
+
+def test_a_persons_run_still_skips_a_held_device_alone(data, monkeypatch):
+    """A person's Rotate due devices now is not the timer: a device held when it starts is
+    skipped at its turn, named, and the rest run."""
     from modules.nsot import device_ops
     rot = Rotations()
     with device_ops.hold("Lab", "r3", "deploy", "bob@example.invalid"):
-        got = _run(monkeypatch, _states(), trigger="scheduled", rotate=rot)
+        got = _run(monkeypatch, _states(), trigger="request", actor=SETTER, rotate=rot)
     assert [c["device"] for c in rot.calls] == ["r1"]
     (skip,) = got["skipped"]
     assert skip["device"] == "r3" and "held by another operation" in skip["why"]

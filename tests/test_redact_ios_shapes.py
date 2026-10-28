@@ -687,9 +687,13 @@ def test_a_c2074_keyword_ending_its_line_takes_nothing_from_the_next(text):
 
 
 C2074_QUOTED = [
+    # A RADIUS host line's clear key runs to the line's end since C2085 (the key's spaces are
+    # its own), so the words after it in a sentence are masked with it: over-masking, never
+    # less.
     ("why is radius-server host 192.0.2.5 key PlantedRadKey refused",
-     [("server_host_key", "PlantedRadKey")]),
-    ("radius-server host 2001:db8::5 key 12345678 is wrong", [("server_host_key", "12345678")]),
+     [("server_host_key", "PlantedRadKey refused")]),
+    ("radius-server host 2001:db8::5 key 12345678 is wrong",
+     [("server_host_key", "12345678 is wrong")]),
     (f"ospfv3: ipv6 ospf authentication ipsec spi 256 md5 {_MD5_A} rejected on Gi2",
      [("ospfv3_ipsec_authentication_key", _MD5_A)]),
     ("the hub's ip nhrp authentication PlntNhrp does not match",
@@ -699,7 +703,8 @@ C2074_QUOTED = [
     # A clear value of digits alone with words after it: the value, never a type (an
     # encryption type is one digit), so the word after it is not taken in its place.
     ("client 192.0.2.8 server-key 12345678 was refused", [("dynamic_author_key", "12345678")]),
-    ("pac key 12345678 is set on RAD1", [("pac_key", "12345678")]),
+    # A `pac key`'s clear value runs to the line's end (C2085), so the sentence after it too.
+    ("pac key 12345678 is set on RAD1", [("pac_key", "12345678 is set on RAD1")]),
     ("pre-shared-key local 12345678 is weak", [("pre_shared_key", "12345678")]),
     ("authentication local pre-share key 12345678 is weak",
      [("ikev2_pre_share_key", "12345678")]),
@@ -819,9 +824,11 @@ def test_a_server_blocks_key_of_digits_alone_is_masked_and_a_key_chains_id_kept(
     out = redact.redact_positional(text)
     if digits is None:
         # No key of digits alone in a server block: the block rule takes nothing, so the
-        # text masks as it did before C2074 (a typed key, or one with more after it, is
-        # `server_key`'s), and a key chain's ID stays.
-        assert out == _without_c2074(text) and "server_block_key" not in out, out
+        # text masks as the table without it does (a typed key, or one with more after it,
+        # is `server_key`'s, read to its line's end since C2085: `key 12345678 extra` is one
+        # key, `TestC2085…`'s), and a key chain's ID stays.
+        assert out == _without_labels(text, {"server_block_key"}), out
+        assert "server_block_key" not in out, out
         assert "key chain K\n key 1\n" not in text or "key chain K\n key 1\n" in out, out
         return
     want = text.replace(f" key {digits}\n", " key <redacted:server_block_key>\n").replace(
@@ -906,3 +913,391 @@ class TestC2074AndTheFleetsCaptures:
         before = _without_c2074("\n".join(lines)).split("\n")
         after = redact.redact_positional("\n".join(lines)).split("\n")
         assert [n for n, (a, b) in enumerate(zip(after, before)) if a != b] == [at + 2]
+
+
+def _without_labels(text, labels):
+    """*text* through the positional table with *labels*' rules left out."""
+    for label, pattern in redact._POSITIONAL:
+        if label in labels:
+            continue
+        text = pattern.sub(
+            lambda m, lb=label: m.group(0) if redact._ALREADY.match(m.group(2))
+            else m.group(1) + _p(lb) + m.group(3), text)
+    return text
+
+
+# ═════════════════════════════════════════════════════════════════════════════════════════════
+# C2085: a TACACS+ or RADIUS key holding spaces, read to its line's end
+# ═════════════════════════════════════════════════════════════════════════════════════════════
+#
+# IOS reads the spaces inside such a key, and those at its end, as part of it: "All leading
+# spaces are ignored, but spaces within and at the end of the key are used" (Cisco IOS
+# Security Command Reference: `tacacs-server key`, `radius-server key`, `key
+# (config-radius-server)`; `radius-server host`: "Always configure the key as the last item in
+# the radius-server host command syntax"). Every mask took the first word only. Where the
+# command ends with the key, its clear form (`0` or no type) now runs to the line's end; a
+# hidden (`7`) or AES (`6`) value has no spaces in its form and stays one token. The carriers
+# whose key ends their command: `tacacs-server key`, `radius-server key`, `radius-server host
+# … key`, `server-private … key` (RADIUS's and TACACS+'s), a `radius server` or `tacacs server`
+# block's `key`, an ISAKMP client group's `key`, a RADIUS block's `pac key`. NOT
+# `tacacs-server host … key`: its syntax lists `[nat] [port] [single-connection] [timeout]`
+# after `[key string]`, so the key is read as one token there, a stated limit
+# (`test_a_tacacs_host_lines_key_stays_one_token`). No capture holds any of these lines (the
+# fleet's captures: no TACACS+ or RADIUS line at all, counted 2026-10-28), so each line is the
+# command reference's documented form with an invented key; addresses 192.0.2.x and 2001:db8::.
+
+#: (line, [(label, planted value)]): the value is everything after the key's type to the line's
+#: end, and occurs once in its line.
+C2085_FORMS = [
+    # `tacacs-server key {0 string | 6 string | 7 string | string}`.
+    ("tacacs-server key Planted Tac Key", [("shared_key", "Planted Tac Key")]),
+    ("tacacs-server key 0 Planted Tac Key", [("shared_key", "Planted Tac Key")]),
+    ("tacacs-server key Planted\tTab Key", [("shared_key", "Planted\tTab Key")]),
+    ("tacacs-server key 7 0822455D0A16", [("shared_key", "0822455D0A16")]),
+    ("tacacs-server key 6 PlantedType6Tac", [("shared_key", "PlantedType6Tac")]),
+    # `radius-server key {0 string | 7 string | string}` (6 with `password encryption aes`).
+    ("radius-server key Planted Rad Key", [("shared_key", "Planted Rad Key")]),
+    ("radius-server key 0 Planted Rad Key", [("shared_key", "Planted Rad Key")]),
+    # Spaces at the key's end are the key's: masked with it.
+    ("radius-server key Planted Rad Key  ", [("shared_key", "Planted Rad Key  ")]),
+    ("radius-server key 7 0822455D0A16", [("shared_key", "0822455D0A16")]),
+    ("radius-server key 6 PlantedType6Rad", [("shared_key", "PlantedType6Rad")]),
+    # A first word of one digit that is not a type (0, 6, 7) is the key's own.
+    ("radius-server key 5 Planted Rad Key", [("shared_key", "5 Planted Rad Key")]),
+    # A clear key whose first word is a 7 with nothing after: the value.
+    ("radius-server key 7", [("shared_key", "7")]),
+    # `radius-server host {hostname | ip-address} … [key encryption-key]`, the key last.
+    ("radius-server host 192.0.2.5 key Planted Host Key",
+     [("server_host_key", "Planted Host Key")]),
+    ("radius-server host 192.0.2.5 auth-port 1812 acct-port 1813 timeout 5 retransmit 3 key 0 "
+     "Planted Host Key", [("server_host_key", "Planted Host Key")]),
+    ("radius-server host 2001:db8::5 auth-port 1812 acct-port 1813 key Planted Host Key",
+     [("server_host_key", "Planted Host Key")]),
+    # A key holding the word `key`, and a `7` after it: the FIRST `key` is the carrier.
+    ("radius-server host 192.0.2.5 key Planted key 7 Word",
+     [("server_host_key", "Planted key 7 Word")]),
+    # A test user named `key` keeps its name; the carrier is the `key` after it.
+    ("radius-server host 2001:db8::5 test username key idle-time 5 key Planted Host Key",
+     [("server_host_key", "Planted Host Key")]),
+    ("radius-server host 192.0.2.5 pac key Planted Host Key",
+     [("server_host_key", "Planted Host Key")]),
+    # `server-private ip-address … [key string]` (RADIUS) and `server-private {ip-address | name
+    # | ipv6-address} … [key [0 | 6 | 7] string]` (TACACS+), the key last in both.
+    (" server-private 192.0.2.7 timeout 5 retransmit 3 key Planted Priv Key",
+     [("server_host_key", "Planted Priv Key")]),
+    (" server-private 2001:db8::7 single-connection port 49 key 0 Planted Priv Key",
+     [("server_host_key", "Planted Priv Key")]),
+    (" server-private 2001:db8::7 key 6 PlantedType6Priv",
+     [("server_host_key", "PlantedType6Priv")]),
+    # A server block's `key {0 | 6 | 7} string` (`radius server`, `tacacs server`) or an ISAKMP
+    # client group's `key name`, indented as a block's child prints, or unindented with its
+    # type.
+    (" key Planted Srv Key", [("server_key", "Planted Srv Key")]),
+    (" key 0 Planted Srv Key", [("server_key", "Planted Srv Key")]),
+    ("key 0 Planted Srv Key", [("server_key", "Planted Srv Key")]),
+    (" key 6 PlantedType6Srv", [("server_key", "PlantedType6Srv")]),
+    # Digits with words after them: one key of two words (digits alone are a key chain's ID).
+    (" key 12345678 extra", [("server_key", "12345678 extra")]),
+    # A RADIUS block's `pac key encryption-key`, the key last.
+    (" pac key Planted Pac Key", [("pac_key", "Planted Pac Key")]),
+    (" pac key 0 Planted Pac Key", [("pac_key", "Planted Pac Key")]),
+]
+
+
+@pytest.mark.parametrize("line,planted", C2085_FORMS, ids=[f[0].strip()[:50] for f in C2085_FORMS])
+class TestEachC2085Form:
+    def test_the_whole_key_is_masked_and_every_other_byte_kept(self, line, planted):
+        assert redact.redact_positional(line) == _expected(line, planted)
+
+    def test_redact_text_and_the_egress_mask_give_the_same_line(self, line, planted):
+        want = _expected(line, planted)
+        assert redact.redact_text(line, values={}) == want
+        assert redact.redact_egress(line, values={}) == want
+
+    def test_masking_twice_changes_nothing(self, line, planted):
+        once = redact.redact_positional(line)
+        assert redact.redact_positional(once) == once
+        assert redact.redact_egress(once, values={}) == once
+
+    def test_the_parsers_and_the_config_check_get_the_whole_value(self, line, planted):
+        found = []
+        redact.replace_positional_values(
+            line, lambda label, value, _prefix: (found.append((label, value)), value)[1])
+        assert sorted(found) == sorted(planted)
+
+
+#: Lines of these carriers' neighbourhood holding no secret: each left whole.
+C2085_NO_SECRET = [
+    # A test user named `key` and no key: the user's name is not a carrier.
+    "radius-server host 192.0.2.5 test username key idle-time 5",
+    "radius-server host 2001:db8::5 test username key",
+    " server-private 2001:db8::7 auth-port 1812 acct-port 1813",
+    "radius-server key 7 <redacted:shared_key>",
+    "radius-server key <redacted:shared_key>",
+    # A search naming the carrier with no value (the log formatter's own `[in …]` after it),
+    # and a template's expression: never a value's first character (`_VALUE`'s refusals).
+    "show running-config | include tacacs-server key [in app.py:12]",
+    "radius-server key {{ secret('radius_key') }}",
+    "radius-server host 2001:db8::5 key <jinja>",
+    " key 7",
+    " key 12345678",
+    "key chain RADIUS-KEYS",
+    " key = live_key()",
+]
+
+
+@pytest.mark.parametrize("line", C2085_NO_SECRET)
+def test_a_c2085_neighbour_holding_no_secret_is_left_whole(line):
+    assert redact.redact_positional(line) == line
+    assert redact.redact_text(line, values={}) == line
+
+
+C2085_MENTIONS = [
+    "radius-server key\nradius-server host 192.0.2.5",
+    "tacacs-server key \ntacacs-server host 192.0.2.6",
+    "radius-server host 2001:db8::5 key \nradius-server timeout 5",
+    " server-private 192.0.2.7 key\n server-private 192.0.2.8",
+    " key \n address ipv4 192.0.2.5",
+    " pac key \n address ipv6 2001:db8::5",
+]
+
+
+@pytest.mark.parametrize("text", C2085_MENTIONS,
+                         ids=[m.split("\n")[0].strip()[:40] for m in C2085_MENTIONS])
+def test_a_c2085_keyword_ending_its_line_takes_nothing_from_the_next(text):
+    """A key read to its line's end ends there: a carrier with nothing after it (a space, then
+    the line's end) takes nothing from the next line."""
+    assert redact.redact_positional(text) == text
+
+
+def test_each_key_ends_at_its_own_line_end_with_crlf():
+    """A device's read over SSH ends its lines `\\r\\n`: each key runs to its `\\r`, which is
+    kept, and no further."""
+    text = ("radius-server key Planted Rad Key\r\n"
+            "radius-server host 2001:db8::5 key Planted Host Key\r\n"
+            "radius server RAD1\r\n key Planted Srv Key\r\n pac key 0 Planted Pac Key\r\n")
+    want = ("radius-server key <redacted:shared_key>\r\n"
+            "radius-server host 2001:db8::5 key <redacted:server_host_key>\r\n"
+            "radius server RAD1\r\n key <redacted:server_key>\r\n"
+            " pac key 0 <redacted:pac_key>\r\n")
+    assert redact.redact_positional(text) == want
+    found = []
+    redact.replace_positional_values(
+        text, lambda label, value, _prefix: (found.append((label, value)), value)[1])
+    assert sorted(found) == sorted([("shared_key", "Planted Rad Key"),
+                                    ("server_host_key", "Planted Host Key"),
+                                    ("server_key", "Planted Srv Key"),
+                                    ("pac_key", "Planted Pac Key")])
+
+
+C2085_QUOTED = [
+    # A clear key quoted in a sentence: the words after it are read as the key's (its spaces
+    # are its own), so they are masked with it: over-masking, never less.
+    ("why is radius-server key Planted Rad Key refused",
+     [("shared_key", "Planted Rad Key refused")]),
+    ("tacacs-server key 0 Planted Tac Key was set on r1", [("shared_key",
+                                                           "Planted Tac Key was set on r1")]),
+    # A hidden key is one token: the sentence after it is kept.
+    ("radius-server key 7 0822455D0A16 was refused", [("shared_key", "0822455D0A16")]),
+    ("radius-server host 2001:db8::5 key 7 0822455D0A16 was refused",
+     [("server_host_key", "0822455D0A16")]),
+]
+
+
+@pytest.mark.parametrize("line,planted", C2085_QUOTED, ids=[q[0][:40] for q in C2085_QUOTED])
+def test_a_c2085_key_quoted_mid_sentence(line, planted):
+    want = _expected(line, planted)
+    assert redact.redact_text(line, values={}) == want
+    assert redact.redact_egress(line, values={}) == want
+
+
+def test_a_tacacs_host_lines_key_stays_one_token():
+    """The stated limit: `tacacs-server host {hostname | host-ip-address} [key string] [nat]
+    [port [integer]] [single-connection] [timeout [integer]]` lists options AFTER the key, so
+    the key is not read to the line's end there: its first word is masked, the rest kept (the
+    register's)."""
+    for line in ("tacacs-server host 192.0.2.6 key Planted Tac Host",
+                 "tacacs-server host 2001:db8::6 key 0 Planted Tac Host"):
+        out = redact.redact_positional(line)
+        assert out == line.replace("Planted", _p("server_host_key")), out
+
+
+# ── the ordering hazards ────────────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("line,value", [
+    ("radius-server key Planted key-string Word", "Planted key-string Word"),
+    ("tacacs-server key Planted password Word", "Planted password Word"),
+    ("radius-server host 192.0.2.5 key Planted snmp-server community Word RO",
+     "Planted snmp-server community Word RO"),
+    (" key Planted neighbor 192.0.2.7 password Word", "Planted neighbor 192.0.2.7 password Word"),
+    (" pac key Planted secret 5 Word", "Planted secret 5 Word"),
+])
+def test_a_key_read_to_its_line_end_is_taken_before_any_rule_reads_inside_it(line, value):
+    """A key read to its line's end may hold another carrier's keyword. Its rules lead the
+    table, so the whole key is one value, given to the parsers once as a reference (the
+    parsers' callback returns a marker, as `_ref_unmodeled_secrets` does), and no rule before it
+    took a word from inside it (which would leave a reference inside the stored value)."""
+    found = []
+    out = redact.replace_positional_values(
+        line, lambda label, v, _prefix: (found.append((label, v)), "__secret__:ref")[1])
+    assert [v for _label, v in found] == [value], found
+    assert out == line.replace(value, "__secret__:ref"), out
+    masked = redact.redact_positional(line)
+    assert masked == line.replace(value, _p(found[0][0])), masked
+    assert redact.redact_egress(line, values={}) == masked
+
+
+def test_each_c2085_carrier_keeps_its_own_label_beside_its_neighbours():
+    """One golden: the global keys, a host line, a group's private server, a server block (its
+    key and PAC key), a client group, a key chain and a dynamic-author client, each value masked
+    once, labelled by its carrier."""
+    lines = [
+        ("aaa new-model", []),
+        ("aaa group server radius RADGRP", []),
+        (" server-private 2001:db8::7 auth-port 1812 acct-port 1813 key Planted Priv Key",
+         [("server_host_key", "Planted Priv Key")]),
+        ("aaa group server tacacs+ TACGRP", []),
+        (" server-private 192.0.2.8 port 49 key 7 0822455D0A1601",
+         [("server_host_key", "0822455D0A1601")]),
+        ("aaa server radius dynamic-author", []),
+        (" client 192.0.2.9 server-key PlantedDynWord", [("dynamic_author_key",
+                                                         "PlantedDynWord")]),
+        ("tacacs-server key Planted Tac Key", [("shared_key", "Planted Tac Key")]),
+        ("radius-server key 7 0822455D0A1602", [("shared_key", "0822455D0A1602")]),
+        ("radius-server host 192.0.2.5 auth-port 1812 acct-port 1813 key Planted Host Key",
+         [("server_host_key", "Planted Host Key")]),
+        ("tacacs server TAC6", []),
+        (" address ipv6 2001:db8::6", []),
+        (" key 0 Planted Tac Block Key", [("server_key", "Planted Tac Block Key")]),
+        ("radius server RAD1", []),
+        (" address ipv4 192.0.2.5 auth-port 1812 acct-port 1813", []),
+        (" key Planted Rad Block Key", [("server_key", "Planted Rad Block Key")]),
+        (" pac key 7 0822455D0A1603", [("pac_key", "0822455D0A1603")]),
+        ("crypto isakmp client configuration group VPN", []),
+        (" key Planted Group Key", [("server_key", "Planted Group Key")]),
+        ("key chain OSPF-KEYS", []),
+        (" key 1", []),
+        ("  key-string 7 0605027D1D4F5D", [("key_string", "0605027D1D4F5D")]),
+        ("end", []),
+    ]
+    text = "\n".join(line for line, _p in lines) + "\n"
+    want = "\n".join(_expected(line, planted) for line, planted in lines) + "\n"
+    assert redact.redact_positional(text) == want
+    assert redact.redact_text(text, values={}) == want
+    assert redact.redact_positional(want) == want
+    # The egress mask over the text without its key chain: its `egress_key` reads ` key 1`
+    # and the next line's `key-string` as one shape (`\s` crossing the line; the register's).
+    chainless = "\n".join(line for line, _p in lines[:-4] + lines[-1:]) + "\n"
+    assert "key chain" not in chainless and "key-string" not in chainless
+    assert redact.redact_egress(chainless, values={}) == redact.redact_positional(chainless)
+    found = []
+    redact.replace_positional_values(
+        text, lambda label, v, _prefix: (found.append((label, v)), v)[1])
+    assert sorted(found) == sorted(pair for _line, planted in lines for pair in planted)
+
+
+# ── the parsers: the whole key becomes the reference's value ────────────────────────────────
+
+#: Lines no parser models, planted into a captured configuration: each key whole in one
+#: reference, none of its words in intent, the device's configuration rendered unchanged.
+C2085_PLANTED = ("tacacs-server key Planted Tac Key\n"
+                 "radius-server host 192.0.2.5 auth-port 1812 acct-port 1813 key Planted Host Key\n"
+                 "radius server RAD6\n"
+                 " address ipv6 2001:db8::5 auth-port 1812 acct-port 1813\n"
+                 " key Planted Block Key\n"
+                 " pac key 0 Planted Pac Key\n")
+C2085_KEYS = ("Planted Tac Key", "Planted Host Key", "Planted Block Key", "Planted Pac Key")
+
+
+@pytest.mark.parametrize("name,platform", [("r2", "cisco_iosxe"), ("s1", "cisco_ios")])
+def test_the_parsers_keep_each_whole_key_and_the_configuration_round_trips(name, platform):
+    from modules.nsot import hostvars, roundtrip
+    from modules.nsot.parsers import get_parser
+
+    with open(os.path.join(ROOT, "tests", "fixtures", "configs", "fleet", f"{name}.cfg"),
+              encoding="utf-8") as fh:
+        head, _sep, _tail = fh.read().rpartition("\nend")
+    config = head + "\n" + C2085_PLANTED + "end\n"
+    parsed = get_parser(platform).parse(config)
+    refs = sorted(v for k, v in parsed["secrets"].items() if k.startswith("unmodeled_"))
+    assert refs == sorted(C2085_KEYS), refs
+    text = hostvars.to_yaml(parsed)
+    for key in C2085_KEYS:
+        assert key.split(" ", 1)[1] not in text, f"{key} reached {name}'s intent"
+    rendered = roundtrip.render(parsed, platform)
+    for line in C2085_PLANTED.splitlines():
+        assert line in rendered.splitlines(), line
+    assert "__secret__:" not in rendered
+
+
+# ── the fleet's captures: nothing ordinary is newly masked ──────────────────────────────────
+
+#: The four rules C2085 changed, as they stood before it (d78f7486), verbatim.
+_BEFORE_C2085 = {
+    "shared_key": re.compile(
+        r"(?i)\b((?:tacacs-server|radius-server)\s+key\s+(?:\d+\s+)?)" + redact._VALUE + r"()"),
+    "server_host_key": re.compile(
+        r"(?i)\b((?:(?:radius|tacacs)-server[ \t]+host|server-private)[ \t]+\S+"
+        r"(?:[ \t]+\S+)*[ \t]+key[ \t]+(?:[0-9][ \t]+)?)" + redact._VALUE + r"()"),
+    "pac_key": re.compile(
+        r"(?im)^([ \t]*pac[ \t]+key[ \t]+(?:[0-9][ \t]+)?)" + redact._VALUE + r"()"),
+    "server_key": re.compile(
+        r"(?im)^((?:[ \t]+key[ \t]+(?!\d+\s*$|=|config-key\b)(?:[0-9][ \t]+)?"
+        r"|key[ \t]+[067][ \t]+))" + redact._VALUE + r"()"),
+}
+
+
+def _without_c2085(text):
+    """*text* through the positional table with C2085's four rules as they stood before it,
+    each once, in the table's order."""
+    done = set()
+    for label, pattern in redact._POSITIONAL:
+        if label in _BEFORE_C2085:
+            if label in done:
+                continue
+            done.add(label)
+            pattern = _BEFORE_C2085[label]
+        text = pattern.sub(
+            lambda m, lb=label: m.group(0) if redact._ALREADY.match(m.group(2))
+            else m.group(1) + _p(lb) + m.group(3), text)
+    return text
+
+
+class TestC2085AndTheFleetsCaptures:
+    def test_the_c2085_rules_change_no_captured_line_nor_file(self):
+        assert len(CAPTURES) >= 17
+        assert sum(len(_lines(p)) for p in CAPTURES) >= 3000
+        changed = [(os.path.relpath(p, ROOT), n) for p in CAPTURES
+                   for n, line in enumerate(_lines(p), 1)
+                   if redact.redact_positional(line) != _without_c2085(line)]
+        assert changed == []
+        whole = [os.path.relpath(p, ROOT) for p in CAPTURES
+                 if redact.redact_positional("\n".join(_lines(p)))
+                 != _without_c2085("\n".join(_lines(p)))]
+        assert whole == []
+
+    @pytest.mark.parametrize("planted", [
+        "radius-server key Planted Rad Key",
+        "tacacs-server key 0 Planted Tac Key",
+        "radius-server host 2001:db8::5 auth-port 1812 acct-port 1813 key Planted Host Key",
+        " server-private 192.0.2.7 key Planted Priv Key",
+    ])
+    def test_a_key_with_spaces_planted_in_a_capture_is_found_at_its_line_only(self, planted):
+        path = os.path.join(ROOT, "tests", "fixtures", "configs", "fleet", "r1.cfg")
+        lines = _lines(path)
+        at = next(i for i, line in enumerate(lines) if line.startswith("interface "))
+        lines.insert(at, planted)
+        changed = [n for n, line in enumerate(lines)
+                   if redact.redact_positional(line) != _without_c2085(line)]
+        assert changed == [at]
+        assert "Key" not in redact.redact_positional(lines[at])
+
+    def test_a_server_block_planted_in_a_capture_is_found_at_its_key(self):
+        path = os.path.join(ROOT, "tests", "fixtures", "configs", "fleet", "r1.cfg")
+        lines = _lines(path)
+        at = next(i for i, line in enumerate(lines) if line.startswith("interface "))
+        lines[at:at] = ["radius server RAD1", " address ipv6 2001:db8::5", " key Planted Srv Key",
+                        " pac key Planted Pac Key", "!"]
+        before = _without_c2085("\n".join(lines)).split("\n")
+        after = redact.redact_positional("\n".join(lines)).split("\n")
+        assert [n for n, (a, b) in enumerate(zip(after, before)) if a != b] == [at + 2, at + 3]

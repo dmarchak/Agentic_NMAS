@@ -20,6 +20,8 @@ What it refuses, and what it skips (each with its reason, kept in the run's reco
   reached;
 * the timer runs a policy only inside its preferred window, once in any 24 hours; a person's "Rotate
   due devices now" runs every due device now (outside the preferred window too);
+* the timer starts no run while another operation holds any device it would rotate (C2030:
+  a Save All holds each device until its record lands); the next tick tries again;
 * a device another operation holds (`device_ops`), or one mid-restart (a planned-restart
   window covering now, or a restart recorded in the last 10 minutes), is skipped;
 * a device off its intent (its committed golden differs from what its intent renders), or one
@@ -743,6 +745,23 @@ def _announce() -> None:
         log.info("scheduled rotation: not announced (%s)", exc)
 
 
+def _first_held(chosen: list, held) -> str:
+    """The first of *chosen* another operation holds, in words naming it and its holder, or
+    "". *held* is ``(list, device) -> holder or None``; a hold that cannot be read counts as
+    held (C988)."""
+    from modules.nsot import device_ops
+
+    for c in chosen:
+        try:
+            h = held(c["list"], c["device"])
+        except OSError as exc:
+            return (f"{c['list']}/{c['device']}'s hold could not be read ({exc}), so it is "
+                    "treated as held")
+        if h:
+            return f"held by another operation: {device_ops.describe(h).split(' One operation')[0]}"
+    return ""
+
+
 def run(*, trigger: str, actor: str = "", now=None, run_id: str = "", confirmed: str = "",
         plan=None, rotate=None, checks=None, clock=None) -> dict:
     """One run. *trigger*: ``scheduled`` (the timer; each rotation's actor is its policy's
@@ -815,6 +834,18 @@ def run(*, trigger: str, actor: str = "", now=None, run_id: str = "", confirmed:
         record["waiting"] = [{"list": s["list"], "device": s["device"], "why": s["why"]}
                              for s in waiting]
         record["policies"] = sorted({s["profile"] for s in chosen})
+        if trigger == "scheduled":
+            # The timer never starts while another operation holds a device it would rotate
+            # (C2030): a person's batch (a Save All) holds its devices until its record lands,
+            # and a rotation taken in its gap committed a golden the batch then wrote over.
+            # Refused, not skipped: the next tick tries again; a person's run keeps the
+            # per-device check below.
+            busy = _first_held(chosen, held)
+            if busy:
+                return finish("refused", (
+                    f"{busy}: the timer starts no run while another operation holds a device "
+                    f"it would rotate ({len(chosen)} due); the next tick, in "
+                    f"{TICK_SECONDS // 60} min, tries again. Nothing was sent"))
         _set_progress(run_id, state="running", trigger=trigger, actor=actor,
                       started=record["started"],
                       order=[f"{s['list']}/{s['device']}" for s in chosen])

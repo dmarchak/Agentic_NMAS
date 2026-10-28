@@ -194,6 +194,8 @@ STEP_WORDS = {
                "and it waits for them"),
     "save_golden": "recording the new golden",
     "audit_log": "writing the audit record",
+    # Save (`save_op`): through its turn, still held until its record lands (C2030).
+    "commit_wait": "waiting for the batch's one commit, still held until its record lands",
 }
 
 
@@ -348,6 +350,19 @@ def held(list_name: str) -> list:
         if found:
             out.append(found)
     return sorted(out, key=lambda h: h.get("started", 0), reverse=True)
+
+
+def held_elsewhere(list_name: str, hostnames) -> list:
+    """The holders of *hostnames* in *list_name* other than THIS thread, newest first: an
+    operation another thread or process is running on them now. One read of what is held
+    (`held`), never a probe per device asked. Raises :class:`HoldsUnreadable` as `held` does.
+
+    A judgement that reads several devices' records as of one moment asks it (C2030): a device
+    this thread holds cannot move under it, and one held elsewhere may be mid-way through
+    changing them (a rotation stores the device's new secret before it commits)."""
+    wanted = set(hostnames or ())
+    return [h for h in held(list_name)
+            if h.get("device") in wanted and not held_here(list_name, h.get("device"))]
 
 
 def in_flight(list_name: str, now: float = None) -> list:
@@ -740,6 +755,31 @@ def release(list_name: str, hostname: str) -> None:
             os.close(fd)
     log.info("device_ops: %s released after %s", hostname, mine["holder"]["operation"])
     _announce_released()
+
+
+def hand_over(list_name: str, hostname: str, to_thread: int) -> None:
+    """Give THIS thread's hold on *hostname* to *to_thread*, a thread of this process, with
+    no moment unheld: the `flock` belongs to the process, so only who may release it moves
+    (C2030). A batch whose devices run on worker threads needs it: a session write needs the
+    device held by the thread that writes (`may_write`), so each worker holds its own device,
+    and its record lands later, in the batch's one commit on the batch's thread. Released at
+    the end of its turn, a device was taken by another operation, which committed its golden,
+    and the batch's older capture was then committed over it (2026-10-28). Handed over, the
+    device stays held until the batch's thread releases it after the commit.
+
+    Only a hold this thread took once (not re-entered) is handed over; anything else raises
+    RuntimeError naming the device and who holds it, and the hold is left as it was."""
+    key = (_list_key(list_name), hostname)
+    me = threading.get_ident()
+    with _mu:
+        mine = _held.get(key)
+        if not mine or mine["thread"] != me or mine["count"] != 1:
+            raise RuntimeError(
+                f"{hostname} cannot be handed over: this thread "
+                + ("does not hold it" if not mine or mine["thread"] != me
+                   else f"holds it {mine['count']} times (re-entered)")
+                + "; the hold is left as it was")
+        mine["thread"] = to_thread
 
 
 def _announce_released() -> None:

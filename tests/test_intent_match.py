@@ -135,6 +135,64 @@ class TestTheTrailerAndTheBaseline:
         assert "Intent-Match: yes (1 of 1)" in self._message(repo)
         assert out["baseline"].startswith("baseline/") and out["baseline_denied"] == []
 
+    def test_a_device_another_operation_holds_earns_no_baseline_naming_it(self, lab):
+        """C2030 (3): a baseline judgement reads committed intent and Mercury's stored
+        secrets as of one moment. On 2026-10-28 r3's rotation had stored its new secret and not
+        yet committed the intent and golden that render it, and the judgement read r3 as off
+        intent. Here r2 is held for a rotation by ANOTHER PROCESS while a Save All judges it:
+        the capture is recorded, the baseline is denied naming r2 and its rotation, and the
+        decision rides in the commit."""
+        pytest.importorskip("fcntl")
+        from modules import config
+        from tests.test_scheduled_rotation import _held_by_another_process
+
+        repo, captured = lab
+        child = _held_by_another_process(config.DATA_DIR, "r2", "rotate",
+                                         "rotation@example.invalid", detail="")
+        try:
+            out = self._save(captured)
+        finally:
+            child.kill()
+            child.wait(5)
+        assert not out["baseline"], out
+        (why,) = out["baseline_denied"]
+        assert why.startswith("r2 is being rotated by rotation@example.invalid, started "), why
+        assert why.endswith(f"(process {child.pid}). It may be changing that device's intent "
+                            "or Mercury's stored secrets, so this judgement is not of one "
+                            "moment; Save All again once it ends"), why
+        assert "Baseline: denied: r2 is being rotated by rotation@example.invalid" in \
+            self._message(repo)
+        again = self._save(captured)
+        assert again["baseline"].startswith("baseline/"), "free again: earned"
+
+    def test_holds_that_cannot_be_read_earn_no_baseline_saying_so(self, lab, monkeypatch):
+        """Whether a judged device is held elsewhere cannot be told (C988): no baseline, the
+        path and its error named."""
+        from modules.nsot import device_ops
+
+        def unreadable(*_a, **_k):
+            raise device_ops.HoldsUnreadable("/data/device_ops/lab",
+                                             PermissionError(13, "Permission denied"))
+
+        monkeypatch.setattr(device_ops, "held_elsewhere", unreadable)
+        _repo, captured = lab
+        out = self._save(captured)
+        assert not out["baseline"]
+        assert out["baseline_denied"] == [
+            "what is held in Lab could not be read (/data/device_ops/lab: Permission denied), "
+            "so whether an operation was changing a judged device's intent or stored secrets "
+            "is not known; Save All again"]
+
+    def test_a_device_this_thread_holds_is_judged_as_any_other(self, lab):
+        """The judging operation's own hold (a Save holds every device it records until its
+        commit) is not another operation: the baseline is earned."""
+        from modules.nsot import device_ops
+
+        _repo, captured = lab
+        with device_ops.hold("Lab", "r2", "save", "t"):
+            out = self._save(captured)
+        assert out["baseline"].startswith("baseline/") and out["baseline_denied"] == []
+
     def test_coverage_is_checked_when_a_save_all_commits(self, lab):
         """C91: a committing Save All with a device skipped took a baseline."""
         repo, captured = lab

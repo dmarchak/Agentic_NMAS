@@ -13,7 +13,8 @@ Capture still records a hand change alone).
 
 A device-changing operation like every other: a plan read from stored records only (the
 inventory, the hourly startup check, reachability, the holds), confirmed by its hash as a
-verified person; a job holding each device while it saves; the read-back as its verify;
+verified person; a job holding each device from its save until its record has landed (C2030);
+the read-back as its verify;
 nothing to roll back (a save copies running to startup as it is); the record is the commit, and
 each device's persist row.
 """
@@ -27,7 +28,7 @@ import threading
 log = logging.getLogger(__name__)
 
 #: The steps, in order, as the manual's How it works page names them.
-STEPS = ("plan", "confirm", "hold", "save", "read_back", "read_running", "release", "record")
+STEPS = ("plan", "confirm", "hold", "save", "read_back", "read_running", "record", "release")
 #: Devices worked at once, each on its own worker holding it: a session for the save and its
 #: read-back, then the capture's read of the running config. 6, Show commands' cap (the
 #: operator, 2026-10-09, C605; it was 8, half the capture's): not measured on the host, where a
@@ -261,8 +262,9 @@ def run(list_name: str, hostnames: list, actor: str, confirmed_hash: str, *, job
         persist=None, record=None, read_one=None, save_golden=None) -> dict:
     """Save the confirmed selection, as *actor*: the plan made again and refused if its hash
     moved; each device held by its own worker (at most `WORKERS` at once), saved, read back and,
-    when the read-back matched, read for its running config, then released; the ones read are
-    recorded in one commit. Each device's
+    when the read-back matched, read for its running config; the ones read are recorded in one
+    commit, each held until that commit has landed (C2030), the rest released at the end of
+    their turn. Each device's
     outcome is one of `OUTCOMES`: a device whose read-back did not match is ``not_persisted``
     and is NOT recorded (the record would claim what a reboot would not bring back)."""
     from concurrent.futures import ThreadPoolExecutor
@@ -299,111 +301,138 @@ def run(list_name: str, hostnames: list, actor: str, confirmed_hash: str, *, job
             outcomes[host] = _outcome(host, "refused", (
                 f"{host} is not in {list_name}'s manifest, so its golden has nothing to attach "
                 "to: onboard or adopt it first. Nothing was sent to it"))
+    # The job's thread, which each device read to record is handed to at the end of its turn,
+    # and releases only after the batch's commit (C2030): its whole save, read and record held.
+    owner, kept, kept_lock = threading.get_ident(), [], threading.Lock()
+
     def one(host):
         """One device on its own worker, which HOLDS it: a session write needs the device held
         by the thread that writes (`device_ops.may_write`), so the job thread cannot hold it
-        for the worker. ``(host, outcome or None, (entry, text) or None)``."""
+        for the worker. A device read to record is handed to the job's thread, still held
+        (`device_ops.hand_over`); any other is released at the end of its turn.
+        ``(host, outcome or None, (entry, text) or None)``."""
         d = inventory[host]
         try:
-            with device_ops.hold(list_name, host, "save", actor,
-                                 detail="write memory, then the golden", ip=d.get("ip", "")):
-                # Running from here; its steps are read from the hold while it holds, and the
-                # trail it reached is kept when it lets go (C605).
-                _mark(job_id, host, "running")
-                try:
-                    got = _save_one(d, actor, list_name, persist, record)
-                except Exception as exc:              # noqa: BLE001 (that device's outcome)
-                    got = {"ok": False, "state": "unknown",
-                           "detail": f"{type(exc).__name__}: {exc}"}
-                if not got.get("ok"):
-                    detail = got.get("detail") or got.get("state", "")
-                    _mark(job_id, host, "not_persisted", trail=_trail_of(list_name, host),
-                          detail=detail)
-                    return host, _outcome(host, "not_persisted", detail), None
-                # The running config read while still held: what is recorded is what the
-                # device ran when it saved.
-                device_ops.note("read_running")
-                try:
-                    entry, text = (read_one or _capture_entry)(list_name, repo_dir, d)
-                except Exception as exc:              # noqa: BLE001 (that device's outcome)
-                    entry, text = {"device": host, "read": False,
-                                   "error": f"{type(exc).__name__}: {exc}"}, None
-                entry.pop("read_phases", None)
-                # The golden this capture was read against, while still held (C2030): the
-                # batch records it only over that golden.
-                against = _golden_sha(repo_dir, host)
-                trail = _trail_of(list_name, host)
-            if not entry.get("read") or text is None:
-                detail = ("saved to startup; its running config could not be read to record: "
-                          + (entry.get("error") or "no reason was recorded"))
-                _mark(job_id, host, "unread", trail=trail, detail=detail)
-                return host, _outcome(host, "unread", detail), None
-            # Through its turn: released, waiting for the batch's one commit.
-            _mark(job_id, host, "through", trail=trail, step="commit_wait")
-            return host, None, (entry, text, against)
+            device_ops.acquire(list_name, host, "save", actor,
+                               detail="write memory, then the golden", ip=d.get("ip", ""))
         except device_ops.DeviceBusy as exc:
             _mark(job_id, host, "held", detail=f"{exc}")
             return host, _outcome(host, "held", f"{exc}. Nothing was sent to it"), None
+        handed = False
+        try:
+            # Running from here; its steps are read from the hold while it runs, and the
+            # trail it reached is kept at the end of its turn (C605).
+            _mark(job_id, host, "running")
+            try:
+                got = _save_one(d, actor, list_name, persist, record)
+            except Exception as exc:              # noqa: BLE001 (that device's outcome)
+                got = {"ok": False, "state": "unknown",
+                       "detail": f"{type(exc).__name__}: {exc}"}
+            if not got.get("ok"):
+                detail = got.get("detail") or got.get("state", "")
+                _mark(job_id, host, "not_persisted", trail=_trail_of(list_name, host),
+                      detail=detail)
+                return host, _outcome(host, "not_persisted", detail), None
+            # The running config read while still held: what is recorded is what the
+            # device ran when it saved.
+            device_ops.note("read_running")
+            try:
+                entry, text = (read_one or _capture_entry)(list_name, repo_dir, d)
+            except Exception as exc:              # noqa: BLE001 (that device's outcome)
+                entry, text = {"device": host, "read": False,
+                               "error": f"{type(exc).__name__}: {exc}"}, None
+            entry.pop("read_phases", None)
+            if not entry.get("read") or text is None:
+                detail = ("saved to startup; its running config could not be read to record: "
+                          + (entry.get("error") or "no reason was recorded"))
+                _mark(job_id, host, "unread", trail=_trail_of(list_name, host), detail=detail)
+                return host, _outcome(host, "unread", detail), None
+            # The golden this capture was read against, while still held (C2030): the
+            # batch records it only over that golden.
+            against = _golden_sha(repo_dir, host)
+            # Through its turn: still held, waiting for the batch's one commit.
+            device_ops.note("commit_wait")
+            trail = _trail_of(list_name, host)
+            device_ops.hand_over(list_name, host, owner)
+            handed = True
+            with kept_lock:
+                kept.append(host)
+            _mark(job_id, host, "through", trail=trail)
+            return host, None, (entry, text, against)
+        finally:
+            if not handed:
+                device_ops.release(list_name, host)
 
     read = {}
-    if to_save:
-        with ThreadPoolExecutor(max_workers=min(WORKERS, len(to_save)),
-                                thread_name_prefix="save") as pool:
-            for host, outcome, got in pool.map(one, to_save):
-                if outcome:
-                    outcomes[host] = outcome
-                else:
-                    read[host] = got
-    items = []
-    for host in to_save:
-        if host in read:
-            entry, text, _against = read[host]
-            d = inventory[host]
-            items.append(R.GoldenItem(host, text, d.get("ip", ""), netbox_id=d.get("_netbox_id"),
-                                      device_uid=d.get("device_uid", ""),
-                                      platform=entry.get("platform", "")))
-    # A capture commits only over the golden it was read against (C2030): under the
-    # repository's lock, which every golden commit takes, a device whose golden moved since
-    # its read (another operation's commit between its release and this one) is not recorded,
-    # naming both commits, so an older capture never lands over a newer record.
-    lock = R.repo_lock(repo_dir) if items else contextlib.nullcontext()
-    with lock:
-        items = _not_moved(repo_dir, items, read, outcomes, job_id)
-        commit, save = "", {}
-        if items:
-            # The whole network saved together is Save All, and `save_all` is the source the
-            # baseline decision WANTS a baseline for (`repo._baseline_wanted`); `save` would want
-            # one only when two goldens changed, so an in-sync network never got its restore point
-            # (the operator, 2026-10-09: "v2 save all devices needs to add a new baseline"). Earned
-            # or denied by measurement there: coverage of the inventory and every device at intent.
-            # A save that takes in a change no rule explains, made outside Mercury (C1819): how the
-            # device's own log says it changed, kept in the commit (one Loki ask per such device).
-            from modules.nsot import out_of_band
-            departing = [inventory[it.hostname] for it in items
-                         if read[it.hostname][0].get("changed")
-                         and out_of_band.unexplained(read[it.hostname][0].get("intent"))]
-            save = (save_golden or R.save_golden)(
-                list_name, items, source=SOURCE_FLEET if p["fleet"] else SOURCE, actor=actor,
-                extra_trailers=out_of_band.trailers(repo_dir, departing),
-                allow_new=False, inventory_size=len(inventory) if p["fleet"] else 0,
-                baseline=None if p["fleet"] else False)
-            commit = (save.get("commit") or "")[:12]
-            refused_save = {r["device"]: r for r in (save.get("refused") or [])}
-            for it in items:
-                host = it.hostname
-                if host in refused_save:
-                    outcomes[host] = _outcome(host, "unread", "saved to startup; not recorded: "
-                                              + refused_save[host]["reason"])
-                elif not save.get("ok"):
-                    outcomes[host] = _outcome(host, "unread", "saved to startup; not recorded: "
-                                              + (save.get("error") or "the record failed"))
-                else:
-                    outcomes[host] = _outcome(host, "saved_recorded"
-                                              if host in (save.get("changed") or [])
-                                              else "saved_unchanged")
-                _mark(job_id, host, outcomes[host]["outcome"],
-                      step="recorded" if outcomes[host]["outcome"] in GOOD else "",
-                      detail=outcomes[host]["detail"])
+    try:
+        if to_save:
+            with ThreadPoolExecutor(max_workers=min(WORKERS, len(to_save)),
+                                    thread_name_prefix="save") as pool:
+                for host, outcome, got in pool.map(one, to_save):
+                    if outcome:
+                        outcomes[host] = outcome
+                    else:
+                        read[host] = got
+        items = []
+        for host in to_save:
+            if host in read:
+                entry, text, _against = read[host]
+                d = inventory[host]
+                items.append(R.GoldenItem(host, text, d.get("ip", ""),
+                                          netbox_id=d.get("_netbox_id"),
+                                          device_uid=d.get("device_uid", ""),
+                                          platform=entry.get("platform", "")))
+        # A capture commits only over the golden it was read against (C2030): under the
+        # repository's lock, which every golden commit takes, a device whose golden moved since
+        # its read (a commit by a writer that does not take the device's hold: every operation
+        # that does is refused while this batch holds it) is not recorded, naming both
+        # commits, so an older capture never lands over a newer record.
+        lock = R.repo_lock(repo_dir) if items else contextlib.nullcontext()
+        with lock:
+            items = _not_moved(repo_dir, items, read, outcomes, job_id)
+            commit, save = "", {}
+            if items:
+                # The whole network saved together is Save All, and `save_all` is the source
+                # the baseline decision WANTS a baseline for (`repo._baseline_wanted`); `save`
+                # would want one only when two goldens changed, so an in-sync network never got
+                # its restore point (the operator, 2026-10-09: "v2 save all devices needs to add
+                # a new baseline"). Earned or denied by measurement there: coverage of the
+                # inventory and every device at intent. A save that takes in a change no rule
+                # explains, made outside Mercury (C1819): how the device's own log says it
+                # changed, kept in the commit (one Loki ask per such device).
+                from modules.nsot import out_of_band
+                departing = [inventory[it.hostname] for it in items
+                             if read[it.hostname][0].get("changed")
+                             and out_of_band.unexplained(read[it.hostname][0].get("intent"))]
+                save = (save_golden or R.save_golden)(
+                    list_name, items, source=SOURCE_FLEET if p["fleet"] else SOURCE,
+                    actor=actor, extra_trailers=out_of_band.trailers(repo_dir, departing),
+                    allow_new=False, inventory_size=len(inventory) if p["fleet"] else 0,
+                    baseline=None if p["fleet"] else False)
+                commit = (save.get("commit") or "")[:12]
+                refused_save = {r["device"]: r for r in (save.get("refused") or [])}
+                for it in items:
+                    host = it.hostname
+                    if host in refused_save:
+                        outcomes[host] = _outcome(host, "unread",
+                                                  "saved to startup; not recorded: "
+                                                  + refused_save[host]["reason"])
+                    elif not save.get("ok"):
+                        outcomes[host] = _outcome(host, "unread",
+                                                  "saved to startup; not recorded: "
+                                                  + (save.get("error") or "the record failed"))
+                    else:
+                        outcomes[host] = _outcome(host, "saved_recorded"
+                                                  if host in (save.get("changed") or [])
+                                                  else "saved_unchanged")
+                    _mark(job_id, host, outcomes[host]["outcome"],
+                          step="recorded" if outcomes[host]["outcome"] in GOOD else "",
+                          detail=outcomes[host]["detail"])
+    finally:
+        # After the record, never before (C2030): every device handed over is released here,
+        # however the run ended.
+        for host in kept:
+            device_ops.release(list_name, host)
     rows = [outcomes[d["host"]] for d in p["devices"]]
     good = sum(1 for r in rows if r["outcome"] in GOOD)
     ok = bool(rows) and good == len(rows)

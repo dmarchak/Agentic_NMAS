@@ -2462,3 +2462,91 @@ caller masks line by line; the shapes masked only on egress (`ip ftp password`, 
 `isis password`, `area-password` and `domain-password`, `l2tp tunnel password`), measured in
 clear through `redact_text` the same day; the register's.**
 
+## 2026-10-28: a TACACS+ or RADIUS key holding spaces, read to its line's end (C2085), by hand
+
+**What touches the tier.** C2085: four rules of `redact._POSITIONAL` rewritten, so goldens'
+reads, logs, responses, the archive, the parsers' secret references, the config check and the
+egress mask all get the whole key (goldens stay verbatim at rest). IOS reads "spaces within and
+at the end of the key" as part of it (Cisco IOS Security Command Reference: `tacacs-server key`,
+`radius-server key`, `key (config-radius-server)`; `radius-server host`: "Always configure the
+key as the last item"), and every mask took the first word. Where the command ends with its key
+(`tacacs-server key`, `radius-server key`, `radius-server host … key`, `server-private … key` in
+both families, a server block's or ISAKMP client group's `key`, a `pac key`), each rule is now
+two: the clear form (`0` or no type, `_KEY_CLEAR`) read to the line's end (`_VALUE_TO_EOL`: the
+first character as `_VALUE`'s, then everything but `\r` and `\n`), and the hidden or AES form
+(`7`, `6`, `_KEY_HIDDEN`) one token. `radius-server host` and `server-private` take the FIRST
+bare `key` on the line, a test user's `username <name>` read as a pair. Left one token, stated
+and tested: `tacacs-server host … key`, whose syntax lists `[nat] [port] [single-connection]
+[timeout]` after `[key string]`; a dynamic-author `server-key [0|7] word` (a word, by its
+reference). Labels unchanged (`shared_key`, `server_host_key`, `pac_key`, `server_key`), so
+`gateway.MASK_WORDS` needs nothing new. No capture holds any of these lines (the fleet's 21
+captures: no TACACS+ or RADIUS line, counted); each line is the command reference's documented
+form with an invented key.
+
+**The ordering hazards and how they are held.** A key read to its line's end may hold another
+carrier's keyword (`radius-server key a key-string b`): placed where `shared_key` stood, after
+`key_string`, the parsers got `b` as one reference and then the whole key holding that
+reference. The eight rules lead the table, so the key is taken whole first and later rules see
+one placeholder (O1 killed). The clear and hidden rules of one carrier are disjoint by
+`_KEY_CLEAR`'s refusal of a `6` or `7` with a value after it (O2 equivalent). `pac_key` leads its
+line, so a host line's `… pac key` is `server_host_key`'s alone (A2). `server_key` keeps
+refusing digits alone (a key chain's ID, `server_block_key`'s inside a block), `=` and
+`config-key` (K2 to K4). `[ \t]`, never `\s`, between tokens (S4); a one-digit type, the
+documented 0, 6 and 7 only (T1, T4).
+
+**The method:** the narrowed hand check (PHASE8_PLAN 15.12), by the agent that built it, as
+C2074's: each mutant one or more exact text replacements, each found the stated number of times
+(checked read-only first: 37 mutants, every one found, compiled and its table loaded), in its own
+`scripts/nmas-control` throwaway worktree of the change, then a first stage of
+tests/test_redact_ios_shapes.py and test_ai_typed_text.py and, when that killed nothing, the
+whole aimed set (the twelve files C2074 named) (`scratchpad/c2085_mutants.py`, `c2085_one.py`,
+`c2085_all.sh`). The baseline passed (1085, 1 skipped). A must-die canary first: C2085's rules
+out and the four rules as they stood before it back: killed (85 failed). Every run exited 0.
+Counts are the first stage's failures.
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: the four rules as they stood before C2085 | killed | 85, every key with a space |
+| V1 the value one token, not to the line's end | killed | 83 |
+| V2 the value runs over a `\r` | killed | 1, the CRLF test |
+| V3 the value runs over line ends | killed | 4, the golden blocks and the CRLF test |
+| V4 the value's first-character refusals dropped | killed | 2, a search's `[in …]` and a template's `{{` |
+| V5 its `<` refusal dropped | killed | 1, a template's `<jinja>` on a host line |
+| T1 the hidden type any digit | killed | 14, a `0` value named twice to the parsers |
+| T2 the clear form's 6-or-7 refusal dropped | killed | 52 |
+| T3 the clear form without its `0` | killed | 32 |
+| T4 the clear form's type any digit | killed | 21 |
+| T5 the hidden type `7` only | killed | 25, every type 6 form |
+| T6 the hidden value read to the line's end | killed | 2, a type 7 key quoted mid-sentence |
+| T7 the clear form refuses any 6 or 7 | killed | 3, `radius-server key 7` |
+| S1 the global keys' clear rule matches nothing | killed | 37 |
+| S2 `tacacs-server` dropped | killed | 16 |
+| S3 `radius-server` dropped | killed | 21 |
+| S4 `\s` after `key` (crossing lines) | killed | 2, the line-end test |
+| H1 the host lines' clear rule matches nothing | killed | 49 |
+| H2 `radius-server host` dropped | killed | 50 |
+| H3 `server-private` dropped | killed | 22 |
+| H4 the last `key` on the line, not the first | killed | 5, a key holding the word `key` |
+| H5 `username <name>` not read as a pair | killed | 6, a test user named `key` |
+| H6 a bare `username` allowed as an option | killed | 4, the user named `key` with no key |
+| H7 no options between the host and `key` | killed | 45 |
+| H8 `tacacs-server host` read to the line's end | killed | 5, the stated limit's test among them |
+| H9 the host lines' hidden rule removed | killed | 23 |
+| A1 `pac_key`'s clear rule matches nothing | killed | 15 |
+| A2 `pac key` anywhere, not leading its line | killed | 1, a host line's `pac key` named twice |
+| K1 `server_key`'s clear rule matches nothing | killed | 27 |
+| K2 its digits-alone refusal dropped | killed | 16 |
+| K3 its `=` refusal dropped | killed | 2 |
+| K4 its `config-key` refusal dropped | killed | 3 |
+| K5 unindented `key 0 <k>` dropped | killed | 4 |
+| K6 unindented without a type allowed | killed | 17, "key fingerprint" among them |
+| K7 the hidden form indented only | killed | 3, `key 7 <hex>` unindented |
+| O1 the C2085 rules after the rest of the table | killed | 3, a key holding another carrier's keyword |
+| O2 each carrier's hidden rule before its clear rule | **survived: equivalent** | the clear form refuses a `6` or `7` with a value after it, and the hidden form needs one, so the two never match one value and their order changes nothing |
+
+**The result: 37 mutants; every one killed but O2 (equivalent, the reason given); the canary
+killed; no survivor needed a test, and none was added after the run. Not covered here: the
+`tacacs-server host … key` form (its key one token, a stated limit); a `radius-server host`
+line's `key-wrap encryption-key <k> message-auth-code-key <k>`, measured in clear through every
+mask, the egress mask too, the same day; the register's.**
+

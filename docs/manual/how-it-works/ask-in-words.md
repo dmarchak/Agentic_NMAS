@@ -155,10 +155,15 @@ words as they were sent, each masked value as its placeholder, so the value is n
 back on the page. The call's record holds the masked words only, with the note's words beside
 them; **History** draws the request as it was sent, masked.
 
-Some secret lines are not yet recognised in every form: a TACACS or RADIUS key containing
-spaces keeps every word after its first, and a server block's key of digits alone is masked
-only when its `radius server`, `tacacs server` or client group line is pasted above it (alone,
-` key 12345678` reads as a key chain's key number). Leave secrets out of your words.
+A TACACS or RADIUS key typed in clear is masked to the end of its line, because such a key
+may hold spaces: any words after it on the same line are masked with it.
+
+Some secret lines are not yet recognised in every form: a key containing spaces on a
+`tacacs-server host` line keeps every word after its first (that command's options may follow
+its key, so the key cannot be read to the line's end), and a server block's key of digits
+alone is masked only when its `radius server`, `tacacs server` or client group line is pasted
+above it (alone, ` key 12345678` reads as a key chain's key number). Leave secrets out of your
+words.
 
 ## What it costs, and what is recorded {#cost}
 

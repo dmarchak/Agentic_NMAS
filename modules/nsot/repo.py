@@ -843,9 +843,31 @@ def _baseline_wanted(baseline, source: str, changed_count: int) -> bool:
     return source in ("save_all", "migration") or changed_count > 1
 
 
+def _in_flight_denial(list_name: str, judged) -> list:
+    """Why a baseline judgement of *judged* is not of one moment, or ``[]`` (C2030): another
+    operation holds a device whose committed intent and Mercury's stored secrets it just read.
+    A rotation stores the device's new secret before it commits the intent and golden that
+    render it, so a judgement made in between reads a device that is at its intent as off it
+    (2026-10-28: a router judged off intent while its rotation stored its secret, and the
+    baseline was refused). A device this thread holds cannot move under it; asked inside the
+    repository's lock, after the reads, so an operation that ended before this answer had
+    committed before the reads began. A hold that cannot be read counts as held (C988)."""
+    from modules.nsot import device_ops
+
+    try:
+        others = device_ops.held_elsewhere(list_name, judged)
+    except device_ops.HoldsUnreadable as exc:
+        return [f"what is held in {list_name} could not be read ({exc}), so whether an "
+                "operation was changing a judged device's intent or stored secrets is not "
+                "known; Save All again"]
+    return [f"{device_ops.describe(h).split(' One operation')[0]} It may be changing that "
+            "device's intent or Mercury's stored secrets, so this judgement is not of one "
+            "moment; Save All again once it ends" for h in others]
+
+
 def _baseline_decision(baseline, source: str, changed_count: int, measured: list,
                        inventory_size: int, skipped, intent: dict,
-                       require_coverage: bool) -> tuple:
+                       require_coverage: bool, list_name: str = "") -> tuple:
     """``(earned, reasons)``: ONE decision for both of save_golden's paths.
 
     A baseline asserts the network is at its committed intent (register C89
@@ -869,6 +891,8 @@ def _baseline_decision(baseline, source: str, changed_count: int, measured: list
                        + (f" ({named} skipped)" if named else
                           f" ({len(measured)} of {inventory_size or 'an unstated number'})"))
     reasons += baseline_denial(intent)
+    # Intent and stored secrets as of one moment, no device judged held elsewhere (C2030).
+    reasons += _in_flight_denial(list_name, sorted(intent))
     return not reasons, reasons
 
 
@@ -1181,7 +1205,7 @@ def save_golden(list_name: str, items: list, source: str = "manual",
             tags, baseline_tag = [], ""
             earned, denied = _baseline_decision(baseline, source, 0, unchanged,
                                                 inventory_size, skipped, intent,
-                                                require_coverage=True)
+                                                require_coverage=True, list_name=list_name)
             # A DECISION MADE WITH NOTHING TO COMMIT IS STILL RECORDED
             # (2026-09-28, the operator's first real occurrence): Save All read
             # nine devices, all unchanged, denied the baseline because r2
@@ -1301,7 +1325,8 @@ def save_golden(list_name: str, items: list, source: str = "manual",
         # otherwise lived only in the return value.
         earned, denied = _baseline_decision(
             baseline, source, len(changed), [c["hostname"] for c in changed] + unchanged,
-            inventory_size, skipped, intent, require_coverage=baseline is None)
+            inventory_size, skipped, intent, require_coverage=baseline is None,
+            list_name=list_name)
         if baseline is False and baseline_reasons:
             denied = [str(r) for r in baseline_reasons]
         decision = _baseline_trailer(earned, denied, baseline, source, len(changed),

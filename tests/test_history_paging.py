@@ -462,6 +462,11 @@ class TestInABrowser:
                 assert b.js("return document.querySelectorAll('.tl-foot').length") == 1
                 first = b.js("return location.search")
                 assert "before=" in first
+                # The foot was swapped in with the page: its button answers a click once htmx
+                # has wired it (its internal data set), which can be after the rows land
+                # (C2102: clicked before, the click did nothing and 120 never came).
+                b.wait_for("var x = document.querySelector('.tl-more-btn');"
+                           " return !!(x && x['htmx-internal-data'] && !x.disabled)", 15)
                 b.click(".tl-more-btn")
                 b.wait_for(f"return {ROWS}.length === 120", 15)
                 assert b.js("return !!document.querySelector('.tl-end')"), "nothing older"

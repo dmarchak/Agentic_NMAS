@@ -114,6 +114,110 @@ class TestTheChainSavesTheDevice:
         assert not cr.save_on_device("192.0.2.21", "admin", "pw", "junos")["ok"]
 
 
+# ── a persist that fails is never recorded persisted (C2030 (4)) ────────────
+
+class TestAPersistThatFailsIsNeverRecordedPersisted:
+    """C2030 (4): rotation's verify includes "startup holds the new credential" (its persist
+    step), and nothing may record `rotated_and_persisted` for a rotation whose persist did not
+    reach the end. Through `rotate_op.run`, the one path the device page's Rotate and the
+    scheduled rotation both run (rotate, then persist, holding the device across both), with
+    only the rotation's device half (`_rotate`) and the device's save stood in; the records are
+    the real rotation record's, in this test's own data folder."""
+
+    HOST = "r7"
+
+    @pytest.fixture(autouse=True)
+    def _own(self, tmp_path, monkeypatch):
+        from modules.nsot import rotate_op
+
+        monkeypatch.setattr("modules.config.DATA_DIR", str(tmp_path))
+        monkeypatch.setattr(cr, "_rotate", lambda list_name, hostname, **kw: {
+            "device": hostname, "state": cr.ROTATED_PENDING_PERSIST, "new_hash": "9 $9$s$h",
+            "mgmt_ip": "192.0.2.27", "username": "admin",
+            "steps": [{"name": "commit", "ok": True}]})
+        monkeypatch.setattr(rotate_op, "_inventory_password", lambda _l, _h: "pw")
+        monkeypatch.setattr(cr, "platform_of", lambda _l, _h: "cisco_ios")
+
+    def _run(self):
+        from modules.nsot import rotate_op
+
+        return rotate_op.run("Lab", self.HOST, actor="person@example.invalid",
+                             fingerprint="fp")
+
+    def _rows(self):
+        return [r for r in cr.rotation_records() if r.get("device") == self.HOST]
+
+    def _never_persisted(self):
+        rows = self._rows()
+        assert rows, "the rotation was recorded"
+        assert [r["state"] for r in rows if r["state"] == cr.ROTATED_PERSISTED] == [], rows
+        return rows
+
+    def test_a_persist_that_passes_is_recorded_persisted(self, monkeypatch):
+        """The same path, the save passing: the record says persisted, so the cases below
+        are about the failure, not a path that never records it."""
+        monkeypatch.setattr(cr, "save_on_device", lambda *a, **k: {"ok": True,
+                                                                    "state": "persisted"})
+        assert self._run()["state"] == cr.ROTATED_PERSISTED
+        assert [r["state"] for r in self._rows()] == [cr.ROTATED_PENDING_PERSIST,
+                                                       cr.ROTATED_PERSISTED]
+
+    def test_a_startup_that_does_not_carry_the_new_credential(self, monkeypatch):
+        monkeypatch.setattr(cr, "save_on_device", lambda *a, **k: {
+            "ok": False, "state": "not_persisted",
+            "error": "the startup config does not carry username admin secret 9 <value>"})
+        out = self._run()
+        assert out["state"] == cr.ROTATED_UNVERIFIED
+        rows = self._never_persisted()
+        assert rows[-1]["phase"] == "persist" and rows[-1]["state"] == cr.ROTATED_UNVERIFIED
+        assert rows[-1]["failed_stage"] == "device_startup_config"
+
+    def test_a_device_with_no_driver_for_its_platform(self, monkeypatch):
+        """The real `save_on_device`, refusing a platform it has no driver for."""
+        monkeypatch.setattr(cr, "platform_of", lambda _l, _h: "junos")
+        out = self._run()
+        assert out["state"] == cr.ROTATED_UNVERIFIED
+        assert self._never_persisted()[-1]["state"] == cr.ROTATED_UNVERIFIED
+
+    def test_a_save_that_raises(self, monkeypatch):
+        """A fault inside the save is no persist: whatever the path then says, no row claims
+        persisted, and the rotation's own row stands at "persistence not attempted"."""
+        def raises(*_a, **_k):
+            raise RuntimeError("the session dropped mid-save")
+
+        monkeypatch.setattr(cr, "save_on_device", raises)
+        try:
+            out = self._run()
+        except RuntimeError:
+            out = {}
+        assert out.get("state") != cr.ROTATED_PERSISTED
+        assert self._never_persisted()[-1]["state"] == cr.ROTATED_PENDING_PERSIST
+
+    def test_a_persist_refused_because_another_process_holds_the_device(self, tmp_path,
+                                                                        monkeypatch):
+        """The host shell's persist (`cr.persist`, as `nmas-rotate-credential` calls it after
+        its rotation released the device) meeting the device held by ANOTHER PROCESS: refused,
+        recorded unverified, never persisted, and nothing was saved."""
+        pytest.importorskip("fcntl")
+        from tests.test_scheduled_rotation import _held_by_another_process
+
+        saved = []
+        monkeypatch.setattr(cr, "save_on_device", lambda *a, **k: saved.append(1) or {
+            "ok": True, "state": "persisted"})
+        child = _held_by_another_process(tmp_path, self.HOST, "deploy",
+                                         "other@example.invalid", detail="")
+        try:
+            out = cr.persist({"device": self.HOST, "state": cr.ROTATED_PENDING_PERSIST,
+                              "steps": []},
+                             **dict(BASE, hostname=self.HOST, list_name="Lab"))
+        finally:
+            child.kill()
+            child.wait(5)
+        assert saved == [] and out["state"] == cr.ROTATED_UNVERIFIED
+        (row,) = self._never_persisted()
+        assert row["state"] == cr.ROTATED_UNVERIFIED and row["failed_stage"] == "device_free"
+
+
 # ── the job ─────────────────────────────────────────────────────────────────
 
 INV = [("Default", {"hostname": "s1"}), ("Default", {"hostname": "r1"})]

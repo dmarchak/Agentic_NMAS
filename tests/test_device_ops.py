@@ -131,6 +131,112 @@ class TestTheLock:
         D.release("Lab", "r2")
 
 
+def _other_process_tries(host: str) -> str:
+    """A CHILD PROCESS's attempt to hold *host* in Lab, in this process's data folder: "free"
+    (it took and released it) or "busy: <the refusal>"."""
+    from modules import config
+
+    code = ("import sys\n"
+            f"sys.path.insert(0, {ROOT!r})\n"
+            "from modules import config\n"
+            f"config.DATA_DIR = {config.DATA_DIR!r}\n"
+            "from modules.nsot import device_ops as D\n"
+            "try:\n"
+            f"    D.acquire('Lab', {host!r}, 'rotate', 'rotation (host shell)')\n"
+            f"    D.release('Lab', {host!r})\n"
+            "    print('free', flush=True)\n"
+            "except D.DeviceBusy as exc:\n"
+            "    print('busy: ' + str(exc), flush=True)\n")
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                         env=dict(os.environ), timeout=60)
+    assert out.returncode == 0, out.stderr[-2000:]
+    return out.stdout.strip()
+
+
+class TestHandOver:
+    """C2030: a batch's worker holds its device to write to it, and hands the hold to the
+    batch's thread, which releases it after the batch's commit: never a moment unheld."""
+
+    def test_a_handed_hold_outlives_the_worker_until_the_receiver_releases_it(self):
+        pytest.importorskip("fcntl")
+        me, done = threading.get_ident(), []
+
+        def worker():
+            D.acquire("Lab", "r2", "save", "person@example.invalid")
+            D.hand_over("Lab", "r2", me)
+            D.release("Lab", "r2")                 # no longer this thread's: a no-op
+            done.append(True)
+
+        t = threading.Thread(target=worker)
+        t.start()
+        t.join(10)
+        assert done, "the worker finished"
+        assert D.held_here("Lab", "r2"), "the receiving thread holds it now"
+        refused = []
+
+        def another_thread():
+            try:
+                D.acquire("Lab", "r2", "rotate", "rotation@example.invalid")
+                D.release("Lab", "r2")
+            except D.DeviceBusy as exc:
+                refused.append(str(exc))
+        t = threading.Thread(target=another_thread)
+        t.start()
+        t.join(10)
+        assert refused and "r2 is being saved (write memory) by person@example.invalid" in \
+            refused[0], refused
+        said = _other_process_tries("r2")
+        assert said.startswith("busy: r2 is being saved (write memory)"), said
+        D.release("Lab", "r2")
+        assert D.holder("Lab", "r2") is None
+        assert _other_process_tries("r2") == "free"
+
+    def test_only_a_hold_this_thread_took_once_is_handed_over(self):
+        with pytest.raises(RuntimeError, match="r2 cannot be handed over: this thread does "
+                                               "not hold it"):
+            D.hand_over("Lab", "r2", 1)
+        with D.hold("Lab", "r2", "save", "a"):
+            with D.hold("Lab", "r2", "save", "a"):
+                with pytest.raises(RuntimeError, match="holds it 2 times"):
+                    D.hand_over("Lab", "r2", 1)
+            assert D.held_here("Lab", "r2"), "the hold is left as it was"
+        assert D.holder("Lab", "r2") is None
+
+
+class TestHeldElsewhere:
+    """C2030: what a one-moment judgement asks: the holders of its devices other than this
+    thread, across processes."""
+
+    def test_this_threads_own_hold_is_not_elsewhere_and_another_threads_is(self):
+        with D.hold("Lab", "r1", "save", "a"):
+            assert D.held_elsewhere("Lab", ["r1", "r2"]) == []
+            with Holder("Lab", "r2", operation="rotate", actor="rotation@example.invalid",
+                        detail=""):
+                got = D.held_elsewhere("Lab", ["r1", "r2"])
+                assert [(h["device"], h["operation"]) for h in got] == [("r2", "rotate")]
+                assert D.held_elsewhere("Lab", ["r1"]) == []
+
+    def test_a_hold_in_another_process_is_elsewhere(self):
+        pytest.importorskip("fcntl")
+        code = ("import sys, time\n"
+                f"sys.path.insert(0, {ROOT!r})\n"
+                "from modules.nsot import device_ops as D\n"
+                "D.acquire('Lab', 'r3', 'rotate', 'rotation (host shell)')\n"
+                "print('held', flush=True)\n"
+                "time.sleep(30)\n")
+        child = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE,
+                                 text=True, env=dict(os.environ))
+        try:
+            assert child.stdout.readline().strip() == "held"
+            got = D.held_elsewhere("Lab", ["r3"])
+            assert [(h["device"], h["operation"], h["pid"]) for h in got] == [
+                ("r3", "rotate", child.pid)]
+        finally:
+            child.kill()
+            child.wait(5)
+        assert D.held_elsewhere("Lab", ["r3"]) == []
+
+
 def _spy_pipeline(monkeypatch):
     import routes.deploy as rd
 

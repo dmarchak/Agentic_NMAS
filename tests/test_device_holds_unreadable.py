@@ -379,14 +379,27 @@ class TestScheduledRotation:
         return path
 
     def test_the_run_skips_it_and_the_rest_run(self, store, monkeypatch):
+        """A person's run (Rotate due devices now) skips it at its turn; the timer's, which
+        starts no run while any device it would rotate is held (C2030), is the next test."""
         path = self._r3_unreadable(store)
         rot = Rotations()
-        got = _run(monkeypatch, _states(), trigger="scheduled", rotate=rot)
+        got = _run(monkeypatch, _states(), trigger="request", actor="alice@example.invalid",
+                   rotate=rot)
         assert [c["device"] for c in rot.calls] == ["r1"]
         (skip,) = got["skipped"]
         assert skip["device"] == "r3"
         assert (f"its hold could not be read ({path}: Permission denied), so it is treated "
                 "as held") in skip["why"]
+
+    def test_the_timer_starts_no_run_naming_it(self, store, monkeypatch):
+        """Treated as held, so the timer's run is refused naming it (C2030), nothing sent."""
+        path = self._r3_unreadable(store)
+        rot = Rotations()
+        got = _run(monkeypatch, _states(), trigger="scheduled", rotate=rot)
+        assert rot.calls == [] and got["state"] == "refused"
+        assert got["error"].startswith(
+            f"Lab/r3's hold could not be read ({path}: Permission denied), so it is treated "
+            "as held: the timer starts no run"), got["error"]
 
     def test_the_preview_says_it(self, store, monkeypatch):
         from modules.nsot import scheduled_rotation as SR

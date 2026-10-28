@@ -409,9 +409,11 @@ class TestTheRun:
     def test_a_golden_moved_after_its_read_is_not_recorded_over(self, lab, monkeypatch):
         """C2030, 2026-10-28's measured race: Save All released r1 after reading it, the
         scheduled rotation then held it and committed its golden, and the Save's batch commit
-        put the older capture over it. Here another operation commits r2's golden after r2's
-        turn (released, waiting for the batch's commit): the Save records nothing over it,
-        names both commits and the one that moved it, and the newer golden stands."""
+        put the older capture over it. Here a writer that does not take the device's hold
+        commits r2's golden after r2's turn (still held, waiting for the batch's commit; every
+        operation that takes the hold is refused then, the test below): the Save records
+        nothing over it, names both commits and the one that moved it, and the newer golden
+        stands."""
         from modules.nsot import repo as R
         from modules.nsot import save_op
 
@@ -442,6 +444,54 @@ class TestTheRun:
                 "&#34;golden: 1 device(s) via rotation&#34;)") in said, said
         assert "press Save again to record what it runs now" in said
         assert lab["sent"] and lab["sent"][0]["held"] is True, "the save itself was sent"
+
+    def test_each_device_stays_held_until_its_record_lands(self, lab, monkeypatch):
+        """C2030 (2): the measured race began with Save releasing r1 at the end of its turn,
+        before the batch's commit, and the scheduled rotation (in the app, or the host shell's
+        rotation in a process of its own) taking it there. Now a device read to record is held
+        through the commit: ANOTHER PROCESS asking for r2 while the batch commits is refused,
+        naming the Save, and once the run has ended r2 is free."""
+        from modules.nsot import repo as R
+        from tests.test_device_ops import _other_process_tries
+
+        lab["running"]["r2"] = _broken(lab["captured"])
+        real, seen = R.save_golden, {}
+
+        def committing(*a, **k):
+            seen["during"] = _other_process_tries("r2")
+            return real(*a, **k)
+
+        monkeypatch.setattr(R, "save_golden", committing)
+        before = _head(lab["repo"])
+        status, html = _run(lab, "r2")
+        assert status == 200 and _head(lab["repo"]) != before, "recorded"
+        assert seen["during"].startswith(
+            "busy: r2 is being saved (write memory) by test-person@example.invalid"), seen
+        assert _other_process_tries("r2") == "free", "released once its record landed"
+        assert "1 device: 1 saved and recorded" in re.sub(r"\s+", " ",
+                                                          re.sub(r"<[^>]+>", "", html))
+
+    def test_no_hold_outlives_the_run_however_it_ends(self, lab, monkeypatch):
+        """The holds handed to the job's thread are released however the run ends: a device
+        whose read-back did not match (released at the end of its turn), and a run whose
+        commit raised (released by the run's own cleanup). A hold left would refuse every
+        later operation on the device until the app restarted."""
+        from modules.nsot import repo as R
+        from tests.test_device_ops import _other_process_tries
+
+        lab["answers"]["203.0.113.12"] = {"ok": False, "state": "not_persisted",
+                                          "detail": "the startup config does not carry it"}
+        assert _run(lab, "r2")[0] == 200
+        assert _other_process_tries("r2") == "free"
+        lab["answers"].clear()
+        lab["running"]["r2"] = _broken(lab["captured"])
+
+        def raises(*_a, **_k):
+            raise OSError("the repository's disk is full")
+
+        monkeypatch.setattr(R, "save_golden", raises)
+        _run(lab, "r2")
+        assert _other_process_tries("r2") == "free"
 
     def test_a_golden_that_already_matched_commits_nothing(self, lab):
         before = _head(lab["repo"])

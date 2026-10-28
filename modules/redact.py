@@ -86,8 +86,81 @@ PLACEHOLDER = "<redacted:{label}>"
 #: (mask again, compare) reported a leak on every typed secret line until then.
 _VALUE = r"((?![\[\]|>(){}])(?!<(?!(?:redacted|missing-secret)[:>]))\S+)"
 
+#: A value read to its line's end (C2085, 2026-10-28): its first character as `_VALUE`'s (the
+#: same refusals, a placeholder allowed), then every character to the line's end, spaces and
+#: tabs included, never a line end (`\r` or `\n`). For a TACACS+ or RADIUS key whose command
+#: ends with it: IOS reads "spaces within and at the end of the key" as part of it (Cisco's
+#: Security Command Reference, `tacacs-server key`, `radius-server key`, `radius-server host`,
+#: `key (config-radius-server)`), so a first word alone left the rest of the key in clear.
+_VALUE_TO_EOL = r"((?![\[\]|>(){}])(?!<(?!(?:redacted|missing-secret)[:>]))\S[^\r\n]*)"
+
+#: Such a key's encryption type, read two ways (C2085). A hidden (`7`) or AES (`6`) key is one
+#: token, its form has no spaces: `_KEY_HIDDEN` then `_VALUE`. A clear key, `0` or no type, runs
+#: to the line's end: `_KEY_CLEAR` then `_VALUE_TO_EOL`, never where a `6` or `7` with a value
+#: after it stands (that is the hidden form's). The documented types are 0, 6 and 7, one digit:
+#: any other digit leading the key is the key's own first character, masked with it.
+_KEY_HIDDEN = r"[67][ \t]+"
+_KEY_CLEAR = r"(?:0[ \t]+|(?![67][ \t]+\S))"
+
+#: `radius-server host <host> …` or an AAA group's `server-private <host> …`, up to its key:
+#: any options between (they are many and differ by release), and the FIRST bare `key` on the
+#: line is the carrier, so a key holding the word `key` is masked whole. A test user's name is
+#: read with `username`, so a user named `key` keeps its name (C2074's case).
+_RADIUS_HOST_KEY = (r"(?i)\b((?:radius-server[ \t]+host|server-private)[ \t]+\S+"
+                    r"(?:[ \t]+(?:username[ \t]+\S+|(?!(?:key|username)(?!\S))\S+))*"
+                    r"[ \t]+key[ \t]+")
+
 #: Each entry captures (prefix, secret, suffix); only the middle is replaced.
 _POSITIONAL = (
+    # C2085 (2026-10-28): the TACACS+ and RADIUS keys whose command ends with the key, read to
+    # the line's end (`_VALUE_TO_EOL`), each in its two type forms (`_KEY_CLEAR`, `_KEY_HIDDEN`).
+    # FIRST in this table: a value read to the line's end may hold words another rule reads
+    # (`radius-server key my key-string x` read by `key_string` first gave the parsers `x`, then
+    # this rule a value holding `x`'s reference), so it is taken whole before any rule looks in
+    # it, and later rules see one placeholder. Carriers, from Cisco's IOS and IOS XE Security
+    # Command Reference: `tacacs-server key {0|6|7} <k>` ("All leading spaces are ignored;
+    # spaces within and at the end of the key are not") and `radius-server key {0|6|7} <k>`
+    # (the same), nothing after;
+    # `radius-server host … [key <k>]` ("Always configure the key as the last item"); an AAA
+    # group's `server-private … [key [0|6|7] <k>]`, RADIUS's and TACACS+'s, the key last in
+    # both; a `radius server` block's `key {0|6|7} <k>` (`key (config-radius-server)`, the
+    # spaces sentence), a `tacacs server` block's `key [0|6|7] <k>` and an ISAKMP client
+    # group's `key <name>`, each its line's last item; a RADIUS block's `pac key [0|6|7] <k>`
+    # ("a line specifying the unencrypted (clear-text) server key", last). NOT here:
+    # `tacacs-server host`, whose syntax puts `[nat] [port] [single-connection] [timeout]`
+    # after `[key string]`, so its key is one token (below, `server_host_key`); a
+    # dynamic-author `server-key [0|7] <word>`, one word, and `client … server-key <k> [vrf X]`.
+    ("shared_key", re.compile(
+        r"(?i)\b((?:tacacs-server|radius-server)[ \t]+key[ \t]+" + _KEY_CLEAR + r")"
+        + _VALUE_TO_EOL + r"()")),
+    ("shared_key", re.compile(
+        r"(?i)\b((?:tacacs-server|radius-server)[ \t]+key[ \t]+" + _KEY_HIDDEN + r")"
+        + _VALUE + r"()")),
+    ("server_host_key", re.compile(_RADIUS_HOST_KEY + _KEY_CLEAR + r")" + _VALUE_TO_EOL + r"()")),
+    ("server_host_key", re.compile(_RADIUS_HOST_KEY + _KEY_HIDDEN + r")" + _VALUE + r"()")),
+    # A RADIUS server block's `pac key [0|6|7] <k>`, a line of its own. Leading its line, so a
+    # host line's `… pac key <k>` is `server_host_key`'s alone (two rules reading one value
+    # would name it twice to the parsers and the config check).
+    ("pac_key", re.compile(
+        r"(?im)^([ \t]*pac[ \t]+key[ \t]+" + _KEY_CLEAR + r")" + _VALUE_TO_EOL + r"()")),
+    ("pac_key", re.compile(
+        r"(?im)^([ \t]*pac[ \t]+key[ \t]+" + _KEY_HIDDEN + r")" + _VALUE + r"()")),
+    # A bare `key [0|6|7] <k>` leading its line: a `tacacs server` or `radius server` block's
+    # key, an ISAKMP client group's. Indented, as a block's child prints, or unindented with
+    # its type (a program's line stripped, `key 7 <hex>`): an unindented `key <word>` is as
+    # often a name or prose (the break-glass preview's operand "key fingerprint" was masked
+    # by the first form of this rule), and `key chain <name>` and `key config-key …` lead
+    # unindented lines. Never a key chain's `key <N>` (a line that is the number alone, its
+    # ID), nor an assignment (`    key = …`, a traceback's source line in a log). A server key
+    # that is digits alone, typed with no type number, is a key chain's line by its shape, and
+    # one beginning `=` an assignment's, so neither is masked here (the digits alone are
+    # `server_block_key`'s, inside a server block). Nor an indented `key config-key …`, whose
+    # value is `config_key`'s (C2074).
+    ("server_key", re.compile(
+        r"(?im)^((?:[ \t]+key[ \t]+(?!\d+\s*$|=|config-key\b)" + _KEY_CLEAR
+        + r"|key[ \t]+0[ \t]+))" + _VALUE_TO_EOL + r"()")),
+    ("server_key", re.compile(
+        r"(?im)^([ \t]*key[ \t]+" + _KEY_HIDDEN + r")" + _VALUE + r"()")),
     ("snmp_community", re.compile(
         r"(?i)\b(snmp-server\s+community\s+)" + _VALUE + r"()")),
     # `snmp-server host <ip> [vrf X] [traps|informs] [version {1|2c|3 [auth|
@@ -135,20 +208,17 @@ _POSITIONAL = (
         r"(?:(?:address[ \t]+(?:ipv6[ \t]+)?\S+(?:[ \t]+\S+)?|(?:ipv6|hostname)[ \t]+\S+)"
         r"[ \t]+key[ \t]+|key[ \t]+|(?:local|remote)[ \t]+)?(?:[0-9][ \t]+)?(?:hex[ \t]+)?)"
         r"(?!(?:address|hostname|ipv6|local|remote|hex)\b)" + _VALUE + r"()")),
-    ("shared_key", re.compile(
-        r"(?i)\b((?:tacacs-server|radius-server)\s+key\s+(?:\d+\s+)?)" + _VALUE + r"()")),
     # C2074 (2026-10-28): the IOS credential shapes still in clear after C745, each found so by a
     # planted line (tests/test_redact_ios_shapes.py holds every form), bound by C745's three
     # rules below (`[ \t]` between tokens, a one-digit type, every shape named by its carrier).
-    # A server's key on its host line: `radius-server host <host> [auth-port N] [acct-port N]
-    # [timeout N] [retransmit N] … key [0|6|7] <k>`, `tacacs-server host <host> [port N]
-    # [timeout N] [single-connection] key [0|7] <k>`, and an AAA group's `server-private <IPv4|
-    # IPv6> [auth-port N] [acct-port N] … key [0|7] <k>`. The options between the host and
-    # `key` are many and differ by release, so they are not spelled out: any tokens, and the
-    # LAST `key` on the line with a value after it is the carrier (a test user named `key`
-    # keeps its name; the key after it is masked).
+    # A TACACS+ server's key on its host line: `tacacs-server host <host> [port N] [timeout N]
+    # [single-connection] key [0|7] <k>` (`radius-server host` and `server-private` are at the
+    # table's head, read to the line's end, C2085). The syntax lists options AFTER `[key
+    # string]`, so this key is one token, the rest of a key with spaces in clear (the
+    # register's). The options between the host and `key` are not spelled out: any tokens, and
+    # the LAST `key` on the line with a value after it is the carrier.
     ("server_host_key", re.compile(
-        r"(?i)\b((?:(?:radius|tacacs)-server[ \t]+host|server-private)[ \t]+\S+"
+        r"(?i)\b(tacacs-server[ \t]+host[ \t]+\S+"
         r"(?:[ \t]+\S+)*[ \t]+key[ \t]+(?:[0-9][ \t]+)?)" + _VALUE + r"()")),
     # A RADIUS dynamic-authorization client's key (`aaa server radius dynamic-author`):
     # `client <host> [vrf X] server-key [0|7] <k> [vrf X]`, or a `server-key [0|7] <k>` line.
@@ -157,14 +227,9 @@ _POSITIONAL = (
     ("dynamic_author_key", re.compile(
         r"(?im)((?:^[ \t]*|\bclient[ \t]+\S+(?:[ \t]+vrf[ \t]+\S+)?[ \t]+)"
         r"server-key[ \t]+(?:[0-9][ \t]+)?)" + _VALUE + r"()")),
-    # A RADIUS server block's `pac key [0|6|7] <k>`, a line of its own. Leading its line, so a
-    # host line's `… pac key <k>` is `server_host_key`'s alone (two rules reading one value
-    # would name it twice to the parsers and the config check).
-    ("pac_key", re.compile(
-        r"(?im)^([ \t]*pac[ \t]+key[ \t]+(?:[0-9][ \t]+)?)" + _VALUE + r"()")),
     # `key config-key password-encrypt <k>`: the master key type 6 passwords are encrypted
-    # with. Before `server_key`, which refuses `config-key` too, so an indented line keeps its
-    # keyword and loses its value whichever runs first.
+    # with. `server_key` refuses `config-key`, so an indented line keeps its keyword and loses
+    # its value whichever runs first.
     ("config_key", re.compile(
         r"(?i)\b(key[ \t]+config-key[ \t]+password-encrypt[ \t]+)" + _VALUE + r"()")),
     # `ip nhrp authentication <s>` and `ipv6 nhrp authentication <s>` (an NHRP network's
@@ -250,20 +315,8 @@ _POSITIONAL = (
     ("isakmp_key", re.compile(
         r"(?i)\b(crypto[ \t]+isakmp[ \t]+key[ \t]+(?:[0-9][ \t]+)?)"
         r"(?!(?:address|hostname)\b)" + _VALUE + r"()")),
-    # A bare `key [0|6|7] <k>` leading its line: a `tacacs server` or `radius server` block's
-    # key, an ISAKMP client group's. Indented, as a block's child prints, or unindented with
-    # its type (a program's line stripped, `key 7 <hex>`): an unindented `key <word>` is as
-    # often a name or prose (the break-glass preview's operand "key fingerprint" was masked
-    # by the first form of this rule), and `key chain <name>` and `key config-key …` lead
-    # unindented lines. Never a key chain's `key <N>` (a line that is the number alone, its
-    # ID), nor an assignment (`    key = …`, a traceback's source line in a log). A server key
-    # that is digits alone, typed with no type number, is a key chain's line by its shape, and
-    # one beginning `=` an assignment's, so neither is masked here (the digits alone are
-    # `server_block_key`'s, inside a server block). Nor an indented `key config-key …`, whose
-    # value is `config_key`'s (C2074).
-    ("server_key", re.compile(
-        r"(?im)^((?:[ \t]+key[ \t]+(?!\d+\s*$|=|config-key\b)(?:[0-9][ \t]+)?"
-        r"|key[ \t]+[067][ \t]+))" + _VALUE + r"()")),
+    # (A bare `key [0|6|7] <k>` leading its line, a server block's, is `server_key`, at the
+    # table's head with the other keys read to the line's end, C2085.)
     # `standby [N] authentication [text] <s>`, `vrrp N authentication text <s>`, `glbp N
     # authentication text <s>`: the first-hop protocols' clear strings. Their `md5 key-string`
     # forms are `key_string`'s; `md5 key-chain <name>` names a chain and is left alone.
