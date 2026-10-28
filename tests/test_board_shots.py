@@ -351,6 +351,16 @@ def test_ai_spend(settings_ai, monkeypatch):
                widths=((1440, 1.0), (1280, 1.0), (390, 2.0)), settled=chip)
         _shoot("ai-spend", "AiSpendPanel.dc.html", lambda w: page, served,
                widths=((1440, 1.0), (1280, 1.0), (390, 2.0)), act=opened)
+        # C2056: Needs attention's AI spend row (53% of the day cap, a warning) beside AI2's
+        # second region (its board is ai-spend-board-*), and its Open the spend panel pressed.
+        row = "document.querySelector('[data-attention-row^=\"ai_spend:day_cap:\"]')"
+
+        def from_the_row(b):
+            b.wait_for(f"return !!{row}", 15)
+            b.js(f"{row}.querySelector('[data-ai-open]').click(); return 1")
+            b.wait_for("return !!document.querySelector('#nmas-ai-panel .ai-head')", 10)
+        _shoot("ai-attention", "", lambda w: "/v2/", served,
+               widths=((1440, 1.0), (390, 2.0)), act=from_the_row)
         spent(0.45, "ops@example.com", {"kind": "person", "by": "ops@example.com"})
         _shoot("ai-chip-red", "", lambda w: page, served,
                widths=((1440, 1.0), (390, 2.0)), settled=chip)

@@ -40,11 +40,10 @@ def _bar(ratio) -> int:
 
 
 def _is_off() -> bool:
-    """AI is off as the chip reads it (`spend.chip`): hosted AI not allowed, or no key."""
-    from modules.ai import gateway
-    from modules.secrets_store import is_set
+    """AI is off as the chip reads it (`spend.hosted_on`): hosted AI not allowed, or no key."""
+    from modules.ai import spend
 
-    return not gateway.hosted_allowed()["allowed"] or not is_set("anthropic_api_key")
+    return not spend.hosted_on()
 
 
 def _why_off() -> str:

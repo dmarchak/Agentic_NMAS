@@ -182,6 +182,30 @@ warning. It names:
 If Grafana could not be asked, the row is **Unknown**. The row leaves as soon as the setting
 changes, and the next read checks the new UID.
 
+**AI spend** (read on each recorded AI call and each settings change). There is no standing
+spend row; each of these names the amounts it compared, and each has **Open the spend panel**,
+which opens the top bar's spend panel in place on the page you are on (see
+[What AI is spending](getting-started#ai-spend)):
+
+- **The installation's day cap**, while hosted AI is on and a day cap is set: "AI spend is at
+  53% of the day cap ($0.80 of $1.50)", a warning from 50% and critical from 80% (the chip's
+  amber and red); and at or over the cap, "AI spend reached the day cap", critical, since every
+  AI call is then refused until the day ends. It clears when the day ends (the day cap's
+  midnight), or when an admin changes the day cap past today's spend, sets no cap, or turns
+  hosted AI off. With AI off or no day cap there is no such row: the chip says "AI off", or
+  "no cap".
+- **A background feature against its own caps**, per network: at 50% and 80% of its day or
+  month cap, and stopped when it reached one. These clear when the day or month ends, or when
+  its caps change or it is turned off.
+- **A background feature running above its estimate**: at 150% or more of the estimate it was
+  approved at ("running at 367% of the estimate it was approved at ($0.4400 a day against
+  $0.1200)"), its average over the complete days since it was turned on. It clears when that
+  average falls under 150%, when an admin turns it on again with a new estimate, or when it is
+  turned off.
+
+A feature's rows also carry **Open…** to Settings › AI, where its caps change and it is turned
+on again.
+
 ## How a row clears {#clearing}
 
 Every row says, under its cause, how it leaves the page: "Clears when …". There are three ways:
@@ -196,7 +220,8 @@ Every row says, under its cause, how it leaves the page: "Clears when …". Ther
   adjacency a device keeps logging down. See below.
 - **Time.** An unplanned restart stays for 7 days if nobody acknowledges it; a pending
   approval expires after 48 hours (expiring executes nothing); an adjacency logged down
-  clears a day after its last unexplained drop.
+  clears a day after its last unexplained drop; an AI spend row about a day's or a month's
+  spend clears when that day or month ends.
 
 The acknowledgements in force are listed beside the table ("Acknowledged, so not listed"),
 each with who, when and why, and those hiding no row now apart ("Acknowledgements in force,

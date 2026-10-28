@@ -383,6 +383,27 @@
   function aiSpendToggled(e) {
     if (e.target && e.target.id === 'ai-spend') aiSpendPanel();
   }
+  /* C2056 (board AI2): a Needs attention row's "Open the spend panel" (`data-ai-open`, its href
+     the panel's own fragment) opens the panel in place, as the chip does, and so does a page
+     loaded with that fragment (the link opened in a new tab). Opening the <details> fires its
+     `toggle`, which reads the panel (aiSpendPanel): one way in. Already open, there is no
+     `toggle` to come, so it reads the panel itself: Firefox opens a <details> holding the
+     fragment's target on its own, and that `toggle` can fire before htmx has wired the panel,
+     its read lost (C2067). */
+  var AI_PANEL_HASH = '#nmas-ai-panel';
+  function aiSpendOpen() {
+    var d = root.document.getElementById('ai-spend');
+    if (!d) return false;
+    if (d.open) return aiSpendPanel();
+    d.open = true;
+    return true;
+  }
+  function aiSpendOpenClicked(e) {
+    var a = e.target && e.target.closest && e.target.closest('[data-ai-open]');
+    if (!a) return;
+    e.preventDefault();
+    aiSpendOpen();
+  }
   /* Esc, or the panel's own close, closes it and gives the chip its focus back. */
   function aiSpendClose(e) {
     var d = root.document.getElementById('ai-spend');
@@ -1422,6 +1443,7 @@
     root.document.addEventListener('alpine:init', registerAlpine);
     root.document.addEventListener('DOMContentLoaded', function () {
       if (root.location) checkServedPage(root.document, root.location.origin);
+      if (root.location && root.location.hash === AI_PANEL_HASH) aiSpendOpen();
       wireAnnouncements();
       drawAges();
       drawClock();
@@ -1450,6 +1472,7 @@
     root.document.addEventListener('nmas:ai_calls', aiSpendPanel);
     root.document.addEventListener('keydown', aiSpendClose);
     root.document.addEventListener('click', aiSpendClose);
+    root.document.addEventListener('click', aiSpendOpenClicked);
     root.document.addEventListener('htmx:beforeSend', holdSubmitter);
     root.document.addEventListener('htmx:afterRequest', releaseSubmitter);
     root.document.addEventListener('htmx:beforeSwap', neverSilent);

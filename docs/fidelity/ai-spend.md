@@ -21,8 +21,18 @@ Compared 2026-10-28. Compared again ~11:2x UTC: the chip's mark renamed `ai-chip
 same rules; `ai-mark` is the AI control mark's, and the two had collided, failing
 test_ask_in_words_with_hosted_ai_off_in_a_browser in the gate); the shots taken again
 (ai-chip-*, ai-spend-*), nothing moved.
+Compared again 2026-10-28 ~11:5x UTC for C2056 (AI2's second region, Needs attention): the
+installation-wide day-cap rows, the estimate's 150% row and Open the spend panel built
+(`attention.ai_spend_source`, `_attention.html`'s `ai_spend_panel` control, nmas_v2.js
+`aiSpendOpen`). `spend_view.py` changed only in reading "AI off" from `spend.hosted_on`, the one
+answer the chip, the panel and Needs attention share; nothing it draws moved. A new shot,
+`ai-attention-page-1440` and `-390` (Needs attention in the same world, $0.80 of the $1.50 day
+cap: the 53% warning row, its Open the spend panel pressed and the panel open over the page),
+read beside `ai-spend-board-1440`'s Needs attention region; the other shots taken again, nothing
+moved. The region split in two below: the AI spend rows (a deviation) and an approval expiring
+(still later, C1953's).
 Templates compared: templates/v2/_ai_chip.html, templates/v2/_ai_spend.html, modules/ai/spend_view.py
-Templates sha256: `1466e1a955a6ae153f8352b0152c5eb4e0e39bf57db1eb59b78faca1c4620d9f`
+Templates sha256: `e7e4b2ca297a7d871ebdbfae9868e786dfa8d819838f864a841b4d75b5ec7476`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).
@@ -52,4 +62,5 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | The record cannot be read (AI2) | the notice, never $0; the features on, each refused, with Turn off | the same, each feature on its own row with its Turn off | **same** |
 | Amounts hidden (AI2) | "Amounts are shown to admins on network Default" | not drawn | **deviation** (log: AI chip and spend panel built: amounts shown to every viewer) |
 | The panel at phone width (AI1 case 8) | full width beneath the bar | the screen's width under the bar at 860 px and under, scrolling within | **same** |
-| Needs attention (AI2's second region) | installation-wide rows at 50% and 80% of the day cap with Open the spend panel; a feature stopped by its cap; a feature above 150% of its estimate; an approval expiring | each feature's rows at 50% and 80% of its caps and stopped by a cap, built before this (`attention.ai_spend_source`, acting in Settings › AI); the installation-wide day-cap rows, the estimate's 150% row and Open the spend panel are not built; the approval's is C1953's | **later** (the finding reported with this build for the register: Needs attention lacks the day cap's 50% and 80% rows and the estimate's 150% row, PHASE8_PLAN 18.3 rule 10c) |
+| Needs attention: the AI spend rows (AI2's second region) | "AI spend is at 52% of the day cap" (warning) and "at 82%" (critical), each with both amounts and Open the spend panel, clearing at the day's reset (the 50% one "or when acknowledged"); a feature stopped by its day cap, with Settings › AI; a feature "running at 367% of the estimate it was approved at" with both amounts a day, with Review, clearing under 150%, when accepted again or turned off | "AI spend is at 53% of the day cap ($0.80 of $1.50)" (warning from 50%, critical from 80%: `spend.WARN_AT`, the chip's), its cause both amounts to four places, since midnight in the cap's zone, and what happens at the cap; "AI spend reached the day cap ($1.50 of $1.50)" (critical) at or over it; "<feature> on <network> is running at 150% of the estimate it was approved at ($0.1500 a day against $0.1000)" (warning, from `spend.OVER_ESTIMATE_AT`); each feature's 50%, 80% and stopped rows as before; every one with Open the spend panel (in place, the page unmoved), a feature's with Settings › AI's Open… beside it; the day's rows clear at the cap's midnight or when the cap or hosted AI moves them, never by an acknowledgement | **deviation** (log: Needs attention's AI spend rows built: no acknowledgement, a cap-reached row, and Settings › AI beside the panel on a feature's rows) |
+| Needs attention: an approval expiring (AI2's second region) | "The approval of SDN classification on Lab expires in 3 days", with Settings › AI | not built: C1953's (an approval's end three days ahead) | **later** (C1953) |

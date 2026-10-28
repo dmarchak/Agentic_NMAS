@@ -131,6 +131,8 @@ class TestARowThatClearsByTime:
                          ("adjacency_log", "flap"),     # a day after its last drop (C589)
                          # The day or month a background AI feature's spend counts ends (C1843).
                          ("ai_spend", "warning"), ("ai_spend", "stopped"),
+                         # The day the installation's day cap counts ends (C2056).
+                         ("ai_spend", "day_warning"), ("ai_spend", "day_reached"),
                          # 24 hours after the restart that stopped an SDN loop (C2000).
                          ("sdn_loop", "restart_stopped"),
                          # A lost response's hard timeout, when it would have expired (C2018).

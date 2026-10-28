@@ -16,8 +16,9 @@ window's start, or asks the records database for the window alone):
   31 days), when it is opened;
 - a background call's caps (`feature_spent`, asked by the gateway): the month's rows, and only
   for a background call;
-- Needs attention (`attention.ai_spend_source`): the month's rows, and only while a background
-  feature is on somewhere; with none on it reads nothing.
+- Needs attention (`attention.ai_spend_source`): the month's rows while a background feature is
+  on somewhere (today's spend against the day cap read from them); else, while AI is on and a
+  day cap is set, today's rows alone; else nothing.
 
 The record grows for ever and a window does not. If the window's rows, measured on a host,
 are too many to read per request, the next step is a per-day total kept for each closed day;
@@ -34,8 +35,12 @@ from modules.ai import calls
 
 log = logging.getLogger(__name__)
 
-#: The warnings' fractions of a cap (rule 4): 50% and 80%.
+#: The warnings' fractions of a cap (rule 4): 50% and 80%. The chip's colours, the panel's
+#: marks, a feature's warning and Needs attention's rows all read them here.
 WARN_AT = (0.5, 0.8)
+#: A background feature running above this multiple of the estimate it was approved at is a
+#: Needs attention row (rule 10c): 150%.
+OVER_ESTIMATE_AT = 1.5
 #: The panel's longest average: 30 cap days.
 WINDOW_DAYS = 30
 
@@ -114,11 +119,39 @@ def feature_spent(network: str, feature: str, day: str = None, rows=None,
             "refused": refused}
 
 
+def warning_of(ratio) -> str:
+    """The warning a fraction of a cap has reached: ``""``, ``"50"`` or ``"80"`` (`WARN_AT`);
+    ``""`` with no cap (None)."""
+    if ratio is None:
+        return ""
+    return "80" if ratio >= WARN_AT[1] else "50" if ratio >= WARN_AT[0] else ""
+
+
+def whole_pct(ratio) -> int:
+    """A fraction of a cap as the whole percentage it has reached, never rounded up past a
+    threshold (79.9% is 79, never 80) nor down below one by a float's error (0.57 is 57, never
+    the 56 ``int(0.57 * 100)`` gives)."""
+    return int(ratio * 100 + 1e-6)
+
+
 def _level(ratio) -> str:
     """The chip's colour for a fraction of a cap: neutral, amber from 50%, red from 80%."""
-    if ratio is None:
-        return "neutral"
-    return "red" if ratio >= WARN_AT[1] else "amber" if ratio >= WARN_AT[0] else "neutral"
+    return {"80": "red", "50": "amber"}.get(warning_of(ratio), "neutral")
+
+
+def hosted_on() -> bool:
+    """AI is on as the chip reads it: hosted AI allowed and a provider key set. Off, the chip
+    says "AI off" and Needs attention judges no day cap."""
+    from modules.ai import gateway
+    from modules.secrets_store import is_set
+
+    return bool(gateway.hosted_allowed()["allowed"]) and bool(is_set("anthropic_api_key"))
+
+
+def day_usd(rows, day: str, zone: str) -> float:
+    """What the calls among *rows* recorded on the cap's *day* cost: `calls.spent_usd`'s sum,
+    over a window a caller already read."""
+    return _usd(r for r in rows if calls._row_day(r, zone) == day)
 
 
 def chip(now=None) -> dict:
@@ -128,12 +161,11 @@ def chip(now=None) -> dict:
     chip says so, never blank and never $0), or "on" ("AI $X today · N background on");
     *level* neutral, amber at 50% and red at 80% of the day cap (neutral with no cap)."""
     from modules.ai import background, gateway
-    from modules.secrets_store import is_set
 
     on = len(background.enabled())
     base = {"background_on": on, "day_cap": gateway.day_cap(), "usd_today": None, "error": ""}
     base["no_cap"] = base["day_cap"] is None
-    if not gateway.hosted_allowed()["allowed"] or not is_set("anthropic_api_key"):
+    if not hosted_on():
         return dict(base, state="off", words="AI off", level="neutral")
     today = calls.today(now)
     spent = calls.spent_usd(today)
@@ -220,7 +252,8 @@ def feature_summaries(rows, today: str, zone: str, now=None) -> list:
     with their fractions of each cap, its warning (``""``, ``"50"`` or ``"80"``), whether it is
     stopped (a cap refusal recorded this period since its caps were last set), and its
     estimate against actual: the estimate recorded when it was turned on, beside the average
-    daily spend over the complete cap days since then (at most 30), and their ratio."""
+    daily spend over the complete cap days since then (at most 30), their ratio, and whether
+    that ratio is at or above `OVER_ESTIMATE_AT`."""
     from modules.ai import background
 
     now = now or datetime.datetime.now(datetime.timezone.utc)
@@ -234,9 +267,7 @@ def feature_summaries(rows, today: str, zone: str, now=None) -> list:
                    for k in ("day", "month")}
         fractions = {"day": _ratio(spent["day_usd"], caps["day"]),
                      "month": _ratio(spent["month_usd"], caps["month"])}
-        top = max((f for f in fractions.values() if f is not None), default=None)
-        warning = ("80" if top is not None and top >= WARN_AT[1] else
-                   "50" if top is not None and top >= WARN_AT[0] else "")
+        warning = warning_of(max((f for f in fractions.values() if f is not None), default=None))
         on_day = calls._row_day({"at": entry.get("at")}, zone)
         days = []
         if on_day:
@@ -251,6 +282,7 @@ def feature_summaries(rows, today: str, zone: str, now=None) -> list:
                 by_day[d] = by_day.get(d, 0.0) + float(r.get("cost_usd") or 0)
         actual = (sum(by_day.get(d, 0.0) for d in days) / len(days)) if days else None
         est = entry.get("estimate") or {}
+        ratio = _ratio(actual, est.get("usd_per_day"))
         out.append({
             "network": network, "feature": name, "words": spec.get("words", name),
             "trigger_words": spec.get("trigger_words", ""), "on_by": entry.get("by", ""),
@@ -259,6 +291,9 @@ def feature_summaries(rows, today: str, zone: str, now=None) -> list:
             "stopped": {k: bool(v) for k, v in stopped.items()},
             "stopped_at": {k: (v[-1]["at"] if v else None) for k, v in stopped.items()},
             "estimate": est, "actual_usd_per_day": actual, "actual_days": len(days),
-            "ratio": _ratio(actual, est.get("usd_per_day")),
+            "ratio": ratio,
+            # Rule 10c: above 150% of the estimate it was approved at (none while no complete
+            # day has passed, or with no measured estimate).
+            "over_estimate": ratio is not None and ratio >= OVER_ESTIMATE_AT,
         })
     return out

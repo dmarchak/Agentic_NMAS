@@ -138,6 +138,12 @@ over the live connection, and the panel reads again on each recorded call while 
 neither asks on a timer. An evaluation run from a host script records its calls in another
 process, so they appear at your next page load or the next call recorded here.
 
+**Needs attention raises a row only when someone should act:** today's spend at 50% and 80% of
+the day cap, and once it is reached; a background feature at 50% or 80% of its own caps, or
+stopped by one; and a background feature running at 150% or more of the estimate it was
+approved at. Each names both amounts and has **Open the spend panel**, which opens this panel
+in place (see [Needs attention](needs-attention#sources)). Mercury never raises a cap.
+
 Who sees the amounts is not a choice yet: everyone who can make AI calls sees them.
 
 ## Everything is read from what is committed

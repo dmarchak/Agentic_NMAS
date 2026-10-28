@@ -74,6 +74,10 @@ OPENERS = {
     # The v2 device page's Capture card (C739: a drift row's Capture…).
     "capture_card": ("document.querySelector('#device-op h2') && /Capture r2/"
                      ".test(document.querySelector('#device-op h2').textContent)"),
+    # The top bar's spend panel, open in place and read (C2056: an AI spend row's Open the
+    # spend panel).
+    "ai_spend_panel": ("document.getElementById('ai-spend').open && "
+                       "document.querySelector('#nmas-ai-panel .ai-head')"),
     #: v2 pages whose content IS the action.
     "update_page": None,
     "profile_apply_page": None,
@@ -179,6 +183,9 @@ class TestEachOpenerActsInARealBrowser:
         # A drift row's two answers (C739), as their links load them.
         ("capture_card", "/v2/device/r2?op=capture&list=Lab"),
         ("deploy_card", "/v2/device/r2?op=deploy&list=Lab"),
+        # An AI spend row's Open the spend panel (C2056), as its link loads in a new tab; the
+        # click in place is tests/test_ai_spend_v2.py's.
+        ("ai_spend_panel", "/v2/#nmas-ai-panel"),
     ])
     def test_the_link_leaves_its_tool_open(self, page, name, query):
         if query.startswith("/"):

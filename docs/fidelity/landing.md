@@ -35,7 +35,15 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
 Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html
-Templates sha256: `924ca92a334c0557a58bceea2c23c1fff6368a253a6fc27d02ab0885815d349a`
+Templates sha256: `a8f86222680902c3742e7568e77154241c0b2e7841a9a88e9263798354604b87`
+
+Compared again 2026-10-28 (C2056): `_attention.html` gains one branch, for an action whose
+`open` is `ai_spend_panel` (an AI spend row): "Open the spend panel", an outline button with its
+How does this work?, opening the top bar's spend panel in place, and on a background feature's
+row Settings › AI's "Open…" beside it as before. Compared by the template and a new shot,
+`ai-attention-page-1440` (docs/fidelity/ai-spend.md, where the AI rows' region is held against
+board AI2): the row's level, heading, cause, operands, meta and "Clears when …" lines are the
+shape every row has; only the control is new. No region's verdict here changed.
 
 Compared again 2026-10-19 (C1388): the Acknowledge form's answer is drawn in place at once. A
 recorded acknowledgement closes the form, saying "Acknowledged.", and offers neither

@@ -19,7 +19,10 @@ Each test holds one purpose:
 - Turn off in the panel is Settings › AI's route and gate, answered in the panel, and the
   feature's next call is refused;
 - a person who may not change background features is refused in the panel, nothing written;
-- both fragments are under the strict policy.
+- both fragments are under the strict policy;
+- Needs attention's AI spend rows (C2056; board AI2's second region) each draw Open the spend
+  panel, a feature's row Settings › AI beside it; and in a real browser the row's control opens
+  the panel in place, the page unmoved, again after Esc closed it.
 """
 import datetime
 import re
@@ -302,3 +305,70 @@ def test_a_service_is_refused_in_the_panel_and_nothing_is_written(spend, monkeyp
 def test_both_fragments_are_under_the_strict_policy(spend, path):
     r = spend.client.get(path, headers={"HX-Request": "true"})
     assert r.status_code == 200 and r.headers["Content-Security-Policy"] == csp.STRICT_POLICY
+
+
+# ── Needs attention's AI spend rows (C2056) ───────────────────────────────────────────────────
+
+OPEN_PANEL = ('<a class="btn btn-small btn-outline" data-op="getting-started" '
+              'data-next-acts="ai_spend_panel" data-ai-open href="#nmas-ai-panel">'
+              'Open the spend panel</a>')
+
+
+def _ai_rows(html):
+    """{row id: its article's HTML} for every AI spend row Needs attention draws."""
+    return {m.group(1): m.group(2) for m in re.finditer(
+        r'<article class="att att-[a-z]+" data-attention-row="(ai_spend:[^"]+)">(.*?)</article>',
+        html, re.S)}
+
+
+def test_a_day_cap_row_draws_open_the_spend_panel_and_how_it_clears(spend):
+    _spent(1.25)
+    r, html = _get(spend, "/v2/attention")
+    assert r.status_code == 200
+    (body,) = _ai_rows(html).values()
+    text = _text(body)
+    assert "AI spend is at 83% of the day cap ($1.25 of $1.50)" in text
+    assert "Clears when the day ends (the day cap's midnight)" in text
+    assert OPEN_PANEL in body
+    assert 'data-manual="getting-started#ai-spend"' in body, "its How does this work?"
+    assert body.count("<a class=\"btn") == 1, "the day cap's row has the one control"
+
+
+def test_a_features_row_draws_the_panel_and_settings_beside_it(spend):
+    _turn_on(spend)                                         # $0.50 a day for Branch
+    _spent(0.30, actor="job:j1", trigger=_bg())             # 60% of it, 20% of the day cap
+    rows = _ai_rows(_get(spend, "/v2/attention")[1])
+    (body,) = [b for i, b in rows.items() if i.startswith("ai_spend:branch:fake_loop:day")]
+    assert OPEN_PANEL in body
+    assert '<a class="btn btn-small btn-outline" href="/v2/settings/installation?tab=ai">' \
+           'Open…</a>' in body
+
+
+def test_the_rows_control_opens_the_panel_in_place_in_a_real_browser(spend):
+    from tests import browser
+    ok, why = browser.available()
+    if not ok:
+        pytest.skip(f"no real browser here ({why})")
+    import app as A
+    _spent(1.25)
+    panel_open = ("return document.getElementById('ai-spend').open && "
+                  "!!document.querySelector('#nmas-ai-panel .ai-head')")
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        try:
+            b.go(srv.url("/v2/"))
+            b.wait_for("return !!(window.Alpine && document.querySelector("
+                       "'[data-attention-row^=\"ai_spend:day_cap:\"] [data-ai-open]'))", 15)
+            assert b.js("return document.getElementById('ai-spend').open") is False
+            b.click('[data-attention-row^="ai_spend:day_cap:"] [data-ai-open]')
+            b.wait_for(panel_open, 10)
+            assert "$1.25" in b.js("return document.getElementById('nmas-ai-panel').innerText")
+            assert b.js("return location.pathname + location.hash") == "/v2/", \
+                "the page moved or took the fragment"
+            b.js("document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', "
+                 "bubbles: true})); return 1")
+            b.wait_for("return !document.getElementById('ai-spend').open", 5)
+            b.click('[data-attention-row^="ai_spend:day_cap:"] [data-ai-open]')
+            b.wait_for(panel_open, 10)
+        finally:
+            b.go("about:blank")
+            browser.close_socketio_sessions()

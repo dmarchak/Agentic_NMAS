@@ -214,6 +214,21 @@ ROW_KINDS = {
     ("ai_spend", "stopped"): ("a background AI feature reached its day or month cap on a "
                               "network, so it makes no call until the period ends",
                               "leave it stopped, raise its cap, or turn it off in Settings › AI"),
+    # PHASE8_PLAN 18.3 rule 10c (C2056): the installation's day cap, and a feature's estimate.
+    ("ai_spend", "day_warning"): ("AI spend today has reached 50% or 80% of the installation's "
+                                  "day cap",
+                                  "open the spend panel to see what is spending; turn a "
+                                  "background feature off there, or an admin changes the day "
+                                  "cap"),
+    ("ai_spend", "day_reached"): ("AI spend today reached the installation's day cap, so every "
+                                  "AI call is refused until the day ends",
+                                  "open the spend panel to see what spent it; leave it until "
+                                  "the day ends, or an admin changes the day cap"),
+    ("ai_spend", "over_estimate"): ("a background AI feature's average daily spend is at or "
+                                    "above 150% of the estimate it was approved at",
+                                    "open the spend panel to review its trigger, caps and "
+                                    "estimate against actual; turn it off, or turn it on again "
+                                    "in Settings › AI with a new estimate"),
 }
 
 #: The ways a row leaves the page (the operator, 2026-10-02): the CONDITION RESOLVING (the
@@ -367,6 +382,16 @@ CLEARS = {
     ("ai_spend", "stopped"): (("resolves", "time"), "the day or month whose cap it reached ends "
                               "(the cap's day boundary), or an admin changes the cap, or turns "
                               "the feature off"),
+    ("ai_spend", "day_warning"): (("resolves", "time"), "the day ends (the day cap's midnight), "
+                                  "or an admin changes the day cap until today's spend is under "
+                                  "50% of it or sets no cap, or turns hosted AI off"),
+    ("ai_spend", "day_reached"): (("resolves", "time"), "the day ends (the day cap's midnight), "
+                                  "or an admin changes the day cap to above today's spend or "
+                                  "sets no cap, or turns hosted AI off"),
+    ("ai_spend", "over_estimate"): (("resolves",), "its average daily spend falls under 150% of "
+                                    "its estimate, or an admin turns it on again with a new "
+                                    "estimate, or it is turned off (by an admin, or by its "
+                                    "approval's end)"),
 }
 
 #: The kinds a person acknowledges HERE, with "Acknowledge…" on the row (modules/
@@ -3950,12 +3975,19 @@ def console_ztp_source(found=None) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Source: background AI features against their caps (PHASE8_PLAN 18.3 rule 4, C1843)
+# Source: AI spend against the day cap, and background AI features against their caps and
+# estimates (PHASE8_PLAN 18.3 rules 4 and 10c; C1843, C2056)
 # ---------------------------------------------------------------------------
 
 #: Where an admin changes a background feature: Settings › Installation › AI (board AI3,
 #: PHASE8_PLAN 18.6; routes/settings_v2.py).
 AI_SETTINGS_HREF = "/v2/settings/installation?tab=ai"
+#: Every AI spend row's action opens the top bar's spend panel (board AI2's "Open the spend
+#: panel"), in place on whatever page draws the row: ``"open": "ai_spend_panel"``, written as a
+#: literal at each row so tests/test_next_steps_act.py's scan finds it (`_attention.html`,
+#: nmas_v2.js `aiSpendOpen`).
+#: Where the day cap is changed: Settings › Installation › Connections, the AI (hosted) card.
+AI_DAY_CAP_WORDS = "Settings › Installation › Connections, the AI (hosted) card"
 
 
 def _ai_period_end(which: str, today: str, zone: str) -> float:
@@ -3970,35 +4002,129 @@ def _ai_period_end(which: str, today: str, zone: str) -> float:
     return calls.day_start(nxt.isoformat(), zone).timestamp()
 
 
+def _ai_day_cap_rows(usd: float, cap: float, today: str, zone: str) -> list:
+    """Today's AI spend against the installation's day cap (rule 10c, C2056; the chip's
+    thresholds, `spend.WARN_AT`): one DAY_WARNING row at 50% (warning) or 80% (danger), or one
+    DAY_REACHED row (danger) once today's spend is at or over the cap; none under 50%."""
+    from modules.ai import spend
+
+    ratio = spend._ratio(usd, cap)
+    warned = spend.warning_of(ratio)
+    if not warned:
+        return []
+    pct = spend.whole_pct(ratio)
+    operands = {"spent_usd": round(usd, 6), "cap_usd": cap, "cap": "day (installation)",
+                "day": today}
+    if ratio >= 1.0:
+        return [row(
+            source="ai_spend", kind="day_reached", key=f"day_cap:{today}", level="danger",
+            clears_at=_ai_period_end("day", today, zone), operands=operands,
+            what=f"AI spend reached the day cap (${usd:.2f} of ${cap:.2f})",
+            cause=(f"${usd:.4f} spent today (since midnight {zone}, the day cap's boundary), "
+                   f"{pct}% of the installation's day cap ${cap:.4f}: every AI call is "
+                   "refused until the day ends, people's presses and background features "
+                   "alike"),
+            action={"label": ("Open the spend panel to see what spent it; leave it until the "
+                              f"day ends, or an admin changes the day cap on {AI_DAY_CAP_WORDS}"),
+                    "open": "ai_spend_panel"})]
+    return [row(
+        source="ai_spend", kind="day_warning", key=f"day_cap:{today}",
+        level="danger" if warned == "80" else "warning",
+        clears_at=_ai_period_end("day", today, zone), operands=operands,
+        what=f"AI spend is at {pct}% of the day cap (${usd:.2f} of ${cap:.2f})",
+        cause=(f"${usd:.4f} spent today (since midnight {zone}, the day cap's boundary), {pct}% "
+               f"of the installation's day cap ${cap:.4f} (warned at {warned}%). At the cap "
+               "every AI call is refused until the day ends, people's presses and background "
+               "features alike; a call is refused sooner when its worst case would pass what "
+               "is left"),
+        action={"label": ("Open the spend panel to see what is spending, and turn a background "
+                          "feature off there if it should stop; an admin may change the day "
+                          f"cap on {AI_DAY_CAP_WORDS}"),
+                "open": "ai_spend_panel"})]
+
+
+def _ai_over_estimate_row(f: dict):
+    """A background feature whose average daily spend since it was turned on is at or above
+    `spend.OVER_ESTIMATE_AT` of the estimate it was approved at (rule 10c, C2056): one
+    OVER_ESTIMATE row (warning), else None."""
+    from modules.ai import spend
+
+    if not f.get("over_estimate"):
+        return None
+    name, net = f["words"], f["network"]
+    actual, est = f["actual_usd_per_day"], f["estimate"]["usd_per_day"]
+    pct, n = spend.whole_pct(f["ratio"]), f["actual_days"]
+    return row(
+        source="ai_spend", kind="over_estimate", key=f"{net}:{f['feature']}:estimate",
+        level="warning",
+        what=(f"{name} on {net} is running at {pct}% of the estimate it was approved at "
+              f"(${actual:.4f} a day against ${est:.4f})"),
+        cause=(f"{name} averaged ${actual:.4f} a day on {net} over the {n} complete "
+               f"day{'' if n == 1 else 's'} since {f['on_by'] or 'an admin'} turned it on "
+               f"({f['on_at'] or 'time not recorded'}), against the estimate ${est:.4f} a day "
+               f"shown then: {pct}% of it, and a row is raised from "
+               f"{spend.whole_pct(spend.OVER_ESTIMATE_AT)}%"),
+        operands={"actual_usd_per_day": round(actual, 6), "estimate_usd_per_day": est,
+                  "days": n, "network": net, "feature": f["feature"]},
+        action={"label": (f"Open the spend panel to review {name}'s trigger, caps and estimate "
+                          f"against actual on {net}; turn it off there, or turn it on again in "
+                          "Settings › AI with a new estimate"),
+                "open": "ai_spend_panel", "href": AI_SETTINGS_HREF})
+
+
 def ai_spend_source(now=None) -> dict:
-    """Each background AI feature on, on each network, against its own day and month caps
-    (`spend.feature_summaries`): one STOPPED row (danger) for a cap a refusal shows it reached
-    this period, else one WARNING row at 50% (warning) or 80% (danger) of its nearer cap. With
-    no feature on anywhere nothing is read; else the month's window of the record of AI calls,
-    never the whole record."""
-    from modules.ai import background, calls, spend
+    """AI spend where someone should act (PHASE8_PLAN 18.3 rules 4 and 10c; there is no
+    standing spend row):
+
+    - while AI is on (`spend.hosted_on`, as the chip reads it) and a day cap is set, today's
+      spend against the installation's day cap (`_ai_day_cap_rows`): a row at 50% and 80% of
+      it, and once it is reached;
+    - each background AI feature on, on each network, against its own day and month caps
+      (`spend.feature_summaries`): one STOPPED row (danger) for a cap a refusal shows it
+      reached this period, else one WARNING row at 50% (warning) or 80% (danger) of its nearer
+      cap; and, apart from those, one OVER_ESTIMATE row while it runs at or above 150% of its
+      estimate (`_ai_over_estimate_row`).
+
+    Every row opens the spend panel. The read is bounded (CLAUDE.md, enterprise scale): with a
+    feature on, the month's window of the record of AI calls, today's spend summed from it;
+    else, with AI on and a day cap, today's window alone (`calls.spent_usd`); else nothing."""
+    from modules.ai import background, calls, gateway, spend
 
     started = time.time()
-    label = "AI spend: background features"
+    label = "AI spend: the day cap and background features"
     try:
         on = background.enabled()
+        cap = gateway.day_cap()
+        hosted = spend.hosted_on()
     except Exception as exc:                                    # noqa: BLE001 (said, a row)
         return source_result("ai_spend", label, read_at=started, took_ms=0,
-                             error=f"the background AI switches could not be read: {exc}")
-    if not on:
+                             error=f"the AI settings could not be read: {exc}")
+    why_no_day = ("" if hosted and cap is not None else
+                  "AI is off (hosted AI is not allowed, or no provider key is set), so the day "
+                  "cap was not judged" if not hosted else
+                  "no day cap is set (an admin chose no cap), so today's spend was not judged "
+                  "against one")
+    if not on and why_no_day:
         return source_result("ai_spend", label, read_at=started,
                              took_ms=int((time.time() - started) * 1000),
-                             checked="no background AI feature is on for any network, so no "
-                                     "spend was read")
+                             checked=(f"no background AI feature is on for any network, and "
+                                      f"{why_no_day}: no spend was read"))
     zone = calls.boundary()
     today = calls.today(now, zone)
-    got = calls.rows_since(spend.month_start(today, zone))
+    got = (calls.rows_since(spend.month_start(today, zone)) if on else
+           calls.spent_usd(today, zone))
     if got["state"] == "unreadable":
         return source_result("ai_spend", label, read_at=started,
                              took_ms=int((time.time() - started) * 1000),
                              error=f"the record of AI calls could not be read: {got['error']}")
-    rows = []
-    for f in spend.feature_summaries(got["rows"], today, zone, now):
+    usd = spend.day_usd(got["rows"], today, zone) if on else float(got["usd"] or 0.0)
+    rows = [] if why_no_day else _ai_day_cap_rows(usd, cap, today, zone)
+    day_said = why_no_day or (f"today's spend ${usd:.2f} against the day cap ${cap:.2f}: "
+                              f"{len(rows)} row(s)")
+    for f in (spend.feature_summaries(got["rows"], today, zone, now) if on else []):
+        over = _ai_over_estimate_row(f)
+        if over:
+            rows.append(over)
         name, net = f["words"], f["network"]
         key = f"{net}:{f['feature']}"
         spent = {"day": f["spent"]["day_usd"], "month": f["spent"]["month_usd"]}
@@ -4018,12 +4144,12 @@ def ai_spend_source(now=None) -> dict:
                           "network": net, "feature": f["feature"]},
                 action={"label": (f"Leave {name} stopped until the {w} ends, raise its {w} "
                                   f"cap, or turn it off for {net} in Settings › AI"),
-                        "href": AI_SETTINGS_HREF}))
+                        "open": "ai_spend_panel", "href": AI_SETTINGS_HREF}))
             continue
         if not f["warning"]:
             continue
         w = max(("day", "month"), key=lambda k: f["fractions"][k] or 0.0)
-        pct = int(f["fractions"][w] * 100)
+        pct = spend.whole_pct(f["fractions"][w])
         rows.append(row(
             source="ai_spend", kind="warning", key=f"{key}:{w}",
             level="danger" if f["warning"] == "80" else "warning",
@@ -4036,11 +4162,13 @@ def ai_spend_source(now=None) -> dict:
                       "network": net, "feature": f["feature"]},
             action={"label": (f"Read {name}'s spend on {net}; leave it, turn it off, or "
                               f"change its {w} cap in Settings › AI"),
-                    "href": AI_SETTINGS_HREF}))
+                    "open": "ai_spend_panel", "href": AI_SETTINGS_HREF}))
+    features = len([r for r in rows if not r["kind"].startswith("day_")])
     return source_result("ai_spend", label, read_at=started,
                          took_ms=int((time.time() - started) * 1000), rows=rows,
                          checked=(f"{len(on)} background feature switch(es) on, against their "
-                                  f"day and month caps: {len(rows)} near or at a cap"))
+                                  f"day and month caps and estimates: {features} near or at a "
+                                  f"cap or over its estimate; {day_said}"))
 
 
 SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding_source,

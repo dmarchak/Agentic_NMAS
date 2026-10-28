@@ -426,11 +426,14 @@ def test_the_estimate_stands_beside_the_actual_daily_average(monkeypatch):
 
 
 def test_needs_attention_reads_nothing_while_no_feature_is_on(bg, monkeypatch):
+    # bg sets no provider key, so AI is off and the day cap is not judged either (C2056: with
+    # AI on and a cap, today's window is read: test_with_no_feature_on_only_todays_window_...).
     monkeypatch.setattr(calls, "rows_since", lambda start: pytest.fail("read the record"))
     got = attention.ai_spend_source()
     assert got["state"] == "read" and got["rows"] == []
-    assert got["checked"] == "no background AI feature is on for any network, so no spend " \
-                             "was read"
+    assert got["checked"] == ("no background AI feature is on for any network, and AI is off "
+                              "(hosted AI is not allowed, or no provider key is set), so the "
+                              "day cap was not judged: no spend was read")
 
 
 def test_a_warning_row_names_what_is_wrong_the_action_and_how_it_clears(bg):
@@ -484,3 +487,153 @@ def test_the_attention_source_is_registered_with_its_keys():
 
 def test_gateway_day_cap_is_the_panels(bg):
     assert spend.panel("", now=NOW)["day_cap"] == gateway.day_cap() == 1.5
+
+
+# ── the day cap and the estimate in Needs attention (rule 10c, C2056) ─────────────────────────
+
+def _today_rows():
+    return [r for r in attention.ai_spend_source()["rows"] if r["kind"].startswith("day_")]
+
+
+@pytest.mark.parametrize("usd,kind,level,pct", [
+    (0.735, None, None, 49), (0.75, "day_warning", "warning", 50),
+    (1.185, "day_warning", "warning", 79), (1.20, "day_warning", "danger", 80),
+    (1.4985, "day_warning", "danger", 99), (1.50, "day_reached", "danger", 100),
+    (1.80, "day_reached", "danger", 120)])
+def test_a_day_cap_row_appears_at_its_threshold_and_not_below(chip_world, usd, kind, level,
+                                                             pct):
+    """Today's spend against the $1.50 day cap: nothing under 50%, a warning from 50%, danger
+    from 80% (the chip's amber and red), reached at the cap; each names both operands."""
+    _write([_row(datetime.datetime.now(UTC), usd)])
+    got = _today_rows()
+    if kind is None:
+        assert got == [] and spend.chip()["level"] == "neutral"
+        return
+    (r,) = got
+    assert (r["kind"], r["level"]) == (kind, level)
+    assert spend.chip()["level"] == ("amber" if level == "warning" else "red")
+    said = (f"AI spend reached the day cap (${usd:.2f} of $1.50)" if kind == "day_reached" else
+            f"AI spend is at {pct}% of the day cap (${usd:.2f} of $1.50)")
+    assert r["what"] == said
+    assert f"${usd:.4f} spent today" in r["cause"] and "day cap $1.5000" in r["cause"]
+    assert f"{pct}%" in r["cause"]
+    assert r["operands"]["spent_usd"] == pytest.approx(usd) and r["operands"]["cap_usd"] == 1.5
+    assert r["action"]["open"] == "ai_spend_panel"
+    assert r["action"]["label"].startswith("Open the spend panel to see what ")
+    assert attention.AI_DAY_CAP_WORDS in r["action"]["label"]
+
+
+def test_a_day_cap_row_clears_at_the_days_end_or_when_the_cap_moves_past_it(chip_world):
+    from modules.settings_schema import write_settings
+    _write([_row(datetime.datetime.now(UTC), 1.20)])
+    (r,) = _today_rows()
+    assert r["clears"]["ways"] == ["resolves", "time"]
+    assert r["clears_at"] == calls.resets_at().strftime("%Y-%m-%dT%H:%M:%SZ")
+    assert write_settings({"ai_cap_usd_per_day": 2.0})["ok"]          # 60%: the warning
+    (r,) = _today_rows()
+    assert (r["kind"], r["level"]) == ("day_warning", "warning")
+    assert write_settings({"ai_cap_usd_per_day": 2.5})["ok"]          # 48%: resolved
+    assert _today_rows() == []
+
+
+def test_no_day_cap_row_with_ai_off_or_no_cap_and_the_chip_says_which(chip_world, monkeypatch):
+    from modules import secrets_store
+    from modules.settings_schema import write_settings
+    _write([_row(datetime.datetime.now(UTC), 1.60)])
+    assert [r["kind"] for r in _today_rows()] == ["day_reached"]
+    assert write_settings({"ai_cap_usd_per_day": None})["ok"]
+    got = attention.ai_spend_source()
+    assert got["rows"] == [] and spend.chip()["no_cap"] is True
+    assert "no day cap is set (an admin chose no cap)" in got["checked"]
+    assert write_settings({"ai_cap_usd_per_day": 1.5})["ok"]
+    monkeypatch.setattr(secrets_store, "is_set", lambda key: False)
+    got = attention.ai_spend_source()
+    assert got["rows"] == [] and spend.chip()["words"] == "AI off"
+    assert "AI is off (hosted AI is not allowed, or no provider key is set)" in got["checked"]
+
+
+def test_with_no_feature_on_only_todays_window_is_read_once(chip_world, monkeypatch):
+    real, asked = calls.rows_since, []
+    monkeypatch.setattr(calls, "rows_since", lambda start: asked.append(start) or real(start))
+    got = attention.ai_spend_source()
+    assert asked == [calls.day_start(calls.today())]
+    assert got["checked"].endswith("today's spend $0.00 against the day cap $1.50: 0 row(s)")
+
+
+def test_with_a_feature_on_the_months_window_is_read_once_and_today_summed_from_it(
+        chip_world, monkeypatch):
+    _on(day=1.0, month=100.0)
+    _plant(0.30)                                                       # the feature's, today
+    _write([_row(datetime.datetime.now(UTC), 0.60)])                   # a person's, today
+    real, asked = calls.rows_since, []
+    monkeypatch.setattr(calls, "rows_since", lambda start: asked.append(start) or real(start))
+    rows = attention.ai_spend_source()["rows"]
+    today = calls.today()
+    assert asked == [spend.month_start(today, calls.boundary())]
+    (day,) = [r for r in rows if r["kind"].startswith("day_")]
+    assert day["operands"]["spent_usd"] == pytest.approx(0.90) and day["level"] == "warning"
+
+
+def _over_world(monkeypatch, per_day, at="2026-10-16T08:00:00Z"):
+    """The fake feature on for lab since *at*, its estimate $0.10 a day, and *per_day* spent on
+    each of the 16th to the 19th (the complete days before NOW, the 20th)."""
+    entry = {"on": True, "at": at, "by": ADMIN, "day_cap_usd": 1.0, "month_cap_usd": 9.0,
+             "estimate": {"usd_per_day": 0.10}}
+    monkeypatch.setattr(B, "enabled", lambda: [("lab", "fake_loop", entry)])
+    for d in (16, 17, 18, 19):
+        _plant(per_day, at=_iso(datetime.datetime(2026, 10, d, 9, tzinfo=UTC)))
+
+
+@pytest.mark.parametrize("per_day,raised,pct", [(0.149, False, 149), (0.15, True, 150),
+                                                (0.44, True, 440)])
+def test_an_over_estimate_row_appears_at_150_percent_and_not_below(bg, monkeypatch, per_day,
+                                                                   raised, pct):
+    _over_world(monkeypatch, per_day)
+    rows = [r for r in attention.ai_spend_source(now=NOW)["rows"]
+            if r["kind"] == "over_estimate"]
+    if not raised:
+        assert rows == []
+        return
+    (r,) = rows
+    assert r["level"] == "warning" and r["clears"]["ways"] == ["resolves"]
+    assert r["what"] == (f"The fake loop on lab is running at {pct}% of the estimate it was "
+                         f"approved at (${per_day:.4f} a day against $0.1000)")
+    assert ("over the 4 complete days since admin@example.com turned it on "
+            "(2026-10-16T08:00:00Z)") in r["cause"]
+    assert "a row is raised from 150%" in r["cause"]
+    assert r["operands"]["actual_usd_per_day"] == pytest.approx(per_day)
+    assert r["operands"]["estimate_usd_per_day"] == 0.10 and r["operands"]["days"] == 4
+    assert r["action"]["open"] == "ai_spend_panel"
+    assert r["action"]["href"] == attention.AI_SETTINGS_HREF
+    assert r["action"]["label"].startswith("Open the spend panel to review The fake loop's ")
+
+
+def test_an_over_estimate_row_clears_when_turned_on_again_or_off(bg, monkeypatch):
+    _over_world(monkeypatch, 0.44)
+    assert [r["kind"] for r in attention.ai_spend_source(now=NOW)["rows"]] == ["over_estimate"]
+    # Turned on again today, with a new estimate: no complete day since, so no ratio.
+    _over_world(monkeypatch, 0.0, at=_iso(NOW - datetime.timedelta(hours=1)))
+    assert attention.ai_spend_source(now=NOW)["rows"] == []
+    monkeypatch.setattr(B, "enabled", lambda: [])
+    assert attention.ai_spend_source(now=NOW)["rows"] == []
+
+
+def test_a_features_cap_rows_open_the_spend_panel_and_keep_settings(bg):
+    _on(day=0.50, month=100.0)
+    _plant(0.30)
+    (warned,) = attention.ai_spend_source()["rows"]
+    _plant(0.0, verdict="feature_cap", cap_kind="day")
+    (stopped,) = attention.ai_spend_source()["rows"]
+    for r in (warned, stopped):
+        assert r["action"]["open"] == "ai_spend_panel", r["kind"]
+        assert r["action"]["href"] == attention.AI_SETTINGS_HREF, r["kind"]
+    assert (warned["kind"], stopped["kind"]) == ("warning", "stopped")
+
+
+@pytest.mark.parametrize("ratio,pct,warning", [(0.49, 49, ""), (0.5, 50, "50"),
+                                               (0.57, 57, "50"), (0.799999, 79, "50"),
+                                               (0.8, 80, "80"), (None, None, "")])
+def test_a_share_is_its_whole_percentage_and_warning_from_one_place(ratio, pct, warning):
+    assert spend.warning_of(ratio) == warning
+    if ratio is not None:
+        assert spend.whole_pct(ratio) == pct
