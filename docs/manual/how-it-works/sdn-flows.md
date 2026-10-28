@@ -121,7 +121,48 @@ its log line names the lost response and what is missing, beside its Needs atten
 named too. The loop checks a held detection again on every pass: once its response expires or
 is lost while the detection is still firing, the hold is released, the log says why, and the
 detection is classified and answered as new in that pass. A held detection that resolves
-releases its hold. A detection seen on several switches is judged on each switch on its own.
+releases its hold. **Across switches:** a response applied at its incident's known ingress
+switch ([Incidents](#incidents)) holds the source off on every switch of the same controller,
+since the source enters by that switch's port, so another switch's detection of the same rule
+and source under it is already mitigated too. A response applied where the ingress could not
+be told holds its own switch only.
+
+### Incidents {#incidents}
+
+One attack is seen by every switch on its path: the controller's application installs the
+source's flows on each switch it crosses, so each switch's rule fires. Mercury answers it once.
+
+1. **Grouped.** In each pass, the detections that fired and are not already mitigated are
+   grouped by their rule and their source, the source compared in one spelling (an IPv4 or IPv6
+   address compressed, a MAC address in lower case with colons). Only the scan and flood rules
+   are grouped: an unauthorised flow is one flow on one switch, and a detection that names no
+   single source (a flood over flows that match MAC addresses only, or the scan's packet-rate
+   fallback) has nothing to tie it to another switch, so each is its own incident.
+2. **The window.** The window is the rule's own, the one it fires within: the scan's
+   `sdn_scan_window_seconds` (60 by default) and the flood's `sdn_flood_window_seconds` (30), set
+   in the rules on SDN › Responses; there is no second setting. A detection in a later pass
+   joins an incident still awaiting you when it is of the same rule and source and at most that
+   window after the incident's last sighting: it is recorded as **seen also**, and nothing is
+   classified or proposed. One later than that is a new incident.
+3. **The ingress switch.** The response is proposed at the switch where the source's host port
+   is: the controller's topology, as the SDN reader stored it on its last read (never a
+   controller call in the loop), listing a host with the source's address or MAC on a port that
+   is not a link's end. When exactly one such port is listed, on a switch whose rule fired, that
+   switch is the ingress. Otherwise the ingress cannot be told (no source named, the topology not
+   read now, no host or several ports listing the source, or the source on a switch that has not
+   fired), the card says why, and the switch that saw it first (the earliest detection; on a tie,
+   the first reported) is proposed.
+4. **One AI call.** Classification runs once per incident, on the ingress switch's detection
+   and its evidence pack, so 50 switches seeing one scan are one call, not 50.
+5. **One response.** In HITL, one response awaits you, on one row of SDN › Responses and one
+   row of Needs attention; in AUTO, the loop applies it once, at the ingress. The response's
+   record keeps its incident (whether its switch is the known ingress, and how many switches
+   saw it), which is what lets it hold the source off across switches (above).
+6. **Inactive.** An incident is no longer active once none of its switches shows it: one
+   switch's detection resolving while another's still fires keeps it active.
+
+The loop's log names each incident seen on several switches in one line: the rule and source,
+how many switches, the window, the ingress and the switches seen also.
 
 No response, in any mode, may cover the network's **control channel**: a flow whose match could
 carry LLDP (the controller's topology discovery), names one of the controller's addresses (its

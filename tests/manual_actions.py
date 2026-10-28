@@ -87,6 +87,8 @@ NOT_AN_OPERATION = {
                                            "connection is changed: a page of its own",
     ("_sdn_view.html", "Show"): "narrows SDN › Flows to words and the controller's own flows, "
                                 "a read of the SDN reader's stored value",
+    ("_sdn_responses.html", "Show"): "narrows SDN › Responses' incidents to words and a "
+                                     "severity (C1999), a read of the response store",
     ("_sdn_view.html", "Reload"): "loads the SDN tab again (a link to its own page, Flows' "
                                   "filter kept), offered by the note that says the page is not "
                                   "current (C2003): a read",

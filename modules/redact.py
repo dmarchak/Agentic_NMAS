@@ -106,8 +106,22 @@ _KEY_CLEAR = r"(?:0[ \t]+|(?![67][ \t]+\S))"
 #: any options between (they are many and differ by release), and the FIRST bare `key` on the
 #: line is the carrier, so a key holding the word `key` is masked whole. A test user's name is
 #: read with `username`, so a user named `key` keeps its name (C2074's case).
+#:
+#: The key-wrap keys that come before the key (`key-wrap encryption-key <k>
+#: message-auth-code-key <k>`, C2098) are read the same way, each keyword with its value, so a
+#: key-wrap key is never taken for the carrier; each is masked by its own rule (`key_wrap_*`,
+#: below). Each key's optional one-digit type is read as its rule reads it (`_KW_ENC_TYPE`,
+#: `_KW_MAC_TYPE`): a type only when the token after it is not the keyword that follows the key,
+#: so the host rule and the key-wrap rules never read one token two ways (a `7 key` read here
+#: as a type and a code key named `key` would make a later `Key` inside the server's key the
+#: carrier, and print the server key's first words).
+_KW_ENC_TYPE = r"(?:[0-9][ \t]+(?!message-auth-code-key(?!\S)))?"
+_KW_MAC_TYPE = r"(?:[0-9][ \t]+(?!(?:format|key)(?!\S)))?"
 _RADIUS_HOST_KEY = (r"(?i)\b((?:radius-server[ \t]+host|server-private)[ \t]+\S+"
-                    r"(?:[ \t]+(?:username[ \t]+\S+|(?!(?:key|username)(?!\S))\S+))*"
+                    r"(?:[ \t]+(?:username[ \t]+\S+"
+                    r"|encryption-key[ \t]+" + _KW_ENC_TYPE + r"\S+"
+                    r"|message-auth-code-key[ \t]+" + _KW_MAC_TYPE + r"\S+"
+                    r"|(?!(?:key|username|encryption-key|message-auth-code-key)(?!\S))\S+))*"
                     r"[ \t]+key[ \t]+")
 
 #: Each entry captures (prefix, secret, suffix); only the middle is replaced.
@@ -161,6 +175,26 @@ _POSITIONAL = (
         + r"|key[ \t]+0[ \t]+))" + _VALUE_TO_EOL + r"()")),
     ("server_key", re.compile(
         r"(?im)^([ \t]*key[ \t]+" + _KEY_HIDDEN + r")" + _VALUE + r"()")),
+    # C2098 (2026-10-28): a RADIUS server's key-wrap keys, each its own value: the key
+    # encryption key and the message authentication code key. On a host line, Cisco's IOS
+    # Security Command Reference (`radius-server host`): `… [key-wrap encryption-key
+    # encryption-key message-auth-code-key encryption-key [format {ascii | hex}] | pac] [key
+    # encryption-key]`, before the server's key, which is last; in a `radius server` block, a
+    # child line, with a type (Cisco's "Configure RADIUS KeyWrap in ISE", document 222863:
+    # `key-wrap encryption-key 0 <k> message-auth-code-key 0 <k> format ascii`). Each key is one
+    # token, as its form is: a keyword follows the first, and `format` or the server's `key` may
+    # follow the second (16 and 20 characters, the same document). An optional one-digit type
+    # (C745's rule), taken only when the token after it is not the keyword that follows the key:
+    # a one-digit key read as a type would mask the keyword and print the key (`isakmp_key`'s
+    # case); the value itself is never refused for its resemblance. AFTER the keys read to the
+    # line's end: a server key typed before the key-wrap clause runs over it and is one value.
+    # The code key's rule names its keyword alone and runs first, so the encryption key's rule
+    # (which needs `key-wrap` before it) can never take that keyword for a missing key and
+    # leave the code key after it unread.
+    ("key_wrap_mac_key", re.compile(
+        r"(?i)\b(message-auth-code-key[ \t]+" + _KW_MAC_TYPE + r")" + _VALUE + r"()")),
+    ("key_wrap_encryption_key", re.compile(
+        r"(?i)\b(key-wrap[ \t]+encryption-key[ \t]+" + _KW_ENC_TYPE + r")" + _VALUE + r"()")),
     ("snmp_community", re.compile(
         r"(?i)\b(snmp-server\s+community\s+)" + _VALUE + r"()")),
     # `snmp-server host <ip> [vrf X] [traps|informs] [version {1|2c|3 [auth|

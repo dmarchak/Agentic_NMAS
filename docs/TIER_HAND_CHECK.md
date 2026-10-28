@@ -2550,3 +2550,104 @@ killed; no survivor needed a test, and none was added after the run. Not covered
 line's `key-wrap encryption-key <k> message-auth-code-key <k>`, measured in clear through every
 mask, the egress mask too, the same day; the register's.**
 
+## 2026-10-28: a RADIUS server's key-wrap keys, by position (C2098), by hand
+
+**What touches the tier.** C2098: two rules added to `redact._POSITIONAL`
+(`key_wrap_mac_key`, `key_wrap_encryption_key`) and the host lines' carrier
+(`_RADIUS_HOST_KEY`) taught the key-wrap clause, so goldens' reads, logs, responses, the archive,
+the parsers' secret references, the config check and the egress mask all mask both keys, each
+its own value (goldens stay verbatim at rest). Measured before (the same day): `key-wrap
+encryption-key <k> message-auth-code-key <k>` kept both keys through every mask, the egress mask
+too; with a type (`0`, `7`) through `redact_text`, the egress mask catching them only as
+`egress_key`'s by resemblance. The forms: on a host line, Cisco's IOS Security Command Reference
+(`radius-server host`, read 2026-10-28): `… [key-wrap encryption-key encryption-key
+message-auth-code-key encryption-key [format {ascii | hex}] | pac] [key encryption-key]`, the
+clause BEFORE the server's key ("Always configure the key as the last item"); in a `radius
+server` block, a child line with a type, from Cisco's "Configure RADIUS KeyWrap in ISE"
+(document 222863): `key-wrap encryption-key 0 <k> message-auth-code-key 0 <k> format ascii`,
+the keys 16 and 20 characters (the command reference has no `key-wrap (config-radius-server)`
+page found; the block form is that document's). Each key is one token: a keyword follows the
+first, and `format` or the server's `key` the second. New labels with their words in
+`gateway.MASK_WORDS`: "a RADIUS key-wrap encryption key", "a RADIUS key-wrap message
+authentication code key". No capture holds a key-wrap line (the fleet's captures: no RADIUS line
+at all, C2085's count); each line is the documented form with an invented key.
+
+**The ordering against C2085 and how it is held.** The server's key is the host line's last
+item and runs to the line's end (C2085), so the clause stands before it and both rules are
+independent of it. The host rule's carrier is the first bare `key`: each key-wrap keyword is now
+read with its value there (as `username <name>` is), so a key-wrap key named `key` is never the
+carrier (H1, H4 to H6), and its optional type is read exactly as the key-wrap rules read it
+(`_KW_ENC_TYPE`, `_KW_MAC_TYPE`), so no token is read two ways: read with a free type, a one-digit
+code key before `key` made a later `Key` inside the server's key the carrier and printed the
+server key's first word (H2, H3). The key-wrap rules stand right after the eight rules read to
+the line's end: a server key typed before the clause runs over it and is one value (O1), and a
+key-wrap key holding a later rule's shape (`url_userinfo`'s) is taken whole before that rule
+reads inside it (O3). The code key's rule names its keyword alone and runs first, so the
+encryption key's rule cannot take that keyword for a missing key and leave the code key unread
+(O2, M2). A type is one digit (T8), taken only when the next token is not the keyword that
+follows the key: a one-digit key read as a type would mask the keyword and print the key (T1 to
+T4, `isakmp_key`'s case); the value itself is never refused by its resemblance. The encryption
+key's rule names `key-wrap` (C745's third rule; prose naming `encryption-key` keeps its words,
+E2).
+
+**The method:** the narrowed hand check (PHASE8_PLAN 15.12), by the agent that built it, as
+C2085's: each mutant one or more exact text replacements, each found the stated number of times
+(checked read-only first: 31 mutants, every one found, compiled and its table loaded; the
+canary's module compared with 431cd023's, its code lines the same but for the two unused type
+fragments), in its own `scripts/nmas-control` throwaway worktree of the change, then a first
+stage of tests/test_redact_ios_shapes.py and test_ai_typed_text.py and, when that killed nothing,
+the whole aimed set (the twelve files C2074 named) (`scratchpad/c2098_mutants.py`,
+`c2098_one.py`, `c2098_all.sh`). A must-die canary first: the two rules out and the host carrier
+read as before: killed (63 failed). Counts are the first stage's failures. The first run's
+baseline passed (1171, 1 skipped) but nmas-control exited 3 for it: the manual and TESTING.md
+were edited while it ran (the working tree's fingerprint moved; no test file); rerun with
+nothing edited, it passed (1174, 1 skipped) and exited 0. Every mutant's run exited 0.
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: the two rules out, the host carrier read as before C2098 | killed | 63, every key-wrap form |
+| M1 the code key's rule matches nothing | killed | 59 |
+| E1 the encryption key's rule matches nothing | killed | 59 |
+| E2 the encryption key named by `encryption-key` alone | killed | 1, prose naming `encryption-key` |
+| M2 the code key's rule needs the encryption key before it | killed | 3, a missing encryption key, a quoted code key, a line-ending `0` |
+| T1 the encryption key's type refuses no keyword | killed | 2, a one-digit key before `message-auth-code-key` |
+| T2 the code key's type refuses no keyword | killed | 3 |
+| T3 the code key's type refuses `format` only | killed | 2, a one-digit code key before `key` |
+| T4 the code key's type refuses `key` only | killed | 1, a one-digit code key before `format` |
+| T5 the encryption key read with no type | killed | 18, every typed form |
+| T6 the code key read with no type | killed | 17 |
+| T7 a type `6` or `7` only | killed | 12, every `0` form |
+| T8 a type of any number of digits | survived, then killed | 1, by the test added after the run (below) |
+| S1 `\s` after `message-auth-code-key` (crossing lines) | killed | 1, the line-end test |
+| S2 `\s` after `encryption-key` | killed | 2, the line-end tests |
+| V1 the code key's value without `_VALUE`'s refusals | killed | 2, a template's `{{` and a search's `[in …]` |
+| V2 the code key read to the line's end | killed | 34 |
+| V3 the encryption key read to the line's end | killed | 52 |
+| I1 the code key's rule case-sensitive | killed | 3, the upper-case form |
+| I2 the encryption key's rule case-sensitive | killed | 3 |
+| O1 the key-wrap rules at the table's head | killed | 1, a server key typed before the clause |
+| O2 the encryption key's rule before the code key's | killed | 1, a missing encryption key |
+| O3 the key-wrap rules at the table's end | survived, then killed | 2, by the test added after the run (below) |
+| H1 the host carrier without the key-wrap pairs | killed | 22 |
+| H2 the host's encryption-key pair with a free type | killed | 1, `encryption-key 7 message-auth-code-key key key …` |
+| H3 the host's code-key pair with a free type | killed | 1, `message-auth-code-key 7 key Planted Key Word` |
+| H4 the key-wrap keywords allowed as bare options | killed | 1, a key-wrap key named `key` with no server key |
+| H5 the host's encryption-key pair removed | killed | 22 |
+| H6 the host's code-key pair removed | killed | 22 |
+| L1 the two labels the same | killed | 55 |
+| W1 the code key's words removed from `gateway.MASK_WORDS` | killed | 1, `test_every_mask_redact_makes_has_its_words` |
+
+**The two survivors, neither equivalent, each given a test after the run and the mutant rerun
+in its own worktree.** T8: a multi-digit "type" reads a key of digits with a word after it as a
+type and prints the digits (C745's one-digit rule; never in a documented line, which has no
+extra token, but in typed words): `test_a_one_digit_key_is_never_read_as_a_type_that_hides_a_keyword`
+gained ` key-wrap encryption-key 1234567890123456 extra …`; rerun, killed (1). O3: at the
+table's end, `url_userinfo` reads inside a key-wrap key holding `scheme://user:pw@` and gives
+the parsers a reference inside the stored key (the masked text is the same, so only the
+references show it): `test_a_key_wrap_key_is_taken_whole_before_a_later_rule_reads_inside_it`
+(a block's encryption key and a host line's code key); rerun, killed (2).
+
+**The result: 31 mutants; every one killed, two (T8, O3) after a test added for each, said
+above; the canary killed. Not covered here: the `tacacs-server host … key` form (C2097's); a
+key-wrap key holding a space (IOS reads each as one token, so a second word is not part of it).**
+

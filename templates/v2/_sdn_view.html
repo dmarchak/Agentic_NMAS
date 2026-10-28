@@ -4,7 +4,7 @@
     value beside the network's connection list (modules/sdn_page.py); never a controller call
     per view. Redrawn when the reader announces `sdn`. -#}
 {%- set settings_url = url_for('settings_v2.network', list_name=g.network, tab='integrations') ~ '#sdn-card' -%}
-{%- set region_args = {'tab': g.tab, 'q': g.s.q, 'own': g.s.own} if g.tab == 'flows' else {'tab': g.tab} -%}
+{%- set region_args = {'tab': g.tab, 'q': g.s.q, 'own': g.s.own} if g.tab == 'flows' else ({'tab': g.tab, 'q': g.incidents.q or None, 'sev': g.incidents.sev or None} if g.tab == 'responses' else {'tab': g.tab}) -%}
 <div id="sdn" class="sdn" hx-get="{{ url_for('sdn_v2.region', **region_args) }}" hx-trigger="nmas:sdn from:body" hx-swap="outerHTML">
 <div class="page-head">
   <div class="page-title">
@@ -22,7 +22,7 @@
     no redraw, or while the live channel is down, static/js/nmas_v2.js (`staleNote`, on the
     page's one-second tick) shows it with Reload; while a card open in place holds the redraw
     (C2001), it says so instead and offers no Reload, which would close that card. -#}
-{%- set reload_url = url_for('sdn_v2.flows', q=g.s.q or None, own=g.s.own or None) if g.tab == 'flows' else (url_for('sdn_v2.responses') if g.tab == 'responses' else url_for('sdn_v2.page')) %}
+{%- set reload_url = url_for('sdn_v2.flows', q=g.s.q or None, own=g.s.own or None) if g.tab == 'flows' else (url_for('sdn_v2.responses', q=g.incidents.q or None, sev=g.incidents.sev or None) if g.tab == 'responses' else url_for('sdn_v2.page')) %}
 <div class="notice notice-warn stale-note" role="status" data-stale-at="{{ fresh.stale_at }}" data-promise="{{ fresh.seconds }}" hidden>{{ icon('warn', 16) }}<p>Last updated {{ stamp(fresh.drawn_at) }}<span class="stale-why"></span> <a class="btn btn-small stale-reload" href="{{ reload_url }}" title="Loads this page again as it is now">Reload</a></p></div>
 
 {%- if g.tab == 'responses' %}

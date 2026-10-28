@@ -10,16 +10,46 @@
     _sdn_view.html. -#}
 {%- set m = g.mode %}
 {%- set aic = ai_control('sdn_classify') %}
-<p class="sdn-sum"><strong>{{ g.awaiting | length }} awaiting approval</strong> · mode {{ m.mode | upper }} · the loop {% if g.loop.running %}running every {{ g.loop.interval | int }} s{% else %}stopped{% endif %}</p>
+{%- set ic = g.incidents %}
+<p class="sdn-sum"><strong>{{ ic.total }} awaiting approval</strong>{% if ic.total %} · {{ ic.total }} incident{{ 's' if ic.total != 1 }} seen on {{ ic.switches }} switch{{ 'es' if ic.switches != 1 }}{% endif %} · mode {{ m.mode | upper }} · the loop {% if g.loop.running %}running every {{ g.loop.interval | int }} s{% else %}stopped{% endif %}</p>
 {%- if g.awaiting_state == 'unreadable' %}
 <div class="notice notice-danger" role="alert"><p>The responses awaiting a person cannot be read: {{ g.awaiting_error }}.</p></div>
 {%- endif %}
+{#- C1999 (board SdnResponses, revised 2026-10-28): one incident per attack (the same rule and
+    source within the rule's window, modules/sdn/incidents.py), its response proposed at the
+    ingress switch, the others "seen also". A compact table, by severity then the longest
+    waiting; the detail and every action open on expand, each acting on its own incident
+    only (never a confirm-all across incidents). -#}
+<section class="card sdn-incs" aria-labelledby="sdn-incs-h">
+  <div class="sdn-ctl-hd"><h2 id="sdn-incs-h">Incidents awaiting a person</h2><span class="faint small">by severity, then the longest waiting · one response each, at the switch the source enters by</span></div>
+  {%- if ic.total %}
+  <form class="sdn-find sdn-inc-find" method="get" action="{{ url_for('sdn_v2.responses') }}" hx-get="{{ url_for('sdn_v2.region') }}" hx-target="#sdn" hx-swap="outerHTML">
+    <input type="hidden" name="tab" value="responses"><input type="hidden" name="list" value="{{ g.network }}">
+    <span class="sdn-inc-sum" role="group" aria-label="Incidents by severity">{% for c in ic.counts %}<a class="chip-link{% if ic.sev == c.severity %} on{% endif %}" href="{{ url_for('sdn_v2.responses', list=g.network, sev=c.severity, q=ic.q or None) }}" hx-get="{{ url_for('sdn_v2.region', tab='responses', list=g.network, sev=c.severity, q=ic.q or None) }}" hx-target="#sdn" hx-swap="outerHTML"{% if ic.sev == c.severity %} aria-current="true"{% endif %}>{{ badge(c.count ~ ' ' ~ c.words | lower, c.tone) }}</a>{% endfor %}</span>
+    <label for="sdn-iq" class="sr-only">Search the incidents</label>
+    <input id="sdn-iq" name="q" type="text" value="{{ ic.q }}" placeholder="Search by rule, source, switch or action">
+    {%- if ic.sev %}<input type="hidden" name="sev" value="{{ ic.sev }}">{% endif %}
+    <button class="btn btn-small" type="submit">Show</button>
+  </form>
+  {%- if ic.q or ic.sev %}
+  <p class="small sdn-inc-subset" role="status">Showing {{ ic.shown }} of {{ ic.total }} incident{{ 's' if ic.total != 1 }}{% if ic.sev %}, severity {{ ic.sev }}{% endif %}{% if ic.q %}, matching “{{ ic.q }}”{% endif %}. <a href="{{ url_for('sdn_v2.responses', list=g.network) }}" hx-get="{{ url_for('sdn_v2.region', tab='responses', list=g.network) }}" hx-target="#sdn" hx-swap="outerHTML">Show all</a></p>
+  {%- endif %}
+  <div class="sdn-inc-row sdn-inc-head" aria-hidden="true"><span>Severity</span><span>Rule</span><span>Source</span><span>Switches</span><span>Age</span><span>AI verdict</span><span>Proposed</span></div>
+  {%- endif %}
 {%- for r in g.awaiting %}
-<section class="card sdn-resp" aria-labelledby="sdn-r-{{ r.id }}">
-  <div class="sdn-ctl-hd"><h2 id="sdn-r-{{ r.id }}">{{ r.title }}{% if r.source %} from <span class="mono">{{ r.source }}</span>{% endif %} on <span class="mono">{{ r.dpid_hex }}</span></h2>{% if r.confidence %} {{ badge(r.confidence, 'danger' if r.confidence == 'high' else 'warn') }}{% endif %}</div>
-  <p class="small">Detected {{ stamp(r.at) }}: {{ r.words }} · an alert with its evidence pack</p>
+<details class="sdn-inc" id="sdn-i-{{ r.id }}" data-keep="inc-{{ r.id }}"{% if ic.open == r.id %} open{% endif %}>
+  <summary class="sdn-inc-row"><span>{{ badge(r.severity_words, r.severity_tone) }}</span><span>{{ r.rule_label }}</span><span class="mono">{{ r.source or '—' }}</span><span>{{ r.switches }}<span class="sdn-inc-unit"> switch{{ 'es' if r.switches != 1 }}</span></span><span title="Since {{ r.at }} UTC; last seen {{ r.last_seen }} UTC">{{ stamp(r.at) }}</span><span>{% if r.ai %}{{ badge('AI', 'info', title='Classified by AI; checked in code') }} {% endif %}{{ r.verdict }}</span><span>{% if r.action %}{{ r.label }} at <span class="mono">{{ r.dpid_hex }}</span>{% else %}none{% endif %}{% if r.inactive_since %} {{ badge('Inactive', 'muted') }}{% endif %}</span></summary>
+<div class="sdn-resp" role="region" aria-labelledby="sdn-r-{{ r.id }}">
+  <div class="sdn-ctl-hd"><h3 id="sdn-r-{{ r.id }}" class="sdn-h3">{{ r.title }}{% if r.source %} from <span class="mono">{{ r.source }}</span>{% endif %}, seen on {{ r.switches }} switch{{ 'es' if r.switches != 1 }}</h3>{% if r.confidence %} {{ badge('confidence ' ~ r.confidence, 'danger' if r.confidence == 'high' else 'warn', title="The detection rule's confidence, not the threat's severity") }}{% endif %}</div>
+  <p class="small">Detected {{ stamp(r.at) }} on <span class="mono">{{ r.dpid_hex }}</span>: {{ r.words }} · an alert with its evidence pack</p>
+  <p class="small sdn-ingress"><strong>{% if r.ingress_known %}Ingress:{% else %}Proposed at:{% endif %}</strong> {{ r.ingress_words }}.{% if r.window_words %} <span class="faint">Grouped {{ r.window_words }}.</span>{% endif %}</p>
+  {%- if r.seen_also %}
+  <details class="sdn-also" data-keep="inc-{{ r.id }}-also"><summary class="small">Seen also on {{ r.seen_also | length }} other switch{{ 'es' if r.seen_also | length != 1 }} <span class="faint">· nothing is proposed there; the response at <span class="mono">{{ r.dpid_hex }}</span> answers them</span></summary>
+    <ul class="sdn-also-list small">{% for s in r.seen_also %}<li><span class="mono">{{ s.dpid_hex }}</span>{% if s.port is not none %} port {{ s.port }}{% endif %} <span class="faint">({{ s.connection }}, {{ stamp(s.at) }})</span>: {{ s.words }}</li>{% endfor %}</ul>
+  </details>
+  {%- endif %}
   {%- if r.inactive_since %}
-  <p class="small sdn-inactive">{{ badge('Inactive', 'muted') }} Threat no longer active since {{ stamp(r.inactive_since) }}: the detection resolved, and this response still awaits your approval or dismissal.</p>
+  <p class="small sdn-inactive">{{ badge('Inactive', 'muted') }} Threat no longer active since {{ stamp(r.inactive_since) }}: no switch shows it any longer, and this response still awaits your approval or dismissal.</p>
   {%- endif %}
   {%- if r.ai %}{% set a = r.ai %}
   <div class="sdn-ai" id="sdn-c-{{ r.id }}" role="group" aria-label="The AI's classification">
@@ -33,7 +63,7 @@
   <p class="small faint">{{ r.classified }}.{% if r.refused_call %} <a href="{{ url_for('v2.history_page', call=r.refused_call) }}" title="The prompt as sent and the answer the check refused">The refused answer in History</a>.{% endif %}</p>
   {%- endif %}
   {%- if r.action %}
-  <p class="small"><strong>Proposed:</strong> {{ r.label }} (catalogue action <span class="mono">{{ r.action }}</span>, risk {{ r.risk }}): {{ r.action_words }}.</p>
+  <p class="small"><strong>Proposed:</strong> {{ r.label }} on <span class="mono">{{ r.dpid_hex }}</span> (catalogue action <span class="mono">{{ r.action }}</span>, risk {{ r.risk }}): {{ r.action_words }}.{% if r.why %} <span class="faint">{{ r.why }}.</span>{% endif %}</p>
   {%- else %}
   <p class="small notice notice-warn"><strong>No action is proposed:</strong> the network's response policy could not be read when this was detected. Set it in the rules below, then preview the rule's default.</p>
   {%- endif %}
@@ -59,7 +89,7 @@
       <input type="hidden" name="list" value="{{ g.network }}">
       <label class="sr-only" for="sdn-why-{{ r.id }}">Reason</label>
       <input id="sdn-why-{{ r.id }}" type="text" name="reason" placeholder="Why dismiss it" required>
-      <button class="btn" type="submit" hx-disabled-elt="this" data-op="sdn"{{ gate('configure') }}><span class="op-idle">Dismiss with this reason</span><span class="op-busy">Dismissing…</span></button>{{ how('sdn', 'responses', compact=True, op='Dismiss') }}
+      <button class="btn" type="submit" hx-disabled-elt="this" data-op="sdn"{{ gate('configure') }}><span class="op-idle">{% if r.switches > 1 %}Dismiss the incident ({{ r.switches }} switches) with this reason{% else %}Dismiss with this reason{% endif %}</span><span class="op-busy">Dismissing…</span></button>{{ how('sdn', 'responses', compact=True, op='Dismiss') }}
     </form>
   </div>
   {%- if g.classify and g.classify.rid == r.id and not g.classify.ok %}
@@ -67,10 +97,15 @@
   {%- endif %}
   <p class="faint small">Nothing is sent until you confirm the previewed requests. {{ g.verify_limit }}.</p>
   <div class="sdn-op-slot" id="sdn-rp-{{ r.id }}" role="region" aria-live="polite"></div>
-</section>
+</div>
+</details>
 {%- else %}
-<p class="muted sdn-none">No response is awaiting a person.</p>
+<p class="muted sdn-none">{% if ic.total %}No incident matches this filter.{% else %}No response is awaiting a person.{% endif %}</p>
 {%- endfor %}
+{%- if ic.shown > ic.drawn %}
+<p class="small faint sdn-inc-more">{{ ic.drawn }} of {{ ic.shown }} drawn, the most severe first; search or pick a severity above to find the rest.</p>
+{%- endif %}
+</section>
 
 <section class="card sdn-mode" aria-labelledby="sdn-mode-h">
   <div class="sdn-ctl-hd"><h2 id="sdn-mode-h">Mode {{ badge(m.mode | upper, 'warn' if m.mode == 'auto' else 'muted') }}</h2></div>

@@ -387,6 +387,9 @@ FIELDS = {
     "sdn_v2.response_classify": {
         "args.<whole>": "the SDN page's own choices",
         "args.run": "a run's id Mercury drew",
+        "args.incident": "an incident's id Mercury drew (C1999)",
+        "args.q": "the Responses table's search, drawn back to the page, never sent to a model",
+        "args.sev": "a severity filter Mercury drew",
         "request.<passed to submitted_list>": "the network's name (routes.list_param)",
         "request.<passed to named_list>": "the network's name (routes.list_param)"},
     "sdn_v2.loop_set": {
@@ -394,6 +397,9 @@ FIELDS = {
         "form.interval": "the loop's interval in seconds",
         "args.<whole>": "the SDN page's own choices",
         "args.run": "a run's id Mercury drew",
+        "args.incident": "an incident's id Mercury drew (C1999)",
+        "args.q": "the Responses table's search, drawn back to the page, never sent to a model",
+        "args.sev": "a severity filter Mercury drew",
         "request.<passed to submitted_list>": "the network's name (routes.list_param)",
         "request.<passed to named_list>": "the network's name (routes.list_param)"},
     "settings_v2.install_replace": {

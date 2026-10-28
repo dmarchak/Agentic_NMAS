@@ -127,7 +127,9 @@ masked:
   `tacacs-server key …`, a server's on its host line, `radius-server host … key …` or
   `tacacs-server host … key …`, an AAA group's `server-private … key …`, and a server block's
   `key …`, even one of digits alone when the block is there to read), a RADIUS
-  dynamic-authorization client's `server-key …` and a RADIUS server's `pac key …`, the
+  dynamic-authorization client's `server-key …` and a RADIUS server's `pac key …`, a RADIUS
+  server's key-wrap keys (`key-wrap encryption-key … message-auth-code-key …`, on its host
+  line or in its `radius server` block, each key masked as its own value), the
   password-encryption master key (`key config-key password-encrypt …`), a pre-shared key (an
   ISAKMP keyring's to an IPv4 or IPv6 peer or a hostname, an IKEv2 keyring's `pre-shared-key
   [local|remote] …` and an IKEv2 profile's `authentication … pre-share key …`), an IKE key

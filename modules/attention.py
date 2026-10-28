@@ -175,10 +175,12 @@ ROW_KINDS = {
                                         "read the device's rotation result and settle the "
                                         "stage it names, then run Rotate due devices now"),
     # C2000: the loop does not survive a restart, and does not start again by itself.
-    # C1999's notification half: a HITL network's threat is seen without opening Responses.
-    ("sdn_responses", "awaiting"): ("SDN responses to detected threats await a person on a "
-                                    "network", "open SDN › Responses and preview, confirm or "
-                                    "dismiss each"),
+    # C1999: a HITL network's threat is seen without opening Responses, one row per incident
+    # (one attack, however many switches saw it).
+    ("sdn_responses", "awaiting"): ("an SDN incident (one attack, seen on one switch or many) "
+                                    "awaits a person on a network", "open the incident on SDN "
+                                    "› Responses and preview its response at the ingress "
+                                    "switch, then confirm it, or dismiss the incident"),
     ("sdn_loop", "restart_stopped"): ("a network's SDN loop was running and the app's restart "
                                       "stopped it, so its detections are not watched",
                                       "start the loop on SDN › Responses, or leave it stopped"),
@@ -357,8 +359,8 @@ CLEARS = {
     ("restarts", "unplanned"): (("acknowledge", "time"), "a person acknowledges it with a "
                                 "reason, or 7 days after the restart; History keeps it either "
                                 "way"),
-    ("sdn_responses", "awaiting"): (("resolves",), "every response awaiting on the network is "
-                                    "applied or dismissed on SDN › Responses"),
+    ("sdn_responses", "awaiting"): (("resolves",), "the incident's response is applied, or the "
+                                    "incident is dismissed, on SDN › Responses"),
     ("sdn_loop", "restart_stopped"): (("resolves", "time"), "the loop is started again on SDN "
                                       "› Responses, or 24 hours after the restart (the loop's "
                                       "log keeps the stop either way)"),
@@ -2920,13 +2922,16 @@ def sdn_loop_source(found=None, now: float = None) -> dict:
 
 
 def sdn_responses_source(found=None) -> dict:
-    """The SDN responses awaiting a person (`loop.awaiting`; C1999's notification half): one
-    WARNING row per network (never one per detection; grouping into incidents is C1999's
-    other half), naming how many await, the oldest's age, its rule and source, and how many
-    are no longer active; DANGER when any is classified high or critical. Standing until
-    each is applied or dismissed. One small file read per network, never a controller.
-    *found* is ``{network: awaiting rows}`` (tests)."""
+    """The SDN incidents awaiting a person (`loop.awaiting`, one response per incident;
+    C1999): one row per incident, never one per detection or per switch, naming its network,
+    rule, source, how many switches saw it, its severity, its age and the ingress switch its
+    response is proposed at; WARNING, DANGER when classified high or critical. It replaces the
+    one row per network this source drew before incidents (a count of responses): each
+    incident is one attack a person decides on its own, and its row opens that incident.
+    Standing until its response is applied or it is dismissed. One small file read per
+    network, never a controller. *found* is ``{network: awaiting rows}`` (tests)."""
     from modules.nsot import listref
+    from modules.sdn import incidents
     from modules.sdn import loop as LP
 
     started = time.time()
@@ -2942,38 +2947,46 @@ def sdn_responses_source(found=None) -> dict:
         if got.get("state") == "unreadable":
             unread.append(f"{network} ({got.get('error')})")
             continue
-        open_rows = got.get("rows") or []
-        if not open_rows:
-            continue
-        oldest = open_rows[0]
-        d = oldest.get("detection") or {}
-        inactive = sum(1 for r in open_rows if r.get("inactive_since"))
-        severe = [r for r in open_rows if str(((r.get("classification") or {}).get("severity")
-                                               or "")).lower() in ("high", "critical")]
-        n = len(open_rows)
-        rows.append(row(
-            source="sdn_responses", kind="awaiting", key=network,
-            level="danger" if severe else "warning", since=_ts(oldest.get("at")),
-            what=(f"{n} SDN response{'s' if n != 1 else ''} await{'' if n != 1 else 's'} a "
-                  f"person on {network}"),
-            cause=(f"The oldest, since {oldest.get('at')}: {d.get('title') or d.get('rule')}"
-                   + (f" from {d.get('source')}" if d.get("source") else "")
-                   + f", proposed {oldest.get('action') or 'no action'}"
-                   + (f"; {len(severe)} classified high or critical" if severe else "")
-                   + (f"; {inactive} no longer active" if inactive else "")
-                   + ". Nothing is sent to a switch until a person confirms"),
-            operands={"network": network, "awaiting": n, "oldest": oldest.get("at") or "",
-                      "severe": len(severe), "inactive": inactive},
-            action={"label": f"Open {network}'s SDN › Responses and preview, confirm or "
-                             "dismiss each",
-                    "href": f"/v2/sdn/responses?list={network}"}))
+        for r in incidents.order(got.get("rows") or []):
+            d = r.get("detection") or {}
+            inc = r.get("incident") or {}
+            sev = incidents.severity(r)
+            switches = len(r.get("members") or [d.get("key")])
+            title = d.get("title") or d.get("rule") or "SDN detection"
+            src = d.get("source") or ""
+            where = d.get("dpid_hex") or "?"
+            ingress = inc.get("ingress_words") or ("kept before incidents were grouped: "
+                                                   f"proposed at {where}, the switch that saw it")
+            rows.append(row(
+                source="sdn_responses", kind="awaiting", key=f"{network}:{r.get('id')}",
+                level="danger" if sev in ("high", "critical") else "warning",
+                since=_ts(r.get("at")),
+                what=(f"{title}{' from ' + src if src else ''} on {network}, seen on "
+                      f"{switches} switch{'es' if switches != 1 else ''}, awaits a person"),
+                cause=(f"Incident {r.get('id')}, since {r.get('at')} (last seen "
+                       f"{r.get('last_seen') or r.get('at')}): "
+                       + (f"severity {sev} by its AI classification" if sev != "unclassified"
+                          else "not classified")
+                       + f"; proposed {r.get('action') or 'no action'} at {where} ({ingress})"
+                       + (f"; no switch shows it since {r.get('inactive_since')}"
+                          if r.get("inactive_since") else "")
+                       + ". Nothing is sent to a switch until a person confirms"),
+                operands={"network": network, "incident": r.get("id") or "",
+                          "rule": d.get("rule") or "", "source": src, "switches": switches,
+                          "severity": sev, "since": r.get("at") or "",
+                          "inactive": bool(r.get("inactive_since"))},
+                action={"label": (f"Open the incident on {network}'s SDN › Responses: preview "
+                                  f"{r.get('action') or 'a response'} at {where} and confirm "
+                                  "it, or dismiss the incident with a reason"),
+                        "href": (f"/v2/sdn/responses?list={network}&incident="
+                                 f"{r.get('id')}#sdn-i-{r.get('id')}")}))
     took = int((time.time() - started) * 1000)
     if unread:
         return source_result("sdn_responses", label, read_at=started, took_ms=took,
                              rows=rows, error="the responses awaiting could not be read on "
                                               + "; ".join(unread))
     return source_result("sdn_responses", label, read_at=started, took_ms=took, rows=rows,
-                         checked=f"{len(waiting)} network(s): {len(rows)} with responses "
+                         checked=f"{len(waiting)} network(s): {len(rows)} incident(s) "
                                  "awaiting a person")
 def sdn_mitigation_source(found=None, now: float = None) -> dict:
     """Each response whose flows or meter the SDN reader last read missing from their switch

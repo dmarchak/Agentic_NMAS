@@ -120,6 +120,8 @@ MASK_WORDS = {
     "server_host_key": "a TACACS or RADIUS server's key",
     "dynamic_author_key": "a RADIUS dynamic-authorization client's key",
     "pac_key": "a RADIUS PAC key",
+    "key_wrap_encryption_key": "a RADIUS key-wrap encryption key",
+    "key_wrap_mac_key": "a RADIUS key-wrap message authentication code key",
     "config_key": "the password-encryption master key",
     "nhrp_authentication": "an NHRP authentication string",
     "ikev2_pre_share_key": "an IKEv2 pre-shared key",

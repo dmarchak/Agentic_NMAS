@@ -1456,6 +1456,12 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
                       "detection": {k: detection.get(k) for k in
                                     ("key", "rule", "title", "dpid_hex", "source", "words",
                                      "at")}}
+        if isinstance(detection.get("incident"), dict):
+            # C1999: its incident's key, whether this switch is its known ingress, and how
+            # many switches saw it, kept with the response in the flow intent: a response at
+            # a known ingress holds the source off on every switch (`loop.covering`).
+            out["ask"]["detection"]["incident"] = {
+                k: detection["incident"].get(k) for k in ("key", "ingress", "switches")}
         out["ok"] = True
     except (ResponseRefused, flow_ops.Refused) as exc:
         out["error"] = str(exc)

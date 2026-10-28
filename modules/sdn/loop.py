@@ -6,8 +6,15 @@ step, the one AI call, which runs only where its feature is on (below).
 1. AUTO's expiry, if it passed, recorded once (`modes.record_expiry`);
 2. `closed_loop.collect_threat_data(network)`, then `detect.observe` (each detection an alert
    with its evidence pack);
-3. for each detection that fired in this pass, and is not already mitigated (C2005, below):
-   **classify** (`closed_loop.classify_threat`)
+3. the detections that fired in this pass, not already mitigated (C2005, below), grouped into
+   **incidents** (C1999, `modules/sdn/incidents.py`: the same rule and source, in one
+   spelling, within the rule's own window; one that joins an incident already awaiting a
+   person is recorded there as seen also, ``seen``, and nothing more); for each new incident,
+   its response is proposed at its ingress switch (the switch where the source's host port is,
+   from the controller's topology as the SDN reader stored it; when that cannot be told, the
+   switch that saw it first, said why), and the other switches are recorded as seen also, so
+   one attack on 50 switches is one AI call, one response and one Needs attention row;
+   **classify** (`closed_loop.classify_threat`), once per incident, on its ingress detection,
    as a BACKGROUND call, the job's, on that detection (`triggers.background("sdn_classify",
    <job>, <network>, "detection", <its key>)`). The gateway refuses it, records the refusal
    and sends nothing unless the feature is on for the network and within its caps
@@ -66,8 +73,11 @@ and until when) and the log line are drawn in the loop's log on SDN › Response
 detection that fires again while its response awaits a person is. A held detection is checked
 again on every pass while it stays detected: once its response is no longer in force (expired,
 or lost) the hold is ``released``, saying why, and the detection is classified and answered as
-new in that pass; a detection that resolves releases its hold too. Incidents (C1999) group one
-attack's detections across switches; this check is per switch and does not.
+new in that pass; a detection that resolves releases its hold too. **At incident level
+(C1999):** a response applied at its incident's known ingress switch holds the source off on
+every switch of its connection (`covering`'s *across*), since the source enters by that port:
+another switch's detection of the same rule and source under it is already mitigated too. A
+response applied where the ingress could not be told holds its own switch only.
 
 A detection that resolves (`detect.observe`: a collection that judged its subject no longer
 shows it) never closes its response: the response stays awaiting a person, marked "threat no
@@ -88,10 +98,12 @@ of the process that started it (`start`), its passes scheduled start to start ev
 `stop` ends it after its current pass, recording who and when. One loop per network: a second
 start is refused, naming who started the first.
 
-**Pending responses** (``sdn_responses.jsonl``): ``proposed`` (the detection, the action, its
-risk, when, and the classification if the loop's call made one, or the refused call), then
+**Pending responses** (``sdn_responses.jsonl``), one per incident: ``proposed`` (the detection
+it is proposed at, the action, its risk, when, the classification if the loop's call made one,
+or the refused call, and its ``incident``: key, window, ingress, the switches seen also), then
 any number of ``classified`` (a person's Classify: the classification, and the action it
-proposes), ``inactive`` (its detection resolved: since when) and ``active`` (it fired again),
+proposes), ``seen`` (other switches seeing it later, within its window; C1999), ``inactive``
+(none of its switches shows it any longer: since when) and ``active`` (it fired again),
 then one of ``confirmed`` (the operation that answered it) or ``dismissed`` (by whom and why).
 ``cleared`` (the detection resolved before anyone acted) is no longer written, and still read
 as closed in an older record. A hold (C2005) is ``mitigated`` (the detection, the response
@@ -261,19 +273,41 @@ def run_text(network: str, job: str = "") -> dict:
 
 def propose(network: str, detection: dict, action: str, risk: str, *, why: str,
             now: float = None, classification: dict = None, params: dict = None,
-            classified: str = "", refused_call: str = "") -> dict:
-    """Keep a response awaiting a person. One per detection key: a second for a key already
-    awaiting is not added. *classification* the loop's AI classification, when one passed;
-    *params* the action's checked parameters; *classified* why there is none, in words;
-    *refused_call* the AI call whose answer the check refused, when one was."""
+            classified: str = "", refused_call: str = "", incident: dict = None) -> dict:
+    """Keep a response awaiting a person: one incident's (C1999). One per detection key: a
+    second for a key already awaiting (its incident's own, or one seen also) is not added.
+    *classification* the loop's AI classification, when one passed; *params* the action's
+    checked parameters; *classified* why there is none, in words; *refused_call* the AI call
+    whose answer the check refused, when one was; *incident* `incidents.record`'s answer (its
+    key, window, ingress and the switches seen also), kept on the row, the detection carrying
+    its compact copy (`incidents.stamp`). Without one the response is an incident of its
+    detection alone."""
+    from modules.sdn import incidents
+
     now = time.time() if now is None else now
     for row in awaiting(network)["rows"]:
-        if row.get("detection", {}).get("key") == detection.get("key"):
+        if detection.get("key") in row.get("members", ()):
             return row
     row = {"kind": "proposed", "id": f"resp-{secrets.token_hex(5)}", "at": _iso(now),
-           "action": action, "risk": risk, "why": why, "detection": detection,
+           "action": action, "risk": risk, "why": why,
+           "detection": incidents.stamp(detection, incident) if incident else detection,
            "classification": classification, "params": dict(params or {}),
            "classified": classified, "refused_call": refused_call}
+    if incident:
+        row["incident"] = incident
+    _append(network, PENDING_FILE, row)
+    return row
+
+
+def seen_also(network: str, response_id: str, detections: list, *, now: float = None) -> dict:
+    """Record *detections* (another switch's sighting of the same rule and source, within its
+    window) as seen also by the incident awaiting a person as *response_id* (C1999): not
+    classified again, nothing proposed."""
+    from modules.sdn import incidents
+
+    now = time.time() if now is None else now
+    row = {"kind": "seen", "id": response_id, "at": _iso(now),
+           "detections": [incidents.brief(d) for d in detections]}
     _append(network, PENDING_FILE, row)
     return row
 
@@ -337,16 +371,30 @@ CLOSED = ("confirmed", "dismissed", "cleared")
 
 
 def awaiting(network: str) -> dict:
-    """The responses awaiting a person, oldest first, each with its latest classification and
-    ``inactive_since`` (its detection's threat no longer active since then, "" while it is)."""
+    """The responses awaiting a person, oldest first, each with its latest classification,
+    ``inactive_since`` (its incident's threat no longer active since then, "" while it is),
+    and its incident (C1999): ``seen_also`` (each other switch that saw it, the record's and
+    each later ``seen``), ``members`` (every detection key it holds, its own first) and
+    ``last_seen`` (its latest sighting: a detection's time, or its firing again)."""
     got = _read(network, PENDING_FILE)
     open_rows = {}
     for r in got["rows"]:
         kind, rid = r.get("kind"), r.get("id")
         if kind == "proposed":
-            open_rows[rid] = dict(r, inactive_since="")
+            d = r.get("detection") or {}
+            also = list((r.get("incident") or {}).get("seen_also") or [])
+            open_rows[rid] = dict(r, inactive_since="", seen_also=also,
+                                  members=[d.get("key")] + [s.get("key") for s in also],
+                                  last_seen=max(d.get("at") or "", r.get("at") or ""))
         elif rid not in open_rows:
             continue
+        elif kind == "seen":
+            row = open_rows[rid]
+            new = [s for s in r.get("detections") or [] if s.get("key") not in row["members"]]
+            open_rows[rid] = dict(row, seen_also=row["seen_also"] + new,
+                                  members=row["members"] + [s.get("key") for s in new],
+                                  last_seen=max([row["last_seen"], r.get("at") or ""]
+                                                + [s.get("at") or "" for s in new]))
         elif kind == "classified":
             open_rows[rid] = dict(open_rows[rid], **{
                 k: r.get(k) for k in ("classification", "action", "risk", "params")},
@@ -354,7 +402,8 @@ def awaiting(network: str) -> dict:
         elif kind == "inactive":
             open_rows[rid] = dict(open_rows[rid], inactive_since=r.get("since") or r.get("at"))
         elif kind == "active":
-            open_rows[rid] = dict(open_rows[rid], inactive_since="")
+            open_rows[rid] = dict(open_rows[rid], inactive_since="",
+                                  last_seen=max(open_rows[rid]["last_seen"], r.get("at") or ""))
         elif kind in CLOSED:
             open_rows.pop(rid, None)
     return dict(got, rows=list(open_rows.values()))
@@ -460,6 +509,9 @@ def holds(network: str, collected: dict, now: float, *, cached: dict = None) -> 
         cookies = [f.get("cookie_hex") or flow_intent.cookie_hex(f.get("cookie")) for f in rows]
         hold = {"key": key, "id": answered.get(key) or key, "action": resp.get("action"),
                 "rule": det.get("rule") or "", "detection_key": det.get("key") or "",
+                # C1999: applied at its incident's known ingress switch, so it holds the
+                # source off on every switch of its connection (`covering`'s *across*).
+                "ingress": bool((det.get("incident") or {}).get("ingress")),
                 "sources": sorted(s for s in sources if s), "connection": conn, "dpid": dpid,
                 "dpid_hex": rows[0].get("dpid_hex") or det.get("dpid_hex") or "",
                 "cookies": cookies, "until": min(ends) if len(ends) == len(rows) else None}
@@ -495,11 +547,15 @@ def holds(network: str, collected: dict, now: float, *, cached: dict = None) -> 
     return {"state": "ok", "error": "", "holds": out}
 
 
-def covering(d: dict, judged: list) -> tuple:
+def covering(d: dict, judged: list, *, across: bool = False) -> tuple:
     """The response holding detection *d* off among `holds`' *judged*, and the others that
     would have held it but are not in force: ``(active hold or None, [the others])``. A hold
     covers *d* when it is for the same rule on the same connection and switch, and its
-    detection was *d*'s own (the same key) or every source *d* names is one it holds off."""
+    detection was *d*'s own (the same key) or every source *d* names is one it holds off.
+    With *across* (the loop's own judgement, C1999), a hold applied at its incident's known
+    ingress switch (``ingress``) covers *d* on any switch of the same connection when every
+    source *d* names is one it holds off: the source enters by that switch's port, so it is
+    held off from every switch behind it."""
     from modules.sdn import closed_loop
     from modules.sdn.drivers.base import SpecError, parse_dpid
 
@@ -508,11 +564,14 @@ def covering(d: dict, judged: list) -> tuple:
     except SpecError:
         return None, []
     named = {canon_source(s) for s in closed_loop._sources(d)}
+    by_source = bool(named) and "" not in named
     match = [h for h in judged
              if h["rule"] == d.get("rule") and h["connection"] == d.get("connection")
-             and h["dpid"] == dpid
-             and ((h["detection_key"] and h["detection_key"] == d.get("key"))
-                  or (named and "" not in named and named <= set(h["sources"])))]
+             and ((h["dpid"] == dpid
+                   and ((h["detection_key"] and h["detection_key"] == d.get("key"))
+                        or (by_source and named <= set(h["sources"]))))
+                  or (across and h.get("ingress") and by_source
+                      and named <= set(h["sources"])))]
     active = [h for h in match if h["state"] == "active"]
     if active:
         return max(active, key=lambda h: h["until"]), []
@@ -601,7 +660,7 @@ def _judge_holds(network: str, collected: dict, seen: dict, candidates: list,
                 f"{_source_words(d)}: whether a response already holds it off could not be "
                 f"read ({judged['error']}): answered as new")
             continue
-        active, others = covering(d, judged["holds"])
+        active, others = covering(d, judged["holds"], across=True)
         if active is not None:
             holding[key] = active
             continue
@@ -616,6 +675,68 @@ def _judge_holds(network: str, collected: dict, seen: dict, candidates: list,
                 f"{named} may hold {_source_words(d)} off and is not judged: {h['words']}; "
                 "answered as new")
     return holding, notes, releasing
+
+
+#: How many switches an incident's log line names before it counts the rest.
+SWITCHES_NAMED = 5
+
+
+def _switches_words(members: list) -> str:
+    names = [m.get("dpid_hex") or str(m.get("dpid")) for m in members]
+    shown = ", ".join(names[:SWITCHES_NAMED])
+    more = len(names) - SWITCHES_NAMED
+    return (f"{len(names)} switch{'es' if len(names) != 1 else ''} ({shown}"
+            + (f" and {more} more" if more > 0 else "") + ")")
+
+
+def _incident_words(inc: dict) -> str:
+    first = inc["members"][0]
+    return f"{first.get('title') or inc.get('rule')} from {inc.get('source') or '?'}"
+
+
+def _incidents(network: str, seen: dict, fresh: list, rows_waiting: list, now: float) -> tuple:
+    """The pass's new detections (*fresh*: fired or released, awaiting nobody and held by
+    nothing) as incidents (C1999; `modules/sdn/incidents.py`): ``({key: incident}, todo)``,
+    each incident ``joined`` (the incident awaiting a person it joins, among *rows_waiting*,
+    or None) and, when new, ``chosen`` (its ingress, `incidents.ingress`) and ``record``;
+    *todo* the one detection per new incident its classification reads, its ingress's. The
+    windows are the thresholds this collection was judged by (`detect.observe`'s), else the
+    network's; the controller's topology is the SDN reader's stored value, read at most once."""
+    from modules.sdn import detect, incidents
+
+    unique = []
+    for d in fresh:
+        if all(u["key"] != d["key"] for u in unique):
+            unique.append(d)
+    if not unique:
+        return {}, []
+    values = seen.get("thresholds") or {}
+    if not values:
+        th = detect.thresholds(network)
+        values = th["values"] if th.get("ok") else {}
+    topo = {}
+
+    def stored():
+        if "v" not in topo:
+            try:
+                from modules.sdn import topology
+                topo["v"] = topology.stored(network)
+            except Exception as exc:                  # noqa: BLE001 (said on the card)
+                topo["v"] = {"state": "could not read", "why": type(exc).__name__}
+        return topo["v"]
+
+    incident_of, todo = {}, []
+    for inc in incidents.group(unique, values):
+        joined = next((r for r in (incidents.joinable(rows_waiting, m, now)
+                                   for m in inc["members"]) if r is not None), None)
+        inc["joined"] = joined
+        if joined is None:
+            chosen = incidents.ingress(network, inc, stored() if inc["source"] else {})
+            inc.update(chosen=chosen, record=incidents.record(inc, chosen))
+            todo.append(chosen["detection"])
+        for m in inc["members"]:
+            incident_of[m["key"]] = inc
+    return incident_of, todo
 
 
 def _source_words(d: dict) -> str:
@@ -736,12 +857,12 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
     longer in force. *job* is the loop's id (`job_id`), what its background AI calls name;
     *send* replaces the AI provider (tests)."""
     from modules.fanout import Failed, read_each
-    from modules.sdn import closed_loop, detect, flow_ops, modes
+    from modules.sdn import closed_loop, detect, flow_ops, incidents, modes
 
     job = job or job_id(network)
 
     out = {"ok": False, "error": "", "fired": [], "proposed": [], "applied": [], "inactive": [],
-           "mitigated": [], "released": [], "lines": []}
+           "mitigated": [], "released": [], "incidents": [], "seen_also": [], "lines": []}
 
     def line(step, words, **extra):
         out["lines"].append(say(network, step, words, now(), **extra))
@@ -763,7 +884,10 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
             return out
         fired = [d for d in seen.get("detections") or [] if d["key"] in set(seen["fired"])]
         resolved = list(seen.get("resolved") or [])
-        waiting = {r.get("detection", {}).get("key"): r for r in awaiting(network)["rows"]}
+        # Each detection key an incident awaiting a person holds: its own and each seen also.
+        rows_waiting = awaiting(network)["rows"]
+        waiting = {k: r for r in rows_waiting
+                   for k in r.get("members") or [(r.get("detection") or {}).get("key")]}
         held = [waiting[k] for k in resolved if k in waiting]
         # A pass with no new detection says which of four it is (objective 3.1): healthy only
         # when the collection read every switch whole and nothing is active; a detection still
@@ -790,23 +914,31 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
                 else "") + (f" (judged in {judged_s:.1f} s)" if fired else ""),
              took_s=round(judged_s, 2))
         since = seen.get("collected_at") or _iso(now())
+        # An incident is no longer active once none of its switches still shows it (C1999):
+        # one switch's detection resolving while another's fires keeps it active.
+        still = {d["key"] for d in seen.get("detections") or []} | {
+            u.get("key") for u in seen.get("unjudged") or []}
         for row in held:
-            if not row.get("inactive_since"):
-                mark(network, row["id"], "inactive", since=since, now=now())
-                out["inactive"].append(row["id"])
+            if row["id"] in out["inactive"] or row.get("inactive_since") or \
+                    set(row.get("members") or ()) & still:
+                continue
+            mark(network, row["id"], "inactive", since=since, now=now())
+            out["inactive"].append(row["id"])
         kept = seen.get("kept") or {}
         # Already mitigated (C2005), before any AI call: a detection a response in force holds
         # off is recorded, not classified or proposed; a held one whose response is no longer
         # in force while it is still detected is answered as new in this pass (`releasing`).
         holding, notes, releasing = _judge_holds(
             network, collected, seen, [d for d in fired if d["key"] not in waiting], now())
-        # Classified at once, each its own call (C1970), in the detections' order whatever
-        # order the calls finish in (`fanout.read_each`); one that raises is its own Failed.
-        todo = []
-        for d in fired + releasing:           # one call per detection, its first sighting's
-            if d["key"] not in waiting and d["key"] not in holding and \
-                    all(t["key"] != d["key"] for t in todo):
-                todo.append(d)
+        # Incidents (C1999), before any AI call: the new detections grouped by rule and source
+        # within the rule's window; one joining an incident already awaiting a person is seen
+        # also there; a new incident's response is proposed at its ingress switch.
+        incident_of, todo = _incidents(network, seen, [
+            d for d in fired + releasing if d["key"] not in waiting and d["key"] not in holding],
+            rows_waiting, now())
+        # Classified at once, each its own call (C1970): one per incident, its ingress
+        # detection's, in the detections' order whatever order the calls finish in
+        # (`fanout.read_each`); one that raises is its own Failed.
         took = {}
 
         def one(d):
@@ -846,6 +978,38 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
                     f"{hold['words']}; recorded as already mitigated ({row['id']}), not "
                     "proposed: no AI call, nothing sent"), hold=row["id"], by=hold["id"])
                 continue
+            inc = incident_of.get(d["key"])
+            if inc is None:
+                continue
+            if inc["joined"] is not None:
+                # Seen also by an incident awaiting a person: recorded once for the pass's
+                # members, at its first; not classified again, nothing proposed.
+                if d["key"] == inc["members"][0]["key"]:
+                    row = inc["joined"]
+                    seen_also(network, row["id"], inc["members"], now=now())
+                    if row.get("inactive_since"):
+                        mark(network, row["id"], "active", now=now())
+                    keys = [m["key"] for m in inc["members"]]
+                    out["seen_also"] += keys
+                    out["incidents"].append({"key": inc["key"], "id": row["id"],
+                                             "joined": True, "switches": len(keys)})
+                    line("incident", (
+                        f"{_incident_words(inc)} seen also on {_switches_words(inc['members'])}"
+                        f", within {inc['window']['seconds']} s of its last sighting: joins "
+                        f"incident {row['id']}, awaiting a person since {row.get('at')}; not "
+                        "classified again, nothing proposed"), incident=row["id"])
+                continue
+            if d["key"] != inc["chosen"]["detection"]["key"]:
+                continue                      # seen also: said on its incident's line
+            rec = inc["record"]
+            if rec["seen_also"]:
+                out["seen_also"] += [s["key"] for s in rec["seen_also"]]
+                line("incident", (
+                    f"{_incident_words(inc)} seen on {1 + len(rec['seen_also'])} switches "
+                    f"({inc['window']['words']}): one incident, one AI call, one response; "
+                    f"{rec['ingress_words']}; seen also on "
+                    f"{_switches_words(rec['seen_also'])}"), switches=1 + len(rec["seen_also"]))
+            d = incidents.stamp(d, rec)
             verdict = verdicts[d["key"]]
             if isinstance(verdict, Failed):
                 # The call raised (not one of the gateway's own refusals): this detection's
@@ -866,8 +1030,10 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
                 row = propose(network, d, action, risk, why=decision["words"], now=now(),
                               classification=verdict["classification"], params=params,
                               classified=verdict["words"],
-                              refused_call=verdict["refused_call"])
+                              refused_call=verdict["refused_call"], incident=rec)
                 out["proposed"].append(row["id"])
+                out["incidents"].append({"key": inc["key"], "id": row["id"], "joined": False,
+                                         "switches": 1 + len(rec["seen_also"])})
                 line("respond", f"HITL, awaiting a person ({row['id']}): {decision['words']}")
                 continue
             preview = closed_loop.respond_to_threat(network, d, action, params, driver=driver)
@@ -882,6 +1048,8 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
                 classified_by=closed_loop.classified_words(verdict["classification"], action),
                 driver=driver, sleep=sleep, now=now)
             out["applied"].append({"id": done.get("id"), "outcome": done.get("outcome")})
+            out["incidents"].append({"key": inc["key"], "id": done.get("id"), "joined": False,
+                                     "switches": 1 + len(rec["seen_also"])})
             # The one writer of a response's line (`closed_loop.log_response`): the switch, the
             # operation and the entries as Verify read them back, as a person's confirm logs.
             out["lines"].append(closed_loop.log_response(

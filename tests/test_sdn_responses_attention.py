@@ -1,51 +1,72 @@
-"""SDN responses awaiting a person reach Needs attention (`modules/attention.py`
-`sdn_responses_source`; C1999's notification half): on a HITL network a threat is seen
-without opening SDN › Responses.
+"""SDN incidents awaiting a person reach Needs attention (`modules/attention.py`
+`sdn_responses_source`; C1999): on a HITL network a threat is seen without opening SDN ›
+Responses.
 
-- One row per network, never one per detection: it counts the responses awaiting, names the
-  oldest's time, rule, source and proposed action, and how many are no longer active; WARNING,
-  DANGER when any is classified high or critical. Its action opens the network's Responses.
-- It clears when every response is applied or dismissed (it resolves), and the page reads it
-  again on `sdn` (the loop's announcement, the routes' invalidation).
+- One row per incident, never one per detection or per switch (C1999 item 3, which replaced
+  the one row per network drawn before incidents): it names the network, the rule, the source,
+  how many switches saw it, its severity, its age and where its response is proposed; WARNING,
+  DANGER when classified high or critical; most severe first, then the longest waiting. Its
+  action opens that incident on the network's Responses.
+- It clears when the incident's response is applied or it is dismissed (it resolves), and the
+  page reads it again on `sdn` (the loop's announcement, the routes' invalidation).
 - A network whose responses cannot be read is the source's own error, drawn as a row of its
   own, never as no row.
 """
 from modules import attention as A
+from modules.sdn import incidents
 from modules.sdn import loop as LP
 from tests.test_sdn_connections import networks  # noqa: F401 - the fixture
 from tests.test_sdn_modes_loop import NET, T0, detection
 
 
-def _propose(key, classification=None, at=T0):
-    return LP.propose(NET, detection(key), "drop_source", "low", why="HITL", now=at,
-                      classification=classification)
+def _propose(key, classification=None, at=T0, also=0):
+    d = detection(key)
+    rec = {"key": incidents.group_key(d), "rule": "scan", "source": "192.0.2.1",
+           "window_s": 60, "window_setting": "sdn_scan_window_seconds",
+           "window_words": "within 60 s", "ingress_known": True,
+           "ingress_words": "the ingress switch is 0000000000000001",
+           "ingress_port": 1,
+           "seen_also": [dict(incidents.brief(d), key=f"{key}-{n}", dpid=n + 2,
+                              dpid_hex=f"{n + 2:016x}") for n in range(also)]}
+    return LP.propose(NET, d, "drop_source", "low", why="HITL", now=at,
+                      classification=classification, incident=rec)
 
 
-def test_responses_awaiting_are_one_row_for_the_network(networks):  # noqa: F811
-    _propose("k1")
-    _propose("k2", at=T0 + 30)
-    (r,) = A.sdn_responses_source(found={NET: LP.awaiting(NET)})["rows"]
-    assert (r["source"], r["kind"], r["level"], r["id"]) == (
-        "sdn_responses", "awaiting", "warning", "sdn_responses:Default")
-    assert r["what"] == "2 SDN responses await a person on Default"
-    assert r["cause"] == (f"The oldest, since {LP._iso(T0)}: SDN scan from 192.0.2.1, proposed "
-                          "drop_source. Nothing is sent to a switch until a person confirms")
-    assert r["action"]["href"] == "/v2/sdn/responses?list=Default"
+def test_each_incident_awaiting_is_one_row_naming_its_switches(networks):  # noqa: F811
+    one = _propose("k1", also=49)
+    two = _propose("k2", at=T0 + 30)
+    rows = A.sdn_responses_source(found={NET: LP.awaiting(NET)})["rows"]
+    assert [(r["source"], r["kind"], r["level"], r["id"]) for r in rows] == [
+        ("sdn_responses", "awaiting", "warning", f"sdn_responses:Default:{one['id']}"),
+        ("sdn_responses", "awaiting", "warning", f"sdn_responses:Default:{two['id']}")]
+    r = rows[0]
+    assert r["what"] == "SDN scan from 192.0.2.1 on Default, seen on 50 switches, awaits a person"
+    assert r["cause"] == (
+        f"Incident {one['id']}, since {LP._iso(T0)} (last seen {LP._iso(T0)}): not classified; "
+        "proposed drop_source at 0000000000000001 (the ingress switch is 0000000000000001). "
+        "Nothing is sent to a switch until a person confirms")
+    assert r["action"]["href"] == (f"/v2/sdn/responses?list=Default&incident={one['id']}"
+                                   f"#sdn-i-{one['id']}")
     assert r["clears"]["ways"] == ["resolves"]
-    assert r["operands"] == {"network": NET, "awaiting": 2, "oldest": LP._iso(T0), "severe": 0,
-                             "inactive": 0}
+    assert r["operands"] == {"network": NET, "incident": one["id"], "rule": "scan",
+                             "source": "192.0.2.1", "switches": 50, "severity": "unclassified",
+                             "since": LP._iso(T0), "inactive": False}
+    assert rows[1]["what"].endswith("seen on 1 switch, awaits a person")
 
 
-def test_a_severe_classification_makes_it_danger_and_inactive_ones_are_counted(networks):  # noqa: F811,E501
-    row = _propose("k1", classification={"severity": "critical"})
-    LP.mark(NET, row["id"], "inactive", since=LP._iso(T0 + 5), now=T0 + 5)
-    (r,) = A.sdn_responses_source(found={NET: LP.awaiting(NET)})["rows"]
-    assert r["level"] == "danger" and r["what"] == "1 SDN response awaits a person on Default"
-    assert "; 1 classified high or critical; 1 no longer active." in r["cause"]
+def test_a_severe_classification_makes_it_danger_first_and_inactive_is_said(networks):  # noqa: F811,E501
+    _propose("k1")
+    row = _propose("k2", classification={"severity": "critical"}, at=T0 + 60)
+    LP.mark(NET, row["id"], "inactive", since=LP._iso(T0 + 65), now=T0 + 65)
+    first, second = A.sdn_responses_source(found={NET: LP.awaiting(NET)})["rows"]
+    assert first["operands"]["incident"] == row["id"], "the most severe first, though newer"
+    assert first["level"] == "danger" and second["level"] == "warning"
+    assert "severity critical by its AI classification" in first["cause"]
+    assert f"; no switch shows it since {LP._iso(T0 + 65)}." in first["cause"]
 
 
-def test_it_clears_when_each_is_applied_or_dismissed(networks):  # noqa: F811
-    row = _propose("k1")
+def test_it_clears_when_the_incident_is_applied_or_dismissed(networks):  # noqa: F811
+    row = _propose("k1", also=3)
     LP.resolve(NET, row["id"], "dismissed", actor="op@example.com", why="a test")
     assert LP.awaiting(NET)["rows"] == []
     assert A.sdn_responses_source(found={NET: LP.awaiting(NET)})["rows"] == []

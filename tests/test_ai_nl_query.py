@@ -1062,6 +1062,10 @@ def test_v9_says_which_level_it_sent_and_what_it_dropped(world, monkeypatch):
                                                                     20, 10))])
     # 100 characters of summary at level 2: this world's request with its offer is about
     # 7,950 tokens by the provider's count (C1898; the tests' typical count), near the 8,000.
+    # The levels here are sized against 8,000, the bound before the operator's raise to 9,500
+    # (2026-10-28, C2048): held at it, so what is tested stays which level fits and is said.
+    monkeypatch.setitem(profiles.TASKS, nl_query.FEATURE,
+                        dict(profiles.TASKS[nl_query.FEATURE], max_prompt_tokens=8000))
     world.answer = _v8_choices()
     got = _ask(world, prompt=nl_query.CANDIDATE)
     assert got["ok"] is True, got
@@ -1277,7 +1281,8 @@ def test_v10_s_largest_measured_request_fits_the_counted_bound_only_without_its_
     provider's count (C1898; here the tests' typical count, 2.585 characters a token, the
     recorded calls' median), it does not fit at level 0 even with its offer at the floor; it
     fits with the network context dropped and the offer cut to 17 of 20. v9, which cuts no
-    offer, fits at neither."""
+    offer, fits at neither. All of that at 8,000; at the pin's bound since the operator's
+    decision of 2026-10-28 (9,500, C2048) v10 fits with its whole context."""
     from modules import history_promq as pq
     rng = pq.window(dict(pq.DEFAULTS), NOW)
     cat = pq.catalogue("Lab", world.prom, rng, NOW)
@@ -1288,14 +1293,16 @@ def test_v10_s_largest_measured_request_fits_the_counted_bound_only_without_its_
     level0 = {"level": 0, "dropped": [], "summary": "s" * 1079, "coverage": "c" * 850}
     leanest = {"level": 5, "dropped": list(nl_query.CONTEXT_DROPS), "summary": "omitted",
                "coverage": "c" * 200}
-    budget = profiles.TASKS[nl_query.FEATURE]["max_prompt_tokens"]
+    # Judged at 8,000, the bound this was measured against; the pin's own bound (9,500 since
+    # the operator's decision of 2026-10-28, C2048) is judged at the end.
+    budget = 8000
     model = profiles.TASKS[nl_query.FEATURE]["model"]
 
-    def select(prompt, schema, levels, **kw):
+    def select(prompt, schema, levels, bound=budget, **kw):
         return nl_query.select_context(prompt, schema, data, {"builder": nl_query.vocabulary()},
-                                       levels, budget, counter=gateway.Counter(model, KEY), **kw)
+                                       levels, bound, counter=gateway.Counter(model, KEY), **kw)
     at0 = select(nl_query.CANDIDATE, nl_query.SCHEMA_OF[10], [level0], offered=offered)
-    assert at0["estimate"] > budget == 8000 and len(at0["offered"]) == nl_query.OFFER_FLOOR
+    assert at0["estimate"] > budget and len(at0["offered"]) == nl_query.OFFER_FLOOR
     got = select(nl_query.CANDIDATE, nl_query.SCHEMA_OF[10], [level0, leanest],
                  offered=offered)
     assert got["estimate"] <= budget and got["level"] == 5, got["estimate"]
@@ -1303,6 +1310,13 @@ def test_v10_s_largest_measured_request_fits_the_counted_bound_only_without_its_
     for levels in ([level0], [level0, leanest]):
         v9 = select(("nl_metrics", 9), nl_query.MetricsChoicesV3, levels)
         assert v9["estimate"] > budget, v9["estimate"]
+    # At the pin's own bound (C2048: the raise this measurement argued for), v10 sends the
+    # whole network context with its offer at the floor.
+    pinned = profiles.TASKS[nl_query.FEATURE]["max_prompt_tokens"]
+    assert pinned == 9500
+    whole = select(nl_query.CANDIDATE, nl_query.SCHEMA_OF[10], [level0, leanest],
+                   bound=pinned, offered=offered)
+    assert whole["estimate"] <= pinned and whole["level"] == 0, whole["estimate"]
 
 
 # ---------------------------------------------------------------------------- one form

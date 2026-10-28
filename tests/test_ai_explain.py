@@ -489,7 +489,10 @@ def test_v6_s_answer_carries_its_level_and_the_prompt_says_omitted_for_size(worl
                                    trigger=triggers.person("operator@example.com"), send=world.send,
                                    today="2026-10-25", prompt=V6_PROMPT)
     assert got["ok"] is True and got["context"]["level"] == 0, got
-    assert got["context"]["budget"] == 20000 and got["context"]["dropped"] == []
+    # The budget is the pin's bound (27,000 since the operator's decision of 2026-10-28, C2048).
+    budget = profiles.TASKS["explain"]["max_prompt_tokens"]
+    assert budget == 27000
+    assert got["context"]["budget"] == budget and got["context"]["dropped"] == []
     text = " ".join(prompts.load(*V6_PROMPT)["text"].split())
     for said in ('"omitted for size"', "is not the same as not_collected or not read",
                  "Lines inside the onset window, and the alert's own device's figures, are "

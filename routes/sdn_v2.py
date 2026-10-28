@@ -37,7 +37,9 @@ def _ctx(tab: str) -> dict:
     if tab == "responses":
         from modules import sdn_ops_page
 
-        g = sdn_ops_page.responses_view(network, (request.args.get("run") or "").strip())
+        g = sdn_ops_page.responses_view(
+            network, (request.args.get("run") or "").strip(), q=request.args.get("q") or "",
+            sev=request.args.get("sev") or "", incident=request.args.get("incident") or "")
     else:
         g = (sdn_page.flows_view(network, request.args) if tab == "flows"
              else sdn_page.controllers_view(network))

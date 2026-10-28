@@ -181,17 +181,47 @@ def test_sdn(tmp_path, monkeypatch):
         # awaiting a person (the detection's words as the lab's run wrote them, 2026-10-27)
         # and a loop log line.
         from modules.sdn import loop as LP
-        shot_row = LP.propose("Default", {
+        from modules.sdn import incidents as INC
+        shot_det = {
             "key": "k-shot", "rule": "scan", "title": "SDN scan", "network": "Default",
             "connection": "lab-controller", "dpid": 1, "dpid_hex": "0000000000000001",
             "source": "192.0.2.1", "targets": ["192.0.2.3"], "confidence": "high",
             "words": "192.0.2.1 reached 229 distinct destination ports on switch "
                      "0000000000000001 (lab-controller) in the last 60 s, at or above the "
-                     "threshold of 20 (sdn_scan_ports)"}, "drop_source", "low",
-            why="HITL: a person confirms each response")
+                     "threshold of 20 (sdn_scan_ports)"}
+        # C1999: the scan one incident, its response at the ingress (s1, where the captured
+        # topology lists 192.0.2.1's host on port 1) and two more switches seen also; a flood
+        # from an IPv6 source on one switch, its ingress not told (the topology not read).
+        also = [dict(shot_det, key=f"k-shot-{n}", dpid=n, dpid_hex=f"{n:016x}",
+                     words=f"192.0.2.1 reached 214 distinct destination ports on switch "
+                           f"{n:016x} (lab-controller) in the last 60 s") for n in (2, 3)]
+        shot_row = LP.propose("Default", shot_det, "drop_source", "low",
+                              why="HITL: a person confirms each response",
+                              incident=INC.record(
+                                  dict(INC.group([shot_det] + also, {
+                                      "sdn_scan_window_seconds": 60})[0]),
+                                  {"detection": shot_det, "known": True, "port": 1,
+                                   "words": "the ingress switch is 0000000000000001: the "
+                                            "controller's topology (read 20 s ago) lists "
+                                            "192.0.2.1's host on its port 1"}))
+        flood = dict(shot_det, key="k-shot-flood", rule="flood", title="SDN flood",
+                     source="2001:db8:8::3", dpid=2, dpid_hex="0000000000000002",
+                     words="port 1 of switch 0000000000000002 (lab-controller) received 912 "
+                           "packets a second, at or above 5x its baseline of 12 (60), for 30 s")
+        LP.propose("Default", flood, "rate_limit_source", "low",
+                   why="HITL: a person confirms each response",
+                   incident=INC.record(INC.group([flood], {"sdn_flood_window_seconds": 30})[0],
+                                       INC.ingress("Default", INC.group(
+                                           [flood], {"sdn_flood_window_seconds": 30})[0],
+                                           {"state": "could not read",
+                                            "why": "the SDN reader has not read this network "
+                                                   "yet"})))
         LP.say("Default", "detect", "scan from 192.0.2.1 on 0000000000000001")
+        LP.say("Default", "incident", "SDN scan from 192.0.2.1 seen on 3 switches (within 60 "
+                                      "s, the scan rule's own window): one incident, one AI "
+                                      "call, one response")
         _shoot("sdn-responses", "SdnResponses.dc.html",
-               lambda w: "/v2/sdn/responses?list=Default", served,
+               lambda w: f"/v2/sdn/responses?list=Default&incident={shot_row['id']}", served,
                widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
 
         # C2003: the page past its promise with no redraw (its stale moment set in the past,
@@ -218,7 +248,8 @@ def test_sdn(tmp_path, monkeypatch):
             b.js("document.body.dispatchEvent(new CustomEvent('nmas:sdn')); return 1")
             b.wait_for(f"return !!document.querySelector('#sdn-rp-{shot_row['id']} "
                        ".held-note')", 15)
-        _shoot("sdn-responses-held", "", lambda w: "/v2/sdn/responses?list=Default", served,
+        opened = f"/v2/sdn/responses?list=Default&incident={shot_row['id']}"
+        _shoot("sdn-responses-held", "", lambda w: opened, served,
                widths=((1440, 1.0), (390, 2.0)), act=held)
 
         # C2003 with C2001: held as above, then past its promise: the note says newer data is
@@ -227,8 +258,7 @@ def test_sdn(tmp_path, monkeypatch):
             held(b)
             stale(b)
         _shoot("sdn-responses-stale-held", "SdnResponses.dc.html",
-               lambda w: "/v2/sdn/responses?list=Default", served, widths=((1440, 1.0),),
-               act=stale_held)
+               lambda w: opened, served, widths=((1440, 1.0),), act=stale_held)
         # C2009: the shot above is a network not marked (Turn AUTO on drawn disabled with its
         # reason); this one is AUTO turned on while marked lab, then the network marked
         # production: the Mode card says AUTO is suspended. No board draws a stage.

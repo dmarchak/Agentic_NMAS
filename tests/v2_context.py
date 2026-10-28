@@ -1972,8 +1972,19 @@ def _sdn_operations(client, mp, session):
          "connection": "lab-controller", "dpid": 1, "dpid_hex": sw, "source": "192.0.2.1",
          "targets": ["192.0.2.2"], "confidence": "high", "words": "192.0.2.1 reached 25 ports"}
     row = LP.propose("Lab", d, "drop_source", "low", why="HITL")
-    other = LP.propose("Lab", dict(d, key="k-ctx-2", rule="flood"), "rate_limit_source", "low",
-                       why="HITL")
+    # C1999: the flood an incident seen on two switches, its response proposed at the ingress
+    # and the other switch seen also, so the incident's detail draws its seen-also list.
+    from modules.sdn import incidents
+    flood = dict(d, key="k-ctx-2", rule="flood")
+    other = LP.propose("Lab", flood, "rate_limit_source", "low", why="HITL", incident={
+        "key": incidents.group_key(flood), "rule": "flood", "source": "192.0.2.1",
+        "window_s": 30, "window_setting": "sdn_flood_window_seconds",
+        "window_words": "within 30 s, the flood rule's own window (sdn_flood_window_seconds)",
+        "ingress_known": True, "ingress_port": 1,
+        "ingress_words": f"the ingress switch is {sw}: the controller's topology lists "
+                         "192.0.2.1's host on its port 1",
+        "seen_also": [incidents.brief(dict(flood, key="k-ctx-3", dpid=2,
+                                           dpid_hex="0000000000000002", port=3))]})
     LP.say("Lab", "detect", "a scan from 192.0.2.1 on " + sw)
     assert "2 awaiting approval" in client.get("/v2/sdn/responses?list=Lab")\
         .get_data(as_text=True)

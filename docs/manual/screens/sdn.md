@@ -161,9 +161,26 @@ refused at the preview, naming both. How each step works:
 
 ## Responses {#responses}
 
-What to act on first: **N awaiting approval**, the mode and whether the loop is running.
+What to act on first: **N awaiting approval**, how many incidents and on how many switches, the
+mode and whether the loop is running.
 
-- **A response awaiting you**: the detection (the rule, the source, the switch, its confidence
+- **Incidents awaiting a person**: one attack is one incident however many switches see it (a
+  scan crosses every switch on the source's path, and each switch's rule fires). Detections of
+  the same rule and source (IPv4, IPv6 or MAC, in any spelling) within the rule's own window
+  (the scan's 60 seconds, the flood's 30, as set in the rules below) are one incident, with one
+  AI classification and one response, proposed at the **ingress switch**: the switch where the
+  controller's topology lists the source's host port, since a response where the source enters
+  holds it off from every switch behind it. The others are **seen also**. An unauthorised flow
+  is one flow on one switch, so each is its own incident. How it works:
+  [Incidents](sdn-flows#incidents). The incidents are a compact table, most severe first
+  (critical, high, not classified, medium, low, no threat), then the longest waiting: its
+  severity, rule, source, how many switches saw it, its age, the AI's verdict and the action
+  proposed at a switch. The severity counts above it filter the table, and the search finds an
+  incident by its rule, source, any of its switches or its action; a filtered table says
+  **Showing N of M** with **Show all**, and past 50 rows it says how many more a filter would
+  show. **Click a row to open it**; everything you do there acts on that incident only, and
+  nothing confirms or dismisses several incidents at once.
+- **An incident, opened**: the detection (the rule, the source, the switch, its confidence
   and its words, an alert with its evidence pack; an unauthorised flow's words also say what it
   does, decided in code: it lifts or shadows a Mercury flow, drops, diverts, forwards as the
   controller would, or has an effect the table cannot tell, naming why:
@@ -171,16 +188,24 @@ What to act on first: **N awaiting approval**, the mode and whether the loop is 
   (marked AI: threat or not, its kind and severity, its reasoning, what it recommends, the
   devices it names, the evidence ids it cites, and the model, cost and call), else who chose the
   action (the catalogue's default, chosen in code), and the action proposed from the catalogue
-  with its risk. **Classify** (an AI control, beside its mark) asks the model about this
+  with its risk and the switch it acts on. **Ingress:** names that switch and the port the
+  controller lists the source's host on; when the ingress cannot be told (no source named, the
+  topology not read now, no host or several ports listing the source, or the source on a switch
+  that has not fired) the line reads **Proposed at:**, says why, and the switch that saw it
+  first is proposed. **Seen also on N other switches** opens to each switch, its port, controller,
+  time and detection; nothing is proposed there. **Classify** (an AI control, beside its mark) asks the model about this
   detection as you and redraws the card with its answer, its action proposed; it sends nothing
   to a switch, and is drawn disabled with the reason while AI cannot answer. How it works:
   [Classify a detection with AI](sdn-flows#classify).
   Its preview button, named for the action ("Preview the drop traffic from the source…"), builds its card as Flows' changes are (the action's parameters checked
   against the evidence: the source is the detection's, the hard timeout within the network's
-  ceiling); **Send** applies it as you. **Dismiss with this reason** closes it, sending nothing.
-  A response stays until you approve or dismiss it: when its detection resolves first, the card
-  says **Threat no longer active since** the collection that stopped showing it, its
-  classification kept, and the line goes if the detection fires again. When the AI's answer was
+  ceiling); **Send** applies it as you. **Dismiss with this reason** closes it, sending nothing
+  (on an incident seen on several switches, **Dismiss the incident (N switches) with this
+  reason**, which closes the incident with all its switches).
+  An incident stays until you approve or dismiss it: when no switch shows it any longer, its row
+  is marked **Inactive** and the opened incident says **Threat no longer active since** the
+  collection that stopped showing it, its classification kept, and the line goes if it fires
+  again. When the AI's answer was
   refused by the check (or no classification could be made), the card says so ("AI
   classification refused: why; proposed by the catalogue default") with **The refused answer
   in History**, and the rule's catalogue default awaits you, even in AUTO.
@@ -207,10 +232,12 @@ What to act on first: **N awaiting approval**, the mode and whether the loop is 
   not start again by itself** (a loop that resumed unattended would make AI calls and, in AUTO,
   act with no one present): the stop is recorded as **stopped by the app's restart**, with its
   last line's time, and Needs attention shows a warning for the network until you press Start
-  or 24 hours pass. **Responses awaiting you are on Needs attention too**, so you need not have
-  this tab open: one row per network, naming how many await, the oldest's rule, source and
-  proposed action, and how many are no longer active; it turns red when any is classified high
-  or critical, and clears once each is applied or dismissed. What the log says:
+  or 24 hours pass. **Incidents awaiting you are on Needs attention too**, so you need not have
+  this tab open: one row per incident, never one per switch or per detection, naming its
+  network, rule, source, how many switches saw it, its severity, its age and the switch its
+  response is proposed at; it is red when classified high or critical, and clears once its
+  response is applied or it is dismissed. **Open the incident** opens this tab with that
+  incident open. What the log says:
   - a pass that finds nothing new says which of these it is: **network healthy: no threat
     detected** only when the collection read every switch whole and no detection is active;
     **no new threat; N still active**, naming each detection still firing; or that the
@@ -218,6 +245,10 @@ What to act on first: **N awaiting approval**, the mode and whether the loop is 
   - **a threat already answered** says it **fired again while mitigated by response <id>
     until <time>**: a response still in force holds its source off, so no card is raised, no AI
     call is made and nothing is sent ([how](sdn-flows#already-mitigated));
+  - **an incident** seen on several switches says so in one line: the rule and source, how many
+    switches, the window it was grouped within, the ingress (or why it cannot be told) and the
+    switches seen also; a switch that sees an incident still awaiting you, within its window,
+    **joins incident <id>**, with no AI call and nothing proposed;
   - **a response** (AUTO's, or yours when you send it) says who applied which action on which
     switch (its DPID, and the name it reports when Mercury knows one), the operation's id, and
     the resulting entries **as Verify read them back from the switch**: each flow's match,

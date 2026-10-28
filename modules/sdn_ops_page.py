@@ -9,7 +9,9 @@ mode). Reads only: the stores the operations keep and the plan or result handed 
   ask as JSON, unchanged, and the hash);
 - `result`: the outcome first (green only when every gating check passed), Verify's checks,
   the counters, the rollback, the record;
-- `responses_view`: the responses awaiting a person, the mode, the loop and its log, the
+- `responses_view`: the incidents awaiting a person (C1999, `incident_rows`: one response
+  each, a compact table by severity then age, filtered by words or a severity, the detail on
+  expand; board SdnResponses revised 2026-10-28), the mode, the loop and its log, the
   detection rules' thresholds and the response timeouts.
 """
 
@@ -195,18 +197,45 @@ def policy_view(network: str) -> dict:
             "origin": POLICY_ORIGIN.get(str(origin), str(origin))}
 
 
-def responses_view(network: str, run: str = "") -> dict:
-    """SDN › Responses (board SdnResponses). *run*: the loop run whose log the panel draws
-    (C1971; the newest when empty)."""
-    from modules import sdn_page
-    from modules.sdn import closed_loop, detect, flow_ops, loop, modes
+#: An incident's severity as its table row and the summary name it (`incidents.severity`).
+SEVERITY_WORDS = {"critical": "Critical", "high": "High", "unclassified": "Not classified",
+                  "medium": "Medium", "low": "Low", "none": "No threat"}
+#: Each severity's chip colour.
+SEVERITY_TONE = {"critical": "danger", "high": "danger", "unclassified": "warn",
+                 "medium": "warn", "low": "muted", "none": "muted"}
+#: Incidents drawn before the table says how many more a filter would show; the rest are
+#: counted, never drawn as one long list (CLAUDE.md, "Built for large fleets").
+INCIDENTS_DRAWN = 50
 
-    awaiting = loop.awaiting(network)
+
+def _verdict(r: dict, ai: dict) -> str:
+    """The AI verdict column: the classification in a few words, or why there is none."""
+    if ai:
+        return (f"{ai['threat_type'] or 'a threat'}, {ai['severity']}" if ai["threat_detected"]
+                else f"no threat, {ai['severity'] or 'none'}")
+    words = r.get("classified") or ""
+    return "refused" if words.startswith("AI classification refused") else "not classified"
+
+
+def incident_rows(awaiting: dict) -> list:
+    """The incidents awaiting a person (C1999; board SdnResponses), as the table draws them:
+    each its rule, source, how many switches saw it, the ingress and the switches seen also,
+    its age, the AI verdict and the proposed action, by severity then the longest waiting."""
+    from modules.sdn import closed_loop, incidents
+
     rows = []
-    for r in awaiting["rows"]:
+    for r in incidents.order(awaiting["rows"]):
         d = r.get("detection") or {}
+        inc = r.get("incident") or {}
         entry = closed_loop.CATALOGUE.get(r.get("action") or "", {})
+        ai = _classification(r)
+        sev = incidents.severity(r)
+        # Each switch seen also as its list draws it (the DPID in hex; the detection's key and
+        # numeric DPID stay in the store).
+        also = [{k: s.get(k) for k in ("dpid_hex", "port", "connection", "at", "words")}
+                for s in r.get("seen_also") or []]
         rows.append({"id": r.get("id"), "at": r.get("at"), "rule": d.get("rule"),
+                     "rule_label": RULE_LABELS.get(d.get("rule"), d.get("rule") or ""),
                      "title": d.get("title") or d.get("rule"), "words": d.get("words"),
                      "source": d.get("source"), "dpid_hex": d.get("dpid_hex"),
                      "confidence": d.get("confidence"), "action": r.get("action"),
@@ -216,10 +245,51 @@ def responses_view(network: str, run: str = "") -> dict:
                      "classified": r.get("classified") or closed_loop.DEFAULT_WORDS,
                      "refused_call": r.get("refused_call") or "",
                      "inactive_since": r.get("inactive_since") or "",
-                     "ai": _classification(r), "params": dict(r.get("params") or {})})
+                     "ai": ai, "params": dict(r.get("params") or {}),
+                     "severity": sev, "severity_words": SEVERITY_WORDS[sev],
+                     "severity_tone": SEVERITY_TONE[sev], "verdict": _verdict(r, ai),
+                     "switches": 1 + len(also), "seen_also": also,
+                     "last_seen": r.get("last_seen") or r.get("at"),
+                     "ingress_known": bool(inc.get("ingress_known")),
+                     "ingress_words": inc.get("ingress_words") or (
+                         "kept before incidents were grouped (C1999): proposed at the switch "
+                         "that saw it"),
+                     "window_words": inc.get("window_words") or ""})
+    return rows
+
+
+def _matches(row: dict, q: str) -> bool:
+    text = " ".join(str(x or "") for x in (
+        row["rule_label"], row["title"], row["source"], row["dpid_hex"], row["label"],
+        row["action"], row["verdict"], row["severity_words"],
+        *[s.get("dpid_hex") for s in row["seen_also"]])).lower()
+    return all(word in text for word in q.lower().split())
+
+
+def responses_view(network: str, run: str = "", q: str = "", sev: str = "",
+                   incident: str = "") -> dict:
+    """SDN › Responses (board SdnResponses). *run*: the loop run whose log the panel draws
+    (C1971; the newest when empty). *q* and *sev* filter the incidents (words each row must
+    hold; one severity); *incident* names the one drawn open (Needs attention's link)."""
+    from modules import sdn_page
+    from modules.sdn import detect, flow_ops, incidents, loop, modes
+
+    awaiting = loop.awaiting(network)
+    every = incident_rows(awaiting)
+    q, sev = (q or "").strip(), sev if sev in incidents.SEVERITY_ORDER else ""
+    shown = [r for r in every if (not sev or r["severity"] == sev) and (not q or _matches(r, q))]
+    counts = [{"severity": s, "words": SEVERITY_WORDS[s], "tone": SEVERITY_TONE[s],
+               "count": sum(1 for r in every if r["severity"] == s)}
+              for s in incidents.SEVERITY_ORDER]
     th = detect.thresholds(network)
     limits = flow_ops.settings_of(network)
-    return {"network": network, "tab": "responses", "listed": "ok", "awaiting": rows,
+    return {"network": network, "tab": "responses", "listed": "ok",
+            "awaiting": shown[:INCIDENTS_DRAWN],
+            "incidents": {"total": len(every), "shown": len(shown),
+                          "drawn": min(len(shown), INCIDENTS_DRAWN),
+                          "switches": sum(r["switches"] for r in every),
+                          "counts": [c for c in counts if c["count"]], "q": q, "sev": sev,
+                          "open": (incident or "").strip()},
             "awaiting_state": awaiting["state"], "awaiting_error": awaiting["error"],
             # The mode as drawn (C2082): AUTO or HITL and its words, which carry who, why,
             # until when, the allowed risk, an unreadable record and a lapsed AUTO.

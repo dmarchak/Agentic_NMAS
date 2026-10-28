@@ -1301,3 +1301,418 @@ class TestC2085AndTheFleetsCaptures:
         before = _without_c2085("\n".join(lines)).split("\n")
         after = redact.redact_positional("\n".join(lines)).split("\n")
         assert [n for n, (a, b) in enumerate(zip(after, before)) if a != b] == [at + 2, at + 3]
+
+
+# ═════════════════════════════════════════════════════════════════════════════════════════════
+# C2098: a RADIUS server's key-wrap keys
+# ═════════════════════════════════════════════════════════════════════════════════════════════
+#
+# Measured before this change (2026-10-28): `key-wrap encryption-key <k> message-auth-code-key
+# <k>` kept both keys through every mask, the egress mask included; with a type (`0`, `7`) both
+# kept them through `redact_text` (goldens' reads, logs, the parsers), the egress mask catching
+# them only as `egress_key`'s by resemblance. The forms: a host line's, from Cisco's IOS
+# Security Command Reference (`radius-server host`): `radius-server host {hostname |
+# ip-address} … [key-wrap encryption-key encryption-key message-auth-code-key encryption-key
+# [format {ascii | hex}] | pac] [key encryption-key]`, the key-wrap clause before the server's
+# key, "Always configure the key as the last item"; and a `radius server` block's child line,
+# with a type, from Cisco's "Configure RADIUS KeyWrap in ISE" (document 222863): `key-wrap
+# encryption-key 0 <k> message-auth-code-key 0 <k> format ascii`, the encryption key 16
+# characters and the code key 20. Each key is one token. No capture holds any key-wrap line
+# (the fleet's captures: no RADIUS line at all, C2085's count), so each line is the documented
+# form with an invented key (16 and 20 characters, or 32 and 40 hex digits for `format hex`);
+# addresses 192.0.2.x and 2001:db8::.
+
+_KEK = "PlantedKek16Char"           # 16 characters, as the document requires
+_MACK = "PlantedMack20Charact"      # 20
+_KEK_HEX = "0F1E2D3C4B5A69788796A5B4C3D2E1F0"            # 32 hex digits
+_MACK_HEX = "F0E1D2C3B4A5968778695A4B3C2D1E0F00112233"   # 40
+_KEK_SIGNS = "Pl#nted@Kek16Chr"     # the document's keys hold `#` and `@`
+
+C2098_LABELS = ("key_wrap_encryption_key", "key_wrap_mac_key")
+
+#: (line, [(label, planted value)]): each value occurs once in its line.
+C2098_FORMS = [
+    # A host line's clause, IPv4 and IPv6, with options before it, `format` or none, and the
+    # server's key after it (clear with spaces, hidden) or none.
+    (f"radius-server host 192.0.2.5 key-wrap encryption-key {_KEK} message-auth-code-key {_MACK}",
+     [("key_wrap_encryption_key", _KEK), ("key_wrap_mac_key", _MACK)]),
+    (f"radius-server host 192.0.2.5 key-wrap encryption-key {_KEK} message-auth-code-key {_MACK}"
+     " format ascii key Planted Host Key",
+     [("key_wrap_encryption_key", _KEK), ("key_wrap_mac_key", _MACK),
+      ("server_host_key", "Planted Host Key")]),
+    (f"radius-server host 2001:db8::5 auth-port 1812 acct-port 1813 timeout 5 retransmit 3 "
+     f"key-wrap encryption-key {_KEK_HEX} message-auth-code-key {_MACK_HEX} format hex "
+     "key 7 0822455D0A16",
+     [("key_wrap_encryption_key", _KEK_HEX), ("key_wrap_mac_key", _MACK_HEX),
+      ("server_host_key", "0822455D0A16")]),
+    (f"radius-server host 2001:db8::5 test username key idle-time 5 key-wrap encryption-key "
+     f"{_KEK_SIGNS} message-auth-code-key {_MACK} key 0 Planted Host Key",
+     [("key_wrap_encryption_key", _KEK_SIGNS), ("key_wrap_mac_key", _MACK),
+      ("server_host_key", "Planted Host Key")]),
+    (f"radius-server host 192.0.2.5\tkey-wrap\tencryption-key\t{_KEK}\tmessage-auth-code-key\t"
+     f"{_MACK}\tkey Planted Host Key",
+     [("key_wrap_encryption_key", _KEK), ("key_wrap_mac_key", _MACK),
+      ("server_host_key", "Planted Host Key")]),
+    # A server block's child line: types 0, 6 and 7, none, `format ascii`, `format hex`.
+    (f" key-wrap encryption-key 0 {_KEK} message-auth-code-key 0 {_MACK} format ascii",
+     [("key_wrap_encryption_key", _KEK), ("key_wrap_mac_key", _MACK)]),
+    (f" key-wrap encryption-key {_KEK_SIGNS} message-auth-code-key {_MACK}",
+     [("key_wrap_encryption_key", _KEK_SIGNS), ("key_wrap_mac_key", _MACK)]),
+    (f" key-wrap encryption-key 0 {_KEK_HEX} message-auth-code-key 0 {_MACK_HEX} format hex",
+     [("key_wrap_encryption_key", _KEK_HEX), ("key_wrap_mac_key", _MACK_HEX)]),
+    (" key-wrap encryption-key 7 0822455D0A1601 message-auth-code-key 7 0822455D0A1602 "
+     "format ascii",
+     [("key_wrap_encryption_key", "0822455D0A1601"), ("key_wrap_mac_key", "0822455D0A1602")]),
+    (" key-wrap encryption-key 6 PlantedType6Kek message-auth-code-key 6 PlantedType6Mack",
+     [("key_wrap_encryption_key", "PlantedType6Kek"), ("key_wrap_mac_key", "PlantedType6Mack")]),
+    # Unindented (a program's line stripped), and in upper case.
+    (f"key-wrap encryption-key {_KEK} message-auth-code-key {_MACK} format ascii",
+     [("key_wrap_encryption_key", _KEK), ("key_wrap_mac_key", _MACK)]),
+    (f" KEY-WRAP ENCRYPTION-KEY {_KEK} MESSAGE-AUTH-CODE-KEY {_MACK}",
+     [("key_wrap_encryption_key", _KEK), ("key_wrap_mac_key", _MACK)]),
+    # A clear key of digits alone is the key, never a type (C745's one-digit type).
+    (" key-wrap encryption-key 1234567890123456 message-auth-code-key 98765432109876543210",
+     [("key_wrap_encryption_key", "1234567890123456"),
+      ("key_wrap_mac_key", "98765432109876543210")]),
+]
+
+
+@pytest.mark.parametrize("line,planted", C2098_FORMS, ids=[f[0].strip()[:50] for f in C2098_FORMS])
+class TestEachC2098Form:
+    def test_each_key_is_masked_and_every_other_byte_kept(self, line, planted):
+        assert redact.redact_positional(line) == _expected(line, planted)
+
+    def test_redact_text_and_the_egress_mask_give_the_same_line(self, line, planted):
+        want = _expected(line, planted)
+        assert redact.redact_text(line, values={}) == want
+        assert redact.redact_egress(line, values={}) == want
+
+    def test_masking_twice_changes_nothing(self, line, planted):
+        once = redact.redact_positional(line)
+        assert redact.redact_positional(once) == once
+        assert redact.redact_egress(once, values={}) == once
+
+    def test_the_parsers_and_the_config_check_get_each_value(self, line, planted):
+        found = []
+        redact.replace_positional_values(
+            line, lambda label, value, _prefix: (found.append((label, value)), value)[1])
+        assert sorted(found) == sorted(planted)
+
+
+def test_each_c2098_label_has_forms_here():
+    labels = {label for _line, planted in C2098_FORMS for label, _v in planted}
+    assert set(C2098_LABELS) <= labels, sorted(set(C2098_LABELS) - labels)
+    assert set(C2098_LABELS) <= {label for label, _p in redact._POSITIONAL}
+
+
+#: The clause's neighbourhood holding no secret: each left whole.
+C2098_NO_SECRET = [
+    # An AAA group turning key-wrap on names no key.
+    " key-wrap enable",
+    "aaa group server radius RADGRP",
+    " server name ISERAD",
+    " address ipv4 192.0.2.5 auth-port 1812 acct-port 1813",
+    " address ipv6 2001:db8::5 auth-port 1812 acct-port 1813",
+    "radius-server host 2001:db8::5 auth-port 1812 acct-port 1813 pac",
+    # Masked already, and a template's expressions: never a value's first character.
+    " key-wrap encryption-key <redacted:key_wrap_encryption_key> message-auth-code-key "
+    "<redacted:key_wrap_mac_key> format ascii",
+    " key-wrap encryption-key 0 <redacted:key_wrap_encryption_key> message-auth-code-key 0 "
+    "<redacted:key_wrap_mac_key>",
+    " key-wrap encryption-key {{ secret('kek') }} message-auth-code-key {{ secret('mack') }}",
+    "show running-config | include message-auth-code-key [in app.py:12]",
+]
+
+
+@pytest.mark.parametrize("line", C2098_NO_SECRET)
+def test_a_c2098_neighbour_holding_no_secret_is_left_whole(line):
+    assert redact.redact_positional(line) == line
+    assert redact.redact_text(line, values={}) == line
+
+
+C2098_MENTIONS = [
+    (" key-wrap encryption-key\n address ipv4 192.0.2.5",) * 2,
+    (" key-wrap encryption-key \n address ipv6 2001:db8::5",) * 2,
+    (" message-auth-code-key \n format ascii",) * 2,
+    # A type number ending its line is a one-digit key, masked; the next line is kept.
+    (" message-auth-code-key 0\n key 7 <redacted:server_key>",
+     " message-auth-code-key <redacted:key_wrap_mac_key>\n key 7 <redacted:server_key>"),
+]
+
+
+@pytest.mark.parametrize("text,want", C2098_MENTIONS,
+                         ids=[m[0].split("\n")[0].strip()[:40] for m in C2098_MENTIONS])
+def test_a_c2098_keyword_ending_its_line_takes_nothing_from_the_next(text, want):
+    assert redact.redact_positional(text) == want
+
+
+# ── the ordering hazards ────────────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("line,want", [
+    # A one-digit key before the keyword that follows it is the key: read as a type, the
+    # keyword would be masked and the key printed.
+    (f" key-wrap encryption-key 7 message-auth-code-key {_MACK}",
+     f" key-wrap encryption-key <redacted:key_wrap_encryption_key> message-auth-code-key "
+     "<redacted:key_wrap_mac_key>"),
+    (f" key-wrap encryption-key {_KEK} message-auth-code-key 7 format hex",
+     " key-wrap encryption-key <redacted:key_wrap_encryption_key> message-auth-code-key "
+     "<redacted:key_wrap_mac_key> format hex"),
+    (f"radius-server host 192.0.2.5 key-wrap encryption-key {_KEK} message-auth-code-key 0 "
+     "key Planted Host Key",
+     "radius-server host 192.0.2.5 key-wrap encryption-key <redacted:key_wrap_encryption_key> "
+     "message-auth-code-key <redacted:key_wrap_mac_key> key <redacted:server_host_key>"),
+    # An encryption key missing: the code key is still found, and the keyword in the encryption
+    # key's place masked (over-masking, never less).
+    (f" key-wrap encryption-key message-auth-code-key {_MACK}",
+     " key-wrap encryption-key <redacted:key_wrap_encryption_key> <redacted:key_wrap_mac_key>"),
+    # A type is ONE digit (C745's rule): a key of digits with a word after it is the key, never
+    # a type (read as one, the digits would be printed and the word masked).
+    (f" key-wrap encryption-key 1234567890123456 extra message-auth-code-key {_MACK}",
+     " key-wrap encryption-key <redacted:key_wrap_encryption_key> extra message-auth-code-key "
+     "<redacted:key_wrap_mac_key>"),
+])
+def test_a_one_digit_key_is_never_read_as_a_type_that_hides_a_keyword(line, want):
+    assert redact.redact_positional(line) == want
+    assert redact.redact_egress(line, values={}) == want
+    assert _MACK not in want and _KEK not in want
+
+
+_KW = "key-wrap encryption-key <redacted:key_wrap_encryption_key> message-auth-code-key"
+_KW_MAC = "<redacted:key_wrap_mac_key>"
+_KW_HOST = "<redacted:server_host_key>"
+
+
+@pytest.mark.parametrize("line,values,masked", [
+    # Key-wrap keys that are the word `key`, with no type, and the encryption key's with one:
+    # each read with its keyword, so the server's key is still the one after the clause.
+    ("radius-server host 2001:db8::5 key-wrap encryption-key key message-auth-code-key key "
+     "format ascii key Planted Host Key",
+     [("key_wrap_encryption_key", "key"), ("key_wrap_mac_key", "key"),
+      ("server_host_key", "Planted Host Key")],
+     f"radius-server host 2001:db8::5 {_KW} {_KW_MAC} format ascii key {_KW_HOST}"),
+    ("radius-server host 2001:db8::5 key-wrap encryption-key 0 key message-auth-code-key "
+     f"{_MACK} key Planted Host Key",
+     [("key_wrap_encryption_key", "key"), ("key_wrap_mac_key", _MACK),
+      ("server_host_key", "Planted Host Key")],
+     f"radius-server host 2001:db8::5 {_KW.replace('-key <', '-key 0 <', 1)} {_KW_MAC} "
+     f"key {_KW_HOST}"),
+    # And with no server key after the clause: no carrier at all, so the code key is not
+    # masked as the server's.
+    (f"radius-server host 192.0.2.5 key-wrap encryption-key key message-auth-code-key {_MACK}",
+     [("key_wrap_encryption_key", "key"), ("key_wrap_mac_key", _MACK)],
+     f"radius-server host 192.0.2.5 {_KW} {_KW_MAC}"),
+    # A one-digit code key before `key`: the digit is the code key (never a type with a code
+    # key named `key`), and the server's key is everything after that `key`, whole, though it
+    # holds `Key` (read the other way, the host rule's carrier would be that `Key`, and
+    # `Planted` would be printed).
+    (f"radius-server host 192.0.2.5 key-wrap encryption-key {_KEK} message-auth-code-key 7 "
+     "key Planted Key Word",
+     [("key_wrap_encryption_key", _KEK), ("key_wrap_mac_key", "7"),
+      ("server_host_key", "Planted Key Word")],
+     f"radius-server host 192.0.2.5 {_KW} {_KW_MAC} key {_KW_HOST}"),
+    # A one-digit encryption key before its code key's keyword, and a code key named `key`:
+    # the digit is the encryption key, the code key is its own, the server's key after it.
+    ("radius-server host 192.0.2.5 key-wrap encryption-key 7 message-auth-code-key key "
+     "key Planted Host Key",
+     [("key_wrap_encryption_key", "7"), ("key_wrap_mac_key", "key"),
+      ("server_host_key", "Planted Host Key")],
+     f"radius-server host 192.0.2.5 {_KW} {_KW_MAC} key {_KW_HOST}"),
+])
+def test_a_key_wrap_key_is_never_taken_for_the_host_lines_carrier(line, values, masked):
+    """`radius-server host`'s carrier is the first bare `key` (C2085): the host rule reads each
+    key-wrap key, and its type, as the key-wrap rules do, so each value is its own and the
+    server's key is whole."""
+    found = []
+    redact.replace_positional_values(
+        line, lambda label, v, _prefix: (found.append((label, v)), v)[1])
+    assert sorted(found) == sorted(values), found
+    assert redact.redact_positional(line) == masked
+    assert redact.redact_egress(line, values={}) == masked
+
+
+C2098_QUOTED = [
+    # Each key is one token: the sentence after it is kept.
+    (f"why was key-wrap encryption-key {_KEK} refused on r1",
+     [("key_wrap_encryption_key", _KEK)]),
+    (f"the message-auth-code-key {_MACK} was refused", [("key_wrap_mac_key", _MACK)]),
+]
+
+
+@pytest.mark.parametrize("line,planted", C2098_QUOTED, ids=[q[0][:40] for q in C2098_QUOTED])
+def test_a_c2098_key_quoted_mid_sentence(line, planted):
+    want = _expected(line, planted)
+    assert redact.redact_text(line, values={}) == want
+    assert redact.redact_egress(line, values={}) == want
+
+
+def test_the_encryption_key_is_named_by_key_wrap_never_by_its_keyword_alone():
+    """`encryption-key` is a common word: its rule names its carrier, `key-wrap encryption-key`
+    (C745's third rule), so prose naming it keeps its words. `message-auth-code-key` is the
+    clause's own keyword, its carrier by itself."""
+    line = "the encryption-key length is 16 characters"
+    assert redact.redact_positional(line) == line
+    assert redact.redact_text(line, values={}) == line
+
+
+def test_a_server_key_typed_before_the_clause_is_one_value_given_once():
+    """A server key typed before the key-wrap clause runs over it (the key is read to the line's
+    end, C2085): the key-wrap rules come after the keys read to the line's end, so the whole is
+    one value, given to the parsers once, never with a reference inside it."""
+    line = (f"radius-server host 192.0.2.5 key Planted key-wrap encryption-key {_KEK} "
+            f"message-auth-code-key {_MACK}")
+    value = f"Planted key-wrap encryption-key {_KEK} message-auth-code-key {_MACK}"
+    found = []
+    out = redact.replace_positional_values(
+        line, lambda label, v, _prefix: (found.append((label, v)), "__secret__:ref")[1])
+    assert found == [("server_host_key", value)], found
+    assert out == line.replace(value, "__secret__:ref"), out
+    assert redact.redact_egress(line, values={}) == line.replace(value, _p("server_host_key"))
+
+
+@pytest.mark.parametrize("line,value", [
+    # An encryption key (16 characters) and a host line's code key (20) holding a URL's user
+    # part (`url_userinfo`'s shape): each taken whole by its key-wrap rule, before the later
+    # rule reads inside it.
+    (f" key-wrap encryption-key ab://cd:ef@ghijk message-auth-code-key {_MACK}",
+     "ab://cd:ef@ghijk"),
+    (f"radius-server host 2001:db8::5 key-wrap encryption-key {_KEK} message-auth-code-key "
+     "my://us:pw@host-mack20 key 7 0822455D0A16", "my://us:pw@host-mack20"),
+])
+def test_a_key_wrap_key_is_taken_whole_before_a_later_rule_reads_inside_it(line, value):
+    """The key-wrap rules stand right after the keys read to the line's end, before every rule
+    that could read inside one token (`url_userinfo`, `sealed`): a key holding such a shape is
+    one value, given to the parsers once, never with a reference inside it."""
+    found = []
+    redact.replace_positional_values(
+        line, lambda label, v, _prefix: (found.append((label, v)), "__secret__:ref")[1])
+    assert value in [v for _label, v in found], found
+    assert all("__secret__:" not in v for _label, v in found), found
+    assert all("://" not in v or v == value for _label, v in found), found
+
+
+def test_each_c2098_key_keeps_its_own_label_beside_its_neighbours_with_crlf():
+    """One golden read over SSH (`\\r\\n` ends): the global key, a host line's clause and key, a
+    server block's clause, key and PAC key, and the group turning key-wrap on; each value
+    masked once with its carrier's label, each `\\r` kept."""
+    lines = [
+        ("aaa new-model", []),
+        ("aaa group server radius RADGRP", []),
+        (" server name RAD6", []),
+        (" key-wrap enable", []),
+        ("radius-server key 7 0822455D0A1604", [("shared_key", "0822455D0A1604")]),
+        (f"radius-server host 192.0.2.5 auth-port 1812 acct-port 1813 key-wrap encryption-key "
+         f"{_KEK_HEX} message-auth-code-key {_MACK_HEX} format hex key Planted Host Key",
+         [("key_wrap_encryption_key", _KEK_HEX), ("key_wrap_mac_key", _MACK_HEX),
+          ("server_host_key", "Planted Host Key")]),
+        ("radius server RAD6", []),
+        (" address ipv6 2001:db8::5 auth-port 1812 acct-port 1813", []),
+        (f" key-wrap encryption-key 0 {_KEK} message-auth-code-key 0 {_MACK} format ascii",
+         [("key_wrap_encryption_key", _KEK), ("key_wrap_mac_key", _MACK)]),
+        (" key Planted Block Key", [("server_key", "Planted Block Key")]),
+        (" pac key 7 0822455D0A1603", [("pac_key", "0822455D0A1603")]),
+        ("end", []),
+    ]
+    text = "\r\n".join(line for line, _p in lines) + "\r\n"
+    want = "\r\n".join(_expected(line, planted) for line, planted in lines) + "\r\n"
+    assert redact.redact_positional(text) == want
+    assert redact.redact_text(text, values={}) == want
+    assert redact.redact_egress(text, values={}) == want
+    assert redact.redact_positional(want) == want
+    found = []
+    redact.replace_positional_values(
+        text, lambda label, v, _prefix: (found.append((label, v)), v)[1])
+    assert sorted(found) == sorted(pair for _line, planted in lines for pair in planted)
+
+
+# ── the parsers: each key-wrap key becomes its own reference ────────────────────────────────
+
+C2098_PLANTED = ("radius-server host 192.0.2.5 auth-port 1812 acct-port 1813 key-wrap "
+                 f"encryption-key {_KEK_HEX} message-auth-code-key {_MACK_HEX} format hex "
+                 "key Planted Host Key\n"
+                 "radius server RAD6\n"
+                 " address ipv6 2001:db8::5 auth-port 1812 acct-port 1813\n"
+                 f" key-wrap encryption-key 0 {_KEK} message-auth-code-key 0 {_MACK} "
+                 "format ascii\n"
+                 " key Planted Block Key\n")
+C2098_KEYS = (_KEK_HEX, _MACK_HEX, "Planted Host Key", _KEK, _MACK, "Planted Block Key")
+
+
+@pytest.mark.parametrize("name,platform", [("r2", "cisco_iosxe"), ("s1", "cisco_ios")])
+def test_the_parsers_keep_each_key_wrap_key_and_the_configuration_round_trips(name, platform):
+    from modules.nsot import hostvars, roundtrip
+    from modules.nsot.parsers import get_parser
+
+    with open(os.path.join(ROOT, "tests", "fixtures", "configs", "fleet", f"{name}.cfg"),
+              encoding="utf-8") as fh:
+        head, _sep, _tail = fh.read().rpartition("\nend")
+    config = head + "\n" + C2098_PLANTED + "end\n"
+    parsed = get_parser(platform).parse(config)
+    refs = sorted(v for k, v in parsed["secrets"].items() if k.startswith("unmodeled_"))
+    assert refs == sorted(C2098_KEYS), refs
+    kinds = sorted(k.rsplit("_", 1)[0] for k in parsed["secrets"] if "key_wrap" in k)
+    assert kinds == ["unmodeled_key_wrap_encryption_key"] * 2 + ["unmodeled_key_wrap_mac_key"] * 2
+    text = hostvars.to_yaml(parsed)
+    for key in (_KEK_HEX, _MACK_HEX, _KEK, _MACK):
+        assert key not in text, f"{key} reached {name}'s intent"
+    rendered = roundtrip.render(parsed, platform)
+    for line in C2098_PLANTED.splitlines():
+        assert line in rendered.splitlines(), line
+    assert "__secret__:" not in rendered
+
+
+# ── the fleet's captures: nothing ordinary is newly masked ──────────────────────────────────
+
+#: `_RADIUS_HOST_KEY` as it stood before C2098 (431cd023), verbatim.
+_HOST_BEFORE_C2098 = (r"(?i)\b((?:radius-server[ \t]+host|server-private)[ \t]+\S+"
+                      r"(?:[ \t]+(?:username[ \t]+\S+|(?!(?:key|username)(?!\S))\S+))*"
+                      r"[ \t]+key[ \t]+")
+
+
+def _without_c2098(text):
+    """*text* through the positional table as it stood before C2098: the key-wrap rules out,
+    and the host lines' two rules on the carrier as it was read before."""
+    before = (re.compile(_HOST_BEFORE_C2098 + redact._KEY_CLEAR + r")" + redact._VALUE_TO_EOL
+                         + r"()"),
+              re.compile(_HOST_BEFORE_C2098 + redact._KEY_HIDDEN + r")" + redact._VALUE + r"()"))
+    host = 0
+    for label, pattern in redact._POSITIONAL:
+        if label in C2098_LABELS:
+            continue
+        if label == "server_host_key" and host < 2:
+            assert pattern.pattern.startswith(redact._RADIUS_HOST_KEY), pattern.pattern
+            pattern, host = before[host], host + 1
+        text = pattern.sub(
+            lambda m, lb=label: m.group(0) if redact._ALREADY.match(m.group(2))
+            else m.group(1) + _p(lb) + m.group(3), text)
+    assert host == 2
+    return text
+
+
+class TestC2098AndTheFleetsCaptures:
+    def test_the_c2098_rules_change_no_captured_line_nor_file(self):
+        assert len(CAPTURES) >= 17
+        assert sum(len(_lines(p)) for p in CAPTURES) >= 3000
+        changed = [(os.path.relpath(p, ROOT), n) for p in CAPTURES
+                   for n, line in enumerate(_lines(p), 1)
+                   if redact.redact_positional(line) != _without_c2098(line)]
+        assert changed == []
+        whole = [os.path.relpath(p, ROOT) for p in CAPTURES
+                 if redact.redact_positional("\n".join(_lines(p)))
+                 != _without_c2098("\n".join(_lines(p)))]
+        assert whole == []
+
+    @pytest.mark.parametrize("planted", [
+        f"radius-server host 2001:db8::5 key-wrap encryption-key {_KEK} message-auth-code-key "
+        f"{_MACK} format ascii key Planted Host Key",
+        f" key-wrap encryption-key 0 {_KEK} message-auth-code-key 0 {_MACK} format ascii",
+    ])
+    def test_a_key_wrap_line_planted_in_a_capture_is_found_at_its_line_only(self, planted):
+        path = os.path.join(ROOT, "tests", "fixtures", "configs", "fleet", "r1.cfg")
+        lines = _lines(path)
+        at = next(i for i, line in enumerate(lines) if line.startswith("interface "))
+        lines.insert(at, planted)
+        changed = [n for n, line in enumerate(lines)
+                   if redact.redact_positional(line) != _without_c2098(line)]
+        assert changed == [at]
+        out = redact.redact_positional(lines[at])
+        assert _KEK not in out and _MACK not in out, out

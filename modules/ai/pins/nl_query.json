@@ -1,13 +1,13 @@
 {
   "words": "Ask in words (History › Query)",
   "model": "claude-sonnet-5-5",
-  "max_prompt_tokens": 8000,
+  "max_prompt_tokens": 9500,
   "max_tokens": 1536,
   "thinking": "adaptive",
   "temperature": null,
   "why": {
     "model": "Sonnet 5.5 (the operator's ruling, 2026-10-26): held-out set 2, five runs each on prompt v7, 90% consistent against Haiku 5.5's 70%, 39 of 50 against 38 passing, the same latency (p50 2.72 s against 2.85), about $0.0052 a question against $0.00039 (C1724, still open for the gap to 95%).",
-    "max_prompt_tokens": "Measured 2026-10-25 on the lab's captured catalogue: 2,301 to 3,026 tokens (estimated, an over-estimate) for five questions, 20 metrics offered; 8,000 is about 2.6x, and the local tier's context (13.1). On Sonnet 5.5 the largest prompt measured was 7,679 real tokens (held-out set 2, 2026-10-26), near the bound: a refusal as prompt_too_long names both numbers.",
+    "max_prompt_tokens": "Measured 2026-10-25 on the lab's captured catalogue: 2,301 to 3,026 tokens (estimated, an over-estimate) for five questions, 20 metrics offered; 8,000 is about 2.6x, and the local tier's context (13.1). On Sonnet 5.5 the largest prompt measured was 7,679 real tokens (held-out set 2, 2026-10-26), near the bound: a refusal as prompt_too_long names both numbers. Raised to 9,500 by the operator's decision, 2026-10-28 (C2048): by the provider's own count (C1898) 832 of 3,695 recorded calls were over 8,000 real tokens, the largest 9,343, and metrics case 6 was refused 4 runs in 10; 8,000 had been judged against the under-estimate. The local tier's context (13.1) is weighed when that tier is built.",
     "max_tokens": "About 2.5x the largest output measured, thinking included (the operator's rule, 2026-10-26, C1757): Sonnet 5.5's 50 calls on held-out set 2 used at most 604 (p50 254), none stopped at the bound; 1,536. On Haiku it was 2,560 (978 measured, 2026-10-25).",
     "thinking": "Adaptive: on Haiku 5.5, v7 measured with and without thinking (2026-10-26), and held-out set 2's consistency decided for adaptive (70% against 40%)."
   }

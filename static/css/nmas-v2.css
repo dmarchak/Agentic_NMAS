@@ -2412,6 +2412,37 @@ summary.lq-chip::-webkit-details-marker { display: none; }
 .sdn-ai { border-left: 3px solid var(--sdn); background: var(--sdn-soft); padding: 6px 12px; margin: 6px 0; border-radius: 4px; }
 .sdn-ai p { margin: 4px 0; }
 .sdn-ai .mono { overflow-wrap: anywhere; }
+/* C1999 (board SdnResponses, revised 2026-10-28): the incidents awaiting a person, a compact
+   table of one-line rows (severity, rule, source, switches, age, AI verdict, proposed), each
+   a <details> whose detail opens on expand; at phone width each row wraps to two lines. */
+.sdn-incs { padding: 0; display: flex; flex-direction: column; }
+.sdn-inc-find { padding: 10px 18px 4px; }
+.sdn-inc-sum { display: inline-flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.sdn-inc-sum .chip-link { text-decoration: none; border-radius: 10px; }
+.sdn-inc-sum .chip-link.on { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sdn-inc-subset { margin: 0; padding: 4px 18px; }
+.sdn-inc-row { display: grid; grid-template-columns: 7.5rem 7.5rem minmax(9rem, 1.2fr) 5rem 6.5rem minmax(9rem, 1fr) minmax(11rem, 1.3fr);
+  gap: 4px 12px; align-items: baseline; padding: 8px 18px; font-size: 13.5px; }
+.sdn-inc-row > span { min-width: 0; overflow-wrap: anywhere; }
+.sdn-inc-head { color: var(--ink-2); font-weight: 500; border-bottom: 1px solid var(--line); padding-top: 6px; padding-bottom: 6px; }
+.sdn-inc { border-top: 1px solid var(--line-2); }
+.sdn-inc:first-of-type { border-top: none; }
+.sdn-inc > summary { cursor: pointer; list-style: none; }
+.sdn-inc > summary::-webkit-details-marker { display: none; }
+.sdn-inc > summary:hover { background: var(--surface-2); }
+.sdn-inc[open] > summary { background: var(--surface-2); font-weight: 500; }
+.sdn-inc > .sdn-resp { padding: 4px 18px 14px; display: flex; flex-direction: column; gap: 6px; }
+.sdn-inc > .sdn-resp p { margin: 0; }
+.sdn-also > summary { cursor: pointer; }
+.sdn-also-list { margin: 4px 0 0; padding-left: 18px; max-height: 14rem; overflow-y: auto; }
+.sdn-also-list .mono { overflow-wrap: anywhere; }
+.sdn-inc-more { margin: 0; padding: 8px 18px; }
+.sdn-inc-unit { display: none; }
+@media (max-width: 860px) {
+  .sdn-inc-row { display: flex; flex-wrap: wrap; gap: 2px 10px; }
+  .sdn-inc-row.sdn-inc-head { display: none; }
+  .sdn-inc-unit { display: inline; }
+}
 .sdn-ft { min-width: 820px; }
 .sdn-ft tr.sdn-f-unauthorised td { background: var(--danger-soft); }
 .sdn-ft tr.sdn-r-missing td { background: var(--warn-soft); }
