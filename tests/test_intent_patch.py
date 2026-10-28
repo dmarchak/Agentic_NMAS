@@ -474,9 +474,10 @@ class TestThePreview:
         handed = []
         real = intent_edit.preview
 
-        def watch(list_name, hostname, text):
+        def watch(list_name, hostname, text, **kw):
+            # **kw: the VLAN answer the patch read, handed on (C2061's `vlan_databases`).
             handed.append((list_name, hostname, text))
-            return real(list_name, hostname, text)
+            return real(list_name, hostname, text, **kw)
         monkeypatch.setattr(intent_edit, "preview", watch)
         got = intent_patch.preview("Lab", "s1", _patch("s1", DESCRIBE))
         expected = _doc("s1")

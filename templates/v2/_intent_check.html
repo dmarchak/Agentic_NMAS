@@ -63,6 +63,9 @@
     <ul class="op-gates">
       <li>{{ badge('pass', 'ok') }}<span>The document parses, and names {{ host }}; every interface key is one intent reads; no secret value in the text; every character a device accepts</span></li>
       {%- if p.template is defined %}<li>{{ badge('pass' if p.deployable else 'not yet', 'ok' if p.deployable else 'warn') }}<span>{{ host }}'s template renders it: <span class="mono">{{ p.template }}</span>{% if not p.deployable and p.blocking_reasons %}; a deploy is blocked: {{ p.blocking_reasons | join('; ') }}{% endif %}</span></li>{% endif %}
+      {#- C2061: the commit's VLAN check, drawn only for an edit that adds a VLAN; a failure
+          is the commit's own refusal, word for word, and the Commit below waits on it. -#}
+      {%- set v = p.vlan_database %}{% if v %}<li data-check="vlan-database">{{ badge('pass', 'ok') if v.ok else badge('fail', 'danger') }}<span>{% if v.ok %}{{ host }} can hold the VLAN{{ 's' if v.added | length != 1 }} this edit adds ({{ v.added | join(', ') }}): {{ v.words }}{% else %}Refused at commit: {{ v.words }}.{% endif %}</span></li>{% endif %}
       <li>{{ badge('at commit', 'info') }}<span>{{ host }}'s intent is still the version you opened: if it moved, nothing is written</span></li>
       {%- if p.canonical is defined and not p.canonical and not p.proof %}<li>{{ badge('at commit', 'info') }}<span>Committed in Mercury's own formatting: the data you typed is kept, its comments and layout are not</span></li>{% endif %}
     </ul></div>
@@ -84,8 +87,10 @@
 {#- The editor's Commit (_intent_edit.html's footer, the same markup), drawn again out of band
     (routes/intent_v2.check): for an edit that changes formatting only (C1693, board H-N) it
     says so and waits on the proof, disabled until every line passes; the server refuses it
-    too (intent_edit.commit). -#}
+    too (intent_edit.commit). An edit adding a VLAN where no VLAN database is declared or
+    measured (C2061) waits the same way, disabled, the server refusing it too. -#}
 {%- set fmt = p.ok and p.proof -%}
-<span class="op-act ie-commit" id="ie-commit" hx-swap-oob="true"><span class="muted small">{% if fmt %}One commit on {{ host }}'s intent, as you, with your reason. Nothing is sent to {{ host }}.{% if p.proof.ok %} A deploy afterwards would send nothing.{% else %} It waits until the check proves it formatting only.{% endif %}{% else %}Commits the document as you, with its reason. Nothing is sent to {{ host }}.{% endif %}</span>
-  <button type="submit" class="btn btn-primary op-confirm" data-op="edit-intent" hx-disabled-elt="this"{{ gate('approve') }}{% if fmt and not p.proof.ok %} disabled{% endif %}><span class="op-idle">{% if fmt %}Commit the formatting only{% else %}Commit to {{ host }}'s intent{% endif %}</span><span class="op-busy">Committing…</span></button>{{ how('edit-intent', compact=True, op='editing intent') }}</span>
+{%- set vlan_waits = p.ok and p.vlan_database and not p.vlan_database.ok -%}
+<span class="op-act ie-commit" id="ie-commit" hx-swap-oob="true"><span class="muted small">{% if fmt %}One commit on {{ host }}'s intent, as you, with your reason. Nothing is sent to {{ host }}.{% if p.proof.ok %} A deploy afterwards would send nothing.{% else %} It waits until the check proves it formatting only.{% endif %}{% else %}Commits the document as you, with its reason. Nothing is sent to {{ host }}.{% if vlan_waits %} It waits until the VLAN check passes: take the VLAN out, or declare or measure {{ host }}'s VLAN database.{% endif %}{% endif %}</span>
+  <button type="submit" class="btn btn-primary op-confirm" data-op="edit-intent" hx-disabled-elt="this"{{ gate('approve') }}{% if (fmt and not p.proof.ok) or vlan_waits %} disabled{% endif %}><span class="op-idle">{% if fmt %}Commit the formatting only{% else %}Commit to {{ host }}'s intent{% endif %}</span><span class="op-busy">Committing…</span></button>{{ how('edit-intent', compact=True, op='editing intent') }}</span>
 {%- endif %}

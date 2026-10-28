@@ -7,7 +7,9 @@ bulk intent (`bulk_intent.plan` and `apply`, and Devices › Change a setting ov
 Each refuses a change that ADDS a VLAN to a device whose VLAN database is declared "no" or is
 unknown, naming the device, its platform and device type, where the answer came from and what
 would answer it; each allows it on a switch measured to have one; none refuses a VLAN removed,
-or a change leaving the list as it was, and none reads the answer for such a change.
+or a change leaving the list as it was, and none reads the answer for such a change. The
+editor's check as you type (`intent_edit.preview`; C2061) runs the same check and draws it, so
+an edit its commit would refuse never shows as committable.
 
 The worlds are the suite's own: the host's committed intent for r2 and s1
 (`tests/test_committed_before_p1.host`), the fleet's real intent for bulk intent
@@ -210,6 +212,146 @@ class TestTheEditor:
                          re.S).group(1)
         assert _h.unescape(area).strip() == text.strip(), "the person's text kept"
         assert f'value="{base}"' in body and 'value="add guests"' in body
+
+
+# ── the intent editor's check as you type (C2061) ────────────────────────────
+
+def _counted(monkeypatch):
+    """Every read of the device's answer, recorded, the real read answering."""
+    from modules.nsot import vlan_capability
+    real, reads = vlan_capability.of, []
+    monkeypatch.setattr(vlan_capability, "of", lambda *a: reads.append(a) or real(*a))
+    return reads
+
+
+def _words(html_text: str) -> str:
+    import html as _h
+    return " ".join(_h.unescape(re.sub(r"<[^>]+>", " ", html_text)).split())
+
+
+class TestTheEditorsCheck:
+    """C2061: the editor's check as you type (`intent_edit.preview`) runs the commit's VLAN
+    check, so an edit the commit refuses never shows as committable; it reads the device's
+    answer only for an edit that adds a VLAN, and once."""
+
+    def test_a_router_declared_without_one_fails_with_the_commits_words(  # noqa: F811
+            self, host, monkeypatch):
+        from modules.nsot import intent_edit
+        _inventory(monkeypatch, R2_DECLARED, DEVICES["s1"])
+        reads = _counted(monkeypatch)
+        text, base = _edit(host, "r2", add=GUESTS)
+        p = intent_edit.preview("Lab", "r2", text)
+        assert p["ok"] and p["valid"], "the document is valid; the VLAN check fails apart"
+        assert p["vlan_database"]["ok"] is False and p["vlan_database"]["added"] == ["40"]
+        assert reads == [("Lab", "r2")], "read once for the preview"
+        got = intent_edit.commit("Lab", "r2", text, "add guests", base, "a.person")
+        assert got["stage"] == "capability"
+        assert p["vlan_database"]["words"] == got["error"], "the commit's words, exactly"
+        assert p["vlan_database"]["words"].startswith(
+            "this edit adds VLAN 40, and r2 (cisco_iosxe, device type C8000V) has no VLAN "
+            "database: declared: ")
+
+    def test_an_unknown_router_fails_naming_what_would_answer_it(self, host,  # noqa: F811
+                                                                monkeypatch):
+        from modules.nsot import intent_edit
+        _inventory(monkeypatch, DEVICES["r2"], DEVICES["s1"])
+        text, _base = _edit(host, "r2", add=GUESTS)
+        p = intent_edit.preview("Lab", "r2", text)
+        assert p["ok"] and p["vlan_database"]["ok"] is False
+        assert p["vlan_database"]["words"] == (
+            "this edit adds VLAN 40, and whether r2 (cisco_iosxe, device type not named) has a "
+            "VLAN database is not declared and not measured: run `show vlan id 1` on r2 (Show "
+            "commands, or Ask the device on its page) to measure it, or name its device type "
+            "in NetBox, by which Mercury's platform table declares a VLAN database (none is "
+            "named). A VLAN is added only where a VLAN database is declared or measured")
+
+    def test_a_measured_switch_passes_saying_where_the_answer_came_from(  # noqa: F811
+            self, host):
+        from modules.nsot import intent_edit
+        measure("Lab", "s1", SWITCH_ANSWERS[0])
+        text, _base = _edit(host, "s1", add=GUESTS)
+        p = intent_edit.preview("Lab", "s1", text)
+        assert p["ok"] and p["vlan_database"]["ok"] is True, p.get("vlan_database")
+        assert p["vlan_database"]["added"] == ["40"]
+        assert p["vlan_database"]["words"].startswith(
+            "measured: a VLAN database (s1's answer to `show vlan id 1` at ")
+
+    @pytest.mark.parametrize("change", [{"drop": "30"}, {"rename": ("20", "STAFF")}, {}],
+                             ids=["removed", "unchanged-ids", "as-committed"])
+    def test_a_removal_or_an_unchanged_list_reads_nothing(self, host,  # noqa: F811
+                                                          monkeypatch, change):
+        """s1 never measured, so a read would fail it: none is made, and no check drawn."""
+        from modules.nsot import intent_edit
+        reads = _counted(monkeypatch)
+        text, _base = _edit(host, "s1", **change)
+        p = intent_edit.preview("Lab", "s1", text)
+        assert p["ok"] and "vlan_database" not in p, p.get("vlan_database")
+        assert reads == []
+
+    def test_the_patch_preview_hands_its_answer_in(self, host, monkeypatch):  # noqa: F811
+        """Change it in words' preview reads the answer for its add_vlan and hands it to the
+        editor's check, which draws it: one read per request, not two."""
+        from modules.nsot import intent_patch
+        measure("Lab", "s1", SWITCH_ANSWERS[0])
+        reads = _counted(monkeypatch)
+        shown = intent_patch.preview("Lab", "s1", {"hostname": "s1", "operations": [
+            {"op": "add_vlan", "vlan": 40, "name": "GUESTS"}]})
+        assert shown["ok"] and shown["vlan_database"]["ok"] is True, shown
+        assert reads == [("Lab", "s1")]
+
+    def test_a_drafts_row_carries_it(self):
+        """The words row draws a draft's preview through the editor's check partial, cut to
+        what it draws: the VLAN check is among them."""
+        from routes import intent_v2
+        check = {"ok": True, "added": ["40"], "words": "measured: a VLAN database (planted)"}
+        assert intent_v2._drawn({"ok": True, "vlan_database": check})["vlan_database"] == check
+
+    @staticmethod
+    def _check(host_, name, text):  # noqa: F811
+        r = host_["client"].post(f"/v2/device/{name}/intent/check", data={"yaml": text})
+        body = r.get_data(as_text=True)
+        assert r.status_code == 200, body[:600]
+        row = re.search(r'<li data-check="vlan-database">.*?</li>', body, re.S)
+        commit = re.search(r'<span class="op-act ie-commit" id="ie-commit" '
+                           r'hx-swap-oob="true">(.*?)(<button\b[^>]*>)', body, re.S)
+        assert commit, "the check draws the editor's Commit again, out of band"
+        return (_words(row.group(0)) if row else None), _words(commit.group(1)), \
+            commit.group(2)
+
+    def test_the_tab_draws_a_failure_and_the_commit_waits(self, host,  # noqa: F811
+                                                         monkeypatch):
+        from types import SimpleNamespace
+        _inventory(monkeypatch, R2_DECLARED, DEVICES["s1"])
+        monkeypatch.setattr("routes.intent_v2._device_or_404", lambda name: (
+            (SimpleNamespace(name="Lab"), dict(DEVICES[name])), None))
+        text, base = _edit(host, "r2", add=GUESTS)
+        row, said, button = self._check(host, "r2", text)
+        assert row is not None and row.startswith(
+            "fail Refused at commit: this edit adds VLAN 40, and r2 (cisco_iosxe, device type "
+            "C8000V) has no VLAN database: declared: "), row
+        assert row.endswith("Nothing is added.")
+        assert re.search(r"\sdisabled[\s>]", button), "the Commit waits on the failing check"
+        assert said.endswith("It waits until the VLAN check passes: take the VLAN out, or "
+                             "declare or measure r2's VLAN database.")
+        # The server refuses whatever the page showed.
+        r = host["client"].post("/v2/device/r2/intent/commit",
+                                data={"yaml": text, "base": base, "summary": "add guests"})
+        assert r.status_code == 409
+
+    def test_the_tab_draws_a_pass_and_the_commit_is_offered(self, host,  # noqa: F811
+                                                           monkeypatch):
+        from types import SimpleNamespace
+        monkeypatch.setattr("routes.intent_v2._device_or_404", lambda name: (
+            (SimpleNamespace(name="Lab"), dict(DEVICES[name])), None))
+        measure("Lab", "s1", SWITCH_ANSWERS[0])
+        text, _base = _edit(host, "s1", add=GUESTS)
+        row, said, button = self._check(host, "s1", text)
+        assert row is not None and row.startswith(
+            "pass s1 can hold the VLAN this edit adds (40): measured: a VLAN database "), row
+        assert not re.search(r"\sdisabled[\s>]", button) and "It waits" not in said
+        row, said, button = self._check(host, "s1", _edit(host, "s1", drop="30")[0])
+        assert row is None, "an edit adding no VLAN draws no VLAN check"
+        assert not re.search(r"\sdisabled[\s>]", button)
 
 
 # ── bulk intent (C2043) ──────────────────────────────────────────────────────

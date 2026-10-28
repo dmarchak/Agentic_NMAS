@@ -44,7 +44,8 @@ device's recorded answer to `show vlan id 1`, else unknown); `preview`, `commit`
 unknown, are refused naming the device, its platform and device type and where the answer came
 from. Never from a name or a role. The words are the one check's (`vlan_capability.refusal`),
 which the editor's commit and bulk intent ask too (C2043, C2044); the capability read here is
-handed to `intent_edit.commit` (``vlan_databases``), so a commit reads it once.
+handed to `intent_edit.commit` (``vlan_databases``), so a commit reads it once, and to
+`intent_edit.preview`, which runs the same check (C2061), so a preview reads it once too.
 
 **IPv6:** an OSPF network statement is OSPFv2's, an IPv4 concept; OSPFv3 joins an interface to
 an area instead (``ipv6 ospf <process> area <area>``), which a patch does not offer yet. An
@@ -620,8 +621,8 @@ def preview(list_name: str, hostname: str, patch) -> dict:
     opened = intent_edit.open_doc(list_name, hostname)
     if not opened["ok"]:
         return opened
-    got = patched_text(hostname, opened["yaml"], patch, list_name,
-                       _capability(list_name, hostname, patch))
+    cap = _capability(list_name, hostname, patch)
+    got = patched_text(hostname, opened["yaml"], patch, list_name, cap)
     if not got["ok"]:
         return {**got, "base": opened["base"]}
     patch = _coerce(patch)
@@ -631,7 +632,10 @@ def preview(list_name: str, hostname: str, patch) -> dict:
         return {"status": 200, "ok": True, "changed": False, **carried, "message": (
             f"Nothing to change: {hostname}'s committed intent already holds what the patch "
             "asks (" + "; ".join(c["summary"] for c in got["changes"]) + ").")}
-    shown = intent_edit.preview(list_name, hostname, got["text"])
+    # The answer read for the patch is handed to the editor's check (C2061), which runs the
+    # same VLAN check, so the preview reads it once.
+    shown = intent_edit.preview(list_name, hostname, got["text"],
+                                vlan_databases=None if cap is None else {hostname: cap})
     return {**shown, "changed": True, **carried}
 
 

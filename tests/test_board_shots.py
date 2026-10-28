@@ -2017,6 +2017,15 @@ def test_tab_intent(monkeypatch, tmp_path):
 
     bad = (ta + "t.value = t.value.replace(/\\n/, '\\nshutdown: [yes please\\n'); " + typed)
     unbad = (ta + "t.value = t.value.replace('\\nshutdown: [yes please', ''); " + typed)
+    # C2061: a VLAN added to r2, a router whose VLAN database is neither declared nor
+    # measured here: the check's failing row and the Commit waiting; then taken out again.
+    vlan_row = "document.querySelector('#ie-check [data-check=\"vlan-database\"]')"
+    vlan = (ta + "window.__noVlan = t.value; "
+                 "var v = \"vlans:\\n- extra: []\\n  id: '40'\\n  name: GUESTS\"; "
+                 "t.value = /^vlans: \\[\\]$/m.test(t.value) "
+                 "? t.value.replace(/^vlans: \\[\\]$/m, v) : t.value + '\\n' + v + '\\n'; "
+            + typed)
+    unvlan = ta + "t.value = window.__noVlan; " + typed
     commit = ("document.querySelector('#intent-form input[name=summary]').value = "
               "'the uplink\\'s real description'; "
               "document.querySelector('#intent-form button[data-op=\"edit-intent\"]').click()")
@@ -2029,6 +2038,10 @@ def test_tab_intent(monkeypatch, tmp_path):
             ("edited", edit(width), edited(width)),
             ("error", bad, "!!document.querySelector('#ie-check .ie-err')"),
             ("fixed", unbad, edited(width)),
+            ("vlan", vlan, f"!!{vlan_row} && document.querySelector('#ie-commit button')"
+                           ".disabled"),
+            ("unvlan", unvlan, f"{edited(width)} && !{vlan_row} && "
+                               "!document.querySelector('#ie-commit button').disabled"),
             ("done", commit, "/Committed to r2's intent/.test(document.body.textContent)"),
         ]
 

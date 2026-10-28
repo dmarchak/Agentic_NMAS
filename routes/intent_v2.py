@@ -102,7 +102,8 @@ def normalise_ctx(ref, dev) -> dict:
 _DRAFT_DRAWN = ("changed", "changes", "device_keeps", "message", "yaml", "vs_intent_changed",
                 "blocking_reasons",
                 "column", "deployable", "diffs", "document_changed", "error", "intent_note",
-                "line", "masked_not_compared", "ok", "rendered", "template", "unmodelled")
+                "line", "masked_not_compared", "ok", "rendered", "template", "unmodelled",
+                "vlan_database")
 #: Of its `diffs`, what the check partial reads (`d.*`), with the golden's sha and time and each
 #: pending line's words.
 _DIFFS_DRAWN = ("edit_changes", "edit_rows", "from_edit", "from_edit_rows", "golden",

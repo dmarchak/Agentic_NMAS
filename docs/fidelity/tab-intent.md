@@ -27,7 +27,7 @@ Shots: each board at 1440; the page at 1440, 1280 and 390 in six states (`tab-in
 `tab-intent-departs` (C884) at 1440.
 Compared 2026-10-16.
 Templates compared: templates/v2/_intent.html, templates/v2/_intent_edit.html, templates/v2/_intent_check.html, templates/v2/_intent_words.html, templates/v2/_intent_proof.html
-Templates sha256: `49de73acce97f8a6027da947c0bb2e626fc46ec798e1462d93d0cd7c277e5ae8`
+Templates sha256: `6c4cc6ac2f2074737b44e14e62b2587b4344bba725de144715bcabb61d49a070`
 
 Compared again 2026-10-17 (C1023) after "Open (commit) with your edit on it" (`_intent_edit.html`)
 and Write the ticked lines into the document (`_intent_check.html`) became busy on themselves
@@ -166,6 +166,20 @@ its time), so no shot changes; the note's state is drawn by tests/test_ai_intent
 `test_a_pasted_secret_is_masked_and_the_person_told`, not shot. The hash written again.
 Templates sha256 before: `9e9d8c6dbf2e7e96045faa0dcfb1d16a92c96b9501270e370d397e3602458092`.
 
+Compared again 2026-10-28 (C2061: the editor's check as you type runs the commit's VLAN check).
+`_intent_check.html` draws one more row under Checks, only for an edit that adds a VLAN to what
+is committed: **pass** with where the answer came from (the platform table, or the device's
+recorded answer to `show vlan id 1`), or **fail** with the commit's refusal word for word
+("Refused at commit: this edit adds VLAN 40, and …"); while it fails, the Commit it draws
+again out of band is disabled and says it waits until the VLAN check passes, as Normalise's
+waits on its proof, the server refusing the commit too. Shots: `tests/test_board_shots.py::
+test_tab_intent` with two new states, `tab-intent-vlan` (VLAN 40 added to r2, a router neither
+declared nor measured here: the failing row and the Commit waiting) and `tab-intent-unvlan` (it
+taken out: no row, the Commit offered), at 1440, 1280 and 390 beside board H at 1440; every
+other state shot again and drawn as before. The row "Checks: the VLAN check (C2061)" added; no
+other region's verdict changed.
+Templates sha256 before: `49de73acce97f8a6027da947c0bb2e626fc46ec798e1462d93d0cd7c277e5ae8`.
+
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
 
@@ -186,6 +200,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | A deletion a deploy keeps | "A deploy will not remove what this edit deletes" with the line, and a link to Actions › Remove lines (Mode B)… | the same notice and lines (capture 25); "Actions › Remove lines (Mode B)…" is words, not a link, and "Mode B" is said to a person (C901) | **deviation** (log: Tab intent: the Mode B removal is named, not linked (a defect, register C650 follow-up)) |
 | Lines not compared | "1 line not compared", which on hover | "3 secret-bearing lines could not be compared", in words | **same** |
 | Checks | six: parses and names r3; the schema; no secret and every character accepted; the template renders it, approved; at commit, the version opened; a verified person | three: the first three as one row; the template renders it ("not yet" with a deploy's blocking reasons); at commit (captures 24 and 25). Who commits is the footer's: Commit is drawn only for a person who may commit, else the footer says so | **deviation** (log: Tab intent: the checks) |
+| Checks: the VLAN check (C2061) | not drawn: six checks, none about a VLAN database | for an edit adding a VLAN, one row: "pass" naming the VLANs and where the answer came from, or "fail" with "Refused at commit:" and the commit's own words (shot `tab-intent-vlan`: r2, unknown, "run `show vlan id 1` on r2 … or name its device type in NetBox"); the footer's Commit disabled, "It waits until the VLAN check passes: take the VLAN out, or declare or measure r2's VLAN database." (as board States draws Commit disabled while an error stands); no row for an edit adding none (`tab-intent-unvlan`) | **deviation** (log: Tab intent: the VLAN check drawn with the editor's checks, and the Commit waiting on it (C2061)) |
 | Lines intent does not model | not drawn | the lines a template cannot render, each with a tick box, "Write the ticked lines into the document" into its `unmodeled_ack` block (C481) | **deviation** (log: Tab intent: lines intent does not model, ticked to acknowledge) |
 | Footer | "Why, in one line", "Commits the document as you, with its reason. Nothing is sent to r3.", Commit to r3's intent | the same, the reason required, Commit busy on itself ("Committing…") | **same** |
 | Committed (state 2): the result | "Committed to r3's intent · done" and How does this work? (board States); the commit as a link, "as operator@example.com (verified), just now"; "Nothing was sent", a Departs from intent chip; Edit again · See it in History; Plan a deploy of these 2 lines… with How does this work? | the same title and links, How does this work? in the head (C522), Plan a deploy… with its (i) alone (C503's rule: words once per card); the commit's sha in words; the person without "(verified)" or a time; "it now departs from intent until a deploy sends the lines beside" in words, or, when the device also holds lines intent no longer has, that a deploy keeps them until they are removed (Mode B); Plan a deploy… without a count (capture 26; shots `tab-intent-done`, `tab-intent-departs`) | **deviation** (log: Tab intent: the committed result's words) |

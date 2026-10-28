@@ -11,7 +11,8 @@ draws it as a card.
 - :func:`validate`: parse, the document names its device, no unknown interface key, the syslog
   block whole, no run's notes as a description, printable, no secret value. Line and column.
 - :func:`preview`: what the edit changes in the render, what a deploy would send, whether it
-  is deployable, and the document's unmodelled lines with whether each is acknowledged.
+  is deployable, the document's unmodelled lines with whether each is acknowledged, and, for
+  an edit adding a VLAN, the commit's VLAN check (C2061).
 - :func:`commit`: under the repository lock, refused when intent moved since ``base`` (both
   changes, and the edit placed on theirs when the two touch different lines), else one
   commit as the person, with the reason.
@@ -247,7 +248,25 @@ def render_context(list_name: str, hostname: str) -> dict:
             "eff": _eff}
 
 
-def preview(list_name: str, hostname: str, text: str) -> dict:
+def vlan_check(list_name: str, hostname: str, committed, parsed, capability=None):
+    """The VLAN check the commit runs (C2044), run by the preview too (C2061), so an edit the
+    commit would refuse never shows as committable: None when the edit adds no VLAN to what
+    is committed (the device's answer then not read at all), else ``{"ok", "added",
+    "words"}``, *words* the refusal's (`vlan_capability.refusal`, the commit's own) or, on a
+    yes, where the answer came from. *capability* is the answer its caller read already this
+    request (the intent patch's preview), so it is read once."""
+    from modules.nsot import vlan_capability
+
+    got = vlan_capability.judge(list_name, hostname, committed, parsed, subject="this edit",
+                                capability=capability)
+    if not got["added"]:
+        return None
+    return {"ok": got["ok"], "added": list(got["added"]),
+            "words": (got.get("capability") or {}).get("words", "") if got["ok"]
+            else got["error"]}
+
+
+def preview(list_name: str, hostname: str, text: str, *, vlan_databases: dict = None) -> dict:
     """Validate an edit and say what it would DO. Writes nothing.
 
     ``vs_intent``: the render of the edit against the render of what is committed (what the
@@ -256,7 +275,12 @@ def preview(list_name: str, hostname: str, text: str) -> dict:
     profile (P.9), and both read git, never a working file. An edit that changes the
     committed document's formatting only (Normalise, C1693) carries ``proof``, the five lines
     `intent_normalise.proof` draws; ``canonical`` says whether the text is Mercury's own
-    formatting, which is what a commit writes."""
+    formatting, which is what a commit writes.
+
+    ``vlan_database`` (C2061) is the commit's VLAN check (:func:`vlan_check`) against what is
+    committed at HEAD, present only when the edit adds a VLAN: the device's answer is read
+    only then, once per request, or not at all when *vlan_databases* (``{hostname: answer}``,
+    as `commit` takes it) hands in the answer its caller read."""
     from modules.nsot import hostvars, roundtrip
 
     if not isinstance(text, str) or not text.strip():
@@ -271,9 +295,15 @@ def preview(list_name: str, hostname: str, text: str) -> dict:
     ctx = render_context(list_name, hostname)
     if not ctx["ok"]:
         return ctx
+    committed_raw, intent_state = hostvars.committed_at_head(repo, hostname)
+    committed = hostvars.from_yaml(committed_raw) if committed_raw is not None else None
+    vlans = vlan_check(list_name, hostname, committed, parsed,
+                       capability=(vlan_databases or {}).get(hostname))
+    checks = {"vlan_database": vlans} if vlans else {}
     capture = ctx["capture"]
     if not capture:
         return {"status": 200, "ok": True, "valid": True, "rendered": "", "unmodelled": lines,
+                **checks,
                 "message": ("Valid. No golden is recorded for this device yet (its page's "
                             "Capture records one), so there is nothing to render against.")}
     platform, template, _eff = ctx["platform"], ctx["template"], ctx["eff"]
@@ -290,8 +320,6 @@ def preview(list_name: str, hostname: str, text: str) -> dict:
         return {"status": 400, "ok": False, "stage": "render",
                 "error": f"{type(exc).__name__}: {exc}"}
 
-    committed_raw, intent_state = hostvars.committed_at_head(repo, hostname)
-    committed = hostvars.from_yaml(committed_raw) if committed_raw is not None else None
     document_changed = committed_raw is not None and committed_raw != text
 
     from modules.nsot import intent_normalise
@@ -303,7 +331,7 @@ def preview(list_name: str, hostname: str, text: str) -> dict:
                                                 ctx=ctx),
                 "deployable": edited.deployable,
                 "blocking_reasons": list(edited.blocking_reasons),
-                "template": template, "unmodelled": lines}
+                "template": template, "unmodelled": lines, **checks}
 
     vs_intent, intent_note, current_render = "", None, None
     if intent_state == hostvars.NEVER_COMMITTED:
@@ -331,7 +359,7 @@ def preview(list_name: str, hostname: str, text: str) -> dict:
             "diffs": diffs(repo, hostname, current_render, edited.rendered_masked, capture),
             "captured_from": "golden",
             "rendered": edited.rendered_masked, "template": template,
-            "unmodelled": lines}
+            "unmodelled": lines, **checks}
 
 
 #: Commands that hold ONE value in their section, so a new line replaces the old on the
