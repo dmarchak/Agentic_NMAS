@@ -36,6 +36,68 @@ def load(name):
     return cases.load(os.path.join(ROOT, DIR, f"{name}.json"))
 
 
+# ── the unauthorised-flow cases, rebuilt from the capture the repository holds ───────────────
+
+#: Each unauthorised-flow case's one edit of s2's captured table (tests/fixtures/sdn/lab8/
+#: unauthorised_s2.json, 09:31:4x, the same table the run's 03-unauthorised/observe.json read:
+#: the flow's packets, bytes and age are the case's), as its ``edit`` says it, on the
+#: unauthorised flow (cookie 0xbad0), in Ryu's own shape.
+UNAUTHORISED_EDITS = {
+    "unauthorised-s2": lambda f: f,
+    "unauthorised-v6-s2": lambda f: dict(f, match={"dl_type": 0x86DD,
+                                                   "ipv6_dst": "2001:db8:8::3"}),
+    "unauthorised-drop-s2": lambda f: dict(f, actions=[]),
+}
+
+
+def rebuilt_unauthorised(case: dict) -> tuple:
+    """*case*'s detection and evidence section as the code builds them now (C2004, C2021) from
+    the captured table with the case's edit: the real driver's parse, the unauthorised rule over
+    the flow intent of the run (no Mercury record on the connection: the case's ``recorded``,
+    0) and the section builder; the collection's time and the port sample's 2.013 s are the
+    case's own (the capture kept one port read). The detection's ``key`` is the case's: the
+    run computed it under its harness network, lab8, and the re-key to sdn_lab (C1948) kept it
+    (the test checks it is lab8's)."""
+    from modules.sdn import detect as D
+    from tests.sdn_fakes import lab8, ryu_collection, ryu_switch, with_flows
+
+    edit = UNAUTHORISED_EDITS[case["key"]]
+    entries = with_flows(lab8("unauthorised_s2.json"), 2, lambda flows: [
+        edit(f) if f["cookie"] == 0xBAD0 else f for f in flows])
+    sw = ryu_switch(entries, 2, elapsed=2.013)
+    at = case["detection"]["at"]
+    collected = ryu_collection(case["detection"]["network"], at, [sw])
+    got = D.unauthorised(collected, {"state": "ok", "flows": [], "withdrawn": {}},
+                         now=D._epoch(at))
+    (d,) = got["detections"]
+    d = dict(d, key=case["detection"]["key"])
+    return d, D.section(d, collected, sw)
+
+
+@pytest.mark.parametrize("name,n,effect", [("recorded", 7, "diverts"),
+                                           ("held_out", 6, "diverts"),
+                                           ("held_out", 7, "drops")])
+def test_each_unauthorised_case_is_what_the_code_builds_from_the_held_capture(name, n, effect):
+    """C2004, C2021: the three unauthorised-flow cases carry the effect and any displaced
+    Mercury flow because they are rebuilt through the code, never typed: each case's detection
+    and section equal what the rule and the section builder make from the captured table with
+    the case's one edit (its expectations untouched)."""
+    from modules.sdn import detect as D
+
+    case = next(c for c in load(name)["cases"] if c["n"] == n)
+    d = case["detection"]
+    assert d["key"] == D.detection_key(d["rule"], "lab8", d["connection"], d["dpid_hex"],
+                                       [d["subject"]["kind"], d["subject"]["value"]])
+    det, sec = rebuilt_unauthorised(case)
+    assert json.loads(json.dumps(det)) == case["detection"]
+    assert json.loads(json.dumps(sec)) == case["section"]
+    assert case["detection"]["effect"]["class"] == effect
+    assert case["detection"]["displaced"] == []          # no Mercury record on the connection
+    sent = CL.sent_evidence(case["section"])
+    assert sent["detection"]["effect"]["class"] == effect
+    assert set(sent["detection"]["effect"]["evidence"]) <= sent["ids"]
+
+
 def _script():
     loader = importlib.machinery.SourceFileLoader(
         "nmas_sdn_cases", os.path.join(ROOT, "scripts", "nmas-sdn-cases"))

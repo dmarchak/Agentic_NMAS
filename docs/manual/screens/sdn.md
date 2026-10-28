@@ -137,7 +137,10 @@ refused at the preview, naming both. How each step works:
 What to act on first: **N awaiting approval**, the mode and whether the loop is running.
 
 - **A response awaiting you**: the detection (the rule, the source, the switch, its confidence
-  and its words, an alert with its evidence pack), the AI's classification when there is one
+  and its words, an alert with its evidence pack; an unauthorised flow's words also say what it
+  does, decided in code: it lifts or shadows a Mercury flow, drops, diverts, forwards as the
+  controller would, or has an effect the table cannot tell, naming why:
+  [What an unauthorised flow does](sdn-flows#classify)), the AI's classification when there is one
   (marked AI: threat or not, its kind and severity, its reasoning, what it recommends, the
   devices it names, the evidence ids it cites, and the model, cost and call), else who chose the
   action (the catalogue's default, chosen in code), and the action proposed from the catalogue

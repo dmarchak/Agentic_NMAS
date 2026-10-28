@@ -155,6 +155,29 @@ loop records the refusal, sends nothing and proposes the catalogue's default. **
 turns it on, Settings › AI, is not built yet**: until it is, the feature stays off on every
 network, and Classify is a press of yours.
 
+**What an unauthorised flow does is decided in code, not left to the model.** When the rule
+finds one, Mercury reads the switch's table as collected and says, in the detection's words and
+as its **effect**, what the flow does to the traffic it takes, compared with the flow below it
+that would take that traffic without it:
+
+- **lifts**: it took the place of one of Mercury's drops or meters (the same table, priority and
+  match, recorded and no longer installed), or sits above an installed one taking its traffic,
+  and does not keep it: Mercury's mitigation is undone;
+- **shadows**: the same, over a Mercury flow it replaces with other actions;
+- **drops**: it has no output;
+- **diverts**: it sends traffic out another port than the controller's own flow for that
+  traffic does;
+- **forwards**: it sends it where the controller's own flow does, changing it no more;
+- **unknown**, naming why: a flow above it takes all its traffic first; it continues to another
+  table or a group; it changes the packet where the controller's flow does not; or below it only
+  the table-miss (which asks the controller) or flows that are not authorised would take it.
+
+Traffic of the flow that only the table-miss would take is said to be the controller's to
+decide. A Mercury flow it displaced goes into the evidence as a piece of its own, with its own id
+(`intent:<connection>:<switch>:<cookie>`), what it was (its cookie, match, actions and timeouts)
+and the response that installed it, so the model can cite it; the controller's flows the effect
+names are sent beside the unauthorised flow. How severe it is stays the model's to say.
+
 1. `pack`: the detection's evidence pack, as kept when it fired, its hash checked. A pack that
    changed since, or none kept, is refused and nothing is sent.
 2. `egress`: the flows and port rates are the network's topology class, so they are sent only

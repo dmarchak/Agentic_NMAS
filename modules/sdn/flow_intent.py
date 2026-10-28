@@ -38,6 +38,27 @@ since it was installed (not a fault: the switch removed it as asked), else ``mis
 switch whose table was read whole is judged; a record on any other switch is ``not_judged``,
 never missing (absent and unread are different).
 
+**What an unauthorised flow displaced and what it does** (C2004, C2021; deterministic, from the
+switch's table as read, never the model's inference):
+- `displaced`: the Mercury records an unauthorised flow took the place of: each recorded on its
+  switch and ``missing`` (not installed, not expired) at the same table, priority and match
+  (`flow_ops._same_place`), which an OpenFlow add with that match and priority replaces;
+- `effect`: one of `EFFECTS`, in words and as a field, with the flows it rests on.
+  ``lifts`` when it displaced a Mercury drop or meter, or sits above an installed one taking its
+  traffic, and does not keep it (it outputs where Mercury's dropped; it lacks Mercury's meter);
+  ``shadows`` when it does so to a Mercury flow with other actions; else, compared with the flow
+  below it that would take each part of its traffic without it (the highest flow below whose
+  match overlaps its own, no single flow above that one covering the overlap), where that flow
+  is the controller application's own or Mercury's as recorded: ``drops`` when it has no
+  output; ``diverts`` when any such flow outputs elsewhere; ``forwards`` when every such flow
+  outputs where it does, rewriting the same. ``unknown`` when the table cannot tell: a flow above
+  it takes all its traffic first; it continues to another table, a group, or an action Mercury
+  could not read; it rewrites the packet where the controller's flow does not; or no flow below
+  it decides its traffic but the table-miss (which asks the controller), a flow at its own
+  priority (OpenFlow leaves the order undefined) or another flow not authorised. A part of its
+  traffic decided only by the table-miss is named as the controller's to decide. Whether a
+  higher flow takes a part is judged one flow at a time, never by a union of several.
+
 SDN › Flows draws `classify`'s answer as the SDN reader stored it
 (`modules/readers/sdn_controllers.py`), each record with its ``expires_at``; a response's
 flows or meter (`meter_records`) missing while their hard timeout has time left are a Needs
@@ -639,3 +660,347 @@ def classify(flows: list, connection: dict, intent_rows: list, *, read_switches=
         counts[r["state"]] += 1
     return {"connection": name, "state": "ok", "error": "", "flows": out_flows,
             "records": out_records, "counts": counts}
+
+
+# ─────────────────────────────────────────── what an unauthorised flow displaced and does
+
+#: An unauthorised flow's effect on the traffic it takes (`effect`; C2021).
+EFFECTS = ("forwards", "diverts", "drops", "shadows", "lifts", "unknown")
+#: The most flows an effect's words name (and its evidence holds) per list; the rest counted.
+EFFECT_NAMED = 3
+#: A field matched with no mask: every bit, wider than any OpenFlow 1.3 field (IPv6's 128).
+_ALL_BITS = (1 << 128) - 1
+_IPV4, _ARP, _IPV6 = ("eth_type", 0x0800), ("eth_type", 0x0806), ("eth_type", 0x86DD)
+#: Each field's prerequisites, implied where a match leaves them out (OpenFlow 1.3.5's table of
+#: match field prerequisites): an IPv4 address is matched only on IPv4, a TCP port only on
+#: TCP, so a flow matching ``ipv4_dst`` alone does not overlap one matching ``eth_type`` 0x86dd.
+_PREREQUISITES = {
+    **{f: (_IPV4,) for f in ("ipv4_src", "ipv4_dst")},
+    **{f: (_ARP,) for f in ("arp_op", "arp_spa", "arp_tpa", "arp_sha", "arp_tha")},
+    **{f: (_IPV6,) for f in ("ipv6_src", "ipv6_dst", "ipv6_flabel", "ipv6_exthdr",
+                             "ipv6_nd_target", "ipv6_nd_sll", "ipv6_nd_tll")},
+    **{f: (("ip_proto", 6),) for f in ("tcp_src", "tcp_dst")},
+    **{f: (("ip_proto", 17),) for f in ("udp_src", "udp_dst")},
+    **{f: (("ip_proto", 132),) for f in ("sctp_src", "sctp_dst")},
+    **{f: (("ip_proto", 1), _IPV4) for f in ("icmpv4_type", "icmpv4_code")},
+    **{f: (("ip_proto", 58), _IPV6) for f in ("icmpv6_type", "icmpv6_code")},
+}
+_OWNER_WORDS = {"controller_own": "the controller's own flow", "mercury": "Mercury's flow",
+                "mercury_differs": "Mercury's flow, not as recorded",
+                "unauthorised": "another unauthorised flow"}
+
+
+class _CannotTell(ValueError):
+    """A match whose overlap with another cannot be computed, in words."""
+
+
+def _int(text) -> int:
+    text = str(text).strip()
+    try:
+        return int(text, 0)
+    except ValueError:
+        return int(text, 10)
+
+
+def _bits(field: str, value) -> tuple:
+    """A match field's value as ``(value, mask)`` integers, the bits outside the mask zero; a
+    field not read as bits is ``("raw", its text)``, which compares only as equal."""
+    if isinstance(value, bool):
+        raise _CannotTell(f"match {field}={value!r} is not a value a switch matches")
+    try:
+        if field in _ADDRESS_FIELDS:
+            net = ipaddress.ip_network(_address(value), strict=False)
+            return int(net.network_address), int(net.netmask)
+        if field in _MAC_FIELDS:
+            addr, slash, mask = str(value).strip().lower().partition("/")
+            m = int(mask.replace(":", ""), 16) if slash else (1 << 48) - 1
+            return int(addr.replace(":", ""), 16) & m, m
+        if field in _INT_FIELDS:
+            if isinstance(value, int):
+                return value, _ALL_BITS
+            v, slash, mask = str(value).partition("/")
+            m = _int(mask) if slash else _ALL_BITS
+            return _int(v) & m, m
+    except ValueError:
+        if "/" in str(value):
+            raise _CannotTell(f"its match {field}={value} cannot be read as bits") from None
+    if isinstance(value, str) and "/" in value:
+        raise _CannotTell(f"its match {field}={value} is masked, and the mask cannot be read")
+    return "raw", json.dumps(value, sort_keys=True)
+
+
+def _fields(match: dict) -> dict:
+    """A match as ``{field: (value, mask)}``, its prerequisites implied."""
+    out = {k: _bits(k, v) for k, v in (match or {}).items()}
+    for k in list(out):
+        for need, value in _PREREQUISITES.get(k, ()):
+            out.setdefault(need, (value, _ALL_BITS))
+    return out
+
+
+def _meet(x: tuple, y: tuple):
+    """The values one field takes under both *x* and *y*, or None for none."""
+    if "raw" in (x[0], y[0]):
+        return x if x == y else None
+    (v1, m1), (v2, m2) = x, y
+    if (v1 ^ v2) & m1 & m2:
+        return None
+    return v1 | v2, m1 | m2
+
+
+def _covers(x: tuple, y: tuple) -> bool:
+    """Whether field value *x* takes every value *y* does."""
+    if "raw" in (x[0], y[0]):
+        return x == y
+    (v1, m1), (v2, m2) = x, y
+    return not (m1 & ~m2) and not ((v1 ^ v2) & m1)
+
+
+def _match_meet(a: dict, b: dict):
+    """The match of the packets both *a* and *b* match, or None when no packet does."""
+    out = dict(a)
+    for k, y in b.items():
+        if k in out:
+            got = _meet(out[k], y)
+            if got is None:
+                return None
+            out[k] = got
+        else:
+            out[k] = y
+    return out
+
+
+def _match_covers(a: dict, b: dict) -> bool:
+    """Whether match *a* matches every packet match *b* does."""
+    return all(k in b and _covers(x, b[k]) for k, x in a.items())
+
+
+def _does(actions) -> dict:
+    """What *actions* do to a packet: ``{"out": the ports it leaves by, "meters", "rewrites"
+    (each packet-changing action, in order), "onward": what takes it beyond this table, in
+    words}``. No ``out`` (and nothing onward) is a drop."""
+    from modules.sdn.drivers.base import ACTION_FIELDS
+
+    out = {"out": set(), "meters": set(), "rewrites": [], "onward": []}
+    for a in actions or []:
+        a = _action(a)
+        kind = a.get("type")
+        if kind == "OUTPUT":
+            out["out"].add(a.get("port"))
+        elif kind == "METER":
+            out["meters"].add(a.get("meter_id"))
+        elif kind == "WRITE_ACTIONS":
+            inner = _does(a.get("actions"))
+            out["out"] |= inner["out"]
+            out["meters"] |= inner["meters"]
+            out["rewrites"] += inner["rewrites"]
+            out["onward"] += inner["onward"]
+        elif kind == "GOTO_TABLE":
+            out["onward"].append(f"continues to table {a.get('table_id')}")
+        elif kind == "GROUP":
+            out["onward"].append(f"goes to group {a.get('group_id')}")
+        elif kind in ("CLEAR_ACTIONS", "WRITE_METADATA"):
+            continue
+        elif kind in ACTION_FIELDS:
+            out["rewrites"].append(json.dumps(a, sort_keys=True))
+        else:
+            out["onward"].append(f"carries an action Mercury could not read "
+                                 f"({a.get('text') or kind})")
+    return out
+
+
+def _ports_words(ports) -> str:
+    return " and ".join(f"port {p}" if isinstance(p, int) else f"the reserved port {p}"
+                        for p in sorted(ports, key=str))
+
+
+def _send_words(does: dict) -> str:
+    """What a flow does with a packet, as a person reads it."""
+    if not does["out"]:
+        return "drops it"
+    words = f"sends it out {_ports_words(does['out'])}"
+    if does["meters"]:
+        words += " through meter " + " and ".join(str(m) for m in sorted(does["meters"], key=str))
+    return words
+
+
+def displaced(flow: dict, records: list) -> list:
+    """The Mercury records unauthorised *flow* (a row of `classify`'s ``flows``) displaced (C2004):
+    each of `classify`'s *records* that is ``missing`` on its switch at its place, the same
+    table, priority and match (`flow_ops._same_place`), where an OpenFlow add with that match
+    and priority replaces the flow there. An expired record was removed as asked: never
+    displaced."""
+    from modules.sdn import flow_ops
+
+    return [r for r in records or [] if r.get("state") == "missing"
+            and r.get("dpid") == flow.get("dpid") and flow_ops._same_place(r, flow)]
+
+
+def effect(flow: dict, table: list, displaced_flows: list = ()) -> dict:
+    """Unauthorised *flow*'s effect on the traffic it takes (C2021), from its switch's table as
+    read: *flow* a row of `classify`'s ``flows``, *table* every row of them for its switch
+    (each with its ``owner`` and evidence ``id``), *displaced_flows* the Mercury flows it
+    displaced (`displaced`), each as an evidence piece with its ``id``, ``cookie`` and
+    ``actions``. ``{"class": one of `EFFECTS`, "words", "evidence": [the ids the words name]}``;
+    how each class is decided is the module's docstring's. Never raises: what it cannot compare
+    is ``unknown``, naming why."""
+    def ref(f):
+        return f.get("id") or cookie_hex(f.get("cookie"))
+
+    def answer(cls, words, ids=()):
+        return {"class": cls, "words": words, "evidence": list(dict.fromkeys(i for i in ids if i))}
+
+    def unknown(why, ids=()):
+        return answer("unknown", f"has an effect the table cannot tell: {why}", ids)
+
+    def named(items, say):
+        shown = items[:EFFECT_NAMED]
+        words = "; ".join(say(x) for x in shown)
+        if len(items) > len(shown):
+            words += f"; and {len(items) - len(shown)} more"
+        return words, shown
+
+    moved = [p.get("id") for p in displaced_flows]
+    try:
+        mine = _fields(flow.get("match"))
+    except _CannotTell as exc:
+        return unknown(str(exc), moved)
+    table_id, prio = flow.get("table_id", 0), flow.get("priority", 0)
+    others = []
+    for f in table or []:
+        if f is flow or ref(f) == ref(flow) or f.get("table_id", 0) != table_id:
+            continue
+        try:
+            others.append((f, _fields(f.get("match"))))
+        except _CannotTell as exc:
+            return unknown(f"{ref(f)} beside it in table {table_id}: {exc}", [ref(f)] + moved)
+    others.sort(key=lambda fm: -(fm[0].get("priority") or 0))
+    does = _does(flow.get("actions"))
+    for f, m in others:
+        if (f.get("priority") or 0) > prio and _match_covers(m, mine):
+            return unknown(f"it takes no traffic while {ref(f)} "
+                           f"({_OWNER_WORDS.get(f.get('owner'), 'a flow')}, priority "
+                           f"{f.get('priority')}) above it matches all of it first",
+                           [ref(f)] + moved)
+    if does["onward"]:
+        return unknown(f"it {'; '.join(does['onward'])}, and what happens there is not judged",
+                       moved)
+    # Each part of its traffic: the highest flow below it that would take the part without it.
+    parts, cannot = [], []
+    for f, m in others:
+        p = f.get("priority") or 0
+        both = None if p > prio else _match_meet(mine, m)
+        if both is None:
+            continue
+        if p == prio:
+            cannot.append((f, "at its own priority, where OpenFlow leaves the order undefined"))
+            continue
+        if any((g.get("priority") or 0) > p and _match_covers(gm, both) for g, gm in others):
+            continue
+        parts.append((f, _match_covers(mine, m)))
+    mercury = [(p, True, "displaced") for p in displaced_flows]
+    decided, controller = [], []
+    for f, whole in parts:
+        d = _does(f.get("actions"))
+        if f.get("owner") == "mercury":
+            mercury.append((f, whole, "installed"))
+            decided.append(f)
+        elif f.get("owner") != "controller_own":
+            cannot.append((f, _OWNER_WORDS.get(f.get("owner"), "a flow")))
+        elif d["onward"]:
+            cannot.append((f, f"the controller's own flow, which {'; '.join(d['onward'])}"))
+        elif d["out"] == {"CONTROLLER"}:
+            controller.append(f)
+        else:
+            decided.append(f)
+    rest, rest_ids = "", []
+    if controller:
+        said, shown = named(controller, ref)
+        rest = (f"; the rest of its traffic would reach {said}, which sends it to the "
+                "controller, so the controller decides it")
+        rest_ids = [ref(f) for f in shown]
+
+    def mercury_words(m):
+        resp = m.get("response") or {}
+        return (f"Mercury's flow {ref(m)} (cookie {cookie_hex(m.get('cookie'))}, "
+                f"{action_words(m.get('actions'))}"
+                + (f", installed by a {resp['action']} response" if resp.get("action") else "")
+                + ")")
+
+    def where(whole, how):
+        if how == "displaced":
+            return "it took that flow's place (the same table, priority and match) and"
+        return f"above it, it takes {'all' if whole else 'part'} of that flow's traffic and"
+
+    def keeps(m) -> bool:
+        md = _does(m.get("actions"))
+        if not md["out"] and not md["onward"] and does["out"]:
+            return False
+        return not (md["meters"] - does["meters"])
+
+    lifted = [x for x in mercury if not keeps(x[0])]
+    def lift_words(x):
+        m, whole, how = x
+        md = _does(m.get("actions"))
+        gone = sorted(md["meters"] - does["meters"], key=str)
+        undone = "drop" if not md["out"] else "meter " + " and ".join(str(i) for i in gone)
+        return (f"{mercury_words(m)}: {where(whole, how)} {_send_words(does)}, so Mercury's "
+                f"{undone} is undone")
+
+    def shadow_words(x):
+        m, whole, how = x
+        return (f"{mercury_words(m)}: {where(whole, how)} does "
+                f"{action_words(flow.get('actions'))} where Mercury's does "
+                f"{action_words(m.get('actions'))}")
+
+    lifted = [x for x in mercury if not keeps(x[0])]
+    if lifted:
+        said, shown = named(lifted, lift_words)
+        return answer("lifts", f"lifts {said}", [ref(x[0]) for x in shown])
+    shadowed = [x for x in mercury
+                if normal_actions(x[0].get("actions")) != normal_actions(flow.get("actions"))]
+    if shadowed:
+        said, shown = named(shadowed, shadow_words)
+        return answer("shadows", f"shadows {said}", [ref(x[0]) for x in shown])
+
+    def their(f):
+        return f"{_OWNER_WORDS[f.get('owner')]} {ref(f)} {_send_words(_does(f.get('actions')))}"
+
+    if not does["out"]:
+        if decided:
+            said, shown = named(decided, their)
+            return answer("drops", f"drops the traffic it takes, where without it {said}{rest}",
+                          [ref(f) for f in shown] + rest_ids)
+        reach = [f"{ref(f)} ({why})" for f, why in cannot[:EFFECT_NAMED]]
+        if controller:
+            reach.append(f"{named(controller, ref)[0]} (which sends it to the controller)")
+        said = "; ".join(reach) or "no flow (the switch would drop it too: no table-miss flow)"
+        return answer("drops", f"drops the traffic it takes; without it, its traffic would "
+                      f"reach {said}", [ref(f) for f, _w in cannot[:EFFECT_NAMED]] + rest_ids)
+    elsewhere = [f for f in decided if _does(f.get("actions"))["out"] != does["out"]]
+    if elsewhere:
+        said, shown = named(elsewhere, their)
+        return answer("diverts", f"diverts the traffic it takes: it {_send_words(does)}, where "
+                      f"without it {said}{rest}", [ref(f) for f in shown] + rest_ids)
+    rewritten = [f for f in decided if _does(f.get("actions"))["rewrites"] != does["rewrites"]]
+    if rewritten:
+        said, shown = named(rewritten, their)
+        return unknown(f"it {_send_words(does)} as {said}, but changes the packet otherwise "
+                       f"({action_words(flow.get('actions'))}), and what that change does is "
+                       "not judged", [ref(f) for f in shown])
+    if decided:
+        said, shown = named(decided, their)
+        return answer("forwards", f"forwards as the controller would: it {_send_words(does)}, "
+                      f"as without it {said}{rest}", [ref(f) for f in shown] + rest_ids)
+    why = []
+    if controller:
+        said, _shown = named(controller, ref)
+        why.append(f"below it only {said} would take its traffic, which sends it to the "
+                   "controller, so where the controller would send it is not in the table")
+    for f, w in cannot[:EFFECT_NAMED]:
+        why.append(f"{ref(f)} below it is {w}")
+    if not why:
+        why.append("no flow below it matches its traffic, so without it the switch would drop "
+                   "it (no table-miss flow), and where the controller would send it is not in "
+                   "the table")
+    return unknown("; ".join(why), rest_ids + [ref(f) for f, _w in cannot[:EFFECT_NAMED]])

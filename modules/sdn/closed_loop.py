@@ -414,8 +414,9 @@ def _sdn_section(pack: dict) -> dict:
 
 def piece_id(piece: dict) -> str:
     """A piece's evidence id, the one scheme the classifier is sent and may cite (C1969): its
-    own (a flow's, a port's, an earlier sighting's: `flow_ref`, `port_ref`), else one made from
-    what it is, the detection ``detection:<rule>:<dpid>`` and the switch's coverage
+    own (a flow's, a port's, an earlier sighting's: `flow_ref`, `port_ref`; a Mercury flow an
+    unauthorised one displaced, its flow intent record's, `detect.displaced_piece`), else one
+    made from what it is, the detection ``detection:<rule>:<dpid>`` and the switch's coverage
     ``coverage:<dpid>`` (a section holds one of each). Never the pack's ``sdn:<n>``
     references: those are the pack's own (Explain's), and are not sent here."""
     if piece.get("id"):
@@ -440,6 +441,10 @@ def as_sent(piece: dict, ids: set) -> dict:
         rests = list(piece.get("evidence") or [])
         out["evidence"] = [i for i in rests if i in ids]
         out["evidence_not_sent"] = len(rests) - len(out["evidence"])
+        if isinstance(piece.get("effect"), dict):
+            # The effect's flows (C2021) cut to those sent too: an id never sent is never named.
+            named = list(piece["effect"].get("evidence") or [])
+            out["effect"] = dict(piece["effect"], evidence=[i for i in named if i in ids])
     return out
 
 

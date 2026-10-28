@@ -237,6 +237,43 @@ def lab8(name):
         return json.load(fh)
 
 
+def with_flows(entries, dpid, edit):
+    """Captured Ryu answers *entries* with switch *dpid*'s flow table, in Ryu's own shape,
+    replaced by ``edit(flows)``'s answer (a list): a minimal edit, made where it is used."""
+    out = json.loads(json.dumps(entries))
+    for e in out:
+        if e["path"] == f"/stats/flow/{dpid}":
+            body = json.loads(e["body"])
+            body[str(dpid)] = edit(body[str(dpid)])
+            e["body"] = json.dumps(body)
+    return out
+
+
+RYU_BASE = "http://192.0.2.10:8080"
+
+
+def ryu_switch(entries, dpid, *, connection="lab", elapsed=2.0):
+    """Switch *dpid*'s row of `collect_threat_data`'s answer from captured Ryu answers *entries*:
+    the real driver's parse of each read and the collection's own `_switch`, its two port reads
+    *elapsed* seconds apart (a capture holding one port read answers both). Nothing is slept."""
+    from modules.sdn import closed_loop as CL
+    from modules.sdn.drivers.base import Connection
+    from modules.sdn.drivers.ryu import RyuDriver
+
+    drv = RyuDriver(Connection(RYU_BASE), session=Replay(entries, RYU_BASE), sleep=lambda s: None)
+    return CL._switch(dpid, (drv.flows(dpid), drv.port_stats(dpid), 0.0),
+                      (drv.port_stats(dpid), elapsed), 2.0, connection=connection)
+
+
+def ryu_collection(network, at, switches, *, connection="lab", own_cookies=(0,)):
+    """`collect_threat_data`'s answer for *network* at *at* (ISO, UTC) holding *switches* (each
+    `ryu_switch`'s) on one connection declaring *own_cookies* (the connection's default, 0)."""
+    return {"network": network, "collected_at": at, "state": "ok", "error": "",
+            "controllers": [{"connection": connection, "kind": "ryu", "url": RYU_BASE,
+                             "own_cookies": list(own_cookies), "state": "ok", "error": "",
+                             "switches": list(switches)}]}
+
+
 class Routes(Session):
     """Answers by (method, path, body text) from captured entries; the path is the URL's after
     *base*."""

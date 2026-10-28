@@ -39,7 +39,12 @@ switch and its subject: a source address, a port or a flow), the switch (DPID) a
 the source and target addresses or the port, the measurement and the threshold it was held
 against (each naming its value, its unit, its window and the setting), its confidence and why,
 and the evidence ids it rests on (`closed_loop.flow_ref`, `port_ref`): what the classifier
-(S7) cites.
+(S7) cites. An unauthorised flow's also carries, in code (C2004, C2021): each Mercury flow it
+displaced (``displaced``, `flow_intent.displaced`: recorded, not installed, at its table,
+priority and match), each a citable piece with its own id (`displaced_piece`) among the
+evidence; and its ``effect`` (`flow_intent.effect`: forwards, diverts, drops, shadows, lifts or
+unknown, in words, with the flows it rests on), said in its words too. Its severity stays the
+classifier's.
 
 **The state** (`STATE_FILE`, ``sdn_detect.json`` in the data folder): one document, per
 network the baselines, the ports over their flood threshold and since when, the scan
@@ -459,6 +464,9 @@ def unauthorised(collected: dict, intent: dict, now: float = None) -> dict:
             if f["owner"] != "unauthorised":
                 continue
             match = f.get("match") or {}
+            moved = [displaced_piece(conn, dh, r)
+                     for r in flow_intent.displaced(f, got["records"])]
+            effect = flow_intent.effect(f, got["flows"], moved)
             detections.append(_detection(
                 "unauthorised_flow", collected, ctl, sw, subject=("flow", f["id"]),
                 scope=flows_scope(conn, dh), source=_address(match, "src"),
@@ -467,7 +475,7 @@ def unauthorised(collected: dict, intent: dict, now: float = None) -> dict:
                 words=(f"a flow on switch {dh} ({conn}), cookie "
                        f"{flow_intent.cookie_hex(f.get('cookie'))}, priority "
                        f"{f.get('priority')}, actions {flow_intent.action_words(f.get('actions'))}"
-                       f": unauthorised, {f['words']}"),
+                       f": unauthorised, {f['words']}; it {effect['words']}"),
                 measurement={"what": "the flow's owner (flow_intent.classify)",
                              "value": "unauthorised",
                              "cookie": flow_intent.cookie_hex(f.get("cookie")),
@@ -480,8 +488,35 @@ def unauthorised(collected: dict, intent: dict, now: float = None) -> dict:
                 confidence="high",
                 confidence_why="the flow's cookie against Mercury's records and the "
                                "connection's declared cookies, the switch's table read whole",
-                evidence=[f["id"]], basis="intent"))
+                evidence=[f["id"]] + [p["id"] for p in moved], basis="intent",
+                effect=effect, displaced=moved))
     return {"detections": detections, "judged": judged, "error": ""}
+
+
+def displaced_piece(connection: str, dpid_hex: str, record: dict) -> dict:
+    """A Mercury flow an unauthorised flow displaced (`flow_intent.displaced`, C2004) as an
+    evidence piece of its own: its id (``intent:<connection>:<dpid hex>:<cookie>``: the flow
+    intent's record, never the switch's flow id, which the unauthorised flow now holds), what it
+    was (cookie, table, priority, match, actions, timeouts), when it was installed and the
+    response that installed it, where the record says (its kind, action, risk and operation;
+    never who)."""
+    from modules.sdn import flow_intent
+
+    cookie = flow_intent.cookie_hex(record.get("cookie"))
+    response = record.get("response") or {}
+    return {"kind": "displaced_flow", "id": f"intent:{connection}:{dpid_hex}:{cookie}",
+            "cookie": cookie, "table_id": record.get("table_id"),
+            "priority": record.get("priority"), "match": record.get("match") or {},
+            "actions": record.get("actions") or [],
+            "actions_words": flow_intent.action_words(record.get("actions")),
+            "idle_timeout": record.get("idle_timeout"),
+            "hard_timeout": record.get("hard_timeout"),
+            "installed_at": record.get("installed_at"), "state": record.get("state"),
+            "response": {k: response[k] for k in ("kind", "action", "risk", "operation")
+                         if response.get(k) not in (None, "")},
+            "words": "Mercury's flow, recorded as installed at the unauthorised flow's place (the "
+                     "same table, priority and match) and not installed: the unauthorised flow "
+                     "took its place"}
 
 
 # ───────────────────────────────────────────────────────────────────────────── the state
@@ -571,23 +606,34 @@ def flow_piece(f: dict) -> dict:
 
 def section(d: dict, collected: dict, sw: dict) -> dict:
     """The pack's ``sdn`` section for detection *d*: the detection itself, then the flows and
-    ports it rests on as collected (each with its evidence id), earlier sightings for a scan,
-    and the switch's coverage. At most `SECTION_FLOWS` flows; the rest counted."""
+    ports it rests on as collected (each with its evidence id), the flows its effect names
+    (an unauthorised flow's, `flow_intent.effect`), the Mercury flows it displaced, earlier
+    sightings for a scan, and the switch's coverage. At most `SECTION_FLOWS` flows, the
+    detection's own first; the rest counted."""
     ids = set(d["evidence"])
-    flows = [f for f in sw.get("flows") or [] if f.get("id") in ids]
-    total = len(flows)
-    flows = sorted(flows, key=lambda f: -(f.get("packet_count") or 0))[:SECTION_FLOWS]
-    pieces = [{"kind": "detection", "rule": d["rule"], "title": d["title"], "words": d["words"],
-               "connection": d["connection"], "dpid": d["dpid_hex"], "source": d["source"],
-               "targets": d["targets"], "port": d["port"], "measurement": d["measurement"],
-               "threshold": d["threshold"], "confidence": d["confidence"],
-               "confidence_why": d["confidence_why"], "evidence": d["evidence"]}]
+    effect = d.get("effect") or {}
+    named = [i for i in effect.get("evidence") or [] if i not in ids]
+    own = [f for f in sw.get("flows") or [] if f.get("id") in ids]
+    by_id = {f.get("id"): f for f in sw.get("flows") or []}
+    also = [by_id[i] for i in named if i in by_id]
+    total = len(own) + len(also)
+    flows = (sorted(own, key=lambda f: -(f.get("packet_count") or 0)) + also)[:SECTION_FLOWS]
+    piece = {"kind": "detection", "rule": d["rule"], "title": d["title"], "words": d["words"],
+             "connection": d["connection"], "dpid": d["dpid_hex"], "source": d["source"],
+             "targets": d["targets"], "port": d["port"], "measurement": d["measurement"],
+             "threshold": d["threshold"], "confidence": d["confidence"],
+             "confidence_why": d["confidence_why"], "evidence": d["evidence"]}
+    if effect:
+        piece["effect"] = effect
+    pieces = [piece]
     for p in sw.get("ports") or []:
         if p.get("id") in ids:
             pieces.append(dict({k: v for k, v in p.items()}, kind="port",
                                sample=sw.get("sample")))
     for f in flows:
         pieces.append(flow_piece(f))
+    displaced = list(d.get("displaced") or [])
+    pieces += displaced
     now_ids = {f.get("id") for f in sw.get("flows") or []}
     earlier = [s for s in d.get("sightings") or [] if s.get("id") not in now_ids]
     for s in earlier:
@@ -602,8 +648,9 @@ def section(d: dict, collected: dict, sw: dict) -> dict:
                        f"{d['dpid_hex']}, port rates over {sw['sample'].get('elapsed_s')} s"),
             "read_at": collected.get("collected_at") or "", "as_of": collected.get("collected_at"),
             "pieces": pieces,
-            "counts": {"flows": len(flows), "ports": sum(p["kind"] == "port" for p in pieces),
-                       "earlier_sightings": len(earlier)},
+            "counts": dict({"flows": len(flows), "ports": sum(p["kind"] == "port" for p in pieces),
+                            "earlier_sightings": len(earlier)},
+                           **({"displaced_flows": len(displaced)} if effect else {})),
             "total": total, "subset": total > len(flows)}
 
 
