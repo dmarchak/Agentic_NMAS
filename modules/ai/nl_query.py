@@ -896,7 +896,8 @@ def _events_pack() -> dict:
 
 def events_for(list_name: str, rows: list = None) -> list:
     """The event mnemonics of the dialects *list_name*'s devices speak, each once, in the
-    pack's order: ``[{"mnemonic", "records", "words"}]``."""
+    pack's order: ``[{"mnemonic", "offer", "records", "words"}]``, *offer* "always" (offered
+    for every question) or "named" (offered when the question holds one of its words)."""
     from modules.nsot.platform import platform_for_device
 
     pack, out, seen = _events_pack(), [], set()
@@ -916,9 +917,40 @@ def events_for(list_name: str, rows: list = None) -> list:
     return out
 
 
+#: A pack entry ending in one of these ("logged in") is a phrase whose last word may be a
+#: preposition: it is not held when one of `_SPAN_STARTS`, or a number, follows it, because
+#: then it begins a span of time ("what has edge1 logged in the last day" is lines logged, not a
+#: login; C1823).
+_PARTICLES = frozenset(("in", "on"))
+_SPAN_STARTS = frozenset(("the", "last", "past", "this", "a", "an"))
+
+
 def _event_hit(event: dict, question: str) -> bool:
-    words = {w.lower() for w in re.findall(r"[A-Za-z0-9]+", question or "")}
-    return bool(words & set(event["words"]))
+    """Whether *question* says *event* by one of its pack words: a word held whole (never as
+    the start of a longer one), an entry of several words held in that order (C1823)."""
+    toks = [w.lower() for w in re.findall(r"[A-Za-z0-9]+", question or "")]
+    held = set(toks)
+    for said in event["words"]:
+        ws = said.split()
+        if len(ws) == 1:
+            if ws[0] in held:
+                return True
+            continue
+        for i in range(len(toks) - len(ws) + 1):
+            if toks[i:i + len(ws)] != ws:
+                continue
+            after = toks[i + len(ws)] if i + len(ws) < len(toks) else ""
+            if ws[-1] in _PARTICLES and (after in _SPAN_STARTS or after.isdigit()):
+                continue
+            return True
+    return False
+
+
+def _offered_events(question: str, events: list) -> list:
+    """The pack's *events* this question is offered: each "always" one, and each "named" one
+    the question says by its words (C1823), in the pack's order."""
+    return [e for e in events
+            if e.get("offer", "always") == "always" or _event_hit(e, question)]
 
 
 def offer_text(offered: list, of: int = None) -> str:
@@ -1318,28 +1350,33 @@ def ambiguous_role(question: str, rows: list) -> dict:
 def offer_events(question: str, seen: list, events: list) -> list:
     """Logs v3's offer: ``[(mnemonic, what)]``, the platform pack's *events* first, each with
     what it records, whether or not the range holds one (the operator's walk, 2026-10-26: a
-    reload the range happens not to hold is still named); then `offer_mnemonics`' own, each
-    with how often the reader counted it, at most `OFFERED_MNEMONICS` in all."""
+    reload the range happens not to hold is still named), a "named" one only when the question
+    says it by its words (C1823: "CPU hogs" is %SYS-3-CPUHOG); then `offer_mnemonics`' own,
+    each with how often the reader counted it, at most `OFFERED_MNEMONICS` in all."""
     counted = dict(seen)
+    mine = _offered_events(question, events)
     out = [(e["mnemonic"], e["records"] + (f"; seen {counted[e['mnemonic']]} times in 7 days"
                                            if counted.get(e["mnemonic"]) else ""))
-           for e in events]
+           for e in mine]
     have = {m for m, _w in out}
-    for mn in offer_mnemonics(question, seen):
+    for mn in offer_mnemonics(question, seen, events):
         if mn not in have and len(out) < OFFERED_MNEMONICS:
             out.append((mn, f"seen {counted.get(mn, 0)} times in 7 days"))
-    return out[:max(OFFERED_MNEMONICS, len(events))]
+    return out[:max(OFFERED_MNEMONICS, len(mine))]
 
 
 def _mnemonic_words(mn: str) -> set:
     return {w.lower() for w in re.split(r"[%_\-]+", mn) if w and not w.isdigit()}
 
 
-def offer_mnemonics(question: str, seen: list) -> list:
+def offer_mnemonics(question: str, seen: list, events: list = ()) -> list:
     """The mnemonics to offer: the builder's Start-from chips' and those the logs reader
-    counted (*seen*, ``[(mnemonic, n)]``), each sharing a word with the question; the most seen
-    first; at most `OFFERED_MNEMONICS`. A question naming none is offered none: severity and
-    text answer it."""
+    counted (*seen*, ``[(mnemonic, n)]``), each sharing a word with the question, and each of
+    the platform pack's "named" *events* (`events_for`) the question says by its everyday
+    words, whose mnemonic shares none with how an engineer says it (C1823: "CPU hogs",
+    "who logged in"); the most seen first; at most `OFFERED_MNEMONICS`. A question naming none
+    is offered none: severity and text answer it. The pack's "always" events are not matched
+    here: `offer_events` offers them for every question."""
     from modules import history_logq as lq
 
     want = terms(question)
@@ -1347,8 +1384,12 @@ def offer_mnemonics(question: str, seen: list) -> list:
     for _k, _t, params in lq.PRESETS:
         for mn in params.get("mn", ()):
             counted.setdefault(mn, 0)
+    named = {e["mnemonic"] for e in events
+             if e.get("offer", "always") == "named" and _event_hit(e, question)}
+    for mn in named:
+        counted.setdefault(mn, 0)
     hits = [(-n, mn) for mn, n in counted.items()
-            if any(_matches(f, _mnemonic_words(mn)) for f in want.values())]
+            if mn in named or any(_matches(f, _mnemonic_words(mn)) for f in want.values())]
     return [mn for _n, mn in sorted(hits)[:OFFERED_MNEMONICS]]
 
 
@@ -1490,7 +1531,7 @@ def logs(list_name: str, question: str, *, actor: str, trigger: dict, send=None,
                          ctx={"builder": vocabulary_logs(prompt[1]), "network": net["summary"]},
                          send=send, today=today, thinking=None, subject=subject)
     else:
-        mns = offer_mnemonics(question, seen)
+        mns = offer_mnemonics(question, seen, events_for(list_name, rows))
         got = gateway.ask(FEATURE, prompt, schema,
                           parts_logs(question, kinds, mns, labels, named, roles, now, z),
                           actor=actor, trigger=trigger, context={"builder": vocabulary_logs()},

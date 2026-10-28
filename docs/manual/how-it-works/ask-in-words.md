@@ -181,7 +181,12 @@ protocol going up or down, an OSPF or BGP adjacency changing, a configuration ch
 whether or not the range holds one, and the mnemonics that share a word with your question
 (the Start-from chips' and those the logs reader counted: "OSPF adjacency changes" offers
 `%OSPF-5-ADJCHG`). So "which devices rebooted?" is answered by the reload and restart
-mnemonics, never by the word "reboot", which no device logs. With the question go the
+mnemonics, never by the word "reboot", which no device logs. The offer also matches each
+event's everyday name, from the platform's event list: an event whose mnemonic shares no word
+with how people say it is offered, with what it records, when your question says it that way
+("CPU hogs" offers `%SYS-3-CPUHOG`, "who logged in" `%SEC_LOGIN-5-LOGIN_SUCCESS`), and not
+otherwise. A word counts whole ("logical" is no login), and
+"logged in the last day" means lines logged, not a login. With the question go the
 network's devices by role and what {{product}} collects about it (each layer present or not
 collected), so a question resting on something not collected is said to be, not guessed.
 {{product}}'s own heartbeat lines are left out of every query, and a question about them is

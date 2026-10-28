@@ -419,6 +419,159 @@ def test_the_platform_s_events_are_the_dialects_the_network_speaks():
     assert nl_query.events_for("Lab", rows=[{"hostname": "x", "platform": "unknown_os"}]) == []
 
 
+# ------------------------------------- an event said by its everyday words (C1823, 2026-10-28)
+
+def _events(rows=None):
+    return nl_query.events_for("Lab", rows=IOS_ROWS if rows is None else rows)
+
+
+def _named(rows=None):
+    return {e["mnemonic"] for e in _events(rows) if e["offer"] == "named"}
+
+
+def _offers(question, rows=None):
+    """Both offers' mnemonics: logs v2's (`offer_mnemonics`) and v3's on (`offer_events`)."""
+    ev = _events(rows)
+    return (nl_query.offer_mnemonics(question, [], ev),
+            [m for m, _w in nl_query.offer_events(question, [], ev)])
+
+
+@pytest.mark.parametrize("question, mnemonic", [
+    ("CPU hogs", "%SYS-3-CPUHOG"),
+    ("which devices had CPU hogs", "%SYS-3-CPUHOG"),
+    ("is anything hogging the CPU on the switches", "%SYS-3-CPUHOG"),
+    ("who logged in", "%SEC_LOGIN-5-LOGIN_SUCCESS"),
+    ("failed logins", "%SEC_LOGIN-5-LOGIN_SUCCESS"),
+    ("who logged into r1 yesterday", "%SEC_LOGIN-5-LOGIN_SUCCESS"),
+    ("has anyone signed in to the routers today", "%SEC_LOGIN-5-LOGIN_SUCCESS"),
+])
+def test_an_event_said_by_its_everyday_words_is_offered_its_mnemonic(question, mnemonic):
+    """C1823: "CPU hogs" shares no word with %SYS-3-CPUHOG, nor "logged in" with
+    %SEC_LOGIN-5-LOGIN_SUCCESS; the platform pack names each event with an engineer's words
+    and both offers match them, v3's with what the event records. "failed logins" is offered
+    the login event the pack has: no failed-login mnemonic is in it (none is captured)."""
+    v2, v3 = _offers(question)
+    assert mnemonic in v2, (question, v2)
+    assert mnemonic in v3, (question, v3)
+    said = dict(nl_query.offer_events(question, [], _events()))[mnemonic]
+    (pack,) = [e for e in _events() if e["mnemonic"] == mnemonic]
+    assert said == pack["records"], said
+
+
+def test_every_word_of_a_named_event_offers_its_mnemonic():
+    """Each word or phrase the pack gives a named event, said alone or before a device,
+    offers that event, in every dialect that carries it."""
+    for dialect, rows in (("cisco_ios", IOS_ROWS[1:]), ("cisco_iosxe", IOS_ROWS[:1])):
+        named = [e for e in nl_query._events_pack()[dialect] if e["offer"] == "named"]
+        assert named, dialect
+        for e in named:
+            for word in e["words"]:
+                for question in (word, f"{word} on r1", f"show {word} per device"):
+                    v2, v3 = _offers(question, rows)
+                    assert e["mnemonic"] in v2 and e["mnemonic"] in v3, (dialect, question)
+
+
+@pytest.mark.parametrize("question", [
+    "interface errors",
+    "errors and worse last 24 hours",
+    "OSPF adjacency changes",
+    "which interfaces went down this week",
+    "logical interfaces going down",
+    "BGP sessions that were reset",
+    "configuration changes by device",
+    "CPU utilisation on r1",
+    "cpu temperature",
+    "what has s1 logged in the last hour",
+    "how many lines did each router log in the past day",
+    "messages logged in 24 hours",
+    "Did s3 log any messages this week?",
+    "a hogwash of messages",
+])
+def test_a_question_about_something_else_gains_no_named_event(question):
+    """No over-offering: a named event is offered only when the question says it, by a whole
+    word (never "logical" for a login, "hogwash" for a CPU hog), and "logged in" followed by a
+    span of time is lines logged, not a login."""
+    named = _named()
+    v2, v3 = _offers(question)
+    assert not named & set(v2), (question, v2)
+    assert not named & set(v3), (question, v3)
+
+
+def test_a_metrics_refusal_names_the_logs_route_by_the_event_s_words(monkeypatch):
+    monkeypatch.setattr(nl_query, "_inventory", lambda name: IOS_ROWS)
+    assert nl_query.logs_route("Lab", "which devices had CPU hogs") == (
+        "; the logs can answer it: ask in Logs (%SYS-3-CPUHOG)")
+    assert nl_query.logs_route("Lab", "CPU utilisation") == ""
+
+
+#: Words two events of one dialect may both claim: events that record one happening together.
+SHARED = ({"%SYS-5-RELOAD", "%SYS-5-RESTART"}, {"%LINK-3-UPDOWN", "%LINEPROTO-5-UPDOWN"},
+          {"%OSPF-5-ADJCHG", "%BGP-5-ADJCHANGE"})
+
+
+def test_the_platform_pack_s_events_are_well_formed():
+    """modules/nsot/platform_events.json: each event a mnemonic as the logs builder carries it,
+    offered always or when named, what it records, and its words (lower-case, whole words, a
+    phrase one space apart, each listed once); a mnemonic once per dialect and the same entry
+    in every dialect that carries it; every word holding its own event; a word claimed by two
+    events only where they record one happening together (`SHARED`), never by a named event
+    and another; and no word "cpu" (a CPU figure is a metric: tests/test_ai_nl_query.py's "cpu
+    temperature" is routed to no log)."""
+    pack = nl_query._events_pack()
+    assert set(pack) == {"cisco_ios", "cisco_iosxe"}
+    by_mn = {}
+    for dialect, events in pack.items():
+        mns = [e["mnemonic"] for e in events]
+        assert len(mns) == len(set(mns)), dialect
+        claims = {}
+        for e in events:
+            assert set(e) == {"mnemonic", "offer", "records", "words"}, e
+            assert re.fullmatch(r"%[A-Z][A-Z0-9_]*-[0-7]-[A-Z0-9_]+", e["mnemonic"]), e
+            assert e["offer"] in ("always", "named"), e
+            assert e["records"].strip(), e
+            assert e["words"] and len(e["words"]) == len(set(e["words"])), e
+            for w in e["words"]:
+                assert re.fullmatch(r"[a-z0-9]+( [a-z0-9]+)*", w), (e["mnemonic"], w)
+                assert w != "cpu", e["mnemonic"]
+                assert nl_query._event_hit(e, w), (e["mnemonic"], w)
+                claims.setdefault(w, set()).add(e["mnemonic"])
+            assert by_mn.setdefault(e["mnemonic"], e) == e, (dialect, e["mnemonic"])
+        named = {e["mnemonic"] for e in events if e["offer"] == "named"}
+        for w, who in claims.items():
+            if len(who) > 1:
+                assert not who & named, (dialect, w, who)
+                assert any(who <= group for group in SHARED), (dialect, w, who)
+    assert {e["mnemonic"] for e in by_mn.values() if e["offer"] == "always"} == {
+        "%SYS-5-RELOAD", "%SYS-5-RESTART", "%LINK-3-UPDOWN", "%LINEPROTO-5-UPDOWN",
+        "%OSPF-5-ADJCHG", "%BGP-5-ADJCHANGE", "%SYS-5-CONFIG_I"}, \
+        "an event offered for every question is added by a decision, never by a word list"
+
+
+def test_v4_sends_a_named_event_with_what_it_records_and_only_when_said(world, monkeypatch):
+    """The live logs version's request: "which devices had CPU hogs" carries %SYS-3-CPUHOG with
+    what it records; an OSPF question carries neither it nor the login."""
+    monkeypatch.setattr(nl_query, "_inventory", lambda name: IOS_ROWS)
+    monkeypatch.setattr(nl_query, "network_context", lambda name, store, compact=False: {
+        "summary": "s", "coverage": "c"})
+    world.answer = dict(_choices(mnemonics=["%SYS-3-CPUHOG"], range="7d"), needs=[])
+    got = _ask(world, "which devices had CPU hogs this week")
+    assert got["ok"] is True and "%SYS-3-CPUHOG" in got["offered"], got
+    user = world.sent[-1]["body"]["messages"][0]["content"]
+    assert "%SYS-3-CPUHOG | a process held the CPU too long" in user
+    world.answer = dict(_choices(range="7d"), needs=[])
+    got = _ask(world, "OSPF adjacency changes per device")
+    assert got["ok"] is True, got
+    user = world.sent[-1]["body"]["messages"][0]["content"]
+    assert "%SYS-3-CPUHOG" not in user and "%SEC_LOGIN-5-LOGIN_SUCCESS" not in user
+    # Logs v2 (no platform events offered for every question) is offered the named one too,
+    # from the network's own dialects.
+    world.answer = {k: v for k, v in _choices(mnemonics=["%SYS-3-CPUHOG"]).items()
+                    if k != "needs"}
+    got = _ask(world, "which devices had CPU hogs this week", prompt=("nl_logs", 2))
+    assert got["ok"] is True and "%SYS-3-CPUHOG" in got["offered"], got
+    assert "%SYS-5-RELOAD" not in got["offered"], got["offered"]
+
+
 def test_a_zero_resting_on_free_text_says_so(world, monkeypatch):
     """C1804 (6b): the fill's test run says the text may not be how the platform logs it."""
     from modules import history_logq as lq
