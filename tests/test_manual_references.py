@@ -11,22 +11,39 @@ Mechanised here, each with a planted dead reference:
 - **Reachable:** every How it works page is opened by a "How does this work?" link (``how()``) or
   an info link (``info()``) on some v2 screen.
 
+The manual against the product both ways (C1844; the populations and their rules are
+tests/manual_controls.py's):
+- **A pressed control:** every bold label the prose uses as a control (the object of "press",
+  "choose", "pick", "click", one joined to it, or one followed by "button") is drawn.
+- **A tab:** every bold label the prose calls a tab is a navigation label (a sidebar item or
+  heading, a tab, a Settings scope, a breadcrumb's segment).
+- **A path:** every "A › B › C" the manual writes, bold or in prose, starts at a navigation
+  label or a control, and each later segment is drawn.
+- **Every control has its entry:** every v2 control (a button, a ``<summary>`` used as one, a
+  link styled or marked as an action) is named in bold by the manual, or is on the declared
+  known-gap list (``KNOWN_UNENTERED``), which only shrinks; a control drawn wholly by data is
+  counted under a ceiling.
+
 Already mechanised elsewhere (tests/test_manual.py): every info and how link names a page and
 section that exist; every sidebar destination and device tab has its page; every declared step of
 every operation is named on its page; every action carries its link.
 
-**Not mechanised** (the claims a reviewer reads against the code): a screen named in a breadcrumb
-("Credentials › Profiles"), a bold control label without the "…", a status word, a default, a
-limit or number, and what a step reads, sends and records.
+**Not mechanised** (the claims a reviewer reads against the code): whether a control's entry is
+on the page for its screen (one bold mention anywhere enters every control with that label), a
+bold label naming a control outside a press, a path or an ellipsis ("the card's **Test**"), a
+control a script builds, a status word, a column, a default, a limit or number, and what a step
+reads, sends and records.
 """
 
 import ast
+import functools
 import io
 import os
 import re
 import tokenize
 
 from modules import manual
+from tests import manual_controls as MC
 from tests import source_index
 
 #: A v2 path as a page writes it: `/v2/...`, segments of path characters or `<placeholder>`s.
@@ -215,3 +232,171 @@ class TestTheCheckCanFail:
         pages = (("deploy", "t", manual.H, "f"), ("orphan", "t", manual.H, "f"),
                  ("devices", "t", "Screens", "f"))
         assert unreachable(pages, linked_slugs("{{ how('deploy') }}")) == ["orphan"]
+
+
+# ---------------------------------------------------------------- C1844: both directions
+
+def dead_pressed(found: list, drawn: str) -> list:
+    """``(slug, label)`` for each control the prose presses that nothing in v2 draws."""
+    return [(slug, label) for slug, label in found if not label_pattern(label).search(drawn)]
+
+
+def gap_problems(found: dict, known: dict) -> list:
+    """What the controls without a manual entry say against the declared list: a new one (a
+    control added without its entry) and a stale one (named since, or gone)."""
+    bad = []
+    for name in sorted(set(found) | set(known)):
+        now, was = set(found.get(name, ())), set(known.get(name, ()))
+        bad += [f"{name}: the control {l!r} has no manual entry (name it in bold on its "
+                "screen's or operation's page)" for l in sorted(now - was)]
+        bad += [f"{name}: {l!r} is listed in KNOWN_UNENTERED but is named by the manual now, "
+                "or gone: remove it from the list" for l in sorted(was - now)]
+    return bad
+
+
+@functools.lru_cache(maxsize=1)
+def _drawn():
+    return drawn_words()
+
+
+@functools.lru_cache(maxsize=1)
+def _v2():
+    return MC.template_texts()
+
+
+@functools.lru_cache(maxsize=1)
+def _controls():
+    return MC.all_controls(_v2())
+
+
+class TestTheManualAgainstTheProduct:
+    """C1844: what the manual names exists, and every control is named (or a known gap)."""
+
+    def test_the_populations(self):
+        texts = manual_texts()
+        assert len(MC.pressed_names(texts)) >= 15
+        assert len(MC.tab_names(texts)) >= 8
+        assert len(MC.paths(texts)) >= 90
+        assert len(MC.nav_labels(_v2())) >= 45
+        controls = _controls()
+        assert len(controls) >= 450
+        assert {c["template"] for c in controls} >= {"base.html", "_devices.html",
+                                                      "_actions_menu.html", "_deploy.html"}
+        entered, gap, _data = MC.split(controls, MC.bold_names(texts))
+        assert len(entered) >= 350 and len(gap) <= 140
+
+    def test_every_control_the_prose_presses_is_drawn(self):
+        assert dead_pressed(MC.pressed_names(manual_texts()), _drawn()) == []
+
+    def test_every_tab_the_prose_names_is_one(self):
+        assert MC.dead_tabs(MC.tab_names(manual_texts()), MC.nav_labels(_v2())) == []
+
+    def test_every_path_the_manual_writes_resolves(self):
+        labels = {l for c in _controls() for l in c["labels"]}
+        assert MC.dead_paths(MC.paths(manual_texts()), MC.nav_labels(_v2()) | labels,
+                             _drawn()) == []
+
+    def test_every_control_has_a_manual_entry_or_is_known(self):
+        found = MC.unentered(_controls(), MC.bold_names(manual_texts()))
+        assert gap_problems(found, MC.KNOWN_UNENTERED) == []
+
+    def test_the_controls_drawn_wholly_by_data_stay_under_their_ceiling(self):
+        data = MC.split(_controls(), MC.bold_names(manual_texts()))[2]
+        assert len(data) <= MC.DATA_LABELLED_CEILING, \
+            [(c["template"], c["labels"]) for c in data]
+
+
+class TestTheTwoWayCheckCanFail:
+    def test_a_control_without_a_manual_entry_is_found_and_a_named_one_is_not(self):
+        v2 = {"x.html": '<button type="button" class="btn"><span class="op-idle">Frobnicate '
+                        '{{ d.name }}</span><span class="op-busy">Frobnicating…</span></button>'
+                        '<button>Save</button><a class="btn" href="/x">Plan a deploy…</a>'
+                        '<a href="/v2/devices">Devices</a><summary>More detail</summary>'
+                        '<summary class="btn btn-small">Actions</summary>'
+                        '<summary hx-get="/x">Network</summary>'}
+        controls = MC.all_controls(v2)
+        # A plain link is navigation and a bare summary a disclosure: neither is a control.
+        assert [c["labels"] for c in controls] == [["Frobnicate <x>"], ["Save"],
+                                                   ["Plan a deploy…"], ["Actions"], ["Network"]]
+        names = {"Save", "Plan a deploy…", "Seed…", "Network"}
+        assert MC.unentered(controls, names) == {"x.html": ["Actions", "Frobnicate <x>"]}
+        # A bold path's segments are names: "Actions › Seed…" names the Actions menu too.
+        assert MC.unentered(controls, names | {"Frobnicate <device>", "Actions › Seed…"}) == {}
+
+    def test_a_control_is_read_as_a_person_reads_it(self):
+        v2 = {"y.html": (
+            '{% macro close_button(words) %}<button class="btn">{{ words }}</button>{% endmacro %}'
+            "{{ close_button('Dismiss') }}"
+            "{% for label, op in [('Capture…', 'capture'), ('Persist', 'persist')] %}"
+            '<a role="menuitem" data-op="{{ op }}">{{ label }}</a>{% endfor %}'
+            "<button>{% if again %}Explain again{% else %}Explain{% endif %}</button>"
+            "<button>{{ 'Preview again' if p else 'Preview' }} {{ icon('x', 14) }}</button>"
+            '<button aria-label="Close the panel" x-bind:aria-label="label">{{ icon("x") }}</button>'
+            '<a role="menuitem"><span>Save (<span x-text="n">{{ n }}</span>)…</span>'
+            '<span class="menu-sub muted">to startup and as golden</span></a>'
+            "{# <button>Commented out</button> #}")}
+        # The loop's one element reads each of its rows' words; the comment draws nothing.
+        assert [c["labels"] for c in MC.all_controls(v2)] == [
+            ["Dismiss"], ["Capture…", "Persist"], ["Explain", "Explain again"],
+            ["Preview", "Preview again"], ["Close the panel"], ["Save (<x>)…"]]
+        # The manual's placeholder and the template's value meet.
+        assert MC.unentered(MC.all_controls(v2), {
+            "Dismiss", "Capture…", "Persist", "Explain", "Preview", "Close the panel",
+            "Actions › Save (<count>)…"}) == {}
+
+    def test_a_placeholder_stands_for_one_value_never_a_run_of_words(self):
+        names = MC.Names({"Open <device>", "Move N lines", "Deploy <N> line(s) to <device>"})
+        assert names.enter("Open r1") and names.enter("Open <x>")
+        assert not names.enter("Open its card in the device page")
+        assert names.enter("Move <x> line<x>") and names.enter("Deploy <x> line(s) to <x>")
+
+    def test_a_new_gap_and_a_stale_entry_are_found(self):
+        known = {"x.html": ["Frobnicate <x>", "Named since"]}
+        found = {"x.html": ["Frobnicate <x>"], "y.html": ["New control"]}
+        assert gap_problems(found, known) == [
+            "x.html: 'Named since' is listed in KNOWN_UNENTERED but is named by the manual "
+            "now, or gone: remove it from the list",
+            "y.html: the control 'New control' has no manual entry (name it in bold on its "
+            "screen's or operation's page)"]
+        assert gap_problems(known, known) == []
+
+    def test_a_pressed_label_naming_nothing_is_found(self):
+        texts = {"p": "Press **Frobnicate**, then **Save**. Press **Escape** to close it. The row "
+                      "is marked **refused**. The **Test** button reads it; **Mode** is a field."}
+        found = MC.pressed_names(texts)
+        assert found == [("p", "Frobnicate"), ("p", "Save"), ("p", "Test")]
+        assert dead_pressed(found, "<button>Save</button><button>Test</button>") == [
+            ("p", "Frobnicate")]
+
+    def test_a_tab_naming_nothing_is_found(self):
+        texts = {"p": "Open the **Intent** tab, then the **Nowhere** tab; **Intent** alone."}
+        assert MC.tab_names(texts) == [("p", "Intent"), ("p", "Nowhere")]
+        assert MC.dead_tabs(MC.tab_names(texts), {"INTENT"}) == [("p", "Nowhere")]
+
+    def test_a_path_naming_nothing_is_found(self):
+        texts = {"p": "Open Settings › Installation › Connections. See Settings › Nowhere › "
+                      "Thing, then Elsewhere › Foo; and [History › Gone](history)."}
+        found = MC.paths(texts)
+        assert [(lead, middle, tail) for _s, lead, middle, tail in found] == [
+            (("Open", "Settings"), ("Installation",), ("Connections",)),
+            (("See", "Settings"), ("Nowhere",), ("Thing",)),
+            (("then", "Elsewhere"), (), ("Foo",)),
+            (("and", "History"), (), ("Gone",))]
+        drawn = "<a>Installation</a><a>Connections</a><b>Thing</b><b>Foo</b>"
+        assert MC.dead_paths(found, {"Settings", "History"}, drawn) == [
+            ("p", "See Settings › Nowhere › Thing", "'Nowhere' is drawn nowhere"),
+            ("p", "then Elsewhere › Foo", "'then Elsewhere' ends in no sidebar item, tab or "
+                                         "control"),
+            ("p", "and History › Gone", "'Gone' is drawn nowhere")]
+
+    def test_the_navigation_labels_are_read_from_the_markup(self):
+        v2 = {"z.html": '<a class="tab{% if t %} on{% endif %}" href="/x">Coverage</a>'
+                        '<div class="nav-head">SOURCE OF TRUTH</div>'
+                        '<a class="nav-item" href="/y">{{ icon("d") }}<span>Devices</span></a>'
+                        '<a class="scope-item"><b>Installation</b><small>every network</small></a>'
+                        '<p class="crumbs small"><a href="/d">Devices</a> › Onboard devices › '
+                        'Discovered</p><a class="plain">Not a place</a>'}
+        nav = MC.nav_labels(v2)
+        assert {"Coverage", "SOURCE OF TRUTH", "Devices", "Installation", "Onboard devices",
+                "Discovered"} <= nav
+        assert "Not a place" not in nav

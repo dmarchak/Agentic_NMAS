@@ -49,6 +49,7 @@ RATCHETS = (
     ("tests/conftest.py", "STORE_WRITERS_EXEMPT", "shrinks"),
     ("tests/conftest.py", "STORE_REWRITERS_EXEMPT", "shrinks"),
     ("tests/conftest.py", "READER_STORES_SHARED", "shrinks"),
+    ("tests/manual_controls.py", "KNOWN_UNENTERED", "shrinks"),
     ("tests/mutation_equivalent.py", "EQUIVALENT", "shrinks"),
     ("tests/publication_exemptions.py", "EXEMPT", "shrinks"),
     ("tests/signed_off_screens.py", "UNSIGNED", "shrinks"),
@@ -110,6 +111,7 @@ RATCHETS = (
     # ── Ceilings: they never rise ───────────────────────────────────────────────────────────
     ("modules/operation_stages.py", "MISSING_CEILING", "ceiling"),
     ("modules/operation_stages.py", "HISTORY_MISSING_CEILING", "ceiling"),
+    ("tests/manual_controls.py", "DATA_LABELLED_CEILING", "ceiling"),
     ("tests/signed_off_screens.py", "UNSIGNED_CEILING", "ceiling"),
     ("tests/test_board_fidelity.py", "UNCHECKED_CEILING", "ceiling"),
     ("tests/test_concepts_are_taught.py", "PENDING_CEILING", "ceiling"),

@@ -68,7 +68,8 @@ Every verified person is a reviewer until Mercury holds roles.
   the draft changed since it was drawn, nothing is recorded and both hashes are named. It is
   off, with the reason, while the call cannot be read. The draft never holds who said it,
   because a case file is published with the repository.
-- **Dismiss…** records why it is not a case, a few words at least, with your name.
+- **Dismiss…** opens a reason, a few words at least; **Dismiss** records it, why it is not a
+  case, with your name.
 
 A row another reviewer settled first is refused in place, naming who settled it and how. An
 accepted row shows the draft with **Copy the draft**, and a download of every accepted draft of
