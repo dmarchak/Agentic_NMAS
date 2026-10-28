@@ -42,7 +42,7 @@ from html import unescape
 import pytest
 
 from modules.ai import anthropic_adapter as A
-from modules.ai import calls, connection, explain, gateway, provider_limit, triggers
+from modules.ai import calls, connection, explain, gateway, profiles, provider_limit, triggers
 from tests.ai_person import pressed_by
 from tests.test_ai_gateway import KEY, _Resp, _Session, own_record  # noqa: F401 (the fixture)
 # Ask in words' world (hosted AI allowed, a $1.50 day cap, a key, the record of AI calls in the
@@ -201,6 +201,33 @@ def test_every_later_call_is_refused_without_asking_the_provider(world, clock):
     row = _rows()[0]
     assert row["verdict"] == "workspace_limit" and "request" not in row, "nothing was built"
     assert row["limit"]["until"] == "2026-11-01T00:00:00Z"
+
+
+def _counted_into_the_limit(body, key):
+    """The provider's token count, met by the limit (the count is a call's first request)."""
+    return A.count_tokens(body, key, session=_Session(_limited()))
+
+
+def test_a_count_refused_for_the_limit_holds_it_and_refuses_for_it_not_for_size(world, clock):
+    """C2096 (the live smoke of C2084, 2026-10-28 ~15:5x UTC): with the limit reached, the
+    count is refused first, the fallback over-estimate put every Ask in words request over its
+    bound, and each call was refused `prompt_too_long` with no hold recorded, so no screen said
+    AI was unavailable. The count's refusal holds the limit, and the call is refused for it."""
+    provider = Provider()
+    # A pack the fallback estimate (1.8 characters a token) puts over Explain's bound, as the
+    # live Ask in words requests were: without the fix, refused `prompt_too_long`.
+    big = "x" * (int(profiles.TASKS["explain"]["max_prompt_tokens"] * gateway.CHARS_PER_TOKEN)
+                 + 1000)
+    with pressed_by(ACTOR):
+        got = gateway.ask("explain", explain.PROMPT, explain.SCHEMA_OF[explain.PROMPT[1]],
+                          {"pack": big}, actor=ACTOR, trigger=triggers.person(ACTOR),
+                          send=provider.send, today="2026-10-28",
+                          count=_counted_into_the_limit)
+    assert got["error"] == "workspace_limit" and got["detail"] == WORDS, got
+    assert provider.sent == [], "the send was asked after the count met the limit"
+    assert provider_limit.holding()["until"] == "2026-11-01T00:00:00Z"
+    later = _explain(provider.send)
+    assert later["error"] == "workspace_limit" and provider.sent == [], "asked again"
 
 
 CHILD = r"""

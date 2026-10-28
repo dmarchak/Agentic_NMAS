@@ -350,9 +350,11 @@ class Counter:
     (by digest). *count* replaces the adapter's count (tests)."""
 
     def __init__(self, model: str, key: str = "", *, allowed: bool = True, why_not: str = "",
-                 count=None):
+                 count=None, feature: str = ""):
         self.model, self._key, self.allowed, self.why_not = model, key, allowed, why_not
         self._count = count
+        #: The task a usage-limit refusal of the count is recorded against (C2096).
+        self.feature = feature
         self._seen = {}
         self.asked = 0
         #: The most tokens a character this counter's counts measured (None before one).
@@ -400,6 +402,16 @@ class Counter:
         self.asked += 1
         try:
             got = (self._count or anthropic_adapter.count_tokens)(body, self._key)
+        except anthropic_adapter.WorkspaceLimit as exc:
+            # The count is the first request a call makes, so it is often the one that meets
+            # the provider's usage limit (C2096): held here as a send's refusal is, and said
+            # (`held`), so the call is refused for the limit, never by the fallback's size.
+            hold = provider_limit.record(exc, feature=self.feature)
+            out = estimated(f"the provider's count was refused for its usage limit "
+                            f"({exc.kind}); the fallback over-estimate is used")
+            out["held"] = provider_limit.said(hold)["words"]
+            out["hold"] = hold
+            return out
         except Exception as exc:                        # noqa: BLE001 (said, never a crash)
             kind = getattr(exc, "kind", type(exc).__name__)
             out = estimated(f"the provider's count failed ({kind}: {exc}); the fallback "
@@ -436,7 +448,7 @@ def counter(feature: str, *, actor: str, trigger: dict = None, count=None) -> Co
     if not why and not pin:
         why = f"{feature!r} is not a task profiles.TASKS pins"
     return Counter(pin.get("model", ""), key, allowed=not why,
-                   why_not=f"not counted: {why}" if why else "", count=count)
+                   why_not=f"not counted: {why}" if why else "", count=count, feature=feature)
 
 
 def _limit_fields(hold: dict) -> dict:
@@ -566,7 +578,11 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
 
     # The prompt's size (C1898): the provider's count of the masked request, every gate above
     # passed; the fallback over-estimate when the count is not had, said. Both on the row.
-    measured = Counter(model, key, count=count).measure(body, masked=True)
+    measured = Counter(model, key, count=count, feature=feature).measure(body, masked=True)
+    if measured.get("held"):
+        # The count met the provider's usage limit (C2096): refused for it, as a send's
+        # refusal would be, never judged by the fallback's size.
+        return refuse(provider_limit.KIND, measured["held"], **_limit_fields(measured["hold"]))
     est = measured["tokens"]
     row["prompt_tokens"] = est
     row["prompt_count"] = {k: v for k, v in measured.items() if k != "tokens"}
