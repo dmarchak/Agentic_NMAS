@@ -206,9 +206,10 @@ def test_no_open_row_is_work_a_stage_owns():
     text = _real()
     assert stage_work_in_open_sections(text) == []
     # The floor: Scheduled really holds the stage work (a check that could
-    # pass because the section vanished would prove nothing).
+    # pass because the section vanished would prove nothing). 20 rows after the
+    # register triage of 2026-10-28 closed 20 of its 40 as overtaken (C2035).
     scheduled = [r for s, r, _c in rows_by_section(text) if s.startswith("## Scheduled")]
-    assert len(scheduled) >= 30, len(scheduled)
+    assert len(scheduled) >= 15, len(scheduled)
 
 
 PLANTED = "\n".join([
