@@ -392,15 +392,18 @@ def _answered_by(network: str) -> dict:
             if r.get("kind") == "confirmed" and r.get("operation")}
 
 
-def _meters_lost(network: str, now: float) -> dict:
+def _meters_lost(network: str, now: float, cached: dict = None) -> dict:
     """``{operation: words}``: each response whose meter the SDN reader's stored value reads
-    missing (`reapply.lost`), and an ``error`` key's words when that value cannot be read."""
+    missing (`reapply.lost`), and an ``error`` key's words when that value cannot be read.
+    *cached* is that value as `reader_job.read_cached_for` answered it, when the caller has
+    already read it (Needs attention's source, C2070); otherwise it is read here."""
     from modules import reader_job
     from modules.readers import sdn_controllers as R
     from modules.sdn import reapply
 
     try:
-        cached = reader_job.read_cached_for(R.READER_NAME, network) or {}
+        if cached is None:
+            cached = reader_job.read_cached_for(R.READER_NAME, network) or {}
     except Exception as exc:                          # noqa: BLE001 (said in the hold's words)
         return {"error": f"the SDN reader's stored value could not be read ({type(exc).__name__})"}
     good = ((cached.get("doc") or {}).get("last_good") or {})
@@ -414,9 +417,11 @@ def _meters_lost(network: str, now: float) -> dict:
     return out
 
 
-def holds(network: str, collected: dict, now: float) -> dict:
+def holds(network: str, collected: dict, now: float, *, cached: dict = None) -> dict:
     """Mercury's responses on *network* that hold a source off (`HOLDING_ACTIONS`), each judged
-    against *collected* (this pass's collection) at *now*: ``{"state" ("ok" or "unreadable"),
+    against *collected* (this pass's collection, or the SDN reader's stored value in its shape:
+    `reapply.as_collected`) at *now*, its meters against the SDN reader's stored value
+    (*cached*, `_meters_lost`): ``{"state" ("ok" or "unreadable"),
     "error", "holds": [{"key" (its operation), "id" (the response a person confirmed, else the
     operation), "action", "rule", "detection_key", "sources", "connection", "dpid",
     "dpid_hex", "cookies", "until" (epoch: its first flow's hard timeout), "state", "words"}]}``.
@@ -471,7 +476,7 @@ def holds(network: str, collected: dict, now: float) -> dict:
             held = {f.get("cookie") for f in sw.get("flows") or []}
             gone = [c for f, c in zip(rows, cookies) if f.get("cookie") not in held]
             if meters is None:
-                meters = _meters_lost(network, now)
+                meters = _meters_lost(network, now, cached)
             if gone:
                 left = reapply.left_words(hold["until"] - now)
                 hold.update(state="lost", words=(

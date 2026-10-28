@@ -121,7 +121,9 @@ Each switch's flow table, Mercury's expected flows beside what is installed.
   the response, what is missing, and the time left. **Re-apply…** previews putting back
   exactly what is missing, for the time its hard timeout has left; nothing is sent until you
   confirm. The same response is a row on Needs attention until the reader finds it installed
-  again or its hard timeout passes. How it works:
+  again, its hard timeout passes, or a newer response answers the same threat on that switch.
+  This line stays until the first two; once a newer response answers the threat, Re-apply… is
+  refused, naming that response, and nothing is sent. How it works:
   [Re-apply a lost response](sdn-flows#reapply).
 - **Meters**: each switch's meters (its id, its rate and what happens above it, the packets
   counted in that band) and whose each is, by the flows that use it; and on how many switches

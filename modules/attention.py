@@ -356,7 +356,9 @@ CLEARS = {
     ("sdn_mitigation", "lost"): (("resolves", "time"), "the SDN reader reads the response's "
                                  "flows and meter installed again (after its Re-apply… on "
                                  "SDN › Flows), or their hard timeout passes, when the "
-                                 "response would have expired anyway"),
+                                 "response would have expired anyway, or a newer response "
+                                 "answers the same threat on that switch (its detection fired "
+                                 "again and was answered as new)"),
     ("scheduled_rotation", "stopped"): (("resolves",), "a later run (Rotate due devices now on "
                                         "Credentials › Profiles) finishes without a failure, "
                                         "or the failed device's rotation is committed (its "
@@ -2964,13 +2966,16 @@ def sdn_mitigation_source(found=None, now: float = None) -> dict:
     while their hard timeout has time left (`modules/sdn/reapply.py` `lost`, C2018): a WARNING
     row naming the network, the switch (its DPID and the name it reports), the response (its
     action, source and operation), what is missing and the time left, its action the switch on
-    SDN › Flows where Re-apply… is; it clears when the reader reads them installed again, or
-    at their hard timeout (``clears_at``). The reader's stored value only, never a controller.
+    SDN › Flows where Re-apply… is; it clears when the reader reads them installed again, at
+    their hard timeout (``clears_at``), or once a newer response in force answers the same
+    threat on that switch (C2070: `reapply.answered_by`, by the loop's own test of what holds
+    a detection off, `loop.holds` and `loop.covering`; named under What was checked). The
+    reader's stored value and the network's flow intent only, never a controller.
     *found* is ``{network: reader_job.read_cached_for's answer}`` (tests)."""
     from modules import reader_job
     from modules.nsot import listref
     from modules.readers import sdn_controllers as R
-    from modules.sdn import reapply
+    from modules.sdn import loop, reapply
 
     started = time.time() if now is None else now
     label = "SDN responses in force"
@@ -2981,7 +2986,7 @@ def sdn_mitigation_source(found=None, now: float = None) -> dict:
         return source_result("sdn_mitigation", label, read_at=started, took_ms=0,
                              error=f"the SDN reader's stores could not be read: "
                                    f"{type(exc).__name__}")
-    rows, read, unreadable, oldest = [], 0, [], None
+    rows, read, unreadable, oldest, answered, unjudged = [], 0, [], None, [], []
     for network, cached in sorted(got.items()):
         state = (cached or {}).get("state")
         if state in ("not_applicable", "not_configured"):
@@ -2996,7 +3001,19 @@ def sdn_mitigation_source(found=None, now: float = None) -> dict:
         value_at = _ts(good.get("value_at"))
         if value_at is not None:
             oldest = value_at if oldest is None else min(oldest, value_at)
+        judged = None
         for x in reapply.lost(good.get("value") or {}, now=started):
+            # C2070: a newer response in force answers the same threat on that switch (its
+            # detection fired again and was answered as new, C2005): nothing to re-apply.
+            if judged is None:
+                judged = loop.holds(network, reapply.as_collected(good.get("value") or {}),
+                                    started, cached=cached)
+                if judged["state"] != "ok":
+                    unjudged.append(f"{network} ({judged['error']})")
+            newer = reapply.answered_by(x, judged)
+            if newer is not None:
+                answered.append(f"{network}'s {x['key']} by {newer['id']}")
+                continue
             switch = x["dpid_hex"] + (f" ({x['name']})" if x["name"] else "")
             resp = x["response"]
             as_read = (f"as the SDN reader read it at {good.get('value_at')}"
@@ -3035,7 +3052,12 @@ def sdn_mitigation_source(found=None, now: float = None) -> dict:
     return source_result("sdn_mitigation", label, read_at=started, took_ms=took, rows=rows,
                          value_at=oldest, reader=R.READER_NAME,
                          checked=(f"{read} network(s)' last SDN read: {len(rows)} response(s) "
-                                  "with a flow or meter missing before its hard timeout"))
+                                  "with a flow or meter missing before its hard timeout"
+                                  + (f"; {len(answered)} more missing and answered by a newer "
+                                     f"response in force ({', '.join(answered)})"
+                                     if answered else "")
+                                  + ("; whether a newer response answers them could not be "
+                                     f"read for {', '.join(unjudged)}" if unjudged else "")))
 
 
 # ---------------------------------------------------------------------------

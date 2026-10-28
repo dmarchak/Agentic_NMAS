@@ -141,7 +141,16 @@ response has something missing and its hard timeout has time left, **Needs atten
 row for it. The row names the network, the switch (its datapath id and the name it reports),
 the response (its action, its source and its operation), what is missing, and the time left.
 The row clears when the reader finds the flows installed again, or when the hard timeout
-passes, the moment the response would have expired anyway.
+passes, the moment the response would have expired anyway, or when a **newer response answers
+the same threat on that switch**. That happens when the threat is still there: its detection
+fires again, the lost response no longer holds it off, so it is answered as new
+([A threat already answered](#already-mitigated)), and you apply that newer response. Once the
+newer one is in force, by the same test the loop uses (the same rule, the same switch, the same
+source or the same detection, and every one of its flows and its meter in place as the reader
+last read them), the lost one's row goes, and Needs attention's **What was checked** names the
+lost response and the one answering it. A newer response for another source, another rule or
+another switch, or one that is itself not in force, leaves the row up; so does a controller
+that has not answered since, because whether the newer response is in force is then not known.
 
 The row opens the switch on [SDN › Flows](sdn#flows). There the response is drawn **Not in
 force**, with **Re-apply…**:
@@ -155,7 +164,12 @@ force**, with **Re-apply…**:
    left, less 60 seconds, the time a confirm may take. A confirm more than 60 seconds after the
    preview is refused, naming both timeouts, and nothing is sent: preview again. A response
    with less than 60 seconds left is not re-applied: let it expire, or answer the threat again
-   on SDN › Responses if it is still there.
+   on SDN › Responses if it is still there. A response whose threat a newer response already
+   answers on the switch, as read at the preview or again at the confirm, is not re-applied
+   either: the refusal names the newer response, and nothing is sent. Putting the old one back
+   would be a second answer to one threat (a drop beside a newer rate limit would drop what
+   the newer answer only limits); this is what you see on a page drawn before the newer
+   response was applied.
 4. `hold`, `send`, `verify` and `rollback` run as for every change above.
 5. `record`: the run is recorded as a **re-apply** of the response, naming the operation that
    first applied it, and it gets its line in the loop's log. The response's own records stand

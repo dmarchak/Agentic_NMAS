@@ -9,6 +9,15 @@ moment it is asked. It reads the stored value only, never a controller. Needs at
 one row per lost response (`attention.sdn_mitigation_source`), and SDN › Flows draws its
 Re-apply… on the switch.
 
+**Answered by a newer response (C2070).** A lost response's detection fires again and is
+answered as new (C2005), and that newer response is applied. From then on the lost one's threat
+is answered, and putting it back would be a second answer nobody needs. `answered_by` finds the
+newer response by the loop's own test of what holds a detection off (`loop.holds`, judged
+against the stored read through `as_collected`, and `loop.covering`): another response, in
+force, for the same rule on the same switch and the same source (or the same detection). Needs
+attention's row resolves then, and a Re-apply… pressed on a page drawn before it is refused,
+naming that response.
+
 **A response** is a record whose ``response`` has ``kind`` ``response`` (a threat answered
 through `closed_loop.respond_to_threat`); its flows and its meter share the operation that
 installed them (``response.operation``), which is the group's key. A flow a person added on
@@ -129,6 +138,60 @@ def lost(value: dict, now: float = None) -> list:
     return out
 
 
+# ───────────────────────────────────────────────────── answered by a newer response (C2070)
+
+def as_collected(value: dict) -> dict:
+    """A stored SDN read (*value*, the reader's) in the shape `loop.holds` judges against (the
+    loop's collection: each controller by its ``connection``, its switches' flows). Only the
+    controllers that answered in that read: one carried from an earlier read (not answering)
+    is left out, so its switches are not judged and nothing on them is called in force."""
+    return {"controllers": [dict(c, connection=c.get("name"))
+                            for c in (value or {}).get("controllers") or []
+                            if c.get("state") in ("connected", "partial")]}
+
+
+def answered_by(x: dict, judged: dict):
+    """The response in force that answers lost response *x*'s threat (a `lost` row, or one in
+    its shape: ``key``, ``response``, ``connection``, ``dpid``), or None: among `loop.holds`'
+    *judged*, another response that covers *x*'s detection by the loop's own test
+    (`loop.covering`: the same rule on the same connection and switch, for the same detection
+    or every source it names), and is active. Once one does, re-applying *x* would put back a
+    second answer to a threat already answered."""
+    from modules.sdn import loop
+
+    if (judged or {}).get("state") != "ok":
+        return None
+    d = dict((x.get("response") or {}).get("detection") or {},
+             connection=x.get("connection"), dpid=x.get("dpid"))
+    active, _others = loop.covering(d, [h for h in judged.get("holds") or []
+                                        if h.get("key") != x.get("key")])
+    return active
+
+
+def answered_words(hold: dict) -> str:
+    """A response that answers a lost one's threat, as a person names it."""
+    return (f"response {hold['id']} ({hold['action']}, operation {hold['key']}) holds "
+            f"{', '.join(hold['sources']) or 'its detection'} off on switch "
+            f"{hold['dpid_hex'] or hold['dpid']} until {_iso(hold['until'])} ({hold['words']})")
+
+
+def _answered_on_switch(network: str, connection: str, dpid: int, key: str, response: dict,
+                        flows: list, now: float) -> str:
+    """Why re-applying response *key* is refused because a newer response answers its threat
+    on the switch whose table was read now (*flows*), in words; "" when none does."""
+    from modules.sdn import loop
+
+    newer = answered_by({"key": key, "response": response, "connection": connection,
+                         "dpid": dpid}, loop.holds(network, {"controllers": [{
+                             "connection": connection, "switches": [{
+                                 "dpid": dpid, "active_flows": len(flows), "flows": flows}]}]},
+                             now))
+    if newer is None:
+        return ""
+    return (f"response {key}'s threat ({response_words(response)}) is answered by a newer "
+            f"response: {answered_words(newer)}, as read now")
+
+
 # ───────────────────────────────────────────────────────────────────────────── the operation
 
 def _members(network: str, connection: str, dpid: int, key: str) -> tuple:
@@ -157,7 +220,9 @@ def build(network: str, connection: str, dpid, key: str, *, driver=None,
           now: float = None) -> dict:
     """The ask for re-applying response *key* on *connection*'s switch *dpid*, reading the
     switch's table (and meters) now: ``{"ok", "error", "ask", "response", "words"}``. Refused
-    when nothing of it is missing, or its hard timeout passes inside `CONFIRM_WINDOW_S`."""
+    when nothing of it is missing, when a newer response in force already answers its threat
+    on the switch as read now (`answered_by`, C2070), or when its hard timeout passes inside
+    `CONFIRM_WINDOW_S`."""
     from modules.sdn import flow_ops
     from modules.sdn.drivers.base import SpecError, parse_dpid
     from modules.sdn.flow_intent import cookie_hex
@@ -190,6 +255,12 @@ def build(network: str, connection: str, dpid, key: str, *, driver=None,
                 + (f" and meter{'s' if len(meters) != 1 else ''} "
                    f"{', '.join(str(m.get('meter_id')) for m in meters)}" if meters else "")
                 + " are installed as read now")
+        # C2070: a newer response already answers the threat (a person on a page drawn before
+        # it was applied): putting this one back would be a second answer nobody needs.
+        newer = _answered_on_switch(network, connection, dpid, key, response, read["flows"],
+                                    now)
+        if newer:
+            raise Refused(f"{newer}; nothing to re-apply")
         changes = []
         for m in gone_meters:
             exp = m.get("expires_at")
@@ -266,7 +337,8 @@ def confirm(network: str, ask: dict, confirmed_hash: str, *, actor: str,
             actor_verified: str = "", driver=None, now=time.time, **apply_kwargs) -> dict:
     """The APPLY of a previewed re-apply, as *actor*: the ask carried back is held to the
     records again (every change a reinstall of the response's, no flow's hard timeout above
-    what its record has left now), then `flow_ops.apply` (the hash compared, the switch held,
+    what its record has left now, and no newer response answering its threat on the switch as
+    read now, C2070), then `flow_ops.apply` (the hash compared, the switch held,
     Verify, rollback, record), recorded as a re-apply of the response."""
     from modules.sdn import flow_ops
     from modules.sdn.drivers.base import SpecError, parse_dpid
@@ -309,6 +381,16 @@ def confirm(network: str, ask: dict, confirmed_hash: str, *, actor: str,
                 f"{flow.get('hard_timeout')} s, and its record has {max(left, 0)} s left now: "
                 f"the preview is more than {CONFIRM_WINDOW_S} s old, and sending it would "
                 "outlive the response; nothing was sent: preview again"))
+    # C2070: previewed before a newer response answered the threat, confirmed after it.
+    made = flow_ops._driver(network, ask.get("connection") or "", driver)
+    if made.get("ok"):
+        read = flow_ops._read_switch(made["driver"], dpid, False)
+        newer = _answered_on_switch(
+            network, ask.get("connection") or "", dpid, key,
+            ((flows or meters)[0].get("response") or {}), read["flows"], at) \
+            if read["ok"] else ""
+        if newer:
+            return dict(refused, error=f"{newer}: nothing was sent")
     response = {"kind": "reapply", "of": key,
                 "action": ask["reapply"].get("action") or "",
                 "detection": ((flows or meters)[0].get("response") or {}).get("detection") or {},
