@@ -3355,3 +3355,42 @@ def test_dhcp_lease_release(tmp_path, monkeypatch):
         _group_a_page("dhcp-lease-release-card", served, card,
                       ((1440, 1.0), (1280, 1.0), (390, 2.0)))
     assert kea.dels == [], "a shot released a lease"
+
+
+def test_dhcp_delegated_prefix(tmp_path, monkeypatch):
+    """C2090: DHCP › Leases with a delegated prefix (DHCPv6 IA_PD) drawn with its length
+    (subnet 20's IPv6 group open), and its release card from a real preview, beside board A's
+    Leases tab (`DhcpNetwork.dc.html`, 1440), which draws no delegated prefix. The delegation
+    is tests/test_dhcp_delegated_prefix.py's: a captured lease made an IA_PD, every other lease
+    the lab's capture."""
+    from tests import browser
+    from tests import test_dhcp_delegated_prefix as P
+    from tests import test_dhcp_v2 as T
+    from tests.test_dhcp_leases import LeaseKea
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    (tmp_path / "lab").mkdir()
+    monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(tmp_path / "lab"))
+    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
+    monkeypatch.setattr("modules.dhcp_page._devices", lambda name: set())
+    monkeypatch.setattr("modules.reader_job.read_cached_for",
+                        lambda name, list_name: __import__("modules.reader_job").reader_job
+                        .read_cached(name))
+    monkeypatch.setattr("modules.list_settings.kea_owner",
+                        lambda name: (name, "it sets its own Kea"))
+    kea = LeaseKea({})
+    kea.leases["dhcp6"] = P._with_pd(kea.leases["dhcp6"])
+    monkeypatch.setattr("modules.integrations.kea.KeaIntegration", lambda **kw: kea)
+    T._store(T._value(kea=P.DelegatingKea()))
+    import app as A
+    card = f"/v2/dhcp/lease?list=Lab&family=IPv6&address={P.PREFIX}"
+    assert f"Release {P.SHOWN}" in A.app.test_client().get(card).get_data(as_text=True)
+    _group_a_boards("dhcp-delegated-prefix", "DhcpNetwork.dc.html", ((1440, 1.0),))
+    with browser.Served(A.app) as served:
+        _group_a_page("dhcp-delegated-prefix-lea", served,
+                      "/v2/dhcp?list=Lab&tab=lea&open=dhcp6:20",
+                      ((1440, 1.0), (1280, 1.0), (390, 2.0)))
+        _group_a_page("dhcp-delegated-prefix-card", served, card,
+                      ((1440, 1.0), (1280, 1.0), (390, 2.0)))
+    assert kea.dels == [], "a shot released a lease"

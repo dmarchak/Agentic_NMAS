@@ -261,6 +261,7 @@ def view(list_name: str, values, now: float = None) -> dict:
             expiring=bool(ends_ts) and ends_ts - now < day and l["state"] == "active",
             from_pool_beside_reservation=_beside_reservation(l, by_subnet, globals_)))
     needle = s["q"].lower()
+    from modules.dhcp_leases import shown as drawn
 
     def keep(l):
         if s["show"] == "shared" and not l["shared"]:
@@ -269,7 +270,9 @@ def view(list_name: str, values, now: float = None) -> dict:
             return False
         if s["show"] == "expiring" and not l["expiring"]:
             return False
-        text = " ".join(str(l.get(k) or "") for k in ("address", "identity", "mac", "hostname"))
+        # C2090: a delegated prefix is found by the form it is drawn in, its length included.
+        text = " ".join([drawn(l)] + [str(l.get(k) or "")
+                                      for k in ("identity", "mac", "hostname")])
         return not needle or needle in text.lower()
 
     groups = []

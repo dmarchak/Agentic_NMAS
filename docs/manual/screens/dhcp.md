@@ -106,12 +106,18 @@ a subnet still in Kea's own file reads so.
 Every lease, grouped by subnet. A group is collapsed until opened, and opens by itself when it
 has something to look at: an identity holding several leases (a client that asked again and was
 given a new address each time), or a lease from the pool to a host that has a reservation for
-another address. **Find** matches an address, MAC, DUID or hostname; **Show** narrows to leases
+another address. **Find** matches an address or delegated prefix, MAC, DUID or hostname; **Show** narrows to leases
 sharing an identity, those not in the inventory, or those expiring within a day. Either shows a
 part and says how much of the whole. ZTP's subnet's line counts the devices asking and names
 onboarding's Discovered list; a subnet added for ZTP behind a relay reads "ZTP behind a relay",
 its leases counted with how many are reserved ("2 leases, 1 reserved"), and each reserved
 lease carries **reserved** in **Kea's lease**, as in any subnet.
+
+A **delegated prefix** (DHCPv6 prefix delegation, IA_PD: a router given a whole prefix to
+number its own networks from) is drawn in **Address** with its length, as
+`2001:db8:8000:100::/56`, and Find matches it in that form; an address (IPv4, or a DHCPv6 IA_NA
+address) is drawn as it is. Release lease… names the prefix with its length, and its checks
+look for a reservation of the prefix itself (Kea's `prefixes`), never of its first address.
 
 An IPv4 lease is held by its MAC, an IPv6 lease by its DUID, and an IPv6 lease also shows its
 **IAID**, the identifier of the client's address association: a client that asks with a new IAID

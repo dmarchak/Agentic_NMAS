@@ -1007,8 +1007,9 @@ class TestDhcpCards(_Cards):
         "exclusion": ("_dhcp_exclusion.html", "{{ 'Remove the exclusion' if s.op == 'remove' "
                       "else 'Exclude ' ~ s.range }}", r"Exclude 10\.10\.10\.120 - 10\.10\.10\.129",
                       "viewer"),
-        # C1403: DHCP › Leases' Release lease…, on Kea's captured leases.
-        "lease": ("_dhcp_lease.html", "Release {{ p.address }}", r"Release 10\.10\.10\.102",
+        # C1403: DHCP › Leases' Release lease…, on Kea's captured leases (C2090: the lease as
+        # `dhcp_leases.shown` names it, a delegated prefix with its length).
+        "lease": ("_dhcp_lease.html", "Release {{ p.shown }}", r"Release 10\.10\.10\.102",
                   "viewer"),
     }
 

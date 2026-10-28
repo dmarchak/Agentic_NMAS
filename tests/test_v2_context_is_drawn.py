@@ -208,9 +208,7 @@ UNDRAWN = {
                      "only these rows; each row draws its end date"),
         ("from_pool_beside_reservation", "GAP (minor): counted into the subnet's \"N from the "
                                          "pool where a reservation exists\" flag (drawn); the "
-                                         "row that is one is not marked (C2091)"),
-        ("prefix_len", "GAP (IPv6): a delegated prefix's length on a DHCPv6 lease; the row "
-                       "draws the address without it (C2090)")],
+                                         "row that is one is not marked (C2091)")],
     "GET /v2/help/<slug>": [
         ("anchors diagrams sections", "the page's parts, already inside its HTML (drawn); "
                                       "`sections` feeds the side panel's own route"),
@@ -388,7 +386,9 @@ UNDRAWN = {
 #: measured for the first time (tests/v2_context.py `given`); DHCP's lease view 11, Logs' live
 #: tail 4, Syslog by device 2, carried and undrawn before, unseen. SDN's ~70 were trimmed or
 #: drawn, none listed.
-UNDRAWN_CEILING = 381
+#: -1 2026-10-28: C2090, DHCP › Leases draws a delegated prefix's `prefix_len` (DHCPv6 IA_PD)
+#: as `<address>/<prefix_len>`.
+UNDRAWN_CEILING = 380
 
 #: {route: [(keys, reason), ...]}: in the preview a card is built from, read by neither its
 #: adapter nor its template.

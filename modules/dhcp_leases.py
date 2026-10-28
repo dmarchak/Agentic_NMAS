@@ -95,6 +95,34 @@ def _iso(ts) -> str:
         return ""
 
 
+def delegated_len(lease: dict):
+    """A delegated prefix's length (DHCPv6 IA_PD, Kea's ``prefix-len``), or None for every other
+    lease (an IA_NA address, an IPv4 lease): THE rule for which leases are prefixes (C2090).
+    Kea gives ``prefix-len`` with an IA_PD lease only; a lease of another type carrying one is
+    an address all the same."""
+    if lease.get("type") != "IA_PD":
+        return None
+    try:
+        return int(lease.get("prefix-len"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _net(value):
+    """A prefix parsed (IPv6 has many spellings), or None when *value* is not one."""
+    try:
+        return ipaddress.ip_network(str(value or "").strip(), strict=False)
+    except ValueError:
+        return None
+
+
+def shown(r: dict) -> str:
+    """A lease's address as a person reads it: a delegated prefix as ``<address>/<length>``
+    (C2090: without its length it reads as one address), any other lease its address."""
+    length = r.get("prefix_len")
+    return f"{r.get('address', '')}/{length}" if length is not None else r.get("address", "")
+
+
 def row(lease: dict, family: str) -> dict:
     """One lease as this module carries it: the facts that name it and its client."""
     cltt, valid = lease.get("cltt"), lease.get("valid-lft")
@@ -112,6 +140,7 @@ def row(lease: dict, family: str) -> dict:
             "client_id": client_id, "by": by, "identity": identity,
             "hostname": "" if host in ("", ".") else host,
             "subnet_id": lease.get("subnet-id"), "type": lease.get("type") or "",
+            "prefix_len": delegated_len(lease),
             "iaid": lease.get("iaid"), "state": STATES.get(lease.get("state", 0),
                                                            str(lease.get("state"))),
             "last_seen": _iso(cltt), "ends": ends}
@@ -119,15 +148,20 @@ def row(lease: dict, family: str) -> dict:
 
 def _same_client(a: dict, b: dict) -> bool:
     """Whether two lease rows name the same client on the same address (what a hash binds)."""
-    keys = ("family", "address", "by", "identity", "type", "iaid")
+    keys = ("family", "address", "by", "identity", "type", "iaid", "prefix_len")
     return all(a.get(k) == b.get(k) for k in keys)
 
 
 def bound(r: dict) -> dict:
     """What a preview binds of a lease: its address and its client, never the times a renewal
-    moves (a client renewing between preview and confirm is the same lease)."""
-    return {k: r.get(k) for k in ("family", "address", "by", "identity", "mac", "type", "iaid",
-                                  "subnet_id")}
+    moves (a client renewing between preview and confirm is the same lease). A delegated
+    prefix binds its length too (C2090); every other lease binds what it bound before, so its
+    hash is unchanged."""
+    out = {k: r.get(k) for k in ("family", "address", "by", "identity", "mac", "type", "iaid",
+                                 "subnet_id")}
+    if r.get("prefix_len") is not None:
+        out["prefix_len"] = r["prefix_len"]
+    return out
 
 
 # ── reading ─────────────────────────────────────────────────────────────────────────────────
@@ -180,7 +214,7 @@ def words(r: dict, times: bool = True) -> str:
     host = f", {r['hostname']}" if r.get("hostname") else ""
     state = f", {r['state']}" if r.get("state") not in (None, "active") else ""
     ends = f", ends {r['ends'][:16].replace('T', ' ')} UTC" if times and r.get("ends") else ""
-    return f"{r['address']} ({r['family']}, {who}{host}{state}{ends})"
+    return f"{shown(r)} ({r['family']}, {who}{host}{state}{ends})"
 
 
 # ── releasing ───────────────────────────────────────────────────────────────────────────────
@@ -212,13 +246,13 @@ def release(kea, rows: list) -> dict:
         here = [x for x in now[r["family"]] if x["address"] == r["address"]]
         if not here:
             out["outcomes"].append({"lease": r, "outcome": "absent",
-                                    "detail": f"Kea holds no lease on {r['address']} now"})
+                                    "detail": f"Kea holds no lease on {shown(r)} now"})
             continue
         if not any(_same_client(x, r) for x in here):
             other = here[0]
             out["outcomes"].append({
                 "lease": r, "outcome": "kept",
-                "detail": (f"{r['address']} is leased now to {other['by']} {other['identity']}"
+                "detail": (f"{shown(r)} is leased now to {other['by']} {other['identity']}"
                            f", not {r['by']} {r['identity']} as read before: that lease is "
                            "another client's and was left")})
             continue
@@ -390,15 +424,16 @@ def ask(values) -> dict:
 
 
 def plan(list_name: str, values, kea=None) -> dict:
-    """What Release lease…'s preview draws: ``{ok, refused, family, address, lease, title,
-    change, checks, survives, hash, subject}``. A read: Kea is asked for its leases and its
+    """What Release lease…'s preview draws: ``{ok, refused, family, address, shown, lease,
+    title, change, checks, survives, hash, subject}`` (``shown``: the lease as `shown` names
+    it, a delegated prefix with its length). A read: Kea is asked for its leases and its
     configuration (a reservation of the address is named); nothing is written."""
     from modules import dhcp_reservations as D
 
     s = ask(values)
     p = {"ok": False, "refused": "", "ask": s, "family": s["family"], "address": "",
-         "lease": None, "title": "Release a lease", "change": [], "checks": [], "survives": [],
-         "hash": "", "subject": ""}
+         "shown": "", "lease": None, "title": "Release a lease", "change": [], "checks": [],
+         "survives": [], "hash": "", "subject": ""}
     try:
         if s["family"] not in FAMILIES:
             raise Refused(f"{s['family']!r} is not IPv4 or IPv6")
@@ -426,8 +461,12 @@ def plan(list_name: str, values, kea=None) -> dict:
         lease = here[0]
         try:
             config = D.kea_config(kea, s["family"])
+            # C2090: a delegated prefix is reserved by Kea's `prefixes`, an address by its
+            # addresses; each compared parsed.
+            net = _net(shown(lease)) if lease.get("prefix_len") is not None else None
             reserved = [r for r in D.every_reservation(config, s["family"])
-                        if ip.compressed in {addr(a) for a in r.get("addresses") or []}]
+                        if (net in {_net(x) for x in r.get("prefixes") or []} if net else
+                            ip.compressed in {addr(a) for a in r.get("addresses") or []})]
         except D.Refused as exc:
             raise Refused(f"Kea's configuration could not be read, so whether the address is "
                           f"reserved cannot be said: {exc}") from None
@@ -435,13 +474,18 @@ def plan(list_name: str, values, kea=None) -> dict:
         p["refused"] = str(exc)
         return p
     p["lease"] = lease
-    p["title"] = f"Release {ip.compressed}"
-    p["subject"] = f"dhcp: {s['family']} lease {ip.compressed} released ({lease['identity']})"
+    # C2090: a delegated prefix named with its length wherever the card names the lease; the
+    # command keeps the address, as Kea's lease6-del takes it (with the lease's type).
+    p["shown"] = shown(lease)
+    p["title"] = f"Release {p['shown']}"
+    p["subject"] = f"dhcp: {s['family']} lease {p['shown']} released ({lease['identity']})"
     p["change"] = [("-", f"lease {words(lease)}")]
+    delegated = lease.get("prefix_len") is not None
+    noun = "prefix" if delegated else "address"
     if lease["state"] == "active":
         p["checks"].append(("note", f"active: its client last renewed it "
                                     f"{lease['last_seen'][:16].replace('T', ' ')} UTC. Kea "
-                                    "cannot tell whether the client still uses the address: a "
+                                    f"cannot tell whether the client still uses the {noun}: a "
                                     "client that does keeps using it until it next renews, and "
                                     "is then answered afresh"))
     else:
@@ -454,10 +498,11 @@ def plan(list_name: str, values, kea=None) -> dict:
                             f"reserved for {D.WORDS.get(r.get('key'), r.get('key'))} "
                             f"{r.get('identity')}"
                             f"{' (this client)' if same else ''}: the reservation stays, and "
-                            "Kea gives the address to that client at its next request"))
+                            f"Kea gives the {noun} to that client at its next request"))
     else:
-        p["checks"].append(("pass", f"no reservation names {ip.compressed}: the address returns "
-                                    "to the subnet's pool, if it lies in one"))
+        p["checks"].append(("pass", f"no reservation names {p['shown']}: the {noun} returns "
+                                    f"to the subnet's {'delegation ' if delegated else ''}pool, "
+                                    "if it lies in one"))
     p["survives"] = [
         f"The release is recorded in {RECORD} in the repository of the network that owns this "
         "Kea, with the lease's client, who and why; Kea keeps no copy of a deleted lease.",
@@ -488,7 +533,7 @@ def apply(list_name: str, values, confirmed_hash: str, *, actor: str, reason: st
         return out
     if p["hash"] != confirmed_hash:
         out["error"] = (f"what the preview showed has changed ({confirmed_hash[:12]} -> "
-                        f"{p['hash'][:12]}): Kea's lease on {p['address']} moved since; nothing "
+                        f"{p['hash'][:12]}): Kea's lease on {p['shown']} moved since; nothing "
                         "was released. Preview again")
         return out
     out["at"] = "release"
@@ -498,7 +543,7 @@ def apply(list_name: str, values, confirmed_hash: str, *, actor: str, reason: st
         out["error"] = o["detail"]
         out["at"] = o.get("step") or "release"
         return out
-    out["read_back"] = f"Kea holds no lease on {p['address']} for {p['lease']['identity']}"
+    out["read_back"] = f"Kea holds no lease on {p['shown']} for {p['lease']['identity']}"
     out["outcome"] = "released"
     out["at"] = "record"
     rec = (record_with or record)(list_name, got["outcomes"], actor=actor, reason=reason,

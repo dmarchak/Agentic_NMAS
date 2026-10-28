@@ -45,7 +45,7 @@
     <label class="op-reason">Why (recorded with the release, in its commit)<input type="text" name="reason" value="{{ lop.reason or '' }}" autocomplete="off" required maxlength="200"></label>
     <p class="op-note">Kea's leases are read again and compared with this preview, then <span class="mono">{{ 'lease4-del' if p.family == 'IPv4' else 'lease6-del' }} {{ p.address }}</span> is sent for this lease alone, Kea's leases are read back, and the release is recorded in <span class="mono">dhcp/released-leases.yml</span>. A deleted lease cannot be put back. {{ may.statement }} Bound to this preview.</p>
     {%- if may.may %}
-    <span class="op-act"><button type="button" class="btn" hx-get="{{ back }}" hx-target="#dhcp" hx-swap="outerHTML">Cancel</button><button type="submit" class="btn btn-primary op-confirm" data-op="dhcp-lease-release" hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">Release {{ p.address }}</span><span class="op-busy">Releasing, reading back…</span></button>{{ how('dhcp-lease-release', compact=True, op='a lease release') }}</span>
+    <span class="op-act"><button type="button" class="btn" hx-get="{{ back }}" hx-target="#dhcp" hx-swap="outerHTML">Cancel</button><button type="submit" class="btn btn-primary op-confirm" data-op="dhcp-lease-release" hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">Release {{ p.shown }}</span><span class="op-busy">Releasing, reading back…</span></button>{{ how('dhcp-lease-release', compact=True, op='a lease release') }}</span>
     {%- endif %}
   </form>
   {%- endif %}

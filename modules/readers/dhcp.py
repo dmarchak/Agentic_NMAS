@@ -265,7 +265,11 @@ def held_elsewhere(config: dict) -> list:
 
 
 def leases(raw: list, family: str) -> list:
-    """Every lease Kea holds, with when it ends (its last transmission plus its lifetime)."""
+    """Every lease Kea holds, with when it ends (its last transmission plus its lifetime). A
+    delegated prefix (DHCPv6 IA_PD) carries its length, every other lease none
+    (`dhcp_leases.delegated_len`, C2090)."""
+    from modules.dhcp_leases import delegated_len
+
     out = []
     for l in raw or []:
         kind, ident = _identity(l, family)
@@ -276,7 +280,7 @@ def leases(raw: list, family: str) -> list:
                     "hostname": _hostname(l.get("hostname")), "valid": valid,
                     "ends": ends, "state": LEASE_STATES.get(l.get("state"), str(l.get("state"))),
                     "type": l.get("type", ""), "family": family,
-                    "prefix_len": l.get("prefix-len"),
+                    "prefix_len": delegated_len(l),
                     # DHCPv6 only: the client's IA identifier. A client drawing a new one
                     # each time it asks is given a new address each time (C681).
                     "iaid": l.get("iaid")})

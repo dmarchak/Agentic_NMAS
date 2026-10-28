@@ -17,6 +17,11 @@ renewed. It also asks Kea's configuration whether the address is reserved, and f
 reservation stays: Kea gives the address to the reserved client at its next request. An address
 with no reservation returns to its subnet's pool, if it lies in one.
 
+A delegated prefix (DHCPv6 IA_PD) is named with its length, as `2001:db8:8000:100::/56`, in the
+title, the lease and the confirm. Its reservation is a reservation of the prefix itself (Kea's
+`prefixes`), and one with none returns to the subnet's delegation pool. `lease6-del` is sent
+with the prefix's address and the lease's type, as Kea takes it.
+
 The preview refuses, saying why, when Kea holds no lease on the address now, when it holds more
 than one (which one is meant cannot be told from the address), and when this network uses
 another network's Kea ([Whose Kea](dhcp#whose-kea)): the release is made on the owner's page.

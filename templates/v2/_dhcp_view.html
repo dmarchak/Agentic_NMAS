@@ -103,8 +103,10 @@
       <thead><tr><th scope="col">Address</th><th scope="col">Identity</th><th scope="col">Hostname</th><th scope="col">Device</th><th scope="col">Kea's lease</th><th scope="col">As the host holds it</th>{% if g.writable %}<th scope="col"><span class="sr-only">Change</span></th>{% endif %}</tr></thead>
       <tbody>
       {%- for l in grp.rows %}
+      {#- C2090: a delegated prefix (DHCPv6 IA_PD) with its length; an address as it is. -#}
+      {%- set at = l.address ~ ('/' ~ l.prefix_len if l.prefix_len is number else '') %}
       <tr>
-        <td class="mono dh-addr">{{ l.address }}</td>
+        <td class="mono dh-addr"{% if l.prefix_len is number %} title="A prefix delegated to the client (DHCPv6 IA_PD)"{% endif %}>{{ at }}</td>
         <td class="mono">{% if l.same %}the same {{ l.by }}{% else %}{{ ident(l.by, l.identity) }}{% if l.duid %} <span class="faint">({{ l.duid }})</span>{% endif %}{% endif %}{% if l.iaid is not none %}<br><span class="small" title="The client's IA identifier: one client asking with a new IAID is given a new address">IAID {{ l.iaid }}</span>{% endif %}</td>
         <td class="mono">{{ l.hostname or '–' }}</td>
         <td>{% if l.device %}<a href="{{ url_for('device_v2.device', name=l.device, list=g.list) }}">{{ l.device }}</a>{% else %}<span class="faint">not in the inventory</span>{% endif %}</td>
@@ -116,7 +118,7 @@
         {%- endif %}
         {%- if g.writable %}
         {%- set fam = 'IPv6' if x.svc == 'dhcp6' else 'IPv4' %}
-        <td class="dh-acts"><a class="btn btn-small" href="{{ url_for('dhcp_v2.lease_preview', list=g.list, family=fam, address=l.address) }}" hx-get="{{ url_for('dhcp_v2.lease_preview', list=g.list, family=fam, address=l.address) }}" hx-target="#dhcp" hx-swap="outerHTML" data-op="dhcp-lease-release" aria-label="Release the lease on {{ l.address }}">Release lease…</a>{{ how('dhcp-lease-release', compact=True, op='a lease release') }}</td>
+        <td class="dh-acts"><a class="btn btn-small" href="{{ url_for('dhcp_v2.lease_preview', list=g.list, family=fam, address=l.address) }}" hx-get="{{ url_for('dhcp_v2.lease_preview', list=g.list, family=fam, address=l.address) }}" hx-target="#dhcp" hx-swap="outerHTML" data-op="dhcp-lease-release" aria-label="Release the lease on {{ at }}">Release lease…</a>{{ how('dhcp-lease-release', compact=True, op='a lease release') }}</td>
         {%- endif %}
       </tr>
       {%- endfor %}

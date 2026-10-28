@@ -483,7 +483,7 @@ verdict was CHECKED in process or READ from the code.
 | `modules/integrations/kea.py:57` | `command` | H | works | READ | Service list from the caller or the kea_services setting (default ["dhcp4"]); callers that omit it (reservation_for's config-get) ask dhcp4 only. |
 | `modules/nsot/ztp.py:482` | `_run_kea_test` | H | works | READ | Takes `program`, so kea-dhcp6 is testable (DHCP's IPv6 reservations, C529); only the ZTP writer's call keeps the kea-dhcp4 default (counted at _config_test). |
 | `modules/readers/dhcp.py:233` | `facts_from` | D | works | READ | IPv4 "A M" via ip_interface; each IPv6 address via ip_interface, fe80 skipped, prefix key lowercased. |
-| `modules/readers/dhcp.py:263` | `leases` | M | works | READ | Identity per family, prefix-len and iaid kept for DHCPv6. |
+| `modules/readers/dhcp.py:263` | `leases` | M | works | READ | Identity per family, prefix-len (an IA_PD lease's only, `dhcp_leases.delegated_len`, C2090) and iaid kept for DHCPv6. |
 | `modules/readers/dhcp.py:31` | `<file>` | M | works | READ | FAMILIES reads dhcp4 and dhcp6 each on its own, lease4/lease6, identities per family (DUID first for IPv6). |
 | `modules/readers/dhcp.py:89` | `reservations` | M | works | READ | ip-address, ip-addresses and prefixes all carried. |
 | `modules/settings_schema.py:227` | `<file>` | H | works | READ | kea_services defaults to ["dhcp4"] but the schema enum allows "dhcp6"; kea_dhcp6_config is declared; whether DHCPv6 paths work belongs to the DHCP group. |
@@ -492,7 +492,7 @@ verdict was CHECKED in process or READ from the code.
 | `scripts/host-steps/e19-dhcp-lifetimes.sh:61` | `<file>` | H | works | READ | Both families' files handled (its tool refuses without an IPv4 ZTP subnet: see nmas-kea-lifetimes). |
 | `templates/v2/_dhcp_reserve.html:45` | `<template>` | M | works | READ | The reservation form offers hw-address, duid and client-id as the identity key: DUID reservations are already drawable. |
 | `templates/v2/_dhcp_subnet.html:63` | `<template>` | M | works | READ | The subnet card already explains DHCPv6 has no gateway option and the route comes from RAs: the page is family-aware. |
-| `templates/v2/_dhcp_view.html:107` | `<template>` | M | works | READ | Leases draw a DUID and IAID for IPv6 leases (C681): family-aware. |
+| `templates/v2/_dhcp_view.html:107` | `<template>` | M | works | READ | Leases draw a DUID and IAID for IPv6 leases (C681): family-aware. A delegated prefix (IA_PD) is drawn and found as `<address>/<prefix_len>`, and Release lease… names it so (C2090, tests/test_dhcp_delegated_prefix.py); it read as one address before. |
 
 #### netbox (30 sites: 7 break, 0 unknown, 23 work)
 

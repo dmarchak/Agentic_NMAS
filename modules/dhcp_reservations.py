@@ -192,7 +192,8 @@ def addresses(entry: dict) -> list:
 
 def every_reservation(config: dict, family: str) -> list:
     """Every reservation Kea's configuration holds: ``[{where, subnet_id, prefix, key, identity,
-    addresses, hostname}]``, a subnet's own, a shared network's subnets', and the global ones."""
+    addresses, prefixes, hostname}]``, a subnet's own, a shared network's subnets', and the
+    global ones (``prefixes``: the delegated prefixes a DHCPv6 reservation names, C2090)."""
     out = []
     for s, net in _subnets(config, family):
         where = (f"shared network {net}, " if net else "") + f"subnet {s.get('id')}"
@@ -200,11 +201,13 @@ def every_reservation(config: dict, family: str) -> list:
             key, ident = identity(r, family)
             out.append({"where": where, "subnet_id": s.get("id"), "prefix": s.get("subnet", ""),
                         "key": key, "identity": ident, "addresses": addresses(r),
+                        "prefixes": list(r.get("prefixes") or []),
                         "hostname": r.get("hostname", "")})
     for r in config.get("reservations") or []:
         key, ident = identity(r, family)
         out.append({"where": "global", "subnet_id": None, "prefix": "", "key": key,
                     "identity": ident, "addresses": addresses(r),
+                    "prefixes": list(r.get("prefixes") or []),
                     "hostname": r.get("hostname", "")})
     return out
 
