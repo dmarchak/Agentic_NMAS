@@ -19,7 +19,18 @@ step, the one AI call, which runs only where its feature is on (below).
    rule's default in the network's response policy (`closed_loop.policy`) is kept awaiting a
    person, said as such ("AI classification refused: <why>; proposed by the catalogue
    default", with the refused answer's AI call), and AUTO never acts on it; a policy that
-   cannot be read proposes no action, said, for a person;
+   cannot be read proposes no action, said, for a person. **At once (C1970):** the pass's
+   detections are classified concurrently, each its own call (`fanout.read_each`, at most
+   `CLASSIFY_WORKERS` at a time), so a pass of N detections waits about one call, not N (an
+   AUTO pass of two took 31 s one after the other). Each detection's outcome is its own: a
+   call that raises is that detection's "no AI classification (exception: …)", and a cap
+   refusal is recorded for that detection alone. Each call's worst case is reserved against
+   the caps under one lock across threads and processes (`ai.reservations`, C2039), so calls
+   at once never pass a cap together; which of them a cap refuses, when it fits only some, is
+   the order they reach that lock. Everything after the calls stays in the detections'
+   order, never the order the calls finish: each detection's classify line ("the step took
+   X s", its own call's time), then its response, one after the other (an AUTO apply holds
+   its switch; a write is never concurrent), then the pass's classify total;
 4. **respond in the mode** (`modes.decide`): in AUTO, an action of a classification that
    passed, within the allowed risk, is previewed and applied through the flow-operation core
    as Mercury, recorded as autonomous with the setting and its reason, and with who chose the
@@ -60,6 +71,7 @@ as closed in an older record.
 import calendar
 import json
 import logging
+import math
 import os
 import re
 import secrets
@@ -334,16 +346,29 @@ NOT_CLASSIFIED_WHY = ("no AI classification passed the check, so a person decide
 #: Who an autonomous response is applied as, in its record and its log line.
 AUTO_ACTOR = "Mercury (AUTO)"
 
+#: The most detections the Lab 8 walk's loop fired in one pass (measured 2026-10-27 over every
+#: detection it classified, tests/fixtures/ai_cases/sdn_classify/recorded_walk.json, by the
+#: collection each fired in: four, at 23:13:48 and 23:33:24 UTC; two switches, three rules).
+#: tests/test_sdn_loop_parallel.py reads it again from that file.
+BUSIEST_PASS_MEASURED = 4
+#: A bound over what was measured (CLAUDE.md: about 2.5x).
+BOUND_FACTOR = 2.5
+#: The most classify calls one pass makes at once (C1970): `BOUND_FACTOR` times the busiest
+#: pass measured, 10. A pass with more classifies them all, this many at a time, the rest as
+#: each finishes; the bound keeps a storm of detections on a large network from opening that
+#: many provider requests at once (each one the provider may rate-limit, and each reserved
+#: against the caps while it is in flight). Its cost: a pass of more than 10 waits about
+#: ceil(N / 10) calls, not one.
+CLASSIFY_WORKERS = math.ceil(BOUND_FACTOR * BUSIEST_PASS_MEASURED)
+
 
 def classify(network: str, d: dict, job: str, *, send=None, pack: dict = None) -> dict:
     """The pass's classify step for detection *d*: one background call through the gateway
     (`closed_loop.classify_pack` on *pack*, the pack `detect.observe` kept in this pass, else
-    `closed_loop.classify_threat`, which finds it), and what it proposes: ``{"action", "risk",
-    "params", "classification", "words", "person", "why", "refused_call"}``. *person* True when
-    only a person may act on it, *why* saying so: the AI proposed no catalogue action, or no
-    classification passed (C1968: refused by the check, failed or unavailable, the rule's
-    catalogue default is proposed for a person, never AUTO's; *refused_call* the refused
-    answer's AI call)."""
+    `closed_loop.classify_threat`, which finds it), and what it proposes (`verdict_of`). The
+    pass runs one per detection at once (`run_pass`, `CLASSIFY_WORKERS`): nothing here is
+    shared between two detections' calls but the gateway's own stores, each locked across
+    threads and processes (the record of AI calls, the caps' reservations, the presses)."""
     from modules.ai import triggers
     from modules.config import list_slug
     from modules.sdn import closed_loop
@@ -356,6 +381,19 @@ def classify(network: str, d: dict, job: str, *, send=None, pack: dict = None) -
     else:
         got = closed_loop.classify_threat(network, d, actor=triggers.actor_of(trigger),
                                           trigger=trigger, send=send)
+    return verdict_of(network, d, got)
+
+
+def verdict_of(network: str, d: dict, got: dict) -> dict:
+    """What the classify step's answer *got* (`closed_loop.classify_pack`'s) proposes for
+    detection *d*: ``{"action", "risk", "params", "classification", "words", "person", "why",
+    "refused_call"}``. *person* True when only a person may act on it, *why* saying so: the AI
+    proposed no catalogue action, or no classification passed (C1968: refused by the check,
+    failed or unavailable, the rule's catalogue default is proposed for a person, never
+    AUTO's; *refused_call* the refused answer's AI call). A call that raised is *got*
+    ``{"ok": False, "error": "exception", "detail": <it>}`` (`run_pass`), the same fail-safe."""
+    from modules.sdn import closed_loop
+
     # The rule's default is the network's response policy's (`closed_loop.policy`); a policy
     # that cannot be read proposes no action, said, and a person decides.
     pol = closed_loop.policy(network)
@@ -399,6 +437,7 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
     "applied", "inactive", "lines"}``: *inactive* the responses still awaiting a person whose
     detection resolved in this pass (C1968: never closed by it). *job* is the loop's id
     (`job_id`), what its background AI calls name; *send* replaces the AI provider (tests)."""
+    from modules.fanout import Failed, read_each
     from modules.sdn import closed_loop, detect, flow_ops, modes
 
     job = job or job_id(network)
@@ -458,6 +497,25 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
                 mark(network, row["id"], "inactive", since=since, now=now())
                 out["inactive"].append(row["id"])
         kept = seen.get("kept") or {}
+        # Classified at once, each its own call (C1970), in the detections' order whatever
+        # order the calls finish in (`fanout.read_each`); one that raises is its own Failed.
+        todo = []
+        for d in fired:                       # one call per detection, its first sighting's
+            if d["key"] not in waiting and all(t["key"] != d["key"] for t in todo):
+                todo.append(d)
+        took = {}
+
+        def one(d):
+            began = clock()
+            try:
+                return classify(network, d, job, send=send, pack=kept.get(d["key"]))
+            finally:
+                took[d["key"]] = clock() - began
+
+        began = clock()
+        verdicts = dict(zip([d["key"] for d in todo], read_each(
+            one, todo, name="sdn-classify", max_workers=CLASSIFY_WORKERS)))
+        classify_s = clock() - began
         for d in fired:
             out["fired"].append(d["key"])
             again = waiting.get(d["key"])
@@ -467,14 +525,19 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
                 line("respond", f"fired again while its response {again['id']} awaits a "
                                 "person: not classified again")
                 continue
-            began = clock()
-            verdict = classify(network, d, job, send=send, pack=kept.get(d["key"]))
-            took = clock() - began
+            verdict = verdicts[d["key"]]
+            if isinstance(verdict, Failed):
+                # The call raised (not one of the gateway's own refusals): this detection's
+                # fail-safe alone, the others' outcomes untouched.
+                verdict = verdict_of(network, d, {"ok": False, "error": "exception",
+                                                  "detail": str(verdict)})
             action, risk, params = verdict["action"], verdict["risk"], verdict["params"]
-            # The step's time beside its words (C1970): the AI call's own latency is its row
-            # in the record of AI calls, so the rest of the step is this less that.
-            line("classify", f"{verdict['words']} (risk {risk}; the step took {took:.1f} s)",
-                 took_s=round(took, 2))
+            # The step's time beside its words (C1970): this detection's own call, from its
+            # start to its answer; the AI call's own latency is its row in the record of AI
+            # calls, so the rest of the step is this less that.
+            mine = took[d["key"]]
+            line("classify", f"{verdict['words']} (risk {risk}; the step took {mine:.1f} s)",
+                 took_s=round(mine, 2))
             decision = modes.decide(network, risk, now())
             if verdict["person"]:
                 decision = {"auto": False, "words": verdict["why"]}
@@ -502,6 +565,11 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
             # operation and the entries as Verify read them back, as a person's confirm logs.
             out["lines"].append(closed_loop.log_response(
                 network, done, action=action, who=AUTO_ACTOR, ask=preview["ask"], now=now()))
+        if len(todo) > 1:
+            # The pass's total beside each call's own (one detection's line is its total).
+            line("classify", f"classified {len(todo)} detections at once, each its own call "
+                             f"(at most {CLASSIFY_WORKERS} at a time): {classify_s:.1f} s in "
+                             "all", took_s=round(classify_s, 2), detections=len(todo))
         expired = flow_ops.expire_meters(network, driver=driver, now=now)
         if expired["removed"]:
             line("expire", f"removed expired meter(s) {expired['removed']}")

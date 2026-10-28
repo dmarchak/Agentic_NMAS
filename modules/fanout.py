@@ -15,6 +15,12 @@ conversions use, so each read loop does not grow its own pool.
 WRITES do not use this. A write across devices runs concurrently only where
 nothing depends on order, and the deploy batch is sequential on purpose (its
 circuit breaker): the ordering is the safety.
+
+An AI call per item that changes no device uses it too, with its own bound:
+the SDN loop's classify, one call per detection (`sdn.loop.CLASSIFY_WORKERS`,
+C1970). The gateway's stores it writes (the record of AI calls, the caps'
+reservations) are locked across threads and processes (C2039); the responses
+after the calls stay one after the other, in the items' order.
 """
 
 import logging
