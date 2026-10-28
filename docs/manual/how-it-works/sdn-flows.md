@@ -86,6 +86,15 @@ each recorded as autonomous with that reason and with who chose the action. Ever
 AUTO's or yours, writes one line to the loop's log: who applied which action on which switch,
 the operation, and the resulting entries as Verify read them back.
 
+No response, in any mode, may cover the network's **control channel**: a flow whose match could
+carry LLDP (the controller's topology discovery), names one of the controller's addresses (its
+connection's URL and southbound address, when each is an address; a prefix holding one counts),
+or allows OpenFlow's port (6653, 6633, or the southbound address's own) is refused at the
+preview and again at the confirm, naming the change and what it covers; nothing is sent. A
+removal is refused only for a flow that names control traffic itself. Mercury does not know the
+address each switch reaches the controller from, so a switch's own in-band control address is
+not compared.
+
 ## Classify a detection with AI {#classify}
 
 **Classify** on a response awaiting you asks a model what the detection is: whether it is a

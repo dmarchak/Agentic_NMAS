@@ -153,7 +153,11 @@ What to act on first: **N awaiting approval**, the mode and whether the loop is 
   network (off by default; the screen that turns it on, Settings › AI, is not built yet), and
   otherwise the log says why none was made and the catalogue's default is proposed; its log
   lists each pass's steps, newest first; **Stop** ends it after its current pass,
-  and the card says who stopped it and when. What the log says:
+  and the card says who stopped it and when. **A restart of Mercury stops the loop, and it does
+  not start again by itself** (a loop that resumed unattended would make AI calls and, in AUTO,
+  act with no one present): the stop is recorded as **stopped by the app's restart**, with its
+  last line's time, and Needs attention shows a warning for the network until you press Start
+  or 24 hours pass. What the log says:
   - a pass that finds nothing new says which of these it is: **network healthy: no threat
     detected** only when the collection read every switch whole and no detection is active;
     **no new threat; N still active**, naming each detection still firing; or that the

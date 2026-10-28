@@ -41,7 +41,17 @@ itself, its choices and **Ask**, stays as usable as ever (see
    vocabulary (its ranges, operations and filters) is the same on every call, so it is cached.
    Your question, the metrics offered, the devices you named that this network holds, and its
    roles go as data, with the time now and the time today began (see
-   [What "today" means](#today)). Metric help text is written by an exporter, not by
+   [What "today" means](#today)). With them goes what {{product}} knows of the network: its
+   devices by role, cached with the vocabulary (unless the network's topology is withheld from
+   AI), and what it collects about it (each layer present or not collected, and when it was
+   read), so a question resting on something not collected is said to be, not guessed. When
+   the answer needs a fact your words leave out (where an endpoint is plugged in, a device's
+   neighbour, an interface's committed state), {{product}} looks it up once and asks once more
+   with what it found; both calls are the question's cost. If all of that would pass the
+   task's size bound, the network's bulkiest parts are left out first, then the lowest-ranked
+   metrics offered (never fewer than 15); the call's record says what was left out, and an
+   answer that would rest on a part left out asks you for a narrower question instead. Metric
+   help text is written by an exporter, not by
    {{product}}, so it is data too, and an instruction inside it is not followed. The answer
    must be the builder's own choices, in a fixed shape, or one of two other answers. What
    your words leave unsaid takes a default you see in the builder and can change: one line
@@ -54,8 +64,9 @@ itself, its choices and **Ask**, stays as usable as ever (see
    older average is offered beside it; a 64-bit counter where both are offered; a rate over
    5 minutes as a counter's first operation; a top 5 or 10 only when you say "top" or give a
    number ("highest" alone draws every line); bits only when you say bits or bandwidth
-   ("traffic" keeps bytes); and "today", "yesterday", "this week" and "last week" as the
-   calendar's, from their midnights (see [What "today" means](#today)).
+   ("traffic" keeps bytes); "this week", "the past week" and "the last 7 days" as the last 7
+   days; and "today", "yesterday", "since Monday" (or "so far this week") and "last week" as
+   the calendar's, from their midnights (see [What "today" means](#today)).
    **A question back**, when your words leave a choice no default settles (which interface,
    or a device this network does not have): it is shown as "One question first", your words
    stay in the box, and nothing is filled; add the answer and fill again.
@@ -94,14 +105,14 @@ installation timezone is set)". If your browser named no timezone {{product}} kn
 offset is used and said ("midnight UTC-04:00"). If nothing usable was sent, today starts at
 midnight UTC, and the note says that too, and why.
 
-"Yesterday", "this week" and "last week" are counted the same way, in the same timezone as
-today: yesterday from the midnight before today's to today's; this week from midnight on
-Monday to now; last week from the Monday before to this Monday. {{product}} works each start
-out (calendar days, so a daylight-saving change between them moves nothing) and gives it to
-the model as it gives today's. The note under the question says whose midnight the span was
-counted from: "'This week' is counted from midnight on Monday America/New_York (…)". "The
-last 7 days" or "the past week" is not a calendar week: it is the builder's 7 days, ending
-now.
+"Yesterday", the calendar week and "last week" are counted the same way, in the same timezone
+as today: yesterday from the midnight before today's to today's; the calendar week ("since
+Monday", "so far this week") from midnight on Monday to now; last week from the Monday before
+to this Monday. {{product}} works each start out (calendar days, so a daylight-saving change
+between them moves nothing) and gives it to the model as it gives today's. The note under the
+question says whose midnight the span was counted from: "'This week' is counted from midnight
+on Monday America/New_York (…)". "This week", "the last 7 days" or "the past week" alone is
+not a calendar week: it is the builder's 7 days, ending now.
 
 ## What it costs, and what is recorded {#cost}
 

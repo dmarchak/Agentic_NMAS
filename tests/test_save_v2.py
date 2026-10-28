@@ -406,6 +406,43 @@ class TestTheRun:
         assert f"Commit {after[:12]}" in said and "Source: save" in said
         assert "Retry" not in said
 
+    def test_a_golden_moved_after_its_read_is_not_recorded_over(self, lab, monkeypatch):
+        """C2030, 2026-10-28's measured race: Save All released r1 after reading it, the
+        scheduled rotation then held it and committed its golden, and the Save's batch commit
+        put the older capture over it. Here another operation commits r2's golden after r2's
+        turn (released, waiting for the batch's commit): the Save records nothing over it,
+        names both commits and the one that moved it, and the newer golden stands."""
+        from modules.nsot import repo as R
+        from modules.nsot import save_op
+
+        lab["running"]["r2"] = _broken(lab["captured"])
+        mark, moved = save_op._mark, {}
+
+        def rotation_commits_between(job_id, host, state, **kw):
+            if state == "through" and not moved:
+                newer = lab["captured"].replace("hostname r2", "hostname r2\n! rotated", 1)
+                assert newer != lab["captured"]
+                got = R.save_golden("Lab", [R.GoldenItem("r2", newer, "203.0.113.12")],
+                                    source="rotation", actor="rotation@example.invalid",
+                                    allow_new=False, baseline=False)
+                assert got["ok"] and got["commit"], got
+                moved["sha"] = _head(lab["repo"])
+            return mark(job_id, host, state, **kw)
+
+        monkeypatch.setattr(save_op, "_mark", rotation_commits_between)
+        golden = subprocess.run(["git", "-C", lab["repo"], "log", "-1", "--format=%H", "--",
+                                 "golden/r2.cfg"], capture_output=True, text=True).stdout.strip()
+        assert golden
+        status, html = _run(lab, "r2")
+        assert status == 200 and moved["sha"] != golden
+        assert _head(lab["repo"]) == moved["sha"], "the newer golden stands; nothing over it"
+        said = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", html))
+        assert ("saved to startup; not recorded: its golden moved after its running config was "
+                f"read (read against {golden[:12]}, now {moved['sha'][:12]}, "
+                "&#34;golden: 1 device(s) via rotation&#34;)") in said, said
+        assert "press Save again to record what it runs now" in said
+        assert lab["sent"] and lab["sent"][0]["held"] is True, "the save itself was sent"
+
     def test_a_golden_that_already_matched_commits_nothing(self, lab):
         before = _head(lab["repo"])
         status, html = _run(lab, "r2")

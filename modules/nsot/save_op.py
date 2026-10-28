@@ -18,6 +18,7 @@ nothing to roll back (a save copies running to startup as it is); the record is 
 each device's persist row.
 """
 
+import contextlib
 import hashlib
 import json
 import logging
@@ -222,6 +223,40 @@ def _outcome(host: str, outcome: str, detail: str = "") -> dict:
     return {"host": host, "outcome": outcome, "detail": detail}
 
 
+def _golden_sha(repo_dir: str, host: str) -> str:
+    """The commit that last changed *host*'s golden, or ``""`` when it has none."""
+    from modules.nsot import repo as R
+
+    rc, out, _ = R.git(repo_dir, "log", "-1", "--format=%H", "--",
+                       f"golden/{R._safe_name(host)}.cfg")
+    return out.strip() if rc == 0 else ""
+
+
+def _not_moved(repo_dir: str, items: list, read: dict, outcomes: dict, job_id: str) -> list:
+    """*items* whose golden is still the one each was read against (C2030). Each other is not
+    recorded, its outcome naming both commits and the one that moved it. The caller holds the
+    repository's lock, so nothing commits between this and the record."""
+    from modules.nsot import repo as R
+
+    kept = []
+    for it in items:
+        was, now = read[it.hostname][2], _golden_sha(repo_dir, it.hostname)
+        if now == was:
+            kept.append(it)
+            continue
+        _rc, subject, _ = R.git(repo_dir, "log", "-1", "--format=%s", now) if now else \
+            (0, "", "")
+        detail = (f"saved to startup; not recorded: its golden moved after its running config "
+                  f"was read (read against {was[:12] or 'no golden'}, now {now[:12]}"
+                  + (f", \"{subject.strip()[:120]}\"" if subject.strip() else "")
+                  + "), so this older capture is not put over the newer record; press Save "
+                  "again to record what it runs now")
+        outcomes[it.hostname] = _outcome(it.hostname, "unread", detail)
+        _mark(job_id, it.hostname, "unread", detail=detail)
+    return kept
+
+
+
 def run(list_name: str, hostnames: list, actor: str, confirmed_hash: str, *, job_id: str = "",
         persist=None, record=None, read_one=None, save_golden=None) -> dict:
     """Save the confirmed selection, as *actor*: the plan made again and refused if its hash
@@ -294,6 +329,9 @@ def run(list_name: str, hostnames: list, actor: str, confirmed_hash: str, *, job
                     entry, text = {"device": host, "read": False,
                                    "error": f"{type(exc).__name__}: {exc}"}, None
                 entry.pop("read_phases", None)
+                # The golden this capture was read against, while still held (C2030): the
+                # batch records it only over that golden.
+                against = _golden_sha(repo_dir, host)
                 trail = _trail_of(list_name, host)
             if not entry.get("read") or text is None:
                 detail = ("saved to startup; its running config could not be read to record: "
@@ -302,7 +340,7 @@ def run(list_name: str, hostnames: list, actor: str, confirmed_hash: str, *, job
                 return host, _outcome(host, "unread", detail), None
             # Through its turn: released, waiting for the batch's one commit.
             _mark(job_id, host, "through", trail=trail, step="commit_wait")
-            return host, None, (entry, text)
+            return host, None, (entry, text, against)
         except device_ops.DeviceBusy as exc:
             _mark(job_id, host, "held", detail=f"{exc}")
             return host, _outcome(host, "held", f"{exc}. Nothing was sent to it"), None
@@ -319,46 +357,53 @@ def run(list_name: str, hostnames: list, actor: str, confirmed_hash: str, *, job
     items = []
     for host in to_save:
         if host in read:
-            entry, text = read[host]
+            entry, text, _against = read[host]
             d = inventory[host]
             items.append(R.GoldenItem(host, text, d.get("ip", ""), netbox_id=d.get("_netbox_id"),
                                       device_uid=d.get("device_uid", ""),
                                       platform=entry.get("platform", "")))
-    commit, save = "", {}
-    if items:
-        # The whole network saved together is Save All, and `save_all` is the source the
-        # baseline decision WANTS a baseline for (`repo._baseline_wanted`); `save` would want
-        # one only when two goldens changed, so an in-sync network never got its restore point
-        # (the operator, 2026-10-09: "v2 save all devices needs to add a new baseline"). Earned
-        # or denied by measurement there: coverage of the inventory and every device at intent.
-        # A save that takes in a change no rule explains, made outside Mercury (C1819): how the
-        # device's own log says it changed, kept in the commit (one Loki ask per such device).
-        from modules.nsot import out_of_band
-        departing = [inventory[it.hostname] for it in items
-                     if read[it.hostname][0].get("changed")
-                     and out_of_band.unexplained(read[it.hostname][0].get("intent"))]
-        save = (save_golden or R.save_golden)(
-            list_name, items, source=SOURCE_FLEET if p["fleet"] else SOURCE, actor=actor,
-            extra_trailers=out_of_band.trailers(repo_dir, departing),
-            allow_new=False, inventory_size=len(inventory) if p["fleet"] else 0,
-            baseline=None if p["fleet"] else False)
-        commit = (save.get("commit") or "")[:12]
-        refused_save = {r["device"]: r for r in (save.get("refused") or [])}
-        for it in items:
-            host = it.hostname
-            if host in refused_save:
-                outcomes[host] = _outcome(host, "unread", "saved to startup; not recorded: "
-                                          + refused_save[host]["reason"])
-            elif not save.get("ok"):
-                outcomes[host] = _outcome(host, "unread", "saved to startup; not recorded: "
-                                          + (save.get("error") or "the record failed"))
-            else:
-                outcomes[host] = _outcome(host, "saved_recorded"
-                                          if host in (save.get("changed") or [])
-                                          else "saved_unchanged")
-            _mark(job_id, host, outcomes[host]["outcome"],
-                  step="recorded" if outcomes[host]["outcome"] in GOOD else "",
-                  detail=outcomes[host]["detail"])
+    # A capture commits only over the golden it was read against (C2030): under the
+    # repository's lock, which every golden commit takes, a device whose golden moved since
+    # its read (another operation's commit between its release and this one) is not recorded,
+    # naming both commits, so an older capture never lands over a newer record.
+    lock = R.repo_lock(repo_dir) if items else contextlib.nullcontext()
+    with lock:
+        items = _not_moved(repo_dir, items, read, outcomes, job_id)
+        commit, save = "", {}
+        if items:
+            # The whole network saved together is Save All, and `save_all` is the source the
+            # baseline decision WANTS a baseline for (`repo._baseline_wanted`); `save` would want
+            # one only when two goldens changed, so an in-sync network never got its restore point
+            # (the operator, 2026-10-09: "v2 save all devices needs to add a new baseline"). Earned
+            # or denied by measurement there: coverage of the inventory and every device at intent.
+            # A save that takes in a change no rule explains, made outside Mercury (C1819): how the
+            # device's own log says it changed, kept in the commit (one Loki ask per such device).
+            from modules.nsot import out_of_band
+            departing = [inventory[it.hostname] for it in items
+                         if read[it.hostname][0].get("changed")
+                         and out_of_band.unexplained(read[it.hostname][0].get("intent"))]
+            save = (save_golden or R.save_golden)(
+                list_name, items, source=SOURCE_FLEET if p["fleet"] else SOURCE, actor=actor,
+                extra_trailers=out_of_band.trailers(repo_dir, departing),
+                allow_new=False, inventory_size=len(inventory) if p["fleet"] else 0,
+                baseline=None if p["fleet"] else False)
+            commit = (save.get("commit") or "")[:12]
+            refused_save = {r["device"]: r for r in (save.get("refused") or [])}
+            for it in items:
+                host = it.hostname
+                if host in refused_save:
+                    outcomes[host] = _outcome(host, "unread", "saved to startup; not recorded: "
+                                              + refused_save[host]["reason"])
+                elif not save.get("ok"):
+                    outcomes[host] = _outcome(host, "unread", "saved to startup; not recorded: "
+                                              + (save.get("error") or "the record failed"))
+                else:
+                    outcomes[host] = _outcome(host, "saved_recorded"
+                                              if host in (save.get("changed") or [])
+                                              else "saved_unchanged")
+                _mark(job_id, host, outcomes[host]["outcome"],
+                      step="recorded" if outcomes[host]["outcome"] in GOOD else "",
+                      detail=outcomes[host]["detail"])
     rows = [outcomes[d["host"]] for d in p["devices"]]
     good = sum(1 for r in rows if r["outcome"] in GOOD)
     ok = bool(rows) and good == len(rows)

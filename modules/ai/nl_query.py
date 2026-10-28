@@ -50,8 +50,15 @@ FEATURE = "nl_query"
 #: in the viewer's timezone, worked out here, never by the model) to now. v7 (C1740's ruling
 #: and v6's runs on the 20, never held-out set 1's, 2026-10-25): "yesterday", "this week" and
 #: "last week" as calendar spans in the same timezone, each start given as data; the per-CPU
-#: MIB over the older average when both are offered. Earlier versions stay for their record.
-PROMPT = ("nl_metrics", 7)
+#: MIB over the older average when both are offered. v10 (below, under `CANDIDATE`), adopted
+#: 2026-10-28 (the operator's decision 7; the relative bar, PHASE8_PLAN 15.12): run
+#: m10cmp-202610270145, 2026-10-27 01:45 to 03:53 UTC, 10 runs a case on Sonnet, the deployed
+#: code, recorded as evaluations: the main set's 23 cases 23 of 23 reliable against v7's 21;
+#: held-out set 4's 30, written blind, 27 of 30 against 23; no case v7 passed reliably lost;
+#: $0.0051 a successful answer against $0.0048 (main), $0.0065 against $0.0063 (held-out).
+#: Held-out set 4's 90.0% is under the 95% floor, so the metrics half is live but not done.
+#: Earlier versions stay loadable for their record.
+PROMPT = ("nl_metrics", 10)
 #: The candidate, asked only when a measurement names it (`metrics(prompt=...)`,
 #: scripts/nmas-nl-cases --prompt) until it meets the adoption bar (the operator, 2026-10-26:
 #: no case the current version passes may fail, consistency at the floor, cost reported).
@@ -77,8 +84,9 @@ PROMPT = ("nl_metrics", 7)
 #: offer stays the last thing dropped (`select_context(offered=...)`): its lowest-ranked
 #: metrics, never below `OFFER_FLOOR`, the count left out said, and the text saying an
 #: answer that depends on them asks for a narrower question. An aggregation with no label on
-#: one named device is read as the same aggregation by device (`canonical`).
-CANDIDATE = ("nl_metrics", 10)
+#: one named device is read as the same aggregation by device (`canonical`). Adopted as
+#: `PROMPT` (above): the candidate is the live version until the next is built.
+CANDIDATE = PROMPT
 #: The operation's steps, named on its manual page (docs/manual/how-it-works/ask-in-words.md).
 STEPS = (
     ("offer", "the metrics sharing a word with the question, never the whole catalogue"),

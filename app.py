@@ -591,6 +591,15 @@ def _start_background_daemons():
     except Exception as _e:
         app.logger.error("Heartbeat did not start: %s", _e)
 
+    # The SDN loop does not survive a restart, and does not start again by itself (C2000):
+    # a loop that was running is recorded as stopped by the restart, and a Needs attention
+    # row says so until a person starts it.
+    try:
+        from modules.sdn import loop as _sdn_loop
+        _sdn_loop.after_restart()
+    except Exception as _e:
+        app.logger.error("SDN loops' restart record: %s", _e)
+
     # The reader jobs (modules/reader_job.py): each reads one outside service
     # on its own thread and stores the result for every consumer. A reader
     # that did not start is a `not_run` or `stale` job-health row as well.

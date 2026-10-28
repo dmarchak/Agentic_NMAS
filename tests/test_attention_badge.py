@@ -130,7 +130,9 @@ class TestARowThatClearsByTime:
         assert timed == {("approvals", "pending"), ("restarts", "unplanned"),
                          ("adjacency_log", "flap"),     # a day after its last drop (C589)
                          # The day or month a background AI feature's spend counts ends (C1843).
-                         ("ai_spend", "warning"), ("ai_spend", "stopped")}
+                         ("ai_spend", "warning"), ("ai_spend", "stopped"),
+                         # 24 hours after the restart that stopped an SDN loop (C2000).
+                         ("sdn_loop", "restart_stopped")}
         tree = ast.parse(open(attention.__file__, encoding="utf-8").read())
         found = set()
         for node in ast.walk(tree):

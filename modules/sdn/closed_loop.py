@@ -1359,6 +1359,11 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
                         k: r.get(k) for k in ("table_id", "priority", "cookie", "match",
                                               "actions", "idle_timeout", "hard_timeout")}})
             out["params"].update(flow=ref, cookie=flow_intent.cookie_hex(found.get("cookie")))
+        # No response covers the control channel, in any mode (C2022).
+        from modules.sdn import control_plane
+        refused = control_plane.refusal(changes, made.get("connection") or {})
+        if refused:
+            raise ResponseRefused(refused)
         out["ask"] = {"connection": conn, "dpid": dpid, "changes": changes,
                       "response": action_id != "remove_flow", "action": action_id,
                       "detection": {k: detection.get(k) for k in
@@ -1415,6 +1420,12 @@ def respond_to_threat(network: str, detection: dict, action_id: str = None,
             "preview again")}
     action_id = previewed
     refusal = policy_refusal(network, (ask.get("detection") or {}).get("rule") or "", action_id)
+    if refusal:
+        return {"ok": False, "outcome": "refused", "error": f"{refusal}: nothing was sent"}
+    # The control-plane guard again at the confirm, on the ask carried back (C2022).
+    from modules.sdn import control_plane
+    made = flow_ops._driver(network, ask.get("connection") or "", driver)
+    refusal = control_plane.refusal(ask.get("changes"), (made or {}).get("connection") or {})
     if refusal:
         return {"ok": False, "outcome": "refused", "error": f"{refusal}: nothing was sent"}
     response = {"kind": "response", "action": action_id, "risk": CATALOGUE.get(

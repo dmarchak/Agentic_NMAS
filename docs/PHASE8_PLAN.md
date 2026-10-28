@@ -2002,7 +2002,8 @@ no adoption decision flips; two done verdicts do.**
   where consistency put it at 95.5%, its cases 2 and 12 wrong the same way in every run. It
   was never done (its held-out sets were under the floor).
 - **Metrics v10 against v7 (10 runs):** adopted under both (main 23 of 23 against 21; held-out
-  set 4 27 of 30 against 23; nothing protected lost). Not done: held-out set 4 at 90.0%
+  set 4 27 of 30 against 23; nothing protected lost); served since 2026-10-28 (the operator's
+  decision 7; `nl_query.PROMPT`). Not done: held-out set 4 at 90.0%
   (the recorded "91.3%" was the run pass rate, 274 of 300). **Haiku v10:** not adoptable under
   both (main cases 8 and 16, held-out cases 16 and 19 lost).
 - **Explain v5 against v4:** v4 kept under both, now on cost alone: case 5, which v5 failed
@@ -3567,7 +3568,8 @@ Tier 2:
 
 ### 18.2 Still open from 2026-10-26 (their bars unchanged)
 
-- metrics v10 against v7 on the main set and held-out set 4;
+- metrics v10 against v7 on the main set and held-out set 4 (measured 2026-10-27, run
+  m10cmp-202610270145; v10 adopted 2026-10-28, still not done, 15.12);
 - Explain v6's adoption;
 - the alert-history backfill, then Walk 2 in a report;
 - the Mode B fix with its one click and the `GigabitEthernet1/1` test, then the operator's
@@ -3660,7 +3662,7 @@ A2 are in it.
 
 | Item | Where | Status | Size |
 |---|---|---|---|
-| Ask in words, metrics (feature 1) | 13.2, 15.12 | live v7; v10 candidate committed (85dce038), measurement pending; not done | 1 to measure |
+| Ask in words, metrics (feature 1) | 13.2, 15.12 | live v10 (adopted 2026-10-28 on run m10cmp-202610270145, 10 runs a case, Sonnet: main 23 of 23 reliable against v7's 21, held-out set 4 27 of 30 against 23, nothing v7 passed reliably lost); not done: held-out set 4 at 90.0%, under the 95% floor (cases 15 and 23, C1887) | 1 to settle C1887 and measure again |
 | Ask in words, logs | 15.12 | live v4 (adopted 2026-10-26); not done: blind set 90%, C1834's fix built | 2 |
 | Explain (P1) | 15.9 | live v4; round 1 (2026-10-27, Sonnet, 21 cases × 10 runs, by reliability): v4 152/210 runs, 12/21 reliable (57.1%), $0.0512 a successful answer; v6 147/210, 12/21, $0.0525; v6 not adopted (case 13 made unreliable, 8 of 10; it gains case 7); cases 8, 11, 12, 19 and 21 fail every run on both; not done (90% floor); schema 6's observer section (C1896) and C1897 measured next | 8 |
 | Intent in words (feature 7) | 13.2, 15.16 | live on Sonnet; measured 2026-10-27, 10 runs, by reliability: main35 32 of 35 (91.4%, under the 95% floor), held29 28 of 29 (96.6%); Haiku not adopted (held29 cases 23 and 29 made unreliable, 27 of 29), at $0.00017 a successful answer against Sonnet's $0.00205 to $0.00222 (C1785, closed); not done; case 33's two-ended detection before the call proposed. **v1's baseline for v2 (2026-10-27 ~07:3x to 07:5x UTC, Sonnet, 10 runs): main51 44 of 51 reliable (86.3%; cases 27, 33, 34, 44, 48 and 49 fail every run, case 50 refused before the call by v1's resolver, C1904); the blind held_out_3 30 of 30 (100%), $0.00205 a successful answer; held_out_3's two-ended cases 20 and 21 to be judged again under the two-device expectation (C1908) once its judge exists, v1's recorded answers with v2's** | 2 |

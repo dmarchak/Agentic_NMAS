@@ -174,6 +174,10 @@ ROW_KINDS = {
     ("scheduled_rotation", "stopped"): ("a scheduled credential rotation stopped on a failure",
                                         "read the device's rotation result and settle the "
                                         "stage it names, then run Rotate due devices now"),
+    # C2000: the loop does not survive a restart, and does not start again by itself.
+    ("sdn_loop", "restart_stopped"): ("a network's SDN loop was running and the app's restart "
+                                      "stopped it, so its detections are not watched",
+                                      "start the loop on SDN › Responses, or leave it stopped"),
     # C906: nothing was sent; every session to it is refused until a person reviews the key.
     ("host_keys", "changed"): ("a device answered with an SSH host key Mercury does not hold",
                                "re-key it on its page if it was rebuilt, or find what answers "
@@ -319,6 +323,9 @@ CLEARS = {
     ("restarts", "unplanned"): (("acknowledge", "time"), "a person acknowledges it with a "
                                 "reason, or 7 days after the restart; History keeps it either "
                                 "way"),
+    ("sdn_loop", "restart_stopped"): (("resolves", "time"), "the loop is started again on SDN "
+                                      "› Responses, or 24 hours after the restart (the loop's "
+                                      "log keeps the stop either way)"),
     ("scheduled_rotation", "stopped"): (("resolves",), "a later run (Rotate due devices now on "
                                         "Credentials › Profiles) finishes without a failure, "
                                         "or the failed device's rotation is committed (its "
@@ -2811,6 +2818,50 @@ def scheduled_rotation_source(found=None) -> dict:
                                   f"{len(ran.get('skipped') or [])} skipped"))
 
 
+#: How long a restart's stop of an SDN loop stands as a row when nobody starts it (C2000).
+SDN_LOOP_ROW_S = 24 * 3600
+
+
+def sdn_loop_source(found=None, now: float = None) -> dict:
+    """Each network's SDN loop that the app's restart stopped (`loop.stopped_by_restart`,
+    C2000): a WARNING row naming the network, the restart's time and the loop's last line,
+    standing until the loop is started again or 24 hours pass. One small file read per
+    network, never a controller. *found* is ``{network: stop row or None}`` (tests)."""
+    from modules.nsot import listref
+    from modules.sdn import loop as LP
+
+    started = time.time() if now is None else now
+    label = "SDN closed loop"
+    try:
+        stops = found if found is not None else {n: LP.stopped_by_restart(n)
+                                                 for n in listref.names()}
+    except Exception as exc:                          # noqa: BLE001 (said as the source's error)
+        return source_result("sdn_loop", label, read_at=started, took_ms=0,
+                             error=f"the loops' logs could not be read: {type(exc).__name__}")
+    rows = []
+    for network, stop in sorted(stops.items()):
+        at = _ts((stop or {}).get("at"))
+        if not stop or at is None or started - at >= SDN_LOOP_ROW_S:
+            continue
+        rows.append(row(
+            source="sdn_loop", kind="restart_stopped", key=f"{network}:{stop.get('at')}",
+            level="warning", since=at, clears_at=at + SDN_LOOP_ROW_S,
+            what=f"The SDN loop on {network} was stopped by the app's restart",
+            cause=(f"It was running when the app restarted (its last line at "
+                   f"{stop.get('last_at') or '?'} UTC, the stop recorded at {stop.get('at')}); "
+                   "the loop does not start again by itself, so no detection on "
+                   f"{network} is found or proposed until a person starts it"),
+            operands={"network": network, "stopped_at": stop.get("at") or "",
+                      "last_at": stop.get("last_at") or ""},
+            action={"label": f"Start the loop on {network}'s SDN › Responses (or leave it "
+                             "stopped; this clears 24 hours after the restart)",
+                    "href": f"/v2/sdn/responses?list={network}"}))
+    took = int((time.time() - started) * 1000) if now is None else 0
+    return source_result("sdn_loop", label, read_at=started, took_ms=took, rows=rows,
+                         checked=f"{len(stops)} network(s)' loops: {len(rows)} stopped by a "
+                                 "restart within 24 hours")
+
+
 # ---------------------------------------------------------------------------
 # Source: history committed and not on its remote (C223)
 # ---------------------------------------------------------------------------
@@ -3851,7 +3902,7 @@ SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding
            records_source, scheduled_rotation_source, host_key_source,
            host_key_window_source, netbox_inventory_source, adjacency_log_source,
            netbox_lag_source, console_ztp_source, intent_format_source,
-           ai_spend_source)
+           ai_spend_source, sdn_loop_source)
 
 
 #: What can move each source's rows: the data keys (modules/invalidation.VOCABULARY) whose
@@ -3900,6 +3951,8 @@ SOURCE_KEYS = {
     "netbox_inventory_source": ("inventory", "settings"),
     # A scheduled run's end (or a device in it) announces both (C724).
     "scheduled_rotation_source": ("rotation", "credentials"),
+    # A loop started or stopped (`sdn_v2.loop_set` invalidates sdn) moves its row (C2000).
+    "sdn_loop_source": ("sdn",),
     # A key kept, refused or replaced by any session or a re-key announces it (C906).
     "host_key_source": ("host_keys",),
     # A window's summary written by its reader announces the same key (C906).

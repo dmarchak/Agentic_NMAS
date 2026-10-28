@@ -86,11 +86,23 @@ def world(tmp_path, monkeypatch):
     history_promq.forget()
 
 
-def _choices(**over):
+def _schema(version=None):
+    """The answer schema prompt *version* is asked with (the served one, `PROMPT`, unless a
+    test names another), as `nl_query.metrics` chooses it."""
+    v = nl_query.PROMPT[1] if version is None else version
+    return nl_query.SCHEMA_OF.get(v, nl_query.MetricsChoices)
+
+
+def _choices(version=None, **over):
+    """A model's answer in the schema prompt *version* answers (the served one by default):
+    `needs` empty where that schema has it (v8 on, C1780), absent where it has not (v1 to
+    v7)."""
     c = {"outcome": "answer", "question": "", "why_not": "", "metric": "ifInErrors",
          "devices": [], "role": "", "interfaces": [], "filters": [],
          "operations": [{"kind": "rate", "arg": "5m"}], "top": "5", "range": "24h",
          "from_utc": "", "to_utc": ""}
+    if "needs" in _schema(version).model_fields:
+        c["needs"] = []
     c.update(over)
     return c
 
@@ -181,14 +193,18 @@ def test_a_planted_instruction_in_help_text_rides_only_as_data(world):
 def test_the_prompt_carries_only_its_allowed_fields(world):
     """What Ask in words may send (the operator, 2026-10-25; PHASE8_PLAN 15.12: a feature's
     tests assert its prompt carries only its allowed-class fields): its prompt and the
-    builder's vocabulary as the system blocks, and exactly these ten data blocks (v6, C1724:
-    today's start, worked out by Mercury, and the timezone's name, which is not a secret; v7,
-    C1740: yesterday's, this week's and last week's starts, worked out the same way)."""
+    builder's vocabulary and the network's summary as the system blocks, and exactly these
+    twelve data blocks (v6, C1724: today's start, worked out by Mercury, and the timezone's
+    name, which is not a secret; v7, C1740: yesterday's, this week's and last week's starts,
+    worked out the same way; v10, served since 2026-10-28: the network context's `coverage`,
+    each layer's state, age and source, and `looked_up`, the needs round's results, C1780;
+    the summary is the `network` context beside the builder's, under the topology egress
+    class, `modules/ai/egress_classes.py`)."""
     import re
     from modules.ai import prompts
     allowed = {"question", "now_utc", "today_start_utc", "yesterday_start_utc",
                "week_start_utc", "last_week_start_utc", "today_zone", "metrics",
-               "devices_named", "roles"}
+               "devices_named", "roles", "coverage", "looked_up"}
     world.answer = _choices()
     _ask(world)
     body = world.sent[0]["body"]
@@ -198,8 +214,9 @@ def test_the_prompt_carries_only_its_allowed_fields(world):
     assert set(data) == allowed and len(data) == len(allowed), data
     assert len(body["system"]) == 2
     assert body["system"][0]["text"] == prompts.load(*nl_query.PROMPT)["text"]
-    assert re.findall(r'<context name="([^"]+)">', body["system"][1]["text"]) == ["builder"]
-    assert body["system"][1]["text"].count("<context ") == 1
+    assert re.findall(r'<context name="([^"]+)">', body["system"][1]["text"]) == [
+        "builder", "network"]
+    assert body["system"][1]["text"].count("<context ") == 2
 
 
 def test_a_planted_secret_is_masked_in_the_bytes_sent(world, monkeypatch):
@@ -646,13 +663,15 @@ def test_v6_is_the_prompt_and_says_the_four_defaults():
         assert prompts.load("nl_metrics", v)["version"] == v
 
 
-def test_v7_is_the_prompt_and_says_the_named_spans_and_the_cpu_mib():
+def test_v7_says_the_named_spans_and_the_cpu_mib():
     """C1740's ruling (the operator, 2026-10-25): yesterday, this week and last week are
     calendar spans in today's timezone, each start given as data, never worked out; and v6's
-    runs on the 20 (case 3 once took the older CPU average): the per-CPU total MIB first."""
+    runs on the 20 (case 3 once took the older CPU average): the per-CPU total MIB first.
+    v7 was served until v10's adoption (2026-10-28, run m10cmp-202610270145) and stays
+    loadable for its record, so its own text is asked by version."""
     from modules.ai import prompts
-    assert nl_query.PROMPT == ("nl_metrics", 7)
-    text = " ".join(prompts.load(*nl_query.PROMPT)["text"].split())    # as one line of words
+    assert nl_query.PROMPT == ("nl_metrics", 10), "v10 replaced v7 by the adoption bar"
+    text = " ".join(prompts.load("nl_metrics", 7)["text"].split())    # as one line of words
     for said in ('"yesterday_start_utc"', '"week_start_utc"', '"last_week_start_utc"',
                  '"yesterday" from yesterday_start_utc to today_start_utc',
                  '"this week" (and "so far this week") from week_start_utc to now_utc, never 7d',
@@ -864,8 +883,9 @@ def test_v8_sends_the_network_and_its_coverage_and_v7_does_not(world, monkeypatc
     assert '<data name="looked_up">\n(nothing looked up)\n</data>' in user
     from modules.ai import prompts
     assert body["system"][0]["text"] == prompts.load(*nl_query.CANDIDATE)["text"]
-    world.answer = _choices()
-    _ask(world)
+    # v7, no longer served (v10 adopted 2026-10-28), asked by version for its record.
+    world.answer = _choices(version=7)
+    _ask(world, prompt=("nl_metrics", 7))
     assert "coverage" not in world.sent[-1]["body"]["messages"][0]["content"]
 
 
@@ -911,7 +931,12 @@ def test_the_v8_schema_and_prompt_are_registered_and_committed():
     for said in ('"This week", "the past week" and "the last 7 days" are the last 7 days: 7d',
                  "the operation resets", '"coverage"', '"looked_up"'):
         assert said in text, said
-    assert nl_query.PROMPT == ("nl_metrics", 7), "the candidate is adopted only by its bar"
+    # The candidate is adopted only by its bar: v10 met it against v7 (run
+    # m10cmp-202610270145, 2026-10-27, 10 runs a case; PHASE8_PLAN 15.12), adopted 2026-10-28.
+    assert nl_query.PROMPT == ("nl_metrics", 10), \
+        "v10 is served, adopted 2026-10-28 on run m10cmp-202610270145 by the relative bar"
+    assert nl_query.CANDIDATE == nl_query.PROMPT, "the candidate is the live version until " \
+        "the next is built"
 
 
 def test_the_context_budget_rule_keeps_the_richest_level_that_fits():

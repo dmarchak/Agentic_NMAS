@@ -506,6 +506,15 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
         if expired["removed"]:
             line("expire", f"removed expired meter(s) {expired['removed']}")
         out["ok"] = True
+        # Every screen shows the new state (C1868, C2003): the Alerts tab when the alert
+        # history moved, SDN › Responses when a response did. A pass that only logged leaves
+        # its lines to the SDN reader's own announcement (every 30 s), so the region is not
+        # redrawn every pass.
+        keys = (["alerts"] if seen.get("changed") else []) + (
+            ["sdn"] if out["fired"] or out["proposed"] or out["applied"] or out["inactive"]
+            or expired["removed"] else [])
+        if keys:
+            out["announced"] = _announce(network, keys, job)
     except Exception as exc:                          # noqa: BLE001 (said, never raised)
         log.error("sdn loop: a pass on %s failed (%s)", network, type(exc).__name__)
         out["error"] = f"{type(exc).__name__}: {exc}"
@@ -514,6 +523,21 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
         except OSError:
             pass
     return out
+
+
+def _announce(network: str, keys: list, job: str) -> dict:
+    """Announce *keys* as the loop's job: ``{"keys", "ok", "error"}``. A failed announcement
+    is logged and said in the pass's answer, never raised: the pass's work stands, and the
+    page catches up at the SDN reader's next announcement."""
+    from modules import invalidation
+
+    try:
+        invalidation.announce(keys, f"job:{job}")
+        return {"keys": keys, "ok": True, "error": ""}
+    except Exception as exc:                          # noqa: BLE001 (said, never raised)
+        log.warning("sdn loop: announcing %s on %s failed (%s)", keys, network,
+                    type(exc).__name__)
+        return {"keys": keys, "ok": False, "error": f"{type(exc).__name__}: {exc}"}
 
 
 # ───────────────────────────────────────────────────────────────────────────── the job
@@ -575,6 +599,49 @@ def start(network: str, *, actor: str, interval: float = DEFAULT_INTERVAL, drive
     say(network, "start", f"started by {actor}, every {interval:g} s, as job {job['id']}")
     job["thread"].start()
     return status(network)
+
+
+#: Who a stop recorded at the app's start names (C2000).
+RESTART_ACTOR = "the app's restart"
+
+
+def ran_until_now(rows: list) -> dict:
+    """The log's last start when no stop follows it (the loop was running when its process
+    ended), else None."""
+    starts = [n for n, r in enumerate(rows) if r.get("step") == "start"]
+    if not starts or any(r.get("step") == "stop" for r in rows[starts[-1]:]):
+        return None
+    return rows[starts[-1]]
+
+
+def after_restart(networks=None, now: float = None) -> list:
+    """At the app's start (C2000): each network whose loop was running when its process ended
+    (a start with no stop after it) has the stop recorded, naming the restart, the last line's
+    time and that it does not start again by itself: a loop that resumed unattended would make
+    background AI calls and, in AUTO, act with no person present. ``[{network, last_at}]``."""
+    from modules.nsot import listref
+
+    out = []
+    for network in (listref.names() if networks is None else networks):
+        got = _read(network, LOG_FILE)
+        if got["state"] != "ok" or not ran_until_now(got["rows"]):
+            continue
+        last = got["rows"][-1].get("at") or "?"
+        say(network, "stop", f"stopped by {RESTART_ACTOR}: its last line was at {last} UTC; "
+                             "the loop does not start again by itself: start it on SDN › "
+                             "Responses", now, by=RESTART_ACTOR, last_at=last)
+        out.append({"network": network, "last_at": last})
+    return out
+
+
+def stopped_by_restart(network: str) -> dict:
+    """The stop the app's restart recorded on *network*, when it is the loop's latest event
+    (no start since), else None."""
+    got = _read(network, LOG_FILE)
+    rows = [r for r in got["rows"] if r.get("step") in ("start", "stop")]
+    if not rows or rows[-1].get("step") != "stop" or rows[-1].get("by") != RESTART_ACTOR:
+        return None
+    return rows[-1]
 
 
 def stop(network: str, *, actor: str) -> dict:
