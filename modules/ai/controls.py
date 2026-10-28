@@ -5,7 +5,10 @@ NSOT_GUI_BRIEF section 6, "AI controls"; the operator, 2026-10-25).
 templates/v2/_ai.html), whose hover names the task, its pinned model and its per-call cap. When
 hosted AI cannot answer (it is off, no key is set, or today's cap is reached), the control is
 drawn disabled, its input not fillable, with the reason in place and, for a viewer who may
-configure, a link to Settings › Installation, the AI (hosted) card. It is never hidden, and
+configure, a link to Settings › Installation, the AI (hosted) card. The provider's workspace
+usage limit, once the provider has refused for it (C2084, `provider_limit`), is one more such
+state, in the words every AI screen shares; the card's Test stays pressable then, since it is
+how an admin tells Mercury the limit was raised. It is never hidden, and
 never an error after the fact. The path beside it that needs no AI stays usable (the builder,
 the evidence pack, the intent editor, the card's Save, Replace… and Allow).
 
@@ -25,7 +28,7 @@ without the mark.
 """
 import logging
 
-from modules.ai import calls, gateway, profiles
+from modules.ai import calls, gateway, profiles, provider_limit
 
 log = logging.getLogger(__name__)
 
@@ -114,6 +117,11 @@ def _spent(day: str) -> dict:
     return calls.spent_usd(day)
 
 
+def _limit():
+    """The provider's workspace usage limit while it is held (`provider_limit.holding`)."""
+    return provider_limit.holding()
+
+
 def _today() -> str:
     # The gateway's day: its one home (calls.today, the stated boundary's midnight).
     return calls.today()
@@ -130,7 +138,10 @@ def mark_title(task: str) -> str:
 def readiness(task: str, today: str = None, spent=None) -> dict:
     """``{"ready", "kind", "reason", "task", "task_words", "model", "model_words",
     "per_call", "per_day", "title"}``: whether a call of *task* could be made now, and if
-    not, why in words. *kind* is "" when ready, else "ai_off", "no_key", "unreadable" or
+    not, why in words. *kind* is "" when ready, else "ai_off", "no_key", "workspace_limit"
+    (the provider's workspace usage limit held, C2084: *unavailable* is
+    `provider_limit.said`'s, which the reason's macro draws, the moment in the viewer's time
+    and in UTC; never for the AI card's Test, `provider_limit.RECHECKS`), "unreadable" or
     "day_cap" (the gateway's order). *spent* reads a UTC day's spend (the record's, unless a
     caller shares one read). A task no pin names raises KeyError."""
     pin = profiles.task(task)
@@ -146,7 +157,13 @@ def readiness(task: str, today: str = None, spent=None) -> dict:
     if not _key_set():
         return dict(out, kind="no_key", reason="no Anthropic API key is set: a person types "
                     "it on the AI (hosted) card")
-    spent = (spent or _spent)(today or _today())
+    # The provider's workspace usage limit (C2084), in the gateway's order and words; the AI
+    # card's Test stays pressable, since it is how an admin tells Mercury the limit was raised.
+    hold = _limit() if task not in provider_limit.RECHECKS else None
+    if hold:
+        said = provider_limit.said(hold)
+        return dict(out, kind=provider_limit.KIND, reason=said["words"], unavailable=said)
+    spent =(spent or _spent)(today or _today())
     if spent.get("state") == "unreadable":
         return dict(out, kind="unreadable", reason="the record of AI calls cannot be read "
                     f"({spent.get('error') or 'no reason given'}), so today's spend is unknown")

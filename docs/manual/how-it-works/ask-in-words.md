@@ -177,6 +177,16 @@ come from Prometheus; nothing is read from or sent to a device.
 - **Hosted AI is off, no key is set, or today's cap is reached:** the row is disabled before
   you can ask, with the reason; a call made as the state changed elsewhere is refused before
   anything is sent, saying the same.
+- **The provider's workspace usage limit is reached:** the provider refused a call because the
+  workspace's own usage limit, which an admin sets in the provider's console, is used up. The
+  row then says "AI is unavailable: the provider's workspace usage limit is reached, until
+  *the moment, in your time* (*the same moment in UTC*); an admin raises it in the provider's
+  console", disabled, and so does every other AI control. Until that moment {{product}}
+  refuses every AI call itself without asking the provider, so a press costs nothing and
+  waits for nothing. Nothing about your question was wrong. It lifts by itself at the moment
+  the provider named; sooner if an admin raises the limit in the provider's console and then
+  presses **Test** on the AI (hosted) card, which asks the provider again (see
+  [What AI is spending](getting-started#ai-spend)).
 - **No metric shares a word:** {{product}} answers itself, at no cost: name what to measure in
   a metric's words and which devices, start from a chip, or search the builder's Metric box.
 - **The answer ran past its length:** nothing is filled, the builder stays as you had it, and

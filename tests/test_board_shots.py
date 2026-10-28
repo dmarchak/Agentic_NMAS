@@ -399,6 +399,25 @@ def test_ai_spend(settings_ai, monkeypatch):
         assert write_settings({"ai_cap_usd_per_day": None})["ok"]
         _shoot("ai-chip-no-cap", "", lambda w: page, served,
                widths=((1440, 1.0), (390, 2.0)), settled=chip)
+        # C2084: the provider's workspace usage limit held (its refusal of 2026-10-28, the
+        # clock before its moment): the chip red, the panel's note and Needs attention's row,
+        # page shots only (no board draws the state).
+        from modules.ai import anthropic_adapter, provider_limit
+        before = datetime.datetime(2026, 10, 28, 12, tzinfo=datetime.timezone.utc).timestamp()
+        monkeypatch.setattr(provider_limit, "clock", lambda: before)
+        provider_limit.record(anthropic_adapter.WorkspaceLimit(
+            "HTTP 400", until="2026-11-01T00:00:00Z", status=400,
+            said="invalid_request_error: You have reached your specified workspace API usage "
+                 "limits. You will regain access on 2026-11-01 at 00:00 UTC."),
+            call_id="ai-shot", feature="explain")
+        _shoot("ai-chip-unavailable", "", lambda w: page, served,
+               widths=((1440, 1.0), (390, 2.0)), settled=chip)
+        _shoot("ai-spend-unavailable", "", lambda w: page, served,
+               widths=((1440, 1.0), (390, 2.0)), act=opened)
+        limit_row = "document.querySelector('[data-attention-row=\"ai_spend:workspace_limit\"]')"
+        _shoot("ai-attention-unavailable", "", lambda w: "/v2/", served,
+               widths=((1440, 1.0), (390, 2.0)), settled=limit_row)
+        assert provider_limit.clear(before + 1, call_id="ai-shot")
         monkeypatch.setattr(calls, "rows_since", lambda start: {
             "state": "unreadable", "rows": [], "error": "records database: connection refused"})
         _shoot("ai-spend-unreadable", "", lambda w: page, served,

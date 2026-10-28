@@ -17,7 +17,7 @@ desktop board at 1440 and 1280 beside the page; the phone board at 390 beside th
 Compared 2026-10-15. History's own page (heading, remote line) is board D's; the board's Code
 mode panel is today's Ask your own box, Code on the Mode switch.
 Templates compared: templates/v2/history_ask_metrics.html, templates/v2/_history_body.html, templates/v2/_history_ask_metrics.html, templates/v2/_history_ask_parts.html, templates/v2/_history_ask_head.html, templates/v2/_history_ask_words.html, templates/v2/_ai.html, templates/v2/_history_ask_chips.html
-Templates sha256: `4175c30e65762eb0990c3ca56954224907e0c7e7e91f7d2509e82c476d010899`
+Templates sha256: `5a73af74d1841cf3db99516bfec39a5a94bc521c49bdd445b35129a99850839c`
 
 Compared again 2026-10-15 (P7-03): `_history_body.html` gained a `data-concept` marker and one
 sentence inside a Baselines row's detail (the block drawing each baseline's Re-apply… link); this
@@ -221,6 +221,23 @@ The Ask in words row gains its log line (log: C1845: the masked-words note under
 row). The hash written again.
 Templates sha256 before: `165c2477d3c2b4b29b239e6d420d8c6337d234821c18fad25c863b6ce62b5e01`.
 
+Changed 2026-10-28 (C2084, the provider's workspace usage limit): `_ai.html`'s `reason` draws
+one more state of the Ask in words row, while the provider's workspace usage limit is held:
+"AI is unavailable: the provider's workspace usage limit is reached, until <the moment in the
+viewer's own date and time> (<the same in UTC>); an admin raises it in the provider's
+console.", the box and Fill the builder disabled, the AI card's link for a person who may
+configure (`_macros.html`'s new `unavailable` and `moment`). No board draws it. Every other
+state renders as before: the branch is taken only when the control's readiness carries the
+limit, and tests/ai_controls_check.py's ready, off, no key, day cap and unreadable states pass
+through this page's route unchanged. The state is drawn by tests/test_ai_nl_query.py's
+`test_ask_in_words_is_an_ai_control_and_the_builder_stays_usable` (the check's new
+`workspace_limit` state) and, in Firefox at TZ=America/Denver, by
+tests/test_ai_provider_limit.py's `test_in_a_browser_the_moment_is_the_viewers_own_time_with_utc_beside_it`
+("until Oct 31 18:00 MDT (1 November 2026 00:00 UTC)"), not shot. The Ask in words row gains
+its log line (log: C2084: the provider's workspace usage limit in an AI control's reason). The
+hash written again.
+Templates sha256 before: `4175c30e65762eb0990c3ca56954224907e0c7e7e91f7d2509e82c476d010899`.
+
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
 
@@ -228,7 +245,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 |---|---|---|---|
 | Tabs | Timeline, Query, Baselines, Authorisations; Query on | Timeline, Query, Baselines; Query on | **deviation** (log: E3 metrics builder: History's tabs) |
 | Head | "Ask your own ‹ back to the questions"; Source (Metrics, Logs) and Mode (Builder, Code) | the same, shared with F3; Metrics and Builder on | **same** |
-| Ask in words | 8.1's board (`AskWords.dc.html`): the row, busy, filled (model, cost, the call in History, the test run), a named day's midnight, a question back, Mercury's own answer with the chips, refused, hosted AI off | a question, Fill the builder busy on itself, "How does this work?"; the result's notice under it (saying whose midnight "today" began, when the range is today's); the AI mark; disabled with its reason (and the AI card's link) while hosted AI cannot answer; each notice the card's width, the model's id beside its name; not filled, the builder marked left from the previous question (Keep these choices, the query box outlined, Ask off until kept or changed) | **deviation** (log: 8.1 Ask in words: the notices); (log: History › Query: left from your previous question); (log: C1845: the masked-words note under a typed AI row) |
+| Ask in words | 8.1's board (`AskWords.dc.html`): the row, busy, filled (model, cost, the call in History, the test run), a named day's midnight, a question back, Mercury's own answer with the chips, refused, hosted AI off | a question, Fill the builder busy on itself, "How does this work?"; the result's notice under it (saying whose midnight "today" began, when the range is today's); the AI mark; disabled with its reason (and the AI card's link) while hosted AI cannot answer; each notice the card's width, the model's id beside its name; not filled, the builder marked left from the previous question (Keep these choices, the query box outlined, Ask off until kept or changed) | **deviation** (log: 8.1 Ask in words: the notices); (log: History › Query: left from your previous question); (log: C1845: the masked-words note under a typed AI row); (log: C2084: the provider's workspace usage limit in an AI control's reason) |
 | Start from | four chips, the one the choices match marked | the same four, each setting every choice; marked when the question is exactly its own; a chip whose metric Prometheus does not hold is drawn but no link | **same** |
 | What | search box, the matching metrics with help, "per interface · counter · bytes", the count read | the same box and list; each with Prometheus's help and its type and unit; the count over the range, when read; after Range; a metric chosen the range does not hold kept, marked "not seen in this range" | **deviation** (log: E3 metrics builder: the metric list); (log: History › Query: not seen in this range) |
 | Devices | + device, by role: core, all 9; "the values the device label holds now" | the same, from the metric's `device` and `role` labels over the range; a device chosen the range does not hold kept, marked "not seen in this range" (an interface the same) | **deviation** (log: E3 metrics builder: devices, roles and interfaces); (log: History › Query: not seen in this range) |

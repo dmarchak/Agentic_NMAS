@@ -11,7 +11,13 @@ and every call, sent or refused, is one `ai_calls` row. In order, before anythin
    when and the recorded reason (PHASE8_PLAN 13.1, 15.8). Off by default. **A background
    call's feature is on for its network** (rule 2, `background.admit`): off by default, else
    refused (`feature_off`).
-2. **A key is set** (`anthropic_api_key`, in the secrets store, typed by a person).
+2. **A key is set** (`anthropic_api_key`, in the secrets store, typed by a person). **The
+   provider's workspace usage limit is not held** (C2084, `provider_limit`): once the provider
+   refused a call because the workspace reached its usage limit, every later call is refused
+   here (`workspace_limit`), in the same words, without asking the provider, until the moment
+   it named (or `provider_limit.RECHECK_S` when it named none); a person's press of the AI
+   card's Test (`connection_check`, `provider_limit.rechecks`) still asks, and any answer
+   clears the hold.
 3. **The task** is one `profiles.TASKS` pins: its model, its prompt bound and its answer
    bound (the operator's ruling of 2026-10-25: pinned per task, never chosen at run time).
    **The prompt** is a registered, versioned file; **the schema** a registered StrictModel.
@@ -54,7 +60,8 @@ import re
 
 from pydantic import ValidationError
 
-from modules.ai import anthropic_adapter, background, calls, profiles, prompts, schemas, triggers
+from modules.ai import (anthropic_adapter, background, calls, profiles, prompts, provider_limit,
+                        schemas, triggers)
 
 log = logging.getLogger(__name__)
 
@@ -421,10 +428,23 @@ def counter(feature: str, *, actor: str, trigger: dict = None, count=None) -> Co
     key = "" if why else _api_key()
     if not why and not key:
         why = "no Anthropic API key is set"
+    if not why and not provider_limit.rechecks(feature, named["trigger"]["kind"]):
+        hold = provider_limit.holding()
+        if hold:
+            why = provider_limit.said(hold)["words"]
+            key = ""
     if not why and not pin:
         why = f"{feature!r} is not a task profiles.TASKS pins"
     return Counter(pin.get("model", ""), key, allowed=not why,
                    why_not=f"not counted: {why}" if why else "", count=count)
+
+
+def _limit_fields(hold: dict) -> dict:
+    """What a call's row keeps of the provider's workspace limit (C2084): when it was met, the
+    moment the provider named (or None), when Mercury asks again, and the provider's words."""
+    return {"limit": {"since": hold["since"], "until": hold.get("until"),
+                      "recheck_at": hold["recheck_at"], "provider": hold.get("said") or "",
+                      "call_id": hold.get("call_id") or ""}}
 
 
 def _text_of(reply_body: dict) -> str:
@@ -480,6 +500,13 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
     key = _api_key()
     if not key:
         return refuse("no_key", "no Anthropic API key is set (Settings: a person types it)")
+    # The provider's workspace usage limit, held from its refusal (C2084): refused here, in the
+    # same words, without asking the provider, but for the AI card's Test (the re-check).
+    if not provider_limit.rechecks(feature, named["trigger"]["kind"]):
+        hold = provider_limit.holding()
+        if hold:
+            return refuse(provider_limit.KIND, provider_limit.said(hold)["words"],
+                          **_limit_fields(hold))
     if not pin:
         return refuse("unknown_task", f"{feature!r} is not a task profiles.TASKS pins; known: "
                       f"{', '.join(sorted(profiles.TASKS))}")
@@ -687,12 +714,22 @@ def _capped_send(feature, row, body, model, max_tokens, schema_model, key, *, se
         return refuse(said.pop("kind"), said.pop("why"), **said)
     recorded = False
     try:
+        sent_at = provider_limit.clock()
         try:
             reply = (send or anthropic_adapter.send)(body, key)
+        except anthropic_adapter.WorkspaceLimit as exc:
+            # The workspace's usage limit (C2084): held, so every later call is refused here
+            # without asking the provider, and said in the words every screen uses.
+            hold = provider_limit.record(exc, call_id=row["id"], feature=feature)
+            out = refuse(exc.kind, provider_limit.said(hold)["words"], attempts=exc.attempts,
+                         ratelimit=exc.headers, **_limit_fields(hold))
         except anthropic_adapter.AdapterError as exc:
             out = refuse(exc.kind, str(exc), attempts=exc.attempts, ratelimit=exc.headers)
         else:
             out = _received(row, reply, model, max_tokens, schema_model)
+            # The provider answered, so its workspace limit (if one was held from before this
+            # call was sent) no longer holds (C2084).
+            provider_limit.clear(sent_at, call_id=row["id"])
         recorded = bool(out.get("recorded"))
         return out
     except BaseException as exc:

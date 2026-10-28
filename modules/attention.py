@@ -229,6 +229,15 @@ ROW_KINDS = {
                                     "open the spend panel to review its trigger, caps and "
                                     "estimate against actual; turn it off, or turn it on again "
                                     "in Settings › AI with a new estimate"),
+    # C2084: the provider refused for the workspace's own usage limit, so every AI call is
+    # refused until the moment it named.
+    ("ai_spend", "workspace_limit"): ("the provider refused a call because its workspace "
+                                      "reached the usage limit its admin set, so Mercury "
+                                      "refuses every AI call until the moment the provider "
+                                      "named",
+                                      "an admin raises the workspace's usage limit in the "
+                                      "provider's console, then presses Test on the AI "
+                                      "(hosted) card; or wait until that moment"),
 }
 
 #: The ways a row leaves the page (the operator, 2026-10-02): the CONDITION RESOLVING (the
@@ -394,6 +403,11 @@ CLEARS = {
                                     "its estimate, or an admin turns it on again with a new "
                                     "estimate, or it is turned off (by an admin, or by its "
                                     "approval's end)"),
+    ("ai_spend", "workspace_limit"): (("resolves", "time"), "the moment the provider named "
+                                      "passes (when it named none, 10 minutes after its "
+                                      "refusal, when the next call asks again), or a call is "
+                                      "answered (the AI card's Test, after an admin raised the "
+                                      "limit), or an admin turns hosted AI off"),
 }
 
 #: The kinds a person acknowledges HERE, with "Acknowledge…" on the row (modules/
@@ -4094,6 +4108,41 @@ def _ai_over_estimate_row(f: dict):
                 "open": "ai_spend_panel", "href": AI_SETTINGS_HREF})
 
 
+#: Where the AI card's Test is, which asks the provider again after an admin raised its limit.
+AI_CARD_HREF = "/v2/settings/installation?tab=connections#card-ai"
+
+
+def _ai_workspace_limit_row():
+    """The provider's workspace usage limit while it is held (C2084, `provider_limit`): one
+    WORKSPACE_LIMIT row (danger) naming the provider's words and the moment, clearing at it by
+    time, or when a call is answered (the hold cleared); else None."""
+    from modules.ai import provider_limit
+
+    hold = provider_limit.holding()
+    if not hold:
+        return None
+    said = provider_limit.said(hold)
+    when = (f"until {said['until']['utc']} UTC" if said["until"] else
+            f"until {said['recheck']['utc']} UTC, when Mercury asks the provider again (it "
+            "named no moment)")
+    return row(
+        source="ai_spend", kind="workspace_limit", key="workspace_limit", level="danger",
+        since=_ts(hold["since"]), clears_at=_ts(hold["recheck_at"]),
+        what=said["words"],
+        cause=(f"The provider refused call {hold.get('call_id') or '(not recorded)'} at "
+               f"{hold['since']}"
+               + (f" (HTTP {hold['status']})" if hold.get("status") else "")
+               + f": “{said['provider']}”. Mercury refuses every AI call {when}, without "
+               "asking the provider: people's presses and background features alike; the AI "
+               "(hosted) card's Test still asks, and an answer clears it"),
+        operands={"since": hold["since"], "until": hold.get("until"),
+                  "recheck_at": hold["recheck_at"], "provider": said["provider"]},
+        action={"label": ("An admin raises the workspace's usage limit in the provider's "
+                          "console, then presses Test on Settings › Installation › Connections, "
+                          f"the AI (hosted) card, which asks the provider again; or wait {when}"),
+                "open": "ai_spend_panel", "href": AI_CARD_HREF})
+
+
 def ai_spend_source(now=None) -> dict:
     """AI spend where someone should act (PHASE8_PLAN 18.3 rules 4 and 10c; there is no
     standing spend row):
@@ -4106,6 +4155,10 @@ def ai_spend_source(now=None) -> dict:
       reached this period, else one WARNING row at 50% (warning) or 80% (danger) of its nearer
       cap; and, apart from those, one OVER_ESTIMATE row while it runs at or above 150% of its
       estimate (`_ai_over_estimate_row`).
+
+    - while AI is on and the provider's workspace usage limit is held (C2084,
+      `_ai_workspace_limit_row`): one WORKSPACE_LIMIT row (danger), the provider's words and
+      the moment, clearing at it or when a call is answered.
 
     Every row opens the spend panel. The read is bounded (CLAUDE.md, enterprise scale): with a
     feature on, the month's window of the record of AI calls, today's spend summed from it;
@@ -4126,11 +4179,18 @@ def ai_spend_source(now=None) -> dict:
                   "cap was not judged" if not hosted else
                   "no day cap is set (an admin chose no cap), so today's spend was not judged "
                   "against one")
+    # The provider's workspace usage limit (C2084), while AI is on: with AI off no call is made
+    # whatever the provider would answer, and the chip says "AI off".
+    limit = _ai_workspace_limit_row() if hosted else None
+    limit_rows = [limit] if limit else []
+    limit_said = ("the provider's workspace usage limit is held" if limit else
+                  "no provider workspace usage limit is held" if hosted else
+                  "AI is off, so the provider's workspace usage limit was not read")
     if not on and why_no_day:
         return source_result("ai_spend", label, read_at=started,
-                             took_ms=int((time.time() - started) * 1000),
+                             took_ms=int((time.time() - started) * 1000), rows=limit_rows,
                              checked=(f"no background AI feature is on for any network, and "
-                                      f"{why_no_day}: no spend was read"))
+                                      f"{why_no_day}: no spend was read; {limit_said}"))
     zone = calls.boundary()
     today = calls.today(now, zone)
     got = (calls.rows_since(spend.month_start(today, zone)) if on else
@@ -4140,8 +4200,8 @@ def ai_spend_source(now=None) -> dict:
                              took_ms=int((time.time() - started) * 1000),
                              error=f"the record of AI calls could not be read: {got['error']}")
     usd = spend.day_usd(got["rows"], today, zone) if on else float(got["usd"] or 0.0)
-    rows = [] if why_no_day else _ai_day_cap_rows(usd, cap, today, zone)
-    day_said = why_no_day or (f"today's spend ${usd:.2f} against the day cap ${cap:.2f}: "
+    rows = limit_rows + ([] if why_no_day else _ai_day_cap_rows(usd, cap, today, zone))
+    day_said =why_no_day or (f"today's spend ${usd:.2f} against the day cap ${cap:.2f}: "
                               f"{len(rows)} row(s)")
     for f in (spend.feature_summaries(got["rows"], today, zone, now) if on else []):
         over = _ai_over_estimate_row(f)
@@ -4185,12 +4245,13 @@ def ai_spend_source(now=None) -> dict:
             action={"label": (f"Read {name}'s spend on {net}; leave it, turn it off, or "
                               f"change its {w} cap in Settings › AI"),
                     "open": "ai_spend_panel", "href": AI_SETTINGS_HREF}))
-    features = len([r for r in rows if not r["kind"].startswith("day_")])
+    features = len([r for r in rows if not r["kind"].startswith("day_")
+                    and r["kind"] != "workspace_limit"])
     return source_result("ai_spend", label, read_at=started,
                          took_ms=int((time.time() - started) * 1000), rows=rows,
                          checked=(f"{len(on)} background feature switch(es) on, against their "
                                   f"day and month caps and estimates: {features} near or at a "
-                                  f"cap or over its estimate; {day_said}"))
+                                  f"cap or over its estimate; {day_said}; {limit_said}"))
 
 
 SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding_source,

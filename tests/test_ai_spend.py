@@ -433,7 +433,8 @@ def test_needs_attention_reads_nothing_while_no_feature_is_on(bg, monkeypatch):
     assert got["state"] == "read" and got["rows"] == []
     assert got["checked"] == ("no background AI feature is on for any network, and AI is off "
                               "(hosted AI is not allowed, or no provider key is set), so the "
-                              "day cap was not judged: no spend was read")
+                              "day cap was not judged: no spend was read; AI is off, so the "
+                              "provider's workspace usage limit was not read")
 
 
 def test_a_warning_row_names_what_is_wrong_the_action_and_how_it_clears(bg):
@@ -557,7 +558,8 @@ def test_with_no_feature_on_only_todays_window_is_read_once(chip_world, monkeypa
     monkeypatch.setattr(calls, "rows_since", lambda start: asked.append(start) or real(start))
     got = attention.ai_spend_source()
     assert asked == [calls.day_start(calls.today())]
-    assert got["checked"].endswith("today's spend $0.00 against the day cap $1.50: 0 row(s)")
+    assert got["checked"].endswith("today's spend $0.00 against the day cap $1.50: 0 row(s); "
+                                   "no provider workspace usage limit is held")
 
 
 def test_with_a_feature_on_the_months_window_is_read_once_and_today_summed_from_it(

@@ -202,6 +202,17 @@ which opens the top bar's spend panel in place on the page you are on (see
   $0.1200)"), its average over the complete days since it was turned on. It clears when that
   average falls under 150%, when an admin turns it on again with a new estimate, or when it is
   turned off.
+- **The provider's workspace usage limit**, while hosted AI is on: "AI is unavailable: the
+  provider's workspace usage limit is reached, until 1 November 2026 00:00 UTC; an admin
+  raises it in the provider's console", critical. Its cause quotes the provider's refusal
+  (which call, when, and the provider's own words) and says every AI call is refused until
+  then without asking the provider, people's presses and background features alike. Its
+  action: an admin raises the workspace's usage limit in the provider's console, then presses
+  **Test** on Settings › Installation › Connections, the AI (hosted) card (its **Open…**),
+  which asks the provider again; or wait until the moment. It clears at that moment, or when
+  a call is answered (that Test, after the limit was raised), or when hosted AI is turned off.
+  When the provider named no moment, it clears 10 minutes after the refusal, when the next
+  call asks the provider again.
 
 A feature's rows also carry **Open…** to Settings › AI, where its caps change and it is turned
 on again.

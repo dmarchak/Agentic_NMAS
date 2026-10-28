@@ -9,7 +9,15 @@ Its contract with the gateway: `send(body, api_key)` returns a `Reply` or raises
   waiting what `retry-after` says (seconds), else 1, 2, 4 s; a wait longer than
   `MAX_WAIT_S` is not slept but raised, naming it (a person is waiting on the call);
 - `KeyRefused` (401, 403): the key, never retried;
-- `BadRequest` (400, 404, 413): the request, never retried;
+- `WorkspaceLimit` (C2084): the provider's workspace has reached the usage limit its admin
+  set. The provider answers HTTP 400, ``invalid_request_error``, "You have reached your
+  specified workspace API usage limits. You will regain access on 2026-11-01 at 00:00 UTC."
+  (read 2026-10-28, every call refused). Recognised by the error's type AND the phrase
+  ``usage limits`` in its message (`workspace_limit`), whatever the status, never by the
+  status alone; it carries the moment the message names as ``until``
+  (``YYYY-MM-DDTHH:MM:SSZ``), or None when it names none. Never retried: it is not transient,
+  and no request is answered before that moment unless an admin raises the limit;
+- `BadRequest` (400, 404, 413, but the workspace's limit): the request, never retried;
 - `ProviderDown` (any other status, a connection error, a timeout): never retried here.
 
 Never logs or returns the key, the request or the response body (the gateway records the
@@ -29,6 +37,7 @@ count. The same failures as a send, each its own kind, but none is retried: a co
 fails is the gateway's to replace by its estimate, said.
 """
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 
@@ -86,6 +95,70 @@ class BadRequest(AdapterError):
 
 class ProviderDown(AdapterError):
     kind = "provider_down"
+
+
+class WorkspaceLimit(AdapterError):
+    """The provider's workspace reached its usage limit (C2084): *until* is the moment the
+    provider says access returns (``YYYY-MM-DDTHH:MM:SSZ``), or None when it names none;
+    *said* the provider's own message, masked and cut (`_error_words`)."""
+    kind = "workspace_limit"
+
+    def __init__(self, message: str, *, until=None, said: str = "", **kw):
+        super().__init__(message, **kw)
+        self.until = until
+        self.said = said
+
+
+#: The provider's error type for a workspace's usage limit, and the phrase its message holds
+#: (the module's docstring: both are required, so another 400 is never read as the limit).
+LIMIT_TYPE = "invalid_request_error"
+LIMIT_PHRASE = "usage limits"
+#: The moment the message names: "regain access on 2026-11-01 at 00:00 UTC" (seconds, when
+#: given, kept).
+_REGAIN = re.compile(r"regain access on (\d{4}-\d{2}-\d{2}) at (\d{2}:\d{2}(?::\d{2})?) UTC",
+                     re.I)
+
+
+def regain_moment(message: str):
+    """The moment *message* says access returns, as ``YYYY-MM-DDTHH:MM:SSZ``, or None when it
+    names none (or one that is not a date and time)."""
+    import datetime
+
+    found = _REGAIN.search(message or "")
+    if not found:
+        return None
+    hm = found.group(2) if found.group(2).count(":") == 2 else found.group(2) + ":00"
+    try:
+        at = datetime.datetime.strptime(f"{found.group(1)} {hm}", "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None
+    return at.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def workspace_limit(resp):
+    """``{"until", "message"}`` when *resp* is the provider refusing because the workspace's
+    usage limit is reached (its error's type `LIMIT_TYPE` and `LIMIT_PHRASE` in its message),
+    else None. The message is the provider's own, unmasked here: only its moment is read from
+    it; what is kept is `_error_words`'."""
+    try:
+        err = (resp.json() or {}).get("error") or {}
+    except (ValueError, AttributeError):
+        return None
+    if not isinstance(err, dict) or err.get("type") != LIMIT_TYPE:
+        return None
+    message = str(err.get("message") or "")
+    if LIMIT_PHRASE not in message.lower():
+        return None
+    return {"until": regain_moment(message), "message": message}
+
+
+def _limit_error(resp, status, words, attempts, kept):
+    """The `WorkspaceLimit` *resp* is, or None (`workspace_limit`)."""
+    got = workspace_limit(resp)
+    if got is None:
+        return None
+    return WorkspaceLimit(f"HTTP {status}: {words}", until=got["until"], said=words,
+                          status=status, attempts=attempts, headers=kept)
 
 
 @dataclass
@@ -156,6 +229,9 @@ def send(body: dict, api_key: str, *, session=None, sleep=time.sleep, clock=time
             return Reply(status=status, body=parsed, headers=kept, attempts=attempt,
                          latency_s=clock() - started)
         words = _error_words(resp)
+        limited = _limit_error(resp, status, words, attempt, kept)
+        if limited is not None:
+            raise limited
         if status in (429, 529):
             cls = RateLimited if status == 429 else Overloaded
             wait = _retry_after(resp.headers)
@@ -224,6 +300,9 @@ def count_tokens(body: dict, api_key: str, *, session=None, clock=time.monotonic
                                headers=kept)
         return Count(tokens=got, headers=kept, latency_s=clock() - started)
     words = _error_words(resp)
+    limited = _limit_error(resp, status, words, 1, kept)
+    if limited is not None:
+        raise limited
     cls = {429: RateLimited, 529: Overloaded, 401: KeyRefused, 403: KeyRefused,
            400: BadRequest, 404: BadRequest, 413: BadRequest}.get(status, ProviderDown)
     raise cls(f"HTTP {status}: {words}", status=status, headers=kept)

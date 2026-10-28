@@ -133,6 +133,8 @@ class TestARowThatClearsByTime:
                          ("ai_spend", "warning"), ("ai_spend", "stopped"),
                          # The day the installation's day cap counts ends (C2056).
                          ("ai_spend", "day_warning"), ("ai_spend", "day_reached"),
+                         # The moment the provider named for its workspace limit (C2084).
+                         ("ai_spend", "workspace_limit"),
                          # 24 hours after the restart that stopped an SDN loop (C2000).
                          ("sdn_loop", "restart_stopped"),
                          # A lost response's hard timeout, when it would have expired (C2018).

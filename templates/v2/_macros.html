@@ -110,6 +110,19 @@
 resets <time class="clock" datetime="{{ r.at }}" data-clock title="the cap's day begins at midnight {{ r.zone }} (Settings › Installation, AI (hosted))">{{ r.zone_hm }} {{ r.zone }}</time> ({{ r.utc }} UTC)
 {%- endmacro %}
 
+{#- A moment days away, as `resets` draws the day's: the viewer's own date and time (drawn in
+    the browser, nmas_v2.js `drawClock`, `data-clock="date"`), UTC's beside it. *m* is
+    `provider_limit.moment`'s ``{"at", "utc"}`` (C2084). -#}
+{% macro moment(m) -%}
+<time class="clock" datetime="{{ m.at }}" data-clock="date" title="{{ m.utc }} UTC">{{ m.utc }} UTC</time> ({{ m.utc }} UTC)
+{%- endmacro %}
+
+{#- The provider's workspace usage limit, in the words every AI screen shares (C2084): *u* is
+    `provider_limit.said`'s. -#}
+{% macro unavailable(u) -%}
+{{ u.lead }}, {% if u.until %}until {{ moment(u.until) }}{% else %}and it named no time access returns (Mercury asks it again from {{ moment(u.recheck) }}){% endif %}; {{ u.tail }}
+{%- endmacro %}
+
 {% macro stamp(iso, words='', note='') -%}
 {%- if iso %}<time class="stamp" datetime="{{ iso }}" title="{{ iso }}{{ ' · ' ~ note if note }}" data-age="{{ iso }}">{{ words or (iso | age_words) }}</time>{% else %}<span class="stamp">not recorded</span>{% endif -%}
 {%- endmacro %}

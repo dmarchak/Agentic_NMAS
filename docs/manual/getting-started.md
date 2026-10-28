@@ -104,6 +104,19 @@ so what AI costs is seen where you work, not only in Settings. It is never blank
   Hovering it says which. Nothing is sent to a model.
 - **"AI spend unknown"** (red): the record of AI calls cannot be read. Today's spend is then
   unknown, never drawn as $0, and every AI call is refused until the record can be read.
+- **"AI unavailable until 1 Nov 00:00 UTC"** (red): the provider refused a call because the
+  workspace's own usage limit is reached. That limit is not Mercury's day cap: an admin sets
+  it in the provider's console, and the provider says when access returns ("You will regain
+  access on 2026-11-01 at 00:00 UTC"). Until then every AI call is refused, people's presses
+  and background features alike, in the words "AI is unavailable: the provider's workspace
+  usage limit is reached, until *the moment, in your time with UTC beside it*; an admin raises
+  it in the provider's console". {{product}} refuses them itself and does not ask the provider
+  each time, across all its processes. Hovering the chip shows the provider's own words. It
+  lifts at the moment the provider named, when the next call asks the provider again. To lift
+  it sooner, an admin raises the limit in the provider's console, then presses **Test** on
+  Settings › Installation › Connections, the AI (hosted) card. That one press still asks the
+  provider, and any answer clears the limit for every feature. When the provider names no
+  moment, {{product}} asks again after 10 minutes.
 
 At phone width the chip keeps today's figure and its colour; the number of background features
 on moves into the panel.
@@ -140,9 +153,11 @@ process, so they appear at your next page load or the next call recorded here.
 
 **Needs attention raises a row only when someone should act:** today's spend at 50% and 80% of
 the day cap, and once it is reached; a background feature at 50% or 80% of its own caps, or
-stopped by one; and a background feature running at 150% or more of the estimate it was
-approved at. Each names both amounts and has **Open the spend panel**, which opens this panel
-in place (see [Needs attention](needs-attention#sources)). Mercury never raises a cap.
+stopped by one; a background feature running at 150% or more of the estimate it was
+approved at; and the provider's workspace usage limit, while it holds. Each names both
+amounts (the limit's row, the provider's words and the moment) and has **Open the spend
+panel**, which opens this panel in place (see [Needs attention](needs-attention#sources)).
+Mercury never raises a cap.
 
 Who sees the amounts is not a choice yet: everyone who can make AI calls sees them.
 

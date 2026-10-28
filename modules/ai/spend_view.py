@@ -58,10 +58,20 @@ def _why_off() -> str:
             "› Installation › Connections, the AI (hosted) card.")
 
 
+def _unavailable() -> str:
+    """The provider's workspace usage limit while it is held (C2084), in the words every AI
+    screen shares, as the panel's note above what was spent; "" when none is held."""
+    from modules.ai import provider_limit
+
+    hold = provider_limit.holding()
+    return f"{provider_limit.said(hold)['words']}." if hold else ""
+
+
 def chip(now=None) -> dict:
     """The chip, as drawn: ``{"state", "level", "text", "short", "label", "title", "no_cap"}``.
-    *text* follows the chip's "AI" mark ("$0.42 today · 0 background on", "AI off", "AI spend
-    unknown"); *short* is its phone-width form ("$0.42", "off", "unknown"), which moves the
+    *text* follows the chip's "AI" mark ("$0.42 today · 0 background on", "AI off",
+    "unavailable until 1 Nov 00:00 UTC" (C2084), "AI spend unknown"); *short* is its
+    phone-width form ("$0.42", "off", "unavailable", "unknown"), which moves the
     background count into the panel; *label* is `spend.chip`'s words whole; *title* the
     figure's provenance, on hover. Never blank: a read that raises is drawn as unknown."""
     from modules.ai import calls, profiles, spend
@@ -79,6 +89,14 @@ def chip(now=None) -> dict:
     if c["state"] == "off":
         return dict(out, text="AI off", short="off",
                     title=_why_off() + " Nothing is sent to a model.")
+    if c["state"] == "unavailable":
+        # The provider's workspace usage limit (C2084): its words, the provider's own, and
+        # what lifts it, on hover.
+        u = c["unavailable"]
+        return dict(out, text=c["words"][len("AI "):], short="unavailable", title=(
+            f"{u['words']}. The provider refused a call: “{u['provider']}”. Until then "
+            "Mercury refuses every AI call itself, without asking the provider; the AI "
+            "(hosted) card's Test still asks, and any answer clears it."))
     if c["state"] == "unreadable":
         return dict(out, text="AI spend unknown", short="unknown", title=(
             f"The record of AI calls could not be read ({c.get('error') or 'no reason given'}), "
@@ -132,12 +150,13 @@ def panel(viewer: str = "", now=None) -> dict:
     """The spend panel, as drawn (board AI2), from `spend.panel`: ``{"state", "hosted", ...}``.
     *state* "ok", or "unreadable" with *error* and the background features on (each with Turn
     off: turning a feature off needs no spend figure). *hosted* is "" while hosted AI is
-    allowed and a key is set, else why AI is off; the panel still draws what was spent."""
+    allowed, a key is set and the provider's workspace usage limit is not held, else why AI is
+    off, or unavailable until when (C2084); the panel still draws what was spent."""
     from modules.ai import background, profiles, spend
 
     now = now or datetime.datetime.now(datetime.timezone.utc)
-    hosted = _why_off() if _is_off() else ""
-    base = {"hosted": hosted, "prices_as_of": profiles.PRICES_AS_OF,
+    hosted = _why_off() if _is_off() else _unavailable()
+    base ={"hosted": hosted, "prices_as_of": profiles.PRICES_AS_OF,
             "settings_href": SETTINGS_AI_HREF}
     try:
         p = spend.panel(viewer, now=now)

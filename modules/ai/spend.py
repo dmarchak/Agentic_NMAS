@@ -157,7 +157,9 @@ def day_usd(rows, day: str, zone: str) -> float:
 def chip(now=None) -> dict:
     """The toolbar chip's answer (rule 10a), read from today's rows alone: ``{"state", "words",
     "level", "usd_today", "day_cap", "no_cap", "background_on", "error"}``. *state* is "off"
-    (hosted AI not allowed, or no key: "AI off"), "unreadable" (the record cannot be read: the
+    (hosted AI not allowed, or no key: "AI off"), "unavailable" (the provider's workspace
+    usage limit is held, C2084: "AI unavailable until 1 Nov 00:00 UTC", red, with
+    *unavailable*, `provider_limit.said`'s), "unreadable" (the record cannot be read: the
     chip says so, never blank and never $0), or "on" ("AI $X today · N background on");
     *level* neutral, amber at 50% and red at 80% of the day cap (neutral with no cap)."""
     from modules.ai import background, gateway
@@ -167,6 +169,15 @@ def chip(now=None) -> dict:
     base["no_cap"] = base["day_cap"] is None
     if not hosted_on():
         return dict(base, state="off", words="AI off", level="neutral")
+    from modules.ai import provider_limit
+
+    hold = provider_limit.holding()
+    if hold:
+        # The provider's workspace usage limit (C2084): every AI call is refused until its
+        # moment, whatever today's spend, so the chip says that, in red.
+        said = provider_limit.said(hold)
+        return dict(base, state="unavailable", level="red", words=said["short"],
+                    unavailable=said)
     today = calls.today(now)
     spent = calls.spent_usd(today)
     if spent["state"] == "unreadable":

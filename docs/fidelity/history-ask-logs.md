@@ -17,7 +17,7 @@ Compared again 2026-10-15: each `<details>` keyed (`data-keep`, C472) so a redra
 Compared again 2026-10-15 (board E3): the go links, the query box, the range chips and picker, the actions and the three states moved into `_history_ask_parts.html`, which the metrics builder shares (the rendered page the same but for whitespace, every state rendered before and after and compared); the head's Metrics switch now opens the metrics builder, and Code mode's Builder is a link. The shots at 1440, 1280 and 390 retaken; nothing drawn moved. Two fixes found on the way, neither a region's verdict: the bounds line says no log store is configured where none is (it raised an error page before, reading Loki's unread limits), and the heartbeat stage writes the marker as an RE2 literal, `NMAS-HEARTBEAT` (Python's escape wrote `NMAS\\-HEARTBEAT`, the same lines matched).
 Compared again 2026-10-15 (C818, C819; the operator's decisions of that day): Reveal… built as the board draws it, and Edit as code from Counts ending in Code mode's chart. The page shot at 1440, 1280 and 390 as before, and two more states beside the board's Lines view: `history-ask-logs-reveal-ask-page-<width>` (the box open with a reason) and `history-ask-logs-revealed-page-<width>` (the line revealed), at 1440 and 390, fed by the lines capture with one planted secret-bearing line (tests/test_log_reveal.py). Each masked value is now marked as the board marks it; the bounds line says revealing is recorded, as the board's does.
 Templates compared: templates/v2/history_ask_logs.html, templates/v2/_history_body.html, templates/v2/_history_ask_logs.html, templates/v2/_history_ask_head.html, templates/v2/_history_ask_parts.html, templates/v2/_history_ask_words.html, templates/v2/_ai.html
-Templates sha256: `4365c6787769e4ffc4eef46ac0356c5d9342cb5f97de3f7186fd7b5ee20737fd`
+Templates sha256: `bacabda49a5d8e5c31d7cf505d8b7b5c79f84084c3e69f94dd6d29e2924bc311`
 
 Compared again 2026-10-15 (P7-03): `_history_body.html` gained a `data-concept` marker and one
 sentence inside a Baselines row's detail (the block drawing each baseline's Re-apply… link); this
@@ -199,6 +199,19 @@ not shot. The Ask in words row gains its log line (log: C1845: the masked-words 
 typed AI row). The hash written again.
 Templates sha256 before: `bdce9d617ea643c278ed6bf9650d15069714dba64923c2afd0fd303d8668d8a6`.
 
+Changed 2026-10-28 (C2084, the provider's workspace usage limit): `_ai.html`'s `reason` draws
+one more state of the Ask in words row, while the provider's workspace usage limit is held:
+"AI is unavailable: the provider's workspace usage limit is reached, until <the moment in the
+viewer's own date and time> (<the same in UTC>); an admin raises it in the provider's
+console.", the box and Fill the builder disabled, the AI card's link for a person who may
+configure. No board draws it. Every other state renders as before (the branch is taken only
+when the control's readiness carries the limit); the state is drawn through this page's route
+by tests/test_ai_nl_logs.py's
+`test_ask_in_words_on_the_logs_builder_is_an_ai_control_and_the_builder_stays_usable` (the
+check's new `workspace_limit` state), not shot. The Ask in words row gains its log line (log:
+C2084: the provider's workspace usage limit in an AI control's reason). The hash written again.
+Templates sha256 before: `4365c6787769e4ffc4eef46ac0356c5d9342cb5f97de3f7186fd7b5ee20737fd`.
+
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
 
@@ -206,7 +219,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 |---|---|---|---|
 | Tabs | Timeline, Query, Baselines, Authorisations; Query on | Timeline, Query, Baselines; Query on | **deviation** (log: F3 logs builder: History's tabs) |
 | Head | "Ask your own ‹ back to the questions"; Source (Metrics, Logs) and Mode (Builder, Code) switches | the same; Metrics opens the metrics builder (E3, shared head) | **same** |
-| Ask in words | 8.1's board (`AskWords.dc.html`), its logs state: the row, its example a logs question, filled (model, cost, the call in History, the lines the test run matches) | a question, Fill the builder busy on itself, "How does this work?"; the result's notice under it; the AI mark; disabled with its reason (and the AI card's link) while hosted AI cannot answer; each notice the card's width, the model's id beside its name; not filled, the builder marked left from the previous question (Keep these choices, the query box outlined, Ask off until kept or changed) | **deviation** (log: 8.1 Ask in words: the notices); (log: History › Query: left from your previous question); (log: C1845: the masked-words note under a typed AI row) |
+| Ask in words | 8.1's board (`AskWords.dc.html`), its logs state: the row, its example a logs question, filled (model, cost, the call in History, the lines the test run matches) | a question, Fill the builder busy on itself, "How does this work?"; the result's notice under it; the AI mark; disabled with its reason (and the AI card's link) while hosted AI cannot answer; each notice the card's width, the model's id beside its name; not filled, the builder marked left from the previous question (Keep these choices, the query box outlined, Ask off until kept or changed) | **deviation** (log: 8.1 Ask in words: the notices); (log: History › Query: left from your previous question); (log: C1845: the masked-words note under a typed AI row); (log: C2084: the provider's workspace usage limit in an AI control's reason) |
 | Start from | four chips, the one the choices match marked | the same four, each setting every choice; marked when the choices are exactly its own | **same** |
 | Kind | syslog, SNMP traps, both; the job names and when read in the hint | the `job` label's values over the range as switches (one or more) and every job; how many and when read in the hint; after Range; a kind chosen the range does not hold kept on, marked "not seen in this range" | **deviation** (log: F3 logs builder: the Kind row); (log: History › Query: not seen in this range) |
 | Devices | chosen chips with ×, + device, by role, all N; "by the device label, never a regex" | the same; + device asks a name from the values Loki holds; the hint says label or line, with the label's first line; read for the kinds chosen; a device chosen the range does not hold kept, marked "not seen in this range" | **deviation** (log: F3 logs builder: devices before the label began); (log: History › Query: not seen in this range) |

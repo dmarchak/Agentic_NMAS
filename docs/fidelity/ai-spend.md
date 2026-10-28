@@ -31,8 +31,19 @@ cap: the 53% warning row, its Open the spend panel pressed and the panel open ov
 read beside `ai-spend-board-1440`'s Needs attention region; the other shots taken again, nothing
 moved. The region split in two below: the AI spend rows (a deviation) and an approval expiring
 (still later, C1953's).
+Compared again 2026-10-28 ~15:0x UTC for C2084 (the provider's workspace usage limit, which no
+board draws): `spend_view.py` gained the chip's state `unavailable` (red, "AI unavailable until
+1 Nov 00:00 UTC", "unavailable" at phone width, its hover the shared words, the provider's own
+and what lifts it) and the panel's note above what was spent (`hosted`, the shared words), and
+`_ai_chip.html` only its comment. New page shots: `ai-chip-unavailable-page-1440` and `-390`,
+`ai-spend-unavailable-page-1440` and `-390` (the panel opened, its note), and
+`ai-attention-unavailable-page-1440` and `-390` (Needs attention's row), the hold recorded as
+the provider's refusal of 2026-10-28 at a clock before its moment, then cleared; the chip fits
+in the bar at 1440 beside the integrations strip as the 80% chip does. The other shots taken
+again, nothing moved. Three rows added below, each a deviation.
 Templates compared: templates/v2/_ai_chip.html, templates/v2/_ai_spend.html, modules/ai/spend_view.py
-Templates sha256: `e7e4b2ca297a7d871ebdbfae9868e786dfa8d819838f864a841b4d75b5ec7476`
+Templates sha256: `af8a4277d158a319a117a571e849cb4fa1cf745f9ef9b2baf22d634f87f43652`
+Templates sha256 before: `e7e4b2ca297a7d871ebdbfae9868e786dfa8d819838f864a841b4d75b5ec7476`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).
@@ -64,3 +75,6 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | The panel at phone width (AI1 case 8) | full width beneath the bar | the screen's width under the bar at 860 px and under, scrolling within | **same** |
 | Needs attention: the AI spend rows (AI2's second region) | "AI spend is at 52% of the day cap" (warning) and "at 82%" (critical), each with both amounts and Open the spend panel, clearing at the day's reset (the 50% one "or when acknowledged"); a feature stopped by its day cap, with Settings › AI; a feature "running at 367% of the estimate it was approved at" with both amounts a day, with Review, clearing under 150%, when accepted again or turned off | "AI spend is at 53% of the day cap ($0.80 of $1.50)" (warning from 50%, critical from 80%: `spend.WARN_AT`, the chip's), its cause both amounts to four places, since midnight in the cap's zone, and what happens at the cap; "AI spend reached the day cap ($1.50 of $1.50)" (critical) at or over it; "<feature> on <network> is running at 150% of the estimate it was approved at ($0.1500 a day against $0.1000)" (warning, from `spend.OVER_ESTIMATE_AT`); each feature's 50%, 80% and stopped rows as before; every one with Open the spend panel (in place, the page unmoved), a feature's with Settings › AI's Open… beside it; the day's rows clear at the cap's midnight or when the cap or hosted AI moves them, never by an acknowledgement | **deviation** (log: Needs attention's AI spend rows built: no acknowledgement, a cap-reached row, and Settings › AI beside the panel on a feature's rows) |
 | Needs attention: an approval expiring (AI2's second region) | "The approval of SDN classification on Lab expires in 3 days", with Settings › AI | not built: C1953's (an approval's end three days ahead) | **later** (C1953) |
+| The provider's workspace usage limit: the chip (C2084) | not drawn (no case of AI1) | red, "AI unavailable until 1 Nov 00:00 UTC" ("unavailable" at phone width), its moment in UTC; on hover the words every AI screen shares, the provider's own words and that the AI (hosted) card's Test still asks; AI off still "AI off" | **deviation** (log: C2084: the provider's workspace usage limit on the chip, the panel and Needs attention) |
+| The provider's workspace usage limit: the panel (C2084) | not drawn | the shared words as the panel's note above what was spent (where AI off's is), the moment in UTC only, then "Nothing is sent to a model; what was spent before is below." | **deviation** (log: C2084: the provider's workspace usage limit on the chip, the panel and Needs attention) |
+| The provider's workspace usage limit: Needs attention (C2084) | not drawn | one critical row: the shared words; the provider's refusal (call, time, HTTP status, its words); the action (an admin raises the limit in the provider's console, then Test on the AI (hosted) card; or wait until the moment), Open the spend panel and Open… to the card; clearing at the moment, or when a call is answered, or with hosted AI off | **deviation** (log: C2084: the provider's workspace usage limit on the chip, the panel and Needs attention) |

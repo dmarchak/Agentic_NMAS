@@ -523,10 +523,13 @@
   /* The AI day cap's reset (`calls.reset_info`, `resets()` in _macros.html): the one instant
      the counter turns over at, in the viewer's own time and zone ("18:00 MDT"); the server's
      words (the boundary zone's time) stay until this runs. */
-  function clockWords(t) {
+  /* A moment in the viewer's own time: "19:00 MDT", or with its date ("Oct 31 19:00 MDT")
+     when the element says data-clock="date" (a moment days away: C2084's provider limit). */
+  function clockWords(t, withDate) {
+    var opts = {hour: '2-digit', minute: '2-digit', hour12: false, timeZoneName: 'short'};
+    if (withDate) { opts.month = 'short'; opts.day = 'numeric'; }
     try {
-      return new Intl.DateTimeFormat('en-US', {hour: '2-digit', minute: '2-digit',
-        hour12: false, timeZoneName: 'short'}).format(new Date(t)).replace(',', '');
+      return new Intl.DateTimeFormat('en-US', opts).format(new Date(t)).replace(',', '');
     } catch (e) {
       return null;
     }
@@ -536,7 +539,7 @@
     var list = (scope || root.document).querySelectorAll('time[data-clock]');
     for (var i = 0; i < list.length; i++) {
       var t = Date.parse(list[i].getAttribute('datetime'));
-      var words = t === t ? clockWords(t) : null;
+      var words = t === t ? clockWords(t, list[i].getAttribute('data-clock') === 'date') : null;
       if (words) list[i].textContent = words;
     }
   }

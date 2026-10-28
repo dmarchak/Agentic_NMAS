@@ -3,6 +3,7 @@
     rule 10a). Drawn into the bar's <summary id="nmas-ai"> (base.html) from `/v2/ai/chip`
     (`spend_view.chip`): "AI $X today · N background on", or "AI off", never blank; neutral,
     amber from 50% and red from 80% of the day cap, neutral with no cap ("no cap" beside it);
-    red "AI spend unknown" when the record cannot be read, never $0. The figure's provenance is
+    red "AI spend unknown" when the record cannot be read, never $0; red "AI unavailable until
+    <moment> UTC" while the provider's workspace usage limit is held (C2084). The figure's provenance is
     on hover. At phone width the figure alone, the background count moving into the panel. -#}
 <span class="ai-chip ai-{{ c.level }}" data-state="{{ c.state }}" title="{{ c.title }}" aria-label="{{ c.label }}"><span class="ai-chip-mark" aria-hidden="true">AI</span><span class="ai-text">{{ c.text }}</span><span class="ai-short" aria-hidden="true">{{ c.short }}</span>{% if c.no_cap %}<span class="ai-nc">no cap</span>{% endif %}</span>
