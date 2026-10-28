@@ -40,10 +40,16 @@ and says why it earned nothing.
 
 - **Save All** (the fleet capture) always asks. A capture of one device never does: it makes
   no claim about the network, so it records no decision. See [Capture and Save All](capture).
-- **A deploy batch** asks. Coverage here means the whole inventory was targeted and every
-  device succeeded; a device with nothing to send is still read back, because "nothing to
-  send" was decided against a stored capture, not the device now. A deploy to some devices
-  is denied, naming the ones not targeted. See [Deploy a change](deploy).
+- **A deploy batch** asks. Every targeted device must succeed; a device with nothing to send
+  is still read back, because "nothing to send" was decided against a stored capture, not
+  the device now. A device the deploy did not target is judged by its record instead: its
+  newest measurement recorded it at its committed intent with nothing it was judged against
+  changed since, and the last drift check read it without finding it departing from its
+  golden (or its capture is newer than that check). When every device outside the batch
+  stands so, the deploy earns the baseline, and its commit names how each was judged
+  (`Judged-Outside:`); otherwise it is denied, naming each device not targeted and why. If
+  one of those devices' records changes, or another operation holds it, before the commit,
+  the baseline is denied too. See [Deploy a change](deploy).
 - **A restore** asks, and its claim is stronger: the network is back at the chosen moment.
   Every device in the inventory must be read back afterwards and compared, section by
   section, with that moment's golden. Residue denies it: a merge cannot remove a line, so

@@ -865,9 +865,35 @@ def _in_flight_denial(list_name: str, judged) -> list:
             "moment; Save All again once it ends" for h in others]
 
 
+def _standing_moved(repo: str, standing) -> list:
+    """Why the standing a deploy judged its outside devices by no longer holds, or ``[]``
+    (C1454 (2)): *standing* (`startup_source.standing`) was read at commit ``head``, before
+    this save took the repository's lock. A commit since then to any judged device's golden,
+    or to what intent is rendered from, means the judgement is not of this commit's moment,
+    and the baseline resting on it is refused, naming the files. Asked inside the lock."""
+    if not standing or not (standing.get("devices") or {}):
+        return []
+    from modules.device_list import _intent_paths     # noqa: SLF001 (one list of intent's paths)
+
+    head = standing.get("head") or ""
+    paths = [f"golden/{_safe_name(h)}.cfg" for h in sorted(standing["devices"])]
+    rc, out, err = (git(repo, "log", "--format=", "--name-only", f"{head}..HEAD", "--",
+                        *paths, *_intent_paths()) if head and repo
+                    else (1, "", "no commit was recorded"))
+    if rc != 0:
+        return [f"the devices outside this deploy were judged at a commit that cannot be "
+                f"compared with now ({(err or out or 'git log failed').strip()}): Save All"]
+    moved = sorted({l.strip() for l in (out or "").splitlines() if l.strip()})
+    if not moved:
+        return []
+    return [f"what the devices outside this deploy were judged by moved after the judgement "
+            f"({', '.join(moved)}), so it is not of this commit's moment: Save All"]
+
+
 def _baseline_decision(baseline, source: str, changed_count: int, measured: list,
                        inventory_size: int, skipped, intent: dict,
-                       require_coverage: bool, list_name: str = "") -> tuple:
+                       require_coverage: bool, list_name: str = "", repo: str = "",
+                       standing: dict = None) -> tuple:
     """``(earned, reasons)``: ONE decision for both of save_golden's paths.
 
     A baseline asserts the network is at its committed intent (register C89
@@ -879,7 +905,9 @@ def _baseline_decision(baseline, source: str, changed_count: int, measured: list
     All that CHANGED a device took a baseline with another device skipped,
     because coverage was checked only on the no-change path). A caller that
     passes ``baseline=True`` has measured coverage itself (the deploy and
-    restore paths' `_baseline_earned`)."""
+    restore paths' `_baseline_earned`). A deploy's caller that judged the devices outside its
+    batch by their record passes that *standing* (C1454 (2)): it is re-checked here, inside
+    the lock, and its devices are among those no other operation may hold."""
     if not _baseline_wanted(baseline, source, changed_count):
         return False, []
     from modules.nsot.intent_match import baseline_denial
@@ -891,8 +919,10 @@ def _baseline_decision(baseline, source: str, changed_count: int, measured: list
                        + (f" ({named} skipped)" if named else
                           f" ({len(measured)} of {inventory_size or 'an unstated number'})"))
     reasons += baseline_denial(intent)
+    reasons += _standing_moved(repo, standing)
     # Intent and stored secrets as of one moment, no device judged held elsewhere (C2030).
-    reasons += _in_flight_denial(list_name, sorted(intent))
+    reasons += _in_flight_denial(
+        list_name, sorted(set(intent) | set((standing or {}).get("devices") or {})))
     return not reasons, reasons
 
 
@@ -1032,12 +1062,16 @@ def save_golden(list_name: str, items: list, source: str = "manual",
                 acknowledge_structural_change=False,
                 inventory_size: int = 0, skipped: list = None,
                 operational: dict = None, baseline_reasons: list = None,
-                leave_items=()) -> dict:
+                leave_items=(), standing: dict = None) -> dict:
     """Promote golden configs for one or more devices in a single commit.
 
     *baseline_reasons*: a caller that decided the baseline itself (deploy and
     restore measure coverage, then pass ``baseline``) passes WHY it was not
     earned, so the commit can record it (`Baseline:` trailer, 7.2).
+
+    *standing*: a deploy whose baseline rests on devices outside its batch, judged by their
+    record (`startup_source.standing`, C1454 (2)), passes that judgement; the decision
+    refuses the baseline if anything it judged moved before this commit's lock.
 
     Returns ``{"ok", "commit", "changed", "unchanged", "tags", "renamed", "error"}``.
     An unchanged device produces no commit but is still reported.
@@ -1205,7 +1239,8 @@ def save_golden(list_name: str, items: list, source: str = "manual",
             tags, baseline_tag = [], ""
             earned, denied = _baseline_decision(baseline, source, 0, unchanged,
                                                 inventory_size, skipped, intent,
-                                                require_coverage=True, list_name=list_name)
+                                                require_coverage=True, list_name=list_name,
+                                                repo=repo, standing=standing)
             # A DECISION MADE WITH NOTHING TO COMMIT IS STILL RECORDED
             # (2026-09-28, the operator's first real occurrence): Save All read
             # nine devices, all unchanged, denied the baseline because r2
@@ -1326,7 +1361,7 @@ def save_golden(list_name: str, items: list, source: str = "manual",
         earned, denied = _baseline_decision(
             baseline, source, len(changed), [c["hostname"] for c in changed] + unchanged,
             inventory_size, skipped, intent, require_coverage=baseline is None,
-            list_name=list_name)
+            list_name=list_name, repo=repo, standing=standing)
         if baseline is False and baseline_reasons:
             denied = [str(r) for r in baseline_reasons]
         decision = _baseline_trailer(earned, denied, baseline, source, len(changed),

@@ -5,7 +5,8 @@
 # the product; Mercury gives it only generic hooks: the "baseline earned" and "golden committed"
 # events, and the startup source (scripts/nmas-startup-source).
 #
-# Turns each device's newest EARNED baseline (credentials from its current
+# Turns each device's newest golden recorded at its committed intent (the
+# newest EARNED baseline the fallback; credentials from its current
 # golden), as committed in the network's repository, into replayable
 # containerlab startup-configs. Oxidized is not read (Phase 3, the operator's
 # decision, 2026-10-08): GitHub owns configurations.
@@ -159,18 +160,22 @@
 #   SNMPv3 users           their localized keys never appear in a running
 #                          config (this fleet uses v2c; a v3 user is lost)
 #
-# THE SOURCE IS THE NEWEST EARNED BASELINE (plan item 4, the operator's
-# decision, 2026-10-01)
+# THE SOURCE IS EACH DEVICE'S NEWEST GOLDEN RECORDED AT ITS COMMITTED INTENT
+# (C1454, 2026-10-28; until then the newest earned baseline, plan item 4, the
+# operator's decision, 2026-10-01)
 #   Oxidized polled, so building from its copy made a change somebody made on
 #   a device at 2am and never approved what that device booted, and one such
-#   change held every device's file back (C306, C309). Each file is built by
-#   scripts/nmas-startup-source from the list's newest baseline that EARNED
-#   its tag (every device at its committed intent, not withdrawn), with every
-#   credential family (accounts, enable, SNMP communities) taken from the
-#   device's CURRENT golden, so a rotation since the baseline is never undone
-#   by a redeploy. A device the baseline does not hold is NOT BUILT, named,
-#   and every other device is still written; the run then exits 3 so job
-#   health sees it.
+#   change held every device's file back (C306, C309). The list's newest
+#   EARNED baseline replaced it, and lagged every verified per-device deploy,
+#   so a redeploy reverted them (C1454). Each file is built by
+#   scripts/nmas-startup-source from the device's newest golden that a save
+#   recorded at its committed intent (its `Intent-Match:`), the newest earned
+#   baseline the fallback, with every credential family (accounts, enable,
+#   SNMP communities) taken from the device's CURRENT golden, so a rotation
+#   since its source is never undone by a redeploy. A device with no such
+#   golden is NOT BUILT, named, and every other device is still written; the
+#   run then exits 3 so job health sees it. `nmas-startup-source --check`
+#   names each device's source commit (lab/REDEPLOY.md, the pre-flight).
 #
 #   Whether a device still runs what its file boots is the app's to say, from
 #   its own record (the drift check, and the lab startup row's
@@ -272,7 +277,7 @@ lab_value() {  # $1 host, $2 field, $3 the variable it stands in for -> LAB_VALU
   LAB_VALUE="$out"
 }
 
-# Each device's source, built from the newest earned baseline (plan item 4).
+# Each device's source: its newest golden recorded at intent (C1454; plan item 4).
 SRCDIR="$(mktemp -d)"
 # What each lab holds NOW, read once per device, compared here (C313).
 CUR="$(mktemp -d)"
@@ -463,7 +468,8 @@ awk -v kind="$1" -v dev="${2:-?}" '
 # device's poll) changed every file by that one line, the sync reported all
 # of them CHANGED and committed all of them, and a real change was one line
 # in nine identical diffs. The provenance is kept in the lab commit's message
-# ("startup from <baseline> ...: r1 r3"), and a commit carries only the files
+# ("startup from goldens at intent, fallback <baseline> ...: r1 r3"; each device's
+# source commit is in `nmas-startup-source --check`), and a commit carries only the files
 # whose configuration changed.
 render_device() {   # render_device <name> <router|switch> <raw>
   local n="$1" kind="$2" raw="$3"
@@ -502,14 +508,14 @@ destinations() {
 }
 
 # >>> build
-# THE SOURCE IS THE NEWEST EARNED BASELINE (plan item 4, the operator's
-# decision, 2026-10-01), every credential from the device's CURRENT golden
-# (C309). A device the baseline does not hold is NOT BUILT, named with its
-# reason, and every other device is still written (C309: one device used to
-# hold every file back).
+# THE SOURCE IS EACH DEVICE'S NEWEST GOLDEN RECORDED AT ITS COMMITTED INTENT
+# (C1454, 2026-10-28; the newest earned baseline the fallback, plan item 4),
+# every credential from the device's CURRENT golden (C309). A device with no
+# such golden is NOT BUILT, named with its reason, and every other device is
+# still written (C309: one device used to hold every file back).
 if ! "$SOURCE" --out "$SRCDIR" --list "$CLAB_LIST"; then
   echo "REFUSED - no startup source could be built (the reason is above): nothing"
-  echo "is written. The files are built only from an earned baseline, so a"
+  echo "is written. The files are built only from goldens recorded at intent, so a"
   echo "redeploy cannot boot a change nobody approved."
   exit 2
 fi
@@ -526,8 +532,8 @@ while IFS=$'\t' read -r h st why; do
   case "$h" in ''|'#'*) continue ;; esac
   SOURCE_STATE[$h]="$st"; SOURCE_WHY[$h]="$why"
 done < "$SRCDIR/sources.tsv"
-echo "Building from $BASE_TAG (${BASE_COMMIT:0:10}); credentials from each device's current"
-echo "golden"
+echo "Building from each device's newest golden recorded at its committed intent, the fallback"
+echo "$BASE_TAG (${BASE_COMMIT:0:10}); credentials from each device's current golden"
 echo
 fail=0
 : > "$SRCDIR/removed.txt"
@@ -699,7 +705,7 @@ ssh -n "$CLAB" "chmod -R go-rwx $STAGE" || exit 1
 #
 # A dirty tracked (or untracked) file is committed only when it is PROVABLY
 # this job's own output: its configuration identical to what this run built
-# from the newest earned baseline. The sanitiser is deterministic, so a match
+# from each device's source. The sanitiser is deterministic, so a match
 # is reproducible, not a judgement. Anything else is REFUSED for that device:
 # neither committed (which would record a hand edit as a harvest) nor
 # overwritten (which would destroy it), named, and the run exits 3 -- a
@@ -707,11 +713,11 @@ ssh -n "$CLAB" "chmod -R go-rwx $STAGE" || exit 1
 #
 # Until Phase 3 (2026-10-08) a file that was not this run's output was also
 # tried against the device's last 20 versions in Oxidized. Oxidized is not
-# read now, so a write stranded by an EARLIER baseline's run, found only after
-# a newer baseline was earned, is refused and named rather than guessed at:
+# read now, so a write stranded by an EARLIER run, found only after a newer
+# golden moved its source, is refused and named rather than guessed at:
 # commit or discard it by hand. A stranded write is found by the next run,
-# which a baseline now starts at once (C553), so a newer baseline in between
-# is rare.
+# which a baseline or a golden commit now starts at once (C553, C663), so a
+# newer source in between is rare.
 declare -A REFUSED_DIRTY=()
 reconcile() {
   local n dest rel st out body
@@ -723,13 +729,13 @@ reconcile() {
     body="$(ssh -n "$CLAB" "cat '$dest'" 2>/dev/null | config_body "$n")"
     if [ -n "${BASE_TAG:-}" ] && [ -s "$OUT/${n}.cfg" ] \
          && [ "$body" = "$(cat "$OUT/${n}.cfg")" ]; then
-      if out="$(ssh -n "$CLAB" "cd \$(dirname '${CFGDIR[$n]}') && git add -- '$rel' && git ${GIT_ID[*]} commit -q -m 'startup from $BASE_TAG (recorded late: an earlier run wrote it and its commit failed): $n' -- '$rel'" 2>&1)"; then
-        printf '  %-4s RECORDED LATE - its uncommitted file was this job'"'"'s own output for %s\n' "$n" "$BASE_TAG"
+      if out="$(ssh -n "$CLAB" "cd \$(dirname '${CFGDIR[$n]}') && git add -- '$rel' && git ${GIT_ID[*]} commit -q -m 'startup from goldens at intent, fallback $BASE_TAG (recorded late: an earlier run wrote it and its commit failed): $n' -- '$rel'" 2>&1)"; then
+        printf '  %-4s RECORDED LATE - its uncommitted file was this job'"'"'s own output (fallback %s)\n' "$n" "$BASE_TAG"
       else
         REFUSED_DIRTY[$n]="its own uncommitted output could not be committed - git said: ${out%%$'\n'*}"
       fi
     else
-      REFUSED_DIRTY[$n]="uncommitted changes this run did not produce (they differ from what $BASE_TAG builds for $n)"
+      REFUSED_DIRTY[$n]="uncommitted changes this run did not produce (they differ from what this run builds for $n, fallback $BASE_TAG)"
     fi
   done
 }
@@ -789,9 +795,9 @@ if [ $((changed + newfiles)) -eq 0 ]; then
   # Says what was checked, never "updated for 0 of 0" (the operator).
   labs_here=$(destinations | wc -l)
   case "$labs_here" in
-    1) echo "The lab already holds $BASE_TAG; nothing to update." ;;
-    2) echo "Both labs already hold $BASE_TAG; nothing to update." ;;
-    *) echo "All $labs_here labs already hold $BASE_TAG; nothing to update." ;;
+    1) echo "The lab already holds what this run builds (fallback $BASE_TAG); nothing to update." ;;
+    2) echo "Both labs already hold what this run builds (fallback $BASE_TAG); nothing to update." ;;
+    *) echo "All $labs_here labs already hold what this run builds (fallback $BASE_TAG); nothing to update." ;;
   esac
   [ ${#NOT_BUILT[@]} -eq 0 ] || echo "(${#NOT_BUILT[@]} device(s) NOT BUILT, named above.)"
   ssh -n "$CLAB" "rm -rf $STAGE"
@@ -1025,7 +1031,7 @@ while read -r dir; do
     git rev-parse --git-dir >/dev/null 2>&1 || { echo norepo; exit 0; }; \
     err=\$(git add --$files 2>&1) || { printf 'addfailed %s\n' \"\$(printf '%s' \"\$err\" | head -1)\"; exit 0; }; \
     git diff --cached --quiet --$files && { echo unchanged; exit 0; }; \
-    err=\$(git ${GIT_ID[*]} commit -q -m 'startup from $BASE_TAG ($ts):$names' --$files 2>&1) \
+    err=\$(git ${GIT_ID[*]} commit -q -m 'startup from goldens at intent, fallback $BASE_TAG ($ts):$names' --$files 2>&1) \
       && echo committed \
       || printf 'commitfailed %s\n' \"\$(printf '%s' \"\$err\" | head -1)\"")"
   kind="${outcome%% *}"

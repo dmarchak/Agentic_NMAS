@@ -124,7 +124,8 @@ def test_the_first_sync_writes_and_commits_every_file(world):
     assert "unbound variable" not in out
     for h, (lab, _n) in DEVICES.items():
         assert (world["tmp"] / lab / "configs" / f"{h}.cfg").read_text().startswith("hostname " + h)
-    assert _lab_log(world, "labA").splitlines()[0].startswith(f"startup from {TAG} (")
+    assert _lab_log(world, "labA").splitlines()[0].startswith(
+        f"startup from goldens at intent, fallback {TAG} (")
     assert "Startup-configs updated for 2 of 2 lab(s)" in out
 
 
@@ -158,7 +159,7 @@ def test_every_device_built_and_nothing_changed_exits_0_saying_so(world):
     rc, out = run(world)
     assert rc == 0, out
     assert "unbound variable" not in out
-    assert f"Both labs already hold {TAG}; nothing to update." in out
+    assert f"Both labs already hold what this run builds (fallback {TAG}); nothing to update." in out
     assert "updated for 0 of 0" not in out
 
 

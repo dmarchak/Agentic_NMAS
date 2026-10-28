@@ -1564,6 +1564,16 @@ def _commit_batch_golden(list_name: str, report: dict, label: str = "",
     # decided by save_golden after this commit and may be denied.
     subject = f"golden: {len(pending)} device(s) {what}"
     trailers = [f"Failed-Devices: {','.join(sorted(failed))}"] if failed else []
+    standing = earned.get("standing") or {}
+    if standing:
+        import time
+        # C1454 (2): how the devices outside the batch were judged, readable later beside the
+        # baseline decision that rests on it.
+        trailers.append("Judged-Outside: " + ", ".join(
+            f"{h} (golden {j['golden'][:10]}, drift run "
+            + (time.strftime("%Y-%m-%dT%H:%MZ", time.gmtime(j["drift_at"]))
+               if j.get("drift_at") else "none") + ")"
+            for h, j in sorted(standing["devices"].items())))
     # The program each device was SENT, by hash (C60): the commit is the
     # capture after the push, and this names what produced it. The full
     # receipt, program included, is in deploy_receipts.jsonl.
@@ -1604,6 +1614,7 @@ def _commit_batch_golden(list_name: str, report: dict, label: str = "",
                          baseline=earned["baseline"], allow_new=False,
                          baseline_reasons=(None if earned["baseline"]
                                            else earned.get("baseline_reasons")),
+                         standing=standing or None,
                          extra_trailers=trailers, extra_paths=extra_paths)
 
     repo = _os.path.join(get_list_data_dir(list_name), "config_repo")
@@ -1675,13 +1686,43 @@ def _baseline_earned(report: dict, pending: list, failed: list,
     measured = {p["hostname"] for p in pending}
     targeted = measured | set(failed)
     missing = sorted(inventory - targeted)
-    if missing:
+    standing = {}
+    if missing and not source_ref:
+        # C1454 (2): a device outside the deploy is judged by its record, not refused for
+        # being outside it: its committed golden at its committed intent and the last drift
+        # run (`startup_source.standing`). The commit re-checks under its lock that nothing
+        # judged moved since (`repo._standing_moved`).
+        from modules.nsot.startup_source import standing as _standing
+        try:
+            judged = _standing(list_name, missing)
+        except Exception as exc:              # noqa: BLE001
+            log.warning("deploy: the standing of the devices outside the batch could not "
+                        "be read (%s)", exc)
+            judged = {"head": "", "devices": {h: {"ok": False, "why": (
+                f"its standing could not be read: {type(exc).__name__}")} for h in missing}}
+        off = [h for h in missing if not (judged["devices"].get(h) or {}).get("ok")]
+        if off:
+            # The count first, as a coverage reason reads (`repo.not_targeted_only`, C885).
+            reasons.append(f"{len(off)} device(s) not targeted: {off}, not shown at intent ("
+                           + ", ".join(f"{h}: {judged['devices'].get(h, {}).get('why') or '?'}"
+                                       for h in off) + ")")
+        elif judged["head"]:
+            standing = {"head": judged["head"],
+                        "devices": {h: judged["devices"][h] for h in missing}}
+        else:
+            reasons.append(f"{len(missing)} device(s) not targeted: {missing}, not shown at "
+                           "intent (the repository's head could not be read)")
+    elif missing:
         reasons.append(f"{len(missing)} device(s) not targeted: {missing}")
 
     if not source_ref:
         return {"baseline": not reasons, "measured": sorted(measured),
-                "baseline_reasons": reasons or ["every inventory device is in "
-                                                "this commit"]}
+                "standing": standing,
+                "baseline_reasons": reasons or [
+                    "every inventory device is in this commit" + (
+                        ", or outside it and shown at its committed intent by its golden and "
+                        "the last drift run: " + ", ".join(sorted(standing["devices"]))
+                        if standing else "")]}
 
     # Restore only: the tag claims the network matches the ref, so every
     # inventory device has to have been read back and compared.

@@ -38,6 +38,45 @@ topology reaches a node only through the redeploy.
   boots from its startup file in the lab's own repository, never from Mercury's startup source.
   A redeploy that finds r5 unmapped is as intended.
 
+## What each node boots, and the pre-flight (C1454)
+
+Each node Mercury knows boots from its startup file, which the lab's startup sync
+(`lab/clab-sync/clab-startup-sync.sh`) builds from Mercury's startup source,
+`scripts/nmas-startup-source` (`modules/nsot/startup_source.py`):
+
+- **The configuration is the device's newest golden recorded at its committed intent**: the
+  newest commit whose `Intent-Match:` trailer judged the device and found it matching, so a
+  verified per-device deploy is in the file the moment its capture is committed. An earned
+  baseline counts for every device it holds, and the newest earned baseline is the fallback
+  when no such commit is in the last 400 measurements. Until 2026-10-28 the source was the
+  newest earned baseline alone, which a scoped deploy never earned, so a redeploy silently
+  reverted every verified deploy since it (C1454).
+- **A golden recorded off its intent, or unknown, is never a source** (C306): a change nobody
+  approved never boots. Nothing older than the device's current golden file is a source, so a
+  retired device's golden never boots the new device given its name.
+- **Every credential family (accounts, enable, SNMP communities) is the current golden's**
+  (C309), whatever commit the configuration comes from, so a rotation is never undone.
+- **A device with no golden at its intent is NOT BUILT**, named with its reason; the others
+  are still written. Bring it to its intent (its Deploy plan) and Save All, then build again.
+
+**The pre-flight, before step 1, on `<nmas-host>` as `<user>`:**
+
+```bash
+<home>/python/Agentic_NMAS/scripts/nmas-startup-source --check --list Default
+```
+
+It writes nothing and prints one line per device: its **source commit and how it was recorded
+at intent**, its latest golden commit and how many golden commits came after the source, and
+every fact about the file. A device FAILS (exit 1) when a credential family differs from its
+current golden, a masked placeholder is in the file, its golden is older than its last
+rotation, the last drift run could not read it or **found it departing from its golden** (a
+redeploy would undo that unrecorded change), the file lacks something Mercury needs to manage
+it, or **its configuration is not its current golden's** (a golden committed after its source
+and not recorded at its intent: the commits and the count of lines a redeploy would undo are
+named, never a line). **Redeploy only on "N of N pass".** A failing device is resolved first:
+bring it to its intent (Deploy plan) or adopt the change into intent, capture it, and check
+again.
+
 ## The bound: 60 minutes, measured
 
 The one full redeploy in Prometheus's record (sysUpTime, kept since about 2026-10-01), 2026-10-01:

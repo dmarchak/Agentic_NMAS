@@ -176,9 +176,11 @@ Since then the sync script is in the repository (`scripts/oxidized-to-config.sh`
 units are templates in `deploy/systemd/`, and **since C319 (2026-10-01) each startup file is
 built from the device's golden at the newest EARNED baseline** (credentials from the current
 golden) by `scripts/nmas-startup-source`, with Oxidized only a reported cross-check, never
-the source. It is lab tooling under the Stage 10 boundary (NSOT_STAGE10_PLAN 6.0). The text
-below is kept as the record of why it exists and what it guards against; where it names
-Oxidized as the source, read the baseline.
+the source. **Since C1454 (2026-10-28) each device's source is its newest golden recorded at
+its committed intent**, that baseline only the fallback (`modules/nsot/startup_source.py`). It
+is lab tooling under the Stage 10 boundary (NSOT_STAGE10_PLAN 6.0). The text below is kept as
+the record of why it exists and what it guards against; where it names Oxidized as the source,
+read each device's golden at intent.
 
 **Was: not part of this codebase, and the NSoT depends on it being true.** Documented
 here because the repo should at least say it exists, what it guarantees, and
@@ -868,11 +870,16 @@ and others have left since too.
   **[static/js/nmas_profile.js](static/js/nmas_profile.js)**; the apply was today's deploy wizard
   until it left at 7.8 (P7-25, 2026-10-17)
 - **[modules/nsot/startup_source.py](modules/nsot/startup_source.py)** — C319, plan item 4
-  (2026-10-01): what each lab startup file is built FROM: the device's golden at the list's newest
-  EARNED baseline (not withdrawn, not deleted, `Baseline: earned`), every credential family
-  (accounts, enable, SNMP communities) from its CURRENT golden (C309). `scripts/nmas-startup-source`
-  writes them for the clab sync, which sanitises and copies them; Oxidized is the sync's cross-check,
-  reported, never a block. A device the baseline lacks is not built, named, the rest written
+  (2026-10-01): what each lab startup file is built FROM. Since C1454 (2026-10-28) it is each
+  device's newest golden a save RECORDED AT ITS COMMITTED INTENT (its `Intent-Match:` for the
+  device, read by `device_list`'s parsers; an earned baseline counts for every device its tree
+  holds), never older than the device's current golden file, the list's newest EARNED baseline
+  the fallback; every credential family (accounts, enable, SNMP communities) from its CURRENT
+  golden (C309). `scripts/nmas-startup-source` writes them for the clab sync, which sanitises and
+  copies them; `--check` names each device's source commit. A device with no such golden is not
+  built, named, the rest written. `standing()` judges a device outside a deploy by its record
+  (its intent state, the last drift run), so a scoped deploy can earn a baseline
+  (`routes/deploy.py` `_baseline_earned`, re-checked under the lock by `repo._standing_moved`)
 - **[modules/nsot/verify_scope.py](modules/nsot/verify_scope.py)** — C316 (2026-10-01): which
   verify a program gets. Every top-level section management (terminal lines, logging, SNMP, NTP,
   banners, users) is QUICK: no wait for BGP's hold time, each new line read back; anything else or

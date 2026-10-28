@@ -186,10 +186,10 @@ def test_a_stranded_write_of_this_runs_own_baseline_build_is_recorded_late(tmp_p
     d = _lab(tmp_path, "r6")
     (d / "r6.cfg").write_text(_this_run_built(tmp_path, "r6"))
     r = _reconcile(tmp_path, d)
-    assert f"own output for {BASE_TAG}" in r.stdout and "refused=0" in r.stdout, r.stdout + r.stderr
+    assert f"own output (fallback {BASE_TAG})" in r.stdout and "refused=0" in r.stdout, r.stdout + r.stderr
     log = _git(_env(tmp_path), "-C", str(d.parent), "log", "-1", "--format=%s|%an").stdout.strip()
-    assert log == (f"startup from {BASE_TAG} (recorded late: an earlier run wrote it and its "
-                   "commit failed): r6|clab-sync")
+    assert log == (f"startup from goldens at intent, fallback {BASE_TAG} (recorded late: an "
+                   "earlier run wrote it and its commit failed): r6|clab-sync")
 
 
 def test_a_pre_c313_file_of_this_runs_build_is_recorded_late(tmp_path):
@@ -198,7 +198,7 @@ def test_a_pre_c313_file_of_this_runs_build_is_recorded_late(tmp_path):
     (d / "r6.cfg").write_text("!\n! r6 - from Oxidized HEAD abc1234\n!\n"
                               + _this_run_built(tmp_path, "r6"))
     r = _reconcile(tmp_path, d)
-    assert f"own output for {BASE_TAG}" in r.stdout and "refused=0" in r.stdout, r.stdout
+    assert f"own output (fallback {BASE_TAG})" in r.stdout and "refused=0" in r.stdout, r.stdout
 
 
 def test_a_stranded_write_from_an_earlier_baseline_is_refused_and_named(tmp_path):
@@ -212,8 +212,8 @@ def test_a_stranded_write_from_an_earlier_baseline_is_refused_and_named(tmp_path
     assert earlier != now, "floor: the two baselines must render differently"
     (d / "r6.cfg").write_text(earlier)
     r = _reconcile(tmp_path, d, 'echo "${REFUSED_DIRTY[r6]:-none}"')
-    assert (f"uncommitted changes this run did not produce (they differ from what {BASE_TAG} "
-            "builds for r6)") in r.stdout, r.stdout + r.stderr
+    assert ("uncommitted changes this run did not produce (they differ from what this run "
+            f"builds for r6, fallback {BASE_TAG})") in r.stdout, r.stdout + r.stderr
     assert (d / "r6.cfg").read_text() == earlier, "not overwritten"
 
 
@@ -225,7 +225,7 @@ def test_a_hand_edit_is_refused_neither_committed_nor_overwritten(tmp_path):
     before = _git(_env(tmp_path), "-C", str(d.parent), "rev-parse", "HEAD").stdout
     r = _reconcile(tmp_path, d, 'echo "refused=${!REFUSED_DIRTY[*]}: ${REFUSED_DIRTY[r6]:-}"')
     assert "refused=r6:" in r.stdout, r.stdout + r.stderr
-    assert f"they differ from what {BASE_TAG} builds for r6" in r.stdout
+    assert f"they differ from what this run builds for r6, fallback {BASE_TAG}" in r.stdout
     assert (d / "r6.cfg").read_text() == edited, "not overwritten"
     assert _git(_env(tmp_path), "-C", str(d.parent), "rev-parse", "HEAD").stdout == before
 
@@ -469,7 +469,7 @@ echo "COPY=${{COPY[*]}}"
         r = _harness(tmp_path, {"r6": d}, COMMIT_BLOCK)
         assert f"{d}: committed" in r.stdout, r.stdout + r.stderr
         log = _git(_env(tmp_path), "-C", str(d.parent), "log", "-1", "--format=%s").stdout
-        assert log.strip() == f"startup from {BASE_TAG} (now): r6"
+        assert log.strip() == f"startup from goldens at intent, fallback {BASE_TAG} (now): r6"
 
 
 class TestConfigBody:
@@ -538,7 +538,8 @@ echo "NOT_BUILT_LIST=$NOT_BUILT_LIST"
     def test_each_file_is_the_baseline_s_render_and_a_device_it_lacks_is_not_built(self, tmp_path):
         r = self._run(tmp_path, {"r6": RUNNING, "r7": None})
         assert r.returncode == 0, r.stdout + r.stderr
-        assert f"Building from {BASE_TAG} (abcdef0123)" in r.stdout
+        assert ("Building from each device's newest golden recorded at its committed intent, "
+                f"the fallback\n{BASE_TAG} (abcdef0123)") in r.stdout
         assert f"NOT BUILT - {BASE_TAG} holds no golden for r7" in r.stdout
         assert "DEVICES=r6\n" in r.stdout and "NOT_BUILT_LIST=r7\n" in r.stdout
         assert (tmp_path / "out" / "r6.cfg").read_text().startswith("hostname r6")
