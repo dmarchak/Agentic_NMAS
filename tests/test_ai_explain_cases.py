@@ -224,7 +224,8 @@ def test_a_shared_cause_on_two_devices_fails(ctx):  # noqa: F811
     ans["hypotheses"][1]["evidence_refs"] = [_ref(ctx.pack, f"health:{d}:scrapes")
                                              for d in ("r1", "r2")]
     assert cases.explain_misses(BY[1]["expect"], ans, ctx.pack) == [
-        "no one hypothesis cites cpu or scrapes or heartbeat figures of 3 or more devices"]
+        "no one hypothesis cites cpu or scrapes or heartbeat figures, other alerts or a failing "
+        "observer job of 3 or more devices"]
 
 
 def test_the_control_is_ready_only_while_its_device_is_alone(ctx):  # noqa: F811
@@ -402,9 +403,11 @@ def test_rebuilt_cases_are_in_the_main_and_the_held_out_set_each_written_before_
 def test_case_21_cites_r3_r4_and_r7_together_and_never_rests_on_r1_alone():
     """The walk's expectation, set before any run: one hypothesis citing r3, r4 and r7 (their
     alerts in the window, or r3's and r4's failed scrapes); a lead resting on r1's own
-    evidence misses."""
+    evidence misses. Since the operator's decision of 2026-10-28 that is one of two accepted
+    lines (`one_of`), the failing observer job the other."""
     e = BY[21]["expect"]
-    (groups,) = e["together"]
+    alerts, _jobs = e["one_of"]
+    (groups,) = alerts["together"]
     assert [g[0] for g in groups] == [f"concurrent:{d}@Device unreachable (SNMP)"
                                       for d in ("r3", "r4", "r7")]
     assert e["needs_human"] is True and "health:r1:scrapes" in e["lead_not_only"]
@@ -470,10 +473,11 @@ def _walk_answer():
 def test_case_21_each_alert_cited_and_its_lead_on_the_observer():
     """Revised before any run (C1896, C1897): r3's, r4's and r7's alerts each cited, by their
     alerts alone; the leading hypothesis citing a device job the observer shows failing on every
-    target; its needs include those pieces, measured in the pack."""
+    target; its needs include those pieces, measured in the pack. The alerts are the first of
+    the accepted lines since the operator's decision of 2026-10-28."""
     e = BY[21]["expect"]
-    assert e["cites"] == [[f"concurrent:{d}@Device unreachable (SNMP)"] for d in
-                          ("r3", "r4", "r7")]
+    assert e["one_of"][0]["cites"] == [[f"concurrent:{d}@Device unreachable (SNMP)"] for d in
+                                       ("r3", "r4", "r7")]
     assert e["lead_cites"] == [["observer:job:cisco_8000v", "observer:job:cisco_vios_l2"]]
     assert "Revised before any run, with the observer section present" in BY[21]["why"]
     assert cases.explain_unready(BY[21], _walk_pack()) == []
@@ -484,8 +488,12 @@ def test_the_walk_s_answer_misses_case_21_on_its_lead_and_r4_s_and_r7_s_alerts()
     got = cases.explain_misses(BY[21]["expect"], _walk_answer(), pack)
     assert ("the leading hypothesis cites none of ['observer:job:cisco_8000v', "
             "'observer:job:cisco_vios_l2']") in got, got
-    assert "cites none of ['concurrent:r7@Device unreachable (SNMP)']" in got
-    assert "cites none of ['concurrent:r4@Device unreachable (SNMP)']" in got
+    # The alerts are one accepted line (the operator, 2026-10-28): its misses are the line's.
+    (lines,) = [g for g in got if g.startswith("none of the accepted lines of reasoning: ")]
+    alerts, jobs = lines.split("; the failing observer jobs: ")
+    assert "cites none of ['concurrent:r7@Device unreachable (SNMP)']" in alerts
+    assert "cites none of ['concurrent:r4@Device unreachable (SNMP)']" in alerts
+    assert jobs == "cites none of ['observer:job:cisco_8000v']"
 
 
 def test_an_answer_leading_on_the_collection_path_passes_case_21():
@@ -515,3 +523,164 @@ def test_an_observer_selector_names_its_pieces_by_reference():
     assert len(cases.select(pack, "observer:job")) == 7
     assert cases.select(pack, "observer:job:cisco") == []
     assert cases.select(pack, "observer:*")[0]["name"] == "observer"
+
+
+# ── the operator's grading decisions (2026-10-28, the Explain failure analysis) ──
+
+def _hyp(claim, refs, read="show logging"):
+    return {"claim": claim, "evidence_refs": refs, "confirm_with": read}
+
+
+def _answer(hyps, needs_human=True, outcome="answer", checked=()):
+    return {"outcome": outcome, "rationale": "", "why_not": "", "needs_human": needs_human,
+            "checked": list(checked), "hypotheses": hyps}
+
+
+def test_case_12_takes_the_logs_cited_by_a_hypothesis_or_checked_never_demands_checked(
+        ctx):  # noqa: F811
+    """Decision 1a (a grader defect): prompt v4 keeps `checked` for evidence read and found
+    healthy, so the logs of a deliberate shutdown are cited by a hypothesis (an answer) or
+    listed as checked (no fault found); either passes, and the logs nowhere still fails."""
+    e = BY[12]["expect"]
+    assert "checked" not in e and e["cites_or_checked"] == [["logs:*"]]
+    logs, cpu = _ref(ctx.pack, "logs:*"), _ref(ctx.pack, "health:s1:cpu")
+    shut = _hyp("Gi0/1 was shut by configuration from the management host.", [logs])
+    assert cases.explain_misses(e, _answer([shut], needs_human=False), ctx.pack) == []
+    assert cases.explain_misses(e, _answer([], False, "no_fault_found", [cpu, logs]),
+                                ctx.pack) == []
+    elsewhere = _hyp("The link went down.", [cpu])
+    assert cases.explain_misses(e, _answer([elsewhere], needs_human=False), ctx.pack) == [
+        "cites or checks none of ['logs:*']"]
+    assert cases.explain_misses(e, _answer([], False, "no_fault_found", [cpu]), ctx.pack) == [
+        "cites or checks none of ['logs:*']"]
+
+
+def test_common_counts_other_alerts_and_a_failing_observer_job_as_cross_device():
+    """Decision 1b (a grader defect): `common` counts the devices of other alerts (C1850) with
+    the named figures' devices, or the targets an observer job failed on at once (C1896), not
+    the health figures alone. Case 5's bar on the walk's pack: cisco_8000v (5 of 6 at once),
+    r3's, r4's and r7's alerts, or r1's figure with r3's and r4's alerts each pass; a job with
+    nothing failing, one alert and one figure (two devices) still fails."""
+    pack = _walk_pack()
+    e = BY[5]["expect"]
+    alert = {d: _ref(pack, f"concurrent:{d}@Device unreachable (SNMP)") for d in ("r3", "r4",
+                                                                                  "r7")}
+    for refs in (["observer:job:cisco_8000v"], list(alert.values()),
+                 [_ref(pack, "health:r1:scrapes"), alert["r3"], alert["r4"]]):
+        ans = _answer([_hyp("A cause shared beneath the devices, not in the evidence.", refs)])
+        assert cases.explain_misses(e, ans, pack) == [], refs
+    two = _answer([_hyp("A cause shared beneath the devices, not in the evidence.",
+                        ["observer:job:cisco_ipsla", alert["r3"],
+                         _ref(pack, "health:r1:scrapes")])])
+    assert cases.explain_misses(e, two, pack) == [
+        "no one hypothesis cites cpu or scrapes or heartbeat figures, other alerts or a failing "
+        "observer job of 3 or more devices"]
+
+
+def test_a_percentage_is_judged_against_the_lines_as_sent():
+    """Decision 1c (a grader defect, held-out case 1's "24%"): the observer line sent reads
+    "usual 24% on 4 CPUs", though the stored piece's `usual` carries no unit; each of a
+    min/avg/max run sharing one sign is a percentage sent; a percentage the lines do not hold
+    still fails."""
+    pack = _walk_pack()
+    (line,) = [ln for s in cases.sections_as_sent(pack) for ln in s.get("lines") or []
+               if ln.startswith("observer:host:cpu")]
+    assert "usual 24% on 4 CPUs" in line and "busy 17.4/22.5/29.2%" in line
+    assert cases.invented_percents("the host's usual 24%, busy 17.4% to 29.2%", pack) == []
+    assert cases.invented_percents("the host ran at 25%", pack) == ["25%"]
+
+
+#: How recorded answers mark a hypothesis not in the evidence (E5b, 2026-10-28), and claims
+#: that do not.
+MARKED = ["Not in the evidence: contention beneath s3 may have stalled the task.",
+          "Contention beneath s3 could explain it, but this is not in the evidence.",
+          "The applet may have stopped; this is not shown by the evidence.",
+          "A delay in s4's heartbeat generation, but this cause is not shown in the evidence.",
+          "The heartbeat stopped being generated; the pack does not show which.",
+          "The heartbeat was delayed or lost; this is not directly evidenced."]
+UNMARKED = ["A transient hog in the e1000 task; s3's CPU stayed moderate.",
+            "The evidence shows s3 up and answering scrapes."]
+
+
+@pytest.mark.parametrize("claim", MARKED)
+def test_a_claim_saying_it_is_not_in_the_evidence_is_marked(claim):
+    assert cases.unevidenced({"claim": claim})
+
+
+@pytest.mark.parametrize("claim", UNMARKED)
+def test_a_claim_resting_on_the_evidence_is_not_marked(claim):
+    assert not cases.unevidenced({"claim": claim})
+
+
+def test_case_11_grades_the_top_hypothesis_and_a_second_only_ranked_after_and_marked(
+        ctx):  # noqa: F811
+    """Decision 2: the top-ranked hypothesis is graded; one more stands only ranked after it
+    and saying in its claim that it is not in the evidence (prompt v4's edge-of-evidence rule;
+    the schema has no field for it). Ranked first, unmarked, or a third, it still fails."""
+    e = BY[11]["expect"]
+    assert e["hypotheses_max"] == 1 and e["unevidenced_extra"] == 1
+    hog = _hyp("One transient hog in s3's e1000 task; its five-minute CPU stayed moderate.",
+               [_ref(ctx.pack, "logs:*"), _ref(ctx.pack, "health:s3:cpu")])
+    beneath = _hyp(MARKED[0], [_ref(ctx.pack, "health:s3:heartbeat")])
+    assert cases.explain_misses(e, _answer([hog]), ctx.pack) == []
+    assert cases.explain_misses(e, _answer([hog, beneath]), ctx.pack) == []
+    assert cases.explain_misses(e, _answer([beneath, hog]), ctx.pack) == [
+        "the leading hypothesis says it is not in the evidence, and a cause the evidence holds "
+        "is ranked after it",
+        "hypothesis 2 is past the 1 expected and its claim does not say it is not in the "
+        "evidence"]
+    unmarked = _hyp(UNMARKED[1], [_ref(ctx.pack, "health:s3:scrapes")])
+    assert cases.explain_misses(e, _answer([hog, unmarked]), ctx.pack) == [
+        "hypothesis 2 is past the 1 expected and its claim does not say it is not in the "
+        "evidence"]
+    assert cases.explain_misses(e, _answer([hog, beneath, beneath]), ctx.pack) == [
+        "3 hypotheses, at most 1 expected (a healthy window reports nothing wrong)"]
+
+
+def test_a_baseline_still_takes_no_hypothesis_at_all(ctx):  # noqa: F811
+    """Decision 2 reaches case 11 alone: a baseline (`hypotheses_max` 0, no
+    `unevidenced_extra`) still fails on a marked hypothesis."""
+    ans = _no_fault(ctx.pack)
+    ans["hypotheses"] = [_hyp(MARKED[0], [_ref(ctx.pack, "health:r1:cpu")])]
+    assert cases.explain_misses(BY[2]["expect"], ans, ctx.pack) == [
+        "1 hypotheses, at most 0 expected (a healthy window reports nothing wrong)"]
+
+
+def test_case_21_takes_the_failing_observer_job_in_place_of_the_three_alerts():
+    """Decision 5 (`one_of`, as held-out case 1): a lead on the routers' failing job,
+    cisco_8000v, passes without r3's, r4's and r7's alerts; a lead on the switches' job alone,
+    with none of the alerts, still fails (neither line)."""
+    pack = _walk_pack()
+    e = BY[21]["expect"]
+    lead = _hyp("Every target of the routers' device job timed out together beneath the "
+                "devices; not in the evidence, the lab host they run on.",
+                ["observer:job:cisco_8000v", "observer:host:load"])
+    assert cases.explain_misses(e, _answer([lead]), pack) == []
+    switches = dict(lead, evidence_refs=["observer:job:cisco_vios_l2", "observer:host:load"])
+    (got,) = cases.explain_misses(e, _answer([switches]), pack)
+    assert got.startswith("none of the accepted lines of reasoning: the three named alerts: "
+                          "cites none of ['concurrent:r3@Device unreachable (SNMP)']"), got
+    assert got.endswith("; the failing observer jobs: cites none of "
+                        "['observer:job:cisco_8000v']"), got
+
+
+@pytest.mark.parametrize("n,dev", [(8, "s3"), (19, "s4")])
+def test_a_drift_case_takes_insufficient_evidence_with_a_person_and_the_heartbeat_source(
+        ctx, n, dev):  # noqa: F811
+    """Decision 6: besides the clock, an honest "insufficient evidence" passes: needs_human
+    true and the heartbeat's source (its EEM applet, generation or syslog delivery) named in a
+    hypothesis whose claim says it is not in the evidence. needs_human false, the source said
+    as a settled cause, or no source named still fails; the clock still passes."""
+    e = BY[n]["expect"]
+    beat = _ref(ctx.pack, f"health:{dev}:heartbeat")
+    source = _hyp(f"{dev} is up, and its heartbeat's EEM applet or its syslog delivery stopped; "
+                  "this is not in the evidence.", [beat], "show event manager policy registered")
+    assert cases.explain_misses(e, _answer([source]), ctx.pack) == []
+    clock = _hyp(f"{dev}'s clock runs slow, stretching its watchdog.", [beat], "show ntp status")
+    assert cases.explain_misses(e, _answer([clock], needs_human=False), ctx.pack) == []
+    for wrong in (_answer([source], needs_human=False),
+                  _answer([dict(source, claim=f"{dev}'s EEM applet stopped.")]),
+                  _answer([dict(source, claim=f"{dev} seems up; this is not in the evidence.",
+                                confirm_with="show logging")])):
+        (got,) = cases.explain_misses(e, wrong, ctx.pack)
+        assert got.startswith("none of the accepted lines of reasoning: the clock: "), got

@@ -1161,6 +1161,20 @@ def _alert_evidence(client, _lab, _mp):
                         headers={"HX-Request": "true", "Accept": "text/html"})
         assert r.status_code == 200 and "Every figure of the alert is steady." in \
             r.get_data(as_text=True)
+        # And an answer naming the alert's device while citing nothing of it (the operator's
+        # decision 7a, 2026-10-28): Mercury cites it by the alert, drawn as Mercury's.
+        # r3's pack: the syslog alert's is of no one device.
+        pack = next(p for p in reversed(EP.read()["rows"]) if p.get("device"))
+        own = pack["device"]
+        others = next(s["ref"] for s in pack["sections"] if s["name"] == "concurrent")
+        answer = {"outcome": "answer", "rationale": f"The heartbeat stopped while {own} was up.",
+                  "hypotheses": [{"claim": "The device stopped sending heartbeats.",
+                                  "evidence_refs": [others],
+                                  "confirm_with": "show logging | include HEARTBEAT"}],
+                  "checked": [], "needs_human": True, "why_not": ""}
+        r = client.post(f"/v2/monitoring/alerts/pack/{pack['id']}/explain", data={"again": "1"},
+                        headers={"HX-Request": "true", "Accept": "text/html"})
+        assert r.status_code == 200 and "cited by Mercury" in r.get_data(as_text=True)
         # History's window on that call (15.14): the prompt as sent, the answer as received.
         newest = calls.read()["rows"][0]["id"]
         r = client.get(f"/v2/history/ai-call/{newest}", headers={"Accept": "text/html"})

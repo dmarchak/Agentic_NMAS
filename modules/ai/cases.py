@@ -352,15 +352,18 @@ def _refs(pack: dict, selectors) -> set:
 
 
 _PERCENT = re.compile(r"(\d+(?:\.\d+)?)\s*(?:%|percent\b)")
+#: A percentage as the lines sent write it: one number, or a run of them sharing one sign
+#: ("cpu 12/31/57% peak …", min/avg/max), each of the run a percentage.
+_PERCENT_RUN = re.compile(r"((?:\d+(?:\.\d+)?/)*\d+(?:\.\d+)?)\s*(?:%|percent\b)")
 
 
 def _percents(value) -> set:
     """Every percentage a pack holds: the min, avg and max of a piece whose unit is percent,
-    and every percentage written in its text, at any depth. Any other number (a count of
-    scrapes, a gap in seconds) is not one: a stated percentage matching it by chance is not
-    allowed."""
+    and every percentage written in its text (each of a min/avg/max run sharing one sign), at
+    any depth. Any other number (a count of scrapes, a gap in seconds) is not one: a stated
+    percentage matching it by chance is not allowed."""
     if isinstance(value, str):
-        return {float(m.group(1)) for m in _PERCENT.finditer(value)}
+        return {float(n) for m in _PERCENT_RUN.finditer(value) for n in m.group(1).split("/")}
     if isinstance(value, list):
         return set().union(*(_percents(v) for v in value)) if value else set()
     if not isinstance(value, dict):
@@ -373,11 +376,25 @@ def _percents(value) -> set:
     return out
 
 
+def sections_as_sent(pack: dict) -> list:
+    """The pack's sections as the model read them (`explain.as_sent`: the health figures and
+    the observer's pieces as one line each, every other section as stored); a section that
+    already holds its `lines` is one as sent (a pack rebuilt from a request), its pieces
+    dropped."""
+    from modules.ai import explain
+
+    return [{k: v for k, v in s.items() if k != "pieces"} if "lines" in s
+            else explain.as_sent(s) for s in pack.get("sections") or []]
+
+
 def invented_percents(text: str, pack: dict) -> list:
-    """The percentages *text* states that are not a percentage the pack holds (exactly, or
-    rounded to the precision the text writes): a figure stated that is not in the evidence
-    (the operator's rule, 2026-10-25: "never invent a figure"). Only percentages are checked."""
-    held = _percents(pack)
+    """The percentages *text* states that are not a percentage the pack holds as sent
+    (exactly, or rounded to the precision the text writes): a figure stated that is not in the
+    evidence (the operator's rule, 2026-10-25: "never invent a figure"). Only percentages are
+    checked. Judged against the lines the model read, not the stored pieces' fields (the
+    operator, 2026-10-28: an observer line's "usual 24% on 4 CPUs" is a percentage sent,
+    though its piece's field carries no unit)."""
+    held = _percents(sections_as_sent(pack))
     out = []
     for m in _PERCENT.finditer(text or ""):
         said = m.group(1)
@@ -437,11 +454,26 @@ def explain_unready(case: dict, pack: dict) -> list:
     return out
 
 
+def _across(h: dict, figured: set, by_alert: dict, pack: dict) -> int:
+    """How many devices one hypothesis's cross-device evidence spans (`common`; the operator,
+    2026-10-28): the devices whose named figures it cites (*figured*) together with the devices
+    whose other alerts it cites (C1850), or, when more, the targets an observer job it cites was
+    failing on at once (C1896: the job's most failing together, else its targets that failed)."""
+    refs = set(h.get("evidence_refs") or [])
+    named = len(figured | {by_alert[r] for r in refs if r in by_alert})
+    jobs = [p for p in _section(pack, "observer").get("pieces") or []
+            if p.get("ref") in refs and (p.get("ref") or "").startswith("observer:job:")
+            and p.get("state", "ok") == "ok"]
+    at_once = [p.get("most_failing", p.get("targets_failed")) or 0 for p in jobs]
+    return max([named] + at_once)
+
+
 def _reasoning(expect: dict, hyps: list, pack: dict) -> list:
     """What *hyps* lack of one line of reasoning: `cites` (each group cited somewhere),
-    `together` (one hypothesis citing each group), and `common` (one hypothesis citing the
-    named figures of at least `min_devices` devices: a cause shared beneath them); and what
-    they do that `no_common` forbids (a hypothesis resting on that many devices' figures)."""
+    `together` (one hypothesis citing each group), and `common` (one hypothesis citing
+    cross-device evidence of at least `min_devices` devices: a cause shared beneath them); and
+    what they do that `no_common` forbids (a hypothesis resting on that many devices'
+    figures)."""
     out = []
     cited = {r for h in hyps for r in h.get("evidence_refs") or []}
     for group in expect.get("cites", ()):
@@ -452,21 +484,22 @@ def _reasoning(expect: dict, hyps: list, pack: dict) -> list:
         if not any(all(set(h.get("evidence_refs") or []) & w for w in wanted) for h in hyps):
             out.append(f"no one hypothesis cites each of {together}")
     by_ref = {p.get("ref"): p for p in _section(pack, "health").get("pieces") or []}
+    by_alert = {p.get("ref"): (p.get("device") or p.get("address"))
+                for p in _section(pack, "concurrent").get("pieces") or []}
 
     def devices(h, figures):
         return {by_ref[r]["device"] for r in h.get("evidence_refs") or []
                 if r in by_ref and by_ref[r].get("figure") in figures}
     common = expect.get("common")
-    if common and not any(len(devices(h, common["figures"])) >= common["min_devices"]
-                          for h in hyps):
-        out.append(f"no one hypothesis cites {' or '.join(common['figures'])} figures of "
-                   f"{common['min_devices']} or more devices")
+    if common and not any(_across(h, devices(h, common["figures"]), by_alert, pack)
+                          >= common["min_devices"] for h in hyps):
+        out.append(f"no one hypothesis cites {' or '.join(common['figures'])} figures, other "
+                   f"alerts or a failing observer job of {common['min_devices']} or more "
+                   "devices")
     # A cause shared beneath several devices, cited by their alerts in the window (C1850, the
     # pack's `concurrent` section): one hypothesis citing other alerts of that many devices.
     alerts = expect.get("common_alerts")
     if alerts:
-        by_alert = {p.get("ref"): (p.get("device") or p.get("address"))
-                    for p in _section(pack, "concurrent").get("pieces") or []}
         if not any(len({by_alert[r] for r in h.get("evidence_refs") or [] if r in by_alert})
                    >= alerts["min_devices"] for h in hyps):
             out.append(f"no one hypothesis cites other alerts of {alerts['min_devices']} or "
@@ -495,22 +528,29 @@ def explain_misses(expect: dict, answer, pack: dict, error: str = "") -> list:
     if outcome not in expect.get("outcome", ()):
         return [f"outcome {outcome}, expected one of {expect.get('outcome')}"]
     hyps = answer.get("hypotheses") or []
-    if "needs_human" in expect and bool(answer.get("needs_human")) != expect["needs_human"]:
-        out.append(f"needs_human {answer.get('needs_human')}, expected {expect['needs_human']}")
-    if "hypotheses_max" in expect and len(hyps) > expect["hypotheses_max"]:
-        out.append(f"{len(hyps)} hypotheses, at most {expect['hypotheses_max']} expected "
-                   "(a healthy window reports nothing wrong)")
+    out += _person(expect, answer)
+    out += _hypotheses_max(expect, hyps)
     checked = set(answer.get("checked") or [])
     for group in expect.get("checked", ()):
         if not checked & _refs(pack, group):
             out.append(f"checked none of {group}")
+    # Evidence the answer rests on, wherever the prompt puts it (the operator, 2026-10-28, case
+    # 12): an answer cites it in a hypothesis; no fault found lists it in `checked`, which the
+    # prompt keeps for evidence read and found healthy.
+    cited = {r for h in hyps for r in h.get("evidence_refs") or []}
+    for group in expect.get("cites_or_checked", ()):
+        if not (cited | checked) & _refs(pack, group):
+            out.append(f"cites or checks none of {group}")
     out += _reasoning(expect, hyps, pack)
     # Any one of several acceptable lines of reasoning (the operator, 2026-10-25, on C1547:
     # a common cause beneath every device is better than one pinned on a single switch): the
-    # first that holds passes; when none does, each says what it lacked.
+    # first that holds passes; when none does, each says what it lacked. A line may also ask
+    # its own `needs_human` and `says_any` (the operator, 2026-10-28: cases 8 and 19's honest
+    # "insufficient evidence").
     alternatives = expect.get("one_of") or ()
     if alternatives:
-        lacks = [(a.get("name") or f"line {i}", _reasoning(a, hyps, pack))
+        lacks = [(a.get("name") or f"line {i}",
+                  _person(a, answer) + _reasoning(a, hyps, pack) + _says(a, hyps))
                  for i, a in enumerate(alternatives, 1)]
         if all(why for _n, why in lacks):
             out.append("none of the accepted lines of reasoning: " + "; ".join(
@@ -538,17 +578,73 @@ def explain_misses(expect: dict, answer, pack: dict, error: str = "") -> list:
     if said:
         out.append(f"says {said[0]!r}, which the case rules out ("
                    f"{expect.get('no_text_why') or 'not the evidence'})")
-    # The clock-drift cases (the operator's correction, 2026-10-26: a switch's heartbeat alert is
-    # its clock at 0.703 of real time stretching the 300 s watchdog, not no fault): a cause
-    # the pack does not hold can only be a hypothesis, so `says_any` asks that a hypothesis's
-    # claim or its confirming read names it, in any of the words given.
-    named = " ".join((h.get("claim") or "") + " " + (h.get("confirm_with") or "")
-                     for h in hyps).lower()
-    words = expect.get("says_any") or ()
-    if words and not any(w.lower() in named for w in words):
-        out.append(f"no hypothesis names {' or '.join(words)} ("
-                   f"{expect.get('says_why') or 'the evidence'})")
+    return out + _says(expect, hyps)
+
+
+def _person(expect: dict, answer: dict) -> list:
+    if "needs_human" in expect and bool(answer.get("needs_human")) != expect["needs_human"]:
+        return [f"needs_human {answer.get('needs_human')}, expected {expect['needs_human']}"]
+    return []
+
+
+#: How a hypothesis's claim says it is not in the evidence (prompt v4's edge-of-evidence rule:
+#: "say in the claim that it is not in the evidence"; the schema has no field for it, so the
+#: claim's words are the mark), in the forms the recorded answers write it.
+_UNEVIDENCED = re.compile(
+    r"\bnot (?:directly )?(?:in|shown (?:by|in)|supported by|evidenced (?:by|in)) the "
+    r"(?:evidence|pack)\b|\bnot (?:directly )?evidenced\b|\bunevidenced\b"
+    r"|\b(?:pack|evidence) does not show\b", re.I)
+
+
+def unevidenced(h: dict) -> bool:
+    """Whether hypothesis *h*'s claim says it is not in the evidence (`_UNEVIDENCED`)."""
+    return bool(_UNEVIDENCED.search(h.get("claim") or ""))
+
+
+def _hypotheses_max(expect: dict, hyps: list) -> list:
+    """At most `hypotheses_max` hypotheses; with `unevidenced_extra` (the operator,
+    2026-10-28, case 11), that many more may stand, each ranked after them and its claim
+    saying it is not in the evidence, while the leading one rests on the evidence (its claim
+    saying no such thing): the top-ranked hypothesis is the one graded."""
+    if "hypotheses_max" not in expect:
+        return []
+    most, extra = expect["hypotheses_max"], expect.get("unevidenced_extra", 0)
+    if len(hyps) <= most:
+        return []
+    if not extra or not most or len(hyps) > most + extra:
+        return [f"{len(hyps)} hypotheses, at most {most} expected "
+                "(a healthy window reports nothing wrong)"]
+    out = []
+    if unevidenced(hyps[0]):
+        out.append("the leading hypothesis says it is not in the evidence, and a cause the "
+                   "evidence holds is ranked after it")
+    later = [i for i, h in enumerate(hyps[most:], most + 1) if not unevidenced(h)]
+    if later:
+        out.append(f"hypothesis {later[0]} is past the {most} expected and its claim does not "
+                   "say it is not in the evidence")
     return out
+
+
+def _says(expect: dict, hyps: list) -> list:
+    """The clock-drift cases (the operator's correction, 2026-10-26: a switch's heartbeat alert
+    is its clock at 0.703 of real time stretching the 300 s watchdog, not no fault): a cause the
+    pack does not hold can only be a hypothesis, so `says_any` asks that a hypothesis's claim or
+    its confirming read names it, in any of the words given, each from a word's start; with
+    `unevidenced`, that hypothesis's claim also says it is not in the evidence (the operator,
+    2026-10-28: cases 8 and 19's heartbeat source)."""
+    words = expect.get("says_any") or ()
+    if not words:
+        return []
+    said = [re.compile(r"\b" + re.escape(w.lower())) for w in words]
+
+    def names(h):
+        text = ((h.get("claim") or "") + " " + (h.get("confirm_with") or "")).lower()
+        return any(w.search(text) for w in said)
+    if any(names(h) and (not expect.get("unevidenced") or unevidenced(h)) for h in hyps):
+        return []
+    mark = ", its claim saying it is not in the evidence," if expect.get("unevidenced") else ""
+    return [f"no hypothesis names {' or '.join(words)}{mark} ("
+            f"{expect.get('says_why') or 'the evidence'})"]
 
 
 # ── feature 7: an intent change in words (tests/fixtures/ai_cases/intent_patch/) ──

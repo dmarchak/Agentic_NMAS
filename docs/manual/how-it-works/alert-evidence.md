@@ -223,14 +223,24 @@ ever (see [The AI mark](installation-settings#ai-mark)).
    absent is not healthy evidence); one that does not is "couldn't analyse" too. And every
    device the answer names, in its rationale or a hypothesis, must be cited somewhere in it (its
    figures, its alerts, its log lines or its id in the topology): a name is matched whole
-   against the devices the pack and the topology name (`edge1` inside `edge10` is not edge1), and an
-   answer naming a device it cites nothing of is "couldn't analyse", naming each such device.
+   against the devices the pack and the topology sent name (`edge1` inside `edge10` is not
+   edge1; a device of the network that was never sent is not one the answer could cite, so it
+   is not asked for). When the answer names a device the pack holds and cites nothing of it,
+   {{product}} cites it itself: the device's other alert in the pack, else its first health
+   figure, or the alert itself for the alert's own device. That citation is {{product}}'s, not
+   the model's: it is kept with the answer apart from the model's own and drawn under **cited
+   by Mercury**. A device the pack holds nothing of (one only the topology knows) still makes
+   the answer "couldn't analyse", naming it. An adjacency cited with its two ends in the other
+   order, or a topology id written with `topology:` before it, is read as the id the topology
+   sent, and what the answer wrote is on that reference's hover.
 6. `keep`: the model's answer (hypotheses, no fault found, "the pack cannot say", or "couldn't
    analyse") is kept with the pack, beside any earlier one. A refusal before the model answered
    (hosted AI off, a cap, the provider down) is not an answer and is not kept.
 7. `show`: a short rationale, then at most three hypotheses, the most likely first, each with
    the references it cites (a pack piece is a link to it above; a topology id is drawn as text)
-   and its confirming read. It is a hypothesis, not a finding: nothing was run. Run the read
+   and its confirming read; under them, **cited by Mercury** lists each citation
+   {{product}} added (the device, where the answer named it, and the pack's piece, linked),
+   never among a hypothesis's own. It is a hypothesis, not a finding: nothing was run. Run the read
    through **Show commands** to check it. Or **no fault found**: what the evidence shows, and
    each piece it checked, linked. That is an assessment of the pack, not of the network: only
    what the pack holds was checked, and an alert can fire on a passing blip or a threshold set

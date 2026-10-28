@@ -2048,6 +2048,30 @@ fields only (section 6's table), never redefined to pass.
   absolute floor the current version fails too, leaving known wrong answers live (the walk's
   reboots and "this week" stayed in v2 while v3 waited).
 
+**Explain's done criteria (the operator's decision, 2026-10-28 ~19:3x UTC; for Explain they
+replace the floor above).** Explain is done when all eight hold:
+1. **Recorded reliability ≥ 90%** on fresh 10-run rounds (a case reliable when it passes every
+   run).
+2. **The blind held-out set (about 20 alerts, from scenarios the operator confirms, C2121)
+   ≥ 85%.**
+3. **Confidently wrong ≤ 1% of runs, and 0 on the held-out set:** a run whose leading cause is
+   wrong AND needs_human is false. Every Explain round's report carries this count, and each
+   run it counts is named for review.
+4. **Couldn't-analyse refusals ≤ 5% of runs.**
+5. **An honest insufficient-evidence answer with needs_human true counts as correct** where
+   the cause is not in the pack (C2116's ruling, generalised).
+6. **Cost per successful answer ≤ the current pin's.**
+7. **15.12's no-regression rule:** no case the current version holds reliably fails, and
+   reliability does not drop.
+8. **The operator's walk:** 4 of 5 real alerts judged useful.
+
+**The stop rule:** after the grader fixes (C2110 to C2112), Mercury's citations (C2118) and one
+fact-sheet iteration (C2117), if (1) or (2) is missed but (3) and (4) pass, Explain ships as
+**"Advisory (beta)"**, its screens showing the measured reliability, and the remainder is
+registered; if (3) fails, it does not ship. Its cost: one more round per iteration and a beta
+label. The defect class it prevents: a confidently wrong explanation shipped because the
+average looked good, or a useful one held back by a floor it nearly meets.
+
 **The sprint's rulings:**
 1. **Findings freeze:** a finding is registered, and worked only if it blocks a sprint feature.
    The 2026-10-18 condition "no open A or B" (NSOT_PLAN, Core 1.0) is suspended for the sprint.
@@ -3928,8 +3952,9 @@ docs/boards/ holds a drawing for it.
 | 2026-10-28 | DHCP | A, `DhcpNetwork.dc.html`, deviation: a delegated prefix (DHCPv6 IA_PD) drawn as `<address>/<prefix_len>` in the Leases tab and named so on its release card, where the board draws leases as addresses only | DHCP › Leases' Address cell, Find, and Release lease…'s card for a delegated prefix (C2090) | 2026-10-28, "DHCP › Leases draws a delegated prefix with its length (C2090)"; docs/fidelity/dhcp.md |
 | 2026-10-28 | SDN (PHASE8_PLAN 17) | S3, `SdnResponses.dc.html`, revised: the per-response cards replaced by "Incidents awaiting a person", severity chips and a search, a compact table (severity, rule, source, switches, age, AI verdict, proposed) by severity then age, the detail on expand (ingress or why it cannot be told, the window, seen also, the AI box, the proposed action at that switch, Dismiss the incident), no confirm-all; a states section for the ingress not told, a filtered subset and the Needs attention row per incident | SDN › Responses' incidents and their Needs attention row (C1999) | 2026-10-28, "SDN C1999: SdnResponses revised for incidents"; docs/fidelity/sdn.md |
 | 2026-10-28 | SDN (PHASE8_PLAN 17) | S3, `SdnResponses.dc.html`, deviation: the opened incident's chip reads "confidence high" (the detection rule's confidence) where the revised board draws a severity chip "high" | The opened incident's head (C1999) | 2026-10-28, "SDN C1999: the opened incident's chip names the rule's confidence"; docs/fidelity/sdn.md |
+| 2026-10-28 | P1 Alerts (PHASE8_PLAN 15.9) | P1, `AlertsExplain.dc.html` (version 143), deviation: a "cited by Mercury" line under the answer, each device Mercury cited with where the answer named it and the pack's piece, apart from the model's citations, which the board does not draw | Explain's answer (the operator's decision 7) | 2026-10-28, "P1 Alerts: a citation Mercury added, drawn as Mercury's"; docs/fidelity/alerts-explain.md |
 
-**Count:** 162 rows: 52 drawn, 15 revised, 23 no drawing, 72 deviation. The six C2009, C2001 and C2018 rows were added late (2026-10-28 ~09:4x UTC, found by the C2003 agent; logged at ~01:00 to 05:00 UTC, so the same-turn rule slipped for them); the log's seventh line of the night, C2018's 60 s confirm window, is a decision inside the plan and draws nothing, so it is not a board row. Every row comes from
+**Count:** 163 rows: 52 drawn, 15 revised, 23 no drawing, 73 deviation. The six C2009, C2001 and C2018 rows were added late (2026-10-28 ~09:4x UTC, found by the C2003 agent; logged at ~01:00 to 05:00 UTC, so the same-turn rule slipped for them); the log's seventh line of the night, C2018's 60 s confirm window, is a decision inside the plan and draws nothing, so it is not a board row. Every row comes from
 docs/STANDING_APPROVAL_LOG.md; the other sources supplied only these: the canvas indexes gave
 the S1 to S7 numbers against the SDN files, AI3b's label for `SettingsAiOn.dc.html`, the files
 for Topology board D (`TopoPathTrace.dc.html`), DHCP board C (`DhcpSubnets.dc.html`) and

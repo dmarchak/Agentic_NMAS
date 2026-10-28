@@ -22,6 +22,7 @@ cited); the re-run's report saw only r7.
 import copy
 import json
 import os
+import re
 
 import pytest
 import yaml
@@ -160,17 +161,181 @@ def test_with_no_topology_sent_the_pack_s_own_names_still_count():
     assert _check(a, names=None, ids=()).startswith("the answer names r6, r7, s2 and s4 but")
 
 
+def _with_r3_in_the_topology(monkeypatch):
+    """The world's topology sent holds r1 alone; with r3's id added, r3 is a device the
+    topology sent knows and the pack holds nothing of (the pack's pieces are r1's)."""
+    real = explain.topology
+
+    def topology(pack):
+        got = real(pack)
+        return dict(got, ids=sorted(set(got["ids"]) | {got["names"]["r3"]}))
+    monkeypatch.setattr(explain, "topology", topology)
+
+
 def test_explain_shows_nothing_and_records_the_refusal(world, monkeypatch):  # noqa: F811
-    """Through `explain_pack`: an answer naming a device it does not cite is couldn't analyse,
-    naming it, and the call's use is recorded as refused by validation."""
+    """Through `explain_pack`: an answer naming a device the topology sent knows and the pack
+    holds nothing of, cited nothing of, is couldn't analyse, naming it, and the call's use is
+    recorded as refused by validation (Mercury cites only what the pack holds, decision 7a)."""
     from modules.ai import calls
     from tests.test_ai_explain import _answer, _explain
+    _with_r3_in_the_topology(monkeypatch)
     used = []
     monkeypatch.setattr(calls, "record_use", lambda cid, use, **kw: used.append((use, kw)))
-    world.answer = _answer(world.pack, rationale="r1 and r2 both logged errors.")
+    world.answer = _answer(world.pack, rationale="r1 and r3 both logged errors.")
     got = _explain(world)
     assert got["ok"] is False and got["error"] == "couldnt_analyse", got
-    assert "the answer names r2 but cites nothing of it" in got["detail"]
+    assert "the answer names r3 but cites nothing of it" in got["detail"]
     assert "answer" not in got and used[-1][0] == "refused by validation"
     world.answer = _answer(world.pack)
     assert _explain(world)["ok"] is True
+
+
+# --------------------------- the operator's decision 7 (2026-10-28): Mercury cites, ids read
+
+#: The walk's pack with s4's own evidence left out, as v6's budget left it out of case 5's
+#: (the failure analysis of 2026-10-28, class b): s4 is then known only by the topology sent.
+SENT_WITHOUT_S4 = [dict(s, pieces=[p for p in s.get("pieces") or [] if p.get("device") != "s4"])
+                   for s in SENT]
+
+
+def _model(answer):
+    return explain.ExplanationV2.model_validate_json(json.dumps(answer))
+
+
+def test_a_named_device_the_pack_holds_is_cited_by_mercury():
+    """Decision 7a: the walk's answer as written names r6, r7, s2 and s4 and cites nothing of
+    them; the pack holds each one's own evidence, so Mercury cites it (an alert first, else a
+    figure), and with Mercury's citations the check accepts it. The model's own references are
+    not changed."""
+    model = _model(ANSWER)
+    added = explain.mercury_cites(model, {"sections": SENT}, explain.sent_names(NAMES, IDS), "r1")
+    held = {p["ref"]: p for s in SENT for p in s.get("pieces") or []}
+    assert [a["device"] for a in added] == ["r6", "r7", "s2", "s4"]
+    assert all(held[a["ref"]]["device"] == a["device"] for a in added), added
+    by = {a["device"]: a for a in added}
+    assert by["r7"]["ref"] == R7_ALERT and by["s4"]["ref"] == S4_ALERT
+    assert by["r7"]["named_in"] == "the rationale"
+    refs = [a["ref"] for a in added]
+    assert explain.check(model, PACK, IDS, sections=SENT, names=NAMES, added=refs) == ""
+    assert _check(ANSWER).startswith("the answer names r6, r7, s2 and s4 but"), \
+        "the model's answer alone is still uncited"
+    assert model.hypotheses[0].evidence_refs == ANSWER["hypotheses"][0]["evidence_refs"]
+
+
+def test_a_named_device_the_pack_does_not_hold_still_refuses():
+    """Decision 7a: s4, its figures and alert left out of the pack (known only by the topology
+    sent), gets no citation from Mercury, and the answer is still refused naming it."""
+    model = _model(ANSWER)
+    sent = {"sections": SENT_WITHOUT_S4}
+    added = explain.mercury_cites(model, sent, explain.sent_names(NAMES, IDS), "r1")
+    assert [a["device"] for a in added] == ["r6", "r7", "s2"]
+    why = explain.check(model, PACK, IDS, sections=SENT_WITHOUT_S4, names=NAMES,
+                        added=[a["ref"] for a in added])
+    assert why.startswith("the answer names s4 but cites nothing of it"), why
+
+
+def test_the_alert_s_own_device_is_cited_by_the_alert():
+    a = {"outcome": "answer", "rationale": "r1 lost its scrapes.", "needs_human": False,
+         "hypotheses": [{"claim": "The polling path failed.", "evidence_refs": ["concurrent"],
+                         "confirm_with": "show ip route"}], "checked": [], "why_not": ""}
+    added = explain.mercury_cites(_model(a), {"sections": SENT}, NAMES, "r1")
+    assert added == [{"device": "r1", "ref": "alert", "named_in": "the rationale"}]
+
+
+def test_a_device_of_the_network_never_sent_is_not_demanded():
+    """Decision 7c: a device the network holds but the call never sent (its id in no part of
+    the topology sent, and nothing of it in the pack) is not one the answer could cite."""
+    names = dict(NAMES, r99="dev:u99999999")
+    a = _citing(R7_ALERT, R6_HEARTBEAT, S2_SCRAPES, S4_ALERT)
+    a["rationale"] += " r99 is far from it."
+    assert _check(a, names=names) == ""
+    assert explain.sent_names(names, IDS) == NAMES
+    assert explain.sent_names(names, IDS + ["dev:u99999999"]) == names
+
+
+def test_a_device_named_but_never_sent_is_not_demanded_through_explain(world, monkeypatch):  # noqa: F811
+    """Through `explain_pack`: the world's network holds r2, but the topology sent holds r1
+    alone and the pack names r1 alone, so naming r2 is not refused."""
+    from tests.test_ai_explain import _answer, _explain
+    world.answer = _answer(world.pack, rationale="r1 and r2 both logged errors.")
+    got = _explain(world)
+    assert got["ok"] is True, got
+    assert got["answer"]["mercury_cites"] == []
+
+
+ADJ = "adj:ospf:dev:u342aff19~dev:uc038a8be:10.255.3.0/24"
+ADJ_SWAPPED = "adj:ospf:dev:uc038a8be~dev:u342aff19:10.255.3.0/24"
+ADJ6 = "adj:ospfv3:dev:u342aff19~dev:uc038a8be:2001:db8:3::/64"
+ADJ6_SWAPPED = "adj:ospfv3:dev:uc038a8be~dev:u342aff19:2001:db8:3::/64"
+
+
+@pytest.mark.parametrize("written,known,read", [
+    (ADJ_SWAPPED, IDS, ADJ), (ADJ, IDS, ADJ), ("topology:link:10.255.3.0/24", IDS,
+                                               "link:10.255.3.0/24"),
+    ("topology:" + ADJ_SWAPPED, IDS, ADJ), (ADJ6_SWAPPED, [ADJ6], ADJ6),
+    ("topology:link:2001:db8:2:a::/64", IDS, "link:2001:db8:2:a::/64"),
+    # Never a near id: another subnet, another protocol, or an id the topology did not send.
+    ("adj:ospf:dev:uc038a8be~dev:u342aff19:10.255.9.0/24", IDS, ""),
+    ("adj:ospfv3:dev:uc038a8be~dev:u342aff19:10.255.3.0/24", IDS, ""),
+    (ADJ_SWAPPED, (), ""), ("topology:", IDS, ""), ("link:10.255.3.0", IDS, "")])
+def test_an_adjacency_s_ends_and_a_topology_prefix_are_read_as_the_id_sent(written, known, read):
+    """Decision 7b (the failure analysis's 5 swapped adjacencies and one `topology:` prefix):
+    an adjacency with its ends in the other order, or a topology id with ``topology:`` before
+    it, is the id the topology sent, IPv4 and IPv6; nothing else is."""
+    assert explain.as_topology_id(written, known) == read
+
+
+def test_a_swapped_adjacency_is_accepted_and_drawn_as_written():
+    """Through the check: the answer citing the adjacency with its ends swapped and a link with
+    the prefix is refused as written, and accepted once read as the ids sent, the model's words
+    kept beside each."""
+    a = _citing(R7_ALERT, R6_HEARTBEAT, S2_SCRAPES, S4_ALERT, ADJ_SWAPPED,
+                "topology:link:10.255.3.0/24")
+    assert "cites 'adj:ospf:dev:uc038a8be~dev:u342aff19:" in _check(a)
+    model, written = explain.normalised(_model(a), {"sections": SENT}, IDS)
+    assert explain.check(model, PACK, IDS, sections=SENT, names=NAMES) == ""
+    assert written == {ADJ: ADJ_SWAPPED, "link:10.255.3.0/24": "topology:link:10.255.3.0/24"}
+    assert model.hypotheses[0].evidence_refs[-2:] == [ADJ, "link:10.255.3.0/24"]
+    assert a["hypotheses"][0]["evidence_refs"][-2:] == [ADJ_SWAPPED, "topology:link:10.255.3.0/24"]
+
+
+def test_mercury_s_citation_is_kept_recorded_and_drawn_as_mercury_s(world, monkeypatch):  # noqa: F811
+    """Through `explain_pack` and the card: an answer naming the alert's device r1 and citing
+    only the other alerts' section is shown, Mercury citing r1 by the alert; the hypothesis's
+    citations are the model's alone; the use's record says what Mercury cited; the answer kept
+    with the pack holds both; the card draws it under "cited by Mercury", never among the
+    hypothesis's citations."""
+    from html import unescape
+
+    from modules.ai import calls, explain_answers
+    from tests.test_ai_explain import _answer, _explain
+    used = []
+    real = calls.record_use
+
+    def record(cid, use, **kw):
+        used.append((use, kw))
+        return real(cid, use, **kw)
+    monkeypatch.setattr(calls, "record_use", record)
+    a = _answer(world.pack)
+    a["hypotheses"][0]["evidence_refs"] = ["concurrent"]
+    world.answer = a
+    got = _explain(world)
+    assert got["ok"] is True, got
+    assert got["answer"]["mercury_cites"] == [
+        {"device": "r1", "ref": "alert", "in_pack": True, "named_in": "hypothesis 1"}]
+    assert [c["ref"] for c in got["answer"]["hypotheses"][0]["cites"]] == ["concurrent"]
+    assert used[-1][1].get("detail") == "cited by Mercury: r1 by the pack's alert"
+    r = world.lab["client"].post(f"/v2/monitoring/alerts/pack/{world.pack['id']}/explain",
+                                 headers={"HX-Request": "true"})
+    html = unescape(r.get_data(as_text=True))
+    assert r.status_code == 200
+    mine = re.search(r'<p class="muted small explain-mercury-cites".*?</p>', html, re.S)
+    assert mine, html
+    assert "cited by Mercury" in mine.group(0)
+    assert "r1, named in hypothesis 1: the pack's" in mine.group(0)
+    assert f'href="#{world.pack["id"]}-alert"' in mine.group(0)
+    hyp = re.search(r'<ol class="explain-list">.*?</ol>', html, re.S).group(0)
+    assert 'data-ref="concurrent"' in hyp and 'data-ref="alert"' not in hyp
+    kept = explain_answers.kept(world.pack)["answer"]["result"]["answer"]
+    assert kept["mercury_cites"][0]["ref"] == "alert"
+    assert [c["ref"] for c in kept["hypotheses"][0]["cites"]] == ["concurrent"]

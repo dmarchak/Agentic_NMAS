@@ -39,7 +39,14 @@ The model only reasons over the pack. Everything else is Mercury's, deterministi
   name) must be cited somewhere in it (C1897, `uncited_devices`: Walk 2's answer named a device
   whose alert the pack held and cited nothing of it). One that does not is "couldn't analyse", naming it, and nothing is
   shown (the card's kill criterion: one claim shown with a reference that does not resolve).
-  No tool is offered.
+  No tool is offered. **The operator's decision 7 (2026-10-28):** a device the answer names
+  and the pack as sent holds, cited nothing of, is cited by Mercury (`mercury_cites`: its other
+  alert, else its first figure, or the alert for its own device), kept and drawn as
+  Mercury's, never among the model's citations; a device only the topology sent knows still
+  refuses; a device of the network the call never sent is not demanded (`sent_names`); and an
+  adjacency cited with its ends in the other order, or a topology id with ``topology:`` before
+  it, is read as the id sent (`as_topology_id`, `normalised`), the model's words drawn beside
+  it.
 - **The monitoring side** (C1896): the pack's `observer` section, the scrape jobs polling the
   devices across all their targets, the SNMP exporter and the collector's host, one line per
   piece, each cited ``observer:<what>``.
@@ -83,10 +90,15 @@ STEPS = (
     ("ask", "one recorded, capped call through the AI gateway, as the person who pressed "
             "Explain: the pack, its health figures for the devices within two hops, and the "
             "topology as data, no tool offered"),
-    ("check", "every reference resolves to the pack or to the topology as sent, and every "
-              "confirming read is on the read-only allowlist; no fault found cites the "
-              "evidence it checked, each piece read; every device the answer names is cited "
-              "somewhere in it; one that does not is couldn't analyse, and nothing is shown"),
+    ("check", "every reference resolves to the pack or to the topology as sent (an adjacency "
+              "written with its ends in the other order, or a topology id written with "
+              "topology: before it, is read as the id sent), and every confirming read is on "
+              "the read-only allowlist; no fault found cites the evidence it checked, each "
+              "piece read; every device the answer names that the pack or the topology sent "
+              "holds is cited somewhere in it: one the pack holds and the answer cited "
+              "nothing of is cited by Mercury, by its alert or its figure, and drawn as "
+              "Mercury's; one the pack does not hold, or anything else that does not hold, "
+              "is couldn't analyse, and nothing is shown"),
     ("show", "the hypotheses drawn beside the pack, or no fault found with what it checked, "
              "each reference linked to its piece; nothing runs"),
 )
@@ -150,7 +162,7 @@ class ExplanationV3(StrictModel):
 #: Each prompt version's answer schema: v1 to v3 were written for `Explanation`, v4 for
 #: `ExplanationV2`, so a replay asking v1 asks it as it was.
 SCHEMA_OF = {1: Explanation, 2: Explanation, 3: Explanation, 4: ExplanationV2,
-             5: ExplanationV2, 6: ExplanationV3, 7: ExplanationV2}
+             5: ExplanationV2, 6: ExplanationV3, 7: ExplanationV2, 8: ExplanationV2}
 #: The versions built on the network context (the context budget rule, the needs round): v6.
 #: A set, never "6 and later": v7 is v4's request with one rule more (C2038).
 NETWORK_CONTEXT_VERSIONS = frozenset({6})
@@ -163,7 +175,10 @@ NETWORK_CONTEXT_VERSIONS = frozenset({6})
 #: read as observed at the time (alert history, C1808); adopted only by the operator's bar.
 #: v7 is v4 with one rule (C2038, the operator's choice of 2026-10-28): every device an answer
 #: names is cited, as the check (C1897) requires; the check stays as strict.
-CANDIDATES = (("explain", 5), ("explain", 6), ("explain", 7))
+#: v8 is v4 with one rule (the operator's decision 3, 2026-10-28): an unexplained reload or
+#: out-of-band action (a device restarted, a configuration changed, with no recorded operation
+#: explaining it) sets needs_human true, so a person confirms it was intended.
+CANDIDATES = (("explain", 5), ("explain", 6), ("explain", 7), ("explain", 8))
 #: A checked piece's states that were read (pack_format: only ok and empty are evidence).
 READ_STATES = ("ok", "empty")
 
@@ -492,17 +507,125 @@ def cites_device(ref: str, name: str, dev: str, sent: dict, own: str) -> bool:
                                    ref) is not None
 
 
-def uncited_devices(answer, sent: dict, names: dict = None, own: str = "") -> list:
+def uncited_devices(answer, sent: dict, names: dict = None, own: str = "",
+                    added=()) -> list:
     """The devices the answer names (its rationale and each hypothesis's claim, matched as
     whole tokens against the devices the pack and the topology name, `device_ids`) with no
-    citation of their own anywhere in it (a hypothesis's references or the checked list), sorted
-    (C1897: an answer naming a device whose alert the pack held, without citing it)."""
+    citation of their own anywhere in it (a hypothesis's references or the checked list, and
+    *added*, the citations Mercury added, `mercury_cites`), sorted (C1897: an answer naming a
+    device whose alert the pack held, without citing it)."""
     ids = device_ids(sent.get("sections") or [], names, own)
     text = " ".join([answer.rationale or ""] + [h.claim or "" for h in answer.hypotheses])
     refs = [r for h in answer.hypotheses for r in h.evidence_refs] + list(
-        getattr(answer, "checked", None) or [])
+        getattr(answer, "checked", None) or []) + list(added or ())
     return [n for n in named_devices(text, ids)
             if not any(cites_device(r, n, ids[n], sent, own) for r in refs)]
+
+
+def sent_names(names: dict, topology_ids=()) -> dict:
+    """The topology's ids by name (*names*, the network model's: every device of the network)
+    held to the devices the topology SENT holds (*topology_ids*): a device of the network the
+    call never sent is not one the answer could cite, so it is never demanded (the operator's
+    decision 7c, 2026-10-28)."""
+    known = set(topology_ids or ())
+    return {n: d for n, d in (names or {}).items() if d and d in known}
+
+
+#: Where Mercury looks for a device's own piece to cite for it (decision 7a): its other alerts
+#: first, then its health figures, each in the pack's order.
+MERCURY_CITE_ORDER = ("concurrent", "health")
+
+
+def _named_in(answer, name: str) -> str:
+    """Where the answer names *name*: the first hypothesis whose claim names it, else the
+    rationale."""
+    for i, h in enumerate(answer.hypotheses, 1):
+        if named_devices(h.claim, [name]):
+            return f"hypothesis {i}"
+    return "the rationale"
+
+
+def mercury_cites(answer, sent: dict, names: dict = None, own: str = "") -> list:
+    """The citations Mercury adds to an answer (the operator's decision 7a, 2026-10-28):
+    ``[{"device", "ref", "named_in"}]``, one for each device the answer names without citing
+    it (`uncited_devices`) whose own evidence the pack as sent holds: its other alert, else its
+    first health figure (`MERCURY_CITE_ORDER`), or the alert itself for the alert's own device.
+    A device the pack holds nothing of (one known only by the topology sent) gets none, and the
+    check still refuses the answer for it. The model's own citations are never changed: these
+    are kept and drawn as Mercury's, beside them."""
+    if answer.outcome.value == "refuse":
+        return []
+    sections = sent.get("sections") or []
+    out = []
+    for name in uncited_devices(answer, sent, names, own):
+        ref = "alert" if name == own and any(s.get("ref") == "alert" for s in sections) else ""
+        for want in () if ref else MERCURY_CITE_ORDER:
+            ref = next((p.get("ref") or "" for s in sections if s.get("name") == want
+                        for p in s.get("pieces") or [] if p.get("device") == name
+                        and p.get("ref")), "")
+            if ref:
+                break
+        if ref:
+            out.append({"device": name, "ref": ref, "named_in": _named_in(answer, name)})
+    return out
+
+
+def _adjacency_parts(ref: str):
+    """``(prefix, a, b, where)`` of an adjacency id ``adj:<protocol>:<a>~<b>:<where>``
+    (`network_model._adj_id`; a device id is ``dev:<one part>``), or None."""
+    import re
+
+    m = re.fullmatch(r"(adj:[^:~]+:)([^~]+)~(dev:[^:~]+|[^:~]+):(.+)", ref or "")
+    return m.groups() if m else None
+
+
+#: The prefix a model has written before a topology id (decision 7b): never part of an id.
+TOPOLOGY_PREFIX = "topology:"
+
+
+def as_topology_id(ref: str, topology_ids=()) -> str:
+    """The id of the topology sent that *ref* names, written as the topology writes it, or ""
+    (the operator's decision 7b, 2026-10-28): *ref* itself; or with a ``topology:`` prefix
+    taken off; or an adjacency with its two ends in the other order. Only an exact id of the
+    topology sent is returned, never a near one."""
+    known = set(topology_ids or ())
+    if not ref or not known:
+        return ""
+    bare = ref[len(TOPOLOGY_PREFIX):] if ref.startswith(TOPOLOGY_PREFIX) else ref
+    if bare in known:
+        return bare
+    parts = _adjacency_parts(bare)
+    if parts:
+        prefix, a, b, where = parts
+        swapped = f"{prefix}{b}~{a}:{where}"
+        if swapped in known:
+            return swapped
+    return ""
+
+
+def normalised(answer, sent: dict, topology_ids=()):
+    """``(answer, written)``: *answer* with each reference that resolves to nothing as written
+    but names an id of the topology sent (`as_topology_id`) written as the topology writes it,
+    and *written* each such id's reference as the model wrote it, so it is drawn beside it.
+    A copy; the model's own answer is kept as received in the call's record."""
+    from modules import evidence_pack as EP
+
+    written = {}
+
+    def one(ref):
+        if EP.resolve(sent, ref) is not None or ref in set(topology_ids or ()):
+            return ref
+        canon = as_topology_id(ref, topology_ids)
+        if canon:
+            written[canon] = ref
+            return canon
+        return ref
+    hyps = [h.model_copy(update={"evidence_refs": [one(r) for r in h.evidence_refs]})
+            for h in answer.hypotheses]
+    update = {"hypotheses": hyps}
+    if hasattr(answer, "checked"):
+        update["checked"] = [one(r) for r in answer.checked or []]
+    return answer.model_copy(update=update), written
 
 
 def _uncited_words(names: list) -> str:
@@ -513,14 +636,15 @@ def _uncited_words(names: list) -> str:
 
 
 def check(answer: "Explanation", pack: dict, topology_ids=(), sections=None,
-          names: dict = None) -> str:
+          names: dict = None, added=()) -> str:
     """"" when every hypothesis cites the pack as sent (*sections*, by default the pack's
     every section) or the topology sent (*topology_ids*) and names an allowed read, every
     piece of evidence the answer says it checked (schema v2) is one of them and was read, and
-    every device the answer names (in its rationale or a claim) is cited somewhere in it
-    (C1897; *names* the topology sent's ids by name); else why not (the first one that does
-    not, named; every uncited device, named). No fault found holds no hypothesis and cites at
-    least one piece it checked."""
+    every device the answer names (in its rationale or a claim) is cited somewhere in it, by
+    the model or by Mercury (*added*, `mercury_cites`'s references) (C1897; *names* the
+    network's ids by name, held to the devices the topology sent holds, `sent_names`); else
+    why not (the first one that does not, named; every uncited device, named). No fault found
+    holds no hypothesis and cites at least one piece it checked."""
     from modules import evidence_pack as EP
     from modules import readonly_commands as R
 
@@ -529,6 +653,7 @@ def check(answer: "Explanation", pack: dict, topology_ids=(), sections=None,
         return ""
     sent = {"sections": (pack.get("sections") or []) if sections is None else list(sections)}
     known = set(topology_ids or ())
+    names = sent_names(names, known)
     checked = list(getattr(answer, "checked", None) or [])
     if outcome == "no_fault_found":
         if answer.hypotheses:
@@ -550,7 +675,7 @@ def check(answer: "Explanation", pack: dict, topology_ids=(), sections=None,
             return f"the evidence checked cites {ref[:40]!r}, which was not read ({state})"
     own = pack.get("device") or ""
     if outcome == "no_fault_found":
-        uncited = uncited_devices(answer, sent, names, own)
+        uncited = uncited_devices(answer, sent, names, own, added)
         return _uncited_words(uncited) if uncited else ""
     if not answer.hypotheses and not answer.needs_human:
         return "the answer holds no hypothesis and does not ask for a person"
@@ -567,7 +692,7 @@ def check(answer: "Explanation", pack: dict, topology_ids=(), sections=None,
         refused = R.refusal(h.confirm_with)
         if refused:
             return f"hypothesis {i}'s confirming read is not a read Mercury allows: {refused}"
-    uncited = uncited_devices(answer, sent, names, own)
+    uncited = uncited_devices(answer, sent, names, own, added)
     return _uncited_words(uncited) if uncited else ""
 
 
@@ -821,8 +946,17 @@ def explain_pack(pack: dict, *, actor: str, trigger: dict, send=None, today: str
                                    **{k: got[k] for k in ("parent_call_id", "needs_said")
                                       if got.get(k)}, **kept}
     links = {"page": f"/v2/monitoring/alerts/pack/{pack_id}", "anchor": f"explain-{pack_id}"}
-    why = check(answer, pack, topo["ids"] if topo["sent"] else (), sections=sections,
-                names=topo.get("names") if topo["sent"] else None)
+    ids = topo["ids"] if topo["sent"] else ()
+    names = topo.get("names") if topo["sent"] else None
+    sent = {"sections": list(sections)}
+    # Decision 7b: a topology id written with an adjacency's ends in the other order, or with
+    # a `topology:` prefix, is read as the id the topology sent (the model's own words kept in
+    # the call's record and drawn beside it). Decision 7a: a device the answer names and the
+    # pack holds, cited nothing of, is cited by Mercury, and drawn as Mercury's.
+    answer, written = normalised(answer, sent, ids)
+    added = mercury_cites(answer, sent, sent_names(names, ids), pack.get("device") or "")
+    why = check(answer, pack, ids, sections=sections, names=names,
+                added=[a["ref"] for a in added])
     if why:
         calls.record_use(got["call_id"], "refused by validation", actor=actor, detail=why,
                          links=links)
@@ -833,8 +967,13 @@ def explain_pack(pack: dict, *, actor: str, trigger: dict, send=None, today: str
                          detail=answer.why_not[:200], links=links)
         return dict(base, ok=False, error="unanswerable",
                     detail=f"the pack cannot say: {answer.why_not[:200]}")
+    # What Mercury added or read differently is recorded with the use: the call's record keeps
+    # the model's answer as received, so both stand.
+    note = "; ".join(
+        [f"cited by Mercury: {a['device']} by the pack's {a['ref']}" for a in added]
+        + [f"read {w} as the topology's {c}" for c, w in sorted(written.items())])
     calls.record_use(got["call_id"], "shown: " + answer.outcome.value.replace("_", " "),
-                     actor=actor, links=links)
+                     actor=actor, links=links, **({"detail": note[:500]} if note else {}))
     # What is drawn (an answer or no fault found by now, its why_not empty); the whole answer
     # is in the call's record. Each citation says where it resolves: a pack piece is a link to
     # it on the card, a topology id is drawn as text.
@@ -848,8 +987,12 @@ def explain_pack(pack: dict, *, actor: str, trigger: dict, send=None, today: str
     def cite(r):
         mine = back.get(r, r)
         return dict({"ref": mine, "in_pack": EP.resolve(pack, mine) is not None},
-                    **({"as_sent": r} if mine != r else {}))
+                    **({"as_sent": r} if mine != r else {}),
+                    **({"as_written": written[r]} if r in written else {}))
     for h in shown["hypotheses"]:
         h["cites"] = [cite(r) for r in h.pop("evidence_refs")]
     shown["checked"] = [cite(r) for r in getattr(answer, "checked", None) or []]
+    # Mercury's citations, never among the model's: each the device named, where, and the piece.
+    shown["mercury_cites"] = [dict(cite(a["ref"]), device=a["device"], named_in=a["named_in"])
+                              for a in added]
     return dict(base, ok=True, error="", answer=shown)

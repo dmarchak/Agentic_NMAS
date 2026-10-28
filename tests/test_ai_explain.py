@@ -315,7 +315,7 @@ def test_each_prompt_asks_for_the_schema_it_was_written_for(world):
     assert explain.PROMPT == ("explain", 4)
     assert {v: s.__ai_schema__ for v, s in explain.SCHEMA_OF.items()} == {
         1: ("explain", 1), 2: ("explain", 1), 3: ("explain", 1), 4: ("explain", 2),
-        5: ("explain", 2), 6: ("explain", 3), 7: ("explain", 2)}
+        5: ("explain", 2), 6: ("explain", 3), 7: ("explain", 2), 8: ("explain", 2)}
     world.answer = {k: v for k, v in _answer(world.pack).items() if k != "checked"}
     with pressed_by("operator@example.com"):
         got = explain.explain_pack(world.pack, actor="operator@example.com",
@@ -354,6 +354,49 @@ def test_v7_is_v4_s_request_with_the_citation_rule(world):
     assert v7_body["system"][0]["text"] == v7
     assert v7_body["messages"] == v4_body["messages"]
     assert v7_body["output_config"] == v4_body["output_config"]
+
+
+#: Prompt v4's sha256, the pin's (`explain.PROMPT`): a candidate is a new file, never an edit of
+#: the served prompt.
+V4_SHA256 = "cdb8ddaa7a385465e43e5a97fbb04d92121191591d1d9ad9548a9716842b282a"
+#: v8's one rule (the operator's decision 3, 2026-10-28; the failure analysis's case 14).
+V8_RULE = ("- An unexplained reload or out-of-band action sets needs_human true, even when it "
+           "settles the cause: a device that restarted, or whose configuration changed, with no "
+           "recorded operation in the pack explaining it, needs a person to confirm it was "
+           "intended.")
+
+
+def test_v8_is_v4_s_request_with_the_unexplained_reload_rule(world):
+    """The operator's decision 3 (2026-10-28): v8 is v4's text with one rule, an unexplained
+    reload or out-of-band action sets needs_human, and nothing else; a candidate, never the
+    pin (v4 served, its text unchanged); v4's schema and request shape, never v6's network
+    context."""
+    from modules.ai import prompts
+
+    v4, v8 = prompts.load("explain", 4), prompts.load("explain", 8)["text"]
+    assert v4["sha256"] == V4_SHA256, "the served prompt v4 changed"
+    v4 = v4["text"]
+    head, tail = v4.split("For no_fault_found:")
+    # v4's text up to "For no_fault_found:", the one rule (its words, whatever the wrapping),
+    # then the rest of v4's text exactly.
+    assert " ".join(v8.split()) == " ".join((head + V8_RULE + "\nFor no_fault_found:"
+                                             + tail).split())
+    assert v8.startswith(head) and v8.endswith("For no_fault_found:" + tail)
+    assert explain.PROMPT == ("explain", 4)
+    assert ("explain", 8) in explain.CANDIDATES and 8 not in explain.NETWORK_CONTEXT_VERSIONS
+    assert explain.SCHEMA_OF[8] is explain.SCHEMA_OF[4]
+    world.answer = _answer(world.pack)
+    _explain(world)
+    v4_body = world.sent[-1]["body"]
+    with pressed_by("operator@example.com"):
+        got = explain.explain_pack(world.pack, actor="operator@example.com",
+                                   trigger=triggers.person("operator@example.com"),
+                                   send=world.send, today="2026-10-25", prompt=("explain", 8))
+    assert got["ok"] is True, got
+    v8_body = world.sent[-1]["body"]
+    assert v8_body["system"][0]["text"] == v8
+    assert v8_body["messages"] == v4_body["messages"]
+    assert v8_body["output_config"] == v4_body["output_config"]
 
 
 # ------------------------------------- v6, the network-context version (2026-10-26)

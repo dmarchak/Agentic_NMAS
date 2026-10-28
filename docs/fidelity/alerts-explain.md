@@ -15,7 +15,7 @@ instance and a silenced syslog instance firing, each pack built by the real trig
 Loki and Prometheus captures; the first card opened; Explain pressed with hosted AI allowed and
 an answer planted (a hypothesis citing `alert`, needing a person).
 Templates compared: templates/v2/_alert_evidence.html, templates/v2/_evidence_pack.html, templates/v2/_explain.html, templates/v2/_explain_block.html
-Templates sha256: `cf2cd988031a8a10224da41e016019bf52223a3a3cb4d17208b1491467b165a7`
+Templates sha256: `ce98ad506371af173a0693a2fd0f01985b178f8f3a36b1576565104a0b404b29`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
@@ -161,3 +161,26 @@ says, under its pack line, that it holds no monitoring side, and Build again's w
   window"). No other region's verdict changed.
 
 Templates sha256 before: `3efa0c170da2bdd638f413cc4bae45c38c1d21ee46b1c36cdb5790863e74fe58`.
+
+**Compared again 2026-10-28 (the operator's decision 7, Explain's citations):** `_explain.html`
+draws, under an answer's hypotheses (and under no fault found's "Checked"), a line led by the
+chip **cited by Mercury**: each citation Mercury added for a device the answer named and the
+pack holds but the answer cited nothing of, as "<device>, named in <the rationale or hypothesis
+N>: the pack's <reference>", the reference a link to its piece, with "The model did not cite
+these" on hover. The model's own citations are drawn as before, never mixed with Mercury's. A
+topology id the answer wrote another way (an adjacency's ends swapped, or `topology:` before
+it) is drawn as the id sent, with "the answer wrote it …" on its hover. The citations' drawing
+moved into two macros in the template; what they draw is unchanged.
+- **Shots:** `tests/test_board_shots.py::test_monitoring_alerts_explain` (2026-10-28 ~19:0x
+  UTC, at 1440, 1280 and 390 beside the board at 1440): every region as before ("Cites alert",
+  needs a person, the History link, kept with the pack). The new line is not in the shot: the
+  shot's first card is the syslog alert's pack, of no one device, so its planted answer names
+  none. It is compared by the template and tests/test_explain_named_devices.py's
+  `test_mercury_s_citation_is_kept_recorded_and_drawn_as_mercury_s` (the card through the real
+  route: the line, its chip, its link, and the hypothesis's own citations without Mercury's), and
+  reached by tests/v2_context.py's `_alert_evidence`.
+- **Verdict:** a **deviation**, the one new region: the board (version 143) draws only the
+  model's citations. Its line is in docs/STANDING_APPROVAL_LOG.md ("P1 Alerts: a citation
+  Mercury added, drawn as Mercury's"). No other region's verdict changed.
+
+Templates sha256 before: `cf2cd988031a8a10224da41e016019bf52223a3a3cb4d17208b1491467b165a7`.

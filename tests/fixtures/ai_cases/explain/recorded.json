@@ -1746,16 +1746,36 @@
             "health:s3:heartbeat"
           ]
         ],
-        "says_any": [
-          "clock",
-          "timer",
-          "ntp",
-          "drift",
-          "time source"
-        ],
-        "says_why": "s3's clock runs at 0.703 of real time (read-only, 2026-10-26 morning: unsynchronised, stratum 16), so its watchdog's 300 s is about 424 s; the pack does not hold the rate, so it can only be a hypothesis, with the read that confirms it",
-        "figures_from_pack": true
+        "figures_from_pack": true,
+        "one_of": [
+          {
+            "name": "the clock",
+            "says_any": [
+              "clock",
+              "timer",
+              "ntp",
+              "drift",
+              "time source"
+            ],
+            "says_why": "s3's clock runs at 0.703 of real time (read-only, 2026-10-26 morning: unsynchronised, stratum 16), so its watchdog's 300 s is about 424 s; the pack does not hold the rate, so it can only be a hypothesis, with the read that confirms it"
+          },
+          {
+            "name": "insufficient evidence",
+            "needs_human": true,
+            "says_any": [
+              "EEM",
+              "applet",
+              "event manager",
+              "event-manager",
+              "generat",
+              "syslog"
+            ],
+            "unevidenced": true,
+            "says_why": "the pack holds no clock rate for s3, so an honest answer asks a person and names the heartbeat's source (its EEM applet, its generation or its syslog delivery) as a hypothesis not in the evidence"
+          }
+        ]
       },
+      "graded": "The operator's grading decision, 2026-10-28 (the Explain failure analysis): besides a hypothesis naming the clock, an honest \"insufficient evidence\" passes: needs_human true and the heartbeat's source named in a hypothesis whose claim says it is not in the evidence. needs_human false, or that source said as a settled cause, still fails.",
       "flag": "A person reads the recording: the heartbeat is late while the switch answers every scrape at its ordinary CPU; the answer names the clock or timer drift as the likely cause, confirmed by a read of the clock or NTP, never s3 down or overloaded.",
       "was": {
         "name": "No fault found on s3's heartbeat: one late beat while the switch answers every scrape at its ordinary CPU (the operator's case: the device is fine)",
@@ -2552,8 +2572,10 @@
           "Oct 23"
         ],
         "no_text_why": "s3's own clock, about 20 h behind; the line arrived on Oct 24",
-        "figures_from_pack": true
+        "figures_from_pack": true,
+        "unevidenced_extra": 1
       },
+      "graded": "The operator's grading decision, 2026-10-28 (the Explain failure analysis): the top-ranked hypothesis is graded; a second is accepted only ranked after it and saying in its claim that it is not in the evidence (prompt v4's edge-of-evidence rule; the schema has no field for the mark). An unevidenced hypothesis ranked first still fails.",
       "flag": "A person reads the recording: events placed in receive time (Oct 24, 15:36); the one-off hog under 2 s with ordinary CPU and every scrape answered is at most a transient; it never blames another day's window.",
       "recorded": {
         "prompt": "explain.v4",
@@ -2787,17 +2809,18 @@
           "answer",
           "no_fault_found"
         ],
-        "checked": [
-          [
-            "logs:*"
-          ]
-        ],
         "no_text": [
           "Oct 14"
         ],
         "no_text_why": "s1's own clock, about 19 h behind; the lines arrived on Oct 15",
-        "figures_from_pack": true
+        "figures_from_pack": true,
+        "cites_or_checked": [
+          [
+            "logs:*"
+          ]
+        ]
       },
+      "graded": "The operator's grading decision, 2026-10-28 (the Explain failure analysis): the logs need not be in `checked`, which prompt v4 defines as evidence read and found healthy (a grader defect: 0 of 43 runs could pass while obeying the prompt); an answer cites them in a hypothesis, no fault found lists them as checked.",
       "flag": "A person reads the recording: 'administratively down' right after a configuration session is a deliberate shut, not a failure; it reads the log lines and says so; a hardware or cable cause is a fail.",
       "recorded": {
         "prompt": "explain.v4",
@@ -4375,16 +4398,36 @@
             "health:s4:heartbeat"
           ]
         ],
-        "says_any": [
-          "clock",
-          "timer",
-          "ntp",
-          "drift",
-          "time source"
-        ],
-        "says_why": "s4's clock runs at 0.775 of real time (read-only, 2026-10-26), so its 300 s watchdog fires about every 387 s, the 392 s the pack's heartbeat figure holds",
-        "figures_from_pack": true
+        "figures_from_pack": true,
+        "one_of": [
+          {
+            "name": "the clock",
+            "says_any": [
+              "clock",
+              "timer",
+              "ntp",
+              "drift",
+              "time source"
+            ],
+            "says_why": "s4's clock runs at 0.775 of real time (read-only, 2026-10-26), so its 300 s watchdog fires about every 387 s, the 392 s the pack's heartbeat figure holds"
+          },
+          {
+            "name": "insufficient evidence",
+            "needs_human": true,
+            "says_any": [
+              "EEM",
+              "applet",
+              "event manager",
+              "event-manager",
+              "generat",
+              "syslog"
+            ],
+            "unevidenced": true,
+            "says_why": "the pack holds no clock rate for s4, so an honest answer asks a person and names the heartbeat's source (its EEM applet, its generation or its syslog delivery) as a hypothesis not in the evidence"
+          }
+        ]
       },
+      "graded": "The operator's grading decision, 2026-10-28 (the Explain failure analysis): besides a hypothesis naming the clock, an honest \"insufficient evidence\" passes: needs_human true and the heartbeat's source named in a hypothesis whose claim says it is not in the evidence. needs_human false, or that source said as a settled cause, still fails.",
       "flag": "A person reads the recording: the beats are regular but slow (392 s); the answer names the clock or timer drift, confirmed by a read of the clock or NTP.",
       "was": {
         "name": "Healthy baseline: nmas heartbeat missing: s4 on s4, a quiet window",
@@ -4858,32 +4901,6 @@
         ],
         "needs_human": true,
         "figures_from_pack": true,
-        "together": [
-          [
-            [
-              "concurrent:r3@Device unreachable (SNMP)",
-              "health:r3:scrapes"
-            ],
-            [
-              "concurrent:r4@Device unreachable (SNMP)",
-              "health:r4:scrapes"
-            ],
-            [
-              "concurrent:r7@Device unreachable (SNMP)"
-            ]
-          ]
-        ],
-        "cites": [
-          [
-            "concurrent:r3@Device unreachable (SNMP)"
-          ],
-          [
-            "concurrent:r4@Device unreachable (SNMP)"
-          ],
-          [
-            "concurrent:r7@Device unreachable (SNMP)"
-          ]
-        ],
         "lead_cites": [
           [
             "observer:job:cisco_8000v",
@@ -4897,8 +4914,48 @@
           "health:r1:discards",
           "alert:*",
           "logs:*"
+        ],
+        "one_of": [
+          {
+            "name": "the three named alerts",
+            "cites": [
+              [
+                "concurrent:r3@Device unreachable (SNMP)"
+              ],
+              [
+                "concurrent:r4@Device unreachable (SNMP)"
+              ],
+              [
+                "concurrent:r7@Device unreachable (SNMP)"
+              ]
+            ],
+            "together": [
+              [
+                [
+                  "concurrent:r3@Device unreachable (SNMP)",
+                  "health:r3:scrapes"
+                ],
+                [
+                  "concurrent:r4@Device unreachable (SNMP)",
+                  "health:r4:scrapes"
+                ],
+                [
+                  "concurrent:r7@Device unreachable (SNMP)"
+                ]
+              ]
+            ]
+          },
+          {
+            "name": "the failing observer jobs",
+            "cites": [
+              [
+                "observer:job:cisco_8000v"
+              ]
+            ]
+          }
         ]
       },
+      "graded": "The operator's grading decision, 2026-10-28 (the Explain failure analysis): the failing observer job is accepted in place of r3's, r4's and r7's alerts: cisco_8000v, the routers' job, which polls r3 and r4 (their health lines name it) and failed on 6 of 6 targets; cisco_vios_l2 polls the switches, none of the three. With neither the alerts nor that job, it fails; the lead still cites a failing device job and never rests on r1 alone.",
       "why": "Set from the evidence before any run (2026-10-27, the walk's case): r1 sent every heartbeat on time at ordinary CPU, so its own figures do not explain an SNMP outage; r3, r4 and r7 went unreachable by SNMP in the same minute and scrapes failed on every device within two hops, so a cause shared beneath them (the polling path, or the host they share) is the evidence's, offered as a hypothesis a person must confirm. One hypothesis citing r3, r4 and r7 (each by its alert in the window, or r3 and r4 by their failed scrapes; r7 is beyond two hops, so only its alert is in the pack) is the parent session's expectation for the walk, set before any run. Revised before any run, with the observer section present (2026-10-27, C1896 and C1897), from the pack's contents and from what the alert backtest (the report of 2026-10-27T0323Z) and C1485 measured of 10-21 and 10-22, never from an answer: (1) `lead_cites`: the leading hypothesis must cite the observer's cisco_8000v or cisco_vios_l2 job, because those pieces are the evidence for the cause ranked first: every target of both device jobs failed in the window, each failure ran to its timeout and none was refused, so the devices did not answer the poll in time across the fleet; C1485 measured the same shape on these days (every failure a scrape run to its timeout, 5 to 10 of 12 targets at once, the lab VM past its physical cores, no device's own CPU raised) and the backtest found s3, the poller's path, failing in all four fleet firings of 10-21 and 10-22. So the cause the evidence supports is shared across the fleet, on the collection path through s3 or beneath the devices (the lab host they run on), not r1 alone (lead_not_only, unchanged) and not one segment: the jobs that failed are the two big walks of every router and switch, on both sides of the 10.255.3.0/24 segment (s1 and s2 behind r1 and r2 among them). The collector's own host is ruled out by the same section (busy and load at or under their usual), which is why the observer is the lead's evidence rather than the health figures alone. (2) `cites`: r3's, r4's and r7's own Device unreachable (SNMP) alerts are each cited somewhere, by their alerts (the operator's bar for the walk: a cause shared with r3, r4 and r7, citing them; r7 has no figures in the pack, so its alert is its only citation, which C1897 now requires of any device named). (3) `together`, needs_human, outcome and figures_from_pack stand as first set.",
       "flag": "A person reads the recording: the leading cause is shared across the fleet, placed on the collection path or beneath the devices (the lab host they run on), hedged as not in the evidence and with what would confirm it, never one segment's fault nor r1's own figures; the collector's host is said to be at its usual load, not the cause; no figure is stated the pack does not hold."
     }
