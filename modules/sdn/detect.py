@@ -108,6 +108,9 @@ BASELINE_STALE_SECONDS = 3600
 BASELINE_FLOOR_PPS = 10.0
 #: The most flows an evidence pack's ``sdn`` section keeps for one detection; the rest counted.
 SECTION_FLOWS = 50
+#: At most this many earlier sightings in a pack's section, the newest first (C2006), as the
+#: flows are bounded: a re-fired scan's sightings had taken its request past the task's bound.
+SECTION_SIGHTINGS = 50
 
 
 class Refused(RuntimeError):
@@ -636,11 +639,21 @@ def section(d: dict, collected: dict, sw: dict) -> dict:
     pieces += displaced
     now_ids = {f.get("id") for f in sw.get("flows") or []}
     earlier = [s for s in d.get("sightings") or [] if s.get("id") not in now_ids]
-    for s in earlier:
+    # Every section is bounded, not the flows alone (C2006: a re-fired scan's sightings took
+    # its request past the task's bound): the newest sightings, the rest counted.
+    earlier_sent = sorted(earlier, key=lambda s: -(s.get("at") or 0))[:SECTION_SIGHTINGS]
+    for s in earlier_sent:
         pieces.append({"kind": "sighting", "id": s.get("id"), "port": s.get("port"),
                        "dst": s.get("dst"), "seen_at": _iso(s["at"]),
                        "words": "seen in an earlier collection within the window; its flow "
                                 "is no longer installed"})
+    # The detection's own evidence list names only what is sent, the rest counted: a cited id
+    # resolves in the pack, and the list never outgrows the pieces it points at.
+    sent = {p.get("id") for p in pieces if p.get("id")}
+    kept = [i for i in d["evidence"] if i in sent]
+    if len(kept) < len(d["evidence"]):
+        piece["evidence"] = kept
+        piece["evidence_not_sent"] = len(d["evidence"]) - len(kept)
     pieces.append({"kind": "coverage", "dpid": d["dpid_hex"], **(sw.get("coverage") or {
         "granularity": "not read", "words": "this switch's flows could not be read"})})
     return {"source": (f"the SDN collection of {collected.get('network')} "
@@ -650,8 +663,10 @@ def section(d: dict, collected: dict, sw: dict) -> dict:
             "pieces": pieces,
             "counts": dict({"flows": len(flows), "ports": sum(p["kind"] == "port" for p in pieces),
                             "earlier_sightings": len(earlier)},
+                           **({"earlier_sightings_sent": len(earlier_sent)}
+                              if len(earlier_sent) < len(earlier) else {}),
                            **({"displaced_flows": len(displaced)} if effect else {})),
-            "total": total, "subset": total > len(flows)}
+            "total": total, "subset": total > len(flows) or len(earlier_sent) < len(earlier)}
 
 
 # ───────────────────────────────────────────────────────────────────────────── observe

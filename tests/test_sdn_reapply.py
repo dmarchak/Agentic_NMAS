@@ -90,13 +90,16 @@ def detection(source="192.0.2.1"):
             "words": f"{source} reached 25 distinct destination ports", "at": "2026-10-28T00:50:00Z"}
 
 
-def drop(source="192.0.2.1"):
-    """A scan from *source* answered by a drop of it, applied at T: its operation's answer."""
+def drop(source="192.0.2.1", at=None):
+    """A scan from *source* answered by a drop of it, applied at *at* (T by default): its
+    operation's answer. A test that then reads the real clock (a route) passes its own time:
+    T is fixed at import, and a slow run can reach T + 540, inside the confirm window."""
     preview = CL.respond_to_threat(NET, detection(source), "drop_source")
     assert preview["ok"], preview["error"]
+    at = T if at is None else at
     done = CL.respond_to_threat(NET, None, "drop_source", confirm={
         "ask": preview["ask"], "hash": preview["plan"]["hash"]}, actor="op@example.com",
-        actor_verified="access", sleep=lambda s: None, now=lambda: T)
+        actor_verified="access", sleep=lambda s: None, now=lambda: at)
     assert done["outcome"] == "verified", done["error"]
     return done
 
@@ -303,7 +306,8 @@ def test_flows_draws_re_apply_and_its_preview_and_confirm_answer_in_place(lab):
 
     import app as APP
     c = APP.app.test_client()
-    done = drop()
+    # The route reads the real clock: the drop is 100 s before this test, never T (import).
+    done = drop(at=float(int(time.time())) - 100)
     lab.restart()
     store_read(NET, clock=lambda: time.time())
     html = c.get(f"/v2/sdn/flows?list=Default&q={SW}").get_data(as_text=True)
