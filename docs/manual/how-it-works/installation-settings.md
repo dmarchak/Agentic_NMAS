@@ -123,9 +123,22 @@ held. It costs a fraction of a cent and is recorded like any call.
 ## The day cap {#ai-cap}
 
 The **Cap per day** is the most the installation's AI calls may spend in a day, in US
-dollars. Before each call the gateway adds today's spend to the call's worst case and refuses
-the call, sending nothing, when the sum is over the cap; the refusal names both amounts and
-the cap. The provider bills what is spent, to the account the API key belongs to; the cap is
+dollars. Before each call the gateway adds today's spend, what the calls still in flight have
+reserved, and the call's worst case, and refuses the call, sending nothing, when the sum is
+over the cap; the refusal names each amount and the cap. A call's worst case is its prompt as
+the provider counts it (Anthropic's own token count, asked before the call; when the count
+cannot be had, a deliberately high estimate from the request's size, and the call's row says
+which), every prompt token priced as a cache write, plus the most the answer may be.
+
+**Calls at once never pass the cap together.** Each call's worst case is reserved against
+the cap, under one lock every worker shares, before it is sent, and released to what the call
+actually cost once it is recorded. A second call made while the first is in flight is judged
+with the first's worst case counted. A reservation left by a worker that stopped mid-call is
+released after about ten minutes (2.5 times the longest one call can take). If the
+reservations cannot be read, every call is refused, saying so, until they can or until no
+call they could hold is still in flight.
+
+The provider bills what is spent, to the account the API key belongs to; the cap is
 Mercury's own limit, set below the provider's.
 
 The cap is yours to set: **{{product}} has no ceiling of its own**, so a deployment that

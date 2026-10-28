@@ -521,10 +521,12 @@ def context_levels(list_name: str, store: str) -> list:
 
 
 def select_context(prompt: tuple, schema, data: dict, base_ctx: dict, levels: list,
-                   budget: int, offered: list = None) -> dict:
-    """The richest of *levels* whose request fits *budget* (the task's `max_prompt_tokens`,
-    estimated as the gateway estimates it), ``dict(level, ctx, data, estimate, budget)``; the
-    leanest when none fits, so the gateway's own refusal names both numbers.
+                   budget: int, offered: list = None, counter=None) -> dict:
+    """The richest of *levels* whose request fits *budget* (the task's `max_prompt_tokens`),
+    ``dict(level, ctx, data, estimate, budget)``; the leanest when none fits, so the gateway's
+    own refusal names both numbers. Each request's tokens are *counter*'s (`gateway.counter`:
+    the provider's count where the call could be sent, C1898), else the gateway's fallback
+    over-estimate.
 
     With *offered* (metrics v10, C1830: v9's 20-metric offers passed the bound with every
     context part dropped), the offer is the next to go once the leanest level does not fit:
@@ -537,7 +539,9 @@ def select_context(prompt: tuple, schema, data: dict, base_ctx: dict, levels: li
 
     def estimate(d, ctx):
         d = dict(d, looked_up=looked_up([]))
-        return gateway.prompt_tokens(gateway.build_request(loaded, schema, d, pin, ctx))
+        body = gateway.build_request(loaded, schema, d, pin, ctx)
+        return counter.measure(body, budget)["tokens"] if counter is not None \
+            else gateway.prompt_tokens(body)
 
     chosen = None
     for lv in levels:
@@ -1052,7 +1056,8 @@ def metrics(list_name: str, question: str, *, actor: str, trigger: dict, send=No
         sel = select_context(prompt, schema, data, {"builder": vocabulary()},
                              context_levels(list_name, "metrics"),
                              profiles.TASKS[FEATURE]["max_prompt_tokens"],
-                             offered=offered if prompt[1] >= 10 else None)
+                             offered=offered if prompt[1] >= 10 else None,
+                             counter=gateway.counter(FEATURE, actor=actor, trigger=trigger))
         context_said = {k: sel[k] for k in ("level", "dropped", "estimate", "budget")}
         if "offered" in sel:
             # v10: the answer is held to the metrics sent, the offer's own count said.

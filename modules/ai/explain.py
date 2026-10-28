@@ -663,13 +663,15 @@ def _topology_yaml(topo: dict, why: bool, source: bool, omitted: list) -> str:
     return NM._yaml(doc)
 
 
-def budgeted(pack: dict, topo: dict, prompt: tuple, schema) -> dict:
+def budgeted(pack: dict, topo: dict, prompt: tuple, schema, counter=None) -> dict:
     """v6 under the context budget rule (PHASE8_PLAN 10.6; the operator, 2026-10-26), the
     task's `max_prompt_tokens` its budget: the network context's parts dropped in
     `nl_query.CONTEXT_DROPS`' order (the device index, the summary's links and counts, each
     layer's why, the whole summary), then the pack's in `PACK_DROPS`' order, one piece at a
     time, then each layer's source last; each layer's status and age always kept. ``{"data",
-    "ctx", "sections", "said"}``: what is sent, and what was dropped to fit."""
+    "ctx", "sections", "said"}``: what is sent, and what was dropped to fit. Each request's
+    tokens are *counter*'s (`gateway.counter`: the provider's count where the call could be
+    sent, C1898), else the gateway's fallback over-estimate."""
     from modules import network_model as NM
     from modules.ai import nl_query, prompts, profiles
 
@@ -704,7 +706,9 @@ def budgeted(pack: dict, topo: dict, prompt: tuple, schema) -> dict:
         body = gateway.build_request(loaded, schema, dict(data, looked_up="(nothing looked up)"),
                                      pin, ctx)
         said = {"level": net_level + (0 if source else 1), "dropped": omitted,
-                "pack_dropped": counts, "estimate": gateway.prompt_tokens(body),
+                "pack_dropped": counts,
+                "estimate": (counter.measure(body, budget)["tokens"] if counter is not None
+                             else gateway.prompt_tokens(body)),
                 "budget": budget}
         return {"data": data, "ctx": ctx, "sections": sections, "said": said}
 
@@ -798,7 +802,8 @@ def explain_pack(pack: dict, *, actor: str, trigger: dict, send=None, today: str
     if int(prompt[1]) in NETWORK_CONTEXT_VERSIONS:
         # The context budget rule: what is sent fits the task's bound, what was dropped said
         # in the prompt ("omitted for size") and kept with the answer.
-        sel = budgeted(pack, topo, tuple(prompt), schema)
+        sel = budgeted(pack, topo, tuple(prompt), schema,
+                       counter=gateway.counter(FEATURE, actor=actor, trigger=trigger))
         data, ctx, sections, kept = sel["data"], sel["ctx"], sel["sections"], {
             "context": sel["said"]}
         got = _ask_round(tuple(prompt), schema, data, ctx, pack.get("network") or "",

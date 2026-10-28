@@ -18,16 +18,22 @@ and every call, sent or refused, is one `ai_calls` row. In order, before anythin
 4. **Masked for egress**: the request built (the prompt as the system text, each part as
    delimited data, never as instructions), then `redact.egress_payload` over all of it; a
    known stored secret still present refuses the call (`unmasked_secret`), naming its label.
-5. **The prompt's length**: the estimate from the masked request's size under the task's
-   bound, which is always under its model's long tier (Haiku 5.5 over 100,000 tokens pays
-   every rate 5x); over it the call is refused (`prompt_too_long`), both numbers named.
-6. **The caps**, judged by the worst case (that estimate as cache writes, plus all of
+5. **The prompt's length** (C1898): the provider's count of the masked request (`Counter`,
+   `anthropic_adapter.count_tokens`), or, when the count is not had, the fallback
+   over-estimate from its size (`CHARS_PER_TOKEN`, calibrated against the recorded calls),
+   the row saying which (``prompt_count``); under the task's bound, which is always under its
+   model's long tier (Haiku 5.5 over 100,000 tokens pays every rate 5x); over it the call is
+   refused (`prompt_too_long`), both numbers and how the prompt was measured named.
+6. **The caps**, judged by the worst case (that count as cache writes, plus all of
    `max_tokens`, at the pinned model's prices): the task's per-call cap (its pinned model's
-   worst case at its bounds, `profiles.cap_per_call`), and the day's spend so far plus this
-   call against the installation's day cap, unless an admin chose no cap (`day_cap` None,
-   said in every cap refusal). A refusal names both operands. A background call's feature's
-   own day and month caps on its network after it (rule 4, `background.over_cap`:
-   `feature_cap`, naming which).
+   worst case at its bounds, `profiles.cap_per_call`), and the day's spend so far plus what
+   calls in flight have reserved plus this call against the installation's day cap, unless
+   an admin chose no cap (`day_cap` None, said in every cap refusal). A refusal names every
+   operand. A background call's feature's own day and month caps on its network after it
+   (rule 4, `background.over_cap`: `feature_cap`, naming which). **Reserved atomically**
+   (C2039, `reservations`): the spend read, the caps judged and the worst case reserved under
+   one lock across threads and processes, so calls at once can never pass a cap together;
+   the reservation settled once the call's row, with its actual cost, is recorded.
 
 **One press, one provider request** (C1854): from the caps on, a call runs through
 `presses.once`: a press whose key was already seen, or whose request is already in flight (the
@@ -46,9 +52,23 @@ from modules.ai import anthropic_adapter, background, calls, profiles, prompts, 
 
 log = logging.getLogger(__name__)
 
-#: Characters per token the input estimate assumes: under English's usual 4, so the worst
-#: case is over, never under. The recorded usage replaces it once the call is answered.
-CHARS_PER_TOKEN = 3.0
+#: Characters per token the FALLBACK estimate assumes, when the provider's count is not had
+#: (C1898: an error, a timeout, rate-limited, or no count asked): deliberately high, so the
+#: estimate is over the real input, never under. Calibrated 2026-10-28 against the recorded
+#: calls' real input (input plus cache read plus cache write tokens): 10,395 sent calls, their
+#: characters ``len(json.dumps(request, ensure_ascii=False))``; the fewest characters a token
+#: any of them had was 1.956 (an sdn_classify call on Haiku, 49,318 characters and 25,210
+#: tokens), so 1.8 is over every recorded call, by 8.7% at the tightest; median over by 1.44x
+#: (tests/test_ai_token_count.py reads a sample, `CALIBRATION` the whole set's numbers). The
+#: earlier 3.0 was UNDER every one of them (0.65 to 0.89 of the real). The recorded usage
+#: replaces either once the call is answered.
+CHARS_PER_TOKEN = 1.8
+#: The calibration's numbers, whole (the dataset is a report's, not the repository's: numbers
+#: only, ~/Documents/nmas-reports/overnight/2026-10-28-calibration-calls.tsv on the laptop).
+CALIBRATION = {"calls": 10395, "fewest_chars_per_token": 1.9563,
+               "tightest": {"feature": "sdn_classify", "model": "claude-haiku-5-5",
+                            "chars": 49318, "real_input": 25210},
+               "read": "2026-10-28"}
 
 #: The default the schema seeds (modules/settings_schema.py): a day's spend for the
 #: installation. PHASE8_PLAN 7 caps a month at $50 globally; $1.50 a day is under that. A
@@ -138,17 +158,133 @@ def build_request(prompt: dict, schema_model, parts: dict, pin: dict, context: d
     return body
 
 
+def tokens_of_chars(chars: int) -> int:
+    """The fallback estimate of a request of *chars* characters, in tokens (`CHARS_PER_TOKEN`:
+    calibrated to be over the real input)."""
+    return int(chars / CHARS_PER_TOKEN) + 1
+
+
 def prompt_tokens(body: dict) -> int:
-    """The masked request's prompt, in tokens, estimated from its size (an over-estimate)."""
-    return int(len(json.dumps(body, ensure_ascii=False)) / CHARS_PER_TOKEN) + 1
+    """The request's prompt, in tokens, by the fallback estimate from its size (an
+    over-estimate: `CHARS_PER_TOKEN`). The provider's count, when it answers, replaces it
+    (`Counter`)."""
+    return tokens_of_chars(len(json.dumps(body, ensure_ascii=False)))
 
 
-def worst_case_usd(model: str, body: dict) -> float:
-    """The call's cost if nothing is read from the cache: the whole input estimated from the
-    masked request's size and priced as a cache write (the dearer of the two), plus all of
-    `max_tokens` (every body `build_request` makes carries it)."""
+def worst_case_usd(model: str, body: dict, tokens: int = None) -> float:
+    """The call's cost if nothing is read from the cache: the whole input (*tokens*, the
+    provider's count or the fallback estimate; the estimate when not given) priced as a cache
+    write (the dearer of the two), plus all of `max_tokens` (every body `build_request` makes
+    carries it)."""
     return profiles.cost_usd(model, 0, int(body["max_tokens"]),
-                             cache_write_tokens=prompt_tokens(body))
+                             cache_write_tokens=prompt_tokens(body) if tokens is None
+                             else int(tokens))
+
+
+# ── The provider's token count (C1898) ──────────────────────────────────────────────────────
+
+#: The most counts one `Counter` asks (a press's context-budget selection, or a call): past
+#: it the fallback estimate is used, said. A selection that drops one piece at a time could
+#: otherwise ask once per piece.
+MAX_COUNTS = 8
+#: A candidate request is skipped without a count when this press's measured tokens per
+#: character puts it more than this fraction over the budget (`Counter.measure`).
+SKIP_MARGIN = 0.05
+
+
+class Counter:
+    """A request's prompt in tokens, by the provider's count (`anthropic_adapter.count_tokens`)
+    where it answers, else the fallback estimate (`prompt_tokens`), saying which: ``{"tokens",
+    "how": "counted" | "estimated" | "scaled", "why", ...}``.
+
+    It counts only the masked request (`redact.egress_payload`; a stored secret still in it is
+    never sent, not even to be counted), with the same key as the send, never logged, and only
+    when *allowed* (the call's own gates passed: `counter`). The same request is counted once
+    (by digest). *count* replaces the adapter's count (tests)."""
+
+    def __init__(self, model: str, key: str = "", *, allowed: bool = True, why_not: str = "",
+                 count=None):
+        self.model, self._key, self.allowed, self.why_not = model, key, allowed, why_not
+        self._count = count
+        self._seen = {}
+        self.asked = 0
+        #: The most tokens a character this counter's counts measured (None before one).
+        self.ratio = None
+
+    def measure(self, body: dict, budget: int = None, *, masked: bool = False) -> dict:
+        """*body*'s prompt in tokens. With *budget* (a selector's): a request the fallback
+        estimate already puts within it is not counted (the estimate is over the real), and
+        one this counter's measured ratio puts over it by more than `SKIP_MARGIN` is not
+        either (``scaled``: a selector's skip, never what a call is judged on). *masked*: the
+        body is already masked (the gateway's own)."""
+        import hashlib
+
+        from modules import redact
+
+        if not masked:
+            body = redact.egress_payload(body)
+        chars = len(json.dumps(body, ensure_ascii=False))
+        est = tokens_of_chars(chars)
+
+        def estimated(why):
+            return {"tokens": est, "how": "estimated", "why": why,
+                    "chars_per_token": CHARS_PER_TOKEN}
+
+        if budget is not None and est <= budget:
+            return estimated("the fallback over-estimate is within the bound, so no count "
+                             "was asked")
+        digest = hashlib.sha256(json.dumps(body, sort_keys=True, ensure_ascii=True)
+                                .encode("utf-8")).hexdigest()
+        if digest in self._seen:
+            return dict(self._seen[digest])
+        if not self.allowed:
+            return estimated(self.why_not)
+        if budget is not None and self.ratio is not None \
+                and chars * self.ratio > budget * (1 + SKIP_MARGIN):
+            return {"tokens": int(chars * self.ratio) + 1, "how": "scaled",
+                    "why": f"over the bound {budget} by this press's measured "
+                           f"{self.ratio:.4f} tokens a character; not counted"}
+        if redact.contains_known_secret(body):
+            return estimated("a stored secret is still in the request after masking, so it "
+                             "was not sent to be counted")
+        if self.asked >= MAX_COUNTS:
+            return estimated(f"this press asked {MAX_COUNTS} counts already; the fallback "
+                             "over-estimate is used")
+        self.asked += 1
+        try:
+            got = (self._count or anthropic_adapter.count_tokens)(body, self._key)
+        except Exception as exc:                        # noqa: BLE001 (said, never a crash)
+            kind = getattr(exc, "kind", type(exc).__name__)
+            out = estimated(f"the provider's count failed ({kind}: {exc}); the fallback "
+                            "over-estimate is used")
+        else:
+            out = {"tokens": int(got.tokens), "how": "counted", "why": "",
+                   "latency_s": round(float(got.latency_s), 3)}
+            self.ratio = max(self.ratio or 0.0, got.tokens / max(chars, 1))
+        self._seen[digest] = out
+        return dict(out)
+
+
+def counter(feature: str, *, actor: str, trigger: dict = None, count=None) -> Counter:
+    """A press's `Counter` for a context-budget selector (`nl_query.select_context`,
+    `explain.budgeted`), run before `ask`: it counts only where the call itself would get as
+    far as being sent (its trigger, hosted AI allowed, a background feature on, a key, a
+    pinned task); otherwise it estimates, saying why, and sends nothing. `ask` asks its own
+    gates again whatever this said."""
+    pin = profiles.TASKS.get(feature) or {}
+    named = triggers.check(trigger, actor, feature)
+    why = "" if named["ok"] else named["why"]
+    if not why and not hosted_allowed()["allowed"]:
+        why = hosted_allowed()["why"]
+    if not why and named["trigger"]["kind"] == triggers.BACKGROUND:
+        why = background.admit(named["trigger"])
+    key = "" if why else _api_key()
+    if not why and not key:
+        why = "no Anthropic API key is set"
+    if not why and not pin:
+        why = f"{feature!r} is not a task profiles.TASKS pins"
+    return Counter(pin.get("model", ""), key, allowed=not why,
+                   why_not=f"not counted: {why}" if why else "", count=count)
 
 
 def _text_of(reply_body: dict) -> str:
@@ -158,7 +294,7 @@ def _text_of(reply_body: dict) -> str:
 
 def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
         trigger: dict = None, context: dict = None, send=None, today: str = None,
-        thinking: str = None, subject: dict = None, network: str = "") -> dict:
+        thinking: str = None, subject: dict = None, network: str = "", count=None) -> dict:
     """One schema-bound call of the task *feature* (the module's docstring has the order): its
     model and bounds are its pin in `profiles.TASKS`, never an argument. *context* is the
     stable prefix every call of the task shares, cached; *parts* the call's own data,
@@ -170,7 +306,8 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
     refused. *trigger* is what started the call (`triggers`); a call without one is refused.
     *network* is the network the call is about (a list's folder name; "" for the
     installation's own, the connection check): with the subject, the prompt, the model and
-    the requester's access scope, what makes two presses one request (C1854)."""
+    the requester's access scope, what makes two presses one request (C1854). *count*
+    replaces the adapter's token count (tests), as *send* its send."""
     call_id = calls.new_id()
     pin = profiles.TASKS.get(feature) or {}
     model = pin.get("model", "")
@@ -245,20 +382,28 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
                       f"masking ({', '.join(leaked)}); nothing was sent")
     row["request"] = body
 
-    est = prompt_tokens(body)
+    # The prompt's size (C1898): the provider's count of the masked request, every gate above
+    # passed; the fallback over-estimate when the count is not had, said. Both on the row.
+    measured = Counter(model, key, count=count).measure(body, masked=True)
+    est = measured["tokens"]
+    row["prompt_tokens"] = est
+    row["prompt_count"] = {k: v for k, v in measured.items() if k != "tokens"}
+    how = ("counted by the provider" if measured["how"] == "counted" else
+           f"by the fallback estimate, {CHARS_PER_TOKEN} characters a token "
+           f"({measured['why']})")
     if est > pin["max_prompt_tokens"]:
         long_at = profile.get("long_prompt_tokens")
-        return refuse("prompt_too_long", f"this prompt is about {est} tokens, over the task's "
-                      f"bound of {pin['max_prompt_tokens']}"
+        return refuse("prompt_too_long", f"this prompt is {est} tokens ({how}), over the "
+                      f"task's bound of {pin['max_prompt_tokens']}"
                       + (f" ({model} charges every rate at its long tier over {long_at})"
-                         if long_at else "") + "; nothing was sent", prompt_tokens=est)
+                         if long_at else "") + "; nothing was sent")
 
     # One press, one provider request (C1854): the caps, the send and the record run once per
     # press key and once per identical request in flight; a press that joins one gets that
     # call's result, rebuilt from its row (modules/ai/presses.py).
     def spend():
         return _capped_send(feature, row, body, model, max_tokens, schema_model, key,
-                            send=send, today=today, refuse=refuse)
+                            send=send, today=today, refuse=refuse, tokens=est)
 
     # The request's identity beside its body (presses.IDENTITY): everything that changes the
     # answer or who may see it, named here where each is known.
@@ -277,15 +422,33 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
 PRESS_MARGIN_S = 15.0
 
 
+def send_bound_s() -> float:
+    """One call's longest time in the adapter: each attempt's connect and read bounds, every
+    retry and the longest wait between them, 65 s x 3 + 20 s x 2 = 235 s (from
+    anthropic_adapter.TIMEOUT, MAX_RETRIES and MAX_WAIT_S). Derived from the adapter's bounds,
+    not measured: no live call has been measured near them."""
+    a = anthropic_adapter
+    return (a.TIMEOUT[0] + a.TIMEOUT[1]) * (a.MAX_RETRIES + 1) + a.MAX_WAIT_S * a.MAX_RETRIES
+
+
 def press_wait_s() -> float:
     """How long a press waits on an identical call in flight (`presses.once`): one call's
-    longest time in the adapter (each attempt's connect and read bounds, every retry and the
-    longest wait between them: 65 s x 3 + 20 s x 2 = 235 s, from anthropic_adapter.TIMEOUT,
-    MAX_RETRIES and MAX_WAIT_S), and `PRESS_MARGIN_S`. Derived from the adapter's bounds, not
-    measured: no live call has been measured near them."""
-    a = anthropic_adapter
-    return (a.TIMEOUT[0] + a.TIMEOUT[1]) * (a.MAX_RETRIES + 1) + a.MAX_WAIT_S * a.MAX_RETRIES \
-        + PRESS_MARGIN_S
+    longest time in the adapter (`send_bound_s`, 235 s), and `PRESS_MARGIN_S`."""
+    return send_bound_s() + PRESS_MARGIN_S
+
+
+#: A reservation's life over one call's longest time in the adapter (CLAUDE.md: a bound is
+#: about 2.5x the time it covers).
+RESERVATION_FACTOR = 2.5
+
+
+def reservation_ttl_s() -> float:
+    """How long a call's reservation against the caps lives unsettled (C2039,
+    `reservations`): `RESERVATION_FACTOR` times one call's longest time in the adapter
+    (`send_bound_s`, 235 s, derived from the adapter's bounds, not measured), 587.5 s. A live
+    call is settled long before; only a process that died leaves one to expire. Its cost: a
+    dead process's worst case is held against the caps for at most this long."""
+    return RESERVATION_FACTOR * send_bound_s()
 
 
 def from_row(row: dict, schema_model) -> dict:
@@ -312,16 +475,19 @@ def _joined(row: dict, kept: dict, schema_model, why: str, scope: str) -> dict:
 
 
 def _capped_send(feature, row, body, model, max_tokens, schema_model, key, *, send, today,
-                 refuse) -> dict:
-    """The part of `ask` that spends: the caps judged by the worst case, the send, and the
-    answer checked and recorded (the module's docstring, items 6 on)."""
-    from modules import redact
+                 refuse, tokens=None) -> dict:
+    """The part of `ask` that spends: the caps judged by the worst case (*tokens*, the
+    prompt's count or estimate, as cache writes, and all of `max_tokens`), reserved against
+    them atomically across threads and processes (C2039, `reservations`), the send, and the
+    answer checked and recorded (the module's docstring, items 6 on); the reservation settled
+    once the row is recorded, whatever the outcome."""
+    from modules.ai import reservations
 
     cap = caps(feature)
     # No day cap (an admin's choice) is said in every cap refusal, so nobody reads one as the
     # day cap's.
     uncapped = "" if cap["per_day"] is not None else f"; {NO_DAY_CAP_WORDS}"
-    worst = worst_case_usd(model, body)
+    worst = worst_case_usd(model, body, tokens)
     if worst > cap["per_call"]:
         return refuse("over_cap", f"this call's worst case ${worst:.4f} is over the "
                       f"{feature} task's per-call cap ${cap['per_call']:.4f}{uncapped}",
@@ -329,23 +495,69 @@ def _capped_send(feature, row, body, model, max_tokens, schema_model, key, *, se
     # The cap's day: its midnight the stated boundary's (calls.today; UTC by default), from a
     # clock asked for UTC by name (never a local time read by default).
     day = today or calls.today()
-    spent = calls.spent_usd(day)
-    if spent["state"] == "unreadable":
-        return refuse("over_cap", "the record of AI calls cannot be read, so today's spend "
-                      f"is unknown ({spent['error']}){uncapped}; nothing was sent")
-    if cap["per_day"] is not None and spent["usd"] + worst > cap["per_day"]:
-        return refuse("over_cap", f"today's spend ${spent['usd']:.4f} plus this call's worst "
-                      f"case ${worst:.4f} is over the day cap ${cap['per_day']:.4f}",
-                      worst_usd=worst)
-    if row["trigger"]["kind"] == triggers.BACKGROUND:
-        over = background.over_cap(row["trigger"], worst, day)
-        if over:
-            return refuse(over["kind"], over["why"], cap_kind=over["cap"], worst_usd=worst)
+    trig = row["trigger"]
+    is_background = trig["kind"] == triggers.BACKGROUND
 
+    def judge(held):
+        """Inside the reservations' lock: the spend read, then every cap against the spend,
+        what is in flight and this call (None allows it)."""
+        spent = calls.spent_usd(day)
+        if spent["state"] == "unreadable":
+            return {"kind": "over_cap", "why": "the record of AI calls cannot be read, so "
+                    f"today's spend is unknown ({spent['error']}){uncapped}; nothing was sent"}
+        flying = reservations.in_flight(held)
+        if cap["per_day"] is not None and spent["usd"] + flying["usd"] + worst > cap["per_day"]:
+            return {"kind": "over_cap", "worst_usd": worst, "why": (
+                f"today's spend ${spent['usd']:.4f} plus ${flying['usd']:.4f} reserved by "
+                f"{flying['calls']} call(s) in flight plus this call's worst case "
+                f"${worst:.4f} is over the day cap ${cap['per_day']:.4f}")}
+        if is_background:
+            over = background.over_cap(trig, worst, day, reserved=reservations.in_flight(
+                held, feature=trig["feature"], network=trig["network"]))
+            if over:
+                return {"kind": over["kind"], "why": over["why"], "cap_kind": over["cap"],
+                        "worst_usd": worst}
+        return None
+
+    ttl = reservation_ttl_s()
+    # A background call's reservation names its background feature and network (what its own
+    # caps count, `reservations.in_flight`); a person's or an evaluation's, its task.
+    held = reservations.reserve(row["id"], worst, judge=judge, ttl_s=ttl,
+                                feature=trig["feature"] if is_background else feature,
+                                network=trig["network"] if is_background else "",
+                                background=is_background, day=day)
+    if not held["ok"]:
+        said = dict(held["refusal"])
+        return refuse(said.pop("kind"), said.pop("why"), **said)
+    recorded = False
     try:
-        reply = (send or anthropic_adapter.send)(body, key)
-    except anthropic_adapter.AdapterError as exc:
-        return refuse(exc.kind, str(exc), attempts=exc.attempts, ratelimit=exc.headers)
+        try:
+            reply = (send or anthropic_adapter.send)(body, key)
+        except anthropic_adapter.AdapterError as exc:
+            out = refuse(exc.kind, str(exc), attempts=exc.attempts, ratelimit=exc.headers)
+        else:
+            out = _received(row, reply, model, max_tokens, schema_model)
+        recorded = bool(out.get("recorded"))
+        return out
+    except BaseException as exc:
+        # Not one of the adapter's kinds, nor an answer the gateway reads: whether the provider
+        # billed it is unknown, so its worst case is what the record counts.
+        got = calls.record(dict(row, verdict="exception", cost_usd=worst, worst_usd=worst,
+                                detail=f"the call raised {type(exc).__name__} after it was "
+                                       "reserved; whether the provider billed it is unknown, "
+                                       f"so its worst case ${worst:.4f} is counted"))
+        recorded = bool(got.get("recorded"))
+        raise
+    finally:
+        # Settled once its row is in the record: until then the reservation is what counts
+        # it. A row that could not be recorded leaves the reservation to its expiry.
+        if recorded:
+            reservations.settle(row["id"], ttl)
+
+
+def _received(row, reply, model, max_tokens, schema_model) -> dict:
+    """The provider's answer checked and recorded (`_capped_send`'s, once sent)."""
+    from modules import redact
 
     usage = reply.body.get("usage") or {}
     tokens = {k: int(usage.get(k) or 0) for k in ("input_tokens", "output_tokens",

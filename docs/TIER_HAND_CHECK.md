@@ -1998,3 +1998,118 @@ tests/test_sdn_classify_normal.py and tests/test_sdn_policy.py (`scratchpad/coll
 
 **The result: both killed; the working tree untouched (nmas-control's fingerprint).**
 
+## 2026-10-28: the caps reserved atomically (C2039) and the provider's token count (C1898), by hand
+
+**What touches the tier.** (1) C2039, the operator's decision: `gateway._capped_send` reserves
+each call's worst case against every cap it is held to (the day cap; a background feature's
+day and month caps) under one cross-process lock (`filestore.PathLock` on
+`ai_reservations.json`, beside the record of AI calls), the spend read inside the lock, and
+settles it once the call's row is recorded, whatever the outcome (a `finally`; an exception
+records the worst case as its cost). New: `modules/ai/reservations.py` (`_read`, `_write`,
+`in_flight`, `reserve`, `settle`, `open_reservations`); `gateway.send_bound_s`,
+`reservation_ttl_s` (2.5 times the adapter's longest call, 235 s: 587.5 s); `_received` (the
+answer's half of the old `_capped_send`, unchanged lines); `background.over_cap`'s `reserved`.
+(2) C1898, the operator's decision: the provider's count of the masked request
+(`anthropic_adapter.count_body`, `count_tokens`: `POST /v1/messages/count_tokens`, its own
+bound, never retried) is what the prompt's bound and the worst case are judged on, recorded on
+the row (``prompt_count``); when it is not had, the fallback estimate at 1.8 characters a
+token (`CHARS_PER_TOKEN`, from 3.0; `tokens_of_chars`, `CALIBRATION`), said. New:
+`gateway.Counter` (`measure`), `counter` (a selector's counter, counting only where the call's
+own gates pass); `ask`'s measurement and its refusal's words; `worst_case_usd`'s `tokens`;
+`nl_query.select_context` and `explain.budgeted` measure by the counter (data leaves the host
+to be counted, so the counter masks first and never sends a stored secret).
+
+**The method:** the narrowed hand check (PHASE8_PLAN 15.12), by the agent that built it: each
+mutant one exact text replacement in a `scripts/nmas-control` throwaway worktree of the
+change, the aimed tests run (tests/test_ai_reservations.py, test_ai_token_count.py,
+test_ai_gateway_ask.py, test_ai_gateway.py, test_ai_background.py, test_ai_presses.py,
+test_anthropic_adapter.py; for the selectors also test_ai_nl_query.py and test_ai_explain.py),
+the file restored before the next (`scratchpad/caps_count_hm.py`). The baseline passed (301
+tests, and 1,375 across the AI files, the manual and the secret scans). A must-die canary
+first: `_capped_send` refusing every call: killed. The first run had 9 survivors; each was
+read, a test added or a planted value corrected, and the mutant run again (marked *then
+killed*). One, G14, is equivalent, named below.
+
+**The reservations (C2039).**
+
+| mutant | result | killed by |
+|---|---|---|
+| R1 an expired reservation never dropped | killed | `test_a_reservation_a_dead_process_left_expires_and_is_dropped` |
+| R2 a reservation expiring as it is made | killed | 4, both two-calls-at-once tests among them |
+| R3 the judge never asked | killed | 23 |
+| R4 the reservation never written | killed | 7 |
+| R5 an unreadable store read as empty at once | killed | 4, `test_an_unreadable_store_refuses_the_call_and_sends_nothing` among them |
+| R6 the shape check's expiry dropped | killed | `test_a_store_out_of_shape_is_unreadable_too` |
+| R7 settle removing nothing | killed | 12 |
+| R8 a feature's in-flight counting every reservation | survived (the planted amount fitted under the cap whoever's it was), then killed | `test_a_background_features_day_cap_counts_its_calls_in_flight_and_only_those` |
+| R9 another network's counted | survived, then killed | the same |
+| R10 a person's press counted | survived, then killed | the same |
+| R11 a refused call not writing the prune | survived, then killed | `test_a_refused_call_still_drops_an_expired_reservation_from_the_store` (added) |
+| R12 a store that cannot be written raising | killed | `test_a_store_that_cannot_be_written_refuses_the_call` |
+| R13 a settle that cannot read raising | killed | `test_a_reservation_that_cannot_be_settled_is_logged_and_the_answer_returned` |
+| R14 an old unreadable store kept refusing | killed (its pattern first failed to apply; fixed) | `test_an_unreadable_store_older_than_a_reservation_lives_is_kept_aside_and_replaced` |
+| R15 the old store replaced without being kept aside | killed | the same |
+| B1 `over_cap` without what is reserved | killed | the background in-flight test; `test_two_background_calls_at_once_cannot_pass_the_features_day_cap_together` |
+| G1 the worst case from the estimate, not the count | killed | 12 |
+| G2 the day cap without what is in flight | killed | the two-calls test, the other-process test, the not-yet-expired test |
+| G3 `>` to `>=` at the day cap | killed | `test_a_days_spend_reaching_the_cap_exactly_is_sent` |
+| G4 the feature's caps without its in-flight | killed | 2 background tests |
+| G5 a background reservation without its network | killed | the two-background-calls test |
+| G6 a background reservation not marked background | killed | the same |
+| G6b a background reservation naming its task, not its feature | killed | the same (it found this bug in the first build) |
+| G7 settled though the row was not recorded | killed | `test_a_row_that_could_not_be_recorded_leaves_its_reservation_to_expire` |
+| G8 never settled | killed | 13 |
+| G9 an exception's row costing 0 | killed | `test_an_exception_counts_its_worst_case_and_settles` |
+| G10 an exception's row never settled | killed | the same |
+| G11 an unrecorded answer settled | killed | the row-not-recorded test |
+| G12 the reservation's life one call, not 2.5 | killed | `test_the_reservations_life_is_two_and_a_half_times_one_calls_longest` |
+| G13 one attempt fewer in the adapter's bound | killed | that test and the press wait's |
+| G13b an exception not caught | killed | the exception test |
+
+**The count (C1898).**
+
+| mutant | result | killed by |
+|---|---|---|
+| G14 `ask`'s counter masking the masked body again | **survived: equivalent** | masking is idempotent on what `redact.egress_payload` already masked (its placeholders match no secret shape), so the counted bytes are the same; under the mutant the counted body still equalled the sent one (`test_the_count_is_used_when_it_answers`) |
+| G15 `>` to `>=` at the prompt's bound | killed | `test_a_prompt_at_its_bound_is_sent`, `test_nothing_is_sent_when_the_counted_prompt_is_over_the_bound` |
+| G16 the bound judged on the estimate | killed | 18 |
+| G17 the worst case handed no count | killed | 12 |
+| G18 `<=` to `<` in the fallback's within-bound check | killed | `test_a_request_the_fallback_puts_exactly_at_the_bound_is_not_counted` |
+| G19 no cache by digest | killed | `test_the_same_request_is_counted_once` |
+| G20 a counter not allowed still counting | killed | the two counter-gate tests |
+| G21 the skip margin 100 times the bound | survived (the test's candidate was far over either way), then killed | `test_a_candidate_far_over_by_the_measured_ratio_is_skipped_uncounted` |
+| G22 a stored secret sent to be counted | killed | `test_a_stored_secret_left_after_masking_is_never_sent_to_be_counted` |
+| G23 one count past `MAX_COUNTS` | killed | `test_a_press_asks_at_most_max_counts` |
+| G24 counts never counted | killed | the same |
+| G25 the selector's body counted unmasked | killed | `test_the_counter_counts_only_the_masked_request` |
+| G26 no measured ratio | killed | the skip test |
+| G27 only the adapter's kinds caught | killed | the fallback test's `RuntimeError` case |
+| G28 the counter not asking whether hosted AI is allowed | killed | the counter-gate test |
+| G29 nor whether the background feature is on | killed | `test_a_counter_without_a_key_or_with_its_feature_off_counts_nothing` |
+| G30 nor whether a key is set | killed | the same |
+| G30b nor the trigger | survived (hosted AI was off in the test, so the counter was refused for that), then killed | `test_a_counter_whose_call_could_not_be_sent_counts_nothing_and_says_why` |
+| G31 the fallback's `+ 1` dropped | killed | 2 |
+| G32 the fallback at 2.0 characters a token | killed | the sample test and the margin test |
+| G33 the row's `prompt_count` dropped | killed | 11 |
+| G34 the refusal's words inverted | killed | 4 |
+| G35 `worst_case_usd` ignoring its tokens | killed | 2 |
+| A1 every key of the send counted | killed | `test_the_count_is_asked_of_the_count_endpoint_with_the_sends_key_and_its_own_bound` |
+| A2 `system` not counted | killed | the same, and the background test |
+| A3 no headers | killed | the same |
+| A4 no bound | killed | the same |
+| A5 a boolean count taken | killed | the failures test's `True` case |
+| A6 a negative count taken | killed | its `-1` case |
+| A7 a 429 not `rate_limited` | killed | its 429 case |
+| A8 a count with no key asked | killed | `test_a_count_with_no_key_asks_nothing` |
+| A9 the count sent to the Messages endpoint | killed | the endpoint test |
+| A10 the count's bound the send's | killed | the same |
+| N1 Ask in words' selector on the estimate | killed | 4 |
+| N2 Ask in words handing its selector no counter | killed | 2 |
+| E1 Explain's budget on the estimate | killed | `test_explains_budget_keeps_what_the_count_fits_where_the_fallback_trims` |
+| E2 Explain handing its budget no counter | survived (nothing ran v6 through `explain_pack` with a count), then killed | `test_v6_fits_its_budget_by_the_providers_count` (added) |
+
+**The result: every mutant killed but G14, equivalent and named; the canary killed. The first
+run's `nmas-control` exit was 3 because the agent edited tests in the checkout while it ran
+(docs/TESTING.md and the two new test files), not the mutants: the reruns of the survivors
+left the working tree untouched (nmas-control's fingerprint).**
+

@@ -170,7 +170,7 @@ def test_a_comparison_on_another_model_is_capped_at_that_model_s_worst_case(worl
     # A request at the task's prompt bound: under Sonnet's cap, over Haiku's.
     body = {"max_tokens": pin["max_tokens"], "messages": []}
     body["messages"] = ["a" * int((pin["max_prompt_tokens"] - 1) * gateway.CHARS_PER_TOKEN
-                                  - len(json.dumps(body)) - 8)]
+                                  - len(json.dumps(body)) - 2)]
     assert pin["max_prompt_tokens"] - 2 <= gateway.prompt_tokens(body) <= pin["max_prompt_tokens"]
     assert haiku < gateway.worst_case_usd("claude-sonnet-5-5", body) <= sonnet
     assert profiles.load_pins()["sdn_classify"] == pin, "the pin file is never written"

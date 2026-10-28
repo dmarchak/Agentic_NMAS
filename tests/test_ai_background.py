@@ -223,9 +223,9 @@ def test_a_switch_turned_off_between_admit_and_the_caps_is_refused_off(bg, monke
     _on()
     real = B.over_cap
 
-    def off_first(trigger, worst, day):
+    def off_first(trigger, worst, day, reserved=None):
         B.turn_off("Lab", "fake_loop", actor=ADMIN, verified="access")
-        return real(trigger, worst, day)
+        return real(trigger, worst, day, reserved)
     monkeypatch.setattr(B, "over_cap", off_first)
     got = _call(bg)
     assert got.get("error") == "feature_off" and bg.sent == []
@@ -238,7 +238,8 @@ def test_the_features_day_cap_stops_it_naming_both_operands(bg):
     _plant(0.499999)
     got = _call(bg)
     assert got["ok"] is False and got.get("error") == "feature_cap" and bg.sent == []
-    assert "fake_loop's spend on lab today $0.5000 plus this call's worst case $" in got.get("detail", "")
+    assert ("fake_loop's spend on lab today $0.5000 plus $0.0000 reserved by its 0 call(s) in "
+            "flight plus this call's worst case $") in got.get("detail", "")
     assert "is over its day cap $0.5000; it stops until the day ends or an admin raises the " \
            "cap; nothing was sent" in got.get("detail", "")
     row = calls.read()["rows"][0]
@@ -435,9 +436,9 @@ def test_a_switch_turned_off_mid_call_says_admits_words_and_names_no_cap(bg, mon
     _on()
     real = B.over_cap
 
-    def off_first(trigger, worst, day):
+    def off_first(trigger, worst, day, reserved=None):
         B.turn_off("Lab", "fake_loop", actor=ADMIN, verified="access")
-        return real(trigger, worst, day)
+        return real(trigger, worst, day, reserved)
     monkeypatch.setattr(B, "over_cap", off_first)
     got = _call(bg)
     assert got.get("detail", "") == ("the background feature fake_loop is off for the network "
@@ -464,7 +465,7 @@ def test_a_call_that_brings_the_spend_exactly_to_the_cap_is_sent(bg, monkeypatch
     # (a quarter, and 2**-12 as the worst case, under the task's per-call cap) keep the sum exact.
     worst = 2.0 ** -12
     assert worst <= profiles.cap_per_call(TASK)
-    monkeypatch.setattr(gateway, "worst_case_usd", lambda model, body: worst)
+    monkeypatch.setattr(gateway, "worst_case_usd", lambda model, body, tokens=None: worst)
     _on(day=0.25 + worst, month=10.0)
     _plant(0.25)
     got = _call(bg)
@@ -478,6 +479,7 @@ def test_the_month_caps_refusal_names_this_month(bg):
     got = gateway.ask(TASK, ("ping", 1), connection.Ping, {"word": "w"},
                       actor=triggers.actor_of(t), trigger=t, send=bg.send, today="2026-01-15")
     assert got.get("error") == "feature_cap" and bg.sent == []
-    assert "fake_loop's spend on lab this month $1.0000 plus this call's worst case $" \
+    assert ("fake_loop's spend on lab this month $1.0000 plus $0.0000 reserved by its 0 "
+            "call(s) in flight plus this call's worst case $") \
         in got.get("detail", ""), got
     assert "is over its month cap $1.0000; it stops until the month ends" in got["detail"]

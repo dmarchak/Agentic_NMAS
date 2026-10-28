@@ -378,6 +378,26 @@ def test_v6_is_a_candidate_built_from_v4_and_says_what_it_adds():
     assert "common cause" not in text and "common cause" not in v4, "v5's line stays out"
 
 
+def test_v6_fits_its_budget_by_the_providers_count(world, monkeypatch):
+    """C1898: explain_pack hands the context budget the press's counter, so a pack the
+    provider's count fits is sent whole where the fallback estimate alone would drop from it
+    (the bound planted just under the whole pack's fallback estimate, the count far under)."""
+    from modules.ai import profiles
+    topo = explain.topology(world.pack)
+    whole = explain.budgeted(world.pack, topo, V6_PROMPT, explain.SCHEMA_OF[6])
+    monkeypatch.setitem(profiles.TASKS, "explain", dict(
+        profiles.TASKS["explain"], max_prompt_tokens=whole["said"]["estimate"] - 1))
+    monkeypatch.setattr(A, "count_tokens", lambda body, key, **kw: A.Count(tokens=1000))
+    world.answer = dict(_answer(world.pack), needs=[])
+    with pressed_by("operator@example.com"):
+        got = explain.explain_pack(world.pack, actor="operator@example.com",
+                                   trigger=triggers.person("operator@example.com"),
+                                   send=world.send, today="2026-10-25", prompt=V6_PROMPT)
+    assert got["ok"] is True, got
+    assert got["context"]["dropped"] == [] and got["context"]["estimate"] == 1000, \
+        got["context"]
+
+
 def test_v6_sends_nothing_looked_up_first_and_a_need_is_looked_up_once(world, monkeypatch):
     """C1780: v6's first call says nothing was looked up; an answer naming a need is looked up
     once (`needs.run`) and asked once more, the follow-up's answer the one checked and shown,

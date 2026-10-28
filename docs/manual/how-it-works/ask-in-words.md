@@ -118,8 +118,12 @@ not a calendar week: it is the builder's 7 days, ending now.
 
 Each call is priced at the pinned model's rates (**Settings › Installation › AI (hosted)**
 shows the table) and refused before it is sent if its worst case would cross the task's
-per-call cap or the day's cap. Every call is a row in **History**: who asked, the masked
-request, the answer, its verdict, its tokens and its cost. The question's metrics and labels
+per-call cap or the day's cap (with what calls in flight have reserved). Its prompt is
+measured by the provider's own token count before it is sent, and what is sent of the
+network context and the offer is fitted to the task's prompt bound by that count; when the
+count cannot be had, a deliberately high estimate is used instead, which fits less. Every
+call is a row in **History**: who asked, the masked request, the answer, its verdict, its
+tokens (the prompt's, counted or estimated, and which) and its cost. The question's metrics and labels
 come from Prometheus; nothing is read from or sent to a device.
 
 ## When it says no {#refusals}
@@ -133,7 +137,10 @@ come from Prometheus; nothing is read from or sent to a device.
   it says "Not filled: the answer ran past max_tokens".
 - **Not one of the metrics offered:** the answer named a metric {{product}} did not offer, so
   nothing is filled.
-- **Over a cap:** the call's worst case, and the cap it would cross, are both named.
+- **Over a cap:** the call's worst case, what is reserved by calls in flight, today's spend
+  and the cap it would cross are all named.
+- **Too long:** the prompt's tokens, counted by the provider or estimated (said which), and
+  the task's bound are both named; nothing is sent.
 
 ## On the logs builder {#logs}
 

@@ -31,6 +31,19 @@ SHA = prompts.load("ping", 1)["sha256"]
 #: A row once the task's model is known: it records the thinking asked (the batched gateway
 #: change, 2026-10-25), the model's default when the task names none.
 ASKED = dict(BASE, thinking="adaptive")
+#: How a row past the prompt's measurement says it was measured (C1898): counted by the
+#: provider, here the tests' typical count (tests/conftest.py, `_a_typical_provider_token_count`).
+COUNTED = {"how": "counted", "why": "", "latency_s": 0.01}
+
+
+def _counted(body) -> int:
+    """*body*'s prompt in tokens as the provider's count answers it in these tests."""
+    return A.count_tokens(body, KEY).tokens
+
+
+def _measured(body) -> dict:
+    """What a row past the prompt's measurement adds: its tokens and how they were had."""
+    return {"prompt_tokens": _counted(body), "prompt_count": COUNTED}
 
 
 @pytest.fixture(autouse=True)
@@ -172,13 +185,13 @@ def test_a_prompt_over_its_bound_is_refused_with_its_estimate_and_the_long_tier(
     bound = profiles.TASKS["connection_check"]["max_prompt_tokens"]
     got = _ask(world, parts={"word": "w", "pack": "x" * (bound * 4)})
     row = _row()
-    est = gateway.prompt_tokens(row["request"])
-    words = (f"this prompt is about {est} tokens, over the task's bound of {bound} "
-             f"({MODEL} charges every rate at its long tier over "
+    est = _counted(row["request"])
+    words = (f"this prompt is {est} tokens (counted by the provider), over the task's bound "
+             f"of {bound} ({MODEL} charges every rate at its long tier over "
              f"{profiles.profile(MODEL)['long_prompt_tokens']}); nothing was sent")
     assert got == _refused("prompt_too_long", words) and world.sent == []
     assert row == dict(ASKED, schema="ping.v1", prompt_sha256=SHA, request=row["request"],
-                       verdict="prompt_too_long", detail=words, prompt_tokens=est)
+                       verdict="prompt_too_long", detail=words, **_measured(row["request"]))
     assert row["request"]["messages"][0]["content"].count("x" * 100) > 0
 
 
@@ -187,13 +200,13 @@ def test_a_model_with_no_long_tier_says_none(world, monkeypatch):
     bound = profiles.TASKS["connection_check"]["max_prompt_tokens"]
     got = _ask(world, parts={"word": "w", "pack": "x" * (bound * 4)})
     est = _row()["prompt_tokens"]
-    assert got["detail"] == (f"this prompt is about {est} tokens, over the task's bound of "
-                             f"{bound}; nothing was sent")
+    assert got["detail"] == (f"this prompt is {est} tokens (counted by the provider), over "
+                             f"the task's bound of {bound}; nothing was sent")
 
 
 def test_a_prompt_at_its_bound_is_sent(world, monkeypatch):
     body = _request(world)
-    est = gateway.prompt_tokens(body)
+    est = _counted(body)
     monkeypatch.setitem(profiles.TASKS, "connection_check",
                         dict(profiles.TASKS["connection_check"], max_prompt_tokens=est))
     world.answer = _answer('{"echo": "w"}')
@@ -202,19 +215,35 @@ def test_a_prompt_at_its_bound_is_sent(world, monkeypatch):
 
 def test_a_worst_case_over_the_call_cap_is_refused_with_both_operands(world, monkeypatch):
     body = _request(world)
-    worst = gateway.worst_case_usd(MODEL, body)
+    worst = gateway.worst_case_usd(MODEL, body, _counted(body))
     monkeypatch.setattr(profiles, "cap_per_call", lambda name: worst / 2)
     words = (f"this call's worst case ${worst:.4f} is over the connection_check task's "
              f"per-call cap ${worst / 2:.4f}")
     assert _ask(world) == _refused("over_cap", words) and world.sent == []
     assert _row() == dict(ASKED, schema="ping.v1", prompt_sha256=SHA, request=body,
-                          verdict="over_cap", detail=words, worst_usd=worst)
+                          verdict="over_cap", detail=words, worst_usd=worst, **_measured(body))
+
+
+def test_the_worst_case_is_the_counted_prompt_not_the_estimate(world, monkeypatch):
+    """C1898: the per-call worst case is priced from the provider's count when it answers,
+    never from the fallback estimate (here a count far under it: the estimate would refuse)."""
+    body = _request(world)
+    counted = gateway.worst_case_usd(MODEL, body, 10)
+    assert counted < gateway.worst_case_usd(MODEL, body)
+    monkeypatch.setattr(profiles, "cap_per_call", lambda name: counted)
+    world.answer = _answer('{"echo": "w"}')
+    with pressed_by(ACTOR):
+        got = gateway.ask("connection_check", ("ping", 1), connection.Ping, {"word": "w"},
+                          actor=ACTOR, trigger=triggers.person(ACTOR), send=world.send,
+                          today="2026-10-25", count=lambda b, k: A.Count(tokens=10))
+    assert got["ok"] is True and len(world.sent) == 1
+    assert _row()["prompt_tokens"] == 10
 
 
 def test_a_worst_case_at_the_call_cap_is_sent(world, monkeypatch):
     body = _request(world)
     monkeypatch.setattr(profiles, "cap_per_call",
-                        lambda name: gateway.worst_case_usd(MODEL, body))
+                        lambda name: gateway.worst_case_usd(MODEL, body, _counted(body)))
     world.answer = _answer('{"echo": "w"}')
     assert _ask(world)["ok"] is True and len(world.sent) == 1
 
@@ -236,40 +265,42 @@ def test_an_unreadable_record_is_refused_in_its_words(world, monkeypatch):
              "at 3); nothing was sent")
     assert _ask(world) == _refused("over_cap", words) and world.sent == []
     assert _row() == dict(ASKED, schema="ping.v1", prompt_sha256=SHA, request=body,
-                          verdict="over_cap", detail=words)
+                          verdict="over_cap", detail=words, **_measured(body))
     assert days == ["2026-10-25"], "the day given is the day counted"
 
 
 def test_the_day_cap_is_refused_with_its_three_operands(world, monkeypatch):
+    """Today's spend, what calls in flight hold (none here: C2039), this call's worst case and
+    the cap."""
     body = _request(world)
-    worst = gateway.worst_case_usd(MODEL, body)
+    worst = gateway.worst_case_usd(MODEL, body, _counted(body))
     _spent(monkeypatch, 1.5 - worst / 2)
-    words = (f"today's spend ${1.5 - worst / 2:.4f} plus this call's worst case ${worst:.4f} "
-             f"is over the day cap ${1.5:.4f}")
+    words = (f"today's spend ${1.5 - worst / 2:.4f} plus $0.0000 reserved by 0 call(s) in "
+             f"flight plus this call's worst case ${worst:.4f} is over the day cap ${1.5:.4f}")
     assert _ask(world) == _refused("over_cap", words) and world.sent == []
     assert _row() == dict(ASKED, schema="ping.v1", prompt_sha256=SHA, request=body,
-                          verdict="over_cap", detail=words, worst_usd=worst)
+                          verdict="over_cap", detail=words, worst_usd=worst, **_measured(body))
 
 
 def test_with_no_day_cap_a_call_is_sent_whatever_today_s_spend(world, monkeypatch):
     """No cap (the key stored as null, an admin's typed choice; the operator, 2026-10-27):
     the day's spend refuses nothing. The same spend under a cap is refused, naming it."""
     body = _request(world)
-    worst = gateway.worst_case_usd(MODEL, body)
+    worst = gateway.worst_case_usd(MODEL, body, _counted(body))
     world.settings["ai_cap_usd_per_day"] = None
     _spent(monkeypatch, 1_000_000.0)
     world.answer = _answer('{"echo": "w"}')
     assert _ask(world)["ok"] is True and len(world.sent) == 1
     open(calls._path(), "w").close()
     world.settings["ai_cap_usd_per_day"] = 5000.0
-    words = (f"today's spend ${1_000_000.0:.4f} plus this call's worst case ${worst:.4f} "
-             f"is over the day cap ${5000.0:.4f}")
+    words = (f"today's spend ${1_000_000.0:.4f} plus $0.0000 reserved by 0 call(s) in flight "
+             f"plus this call's worst case ${worst:.4f} is over the day cap ${5000.0:.4f}")
     assert _ask(world) == _refused("over_cap", words) and len(world.sent) == 1
 
 
 def test_with_no_day_cap_a_cap_s_refusal_says_no_day_cap_is_set(world, monkeypatch):
     body = _request(world)
-    worst = gateway.worst_case_usd(MODEL, body)
+    worst = gateway.worst_case_usd(MODEL, body, _counted(body))
     world.settings["ai_cap_usd_per_day"] = None
     monkeypatch.setattr(profiles, "cap_per_call", lambda name: worst / 2)
     words = (f"this call's worst case ${worst:.4f} is over the connection_check task's "
@@ -286,7 +317,7 @@ def test_with_no_day_cap_a_cap_s_refusal_says_no_day_cap_is_set(world, monkeypat
 
 def test_a_days_spend_reaching_the_cap_exactly_is_sent(world, monkeypatch):
     body = _request(world)
-    worst = gateway.worst_case_usd(MODEL, body)
+    worst = gateway.worst_case_usd(MODEL, body, _counted(body))
     world.settings["ai_cap_usd_per_day"] = worst
     _spent(monkeypatch, 0.0)
     world.answer = _answer('{"echo": "w"}')
@@ -334,7 +365,7 @@ def test_a_provider_failure_is_refused_with_its_attempts_and_headers(world):
     assert _ask(world, send=down) == _refused("overloaded", "HTTP 529 after 3 attempts: busy")
     assert _row() == dict(ASKED, schema="ping.v1", prompt_sha256=SHA, request=body,
                           verdict="overloaded", detail="HTTP 529 after 3 attempts: busy",
-                          attempts=3, ratelimit={"retry-after": "3"})
+                          attempts=3, ratelimit={"retry-after": "3"}, **_measured(body))
 
 
 def _sending(reply_body, latency=0.1234567, attempts=2, headers=None):
@@ -363,7 +394,8 @@ def test_an_answer_is_returned_and_recorded_whole(world):
                           cost_usd=cost, price=profiles.prices_for(MODEL, 1150),
                           tokens=USAGE, latency_s=0.123, attempts=2,
                           ratelimit={"x-ratelimit-limit": "50"}, stop_reason="end_turn",
-                          response='{"echo": "w"}', verdict="ok", output={"echo": "w"})
+                          response='{"echo": "w"}', verdict="ok", output={"echo": "w"},
+                          **_measured(body))
 
 
 # ------------------------------------------- thinking per task (the batched gateway change)

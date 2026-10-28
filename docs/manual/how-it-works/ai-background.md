@@ -69,4 +69,7 @@ so. On a feature whose approval ended, Turn off removes the ended switch.
 amount in US dollars; the day cap is within the installation's day cap. Saving records the old
 and new caps. Raising a cap is how a feature stopped by its cap runs again before its day or
 month ends; **Mercury never raises a cap by itself**. A feature that reaches a cap stops until
-the day or month ends, and Needs attention raises a row (at 50% and 80% too).
+the day or month ends, and Needs attention raises a row (at 50% and 80% too). Each of its
+calls is judged by its spend so far, plus the worst case its calls still in flight on this
+network have reserved, plus this call's worst case, so several calls at once never pass its
+caps together (see [The day cap](installation-settings#ai-cap)).

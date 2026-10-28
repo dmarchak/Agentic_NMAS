@@ -181,14 +181,18 @@ def admit(trigger: dict) -> str:
     return ""
 
 
-def over_cap(trigger: dict, worst: float, day: str):
+def over_cap(trigger: dict, worst: float, day: str, reserved: dict = None):
     """None when the feature's spend on its network on the cap's *day* and in its month, plus
-    this call's *worst* case, fits its day and month caps; else the gateway's refusal,
-    ``{"kind", "why", "cap"}``: ``feature_cap`` naming both operands and which cap ("day" or
-    "month"), or ``feature_off`` when it was turned off since `admit`. An unreadable record, or
-    a cap out of shape, refuses."""
+    what its calls in flight hold (*reserved*, ``{"usd", "calls"}``, the gateway's
+    reservations: C2039), plus this call's *worst* case, fits its day and month caps; else the
+    gateway's refusal, ``{"kind", "why", "cap"}``: ``feature_cap`` naming every operand and
+    which cap ("day" or "month"), or ``feature_off`` when it was turned off since `admit`. An
+    unreadable record, or a cap out of shape, refuses. A reservation counts against both caps
+    whatever day it was made on: it lives minutes, and the call it holds lands on the record
+    when it ends, which may be the next day."""
     from modules.ai import spend
 
+    held = reserved or {"usd": 0.0, "calls": 0}
     name, net = trigger["feature"], trigger["network"]
     entry = entry_of(net, name)
     if entry is None:
@@ -206,11 +210,13 @@ def over_cap(trigger: dict, worst: float, day: str):
                 "why": (f"the record of AI calls cannot be read, so {name}'s spend on {net} is "
                         f"unknown ({got['error']}); nothing was sent")}
     for which, spent in (("day", got["day_usd"]), ("month", got["month_usd"])):
-        if spent + worst > caps[which]:
+        if spent + held["usd"] + worst > caps[which]:
             period = "today" if which == "day" else "this month"
             return {"kind": "feature_cap", "cap": which,
-                    "why": (f"{name}'s spend on {net} {period} ${spent:.4f} plus this call's "
-                            f"worst case ${worst:.4f} is over its {which} cap "
+                    "why": (f"{name}'s spend on {net} {period} ${spent:.4f} plus "
+                            f"${held['usd']:.4f} reserved by its {held['calls']} call(s) in "
+                            f"flight plus this call's worst case ${worst:.4f} is over its "
+                            f"{which} cap "
                             f"${caps[which]:.4f}; it stops until the {which} ends or an admin "
                             "raises the cap; nothing was sent")}
     return None

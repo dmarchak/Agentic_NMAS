@@ -194,6 +194,8 @@ def test_a_joiner_has_its_own_row_costing_nothing_and_the_join_is_logged(world, 
         "model": call["model"], "prompt": "ping.v1", "schema": call["schema"],
         "subject": {}, "thinking": call["thinking"], "prompt_sha256": call["prompt_sha256"],
         "trigger": call["trigger"],
+        # Its own prompt's size, measured before it joined (C1898): the count, as the call's.
+        "prompt_tokens": call["prompt_tokens"], "prompt_count": call["prompt_count"],
         "verdict": "joined", "cost_usd": 0.0, "joined": first["call_id"], "scope": scope,
         "detail": f"joined call {first['call_id']}: {why}"}
     assert join["id"] != first["call_id"] and again["recorded"] is True

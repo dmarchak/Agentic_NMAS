@@ -474,6 +474,34 @@ def _a_verified_person_by_default(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _a_typical_provider_token_count(monkeypatch):
+    """The gateway asks the provider's token count before every call (C1898,
+    `anthropic_adapter.count_tokens`); no test reaches a provider, so by default the count is
+    answered here as the provider would answer it for a typical request: its characters over
+    `TYPICAL_CHARS_PER_TOKEN` (the median of the 10,395 recorded calls' real input,
+    2.585 characters a token, the calibration of 2026-10-28). A test about the count hands the
+    gateway its own (``count=``) or replaces this; a call with a fake *session* (the adapter's
+    own tests) runs the real function against that session."""
+    import json as _json
+
+    from modules.ai import anthropic_adapter as A
+
+    real = A.count_tokens
+
+    def typical(body, api_key, *, session=None, **kw):
+        if session is not None:
+            return real(body, api_key, session=session, **kw)
+        chars = len(_json.dumps(A.count_body(body), ensure_ascii=False))
+        return A.Count(tokens=int(chars / TYPICAL_CHARS_PER_TOKEN) + 1, latency_s=0.01)
+    monkeypatch.setattr(A, "count_tokens", typical)
+    yield
+
+
+#: The default fake count's characters a token (`_a_typical_provider_token_count`).
+TYPICAL_CHARS_PER_TOKEN = 2.585
+
+
+@pytest.fixture(autouse=True)
 def _device_cards_are_singular(request, monkeypatch):
     """C408 (the operator, 2026-10-04): a device page's card names its one device, never the
     fleet's "N of N device(s)", "devices you tick" or "for each". Every card

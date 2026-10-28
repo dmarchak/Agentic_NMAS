@@ -172,9 +172,11 @@ def test_the_vocabulary_is_the_cached_prefix_and_the_question_rides_uncached(wor
 
 
 def test_the_prompt_stays_under_the_task_s_bound(world):
+    """Under the bound as the gateway judges it: the provider's count (C1898; here the tests'
+    typical count, tests/conftest.py)."""
     world.answer = _choices()
     _ask(world)
-    est = gateway.prompt_tokens(world.sent[0]["body"])
+    est = A.count_tokens(world.sent[0]["body"], KEY).tokens
     assert est <= profiles.TASKS["nl_query"]["max_prompt_tokens"], est
 
 
@@ -1017,14 +1019,17 @@ def test_the_levels_drop_bulk_first_and_the_coverage_header_survives(monkeypatch
 def test_v9_says_which_level_it_sent_and_what_it_dropped(world, monkeypatch):
     monkeypatch.setattr(nl_query, "context_levels", lambda name, store: [
         {"level": i, "dropped": list(nl_query.CONTEXT_DROPS[:i]), "summary": "x" * n,
-         "coverage": "flows: not_collected"} for i, n in enumerate((60000, 50000, 200, 100,
-                                                                    50, 10))])
+         "coverage": "flows: not_collected"} for i, n in enumerate((60000, 50000, 100, 50,
+                                                                    20, 10))])
+    # 100 characters of summary at level 2: this world's request with its offer is about
+    # 7,950 tokens by the provider's count (C1898; the tests' typical count), near the 8,000.
     world.answer = _v8_choices()
     got = _ask(world, prompt=nl_query.CANDIDATE)
     assert got["ok"] is True, got
     assert got["context"]["level"] == 2 and got["context"]["budget"] == 8000
     assert got["context"]["dropped"] == list(nl_query.CONTEXT_DROPS[:2])
-    assert "x" * 200 in world.sent[-1]["body"]["system"][-1]["text"]
+    assert "x" * 100 in world.sent[-1]["body"]["system"][-1]["text"]
+    assert "x" * 101 not in world.sent[-1]["body"]["system"][-1]["text"]
 
 
 def test_v9_s_context_is_the_compact_one_and_v8_s_is_as_it_was(monkeypatch):
@@ -1122,11 +1127,17 @@ def test_v10_holds_the_answer_to_the_metrics_it_sent(world, monkeypatch):
     offered = nl_query.retrieve(question, cat, nl_query.device_metrics(world.prom, rng))
     assert len(offered) == 20 and offered[0][0] == "ifInErrors"
     data = nl_query.parts(question, offered, [], ["access", "core"], NOW)
-    at_floor = nl_query.select_context(
+    floor = nl_query.select_context(
         nl_query.CANDIDATE, nl_query.SCHEMA_OF[10],
         dict(data, metrics=nl_query.offer_text(offered[:15], 20)),
         {"builder": nl_query.vocabulary()}, nl_query.context_levels("Lab", "metrics"),
-        10 ** 6)["estimate"]
+        10 ** 6)
+    # The bound set at the floor's size as the gateway measures it: the provider's count of
+    # the request it would send (C1898; the tests' typical count).
+    at_floor = A.count_tokens(gateway.build_request(
+        __import__("modules.ai.prompts", fromlist=["load"]).load(*nl_query.CANDIDATE),
+        nl_query.SCHEMA_OF[10], dict(floor["data"], looked_up=nl_query.looked_up([])),
+        profiles.TASKS[nl_query.FEATURE], floor["ctx"]), KEY).tokens
     monkeypatch.setitem(profiles.TASKS, nl_query.FEATURE,
                         dict(profiles.TASKS[nl_query.FEATURE], max_prompt_tokens=at_floor))
     world.answer = _v8_choices(metric=offered[-1][0])
@@ -1219,11 +1230,15 @@ def test_v10_s_prompt_says_v9_s_rules_in_less_text():
     assert len(text) == 11797 and len(v7) < len(text) < len(v9) == 13442
 
 
-def test_v10_s_largest_measured_request_fits_the_bound_with_the_whole_context(world):
+def test_v10_s_largest_measured_request_fits_the_counted_bound_only_without_its_context(world):
     """Recorded case 7 on the captured catalogue (its 20 metrics offered) with a network
     context the size the lab's level 0 measured (2026-10-26 22:42 UTC: a summary of 1,079
-    characters, a coverage of 850): v10 fits the 8,000 with nothing dropped, where v9 at the
-    same level did not (C1830)."""
+    characters, a coverage of 850). Judged by the old estimate (3 characters a token, an
+    under-estimate) v10 fitted the 8,000 with nothing dropped (C1830). Judged by the
+    provider's count (C1898; here the tests' typical count, 2.585 characters a token, the
+    recorded calls' median), it does not fit at level 0 even with its offer at the floor; it
+    fits with the network context dropped and the offer cut to 17 of 20. v9, which cuts no
+    offer, fits at neither."""
     from modules import history_promq as pq
     rng = pq.window(dict(pq.DEFAULTS), NOW)
     cat = pq.catalogue("Lab", world.prom, rng, NOW)
@@ -1231,15 +1246,24 @@ def test_v10_s_largest_measured_request_fits_the_bound_with_the_whole_context(wo
     offered = nl_query.retrieve(question, cat, nl_query.device_metrics(world.prom, rng))
     assert len(offered) == 20
     data = nl_query.parts(question, offered, ["r2"], ["router", "switch"], NOW)
-    level0 = [{"level": 0, "dropped": [], "summary": "s" * 1079, "coverage": "c" * 850}]
+    level0 = {"level": 0, "dropped": [], "summary": "s" * 1079, "coverage": "c" * 850}
+    leanest = {"level": 5, "dropped": list(nl_query.CONTEXT_DROPS), "summary": "omitted",
+               "coverage": "c" * 200}
     budget = profiles.TASKS[nl_query.FEATURE]["max_prompt_tokens"]
-    got = nl_query.select_context(nl_query.CANDIDATE, nl_query.SCHEMA_OF[10], data,
-                                  {"builder": nl_query.vocabulary()}, level0, budget,
-                                  offered=offered)
-    assert got["estimate"] <= budget == 8000 and got["offered"] == offered, got["estimate"]
-    v9 = nl_query.select_context(("nl_metrics", 9), nl_query.MetricsChoicesV3, data,
-                                 {"builder": nl_query.vocabulary()}, level0, budget)
-    assert v9["estimate"] > budget, v9["estimate"]
+    model = profiles.TASKS[nl_query.FEATURE]["model"]
+
+    def select(prompt, schema, levels, **kw):
+        return nl_query.select_context(prompt, schema, data, {"builder": nl_query.vocabulary()},
+                                       levels, budget, counter=gateway.Counter(model, KEY), **kw)
+    at0 = select(nl_query.CANDIDATE, nl_query.SCHEMA_OF[10], [level0], offered=offered)
+    assert at0["estimate"] > budget == 8000 and len(at0["offered"]) == nl_query.OFFER_FLOOR
+    got = select(nl_query.CANDIDATE, nl_query.SCHEMA_OF[10], [level0, leanest],
+                 offered=offered)
+    assert got["estimate"] <= budget and got["level"] == 5, got["estimate"]
+    assert len(got["offered"]) == 17, len(got["offered"])
+    for levels in ([level0], [level0, leanest]):
+        v9 = select(("nl_metrics", 9), nl_query.MetricsChoicesV3, levels)
+        assert v9["estimate"] > budget, v9["estimate"]
 
 
 # ---------------------------------------------------------------------------- one form
@@ -1289,10 +1313,14 @@ def test_one_named_device_s_unlabelled_aggregation_is_read_as_by_device():
         assert nl_query.canonical(c, held) is c, over
 
 
-def test_v10_fills_and_records_the_one_form_and_v9_is_as_it_was(world):
+def test_v10_fills_and_records_the_one_form_and_v9_is_as_it_was(world, monkeypatch):
     """After the answer is read back (v10 only): the builder is filled with the form by device,
     the recorded choices are that form (so consistency compares one form), and the model's
-    own answer is kept beside them; v9 fills what the model said."""
+    own answer is kept beside them; v9 fills what the model said. (This world's v9 request,
+    which cuts no offer, is about 9,250 tokens by the provider's count, over the 8,000: the
+    bound is raised here, so what is compared is the fill, not the size; C1898.)"""
+    monkeypatch.setitem(profiles.TASKS, nl_query.FEATURE,
+                        dict(profiles.TASKS[nl_query.FEATURE], max_prompt_tokens=12000))
     world.answer = _v8_choices(devices=["r1"], top="none",
                                operations=[{"kind": "rate", "arg": "5m"},
                                            {"kind": "sum", "arg": ""}])

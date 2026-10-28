@@ -15,6 +15,18 @@ Its contract with the gateway: `send(body, api_key)` returns a `Reply` or raises
 Never logs or returns the key, the request or the response body (the gateway records the
 masked request and the masked answer). The wire shape is Anthropic's reference, read
 2026-10-25: `POST /v1/messages`, headers `x-api-key` and `anthropic-version: 2023-06-01`.
+
+**The token count** (C1898, the operator's decision of 2026-10-28): `count_tokens(body,
+api_key)` asks `POST /v1/messages/count_tokens` how many input tokens the masked request is,
+before it is sent. Anthropic's pages, read 2026-10-28 (platform.claude.com/docs/en/
+build-with-claude/token-counting and /api/messages/count_tokens): free to use, its own
+requests-per-minute limit apart from message creation's (5,000 a minute at the Start tier);
+the body takes the request's ``model``, ``messages``, ``system``, ``tools``, ``tool_choice``,
+``thinking``, ``output_config``, ``cache_control`` and ``speed`` (`COUNT_KEYS`), never
+``max_tokens`` or ``temperature``; the answer is ``{"input_tokens": N}``, "an estimate" that
+"might differ by a small amount" from what the call then uses; caching is not applied to a
+count. The same failures as a send, each its own kind, but none is retried: a count that
+fails is the gateway's to replace by its estimate, said.
 """
 import logging
 import time
@@ -32,6 +44,15 @@ API_VERSION = "2023-06-01"
 TIMEOUT = (5.0, 60.0)
 MAX_RETRIES = 2
 MAX_WAIT_S = 20.0
+#: The token count's endpoint and the fields its body takes (the pages read 2026-10-28, the
+#: module's docstring): every other key of a send's body is left out of the count's.
+COUNT_URL = "https://api.anthropic.com/v1/messages/count_tokens"
+COUNT_KEYS = ("model", "messages", "system", "tools", "tool_choice", "thinking",
+              "output_config", "cache_control", "speed")
+#: The count's own connect and read bounds, seconds: a count runs no model, so it is short.
+#: Not measured yet: each count's latency is recorded on its call's row
+#: (``prompt_count.latency_s``), and the bound is re-derived from those (about 2.5x).
+COUNT_TIMEOUT = (5.0, 10.0)
 #: The provider's rate-limit headers kept with the record (both prefixes Anthropic has used).
 RATELIMIT_PREFIXES = ("anthropic-ratelimit-", "x-ratelimit-")
 
@@ -158,3 +179,51 @@ def send(body: dict, api_key: str, *, session=None, sleep=time.sleep, clock=time
                              headers=kept)
         raise ProviderDown(f"HTTP {status}: {words}", status=status, attempts=attempt,
                            headers=kept)
+
+
+@dataclass
+class Count:
+    tokens: int
+    headers: dict = field(default_factory=dict)
+    latency_s: float = 0.0
+
+
+def count_body(body: dict) -> dict:
+    """What the count is sent of a send's *body*: its `COUNT_KEYS`, the same values (the same
+    masked bytes the send would carry), every other key (``max_tokens``, ``temperature``) left
+    out, as the endpoint takes none of them."""
+    return {k: body[k] for k in COUNT_KEYS if k in body}
+
+
+def count_tokens(body: dict, api_key: str, *, session=None, clock=time.monotonic,
+                 timeout=COUNT_TIMEOUT) -> Count:
+    """The provider's count of *body*'s input tokens (`count_body` of it), with *api_key*; a
+    `Count`, or an `AdapterError` (never retried: a 429 or 529 is raised at once, a person may
+    be waiting and the gateway has its estimate)."""
+    if not api_key:
+        raise KeyRefused("no API key is set")
+    http = session or requests
+    headers = {"x-api-key": api_key, "anthropic-version": API_VERSION,
+               "content-type": "application/json"}
+    started = clock()
+    try:
+        resp = http.post(COUNT_URL, json=count_body(body), headers=headers, timeout=timeout)
+    except requests.Timeout as exc:
+        raise ProviderDown(f"no count within {timeout[1]:.0f} s ({type(exc).__name__})")
+    except requests.RequestException as exc:
+        raise ProviderDown(f"could not reach {COUNT_URL} ({type(exc).__name__})")
+    kept = ratelimit_headers(resp.headers)
+    status = resp.status_code
+    if status == 200:
+        try:
+            got = (resp.json() or {}).get("input_tokens")
+        except (ValueError, AttributeError):
+            got = None
+        if not isinstance(got, int) or isinstance(got, bool) or got < 0:
+            raise ProviderDown("HTTP 200 with no input_tokens count", status=status,
+                               headers=kept)
+        return Count(tokens=got, headers=kept, latency_s=clock() - started)
+    words = _error_words(resp)
+    cls = {429: RateLimited, 529: Overloaded, 401: KeyRefused, 403: KeyRefused,
+           400: BadRequest, 404: BadRequest, 413: BadRequest}.get(status, ProviderDown)
+    raise cls(f"HTTP {status}: {words}", status=status, headers=kept)
