@@ -1889,6 +1889,7 @@ def _sdn_operations(client, mp, session):
         .get_data(as_text=True)
     assert client.post(f"/v2/sdn/response/{other['id']}/dismiss",
                        data={"list": "Lab", "reason": "the lab's own test"}).status_code == 200
+    _sdn_reapply(client, session, d, fields)
     # The response policy (objective 3.1): one refused (an action that does not answer its
     # rule), one saved and the region drawn again with it.
     page = client.get("/v2/sdn/responses?list=Lab").get_data(as_text=True)
@@ -1906,6 +1907,34 @@ def _sdn_operations(client, mp, session):
                                              "interval": "10"}).status_code == 200
     assert client.post("/v2/sdn/loop", data={"list": "Lab", "run": "stop"}).status_code == 200
     LP._jobs["Lab"]["thread"].join(10)
+
+
+def _sdn_reapply(client, session, d, fields):
+    """A lost response put back (C2018): a drop applied for 600 s, its switch restarted (a
+    fresh `tests.test_sdn_reapply.Switch` holding the capture alone), the SDN reader run, then
+    Flows' Re-apply… on the switch, its preview and its confirm."""
+    import re
+    import time
+
+    from modules.sdn import loop as LP
+    from tests.test_sdn_flow_ops import captured_table
+    from tests.test_sdn_reapply import Switch
+    from tests.test_sdn_v2 import BASE, store_read
+
+    row = LP.propose("Lab", dict(d, key="k-ctx-3", source="192.0.2.7"), "drop_source", "low",
+                     why="HITL")
+    card = client.post(f"/v2/sdn/response/{row['id']}/preview",
+                       data={"list": "Lab", "hard_timeout": "600"}).get_data(as_text=True)
+    assert "Done, verified" in client.post("/v2/sdn/response/confirm", data=fields(card))\
+        .get_data(as_text=True)
+    session["now"] = Switch(BASE, flows={1: captured_table()})
+    store_read("Lab", clock=time.time)
+    page = client.get("/v2/sdn/flows?list=Lab").get_data(as_text=True)
+    lost = re.search(r'<form class="sdn-lost".*?</form>', page, re.S).group(0)
+    card = client.post("/v2/sdn/reapply/preview", data=fields(lost)).get_data(as_text=True)
+    assert "Re-apply: " in card, card
+    assert "Done, verified" in client.post("/v2/sdn/reapply/confirm", data=fields(card))\
+        .get_data(as_text=True)
 
 
 def _sdn_no_topology(client, _lab, _mp):

@@ -27,7 +27,15 @@ reader 12 minutes apart. The board's four switches, 61 flows and ONOS second con
 board data; the capture has one switch, and an ONOS connection cannot be saved (its driver is
 not built), so the second controller is a Ryu one that does not answer.
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html
-Templates sha256: `f3a464e38b154c98008dcd06e9349df66701414386f320f731892c56df529bf7`
+Templates sha256: `72f40ab15645c96c292607028c76bc7468a2b1f2da8920315a4cf2b58de77cd9`
+
+**Compared again 2026-10-28 ~04:0x UTC, the three changes below merged** (C2001's hold and
+C2018's re-apply each changed `_sdn_op.html`, compared apart in their own trees): the SDN shots
+taken again from the merged tree (`tests/test_board_shots.py -k test_sdn`, 1 passed), and
+`sdn-responses-held` (1440) and `sdn-flows-lost` (1440) read: the hold's note with Show it now
+above the open preview, the Mode card's stage line and Turn AUTO on drawn disabled with its
+reason, and the Not in force line with Re-apply… above s1's flow table, each as its region
+below says; nothing else moved.
 
 **Compared again 2026-10-28 ~03:1x UTC for C2001** (an announcement never takes an open card
 away: `_sdn_op.html` and `_sdn_flow_form.html` carry `data-holds-live`, which static/js/nmas_v2.js
@@ -44,6 +52,16 @@ PHASE8_PLAN 17.7's guard; `_sdn_responses.html`'s Mode card): the `sdn-responses
 `sdn-responses-suspended` (1440 and 390, no board: AUTO turned on while Default was marked lab,
 then Default marked production). The three regions below are what changed; SdnResponses draws
 no stage, so each is a deviation. The rest of the Mode card is as its row says.
+
+**Compared again 2026-10-28 ~03:3x UTC for C2018** (a lost response: `_sdn_view.html`'s Not in
+force line with Re-apply… on its switch, and `_sdn_op.html`'s re-apply card): Flows shot again
+beside `SdnFlows.dc.html` at 1440, 1280 and 390 from the same test's new `sdn-flows-lost` shots.
+The data is the lab above, plus a drop of 192.0.2.1 recorded two minutes before the read for 600
+s and absent from the captured table, as after a switch restart, read again by the SDN reader.
+The `sdn-flows` shots without it were compared too: unchanged, with no line drawn when nothing
+is lost. The page's Needs attention count rose by the response's row (16 to 17 in the header).
+The re-apply card is drawn by a click, as the other operation cards are: **later**, held by
+tests/test_sdn_reapply.py and the v2 walk's provider (tests/v2_context.py `_sdn_reapply`).
 
 **Hashed again 2026-10-27 for PHASE8_PLAN 17.1 S7** (the AI's classification and Classify on an
 awaiting response, `_sdn_responses.html`): the two regions below compared by reading the
@@ -93,6 +111,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | A flow row | owner chip, priority, match, actions, packets, timeouts, cookie, Remove… (SdnFlowEdit: Edit… and Remove… on each flow row) | the same columns; the unauthorised row's why under its chip; Remove… on every flow and Edit… on Mercury's, each with its (i), each opening the editor in a row under the flow | **same** |
 | Add flow… | SdnFlowEdit: "Add flow… sits on each switch in the list" | Add flow… with its (i) at the top of each opened switch | **same** |
 | Mercury's flow | "Mercury's installed as expected", "Its response" link | the same chip and words; no response link (a flow's operation is read on History, not yet linked from its row) | **later** S11 (a flow's response linked from its row) |
+| A lost response (C2018) | not drawn: the board's missing flow says "nothing to do" | under Add flow…, one line per response the switch lost before its hard timeout: "Not in force", the response's action and source, what is missing (its flows' cookies, its meter), the time left and the expiry's clock time, then Re-apply… with its (i); the switch opens, as one with something wrong does; at 390 the line wraps above the table | **deviation** (log: SDN C2018: a lost response's Not in force line and Re-apply… on its switch) |
 | A record not installed | "Mercury's, missing" for one expired at its hard timeout, "nothing to do" | expired is "Mercury's, expired", neutral, not counted missing (S5's classify tells expired from missing); missing stays warn | **deviation** (log: SDN S11: an expired flow is "expired", never "missing") |
 | The board's departure note | the unauthorised flow a Needs attention row | not drawn: that row is a later S11 step | **later** S11's Needs attention rows (unauthorised flows) |
 | Meters | switch, meter, rate, packets in band, owner chip and "its response" | the same columns; the owner from the flows that use the meter; no response link | **same** |

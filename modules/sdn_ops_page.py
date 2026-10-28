@@ -2,7 +2,8 @@
 boards SdnResponse, SdnResponses and SdnFlowEdit, signed off 2026-10-27 under the Phase 7
 mode). Reads only: the stores the operations keep and the plan or result handed in.
 
-- `preview`, `response_preview`: the card in place of the control: what it does, exactly these
+- `preview`, `response_preview`, `reapply_preview` (a lost response put back, C2018): the card
+  in place of the control: what it does, exactly these
   requests (method, path, body), what will not happen, the warnings, the checks, Verify's
   limit (S20), the hash it is bound to, and the hidden fields the confirm carries back (the
   ask as JSON, unchanged, and the hash);
@@ -61,6 +62,18 @@ def response_preview(network: str, row: dict, got: dict) -> dict:
     if not got.get("ok") or not got.get("plan"):
         return dict(refused(network, "response", got.get("error") or "refused"), **extra)
     return preview(network, "response", got["ask"], got["plan"], extra)
+
+
+def reapply_preview(network: str, got: dict) -> dict:
+    """A lost response's Re-apply… preview (C2018): the plan's card with what it puts back and
+    until when (`reapply.preview`'s words), or its refusal."""
+    from modules.sdn import reapply
+
+    extra = {"label": "Re-apply: " + reapply.response_words(got.get("response") or {}),
+             "reapply_words": got.get("words", "")}
+    if not got.get("ok") or not got.get("plan"):
+        return dict(refused(network, "reapply", got.get("error") or "refused"), **extra)
+    return preview(network, "reapply", got["ask"], got["plan"], extra)
 
 
 def _rollback(rb: dict) -> dict:

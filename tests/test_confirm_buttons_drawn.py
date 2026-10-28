@@ -1664,6 +1664,8 @@ class TestSdnFlowsCards(_Cards):
         "add": ("_sdn_view.html", "Add flow…", r"Add flow…", "viewer"),
         "edit": ("_sdn_view.html", "Edit…", r"Edit…", "viewer"),
         "remove": ("_sdn_view.html", "Remove…", r"Remove…", "viewer"),
+        # C2018: a response the switch lost before its hard timeout, put back by a person.
+        "reapply": ("_sdn_view.html", "Re-apply…", r"Re-apply…", "viewer"),
     }
 
     def _flows(self, request):
@@ -1684,6 +1686,34 @@ class TestSdnFlowsCards(_Cards):
 
     drawn_edit = drawn_remove = drawn_add
     blocked_edit = blocked_remove = blocked_add
+
+    def _lost(self, request):
+        """The board shot's lost response (tests/test_board_shots.py, sdn-flows-lost): a drop
+        of 192.0.2.1 recorded two minutes ago for 600 s and absent from the captured table, as
+        after the switch's restart, read again by the SDN reader."""
+        import time
+
+        from modules.sdn import flow_intent as F
+        from tests.test_sdn_v2 import store_read
+        lab = request.getfixturevalue("lab")
+        F.record_installed("Default", connection="lab-controller", flow={
+            "dpid": 1, "table_id": 0, "priority": 300, "cookie": F.mercury_cookie(0x77),
+            "idle_timeout": 0, "hard_timeout": 600, "actions": [],
+            "match": {"eth_type": 0x0800, "ipv4_src": "192.0.2.1"}}, actor="op@example.com",
+            response={"kind": "response", "action": "drop_source", "risk": "low",
+                      "operation": "sdnop-cb", "detection": {"source": "192.0.2.1"}},
+            at=time.time() - 120)
+        store_read()
+        html = _text(lab["client"].get("/v2/sdn/flows?list=Default&own=show"))
+        assert "Not in force" in html, "floor: the lost response is drawn"
+        return html
+
+    def drawn_reapply(self, request):
+        return self._lost(request)
+
+    def blocked_reapply(self, request, monkeypatch):
+        as_service(monkeypatch)
+        return self._lost(request)
 
 
 # ── SDN: the editor's Preview, the operation card's Send, a response's Preview ────────────────
@@ -1806,9 +1836,9 @@ class TestThePopulation:
         Edit… and Remove…, the editor's Preview, the operation card's Send and a response's
         Preview; 67 until the intent editor's Commit drawn again by its check, C1693,
         2026-10-27; 68 until feature 7's Commit both devices' intent, C1908,
-        2026-10-27)."""
+        2026-10-27; 69 until Flows' Re-apply… on a lost response, C2018, 2026-10-28)."""
         cases = _cases()
-        assert sum(len(v) for v in cases.values()) == 69, sum(len(v) for v in cases.values())
+        assert sum(len(v) for v in cases.values()) == 70, sum(len(v) for v in cases.values())
 
     def test_a_planted_control_of_each_kind_is_found_and_a_plain_one_is_not(self):
         planted = """

@@ -220,6 +220,21 @@ def test_sdn(tmp_path, monkeypatch):
                      reason="now carries real traffic")
         _shoot("sdn-responses-suspended", "", lambda w: "/v2/sdn/responses?list=Default",
                served, widths=((1440, 1.0), (390, 2.0)))
+        # C2018: a response lost from s1 (a drop of 192.0.2.1 recorded two minutes ago for
+        # 600 s and not in the captured table, as after the switch's restart), read again:
+        # Flows draws it Not in force with its Re-apply…, beside SdnFlows.
+        from modules.sdn import flow_intent as F
+        F.record_installed("Default", connection="lab-controller", flow={
+            "dpid": 1, "table_id": 0, "priority": 300, "cookie": F.mercury_cookie(0x77),
+            "idle_timeout": 0, "hard_timeout": 600, "actions": [],
+            "match": {"eth_type": 0x0800, "ipv4_src": "192.0.2.1"}}, actor="op@example.com",
+            response={"kind": "response", "action": "drop_source", "risk": "low",
+                      "operation": "sdnop-20261028T005000Z-shot",
+                      "detection": {"source": "192.0.2.1", "words": "192.0.2.1 reached 229 "
+                                    "distinct destination ports"}}, at=time.time() - 120)
+        store_read(clock=lambda: time.time() - 2)
+        _shoot("sdn-flows-lost", "SdnFlows.dc.html", lambda w: "/v2/sdn/flows?list=Default",
+               served, widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
     assert T0, "the lab's flow intent was recorded at T0"
 
 

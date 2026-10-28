@@ -101,6 +101,13 @@ Each switch's flow table, Mercury's expected flows beside what is installed.
     **Remove…** ([Add, edit and remove a flow](#flow-operations)).
   - **Mercury's, missing**: recorded and not installed. **Mercury's, expired**: its hard
     timeout, as set, has passed, so the switch removed it as asked: nothing to do.
+- **Not in force**, at the top of a switch: a response whose flows or meter the switch no
+  longer holds while its hard timeout has time left, as after a switch restart. The line names
+  the response, what is missing, and the time left. **Re-apply…** previews putting back
+  exactly what is missing, for the time its hard timeout has left; nothing is sent until you
+  confirm. The same response is a row on Needs attention until the reader finds it installed
+  again or its hard timeout passes. How it works:
+  [Re-apply a lost response](sdn-flows#reapply).
 - **Meters**: each switch's meters (its id, its rate and what happens above it, the packets
   counted in that band) and whose each is, by the flows that use it; and on how many switches
   meters are supported, from each switch's meter features.

@@ -203,6 +203,43 @@ def test_an_unauthorised_flow_is_removed_and_mercury_s_put_back():
 
 
 @pytest.mark.usefixtures("lab")
+@pytest.mark.parametrize("hard,ago,left", [(600, 120, 420), (300, 280, None)],
+                         ids=["time-left", "expired"])
+def test_a_displaced_response_flow_goes_back_for_its_time_left_or_not_at_all(hard, ago, left):
+    """C2041: a displaced Mercury response flow is put back for the time its hard timeout has
+    left, less the confirm window (`reapply.CONFIRM_WINDOW_S`), never its whole timeout again;
+    one already past its expiry (or within the window) is not put back, and the preview says
+    so. The removal itself is unchanged."""
+    import time
+
+    from modules.sdn import reapply
+
+    flows = scan_flows(0)
+    dets = D.unauthorised(collect(T0, flows=flows), F.intent("Default"))["detections"]
+    d = next(x for x in dets if x["measurement"]["cookie"] == "0x4d45524300000001")
+    fake = switch_with(flows)
+    hit = next(f for f in fake.table[1] if f["cookie"] == 0x4d45524300000001)
+    mine = dict({k: hit[k] for k in ("table_id", "priority", "match", "actions")},
+                cookie=F.mercury_cookie(78), hard_timeout=hard, idle_timeout=0, dpid=1)
+    F.record_installed("Default", connection="ctl-1", flow=mine, actor="op@example.com",
+                       response={"kind": "response", "id": "r-1"}, at=time.time() - ago)
+    preview = CL.respond_to_threat("Default", d, driver=fake.driver)
+    assert preview["ok"], preview["error"]
+    paths = [s["request"]["path"] for s in preview["plan"]["steps"]]
+    if left is None:
+        assert paths == ["/stats/flowentry/delete_strict"]
+        assert preview["params"]["not_put_back"] == [
+            f"{F.cookie_hex(F.mercury_cookie(78))} (its hard timeout ended, or ends within the "
+            f"{reapply.CONFIRM_WINDOW_S} s a confirm may take)"]
+    else:
+        assert paths == ["/stats/flowentry/delete_strict", "/stats/flowentry/add"]
+        sent = json.loads(preview["plan"]["steps"][1]["request"]["body"])["hard_timeout"]
+        assert left - 2 <= sent <= left, sent
+        assert "not_put_back" not in preview["params"]
+    assert fake.writes == []
+
+
+@pytest.mark.usefixtures("lab")
 @pytest.mark.parametrize("action,params,words", [
     ("shutdown_port", {}, "'shutdown_port' is not in the response catalogue"),
     ("remove_flow", {}, "remove_flow answers unauthorised_flow, not scan"),

@@ -1760,7 +1760,9 @@ def sdn_operations(ctx):
             continue
         response = r.get("response") or {}
         what = ("Response" if response.get("kind") == "response" else
-                "Meter expiry" if response.get("kind") == "expiry" else "Flow change")
+                "Meter expiry" if response.get("kind") == "expiry" else
+                # A lost response put back (C2018); its record names the operation it re-applies.
+                "Re-apply" if response.get("kind") == "reapply" else "Flow change")
         checks = "; ".join(f"{c.get('state')}: {c.get('words')}"
                            for c in (r.get("verify") or {}).get("checks") or [])
         who = r.get("actor", "")
@@ -1774,6 +1776,7 @@ def sdn_operations(ctx):
                              record=[("Operation", r.get("id")), ("Controller", r.get("connection")),
                                      ("Requests' hash", r.get("hash")),
                                      ("Action", response.get("action")),
+                                     ("Re-applies", response.get("of")),
                                      ("Detection", (response.get("detection") or {}).get("words")),
                                      ("Verify", checks), ("Error", r.get("error"))]))
     events = events[-ctx["limit"]:]

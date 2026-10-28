@@ -245,6 +245,10 @@ PAGE_RECORD = {
     "sdn_v2.response_confirm": ("templates/v2/_sdn_op.html",
                                 ("d.state == 'result'", "d.checks", "d.rollback", "d.record"),
                                 "v2.history_page"),
+    # A lost response's re-apply (C2018): the same card, the run on History the same way.
+    "sdn_v2.reapply_confirm": ("templates/v2/_sdn_op.html",
+                               ("d.state == 'result'", "d.checks", "d.rollback", "d.record"),
+                               "v2.history_page"),
     # DHCP › Subnets (C529 step 3, board C): the same, in dhcp/subnets.yml.
     "dhcp_v2.subnet_confirm": ("templates/v2/_dhcp_subnet.html",
                                ("sop.state == 'done'", "r.read_back", "r.commit"),

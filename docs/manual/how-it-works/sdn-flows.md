@@ -71,7 +71,9 @@ live flows give the ports only when the topology cannot be read, since a scan's 
 expire within seconds; a host the topology cannot place, or one it does not list yet, is not
 metered, and the preview names each under What will not happen, with the fact that only the
 source's IPv4 traffic is metered; risk low), or **remove the unauthorised flow**
-(delete-strict, and Mercury's own flow put back where it displaced one, risk medium). Every flow a
+(delete-strict, and Mercury's own flow put back where it displaced one, for the time its hard
+timeout has left, never its whole timeout again, and not at all once it has expired; risk
+medium). Every flow a
 response adds carries a hard timeout (600 seconds unless you set another in the preview, at most
 the network's ceiling), so a mistaken response expires by itself; its meter is removed by Mercury
 once those flows have expired. A flood whose flows match MAC addresses only names no source
@@ -102,6 +104,39 @@ preview and again at the confirm, naming the change and what it covers; nothing 
 removal is refused only for a flow that names control traffic itself. Mercury does not know the
 address each switch reaches the controller from, so a switch's own in-band control address is
 not compared.
+
+## Re-apply a lost response {#reapply}
+
+A switch that restarts or reboots drops its flows and meters before their hard timeout, so a
+response can stop working while its record says it is still in force. The SDN reader compares
+each response's recorded flows and meter with what the switch holds, every 30 seconds. While a
+response has something missing and its hard timeout has time left, **Needs attention** has a
+row for it. The row names the network, the switch (its datapath id and the name it reports),
+the response (its action, its source and its operation), what is missing, and the time left.
+The row clears when the reader finds the flows installed again, or when the hard timeout
+passes, the moment the response would have expired anyway.
+
+The row opens the switch on [SDN › Flows](sdn#flows). There the response is drawn **Not in
+force**, with **Re-apply…**:
+
+1. `plan`: Mercury reads the switch's flow table and meters now. The preview puts back exactly
+   the response's flows that are missing, and its meter if that is gone too (the meter first,
+   so the flows can point at it). Each comes back as recorded: the same cookie, match, priority
+   and actions. Flows still installed are left alone.
+2. `hash`: you confirm as yourself, bound to the requests' hash.
+3. The hard timeout is **never extended**. Each flow goes back for the time its record has
+   left, less 60 seconds, the time a confirm may take. A confirm more than 60 seconds after the
+   preview is refused, naming both timeouts, and nothing is sent: preview again. A response
+   with less than 60 seconds left is not re-applied: let it expire, or answer the threat again
+   on SDN › Responses if it is still there.
+4. `hold`, `send`, `verify` and `rollback` run as for every change above.
+5. `record`: the run is recorded as a **re-apply** of the response, naming the operation that
+   first applied it, and it gets its line in the loop's log. The response's own records stand
+   as they were, so it keeps the expiry it was applied with.
+
+Mercury never re-applies a response by itself, in any mode. Doing that waits for the AUTO
+production-readiness gate. A flow you added yourself on SDN › Flows is not a response: when it
+goes missing it is drawn **Mercury's, missing** on Flows, with no row and no Re-apply….
 
 ## Classify a detection with AI {#classify}
 

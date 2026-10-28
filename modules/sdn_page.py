@@ -259,11 +259,26 @@ def _meter_words(m: dict) -> str:
     return "; ".join(out)
 
 
-def flows_view(network: str, values=None) -> dict:
+def _lost_row(x: dict) -> dict:
+    """A lost response on its switch, as Re-apply… draws it (C2018)."""
+    from modules.sdn import reapply
+
+    return {"key": x["key"], "label": x["label"], "missing_words": x["missing_words"],
+            "left_words": reapply.left_words(x["left"]),
+            "expires_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(x["expires_at"])),
+            "slot": "sdn-ra-" + hashlib.sha256(
+                f"{x['connection']}|{x['dpid_hex']}|{x['key']}".encode()).hexdigest()[:12]}
+
+
+def flows_view(network: str, values=None, now: float = None) -> dict:
     """SDN › Flows (board SdnFlows): the summary by owner, the switches grouped and folded (a
     switch with something wrong open), the filter and "hide the controller's own", each flow's
-    owner (`flow_intent.classify`, done by the reader), the meters, and the granularity
-    note."""
+    owner (`flow_intent.classify`, done by the reader), the meters, the granularity note, and
+    on each switch the responses lost from it with their Re-apply… (`reapply.lost_on_switch`,
+    judged at *now*, C2018)."""
+    from modules.sdn import reapply
+
+    now = time.time() if now is None else now
     s = ask(values or {})
     listed, got, conns = _merged(network)
     out = {"network": network, "tab": "flows", "s": s, "listed": listed["state"],
@@ -295,7 +310,8 @@ def flows_view(network: str, values=None) -> dict:
             if s["q"]:
                 shown = [f for f in shown if _hit(s["q"], sw, f)]
                 shown_records = [r for r in records if _hit(s["q"], sw, r)]
-            wrong = bool(n["unauthorised"] or n["mercury_differs"] or n["missing"]
+            lost = [_lost_row(x) for x in reapply.lost_on_switch(c, sw, now)]
+            wrong = bool(n["unauthorised"] or n["mercury_differs"] or n["missing"] or lost
                          or sw.get("state") != "ok" or c.get("state") == "not_answering")
             named = f"{sw.get('dpid_hex')} {sw.get('name') or ''}".lower()
             if s["q"] and not shown and not shown_records and s["q"].lower() not in named:
@@ -304,7 +320,7 @@ def flows_view(network: str, values=None) -> dict:
                 "dpid_hex": sw.get("dpid_hex"), "name": sw.get("name") or "",
                 "controller": c["name"], "controller_state": c.get("state"),
                 "state": sw.get("state"), "error": sw.get("error", ""), "n": n,
-                "total": len(flows), "flows": shown, "records": shown_records,
+                "total": len(flows), "flows": shown, "records": shown_records, "lost": lost,
                 "hidden_own": n["controller_own"] if s["own"] == "hide" else 0,
                 "wrong": wrong, "open": wrong or bool(s["q"]),
                 "as_of": c.get("last_good_at") if c.get("state") == "not_answering" else None})

@@ -1387,12 +1387,27 @@ def build_response(network: str, detection: dict, action_id: str = None, params:
                                       "nothing to remove")
             target = {k: found.get(k) for k in ("table_id", "priority", "match", "cookie")}
             changes.append({"do": "remove_flow", "target": target})
+            from modules.sdn import reapply
+            expired = []
             for r in intent["flows"]:
                 if r.get("dpid") == dpid and flow_ops._same_place(r, found) and not any(
                         f.get("cookie") == r.get("cookie") for f in read["flows"]):
-                    changes.append({"do": "add_flow", "reinstall": True, "flow": {
-                        k: r.get(k) for k in ("table_id", "priority", "cookie", "match",
-                                              "actions", "idle_timeout", "hard_timeout")}})
+                    flow = {k: r.get(k) for k in ("table_id", "priority", "cookie", "match",
+                                                  "actions", "idle_timeout", "hard_timeout")}
+                    hard, at = r.get("hard_timeout") or 0, r.get("installed_at")
+                    if hard and isinstance(at, (int, float)):
+                        # Put back for the time it has left, never its whole timeout again
+                        # (C2041; the re-apply's rule, C2018): one past its expiry stays gone.
+                        left = int(at + hard - time.time()) - reapply.CONFIRM_WINDOW_S
+                        if left < 1:
+                            expired.append(flow_intent.cookie_hex(r.get("cookie")))
+                            continue
+                        flow["hard_timeout"] = left
+                    changes.append({"do": "add_flow", "reinstall": True, "flow": flow})
+            if expired:
+                out["params"]["not_put_back"] = [
+                    f"{c} (its hard timeout ended, or ends within the "
+                    f"{reapply.CONFIRM_WINDOW_S} s a confirm may take)" for c in expired]
             out["params"].update(flow=ref, cookie=flow_intent.cookie_hex(found.get("cookie")))
         # No response covers the control channel, in any mode (C2022).
         from modules.sdn import control_plane

@@ -11,7 +11,10 @@
 {%- if d.state == 'refused' %}
 <p class="sdn-ans sdn-ans-bad" role="alert">{{ icon('warn', 15) }}<span><strong>Nothing was sent:</strong> {{ d.error }}.</span></p>
 {%- elif d.state == 'preview' %}
-<div class="sdn-op-hd"><h3>{% if d.kind == 'response' %}{{ d.label }}{% if d.params.source %} from <span class="mono">{{ d.params.source }}</span>{% endif %} on <span class="mono">{{ d.dpid_hex }}</span>{% else %}Preview: {{ d.count }} request{{ 's' if d.count != 1 }} on <span class="mono">{{ d.dpid_hex }}</span>{% endif %}</h3> <span class="faint small">nothing sent yet</span> {{ how('sdn-flows', compact=True, op='Preview') }}</div>
+<div class="sdn-op-hd"><h3>{% if d.kind == 'response' %}{{ d.label }}{% if d.params.source %} from <span class="mono">{{ d.params.source }}</span>{% endif %} on <span class="mono">{{ d.dpid_hex }}</span>{% elif d.kind == 'reapply' %}{{ d.label }} on <span class="mono">{{ d.dpid_hex }}</span>{% else %}Preview: {{ d.count }} request{{ 's' if d.count != 1 }} on <span class="mono">{{ d.dpid_hex }}</span>{% endif %}</h3> <span class="faint small">nothing sent yet</span> {{ how('sdn-flows', compact=True, op='Preview') }}</div>
+{%- if d.kind == 'reapply' %}
+<p class="small"><strong>Lost:</strong> {{ d.reapply_words }}.</p>
+{%- endif %}
 {%- if d.kind == 'response' %}
 <p class="small"><strong>Detected:</strong> {{ d.detection.words }}</p>
 <p class="small"><strong>Its parameters, checked against the evidence:</strong> the source <span class="mono">{{ d.params.source or 'named by the flow' }}</span>{% if d.params.targets %} to <span class="mono">{{ d.params.targets | join(', ') }}</span>{% endif %}{% if d.params.hard_timeout %}, for {{ d.params.hard_timeout }} s{% endif %}{% if d.params.priority %}, priority {{ d.params.priority }} (above every flow not Mercury's that could match it){% endif %}{% if d.params.rate %}, above {{ d.params.rate }} {{ d.params.unit }} with a burst of {{ d.params.burst }} (meter {{ d.params.meter_id }}){% endif %}{% if d.params.flow %}, the flow <span class="mono">{{ d.params.flow }}</span> (cookie {{ d.params.cookie }}){% endif %}.</p>
@@ -32,7 +35,7 @@
 {%- endif %}
 <h4 class="sdn-op-h">Verify</h4>
 <ul class="sdn-op-list">{% for c in d.checks %}<li>{{ c }}</li>{% endfor %}</ul>
-<form class="sdn-op-confirm" {% if d.kind == 'response' %}hx-post="{{ url_for('sdn_v2.response_confirm') }}"{% else %}hx-post="{{ url_for('sdn_v2.flow_confirm') }}"{% endif %} hx-target="closest .sdn-op" hx-swap="outerHTML" hx-disabled-elt="find button">
+<form class="sdn-op-confirm" {% if d.kind == 'response' %}hx-post="{{ url_for('sdn_v2.response_confirm') }}"{% elif d.kind == 'reapply' %}hx-post="{{ url_for('sdn_v2.reapply_confirm') }}"{% else %}hx-post="{{ url_for('sdn_v2.flow_confirm') }}"{% endif %} hx-target="closest .sdn-op" hx-swap="outerHTML" hx-disabled-elt="find button">
   <input type="hidden" name="list" value="{{ d.network }}">
   <input type="hidden" name="ask" value="{{ d.ask }}">
   <input type="hidden" name="hash" value="{{ d.hash }}">

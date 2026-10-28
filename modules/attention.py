@@ -182,6 +182,12 @@ ROW_KINDS = {
     ("sdn_loop", "restart_stopped"): ("a network's SDN loop was running and the app's restart "
                                       "stopped it, so its detections are not watched",
                                       "start the loop on SDN › Responses, or leave it stopped"),
+    # C2018: a switch's restart drops a response's flows and meter before their hard timeout.
+    ("sdn_mitigation", "lost"): ("a response's flows or meter are missing from their switch "
+                                 "while their hard timeout has time left, so the threat it "
+                                 "answered is not being mitigated",
+                                 "re-apply it on SDN › Flows (a preview, then your confirm), "
+                                 "or let it expire"),
     # C906: nothing was sent; every session to it is refused until a person reviews the key.
     ("host_keys", "changed"): ("a device answered with an SSH host key Mercury does not hold",
                                "re-key it on its page if it was rebuilt, or find what answers "
@@ -332,6 +338,10 @@ CLEARS = {
     ("sdn_loop", "restart_stopped"): (("resolves", "time"), "the loop is started again on SDN "
                                       "› Responses, or 24 hours after the restart (the loop's "
                                       "log keeps the stop either way)"),
+    ("sdn_mitigation", "lost"): (("resolves", "time"), "the SDN reader reads the response's "
+                                 "flows and meter installed again (after its Re-apply… on "
+                                 "SDN › Flows), or their hard timeout passes, when the "
+                                 "response would have expired anyway"),
     ("scheduled_rotation", "stopped"): (("resolves",), "a later run (Rotate due devices now on "
                                         "Credentials › Profiles) finishes without a failure, "
                                         "or the failed device's rotation is committed (its "
@@ -2924,6 +2934,83 @@ def sdn_responses_source(found=None) -> dict:
     return source_result("sdn_responses", label, read_at=started, took_ms=took, rows=rows,
                          checked=f"{len(waiting)} network(s): {len(rows)} with responses "
                                  "awaiting a person")
+def sdn_mitigation_source(found=None, now: float = None) -> dict:
+    """Each response whose flows or meter the SDN reader last read missing from their switch
+    while their hard timeout has time left (`modules/sdn/reapply.py` `lost`, C2018): a WARNING
+    row naming the network, the switch (its DPID and the name it reports), the response (its
+    action, source and operation), what is missing and the time left, its action the switch on
+    SDN › Flows where Re-apply… is; it clears when the reader reads them installed again, or
+    at their hard timeout (``clears_at``). The reader's stored value only, never a controller.
+    *found* is ``{network: reader_job.read_cached_for's answer}`` (tests)."""
+    from modules import reader_job
+    from modules.nsot import listref
+    from modules.readers import sdn_controllers as R
+    from modules.sdn import reapply
+
+    started = time.time() if now is None else now
+    label = "SDN responses in force"
+    try:
+        got = found if found is not None else {
+            n: reader_job.read_cached_for(R.READER_NAME, n) for n in listref.names()}
+    except Exception as exc:                          # noqa: BLE001 (said as the source's error)
+        return source_result("sdn_mitigation", label, read_at=started, took_ms=0,
+                             error=f"the SDN reader's stores could not be read: "
+                                   f"{type(exc).__name__}")
+    rows, read, unreadable, oldest = [], 0, [], None
+    for network, cached in sorted(got.items()):
+        state = (cached or {}).get("state")
+        if state in ("not_applicable", "not_configured"):
+            continue
+        if state == "unreadable":
+            unreadable.append(f"{network} ({cached.get('why') or 'no reason given'})")
+            continue
+        good = (((cached or {}).get("doc") or {}).get("last_good") or {})
+        if not good:
+            continue
+        read += 1
+        value_at = _ts(good.get("value_at"))
+        if value_at is not None:
+            oldest = value_at if oldest is None else min(oldest, value_at)
+        for x in reapply.lost(good.get("value") or {}, now=started):
+            switch = x["dpid_hex"] + (f" ({x['name']})" if x["name"] else "")
+            resp = x["response"]
+            as_read = (f"as the SDN reader read it at {good.get('value_at')}"
+                       + (f" (its controller {x['connection']} has not answered since; this is "
+                          "its last good read)" if x["controller_state"] == "not_answering"
+                          else ""))
+            rows.append(row(
+                source="sdn_mitigation", kind="lost",
+                key=f"{network}:{x['connection']}:{x['dpid_hex']}:{x['key']}",
+                level="warning", clears_at=x["expires_at"], read_at=value_at,
+                what=(f"{x['label']} on {network} is not in force on switch {switch}: "
+                      f"{x['missing_words']} missing, {reapply.left_words(x['left'])} left"),
+                cause=(f"Operation {x['key']} (installed {x['installed'] or 'at a time not '
+                                                                       'recorded'}, answering "
+                       f"{(resp.get('detection') or {}).get('words') or 'its detection'}) is "
+                       f"recorded as in force on {x['connection']}'s switch {switch} until "
+                       f"{_iso(x['expires_at'])}, and the switch does not hold "
+                       f"{x['missing_words']}, {as_read}. A switch that restarts or reboots "
+                       "drops its flows and meters before their hard timeout, so the threat "
+                       "this response answered is not being mitigated"),
+                operands={"network": network, "connection": x["connection"],
+                          "dpid": x["dpid_hex"], "switch": x["name"], "operation": x["key"],
+                          "action": resp.get("action") or "", "missing": x["missing_words"],
+                          "expires_at": _iso(x["expires_at"]), "left_s": int(x["left"])},
+                action={"label": (f"Re-apply it on {network}'s SDN › Flows, switch "
+                                  f"{x['dpid_hex']}: preview putting back exactly what is "
+                                  "missing with the time its hard timeout has left, then "
+                                  "confirm (or let it expire)"),
+                        "href": "/v2/sdn/flows?" + urlencode({"list": network,
+                                                             "q": x["dpid_hex"]})}))
+    if unreadable:
+        return source_result("sdn_mitigation", label, read_at=started, took_ms=0,
+                             error=("the SDN reader's store could not be read for "
+                                    + ", ".join(unreadable)))
+    took = int((time.time() - started) * 1000) if now is None else 0
+    return source_result("sdn_mitigation", label, read_at=started, took_ms=took, rows=rows,
+                         value_at=oldest, reader=R.READER_NAME,
+                         checked=(f"{read} network(s)' last SDN read: {len(rows)} response(s) "
+                                  "with a flow or meter missing before its hard timeout"))
 
 
 # ---------------------------------------------------------------------------
@@ -3966,7 +4053,7 @@ SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding
            records_source, scheduled_rotation_source, host_key_source,
            host_key_window_source, netbox_inventory_source, adjacency_log_source,
            netbox_lag_source, console_ztp_source, intent_format_source,
-           ai_spend_source, sdn_loop_source, sdn_responses_source)
+           ai_spend_source, sdn_loop_source, sdn_responses_source, sdn_mitigation_source)
 
 
 #: What can move each source's rows: the data keys (modules/invalidation.VOCABULARY) whose
@@ -4019,6 +4106,8 @@ SOURCE_KEYS = {
     "sdn_loop_source": ("sdn",),
     # A response proposed (the loop announces sdn, C2003), confirmed or dismissed (routes).
     "sdn_responses_source": ("sdn",),
+    # The SDN reader announces sdn at each read, and a re-apply's confirm invalidates it (C2018).
+    "sdn_mitigation_source": ("sdn",),
     # A key kept, refused or replaced by any session or a re-key announces it (C906).
     "host_key_source": ("host_keys",),
     # A window's summary written by its reader announces the same key (C906).

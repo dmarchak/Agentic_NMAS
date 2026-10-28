@@ -132,7 +132,9 @@ class TestARowThatClearsByTime:
                          # The day or month a background AI feature's spend counts ends (C1843).
                          ("ai_spend", "warning"), ("ai_spend", "stopped"),
                          # 24 hours after the restart that stopped an SDN loop (C2000).
-                         ("sdn_loop", "restart_stopped")}
+                         ("sdn_loop", "restart_stopped"),
+                         # A lost response's hard timeout, when it would have expired (C2018).
+                         ("sdn_mitigation", "lost")}
         tree = ast.parse(open(attention.__file__, encoding="utf-8").read())
         found = set()
         for node in ast.walk(tree):

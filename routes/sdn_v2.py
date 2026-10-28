@@ -4,9 +4,10 @@ the Phase 7 mode; docs/fidelity/sdn.md).
 
 A read: the SDN reader's stored value, drawn by modules/sdn_page.py beside the network's
 connection list; never a controller call per view. The region redraws when the reader announces
-`sdn`. The one action here, Test connection on a controller's card, asks that controller now
-with what is saved, and answers in place; it changes nothing. The connections themselves are
-edited in Settings › Integrations (the card's "Edit connection").
+`sdn`. Test connection on a controller's card asks that controller now with what is saved, and
+answers in place; it changes nothing. The connections themselves are edited in Settings ›
+Integrations (the card's "Edit connection"). The operations below (a flow's Add, Edit and
+Remove, a response, a lost response's Re-apply…) are each the flow-operation core's.
 """
 
 import logging
@@ -248,6 +249,48 @@ def response_confirm():
                                              f"could not be written ({logged.get('error')})")
                                  if x)
     return _op_card(sdn_ops_page.result(network, "response", done),
+                    200 if done.get("outcome") != "refused" else 409)
+
+
+@bp.route("/reapply/preview", methods=["POST"])
+def reapply_preview():
+    """Re-apply… on a switch of SDN › Flows (C2018): the preview of putting back exactly a
+    response's missing recorded flows and meter, each flow for the time its hard timeout has
+    left, read from the switch now. Writes nothing."""
+    from modules import sdn_ops_page
+    from modules.sdn import reapply
+
+    network = _network_of_form()
+    got = reapply.preview(network, (request.form.get("connection") or "").strip(),
+                          (request.form.get("dpid") or "").strip(),
+                          (request.form.get("key") or "").strip())
+    return _op_card(sdn_ops_page.reapply_preview(network, got), 200 if got["ok"] else 409)
+
+
+@bp.route("/reapply/confirm", methods=["POST"])
+def reapply_confirm():
+    """Apply the previewed re-apply as the verified person (HITL), bound to its hash and held
+    to the records again (`reapply.confirm`); recorded as a re-apply of the response, with
+    its line in the loop's log."""
+    from modules import identity, sdn_ops_page
+    from modules.sdn import closed_loop, reapply
+
+    network = _network_of_form()
+    ask, refused = sdn_ops_page.carried_ask(request.form)
+    if refused:
+        return _op_card(sdn_ops_page.refused(network, "reapply", refused), 400)
+    actor = identity.request_actor()
+    done = reapply.confirm(network, ask, (request.form.get("hash") or "").strip(), actor=actor,
+                           actor_verified=identity.actor_verification(actor))
+    if done.get("outcome") != "refused":
+        # Something was sent: its line in the loop's log, as a response's is written.
+        logged = closed_loop.log_response(
+            network, done, action=f"re-apply of {(ask.get('reapply') or {}).get('action')}",
+            who=actor, ask=ask)
+        if not logged.get("logged"):
+            done["note"] = ("its line in the loop's log could not be written "
+                            f"({logged.get('error')})")
+    return _op_card(sdn_ops_page.result(network, "reapply", done),
                     200 if done.get("outcome") != "refused" else 409)
 
 

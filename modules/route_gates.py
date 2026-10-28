@@ -126,6 +126,7 @@ GATES = {
     # PHASE8_PLAN 17.1 S8 and S16 (C1912): the flow-operation core, modules/sdn/flow_ops.py.
     "sdn_v2.flow_confirm": _g(C, "adds, edits or removes a flow (or a meter) on an SDN switch through its controller, holding the switch, bound to the previewed requests' hash; verified by reading the table back, rolled back on failure, recorded", "sdn_flows"),
     "sdn_v2.response_confirm": _g(C, "answers a detected threat on an SDN switch with a catalogue action (a drop, a rate-limit's meter and flow, or an unauthorised flow removed) through its controller, as a person's confirm (HITL), bound to the previewed requests' hash; verified, rolled back on failure, recorded", "sdn_response"),
+    "sdn_v2.reapply_confirm": _g(C, "puts back a response's flows and meter that its SDN switch lost before their hard timeout (C2018, Re-apply… on SDN › Flows), each as recorded and for the time its hard timeout has left, as a person's confirm (HITL), bound to the previewed requests' hash; verified, rolled back on failure, recorded as a re-apply of the response", "sdn_reapply"),
     # Out-of-band ZTP (O6b, routes/console_ztp_v2.py; docs/LAB9_PLAN.md section 8).
     "console_ztp_v2.survey_confirm": _g(C, "types on a device's console (the wake, the prelude to the privileged prompt, the pager off for the session and two reads), holding the device and its console-server port, bound to the previewed program's hash; records the run and its masked transcript", "console_survey"),
     "console_ztp_v2.kickstart_confirm": _g(C, "types the kick-start's configuration lines on a factory-blank device's console, holding the device and its console-server port, bound to the previewed lines' hash, as a verified person; records the run and its masked transcript", "console_kickstart"),
@@ -208,6 +209,7 @@ GATES = {
     "sdn_v2.response_classify": _g(K, "Classify a response awaiting a person: one recorded, capped AI call as the person who pressed it, reading the detection's stored evidence pack (modules/sdn/closed_loop.py, PHASE8_PLAN 17.1 S7); its answer checked in code and kept with the response, its catalogue action proposed; nothing is sent to a switch"),
     "sdn_v2.flow_preview": _g(N, "previews an SDN flow change: reads the switch's table and renders the exact requests and their hash; writes nothing"),
     "sdn_v2.response_preview": _g(N, "previews a response awaiting a person: reads the switch's table and renders the exact requests and their hash; writes nothing"),
+    "sdn_v2.reapply_preview": _g(N, "previews putting back a response's lost flows and meter (C2018): reads the switch's table and meters and renders the exact requests and their hash; writes nothing"),
     "settings_v2.records_save": _g(K, "saves the installation's records database settings, recorded (board F2; works with the database down)"),
     "settings_v2.records_test": _g(K, "tests the records database (six checks, a temporary row rolled back) and keeps its answer"),
     "settings_v2.records_replace": _g(K, "replaces Mercury's copy of the records database password (a secret), recorded, then tests it"),

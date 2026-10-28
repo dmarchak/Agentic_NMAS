@@ -368,11 +368,19 @@ def plan(network: str, ask: dict, *, driver=None) -> dict:
         table = [dict(f) for f in flows]
         meter_ids = {m.get("meter_id"): m for m in meters}
         steps, before = [], []
+        recorded_meters = None
+        if any(c["do"] == "add_meter" and c.get("reinstall") for c in changes):
+            got = flow_intent.meters(network)
+            if got["state"] != "ok":
+                raise Refused(f"{network}'s flow intent could not be read ({got['error']}), so "
+                              "no meter can be told Mercury's")
+            recorded_meters = {m.get("meter_id"): m for m in got["meters"]
+                               if m.get("connection") == conn_name and m.get("dpid") == dpid}
         for change in changes:
             do = change["do"]
             if do == "add_meter":
                 steps.append(_plan_add_meter(drv, dpid, change, meter_ids, features, table,
-                                             out))
+                                             out, recorded_meters))
             elif do == "remove_meter":
                 steps.append(_plan_remove_meter(drv, dpid, change, meter_ids, table, changes,
                                                 out))
@@ -564,7 +572,9 @@ def _plan_edit_flow(drv, dpid, change, table, recorded, meter_ids, before, out):
     return [remove, add]
 
 
-def _plan_add_meter(drv, dpid, change, meter_ids, features, table, out):
+def _plan_add_meter(drv, dpid, change, meter_ids, features, table, out, recorded=None):
+    """One meter added; with ``reinstall``, Mercury's recorded meter put back as recorded (its
+    id, flags and bands), its record left standing (C2018)."""
     from modules.sdn.drivers.base import SpecError, meter_from_spec
 
     spec = dict(change.get("meter") or {})
@@ -572,6 +582,17 @@ def _plan_add_meter(drv, dpid, change, meter_ids, features, table, out):
         meter = meter_from_spec(dpid, spec)
     except SpecError as exc:
         raise Refused(str(exc)) from None
+    reinstall = bool(change.get("reinstall"))
+    if reinstall:
+        rec = (recorded or {}).get(meter.meter_id)
+        if rec is None or [str(f).upper() for f in rec.get("flags") or []] != meter.flags or [
+                {k: b.get(k) for k in ("type", "rate", "burst_size") if b.get(k) is not None}
+                for b in rec.get("bands") or []] != [
+                {k: b.get(k) for k in ("type", "rate", "burst_size") if b.get(k) is not None}
+                for b in meter.bands]:
+            raise Refused(f"a reinstall puts back Mercury's recorded meter as recorded, and "
+                          f"meter {meter.meter_id} on switch {dpid} has no such record "
+                          f"(recorded: {sorted(recorded or {}) or 'none'})")
     if meter.meter_id in meter_ids:
         raise Refused(f"meter {meter.meter_id} is already on switch {dpid}: preview again for "
                       "a free id")
@@ -608,8 +629,10 @@ def _plan_add_meter(drv, dpid, change, meter_ids, features, table, out):
     meter_ids[meter.meter_id] = body
     band = meter.bands[0]
     unit = "kbit/s" if "KBPS" in meter.flags else "packets/s"
-    out["intent_changes"].append({"kind": "meter", "meter": body})
-    out["words"].append(f"Add meter {meter.meter_id} on {out['dpid_hex']}: {band['type'].lower()} "
+    out["intent_changes"].append({"kind": "meter_reinstalled" if reinstall else "meter",
+                                  "meter": body})
+    out["words"].append(("Put back Mercury's recorded meter" if reinstall else "Add meter")
+                        + f" {meter.meter_id} on {out['dpid_hex']}: {band['type'].lower()} "
                         f"above {band['rate']} {unit}"
                         + (f", burst {band.get('burst_size')}" if band.get("burst_size") else
                            "") + ".")

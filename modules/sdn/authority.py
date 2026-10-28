@@ -91,6 +91,8 @@ NOT_DIRECT = {
                            "own path",
     "sdn_v2.response_confirm": "answers a threat through the switch's controller, the "
                                "authority's own path",
+    "sdn_v2.reapply_confirm": "puts a lost response back through the switch's controller, the "
+                              "authority's own path (C2018)",
 }
 
 

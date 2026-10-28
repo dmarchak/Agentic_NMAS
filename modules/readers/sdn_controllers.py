@@ -13,7 +13,8 @@ page view (CLAUDE.md, "Enterprise scale"). Per network, every `sdn_controllers` 
   driver declares `read_meters`, its meters and its meter features, each read on its own;
 - **whose each flow is** (`flow_intent.classify` over the network's flow intent): Mercury's,
   Mercury's and not as recorded, the controller's own, or unauthorised; each of Mercury's flows
-  not installed, missing or expired;
+  not installed, missing or expired, and each of Mercury's recorded meters the switch does not
+  hold (``meter_records``, `flow_intent.meter_records`; C2018);
 - **per connection, its topology** where the driver declares `read_topology` (PHASE8_PLAN 17.1
   S14): the switches with their ports, the links the controller discovered and the hosts it
   learned (`topology`, one read), the one source of the Topology view's controller layer and
@@ -185,6 +186,8 @@ def read(list_name: str = "", clock=time.time, previous=None, driver=None,
     collected = {c["connection"]: c for c in data.get("controllers") or []}
     intent = flow_intent.intent(network)
     out["intent"] = {"state": intent["state"], "error": intent.get("error", "")}
+    meter_rows = (flow_intent.meters(network).get("meters") or []) \
+        if intent["state"] == "ok" else []
     for conn in listed["connections"]:
         cls = DRIVERS.get(conn["kind"])
         decl = cls.declaration() if cls else {"capabilities": [], "absent": {}}
@@ -238,6 +241,10 @@ def read(list_name: str = "", clock=time.time, previous=None, driver=None,
             rows.append({"dpid": s["dpid"], "dpid_hex": s["dpid_hex"], "name": x["name"],
                          "state": s["state"], "error": s["error"],
                          "flows": sflows, "records": records.get(s["dpid"], []),
+                         "meter_records": flow_intent.meter_records(
+                             conn["name"], s["dpid"],
+                             [m.get("meter_id") for m in x["meters"]]
+                             if x["meters"] is not None else None, meter_rows, now=clock()),
                          "active_flows": s.get("active_flows"),
                          "coverage": s.get("coverage"), "meters": meters,
                          "meters_read": x["meters"] is not None,

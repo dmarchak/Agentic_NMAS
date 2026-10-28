@@ -187,6 +187,10 @@ STAGES = {
     "sdn_v2.response_confirm": Stages(
         "sdn_v2.response_preview", "hash", "modules.sdn.flow_ops.verify_installed",
         "modules.sdn.flow_ops._rollback", "modules.sdn.flow_intent.record_operation"),
+    # A lost response put back (C2018): the same core, its ask held to the records again.
+    "sdn_v2.reapply_confirm": Stages(
+        "sdn_v2.reapply_preview", "hash", "modules.sdn.flow_ops.verify_installed",
+        "modules.sdn.flow_ops._rollback", "modules.sdn.flow_intent.record_operation"),
     "update.apply": Stages(
         "v2.update", "hash",
         "n/a: the root-owned updater (deploy/update/nmas-update) confirms the new version by identity",
@@ -428,6 +432,7 @@ HISTORY = {
     "sdn_v2.controller_test": NOT_A_DEVICE,
     "sdn_v2.flow_confirm": ("sdn_operations",),
     "sdn_v2.response_confirm": ("sdn_operations",),
+    "sdn_v2.reapply_confirm": ("sdn_operations",),
     "sdn_v2.response_dismiss": "n/a: a dismissal is kept with the network's SDN responses "
                                "(modules/sdn/loop.py), never a device's record",
     "sdn_v2.policy_set": NOT_A_DEVICE,

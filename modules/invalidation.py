@@ -410,10 +410,12 @@ DECLARED = {
     "sdn_v2.controller_test": Nothing("tests a saved SDN controller and answers on its card; the card's state stays the reader's"),
     "sdn_v2.flow_preview": Nothing("previews a flow change in its card; the confirm sends"),
     "sdn_v2.response_preview": Nothing("previews a response in its card; the confirm sends"),
+    "sdn_v2.reapply_preview": Nothing("previews a lost response's re-apply in its card; the confirm sends"),
     # PHASE8_PLAN 17.1 S8 to S10: a flow operation, a response, a dismissal, the mode and the
     # loop: SDN's region (Flows and Responses) reads again.
     "sdn_v2.flow_confirm": ("sdn",),
     "sdn_v2.response_confirm": ("sdn",),
+    "sdn_v2.reapply_confirm": ("sdn",),
     "sdn_v2.response_dismiss": ("sdn",),
     "sdn_v2.mode_set": ("sdn",),
     "sdn_v2.policy_set": ("settings", "sdn"),

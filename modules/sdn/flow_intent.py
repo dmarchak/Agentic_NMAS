@@ -39,8 +39,10 @@ switch whose table was read whole is judged; a record on any other switch is ``n
 never missing (absent and unread are different).
 
 SDN › Flows draws `classify`'s answer as the SDN reader stored it
-(`modules/readers/sdn_controllers.py`); no Needs attention row reads it yet (a later step of
-17.1 S11, with S6's detections).
+(`modules/readers/sdn_controllers.py`), each record with its ``expires_at``; a response's
+flows or meter (`meter_records`) missing while their hard timeout has time left are a Needs
+attention row (`attention.sdn_mitigation_source`, C2018) and its Re-apply…
+(`modules/sdn/reapply.py`).
 """
 
 import ipaddress
@@ -337,6 +339,38 @@ def active_meters_of(rows: list) -> dict:
     return out
 
 
+def meter_records(connection: str, dpid: int, read_ids, meter_rows: list,
+                  now: float = None) -> list:
+    """Mercury's recorded meters on *connection*'s switch *dpid* that the switch does not hold
+    (C2018): *read_ids* the meter ids its read answered (None when its meters were not read:
+    then each is ``not_judged``); *meter_rows* `meters()`'s. Each ``{"meter_id", "state",
+    "expires_at", "response", "flags", "bands", "words"}``, *state* ``expired`` once its
+    expiry (its response's flows' hard timeout) has passed, else ``missing``."""
+    now = time.time() if now is None else now
+    out = []
+    for m in meter_rows or []:
+        if m.get("connection") != connection or m.get("dpid") != dpid:
+            continue
+        if read_ids is not None and m.get("meter_id") in set(read_ids):
+            continue
+        base = {"meter_id": m.get("meter_id"), "expires_at": m.get("expires_at"),
+                "response": m.get("response") or {}, "flags": m.get("flags") or [],
+                "bands": m.get("bands") or [], "installed_at": m.get("at")}
+        exp = m.get("expires_at")
+        if read_ids is None:
+            out.append(dict(base, state="not_judged",
+                            words=f"switch {dpid}'s meters were not read, so whether meter "
+                                  f"{m.get('meter_id')} is there is not known"))
+        elif isinstance(exp, (int, float)) and now >= exp:
+            out.append(dict(base, state="expired",
+                            words=f"its response's flows expired at {_iso(exp)}"))
+        else:
+            out.append(dict(base, state="missing",
+                            words=f"meter {m.get('meter_id')} is recorded as added by Mercury "
+                                  "and the switch does not hold it"))
+    return out
+
+
 def meters(network: str) -> dict:
     """Mercury's meters on *network*: ``{"state", "meters": [rows], "error"}``."""
     got = read(network)
@@ -579,6 +613,11 @@ def classify(flows: list, connection: dict, intent_rows: list, *, read_switches=
                 "idle_timeout": record.get("idle_timeout"), "response": record.get("response")}
         hard = record.get("hard_timeout") or 0
         installed_at = record.get("installed_at")
+        # When its hard timeout ends (Mercury's clock), so a reader of the stored answer judges
+        # the time left at its own moment (C2018); None for a flow with no hard timeout.
+        base["expires_at"] = (installed_at + hard if hard and isinstance(installed_at,
+                                                                         (int, float))
+                              else None)
         if record.get("dpid") not in judged:
             out_records.append(dict(base, state="not_judged",
                                     words=f"switch {record.get('dpid')}'s table was not read, "
