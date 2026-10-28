@@ -123,10 +123,16 @@ masked:
 
 - **By position:** a value in a secret's place in a configuration line, whatever it is: an
   SNMP community (`snmp-server community …`, a trap host's community), a user's or the enable
-  password or secret, a line password, a key string, a TACACS or RADIUS key, a pre-shared key,
-  a password after `password` or `secret` anywhere in the line, an authentication key
-  (`key 1 md5 …`), SNMPv3's authentication and privacy keys, a password hash (`$1$`, `$9$`
-  and the like), a URL's user and password, and an encrypted secret.
+  password or secret, a line password, a key string, a TACACS or RADIUS key (the global
+  `tacacs-server key …` and a server block's `key …`), a pre-shared key, an IKE key
+  (`crypto isakmp key …`, to an IPv4 or IPv6 peer), an OSPF key (`ip ospf
+  authentication-key …`, `ip ospf message-digest-key N md5 …`), a neighbor's password
+  (`neighbor <address> password …`, IPv4 or IPv6), an SNMPv3 user's authentication and
+  privacy passwords (`snmp-server user …`), an HSRP, VRRP or GLBP authentication string, an
+  NTP key (`ntp authentication-key N md5 …`), a password after `password` or `secret`
+  anywhere in the line, an authentication key (`key 1 md5 …`), a password hash (`$1$`, `$9$`
+  and the like), a URL's user and password, and an encrypted secret. Each keeps its line's
+  words, key numbers and addresses: only the value is replaced.
 - **By value:** any credential {{product}} holds, wherever it appears in your words.
 
 Addresses (IPv4 and IPv6), device names and everything else go as you typed them. A question
@@ -140,9 +146,10 @@ words as they were sent, each masked value as its placeholder, so the value is n
 back on the page. The call's record holds the masked words only, with the note's words beside
 them; **History** draws the request as it was sent, masked.
 
-Some secret lines are not yet recognised by position (C745 lists them, among them an IKE key
-typed as `crypto isakmp key …` and an OSPF `authentication-key` with no key number): leave
-secrets out of your words.
+Some secret lines are not yet recognised in every form, among them the older
+`tacacs-server host … key …` and `radius-server host … key …` forms, an AAA group's
+`server-private … key …`, an OSPF virtual link's key, OSPFv3's IPsec keys, an IKEv2 profile's
+`pre-share key …` and an NHRP authentication string: leave secrets out of your words.
 
 ## What it costs, and what is recorded {#cost}
 

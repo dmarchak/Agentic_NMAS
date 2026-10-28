@@ -1,9 +1,11 @@
 """C1654: the egress mask, `redact.redact_egress` and `redact.egress_payload`, applied to what
 leaves the host (Phase 8's gateway) and never to what Mercury stores.
 
-Each shape C1654 and C745 measured passing `redact_text` in clear is a planted case here: it
-is shown in clear after `redact_text` (the gap, so the case is not vacuous) and masked after
-`redact_egress`. The planted values are invented for the test. Around them: what must survive
+Each shape C1654 measured passing `redact_text` in clear is a planted case here: it is shown
+in clear after `redact_text` (the gap, so the case is not vacuous) and masked after
+`redact_egress`. C745's shapes in their configuration form are `redact_text`'s since
+2026-10-28 (tests/test_redact_ios_shapes.py); the cases here quote a value with no carrier the
+positions name. The planted values are invented for the test. Around them: what must survive
 (the line's words, IPv4 and IPv6 addresses, a hostname), idempotence, a known stored value,
 and the payload walk.
 """
@@ -16,19 +18,21 @@ from modules import redact
 PLANTED = [
     ("egress_password", "applied: enable secret 9 $9$PlantedScryptHashValue01 on r1",
      "$9$PlantedScryptHashValue01"),
-    ("egress_password", "BGP: neighbor 192.0.2.7 password 7 0822455D0A16544541 refused",
+    # A password, key or SNMPv3 value with no carrier `redact._POSITIONAL` names (C745 gave the
+    # `neighbor`, `ip ospf`, `ntp authentication-key` and `snmp-server user` forms of these
+    # lines their positions on 2026-10-28; tests/test_redact_ios_shapes.py's QUOTED holds
+    # the lines that stood here, masked by position).
+    ("egress_password", "BGP: peer 192.0.2.7 password 7 0822455D0A16544541 refused",
      "0822455D0A16544541"),
-    ("egress_password", "neighbor 2001:db8::7 password plantedClearPw9 for AS 65001",
+    ("egress_password", "peer 2001:db8::7 password plantedClearPw9 for AS 65001",
      "plantedClearPw9"),
-    ("egress_key", "ospf: ip ospf message-digest-key 1 md5 7 0605027D1D4F5D on Gi0/1",
-     "0605027D1D4F5D"),
-    ("egress_key", "ntp authentication-key 3 md5 plantedNtpKey41 seen in the diff",
-     "plantedNtpKey41"),
+    ("egress_key", "ospf: the key 1 md5 7 0605027D1D4F5D on Gi0/1", "0605027D1D4F5D"),
+    ("egress_key", "an NTP key 3 md5 plantedNtpKey41 seen in the diff", "plantedNtpKey41"),
     ("egress_snmp_auth",
-     "snmp-server user ops GRP v3 auth sha plantedAuthPass1 priv aes 128 plantedPrivPass2",
+     "user ops in GRP: v3 auth sha plantedAuthPass1 priv aes 128 plantedPrivPass2",
      "plantedAuthPass1"),
     ("egress_snmp_priv",
-     "snmp-server user ops GRP v3 auth sha plantedAuthPass1 priv aes 128 plantedPrivPass2",
+     "user ops in GRP: v3 auth sha plantedAuthPass1 priv aes 128 plantedPrivPass2",
      "plantedPrivPass2"),
     ("egress_hash", "the golden's hash $1$mERr$plantedMd5Crypt. differs from the device's",
      "$1$mERr$plantedMd5Crypt."),

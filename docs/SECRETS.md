@@ -53,10 +53,13 @@ outbound path, and is masked as every other one is.
   and no code lists or reads `goldens/` except the operator's census step (read-only). The
   repository's goldens remain the record, verbatim, and the key-sealed break-glass export
   (`scripts/nmas-breakglass`) carries the credentials and the key.
-- **What masking does not know is not masked** (C745: an OSPF MD5 key, a BGP neighbour's
-  password, an SNMPv3 user's keys, and the shapes surveyed but unknown). The archive is as masked
-  as every other outbound path, no more; the known gap is a test of its own, which fails when
-  C745 adds a shape.
+- **What masking does not know is not masked.** The archive is as masked as every other
+  outbound path, no more. C745 (2026-10-28) added the IOS shapes masking did not know (an
+  interface's OSPF keys, a neighbor's password, an SNMPv3 user's passwords, an IKE key, a
+  server block's key, an HSRP, VRRP or GLBP string, an NTP key: `redact._POSITIONAL`, every
+  form in `tests/test_redact_ios_shapes.py`), and the archive's own test of the first three
+  holds them masked there (`tests/test_s3_archive.py`,
+  `test_c745_shapes_reach_the_archive_masked`). The shapes still unknown are the register's.
 - **What is already in the bucket stays.** The copies written before this release (every
   version of each `<stamp>.cfg`) are plaintext, and Mercury's key cannot delete. The operator's
   read-only measurement, `scripts/host-steps/c730-golden-archive-census.sh`, counts the versions

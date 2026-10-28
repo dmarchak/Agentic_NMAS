@@ -8,8 +8,8 @@
 # This step MEASURES, read-only, with Mercury's own key (list and read; it writes nothing and
 # deletes nothing): every version under goldens/, each read and asked whether Mercury's masking
 # (`redact_text`, the installation's values) would still change it. It prints counts and object
-# folders, never a value. What masking does not know (C745's shapes) is not counted: an object
-# holding only those reads as masked here. It counts the installation's archive (Default's
+# folders, never a value. What masking does not know (a shape `redact._POSITIONAL` does not
+# name) is not counted: an object holding only those reads as masked here. It counts the installation's archive (Default's
 # endpoint, bucket and prefix); a network that set its own bucket or prefix is not counted
 # (none had, read 2026-10-09: docs/NSOT_PHASE4_MINIO.md section 3).
 #

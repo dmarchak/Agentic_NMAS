@@ -127,6 +127,72 @@ _POSITIONAL = (
         r"(?i)\b(pre-shared-key\s+(?:address\s+\S+\s+)?(?:key\s+)?)" + _VALUE + r"()")),
     ("shared_key", re.compile(
         r"(?i)\b((?:tacacs-server|radius-server)\s+key\s+(?:\d+\s+)?)" + _VALUE + r"()")),
+    # C745 (2026-10-28): the IOS credential shapes this table did not know, each found in
+    # clear by a planted line (tests/test_redact_ios_shapes.py holds every form). Three rules
+    # bind them all:
+    #   * `[ \t]`, never `\s`, between a shape's tokens, so a match never crosses a line: a
+    #     `\s+` after an optional number reads ` key 1\n  key-string 7 X` as the number 1 and
+    #     the value `key-string`;
+    #   * an encryption type is ONE digit (`[0-9][ \t]+`: IOS's 0, 6 and 7), so a numeric
+    #     clear value (`authentication-key 12345678`) is the value, never a type;
+    #   * every shape names its carrier, never a bare `authentication-key`: NTP's
+    #     `ntp authentication-key 1 md5 <k>` read by a bare rule gives the key number as the
+    #     type and masks `md5`, leaving the key in clear (the trap C1845 named). NTP has its
+    #     own rule, after the key number and the algorithm.
+    # `ip ospf authentication-key [0|7] <k>` and `ip ospf message-digest-key N md5 [0|7] <k>`
+    # (an interface's OSPF keys; `ip ospf authentication key-chain <name>` names a chain, no
+    # secret, and is left alone).
+    ("ospf_key", re.compile(
+        r"(?i)\b(ip[ \t]+ospf[ \t]+(?:authentication-key|message-digest-key[ \t]+\d+[ \t]+md5)"
+        r"[ \t]+(?:[0-9][ \t]+)?)" + _VALUE + r"()")),
+    # `neighbor <IPv4|IPv6|peer-group> password [0|7] <pw>` (BGP; `mpls ldp neighbor <ip>
+    # password` is the same shape and masked by it).
+    ("neighbor_password", re.compile(
+        r"(?i)\b(neighbor[ \t]+\S+[ \t]+password[ \t]+(?:[0-9][ \t]+)?)" + _VALUE + r"()")),
+    # `snmp-server user <user> <group> [remote <host> [udp-port N] [vrf X]] v3 [encrypted] auth
+    # {md5|sha} <auth> [priv {des|3des|aes {128|192|256}} <priv>]`: the clauses spelled out, as
+    # the trap host's are, so a user or group named `auth` or `sha` is never read as the
+    # keyword. The privacy rule's prefix holds the authentication value (masked or not) as
+    # one token, so either rule may run first. AES's key size is required, as IOS requires
+    # it: optional, `priv aes 128` with nothing after read the size as the value.
+    ("snmp_user_auth", re.compile(
+        r"(?i)\b(snmp-server[ \t]+user[ \t]+\S+[ \t]+\S+"
+        r"(?:[ \t]+remote[ \t]+\S+(?:[ \t]+udp-port[ \t]+\d+)?(?:[ \t]+vrf[ \t]+\S+)?)?"
+        r"[ \t]+v3(?:[ \t]+encrypted)?[ \t]+auth[ \t]+(?:md5|sha)[ \t]+)" + _VALUE + r"()")),
+    ("snmp_user_priv", re.compile(
+        r"(?i)\b(snmp-server[ \t]+user[ \t]+\S+[ \t]+\S+"
+        r"(?:[ \t]+remote[ \t]+\S+(?:[ \t]+udp-port[ \t]+\d+)?(?:[ \t]+vrf[ \t]+\S+)?)?"
+        r"[ \t]+v3(?:[ \t]+encrypted)?[ \t]+auth[ \t]+(?:md5|sha)[ \t]+\S+"
+        r"[ \t]+priv[ \t]+(?:3des|des|aes[ \t]+\d+)[ \t]+)" + _VALUE + r"()")),
+    # `crypto isakmp key [0|6] <k> {address <ip> [<mask>] | address ipv6 <prefix> | hostname
+    # <name>}`. The value is never `address` or `hostname`: a one-digit key read as a type
+    # would otherwise mask the keyword and print the key.
+    ("isakmp_key", re.compile(
+        r"(?i)\b(crypto[ \t]+isakmp[ \t]+key[ \t]+(?:[0-9][ \t]+)?)"
+        r"(?!(?:address|hostname)\b)" + _VALUE + r"()")),
+    # A bare `key [0|6|7] <k>` leading its line: a `tacacs server` or `radius server` block's
+    # key, an ISAKMP client group's. Indented, as a block's child prints, or unindented with
+    # its type (a program's line stripped, `key 7 <hex>`): an unindented `key <word>` is as
+    # often a name or prose (the break-glass preview's operand "key fingerprint" was masked
+    # by the first form of this rule), and `key chain <name>` and `key config-key …` lead
+    # unindented lines. Never a key chain's `key <N>` (a line that is the number alone, its
+    # ID), nor an assignment (`    key = …`, a traceback's source line in a log). A server key
+    # that is digits alone, typed with no type number, is a key chain's line by its shape, and
+    # one beginning `=` an assignment's, so neither is masked.
+    ("server_key", re.compile(
+        r"(?im)^((?:[ \t]+key[ \t]+(?!\d+\s*$|=)(?:[0-9][ \t]+)?"
+        r"|key[ \t]+[067][ \t]+))" + _VALUE + r"()")),
+    # `standby [N] authentication [text] <s>`, `vrrp N authentication text <s>`, `glbp N
+    # authentication text <s>`: the first-hop protocols' clear strings. Their `md5 key-string`
+    # forms are `key_string`'s; `md5 key-chain <name>` names a chain and is left alone.
+    ("fhrp_authentication", re.compile(
+        r"(?i)\b((?:standby|vrrp|glbp)(?:[ \t]+\d+)?[ \t]+authentication[ \t]+"
+        r"(?:text[ \t]+|(?!(?:md5|text)\b)))" + _VALUE + r"()")),
+    # `ntp authentication-key N <algorithm> [7] <k> [7]`: IOS prints the type AFTER the value
+    # (`ntp authentication-key 1 md5 104D000A0618 7`); a type before it is read too.
+    ("ntp_key", re.compile(
+        r"(?i)\b(ntp[ \t]+authentication-key[ \t]+\d+[ \t]+\S+[ \t]+(?:[0-9][ \t]+)?)"
+        + _VALUE + r"()")),
     ("line_password", re.compile(
         r"(?i)^(\s*password\s+(?:\d+\s+)?)" + _VALUE + r"()", re.M)),
     # `ip http client password [0|7] <secret>` (C477, 2026-10-07): the password `line_password`
@@ -376,8 +442,10 @@ def redact_payload(payload, values: dict = None):
 
 #: The shapes `redact_text` leaves in clear because its positions are anchored where a
 #: configuration puts them (C1654, measured 2026-10-24: a log line quoting `enable secret 9
-#: $9$…` mid-line, a bare `$1$…` hash, `neighbor … password 7 <hex>` mid-sentence; C745:
-#: `message-digest-key`, `snmp-server user … auth/priv`). Applied ONLY to a payload leaving the
+#: $9$…` mid-line, a bare `$1$…` hash; and a key or password with no carrier `_POSITIONAL`
+#: names, such as a peer's `password 7 <hex>` or `key 1 md5 <x>` in prose. C745's shapes, the
+#: neighbor password, OSPF and NTP keys and SNMPv3 users among them, are `_POSITIONAL`'s since
+#: 2026-10-28, so a placeholder here keeps their label). Applied ONLY to a payload leaving the
 #: host (Phase 8's gateway), never to a golden or a store, so it may over-mask: a word after
 #: "password" in prose is masked too, which costs the model a word and leaks nothing.
 #: Addresses and hostnames are never masked. Each entry captures (prefix, secret, suffix).

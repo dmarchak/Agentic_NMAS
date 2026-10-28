@@ -124,9 +124,21 @@ PASTED = [
     ("snmp-server host 2001:db8::10 traps version 2c Wombat77Comm", ["Wombat77Comm"],
      "2001:db8::10", "an SNMP community"),
     ("neighbor 192.0.2.2 password 7 0822455D0A16544541", ["0822455D0A16544541"],
-     "192.0.2.2", "a password or secret"),
+     "192.0.2.2", "a neighbor's password"),
     ("neighbor 2001:db8::2 password 7 0822455D0A16544541", ["0822455D0A16544541"],
-     "2001:db8::2", "a password or secret"),
+     "2001:db8::2", "a neighbor's password"),
+    # C745's shapes C1845 measured in clear through the egress mask (2026-10-28).
+    ("crypto isakmp key Wallaby3IkeKey address 192.0.2.3", ["Wallaby3IkeKey"], "192.0.2.3",
+     "an IKE (ISAKMP) key"),
+    ("crypto isakmp key 6 Wallaby3IkeKey address ipv6 2001:db8::3/128", ["Wallaby3IkeKey"],
+     "2001:db8::3/128", "an IKE (ISAKMP) key"),
+    ("ip ospf authentication-key Wallaby3Ospf", ["Wallaby3Ospf"], None,
+     "an OSPF authentication key"),
+    (" key 7 0475071A0B", ["0475071A0B"], None, "a server's or group's key"),
+    ("standby 1 authentication Wallaby3Hsrp", ["Wallaby3Hsrp"], None,
+     "an HSRP, VRRP or GLBP authentication string"),
+    ("ntp authentication-key 1 md5 Wallaby3NtpKey", ["Wallaby3NtpKey"], None,
+     "an NTP authentication key"),
     ("pre-shared-key address 192.0.2.1 key Kangaroo99Psk", ["Kangaroo99Psk"], "192.0.2.1",
      "a pre-shared key"),
     ("pre-shared-key address 2001:db8::1 key Kangaroo99Psk", ["Kangaroo99Psk"], "2001:db8::1",
@@ -140,7 +152,7 @@ PASTED = [
      "a TACACS or RADIUS key"),
     ("snmp-server user u g v3 auth sha plantedAuthPass1 priv aes 128 plantedPrivPass1",
      ["plantedAuthPass1", "plantedPrivPass1"], None,
-     "an SNMPv3 authentication key and an SNMPv3 privacy key"),
+     "an SNMPv3 user's authentication password and an SNMPv3 user's privacy password"),
 ]
 
 

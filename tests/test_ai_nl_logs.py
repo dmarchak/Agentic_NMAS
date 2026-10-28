@@ -163,12 +163,12 @@ def test_a_pasted_secret_is_masked_and_the_person_told(world, address):
     assert r.status_code == 200 and "Filled from your words" in html
     sent = world.sent[-1]["bytes"]
     assert "0822455D0A16544541" not in sent and address in sent
-    assert ("1 value was masked before sending: a password or secret. The model read a "
+    assert ("1 value was masked before sending: a neighbor's password. The model read a "
             "placeholder in its place") in html
     assert "0822455D0A16544541" not in html, "the value is drawn nowhere"
-    assert "&lt;redacted:egress_password&gt;" in raw, "the box holds the words as sent"
+    assert "&lt;redacted:neighbor_password&gt;" in raw, "the box holds the words as sent"
     (row,) = calls.read()["rows"]
-    assert row["typed_masked"]["said"] == "1 value was masked before sending: a password or secret"
+    assert row["typed_masked"]["said"] == "1 value was masked before sending: a neighbor's password"
     assert "0822455D0A16544541" not in json.dumps(row)
 
 

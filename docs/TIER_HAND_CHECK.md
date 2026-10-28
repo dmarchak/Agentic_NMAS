@@ -2187,3 +2187,111 @@ killed. Not covered by a mutant here: the shapes `redact_egress` does not yet kn
 `crypto isakmp key`, an OSPF `authentication-key` with no key number, a server block's bare
 `key`, HSRP's `standby N authentication`), measured unmasked the same day and C745's to add.**
 
+## 2026-10-28: the IOS credential shapes masking did not know, by position (C745), by hand
+
+**What touches the tier.** C745: eight entries added to `redact._POSITIONAL`, so goldens'
+reads, logs, responses, the archive, the parsers' secret references, the config check and the
+egress mask all get them (goldens stay verbatim at rest): `ospf_key` (`ip ospf
+authentication-key [0|7] <k>`, `ip ospf message-digest-key N md5 [0|7] <k>`),
+`neighbor_password` (`neighbor <IPv4|IPv6|peer group> password [0|7] <pw>`, LDP's too),
+`snmp_user_auth` and `snmp_user_priv` (`snmp-server user <u> <g> [remote <host> [udp-port N]
+[vrf X]] v3 [encrypted] auth {md5|sha} <a> [priv {des|3des|aes {128|192|256}} <p>]`),
+`isakmp_key` (`crypto isakmp key [0|6] <k> {address <IPv4> | address ipv6 <prefix> |
+hostname <name>}`), `server_key` (a block's `key [0|6|7] <k>` indented, or unindented with its
+type; never a key chain's `key <N>` nor an assignment), `fhrp_authentication` (`standby [N]
+authentication [text] <s>`, `vrrp N` and `glbp N authentication text <s>`), `ntp_key` (`ntp
+authentication-key N <algorithm> [7] <k> [7]`); `gateway.MASK_WORDS` gives each its words.
+No capture holds any of these shapes (the fleet's captures scanned, counts only); each line is
+the Cisco command reference's documented form with an invented value. The ordering hazards and
+how they are held: every rule names its carrier, so NTP's key number and `md5` are never taken
+for a type and a value (C1845's trap, mutant T4); `[ \t]`, never `\s`, between tokens, so no
+match crosses a line (O7, N5, S13, I5, K9, F10, T5); an encryption type is one digit, so a
+numeric clear value is the value (O6, N4, I4, T6). Found while building, before this check:
+the first `server_key` (any `key <word>` leading a line) masked the break-glass preview's
+operand "key fingerprint" and a traceback's `key = …` (tests/test_breakglass_export.py failed);
+narrowed to an indented line or a typed one, and an assignment refused.
+
+**The method:** the narrowed hand check (PHASE8_PLAN 15.12), by the agent that built it: each
+mutant one or more exact text replacements, each found the stated number of times, in its own
+`scripts/nmas-control` throwaway worktree of the change, then tests/test_redact_ios_shapes.py,
+test_redact_egress.py, test_s3_archive.py, test_ai_typed_text.py, test_ai_nl_logs.py,
+test_provider_redaction.py, test_secret_compare.py, test_unmodeled_secrets.py,
+test_breakglass_export.py, test_claude_config_reads.py and test_url_userinfo_masked.py
+(`scratchpad/hm.py`, `hm_all.py`). The baseline passed (528; 536 after the tests added below).
+A must-die canary first: every C745 rule matching nothing: killed (152 failed). The first run
+had seven survivors; four were a missing test (a clear value of digits with words after it,
+and a type 7 value of digits alone), added and the mutants run again (marked *then killed*);
+I2's first form did not compile and was run again in a form that does; two survive, named
+below. Every run left the working tree untouched (each `nmas-control` exit 0).
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: every C745 rule matches nothing | killed | 152, every form, the archive's and the screens' |
+| O1 `ospf_key` matches nothing | killed | 23 |
+| O2 without `authentication-key` | killed | 10 |
+| O3 without `message-digest-key` | killed | 13 |
+| O4 its `md5` keyword dropped | killed | 13 |
+| O5 without its type | killed | 11 |
+| O6 its type any number (`\d+`) | survived, then killed | `test_a_shape_quoted_mid_sentence_is_masked_by_position` (`authentication-key 12345678 set on …`, added) |
+| O7 crossing lines (`\s`) | killed | `test_a_keyword_ending_its_line_takes_nothing_from_the_next` |
+| N1 `neighbor_password` matches nothing | killed | 29 |
+| N2 a neighbor of IPv4 or a name only (no `:`) | killed | 10, every IPv6 case |
+| N3 without its type | killed | 19 |
+| N4 its type any number | survived, then killed | the quoted test (IPv4 and IPv6 `password 12345678 refused`, added) |
+| N5 crossing lines | killed | the line-end test |
+| S1 `snmp_user_auth` matches nothing | killed | 27 |
+| S2 `snmp_user_priv` matches nothing | killed | 24 |
+| S3 the `remote` clause dropped (both rules) | killed | 6 |
+| S4 `udp-port` dropped | killed | 3 |
+| S5 `vrf` dropped | killed | 3 |
+| S6 `encrypted` dropped (auth) | killed | 3 |
+| S7 `encrypted` dropped (priv) | killed | 3 |
+| S8 `md5` dropped (auth) | killed | 3 |
+| S9 `3des` dropped | killed | 3 |
+| S10 AES's key size optional | killed | the line-end test (`priv aes 128` with nothing after) |
+| S11 the user and group read lazily up to `auth` | killed | 3, the user named `auth` in a group named `sha` |
+| S12 the priv rule's auth value token dropped | killed | 24 |
+| S13 crossing lines | killed | the line-end test |
+| I1 `isakmp_key` matches nothing | killed | 18 |
+| I2 without the `address`/`hostname` refusal | killed | 3, the one-character key |
+| I3 without its type | killed | 7 |
+| I4 its type any number | survived, then killed | the quoted test (`crypto isakmp key 12345678 was set …`, added) |
+| I5 crossing lines | killed | the line-end test |
+| K1 `server_key` matches nothing | killed | 17 |
+| K2 a key chain's `key <N>` not refused | killed | 4 |
+| K3 an assignment not refused | killed | `test_a_line_holding_no_secret_is_left_whole` (`    key = live_key()`) |
+| K4 the unindented (typed) branch dropped | killed | 3 |
+| K5 the unindented branch any type digit | killed | the no-secret test (`key 1 of 1 stored value(s)`) |
+| K6 the indent optional | killed | 7, "key fingerprint" and "key opens" among them |
+| K7 the indented branch without its type | killed | 11 |
+| K8 the key chain refusal on `[ \t]` (CRLF) | killed | `test_a_key_chain_read_with_crlf_line_ends_is_left_whole` |
+| K9 crossing lines | killed | the line-end test |
+| K10 without multiline | killed | the golden block's test |
+| F1 `fhrp_authentication` matches nothing | killed | 20 |
+| F2 `standby` dropped | killed | 14 |
+| F3 `vrrp` dropped | killed | 3 |
+| F4 `glbp` dropped | killed | 3 |
+| F5 the group number required | killed | 3 |
+| F6 `text` not consumed | killed | 12 |
+| F7 the `md5`/`text` refusal dropped | killed | 12, `md5 key-chain <name>` among them |
+| F8 `md5` not refused | killed | 10 |
+| F9 `text` not refused as the value | killed | the line-end test (`authentication text` with nothing after) |
+| F10 crossing lines | killed | the line-end test |
+| T1 `ntp_key` matches nothing | killed | 24 |
+| T2 without its type | killed | 6 |
+| T3 its algorithm `md5` only | **survived: not equivalent, explained** | `\S+` reads any algorithm token on purpose (a wider rule refuses more, the safe direction); every form this check's documented sources give is `md5`, so no case tells the two apart, and a case of another algorithm would be typed from memory |
+| T4 the trap: a bare `authentication-key [type] <value>` rule in NTP's place | killed | 28, NTP's key number and `md5` kept by every mask among them |
+| T5 crossing lines | killed | the line-end test |
+| T6 its type any number | survived, then killed | the forms test (`md5 110219001105 7`, a type 7 value of digits alone, added) |
+| L1 `ntp_key` labelled `egress_key` | killed | 26 |
+| L2 `server_key` labelled `shared_key` | killed | 19 |
+| P1 `snmp_user_priv` before `snmp_user_auth` | **survived: equivalent** | the privacy rule's prefix holds the authentication value as one token, masked or not, so either order masks the same tokens with the same labels (the rule's comment says so) |
+| W1 a C745 label with no words | killed | `test_every_mask_redact_makes_has_its_words` |
+| W2 a neighbor's password said in other words | killed | the logs screen's and the typed text's tests |
+
+**The result: every mutant killed but T3 (explained) and P1 (equivalent); the canary killed.
+Not covered here: the shapes still unknown (an older `tacacs-server host … key` or
+`radius-server host … key` with a clear key, `server-private … key`, `server-key`, `pac key`,
+`key config-key`, NHRP's and IKEv2's keys, an OSPF virtual link's, OSPFv3's IPsec keys),
+measured in clear the same day, the register's.**
+

@@ -233,8 +233,9 @@ PLANTED_GOLDEN = (
     f"snmp-server community {COMMUNITY_RO} RO\n"
     f"snmp-server host 192.0.2.9 version 2c {COMMUNITY_TRAP}\n"
     "end\n")
-#: C745's shapes, which masking does not know: an OSPF MD5 key, a BGP neighbour's password and
-#: an SNMPv3 user's keys. NOT masked in the archive, as on every other outbound path.
+#: C745's first three shapes: an OSPF MD5 key, a BGP neighbour's password and an SNMPv3 user's
+#: keys, masked by position since 2026-10-28 (before, the archive held them in clear, as every
+#: other outbound path did).
 C745_VALUES = ("OspfPlantedKey1", "BgpPlantedPw2", "V3AuthPlanted3", "V3PrivPlanted4")
 C745_GOLDEN = (
     "interface GigabitEthernet2\n"
@@ -333,17 +334,19 @@ class TestAGoldenLeavesTheHostMasked:
                                              "shown masked"}
         assert list(srv.objects) == ["goldens/lab/r1/20261015T120000Z.masked.cfg"]
 
-    def test_known_gap_c745_shapes_masking_does_not_know_reach_the_archive_unmasked(self, hook):
-        """KNOWN GAP, C745 (open): masking does not know an OSPF MD5 key, a BGP neighbour's
-        password or an SNMPv3 user's keys, so the archive holds them as every other outbound
-        path does. Measured: none appears in the fleet's captured fixtures. When C745 adds a
-        shape to `redact._POSITIONAL`, this test fails for it: move that value to the test
-        above."""
-        _got, srv = hook({"r1": C745_GOLDEN})
+    def test_c745_shapes_reach_the_archive_masked(self, hook):
+        """C745 (2026-10-28): an OSPF MD5 key, a BGP neighbour's password and an SNMPv3 user's
+        keys, which masking did not know until then (this test held them as a known gap,
+        reaching the archive unmasked), are masked by position, each line's words kept."""
+        got, srv = hook({"r1": C745_GOLDEN})
+        assert got == {"ok": True, "message": "archived 1 config(s), masked"}, got
         (body,) = srv.objects.values()
         text = body.decode("utf-8")
-        assert [v for v in C745_VALUES if v in text] == list(C745_VALUES), \
-            "a C745 shape is masked now: move it to the masked test and close that part of C745"
+        assert [v for v in C745_VALUES if v in text] == []
+        assert " ip ospf message-digest-key 1 md5 <redacted:ospf_key>\n" in text
+        assert " neighbor 192.0.2.7 password <redacted:neighbor_password>\n" in text
+        assert ("snmp-server user mon grp v3 auth sha <redacted:snmp_user_auth> priv aes 128 "
+                "<redacted:snmp_user_priv>\n") in text
 
 
 class TestOneWritePath:

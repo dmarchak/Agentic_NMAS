@@ -72,7 +72,8 @@ def masked_golden(data: bytes, values: dict = None) -> bytes:
     once). Raises `Unmaskable` for bytes that are not UTF-8 text (they cannot be shown masked)
     and for a result a second pass would still change: masking twice changes nothing (C743), so
     a change says the first pass is not complete. What masking does not know is not masked
-    (C745's shapes): the archive is as masked as every other outbound path, no more."""
+    (a shape `redact._POSITIONAL` does not name): the archive is as masked as every other
+    outbound path, no more."""
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError as exc:
