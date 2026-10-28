@@ -203,6 +203,9 @@ What to act on first: **N awaiting approval**, the mode and whether the loop is 
     detected** only when the collection read every switch whole and no detection is active;
     **no new threat; N still active**, naming each detection still firing; or that the
     collection was partial, or read no switch, which is never called healthy;
+  - **a threat already answered** says it **fired again while mitigated by response <id>
+    until <time>**: a response still in force holds its source off, so no card is raised, no AI
+    call is made and nothing is sent ([how](sdn-flows#already-mitigated));
   - **a response** (AUTO's, or yours when you send it) says who applied which action on which
     switch (its DPID, and the name it reports when Mercury knows one), the operation's id, and
     the resulting entries **as Verify read them back from the switch**: each flow's match,

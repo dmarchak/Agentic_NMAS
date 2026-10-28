@@ -96,6 +96,33 @@ every response waits for you. Every response,
 AUTO's or yours, writes one line to the loop's log: who applied which action on which switch,
 the operation, and the resulting entries as Verify read them back.
 
+### A threat already answered {#already-mitigated}
+
+A response does not stop a detection at once: a scan's sightings stay in its window (60 seconds
+by default) after its source is dropped or rate-limited, so the same scan can fire again while
+the response is working. **A detection that fires again while one of Mercury's responses holds
+its source off is recorded, not proposed**: no card, no AI call, nothing sent, in HITL and in
+AUTO alike. The loop's log on SDN › Responses says it fired again while mitigated by response
+<id> (the card you confirmed, or AUTO's operation) until <time>, the response's hard timeout.
+
+A response holds a detection off when all of these are true:
+
+- it drops or rate-limits a source, for the same rule, on the same switch;
+- it is for the same source, in any spelling of its IPv4 or IPv6 address, or for the same
+  detection (a flood over flows that match MAC addresses only names no address, and is held by
+  its own port);
+- its hard timeout has not passed;
+- it is **in force**: every one of its flows is on the switch as the loop read it in that pass,
+  and the SDN reader has not read its meter missing.
+
+A response that matches but is not in force is **lost**: the detection is answered as new, and
+its log line names the lost response and what is missing, beside its Needs attention row and its
+**Re-apply…** on SDN › Flows ([Re-apply a lost response](#reapply)). One that has expired is
+named too. The loop checks a held detection again on every pass: once its response expires or
+is lost while the detection is still firing, the hold is released, the log says why, and the
+detection is classified and answered as new in that pass. A held detection that resolves
+releases its hold. A detection seen on several switches is judged on each switch on its own.
+
 No response, in any mode, may cover the network's **control channel**: a flow whose match could
 carry LLDP (the controller's topology discovery), names one of the controller's addresses (its
 connection's URL and southbound address, when each is an address; a prefix holding one counts),

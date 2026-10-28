@@ -6,7 +6,8 @@ step, the one AI call, which runs only where its feature is on (below).
 1. AUTO's expiry, if it passed, recorded once (`modes.record_expiry`);
 2. `closed_loop.collect_threat_data(network)`, then `detect.observe` (each detection an alert
    with its evidence pack);
-3. for each detection that fired in this pass: **classify** (`closed_loop.classify_threat`)
+3. for each detection that fired in this pass, and is not already mitigated (C2005, below):
+   **classify** (`closed_loop.classify_threat`)
    as a BACKGROUND call, the job's, on that detection (`triggers.background("sdn_classify",
    <job>, <network>, "detection", <its key>)`). The gateway refuses it, records the refusal
    and sends nothing unless the feature is on for the network and within its caps
@@ -40,6 +41,34 @@ step, the one AI call, which runs only where its feature is on (below).
    classified again: the response is marked active again;
 5. a response's meter whose flows have expired is removed (`flow_ops.expire_meters`).
 
+**Already mitigated (C2005).** A detection that fires while one of Mercury's responses already
+holds its source off is recorded, never proposed: no card, no AI call, nothing sent. The scan
+rule's 60 s window still held the source's ports after its rate limit was applied, so the walk
+of 2026-10-28 (section D) raised a second card for the same scan, and AUTO would have applied
+the same response again on every re-fire. The check runs before the classify step, since it
+needs only deterministic data in hand (the detection, the flow intent, this pass's
+collection), so a re-fire under a response spends no AI call: by CLAUDE.md's AI cost rules a
+background call runs only when deterministic code has found something, and a threat Mercury is
+already answering is not a new finding. A response **holds** the detection (`holds`,
+`covering`) when it is one of `HOLDING_ACTIONS` recorded in the flow intent (installed, not
+withdrawn), for the same rule, on the same connection and switch (its flows act on that switch
+only), and for the same subject: the detection's own key, or every source it names among the
+sources the response's flows match (IPv4 and IPv6 in one spelling, a MAC address lower-case;
+a flood over MAC-only flows names no address and is held by its key, its port); AND its hard
+timeout has not passed; AND it is **in force**: every one of its flows is on the switch as this
+pass's collection read it (a switch whose flows were not read is not judged, so not held), and
+the SDN reader's stored value does not read its meter missing (`reapply.lost`; the collection
+reads no meters). A response that matches and is not in force is **lost** (C2018): the
+detection is answered as new, and its line names the lost response, what is missing, and that
+Needs attention has its row and SDN › Flows its Re-apply…; one that matches and has expired is
+named too. The record (``mitigated`` in the response store, with the response, its operation
+and until when) and the log line are drawn in the loop's log on SDN › Responses, as a
+detection that fires again while its response awaits a person is. A held detection is checked
+again on every pass while it stays detected: once its response is no longer in force (expired,
+or lost) the hold is ``released``, saying why, and the detection is classified and answered as
+new in that pass; a detection that resolves releases its hold too. Incidents (C1999) group one
+attack's detections across switches; this check is per switch and does not.
+
 A detection that resolves (`detect.observe`: a collection that judged its subject no longer
 shows it) never closes its response: the response stays awaiting a person, marked "threat no
 longer active since <time>", its classification kept, until a person approves or dismisses
@@ -65,7 +94,9 @@ any number of ``classified`` (a person's Classify: the classification, and the a
 proposes), ``inactive`` (its detection resolved: since when) and ``active`` (it fired again),
 then one of ``confirmed`` (the operation that answered it) or ``dismissed`` (by whom and why).
 ``cleared`` (the detection resolved before anyone acted) is no longer written, and still read
-as closed in an older record.
+as closed in an older record. A hold (C2005) is ``mitigated`` (the detection, the response
+holding it, its operation and until when) then ``released`` (why); its id (``mit-…``) is never
+a response's, so `awaiting` passes over both.
 """
 
 import calendar
@@ -329,6 +360,265 @@ def awaiting(network: str) -> dict:
     return dict(got, rows=list(open_rows.values()))
 
 
+# ───────────────────────────────────────────────────────────────────── already mitigated (C2005)
+
+#: The catalogue actions whose response holds a source off on its switch until its hard
+#: timeout. Removing an unauthorised flow holds nothing off: a flow added again is a new one.
+HOLDING_ACTIONS = ("drop_source", "rate_limit_source")
+
+
+def canon_source(value) -> str:
+    """A source in one spelling: an IPv4 or IPv6 address compressed, a MAC address lower-case
+    with colons; "" for none or anything else."""
+    import ipaddress
+
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        return ipaddress.ip_address(text).compressed
+    except ValueError:
+        pass
+    mac = re.fullmatch(r"([0-9A-Fa-f]{2})(?:[:-]([0-9A-Fa-f]{2})){5}", text)
+    if mac:
+        return ":".join(re.findall(r"[0-9a-f]{2}", text.lower()))
+    return ""
+
+
+def _answered_by(network: str) -> dict:
+    """``{operation: response id}``: each response a person confirmed, by the operation that
+    applied it (AUTO's responses have no response id: their operation names them)."""
+    return {r.get("operation"): r.get("id") for r in _read(network, PENDING_FILE)["rows"]
+            if r.get("kind") == "confirmed" and r.get("operation")}
+
+
+def _meters_lost(network: str, now: float) -> dict:
+    """``{operation: words}``: each response whose meter the SDN reader's stored value reads
+    missing (`reapply.lost`), and an ``error`` key's words when that value cannot be read."""
+    from modules import reader_job
+    from modules.readers import sdn_controllers as R
+    from modules.sdn import reapply
+
+    try:
+        cached = reader_job.read_cached_for(R.READER_NAME, network) or {}
+    except Exception as exc:                          # noqa: BLE001 (said in the hold's words)
+        return {"error": f"the SDN reader's stored value could not be read ({type(exc).__name__})"}
+    good = ((cached.get("doc") or {}).get("last_good") or {})
+    out = {}
+    for x in reapply.lost(good.get("value") or {}, now=now):
+        if x.get("meter") is not None:
+            out[x["key"]] = (f"its meter {x['meter']} is missing from the switch as the SDN reader "
+                             f"read it at {x.get('as_of') or good.get('value_at') or '?'}")
+    if not good:
+        out["error"] = "the SDN reader has no stored value for this network yet"
+    return out
+
+
+def holds(network: str, collected: dict, now: float) -> dict:
+    """Mercury's responses on *network* that hold a source off (`HOLDING_ACTIONS`), each judged
+    against *collected* (this pass's collection) at *now*: ``{"state" ("ok" or "unreadable"),
+    "error", "holds": [{"key" (its operation), "id" (the response a person confirmed, else the
+    operation), "action", "rule", "detection_key", "sources", "connection", "dpid",
+    "dpid_hex", "cookies", "until" (epoch: its first flow's hard timeout), "state", "words"}]}``.
+    *state* is ``active`` (every flow on the switch as read now, its hard timeout ahead, its
+    meter not read missing), ``expired``, ``lost`` (C2018: something missing while it has time
+    left; *words* say what), or ``not_judged`` (the switch's flows were not read in this
+    collection, or a flow has no hard timeout recorded)."""
+    from modules.sdn import flow_intent, reapply
+
+    intent = flow_intent.intent(network)
+    if intent["state"] != "ok":
+        return {"state": "unreadable", "error": intent["error"], "holds": []}
+    groups = {}
+    for r in intent["flows"]:
+        resp = r.get("response")
+        if not reapply.is_response(resp) or resp.get("action") not in HOLDING_ACTIONS:
+            continue
+        gk = (r.get("connection"), r.get("dpid"),
+              reapply.group_key(resp, f"cookie:{r.get('cookie_hex')}"))
+        groups.setdefault(gk, []).append(r)
+    if not groups:
+        return {"state": "ok", "error": "", "holds": []}
+    switches = {(c.get("connection"), s.get("dpid")): s
+                for c in (collected or {}).get("controllers") or []
+                for s in c.get("switches") or []}
+    answered, meters = _answered_by(network), None
+    out = []
+    for (conn, dpid, key), rows in sorted(groups.items(), key=lambda kv: str(kv[0])):
+        resp = rows[0]["response"]
+        det = resp.get("detection") or {}
+        sources = {canon_source(det.get("source"))} | {
+            canon_source((f.get("match") or {}).get(field))
+            for f in rows for field in ("ipv4_src", "ipv6_src")}
+        ends = [f["installed_at"] + f["hard_timeout"] for f in rows
+                if f.get("hard_timeout") and isinstance(f.get("installed_at"), (int, float))]
+        cookies = [f.get("cookie_hex") or flow_intent.cookie_hex(f.get("cookie")) for f in rows]
+        hold = {"key": key, "id": answered.get(key) or key, "action": resp.get("action"),
+                "rule": det.get("rule") or "", "detection_key": det.get("key") or "",
+                "sources": sorted(s for s in sources if s), "connection": conn, "dpid": dpid,
+                "dpid_hex": rows[0].get("dpid_hex") or det.get("dpid_hex") or "",
+                "cookies": cookies, "until": min(ends) if len(ends) == len(rows) else None}
+        sw = switches.get((conn, dpid))
+        if hold["until"] is None:
+            hold.update(state="not_judged", words="a flow of it has no hard timeout recorded")
+        elif now >= hold["until"]:
+            hold.update(state="expired", words=f"its hard timeout ended at {_iso(hold['until'])}")
+        elif sw is None or sw.get("active_flows") is None:
+            hold.update(state="not_judged",
+                        words=f"switch {hold['dpid_hex'] or dpid}'s flows were not read in this "
+                              "collection")
+        else:
+            held = {f.get("cookie") for f in sw.get("flows") or []}
+            gone = [c for f, c in zip(rows, cookies) if f.get("cookie") not in held]
+            if meters is None:
+                meters = _meters_lost(network, now)
+            if gone:
+                left = reapply.left_words(hold["until"] - now)
+                hold.update(state="lost", words=(
+                    f"{len(gone)} of its {len(rows)} flow(s) ({', '.join(gone)}) are not on "
+                    f"the switch as this collection read it, with {left} of its hard timeout "
+                    "left"))
+            elif key in meters:
+                hold.update(state="lost", words=meters[key])
+            else:
+                hold.update(state="active", words=(
+                    f"its {len(rows)} flow(s) on the switch as this collection read it"
+                    + (f"; its meter as the SDN reader read it ({meters['error']})"
+                       if resp.get("action") == "rate_limit_source" and "error" in meters
+                       else "")))
+        out.append(hold)
+    return {"state": "ok", "error": "", "holds": out}
+
+
+def covering(d: dict, judged: list) -> tuple:
+    """The response holding detection *d* off among `holds`' *judged*, and the others that
+    would have held it but are not in force: ``(active hold or None, [the others])``. A hold
+    covers *d* when it is for the same rule on the same connection and switch, and its
+    detection was *d*'s own (the same key) or every source *d* names is one it holds off."""
+    from modules.sdn import closed_loop
+    from modules.sdn.drivers.base import SpecError, parse_dpid
+
+    try:
+        dpid = parse_dpid(d.get("dpid") if d.get("dpid") is not None else d.get("dpid_hex"))
+    except SpecError:
+        return None, []
+    named = {canon_source(s) for s in closed_loop._sources(d)}
+    match = [h for h in judged
+             if h["rule"] == d.get("rule") and h["connection"] == d.get("connection")
+             and h["dpid"] == dpid
+             and ((h["detection_key"] and h["detection_key"] == d.get("key"))
+                  or (named and "" not in named and named <= set(h["sources"])))]
+    active = [h for h in match if h["state"] == "active"]
+    if active:
+        return max(active, key=lambda h: h["until"]), []
+    return None, match
+
+
+def mitigated(network: str, d: dict, hold: dict, *, now: float = None) -> dict:
+    """Record that detection *d* fired while *hold* (a `holds` row, ``active``) holds its
+    source off: no card, no AI call, nothing sent. Its hold stays open until `release`."""
+    now = time.time() if now is None else now
+    row = {"kind": "mitigated", "id": f"mit-{secrets.token_hex(5)}", "at": _iso(now),
+           "key": d.get("key"), "by": hold["id"], "operation": hold["key"],
+           "action": hold["action"], "until": _iso(hold["until"]),
+           "until_epoch": hold["until"], "cookies": list(hold["cookies"]),
+           "detection": {k: d.get(k) for k in ("key", "rule", "title", "connection", "dpid_hex",
+                                               "source", "port", "words", "at")}}
+    _append(network, PENDING_FILE, row)
+    return row
+
+
+def release(network: str, hold_id: str, why: str, *, now: float = None) -> dict:
+    """Close the hold *hold_id*, saying *why* (its response no longer in force, or its
+    detection resolved)."""
+    now = time.time() if now is None else now
+    row = {"kind": "released", "id": hold_id, "at": _iso(now), "why": why}
+    _append(network, PENDING_FILE, row)
+    return row
+
+
+def open_holds(network: str) -> dict:
+    """The holds still open (`mitigated`, not `release`d), oldest first."""
+    got = _read(network, PENDING_FILE)
+    out = {}
+    for r in got["rows"]:
+        if r.get("kind") == "mitigated":
+            out[r.get("id")] = r
+        elif r.get("kind") == "released":
+            out.pop(r.get("id"), None)
+    return dict(got, rows=list(out.values()))
+
+
+def _judge_holds(network: str, collected: dict, seen: dict, candidates: list,
+                 now: float) -> tuple:
+    """The pass's holds (C2005), judged before any AI call: ``(holding, notes, releasing)``.
+    *candidates* the detections that fired and await no person; *holding* ``{key: hold}``
+    for each candidate, or held detection released here, that an active response covers
+    (`covering`); *notes* ``{key: [words]}`` for its log lines (a hold released, a response
+    that would cover it lost, expired or not judged); *releasing* each detection held so far
+    that is still detected and whose response no longer holds it off (its hold released here).
+    A held detection that resolved, or is no longer detected, has its hold released; one not
+    judged in this collection stays held."""
+    holding, notes, releasing = {}, {}, []
+    still_open = open_holds(network)["rows"]
+    if not candidates and not still_open:
+        return holding, notes, releasing
+    judged = holds(network, collected, now)
+    fired = set(seen.get("fired") or [])
+    current = {d["key"]: d for d in seen.get("detections") or []}
+    resolved = set(seen.get("resolved") or [])
+    unjudged = {u.get("key") for u in seen.get("unjudged") or []}
+    by_op = {h["key"]: h for h in judged["holds"]}
+    for r in still_open:
+        key = r.get("key")
+        if key in resolved or key in fired:
+            release(network, r["id"], "its detection resolved" if key in resolved else
+                    "its detection fired again, judged afresh", now=now)
+        elif key in current:
+            h = by_op.get(r.get("operation"))
+            if judged["state"] == "ok" and h is not None and h["state"] == "active":
+                continue
+            why = (f"whether it is in force could not be read ({judged['error']})"
+                   if judged["state"] != "ok" else
+                   "it is no longer recorded as installed (withdrawn)" if h is None else
+                   h["words"])
+            release(network, r["id"], why, now=now)
+            releasing.append(current[key])
+            notes.setdefault(key, []).append(
+                f"{_source_words(current[key])} is still detected, and response {r.get('by')} "
+                f"no longer holds it off ({why}): hold {r['id']} released")
+        elif key not in unjudged:
+            release(network, r["id"], "its detection is no longer detected", now=now)
+    for d in candidates + releasing:
+        key = d["key"]
+        if judged["state"] != "ok":
+            notes.setdefault(key, []).append(
+                f"{_source_words(d)}: whether a response already holds it off could not be "
+                f"read ({judged['error']}): answered as new")
+            continue
+        active, others = covering(d, judged["holds"])
+        if active is not None:
+            holding[key] = active
+            continue
+        for h in others:
+            named = f"response {h['id']} ({h['action']}, operation {h['key']})"
+            notes.setdefault(key, []).append(
+                f"{named} would hold {_source_words(d)} off and is not in force: {h['words']}; "
+                "Needs attention names it and SDN › Flows offers its Re-apply… (C2018); "
+                "answered as new" if h["state"] == "lost" else
+                f"{named} held {_source_words(d)} off until {_iso(h['until'])} UTC, its hard "
+                "timeout; answered as new" if h["state"] == "expired" else
+                f"{named} may hold {_source_words(d)} off and is not judged: {h['words']}; "
+                "answered as new")
+    return holding, notes, releasing
+
+
+def _source_words(d: dict) -> str:
+    src = d.get("source") or ", ".join(d.get("sources") or [])
+    return f"{d.get('title') or d.get('rule')} " + (
+        f"from {src}" if src else f"on port {d.get('port')}") + f" on {d.get('dpid_hex')}"
+
+
 # ───────────────────────────────────────────────────────────────────────────── one pass
 
 def job_id(network: str, since: float = None) -> str:
@@ -434,16 +724,19 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
              sleep=time.sleep, collect=None, observe=None, job: str = "", send=None,
              clock=time.monotonic) -> dict:
     """One pass of the loop (the module's docstring). ``{"ok", "error", "fired", "proposed",
-    "applied", "inactive", "lines"}``: *inactive* the responses still awaiting a person whose
-    detection resolved in this pass (C1968: never closed by it). *job* is the loop's id
-    (`job_id`), what its background AI calls name; *send* replaces the AI provider (tests)."""
+    "applied", "inactive", "mitigated", "released", "lines"}``: *inactive* the responses still
+    awaiting a person whose detection resolved in this pass (C1968: never closed by it);
+    *mitigated* each detection recorded as already mitigated (C2005: ``{"key", "by", "until",
+    "hold"}``); *released* each held detection answered as new because its response is no
+    longer in force. *job* is the loop's id (`job_id`), what its background AI calls name;
+    *send* replaces the AI provider (tests)."""
     from modules.fanout import Failed, read_each
     from modules.sdn import closed_loop, detect, flow_ops, modes
 
     job = job or job_id(network)
 
     out = {"ok": False, "error": "", "fired": [], "proposed": [], "applied": [], "inactive": [],
-           "lines": []}
+           "mitigated": [], "released": [], "lines": []}
 
     def line(step, words, **extra):
         out["lines"].append(say(network, step, words, now(), **extra))
@@ -497,11 +790,17 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
                 mark(network, row["id"], "inactive", since=since, now=now())
                 out["inactive"].append(row["id"])
         kept = seen.get("kept") or {}
+        # Already mitigated (C2005), before any AI call: a detection a response in force holds
+        # off is recorded, not classified or proposed; a held one whose response is no longer
+        # in force while it is still detected is answered as new in this pass (`releasing`).
+        holding, notes, releasing = _judge_holds(
+            network, collected, seen, [d for d in fired if d["key"] not in waiting], now())
         # Classified at once, each its own call (C1970), in the detections' order whatever
         # order the calls finish in (`fanout.read_each`); one that raises is its own Failed.
         todo = []
-        for d in fired:                       # one call per detection, its first sighting's
-            if d["key"] not in waiting and all(t["key"] != d["key"] for t in todo):
+        for d in fired + releasing:           # one call per detection, its first sighting's
+            if d["key"] not in waiting and d["key"] not in holding and \
+                    all(t["key"] != d["key"] for t in todo):
                 todo.append(d)
         took = {}
 
@@ -516,14 +815,31 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
         verdicts = dict(zip([d["key"] for d in todo], read_each(
             one, todo, name="sdn-classify", max_workers=CLASSIFY_WORKERS)))
         classify_s = clock() - began
-        for d in fired:
-            out["fired"].append(d["key"])
+        released = {d["key"] for d in releasing}          # never one that fired (`_judge_holds`)
+        for d in fired + releasing:
+            out["released" if d["key"] in released else "fired"].append(d["key"])
             again = waiting.get(d["key"])
             if again is not None:
                 if again.get("inactive_since"):
                     mark(network, again["id"], "active", now=now())
                 line("respond", f"fired again while its response {again['id']} awaits a "
                                 "person: not classified again")
+                continue
+            for words in notes.get(d["key"], ()):
+                line("respond", words)
+            hold = holding.get(d["key"])
+            if hold is not None:
+                row = mitigated(network, d, hold, now=now())
+                out["mitigated"].append({"key": d["key"], "by": hold["id"],
+                                         "until": row["until"], "hold": row["id"]})
+                log.info("sdn loop: %s on %s fired again while mitigated by response %s until "
+                         "%s: recorded, not proposed", d.get("rule"), d.get("dpid_hex"),
+                         hold["id"], row["until"])
+                line("respond", (
+                    f"{_source_words(d)} fired again while mitigated by response {hold['id']} "
+                    f"({hold['action']}, operation {hold['key']}) until {row['until']} UTC: "
+                    f"{hold['words']}; recorded as already mitigated ({row['id']}), not "
+                    "proposed: no AI call, nothing sent"), hold=row["id"], by=hold["id"])
                 continue
             verdict = verdicts[d["key"]]
             if isinstance(verdict, Failed):
@@ -581,7 +897,7 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
         # (C1843): `ai_calls`, so the top bar's AI chip and an open spend panel read again.
         keys = (["alerts"] if seen.get("changed") else []) + (
             ["sdn"] if out["fired"] or out["proposed"] or out["applied"] or out["inactive"]
-            or expired["removed"] else []) + (["ai_calls"] if todo else [])
+            or out["released"] or expired["removed"] else []) + (["ai_calls"] if todo else [])
         if keys:
             out["announced"] = _announce(network, keys, job)
     except Exception as exc:                          # noqa: BLE001 (said, never raised)
