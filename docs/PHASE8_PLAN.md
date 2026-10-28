@@ -3483,6 +3483,43 @@ the band's drop count rising while the flow matches shows the limit working.
 
 Registered: C1837 (this section's slice, open until the operator's walk).
 
+### 17.7 The AUTO production-readiness gate (the operator, 2026-10-28; Lab 8 objective 4.3)
+
+17.4's AUTO is a lab mechanism: an admin turns it on per network with a reason and an expiry,
+and the loop then applies catalogue actions within an allowed risk. Nothing yet makes autonomous
+responses safe on a network that carries real traffic. This gate lists what must be built first.
+**The gate is after Phase 8;** the guard below is not.
+
+**The guard (C2009, B, blocks Phase 8 done).** Each network carries a stage: lab, pilot or
+production. Until the gate is complete, AUTO may be turned on only on a network marked lab. The
+Mode card says so, and a refusal names the network's stage and this gate.
+
+**The gate's items (each a register row, B, blocking the gate):**
+
+| # | Item | Row | What it requires |
+|---|---|---|---|
+| 1 | Protected hosts | C2010 | A per-network list of hosts no response ever targets (controllers, monitoring, DNS, gateways, the NMAS itself), seeded from NetBox roles and tags and the controller connections. AUTO never acts on one; in HITL the preview flags it, and a person may override only with a typed reason, recorded. |
+| 2 | Limits and a circuit breaker | C2011 (with C2005) | At most N autonomous actions per window, per network and per source. Exceeding a limit, a Verify failure or rollback, a spike in refused classifications, or the same source re-firing turns AUTO off (back to HITL), recorded in History and notified. |
+| 3 | Shadow mode | C2012 | A third mode: the loop detects, classifies and builds the preview, records "would have applied X at T" without sending, and the person's actual decision is recorded beside it. Agreement is reported per rule. |
+| 4 | Per-rule AUTO policy | C2013 | For each rule: whether it may run autonomously, its maximum risk, a named owner and an approved-until date. Turning AUTO on applies only to the eligible rules. |
+| 5 | Reliability gate | C2014 (with C1994) | A rule becomes eligible only when its classifier cases meet 15.12's done bar (95% reliable, recorded and held-out) and its shadow agreement meets a set threshold over a minimum number of cases. |
+| 6 | Notification of every autonomous action | C1999 (extended) | A Needs attention entry naming its network, the network's on-call integration, and a daily digest. |
+| 7 | Review | C2015 | A periodic review of dismissals by reason, refused classifications, false positives, near misses (Verify failures, rollbacks) and autonomous actions, acknowledged by the rule's owner; the acknowledgement recorded. |
+| 8 | Kill switch and its drill | C2016 | One admin control that stops all autonomous action (and, as an option, all background AI features) across every network, recorded; a test that flips it and proves the loop stops acting within one pass; a periodic reminder to run the drill. |
+| 9 | Staged rollout | C2017 | The guard's stage, enforced in code: AUTO on a pilot network requires the shadow period; production requires a completed pilot. |
+
+**Added by the operator's second addendum (2026-10-28), the gate's parts of rows that are
+otherwise Phase 8's or later:** an approved scanner never treated as a scan (C2019); no response
+whose match overlaps the control channel (C2022); AUTO re-applies a lost mitigation only for an
+AUTO-eligible rule (C2018); and only an unauthorised flow that diverts traffic may be removed
+autonomously (C2021).
+
+**Order, by dependency:** the guard (C2009) first; then the stage (9) with protected hosts (1),
+limits and the breaker (2) and the kill switch (8), which make any autonomy safe to try; then the
+shadow mode (3), the per-rule policy (4) and the notification (6); then the reliability gate (5),
+which needs the shadow record, and the review (7), which needs the owners. The gate is complete
+when every row above is closed.
+
 ## 18. Phase 8's scope, and AI cost safety (the operator, 2026-10-27)
 
 **Phase 8 is the addition of AI to Mercury.** It is complete when the items of 18.1 meet 15.12's
