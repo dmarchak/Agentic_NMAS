@@ -148,6 +148,34 @@ def test_the_cards_table_is_each_task_s_pin_its_model_and_its_cap_whole():
         "a model with no long tier says none"
 
 
+# ---------------------------------------------------------------- a comparison on another model
+
+def test_a_comparison_on_another_model_is_capped_at_that_model_s_worst_case(world, monkeypatch):
+    """`cases.measure_on` (E2, sdn_classify on Sonnet 5.5; the operator, 2026-10-28): the task's
+    pin is replaced in this process alone, and the gateway's per-call cap follows it, Sonnet's
+    worst case at the task's bounds. Haiku's cap would refuse a Sonnet call on a large case,
+    so the comparison would measure the cap instead of the model. The pin file is unchanged."""
+    from modules.ai import cases, gateway
+
+    monkeypatch.setattr(profiles, "TASKS", dict(profiles.TASKS))
+    pin = profiles.load_pins()["sdn_classify"]
+    haiku = gateway.caps("sdn_classify")["per_call"]
+    assert pin["model"] == "claude-haiku-5-5" and haiku == profiles.cost_usd(
+        "claude-haiku-5-5", 0, pin["max_tokens"], cache_write_tokens=pin["max_prompt_tokens"])
+
+    assert cases.measure_on("sdn_classify", "claude-sonnet-5-5") == ""
+    sonnet = profiles.cost_usd("claude-sonnet-5-5", 0, pin["max_tokens"],
+                               cache_write_tokens=pin["max_prompt_tokens"])
+    assert gateway.caps("sdn_classify")["per_call"] == sonnet > haiku
+    # A request at the task's prompt bound: under Sonnet's cap, over Haiku's.
+    body = {"max_tokens": pin["max_tokens"], "messages": []}
+    body["messages"] = ["a" * int((pin["max_prompt_tokens"] - 1) * gateway.CHARS_PER_TOKEN
+                                  - len(json.dumps(body)) - 8)]
+    assert pin["max_prompt_tokens"] - 2 <= gateway.prompt_tokens(body) <= pin["max_prompt_tokens"]
+    assert haiku < gateway.worst_case_usd("claude-sonnet-5-5", body) <= sonnet
+    assert profiles.load_pins()["sdn_classify"] == pin, "the pin file is never written"
+
+
 # ---------------------------------------------------------------- Test connection
 
 WORD = re.compile(r'<data name="word">\n(mercury-[0-9a-f]{8})\n</data>')

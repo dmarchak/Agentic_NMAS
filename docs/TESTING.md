@@ -1155,7 +1155,11 @@ per process; `tests/test_suite_bound.py` drives a real hang).
 `faulthandler_timeout = 120` in `pytest.ini` dumps one slow test's stack without stopping
 the run: 45 s until 2026-10-14, when the dump itself was found taking xdist workers down
 (C647: a browser test past 45 s under the gate's load, its worker's output cut mid-dump,
-three times). 120 s is about 2.5x that test's loaded time. CI's tests step is bound at 1470 s
+three times). 120 s is about 2.5x that test's loaded time. CI's tests step overrides it
+with `-o faulthandler_timeout=270` (C2036, 2026-10-28): test_v2_context_is_drawn's module setup,
+the walk of every v2 page, measured 108.6 s on the runner (#1266) and passed 120 s twice in
+the docs shard (#1267); 270 s is 2.5x the 108.6 s. The coverage nightly's is 450 s (C1616,
+the C tracer). CI's tests step is bound at 1470 s
 and its job at 26 min (2.5x the 587 s step measured in run #752 with the per-test measurement;
 `timeout-minutes` in the workflow); each of the gate's shards is bound at 740 s at `-n 4`,
 scaled with its workers (2960 s at `-n 1`: a shard's time goes as 1/n; `suite_bound` in

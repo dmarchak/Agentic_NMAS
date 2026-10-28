@@ -237,6 +237,12 @@ jobs:
       - name: A folder for each test's tier
         run: mkdir -p "tiers-${{ matrix.shard }}"
 
+      # The per-test bound (pytest.ini's faulthandler_timeout, 120 s) is 270 s here (C2036,
+      # 2026-10-28): test_v2_context_is_drawn's module setup (tests/v2_context.py's walk of
+      # every v2 page) measured 108.6 s on the runner (#1266, shard a; 28 s on the laptop),
+      # and passed 120 s twice in the docs shard (#1267), where the dump took an xdist worker
+      # down (C647's shape); 270 s is 2.5x the runner's 108.6 s.
+
       - name: Tests (R1, R4), confined to loopback, measured by tier
         env:
           COVERAGE_CORE: sysmon
@@ -246,7 +252,7 @@ jobs:
           NMAS_TEST_TIMEOUT: "1470"
           NMAS_REQUIRE_PG: "1"
         run: >
-          scripts/nmas-test -q -p no:cacheprovider -n auto
+          scripts/nmas-test -q -p no:cacheprovider -n auto -o faulthandler_timeout=270
           --cov=modules --cov=routes --cov=app --cov-report=
           --junitxml=junit-${{ matrix.shard }}.xml
           $(python scripts/nmas-shards ${{ matrix.shard }})

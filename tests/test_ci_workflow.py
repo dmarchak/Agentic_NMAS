@@ -273,10 +273,22 @@ class TestAPushMeasuresByTierAndTheNightPerTest:
     def test_the_nights_per_test_bound_holds_its_slowest_setup_under_the_c_tracer(self):
         """C1616 (2026-10-23): under the C tracer a setup measured about 180 s on the runner
         passed pytest.ini's 120 s, and the dump inside an xdist worker took it down (C647's
-        shape). The night's bound is 2.5x that; a push's stays pytest.ini's."""
-        ci, night = self._docs()
+        shape). The night's bound is 2.5x that."""
+        _ci, night = self._docs()
         assert "-o faulthandler_timeout=450" in _tests_step(night)["run"]
-        assert "faulthandler_timeout" not in _tests_step(ci)["run"]
+
+    def test_a_pushs_per_test_bound_holds_its_slowest_setup(self):
+        """C2036 (2026-10-28): a push's slowest setup, test_v2_context_is_drawn's walk of
+        every v2 page, measured 108.6 s on the runner (#1266) and passed pytest.ini's 120 s
+        twice in the docs shard (#1267). A push's bound is 2.5x the measured 108.6 s, and
+        stays below the night's, whose tracer is slower."""
+        import re
+
+        ci, night = self._docs()
+        bound = re.findall(r"-o faulthandler_timeout=(\d+)", _tests_step(ci)["run"])
+        nights = re.findall(r"-o faulthandler_timeout=(\d+)", _tests_step(night)["run"])
+        assert bound == ["270"], bound
+        assert int(bound[0]) < int(nights[0]), "the push's bound is under the night's"
 
     def test_the_nights_tests_stand_on_cis_setup_step_for_step(self):
         ci, night = self._docs()
