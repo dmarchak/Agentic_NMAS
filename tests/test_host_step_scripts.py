@@ -89,6 +89,8 @@ EXPECTED = {"phase3-step1.sh", "phase3-step2.sh", "c584-loki-writer.sh",
             "c1916-loki-loopback.sh",
             # C1836: Alloy reads flask-app's journal into Loki as job=mercury (2026-10-28).
             "c1836-flask-app-journal.sh",
+            # C2125: Alloy's severity stage takes a mixed-case facility (2026-10-28).
+            "c2125-alloy-mixed-case-facility.sh",
             # C1917: NetBox admitted from the operator's laptop only, in DOCKER-USER (2026-10-27).
             "c1917-netbox-docker-user.sh"}
 # minio-4d-4e.sh (pip into the app's interpreter) was removed on 2026-10-08: the operator
