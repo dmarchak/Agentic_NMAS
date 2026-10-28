@@ -253,6 +253,26 @@ def test_the_choice_continues_the_draft_and_the_model_gets_resolved_names_only(w
     assert "description walk F7 test" in html, "the editor's preview of the change"
 
 
+@pytest.mark.parametrize("address", ["192.0.2.9", "2001:db8::9"])
+def test_a_pasted_secret_is_masked_and_the_person_told(world, host, address):  # noqa: F811
+    """C1845, through the tab's real route: a pasted pre-shared key in the sentence is masked by
+    position before it is sent; the person is told under the row, in words, never the value;
+    the box and the commit's one line, which starts from it, draw the words as sent; the record
+    holds the masked words only; the address goes as typed."""
+    world.answer = DESCRIBE
+    r, html = _post(host, {"words": "describe GigabitEthernet0/1 as uplink to edge1, the peer "
+                                    f"pre-shared-key address {address} key Kangaroo99Psk"})
+    assert "Drafted from your words" in html, html[:800]
+    sent = world.sent[-1]["bytes"]
+    assert "Kangaroo99Psk" not in sent and address in sent
+    assert ("1 value was masked before sending: a pre-shared key. The model read a placeholder "
+            "in its place") in html
+    assert "Kangaroo99Psk" not in html, "the value is drawn nowhere: not the box, not the commit"
+    assert '<redacted:pre_shared_key>' in html and 'name="summary"' in html
+    (row,) = calls.read()["rows"]
+    assert row["typed_masked"]["values"] == 1 and "Kangaroo99Psk" not in json.dumps(row)
+
+
 def test_a_name_the_device_lacks_lists_its_interfaces_and_links_neighbours(world, host):  # noqa: F811
     r, html = _post(host, {"words": "shut Gi9/9"})
     assert "Not found:</strong> s1 has no interface Gi9/9" in html

@@ -37,6 +37,10 @@ without choosing that network.
 
 What each action does, step by step: [Turn a background AI feature on or off](ai-background).
 
+Every page's top bar shows the same spend: the AI chip, and the spend panel it opens, list each
+feature on with its spend and **Turn off**, the same action as here
+([What AI is spending](getting-started#ai-spend)). Turning one on is only here.
+
 If the record of AI calls cannot be read, the section says so, each feature's spend is
 unknown, and the gateway refuses every background call until it can be read.
 

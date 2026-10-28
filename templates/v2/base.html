@@ -97,6 +97,15 @@
     <span class="ip-slot" id="nmas-in-progress" hx-get="{{ url_for('operations.in_flight') }}" hx-trigger="load, nmas:in_progress from:body, nmas:device_holds from:body, nmas:device_progress from:body" hx-swap="innerHTML"></span>
     <span class="update-slot" id="nmas-update" hx-get="{{ url_for('device_v2.update_available') }}" hx-trigger="load, nmas:app_version from:body" hx-swap="innerHTML"></span>
     <span class="strip" id="nmas-strip" hx-get="{{ url_for('device_v2.strip') }}" hx-trigger="load, nmas:integration_health from:body" hx-swap="innerHTML"></span>
+    {#- Boards AI1 and AI2 (C1843; PHASE8_PLAN 18.3 rule 10): the AI chip after the integrations
+        strip and before Live, never blank, read on load and again on each recorded call
+        (`ai_calls`) or settings change (`settings`), never on a timer. It opens the spend
+        panel in place, read when it opens and again on `ai_calls` while open (nmas_v2.js,
+        `aiSpendPanel`); Esc or the chip closes it. -#}
+    <details class="ai-spend menu-wrap" id="ai-spend" data-keep="ai-spend">
+      <summary id="nmas-ai" aria-haspopup="dialog" hx-get="{{ url_for('v2.ai_chip') }}" hx-trigger="load, nmas:ai_calls from:body, nmas:settings from:body" hx-swap="innerHTML"><span class="ai-chip ai-neutral"><span class="ai-chip-mark" aria-hidden="true">AI</span><span class="ai-text">reading spend…</span><span class="ai-short" aria-hidden="true">…</span></span></summary>
+      <div class="menu ai-menu card" role="dialog" aria-label="AI spend" id="nmas-ai-panel" hx-get="{{ url_for('v2.ai_spend') }}" hx-trigger="nmas-ai-open" hx-swap="innerHTML"><p class="menu-note">Reading AI spend…</p></div>
+    </details>
     <span class="live" id="nmas-live" data-live="unknown"><span class="live-dot"></span><span class="live-word">Connecting</span></span>
     <div class="menu-wrap theme" x-data="theme" x-on:keydown.escape="close" x-on:click.outside="close">
       <button type="button" class="icon-btn" aria-haspopup="true" x-bind:aria-expanded="expanded" x-bind:aria-label="label" x-bind:title="label" x-on:click="toggle">{{ icon('theme', 18) }}</button>

@@ -27,7 +27,7 @@ Shots: each board at 1440; the page at 1440, 1280 and 390 in six states (`tab-in
 `tab-intent-departs` (C884) at 1440.
 Compared 2026-10-16.
 Templates compared: templates/v2/_intent.html, templates/v2/_intent_edit.html, templates/v2/_intent_check.html, templates/v2/_intent_words.html, templates/v2/_intent_proof.html
-Templates sha256: `9e9d8c6dbf2e7e96045faa0dcfb1d16a92c96b9501270e370d397e3602458092`
+Templates sha256: `49de73acce97f8a6027da947c0bb2e626fc46ec798e1462d93d0cd7c277e5ae8`
 
 Compared again 2026-10-17 (C1023) after "Open (commit) with your edit on it" (`_intent_edit.html`)
 and Write the ticked lines into the document (`_intent_check.html`) became busy on themselves
@@ -154,6 +154,18 @@ owed with F7-Q's. The rows "F7-Q Q1: the footer" and "F7-Q Q1: committed both" r
 other region's verdict changed.
 Templates sha256 before: `0bbb08471c76ae886906208b8ceeb0cc6a51a3460a3c45920627664a849cdb95`.
 
+Changed 2026-10-28 (C1845, the egress mask on typed text): `_intent_words.html` draws
+`_ai.html`'s new `typed_masked` note under the Change it in words row, only when something of
+the sentence was masked before sending ("1 value was masked before sending: a pre-shared key.
+The model read a placeholder in its place, and the value never left Mercury: leave secrets out
+of your words."), and the box and Why, in one line then hold the sentence as sent. No board
+draws it: the row "Change it in words: the masked-words note" below. Measured: the row's
+responses with nothing masked (a draft, a name the device lacks) rendered from the templates
+before and after are the same byte for byte but for each run's own values (a commit's sha and
+its time), so no shot changes; the note's state is drawn by tests/test_ai_intent_change.py's
+`test_a_pasted_secret_is_masked_and_the_person_told`, not shot. The hash written again.
+Templates sha256 before: `9e9d8c6dbf2e7e96045faa0dcfb1d16a92c96b9501270e370d397e3602458092`.
+
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
 
@@ -202,3 +214,4 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | F7-Q Q4: an OSPF network with no area | Area 0 as a button, "Another area" field checked before Continue is enabled | a button per area the device's OSPF holds, the field and Continue; the field's pattern refuses Continue with no valid area, the server checking again | **deviation** (log: F7-Q Q4: the area checked on Continue) |
 | F7-Q Q5: a description with no text | the question with the current description, a text box, Continue, "The text typed here is the value: it reaches the model as a placeholder" | the same, the text quoted into the decided sentence and held as a placeholder | **same** |
 | F7-Q: after any answer | "the sentence the draft uses is shown as decided", then the draft as board F7 draws it; Cancel leaves nothing drafted | "Your words, as decided: <q>…</q>" over the draft (or the next question), the box holding that sentence | **same** |
+| Change it in words: the masked-words note (C1845) | not drawn (no board draws what was masked of the sentence) | under the row, only when something was masked before sending: "1 value was masked before sending: a pre-shared key. The model read a placeholder in its place, and the value never left Mercury: leave secrets out of your words.", each kind (and line, for text of more than one line) in words, never the value; the box and Why, in one line holding the sentence as sent | **deviation** (log: C1845: the masked-words note under a typed AI row) |

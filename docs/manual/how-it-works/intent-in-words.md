@@ -74,6 +74,26 @@ and never widen what the change may touch.
   `check`, naming it. History keeps the request and answer as sent (with the placeholders), and
   says what each placeholder stood for.
 
+## Your words are masked before they leave {#typed-masked}
+
+The rest of your sentence, outside quotes, is masked by the AI gateway before it is sent, as
+on Ask in words (see [Your words are masked before they leave](ask-in-words#typed-masked)):
+a value in a secret's place in a configuration line (an SNMP community, a password or
+secret, a key string, a TACACS or RADIUS key, a pre-shared key, an authentication key,
+SNMPv3's keys, a password hash, a URL's user and password, an encrypted secret), and any
+credential {{product}} holds, wherever it appears. Interface names, VLANs, prefixes and
+addresses (IPv4 and IPv6) go as you typed them, and a sentence with nothing to mask is sent
+as typed.
+
+When something was masked, a note under the row says what, in words, never the value: "1 value
+was masked before sending: a pre-shared key. The model read a placeholder in its place, and
+the value never left Mercury." The box, and **Why, in one line** that starts from it, then
+hold your sentence as it was sent, each masked value as its placeholder, so the value is
+neither drawn back on the page nor carried into a commit's line by default. The call's
+record holds the masked sentence only; **History** draws the request as it was sent. Quoted text never leaves the host at
+all, so it is not masked: it is put back exactly into the draft. A secret does not belong in
+a description: leave it out of your words, quoted or not.
+
 ## When {{product}} asks or refuses before any call {#before}
 
 Where code can tell the words leave a choice only you can make, or ask for a change the
@@ -199,7 +219,8 @@ it.
    device's interfaces, both before any call; the sentence the model is given holds the
    resolved names only.
 5. `ask`: one call through the AI gateway, as you. What leaves the host is your sentence (any
-   quoted text as its placeholder only), the keys a change may set, and the CURRENT VALUES of only the parts of the device's intent your
+   quoted text as its placeholder only, and any secret in it masked: see
+   [Your words are masked before they leave](#typed-masked)), the keys a change may set, and the CURRENT VALUES of only the parts of the device's intent your
    sentence names (each named interface's description and whether it is shut, each named
    VLAN's name, each named network statement with its area and process), with the device's
    platform and role, and what you named that the device does not hold. Never the intent

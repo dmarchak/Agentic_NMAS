@@ -86,6 +86,60 @@ not seen, opens THAT card in place of its tab, wherever you came from: the chip,
 the Devices list. A card that was refused because another rotation held the device shows that
 rotation's result when it ends, never a fresh offer to rotate again.
 
+## What AI is spending {#ai-spend}
+
+The top bar of every page carries the **AI chip**, after the integrations and before **Live**,
+so what AI costs is seen where you work, not only in Settings. It is never blank:
+
+- **"AI $0.42 today · 1 background on"**: what the AI calls recorded today cost, and how many
+  background features are on (features that call the model with no person pressing, such as
+  the SDN loop's classify). Its colour is today's spend against the installation's **day cap**:
+  neutral below half, **amber** from 50%, **red** from 80%. Hovering it says how many calls
+  that was, since when (midnight in the day cap's time zone), its share of the cap, when it was
+  read, and the date of the price table it was priced from. At the cap the chip's words stay
+  the same and the next call that would pass it is refused, naming the cap and the spend.
+- **"no cap"** beside the figure: an admin chose no day cap, so the chip stays neutral; each
+  background feature's own caps still apply.
+- **"AI off"**: hosted AI is not allowed for the installation, or no provider key is set.
+  Hovering it says which. Nothing is sent to a model.
+- **"AI spend unknown"** (red): the record of AI calls cannot be read. Today's spend is then
+  unknown, never drawn as $0, and every AI call is refused until the record can be read.
+
+At phone width the chip keeps today's figure and its colour; the number of background features
+on moves into the panel.
+
+**Pressing the chip opens the spend panel** in place, on whatever page you are on; pressing it
+again, the panel's ×, or Esc closes it. The panel shows:
+
+- **Today:** the spend, against the day cap with its share and the number of calls, a bar
+  marked at 50% and 80%, and when the day's count resets; **yours today** (the calls you made);
+  and today's spend by what started it: people's presses, the background features, and each
+  evaluation run by its name.
+- **Daily average:** over the last 7 and the last 30 complete days (today is left out, since it
+  is not over).
+- **This month:** month to date against the month's cap, which is the day cap times the month's
+  days (the most the day cap lets a month spend), and what the month will come to by its last
+  day at the rate so far.
+- **Background features on:** each one, with its network, its trigger (what makes it call the
+  model, and how many calls one finding makes), today's and this month's spend against its own
+  caps, the estimate it was turned on with beside its actual average day since, who turned it
+  on and when, and **Turn off**. A feature its cap stopped says so, and when it resumes.
+  **Turn off** is one press; it is the same action as on **Settings › AI**, recorded the same
+  way, and its answer is drawn in the panel (see
+  [Turn a background AI feature on or off](ai-background#turn-off)). Turning a feature **on** is
+  only on Settings › AI, after its estimate.
+
+Every figure is Mercury's own, from the record of AI calls, priced from the dated price table
+in Mercury's code: **the provider bills what is actually spent**, and the provider's own
+spending limit is the backstop. A call still in flight is not counted until it is recorded,
+seconds later; while it runs, its worst case is held against the caps so calls at once never
+pass them together. The chip reads again on each recorded call and on each settings change,
+over the live connection, and the panel reads again on each recorded call while it is open;
+neither asks on a timer. An evaluation run from a host script records its calls in another
+process, so they appear at your next page load or the next call recorded here.
+
+Who sees the amounts is not a choice yet: everyone who can make AI calls sees them.
+
 ## Everything is read from what is committed
 
 Every reader takes intent and goldens as COMMITTED in git, never a file edited on the host's

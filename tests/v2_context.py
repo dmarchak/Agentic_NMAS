@@ -1625,6 +1625,81 @@ def _settings_ai(client, _lab, _mp):
         mp.undo()
 
 
+def _ai_spend(client, _lab, _mp):
+    """The top bar's AI chip and its spend panel (boards AI1 and AI2, C1843) with spend to draw:
+    a key, hosted AI allowed, a planted background feature on for Lab (and one for a network
+    Mercury does not hold, whose Turn off is refused), today's calls by a person, an evaluation
+    run and the feature; then the panel with the record unreadable, Turn off pressed in it (the
+    refusal and the answer), and the settings it changed put back."""
+    import json as _json
+    import time as _time
+
+    import pytest
+
+    from modules import config, secrets_store
+    from modules import settings_schema as S
+    from modules.ai import background as B
+    from modules.ai import calls
+    from modules.nsot import listref
+    from modules.settings_schema import write_settings
+
+    mp = pytest.MonkeyPatch()
+    lab_reads = S.get_setting
+
+    def reads(key, default=None):
+        if key not in ("ai_hosted", "ai_background"):
+            return lab_reads(key, default)
+        try:
+            with open(config.USER_SETTINGS_FILE, encoding="utf-8") as fh:
+                return _json.load(fh).get(key, default)
+        except (OSError, ValueError):
+            return default
+    mp.setattr(S, "get_setting", reads)
+    before = {k: reads(k, {}) for k in ("ai_hosted", "ai_background")}
+    try:
+        mp.setattr(secrets_store, "is_set", lambda key: key == "anthropic_api_key")
+        mp.setitem(B.FEATURES, "fake_loop", {
+            "task": "connection_check", "words": "The planted loop", "findings": ("detection",),
+            "trigger_words": "a detection rule fires", "calls_per_finding": 1,
+            "frequency": lambda network: {"per_day": 2.0, "basis": "2 a day, planted"}})
+        at = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())
+        lab = listref.network_id("Lab")
+        on = {"on": True, "by": "v2-context", "at": at, "day_cap_usd": 0.5,
+              "month_cap_usd": 5.0, "estimate": {"usd_per_day": 0.02}}
+        assert write_settings({"ai_hosted": {"by": "v2-context", "at": at,
+                                             "reason": "the walk's spend panel"},
+                               "ai_background": {lab: {"fake_loop": on},
+                                                 "elsewhere": {"fake_loop": on}}})["ok"]
+        for actor, trigger, cost in (
+                ("operator@example.com", {"kind": "person", "by": "operator@example.com"}, 0.2),
+                ("evaluation:walk-run", {"kind": "evaluation", "run": "walk-run"}, 0.05),
+                ("job:walk", {"kind": "background", "feature": "fake_loop", "job": "walk",
+                              "network": lab, "finding": {"kind": "detection", "id": "d"}},
+                 0.01)):
+            assert calls.record({"id": calls.new_id(), "feature": "connection_check",
+                                 "actor": actor, "model": "m", "verdict": "ok",
+                                 "cost_usd": cost, "trigger": trigger})["recorded"]
+        hx = {"HX-Request": "true", "Accept": "text/html"}
+        chip = client.get("/v2/ai/chip", headers=hx).get_data(as_text=True)
+        assert 'data-state="on"' in chip and "2 background on" in chip, chip
+        panel = client.get("/v2/ai/spend", headers=hx).get_data(as_text=True)
+        assert "The planted loop" in panel and "walk-run" in panel
+        real = calls.rows_since
+        mp.setattr(calls, "rows_since", lambda start: {"state": "unreadable", "rows": [],
+                                                       "error": "planted by the walk"})
+        panel = client.get("/v2/ai/spend", headers=hx).get_data(as_text=True)
+        assert "planted by the walk" in panel and "The planted loop" in panel
+        mp.setattr(calls, "rows_since", real)
+        off = "/v2/settings/installation/ai/background/{}/fake_loop/off?answer=panel"
+        r = client.post(off.format("elsewhere"), headers=hx)
+        assert r.status_code == 409 and "Not changed:" in r.get_data(as_text=True)
+        r = client.post(off.format("Lab"), headers=hx)
+        assert r.status_code == 200 and 'data-result="off"' in r.get_data(as_text=True)
+    finally:
+        assert write_settings(before)["ok"]
+        mp.undo()
+
+
 def _console_servers(client, _lab, _mp):
     """Settings › Installation › Console servers (O8) with a port record, a NetBox port with
     none, a key, a held host key and the store's log: the tab, each card, each change and its
@@ -1976,7 +2051,7 @@ PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _dr
                    _save_no_golden, _profile_versions,
                    _no_change_window, _update_owed, _lease_release, _ip_sla_retunes, _ip_sla_unsent,
                    _console_ztp, _console_servers, _day_cap_confirm, _settings_ai,
-                   _oob_onboard, _sdn,
+                   _ai_spend, _oob_onboard, _sdn,
                    _sdn_no_topology,
                    _deploy,
                    # After _deploy: r3's intent is then a real device's (r2's capture,

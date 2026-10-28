@@ -15,6 +15,7 @@
   <span class="op-act"><button type="submit" class="btn btn-small" data-op="intent-in-words" hx-disabled-elt="this"{{ ai.attrs(aic, 'configure') }} title="One recorded AI call, capped: it drafts a change to {{ host }}'s intent and previews it; nothing is written"><span class="op-idle">Draft the change</span><span class="op-busy">Drafting…</span></button>{{ how('intent-in-words', compact=True) }}</span>
   {{- ai.reason(aic) }}</div>
 </form>
+{%- if w %}{{ ai.typed_masked(w.typed_masked) }}{% endif %}
 {%- if w and w.committed %}
 {#- Part 2's answer: committed (its commit, how it is recorded, Plan deploy… next), nothing to
     commit, or why not (the intent moved, the patch is not the drafted one). -#}

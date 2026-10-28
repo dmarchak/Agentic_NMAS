@@ -31,8 +31,18 @@ Compared again 2026-10-27 (PHASE8_PLAN 17.1 S11), by reading `base.html`'s chang
 regions below, not from new shots: the sidebar gains SDN under OBSERVE, after Topology (board
 SdnControllers' sidebar; tests/test_v2_pages.py pins the order). Nothing in the top bar, the
 chip or its list moves, so every verdict below stands.
+Compared again 2026-10-28 (C1843, boards AI1 and AI2; docs/fidelity/ai-spend.md), by reading
+`base.html`'s change against the regions below and from tests/test_v2_layout_in_a_browser.py's
+measurements, not from new shots: the bar gains the AI chip and its spend panel after the
+integrations strip and before Live. To keep every working item on the screen beside it, the
+chip's words give way to its marks and counts up to 1100 px (they did under 860 px), its words
+on hover and in its label; one row below records it. Nothing else in the chip or its list moves.
+Compared again 2026-10-28 ~11:2x UTC, for base.html alone: the AI chip's mark renamed
+`ai-chip-mark` (the same rules; `ai-mark` is the AI control mark's, and the two had collided)
+and its details given `data-keep="ai-spend"` (C472's rule). The shots taken again
+(in-progress-*, ai-chip-*), nothing in In progress moved.
 Templates compared: templates/v2/_in_progress.html, templates/v2/base.html
-Templates sha256: `be8aee7c422332a1dab3395e3d611ac707fd7307182a0c493348759a6a6e9743`
+Templates sha256: `5ed96ad348b4c6d7f319f90d6f982562d811dfa23a6d83772e46ae0fa364d263`
 Hash rewritten 2026-10-23 at the Phase B merge: the run page's links name their network as `?list=` (they said `?list_name=`), and the run page's Devices link takes the page's network; no drawn text, region or control moved, every verdict stands.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
@@ -49,6 +59,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Finished, not opened yet (A2, A3, B3) | "Finished, not opened yet · N"; with none, "An operation that finishes while you are elsewhere stays here, with its outcome, until you open it." | the same words | **same** |
 | A finished row (A3, B3) | its outcome chip ("rolled back", "persisted"), device · operation, what happened at when · who, Open the result | its outcome in its card's own words and colour ("rotated and persisted"), device · operation, done or failed at when · who · network, Open the result opening the device's page on the result | **same** |
 | The chip's outcome (A3, B3) | red cross and count failed, green tick and count done, red wins | the same; a partial is amber and counted as partial (never green over a partial); a network whose holds could not be read is red and counted unread | **same** |
+| The chip from 861 to 1100 px, beside the AI chip (not drawn) | board A draws the words at 1440 | its marks and counts, as under 860 px, its words on hover and in its label | **deviation** (log: AI chip built: compact at 1100 px and under, the mark alone at 400 px and under) |
 | The chip at phone width with more than one kind (B3) | "✕ 1 · ✓ 1" | the mark and count that leads (red, then amber, then running, then green); the rest in its list and its label | **deviation** (log: C537: at phone width the chip draws the mark that leads) |
 | To finish (A3, B3, C538) | "2 to finish" on the chip; To finish · 2, each item with its button | not drawn: Finish the job is C538's | **later** |
 | The list's foot (A2, A3, B2) | All recent operations (History); "Default · and 1 running in a network you cannot see"; Mark all opened | All recent operations (History) and How does this work? (the manual's What is running now) | **deviation** (log: C537: no Mark all opened) |

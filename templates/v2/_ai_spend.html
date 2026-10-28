@@ -1,0 +1,87 @@
+{%- from "v2/_macros.html" import icon, badge, how, stamp, resets -%}
+{#- The spend panel the top bar's AI chip opens (board AI2, `AiSpendPanel.dc.html`, the mockups
+    canvas's page "C1843: AI cost safety", signed off under the Phase 7 mode 2026-10-27;
+    PHASE8_PLAN 18.3 rules 8, 9 and 10b). From `/v2/ai/spend` (`spend_view.panel`), read when it
+    opens and again on `ai_calls` while it is open: today against the day cap with its marks at
+    50% and 80%, the viewer's own spend, today by trigger and each evaluation run; the 7- and
+    30-day daily averages; month to date against the monthly cap with its projection; each
+    background feature on, its trigger, caps and estimate against actual, with Turn off (the
+    Settings › AI route and gate, its answer drawn here). Every figure is Mercury's, priced from
+    its dated table; the provider bills. -#}
+{%- macro usd(v) -%}{% if v is none %}unknown{% else %}${{ '%.2f' % v if v >= 0.01 or v == 0 else '%.4f' % v }}{% endif %}{%- endmacro -%}
+{%- macro bar(fill, level, marks=False, more=0) -%}
+<svg class="ai-bar" viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true" focusable="false"><rect class="ai-bar-track" x="0" y="0" width="100" height="8"/><rect class="ai-bar-fill ai-fill-{{ level }}" x="0" y="0" width="{{ fill }}" height="8"/>{% if more %}<rect class="ai-bar-more" x="{{ fill }}" y="0" width="{{ more }}" height="8"/>{% endif %}{% if marks %}<rect class="ai-bar-mark" x="49.6" y="0" width="0.8" height="8"/><rect class="ai-bar-mark" x="79.6" y="0" width="0.8" height="8"/>{% endif %}</svg>
+{%- endmacro -%}
+<div class="ai-head card-head"><h2 class="grow">AI spend</h2><span class="card-head-how">{{ how('getting-started', 'ai-spend') }}</span><button type="button" class="icon-btn ai-close" aria-label="Close the spend panel" data-ai-close>{{ icon('x', 16) }}</button></div>
+{%- if refused %}
+<div class="notice notice-danger ai-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not changed:</strong> {{ refused }}</div></div>
+{%- endif %}
+{%- if turned_off %}
+<div class="notice notice-muted ai-result" role="status" data-result="off">{{ icon('tick', 16) }}<div>
+  {%- if turned_off.nothing %}<strong>Already off:</strong> {{ turned_off.feature }} was not on for {{ off_network }}; nothing was written.
+  {%- else %}<strong>{{ turned_off.feature }} turned off for {{ off_network }}</strong> by {{ turned_off.actor_label }} {{ stamp(turned_off.at_iso) }}: its next call is refused; a call already sent finishes and is recorded. Recorded in History{% if not turned_off.recorded %}, and its record could not be written: {{ turned_off.record_error }}{% endif %}.{% endif %}</div></div>
+{%- endif %}
+{%- if s.hosted %}
+<p class="ai-sec ai-off-note">{{ icon('info', 15) }} {{ s.hosted }} Nothing is sent to a model; what was spent before is below.</p>
+{%- endif %}
+{%- if s.state == 'unreadable' %}
+<div class="ai-sec">
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<div>Couldn't read the record of AI calls: {{ s.error }}. Today's spend is unknown, so every AI call is refused until the record can be read. Nothing here is drawn as $0.</div></div>
+  <p class="ai-small muted">Background features on: {{ s.features_on | length }}. Each is refused while the record is unreadable.</p>
+  {%- for f in s.features_on %}
+  <div class="ai-row"><span>{{ f.words }} <span class="muted">· {{ f.network_name }}</span></span><span class="op-act"><button type="button" class="btn btn-small" data-op="ai-background" hx-post="{{ url_for('settings_v2.ai_off', network=f.network, feature=f.name, answer='panel') }}" hx-target="#nmas-ai-panel" hx-swap="innerHTML" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Turn off</span><span class="op-busy">Turning off…</span></button>{{ how('ai-background', 'turn-off', compact=True, op='turning ' ~ f.name ~ ' off') }}</span></div>
+  {%- endfor %}
+</div>
+{%- else %}
+{%- set t = s.today %}
+<section class="ai-sec" aria-label="Today">
+  <span class="ai-k">Today</span>
+  <div class="ai-row ai-base"><span class="ai-big">{{ usd(t.usd) }}</span><span class="muted">{% if t.cap is not none %}of the day cap {{ usd(t.cap) }} · {{ t.pct }}%{% else %}no day cap (an admin chose no cap){% endif %} · {{ t.calls }} call{{ '' if t.calls == 1 else 's' }}</span></div>
+  {%- if t.cap is not none %}
+  {{ bar(t.bar, t.level, marks=True) }}
+  <div class="ai-row ai-small faint"><span>marks at 50% and 80%</span><span>{{ resets(t.resets) }}</span></div>
+  {%- else %}
+  <div class="ai-row ai-small faint"><span>the day's count {{ resets(t.resets) }}</span></div>
+  {%- endif %}
+  <div class="ai-row ai-small"><span>Yours today</span><span class="mono">{{ usd(t.mine) }}</span></div>
+  {%- for k in s.kinds %}
+  <div class="ai-row ai-small"><span>{{ k.words }}{% if loop.last and s.runs %} <span class="faint">·{% for r in s.runs %} {{ r.run }} {{ usd(r.usd) }}{{ ' ·' if not loop.last }}{% endfor %}</span>{% endif %}</span><span class="mono">{{ usd(k.usd) }}</span></div>
+  {%- endfor %}
+</section>
+<section class="ai-sec" aria-label="Daily average">
+  <span class="ai-k">Daily average</span>
+  <div class="ai-row ai-small"><span>Last 7 complete days</span><span class="mono">{{ usd(s.average.week) }} a day</span></div>
+  <div class="ai-row ai-small"><span>Last 30 complete days</span><span class="mono">{{ usd(s.average.month) }} a day</span></div>
+</section>
+{%- set m = s.month %}
+<section class="ai-sec" aria-label="This month">
+  <span class="ai-k">This month ({{ m.name }}, {{ '%.1f' % m.elapsed }} of {{ m.days }} days)</span>
+  <div class="ai-row ai-base"><span class="ai-mid">{{ usd(m.usd) }}</span><span class="muted ai-small">{% if m.cap is not none %}of {{ usd(m.cap) }} · {% endif %}{{ m.basis }}</span></div>
+  {%- if m.cap is not none %}
+  {{ bar(m.bar, 'month', more=m.bar_projected) }}
+  {%- endif %}
+  <div class="ai-row ai-small"><span>At this rate, by {{ m.last_day }}</span><span class="mono">{{ usd(m.projection) }}</span></div>
+</section>
+<section class="ai-sec" aria-label="Background features on">
+  <span class="ai-k">Background features on</span>
+  {%- for f in s.features %}
+  <div class="ai-feat{% if f.stopped %} ai-feat-stopped{% endif %}" data-feature="{{ f.name }}">
+    <div class="ai-feat-head"><strong class="grow">{{ f.words }}</strong>{{ badge('network ' ~ f.network_name) }}{% if f.stopped %}{{ badge('stopped by its ' ~ f.stopped ~ ' cap', 'danger') }}{% elif f.warning %}{{ badge('at ' ~ f.warning ~ '% of a cap', 'warn') }}{% endif %}<span class="op-act"><button type="button" class="btn btn-small" data-op="ai-background" hx-post="{{ url_for('settings_v2.ai_off', network=f.network, feature=f.name, answer='panel') }}" hx-target="#nmas-ai-panel" hx-swap="innerHTML" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Turn off</span><span class="op-busy">Turning off…</span></button>{{ how('ai-background', 'turn-off', compact=True, op='turning ' ~ f.name ~ ' off') }}</span></div>
+    <div class="ai-small muted">Trigger: {{ f.trigger_words }} ({{ f.per_finding }} call{{ '' if f.per_finding == 1 else 's' }} per finding)</div>
+    <div class="ai-row ai-small"><span>Today</span><span><span class="mono">{{ usd(f.day_usd) }}</span> <span class="faint">of {{ usd(f.day_cap) }}{% if f.day_pct is not none %} ({{ f.day_pct }}%){% endif %}{% if f.stopped == 'day' %}, stopped {{ stamp(f.stopped_at) }}{% endif %}</span></span></div>
+    <div class="ai-row ai-small"><span>This month</span><span><span class="mono">{{ usd(f.month_usd) }}</span> <span class="faint">of {{ usd(f.month_cap) }}{% if f.month_pct is not none %} ({{ f.month_pct }}%){% endif %}{% if f.stopped == 'month' %}, stopped {{ stamp(f.stopped_at) }}{% endif %}</span></span></div>
+    <div class="ai-row ai-small"><span>Estimate when turned on</span><span>{% if f.estimate_usd is not none %}<span class="mono">{{ usd(f.estimate_usd) }} a day</span>{% else %}<span class="mono">no measured estimate</span>{% endif %} <span class="faint">· {% if f.actual_usd is not none %}actual {{ usd(f.actual_usd) }} a day over {{ f.actual_days }} day{{ '' if f.actual_days == 1 else 's' }}{% if f.ratio_pct is not none %} ({{ f.ratio_pct }}%){% endif %}{% else %}no complete day since it was turned on{% endif %}</span></span></div>
+    <div class="ai-small faint">Turned on by {{ f.on_by }} {{ stamp(f.on_at) }}, with that estimate</div>
+    {%- if f.stopped %}
+    <div class="ai-small ai-stopped">It resumes when {% if f.stopped == 'day' %}the day's count {{ resets(t.resets) }}{% else %}the month ends{% endif %}, or when an admin changes its caps in <a href="{{ s.settings_href }}">Settings › AI</a>. Mercury never raises a cap.</div>
+    {%- endif %}
+  </div>
+  {%- else %}
+  <p class="ai-small muted">None. A background feature is turned on only in <a href="{{ s.settings_href }}">Settings › AI</a>, after its estimate.</p>
+  {%- endfor %}
+</section>
+{%- endif %}
+<div class="ai-foot">
+  <span>Prices from Mercury's table as of {{ s.prices_as_of }}. The provider bills what is spent; its own limit is the backstop.</span>
+  <span><a href="{{ url_for('v2.history_page', kind='ai_calls') }}">Every AI call (History)</a> · <a href="{{ s.settings_href }}">Settings › AI</a></span>
+</div>

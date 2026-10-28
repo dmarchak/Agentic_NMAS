@@ -149,6 +149,29 @@ def test_a_stored_secret_in_the_question_is_masked_in_the_bytes_sent(world, monk
     assert stored not in world.sent[0]["bytes"] and "OSPF adjacency changes" in world.sent[0]["bytes"]
 
 
+@pytest.mark.parametrize("address", ["192.0.2.2", "2001:db8::2"])
+def test_a_pasted_secret_is_masked_and_the_person_told(world, address):
+    """C1845, through the logs builder's real route: a pasted BGP neighbour password is masked
+    by position before it is sent; the person is told under the row, in words, never the
+    value; the box draws the words as sent; the record holds the masked words only."""
+    world.answer = _choices()
+    r = world.web.post("/v2/history/query/ask/logs/words", data={
+        "list": "Lab", "words": f"OSPF adjacency changes since neighbor {address} password 7 "
+                                "0822455D0A16544541 was set"}, headers={"HX-Request": "true"})
+    raw = r.get_data(as_text=True)
+    html = unescape(raw)
+    assert r.status_code == 200 and "Filled from your words" in html
+    sent = world.sent[-1]["bytes"]
+    assert "0822455D0A16544541" not in sent and address in sent
+    assert ("1 value was masked before sending: a password or secret. The model read a "
+            "placeholder in its place") in html
+    assert "0822455D0A16544541" not in html, "the value is drawn nowhere"
+    assert "&lt;redacted:egress_password&gt;" in raw, "the box holds the words as sent"
+    (row,) = calls.read()["rows"]
+    assert row["typed_masked"]["said"] == "1 value was masked before sending: a password or secret"
+    assert "0822455D0A16544541" not in json.dumps(row)
+
+
 def test_the_logs_builder_draws_ask_in_words_and_a_fill_pushes_its_address(world):
     html = unescape(world.web.get("/v2/history/query/ask/logs?list=Lab").get_data(as_text=True))
     assert 'name="words"' in html and 'data-op="ask-in-words"' in html

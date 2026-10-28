@@ -408,6 +408,39 @@ def test_a_refusal_redraws_the_builder_as_it_was_with_the_reason(site):
     assert "rate(ifHCInOctets" in html, "the builder was not drawn as the form carried it"
 
 
+@pytest.mark.parametrize("address", ["192.0.2.10", "2001:db8::10"])
+def test_a_pasted_secret_is_masked_and_the_person_told(site, monkeypatch, address):
+    """C1845, through the page's real route: a pasted trap-host line's community is masked by
+    position before it is sent, and a stored value by value; the person is told, in words
+    under the row, never the value; the box draws the words as sent; the record holds the
+    masked words only; the address goes as typed."""
+    from modules import redact
+    stored = "PlantedStoredPw9x"
+    site.world.answer = _choices()
+    monkeypatch.setattr(redact, "known_secret_values", lambda: {stored: "Lab:enable"})
+    r, html = _words(site, f"input errors since snmp-server host {address} traps version "
+                           f"2c Wombat77Comm and {stored} were set")
+    assert r.status_code == 200 and "Filled from your words" in html
+    sent = site.world.sent[-1]["bytes"]
+    assert "Wombat77Comm" not in sent and stored not in sent and address in sent
+    said = ("2 values were masked before sending: an SNMP community and a credential Mercury "
+            "holds. The model read a placeholder in its place, and the value never left "
+            "Mercury: leave secrets out of your words.")
+    assert said in html and 'data-typed-masked="2"' in html
+    assert "Wombat77Comm" not in html and stored not in html, "the value is drawn nowhere"
+    assert "&lt;redacted:snmp_community&gt;" in r.get_data(as_text=True), "the box: as sent"
+    (row,) = calls.read()["rows"]
+    assert row["typed_masked"]["values"] == 2
+    assert "Wombat77Comm" not in json.dumps(row) and stored not in json.dumps(row)
+
+
+def test_a_question_with_nothing_to_mask_says_nothing_of_masking(site):
+    site.world.answer = _choices()
+    r, html = _words(site, "input errors per interface on 2001:db8::10, the top 5")
+    assert "Filled from your words" in html and "masked before sending" not in html
+    assert 'value="input errors per interface on 2001:db8::10, the top 5"' in html
+
+
 #: What is wider than the window, and the window: the evidence a sideways scroll leaves.
 OVERFLOW = ("var w = window.innerWidth, out = [];"
             "document.querySelectorAll('body *').forEach(function (e) {"

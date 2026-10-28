@@ -307,6 +307,65 @@ def test_settings_ai(settings_ai):
                     _full(b, os.path.join(OUT, f"settings-ai-on-refused-page-{width}.png"))
 
 
+def test_ai_spend(settings_ai, monkeypatch):
+    """Boards AI1 (AiChip, 1440) and AI2 (AiSpendPanel, 1440) beside the top bar's AI chip and
+    the spend panel it opens, on Settings › AI's page, in tests/test_settings_ai_v2.py's world
+    (hosted AI allowed, a $1.50 day cap) with a key set: the fake feature on for Branch through
+    the real route, and today $0.80 spent (53%, amber) by the viewer's press, another person's,
+    an evaluation run and the feature. Then the chip red (80%), with no day cap, AI off, and the
+    record unreadable, page shots only (the board draws each as a case)."""
+    import datetime
+
+    from modules import secrets_store
+    from modules.ai import calls
+    from modules.settings_schema import write_settings
+    from tests import browser
+    from tests.conftest import TEST_PERSON
+    from tests.test_settings_ai_v2 import _turn_on
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    monkeypatch.setattr(secrets_store, "is_set", lambda key: key == "anthropic_api_key")
+    _turn_on(settings_ai)
+
+    def spent(cost, actor, trigger):
+        at = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        assert calls.record({"id": calls.new_id(), "at": at, "feature": "connection_check",
+                             "actor": actor, "model": "m", "verdict": "ok", "cost_usd": cost,
+                             "trigger": trigger})["recorded"]
+    spent(0.38, TEST_PERSON, {"kind": "person", "by": TEST_PERSON})
+    spent(0.20, "ops@example.com", {"kind": "person", "by": "ops@example.com"})
+    spent(0.14, "evaluation:ex-202610280534", {"kind": "evaluation", "run": "ex-202610280534"})
+    spent(0.08, "job:j1", {"kind": "background", "feature": "fake_loop", "job": "j1",
+                           "network": "branch", "finding": {"kind": "detection", "id": "d"}})
+    page = "/v2/settings/installation?tab=ai&network=Branch"
+    chip = "document.querySelector('#nmas-ai .ai-chip[data-state]')"
+
+    def opened(b):
+        b.wait_for(f"return !!{chip}", 10)
+        b.js("document.querySelector('#nmas-ai').click(); return 1")
+        b.wait_for("return !!document.querySelector('#nmas-ai-panel .ai-head')", 10)
+    import app as A
+    with browser.Served(A.app) as served:
+        _shoot("ai-chip", "AiChip.dc.html", lambda w: page, served,
+               widths=((1440, 1.0), (1280, 1.0), (390, 2.0)), settled=chip)
+        _shoot("ai-spend", "AiSpendPanel.dc.html", lambda w: page, served,
+               widths=((1440, 1.0), (1280, 1.0), (390, 2.0)), act=opened)
+        spent(0.45, "ops@example.com", {"kind": "person", "by": "ops@example.com"})
+        _shoot("ai-chip-red", "", lambda w: page, served,
+               widths=((1440, 1.0), (390, 2.0)), settled=chip)
+        assert write_settings({"ai_cap_usd_per_day": None})["ok"]
+        _shoot("ai-chip-no-cap", "", lambda w: page, served,
+               widths=((1440, 1.0), (390, 2.0)), settled=chip)
+        monkeypatch.setattr(calls, "rows_since", lambda start: {
+            "state": "unreadable", "rows": [], "error": "records database: connection refused"})
+        _shoot("ai-spend-unreadable", "", lambda w: page, served,
+               widths=((1440, 1.0), (390, 2.0)), act=opened)
+        monkeypatch.setattr(secrets_store, "is_set", lambda key: False)
+        _shoot("ai-chip-off", "", lambda w: page, served,
+               widths=((1440, 1.0), (390, 2.0)), settled=chip)
+
+
 def test_onboard_discovered(tmp_path, monkeypatch):
     """Board L (ZtpDiscovery, 1440) beside Onboard devices › Discovered, fed the discovery
     reader's value with all three groups (tests/test_onboard_discovered_v2.py's), and a Pick's

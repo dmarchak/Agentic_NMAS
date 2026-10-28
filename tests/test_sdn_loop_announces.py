@@ -6,6 +6,10 @@ C2003): every screen shows the new state.
 - A pass that changed a response (a detection fired and was proposed, one went no longer
   active, an expired meter removed) announces ``sdn``, so SDN › Responses draws the new card
   without waiting for the SDN reader's next announcement.
+- A pass that classified a detection (a background AI call, sent or refused, and recorded)
+  announces ``ai_calls``, so the top bar's AI chip and an open spend panel read again (C1843);
+  a detection firing again while its response awaits a person is not classified again, and
+  announces no ``ai_calls``.
 - A pass that only logged announces nothing: its lines reach the page at the reader's own
   announcement, so the region is not redrawn every pass (C2001).
 - Announced as the loop's job, never as a reader; a failed announcement is said in the pass's
@@ -43,8 +47,16 @@ def test_a_new_detection_announces_alerts_and_sdn_as_the_loop_s_job(heard):
     out = _pass(_with_changed(observed(fired=["k1"]), True))
     assert out["ok"] and out["proposed"]
     (msg,) = heard
-    assert msg["keys"] == ["alerts", "sdn"] and msg["by"] == "job:sdn-loop-default"
-    assert out["announced"] == {"keys": ["alerts", "sdn"], "ok": True, "error": ""}
+    assert msg["keys"] == ["alerts", "sdn", "ai_calls"] and msg["by"] == "job:sdn-loop-default"
+    assert out["announced"] == {"keys": ["alerts", "sdn", "ai_calls"], "ok": True, "error": ""}
+
+
+def test_a_classify_is_announced_as_ai_calls(heard):
+    """The pass's classify step ran (its line in the pass's log), and `ai_calls` is announced
+    with it: the top bar's AI chip's key."""
+    out = _pass(_with_changed(observed(fired=["k1"]), False))
+    assert [line["step"] for line in out["lines"]].count("classify") == 1, out["lines"]
+    assert [m["keys"] for m in heard] == [["sdn", "ai_calls"]]
 
 
 def test_a_detection_resolving_with_its_response_awaiting_announces_both(heard):
@@ -74,5 +86,6 @@ def test_a_failed_announcement_is_said_and_the_pass_stands(networks, monkeypatch
     monkeypatch.setattr(CL, "respond_to_threat", lambda *a, **k: {})
     out = _pass(_with_changed(observed(fired=["k1"]), True))
     assert out["ok"] and out["proposed"] and len(LP.awaiting(NET)["rows"]) == 1
-    assert out["announced"]["ok"] is False and out["announced"]["keys"] == ["alerts", "sdn"]
+    assert out["announced"]["ok"] is False
+    assert out["announced"]["keys"] == ["alerts", "sdn", "ai_calls"]
     assert out["announced"]["error"].startswith("RuntimeError: no emitter")

@@ -154,7 +154,11 @@ class TestEveryHelpLinkRenders:
             b.go(srv.url(page))
             b.wait_for("return !!(window.Alpine && document.querySelector('#help-panel-body'))")
             b.wait_for("return !document.querySelector('.htmx-request')", 10)
-            n = b.js("document.querySelectorAll('details').forEach(function(d){d.open=true});"
+            # Every row opened, but not the top bar's menus: each is a popover a person opens
+            # one at a time, and the AI spend panel (C1843), opened with the rest, lay over the
+            # page's own links. Its link is clicked by the next test.
+            n = b.js("document.querySelectorAll('details').forEach(function(d){"
+                     "if (!d.closest('.topbar')) d.open=true});"
                      f"var l=document.querySelectorAll({LINKS!r});"
                      "l.forEach(function(a,i){a.setAttribute('data-sweep', i)}); return l.length")
             for i in range(n):
@@ -187,6 +191,33 @@ class TestEveryHelpLinkRenders:
         assert len(clicked) >= 30, clicked          # the measured count is the floor's basis
         assert any("restore" in c and "baselines" in c for c in clicked), \
             "the link this test was written for was not reached"
+
+    def test_the_top_bar_menus_links_fill_the_panel(self, served):
+        """The top bar's popovers, each opened as a person opens it (by its summary) and its
+        info and how links clicked: the AI spend panel's How does this work? (C1843) opens the
+        manual's What AI is spending in the side panel, the page unmoved."""
+        srv, b = served
+        page = "/v2/devices"
+        b.go(srv.url(page))
+        b.wait_for("return !!(window.Alpine && document.querySelector('#nmas-ai .ai-chip"
+                   "[data-state]'))", 10)
+        b.click("#nmas-ai")
+        b.wait_for("return !!document.querySelector('#nmas-ai-panel .ai-head')", 10)
+        links = b.js(f"var l=document.querySelectorAll('.topbar details[open] ' + "
+                     f"{LINKS.replace(', ', ', .topbar details[open] ')!r});"
+                     "l.forEach(function(a,i){a.setAttribute('data-top', i)});"
+                     "return Array.from(l).map(function(a){return a.getAttribute('data-manual')})")
+        assert "getting-started#ai-spend" in links, links
+        for i, want in enumerate(links):
+            b.js("document.querySelector('#help-panel-body').innerHTML=''; return 1")
+            b.click(f'[data-top="{i}"]')
+            slug, _h, section = want.partition("#")
+            href = f"/v2/help/{slug}" + (f"#{section}" if section else "")
+            b.wait_for("var p=document.querySelector('#help-panel-body');"
+                       "var o=p && p.querySelector('.help-panel-page a');"
+                       f"return o && o.getAttribute('href') === {href!r}"
+                       " && p.innerText.trim().length > 60", 6)
+            assert b.js("return location.pathname + location.search") == page
 
 
 class TestTheFilterBarIsOneHeight:
@@ -361,6 +392,87 @@ class TestTheTopBarFits:
         assert got["menu"][2] > 0 and got["menu"][0] >= 0 and got["menu"][1] <= width, (
             "its list runs off the screen", got)
         assert got["rows"] == 4, got
+
+    @pytest.mark.parametrize("width", [320, 360, 390, 430, 768, 1024, 1280])
+    def test_the_ai_chip_fits_at_its_widest_and_its_panel_opens_on_the_screen(
+            self, served, width, monkeypatch):
+        """Boards AI1 and AI2 (C1843): the AI chip at its widest (a three-figure day with nine
+        background features on and "no cap" in full; $888.88 compact) beside In progress (a
+        rotation running, a deploy rolled back) and Update available, every item on the screen;
+        pressed, its panel is read (the panel's own head drawn in it) and lies on the screen;
+        Esc closes it."""
+        from modules import device_actions
+        from modules.ai import spend_view
+        from modules.nsot import capture_job
+        from modules.nsot import device_ops as D
+
+        srv, b = served
+        monkeypatch.setattr("modules.integration_groups.network_names", lambda: ["Lab"])
+        done = [{"job": "j1", "list": "Lab", "device": "r6", "card": "deploy", "kind": "deploy",
+                 "state": "done", "actor": "ops@example.com", "started_at": 1.0e9,
+                 "finished_at": 1.0e9 + 60, "opened": set()}]
+        monkeypatch.setattr(capture_job, "card_jobs", lambda now=None: done)
+        monkeypatch.setattr(device_actions, "job_card", lambda ref, host, card, job: {
+            "state": "result", "level": "danger", "words": "rolled back"})
+        monkeypatch.setattr(spend_view, "chip", lambda now=None: {
+            "state": "on", "level": "neutral", "label": "AI $888.88 today · 9 background on",
+            "text": "$888.88 today · 9 background on", "short": "$888.88", "no_cap": True,
+            "title": "planted: the widest chip"})
+        D.acquire("Lab", "r2", "rotate", "a-person-with-a-long-name@example.com")
+        try:
+            b._call("POST", f"/session/{b.session}/window/rect", {"width": 1200, "height": 900})
+            b.go(srv.url("/v2/devices"))
+            b.wait_for("return !!window.Alpine", 10)
+            b.js(f"var f=document.createElement('iframe'); f.id='phone'; f.width='{width}';"
+                 "f.height='700'; f.style.position='fixed'; f.style.left='0'; f.style.top='0';"
+                 "f.style.maxWidth='none'; f.style.border='0'; f.style.zIndex='9999';"
+                 "f.src=location.href; document.documentElement.appendChild(f);")
+            b.wait_for("var d=document.getElementById('phone').contentDocument;"
+                       "return d && d.querySelector('.topbar .ip-chip')"
+                       " && d.querySelector('.topbar .update-pill')"
+                       " && d.querySelector('#nmas-ai .ai-chip[data-state=\"on\"]')"
+                       " && d.defaultView.Alpine", 15)
+            b.js("document.getElementById('phone').contentDocument"
+                 ".querySelector('#nmas-ai').click(); return 1")
+            b.wait_for("var d=document.getElementById('phone').contentDocument;"
+                       "return !!d.querySelector('#nmas-ai-panel .ai-head')", 10)
+            got = b.js(
+                "var w=document.getElementById('phone').contentWindow, d=w.document;"
+                "var bar=d.querySelector('.topbar'), W=w.innerWidth, out=[], widths=[];"
+                "Array.from(bar.children).forEach(function(e){var r=e.getBoundingClientRect();"
+                "if (w.getComputedStyle(e).display!=='none') widths.push((e.className||e.tagName)"
+                "+' '+Math.round(r.width));"
+                "if (w.getComputedStyle(e).display!=='none' && r.right > W + 0.5)"
+                " out.push((e.className||e.tagName)+' ends at '+Math.round(r.right)+' of '+W);});"
+                "out = out.length ? out.concat(widths) : out;"
+                "var chip=d.querySelector('#nmas-ai .ai-chip').getBoundingClientRect();"
+                "var menu=d.getElementById('nmas-ai-panel').getBoundingClientRect();"
+                "var who=d.getElementById('nmas-who').getBoundingClientRect();"
+                "var shown=function(s){var e=d.querySelector('#nmas-ai '+s);"
+                " return !!e && w.getComputedStyle(e).display!=='none';};"
+                "return {inner: W, over: out, chip: [Math.round(chip.left), Math.round(chip.right),"
+                " chip.width], menu: [Math.round(menu.left), Math.round(menu.right), menu.height],"
+                " who: [Math.round(who.right), who.width],"
+                " text: shown('.ai-text'), short: shown('.ai-short'), mark: shown('.ai-chip-mark')};")
+            b.js("var d=document.getElementById('phone').contentDocument;"
+                 "d.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));"
+                 "return 1")
+            closed = b.js("return !document.getElementById('phone').contentDocument"
+                          ".getElementById('ai-spend').open")
+        finally:
+            D.release("Lab", "r2")
+        assert got["inner"] == width, got
+        assert not got["over"], "; ".join(got["over"])
+        assert got["chip"][2] > 0 and got["chip"][1] <= width, ("the chip is off the screen", got)
+        assert got["who"][1] > 0 and got["who"][0] <= width, ("the avatar is off the screen", got)
+        assert got["menu"][2] > 0 and got["menu"][0] >= 0 and got["menu"][1] <= width, (
+            "the spend panel runs off the screen", got)
+        # Board AI1: in full above 1100 px; the figure alone at laptop and phone width; the
+        # mark alone on the narrowest phones (400 px and under).
+        assert got["mark"], got
+        assert (got["text"], got["short"]) == ((True, False) if width > 1100 else
+                                               (False, True) if width > 400 else (False, False)), got
+        assert closed, "Esc did not close the spend panel"
 
 
 #: C502 (the operator, 2026-10-05: the Templates table's first column touched the card's left
@@ -704,7 +816,8 @@ class TestCellsSitInsideTheirCards:
         b._call("POST", f"/session/{b.session}/window/rect", {"width": 1366, "height": 1000})
         b.go(srv.url("/v2/monitoring/coverage"))
         b.wait_for("return !!window.Alpine && !document.querySelector('.htmx-request')", 10)
-        b.js("var c=document.querySelector('.card'); var p=document.createElement('pre');"
+        # A card of the page's own (the top bar's AI spend panel, C1843, is a card too, closed).
+        b.js("var c=document.querySelector('main .card'); var p=document.createElement('pre');"
              "p.id='planted'; p.style.whiteSpace='pre'; p.style.overflow='visible';"
              "p.textContent='x'.repeat(600); c.appendChild(p); return 1")
         got, _n = b.js(CELLS_INSIDE_JS)

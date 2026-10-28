@@ -98,6 +98,10 @@ ENTRY_POINTS = {
     # What leaves the host through Phase 8's gateway (C1654): redact_text, then the egress
     # shapes.
     "modules/redact.py:redact_egress": lambda: redact.redact_egress(PLANTED, values={}),
+    # A person's typed words on their way to a model (C1845): the typed part as sent.
+    "modules/ai/gateway.py:mask_typed": lambda: __import__(
+        "modules.ai.gateway", fromlist=["x"]).mask_typed(
+            {"question": PLANTED}, ["question"], {})["parts"]["question"],
     # A golden's archive copy (C730): the bytes the bucket receives.
     "modules/integrations/s3_archive.py:masked_golden": lambda: __import__(
         "modules.integrations.s3_archive", fromlist=["x"]).masked_golden(
@@ -146,6 +150,9 @@ ENTRY_POINTS = {
 
 #: Functions whose names say mask, redact or scrub but never take free text, each with why.
 NOT_FREE_TEXT = {
+    "modules/ai/gateway.py:_new_masks": "compares a typed part before and after `mask_typed` "
+        "to list the placeholders the mask added, so the person is told; it masks nothing "
+        "(C1845)",
     "modules/nsot/intent_normalise.py:masked_render": "Normalise's proof renders a document "
         "through `templates.artifact_for` and takes its `rendered_masked`, the render path's "
         "own masking; it masks nothing itself (C1693)",

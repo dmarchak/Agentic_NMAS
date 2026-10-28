@@ -248,6 +248,84 @@ kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line); 
 .ip-unread { margin: 4px 6px; font-size: 12.5px; color: var(--danger); }
 .ip-foot { border-top: 1px solid var(--line-2); margin-top: 6px; padding: 8px 6px 2px; display: flex; justify-content: space-between;
   align-items: center; gap: 10px; font-size: 12.5px; }
+/* Boards AI1 and AI2 (C1843): the AI chip and the spend panel it opens. Never blank; neutral,
+   amber from 50% and red from 80% of the day cap; the panel a <details>' menu, its own ink. */
+.ai-spend > summary { list-style: none; cursor: pointer; border-radius: 14px; }
+.ai-spend > summary::-webkit-details-marker { display: none; }
+.ai-spend:not([open]) .ai-menu { display: none; }
+.ai-chip { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 12.5px;
+  padding: 3px 10px 3px 8px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface);
+  color: var(--ink-2); }
+.ai-chip-mark { font-family: var(--mono); font-size: 10.5px; font-weight: 500; letter-spacing: .04em; border-radius: 4px;
+  padding: 0 4px; background: var(--muted-soft); color: var(--ink-2); }
+.ai-amber { background: var(--warn-soft); border-color: var(--warn-line); color: var(--warn); }
+.ai-amber .ai-chip-mark { background: color-mix(in srgb, var(--warn-mark) 22%, var(--warn-soft)); color: var(--warn); }
+.ai-red { background: var(--danger-soft); border-color: var(--danger-line); color: var(--danger); }
+.ai-red .ai-chip-mark { background: color-mix(in srgb, var(--danger) 18%, var(--danger-soft)); color: var(--danger); }
+.ai-chip[data-state="off"] { color: var(--ink-3); background: var(--surface-2); }
+.ai-nc { font-size: 11px; border-radius: 4px; padding: 0 4px; background: var(--warn-soft); color: var(--warn); }
+.ai-short { display: none; }
+.ai-spend[open] .ai-chip { box-shadow: 0 0 0 2px var(--accent-soft); }
+.ai-spend .ai-menu { left: auto; right: 0; width: 500px; max-width: calc(100vw - 32px); white-space: normal; padding: 0;
+  color: var(--ink); gap: 0; }
+.ai-head { display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 16px; border-bottom: 1px solid var(--line-2); }
+.ai-head h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.ai-sec { display: flex; flex-direction: column; gap: 6px; padding: 12px 16px; border-bottom: 1px solid var(--line-2); margin: 0; }
+.ai-k { font-size: 11.5px; letter-spacing: .06em; color: var(--ink-3); text-transform: uppercase; }
+.ai-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; }
+.ai-row.ai-base { align-items: baseline; flex-wrap: wrap; }
+.ai-small { font-size: 12.5px; }
+.ai-big { font-size: 22px; font-weight: 600; }
+.ai-mid { font-size: 17px; font-weight: 600; }
+.ai-bar { display: block; width: 100%; height: 8px; border-radius: 4px; overflow: hidden; }
+.ai-bar-track { fill: var(--muted-soft); }
+.ai-bar-fill { fill: var(--ink-3); }
+.ai-fill-neutral { fill: var(--ok); }
+.ai-fill-amber { fill: var(--warn-mark); }
+.ai-fill-red { fill: var(--danger); }
+.ai-fill-month { fill: var(--accent); }
+.ai-bar-more { fill: color-mix(in srgb, var(--accent) 35%, var(--muted-soft)); }
+.ai-bar-mark { fill: var(--ink-2); }
+.ai-feat { border: 1px solid var(--line); border-radius: var(--r-card); padding: 10px 12px; display: flex; flex-direction: column; gap: 5px; }
+.ai-feat-stopped { border-color: var(--danger-line); }
+.ai-feat-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13.5px; }
+.ai-stopped { color: var(--danger); }
+.ai-off-note { flex-direction: row; align-items: flex-start; color: var(--ink-2); font-size: 12.5px; }
+.ai-result { margin: 10px 16px 0; }
+.ai-foot { display: flex; flex-direction: column; gap: 4px; padding: 10px 16px; font-size: 12px; color: var(--ink-3); }
+/* Every working item must fit beside the AI chip (measured by test_v2_layout_in_a_browser with
+   In progress, Update available and the chip at their widest, 320 to 1280 px): Update available
+   says "Update" up to 1366 px, its words on hover and to a reader. */
+@media (max-width: 1366px) {
+  .update-pill .strip-words { display: none; }
+}
+@media (max-width: 1100px) {
+  /* Board AI1 case 8, from below laptop width down (PHASE8_PLAN 18.3 rule 10a, "compact at
+     laptop and phone widths"): the figure and its colour, the background count in the panel;
+     and In progress is its marks and counts, as it is under 860 px, its words on hover. */
+  .ai-text { display: none; }
+  .ai-short { display: inline; }
+  .ai-nc { display: none; }
+  .ip-word { display: none; }
+}
+@media (max-width: 860px) {
+  .ai-spend .ai-menu { position: fixed; top: 52px; left: 16px; right: 16px; width: auto; max-width: none;
+    max-height: calc(100vh - 68px); overflow-y: auto; }
+}
+@media (max-width: 640px) {
+  /* Every working item must fit (measured by test_v2_layout_in_a_browser at 320 to 430 px with
+     In progress and Update available drawn): the chip tightens, and Update available gives way
+     to its icon, its words on hover and to a reader. */
+  .ai-chip { gap: 4px; padding: 2px 6px 2px 4px; }
+  .update-pill > span { display: none; }
+  .update-pill { padding: 2px 6px; }
+}
+@media (max-width: 400px) {
+  /* The narrowest phones: the chip is its mark in its colour; the figure on hover, to a reader
+     and in the panel. */
+  .ai-short { display: none; }
+  .ai-chip { padding: 2px 4px; }
+}
 .op-reopened { margin: 0 0 8px; }
 .op-reopened .badge { white-space: normal; }   /* its sentence wraps at phone width */
 /* Narrower than the desk (board B): the chip is its marks and counts, its words on hover and to

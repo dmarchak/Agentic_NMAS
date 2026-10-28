@@ -142,7 +142,7 @@ def chip(now=None) -> dict:
                     words="AI spend unknown: the record of AI calls cannot be read")
     usd = float(spent["usd"] or 0.0)
     return dict(base, state="on", usd_today=usd, level=_level(_ratio(usd, base["day_cap"])),
-                words=f"AI ${usd:.2f} today · {on} background on")
+                calls_today=spent["calls"], words=f"AI ${usd:.2f} today · {on} background on")
 
 
 def _averages(by_day: dict, today: str) -> dict:

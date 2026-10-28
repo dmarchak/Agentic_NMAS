@@ -161,7 +161,7 @@ def words(name):
     # base, which a commit will carry, are not drawn here).
     w = {k: got[k] for k in ("ok", "error", "detail", "clarify", "by", "cost_usd",
                              "resolutions", "resolution_said", "choose", "unknown", "call_id",
-                             "decided")
+                             "decided", "typed_masked")
          if k in got}
     if got.get("question"):
         q = got["question"]
@@ -192,9 +192,14 @@ def words(name):
                          [{"hostname": p.get("hostname"), "patch": p.get("patch"),
                            "base": p.get("base", "")} for p in got.get("previews") or []],
                          sort_keys=True) if pr.get("draft") else ""}
+    shown = got.get("decided") or sentence
+    if got.get("typed_masked"):
+        # What was masked before sending (C1845) is drawn back masked too, in the box and in
+        # the commit's one line that starts from it: the value is never in the page.
+        from modules import redact
+        shown = redact.redact_egress(shown)
     return _strict(render_template("v2/_intent_words.html", host=host,
-                                   w=dict(w, sentence=got.get("decided") or sentence,
-                                          model=model)))
+                                   w=dict(w, sentence=shown, model=model)))
 
 
 @bp.route("/<name>/intent/words/commit", methods=["POST"])

@@ -2113,3 +2113,77 @@ run's `nmas-control` exit was 3 because the agent edited tests in the checkout w
 (docs/TESTING.md and the two new test files), not the mutants: the reruns of the survivors
 left the working tree untouched (nmas-control's fingerprint).**
 
+## 2026-10-28: what a person types masked at the gateway, and the person told (C1845), by hand
+
+**What touches the tier.** C1845 (PHASE8_PLAN 18.1 A1 prerequisite (b), the operator's of
+2026-10-27): what a person types or pastes into an AI feature is masked before it leaves, by
+position and by known value, and the person told what was masked, in words, never the value.
+Measured first: `ask` already passed the whole request through `redact.egress_payload`, so a
+typed secret of a known shape or a held value was already kept from the bytes sent
+(tests/test_ai_nl_query.py's `test_a_planted_secret_is_masked_in_the_bytes_sent` held it for a
+stored value in the question); what was missing was a mask of the typed text's own, the person
+told, the record saying it, and a declaration no feature could forget. New in
+`modules/ai/gateway.py`: `TYPED_PARTS` (every pinned task's typed parts or none: `nl_query`'s
+`question`, `intent_patch`'s `sentence`), `ask` refusing a task it does not name
+(`typed_undeclared`), `mask_typed` (each typed part through `redact.redact_egress` with the one
+table of held values, every other part the object given), `_new_masks`, `typed_said` and
+`MASK_WORDS` (each redact label in words; a held value as "a credential Mercury holds", its
+store label never said), the row's and every result's ``typed_masked`` from the mask on (the
+refusals' `**told`, the press's result). Carried to the screens: `nl_query.CARRIED`,
+`intent_words._drafted`'s base, `routes/intent_v2.words`' drawn keys; the boxes draw the words
+as sent (`routes/v2._ask_words`, `routes/intent_v2.words`, `redact.redact_egress`); the note,
+`_ai.html`'s `typed_masked`, under both rows.
+
+**The method:** the narrowed hand check (PHASE8_PLAN 15.12), by the agent that built it: each
+mutant one exact text replacement, found exactly once, in its own `scripts/nmas-control`
+throwaway worktree of the change, the aimed tests run (tests/test_ai_typed_text.py,
+test_ai_gateway.py, test_ai_gateway_ask.py, and the screens' own:
+test_ai_nl_query.py's, test_ai_nl_logs.py's and test_ai_intent_change.py's
+`test_a_pasted_secret_is_masked_and_the_person_told`, test_ai_nl_query.py's
+`test_a_question_with_nothing_to_mask_says_nothing_of_masking`, test_ai_intent_change.py's
+`test_an_answer_is_previewed_by_the_intent_editor_and_writes_nothing`), 149 tests
+(`scratchpad/hm.py`, `hm_all.py`). The baseline passed (149). A must-die canary first:
+`mask_typed` returning the parts unmasked and nothing said: killed (23 failed). The first run
+had five survivors; one was a missing test (M18), added and the mutant run again (marked *then
+killed*); four are equivalent, named below. Every run left the working tree untouched (each
+`nmas-control` exit 0).
+
+| mutant | result | killed by |
+|---|---|---|
+| C0 canary: `mask_typed` masks nothing and says nothing | killed | 23, every masked-and-told test |
+| M1 Ask's `question` not typed | killed | the metrics and logs screens' tests; `test_every_pinned_task_names_its_typed_parts`; the typed-field test |
+| M2 Change it in words' `sentence` not typed | killed | the Intent tab's test; the same two |
+| M3 a task `TYPED_PARTS` does not name not refused | killed | `test_a_task_naming_no_typed_parts_is_refused_and_nothing_is_sent` |
+| M4 a typed part with nothing masked not skipped early | **survived: equivalent** | the per-line comparison after it finds no changed line in a text the mask left unchanged, so nothing is said, and the part handed on is an equal string; the early `continue` only saves the split |
+| M5 the typed part handed on unmasked | killed | `test_other_parts_are_the_objects_given` |
+| M6 lines never told apart | killed | `test_text_of_several_lines_is_said_line_by_line` |
+| M7 every line said as line 1 | killed | the same |
+| M8 a mask the person typed counted as one made | killed | `test_a_mask_the_person_typed_themselves_is_not_said_as_one_made` |
+| M9 `_new_masks` never subtracting what was there | killed | the same |
+| M10 one line said as lines (`>` to `>=`) | killed | 21 |
+| M11 values counted by line, not by mask | killed | 4, the SNMPv3 two-key line among them |
+| M12 a held value's store label said | killed | 5, `test_a_value_mercury_holds_is_masked_by_value_and_its_label_never_said` among them |
+| M13 the row without what was said | killed | 18 |
+| M14 the result without what was said | killed | 22 |
+| M15 the request built from the unmasked parts | **survived: equivalent** | the request's own mask (`redact.egress_payload`, the same `redact_egress` over every string) masks the typed part in the request exactly as `mask_typed` did, so the bytes sent are the same; the typed mask's own output is held by `test_other_parts_are_the_objects_given` (M5), and what it says by the tests above. Two masks, one function: defence in depth, not a second rule |
+| M16 the request's mask reading its own table | **survived: equivalent** | `known_secret_values` answers the same table both times within a call (cached for 30 s, and the tests' planted table is one function) |
+| M17 an answered call not saying what was masked | killed | 21 |
+| M18 a refusal after the mask not saying it | survived (the cap's refusal is wrapped again as the press's result, so it said it anyway), then killed | `test_a_call_refused_after_the_mask_still_says_what_was_masked` (its prompt-over-the-bound case, added: refused before the caps) |
+| M19 a redact label with no words | killed | `test_every_mask_redact_makes_has_its_words`; `test_the_words_name_kinds_and_lines_never_a_value` |
+| M20 the typed mask without the egress shapes (`redact_text`) | killed | 5, the logs screen's BGP neighbour password and the pasted neighbour and SNMPv3 lines |
+| M21 an empty typed part masked | **survived: equivalent** | `redact_egress` returns an empty text unchanged, so nothing is masked or said either way |
+| M22 every part masked as typed (Mercury's own data said as the person's) | killed (a control of the pack test's premise, run after) | `test_other_parts_are_the_objects_given`; test_ai_gateway.py's `test_a_stored_secret_left_after_masking_refuses_and_sends_nothing` |
+| N1 Ask in words not carrying the tell (`nl_query.CARRIED`) | killed | the metrics and logs screens' tests |
+| I1 Change it in words not carrying it (`_drafted`'s base) | killed | the Intent tab's test |
+| R1 the tab's route not drawing it | killed | the same |
+| R2 Ask's box drawing the value back | killed | the metrics and logs screens' tests |
+| R3 the tab's box and Why, in one line drawing the value back | killed | the Intent tab's test |
+| T1 Ask in words' row not drawing the note | killed | the metrics and logs screens' tests |
+| T2 Change it in words' row not drawing it | killed | the Intent tab's test |
+| T3 the note without its words | killed | 6 |
+
+**The result: every mutant killed but M4, M15, M16 and M21, equivalent and named; the canary
+killed. Not covered by a mutant here: the shapes `redact_egress` does not yet know (an IKE
+`crypto isakmp key`, an OSPF `authentication-key` with no key number, a server block's bare
+`key`, HSRP's `standby N authentication`), measured unmasked the same day and C745's to add.**
+

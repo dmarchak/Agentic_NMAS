@@ -547,22 +547,39 @@ def ai_on(network, feature):
         entry=drawn_entry(out["entry"], "day_cap_usd", "month_cap_usd")))
 
 
+def _ai_spend_panel(network: str, status: int = 200, **ctx):
+    """The spend panel (board AI2) with Turn off's answer in place: the same write path and
+    gate as Settings › AI's Turn off, drawn where it was pressed (``?answer=panel``), naming
+    the network it was pressed for."""
+    from modules.ai import spend_view
+    from routes.operations import viewer_key
+
+    return _fragment("v2/_ai_spend.html", status, s=spend_view.panel(viewer_key()),
+                     off_network=spend_view.network_name(network), **ctx)
+
+
 @bp.route("/installation/ai/background/<network>/<feature>/off", methods=["POST"])
 def ai_off(network, feature):
-    """Board AI3: Turn off, one click, no confirm (it spends nothing); recorded."""
+    """Board AI3: Turn off, one click, no confirm (it spends nothing); recorded. Pressed in the
+    top bar's spend panel (board AI2, ``?answer=panel``), the panel is its answer, read after
+    the write; the write and its gate are this route's either way (one home for the action)."""
     from modules import identity
     from modules.ai import background
     from modules.ai.settings_view import pick
 
+    panel = request.args.get("answer") == "panel"
+
+    def answer(status=200, **ctx):
+        return (_ai_spend_panel if panel else _ai_section)(network, status, **ctx)
     why = _ai_person()
     if why:
-        return _ai_section(network, 403, refused=why)
+        return answer(403, refused=why)
     try:
         out = background.turn_off(network, feature, actor=identity.request_actor(),
                                   verified=_verified())
     except background.Refused as exc:
-        return _ai_section(network, 409, refused=str(exc))
-    return _ai_section(network, turned_off=dict(
+        return answer(409, refused=str(exc))
+    return answer(turned_off=dict(
         pick(out, "nothing", "actor_label", "at_iso", "recorded", "record_error"),
         feature=feature))
 

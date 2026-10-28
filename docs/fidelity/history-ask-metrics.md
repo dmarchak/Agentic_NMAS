@@ -17,7 +17,7 @@ desktop board at 1440 and 1280 beside the page; the phone board at 390 beside th
 Compared 2026-10-15. History's own page (heading, remote line) is board D's; the board's Code
 mode panel is today's Ask your own box, Code on the Mode switch.
 Templates compared: templates/v2/history_ask_metrics.html, templates/v2/_history_body.html, templates/v2/_history_ask_metrics.html, templates/v2/_history_ask_parts.html, templates/v2/_history_ask_head.html, templates/v2/_history_ask_words.html, templates/v2/_ai.html, templates/v2/_history_ask_chips.html
-Templates sha256: `165c2477d3c2b4b29b239e6d420d8c6337d234821c18fad25c863b6ce62b5e01`
+Templates sha256: `4175c30e65762eb0990c3ca56954224907e0c7e7e91f7d2509e82c476d010899`
 
 Compared again 2026-10-15 (P7-03): `_history_body.html` gained a `data-concept` marker and one
 sentence inside a Baselines row's detail (the block drawing each baseline's Re-apply… link); this
@@ -208,6 +208,19 @@ builder's items alone) and `99af8181cc6bbd6f4df3e92de102e8ffc95c3f450d406aea489f
 (the walk's fixes alone), each written before the two were merged.
 Templates sha256 before: `d18c51cf3a8a68efe8ad28dc9c2bbdbdaa00e83c3728df837c81f3c72e26047e`.
 
+Changed 2026-10-28 (C1845, the egress mask on typed text): `_history_ask_words.html` draws
+`_ai.html`'s new `typed_masked` note under the Ask in words row, only when something of the
+question was masked before sending ("2 values were masked before sending: an SNMP community
+and a credential Mercury holds. The model read a placeholder in its place, and the value never
+left Mercury: leave secrets out of your words."), and the box then holds the words as sent.
+No board draws it. Measured: the row's responses with nothing masked (filled, refused, a
+question back) rendered from the templates before and after are the same byte for byte but
+for each run's own values (a temporary path), so no shot changes; the note's state is drawn
+by tests/test_ai_nl_query.py's `test_a_pasted_secret_is_masked_and_the_person_told`, not shot.
+The Ask in words row gains its log line (log: C1845: the masked-words note under a typed AI
+row). The hash written again.
+Templates sha256 before: `165c2477d3c2b4b29b239e6d420d8c6337d234821c18fad25c863b6ce62b5e01`.
+
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
 
@@ -215,7 +228,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 |---|---|---|---|
 | Tabs | Timeline, Query, Baselines, Authorisations; Query on | Timeline, Query, Baselines; Query on | **deviation** (log: E3 metrics builder: History's tabs) |
 | Head | "Ask your own ‹ back to the questions"; Source (Metrics, Logs) and Mode (Builder, Code) | the same, shared with F3; Metrics and Builder on | **same** |
-| Ask in words | 8.1's board (`AskWords.dc.html`): the row, busy, filled (model, cost, the call in History, the test run), a named day's midnight, a question back, Mercury's own answer with the chips, refused, hosted AI off | a question, Fill the builder busy on itself, "How does this work?"; the result's notice under it (saying whose midnight "today" began, when the range is today's); the AI mark; disabled with its reason (and the AI card's link) while hosted AI cannot answer; each notice the card's width, the model's id beside its name; not filled, the builder marked left from the previous question (Keep these choices, the query box outlined, Ask off until kept or changed) | **deviation** (log: 8.1 Ask in words: the notices); (log: History › Query: left from your previous question) |
+| Ask in words | 8.1's board (`AskWords.dc.html`): the row, busy, filled (model, cost, the call in History, the test run), a named day's midnight, a question back, Mercury's own answer with the chips, refused, hosted AI off | a question, Fill the builder busy on itself, "How does this work?"; the result's notice under it (saying whose midnight "today" began, when the range is today's); the AI mark; disabled with its reason (and the AI card's link) while hosted AI cannot answer; each notice the card's width, the model's id beside its name; not filled, the builder marked left from the previous question (Keep these choices, the query box outlined, Ask off until kept or changed) | **deviation** (log: 8.1 Ask in words: the notices); (log: History › Query: left from your previous question); (log: C1845: the masked-words note under a typed AI row) |
 | Start from | four chips, the one the choices match marked | the same four, each setting every choice; marked when the question is exactly its own; a chip whose metric Prometheus does not hold is drawn but no link | **same** |
 | What | search box, the matching metrics with help, "per interface · counter · bytes", the count read | the same box and list; each with Prometheus's help and its type and unit; the count over the range, when read; after Range; a metric chosen the range does not hold kept, marked "not seen in this range" | **deviation** (log: E3 metrics builder: the metric list); (log: History › Query: not seen in this range) |
 | Devices | + device, by role: core, all 9; "the values the device label holds now" | the same, from the metric's `device` and `role` labels over the range; a device chosen the range does not hold kept, marked "not seen in this range" (an interface the same) | **deviation** (log: E3 metrics builder: devices, roles and interfaces); (log: History › Query: not seen in this range) |

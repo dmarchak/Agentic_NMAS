@@ -1103,7 +1103,9 @@ def _drafted(list_name: str, sentence: str, named: list, *, actor: str, trigger:
         return asked
     answer = asked["output"]
     choices = restored(answer.model_dump(mode="json"), quoted)
-    base = {"call_id": asked["call_id"], "cost_usd": asked["cost_usd"], "choices": choices}
+    base = {"call_id": asked["call_id"], "cost_usd": asked["cost_usd"], "choices": choices,
+            # What of the person's sentence was masked before sending (C1845), said on the tab.
+            **({"typed_masked": asked["typed_masked"]} if asked.get("typed_masked") else {})}
     links = {"page": f"/v2/device/{named[0]}?tab=intent"}
     question, why_not = choices["question"][:200], choices["why_not"][:200]
     if answer.outcome is Outcome.ask:

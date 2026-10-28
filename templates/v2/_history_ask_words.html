@@ -21,6 +21,7 @@
   <span class="op-act"><button type="submit" class="btn btn-small" data-op="ask-in-words" hx-disabled-elt="this"{{ ai.attrs(aic, 'configure') }} title="One recorded AI call ({{ q.words_model }}), capped; it fills the choices below and runs nothing"><span class="op-idle">Fill the builder</span><span class="op-busy">Filling…</span></button>{{ how('ask-in-words', compact=True) }}</span>
   {{- ai.reason(aic) }}</div>
 </form>
+{%- if w %}{{ ai.typed_masked(w.typed_masked) }}{% endif %}
 {%- if w and w.ok %}
 <div class="notice" role="status">{{ icon('info', 16) }}<p>Filled from your words ({{ q.words_model }}, ${{ '%.4f' | format(w.cost_usd) }}{% if w.call_id %}, <a href="{{ url_for('v2.history_page', call=w.call_id) }}" title="The prompt as sent and the answer as received">this call in History</a>{% endif %}){% if w.test %}: {{ w.test }}{% endif %}.{% if w.range_said %} {{ w.range_said }}{% if w.today %}; {{ w.today }}{% endif %}.{% elif w.today %} {{ w.today }}.{% endif %} Check the choices and the query below, then Ask.</p></div>
 {%- elif w and w.error == 'ask' %}

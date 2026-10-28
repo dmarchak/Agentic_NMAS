@@ -370,6 +370,31 @@
     }
   }
 
+  /* Boards AI1 and AI2 (C1843): the spend panel under the top bar's AI chip is read when it
+     opens, and again on each recorded call (`ai_calls`) while it is open: never while it is
+     closed (every page carries it) and never on a timer. A Turn off pressed in it is answered
+     in it, and its `settings` re-reads the chip alone, so the answer stays to be read. */
+  function aiSpendPanel() {
+    var doc = root.document, d = doc.getElementById('ai-spend');
+    var panel = d && d.open ? doc.getElementById('nmas-ai-panel') : null;
+    if (panel && root.htmx) root.htmx.trigger(panel, 'nmas-ai-open');
+    return !!panel;
+  }
+  function aiSpendToggled(e) {
+    if (e.target && e.target.id === 'ai-spend') aiSpendPanel();
+  }
+  /* Esc, or the panel's own close, closes it and gives the chip its focus back. */
+  function aiSpendClose(e) {
+    var d = root.document.getElementById('ai-spend');
+    if (!d || !d.open) return;
+    var closing = e.type === 'keydown' ? e.key === 'Escape'
+      : !!(e.target && e.target.closest && e.target.closest('[data-ai-close]'));
+    if (!closing) return;
+    d.open = false;
+    var s = d.querySelector('summary');
+    if (s && s.focus) s.focus();
+  }
+
   /* The pause's words where the person is: in the open entry, under its summary (with Show it
      now), or beside the action in flight. One note per region; the reason it names is the
      current one. */
@@ -1420,6 +1445,11 @@
     root.document.addEventListener('htmx:afterRequest', noteSent);
     root.document.addEventListener('htmx:configRequest', keyThePress);
     root.document.addEventListener('click', resumeHeld);
+    // `toggle` does not bubble: heard in the capture phase.
+    root.document.addEventListener('toggle', aiSpendToggled, true);
+    root.document.addEventListener('nmas:ai_calls', aiSpendPanel);
+    root.document.addEventListener('keydown', aiSpendClose);
+    root.document.addEventListener('click', aiSpendClose);
     root.document.addEventListener('htmx:beforeSend', holdSubmitter);
     root.document.addEventListener('htmx:afterRequest', releaseSubmitter);
     root.document.addEventListener('htmx:beforeSwap', neverSilent);

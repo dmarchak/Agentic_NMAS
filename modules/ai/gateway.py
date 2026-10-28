@@ -15,9 +15,14 @@ and every call, sent or refused, is one `ai_calls` row. In order, before anythin
 3. **The task** is one `profiles.TASKS` pins: its model, its prompt bound and its answer
    bound (the operator's ruling of 2026-10-25: pinned per task, never chosen at run time).
    **The prompt** is a registered, versioned file; **the schema** a registered StrictModel.
-4. **Masked for egress**: the request built (the prompt as the system text, each part as
-   delimited data, never as instructions), then `redact.egress_payload` over all of it; a
-   known stored secret still present refuses the call (`unmasked_secret`), naming its label.
+4. **Masked for egress**: first **what a person typed or pasted** (C1845, PHASE8_PLAN 18.1
+   A1 (b)): the task's typed parts (`TYPED_PARTS`; a task naming none is refused,
+   `typed_undeclared`) masked by position and by known value (`mask_typed`), and what was
+   masked said back in words, never the value (`typed_said`: on the result and the row as
+   ``typed_masked``; a question with nothing to mask is sent as typed, and nothing is said).
+   Then the request built (the prompt as the system text, each part as delimited data, never
+   as instructions), then `redact.egress_payload` over all of it; a known stored secret still
+   present refuses the call (`unmasked_secret`), naming its label.
 5. **The prompt's length** (C1898): the provider's count of the masked request (`Counter`,
    `anthropic_adapter.count_tokens`), or, when the count is not had, the fallback
    over-estimate from its size (`CHARS_PER_TOKEN`, calibrated against the recorded calls),
@@ -45,6 +50,7 @@ and each provider failure are each their own kind, never a parser's crash (13.5)
 """
 import json
 import logging
+import re
 
 from pydantic import ValidationError
 
@@ -74,6 +80,122 @@ CALIBRATION = {"calls": 10395, "fewest_chars_per_token": 1.9563,
 #: installation. PHASE8_PLAN 7 caps a month at $50 globally; $1.50 a day is under that. A
 #: call's cap is its task's (`profiles.cap_per_call`).
 DEFAULT_CAP_PER_DAY = 1.50
+
+
+# ── What a person typed or pasted (C1845; PHASE8_PLAN 18.1 A1 prerequisite (b)) ─────────────
+
+#: The parts of each task's data that hold what a person typed or pasted, by the part's name.
+#: Every task `profiles.TASKS` pins is named here, with its typed parts or none: `ask` refuses a
+#: task not named (`typed_undeclared`) before anything is built, so no new feature reaches a
+#: model without saying which of its data a person wrote (tests/test_ai_typed_text.py holds this
+#: to the pins, and every field the routes into the gateway read to it). Mercury's own data
+#: (an evidence pack, a detection, the network's slice: PHASE8_PLAN 15.11's classes) is no
+#: typed part: it passes the request's own mask once, unchanged by this one.
+TYPED_PARTS = {
+    "nl_query": ("question",),        # Ask in words, both builders: the question as typed
+    "intent_patch": ("sentence",),    # Change it in words: the sentence, its quoted text
+                                      # already held back as placeholders (intent_words)
+    "explain": (),                    # an evidence pack: Mercury's own data
+    "sdn_classify": (),               # a detection's pack: Mercury's own data
+    "connection_check": (),           # a word Mercury chose
+}
+
+#: What each mask's label is, in a person's words: the label is the redact rule's
+#: (`redact._POSITIONAL`, `redact._EGRESS`); a label not here is a value Mercury holds, masked by
+#: value (its label the store's name for it, never shown to the person).
+MASK_WORDS = {
+    "snmp_community": "an SNMP community",
+    "user_password": "a user's password",
+    "enable_secret": "an enable secret",
+    "key_string": "a key string",
+    "pre_shared_key": "a pre-shared key",
+    "shared_key": "a TACACS or RADIUS key",
+    "line_password": "a line password",
+    "http_client_password": "an HTTP client password",
+    "ppp_password": "a PPP password",
+    "url_userinfo": "a URL's user and password",
+    "sealed": "an encrypted secret",
+    "egress_password": "a password or secret",
+    "egress_key": "an authentication key",
+    "egress_snmp_auth": "an SNMPv3 authentication key",
+    "egress_snmp_priv": "an SNMPv3 privacy key",
+    "egress_hash": "a password hash",
+}
+#: A value masked because Mercury holds it (`redact.known_secret_values`).
+BY_VALUE_WORDS = "a credential Mercury holds"
+
+_MASK = re.compile(r"<redacted:([^<>\s]*)>")
+
+
+def _new_masks(before: str, after: str) -> list:
+    """The labels of the masks *after* holds that *before* did not, in their order (a mask a
+    person typed themselves is not one this made)."""
+    held = {}
+    for label in _MASK.findall(before):
+        held[label] = held.get(label, 0) + 1
+    out = []
+    for label in _MASK.findall(after):
+        if held.get(label):
+            held[label] -= 1
+        else:
+            out.append(label)
+    return out
+
+
+def mask_typed(parts: dict, names, values: dict) -> dict:
+    """``{"parts", "masked"}``: *parts* with each typed part (*names*) masked as it leaves the
+    host (`redact.redact_egress`: by position, by the egress shapes and by the known values
+    *values*), every other part the very object given; and what was masked, per part and line,
+    ``[{"part", "line", "lines", "labels"}]``, never a value. A typed part absent, or holding
+    nothing to mask, is left as it is."""
+    from modules import redact
+
+    out, found = dict(parts), []
+    for name in names:
+        text = parts.get(name)
+        if not isinstance(text, str) or not text:
+            continue
+        masked = redact.redact_egress(text, values)
+        if masked == text:
+            continue
+        out[name] = masked
+        before, after = text.split("\n"), masked.split("\n")
+        if len(before) != len(after):
+            # A held value spanning lines: said for the text whole.
+            before, after = [text], [masked]
+        for n, (b, a) in enumerate(zip(before, after), 1):
+            if a != b:
+                found.append({"part": name, "line": n, "lines": len(after),
+                              "labels": _new_masks(b, a) or ["secret"]})
+    return {"parts": out, "masked": found}
+
+
+def _listed(words: list) -> str:
+    return words[0] if len(words) == 1 else ", ".join(words[:-1]) + " and " + words[-1]
+
+
+def typed_said(masked: list) -> dict:
+    """What `mask_typed` masked, for the person who typed it (shown on the screen that sent it)
+    and the call's row: ``{"values", "lines", "said"}``, the words naming each mask's kind and,
+    for text of more than one line, its line; never a value. ``{}`` when nothing was masked."""
+    if not masked:
+        return {}
+    def kinds(labels):
+        return [MASK_WORDS.get(label, BY_VALUE_WORDS) for label in labels]
+    count = sum(len(m["labels"]) for m in masked)
+    parts = sorted({m["part"] for m in masked})
+    where = f" in the {_listed(parts)}" if len(parts) > 1 else ""
+    if any(m["lines"] > 1 for m in masked):
+        n = len(masked)
+        said = (f"{n} line{'s' if n > 1 else ''} {'were' if n > 1 else 'was'} masked before "
+                f"sending{where}: " + "; ".join(
+                    f"{_listed(kinds(m['labels']))} on line {m['line']}"
+                    + (f" of the {m['part']}" if where else "") for m in masked))
+    else:
+        said = (f"{count} value{'s' if count > 1 else ''} {'were' if count > 1 else 'was'} "
+                f"masked before sending{where}: "
+                + _listed([w for m in masked for w in kinds(m["labels"])]))
+    return {"values": count, "lines": [m["line"] for m in masked], "said": said}
 
 
 def hosted_allowed() -> dict:
@@ -316,12 +438,15 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
     row = {"id": call_id, "feature": feature, "actor": actor, "model": model,
            "prompt": f"{prompt[0]}.v{prompt[1]}", "schema": "", "detail": "", "cost_usd": 0.0,
            "subject": dict(subject or {})}
+    # What was masked of the person's own words, once masked (C1845): on every result from
+    # there on, as on the row.
+    told = {}
 
     def refuse(kind, detail, **extra):
         out = calls.record(dict(row, verdict=kind, detail=detail, **extra))
         log.info("ai: %s refused for %s: %s", feature, kind, detail)
         return {"ok": False, "error": kind, "detail": detail, "call_id": call_id,
-                "recorded": out.get("recorded", False)}
+                "recorded": out.get("recorded", False), **told}
 
     named = triggers.check(trigger, actor, feature)
     row["trigger"] = named["trigger"]
@@ -340,6 +465,10 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
     if not pin:
         return refuse("unknown_task", f"{feature!r} is not a task profiles.TASKS pins; known: "
                       f"{', '.join(sorted(profiles.TASKS))}")
+    if feature not in TYPED_PARTS:
+        return refuse("typed_undeclared", f"{feature!r} names no typed parts in "
+                      "gateway.TYPED_PARTS: which of its data a person typed is not known, so "
+                      "it could not be masked and said; nothing was sent")
     max_tokens = int(pin["max_tokens"])
     try:
         profile = profiles.profile(model)
@@ -374,8 +503,16 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
     row["prompt_sha256"] = prompt_file["sha256"]
 
     from modules import redact
-    body = redact.egress_payload(build_request(prompt_file, schema_model, parts, asked,
-                                               context=context, profile=profile))
+    values = redact.known_secret_values()
+    # What a person typed, masked here, once, for every entry point (C1845), and what was
+    # masked said to them; then the whole request masked as it leaves.
+    typed = mask_typed(parts, TYPED_PARTS[feature], values)
+    said = typed_said(typed["masked"])
+    if said:
+        row["typed_masked"] = said
+        told["typed_masked"] = said
+    body = redact.egress_payload(build_request(prompt_file, schema_model, typed["parts"], asked,
+                                               context=context, profile=profile), values)
     leaked = redact.contains_known_secret(body)
     if leaked:
         return refuse("unmasked_secret", "a stored secret is still in the request after "
@@ -411,10 +548,11 @@ def ask(feature: str, prompt: tuple, schema_model, parts: dict, *, actor: str,
     from modules.ai import presses
     about = {"network": network or "", "subject": row["subject"], "prompt": row["prompt"],
              "model": model, "scope": identity.access_scope()}
-    return presses.once(feature, body, about=about, actor=actor, make=spend, refuse=refuse,
-                        rebuild=lambda kept, why: _joined(row, kept, schema_model, why,
-                                                          about["scope"]),
-                        wait_s=press_wait_s())
+    got = presses.once(feature, body, about=about, actor=actor, make=spend, refuse=refuse,
+                       rebuild=lambda kept, why: _joined(row, kept, schema_model, why,
+                                                         about["scope"]),
+                       wait_s=press_wait_s())
+    return dict(got, **told) if told else got
 
 
 #: Added to the adapter's worst case for a press's wait: the caps' read and the record's write

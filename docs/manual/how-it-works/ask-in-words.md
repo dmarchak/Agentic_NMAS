@@ -37,7 +37,8 @@ itself, its choices and **Ask**, stays as usable as ever (see
    sent, nothing is spent, and {{product}} answers it itself. **Mercury answered this itself**
    says which of your words it could not match, asks you to name what to measure and which
    devices, and gives the Start-from chips as links.
-2. `ask`: one call through the AI gateway, as you. What is sent is masked first. The builder's
+2. `ask`: one call through the AI gateway, as you. What is sent is masked first, your own
+   words included (see [Your words are masked before they leave](#typed-masked)). The builder's
    vocabulary (its ranges, operations and filters) is the same on every call, so it is cached.
    Your question, the metrics offered, the devices you named that this network holds, and its
    roles go as data, with the time now and the time today began (see
@@ -113,6 +114,35 @@ between them moves nothing) and gives it to the model as it gives today's. The n
 question says whose midnight the span was counted from: "'This week' is counted from midnight
 on Monday America/New_York (…)". "This week", "the last 7 days" or "the past week" alone is
 not a calendar week: it is the builder's 7 days, ending now.
+
+## Your words are masked before they leave {#typed-masked}
+
+What you type or paste into the question box is masked by the AI gateway before anything
+is sent, the same way on both builders and on every AI feature you type into. Two things are
+masked:
+
+- **By position:** a value in a secret's place in a configuration line, whatever it is: an
+  SNMP community (`snmp-server community …`, a trap host's community), a user's or the enable
+  password or secret, a line password, a key string, a TACACS or RADIUS key, a pre-shared key,
+  a password after `password` or `secret` anywhere in the line, an authentication key
+  (`key 1 md5 …`), SNMPv3's authentication and privacy keys, a password hash (`$1$`, `$9$`
+  and the like), a URL's user and password, and an encrypted secret.
+- **By value:** any credential {{product}} holds, wherever it appears in your words.
+
+Addresses (IPv4 and IPv6), device names and everything else go as you typed them. A question
+with nothing to mask is sent exactly as typed.
+
+When something was masked, a note under the row says what, in words, never the value:
+"2 values were masked before sending: an SNMP community and a credential Mercury holds. The
+model read a placeholder in its place, and the value never left Mercury." For words of more
+than one line it names each line ("a line password on line 5"). The box then holds your
+words as they were sent, each masked value as its placeholder, so the value is not drawn
+back on the page. The call's record holds the masked words only, with the note's words beside
+them; **History** draws the request as it was sent, masked.
+
+Some secret lines are not yet recognised by position (C745 lists them, among them an IKE key
+typed as `crypto isakmp key …` and an OSPF `authentication-key` with no key number): leave
+secrets out of your words.
 
 ## What it costs, and what is recorded {#cost}
 

@@ -37,6 +37,10 @@ from modules.ai.schemas import StrictModel, register
 log = logging.getLogger(__name__)
 
 FEATURE = "nl_query"
+#: What a call's answer carries on to the screen whatever it filled: a needs round's link and
+#: words, and what of the person's question was masked before sending (C1845,
+#: `gateway.typed_said`).
+CARRIED = ("parent_call_id", "needs_said", "typed_masked")
 #: v2 (the operator, 2026-10-25, from the first live run of the recorded cases): an unstated
 #: scope is one line per device, never collapsed unprompted. v3 (v2's live run, case 9):
 #: things in a state are counted, never maxed. v4 (v3's five runs, the operator): the defaults
@@ -1091,7 +1095,7 @@ def metrics(list_name: str, question: str, *, actor: str, trigger: dict, send=No
             "offered": [o[0] for o in offered],
             # The answer as recorded cases keep it (from v10, in its canonical form).
             "choices": c.model_dump(mode="json"),
-            **{k: got[k] for k in ("parent_call_id", "needs_said") if got.get(k)}, **kept}
+            **{k: got[k] for k in CARRIED if got.get(k)}, **kept}
     links = {"page": f"/v2/history/query/ask/metrics?list={list_name}"}
     if c.outcome is Outcome.ask:
         # One question back, never a guess (the operator's cases, 2026-10-25): the person
@@ -1504,7 +1508,7 @@ def logs(list_name: str, question: str, *, actor: str, trigger: dict, send=None,
     base = {"call_id": got["call_id"], "cost_usd": got["cost_usd"], "offered": mns,
             # The answer as recorded cases keep it (from v4, in its canonical form).
             "choices": c.model_dump(mode="json"),
-            **{k: got[k] for k in ("parent_call_id", "needs_said") if got.get(k)}, **kept}
+            **{k: got[k] for k in CARRIED if got.get(k)}, **kept}
     links = {"page": f"/v2/history/query/ask/logs?list={list_name}"}
     if c.outcome is Outcome.ask:
         calls.record_use(got["call_id"], "asked a question back", actor=actor,

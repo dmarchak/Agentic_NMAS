@@ -28,3 +28,11 @@
 {%- macro reason(c) -%}
 {%- if not c.ready %}<p class="ai-off" role="note" data-ai-off-reason="{{ c.name }}">{{ icon('info', 14) }} <span>Not available now: {{ c.reason }}{% if c.resets %}; the day's spend {{ resets(c.resets) }}{% endif %}.{% if c.may_configure %} <a href="{{ c.settings_url }}">Open Settings › Installation, AI (hosted)</a>{% endif %}</span></p>{% endif -%}
 {%- endmacro %}
+
+{#- typed_masked: what of the person's own words was masked before they were sent (C1845;
+    `gateway.typed_said`), drawn on the screen that sent them, under the row they typed in:
+    each mask's kind (and line, for text of more than one line) in words, never a value. *t*
+    is the result's `typed_masked`; nothing is drawn when nothing was masked. -#}
+{%- macro typed_masked(t) -%}
+{%- if t and t.said %}<div class="notice ai-masked" role="status" data-typed-masked="{{ t['values'] }}">{{ icon('info', 16) }}<p>{{ t.said }}. The model read a placeholder in its place, and the value never left Mercury: leave secrets out of your words.</p></div>{% endif -%}
+{%- endmacro %}

@@ -577,10 +577,11 @@ def run_pass(network: str, *, interval: float = SAMPLE_INTERVAL, driver=None, no
         # Every screen shows the new state (C1868, C2003): the Alerts tab when the alert
         # history moved, SDN › Responses when a response did. A pass that only logged leaves
         # its lines to the SDN reader's own announcement (every 30 s), so the region is not
-        # redrawn every pass.
+        # redrawn every pass. A classify is a background AI call, sent or refused, and recorded
+        # (C1843): `ai_calls`, so the top bar's AI chip and an open spend panel read again.
         keys = (["alerts"] if seen.get("changed") else []) + (
             ["sdn"] if out["fired"] or out["proposed"] or out["applied"] or out["inactive"]
-            or expired["removed"] else [])
+            or expired["removed"] else []) + (["ai_calls"] if todo else [])
         if keys:
             out["announced"] = _announce(network, keys, job)
     except Exception as exc:                          # noqa: BLE001 (said, never raised)

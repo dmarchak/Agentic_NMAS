@@ -164,6 +164,29 @@ def recent():
     return _strict(render_template("v2/_recent.html", recent=_recent()))
 
 
+@bp.route("/ai/chip", methods=["GET"])
+def ai_chip():
+    """The top bar's AI chip (board AI1; C1843), asked by every v2 page after it loads and again
+    on `ai_calls` and `settings`: today's AI spend against the day cap, or AI off, never blank.
+    A read of today's window of the record of AI calls and the settings: no provider request,
+    no per-device work (`spend_view.chip`)."""
+    from modules.ai import spend_view
+
+    return _strict(render_template("v2/_ai_chip.html", c=spend_view.chip()))
+
+
+@bp.route("/ai/spend", methods=["GET"])
+def ai_spend():
+    """The spend panel the chip opens (board AI2; C1843): asked when it opens and again on
+    `ai_calls` while open; one window of at most 31 days (`spend_view.panel`), the viewer's own
+    spend by `identity.viewer()`."""
+    from modules.ai import spend_view
+    from routes.operations import viewer_key
+
+    return _strict(render_template("v2/_ai_spend.html",
+                                   s=spend_view.panel(viewer_key())))
+
+
 @bp.route("/attention", methods=["GET"])
 def attention_list():
     """The list alone, re-fetched when a source's reader announces."""
@@ -809,7 +832,13 @@ def _ask_words(fill, view, template: str, ctx, page: str):
             q["errors"] = got["errors"]
         else:
             q = view(name, request.form)
-    got["question"] = " ".join(question.split())[:nl_query.QUESTION_MAX]
+    typed = " ".join(question.split())[:nl_query.QUESTION_MAX]
+    if got.get("typed_masked"):
+        # What was masked before sending (C1845) is drawn back masked too: the value is
+        # never in the page, and the box holds the words as the model read them.
+        from modules import redact
+        typed = redact.redact_egress(typed)
+    got["question"] = typed
     q["words"] = got
     if not got["ok"] and q.get("built"):
         # Not filled (refused, a question back, or Mercury's own $0 answer): the builder still
