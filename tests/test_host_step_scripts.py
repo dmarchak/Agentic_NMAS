@@ -87,6 +87,8 @@ EXPECTED = {"phase3-step1.sh", "phase3-step2.sh", "c584-loki-writer.sh",
             "c1346-ztp-relayed-firewall.sh",
             # C1916: Loki published on loopback only, its old container kept for rollback.
             "c1916-loki-loopback.sh",
+            # C1836: Alloy reads flask-app's journal into Loki as job=mercury (2026-10-28).
+            "c1836-flask-app-journal.sh",
             # C1917: NetBox admitted from the operator's laptop only, in DOCKER-USER (2026-10-27).
             "c1917-netbox-docker-user.sh"}
 # minio-4d-4e.sh (pip into the app's interpreter) was removed on 2026-10-08: the operator

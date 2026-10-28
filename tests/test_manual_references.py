@@ -20,8 +20,11 @@ every operation is named on its page; every action carries its link.
 limit or number, and what a step reads, sends and records.
 """
 
+import ast
+import io
 import os
 import re
+import tokenize
 
 from modules import manual
 from tests import source_index
@@ -80,14 +83,42 @@ def drawn_words() -> str:
     for f in sorted(files):
         with open(f, encoding="utf-8") as fh:
             text = fh.read()
-        out.append(visible(text) if f.endswith(".html") else text)
+        out.append(file_words(f, text))
     return "\n".join(out)
+
+
+def file_words(name: str, text: str) -> str:
+    """The words a file can draw, read by its kind."""
+    return (visible(text) if name.endswith(".html") else
+            code_words(text) if name.endswith(".py") else text)
 
 
 def visible(html: str) -> str:
     """A template's words as a person reads them: `Save <span x-text="count">({{ n }})</span>…`
-    is "Save ({{ n }})…"."""
+    is "Save ({{ n }})…". A Jinja or HTML comment is never drawn (C1368: **Exclude…** passed
+    on a `{# #}` comment while the page draws "Exclude <address>…")."""
+    html = re.sub(r"\{#.*?#\}|<!--.*?-->", "", html, flags=re.S)
     return re.sub(r"<[^>{}]+>", "", html)
+
+
+def code_words(py: str) -> str:
+    """A Python file's source without its docstrings and comments, the words its strings can
+    draw (C1368: **Exclude…** passed on a route's docstring)."""
+    tree = ast.parse(py)
+    docs = set()
+    for node in ast.walk(tree):
+        body = getattr(node, "body", None)
+        if (isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+                and body and isinstance(body[0], ast.Expr)
+                and isinstance(body[0].value, ast.Constant)
+                and isinstance(body[0].value.value, str)):
+            docs.update(range(body[0].lineno, body[0].end_lineno + 1))
+    cut = {}
+    for tok in tokenize.generate_tokens(io.StringIO(py).readline):
+        if tok.type == tokenize.COMMENT:
+            cut[tok.start[0]] = tok.start[1]
+    return "\n".join(line[:cut.get(n, len(line))]
+                     for n, line in enumerate(py.splitlines(), 1) if n not in docs)
 
 
 def label_pattern(label: str):
@@ -168,6 +199,17 @@ class TestTheCheckCanFail:
         drawn = '<button><span>Save <span x-text="count">({{ picked | length }})</span>…</span>'
         assert dead_controls(texts, drawn) == [("p", "Actions › Save (<count>)…")]
         assert dead_controls(texts, visible(drawn)) == []
+
+    def test_a_label_only_in_a_comment_or_docstring_is_not_drawn(self):
+        # C1368's planted case: each place K33 found a label that no page draws.
+        texts = {"p": "Press **Exclude…**."}
+        html = "{# Exclude… #}<button>Exclude {{ a }}…</button><!-- Exclude… -->"
+        assert dead_controls(texts, file_words("t.html", html)) == [("p", "Exclude…")]
+        py = ('"""Exclude…"""\n\n\ndef f():\n    """Exclude…\n    over two lines."""\n'
+              '    return 1  # Exclude…\n')
+        assert dead_controls(texts, file_words("r.py", py)) == [("p", "Exclude…")]
+        assert dead_controls(texts, file_words("r.py", py + 'X = "Exclude…"  # drawn\n')) == []
+        assert dead_controls(texts, file_words("t.html", "{# a #}<button>Exclude…</button>")) == []
 
     def test_an_unlinked_page_is_found(self):
         pages = (("deploy", "t", manual.H, "f"), ("orphan", "t", manual.H, "f"),

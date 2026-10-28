@@ -27,7 +27,7 @@ The tool's configuration, in three scopes of one page: **Installation** (what ev
 - **Inventory source** (Network tab): where the network's devices come from, its own list on this host or NetBox through filters, and how fresh they are. For a NetBox network it counts the devices loaded, skipped, loaded with a warning and no longer in NetBox, and names each one in groups closed until opened: the skipped by cause with where to put it right, the warned by cause, and those NetBox no longer returns with since when (see [Where a network's devices come from](settings-switch#source)).
 - **SDN controllers** (Integrations tab): the network's own controller connections, on their
   own card, never inherited from Default (see [SDN controllers](#sdn-controllers)).
-- **Each group's own choice**: inherit from Default, its own, or not applicable. Choosing another opens that switch's preview in place of the card; nothing is saved by the choice itself. A group not configured has **Configure…**, which takes its values in the card; a group that is its own takes its fields in place, with **Save** and **Test** (see [Save a card](settings-switch#save) and [Test a connection](settings-switch#test)).
+- **Each group's own choice**: inherit from Default, its own, or not applicable. Choosing another opens that switch's preview in place of the card; nothing is saved by the choice itself. A group not configured has **Configure <group>…**, which takes its values in the card; a group that is its own takes its fields in place, with **Save** and **Test** (see [Save a card](settings-switch#save) and [Test a connection](settings-switch#test)).
 
 ## A deleted network's page {#deleted}
 

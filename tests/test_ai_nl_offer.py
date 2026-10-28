@@ -27,6 +27,11 @@ def _s1():
         return json.load(fh)["answer"]
 
 
+#: The tie-break's read: what the inventory's devices carry, by name (C1835), never the device
+#: label's presence.
+FLEET = '{device=~"r1|s1"}'
+
+
 def _per_device(world, answer=None, fail=""):
     """The stand-in answering a read narrowed to devices with *answer* (s1's capture), or
     failing it with *fail*; every other read as before. Returns the selectors asked."""
@@ -62,7 +67,7 @@ def test_a_question_naming_a_device_is_offered_only_what_it_carries(world):
                                trigger=triggers.person("operator@example.com"),
                                send=world.send, client=world.prom,
                                now=NOW, today="2026-10-25")
-    assert asked == ['device=~"s1"'.join("{}")]
+    assert asked == ['device=~"s1"'.join("{}"), FLEET]
     offered = _offered_in_request(world)
     assert "ifOperStatus" in offered and FLAPS not in offered, offered
     assert set(offered) <= set(_s1()["data"])
@@ -188,7 +193,7 @@ def test_a_question_naming_a_role_is_offered_only_what_its_devices_carry(world):
                          trigger=triggers.person("operator@example.com"),
                          send=world.send, client=world.prom,
                          now=NOW, today="2026-10-25")
-    assert asked == ['{role=~"access"}']
+    assert asked == ['{role=~"access"}', FLEET]
     offered = _offered_in_request(world)
     assert offered and set(offered) <= set(_s1()["data"]) and FLAPS not in offered
 
@@ -205,7 +210,7 @@ def test_a_device_and_a_role_named_are_offered_what_either_carries(world):
                          trigger=triggers.person("operator@example.com"),
                          send=world.send, client=world.prom,
                          now=NOW, today="2026-10-25")
-    assert asked == ['{device=~"r1"}', '{role=~"access"}']
+    assert asked == ['{device=~"r1"}', '{role=~"access"}', FLEET]
 
 
 def test_a_role_is_named_by_its_word_or_its_plural():
@@ -237,6 +242,31 @@ def test_an_answer_counting_a_state_s_changes_fills_the_builder_with_changes(wor
     view = json.dumps(got["view"], default=str)
     assert "changes(ifOperStatus" in view and "[1d])" in view, "no changes query formed"
     assert any("device chosen is left out" in e for e in got["errors"]), got["errors"]
+
+
+def test_what_the_devices_carry_is_read_by_the_inventory_s_names_never_the_label(world):
+    """C1835: node_exporter writes its own `device` label (enp6s18, sda), so reading which
+    metrics carry the label at all counted the monitoring host's as the devices'; the
+    tie-break reads what the inventory's devices carry, by name."""
+    world.answer = {"outcome": "ask", "question": "which devices?", "why_not": "",
+                    "metric": "", "devices": [], "role": "", "interfaces": [], "filters": [],
+                    "operations": [], "top": "none", "range": "7d", "from_utc": "",
+                    "to_utc": ""}
+    every, plain = [], world.prom._get
+
+    def _get(path, **params):
+        if path == "api/v1/label/__name__/values" and params.get("match[]"):
+            every.append(params["match[]"])
+        return plain(path, **params)
+    world.prom._get = _get
+    asked = _per_device(world)
+    with pressed_by("operator@example.com"):
+        nl_query.metrics("Lab", "Which devices rebooted this week?",
+                         actor="operator@example.com",
+                         trigger=triggers.person("operator@example.com"),
+                         send=world.send, client=world.prom, now=NOW, today="2026-10-25")
+    assert asked == [FLEET]
+    assert not [s for s in every if '!=""' in s], every
 
 
 def test_each_device_is_a_literal_in_the_label_s_regex(world):

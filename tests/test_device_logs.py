@@ -337,3 +337,52 @@ class TestTheSyslogJobIsMeasured:
         assert jobs(later) == ["site_syslog"] and held["measured"] == 2
         held["refuse"], held["jobs"] = None, []
         assert jobs(later + 1) == ["site_syslog"], "an ask finding none dropped the jobs found"
+
+
+#: C1813: r1's captured OSPF line (tests/fixtures/loki/ask_lines_labelled.json), its facility
+#: made OSPFv3's, the only edit: IOS writes OSPFv3's adjacency change as %OSPFv3-5-ADJCHG (45
+#: lines in the lab's Loki in the 7 days to 2026-10-26).
+OSPFV3_LINE = ("Oct 15 08:16:53 r1 7839: r1: Oct 15 08:16:52.862 UTC: %OSPFv3-5-ADJCHG: Process 1, "
+               "Nbr 192.0.2.21 on GigabitEthernet2 from 2WAY to DOWN, Neighbor Down: Dead timer "
+               "expired")
+#: The facility as upper case alone, the shape C1813 found in five patterns.
+_UPPER_ONLY = re.compile(r"\[A-Z0-9_\][+*](?:\(\?:-\[A-Z0-9_\]\+\)\*)?-\[0-")
+
+
+class TestAMixedCaseFacility:
+    """C1813 and C1322: OSPFv3's mnemonic is read wherever OSPF's is."""
+
+    def test_every_reader_of_a_line_takes_ospfv3s_mnemonic(self):
+        from modules import device_logs, history_logq, logs_page
+        m = re.search(device_logs.LOGQL_FIELDS, OSPFV3_LINE)
+        assert m and m.group("dev") == "r1" and m.group("mn") == "%OSPFv3-5-ADJCHG"
+        msg = device_logs._MESSAGE.match(OSPFV3_LINE.split(" r1: ", 1)[1])
+        assert msg and msg.group("mnemonic") == "%OSPFv3-5-ADJCHG" and msg.group("sev") == "5"
+        assert device_logs.mnemonic_severity("%OSPFv3-5-ADJCHG") == 5
+        assert history_logq._MN.match("%OSPFv3-5-ADJCHG") and history_logq._MN.match("OSPFv3-5-ADJCHG")
+        assert history_logq._MN_IN_TEXT.findall("count OSPFv3-5-ADJCHG lines") == ["OSPFv3-5-ADJCHG"]
+        assert logs_page._MN_OK.match("%OSPFv3-5-ADJCHG")
+        # The severity filter as Loki reads it (RE2 and Python agree on this pattern).
+        assert re.search("%" + device_logs.mnemonic("[0-5]"), OSPFV3_LINE)
+        assert not re.search("%" + device_logs.mnemonic("[0-4]"), OSPFV3_LINE)
+
+    def test_the_mnemonic_after_the_severity_stays_upper_case(self):
+        from modules import history_logq
+        assert not history_logq._MN.match("%OSPFv3-5-adjchg")
+
+    def test_no_pattern_takes_an_upper_case_facility_alone(self):
+        from tests import source_index
+        files = [f for f in source_index.tracked("modules", suffix=".py") +
+                 source_index.tracked("routes", suffix=".py", recursive=False)]
+        assert len(files) > 100
+        found = [f for f in files
+                 if _UPPER_ONLY.search(open(f, encoding="utf-8").read())]
+        assert found == []
+
+    def test_the_scan_finds_the_old_shape(self):
+        # The planted case: each spelling C1813 found.
+        for old in (r"%[A-Z0-9_]+(?:-[A-Z0-9_]+)*-[0-7]-[A-Z0-9_]+", r"%[A-Z0-9_]+-[0-2]-",
+                    r"%[A-Z0-9_]+(?:-[A-Z0-9_]+)*-[0-{n}]-[A-Z0-9_]+",
+                    r"%?([A-Z][A-Z0-9_]*(?:-[A-Z0-9_]+)*-[0-7]-[A-Z0-9_]+)"):
+            assert _UPPER_ONLY.search(old), old
+        assert not _UPPER_ONLY.search(r"[A-Za-z0-9_]+(?:-[A-Za-z0-9_]+)*-[0-7]-")

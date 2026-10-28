@@ -32,16 +32,27 @@ HEARTBEAT_LINE = r"%HA_EM-\d-LOG: " + re.escape(MARKER) + ": " + re.escape(MARKE
 WINDOW_HOURS = 24
 LIMIT = 100
 _NAME = re.compile(r"^[A-Za-z][A-Za-z0-9._-]*$")
+#: A mnemonic's facility and sub-facilities, in mixed case: IOS writes OSPFv3's adjacency
+#: change as `%OSPFv3-5-ADJCHG` (C1813, C1322); the mnemonic after the severity is upper case.
+#: Every mnemonic pattern is built from this one (tests/test_device_logs.py scans for others).
+FACILITY = r"[A-Za-z0-9_]+(?:-[A-Za-z0-9_]+)*"
+
+
+def mnemonic(severity: str = "[0-7]") -> str:
+    """A mnemonic's pattern without its `%`, its severity *severity* (a character class)."""
+    return f"{FACILITY}-{severity}-[A-Z0-9_]+"
+
+
 _MESSAGE = re.compile(
     r"^(?P<devts>\*?\.?[A-Z][a-z]{2}\s+\d+\s+[\d:.]+(?:\s+[A-Z]{3,4})?):\s+"
-    r"(?P<mnemonic>%[A-Z0-9_]+(?:-[A-Z0-9_]+)*-(?P<sev>[0-7])-[A-Z0-9_]+):?\s*(?P<text>.*)$")
+    rf"(?P<mnemonic>%{FACILITY}-(?P<sev>[0-7])-[A-Z0-9_]+):?\s*(?P<text>.*)$")
 SEVERITY = {0: "emergency", 1: "alert", 2: "critical", 3: "error", 4: "warning",
             5: "notice", 6: "informational", 7: "debug"}
 #: The same fields as a LogQL `regexp` stage, for counting the whole fleet in one query (the
 #: Logs view, C652): the device's own name before its timestamp (`dev`), and the mnemonic
 #: (`mn`, its severity the digit inside it). A line it does not match has neither label.
 LOGQL_FIELDS = (r"\s(?P<dev>[A-Za-z][A-Za-z0-9._-]*):\s+\*?\.?[A-Z][a-z]{2}\s+\d+\s+[\d:.]+"
-                r"(?:\s+[A-Z]{3,4})?:\s+(?P<mn>%[A-Z0-9_]+(?:-[A-Z0-9_]+)*-[0-7]-[A-Z0-9_]+)")
+                r"(?:\s+[A-Z]{3,4})?:\s+(?P<mn>%" + mnemonic() + ")")
 _MN_SEV = re.compile(r"-([0-7])-[A-Z0-9_]+$")
 
 

@@ -161,7 +161,13 @@ def read(list_name: str = "", loki=None, clock=time.time, previous=None,
         retention_days = _retention(list_name)
     today = _day(now)
     oldest_kept = _day(now - (retention_days - 1) * 86400)
-    days = {d: v for d, v in (previous.get("days") or {}).items() if oldest_kept <= d < today}
+    # The day that was today at the previous read was counted only to that read: once it has
+    # ended it is asked again whole, or the lines after that read are never counted (C1816:
+    # a device's four %SYS-5-CONFIG_P lines at 2026-10-21 23:59 UTC, missing from that day's
+    # count).
+    partial = previous.get("today")
+    days = {d: v for d, v in (previous.get("days") or {}).items()
+            if oldest_kept <= d < today and d != partial}
     unparsed = {d: n for d, n in (previous.get("unparsed") or {}).items() if d in days}
     first_day = previous.get("first_day") or _first_day(loki, now)
 

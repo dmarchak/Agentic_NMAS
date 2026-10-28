@@ -1066,7 +1066,12 @@ def metrics(list_name: str, question: str, *, actor: str, trigger: dict, send=No
     theirs = set().union(*reads) if reads and None not in reads else None
     pool = dict(cat, names=[n for n in cat["names"] if n in theirs]) if theirs is not None \
         else cat
-    offered = retrieve(question, pool, device_metrics(probe, rng) or set())
+    # What the network's devices carry, by the inventory's names, never by the label's
+    # presence: node_exporter writes its own `device` label (a NIC's or a disk's name), so the
+    # monitoring host's metrics would rank as the devices' (C1835). No inventory, no tie-break.
+    fleet = sorted({d["hostname"] for d in rows if d.get("hostname")})
+    offered = retrieve(question, pool, (device_metrics(probe, rng, fleet) if fleet else None)
+                       or set())
     if not offered:
         scope = named + [f"the {r} role" for r in by_role]
         among = (f"{', '.join(scope)} carr{'ies' if len(scope) == 1 else 'y'}"

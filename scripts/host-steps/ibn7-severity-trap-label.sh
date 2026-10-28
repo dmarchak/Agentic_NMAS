@@ -120,7 +120,7 @@ loki.process "syslog_device" {
     expression = \`\s(?P<device>[A-Za-z][A-Za-z0-9._-]*):\s+\*?\.?[A-Z][a-z]{2}\s+\d+\s+[\d:.]+(?:\s+[A-Z]{3,4})?:\s+\`
   }
   stage.regex {
-    expression = \`\s[A-Za-z][A-Za-z0-9._-]*:\s+\*?\.?[A-Z][a-z]{2}\s+\d+\s+[\d:.]+(?:\s+[A-Z]{3,4})?:\s+%[A-Z0-9_]+(?:-[A-Z0-9_]+)*-(?P<severity>[0-7])-[A-Z0-9_]+\`
+    expression = \`\s[A-Za-z][A-Za-z0-9._-]*:\s+\*?\.?[A-Z][a-z]{2}\s+\d+\s+[\d:.]+(?:\s+[A-Z]{3,4})?:\s+%[A-Za-z0-9_]+(?:-[A-Za-z0-9_]+)*-(?P<severity>[0-7])-[A-Z0-9_]+\`
   }
   stage.labels {
     values = { device = "", severity = "" }
@@ -128,12 +128,14 @@ loki.process "syslog_device" {
 }
 ALLOY
 
+# The severity stage takes a mixed-case facility since C1813 (%OSPFv3-5-ADJCHG); the stage this
+# step installed on 2026-10-15 takes an upper-case facility alone until C2125's step replaces it.
 # Loki's answers, one number each (an empty answer is 0). MN is Mercury's pattern
 # (device_logs.LOGQL_FIELDS) with the mnemonic's digit named.
 cat > "$DIR/loki.py" <<'PY'
 import json, sys, urllib.parse, urllib.request
 MN = (r"\s(?P<dev>[A-Za-z][A-Za-z0-9._-]*):\s+\*?\.?[A-Z][a-z]{2}\s+\d+\s+[\d:.]+"
-      r"(?:\s+[A-Z]{3,4})?:\s+%[A-Z0-9_]+(?:-[A-Z0-9_]+)*-(?P<sev>[0-7])-[A-Z0-9_]+")
+      r"(?:\s+[A-Z]{3,4})?:\s+%[A-Za-z0-9_]+(?:-[A-Za-z0-9_]+)*-(?P<sev>[0-7])-[A-Z0-9_]+")
 W = sys.argv[2] if len(sys.argv) > 2 else "6m"
 S = '{job="network_syslog"}'
 Q = {"arrive": f'sum(count_over_time({S}[{W}]))',

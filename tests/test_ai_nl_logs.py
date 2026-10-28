@@ -23,6 +23,7 @@ from modules.ai import triggers
 from tests.ai_person import pressed_by
 from modules.ai import anthropic_adapter as A
 from modules.ai import calls, gateway, nl_query
+from modules import device_logs, history_logq
 from tests.test_history_ask_logs import NOW, web  # noqa: F401 (the fixture)
 
 KEY = "sk-planted-test-key-0123456789"
@@ -506,7 +507,8 @@ def test_a_metrics_refusal_names_the_logs_route_by_the_event_s_words(monkeypatch
 
 #: Words two events of one dialect may both claim: events that record one happening together.
 SHARED = ({"%SYS-5-RELOAD", "%SYS-5-RESTART"}, {"%LINK-3-UPDOWN", "%LINEPROTO-5-UPDOWN"},
-          {"%OSPF-5-ADJCHG", "%BGP-5-ADJCHANGE"})
+          # An adjacency, OSPF's, OSPFv3's (C1813: offered again once the builder takes it) or BGP's.
+          {"%OSPF-5-ADJCHG", "%OSPFv3-5-ADJCHG", "%BGP-5-ADJCHANGE"})
 
 
 def test_the_platform_pack_s_events_are_well_formed():
@@ -526,7 +528,9 @@ def test_the_platform_pack_s_events_are_well_formed():
         claims = {}
         for e in events:
             assert set(e) == {"mnemonic", "offer", "records", "words"}, e
-            assert re.fullmatch(r"%[A-Z][A-Z0-9_]*-[0-7]-[A-Z0-9_]+", e["mnemonic"]), e
+            # As the logs builder carries it (C1813: a mixed-case facility, %OSPFv3-5-ADJCHG).
+            assert re.fullmatch(r"%(?=[A-Z])" + device_logs.mnemonic(), e["mnemonic"]), e
+            assert history_logq._MN.fullmatch(e["mnemonic"]), e
             assert e["offer"] in ("always", "named"), e
             assert e["records"].strip(), e
             assert e["words"] and len(e["words"]) == len(set(e["words"])), e
@@ -543,7 +547,7 @@ def test_the_platform_pack_s_events_are_well_formed():
                 assert any(who <= group for group in SHARED), (dialect, w, who)
     assert {e["mnemonic"] for e in by_mn.values() if e["offer"] == "always"} == {
         "%SYS-5-RELOAD", "%SYS-5-RESTART", "%LINK-3-UPDOWN", "%LINEPROTO-5-UPDOWN",
-        "%OSPF-5-ADJCHG", "%BGP-5-ADJCHANGE", "%SYS-5-CONFIG_I"}, \
+        "%OSPF-5-ADJCHG", "%OSPFv3-5-ADJCHG", "%BGP-5-ADJCHANGE", "%SYS-5-CONFIG_I"}, \
         "an event offered for every question is added by a decision, never by a word list"
 
 

@@ -19,6 +19,8 @@ import re
 import time
 from urllib.parse import urlencode
 
+from modules.device_logs import mnemonic
+
 log = logging.getLogger(__name__)
 
 READER = "logs-summary"
@@ -180,7 +182,7 @@ def _coverage(v: dict, start_day: str, today: str, n_days: int) -> dict:
 
 
 _TEXT_OK = re.compile(r"^[^`\"\\\r\n]{0,120}$")
-_MN_OK = re.compile(r"^%[A-Z0-9_]+(?:-[A-Z0-9_]+)*-[0-7]-[A-Z0-9_]+$")
+_MN_OK = re.compile(r"^%" + mnemonic() + "$")
 _WHEN = re.compile(r"^\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2})?$")
 
 
@@ -239,7 +241,7 @@ def _open(list_name, s, row, v, start_day, today, now, mine) -> dict:
     q = f"{sel} !~ `{device_logs.HEARTBEAT_LINE}`"
     limit = SEVERITIES[s["sev"]][1]
     if limit < 7:
-        q += f' |~ `%[A-Z0-9_]+(?:-[A-Z0-9_]+)*-[0-{limit}]-[A-Z0-9_]+`'
+        q += f' |~ `%{mnemonic(f"[0-{limit}]")}`'
     if s["mn"]:
         q += f' |= "{s["mn"]}"'
     if s["text"]:

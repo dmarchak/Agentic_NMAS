@@ -29,6 +29,7 @@ import re
 import time
 
 from modules import history_ask
+from modules.device_logs import mnemonic
 # What the two builders share (board E3's and this one's): one token each, durations, the
 # range and the address, in modules/history_ask.py.
 from modules.history_ask import (REMEMBER, alternation, duration_words, literal,  # noqa: F401
@@ -84,7 +85,7 @@ ADDRESS_KEYS = ("job", "dev", "role", "sev", "mn", "has", "anycase", "not", "sho
 FILTERS = ("job", "dev", "role", "sev", "mn", "has", "anycase", "not", "show", "by", "every",
            "range", "within", "from", "to")
 
-_MN = re.compile(r"^%?[A-Z0-9_]+(?:-[A-Z0-9_]+)*-[0-7]-[A-Z0-9_]+$")
+_MN = re.compile(r"^%?" + mnemonic() + "$")
 _LABEL = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 _CACHE = {}
@@ -390,7 +391,7 @@ def build(spec: dict, disc: dict, rng: dict, devices: list) -> dict:
             explain["sev"] = (f"keeps the lines whose severity label is {n} ({SEVERITY[n]}) or "
                               "worse; a line with no severity (a trap) is left out")
         else:
-            pipe.append((f"|~ {string(f'%[A-Z0-9_]+(?:-[A-Z0-9_]+)*-[0-{n}]-[A-Z0-9_]+')}",
+            pipe.append((f"|~ {string('%' + mnemonic(f'[0-{n}]'))}",
                          "sev"))
             began = _utc(since["severity"], "%-d %b %H:%M UTC") if since.get("severity") else ""
             explain["sev"] = (f"keeps the lines whose mnemonic carries severity {n} "
@@ -655,7 +656,7 @@ def counts(list_name: str, spec: dict, built: dict, rng: dict, client, now: floa
 # ---------------------------------------------------------------------------- the view
 
 #: A mnemonic named inside the text a line must contain ("OSPF-5-ADJCHG", "%LINK-3-UPDOWN").
-_MN_IN_TEXT = re.compile(r"%?([A-Z][A-Z0-9_]*(?:-[A-Z0-9_]+)*-[0-7]-[A-Z0-9_]+)")
+_MN_IN_TEXT = re.compile(r"%?((?=[A-Z])" + mnemonic() + ")")
 
 
 def clashes(spec: dict) -> list:

@@ -113,6 +113,9 @@ INVENTORY = {
     "scripts/host-steps/ibn7-severity-trap-label.sh": (14, LAB_VALUES, REMOVE,
                                                        "a one-shot host step writing the lab's "
                                                        "Alloy configuration, its jobs named"),
+    "scripts/host-steps/c1836-flask-app-journal.sh": (3, LAB_VALUES, REMOVE,
+                                                      "a one-shot host step writing the lab's "
+                                                      "Alloy configuration, its new job named"),
     "scripts/host-steps/c794-loki-detected-level-off.sh": (1, LAB_VALUES, REMOVE,
                                                            "a one-shot host step's note of what "
                                                            "it measured in the lab's syslog job"),

@@ -67,7 +67,7 @@ Opens the template below the table, as committed, in an editor. As you type it i
 syntax error is named with its line, and otherwise your edit is rendered for every device it
 governs, from each device's committed golden, with every line it would no longer reproduce
 named as Approve… names them (a shared macro file is checked through each template importing
-it). A device with no golden yet is named with **Capture…**. Beside the commit: which
+it). A device with no golden yet is named with **Capture <device>…**. Beside the commit: which
 approvals the commit revokes. **Commit** records it as you with your one-line reason, refused
 naming both versions if someone committed the template after you opened it; the result offers
 **Approve…** for each template whose approval it revoked. See [Edit a template](edit-template).

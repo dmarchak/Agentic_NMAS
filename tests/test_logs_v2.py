@@ -132,6 +132,23 @@ class TestTheReader:
         assert v2["first_day"] == v1["first_day"] == time.strftime(
             "%Y-%m-%d", time.gmtime(int(FIRST_NS) / 1e9))
 
+    def test_the_day_that_was_today_is_asked_again_whole_once_it_ends(self):
+        """C1816: a day keeps the count of its last read before midnight unless it is asked
+        again whole; the next read asks it from its end and keeps that count."""
+        newest = max(DAYS, key=lambda d: DAYS[d]["time"])
+        early = {newest: {"r6": {"%SYS-5-CONFIG_I": 1}}}
+        older = {d: {"r1": {"%LINK-3-UPDOWN": 1}} for d in DAYS if d != newest}
+        loki = FakeLoki()
+        v = _read(previous={"today": newest, "days": {**early, **older},
+                            "first_day": min(DAYS)}, loki=loki)
+        total = sum(n for mns in v["days"][newest].values() for n in mns.values())
+        assert total == _sum(newest, 7, devices=set(v["days"][newest])), "the partial count kept"
+        ends = [p["time"] for path, p in loki.asked if path.endswith("/query")]
+        assert str(DAYS[newest]["time"]) in ends
+        # Every other carried day is kept as it was, never asked again.
+        assert all(v["days"][d] == older[d] for d in older if d in v["days"])
+        assert [p for p in ends if p != str(DAYS[newest]["time"]) and p != str(int(NOW))] == []
+
     def test_a_day_past_the_retention_is_dropped_and_never_asked(self):
         v = _read(retention=3)
         assert sorted(v["days"]) == sorted(set(v["days"]))

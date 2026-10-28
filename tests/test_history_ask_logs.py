@@ -473,7 +473,7 @@ class TestThePage:
 
     def test_the_last_choice_is_marked_and_said(self, web):
         html = _page(web, sev="5", hl="sev")
-        assert re.search(r'<mark>\|~ "%\[A-Z0-9_\]\+', html), "the severity stage is marked"
+        assert re.search(r'<mark>\|~ "%\[A-Za-z0-9_\]\+', html), "the severity stage is marked"
         assert "the last choice:" in html and "or worse, read from the line" in html
 
     def test_a_start_from_chip_sets_its_choices_and_is_marked(self, web):

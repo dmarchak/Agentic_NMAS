@@ -166,6 +166,8 @@ Four kinds of change, the same four a typed patch can make:
 
 Anything else (an address, a speed, a route, a hostname) is refused, saying why; make it with
 **Edit**. An OSPF network is OSPFv2's, IPv4 only: an IPv6 prefix is refused by name.
+OSPFv3 has no network statements; it joins an interface to an area (`ipv6 ospf <process> area
+<area>`), and a change in words does not offer that yet: make it with **Edit**.
 
 ## A VLAN needs a VLAN database {#vlan-database}
 

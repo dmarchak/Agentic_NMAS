@@ -4,7 +4,7 @@ Every network either **inherits from Default** or is **standalone**. A network t
 
 ![Switching a network's settings: the preview reads the network's settings and Default's and shows each group or setting today and after, a secret only as set; you confirm against the preview's fingerprint; the switch reads both again and refuses, naming what moved, if either changed; then it writes the network's own settings file and appends who, when and what changed to its settings record, which keeps any value removed. No device is contacted.](diagrams/settings-switch.svg)
 
-You start it on the network's Settings page: **Make *network* standalone…** or **Change to inheriting from Default…** on the banner under the scope bar, and a group's three-way choice (or **Configure…**) on its card. The preview opens in place of the banner or the card; the confirm and the result happen there.
+You start it on the network's Settings page: **Make *network* standalone…** or **Change to inheriting from Default…** on the banner under the scope bar, and a group's three-way choice (or **Configure <group>…**) on its card. The preview opens in place of the banner or the card; the confirm and the result happen there.
 
 ## The steps
 
