@@ -315,7 +315,7 @@ def test_each_prompt_asks_for_the_schema_it_was_written_for(world):
     assert explain.PROMPT == ("explain", 4)
     assert {v: s.__ai_schema__ for v, s in explain.SCHEMA_OF.items()} == {
         1: ("explain", 1), 2: ("explain", 1), 3: ("explain", 1), 4: ("explain", 2),
-        5: ("explain", 2), 6: ("explain", 3)}
+        5: ("explain", 2), 6: ("explain", 3), 7: ("explain", 2)}
     world.answer = {k: v for k, v in _answer(world.pack).items() if k != "checked"}
     with pressed_by("operator@example.com"):
         got = explain.explain_pack(world.pack, actor="operator@example.com",
@@ -328,6 +328,32 @@ def test_each_prompt_asks_for_the_schema_it_was_written_for(world):
     world.answer = _answer(world.pack)
     assert _explain(world)["ok"] is True
     assert "no_fault_found" in json.dumps(world.sent[-1]["body"]["output_config"])
+
+
+def test_v7_is_v4_s_request_with_the_citation_rule(world):
+    """C2038 (the operator's choice, 2026-10-28): v7 is v4 with one rule, every device an answer
+    names cited by something of its own, as the check (C1897) refuses otherwise; the same
+    schema and request shape as v4, never v6's network context (`NETWORK_CONTEXT_VERSIONS`)."""
+    from modules.ai import prompts
+
+    v4, v7 = prompts.load("explain", 4)["text"], prompts.load("explain", 7)["text"]
+    added = " ".join(v7.replace(v4.split("For no_fault_found:")[0], "", 1).split())
+    assert v7.startswith(v4.split("For no_fault_found:")[0])
+    assert added.startswith("- Every device you name, in the rationale or in any claim, must be "
+                            "cited in the same answer by something of its own")
+    assert ("explain", 7) in explain.CANDIDATES and 7 not in explain.NETWORK_CONTEXT_VERSIONS
+    world.answer = _answer(world.pack)
+    _explain(world)
+    v4_body = world.sent[-1]["body"]
+    with pressed_by("operator@example.com"):
+        got = explain.explain_pack(world.pack, actor="operator@example.com",
+                                   trigger=triggers.person("operator@example.com"),
+                                   send=world.send, today="2026-10-25", prompt=("explain", 7))
+    assert got["ok"] is True, got
+    v7_body = world.sent[-1]["body"]
+    assert v7_body["system"][0]["text"] == v7
+    assert v7_body["messages"] == v4_body["messages"]
+    assert v7_body["output_config"] == v4_body["output_config"]
 
 
 # ------------------------------------- v6, the network-context version (2026-10-26)

@@ -647,11 +647,43 @@ def classify_pack(network: str, detection: dict, pack: dict, *, actor: str, trig
     action = answer.action_id.value
     calls.record_use(got["call_id"], f"proposed: {action}" if action != NO_ACTION
                      else "shown: no catalogue action", actor=actor, links=links)
-    shown = answer.model_dump(mode="json")
+    shown = apply_floor(answer.model_dump(mode="json"), sent["detection"])
     shown.update(call_id=got["call_id"], cost_usd=got.get("cost_usd", 0.0),
                  model=profiles.TASKS[CLASSIFY_FEATURE]["model"],
                  trigger=(trigger or {}).get("kind", ""), params=params)
     return dict(out, ok=True, classification=shown, action=action, params=params)
+
+
+#: The least severity an unauthorised flow's effect allows (C2021; the operator's ruling of
+#: 2026-10-28: a floor in code, the model may raise it, never lower it). A flow that undoes a
+#: Mercury mitigation (lifts), overrides Mercury's flow (shadows), sends traffic elsewhere
+#: (diverts) or silently drops it (drops) is at least high; forwards and unknown have none.
+SEVERITY_FLOOR = {"lifts": "high", "shadows": "high", "diverts": "high", "drops": "high"}
+SEVERITIES = ("none", "low", "medium", "high", "critical")
+
+
+def severity_floor(detection: dict) -> dict:
+    """The floor *detection*'s effect sets: ``{"severity", "words"}``, or ``{}`` for none."""
+    eff = (detection or {}).get("effect") or {}
+    floor = SEVERITY_FLOOR.get(eff.get("class") or "")
+    if not floor:
+        return {}
+    return {"severity": floor,
+            "words": f"at least {floor}: the flow {eff.get('class')} (its effect, decided in "
+                     "code from the switch's table)"}
+
+
+def apply_floor(shown: dict, detection: dict) -> dict:
+    """*shown* (a classification that passed the check) with its severity raised to the
+    effect's floor when the model rated it lower, the model's own rating kept beside it; a
+    classification finding no threat is left as it is."""
+    floor = severity_floor(detection)
+    sev = str(shown.get("severity") or "none")
+    if not floor or not shown.get("threat_detected") or sev not in SEVERITIES or \
+            SEVERITIES.index(sev) >= SEVERITIES.index(floor["severity"]):
+        return shown
+    return dict(shown, severity=floor["severity"], severity_from_model=sev,
+                severity_floor=floor["words"])
 
 
 def request_blocks(sent: dict, section: dict, limits: dict) -> dict:

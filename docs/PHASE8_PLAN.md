@@ -3266,6 +3266,12 @@ person's approval before it takes effect).
 
 Registered: C1833 (this roadmap; nothing in it is built in Phase 8).
 
+**Decision 5, the operator, 2026-10-28 ~05:5x UTC: tier 1's items 1 ("Was this right?") and 3
+(a change record and rollback plan drafted) are in Phase 8's done;** items 2, 4, 5 and 6 come
+after it (item 6, the toolbar assistant, stays card P7's own scope, 16.10). Each of the two is
+built with recorded cases, a blind held-out set and 15.12's bars, its effect on checks stated
+first.
+
 ## 17. SDN controller support, its first slice for CSCI 5280 Lab 8 (the operator, 2026-10-26)
 
 **Why now.** The operator's order of 2026-10-26 ~23:2x UTC, under the rule that a course lab's

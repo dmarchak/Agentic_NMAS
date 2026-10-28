@@ -267,6 +267,41 @@ def test_remove_flow_names_the_flow_the_detection_names(world):
         got["detail"]
 
 
+@pytest.mark.parametrize("model,shown,raised", [("medium", "high", True), ("low", "high", True),
+                                                ("high", "high", False),
+                                                ("critical", "critical", False)])
+def test_an_unauthorised_flow_s_effect_floors_its_severity(world, model, shown, raised):
+    """C2021 (the operator's ruling of 2026-10-28: a floor in code, the model may raise it,
+    never lower it): the redirect (recorded case 7) diverts, so it is at least high; a lower
+    rating is raised, the model's own kept beside it and the floor's words said."""
+    keep_pack(REDIRECT)
+    assert REDIRECT["section"]["pieces"][0]["effect"]["class"] == "diverts", "the case's effect"
+    flow = REDIRECT["detection"]["subject"]["value"]
+    world.answer = answer(threat_type="unauthorised_flow", action_id="remove_flow",
+                          severity=model, affected_devices=["192.0.2.3"],
+                          parameters=dict(PARAMS, source="", flow=flow), evidence_refs=[flow])
+    got = classify_as_person(world, c=REDIRECT)["classification"]
+    assert got["severity"] == shown
+    if raised:
+        assert got["severity_from_model"] == model
+        assert got["severity_floor"] == ("at least high: the flow diverts (its effect, decided "
+                                         "in code from the switch's table)")
+    else:
+        assert "severity_from_model" not in got and "severity_floor" not in got
+
+
+@pytest.mark.parametrize("cls,floor", [("lifts", "high"), ("shadows", "high"),
+                                       ("diverts", "high"), ("drops", "high"),
+                                       ("forwards", None), ("unknown", None), (None, None)])
+def test_each_effect_s_floor(cls, floor):
+    det = {"effect": {"class": cls}} if cls else {}
+    assert CL.severity_floor(det).get("severity") == floor
+    low = {"threat_detected": True, "severity": "low"}
+    assert CL.apply_floor(low, det)["severity"] == (floor or "low")
+    assert CL.apply_floor(dict(low, threat_detected=False), det)["severity"] == "low", \
+        "no threat found: left as the model said"
+
+
 def test_a_rate_limit_s_rate_and_unit_are_kept(world):
     keep_pack(FLOOD)
     port = FLOOD["expect"]["cites_any"][0]

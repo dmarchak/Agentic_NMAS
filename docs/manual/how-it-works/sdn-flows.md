@@ -176,7 +176,10 @@ Traffic of the flow that only the table-miss would take is said to be the contro
 decide. A Mercury flow it displaced goes into the evidence as a piece of its own, with its own id
 (`intent:<connection>:<switch>:<cookie>`), what it was (its cookie, match, actions and timeouts)
 and the response that installed it, so the model can cite it; the controller's flows the effect
-names are sent beside the unauthorised flow. How severe it is stays the model's to say.
+names are sent beside the unauthorised flow. How severe it is is the model's to say, above a
+floor the effect sets in code: a flow that lifts, shadows, diverts or drops is at least **high**.
+A lower rating is raised, and the classification shows the model's own rating beside it and
+why; forwards and unknown set no floor.
 
 1. `pack`: the detection's evidence pack, as kept when it fired, its hash checked. A pack that
    changed since, or none kept, is refused and nothing is sent.

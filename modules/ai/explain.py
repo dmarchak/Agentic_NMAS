@@ -150,7 +150,10 @@ class ExplanationV3(StrictModel):
 #: Each prompt version's answer schema: v1 to v3 were written for `Explanation`, v4 for
 #: `ExplanationV2`, so a replay asking v1 asks it as it was.
 SCHEMA_OF = {1: Explanation, 2: Explanation, 3: Explanation, 4: ExplanationV2,
-             5: ExplanationV2, 6: ExplanationV3}
+             5: ExplanationV2, 6: ExplanationV3, 7: ExplanationV2}
+#: The versions built on the network context (the context budget rule, the needs round): v6.
+#: A set, never "6 and later": v7 is v4's request with one rule more (C2038).
+NETWORK_CONTEXT_VERSIONS = frozenset({6})
 #: Candidate prompts, asked only by a replay (`nmas-pack-replay --prompt N`) until proved.
 #: v5 adds general Analyst guidance ("when symptoms appear on several devices in the same
 #: window, consider a common cause beneath them early"; the operator, 2026-10-26); it stays
@@ -158,7 +161,9 @@ SCHEMA_OF = {1: Explanation, 2: Explanation, 3: Explanation, 4: ExplanationV2,
 #: the coverage header's line (say when an answer rests on a layer not collected), the pack's
 #: endpoints (C1778), the needs round (C1780), and a pack section rebuilt afterwards never
 #: read as observed at the time (alert history, C1808); adopted only by the operator's bar.
-CANDIDATES = (("explain", 5), ("explain", 6))
+#: v7 is v4 with one rule (C2038, the operator's choice of 2026-10-28): every device an answer
+#: names is cited, as the check (C1897) requires; the check stays as strict.
+CANDIDATES = (("explain", 5), ("explain", 6), ("explain", 7))
 #: A checked piece's states that were read (pack_format: only ok and empty are evidence).
 READ_STATES = ("ok", "empty")
 
@@ -790,7 +795,7 @@ def explain_pack(pack: dict, *, actor: str, trigger: dict, send=None, today: str
     subject = {"kind": "alert", "id": pack_id, "rule": pack.get("rule") or "",
                "devices": [pack["device"]] if pack.get("device") else []}
     kept = {}
-    if int(prompt[1]) >= 6:
+    if int(prompt[1]) in NETWORK_CONTEXT_VERSIONS:
         # The context budget rule: what is sent fits the task's bound, what was dropped said
         # in the prompt ("omitted for size") and kept with the answer.
         sel = budgeted(pack, topo, tuple(prompt), schema)
