@@ -1,0 +1,107 @@
+{
+ "about": "Mercury's flow intent records on s1 of the network SDN lab as of 2026-10-27T23:08:47Z (the Lab 8 walk): the three flows its rate_limit_source response for the scan from 192.0.2.1 installed at 23:05:23, read from the NMAS host (flow_intent.read) on 2026-10-28; each row's actor fields left out and its response cut to the fields a displaced flow's piece names (detect.displaced_piece)",
+ "rows": [
+  {
+   "actions": [
+    {
+     "meter_id": 1,
+     "type": "METER"
+    },
+    {
+     "port": 3,
+     "type": "OUTPUT"
+    }
+   ],
+   "at": "2026-10-27T23:05:23Z",
+   "connection": "lab-ryu",
+   "cookie": 5568025284282499338,
+   "cookie_hex": "0x4d45997ed20d410a",
+   "dpid": 1,
+   "hard_timeout": 600,
+   "idle_timeout": 0,
+   "installed_at": 1793142323.349597,
+   "kind": "installed",
+   "match": {
+    "eth_type": 2048,
+    "ipv4_dst": "192.0.2.3",
+    "ipv4_src": "192.0.2.1"
+   },
+   "priority": 300,
+   "response": {
+    "action": "rate_limit_source",
+    "kind": "response",
+    "operation": "sdnop-20261027T230520Z-12312caa",
+    "risk": "low"
+   },
+   "table_id": 0
+  },
+  {
+   "actions": [
+    {
+     "meter_id": 1,
+     "type": "METER"
+    },
+    {
+     "port": 2,
+     "type": "OUTPUT"
+    }
+   ],
+   "at": "2026-10-27T23:05:23Z",
+   "connection": "lab-ryu",
+   "cookie": 5567968483260799173,
+   "cookie_hex": "0x4d4565d5cd5498c5",
+   "dpid": 1,
+   "hard_timeout": 600,
+   "idle_timeout": 0,
+   "installed_at": 1793142323.349597,
+   "kind": "installed",
+   "match": {
+    "eth_type": 2048,
+    "ipv4_dst": "192.0.2.2",
+    "ipv4_src": "192.0.2.1"
+   },
+   "priority": 300,
+   "response": {
+    "action": "rate_limit_source",
+    "kind": "response",
+    "operation": "sdnop-20261027T230520Z-12312caa",
+    "risk": "low"
+   },
+   "table_id": 0
+  },
+  {
+   "actions": [
+    {
+     "meter_id": 1,
+     "type": "METER"
+    },
+    {
+     "port": 3,
+     "type": "OUTPUT"
+    }
+   ],
+   "at": "2026-10-27T23:05:23Z",
+   "connection": "lab-ryu",
+   "cookie": 5567856636317973738,
+   "cookie_hex": "0x4d45001c6808bcea",
+   "dpid": 1,
+   "hard_timeout": 600,
+   "idle_timeout": 0,
+   "installed_at": 1793142323.349597,
+   "kind": "installed",
+   "match": {
+    "eth_type": 2048,
+    "ipv4_dst": "192.0.2.4",
+    "ipv4_src": "192.0.2.1"
+   },
+   "priority": 300,
+   "response": {
+    "action": "rate_limit_source",
+    "kind": "response",
+    "operation": "sdnop-20261027T230520Z-12312caa",
+    "risk": "low"
+   },
+   "table_id": 0
+  }
+ ]
+}

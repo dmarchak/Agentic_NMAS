@@ -8,7 +8,8 @@ provider. No provider is called, no switch is touched.
   coverage by the pack's ``sdn:<n>`` references, which were sent beside the pieces' own ids but
   never accepted. Now every id in the request is one the check accepts and every id the check
   accepts is in the request, and no pack reference is sent; an answer citing the walk's three
-  pieces passes. The same holds for every recorded and held-out case built by the pack builder.
+  pieces passes. The same holds for every recorded, held-out and walk case built by the pack
+  builder.
 - **Fail-safe (C1968)**: a refused classification, or none (the feature off), keeps the rule's
   catalogue default awaiting a person, said and with the refused answer's call, and AUTO never
   acts on it. A detection that resolves leaves its response awaiting, marked "no longer active
@@ -117,7 +118,8 @@ def test_the_unauthorised_redirect_built_live_sends_exactly_its_accepted_ids(wor
     assert ids_in(data) == CL.sent_evidence(CL._sdn_section(pack))["ids"]
 
 
-@pytest.mark.parametrize("name,key", [(f, c["key"]) for f in ("recorded", "held_out")
+@pytest.mark.parametrize("name,key", [(f, c["key"]) for f in ("recorded", "held_out",
+                                                               "recorded_walk")
                                       for c in json.load(open(
                                           f"tests/fixtures/ai_cases/sdn_classify/{f}.json"))[
                                           "cases"]])

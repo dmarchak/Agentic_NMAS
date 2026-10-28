@@ -5,7 +5,9 @@ No provider is called.
 - **The files**: the recorded set holds every detection the Lab 8 run made (seven: two scans on
   both switches, the flood on both, the unauthorised redirect) and five normal-traffic cases
   (threat_detected false); the held-out set is twelve more, IPv6 twins among them; both on the
-  task's pinned model, and every expectation borne out by its own evidence (`--check`).
+  task's pinned model, and every expectation borne out by its own evidence (`--check`); the
+  walk's set (recorded_walk, E3) is held to the same, its own count and rebuild checked in
+  tests/test_sdn_classify_walk_cases.py.
 - **The judge**: an answer each case allows, put through the real check, passes; a different
   action, source, flow, a citation the detection does not rest on, or an answer the check
   refused, each misses, named.
@@ -29,7 +31,10 @@ from tests.test_sdn_connections import networks  # noqa: F401 - the fixture
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DIR = os.path.join("tests", "fixtures", "ai_cases", "sdn_classify")
-FILES = ("recorded", "held_out")
+#: The walk's set (recorded_walk, E3) is checked with the others: its pin, prompt and
+#: expectations against its evidence, and an answer each case allows passing the real check
+#: and the judge; what the code builds of it is tests/test_sdn_classify_walk_cases.py's.
+FILES = ("recorded", "held_out", "recorded_walk")
 
 
 def load(name):
@@ -303,7 +308,7 @@ def test_a_scan_case_allows_either_action_that_stops_a_scan():
     """C1988 (the operator's order: no rule-to-action mapping): a scan case with a threat
     allows rate_limit_source or drop_source, as a flood case does; the network's policy,
     through Mercury's check, decides which may pass."""
-    for name in ("recorded", "held_out"):
+    for name in FILES:
         scans = [c for c in load(name)["cases"] if c["detection"]["rule"] == "scan"
                  and c["expect"]["action_id"] != [CL.NO_ACTION]]
         assert scans, name
