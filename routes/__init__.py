@@ -62,6 +62,13 @@ def register_blueprints(app) -> list:
         return controls.control(name)
     app.jinja_env.globals["ai_control"] = ai_control
 
+    # Was this right? under every AI answer (PHASE8_PLAN 16.11 item 1): `ai_feedback(call_id)`
+    # is what the control draws for the viewer (modules/ai/feedback.control).
+    def ai_feedback(call_id):
+        from modules.ai import feedback
+        return feedback.control(call_id)
+    app.jinja_env.globals["ai_feedback"] = ai_feedback
+
     # A Content-Security-Policy on every HTML page (C88 (c)): the belt to
     # escaping's braces, bounding where injected script can send data and
     # what it can load; it cannot stop inline script running.
@@ -107,6 +114,7 @@ def register_blueprints(app) -> list:
     from routes.console_servers_v2 import bp as console_servers_v2_bp
     from routes.oob_onboard_v2 import bp as oob_onboard_v2_bp
     from routes.sdn_v2 import bp as sdn_v2_bp
+    from routes.ai_feedback_v2 import bp as ai_feedback_v2_bp
 
     for bp in (integrations_bp, identity_bp,
                remote_bp,
@@ -117,7 +125,7 @@ def register_blueprints(app) -> list:
                remote_v2_bp, network_v2_bp, netbox_v2_bp, onboard_v2_bp, adopt_v2_bp,
                bulk_intent_v2_bp, credential_profiles_v2_bp, topology_v2_bp, logs_v2_bp,
                dhcp_v2_bp, console_ztp_v2_bp, console_servers_v2_bp, oob_onboard_v2_bp,
-               sdn_v2_bp):
+               sdn_v2_bp, ai_feedback_v2_bp):
         try:
             app.register_blueprint(bp)
             registered.append(bp.name)

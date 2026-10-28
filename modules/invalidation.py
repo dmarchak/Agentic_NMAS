@@ -93,6 +93,9 @@ VOCABULARY = {
                "(modules/reveal_audit.py); History's timeline draws every kind (C818, C837)",
     "ai_calls": "the record of AI calls (modules/ai/calls.py): each call, its verdict and its "
                 "cost; History's timeline draws it (Phase 8)",
+    "ai_feedback": "what people said of AI answers (Was this right?) and the review of each one "
+                   "said wrong (modules/ai/feedback.py): the control under an answer and "
+                   "Settings › Installation › AI's Answers said wrong draw it",
     "job_health": "job-health rows, as the job-health reader last stored them",
     "alerts": "Grafana's alert rules and instances, as the grafana-alerts reader last stored them",
     "dashboards": "Grafana's dashboards and their models, as the grafana-dashboards reader last stored them",
@@ -431,6 +434,9 @@ DECLARED = {
     "v2.history_ask_metrics_words": ("ai_calls",),
     "v2.history_ask_logs_words": ("ai_calls",),
     "intent_v2.words": ("ai_calls",),
+    # PHASE8_PLAN 16.11 item 1: Was this right? and its review keep a verdict or a review.
+    "ai_feedback_v2.say": ("ai_feedback",),
+    "ai_feedback_v2.review": ("ai_feedback",),
     "settings_v2.install_ai_allow": ("settings",),
     "settings_v2.install_ai_off": ("settings",),
     # Settings › AI's background features (C1843): the switches are a setting.

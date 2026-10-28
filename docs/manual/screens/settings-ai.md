@@ -44,6 +44,17 @@ feature on with its spend and **Turn off**, the same action as here
 If the record of AI calls cannot be read, the section says so, each feature's spend is
 unknown, and the gateway refuses every background call until it can be read.
 
+## Answers said wrong {#answers-said-wrong}
+
+The last card reviews every **No** a person gave under an AI answer (**Was this right?**). It
+leads with the counts (to review, accepted as case drafts, dismissed, said right); filter by
+status and by feature, or search a call's id, a person or their words. Each row is collapsed to
+its feature, who, when, what was wrong and its status; open it to read the call, the answer as
+received (masked), what was wrong and what others said of the same call, then **Accept into a
+case draft…** or **Dismiss…**. Nothing here calls a model or changes an answer or a check.
+
+What each action does, step by step: [Was this right? and the review](ai-feedback#review).
+
 ## Not here yet {#not-here-yet}
 
 The board for this tab draws more than is built. Still to come: the master switch, key and day

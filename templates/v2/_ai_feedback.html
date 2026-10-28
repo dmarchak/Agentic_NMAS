@@ -1,0 +1,45 @@
+{%- from "v2/_macros.html" import badge, how, stamp -%}
+{#- Was this right? under one AI answer (PHASE8_PLAN 16.11 item 1; board FB,
+    `AiFeedback.dc.html`): Yes, or No… opening a short form in place. *fb* is
+    `ai_feedback(call_id)` (modules/ai/feedback.control): the viewer's own verdict when they
+    gave one (drawn in place of the buttons), why they cannot record (not a verified person),
+    and why the store cannot be read. *fb_refused* is a press's refusal, drawn in place with the
+    control kept. Nothing here calls a model. -#}
+{%- set fid = fb.call_id %}
+<div class="ai-fb" id="ai-fb-{{ fid }}" data-call="{{ fid }}">
+{%- if fb.mine %}
+  {%- set m = fb.mine %}
+  {%- if m.verdict == 'yes' %}{{ badge('you said right', 'ok') }}
+  {%- else %}{{ badge('you said wrong', 'warn') }} <span class="small ai-fb-said">{{ m.kind_words }}: “{{ m.words }}”</span>{% endif %}
+  <span class="faint small" title="Recorded as {{ m.actor }} against call {{ m.call_id }}">{{ stamp(m.at) }}</span>
+  {%- if m.verdict == 'no' %}<span class="faint small"> · a candidate case, <a href="{{ url_for('settings_v2.installation', tab='ai') }}#ai-feedback">to review in Settings › AI</a></span>{% endif %}
+  {{- how('ai-feedback', 'answer', compact=True, op='Was this right?') }}
+{%- else %}
+  <span class="ai-fb-q">Was this right?</span>
+  <form class="op-act" method="post" action="{{ url_for('ai_feedback_v2.say', call_id=fid) }}" hx-post="{{ url_for('ai_feedback_v2.say', call_id=fid) }}" hx-target="#ai-fb-{{ fid }}" hx-swap="outerHTML">
+    <input type="hidden" name="verdict" value="yes">
+    <button type="submit" class="btn btn-small" data-op="ai-feedback" hx-disabled-elt="this"{% if fb.why %} disabled aria-disabled="true"{% else %}{{ gate('configure') }}{% endif %} title="Recorded as you against call {{ fid }}; the answer, its checks and the caps are unchanged"><span class="op-idle">Yes</span><span class="op-busy">Recording…</span></button>{{ how('ai-feedback', 'answer', compact=True, op='Was this right?') }}
+  </form>
+  {%- if fb.why %}
+  <button type="button" class="btn btn-small" disabled aria-disabled="true">No…</button>
+  {%- else %}
+  <details class="ai-fb-no" data-keep="ai-fb-no-{{ fid }}">
+    <summary class="btn btn-small">No…</summary>
+    <form class="ai-fb-form" method="post" action="{{ url_for('ai_feedback_v2.say', call_id=fid) }}" hx-post="{{ url_for('ai_feedback_v2.say', call_id=fid) }}" hx-target="#ai-fb-{{ fid }}" hx-swap="outerHTML" aria-label="What was wrong">
+      <input type="hidden" name="verdict" value="no">
+      <fieldset><legend>What was wrong?</legend>
+        {%- for key, words in fb.kinds.items() %}
+        <label><input type="radio" name="why" value="{{ key }}"{% if loop.first %} checked{% endif %}> {{ words | capitalize }}</label>
+        {%- endfor %}
+      </fieldset>
+      <label for="ai-fb-w-{{ fid }}" class="small">In a sentence: what the right answer would have said</label>
+      <textarea id="ai-fb-w-{{ fid }}" name="words" maxlength="{{ fb.max_words }}" required></textarea>
+      <span class="op-act"><button type="submit" class="btn btn-small btn-primary" data-op="ai-feedback" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Record as wrong</span><span class="op-busy">Recording…</span></button>{{ how('ai-feedback', 'answer', compact=True, op='Was this right?') }}<span class="faint small">One answer per person per call. A reviewer sees it with the call.</span></span>
+    </form>
+  </details>
+  {%- endif %}
+  {%- if fb.why %}<span class="faint small ai-fb-why">{{ fb.why | capitalize }}.</span>{% endif %}
+{%- endif %}
+{%- if fb.error %}<p class="notice notice-danger small" role="alert"><strong>Couldn't record:</strong> {{ fb.error }}. Nothing was recorded.</p>{% endif %}
+{%- if fb_refused is defined and fb_refused %}<p class="notice notice-warn small" role="alert"><strong>Not recorded:</strong> {{ fb_refused }}.</p>{% endif %}
+</div>

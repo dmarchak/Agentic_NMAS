@@ -12,7 +12,14 @@ a day cap of $8.00 against the installation's $1.50), on tests/test_settings_ai_
 The states the shots do not draw (stopped by a cap, approval ended, a moved estimate, Turn
 off's and Change caps' answers) are compared by the templates and that file's tests.
 Templates compared: templates/v2/_settings_ai.html, templates/v2/_settings_ai_bg.html, templates/v2/_settings_ai_on.html, templates/v2/_settings_ai_caps.html
-Templates sha256: `5fdbced7cfbf8530f9ae1db626f5c64c518f300c4d0b69b0614ec8633fa0f118`
+Templates sha256: `c74afd89b38886c5c31c9ba9d2d926cf5731ecf7a38e3d06120a0c6ed751b59a`
+
+**Compared again 2026-10-28 (PHASE8_PLAN 16.11 item 1, board FB):** `_settings_ai.html`
+includes the card Answers said wrong (`_ai_feedback_review.html`) below Background features, as
+board FB draws it. The card is compared in its own record, docs/fidelity/ai-feedback.md, from
+`tests/test_board_shots.py::test_ai_feedback` (which shoots this tab); the tab's other regions
+are unchanged in those shots. Templates sha256 before:
+`5fdbced7cfbf8530f9ae1db626f5c64c518f300c4d0b69b0614ec8633fa0f118`.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).

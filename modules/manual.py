@@ -99,6 +99,8 @@ PAGES = (
      "how-it-works/installation-settings.md"),
     ("ai-background", "Turn a background AI feature on or off for a network", H,
      "how-it-works/ai-background.md"),
+    ("ai-feedback", "Was this right? on an AI answer, and the review of answers said wrong", H,
+     "how-it-works/ai-feedback.md"),
     ("drift", "Drift", "Concepts", "concepts/drift.md"),
     ("baselines", "How a baseline is earned", "Concepts", "concepts/baselines.md"),
     ("merge-and-mode-b", "Merge-only, and Mode B", "Concepts", "concepts/merge-and-mode-b.md"),
@@ -226,6 +228,8 @@ OPERATIONS = {
     "console-server-rekey": ("modules.nsot.console_rekey", "STEPS"),
     # Settings › AI (board AI3b, C1843): turning a background AI feature on for a network.
     "ai-background": ("modules.ai.settings_view", "TURN_ON_STEPS"),
+    # PHASE8_PLAN 16.11 item 1 (board FB): Was this right? under every AI answer, and its review.
+    "ai-feedback": ("modules.ai.feedback", "STEPS"),
     # C1909: both ends of a link deployed as one change, on the deploy page.
     "paired-deploy": ("modules.nsot.paired_deploy", "STEPS"),
 }

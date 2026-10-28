@@ -183,6 +183,13 @@ under you: while a card you opened is open, or while Explain is being answered, 
 the card says **Paused while you work** with **Show it now**. If the reader has not read
 Grafana, or the pack record cannot be read, the tab says so instead of listing nothing.
 
+{{product}}'s own SDN detections (a scan, a flood or an unauthorised flow on a controller's
+switch) are listed here too, under their own source, **SDN detection**, with when it last judged;
+if its state cannot be read, the tab says so and lists none of them. Their cards name the
+**switch** (its DPID and controller connection) instead of a device, and their packs draw the
+flows, ports and meters the detection rests on in words (see
+[An SDN detection's pack](alert-evidence#sdn)).
+
 The tab has two views, **Firing** (above) and **History**: the alerts that fired and resolved,
 from {{product}}'s alert history, every time Grafana's own (see
 [Alert history: past alerts and their evidence](alert-history)). History leads with a summary

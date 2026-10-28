@@ -1,0 +1,40 @@
+{%- from "v2/_macros.html" import how -%}
+{#- Answers said wrong (PHASE8_PLAN 16.11 item 1; board FB, section 3): the review of the Nos on
+    AI answers, on Settings › Installation › AI. *r* is `feedback.view(...)`: the counts by status
+    first, the filter (status, feature, a search), then the rows newest first, each collapsed;
+    a row's call and its draft are read only when it is opened (`ai_feedback_v2.row`). Built for
+    many: `feedback.PAGE` rows, then Older…. Given as *fbr* (Settings' own *r* is another
+    card's). -#}
+{%- set r = fbr %}
+{%- set here = url_for('ai_feedback_v2.card') %}
+{%- macro go(status, older=0) -%}{{ here }}?status={{ status }}&amp;feature={{ r.feature }}&amp;q={{ r.q | urlencode }}{% if older %}&amp;older={{ older }}{% endif %}{%- endmacro %}
+<section class="card set-card ai-fb-review" id="ai-feedback" aria-labelledby="ai-fb-h" hx-get="{{ go(r.status, r.older) }}" hx-trigger="nmas:ai_feedback from:body" hx-swap="outerHTML">
+  <div class="card-head"><h2 id="ai-fb-h">Answers said wrong</h2>{{ how('ai-feedback', 'review', op='the review') }}</div>
+  <p class="muted small ai-lead">Each No on an AI answer is a candidate recorded case. A reviewer (a verified person; every verified person is an admin until Mercury holds roles) accepts it into a case draft, or dismisses it with a reason. Stricter only: an accepted draft becomes one more case the feature must pass once a maintainer writes its expected answer; nothing here changes an answer, a check, the caps or a case already recorded. A blind held-out set is never drawn from these.</p>
+  {%- if r.state == 'unreadable' %}
+  <p class="notice notice-danger" role="alert"><strong>Couldn't read the answers said right or wrong:</strong> {{ r.error }}.</p>
+  {%- else %}
+  <p class="ai-fb-counts"><strong>{{ r.counts.to_review }} to review</strong> · {{ r.counts.accepted }} accepted as case drafts · {{ r.counts.dismissed }} dismissed · {{ r.counts.right }} said right <span class="faint small">· of {{ r.judged }} answer{{ '' if r.judged == 1 else 's' }} judged, every feature, newest first</span></p>
+  <form class="ai-fb-filter" method="get" action="{{ here }}" hx-get="{{ here }}" hx-target="#ai-feedback" hx-swap="outerHTML" aria-label="Filter the answers said wrong">
+    {%- for key, words in r.statuses.items() %}
+    <a class="chip-link{{ ' on' if r.status == key }}" href="{{ go(key) }}" hx-get="{{ go(key) }}" hx-target="#ai-feedback" hx-swap="outerHTML" aria-pressed="{{ 'true' if r.status == key else 'false' }}">{{ words }} {{ r.counts[key] }}</a>
+    {%- endfor %}
+    <input type="hidden" name="status" value="{{ r.status }}">
+    <label for="ai-fb-feature" class="sr-only">Feature</label>
+    <select id="ai-fb-feature" name="feature"><option value=""{% if not r.feature %} selected{% endif %}>Every feature</option>{% for key, words in r.features.items() %}<option value="{{ key }}"{% if r.feature == key %} selected{% endif %}>{{ words }}</option>{% endfor %}</select>
+    <label for="ai-fb-q" class="sr-only">Search</label>
+    <input id="ai-fb-q" type="text" name="q" value="{{ r.q }}" placeholder="Call id, person or words" maxlength="100">
+    <button type="submit" class="btn btn-small">Show</button>
+  </form>
+  <div class="ai-fb-rows">
+    {%- for v in r.rows %}{% include "v2/_ai_feedback_row.html" %}{% endfor %}
+  </div>
+  {%- if not r.judged %}
+  <p class="small faint ai-fb-foot">No answer has been said wrong.</p>
+  {%- elif not r.matched %}
+  <p class="small faint ai-fb-foot">None {% if r.status in r.statuses %}is {{ r.statuses[r.status] | lower }}{% else %}matches{% endif %}{% if r.feature or r.q %} with this filter{% endif %}.</p>
+  {%- else %}
+  <p class="small faint ai-fb-foot">Showing {{ r.older + 1 }} to {{ r.older + r.rows | length }} of {{ r.matched }}{% if r.status in r.statuses %} {{ r.statuses[r.status] | lower }}{% endif %}.{% if r.next %} <a href="{{ go(r.status, r.next) }}" hx-get="{{ go(r.status, r.next) }}" hx-target="#ai-feedback" hx-swap="outerHTML">Older…</a>{% endif %}</p>
+  {%- endif %}
+  {%- endif %}
+</section>

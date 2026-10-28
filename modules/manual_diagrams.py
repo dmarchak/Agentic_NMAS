@@ -1531,6 +1531,31 @@ def ai_background():
     ])
 
 
+def ai_feedback():
+    return svg(470, (
+        "Was this right? under an AI answer. You press Yes, or No with what was wrong and a "
+        "sentence. Mercury checks you are a verified person, reads the call from the record of "
+        "AI calls, refuses a second answer from you on the same call, and keeps your verdict "
+        "with the call's id and hashes, your words masked. A No waits on Settings, Answers said "
+        "wrong, until a reviewer accepts it into a case draft or dismisses it with a reason. No "
+        "model call is made."), [
+        lanes(20, 464, left="IN THE TOOL", right="THE RECORDS"),
+        band(20, 236, "Was this right?"),
+        person(14, 44, 186, 30, "You press Yes, or No…"), num(14, 44, 1),
+        store(232, 82, 156, 36, "The record of AI calls", "the call and its answer"),
+        arrow("read", 230, 100, 202, 100), num(14, 88, 2),
+        doc("box", 14, 84, 186, 34, "The call, read", "absent or no answer: refused"),
+        store(14, 130, 186, 34, "Once per person", "a second answer refused"), num(14, 130, 3),
+        store(14, 176, 186, 34, "Your verdict, kept", "call id, hashes, words masked"),
+        num(14, 176, 4),
+        band(276, 180, "The review"),
+        person(14, 300, 186, 30, "A reviewer opens a No"), num(14, 300, 5),
+        doc("box", 14, 340, 186, 34, "Accept into a case draft", "bound to the draft's hash"),
+        doc("box", 14, 386, 186, 34, "Or Dismiss", "with a reason"),
+        nosend(310, 420, ("no model", "call is made")),
+    ])
+
+
 def publish_remote():
     return svg(500, (
         "Publishing the record to the remote. Every commit hands itself to the push hook, which "
@@ -1690,6 +1715,7 @@ DIAGRAMS = {
     "records-database": records_database,
     "installation-settings": installation_settings,
     "ai-background": ai_background,
+    "ai-feedback": ai_feedback,
     "edit-intent": edit_intent,
     "approve-template": approve_template,
     "bring-template": bring_template,

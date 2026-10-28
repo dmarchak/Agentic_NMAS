@@ -1658,6 +1658,56 @@ def _settings_ai(client, _lab, _mp):
         mp.undo()
 
 
+def _ai_feedback(client, _lab, _mp):
+    """Was this right? and the review of answers said wrong (PHASE8_PLAN 16.11 item 1, board
+    FB): a planted call with its subject, another person's Yes on it, the walk's person's No
+    through the control, the review card, the No's row opened (its call, the others on it, the
+    draft), Accept refused on a moved draft and then accepted, and the accepted row and the
+    drafts' download; in a folder of the walk's own."""
+    import json
+    import tempfile
+
+    import pytest
+
+    from modules.ai import calls, feedback
+
+    folder = tempfile.mkdtemp(prefix="v2ctx-feedback-")
+    mp = pytest.MonkeyPatch()
+    mp.setattr(calls, "_path", lambda: os.path.join(folder, "ai_calls.jsonl"))
+    try:
+        cid = "ai-00000000000000fb"
+        assert calls.record({"id": cid, "feature": "explain", "actor": "asker@example.com",
+                             "model": "claude-sonnet-5-5", "prompt": "explain.v8",
+                             "subject": {"pack": "ep-walk", "alert": "walk"},
+                             "request": {"messages": [{"role": "user", "content": "pack"}]},
+                             "response": '{"outcome": "answer", "rationale": "walk"}',
+                             "verdict": "ok", "cost_usd": 0.04})["recorded"]
+        with open(feedback._path(), "a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"kind": "verdict", "id": "fb-other", "call_id": cid,
+                                 "task": "explain", "verdict": "yes", "why": "", "words": "",
+                                 "actor": "other@example.com", "at": "2026-10-28T10:00:00Z",
+                                 "subject": {"pack": "ep-walk"}}) + "\n")
+        hx = {"HX-Request": "true", "Accept": "text/html"}
+        r = client.post(f"/v2/ai/feedback/answer/{cid}", headers=hx,
+                        data={"verdict": "no", "why": "missed",
+                              "words": "it missed the neighbour going down first"})
+        assert r.status_code == 200 and "you said wrong" in unescape(r.get_data(as_text=True))
+        assert client.get("/v2/ai/feedback/review", headers=hx).status_code == 200
+        fb_id = next(v["id"] for v in feedback.read()["rows"]
+                     if v.get("actor") != "other@example.com")
+        page = unescape(client.get(f"/v2/ai/feedback/review/{fb_id}/open",
+                                   headers=hx).get_data(as_text=True))
+        shown = re.search(r'name="draft" value="([0-9a-f]{64})"', page).group(1)
+        assert client.post(f"/v2/ai/feedback/review/{fb_id}", headers=hx,
+                           data={"outcome": "accepted", "draft": "0" * 64}).status_code == 409
+        assert client.post(f"/v2/ai/feedback/review/{fb_id}", headers=hx,
+                           data={"outcome": "accepted", "draft": shown}).status_code == 200
+        assert client.get("/v2/ai/feedback/review?status=accepted", headers=hx).status_code == 200
+        assert client.get("/v2/ai/feedback/drafts/explain.json").status_code == 200
+    finally:
+        mp.undo()
+
+
 def _ai_spend(client, _lab, _mp):
     """The top bar's AI chip and its spend panel (boards AI1 and AI2, C1843) with spend to draw:
     a key, hosted AI allowed, a planted background feature on for Lab (and one for a network
@@ -2102,6 +2152,77 @@ def _sdn_no_topology(client, _lab, _mp):
         mp.undo()
 
 
+def _sdn_evidence(client, _lab, _mp):
+    """An SDN detection's evidence on Monitoring › Alerts (C1867): Lab's connection over Ryu
+    4.34's capture (tests/test_sdn_v2.py's `Captured`), the SDN reader run, and the detection
+    judged over the same capture (the unauthorised drop flow, its effect naming Mercury's meter
+    flow: the meter drawn as the reader read it); the Lab 8 walk's displaced flow and port
+    (tests/test_sdn_evidence_v2.py's `walk_pack`); one detection resolved, so the Earlier list
+    names its switch. The tab, its list and each pack drawn. Its stores are a folder of its own
+    and its patches undone, the connection removed, before the next provider."""
+    import json
+    import shutil
+    import tempfile
+    import time
+
+    import pytest
+
+    from modules import alert_history as H
+    from modules import evidence_pack as EP
+    from modules.sdn import closed_loop as CL
+    from modules.sdn import connections as C
+    from modules.sdn import detect as D
+    from modules.sdn import drivers
+    from tests.test_sdn_evidence_v2 import walk_pack
+    from tests.test_sdn_v2 import BASE, T0, WITH_PEER, Captured, store_read
+
+    mp = pytest.MonkeyPatch()
+    folder = tempfile.mkdtemp(prefix="nmas-v2-context-sdn-packs-")
+    real = drivers.make
+    session = {"now": Captured()}
+    try:
+        mp.setattr(EP, "_path", lambda: os.path.join(folder, "evidence_packs.jsonl"))
+        mp.setattr(D, "_path", lambda: os.path.join(folder, "sdn_detect.json"))
+        mp.setattr(H, "_path", lambda: os.path.join(folder, "alert_history.jsonl"))
+        mp.setattr(drivers, "make", lambda kind, connection, **kw: real(
+            kind, connection, **dict(kw, session=session["now"])))
+        C.save_connection("Lab", {"name": "lab-controller", "kind": "ryu", "url": BASE},
+                          actor="v2-context")
+        # The newest read stored: _sdn_operations' reads (over FakeRyu, no meter) are stamped
+        # by the wall clock, so this one is too, a minute on.
+        store_read("Lab", clock=lambda: time.time() + 60)
+
+        def judged(at, flows=None):
+            if flows is not None:
+                session["now"] = Captured(flows=flows)
+            got = CL.collect_threat_data("Lab", 1.0, sleep=lambda s: None, now=lambda: at)
+            out = D.observe("Lab", got, values=dict(D.THRESHOLDS))
+            assert out["ok"], out["error"]
+            return out
+        assert judged(T0 + 120)["fired"]
+        walk_pack("walk-unauthorised-s1", network="Lab")
+        walk_pack("walk-flood-1-s1", network="Lab")
+        r = client.get("/v2/monitoring/alerts", headers={"Accept": "text/html"})
+        assert r.status_code == 200 and "SDN detection" in r.get_data(as_text=True)
+        drawn = ""
+        for row in EP.read()["rows"]:
+            r = client.get(f"/v2/monitoring/alerts/pack/{row['id']}",
+                           headers={"HX-Request": "true", "Accept": "text/html"})
+            assert r.status_code == 200 and 'data-ref="sdn"' in r.get_data(as_text=True)
+            drawn += r.get_data(as_text=True)
+        assert "its drop band" in drawn, "meter 1 as the SDN reader read it"
+        # The unauthorised drop flow gone: its detection resolves, its pack listed as earlier.
+        flows = json.loads(next(e for e in WITH_PEER if e["path"] == "/stats/flow/1")["body"])
+        judged(T0 + 140, flows=[f for f in flows["1"] if f.get("cookie") != 0x4D45524300000001])
+        r = client.get("/v2/monitoring/alerts/list", headers={"HX-Request": "true"})
+        assert r.status_code == 200 and "Earlier" in r.get_data(as_text=True)
+        assert client.post("/v2/settings/network/Lab/sdn/lab-controller/remove").status_code \
+            == 200
+    finally:
+        mp.undo()
+        shutil.rmtree(folder, ignore_errors=True)
+
+
 #: What no followed GET reaches, each on the lab's own state: a POST's card, a script's GET,
 #: a state the lab's walk does not hold. In order: `_deploy` changes r3, so it is last.
 PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _drift,
@@ -2109,9 +2230,9 @@ PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _dr
                    _alert_evidence, _logs_builder_leftovers, _alert_history,
                    _save_no_golden, _profile_versions,
                    _no_change_window, _update_owed, _lease_release, _ip_sla_retunes, _ip_sla_unsent,
-                   _console_ztp, _console_servers, _day_cap_confirm, _settings_ai,
+                   _console_ztp, _console_servers, _day_cap_confirm, _settings_ai, _ai_feedback,
                    _ai_spend, _oob_onboard, _sdn,
-                   _sdn_no_topology,
+                   _sdn_no_topology, _sdn_evidence,
                    _deploy,
                    # After _deploy: r3's intent is then a real device's (r2's capture,
                    # parsed), which the editor's check passes; the walk's own r3 lacks a

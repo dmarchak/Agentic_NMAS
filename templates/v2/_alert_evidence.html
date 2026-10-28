@@ -13,7 +13,13 @@
     · {{ c.earlier }} earlier pack{{ '' if c.earlier == 1 else 's' }}
   </p>
   {%- for s in e.sources %}
-  {%- if s.state != 'ok' %}
+  {#- Mercury's own SDN detections (C1867) are their own source, named SDN detection, never a
+      Grafana reader: what it has found, or that its state cannot be read. -#}
+  {%- if s.store == 'sdn' and s.state != 'ok' %}
+  <div class="notice notice-warn" data-source="sdn">{{ icon('warn', 16) }}<div><strong>SDN detection could not be read.</strong> {{ s.why or 'Its state has not been read' }}. What it has found is not known, so no SDN detection is listed.</div></div>
+  {%- elif s.store == 'sdn' %}
+  <p class="limits" data-source="sdn">{{ badge('SDN detection', 'info', title="Mercury's own detection over its SDN controllers' flows and port counters, never a Grafana alert") }} Mercury's SDN detections as last judged, {{ stamp(s.value_at, note='the newest judgement this list stands on') }}: each judged from its network's collection of its controllers' flows and port counters.</p>
+  {%- elif s.state != 'ok' %}
   <div class="notice notice-warn">{{ icon('warn', 16) }}<div><strong>Grafana's alerts ({{ s.store }}) have not been read.</strong> {{ s.why or 'The reader has stored no value yet' }}. What fires there is not known, so it is not listed.</div></div>
   {%- else %}
   <p class="limits">Alerts as the <span class="mono">{{ s.store }}</span> reader stored them, {{ stamp(s.value_at, note='the reading this list stands on') }}{% if s.why %}; its newest read failed, so this is its last good value: {{ s.why }}{% endif %}.</p>
@@ -38,17 +44,17 @@
     {%- for k in g.cards %}
     {%- set p = k.pack %}
     <details class="pack-card" data-keep="pack-{{ k.key }}"{% if open_key == k.key %} open{% endif %}{% if p %} hx-get="{{ url_for('v2.monitoring_alert_pack', pack_id=p.id) }}" hx-trigger="{{ 'load' if open_key == k.key else 'toggle once' }}" hx-target="find .pack-body" hx-swap="innerHTML" data-what="the evidence pack"{% endif %}>
-      <summary><strong>{{ k.device or 'no one device' }}</strong>{% if k.network %} <span class="muted">in {{ k.network }}</span>{% endif %}
-        · {{ k.rule }}
+      <summary>{% if k.switch %}<strong>switch <span class="mono">{{ k.switch.dpid }}</span></strong> <span class="muted">on <span class="mono">{{ k.switch.connection }}</span></span>{% else %}<strong>{{ k.device or 'no one device' }}</strong>{% endif %}{% if k.network %} <span class="muted">in {{ k.network }}</span>{% endif %}
+        · {{ k.rule }}{% if k.switch %} {{ badge('SDN detection', 'info', title="Mercury's own detection over its SDN controllers' flows and port counters, never a Grafana alert") }}{% endif %}
         · since {{ stamp(k.since) }}{% if k.onset %}, onset {{ stamp(k.onset) }}{% endif %}
         {%- if k.silenced %} {{ badge('silenced in Grafana', 'muted') }}{% endif %}
-        {%- if p %} {{ badge(p.pieces ~ ' pieces', 'info', title='pack ' ~ p.id ~ ', built ' ~ p.built_at ~ ', sha256 ' ~ p.hash) }}
+        {%- if p %} {{ badge(p.pieces ~ ' pieces', 'info', title='pack ' ~ p.id ~ ', schema ' ~ p.schema ~ ', built ' ~ p.built ~ ', as of ' ~ p.built_at ~ ', sha256 ' ~ p.hash) }}
           {%- if p.not_read %} {{ badge(p.not_read|length ~ ' not read', 'warn', title='could not be read: ' ~ p.not_read|join(', ')) }}{% endif %}
           {%- if not p.intact %} {{ badge('changed since built', 'danger', title='its stored hash is not its digest now') }}{% endif %}
         {%- else %} {{ badge('pack waiting', 'warn', title='built the next time the alerts are read') }}{% endif %}
-        <span class="muted small" title="{{ k.state }}; read from {{ k.store }}">{{ k.summary_labels }}</span>
+        <span class="muted small" title="{{ k.state }}; read from {{ 'SDN detection' if k.switch else k.store }}">{{ k.summary_labels }}</span>
       </summary>
-      <div class="pack-body">{% if p %}<p class="muted small">Reading the pack for {{ p.rule }} on {{ p.device or 'no one device' }}{% if p.network %} in {{ p.network }}{% endif %}, built {{ stamp(p.built_at) }}…</p>{% else %}<p class="muted small">No pack yet: it is built the next time the alerts are read.</p>{% endif %}</div>
+      <div class="pack-body">{% if p %}<p class="muted small">Reading the pack for {{ p.rule }} on {{ ('switch ' ~ k.switch.dpid) if k.switch else (p.device or 'no one device') }}{% if p.network %} in {{ p.network }}{% endif %}, built {{ stamp(p.built_at) }}…</p>{% else %}<p class="muted small">No pack yet: it is built the next time the alerts are read.</p>{% endif %}</div>
     </details>
     {%- endfor %}
   </section>
@@ -58,8 +64,8 @@
     <summary>Earlier · {{ c.earlier }} pack{{ '' if c.earlier == 1 else 's' }} of alerts no longer firing{% if c.earlier > e.earlier|length %}, the newest {{ e.earlier|length }} drawn{% endif %}</summary>
     {%- for p in e.earlier %}
     <details class="pack-card" data-keep="pack-{{ p.id }}" hx-get="{{ url_for('v2.monitoring_alert_pack', pack_id=p.id) }}" hx-trigger="toggle once" hx-target="find .pack-body" hx-swap="innerHTML" data-what="the evidence pack">
-      <summary><strong>{{ p.device or 'no one device' }}</strong>{% if p.network %} <span class="muted">in {{ p.network }}</span>{% endif %} · {{ p.rule }}{% if p.onset %} · onset {{ stamp(p.onset) }}{% endif %} · built {{ stamp(p.built_at) }}
-        {{ badge(p.pieces ~ ' pieces', 'info', title='pack ' ~ p.id ~ ', sha256 ' ~ p.hash) }}
+      <summary>{% if p.switch %}<strong>switch <span class="mono">{{ p.switch.dpid }}</span></strong> <span class="muted">on <span class="mono">{{ p.switch.connection }}</span></span>{% else %}<strong>{{ p.device or 'no one device' }}</strong>{% endif %}{% if p.network %} <span class="muted">in {{ p.network }}</span>{% endif %} · {{ p.rule }}{% if p.onset %} · onset {{ stamp(p.onset) }}{% endif %} · built {{ stamp(p.built_at) }}
+        {{ badge(p.pieces ~ ' pieces', 'info', title='pack ' ~ p.id ~ ', schema ' ~ p.schema ~ ', built ' ~ p.built ~ ', as of ' ~ p.built_at ~ ', sha256 ' ~ p.hash) }}
         {%- if p.not_read %} {{ badge(p.not_read|length ~ ' not read', 'warn', title='could not be read: ' ~ p.not_read|join(', ')) }}{% endif %}
         {%- if not p.intact %} {{ badge('changed since built', 'danger', title='its stored hash is not its digest now') }}{% endif %}</summary>
       <div class="pack-body"><p class="muted small">Reading the pack…</p></div>

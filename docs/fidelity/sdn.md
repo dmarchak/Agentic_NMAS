@@ -31,7 +31,14 @@ Compared again 2026-10-28 ~18:0x UTC, for one attribute: the incident's "Seen al
 carries `data-keep` (C472's rule, found by test_live_details_keep in C1999's gate), so an
 open list survives a live redraw; nothing drawn moves.
 Templates compared: templates/v2/sdn.html, templates/v2/_sdn_view.html, templates/v2/_sdn_answer.html, templates/v2/_sdn_responses.html, templates/v2/_sdn_op.html, templates/v2/_sdn_flow_form.html, templates/v2/_sdn_log.html
-Templates sha256: `f5de25c7c12e37b99af4efee2874b3208d4528ebed6eb8667d7b113a68193fe8`
+Templates sha256: `799e75516fa9c3b91247ab3bbc658e2ee32bf2eb9d6ae83ccc6c7a65d8989310`
+
+**Compared again 2026-10-28 (PHASE8_PLAN 16.11 item 1, board FB):** `_sdn_responses.html`
+includes Was this right? (`_ai_feedback.html`) at the foot of the AI's classification box, a
+person's or the loop's; not under "Couldn't classify". The control is board FB's and is compared
+in its own record, docs/fidelity/ai-feedback.md; no region of this record changed, so none was
+shot again. Templates sha256 before:
+`f5de25c7c12e37b99af4efee2874b3208d4528ebed6eb8667d7b113a68193fe8`.
 
 **Compared again 2026-10-28 ~17:1x UTC for C1999** (incidents: one attack on many switches is
 one incident, one response at its ingress, the others seen also): `SdnResponses.dc.html` revised

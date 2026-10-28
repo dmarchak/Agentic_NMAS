@@ -64,5 +64,8 @@
   {#- The link to the call's own row (15.14's links both ways): its prompt as sent, the answer
       as received, its tokens and cost. -#}
   <p class="muted small explain-call"><a href="{{ url_for('v2.history_page', call=x.call_id) }}">This call in History</a> (${{ '%.4f' | format(x.cost_usd or 0) }})</p>
+  {#- Was this right? (PHASE8_PLAN 16.11 item 1, board FB): under an answer drawn, never under
+      one Mercury's check refused. -#}
+  {%- if x.ok %}{% with fb=ai_feedback(x.call_id) %}{% include "v2/_ai_feedback.html" %}{% endwith %}{% endif %}
 {%- endif %}
 </div>

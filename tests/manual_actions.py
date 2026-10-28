@@ -308,6 +308,14 @@ NOT_AN_OPERATION = {
     ("_intent_check.html", "Write the ticked lines into the document"): (
         "rewrites the editor's document (its unmodeled_ack block); the commit beside it, which "
         "carries the link, writes it"),
+    # PHASE8_PLAN 16.11 item 1 (board FB): Was this right? and the review of answers said wrong.
+    ("_ai_feedback.html", "No…"): ("opens the short form in place (or, for a viewer who cannot "
+                                   "record, is drawn disabled); its Record as wrong, which "
+                                   "carries the link, records"),
+    ("_ai_feedback_review.html", "Show"): "filters the review's rows by feature and words, a read",
+    ("_ai_feedback_review.html", "Older…"): "draws the review's next page of rows, a read",
+    ("_ai_feedback_detail.html", "Copy the draft"): ("copies the accepted case draft to the "
+                                                     "clipboard, writing nothing"),
 }
 
 

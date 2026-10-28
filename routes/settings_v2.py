@@ -73,9 +73,11 @@ def installation():
         from routes.console_servers_v2 import view as console_servers
         diag = {"cs": console_servers()}
     if tab == "ai":
-        from modules.ai import gateway, settings_view
+        from modules.ai import feedback, gateway, settings_view
         diag = {"ai": settings_view.view(request.args.get("network") or ""),
-                "hosted": gateway.hosted_allowed()}
+                "hosted": gateway.hosted_allowed(),
+                # Answers said wrong (PHASE8_PLAN 16.11 item 1, board FB): to review first.
+                "fbr": feedback.view()}
     return _page("v2/settings_installation.html", tab=tab, tabs=I.TABS, built=I.BUILT_TABS,
                  v=v, r=I.records_card() if tab == "connections" else None, cards=cards,
                  **diag)

@@ -11,13 +11,24 @@
     rebuilt afterwards and cannot be rebuilt are chips, each with its words in full below. -#}
 {%- set PW = {'rebuilt': 'rebuilt', 'missing': 'cannot be rebuilt'} -%}
 {%- set PK = {'rebuilt': 'warn', 'missing': 'muted'} -%}
+{#- An SDN detection's pack (C1867): `sdn` is evidence_pack.sdn_view's answer, {} for any other
+    pack. A number is drawn with its thousands; a match is drawn as the switch reported it,
+    every address as written (IPv4 and IPv6 alike), eth_type in hex; a reference the detection
+    cites links to its piece, and one the pack does not hold is drawn as the id it is. -#}
+{%- macro num(x) %}{{ '{:,}'.format(x) if x is number else ('not counted' if x is none else x) }}{% endmacro -%}
+{%- macro plural(k, word) %}{{ 'no' if not k else k }} {{ word }}{{ 's' if k and k != 1 }}{% endmacro -%}
+{%- macro match_words(p) %}{% for k, v in p.match|dictsort %}{{ k }}={{ '0x%04x'|format(v) if k == 'eth_type' and v is number else v }}{{ ', ' if not loop.last }}{% else %}everything{% endfor %}{% endmacro -%}
+{%- macro timeouts(p) %}{% if p.idle_timeout and p.hard_timeout %}idle {{ p.idle_timeout }} s, hard {{ p.hard_timeout }} s{% elif p.idle_timeout %}idle {{ p.idle_timeout }} s, no hard timeout{% elif p.hard_timeout %}hard {{ p.hard_timeout }} s{% else %}no timeout{% endif %}{% endmacro -%}
+{%- macro cite(i) %}{% set r = sdn.refs.get(i) %}{% if r %}<a class="pack-ref pack-cite" href="#{{ pack.id }}-{{ r.ref }}" title="{{ i }}">{{ r.ref }}</a> {{ r.what }}{% else %}<span class="mono small" title="not kept in this pack">{{ i }}</span>{% endif %}{% endmacro -%}
+{%- macro cited(p) %}{% if p.id in sdn.cited %} {{ badge('cited by the detection', 'muted') }}{% endif %}{% endmacro -%}
 {%- if not pack %}
 <p class="refusal">Couldn't load: {% if state == 'unreadable' %}the evidence packs cannot be read ({{ error }}){% else %}no evidence pack {{ pid }} is kept{% endif %}.</p>
 {%- else %}
 <div class="pack" data-pack="{{ pack.id }}">
   <p class="pack-meta">{% if pack.provenance == 'rebuilt' %}{{ badge('rebuilt afterwards', 'warn', title='built after the alert, as of its time: each section says whether it was captured, rebuilt or cannot be rebuilt') }} {% elif not pack.provenance %}<span class="pack-prov" title="built before each section was marked (schema {{ pack.schema }})">parts not marked</span> {% endif %}Built {{ stamp(pack.built_at) }}{% if pack.replayed_at %} (as of then; {{ 'rebuilt' if pack.episode else 'replayed' }} {{ stamp(pack.replayed_at) }}){% endif %}: {{ pack.trigger }}.{% if pack.resolved_at %} Resolved {{ stamp(pack.resolved_at, note="Grafana's time") }}.{% endif %}
-    {{ pack.rule }} on {{ pack.device or 'no one device' }}{% if pack.network %} in {{ pack.network }}{% endif %}{% if pack.onset %}, onset {{ stamp(pack.onset) }}{% endif %}.
-    <span class="mono small" title="sha256 over the pack's canonical JSON; schema {{ pack.schema }}; alert {{ pack.alert_key }}; read from {{ pack.store }}">{{ pack.hash[:12] }}</span>
+    {{ pack.rule }} on {% if sdn %}switch <span class="mono">{{ sdn.switch.dpid }}</span>{% if sdn.switch.name %} ({{ sdn.switch.name }}){% endif %} on {{ sdn.switch.connection }}{% else %}{{ pack.device or 'no one device' }}{% endif %}{% if pack.network %} in {{ pack.network }}{% endif %}{% if pack.onset %}, onset {{ stamp(pack.onset) }}{% endif %}.
+    {%- if sdn %} {{ badge('SDN detection', 'info', title="Mercury's own detection over its SDN controllers' flows and port counters, never a Grafana alert") }}{% endif %}
+    <span class="mono small" title="sha256 over the pack's canonical JSON; schema {{ pack.schema }}; alert {{ pack.alert_key }}; read from {{ 'SDN detection' if sdn else pack.store }}">{{ pack.hash[:12] }}</span>
     {%- if not intact %} {{ badge('its hash does not match: changed since it was built', 'danger') }}{% endif %}</p>
   {#- The packs of one alert (C1862): a pack built again names the one it was built from, which
       stays kept; the one it was built from names the newer, which History and Explain read;
@@ -49,18 +60,23 @@
       {%- if s.provenance == 'captured' %} <span class="pack-prov" data-provenance="captured" title="{{ s.provenance_words }}">captured at the time</span>
       {%- elif s.provenance %} {{ badge(PW.get(s.provenance, s.provenance), PK.get(s.provenance, 'muted'), title=s.provenance_words) }}{% endif %}</h3>
     {%- if s.provenance and s.provenance != 'captured' %}<p class="pack-source" data-provenance="{{ s.provenance }}">{{ s.provenance_words[:1]|upper }}{{ s.provenance_words[1:] }}{% if s.as_of_commit %} (the Intent check at <span class="mono">{{ s.as_of_commit }}</span>){% endif %}.</p>{% endif %}
-    <p class="pack-source">{{ s.source or s.name }}{% if s.read_at %}, read {{ stamp(s.read_at) }}{% endif %}{% if s.why %}: {{ s.why }}{% endif %}</p>
+    <p class="pack-source">{{ sdn.alert_source if sdn and s.name == 'alert' else (s.source or s.name) }}{% if s.read_at %}, read {{ stamp(s.read_at) }}{% endif %}{% if s.why %}: {{ s.why }}{% endif %}</p>
+    {%- if s.name == 'sdn' and sdn %}
+    <p class="pack-source pack-switch">Switch <span class="mono">{{ sdn.switch.dpid }}</span>{% if sdn.switch.name %}, <strong>{{ sdn.switch.name }}</strong> <span class="muted small" title="as the SDN reader read it {{ sdn.reader.value_at }}">(the name it reports, as the SDN reader last read it)</span>{% endif %}, on controller <span class="mono">{{ sdn.switch.connection }}</span>{% if not sdn.switch.name %}, <span class="muted">its name not known: {{ sdn.switch.why }}</span>{% endif %}.</p>
+    {%- set c = s.counts or {} %}
+    <p class="pack-source">Kept: {{ plural(c.flows, 'flow') }}{% if c.displaced_flows is defined %}, {{ plural(c.displaced_flows, 'displaced flow') }}{% endif %}, {{ plural(c.ports, 'port') }}, {{ plural(c.earlier_sightings, 'earlier sighting') }}{% if c.earlier_sightings_sent is defined %} ({{ c.earlier_sightings_sent }} kept, the newest){% endif %}{% if s.total and s.total > (c.flows or 0) %}; {{ c.flows }} of {{ s.total }} flows kept, the detection's own first by packets{% endif %}.{% if not c.flows %} <strong>No flow is kept:</strong> the detection cites none.{% endif %}</p>
+    {%- endif %}
     {%- if s.window %}<p class="pack-source">From {{ stamp(s.window.from, s.window.from[11:16] ~ ' UTC') }} to {{ stamp(s.window.to, s.window.to[11:16] ~ ' UTC') }} ({{ s.window.words }}){% if s.window.query %}, asked as <code>{{ s.window.query }}</code>{% endif %}</p>{% endif %}
-    {%- if s.subset %}<p class="pack-source">{{ s.pieces|length }} of {{ s.total }} kept{% if s.name in ('logs', 'concurrent') %}, those nearest the onset{% endif %}.</p>{% endif %}
+    {%- if s.subset and s.name != 'sdn' %}<p class="pack-source">{{ s.pieces|length }} of {{ s.total }} kept{% if s.name in ('logs', 'concurrent') %}, those nearest the onset{% endif %}.</p>{% endif %}
     {%- if s.unknown_state %}<p class="pack-source">{{ s.unknown_state }} other alert{{ 's' if s.unknown_state != 1 else '' }} begun before the window with no resolve recorded {{ 'are' if s.unknown_state != 1 else 'is' }} not listed: {{ 'their' if s.unknown_state != 1 else 'its' }} state in the window is not known.</p>{% endif %}
     {%- if s.errors %}<p class="warn-text small">Also could not be read: {{ s.errors|join('; ') }}</p>{% endif %}
-    {%- if s.counts %}<p class="pack-source">{% for k, n in s.counts|dictsort %}{{ n }} {{ k|replace('_', ' ') }}{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
+    {%- if s.counts and s.name != 'sdn' %}<p class="pack-source">{% for k, n in s.counts|dictsort %}{{ n }} {{ k|replace('_', ' ') }}{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
     {%- if s.name == 'observed' and s.as_of %}<p class="pack-source" title="around {{ s.subject or 'the device' }}; network model {{ s.model or 'not read' }}">Captured {{ s.as_of_words }}{% if s.observed_at %}: the Topology reader's read of {{ stamp(s.observed_at) }}{% endif %}{% if s.hops %}, the items touching a device within {{ s.hops }} hops{% endif %}. Explain overlays this capture, never a later read.</p>{% endif %}
     {%- if s.name == 'endpoints' and s.as_of %}<p class="pack-source">Captured as of {{ stamp(s.as_of) }}, the alert's time{% if s.endpoints_read_at %}, from the endpoint reader's read of {{ stamp(s.endpoints_read_at) }}{% endif %}: who was attached to the device and those one hop from it. Explain reads this capture, never a later read.</p>{% endif %}
     {%- if s.name == 'health' and s.as_of %}<p class="pack-source" title="{{ s.questions }} questions, asked {{ s.asked_at }}; the discards rate one point every {{ s.window.step_s }} s{% if s.devices_from %}; {{ s.devices_from }}{% endif %}">The alert's device and {{ s.devices_kept - 1 }} of the {{ s.devices_total - 1 }} devices within two hops, nearest first{% if s.devices_kept < s.devices_total %} (the rest not read){% endif %}{% if 'as it is now' in (s.devices_from or '') %} ({{ s.devices_from }}){% endif %}; each figure summarised over the window, {{ s.window.basis }}, evaluated at {{ stamp(s.as_of) }}{% if s.window.bounded %} ({{ s.window.bounded }}){% endif %}{% if s.figures %}: {% for k, w in s.figures|dictsort %}{{ k }}, {{ w }}{{ '; ' if not loop.last }}{% endfor %}{% endif %}.</p>{% endif %}
     {%- if s.name == 'observer' and s.as_of %}<p class="pack-source" title="{{ s.questions }} questions, asked {{ s.asked_at }}; {{ s.timeouts_from }}">The scrape jobs polling the alert's device and the devices within two hops{% if s.jobs_total > s.jobs_most %} ({{ s.jobs_most }} of {{ s.jobs_total }} read){% endif %}, each across all its targets; the SNMP exporter; the host Prometheus runs on; each over the window, evaluated at {{ stamp(s.as_of) }}.</p>{% endif %}
     {%- if s.pieces %}
-    <ul class="pack-pieces">
+    <ul class="pack-pieces{{ ' pack-sdn' if s.name == 'sdn' }}">
       {%- for p in s.pieces %}
       <li data-ref="{{ p.ref }}" id="{{ pack.id }}-{{ p.ref }}"><span class="pack-ref">{{ p.ref }}</span>
         {%- if s.name == 'alert' %}
@@ -100,12 +116,63 @@
         {%- elif p.what == 'host:memory' %}<strong>Collector's host</strong> memory available: min {{ p.min }}% at {{ stamp(p.low_at, p.low_at[11:19] ~ ' UTC') }}, avg {{ p.avg }}%, max {{ p.max }}% <span class="muted small">({{ p.instance }})</span>
         {%- else %}<strong>Collector's host</strong> {{ 'CPU busy' if p.what == 'host:cpu' else 'load (1 min)' }}: min {{ p.min }}{{ '%' if p.unit == 'percent' }}, avg {{ p.avg }}{{ '%' if p.unit == 'percent' }}, max {{ p.max }}{{ '%' if p.unit == 'percent' }} at {{ stamp(p.peak_at, p.peak_at[11:19] ~ ' UTC') }}{% if p.usual is not none %}; usual {{ p.usual }}{{ '%' if p.unit == 'percent' }}{% endif %}{% if p.cpus %} on {{ p.cpus }} CPUs{% endif %} <span class="muted small">({{ p.instance }})</span>
         {%- endif %} <span class="muted small">read {{ stamp(p.read_at) }}</span>
+        {%- elif s.name == 'sdn' and sdn %}
+        {#- C1867: each piece in words. The detection first, then what it rests on as collected:
+            ports (their counters over the sample), flows (as installed), Mercury's flows it
+            displaced (as recorded), earlier sightings, and the switch's flow granularity. -#}
+        {%- if p.kind == 'detection' %}{% set m = p.measurement or {} %}{% set t = p.threshold or {} %}
+        <strong>{{ p.title }}</strong> {{ badge('confidence ' ~ p.confidence, 'muted', title="The detection rule's confidence, not the threat's severity") }}: {{ p.words }}.
+        <span class="pack-line muted">Measured: {{ m.what }}, {{ num(m.value) }}{% if m.unit %} {{ m.unit }}{% endif %}{% if m.window_s %} in {{ m.window_s }} s{% endif %}{% if m.sample_s %}, over a {{ m.sample_s }} s sample{% endif %}{% if m.held_s is not none and m.held_s is defined %}, held {{ m.held_s }} s{% endif %}{% if m.since %} since {{ stamp(m.since, m.since[11:19] ~ ' UTC') }}{% endif %}{% if m.in_this_collection is defined %}, {{ m.in_this_collection }} of them in this collection{% endif %}{% if m.ports %}: {{ m.ports[:20]|join(', ') }}{% if m.ports|length > 20 %} and {{ m.ports|length - 20 }} more{% endif %}{% endif %}{% if m.why %}: {{ m.why }}{% endif %}{% if m.cookie %} <span class="muted small">(cookie <span class="mono">{{ m.cookie }}</span>)</span>{% endif %}.</span>
+        <span class="pack-line muted">Against: {{ t.what }}{% if t.value is defined %}, {{ num(t.value) }}{% if t.unit %} {{ t.unit }}{% endif %}{% endif %}{% if t.factor is defined %}: {{ t.factor }} × a baseline of {{ t.baseline_pps }} pps over {{ t.baseline_samples }} collections, at least {{ t.floor_pps }} pps{% endif %}{% if t.recorded is defined %}; {{ t.recorded }} recorded, the controller's own <span class="mono">{{ (t.own_cookies or ['none'])|join(', ') }}</span>{% endif %}{% if t.window_s %}; window {{ t.window_s }} s{% endif %}{% if t.setting %} <span class="mono small">({{ t.setting }}{% if t.window_setting %}, {{ t.window_setting }}{% endif %})</span>{% endif %}.</span>
+        <span class="pack-line muted">Confidence {{ p.confidence }}: {{ p.confidence_why }}.</span>
+        {%- if p.effect %}
+        <span class="pack-line">Its effect, <strong>{{ p.effect['class'] }}</strong>: it {{ p.effect.words }}{% if p.effect.evidence %}. Rests on {% for i in p.effect.evidence %}{{ cite(i) }}{{ ', ' if not loop.last }}{% endfor %}{% endif %}.</span>
+        {%- endif %}
+        {%- if p.source or p.targets or p.port is not none %}
+        <span class="pack-line">{% if p.source %}From <span class="mono">{{ p.source }}</span>{% if p.targets %} to <span class="mono">{{ p.targets|join(', ') }}</span>{% endif %}{% elif p.targets %}To <span class="mono">{{ p.targets|join(', ') }}</span>{% endif %}{% if p.port is not none %}{{ ', on' if p.source or p.targets else 'On' }} port {{ p.port }}{% endif %} <span class="muted small">on switch {{ p.dpid }}, controller {{ p.connection }}</span>.</span>
+        {%- endif %}
+        <span class="pack-line">Rests on: {% for i in p.evidence %}{{ cite(i) }}{{ ' · ' if not loop.last }}{% else %}nothing kept{% endfor %}{% if p.evidence_not_sent %} <span class="muted">and {{ p.evidence_not_sent }} more not kept in the pack</span>{% endif %}</span>
+        {%- elif p.kind == 'port' %}
+        <strong>Port {{ p.port_no }}</strong>{{ cited(p) }}{% if p.note %}: no rate, {{ p.note }}.{% elif p.rx_pps is defined %}: received {{ num(p.rx_pps) }} packets/s ({{ num(p.rx_bytes_per_s) }} bytes/s), sent {{ num(p.tx_pps) }} packets/s ({{ num(p.tx_bytes_per_s) }} bytes/s); dropped {{ num(p.rx_dropped_delta) }} received, {{ num(p.tx_dropped_delta) }} sent.{% else %}: no rate (the two reads were not apart).{% endif %}
+        {%- if p.rx_packets_delta is defined %}
+        <span class="pack-line muted">Over {{ (p.sample or {}).elapsed_s }} s (asked {{ (p.sample or {}).interval_s }} s apart): {{ num(p.rx_packets_delta) }} packets and {{ num(p.rx_bytes_delta) }} bytes in, {{ num(p.tx_packets_delta) }} packets and {{ num(p.tx_bytes_delta) }} bytes out.</span>
+        {%- endif %}
+        {%- elif p.kind in ('flow', 'displaced_flow') %}
+        {%- if p.kind == 'flow' %}<strong>Flow</strong>{{ cited(p) }}, table {{ p.table_id }}, priority {{ p.priority }}: match <code class="pack-text">{{ match_words(p) }}</code>; actions <code>{{ p.actions_words }}</code>{% if not p.actions %} (no action: it drops what it matches){% endif %}.
+        <span class="pack-line muted">{{ num(p.packet_count) }} packets, {{ num(p.byte_count) }} bytes; {% if p.duration_sec is not none %}installed {{ num(p.duration_sec) }} s before the read{% else %}its age not reported{% endif %}; {{ timeouts(p) }}; cookie <span class="mono">{{ p.cookie }}</span>.</span>
+        {%- else %}<strong>Mercury's flow, displaced</strong> {{ badge(p.state or 'state not recorded', 'warn') }}{{ cited(p) }}: {{ p.words }}.
+        <span class="pack-line muted">Table {{ p.table_id }}, priority {{ p.priority }}: match <code class="pack-text">{{ match_words(p) }}</code>; actions <code>{{ p.actions_words }}</code>{% if not p.actions %} (no action: it drops what it matches){% endif %}; {{ timeouts(p) }}; cookie <span class="mono">{{ p.cookie }}</span>.</span>
+        <span class="pack-line muted">Installed {{ stamp(p.installed_at, (p.installed_at or '')[11:19] ~ ' UTC') }}{% if p.response %} by a {{ p.response.kind or 'response' }}: {{ p.response.action or 'no action recorded' }}{% if p.response.risk %}, risk {{ p.response.risk }}{% endif %}{% if p.response.operation %}, operation <span class="mono">{{ p.response.operation }}</span>{% endif %}{% endif %}.</span>
+        {%- endif %}
+        {%- elif p.kind == 'sighting' %}
+        <strong>Seen earlier</strong>{{ cited(p) }}: port <span class="mono">{{ p.port }}</span>{% if p.dst %} to <span class="mono">{{ p.dst }}</span>{% endif %}, {{ stamp(p.seen_at, (p.seen_at or '')[11:19] ~ ' UTC') }}: {{ p.words }}.
+        {%- elif p.kind == 'coverage' %}
+        <strong>Flow granularity</strong> on this switch: {{ p.granularity }}{% if p.by_granularity %} ({% for g, k in p.by_granularity|dictsort %}{{ k }} {{ g }}{{ ', ' if not loop.last }}{% endfor %}){% endif %}: {{ p.words }}{% if p.scan_by_ports is defined and not p.scan_by_ports %}; the scan rule falls back to packet rates here{% endif %}. <span class="muted small">(switch {{ p.dpid }})</span>
+        {%- else %}
+        <strong>{{ p.kind or 'a piece' }}</strong>{% if p.id %} <span class="mono small">{{ p.id }}</span>{% endif %}{% if p.words %}: {{ p.words }}{% endif %}
+        {%- endif %}
         {%- elif s.name == 'logs' %}
         {{ stamp(p.at, p.at[11:19] ~ ' UTC') }} {% if p.severity is not none %}<span class="muted small">{{ p.severity }} {{ p.severity_word }}</span> {% endif %}<span class="muted small">{{ p.device }} · {{ p.job }}{{ ' · after the onset' if p.after_onset else '' }}</span> <span class="mono small pack-text">{{ p.text }}</span>
         {%- endif %}
       </li>
       {%- endfor %}
     </ul>
+    {%- endif %}
+    {%- if s.name == 'sdn' and sdn and sdn.meters %}
+    {#- The meters this section's flows name (C1867). Not part of the pack: the collection a
+        detection rests on reads flows and port counters, never meters, so each is drawn as the
+        SDN reader last read it, saying so and when, and is never cited. -#}
+    <div class="pack-meters">
+      <p class="pack-source"><strong>Meters these flows name</strong> <span class="muted">not part of the pack: the collection reads flows and port counters, not meters</span></p>
+      <ul class="pack-pieces">
+        {%- for m in sdn.meters %}
+        <li data-meter="{{ m.meter_id }}">Meter {{ m.meter_id }}, named by {% for r in m.named_by %}<a class="pack-ref pack-cite" href="#{{ pack.id }}-{{ r }}">{{ r }}</a>{{ ', ' if not loop.last }}{% endfor %} (METER:{{ m.meter_id }}):
+          {%- if m.state == 'read' %} as the SDN reader read it {{ stamp(sdn.reader.value_at) }}, {{ 'after' if sdn.reader.after else 'before' }} the pack was built: {{ m.rate }}{% for b in m.bands %}; its {{ b.type|lower|replace('_', ' ') }} band{% if b.burst %}, burst {{ num(b.burst) }} {{ b.unit }}{% endif %}, {{ num(b.packets) }} packets ({{ num(b.bytes) }} bytes) {{ 'dropped' if b.type == 'DROP' else 'counted' }}{% endfor %}; {{ num(m.packets_in) }} packets ({{ num(m.bytes_in) }} bytes) in; {{ m.flows if m.flows is not none else 'no count of' }} flow{{ '' if m.flows == 1 else 's' }} use{{ 's' if m.flows == 1 else '' }} it.
+          {%- elif m.state == 'absent' %} {{ m.why }}, {{ stamp(sdn.reader.value_at) }}.
+          {%- else %} not read: {{ m.why }}.{% endif %}</li>
+        {%- endfor %}
+      </ul>
+    </div>
     {%- endif %}
   </section>
   {%- endfor %}

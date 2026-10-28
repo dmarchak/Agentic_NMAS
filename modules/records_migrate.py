@@ -699,6 +699,18 @@ LINE_STORES["alert_rule_changes"] = _installation_store("alert_rule_changes",
                                                         "rule changes", _alert_rule_changes_path)
 
 
+def _ai_feedback_path() -> str:
+    from modules.ai import feedback
+    return feedback._path()
+
+
+# Was this right? on every AI answer, and the review of the answers said wrong (PHASE8_PLAN
+# 16.11 item 1): one file for the installation, one line per verdict or review, through
+# `store_append` and `store_rows` (`modules/ai/feedback.py`).
+LINE_STORES["ai_feedback"] = _installation_store("ai_feedback", "AI answers said right or wrong",
+                                                 "verdicts and reviews", _ai_feedback_path)
+
+
 # ── The files ────────────────────────────────────────────────────────────────────────────────
 
 def file_networks(store: str = STORE) -> dict:

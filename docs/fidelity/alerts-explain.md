@@ -15,7 +15,20 @@ instance and a silenced syslog instance firing, each pack built by the real trig
 Loki and Prometheus captures; the first card opened; Explain pressed with hosted AI allowed and
 an answer planted (a hypothesis citing `alert`, needing a person).
 Templates compared: templates/v2/_alert_evidence.html, templates/v2/_evidence_pack.html, templates/v2/_explain.html, templates/v2/_explain_block.html
-Templates sha256: `ce98ad506371af173a0693a2fd0f01985b178f8f3a36b1576565104a0b404b29`
+Templates sha256: `a1813eccc97ade628667adc86e9d0d427d4590baa8e02678c6a591699bbccdfd`
+
+**Compared again 2026-10-28 (PHASE8_PLAN 16.11 item 1, board FB):** `_explain.html` includes
+Was this right? (`_ai_feedback.html`) under an answer drawn, after "This call in History", and
+never under one Mercury's check refused. The control is board FB's and is compared in its own
+record, docs/fidelity/ai-feedback.md (its two deviations logged there); no region of this record
+changed, so none was shot again. Templates sha256 before:
+`ce98ad506371af173a0693a2fd0f01985b178f8f3a36b1576565104a0b404b29`.
+
+**The two compared together (2026-10-28 ~21:2x UTC):** 16.11 item 1 (the control under an
+answer, `_explain.html`) and C1867 (an SDN pack's section, `_evidence_pack.html` and
+`_alert_evidence.html`) were each compared alone (their paragraphs here and below; hashes
+`a098e62a…` and `505f225f…`); they change different regions, and the hash above is of both
+together. No region was shot again for the pair.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
@@ -184,3 +197,37 @@ moved into two macros in the template; what they draw is unchanged.
   Mercury added, drawn as Mercury's"). No other region's verdict changed.
 
 Templates sha256 before: `cf2cd988031a8a10224da41e016019bf52223a3a3cb4d17208b1491467b165a7`.
+
+**Compared again 2026-10-28 (C1867, an SDN detection's evidence):** against the revised board
+`AlertsSdnEvidence.dc.html` (a copy of version 143 with parts 5 to 9 added, signed off under the
+Phase 7 mode 2026-10-28; docs/STANDING_APPROVAL_LOG.md, "C1867: board AlertsSdnEvidence"; not
+yet on the canvas). `_alert_evidence.html` names Mercury's own detection "SDN detection" (a chip
+and its line, or "SDN detection could not be read" with why), and an SDN card or earlier pack
+names its switch (DPID and controller connection), never "no one device". `_evidence_pack.html`
+draws an SDN pack's head with its switch (DPID, name, connection) and the chip, its alert
+section's source as "SDN detection: the alert as Mercury recorded it" (for a pack built before
+C1867 too), and its `sdn` section in words: the switch line, the counts kept, then each piece
+(the detection with what it measured, against what, its confidence, its effect, from and to,
+and what it rests on, linked; each port's rates, drops and counts over its sample; each flow's
+match as written, IPv6 addresses whole, actions, packets, bytes, age, timeouts and cookie;
+Mercury's displaced flow with its response; the switch's flow granularity), each in its own box,
+and the meters its flows name as the SDN reader last read them, said as not part of the pack.
+The pack and earlier badges' hover names the schema and when built. A Grafana alert's pack draws
+as before.
+- **Shots:** `tests/test_board_shots.py::test_monitoring_alerts_sdn_evidence` (new; 2026-10-28
+  ~20:4x UTC, `alerts-sdn-tab` and `alerts-sdn-open` at 1440, 1280 and 390 beside
+  `alerts-sdn-board-AlertsSdnEvidence` at 1440), on test_sdn_v2's lab with the unauthorised drop
+  flow detected over Ryu's capture and three packs from the Lab 8 recorded cases; and
+  `::test_monitoring_alerts_explain` again (every region as before). The boards folder held the
+  two boards alone (the canvas's AlertsExplain and the local AlertsSdnEvidence).
+- **Regions:** the tab's source line and the SDN card (part 5): **same**. The pack's head, the
+  alert section's source and the device's "nothing to read" (part 6): **same**. The `sdn`
+  section's switch line, counts and each piece's words (parts 6 and 7): **same**; the board's
+  figures were aligned with the built wording (thousands, the granularity's order) before its
+  log line. The meters box (part 7): **same**. The states (part 8): **same**, each held by
+  tests/test_sdn_evidence_v2.py rather than shot. The sections folded under the answer: drawn
+  open, as before (**later** C1769). Phone (part 9): at 390 every piece wraps in its box, no
+  sideways scroll: **same**.
+- **Verdict:** **same**; no deviation.
+
+Templates sha256 before: `ce98ad506371af173a0693a2fd0f01985b178f8f3a36b1576565104a0b404b29`.

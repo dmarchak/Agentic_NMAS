@@ -27,7 +27,14 @@ Shots: each board at 1440; the page at 1440, 1280 and 390 in six states (`tab-in
 `tab-intent-departs` (C884) at 1440.
 Compared 2026-10-16.
 Templates compared: templates/v2/_intent.html, templates/v2/_intent_edit.html, templates/v2/_intent_check.html, templates/v2/_intent_words.html, templates/v2/_intent_proof.html
-Templates sha256: `6c4cc6ac2f2074737b44e14e62b2587b4344bba725de144715bcabb61d49a070`
+Templates sha256: `72208aaa5435a15ff1e368ea12a0856ac024393ab2370ae85a430ce7243686e6`
+
+**Compared again 2026-10-28 (PHASE8_PLAN 16.11 item 1, board FB):** `_intent_words.html`
+includes Was this right? (`_ai_feedback.html`) under a draft, one end's or both ends', after
+"What left the host"; not under a question back or a refusal. The control is board FB's and is
+compared in its own record, docs/fidelity/ai-feedback.md; no region of this record changed, so
+none was shot again. Templates sha256 before:
+`6c4cc6ac2f2074737b44e14e62b2587b4344bba725de144715bcabb61d49a070`.
 
 Compared again 2026-10-17 (C1023) after "Open (commit) with your edit on it" (`_intent_edit.html`)
 and Write the ticked lines into the document (`_intent_check.html`) became busy on themselves

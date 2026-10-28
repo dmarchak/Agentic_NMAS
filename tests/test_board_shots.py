@@ -369,6 +369,49 @@ def test_settings_ai(settings_ai):
                     _full(b, os.path.join(OUT, f"settings-ai-on-refused-page-{width}.png"))
 
 
+from tests.test_ai_feedback import fb as ai_feedback_world  # noqa: E402,F401 (its world)
+
+
+def test_ai_feedback(ai_feedback_world):
+    """Board FB (AiFeedback, 1440) beside Settings › Installation › AI's Answers said wrong, on
+    tests/test_ai_feedback.py's world: the walk's person's No through the control, another
+    person's Yes and a second No planted; the page shot, then the newest row opened (its call,
+    the others on it, Accept into a case draft… and Dismiss…)."""
+    import json as _json
+
+    from tests import browser
+    from modules.ai import feedback
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    w = ai_feedback_world
+    assert w.client.post("/v2/ai/feedback/answer/ai-0000000000000001",
+                         data={"verdict": "no", "why": "conclusion",
+                               "words": "the errors began with the host's CPU on r2 and r4"},
+                         headers={"HX-Request": "true"}).status_code == 200
+    with open(feedback._path(), "a", encoding="utf-8") as fh:
+        for row in ({"kind": "verdict", "id": "fb-yes", "call_id": "ai-0000000000000001",
+                     "task": "explain", "verdict": "yes", "why": "", "words": "",
+                     "actor": "sam@example.com", "at": "2026-10-28T11:00:00Z"},
+                    {"kind": "verdict", "id": "fb-ask", "call_id": "ai-0000000000000002",
+                     "task": "nl_query", "verdict": "no", "why": "missed",
+                     "words": "I asked for r3 only; it filled every router.",
+                     "actor": "sam@example.com", "at": "2026-10-28T11:40:00Z"}):
+            fh.write(_json.dumps(row) + "\n")
+    page = "/v2/settings/installation?tab=ai"
+
+    def open_first(b):
+        b.js("document.querySelector('#ai-feedback details.ai-fb-row:last-of-type summary')"
+             ".click(); return 1")
+        b.wait_for("return !!document.querySelector('#ai-feedback .ai-fb-acts')")
+    import app as A
+    with browser.Served(A.app) as served:
+        _shoot("ai-feedback", "AiFeedback.dc.html", lambda _w: page, served,
+               widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
+        _shoot("ai-feedback-open", "", lambda _w: page, served,
+               widths=((1440, 1.0), (390, 2.0)), act=open_first)
+
+
 def test_ai_spend(settings_ai, monkeypatch):
     """Boards AI1 (AiChip, 1440) and AI2 (AiSpendPanel, 1440) beside the top bar's AI chip and
     the spend panel it opens, on Settings › AI's page, in tests/test_settings_ai_v2.py's world
@@ -2284,6 +2327,47 @@ def test_monitoring_alerts_explain(tmp_path, monkeypatch):
                 widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
     finally:
         next(gen, None)
+
+
+def test_monitoring_alerts_sdn_evidence(tmp_path, monkeypatch):
+    """C1867: an SDN detection's evidence on Monitoring › Alerts beside board AlertsSdnEvidence
+    (1440; a revision of P1's AlertsExplain, signed off under the Phase 7 mode 2026-10-28), on
+    tests/test_sdn_evidence_v2.py's data: tests/test_sdn_v2.py's lab (Default's `lab-controller`
+    over Ryu 4.34's capture, the SDN reader run), its unauthorised drop flow detected over the
+    same capture (its effect naming Mercury's meter flow, meter 1 as the reader read it), and
+    three packs built from the Lab 8 run's recorded cases (the walk's displaced flow and its
+    flood, and the IPv6 flood on s2, whose switch the reader does not hold). The tab, then every
+    card opened."""
+    from modules import evidence_pack as EP
+    from modules.sdn import closed_loop as CL
+    from modules.sdn import detect as D
+    from tests import browser
+    from tests.test_sdn_connections import make_networks
+    from tests.test_sdn_evidence_v2 import walk_pack
+    from tests.test_sdn_v2 import make_lab, store_read
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    make_lab(make_networks(tmp_path, monkeypatch), monkeypatch)
+    monkeypatch.setattr(EP, "_alert_stores", lambda: [])
+    store_read(clock=lambda: time.time() - 30)
+    got = CL.collect_threat_data("Default", 1.0, sleep=lambda s: None,
+                                 now=lambda: time.time() - 240)
+    assert D.observe("Default", got, values=dict(D.THRESHOLDS))["fired"]
+    walk_pack("walk-unauthorised-s1")
+    walk_pack("walk-flood-1-s1")
+    walk_pack("flood-v6-s2", cases="held_out")
+    details = "document.querySelectorAll('details.pack-card, details.evidence')"
+    cards = "document.querySelectorAll('details.pack-card')"
+    import app as A
+    _d_walk("alerts-sdn", None, "", [], boards=(("AlertsSdnEvidence.dc.html", 1440),),
+            widths=((1440, 1.0),))
+    with browser.Served(A.app) as served:
+        _d_walk("alerts-sdn", served, "/v2/monitoring/alerts", [
+            ("tab", None, f"{cards}.length >= 4"),
+            ("open", f"{details}.forEach(d => d.open = true)",
+             f"[...{cards}].every(d => d.querySelector('[data-ref=\"sdn\"]'))")],
+            widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
 
 
 def test_monitoring_alerts_history(tmp_path, monkeypatch):

@@ -15,7 +15,7 @@ the Loki and Prometheus captures. At 1280 and 390 the pack built at 1440 is kept
 row opens on the pack and not on Build evidence. The Loki capture is answered whatever the
 window, so the shot's log lines are 15 Oct's, not 21 Oct's.
 Templates compared: templates/v2/_alert_history.html, templates/v2/_evidence_pack.html, templates/v2/monitoring.html, templates/v2/_explain_block.html
-Templates sha256: `c8e11756f7bea09cf0613c7b4c3b07ca0a577525aa7e1a0b9ba58284ea7d06d3`
+Templates sha256: `3ed477210b497088fef46b7446a101f1c453d6ab4d2dc487b59711db24f4b0e6`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
@@ -107,3 +107,16 @@ region, its line in docs/STANDING_APPROVAL_LOG.md ("P1 Alerts: the monitoring si
 window"); no other region's verdict changed.
 
 Templates sha256 before: `a925cd86203963b4018366e10c65bb932ad196e7d81abe616a267ad9a07caef8`.
+
+**Compared again 2026-10-28 (C1867, an SDN detection's evidence):** `_evidence_pack.html`, drawn
+in a row's body, gained the branch for an SDN detection's pack (its switch in the head, its
+alert section's source as SDN detection, its `sdn` section's pieces in words and the meters its
+flows name; regions described and compared in docs/fidelity/alerts-explain.md, "Compared again
+2026-10-28 (C1867 ...)", against board AlertsSdnEvidence). A Grafana alert's pack, the only kind
+History rebuilds, draws as before. **Shots:** `::test_monitoring_alerts_history` (2026-10-28
+~20:5x UTC, at 1440, 1280 and 390 beside P1-H): every region as before.
+`::test_monitoring_alerts_history_rebuild` fails waiting for its rebuilt pack's row, and fails the
+same with C1867's product files put back to the last commit's (run through `scripts/nmas-control`),
+so its shots are still owed, as before. **Verdict:** **same**; no region of P1-H changed.
+
+Templates sha256 before: `c8e11756f7bea09cf0613c7b4c3b07ca0a577525aa7e1a0b9ba58284ea7d06d3`.

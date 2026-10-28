@@ -109,6 +109,10 @@ SECTION_WORDS = {"alert": "The alert",
 #: `explain.vocabulary`), are unchanged: the section rides as pack data, naming itself in its
 #: own words.
 SDN_SECTION = "sdn"
+#: What an SDN detection's alert section was read from (C1867): Mercury's own detection, never a
+#: Grafana reader. A pack built before C1867 says "Grafana's alert state, as the sdn reader
+#: stored it"; the card draws these words for every SDN pack's alert section (`sdn_view`).
+SDN_ALERT_SOURCE = "SDN detection: the alert as Mercury recorded it"
 #: A build more than this before the clock is a replay of a past alert (`build`'s *now*): the
 #: sections that read a store as it is now (History, the Intent check) say what they read.
 REPLAY_SLACK_SECONDS = 300
@@ -317,7 +321,8 @@ def _failed(exc) -> str:
     return f"{type(exc).__name__}: {first}" if first else type(exc).__name__
 
 
-def _alert_section(inst: dict, store: str, value_at: str, onset, basis: str) -> dict:
+def _alert_section(inst: dict, store: str, value_at: str, onset, basis: str,
+                   source: str = "") -> dict:
     silences = [{"id": s.get("id") or "", "created_by": s.get("created_by") or "",
                  "ends_at": s.get("ends_at") or "", "comment": s.get("comment") or "",
                  "unresolved": bool(s.get("unresolved"))} for s in inst.get("silences") or []]
@@ -329,8 +334,8 @@ def _alert_section(inst: dict, store: str, value_at: str, onset, basis: str) -> 
              "for_seconds": int(inst.get("for_seconds") or 0),
              "window_seconds": int(inst.get("window_seconds") or 0),
              "onset": _iso(onset), "onset_basis": basis, "silences": silences}
-    return _section("alert", f"Grafana's alert state, as the {store} reader stored it",
-                    value_at, "ok", pieces=[piece])
+    return _section("alert", source or f"Grafana's alert state, as the {store} reader stored "
+                    "it", value_at, "ok", pieces=[piece])
 
 
 def _device_section(inst: dict, onset, basis: str):
@@ -1138,7 +1143,8 @@ def build_detection(inst: dict, *, network: str, sdn: dict, now: float, trigger:
     from modules.sdn import detect
 
     onset, basis = _detection_onset(inst)
-    sections = [_alert_section(inst, detect.STORE, _iso(now), onset, basis),
+    sections = [_alert_section(inst, detect.STORE, _iso(now), onset, basis,
+                               source=SDN_ALERT_SOURCE),
                 _section("device", "every network's inventory", now, "absent",
                          f"{switch_words} is an SDN controller's switch, not a device in any "
                          "network's inventory (adopting switches as devices comes after "
@@ -1182,6 +1188,112 @@ def sdn_firing() -> dict:
         return {"state": "unreadable", "error": _failed(exc), "updated_at": "", "instances": []}
     return {"state": got["state"], "error": got["error"], "updated_at": got["updated_at"],
             "instances": [(detect.STORE, i) for i in got["instances"]]}
+
+
+def _piece_words(p: dict) -> str:
+    """An ``sdn`` piece in a few words, beside its reference where a detection cites it."""
+    kind = p.get("kind")
+    if kind == "port":
+        return f"port {p.get('port_no')}"
+    if kind == "flow":
+        return f"a flow, priority {p.get('priority')}"
+    if kind == "displaced_flow":
+        return "Mercury's flow, displaced"
+    if kind == "sighting":
+        return f"an earlier sighting, {p.get('port')}"
+    return str(kind or "a piece")
+
+
+def _meter_ids(actions) -> list:
+    """The meters *actions* name (``METER`` among them, inside ``WRITE_ACTIONS`` too)."""
+    out = []
+    for a in actions or []:
+        if a.get("type") == "METER" and a.get("meter_id") is not None:
+            out.append(a["meter_id"])
+        out += _meter_ids(a.get("actions"))
+    return out
+
+
+def sdn_view(pack: dict) -> dict:
+    """What an SDN detection's pack card draws beside its stored sections (C1867), or {} for
+    any other pack. From the pack: the switch its ``sdn`` section is of (the detection's DPID
+    and connection), each piece's reference by its evidence id (``refs``: a detection cites ids,
+    the card links them), the ids the detection cites, and each meter the section's flows name
+    (``METER`` among their actions). From the SDN reader's stored value, read once, NOT part of
+    the pack: the name the switch reports, and each named meter's rate, bands and counters as
+    that read holds them, with its time. The collection a detection rests on reads flows and
+    port counters, never meters, so a meter is drawn as a later read, saying so, and is never
+    cited. Every state the reader can be in is said: never read, not configured, unreadable,
+    the switch or the meter not in its read, meters not read on the switch."""
+    if (pack or {}).get("store") != "sdn":
+        return {}
+    from modules import sdn_page
+
+    section = next((s for s in pack.get("sections") or [] if s.get("name") == SDN_SECTION), {})
+    pieces = section.get("pieces") or []
+    det = next((p for p in pieces if p.get("kind") == "detection"), {})
+    labels = next((p.get("labels") or {} for s in pack.get("sections") or []
+                   if s.get("name") == "alert" for p in s.get("pieces") or []), {})
+    dpid = det.get("dpid") or labels.get("dpid") or ""
+    connection = det.get("connection") or labels.get("connection") or ""
+    refs = {p["id"]: {"ref": p["ref"], "what": _piece_words(p)}
+            for p in pieces if p.get("id") and p.get("ref")}
+    named = {}
+    for p in pieces:
+        if p.get("kind") in ("flow", "displaced_flow"):
+            for m in _meter_ids(p.get("actions")):
+                named.setdefault(m, [])
+                if p.get("ref") not in named[m]:
+                    named[m].append(p.get("ref"))
+    got = sdn_page.stored(pack.get("network") or "")
+    reader = {"state": got["state"], "value_at": got.get("value_at") or "",
+              "why": got.get("why") or got.get("failed") or ""}
+    sw, sw_why = None, ""
+    if got["state"] == "ok":
+        ctl = next((c for c in (got.get("value") or {}).get("controllers") or []
+                    if c.get("name") == connection), {})
+        sw = next((s for s in ctl.get("switches") or [] if s.get("dpid_hex") == dpid), None)
+        if sw is None:
+            sw_why = f"the SDN reader's read holds no switch {dpid} on {connection}"
+    else:
+        sw_why = {"never": "the SDN reader has not read this network yet",
+                  "not_configured": "this network has no SDN controller connection now",
+                  "not_applicable": "the SDN reader does not read this network"}.get(
+            got["state"], f"the SDN reader's store could not be read ({reader['why']})")
+    name = (sw or {}).get("name") or ""
+    if sw is not None and not name:
+        sw_why = (f"the switch's description could not be read ({sw['desc_error']})"
+                  if sw.get("desc_error") else "the switch reports no name")
+    built = pack.get("built_at") or ""
+    meters = []
+    for mid, by in sorted(named.items(), key=lambda kv: str(kv[0])):
+        m = {"meter_id": mid, "named_by": by, "state": "not_read", "why": sw_why,
+             "rate": "", "bands": [], "packets_in": None, "bytes_in": None, "flows": None}
+        if sw is not None and not sw.get("meters_read"):
+            m["why"] = ("its meters were not read on this switch: "
+                        + (sw.get("meters_error") or "the driver does not read meters"))
+        elif sw is not None:
+            held = next((x for x in sw.get("meters") or [] if x.get("meter_id") == mid), None)
+            if held is None:
+                m.update(state="absent", why=f"switch {name or dpid} held no meter {mid} when "
+                                             "the SDN reader last read it")
+            else:
+                kbps = "KBPS" in (held.get("flags") or [])
+                m.update(state="read", why="", rate=sdn_page._meter_words(held),
+                         packets_in=held.get("packet_in_count"),
+                         bytes_in=held.get("byte_in_count"), flows=held.get("flows"),
+                         bands=[{"type": b.get("type") or "",
+                                 "burst": b.get("burst_size"),
+                                 "unit": "kbit" if kbps else "packets",
+                                 "packets": b.get("packet_band_count"),
+                                 "bytes": b.get("byte_band_count")}
+                                for b in held.get("bands") or []])
+        meters.append(m)
+    return {"alert_source": SDN_ALERT_SOURCE,
+            "switch": {"dpid": dpid, "connection": connection, "name": name, "why": sw_why},
+            "reader": dict(reader, after=bool(reader["value_at"] and built
+                                              and reader["value_at"] > built)),
+            "refs": refs, "cited": list(det.get("evidence") or []), "meters": meters}
 
 
 def episode_instance(e: dict) -> dict:
@@ -1355,7 +1467,12 @@ def _card(inst: dict, store: str, pack) -> dict:
             or inst.get("active_at") or "", "summary_labels": ", ".join(
                 f"{k}={v}" for k, v in sorted(labels.items())
                 if k not in ("alertname", "grafana_folder", "__name__")),
-            "pack": None}
+            "pack": None, "switch": None}
+    if store == "sdn":
+        # An SDN detection is of a controller's switch, never a device (C1867): the card names
+        # the switch by its labels, and its source as SDN detection.
+        card["switch"] = {"dpid": labels.get("dpid") or "",
+                          "connection": labels.get("connection") or ""}
     if pack:
         card["pack"] = pack_summary(pack)
     return card
@@ -1365,14 +1482,21 @@ def pack_summary(pack: dict) -> dict:
     """What a card's closed line says of its pack: its id, when it was built, its hash, how
     many pieces, and which sections could not be read or held nothing to read."""
     sections = pack.get("sections") or []
-    return {"id": pack.get("id"), "built_at": pack.get("built_at") or "",
-            "hash": pack.get("hash") or "", "intact": intact(pack),
-            "pieces": sum(len(s.get("pieces") or []) for s in sections),
-            "not_read": [s.get("words") or s.get("name") for s in sections
-                         if s.get("state") == "unreadable"],
-            "device": pack.get("device") or "", "network": pack.get("network") or "",
-            "onset": pack.get("onset") or "", "rule": pack.get("rule") or "",
-            "schema": schema_of(pack), "built": built_when(pack)}
+    out = {"id": pack.get("id"), "built_at": pack.get("built_at") or "",
+           "hash": pack.get("hash") or "", "intact": intact(pack),
+           "pieces": sum(len(s.get("pieces") or []) for s in sections),
+           "not_read": [s.get("words") or s.get("name") for s in sections
+                        if s.get("state") == "unreadable"],
+           "device": pack.get("device") or "", "network": pack.get("network") or "",
+           "onset": pack.get("onset") or "", "rule": pack.get("rule") or "",
+           "schema": schema_of(pack), "built": built_when(pack)}
+    if pack.get("store") == "sdn":
+        # An SDN detection's pack is of a switch (C1867), named by its alert's labels.
+        labels = next((p.get("labels") or {} for s in sections if s.get("name") == "alert"
+                       for p in s.get("pieces") or []), {})
+        out["switch"] = {"dpid": labels.get("dpid") or "",
+                         "connection": labels.get("connection") or ""}
+    return out
 
 
 def tab(q: str = "") -> dict:

@@ -58,6 +58,7 @@
     <p class="small"><strong>It recommends:</strong> {{ a.recommended }}{% if a.action and a.action != 'none' %} (catalogue action <span class="mono">{{ a.action }}</span>, its parameters checked against the evidence){% else %} (no catalogue action: you decide){% endif %}.</p>
     {%- if a.devices %}<p class="small faint">Affected: <span class="mono">{{ a.devices | join(', ') }}</span></p>{% endif %}
     <p class="small faint">Evidence it cites: <span class="mono">{{ a.refs | join(', ') }}</span></p>
+    {%- if a.call_id %}{% with fb=ai_feedback(a.call_id) %}{% include "v2/_ai_feedback.html" %}{% endwith %}{% endif %}
   </div>
   {%- else %}
   <p class="small faint">{{ r.classified }}.{% if r.refused_call %} <a href="{{ url_for('v2.history_page', call=r.refused_call) }}" title="The prompt as sent and the answer the check refused">The refused answer in History</a>.{% endif %}</p>

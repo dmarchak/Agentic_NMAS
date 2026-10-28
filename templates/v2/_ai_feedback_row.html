@@ -1,0 +1,11 @@
+{%- from "v2/_macros.html" import badge, stamp -%}
+{#- One answer said right or wrong in the review (board FB, section 3): collapsed, its feature,
+    who, when, what was wrong and its status; opened, its call and the review's controls, read
+    then (`ai_feedback_v2.row`, toggle once). *v* is a row of `feedback.view`; *d*, when given,
+    is the row's detail already read (a review's answer redraws the row opened). An open row
+    holds the card's live redraw (nmas_v2.js `openedIn`), so a review's answer stays drawn. -#}
+{%- set st = {'to_review': ('to review', 'warn'), 'accepted': ('accepted', 'ok'), 'dismissed': ('dismissed', 'neutral'), 'right': ('said right', 'ok')}[v.status] %}
+<details class="ai-fb-row" id="ai-fb-row-{{ v.id }}" data-fb="{{ v.id }}" data-keep="ai-fb-{{ v.id }}"{% if d is defined and d %} open{% endif %} hx-get="{{ url_for('ai_feedback_v2.row', fb_id=v.id) }}" hx-trigger="toggle once" hx-target="find .ai-fb-det" hx-swap="innerHTML" data-what="the call and its review">
+  <summary><span>{{ badge(v.feature_words, 'neutral') }}</span><span class="mono">{{ v.actor }}</span><span class="faint small">{{ stamp(v.at) }}</span><span>{% if v.verdict == 'no' %}{{ v.kind_words }}: <span class="muted">“{{ v.words | truncate(90) }}”</span>{% else %}<span class="muted">said right</span>{% endif %}</span><span>{{ badge(st[0], st[1]) }}</span></summary>
+  <div class="ai-fb-det">{% if d is defined and d %}{% include "v2/_ai_feedback_detail.html" %}{% endif %}</div>
+</details>

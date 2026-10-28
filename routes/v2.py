@@ -1535,7 +1535,7 @@ def monitoring_alert_pack(pack_id):
                            error=got["error"], pid=pid,
                            intact=evidence_pack.intact(pack) if pack else False,
                            explain_model=_explain_model(), explained=_explained(pack),
-                           **_pack_lineage(pack, got["rows"]))
+                           **_pack_context(pack, got["rows"]))
     return _strict(html, 200 if pack else 404)
 
 
@@ -1559,6 +1559,16 @@ def _pack_lineage(pack, rows) -> dict:
             "the alert history holds no past alert this pack is of (its alert began before "
             "the history was kept, or it is still firing)")}
     return out
+
+
+def _pack_context(pack, rows) -> dict:
+    """What every drawing of one pack's card is handed beside the pack: its lineage
+    (`_pack_lineage`, C1862) and, for an SDN detection's pack, ``sdn`` (C1867,
+    `evidence_pack.sdn_view`: the switch's name, the pieces' references by evidence id and
+    the meters its flows name, from the SDN reader's stored value, one read); {} otherwise."""
+    from modules import evidence_pack
+
+    return dict(_pack_lineage(pack, rows), sdn=evidence_pack.sdn_view(pack) if pack else {})
 
 
 def _explain_model() -> str:
@@ -1673,7 +1683,7 @@ def monitoring_alert_history_evidence(episode_id):
     html = render_template("v2/_evidence_pack.html", pack=pack, state="ok", error="",
                            pid=pack["id"], intact=evidence_pack.intact(pack),
                            explain_model=_explain_model(), explained=_explained(pack),
-                           **_pack_lineage(pack, rows))
+                           **_pack_context(pack, rows))
     return _strict(html)
 
 
@@ -1730,7 +1740,7 @@ def monitoring_alert_pack_rebuild(pack_id):
     html = render_template("v2/_evidence_pack.html", pack=pack, state="ok", error="",
                            pid=pack["id"], intact=evidence_pack.intact(pack),
                            explain_model=_explain_model(), explained=_explained(pack),
-                           **_pack_lineage(pack, rows))
+                           **_pack_context(pack, rows))
     return _strict(html)
 
 

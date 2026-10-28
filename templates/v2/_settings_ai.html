@@ -16,4 +16,6 @@
   The installation's day cap is {% if ai.day_cap is none %}<strong>no cap</strong>{% else %}<span class="mono">${{ '%.2f' % ai.day_cap }}</span> a day{% endif %}; every background feature's caps are within it. The master switch, the provider key, the day cap and each task's model and prices are on <a href="{{ ai.card_href }}">Settings › Installation › Connections, AI (hosted)</a>.</p>
 </section>
 {% include "v2/_settings_ai_bg.html" %}
+{#- Answers said wrong (PHASE8_PLAN 16.11 item 1, board FB): the review of the Nos. -#}
+{%- if fbr is defined and fbr %}{% include "v2/_ai_feedback_review.html" %}{% endif %}
 </div>

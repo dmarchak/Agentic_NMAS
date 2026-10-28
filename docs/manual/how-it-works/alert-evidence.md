@@ -92,6 +92,53 @@ never a shorter pack.
    logs builder with Mercury's heartbeat lines left out; the 50 nearest the onset are kept and
    the rest counted.
 
+## An SDN detection's pack {#sdn}
+
+{{product}}'s own SDN detection (the scan, flood and unauthorised flow rules, run over each
+collection of a network's SDN controllers: see [SDN flows](sdn-flows)) is an alert too. The
+Alerts tab names its source **SDN detection**, with when it last judged a collection; if its
+state cannot be read, the tab says so and lists none of its detections, never an empty list.
+Its card names the **switch** (its DPID and controller connection), since a controller's switch
+is no device.
+
+Its pack is built once, when the detection first fires, from the collection the detection
+rests on, and holds three sections: **the alert** (read from SDN detection, as {{product}}
+recorded it), **the device** ("nothing to read": a controller's switch is in no inventory), and
+**the SDN flows and port rates the detection rests on**, captured at the detection's time. That
+section names the switch (its DPID, the name it reports as the SDN reader last read it, or why
+the name is not known, and its controller), what it keeps (the flows, displaced flows, ports
+and earlier sightings, and "N of M flows kept" when the 50-flow bound cut it), and then each
+piece in words:
+
+- **the detection:** the rule's words; what it measured (the value, its unit, the sample or
+  window, how long it held and since when); what it was held against (the threshold, its
+  setting, and for a flood the factor, baseline and floor); its confidence and why; its effect,
+  for an unauthorised flow; the source and targets, and the port; and what it rests on, each a
+  link to its piece (an id the pack does not keep is drawn as the id, with how many were left
+  out);
+- **a port:** packets and bytes a second received and sent, packets dropped each way, and the
+  counts over the sample (its seconds, and how far apart the two reads were asked);
+- **a flow:** its table and priority, its match exactly as the switch reported it (IPv4 and
+  IPv6 addresses whole, `eth_type` in hex), its actions ("no action" drops what it matches),
+  its packets and bytes, how long it had been installed at the read, its idle and hard timeouts,
+  and its cookie;
+- **{{product}}'s flow, displaced:** a flow {{product}} recorded at the place an unauthorised
+  flow now holds, with its state, its match and actions, when it was installed and the response
+  that installed it;
+- **an earlier sighting:** a scan's port seen in an earlier collection whose flow has gone;
+- **the flow granularity** on the switch (L4, L3, L2 or none, with each count), and whether the
+  scan rule falls back to packet rates there.
+
+A piece the detection cites says **cited by the detection**.
+
+**Meters.** The collection reads flows and port counters, never meters, so a meter is not part
+of the pack and is never cited. Under the pieces, **Meters these flows name** lists each meter a
+flow's actions name (`METER:1`) as the SDN reader last read it: its rate and band, the burst,
+the packets and bytes its band dropped, the packets in and the flows using it, with when that
+read was and whether it was after the pack was built. A meter the reader cannot give is said
+with why: the reader has not read the network, its store cannot be read, its read holds no such
+switch, the switch's meters were not read, or the switch held no such meter at that read.
+
 ## Other alerts around the onset {#concurrent}
 
 An alert rarely fires alone: when several devices stop answering in the same minute, the cause

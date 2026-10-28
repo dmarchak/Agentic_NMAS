@@ -79,7 +79,11 @@ COMPONENTS = {"_run_stepper.html": "stepper.md",
               "_settings_ai.html": "settings-ai.md",
               # The top bar's AI chip and the spend panel it opens (boards AI1 and AI2, signed
               # off under the Phase 7 mode 2026-10-27; C1843).
-              "_ai_chip.html": "ai-spend.md"}
+              "_ai_chip.html": "ai-spend.md",
+              # Was this right? under every AI answer, and Answers said wrong on Settings ›
+              # Installation › AI (board FB, signed off under the Phase 7 mode 2026-10-28;
+              # PHASE8_PLAN 16.11 item 1).
+              "_ai_feedback.html": "ai-feedback.md"}
 
 #: Signed-off screens built before the fidelity step and not yet compared with their boards
 #: (C650). Each is compared, and its differences fixed or logged, before it leaves this list.

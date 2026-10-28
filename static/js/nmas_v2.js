@@ -646,6 +646,7 @@
   function relayPathTrace() { relay('path_trace'); }
   function relayReveals() { relay('reveals'); }
   function relayAiCalls() { relay('ai_calls'); }
+  function relayAiFeedback() { relay('ai_feedback'); }
   function relayLists() { relay('lists'); }
   function relayActiveList() { relay('active_list'); }
   function relayPosture() { relay('posture'); }
@@ -809,6 +810,7 @@
     NMAS.subscribe('path_trace', 'v2PathTrace', relayPathTrace);
     NMAS.subscribe('reveals', 'v2Reveals', relayReveals);
     NMAS.subscribe('ai_calls', 'v2AiCalls', relayAiCalls);
+    NMAS.subscribe('ai_feedback', 'v2AiFeedback', relayAiFeedback);
     NMAS.subscribe('lists', 'v2Lists', relayLists);
     NMAS.subscribe('active_list', 'v2ActiveList', relayActiveList);
     NMAS.subscribe('posture', 'v2Posture', relayPosture);

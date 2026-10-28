@@ -491,6 +491,7 @@ DEFAULTS: dict = {
     "records_store_flow_intent": "file",
     "records_store_explain_answers": "file",
     "records_store_alert_rule_changes": "file",
+    "records_store_ai_feedback": "file",
 
     # ── Platform map (NetBox platform slug → how NMAS treats the device) ────
     # This map is what makes multi-vendor support a configuration change rather
@@ -1010,6 +1011,7 @@ SCHEMA: dict = {
         "records_store_flow_intent": {"type": "string", "enum": ["file", "postgres"]},
         "records_store_explain_answers": {"type": "string", "enum": ["file", "postgres"]},
         "records_store_alert_rule_changes": {"type": "string", "enum": ["file", "postgres"]},
+        "records_store_ai_feedback": {"type": "string", "enum": ["file", "postgres"]},
 
         "platform_map": {
             "type": "object",

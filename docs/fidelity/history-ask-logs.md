@@ -17,7 +17,14 @@ Compared again 2026-10-15: each `<details>` keyed (`data-keep`, C472) so a redra
 Compared again 2026-10-15 (board E3): the go links, the query box, the range chips and picker, the actions and the three states moved into `_history_ask_parts.html`, which the metrics builder shares (the rendered page the same but for whitespace, every state rendered before and after and compared); the head's Metrics switch now opens the metrics builder, and Code mode's Builder is a link. The shots at 1440, 1280 and 390 retaken; nothing drawn moved. Two fixes found on the way, neither a region's verdict: the bounds line says no log store is configured where none is (it raised an error page before, reading Loki's unread limits), and the heartbeat stage writes the marker as an RE2 literal, `NMAS-HEARTBEAT` (Python's escape wrote `NMAS\\-HEARTBEAT`, the same lines matched).
 Compared again 2026-10-15 (C818, C819; the operator's decisions of that day): Reveal… built as the board draws it, and Edit as code from Counts ending in Code mode's chart. The page shot at 1440, 1280 and 390 as before, and two more states beside the board's Lines view: `history-ask-logs-reveal-ask-page-<width>` (the box open with a reason) and `history-ask-logs-revealed-page-<width>` (the line revealed), at 1440 and 390, fed by the lines capture with one planted secret-bearing line (tests/test_log_reveal.py). Each masked value is now marked as the board marks it; the bounds line says revealing is recorded, as the board's does.
 Templates compared: templates/v2/history_ask_logs.html, templates/v2/_history_body.html, templates/v2/_history_ask_logs.html, templates/v2/_history_ask_head.html, templates/v2/_history_ask_parts.html, templates/v2/_history_ask_words.html, templates/v2/_ai.html
-Templates sha256: `bacabda49a5d8e5c31d7cf505d8b7b5c79f84084c3e69f94dd6d29e2924bc311`
+Templates sha256: `ee4f54e2ab4481049f4816160ec0ebf5672ccf3832fd1b3da1469f7d5c3011e2`
+
+**Compared again 2026-10-28 (PHASE8_PLAN 16.11 item 1, board FB):** `_history_ask_words.html`
+includes Was this right? (`_ai_feedback.html`) under "Filled from your words", the one answer of
+Ask in words the model gave; not under a question back, Mercury's own guide or a refusal. The
+control is board FB's and is compared in its own record, docs/fidelity/ai-feedback.md; no region
+of this record changed, so none was shot again. Templates sha256 before:
+`bacabda49a5d8e5c31d7cf505d8b7b5c79f84084c3e69f94dd6d29e2924bc311`.
 
 Compared again 2026-10-15 (P7-03): `_history_body.html` gained a `data-concept` marker and one
 sentence inside a Baselines row's detail (the block drawing each baseline's Re-apply… link); this

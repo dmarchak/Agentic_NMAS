@@ -69,6 +69,7 @@
   <p class="notice" role="status">{{ icon('info', 16) }} <span><strong>Already so</strong> on {{ w.previews | rejectattr('vs_intent_changed') | map(attribute='hostname') | join(' and ') or 'one end' }}: there is no change to both ends to commit.</span></p>
   {%- endif %}
   <p class="muted small">What left the host: your sentence, the keys a change may set, and the parts of {{ w.pair.device }}'s and {{ w.pair.far }}'s intent it names with their current values; never an intent document. The call is in History, its prompt and answer opened in place.</p>
+  {%- if w.call_id %}{% with fb=ai_feedback(w.call_id) %}{% include "v2/_ai_feedback.html" %}{% endwith %}{% endif %}
 </div>
 {%- elif w and w.ok %}
 {%- set p = w.previews[0] %}
@@ -107,6 +108,7 @@
   <p class="muted">{{ p.message }}</p>
   {%- endif %}
   <p class="muted small">What left the host: your sentence, the keys a change may set, and the parts of {{ host }}'s intent it names with their current values; never the intent document. The call is in History, its prompt and answer opened in place.</p>
+  {%- if w.call_id %}{% with fb=ai_feedback(w.call_id) %}{% include "v2/_ai_feedback.html" %}{% endwith %}{% endif %}
 </div>
 {%- elif w and w.error == 'ask' %}
 <div class="notice" role="status">{{ icon('info', 16) }}<p><strong>One question first:</strong> {{ w.clarify }} Add the answer to your words, then draft again. <span class="faint">({{ w.model }}, ${{ '%.4f' | format(w.cost_usd) }})</span></p></div>

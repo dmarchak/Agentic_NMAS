@@ -703,6 +703,13 @@ p.held-note { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; mar
 .pack-pieces li { overflow-wrap: anywhere; }
 .pack-ref { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-right: 6px; }
 .pack-text { white-space: pre-wrap; }
+/* An SDN detection's pack (C1867, board AlertsSdnEvidence): each piece's lines, a cited
+   reference as a link, and the meters its flows name in a box of their own. */
+.pack-line { display: block; }
+.pack-sdn { gap: 6px; }
+.pack-sdn > li { padding: 6px 8px; border: 1px solid var(--line-2); border-radius: 6px; }
+a.pack-cite { color: var(--accent); margin-right: 2px; }
+.pack-meters { margin-top: 6px; padding: 6px 10px; border: 1px dashed var(--line); border-radius: 6px; }
 /* Each pack section's mark (schema 4): captured at the time, rebuilt afterwards, cannot be rebuilt. */
 .pack-prov { font-size: 11.5px; color: var(--ink-3); }
 /* Monitoring › Alerts › Firing and History (board P1-H): the two views, and History's groups. */
@@ -2546,4 +2553,47 @@ summary.lq-chip::-webkit-details-marker { display: none; }
   .ai-feature { grid-template-columns: minmax(0, 1fr); }
   .ai-feature > .ai-f-act { justify-content: flex-start; }
   .ai-est-row { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Was this right? under every AI answer, and Answers said wrong on Settings › AI (PHASE8_PLAN
+   16.11 item 1, board FB): the control one wrapping row under the answer, No… opening its
+   short form in place; the review a summary, a filter, and rows collapsed to one line each,
+   stacked at phone width. */
+.ai-fb { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin-top: 8px; padding-top: 8px;
+  border-top: 1px dashed var(--line); font-size: 13px; }
+.ai-fb > form, .ai-fb .op-act { display: inline-flex; gap: 6px; align-items: center; }
+.ai-fb-q { color: var(--ink-2); }
+.ai-fb-no > summary { list-style: none; cursor: pointer; }
+.ai-fb-no > summary::-webkit-details-marker { display: none; }
+.ai-fb-no[open] > summary { border-color: var(--accent); }
+.ai-fb-form { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; padding: 10px 12px; max-width: 620px;
+  border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+.ai-fb-form fieldset { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.ai-fb-form legend { font-weight: 500; margin-bottom: 4px; }
+.ai-fb-form textarea, .ai-fb-inl input, .ai-fb-filter input, .ai-fb-filter select { font: inherit; font-size: 13px;
+  padding: 6px 9px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--ink); }
+.ai-fb-form textarea { min-height: 52px; }
+.ai-fb > .notice { flex-basis: 100%; margin: 0; }
+.ai-fb-counts, .ai-fb-foot { margin: 0; }
+.ai-fb-filter { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ai-fb-filter .chip-link { font-size: 12.5px; padding: 3px 10px; border-radius: 12px; border: 1px solid var(--line);
+  text-decoration: none; color: var(--ink-2); background: var(--surface); }
+.ai-fb-filter .chip-link.on { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); }
+.ai-fb-rows { display: flex; flex-direction: column; border-top: 1px solid var(--line-2); }
+.ai-fb-row { border-bottom: 1px solid var(--line-2); }
+.ai-fb-row > summary { display: grid; grid-template-columns: 11rem 12rem 8rem minmax(0, 1fr) 7rem; gap: 4px 12px;
+  align-items: baseline; padding: 9px 0; cursor: pointer; font-size: 13px; }
+.ai-fb-row > summary > span { min-width: 0; overflow-wrap: anywhere; }
+.ai-fb-det { display: flex; flex-direction: column; gap: 10px; padding: 4px 0 14px 16px; font-size: 13px; min-width: 0; }
+.ai-fb-kv { margin: 0; display: grid; grid-template-columns: 11rem minmax(0, 1fr); gap: 5px 14px; }
+.ai-fb-kv dt { color: var(--ink-2); }
+.ai-fb-kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.ai-fb-acts { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
+.ai-fb-act > summary { list-style: none; cursor: pointer; }
+.ai-fb-act > summary::-webkit-details-marker { display: none; }
+.ai-fb-inl { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; padding: 10px 12px; max-width: 640px;
+  border: 1px solid var(--line); border-radius: var(--r); }
+.ai-fb-draft { max-width: 100%; overflow-x: auto; }
+@media (max-width: 900px) {
+  .ai-fb-row > summary, .ai-fb-kv { grid-template-columns: minmax(0, 1fr); }
 }
